@@ -29,7 +29,11 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.168.0/testing/asserts.ts";
 
-import { countryFromE164, normalizeE164 } from "./e164Country.ts";
+import {
+  countryFromE164,
+  normalizeE164,
+  PRODUCTION_CALLING_CODES,
+} from "./e164Country.ts";
 
 const FIXTURE_SQL_PATH = new URL(
   "../../migrations/__tests__/issue_1529_e164_parity.test.sql",
@@ -204,6 +208,88 @@ Deno.test("#1529 T5-5: an underivable contact returns null and is NEVER coerced 
       `countryFromE164(${JSON.stringify(underivable)}) invented a country`,
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// T5-7 (#1529 P2-1) — EVERY CALLING CODE PRESENT IN PRODUCTION MUST RESOLVE.
+//
+// The SPEC justified the bounded map on the stated basis that the excluded
+// population was "zero in production today". That was FALSE: a direct query of
+// auth.users.phone on 2026-08-03 returned +1 26, +234 18, +44 3, +32 2, and
+// **+33 2**. Two real users hold French handsets and, under the original map,
+// would have failed closed with country_unresolved — no text, ever, by
+// construction — where origin/main reached them over Twilio.
+//
+// THIS IS THE ASSERTION THAT STOPS IT RECURRING: reaching a new market fails
+// this test until the calling code is mapped, rather than silently condemning
+// the new users to permanent non-delivery. Mirrored by the SQL twin's
+// $production_coverage$ block.
+// ---------------------------------------------------------------------------
+Deno.test("#1529 T5-7: every calling code observed in production resolves to a country", () => {
+  // Full-length samples per code: the P3-1 minimum-digit floor means a bare
+  // calling code correctly resolves to null, so short samples would make this
+  // assertion lie about what it proves.
+  const samples: Record<string, string> = {
+    "+1": "+14155550123",
+    "+234": "+2348012345678",
+    "+44": "+447700900000",
+    "+33": "+33075123456",
+    "+32": "+32460964460",
+  };
+
+  assert(
+    PRODUCTION_CALLING_CODES.length > 0,
+    "PRODUCTION_CALLING_CODES is empty — this guard would be vacuous",
+  );
+  assert(
+    PRODUCTION_CALLING_CODES.length >= 5,
+    `production calling-code inventory shrank: ${PRODUCTION_CALLING_CODES.length}`,
+  );
+
+  for (const code of PRODUCTION_CALLING_CODES) {
+    const sample = samples[code];
+    assert(
+      sample !== undefined,
+      `no sample handset for production calling code ${code} — add one so this guard cannot be silently skipped`,
+    );
+    assert(
+      countryFromE164(sample) !== null,
+      `production calling code ${code} HAS NO MAPPING — real users on this code would never receive a text`,
+    );
+  }
+
+  // France specifically, because it is the one that was actually missing.
+  assertEquals(countryFromE164("+33075123456"), "FR");
+  // Nigeria must still resolve to NG, not merely to "something".
+  assertEquals(countryFromE164("+2348012345678"), "NG");
+});
+
+// ---------------------------------------------------------------------------
+// T5-8 (#1529 P3-1) — a bare calling code is not a reachable handset.
+//
+// `E164_RE` alone accepts any 2-15 digit string, so '+234' used to resolve to
+// NG and '+1 (800) FLOWERS' stripped to '+1800' and resolved to US. Neither is
+// a phone number. They still NORMALISE (they are syntactically valid E.164 —
+// the normaliser's contract is unchanged, which is what keeps the tester's
+// hostile fixtures honest) but they must resolve to NO country.
+// ---------------------------------------------------------------------------
+Deno.test("#1529 T5-8: a bare calling code normalises but resolves to no country", () => {
+  for (const bare of ["+234", "+1800", "+44", "+33", "+32"]) {
+    assertEquals(
+      normalizeE164(bare),
+      bare,
+      `${bare} must still normalise — the normaliser contract is unchanged`,
+    );
+    assertEquals(
+      countryFromE164(bare),
+      null,
+      `${bare} is a calling code, not a handset, and must not resolve`,
+    );
+  }
+  // '+1 (800) FLOWERS' — letters stripped, leaving a non-handset.
+  assertEquals(countryFromE164("+1 (800) FLOWERS"), null);
+  // The floor must not reject genuinely short-but-real numbers: 7 digits total.
+  assertEquals(normalizeE164("+2904567"), "+2904567");
 });
 
 // ---------------------------------------------------------------------------

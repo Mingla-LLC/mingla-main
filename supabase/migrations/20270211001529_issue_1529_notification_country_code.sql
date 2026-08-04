@@ -158,8 +158,25 @@ BEGIN
   IF v_e164 IS NULL THEN
     RETURN NULL;
   END IF;
+  -- #1529 P3-1 — too few digits to be a reachable handset. '+234' is a calling
+  -- code, not a phone number, and must not resolve to Nigeria; '+1800' likewise
+  -- must not resolve to the US. The shortest real E.164 numbers total 7 digits
+  -- (Saint Helena +290 XXXX, Niue +683 XXXX), so 7 is the conservative floor.
+  -- Applied to COUNTRY derivation only — mingla_e164_normalize is unchanged.
+  IF pg_catalog.length(v_e164) - 1 < 7 THEN
+    RETURN NULL;
+  END IF;
   IF pg_catalog.left(v_e164, 4) = '+234' THEN RETURN 'NG'; END IF;
   IF pg_catalog.left(v_e164, 3) = '+44'  THEN RETURN 'GB'; END IF;
+  -- #1529 P2-1 — France is NOT hypothetical. TWO production auth.users rows
+  -- carry a +33 handset (direct query, 2026-08-03: +1 26, +234 18, +44 3,
+  -- +32 2, +33 2). The SPEC justified omitting it on the stated basis that the
+  -- excluded population was "zero in production today"; that was false, and
+  -- those two users would have failed closed with country_unresolved —
+  -- permanent non-delivery by construction — where origin/main reached them
+  -- over Twilio. Failing closed on a genuinely unknown code is correct;
+  -- excluding real users is not.
+  IF pg_catalog.left(v_e164, 3) = '+33'  THEN RETURN 'FR'; END IF;
   IF pg_catalog.left(v_e164, 3) = '+32'  THEN RETURN 'BE'; END IF;
   IF pg_catalog.left(v_e164, 2) = '+1'   THEN RETURN 'US'; END IF;
   -- Unmapped calling code — honest unknown. NEVER default to a country.

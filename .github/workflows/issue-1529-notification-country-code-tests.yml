@@ -135,6 +135,76 @@ jobs:
             sleep 1
           done
           exit 1
+      # -----------------------------------------------------------------------
+      # #1529 P1-2 — PROVISION THE GoTrue-MANAGED auth.users COLUMNS.
+      #
+      # `auth.users` in this image is the pre-GoTrue stub: 21 columns and NO
+      # `phone`. Production's is GoTrue-managed and HAS `phone`, which is why
+      # `issue_1389_enqueue_stay_event` (it reads `user_row.phone`) works in
+      # production and dies here. Without this step the Stay producer cannot be
+      # exercised in CI AT ALL, and SC-2/SC-3 — the claim that Nigerian Stay
+      # texts become deliverable and correctly labelled, the headline claim of
+      # this whole issue — have zero executed proof anywhere.
+      #
+      # It cannot be done from the test: `postgres` is not a superuser in this
+      # image, `auth.users` is owned by `supabase_auth_admin`, and all three
+      # escape hatches are closed (ALTER → "must be owner"; SET ROLE →
+      # "permission denied"; GRANT → "role memberships are reserved"). So it is
+      # done here, from OUTSIDE the unprivileged connection, via the container's
+      # own superuser over its local socket.
+      #
+      # The step VERIFIES the outcome through the same unprivileged connection
+      # the tests use, and FAILS if the column is not visible. A silently
+      # skipped provisioning step would put us straight back to an unexecutable
+      # Nigeria-critical test, which is the defect being fixed.
+      # -----------------------------------------------------------------------
+      - name: Provision GoTrue-managed auth.users columns (privileged)
+        env:
+          PGPASSWORD: ${{ format('issue-1529-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          CID="$(docker ps --filter "ancestor=supabase/postgres:17.4.1.075" \
+                 --format '{{.ID}}' | head -n 1)"
+          if [ -z "$CID" ]; then
+            echo "could not locate the postgres service container" >&2
+            docker ps >&2
+            exit 1
+          fi
+          echo "postgres service container: $CID"
+
+          DDL="ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;"
+
+          # supabase_admin is the image's bootstrap superuser and owns the auth
+          # schema. Try it as the container's postgres OS user first (peer/trust
+          # over the local socket), then as root, then fall back to postgres
+          # itself in case a future image grants it ownership.
+          provisioned=0
+          for attempt in \
+            "docker exec -u postgres $CID psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -c" \
+            "docker exec $CID psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -c" \
+            "docker exec -u postgres $CID psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c"
+          do
+            if $attempt "$DDL" 2>/dev/null; then
+              echo "provisioned via: $attempt"
+              provisioned=1
+              break
+            fi
+          done
+          if [ "$provisioned" -ne 1 ]; then
+            echo "every privileged route failed to add auth.users.phone" >&2
+            docker exec "$CID" psql -U supabase_admin -d postgres \
+              -c "\du" >&2 || true
+            exit 1
+          fi
+
+          # Verify through the UNPRIVILEGED connection the tests actually use.
+          # This is the assertion that matters: provisioning that the tests
+          # cannot see is not provisioning.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \
+            "select 1 from information_schema.columns
+              where table_schema='auth' and table_name='users'
+                and column_name='phone'" | grep -qx 1
+          echo "auth.users.phone is visible to the test connection"
       - name: Apply all migrations
         env:
           PGPASSWORD: ${{ format('issue-1529-ci-{0}', github.run_id) }}

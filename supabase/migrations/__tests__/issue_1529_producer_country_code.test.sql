@@ -23,6 +23,34 @@ BEGIN;
 -- unmapped and email-only cases below are what pin that.
 
 -- =========================================================================
+-- PRECONDITION — #1529 P1-2. FAIL LOUDLY, NEVER SKIP.
+--
+-- `auth.users` in supabase/postgres:17.4.1.075 is the pre-GoTrue stub: 21
+-- columns and no `phone`. Production's is GoTrue-managed and has one, which is
+-- why `issue_1389_enqueue_stay_event` (it reads `user_row.phone`) works in
+-- production and died here — taking SC-2 and SC-3, the Nigeria-critical
+-- criteria, down with it. The workflow now provisions that column from a
+-- privileged step before this file runs.
+--
+-- This guard exists so that a provisioning step which silently stopped working
+-- produces an UNMISSABLE failure naming the cause, rather than this suite
+-- quietly reverting to "cannot execute" — which is precisely the state the
+-- tester found, and which left the headline claim of this issue unproven.
+-- =========================================================================
+DO $precondition$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'auth' AND table_name = 'users'
+      AND column_name = 'phone'
+  ) THEN
+    RAISE EXCEPTION
+      'issue_1529_t1_precondition_failed__auth_users_phone_missing__privileged_provisioning_did_not_run_or_did_not_take__SC2_and_SC3_cannot_be_proven_without_it';
+  END IF;
+END;
+$precondition$;
+
+-- =========================================================================
 -- Shared parents.
 -- =========================================================================
 INSERT INTO auth.users (
@@ -348,5 +376,57 @@ BEGIN
   END IF;
 END;
 $stay_matrix$;
+
+-- =========================================================================
+-- EXECUTION PROOF (#1529 P1-2).
+--
+-- The tester's finding was not that an assertion was wrong — it was that this
+-- file COULD NOT RUN, so SC-2 and SC-3 had no executed proof anywhere. A test
+-- that cannot execute is not a passing test. This block asserts that the Stay
+-- trigger actually fired and produced the full expected row set, so "the
+-- section ran" is itself an assertion rather than an assumption.
+--
+-- Expected from the two Stay events seeded above:
+--   staff event  → 2 email legs (owner + finance_manager)
+--                + 1 SMS leg    (owner only; finance_manager's phone cannot
+--                                normalise, and the scanner role is excluded)
+--   guest event  → 1 email leg + 1 SMS leg
+-- =========================================================================
+DO $execution_proof$
+DECLARE
+  v_stay_rows integer;
+  v_stay_sms  integer;
+BEGIN
+  SELECT count(*) INTO v_stay_rows
+  FROM public.notification_outbox
+  WHERE idempotency_key LIKE 'stay:%';
+  IF v_stay_rows <> 5 THEN
+    RAISE EXCEPTION
+      'issue_1529_t1_stay_producer_emitted_%_rows_expected_5__the_Stay_section_did_not_execute_as_designed',
+      v_stay_rows;
+  END IF;
+
+  SELECT count(*) INTO v_stay_sms
+  FROM public.notification_outbox
+  WHERE idempotency_key LIKE 'stay:%'
+    AND payload->>'channel_hint' = 'sms';
+  IF v_stay_sms <> 2 THEN
+    RAISE EXCEPTION
+      'issue_1529_t1_stay_producer_emitted_%_sms_rows_expected_2', v_stay_sms;
+  END IF;
+
+  -- Both Stay SMS rows must be E.164 AND Nigerian. This is SC-2, stated once
+  -- more as a single unambiguous line so it cannot be lost in the detail.
+  IF EXISTS (
+    SELECT 1 FROM public.notification_outbox
+    WHERE idempotency_key LIKE 'stay:%'
+      AND payload->>'channel_hint' = 'sms'
+      AND (contact NOT LIKE '+%' OR country_code IS DISTINCT FROM 'NG')
+  ) THEN
+    RAISE EXCEPTION
+      'issue_1529_t1_SC2_VIOLATED__a_stay_sms_row_is_not_plus_prefixed_E164_with_country_NG';
+  END IF;
+END;
+$execution_proof$;
 
 ROLLBACK;

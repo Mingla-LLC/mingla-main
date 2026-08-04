@@ -43,9 +43,17 @@ INSERT INTO issue_1529_e164_fixtures (label, raw, expect_e164, expect_country) V
   ('gb_e164', '+447700900000', '+447700900000', 'GB'),
   ('be_e164', '+32460964460', '+32460964460', 'BE'),
   ('de_unmapped', '+4915112345678', '+4915112345678', NULL),
+  -- #1529 P2-1 — TWO REAL PRODUCTION USERS hold +33 handsets. Omitting France
+  -- made them fail closed with country_unresolved: permanent non-delivery.
+  ('fr_production', '+33075123456', '+33075123456', 'FR'),
   ('plus_only', '+', NULL, NULL),
   ('plus_leading_zero', '+0348012345678', NULL, NULL),
-  ('letters_only', 'not a number', NULL, NULL);
+  ('letters_only', 'not a number', NULL, NULL),
+  -- #1529 P3-1 — a bare calling code is not a reachable handset. These
+  -- normalise (they are syntactically valid E.164) but must resolve to NO
+  -- country, so a malformed MSISDN is never handed to a live provider.
+  ('calling_code_only_ng', '+234', '+234', NULL),
+  ('calling_code_only_us_vanity', '+1800', '+1800', NULL);
 -- #1529-T5-FIXTURES-END
 
 -- Vacuity guard. A fixture table that silently emptied (a bad edit, a reflow
@@ -139,6 +147,67 @@ BEGIN
   END IF;
 END;
 $null_is_not_us$;
+
+-- ---------------------------------------------------------------------------
+-- #1529 P2-1 — EVERY CALLING CODE PRESENT IN PRODUCTION MUST RESOLVE.
+--
+-- The SPEC justified the bounded map on the stated basis that the excluded
+-- population was "zero in production today". That was FALSE: a direct query of
+-- auth.users.phone on 2026-08-03 returned +1 26, +234 18, +44 3, +32 2, and
+-- **+33 2**. Two real users hold French handsets and, under the original map,
+-- would have failed closed with country_unresolved — no text, ever, by
+-- construction — where origin/main reached them over Twilio.
+--
+-- THIS ASSERTION IS THE THING THAT STOPS IT RECURRING. When Mingla reaches a
+-- new market, this test FAILS until the calling code is mapped, instead of the
+-- new users silently never receiving a text. The list is mirrored by
+-- PRODUCTION_CALLING_CODES in _shared/e164Country.ts and asserted there too.
+--
+-- Re-run this query when adding a market and extend the list below:
+--   select left(phone, 4), count(*) from auth.users
+--    where phone is not null group by 1 order by 2 desc;
+-- ---------------------------------------------------------------------------
+DO $production_coverage$
+DECLARE
+  -- Calling code -> a realistic full-length handset on that code. Full length
+  -- matters: the P3-1 minimum-digit floor means a bare calling code correctly
+  -- resolves to NULL, so a too-short sample would make this assertion lie.
+  production_samples text[][] := ARRAY[
+    ARRAY['+1',   '+14155550123'],
+    ARRAY['+234', '+2348012345678'],
+    ARRAY['+44',  '+447700900000'],
+    ARRAY['+33',  '+33075123456'],
+    ARRAY['+32',  '+32460964460']
+  ];
+  v_code    text;
+  v_sample  text;
+  v_country text;
+  v_seen    integer := 0;
+BEGIN
+  FOR i IN 1 .. array_length(production_samples, 1) LOOP
+    v_code := production_samples[i][1];
+    v_sample := production_samples[i][2];
+    v_country := public.mingla_e164_country(v_sample);
+    IF v_country IS NULL THEN
+      RAISE EXCEPTION
+        'issue_1529_production_calling_code_%_HAS_NO_MAPPING__real_users_on_this_code_would_never_receive_a_text',
+        v_code;
+    END IF;
+    v_seen := v_seen + 1;
+  END LOOP;
+
+  -- Vacuity guard: an emptied array would make the loop above assert nothing.
+  IF v_seen < 5 THEN
+    RAISE EXCEPTION
+      'issue_1529_production_coverage_checked_only_%_codes__expected_at_least_5', v_seen;
+  END IF;
+
+  -- Nigeria specifically must resolve to NG, not merely to "something".
+  IF public.mingla_e164_country('+2348012345678') IS DISTINCT FROM 'NG' THEN
+    RAISE EXCEPTION 'issue_1529_production_ng_code_stopped_resolving_to_NG';
+  END IF;
+END;
+$production_coverage$;
 
 -- The helpers must be IMMUTABLE so they are safe in index/generated contexts
 -- and so the planner cannot be surprised by them inside a trigger.

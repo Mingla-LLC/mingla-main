@@ -56,6 +56,7 @@
 const CALLING_CODE_TO_ISO2: ReadonlyArray<readonly [string, string]> = [
   ["+234", "NG"], // Nigeria — the Termii route
   ["+44", "GB"], // United Kingdom — present in production data
+  ["+33", "FR"], // France — present in production data (see below)
   ["+32", "BE"], // Belgium — present in production data
   ["+1", "US"], // NANP. See #1529 SPEC §11 Q1: a Canadian handset resolves to
   // "US". That is correct ROUTING (Twilio serves all of NANP) and is an
@@ -64,7 +65,52 @@ const CALLING_CODE_TO_ISO2: ReadonlyArray<readonly [string, string]> = [
   // registered follow-up, NOT this issue.
 ];
 
+/**
+ * Calling codes OBSERVED IN PRODUCTION `auth.users.phone` (2026-08-03).
+ *
+ * WHY THIS LIST EXISTS. The SPEC justified the bounded map on the stated basis
+ * that the excluded population was "zero in production today". **That was
+ * false.** A direct production query returned:
+ *
+ *     +1 → 26 · +234 → 18 · +44 → 3 · +32 → 2 · +33 → 2
+ *
+ * Two real users hold French handsets. Under a map that omitted `+33` they
+ * would have failed closed with `country_unresolved` — no text, ever, by
+ * construction — where on `origin/main` they were reached over Twilio. Failing
+ * closed on a genuinely unknown calling code is correct; silently excluding
+ * real users is not.
+ *
+ * EVERY ENTRY HERE MUST RESOLVE TO A COUNTRY. Both parity suites assert exactly
+ * that, in both languages, so a production calling code with no mapping FAILS
+ * CI instead of quietly becoming permanent non-delivery. **When Mingla reaches
+ * a new market, add the calling code here AND to the table above** — the
+ * failing test is the reminder, which is what stops this recurring.
+ */
+export const PRODUCTION_CALLING_CODES: ReadonlyArray<string> = [
+  "+1",
+  "+234",
+  "+44",
+  "+33",
+  "+32",
+];
+
 const E164_RE = /^\+[1-9][0-9]{1,14}$/;
+
+/**
+ * Minimum total digits (calling code + national number) for a plausible MSISDN.
+ *
+ * #1529 P3-1: `E164_RE` alone accepts any 2–15 digit string, so `'+234'`
+ * resolved to NG and `'+1 (800) FLOWERS'` stripped down to `'+1800'` and
+ * resolved to US. Neither is a reachable handset, and handing a malformed
+ * MSISDN to a live provider is not something to delegate to the provider.
+ * The shortest real E.164 numbers (Saint Helena `+290 XXXX`, Niue `+683 XXXX`)
+ * total 7 digits, so 7 is the conservative floor.
+ *
+ * Applied to COUNTRY derivation ONLY, never to normalisation — the normaliser's
+ * contract (what a syntactically valid E.164 string is) stays unchanged, so a
+ * short fragment still normalises and simply resolves to no country.
+ */
+const MIN_E164_DIGITS = 7;
 
 /**
  * Normalise a raw stored phone into strict E.164, or `null` if it cannot be.
@@ -113,6 +159,9 @@ export function normalizeE164(raw: string | null | undefined): string | null {
 export function countryFromE164(raw: string | null | undefined): string | null {
   const e164 = normalizeE164(raw);
   if (e164 === null) return null;
+  // #1529 P3-1 — too few digits to be a reachable handset. `'+234'` is the
+  // calling code, not a phone number, and must not resolve to Nigeria.
+  if (e164.length - 1 < MIN_E164_DIGITS) return null;
   for (const [prefix, iso2] of CALLING_CODE_TO_ISO2) {
     if (e164.startsWith(prefix)) return iso2;
   }
