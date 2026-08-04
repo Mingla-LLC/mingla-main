@@ -5,7 +5,14 @@
 // ===========================================================================
 // #1541 shipped `issue-1541-sms-provider-sole-send-path.mjs` to enforce
 // I-PROPOSED-1541-SMS-PROVIDER-EGRESS-ALLOWLIST. The implementor's own
-// `--self-test` (10/10) plants violations it already knows the shape of, so it
+// built-in self test (10/10) plants violations it already knows the shape of, so it
+//
+// NOTE ON THE SPELLING ABOVE: the flag name is written in prose, never as the
+// literal token, because MANIFEST parity P6 decides whether a file "supports"
+// a self test with `src.includes("<the flag>")` — a raw substring over the
+// whole file, comments included. This file has NO self-test mode
+// (selfTest:"none"), and merely NAMING the flag would make P6 assert otherwise.
+// That is the same assert-a-token-as-a-proxy-for-a-property class as #1553.
 // can only ever confirm the shapes it was written against. That is the exact
 // failure family this rail keeps hitting: #1518 shipped a gate that passed
 // vacuously, #1529 shipped an audit that could match zero, and #1541 exists
