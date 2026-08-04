@@ -98,7 +98,8 @@ module.exports = {
     "^react$": path.join(bizModules, "react"),
     "^react/(.*)$": path.join(bizModules, "react", "$1"),
     "^react-native$": path.join(bizModules, "react-native"),
-    // Renderer + RTL come from the overlay only.
+    // #1486 — renderer + RTL come from `testDeps`: the worktree overlay when a
+    // developer provisioned one, otherwise the business install that CI fills.
     "^react-test-renderer$": path.join(testDeps, "react-test-renderer"),
     "^react-test-renderer/(.*)$": path.join(testDeps, "react-test-renderer", "$1"),
     "^@testing-library/react-native$": path.join(
@@ -113,7 +114,7 @@ module.exports = {
       "$1",
     ),
   },
-  // Resolve test deps from the overlay first, then the business install.
+  // #1486 — resolve test deps from whichever location actually has them.
   modulePaths: [testDeps, bizModules],
   setupFilesAfterEnv: [extendExpect],
   haste: {

@@ -99,7 +99,7 @@ module.exports = {
     "^react-native$": path.join(bizModules, "react-native"),
     "^react-test-renderer$": path.join(testDeps, "react-test-renderer"),
     "^react-test-renderer/(.*)$": path.join(
-      overlay,
+      testDeps,
       "react-test-renderer",
       "$1",
     ),
