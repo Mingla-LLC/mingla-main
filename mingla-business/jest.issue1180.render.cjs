@@ -20,7 +20,12 @@ const businessRoot = __dirname;
 const overlay = path.join(businessRoot, ".orch1118-testdeps", "node_modules");
 const bizModules = path.join(businessRoot, "node_modules");
 
-const rtlRoot = path.join(overlay, "@testing-library", "react-native");
+// #1486 — prefer the worktree overlay when it exists, else the business install.
+const testDeps = fs.existsSync(path.join(overlay, "@testing-library", "react-native"))
+  ? overlay
+  : bizModules;
+
+const rtlRoot = path.join(testDeps, "@testing-library", "react-native");
 const matchersBuild = path.join(rtlRoot, "build", "matchers", "extend-expect.js");
 const matchersDist = path.join(rtlRoot, "dist", "matchers", "extend-expect.js");
 const extendExpect = fs.existsSync(matchersBuild) ? matchersBuild : matchersDist;
@@ -44,16 +49,16 @@ module.exports = {
     "^react$": path.join(bizModules, "react"),
     "^react/(.*)$": path.join(bizModules, "react", "$1"),
     "^react-native$": path.join(bizModules, "react-native"),
-    "^react-test-renderer$": path.join(overlay, "react-test-renderer"),
-    "^react-test-renderer/(.*)$": path.join(overlay, "react-test-renderer", "$1"),
-    "^@testing-library/react-native$": path.join(overlay, "@testing-library", "react-native"),
-    "^@testing-library/react-native/(.*)$": path.join(overlay, "@testing-library", "react-native", "$1"),
+    "^react-test-renderer$": path.join(testDeps, "react-test-renderer"),
+    "^react-test-renderer/(.*)$": path.join(testDeps, "react-test-renderer", "$1"),
+    "^@testing-library/react-native$": path.join(testDeps, "@testing-library", "react-native"),
+    "^@testing-library/react-native/(.*)$": path.join(testDeps, "@testing-library", "react-native", "$1"),
     // Native-only deps → light stubs so the tree mounts headlessly.
     "^expo-blur$": path.join(businessRoot, "__tests__", "stubs", "expoBlur.issue1180.stub.tsx"),
     "^expo-haptics$": path.join(businessRoot, "__tests__", "stubs", "expoHaptics.issue1180.stub.ts"),
     "^expo-linear-gradient$": path.join(businessRoot, "__tests__", "stubs", "expoLinearGradient.issue1180.stub.tsx"),
   },
-  modulePaths: [overlay, bizModules],
+  modulePaths: [testDeps, bizModules],
   setupFilesAfterEnv: [extendExpect],
   haste: {
     defaultPlatform: "ios",

@@ -113,6 +113,11 @@ jest.mock("../TripCreatorStep3Inclusions", () => ({
 }));
 jest.mock("../TripCreatorStep4Pricing", () => ({
   TripCreatorStep4Pricing: () => null,
+  // #1486 — EditPublishedTripScreen.tsx also imports makePackageKey from this
+  // module (it mints the key for a newly added package row). The mock predates
+  // that import, so the screen crashed at mount with "makePackageKey is not a
+  // function" — and nothing noticed, because no workflow ran these suites.
+  makePackageKey: () => "issue1486-test-package-key",
 }));
 jest.mock("../InstallmentScheduleDisplay", () => ({
   InstallmentScheduleDisplay: () => null,
