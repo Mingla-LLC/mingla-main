@@ -15,14 +15,19 @@
  * (`diagnostics.exclude` covers `**​/packages/**`, never `src/**`), so an
  * unused directive is TS2578 and this suite goes red.
  *
- * Every source lookup below carries a VACUITY GUARD: before any `not.toContain`
- * runs, the file is proven non-empty AND proven to be the right file by a
- * sentinel that must match. A `not.toContain` against an unread file passes for
- * the wrong reason, and this repo has been bitten by that class repeatedly.
+ * Every loop below carries a VACUITY GUARD — an explicit count assertion that
+ * fails if the loop observed nothing. A test that iterates an empty collection
+ * passes for the wrong reason, and this repo has been bitten by that class
+ * repeatedly.
+ *
+ * DELIBERATELY NOT HERE: whether the two venue surfaces still ROUTE through
+ * this table. That is a structural rule about file topology, and a readFileSync
+ * pin for it is exactly what I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN forbids —
+ * such pins rot on refactor and caught zero of the #1047 regressions. It is
+ * enforced instead by an additive, self-testing CI gate:
+ * `.github/scripts/strict-grep/issue-1558-venue-category-profile-single-owner.mjs`
+ * (15-case self-test, hard-fails on a missing or comment-only target).
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 // Relative, NOT the "@mingla/brand-rendering/…" specifier the product code
 // uses: `node_modules/@mingla/*` is a workspace symlink, so under a git
 // worktree jest would resolve the ANCHOR checkout's copy of this module and
@@ -42,36 +47,6 @@ import {
   type VenueCategoryProfile,
   type VenueSectionId,
 } from "../../../../../packages/brand-rendering/venueCategoryProfile";
-
-const REPO_ROOT = join(__dirname, "..", "..", "..", "..", "..");
-
-/**
- * Comments are stripped so every assertion below bites on real CODE. The doc
- * headers of the files under test legitimately QUOTE the branches this issue
- * deleted (that is how a reader learns what changed), and a `not.toContain`
- * that matches a comment is a false failure — while a `toContain` that matches
- * a comment is a false pass. The `[^:]` guard keeps `https://` intact.
- */
-const stripComments = (source: string): string =>
-  source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
-
-/**
- * Read a repo file, PROVE it was read, and return it comment-free.
- * Never assert against "" — an unread file passes every `not.toContain`.
- */
-const readProven = (relativePath: string, sentinel: string): string => {
-  const raw = readFileSync(join(REPO_ROOT, relativePath), "utf8");
-  expect(raw.length).toBeGreaterThan(500);
-  const code = stripComments(raw);
-  // Vacuity guards: real code survived the strip, AND this is the file we
-  // think it is. Without both, every assertion below could pass for the wrong
-  // reason.
-  expect(code.trim().length).toBeGreaterThan(100);
-  expect(code).toContain(sentinel);
-  return code;
-};
 
 const ALL_KEYS: readonly VenueCategoryKey[] = [
   "restaurant",
@@ -316,72 +291,5 @@ describe("#1558 — no dead section ids, no unrenderable ones", () => {
     }
     // Vacuity guard: five profiles × five sections each.
     expect(checked).toBeGreaterThanOrEqual(25);
-  });
-});
-
-describe("#1558 — both surfaces actually read the profile", () => {
-  const BUYER_WEB = "mingla-business/src/components/venue/PublicVenuePage.tsx";
-  const CONSUMER = "app-mobile/src/screens/ConsumerPublicVenueScreen.tsx";
-
-  test("buyer-web page: profile in, isStay out", () => {
-    const page = readProven(BUYER_WEB, "ParallaxCoverShell");
-
-    expect(page).toContain("venueCategoryProfile(venue.venueCategory)");
-    expect(page).toContain("profile.overview.map((sectionId)");
-    expect(page).toContain(
-      "Record<VenueSectionId, React.FC<VenueSectionProps>>",
-    );
-    expect(page).toContain("title={profile.reserveAction}");
-    expect(page).toContain("venueMenuTabVisible(profile, menuItemCount)");
-    expect(page).toContain("RESERVATION_READY[profile.bookingBody]");
-
-    // The branches this issue deletes. Guarded above, so these bite.
-    expect(page).not.toContain('const isStay = venue.venueCategory === "stay"');
-    expect(page).not.toContain("!isStay &&");
-    expect(page).not.toContain("reserveActionLabel(isStay)");
-    expect(page).not.toContain("reserveSheetTitle(isStay)");
-  });
-
-  test("consumer screen: same profile, same section ids", () => {
-    const screen = readProven(CONSUMER, "ConsumerStayGuestExperience");
-
-    expect(screen).toContain("venueCategoryProfile(venue?.venueCategory");
-    expect(screen).toContain("profile.overview.map((sectionId)");
-    expect(screen).toContain("Record<\n  VenueSectionId,");
-    expect(screen).toContain("venueMenuTabVisible(profile, menuCount)");
-    expect(screen).toContain("{profile.reserveAction}");
-
-    expect(screen).not.toContain('const isStay = venue.venueCategory === "stay"');
-    expect(screen).not.toContain("!isStay &&");
-    // The fourth competing reserve string is gone.
-    expect(screen).not.toContain('"Find a table"');
-    expect(screen).not.toContain(">Find a table<");
-  });
-
-  test("the operator facet lookup lost its restaurant fall-through", () => {
-    const setup = readProven(
-      "mingla-business/src/components/venue/VenueDeckReadinessSetup.tsx",
-      "FACET_CORE",
-    );
-    expect(setup).toContain("FACET_QUESTIONS_BY_CATEGORY");
-    expect(setup).toContain("venueCategoryKey(venueCategoryProp)");
-    // The two lines the issue names by file:line.
-    expect(setup).not.toContain("// restaurant / default");
-    expect(setup).not.toContain('venueCategoryProp ?? "restaurant"');
-    expect(setup).not.toContain("function facetQuestionsForCategory(");
-  });
-
-  test("the reserve copy module reads the table instead of owning strings", () => {
-    const copy = readProven(
-      "mingla-business/src/components/venue/venueReserveCopy.ts",
-      "reserveActionLabel",
-    );
-    expect(copy).toContain("VENUE_CATEGORY_PROFILES");
-    // The literals used to live here; they live in the profile table now.
-    expect(copy).not.toContain('return isStay ? "Reserve this Stay"');
-    // …and the legacy boolean adapter still answers correctly for both arms.
-    expect(VENUE_CATEGORY_PROFILES.stay.reserveAction).toBe(
-      "Reserve this Stay",
-    );
   });
 });
