@@ -239,7 +239,13 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
   }
 
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      // [ORCH-1540-DIAG] temporary — remove before the fix PR.
+      onLayout={(e) =>
+        console.log(`[ORCH-1540-DIAG] container.onLayout h=${e.nativeEvent.layout.height}`)
+      }
+    >
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -268,6 +274,17 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
           contentContainerStyle={styles.gridContent}
           columnWrapperStyle={styles.columnWrapper}
           showsVerticalScrollIndicator={false}
+          // [ORCH-1540-DIAG] temporary — remove before the fix PR.
+          onLayout={(e: any) =>
+            console.log(`[ORCH-1540-DIAG] list.onLayout h=${e.nativeEvent.layout.height}`)
+          }
+          onContentSizeChange={(_w: number, h: number) =>
+            console.log(`[ORCH-1540-DIAG] list.contentSize h=${h}`)
+          }
+          onScroll={(e: any) =>
+            console.log(`[ORCH-1540-DIAG] list.scroll y=${e.nativeEvent.contentOffset.y}`)
+          }
+          scrollEventThrottle={16}
         />
       )}
     </View>
