@@ -458,6 +458,25 @@ jobs:
             # NOTE: no workflow runs api-health-probe's OTHER six test files at
             # all; they are dark. Raised as a Discovery, not fixed here.
             supabase/functions/api-health-probe/issue1537_delivery_provider_tiles.test.ts
+            # Issue #1537 (rework) — TESTER ADVERSARIAL on the Layer-C mapping.
+            # Attacks the EDGES of the tile map, where the original P1 lived —
+            # a provider nobody thought about. R-1 is a CONSERVATION invariant
+            # (tallied + unmapped + null must equal the input row count), which
+            # is the assertion shape that catches a row counted NOWHERE; a
+            # per-provider check cannot, because it only looks where it expects
+            # to find something. R-2 pins prototype safety: `provider` is
+            # unconstrained `text` in production, so `constructor`/`__proto__`
+            # must resolve to null rather than an inherited Object member — a
+            # naive `map[provider]` lookup passes all seven implementor tests
+            # and fails only this one. R-3 pins that casing drift surfaces as
+            # unmapped rather than being silently dropped. R-4 PINS A KNOWN
+            # DEFECT (tester P2-4): kill-switch skips raise a tile's total at
+            # zero failures, so a dark Nigeria reads as a HEALTHY termii tile —
+            # update this test deliberately when that is fixed. R-6 pins that
+            # `termii` is the ONLY tile requiring migration 20270212001538,
+            # asserted against the exact 25 api_health_services keys read
+            # read-only from production on 2026-08-04.
+            supabase/functions/api-health-probe/issue1537_provider_tiles.tester.adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
