@@ -398,3 +398,190 @@ export function evaluateBalanceForSignal(
 export function buildCheckRows<T>(rows: T[]): T[] {
   return rows;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Issue #1537 — LAYER-C DELIVERY-LEDGER PROVIDER → TILE MAPPING.
+// ═══════════════════════════════════════════════════════════════════════════
+// EXTRACTED from index.ts, where it sat inline inside the request handler. That
+// file calls `serve()` unguarded at module scope, so nothing in it could be
+// imported by a test — the mapping was structurally untestable, which is why the
+// bug below shipped unnoticed. It lives here now so it can be executed by a test.
+//
+// WHAT WAS BROKEN: the ladder had `onesignal` / `resend` / `twilio` arms and a
+// bare `: []` fallback. #1537 made the delivery ledger record `termii` for
+// Nigerian SMS instead of the previously hardcoded `twilio` — and `termii` fell
+// straight through to `[]`, so the `for (const tile of tiles)` loop iterated
+// ZERO times and every Nigerian row was discarded from the health tally.
+//
+// The regression that created: BEFORE #1537 those rows were mislabelled `twilio`
+// and were still COUNTED (under the wrong tile). AFTER #1537 they are labelled
+// honestly and counted NOWHERE. Nigerian SMS health went from wrong-but-visible
+// to invisible, at exactly the moment Nigeria switches on.
+//
+// THE SHAPE OF THE BUG IS THE POINT. A silent `: []` default is the same
+// unfalsifiable-default family as #1529's `?? "US"` and #1537's own hardcoded
+// provider: a value nobody mapped disappears instead of raising. So this
+// function does NOT return an empty array for an unrecognised provider — it
+// returns `null`, a distinguishable "nobody mapped this" that the caller is
+// obliged to handle, and `tallyDeliveryRows` collects those provider names so
+// the handler can log them LOUDLY. A new provider must surface, never vanish.
+
+/** A row as selected by the Layer-C read: `select("provider,status")`. */
+export interface DeliveryLedgerRow {
+  provider: string | null;
+  status: string;
+}
+
+export interface DeliveryTallyEntry {
+  /**
+   * ATTEMPTS THAT REACHED A PROVIDER. #1537 P2-4: this deliberately EXCLUDES
+   * `skipped` and `suppressed`, because neither performed any provider I/O —
+   * a kill-switch skip returns before the HTTP call and a `can_send` denial
+   * never gets that far. Counting a non-attempt here made a deliberately dark
+   * market read as `healthy` (see DELIVERY_NON_ATTEMPT_STATUSES).
+   */
+  total: number;
+  /** Of `total`: attempts the provider reported as failed/undelivered. */
+  failure: number;
+  /**
+   * Rows that never reached a provider. Kept — NOT discarded — so a dark market
+   * is reported as "nothing attempted", not as an absence of data. Discarding
+   * them would recreate the invisibility P1-1 fixed, one layer up.
+   */
+  skipped: number;
+}
+
+export interface DeliveryTallyResult {
+  /** tile service_key → counts. */
+  tally: Map<string, DeliveryTallyEntry>;
+  /**
+   * Providers seen in the ledger that no arm maps, DISTINCT and sorted. Non-empty
+   * means the ledger is carrying traffic this probe cannot see — the caller MUST
+   * surface it. This is the loud replacement for the old silent `: []`.
+   */
+  unmappedProviders: string[];
+  /** Rows whose provider was null/blank — already skipped before #1537. */
+  nullProviderRows: number;
+}
+
+/**
+ * The ONE provider → health-tile mapping.
+ *
+ * Every value here MUST exist as an `api_health_services.service_key`, because
+ * `api_health_checks.service_key` is FK-constrained to that table and the probe
+ * inserts its rows in ONE batch — an unregistered key would fail the entire
+ * tick's insert, not just its own row. `termii` is registered by migration
+ * 20270212001538.
+ */
+export const DELIVERY_PROVIDER_TILES: Record<string, readonly string[]> = {
+  // No per-app split in deliveries → attribute to consumer (pre-existing limitation).
+  onesignal: ["onesignal_consumer"],
+  resend: ["resend"],
+  twilio: ["twilio"],
+  // #1537 — Nigerian SMS. Its OWN tile, deliberately not folded into `twilio`:
+  // merging them would recreate exactly the mislabelling #1537 removed, and a
+  // Termii outage would then read as a Twilio outage.
+  termii: ["termii"],
+};
+
+/** Delivery statuses that count as a failure for the tile's failure rate. */
+export const DELIVERY_FAIL_STATUSES: ReadonlySet<string> = new Set([
+  "failed",
+  "undelivered",
+]);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #1537 P2-4 — A SKIP IS NOT EVIDENCE OF PROVIDER HEALTH IN EITHER DIRECTION.
+// ═══════════════════════════════════════════════════════════════════════════
+// These statuses mean NO PROVIDER I/O HAPPENED:
+//   • `skipped`    — the per-market kill switch returned before the HTTP call
+//                    (`provider_kill_switch_off`), or there was no usable
+//                    contact for the channel (`no_contact`).
+//   • `suppressed` — the `can_send` policy chokepoint denied the send.
+//
+// They used to increment a tile's `total` while never incrementing `failure`,
+// so they were arithmetically indistinguishable from successful deliveries.
+// Applying the handler's own thresholds (total<5 ⇒ unknown, failRate>0.5 ⇒
+// down, ≥0.25 ⇒ degraded, else healthy), six kill-switch skips — which is
+// EXACTLY what a dark Nigeria produces — made the termii tile report HEALTHY
+// while not one message had been delivered.
+//
+// That is a POSITIVE FALSE CLAIM, and it is worse than the invisibility P1-1
+// fixed: invisibility prompts the question "why is there no data?", whereas
+// "healthy" stops anyone asking. It is also a Constitution rule 9 violation
+// (no fabricated data, no lying states) and the same swallow-the-value shape as
+// #1529's `?? "US"`, #1537's hardcoded provider, and the `: []` tile fallback.
+//
+// Excluding them needs NO new health state and NO threshold change: a tile with
+// only skips lands on `total === 0`, which the handler's existing
+// `total < 5 ⇒ "unknown"` branch already reports honestly. `unknown` is the
+// truthful answer — nothing was attempted, so nothing is known.
+export const DELIVERY_NON_ATTEMPT_STATUSES: ReadonlySet<string> = new Set([
+  "skipped",
+  "suppressed",
+]);
+
+/**
+ * Tiles for a ledger provider, or `null` when NOTHING maps it.
+ *
+ * `null` rather than `[]` is deliberate and load-bearing: `[]` is silently
+ * indistinguishable from "mapped to nothing on purpose", and iterating it drops
+ * the row without a trace. `null` forces the caller to decide, which is what
+ * makes the omission surfaceable.
+ */
+export function deliveryProviderTiles(
+  provider: string,
+): readonly string[] | null {
+  return Object.hasOwn(DELIVERY_PROVIDER_TILES, provider)
+    ? DELIVERY_PROVIDER_TILES[provider]
+    : null;
+}
+
+/**
+ * Fold Layer-C ledger rows into per-tile totals, reporting anything unmapped.
+ *
+ * Pure: no clock, no env, no I/O. The handler keeps ownership of the status
+ * thresholds and the DB write.
+ */
+export function tallyDeliveryRows(
+  rows: readonly DeliveryLedgerRow[],
+): DeliveryTallyResult {
+  const tally = new Map<string, DeliveryTallyEntry>();
+  const unmapped = new Set<string>();
+  let nullProviderRows = 0;
+
+  for (const row of rows) {
+    const provider = row.provider?.trim();
+    if (!provider) {
+      // Pre-#1537 behaviour, preserved: an inapp row carries no provider. This
+      // is a legitimate absence, not an unmapped provider, so it is counted
+      // separately and never reported as a gap.
+      nullProviderRows += 1;
+      continue;
+    }
+    const tiles = deliveryProviderTiles(provider);
+    if (tiles === null) {
+      unmapped.add(provider);
+      continue;
+    }
+    for (const tile of tiles) {
+      const entry = tally.get(tile) ?? { total: 0, failure: 0, skipped: 0 };
+      // #1537 P2-4 — a non-attempt is recorded, but NOT as an attempt. The tile
+      // is still created, so "6 requested, 0 attempted" stays reportable rather
+      // than the market vanishing from the probe entirely.
+      if (DELIVERY_NON_ATTEMPT_STATUSES.has(row.status)) {
+        entry.skipped += 1;
+      } else {
+        entry.total += 1;
+        if (DELIVERY_FAIL_STATUSES.has(row.status)) entry.failure += 1;
+      }
+      tally.set(tile, entry);
+    }
+  }
+
+  return {
+    tally,
+    unmappedProviders: [...unmapped].sort(),
+    nullProviderRows,
+  };
+}

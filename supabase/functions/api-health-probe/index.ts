@@ -37,6 +37,8 @@ import {
   computeEffectiveStatus,
   decideAvailabilityTransitions,
   decideBalanceTransition,
+  DELIVERY_PROVIDER_TILES,
+  type DeliveryLedgerRow,
   type DepletionObs,
   evaluateBalanceForSignal,
   type HealthStatus,
@@ -44,6 +46,7 @@ import {
   matchClassBDepletion,
   type ProbeResult,
   STATUS_PAGE_URLS,
+  tallyDeliveryRows,
 } from "./logic.ts";
 
 // ORCH-1201-R2 — per-service monitoring class + depletion signal (DB-driven).
@@ -792,6 +795,11 @@ serve(async (req) => {
       .from("api_health_services")
       .select("service_key,display_name,monitoring_class,depletion_signal");
     const services = (serviceRows ?? []) as ServiceRow[];
+    // #1537 — api_health_checks.service_key is FK-constrained to
+    // api_health_services and every row this tick is inserted in ONE batch, so a
+    // tile that is not a registered service would fail the entire insert. Layer C
+    // checks emitted tiles against this set.
+    const registeredServiceKeys = new Set(services.map((s) => s.service_key));
     const classByKey = new Map<string, MonitoringClass | null>();
     const signalByKey = new Map<string, DepletionSignal>();
     const feedByKey = new Map<string, string>();
@@ -907,27 +915,45 @@ serve(async (req) => {
         .from("notification_deliveries")
         .select("provider,status")
         .gt("attempt_at", new Date(nowMs - 24 * 60 * 60 * 1000).toISOString());
-      // provider → tile mapping
-      const tally = new Map<string, { total: number; failure: number }>();
-      const FAIL_STATUSES = new Set(["failed", "undelivered"]);
-      for (const row of (deliv ?? []) as Array<{ provider: string | null; status: string }>) {
-        const provider = row.provider;
-        if (!provider) continue;
-        const tiles = provider === "onesignal"
-          ? ["onesignal_consumer"] // no per-app split in deliveries → attribute to consumer (limitation)
-          : provider === "resend"
-            ? ["resend"]
-            : provider === "twilio"
-              ? ["twilio"]
-              : [];
-        for (const tile of tiles) {
-          const t = tally.get(tile) ?? { total: 0, failure: 0 };
-          t.total += 1;
-          if (FAIL_STATUSES.has(row.status)) t.failure += 1;
-          tally.set(tile, t);
-        }
+      // #1537 — provider → tile mapping, EXTRACTED to logic.ts so it can be
+      // executed by a test. It previously sat inline here, and because this file
+      // calls serve() unguarded at module scope it could not be imported at all;
+      // that untestability is why the `termii` gap shipped unnoticed.
+      const { tally, unmappedProviders } = tallyDeliveryRows(
+        (deliv ?? []) as DeliveryLedgerRow[],
+      );
+      // #1537 — LOUD, not silent. The old ladder ended in a bare `: []`, so a
+      // provider nobody mapped vanished from the tally without a trace — the
+      // same unfalsifiable-default shape as the bug #1537 fixed. An unmapped
+      // provider now means the ledger is carrying traffic this probe cannot
+      // see, and it says so.
+      if (unmappedProviders.length > 0) {
+        structuredLog(
+          "warn",
+          "api_health layer-c: delivery ledger carries provider(s) no health tile maps — these rows are NOT counted",
+          {
+            fn: "api-health-probe",
+            unmapped_providers: unmappedProviders,
+            known_providers: Object.keys(DELIVERY_PROVIDER_TILES),
+          },
+        );
       }
       for (const [tile, t] of tally) {
+        // #1537 — api_health_checks.service_key is FK-constrained to
+        // api_health_services, and every check row for this tick is inserted in
+        // ONE batch below. An unregistered tile would therefore fail the WHOLE
+        // insert — every service, every layer — not just its own row. Skipping
+        // it keeps the tick's other data, and saying so keeps the omission
+        // visible: this fires if the function is deployed before migration
+        // 20270212001538 registers `termii`.
+        if (!registeredServiceKeys.has(tile)) {
+          structuredLog(
+            "warn",
+            "api_health layer-c: tile is not a registered api_health_services key — row skipped to protect the batch insert",
+            { fn: "api-health-probe", tile },
+          );
+          continue;
+        }
         const failRate = t.total > 0 ? t.failure / t.total : 0;
         let status: HealthStatus;
         if (t.total < 5) status = "unknown";
@@ -935,6 +961,17 @@ serve(async (req) => {
         else if (failRate >= 0.25) status = "degraded";
         else status = "healthy";
         const detail: Record<string, unknown> = { success: t.total - t.failure, failure: t.failure, total: t.total };
+        // #1537 P2-4 — `total` counts only attempts that reached a provider, so
+        // a deliberately dark market lands on total=0 and the existing
+        // `total < 5 ⇒ unknown` branch above reports it honestly instead of
+        // "healthy". Surface the non-attempts rather than dropping them: the
+        // operator needs to see that sends WERE requested and held back, which
+        // is the difference between "nothing to send" and "not sending".
+        if (t.skipped > 0) {
+          detail.skipped = t.skipped;
+          detail.note_skipped =
+            "not counted toward health — no provider I/O occurred (kill switch, no contact, or policy suppression)";
+        }
         if (tile === "onesignal_consumer") detail.note = "deliveries has no per-app split; attributed to consumer";
         checkRows.push({
           service_key: tile, layer: "passive", status,

@@ -26,6 +26,9 @@ on:
       - "supabase/functions/_shared/**"
       - "supabase/functions/_shared/__tests__/**"
       - "supabase/functions/__tests__/**"
+      # Issue #1537 — the delivery ledger's only live reader; its provider->tile
+      # test runs in the notification Deno job below.
+      - "supabase/functions/api-health-probe/**"
       # ISSUE-1387 — Stay inventory management endpoint and hermetic contract test.
       - "supabase/functions/manage-stay-inventory/**"
       # ORCH-1270 — marketing-send edge fn + its strict-grep gates.
@@ -85,6 +88,9 @@ on:
       - "supabase/migrations/**"
       - "supabase/functions/_shared/**"
       - "supabase/functions/__tests__/**"
+      # Issue #1537 — the delivery ledger's only live reader; its provider->tile
+      # test runs in the notification Deno job below.
+      - "supabase/functions/api-health-probe/**"
       # ISSUE-1387 — Stay inventory management endpoint and hermetic contract test.
       - "supabase/functions/manage-stay-inventory/**"
       # ORCH-1270 — marketing-send edge fn + its strict-grep gates.
@@ -406,6 +412,71 @@ jobs:
             # resolved. Every group carries a vacuity guard — a sweep that never
             # reached a provider FAILS instead of passing over an empty set.
             supabase/functions/_shared/adapters/smsAdapter.issue1529.tester.adversarial.test.ts
+            # Issue #1537 — DELIVERY LEDGER PROVIDER TRUTH. notifyV2 stamped
+            # `notification_deliveries.provider` from a per-channel constant
+            # (`sms: "twilio"`) at every SMS call site regardless of who sent,
+            # so every Nigerian text was recorded as Twilio and the table held
+            # ZERO `termii` rows — including the #1529 SC-11 kill-switch probe,
+            # whose +234 skip was attributed to the American provider. This
+            # suite drives the real dispatchV2 against a ledger-capturing fake
+            # client and asserts the ROW: an NG send lands `termii` (and only
+            # Termii is called), a US send lands `twilio`, the SC-11 skip is
+            # attributed to `termii` with zero HTTP, a no_contact skip records
+            # the rejected contact and claims no provider, and the returned
+            # provider always matches the host actually contacted — so a
+            # miswired country→sender branch fails rather than passing on a
+            # self-consistent label. Every lookup carries a vacuity guard.
+            supabase/functions/__tests__/issue1537_delivery_provider_truth.test.ts
+            # Issue #1537 — TESTER ADVERSARIAL. Attacks the three angles the
+            # implementor's file explicitly did not cover. (1) REAL DDL: every
+            # write is validated against the production schema of
+            # notification_deliveries read read-only from gqnoajqerqhnvulmnyvv
+            # (the 18-column set, both CHECK constraints, owner_chk, and the
+            # partial UNIQUE guest index), so a row Postgres would reject fails
+            # here instead of being recorded by a permissive fake. (2) RACE: two
+            # guest dispatches are interleaved through a suspended provider call
+            # and the audit order proves the competing claim landed INSIDE the
+            # send window — one claim, one send, one correctly-labelled row.
+            # (3) WEBHOOK: an NG send is driven through the real dispatchV2, and
+            # the real handleTermiiStatus is then called with a genuine
+            # HMAC-SHA512 callback for the message id the adapter returned —
+            # the first time a Termii callback has ever met a `termii`-labelled
+            # row, since all 31 production rows say twilio. Also sweeps
+            # attribution across all 13 outcomes incl. fail-closed and
+            # opted-out, re-proves #1518 (generic, read off the POSTed body)
+            # and #1529 (a lying country_code moves neither route nor label),
+            # and ADV-17 proves the vacuity guard itself fires on zero matches.
+            supabase/functions/__tests__/issue1537_provider_truth.tester.adversarial.test.ts
+            # Issue #1537 REWORK (tester P1-1) — the delivery ledger's ONLY live
+            # reader. api-health-probe buckets notification_deliveries rows into
+            # health tiles, and its provider ladder ended in a bare `: []`, so
+            # the `termii` rows #1537 introduced were counted NOWHERE: Nigerian
+            # SMS health went from wrong-but-visible to invisible. Registered in
+            # THIS job, beside the ledger's writers, deliberately — a change to
+            # the provider notifyV2 writes must re-run the test for the code
+            # that reads it, which is exactly the coupling that broke here.
+            # NOTE: no workflow runs api-health-probe's OTHER six test files at
+            # all; they are dark. Raised as a Discovery, not fixed here.
+            supabase/functions/api-health-probe/issue1537_delivery_provider_tiles.test.ts
+            # Issue #1537 (rework) — TESTER ADVERSARIAL on the Layer-C mapping.
+            # Attacks the EDGES of the tile map, where the original P1 lived —
+            # a provider nobody thought about. R-1 is a CONSERVATION invariant
+            # (tallied + unmapped + null must equal the input row count), which
+            # is the assertion shape that catches a row counted NOWHERE; a
+            # per-provider check cannot, because it only looks where it expects
+            # to find something. R-2 pins prototype safety: `provider` is
+            # unconstrained `text` in production, so `constructor`/`__proto__`
+            # must resolve to null rather than an inherited Object member — a
+            # naive `map[provider]` lookup passes all seven implementor tests
+            # and fails only this one. R-3 pins that casing drift surfaces as
+            # unmapped rather than being silently dropped. R-4 PINS A KNOWN
+            # DEFECT (tester P2-4): kill-switch skips raise a tile's total at
+            # zero failures, so a dark Nigeria reads as a HEALTHY termii tile —
+            # update this test deliberately when that is fixed. R-6 pins that
+            # `termii` is the ONLY tile requiring migration 20270212001538,
+            # asserted against the exact 25 api_health_services keys read
+            # read-only from production on 2026-08-04.
+            supabase/functions/api-health-probe/issue1537_provider_tiles.tester.adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

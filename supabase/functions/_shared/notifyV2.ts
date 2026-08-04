@@ -10,7 +10,10 @@
 
 import { pushAdapter } from "./adapters/pushAdapter.ts";
 import { emailAdapter } from "./adapters/emailAdapter.ts";
-import { smsAdapter } from "./adapters/smsAdapter.ts";
+// #1537 — the adapter owns provider SELECTION, so it also owns provider
+// REPORTING. `smsProviderForDestination` is the same derivation `send()` runs,
+// exposed for the ledger rows written when no send is attempted.
+import { smsAdapter, smsProviderForDestination } from "./adapters/smsAdapter.ts";
 import { renderCategoryMessage } from "./notifyTemplates.ts";
 import { notificationSafeError } from "./notificationSafeError.ts";
 // #1529 — the single source of truth for E.164 → ISO-2, replacing the
@@ -80,12 +83,42 @@ export interface DispatchV2Result {
   reason?: string;
 }
 
+// ===========================================================================
+// #1537 — `sms` IS DELIBERATELY ABSENT FROM THIS MAP. DO NOT ADD IT BACK.
+// ===========================================================================
+// This map used to carry `sms: "twilio"`, and that value was stamped into
+// `notification_deliveries.provider` at every SMS call site REGARDLESS of which
+// provider handled the send. Nigeria routes to Termii, so every Nigerian text
+// was logged as Twilio and the ledger held zero `termii` rows — SMS delivery in
+// the one market about to be switched on was unauditable, and the #1529 SC-11
+// kill-switch probe could only be established by elimination because its row
+// claimed the wrong provider.
+//
+// The remaining three channels are single-provider TODAY, so their constants
+// are still true. They are NOT derived, which is the same latent shape — if
+// push or email ever gains a second provider, that adapter must report its own
+// identity the way `smsAdapter` now does, and this map must lose that key too.
+// Channels are looked up through `providerForChannel` below, never directly, so
+// an SMS lookup here cannot silently resolve to `undefined`.
 const CHANNEL_PROVIDER: Record<string, string> = {
   push: "onesignal",
   email: "resend",
-  sms: "twilio",
   inapp: "inapp",
 };
+
+// #1537 — provider attribution for ledger rows written on paths where no
+// adapter ran: a `can_send` denial, and the no-contact skip. SMS delegates to
+// the ADAPTER's own derivation rather than re-deriving the country here — a
+// second country→provider mapping in this file is exactly the split-brain the
+// fix removes, and the adapter is the single owner of provider selection. When
+// the destination is missing or unroutable the answer is null, not a guess.
+function providerForChannel(
+  channel: string,
+  contact: string | null | undefined,
+): string | null {
+  if (channel === "sms") return smsProviderForDestination(contact);
+  return CHANNEL_PROVIDER[channel] ?? null;
+}
 
 const isEmail = (c: string | null | undefined): boolean =>
   !!c && c.includes("@");
@@ -199,7 +232,10 @@ export async function dispatchV2(
         nid,
         channel,
         "suppressed",
-        CHANNEL_PROVIDER[channel],
+        // #1537 — a policy suppression is attributable to the market that would
+        // have carried it: `can_send` was called with this exact contact, so
+        // the provider that would have handled it is known.
+        providerForChannel(channel, contactForChannel),
         "can_send_denied",
       );
       deliveries.push({
@@ -268,7 +304,10 @@ export async function dispatchV2(
           nid,
           "sms",
           r.status,
-          CHANNEL_PROVIDER.sms,
+          // #1537 — the provider the ADAPTER actually used (or, on a
+          // kill-switch skip, would have used). Was `CHANNEL_PROVIDER.sms`, a
+          // constant `"twilio"` that no send ever consulted.
+          r.provider,
           r.error ?? null,
           r.providerMessageId,
           r.segments,
@@ -287,8 +326,18 @@ export async function dispatchV2(
         nid,
         channel,
         "skipped",
-        CHANNEL_PROVIDER[channel],
+        // #1537 — there is no destination for this channel, so for SMS there is
+        // no market and no provider. null, not a fabricated "twilio".
+        providerForChannel(channel, contactForChannel),
         "no_contact",
+        null, // providerMessageId — nothing was sent
+        undefined, // segments
+        // #1537 — the contact that was REJECTED for this channel (an email
+        // supplied where a phone was required, or vice versa). Production held
+        // three `no_contact` rows with contact=NULL, so the recipient that
+        // failed to be reached was unrecoverable from the ledger — the row
+        // recorded that SOMEONE was missed but not who.
+        input.contact ?? null,
       );
       deliveries.push({ channel, status: "skipped", providerMessageId: null });
     }
@@ -776,7 +825,8 @@ async function dispatchAnon(
         channel,
         contactForChannel,
         "suppressed",
-        CHANNEL_PROVIDER[channel],
+        // #1537 — attributable to the market that would have carried it.
+        providerForChannel(channel, contactForChannel),
         "can_send_denied",
         null,
         null,
@@ -797,7 +847,12 @@ async function dispatchAnon(
       channel,
       contactForChannel,
       "queued",
-      CHANNEL_PROVIDER[channel],
+      // #1537 — the claim row is labelled from the destination before the send,
+      // so a row that never gets reconciled (crash between claim and update)
+      // still names the market it belonged to. The adapter re-reports the same
+      // value on reconcile below, derived by the same function on the same
+      // number, so the two cannot disagree.
+      providerForChannel(channel, contactForChannel),
       null,
       null,
       null,
@@ -825,6 +880,7 @@ async function dispatchAnon(
         r.providerMessageId ?? null,
         r.error ?? null,
         undefined,
+        CHANNEL_PROVIDER.email,
       );
       deliveries.push({
         channel: "email",
@@ -846,6 +902,10 @@ async function dispatchAnon(
         r.providerMessageId ?? null,
         r.error ?? null,
         r.segments,
+        // #1537 — reconcile the claim row with the provider the adapter really
+        // used, so a guest Nigerian send lands as `termii` rather than
+        // inheriting a channel constant.
+        r.provider,
       );
       deliveries.push({
         channel: "sms",
@@ -902,11 +962,15 @@ async function updateGuestDelivery(
   providerMessageId: string | null,
   failedReason: string | null,
   segments?: number,
+  // #1537 — the provider the adapter reported. Written on reconcile alongside
+  // provider_message_id so the pair a webhook matches on is always consistent.
+  provider?: string | null,
 ): Promise<void> {
   const table = client.from("notification_deliveries");
   if (!table.update) return; // fake clients without update — non-fatal
   await table.update({
     status,
+    provider,
     provider_message_id: providerMessageId,
     failed_reason: failedReason,
     delivered_at: status === "delivered" ? new Date().toISOString() : null,
@@ -926,6 +990,18 @@ async function writeDelivery(
   failedReason: string | null,
   providerMessageId?: string | null,
   segments?: number,
+  // #1537 — the contact this row concerns, when recording it is what makes the
+  // row actionable (the `no_contact` skip). Stored RAW and lowercased, the SAME
+  // convention `insertGuestDelivery` already applies to this exact column: the
+  // ledger's normal content is raw E.164 and raw lowercased email, so masking
+  // only these rows would make one column bimodal and silently drop them out of
+  // any contact-keyed lookup — a vacuity trap of the same family as the bug
+  // being fixed, for no privacy gain, since a successful send to the same
+  // handset sits unmasked in the next row. The table is RLS-protected and the
+  // codebase's only recipient-fingerprinting helper
+  // (NOTIFICATION_RECIPIENT_HMAC_SECRET) exists to derive idempotency keys, not
+  // to redact storage — repurposing it would be inventing a new convention.
+  contact?: string | null,
 ): Promise<void> {
   await client.from("notification_deliveries").insert({
     notification_id: notificationId,
@@ -936,5 +1012,6 @@ async function writeDelivery(
     failed_reason: failedReason,
     delivered_at: status === "delivered" ? new Date().toISOString() : null,
     segments: segments ?? null,
+    contact: contact ? contact.trim().toLowerCase() : null,
   });
 }

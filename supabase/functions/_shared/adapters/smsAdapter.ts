@@ -84,6 +84,25 @@ export interface AdapterResult {
   error?: string;
 }
 
+// #1537 — the provider identities this adapter can select between. These are the
+// exact strings written to `notification_deliveries.provider`; the column is
+// `text NULL` with no CHECK, and both delivery webhooks reconcile by
+// `provider_message_id` + `channel`, never by `provider`, so widening the set of
+// observed values breaks no reader.
+export type SmsProvider = "termii" | "twilio";
+
+// #1537 — the SMS adapter's result carries the provider REQUIRED, not optional.
+// Requiring it is the point: `deno check` then refuses to compile a `send()`
+// return path that forgets to say who handled (or would have handled) the send,
+// which is precisely how the ledger came to describe every Nigerian text as
+// Twilio. `null` is reserved for the two outcomes where no provider was ever
+// selected (an invalid E.164, and a well-formed number whose calling code is
+// unmapped) — there, null is the honest answer and `failed_reason` carries the
+// attribution instead.
+export interface SmsAdapterResult extends AdapterResult {
+  provider: SmsProvider | null;
+}
+
 export interface SmsSendInput {
   to: string; // E.164
   brandName: string; // sender identity in the body (CTIA brand-name-in-body)
@@ -229,6 +248,47 @@ export function resolveMarketKillSwitch(
   return "SMS_LIVE_ENABLED_US";
 }
 
+// ===========================================================================
+// #1537 — THE ONE PLACE A COUNTRY BECOMES A PROVIDER NAME.
+// ===========================================================================
+// WHAT WAS BROKEN: `notifyV2` stamped `notification_deliveries.provider` from a
+// per-CHANNEL constant (`sms: "twilio"`) that no send ever consulted. Nigeria
+// routes to Termii; the ledger recorded Twilio on every row, and there was not
+// one `termii` row in the entire table. The #1529 SC-11 live-fire — a `+234`
+// contact held back by the NIGERIA kill switch — recorded `provider=twilio`,
+// so the skip could not be attributed to the market that caused it.
+//
+// THE RULE NOW: routing and reporting read the SAME mapping. `send()` below
+// selects its sender through this function, and every non-send outcome reports
+// through it too, so "which provider would have handled this" is answerable for
+// a kill-switch skip and a policy suppression, not only for a completed send.
+// A second, independent country→provider derivation anywhere else re-creates
+// the split-brain this removes — call this instead.
+export function smsProviderForCountry(countryCode: string): SmsProvider {
+  // Normalized on its own line, exactly as `resolveMarketKillSwitch` above does
+  // it — the two must agree on what "NG" means, and keeping the literal off the
+  // `countryCode` line also keeps the I-PROPOSED-T Stripe-country gate happy
+  // without an exemption tag (this is an SMS route, not a payout country).
+  const cc = countryCode.toUpperCase();
+  return cc === "NG" ? "termii" : "twilio";
+}
+
+// #1537 — provider attribution for a DESTINATION, for callers (notifyV2) that
+// must label a ledger row on a path where no send was attempted: `can_send`
+// denial and the no-contact skip. It runs the SAME validation and the SAME
+// derivation `send()` runs, so a caller cannot disagree with the adapter about
+// which market a handset belongs to. Returns null exactly where `send()` itself
+// refuses to pick a provider — an invalid E.164, or an unmapped calling code.
+export function smsProviderForDestination(
+  to: string | null | undefined,
+): SmsProvider | null {
+  const trimmed = to?.trim() ?? "";
+  if (!isValidE164(trimmed)) return null;
+  const derived = countryFromE164(trimmed);
+  if (derived === null) return null;
+  return smsProviderForCountry(derived);
+}
+
 function envTrue(name: string): boolean {
   const field = name === "SMS_LIVE_ENABLED_NG"
     ? "sms_live_enabled.ng"
@@ -238,14 +298,28 @@ function envTrue(name: string): boolean {
   return raw === "true" || raw === "1";
 }
 
+// #1537 — every sender NAMES ITSELF on every return path. `provider` is required
+// here, so a sender physically cannot report a result without saying who it is,
+// and `send()` reads the name off the RESULT for any outcome that reached a
+// sender rather than off the pre-computed selection. That distinction is what
+// makes the regression tests falsifiable: if the country→sender branch were
+// miswired so a Nigerian number went to `twilioSend`, the row would read
+// `twilio` and the NG test would FAIL — whereas a row labelled from the
+// selection alone would read `termii` and pass while Twilio did the work.
+interface SenderResult {
+  ok: boolean;
+  provider: SmsProvider;
+  sid?: string;
+  error?: string;
+  blacklisted?: boolean;
+}
+
 async function twilioSend(
   to: string,
   body: string,
   messagingServiceSidOverride?: string | null,
   mediaUrls?: string[],
-): Promise<
-  { ok: boolean; sid?: string; error?: string; blacklisted?: boolean }
-> {
+): Promise<SenderResult> {
   const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
   const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
   // Marketing send passes a separate marketing Messaging Service SID
@@ -255,7 +329,7 @@ async function twilioSend(
       ? messagingServiceSidOverride
       : Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
   if (!accountSid || !authToken || !messagingServiceSid) {
-    return { ok: false, error: "twilio_env_missing" };
+    return { ok: false, provider: "twilio", error: "twilio_env_missing" };
   }
   const statusSecret = Deno.env.get("TWILIO_STATUS_CALLBACK_SECRET");
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -295,13 +369,19 @@ async function twilioSend(
     if (!res.ok) {
       const text = await res.text();
       const blacklisted = text.includes("21610"); // recipient opted out
-      return { ok: false, error: `Twilio ${res.status}: ${text}`, blacklisted };
+      return {
+        ok: false,
+        provider: "twilio",
+        error: `Twilio ${res.status}: ${text}`,
+        blacklisted,
+      };
     }
     const data = (await res.json()) as { sid?: string };
-    return { ok: true, sid: data.sid };
+    return { ok: true, provider: "twilio", sid: data.sid };
   } catch (err) {
     return {
       ok: false,
+      provider: "twilio",
       error: err instanceof Error ? err.message : String(err),
     };
   }
@@ -327,9 +407,7 @@ async function termiiSend(
   to: string,
   body: string,
   channel: "dnd" | "generic",
-): Promise<
-  { ok: boolean; sid?: string; error?: string; blacklisted?: boolean }
-> {
+): Promise<SenderResult> {
   const apiKey = Deno.env.get("TERMII_API_KEY");
   const baseUrl = resolveRuntimeConfigValue(
     "termii_base_url",
@@ -337,7 +415,7 @@ async function termiiSend(
   );
   const senderId = Deno.env.get("TERMII_SENDER_ID");
   if (!apiKey || typeof baseUrl !== "string" || !baseUrl || !senderId) {
-    return { ok: false, error: "termii_env_missing" };
+    return { ok: false, provider: "termii", error: "termii_env_missing" };
   }
   const payload = {
     api_key: apiKey,
@@ -369,25 +447,35 @@ async function termiiSend(
       res.ok && typeof data.message_id === "string" &&
       data.message_id.length > 0
     ) {
-      return { ok: true, sid: data.message_id };
+      return { ok: true, provider: "termii", sid: data.message_id };
     }
-    return { ok: false, error: `Termii ${res.status}: ${text}`, blacklisted };
+    return {
+      ok: false,
+      provider: "termii",
+      error: `Termii ${res.status}: ${text}`,
+      blacklisted,
+    };
   } catch (err) {
     return {
       ok: false,
+      provider: "termii",
       error: err instanceof Error ? err.message : String(err),
     };
   }
 }
 
 export const smsAdapter = {
-  async send(input: SmsSendInput): Promise<AdapterResult> {
+  async send(input: SmsSendInput): Promise<SmsAdapterResult> {
     const to = input.to?.trim() ?? "";
     if (!isValidE164(to)) {
       return {
         ok: false,
         status: "failed",
         providerMessageId: null,
+        // #1537 — no provider was selected and none would have been: the input
+        // is not a routable destination. `failed_reason=invalid_recipient` is
+        // the attribution here; a market label would be fabricated.
+        provider: null,
         error: "invalid_recipient",
       };
     }
@@ -407,6 +495,9 @@ export const smsAdapter = {
         ok: false,
         status: "skipped",
         providerMessageId: null,
+        // #1537 — the market is unknown, so the provider is genuinely unknown.
+        // Naming one here would be the same fabrication this issue removes.
+        provider: null,
         error: "country_unresolved",
       };
     }
@@ -428,6 +519,11 @@ export const smsAdapter = {
       );
     }
     const cc = derived;
+    // #1537 — decided ONCE, from the same `cc` that picks the kill switch, and
+    // used for BOTH the ledger label and the sender selection below. A skip must
+    // still be attributable to a market, so this is computed BEFORE the
+    // kill-switch check rather than inside the send branch.
+    const selectedProvider = smsProviderForCountry(cc);
 
     // Per-market kill-switch — return skipped WITHOUT any HTTP call when off.
     // Same single normalization feeds BOTH this and the provider choice below.
@@ -437,6 +533,11 @@ export const smsAdapter = {
         ok: false,
         status: "skipped",
         providerMessageId: null,
+        // #1537 — the provider that WOULD have handled this send. Reporting it
+        // is the whole point of the skip case: the #1529 SC-11 probe recorded
+        // `twilio` on a `+234` contact gated by the NIGERIA switch, which made
+        // the kill switch's own effect unprovable from the ledger.
+        provider: selectedProvider,
         error: "provider_kill_switch_off",
       };
     }
@@ -462,8 +563,13 @@ export const smsAdapter = {
     // here and in resolveMarketKillSwitch are GONE: they could drift apart and
     // route a message as one market while gating it under another, which is the
     // split-brain #1518's ADV B-3 exists to catch.
+    //
+    // #1537 — the branch now switches on `selectedProvider`, the SAME value
+    // reported to the ledger, so route and label cannot drift apart. The
+    // reported name on the two paths below is taken off `result`, i.e. from the
+    // sender that actually ran, not from this selection.
     await input.beforeProviderIo?.();
-    const result = cc === "NG"
+    const result = selectedProvider === "termii"
       // NG/Termii is SMS-only — media is intentionally NOT passed (ORCH-1282).
       ? await termiiSend(to, body, "generic")
       : await twilioSend(to, body, input.messagingServiceSid, input.mediaUrls);
@@ -473,6 +579,7 @@ export const smsAdapter = {
         status: "failed",
         providerMessageId: null,
         segments,
+        provider: result.provider,
         blacklisted: result.blacklisted ?? false,
         error: result.blacklisted
           ? "recipient_opted_out"
@@ -488,6 +595,12 @@ export const smsAdapter = {
       status: "sent",
       providerMessageId: result.sid ?? null,
       segments,
+      // #1537 — reported by the sender that produced `result.sid`, so the
+      // ledger's provider and its provider_message_id always come from the
+      // same place. The two delivery webhooks reconcile by
+      // provider_message_id + channel, so this pairing is what makes a Termii
+      // callback land against a row that admits it is a Termii row.
+      provider: result.provider,
     };
   },
 };
