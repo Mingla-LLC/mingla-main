@@ -41,6 +41,8 @@
 import type { PublicStayDetail, PublicStayOffering } from "../stayGuest";
 import { StayGuestBooking } from "../StayGuestBooking";
 import { BrandRenderingReact as React } from "../PublicVenueTabs";
+import { formatStayRate } from "../stayGuestMoney";
+import { stayPriceBandLabel } from "../stayRoomPriceFilter";
 
 // `react-dom/server` and `react-test-renderer` ship no type declarations in
 // this workspace, so use the repo's typed-require idiom (same form as the
@@ -146,8 +148,29 @@ const ROOMS: PublicStayOffering[] = [
   offering("balcony", "Balcony King", "51000"),
 ];
 
-/** The bands those six prices generate — the design mock's own three. */
-const EXPECTED_BANDS = ["Any price", "Under $300", "$300–$500", "$500+"];
+/**
+ * The bands those six prices generate — the design mock's own three.
+ *
+ * The BOUNDARIES are hard-coded, because they are the claim: 9,900 / 19,900 /
+ * 27,500 / 35,000 / 51,000 / 88,000 must derive cuts at exactly 30,000 and
+ * 50,000. The LABEL TEXT is derived, because money formatting is correctly
+ * locale-dependent — a German-locale browser renders USD as "300 $", not
+ * "$300", and this suite is run a second time under `LANG=de_DE.UTF-8` for
+ * precisely that reason. Hard-coding "$300" here would have asserted the
+ * runner's locale rather than the venue's prices, and it did: CI caught it.
+ *
+ * The exact en-US strings ("Under $300", "$300–$500", "$500+") stay asserted —
+ * in the PURE suite (§11), which runs under the required full-suite check.
+ */
+const BAND_BOUNDS: [number | null, number | null][] = [
+  [null, null],
+  [null, 30000],
+  [30000, 50000],
+  [50000, null],
+];
+const EXPECTED_BANDS = BAND_BOUNDS.map(([lo, hi]) =>
+  stayPriceBandLabel(lo, hi, "USD"),
+);
 
 function stayDetail(
   offerings: PublicStayOffering[] = ROOMS,
@@ -254,12 +277,12 @@ function bandLabels(tree: Tree): string[] {
     .findAll((node) => {
       if (typeof node.type !== "string") return false;
       const label = node.props["aria-label"];
-      return (
-        typeof label === "string" &&
-        (label.startsWith("Any price") ||
-          label.startsWith("Under ") ||
-          /^\$/.test(label))
-      );
+      // Band chips announce themselves as "<label>, <n> of <m> rooms". The
+      // COUNT SUFFIX is the structural signature and is locale-free; matching
+      // on a currency symbol would make this finder silently empty under a
+      // non-US locale, which is the failure mode that would let a broken
+      // filter look like a working one.
+      return typeof label === "string" && /, \d+( of \d+)? rooms?$/.test(label);
     })
     .map((node) => node.props["aria-label"] as string);
 }
@@ -290,11 +313,13 @@ describe("#1563 R-1/R-2 · the bands reach the buyer-web DOM", () => {
     expect(labels.length).toBe(EXPECTED_BANDS.length);
     expect(labels.map((label) => label.split(",")[0])).toEqual(EXPECTED_BANDS);
     // 3 under $300 (99/199/275), 1 in $300-500 (350), 2 at $500+ (510/880).
+    // The COUNTS are the claim and are locale-free; the label text follows the
+    // runtime locale, so it is derived from the same boundaries.
     expect(labels).toEqual([
-      "Any price, 6 rooms",
-      "Under $300, 3 of 6 rooms",
-      "$300–$500, 1 of 6 rooms",
-      "$500+, 2 of 6 rooms",
+      `${EXPECTED_BANDS[0]}, 6 rooms`,
+      `${EXPECTED_BANDS[1]}, 3 of 6 rooms`,
+      `${EXPECTED_BANDS[2]}, 1 of 6 rooms`,
+      `${EXPECTED_BANDS[3]}, 2 of 6 rooms`,
     ]);
     tree.unmount();
   });
@@ -342,19 +367,19 @@ describe("#1563 R-3 · pressing a band really narrows the list", () => {
     const tree = await mount(stayDetail());
     expect(renderedRoomNames(tree)).toHaveLength(6); // vacuity
 
-    await press(tree, "Under $300");
+    await press(tree, EXPECTED_BANDS[1]);
     expect(renderedRoomNames(tree)).toEqual([
       "Bunk Room",
       "Courtyard Double",
       "Garden Suite",
     ]);
     // The count line follows the list.
-    expect(bandLabels(tree)[0]).toBe("Any price, 6 rooms");
+    expect(bandLabels(tree)[0]).toBe(`${EXPECTED_BANDS[0]}, 6 rooms`);
 
-    await press(tree, "$500+");
+    await press(tree, EXPECTED_BANDS[3]);
     expect(renderedRoomNames(tree)).toEqual(["Balcony King", "Penthouse"]);
 
-    await press(tree, "$300–$500");
+    await press(tree, EXPECTED_BANDS[2]);
     expect(renderedRoomNames(tree)).toEqual(["Ocean Suite"]);
 
     // …and "Any price" puts every room back.
@@ -383,7 +408,7 @@ describe("#1563 R-3 · pressing a band really narrows the list", () => {
 
   test("R-4 sort and filter compose — order holds inside a band", async () => {
     const tree = await mount(stayDetail());
-    await press(tree, "Under $300");
+    await press(tree, EXPECTED_BANDS[1]);
     await press(tree, "Sort rooms.");
     expect(renderedRoomNames(tree)).toEqual([
       "Garden Suite",
@@ -408,7 +433,7 @@ describe("#1563 R-5 · the empty answer", () => {
    */
   test("R-5 an emptied band says what happened and offers one tap back", async () => {
     const tree = await mount(stayDetail());
-    await press(tree, "$500+");
+    await press(tree, EXPECTED_BANDS[3]);
     // VACUITY: the band really held rooms before the refetch.
     expect(renderedRoomNames(tree)).toEqual(["Balcony King", "Penthouse"]);
 
@@ -424,8 +449,9 @@ describe("#1563 R-5 · the empty answer", () => {
     expect(renderedRoomNames(tree)).toEqual([]);
     const json = JSON.stringify(tree.toJSON());
     expect(json).toContain("No Rooms in that price range");
-    // It names the real cheapest price, with the qualifier attached.
-    expect(json).toContain("$99");
+    // It names the real cheapest price, with the qualifier attached. Derived
+    // through the same formatter the page uses, so this holds in any locale.
+    expect(json).toContain(formatStayRate("9900", "USD"));
     expect(json).toContain("before taxes and fees");
     // It NEVER borrows the "this Stay has no Rooms" copy while four exist.
     expect(json).not.toContain("No Rooms are available yet");
