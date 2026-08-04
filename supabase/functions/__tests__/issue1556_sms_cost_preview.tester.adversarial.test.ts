@@ -15,14 +15,16 @@
 //          either encoding can take.
 //   ADV-2  the EXTENDED-TABLE septet gap — a real residual under-report that
 //          survives #1556, pinned as a KNOWN GAP so it cannot be forgotten.
-//   ADV-3  a FULL-BMP sanitizer sweep (65,024 codepoints) whose expected fold
-//          set is DERIVED BY RUNNING THE SERVER, never hardcoded.
+//   ADV-3  a FULL-BMP sanitizer sweep (63,488 non-surrogate codepoints) whose
+//          expected fold set is DERIVED BY RUNNING THE SERVER, never hardcoded.
 //   ADV-4  a seeded DIFFERENTIAL FUZZ over 3,000 generated bodies — the case
 //          nobody wrote down.
-//   ADV-5  the DISPLAY contract, including the empty-body divergence #1556
-//          introduced at the `SmsPreviewPane` call site.
+//   ADV-5  the DISPLAY contract, including the empty-body law that closed
+//          T-1556-EMPTY-DISPLAY.
 //   ADV-6  proof that the function these suites test is the function that
 //          actually ships.
+//   ADV-7  the empty-draft render guard, asserted so it cannot be satisfied by
+//          a DUPLICATE ungated render — the one shape #1556 L9 lets through.
 //
 // Every group carries a vacuity guard: a group that examined nothing FAILS.
 // A check that can pass by matching nothing is the failure family this whole
@@ -372,20 +374,25 @@ Deno.test("#1556 ADV-4 — 3,000 fuzzed bodies: preview and wire never diverge",
 // ===========================================================================
 // ADV-5 — WHAT THE COMPOSER DISPLAYS.
 //
-// #1556's stated contract is that only MEASUREMENT moved: a brand's typed
-// apostrophe must never be rewritten inside their own draft. That half holds.
+// #1556's contract is that only MEASUREMENT moved: a brand's typed apostrophe
+// must never be rewritten inside their own draft.
 //
-// The empty-body half does NOT. `bodyWithFooter("")` returned `""` on
-// origin/main and now returns `"\n\nReply STOP to opt out."`, because the empty
-// short-circuit was hoisted out of it and into `estimateSmsCost`. The estimate
-// is unaffected — but `SmsPreviewPane.tsx:86` calls `bodyWithFooter` DIRECTLY
-// for the bubble, and its empty-state guard is
-// `body.trim().length === 0 && !hasMedia`. So with a photo attached and no text
-// typed yet, the bubble now renders the bare opt-out footer where it previously
-// rendered nothing. Tester finding T-1556-EMPTY-DISPLAY (P2).
+// HISTORY, because the second assertion below looks like it is pinning a bug
+// and is not. The first #1556 commit dropped `body.length === 0 ? body :` from
+// `bodyWithFooter` to reach byte-exact parity with the adapter — correct for
+// the wire, because `composeSmsBody` has no empty-body guard either. But
+// `SmsPreviewPane` renders `bodyWithFooter(body)` directly and its empty guard
+// was `body.trim().length === 0 && !hasMedia`, so a brand who attached a photo
+// before typing fell through the media branch and saw a bare opt-out footer in
+// an otherwise empty bubble. Tester finding T-1556-EMPTY-DISPLAY (P2), CLOSED
+// at 877c5e6e0 by gating the bubble's body `Text` on `hasTypedBody` at the
+// DISPLAY call site.
 //
-// WHAT WOULD CLOSE IT: give `SmsPreviewPane` an explicit empty-body branch for
-// the media case, or restore the short-circuit at the display call site.
+// So `bodyWithFooter("")` composing the footer is now the LAW, not the defect:
+// it is what keeps the client in step with the adapter. Restoring a
+// short-circuit inside `bodyWithFooter` to "fix" a preview would re-open the
+// drift this issue closed, and the assertion below is what stops that. The
+// display half is asserted separately, in ADV-7.
 // ===========================================================================
 Deno.test("#1556 ADV-5 — the author's own characters survive into the draft they see", () => {
   const typed = "Don’t miss it — doors 9pm…";
@@ -404,8 +411,8 @@ Deno.test("#1556 ADV-5 — the author's own characters survive into the draft th
   assertEquals(measured, composeSmsBody(typed, true));
 });
 
-Deno.test("#1556 ADV-5 PIN: an empty draft composes a bare footer for DISPLAY (KNOWN GAP T-1556-EMPTY-DISPLAY)", () => {
-  // The measurement path is correct and unchanged — this is the half that works.
+Deno.test("#1556 ADV-5 — an empty draft still composes the footer, because the adapter does", () => {
+  // The measurement path: an empty draft estimates zero, as the composer shows.
   const est = estimateSmsCost("", 250);
   assertEquals(est.charCount, 0, "an empty draft must still estimate zero");
   assertEquals(est.segmentsPerRecipient, 0);
@@ -416,19 +423,18 @@ Deno.test("#1556 ADV-5 PIN: an empty draft composes a bare footer for DISPLAY (K
   assertEquals(mms.encoding, "MMS");
   assertEquals(mms.totalSegments, 10);
 
-  // The DISPLAY path is the gap. `SmsPreviewPane` renders `bodyWithFooter(body)`
-  // whenever `hasMedia` is true, including for an empty body.
+  // THE LAW. `composeSmsBody` has no empty-body guard, so neither may
+  // `bodyWithFooter`. If this starts failing, someone has "fixed" a preview by
+  // short-circuiting the composer — which is the #1556 drift, reopened.
   assertEquals(
     bodyWithFooter(""),
     "\n\nReply STOP to opt out.",
-    "PIN BROKEN (good news): the empty draft no longer composes a bare footer. " +
-      "Confirm SmsPreviewPane's media+empty state renders nothing, delete this " +
-      "pin, and close T-1556-EMPTY-DISPLAY.",
+    "REGRESSION: bodyWithFooter no longer mirrors the adapter on an empty body. " +
+      "An empty draft is a UI state — gate it at the DISPLAY call site " +
+      "(SmsPreviewPane, see ADV-7), never inside the composer.",
   );
   assertEquals(bodyWithFooter("   \n "), "\n\nReply STOP to opt out.");
-  // The server agrees on this body, so it is a DISPLAY defect and never a wire
-  // or parity one — recording that here so the next reader does not "fix" the
-  // wrong side and reopen #1556.
+  assertEquals(bodyWithFooter(""), composeSmsBody("", true));
   assertEquals(wireBody(""), composeSmsBody("", true));
 });
 
@@ -490,4 +496,81 @@ Deno.test("#1556 ADV-6 — send() composes via composeSmsBody, and the estimate 
   const sample = "Doors 9pm";
   assertEquals(wireBody(sample), composeSmsBody(sample, true));
   assertNotEquals(wireBody(sample), composeSmsBody(sample, false));
+});
+
+// ===========================================================================
+// ADV-7 — THE EMPTY-DRAFT RENDER GUARD, ASSERTED SO IT CANNOT BE DECORATED.
+//
+// #1556 L9 pins the display half of T-1556-EMPTY-DISPLAY with two source
+// assertions: that `hasTypedBody` is computed, and that a `styles.bubbleText`
+// Text appears inside a `{hasTypedBody ? (` gate. I attacked L9 from both
+// directions it was designed for and it held:
+//
+//   - restore the short-circuit inside `bodyWithFooter` (fix the screen at the
+//     wire's expense)      -> L9(a) FAILS
+//   - delete the gate from the pane (keep the wire, re-break the screen)
+//                          -> L9(b) FAILS
+//
+// It does NOT hold against a third shape: keep the gated Text and ADD a SECOND,
+// UNGATED `styles.bubbleText` render of the same `wire`. Both of L9's regexes
+// still match, L9 passes, and the bare footer is back on screen for a photo-only
+// draft. Verified: with a duplicate ungated render added, L9 reports ok.
+//
+// A gate is only a gate if nothing renders around it. This closes that shape by
+// asserting the body text is rendered EXACTLY ONCE and that the single
+// occurrence sits inside the guard.
+//
+// HONEST CEILING, stated rather than implied: this is a source contract, not a
+// mounted render. `mingla-business`'s default jest config carries no RN render
+// libraries, so this component cannot be mounted in the suite that runs on every
+// PR — the same ceiling `metaOrch1281SmsPreview.test.tsx` documents. Closing it
+// properly needs a dedicated `jest.*.render.cjs` config and workflow; recorded
+// as a tester finding rather than papered over.
+// ===========================================================================
+Deno.test("#1556 ADV-7 — the bubble body renders exactly once, inside the typed-body gate", () => {
+  const paneSrc = Deno.readTextFileSync(
+    new URL(
+      "../../../mingla-business/src/components/marketing/SmsPreviewPane.tsx",
+      import.meta.url,
+    ),
+  );
+
+  // Vacuity: locate the render before asserting anything about it.
+  assert(paneSrc.length > 500, "vacuity: SmsPreviewPane.tsx did not load");
+  assert(
+    paneSrc.includes("hasTypedBody"),
+    "vacuity: the typed-body guard is gone entirely — re-derive this assertion",
+  );
+
+  // EXACTLY ONE body-text render. A second, ungated one re-opens
+  // T-1556-EMPTY-DISPLAY while satisfying #1556 L9's regexes.
+  const renders = paneSrc.match(/style=\{styles\.bubbleText\}/g) ?? [];
+  assertEquals(
+    renders.length,
+    1,
+    `the bubble body Text is rendered ${renders.length} times. A SECOND, ungated ` +
+      `render re-opens T-1556-EMPTY-DISPLAY (a photo-only draft shows a bare STOP ` +
+      `footer) while still satisfying #1556 L9 — which is why this law counts.`,
+  );
+
+  // ...and that single render is INSIDE the guard.
+  assert(
+    /\{hasTypedBody \? \(\s*<Text\s+style=\{styles\.bubbleText\}/.test(paneSrc),
+    "REGRESSION (T-1556-EMPTY-DISPLAY): the bubble body Text is not gated on hasTypedBody",
+  );
+  assert(
+    /const hasTypedBody = body\.trim\(\)\.length > 0;/.test(paneSrc),
+    "the typed-body guard must key off the TRIMMED body, so a whitespace-only draft previews nothing",
+  );
+
+  // The guard must not have been bought by re-routing the pane: ORCH-1281 and
+  // ORCH-1289 both require the bubble to render the COMPOSED body, footer and
+  // all, once something is typed.
+  assert(
+    /const wire = bodyWithFooter\(body\);/.test(paneSrc),
+    "the pane no longer previews bodyWithFooter(body) — ORCH-1281/1289 contract broken",
+  );
+  // And the composed body the pane shows is exactly what #1556 says it shows:
+  // the author's characters, unfolded.
+  assertEquals(bodyWithFooter("Don’t miss it"), "Don’t miss it\n\nReply STOP to opt out.");
 });
