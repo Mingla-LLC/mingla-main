@@ -29,7 +29,11 @@
 # NOT a required check (not in ruleset 13549056 / 19508605) — it reports, it
 # does not gate.
 
-name: Issue #1563 Room price filter
+# QUOTED deliberately. Unquoted, YAML treats ` #1563 …` as a trailing comment and
+# the workflow registers under the name "Issue" — which is what the #1503 Stay
+# workflow does today, so two unrelated workflows share one meaningless name in
+# the Actions list. The job name below is what appears on the PR check.
+name: "Issue #1563 Room price filter"
 
 on:
   push:
