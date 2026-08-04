@@ -2631,8 +2631,35 @@ export function StayInventoryManager({
       testID="stay-offering-editor-sheet"
     >
       {editorElement}
+      {/*
+        #1532 P0 — THE GUARD LIVES INSIDE THE SHEET, AND THAT IS NOT A STYLE
+        CHOICE.
+
+        `Sheet` and `ConfirmDialog` are both React Native `Modal`s. On iOS a
+        `Modal` is a presented UIKit view controller, and a view controller
+        presents exactly ONE thing at a time — so a dialog rendered as a SIBLING
+        of an already-presented sheet never gets a window. It mounts, it renders,
+        it is simply never on screen.
+
+        Shipped as a sibling, that made the discard guard unreachable on iOS:
+        a dirty Cancel did nothing, a scrim tap did nothing, and a drag parked
+        the sheet off-screen behind a still-live full-screen scrim that swallowed
+        every tap — the operator's only exit was force-quitting the app and
+        losing all 23 fields. Android was unaffected, because RN `Modal` is a
+        Dialog there and Dialogs stack, which is exactly why the Android leg
+        passed and hid it.
+
+        Nesting is also the established pattern, not a workaround:
+        `VenueTableSheet.tsx` and `MenuItemSheet.tsx:134/220/239` both close
+        `</Sheet>` AFTER their `ConfirmDialog`. This was the only Sheet +
+        ConfirmDialog pair in the codebase that was not nested.
+
+        `stayGuardReachability.issue1532.tester.render.test.tsx` A-1b/A-1c own
+        this contract: every visible `Modal` beyond the outermost must be
+        CONTAINED by it. Do not hoist this back out.
+      */}
+      {discardDialog}
     </Sheet>
-    {discardDialog}
     </>
   );
 }
@@ -2642,7 +2669,9 @@ const PAGE_BASE = {
   padding: spacing.md,
   // #1532 §4 — was `spacing.xxl * 3` (144pt) of dead scroll sized for a bottom
   // nav that this route does not render. Now exactly the pinned action bar plus
-  // one gutter, which is also what pays for the wrapped module pill row.
+  // one gutter: +44pt of real workspace back. (It does NOT offset the wrapped
+  // module band, which MEASURED 142.0pt against a designed 96 — see
+  // `STAY_PAGE_BOTTOM_PAD`.)
   paddingBottom: STAY_PAGE_BOTTOM_PAD,
   gap: STAY_SPACING.sectionToSection,
   width: "100%",

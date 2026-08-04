@@ -70,9 +70,17 @@ export const STAY_ACTION_BAR_HEIGHT = spacing.md + 52 + spacing.md;
  * Every Stay page's scroll bottom padding.
  *
  * REPLACES `spacing.xxl * 3` (144pt) — dead space sized for a bottom nav that
- * `/venue/[venueId]` does not render (it lives OUTSIDE `app/(tabs)/`). 144pt of
- * nothing is what paid for the pill row growing from one scrolling line to two
- * wrapped lines, and it still nets ~44pt back.
+ * `/venue/[venueId]` does not render (it lives OUTSIDE `app/(tabs)/`), so it
+ * gives back 44pt of real workspace on every Stay page.
+ *
+ * IT DOES NOT PAY FOR THE PILL ROW, and an earlier version of this comment said
+ * it did. Measured on device (#1532 tester): the wrapped module band is THREE
+ * rows / 142.0pt, not the two rows / 96pt the design computed — the pills are
+ * content-sized and total ~813pt, so they wrap to three rows at 440, 402, 390
+ * and 360 alike. Band 53 -> 142.0pt is +89pt against 44pt reclaimed here, so the
+ * net is -45pt of workspace. Recorded rather than quietly dropped: the
+ * requirement (all six destinations visible at rest) is met, the cost is real,
+ * and it is Seth's call, not this constant's.
  */
 export const STAY_PAGE_BOTTOM_PAD = STAY_ACTION_BAR_HEIGHT + spacing.md;
 

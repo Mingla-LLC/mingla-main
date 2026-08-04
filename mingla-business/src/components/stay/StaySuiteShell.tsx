@@ -990,11 +990,24 @@ export function StaySuiteShell({
         (2) THE HIDDEN DESTINATIONS. Only 3 of the 6 pills were reachable at
         rest at 440pt, and a horizontal scroller offers no affordance that more
         exists — Menus and Settings were simply undiscoverable. Wrapping shows
-        all six at every width (two rows at 390pt, three at 320pt).
+        ALL SIX at every width, which was the requirement and is met.
 
-        The extra row costs ~43pt of band, and it is FULLY REPAID: every Stay
-        page carried `paddingBottom: spacing.xxl * 3` (144pt) of dead scroll
-        sized for a bottom nav this route does not render. See
+        WHAT IT COSTS — measured on device (#1532 tester, iPhone 17 Pro Max),
+        NOT the design's arithmetic, which was wrong:
+
+          designed  2 rows /  96pt   <- assumed a pill width the labels do not
+                                        have
+          MEASURED  3 rows / 142.0pt <- the pills are content-sized and total
+                                        ~813pt, so they wrap to THREE rows at
+                                        440, 402, 390 AND 360
+
+        So the band goes 53pt -> 142.0pt (+89pt), and the 144 -> 100pt page
+        padding gives back 44pt: NET -45pt of workspace, not the "fully repaid"
+        this comment used to claim. That claim never rendered.
+
+        Deliberately NOT redesigned here: shrinking the pills would either
+        truncate approved labels or push touch targets under the accessibility
+        floor. The band cost is Seth's call, routed separately. See
         `STAY_PAGE_BOTTOM_PAD`.
       */}
       <View style={styles.moduleNav} testID="stay-modules-band">
