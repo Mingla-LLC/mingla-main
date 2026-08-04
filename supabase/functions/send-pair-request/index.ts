@@ -4,6 +4,15 @@
 // (system/relational). Rename deferred to a separate ORCH.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// #1541 — THE SOLE SANCTIONED SMS EGRESS. The Tier-3 branch below used to POST
+// to Twilio itself from a RAW `From` number (a TWILIO_FROM_* env var) — not the
+// approved Messaging Service — with NO "Reply STOP" line and NO StatusCallback,
+// to people who are NOT YET MINGLA USERS. Unapproved sender, no opt-out
+// affordance, and no way to capture an inbound STOP: a CTIA and
+// carrier-filtering exposure on top of the missing kill switch.
+// I-PROPOSED-1161-SMS-FROM-APPROVED-SENDER-ONLY +
+// I-PROPOSED-1541-SMS-PROVIDER-EGRESS-ALLOWLIST.
+import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,7 +50,10 @@ async function callNotifyDispatch(payload: Record<string, unknown>): Promise<voi
   }
 }
 
-serve(async (req) => {
+// #1541 §4.7 — EXPORTED so the runtime companion test can drive a real Request
+// through the real handler and assert on CAPTURED provider HTTP rather than on
+// source text. `serve(handler)` below is the same call this module always made.
+export const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -603,42 +615,43 @@ serve(async (req) => {
         return jsonResponse({ error: "Failed to create invite" }, 500);
       }
 
-      // Send SMS via Twilio
-      const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID");
-      const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN");
-      const TWILIO_FROM_NUMBER = Deno.env.get("TWILIO_FROM_NUMBER");
-
-      if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_FROM_NUMBER) {
-        try {
-          const smsBody = `${senderName} wants to pair with you on Mingla! Download the app to connect: https://mingla.app`;
-          const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
-
-          const twilioResponse = await fetch(twilioUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-              Authorization:
-                "Basic " + btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`),
-            },
-            body: new URLSearchParams({
-              To: phoneE164,
-              From: TWILIO_FROM_NUMBER,
-              Body: smsBody,
-            }).toString(),
-          });
-
-          if (!twilioResponse.ok) {
-            const errText = await twilioResponse.text();
-            console.error("[send-pair-request] Twilio error:", errText);
-          } else {
-            console.log(`[send-pair-request] SMS sent to ${phoneE164}`);
-          }
-        } catch (smsErr) {
-          console.error("[send-pair-request] SMS send error:", smsErr);
-          // Don't fail the request if SMS fails
-        }
-      } else {
-        console.warn("[send-pair-request] Twilio credentials not configured, skipping SMS");
+      // #1541 — the inline Twilio block that lived here is GONE, including
+      // its TWILIO_FROM_* env read and the raw `From:` param. NO RAW `From` SURVIVES
+      // ANYWHERE IN THIS FILE (F-3).
+      //
+      // §4.0 — the ONE call shape. The body is today's verbatim, WITHOUT a STOP
+      // footer: the adapter appends it, which is the intended fix for this
+      // path's missing opt-out affordance. countryCode is omitted (the
+      // destination handset is the routing authority, #1529);
+      // messagingServiceSid is omitted, and that omission is exactly what
+      // retires the raw sender — it selects the approved transactional
+      // toll-free, and no code path to anything else remains.
+      //
+      // THE BEST-EFFORT CONTRACT IS PRESERVED EXACTLY. The
+      // `pending_pair_invites` upsert above stays AHEAD of the send, and the
+      // Tier-3 response below is returned unchanged for every adapter outcome.
+      // Don't fail the request if SMS fails.
+      try {
+        const smsBody = `${senderName} wants to pair with you on Mingla! Download the app to connect: https://mingla.app`;
+        const smsResult = await smsAdapter.send({
+          to: phoneE164,
+          brandName: "Mingla",
+          message: smsBody,
+        });
+        // This path has never had a delivery record of any kind (F-4) — its
+        // real send history is unrecoverable. Routing through the adapter gives
+        // it the notification_deliveries ledger for the first time; this log is
+        // the cheapest honest signal available without a new table.
+        console.info(
+          JSON.stringify({
+            event: "pair_invite_sms",
+            status: smsResult.status,
+            error: smsResult.error ?? null,
+          }),
+        );
+      } catch (smsErr) {
+        console.error("[send-pair-request] SMS send error:", smsErr);
+        // Don't fail the request if SMS fails.
       }
 
       return jsonResponse({
@@ -656,4 +669,6 @@ serve(async (req) => {
       500
     );
   }
-});
+};
+
+serve(handler);

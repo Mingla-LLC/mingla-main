@@ -15,25 +15,28 @@
  * Locked SMS copy (NO link, do NOT paraphrase):
  *   "Your table's ready at {VenueName}. Reply STOP to opt out."
  *
- * Twilio creds from Deno env (Supabase secrets — NEVER hardcoded; the
- * orchestrator sets them at deploy):
- *   TWILIO_ACCOUNT_SID · TWILIO_AUTH_TOKEN · TWILIO_MESSAGING_SERVICE_SID
- * (the Messaging Service is bound to the approved toll-free +1 888-250-5351).
- *
- * Twilio send clones the proven pattern from ticket-confirmation-dispatch /
- * rsvp-notify (the Messaging Service path), with the StatusCallback wired so
- * inbound STOP keywords land an opt-out (handled by twilio-message-status).
+ * #1541 — THE SEND GOES THROUGH `smsAdapter`, THE SOLE SANCTIONED EGRESS.
+ * This function used to own a private Twilio client (`sendTwilioSms`) reading
+ * TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_MESSAGING_SERVICE_SID itself,
+ * which meant NO market kill switch existed on this path at all — not NG, not
+ * US, nothing anyone could switch off without a code change and a deploy. The
+ * adapter now owns the provider credentials, the approved-sender discipline, the
+ * StatusCallback, country routing and the SMS_LIVE_ENABLED_* switches.
  *
  * I-PROPOSED invariants this fn upholds:
- *   - SMS-FROM-APPROVED-TOLLFREE-ONLY: send ONLY via TWILIO_MESSAGING_SERVICE_SID
- *     (the approved toll-free), never a raw From number.
+ *   - SMS-FROM-APPROVED-TOLLFREE-ONLY: the adapter sends ONLY via
+ *     TWILIO_MESSAGING_SERVICE_SID (the approved toll-free), never a raw From.
  *   - SMS-OPT-OUT-HONORED: never send to a phone with a matching opt-out row.
+ *     The opt-out gate still runs BEFORE the send — that ordering is asserted by
+ *     send_venue_sms.test.ts T-SMS-3 and must not be reordered.
+ *   - I-PROPOSED-1541-SMS-PROVIDER-EGRESS-ALLOWLIST: no direct provider HTTP.
  */
 
 // @ts-ignore — Deno ESM import
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -62,56 +65,18 @@ function json(status: number, body: Record<string, unknown>): Response {
   });
 }
 
-// Twilio send via the Messaging Service (the approved toll-free) — cloned from
-// rsvp-notify/ticket-confirmation-dispatch. NEVER uses a raw From number.
-async function sendTwilioSms(
-  to: string,
-  body: string,
-): Promise<{ ok: boolean; sid?: string; error?: string; blacklisted?: boolean }> {
-  const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-  const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-  const messagingServiceSid = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
-  if (!accountSid || !authToken || !messagingServiceSid) {
-    return { ok: false, error: "twilio_env_missing" };
-  }
-  const statusSecret = Deno.env.get("TWILIO_STATUS_CALLBACK_SECRET");
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const statusCallback =
-    statusSecret && supabaseUrl
-      ? `${supabaseUrl}/functions/v1/twilio-message-status?secret=${encodeURIComponent(statusSecret)}`
-      : undefined;
-  const params = new URLSearchParams({
-    To: to,
-    MessagingServiceSid: messagingServiceSid,
-    Body: body,
-  });
-  if (statusCallback) params.set("StatusCallback", statusCallback);
-  try {
-    const res = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-          "content-type": "application/x-www-form-urlencoded",
-        },
-        body: params,
-      },
-    );
-    if (!res.ok) {
-      const text = await res.text();
-      // Twilio 21610 = recipient has opted out (blacklisted).
-      const blacklisted = text.includes("21610");
-      return { ok: false, error: `Twilio ${res.status}: ${text}`, blacklisted };
-    }
-    const data = (await res.json()) as { sid?: string };
-    return { ok: true, sid: data.sid };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
+// #1541 — `sendTwilioSms()` lived here: a private Twilio client with its own
+// TWILIO_* env reads and its own fetch to the Twilio Messages REST endpoint.
+// Deleted, not wrapped (subtract before adding). Its entire job — the approved
+// Messaging Service, the 21610 blacklist classifier, the StatusCallback, and now
+// country routing and the market kill switches it never had — belongs to
+// smsAdapter. See the `smsAdapter.send` call in step 7 below.
 
-serve(async (req: Request): Promise<Response> => {
+// #1541 §4.7 — EXPORTED so the runtime companion test can drive a real Request
+// through the real handler and assert on CAPTURED provider HTTP rather than on
+// source text. Behaviour is unchanged: `serve(handler)` is the same call the
+// module has always made, and Supabase invokes it identically.
+export const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -235,11 +200,52 @@ serve(async (req: Request): Promise<Response> => {
     return json(409, { error: "opted_out" });
   }
 
-  // 7. Send the locked copy via the approved toll-free Messaging Service.
+  // 7. Send the locked copy through the sole sanctioned send path.
+  //
+  // The LOCKED COPY IS UNCHANGED, byte for byte. It already ends "Reply STOP to
+  // opt out.", so composeSmsBody's /reply stop/i guard suppresses a second
+  // footer, and the copy is pure ASCII so the GSM-7 sanitizer is a no-op.
+  //
+  // #1541 §4.0 — the ONE call shape. countryCode is OMITTED: this function has
+  // no authoritative country label, and per #1529 the destination handset is the
+  // routing authority. messagingServiceSid is OMITTED: omission selects the
+  // approved transactional toll-free, which is exactly what this path used
+  // before and must keep using.
   const copy = tableReadyCopy(venueName);
-  const result = await sendTwilioSms(toPhone, copy);
+  const result = await smsAdapter.send({
+    to: toPhone,
+    brandName: venueName,
+    message: copy,
+  });
 
-  if (!result.ok) {
+  // #1541 — BRANCH ON `status`, NEVER ON `ok`. `ok` is false for BOTH a
+  // market-gated skip and a real provider failure, and conflating them is what
+  // turns "this capability is switched off" into "something broke".
+  if (result.status === "skipped") {
+    // The market is dark. SMS is the SOLE channel for "your table's ready" —
+    // there is no email or push leg — so a silent skip would mean the guest is
+    // simply never told. This function is synchronous and operator-facing, so
+    // the correct move is to hand the operator a distinct, actionable failure
+    // and let them walk over and tell the guest in person.
+    await logSend("skipped_market_dark", { error: result.error ?? "provider_kill_switch_off" });
+    console.warn(
+      "[send-venue-sms] market dark — send skipped with zero provider HTTP",
+      result.error,
+    );
+    // DELIBERATELY NOT marked notified: the guest was not notified. The row
+    // stays actionable so the operator can retry once the market goes live.
+    //
+    // 503, chosen against the alternatives already in use here: 409 already
+    // means opted-out, 422 means a bad phone, 502 means the provider failed. A
+    // dark market is none of those — it is "this capability is switched off
+    // right now", which is precisely what 503 says.
+    return json(503, {
+      error: "sms_market_unavailable",
+      detail: result.error ?? "provider_kill_switch_off",
+    });
+  }
+
+  if (result.status === "failed") {
     // A 21610 (blacklisted) means Twilio knows the recipient opted out — persist
     // a global opt-out so we never try again (defensive; the inbound STOP webhook
     // is the primary path).
@@ -272,11 +278,11 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
     await logSend("failed", { error: result.error ?? "twilio_error" });
-    console.error("[send-venue-sms] twilio send failed", result.error);
+    console.error("[send-venue-sms] provider send failed", result.error);
     return json(502, { error: "sms_send_failed", detail: result.error });
   }
 
-  await logSend("sent", { sid: result.sid });
+  await logSend("sent", { sid: result.providerMessageId });
 
   // 8. Mark the waitlist row notified (atomic + audited via the RPC, in the
   // caller's auth context so the RPC's own brand gate applies).
@@ -291,5 +297,7 @@ serve(async (req: Request): Promise<Response> => {
     console.warn("[send-venue-sms] mark-notified failed (non-fatal)", String(markErr));
   }
 
-  return json(200, { ok: true, sid: result.sid });
-});
+  return json(200, { ok: true, sid: result.providerMessageId });
+};
+
+serve(handler);

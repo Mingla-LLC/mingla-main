@@ -20,6 +20,7 @@ import {
 } from "../../constants/designSystem";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import {
+  isSmsMarketUnavailableError,
   useAddToWaitlist,
   useConvertWaitlist,
   useMarkWaitlistLost,
@@ -206,9 +207,19 @@ export function VenueWaitlistModule({
         </View>
       )}
 
+      {/*
+        #1541 — a dark market is NOT a bad phone number, and telling the
+        operator to check one is worse than saying nothing: it sends them to fix
+        something that is not broken while the guest waits. This branch reads the
+        message the hook actually threw. A message that is correctly thrown but
+        never rendered is still a silent failure — the same class as every other
+        defect in this chain (#1518 -> #1529 -> #1537 -> #1541).
+      */}
       {notify.isError ? (
         <Text style={styles.errorNote}>
-          Couldn&apos;t send the text. Check the guest&apos;s phone number.
+          {isSmsMarketUnavailableError(notify.error)
+            ? notify.error.message
+            : "Couldn't send the text. Check the guest's phone number."}
         </Text>
       ) : null}
       {waitlistQuery.isError ? (

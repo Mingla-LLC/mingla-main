@@ -201,9 +201,87 @@ export function useMarkWaitlistLost(
 }
 
 /**
+ * #1541 — the operator-facing copy for a market kill-switch skip.
+ *
+ * A dark market is NOT a failure to be retried and NOT a bad phone number. It
+ * is a capability that is switched off, and the only useful thing an operator
+ * can do about it is walk over and tell the guest. The edge fn answers 503
+ * `sms_market_unavailable` for exactly this case, distinct from 409 (opted out),
+ * 422 (bad phone) and 502 (the provider failed).
+ *
+ * Exported so the surface that renders it and the test that asserts it read the
+ * SAME string — a copy contract duplicated by hand is a copy contract that
+ * drifts.
+ */
+export const SMS_MARKET_UNAVAILABLE_MESSAGE =
+  "Text not sent — SMS is switched off for this region. Let your guest know in person.";
+
+/** The machine-readable discriminator the edge fn returns with its 503. */
+export const SMS_MARKET_UNAVAILABLE_CODE = "sms_market_unavailable";
+
+/**
+ * #1541 — a typed error so the surface can distinguish a dark market from a
+ * genuine send failure WITHOUT string-matching a message.
+ */
+export class SmsMarketUnavailableError extends Error {
+  readonly code = SMS_MARKET_UNAVAILABLE_CODE;
+  constructor() {
+    super(SMS_MARKET_UNAVAILABLE_MESSAGE);
+    this.name = "SmsMarketUnavailableError";
+  }
+}
+
+/**
+ * #1541 — the ONE place that decides whether an error is a dark-market skip.
+ *
+ * The rendering surface must not re-derive this: a second copy of the rule is a
+ * second thing that can drift, and the whole failure class this issue closes is
+ * a control that is consumed in one place and produced in another. `instanceof`
+ * is the primary test; the `code` discriminator is the fallback so a duplicated
+ * module instance (bundler split, hot reload) cannot silently downgrade the
+ * message back to the generic one.
+ */
+export function isSmsMarketUnavailableError(error: unknown): boolean {
+  if (error instanceof SmsMarketUnavailableError) return true;
+  return (
+    typeof error === "object" && error !== null &&
+    (error as { code?: unknown }).code === SMS_MARKET_UNAVAILABLE_CODE
+  );
+}
+
+/**
+ * `supabase.functions.invoke` collapses every non-2xx into a FunctionsHttpError
+ * and hangs the raw Response off `.context`. Reading the body is the ONLY way to
+ * tell a 503 dark-market skip from a 502 provider failure — the error object
+ * itself carries neither the status nor the payload.
+ */
+async function readInvokeErrorCode(error: unknown): Promise<string | null> {
+  const context = (error as { context?: unknown } | null)?.context;
+  if (context === null || context === undefined) return null;
+  const res = context as { status?: number; json?: () => Promise<unknown> };
+  if (typeof res.json !== "function") return null;
+  try {
+    const body = (await res.json()) as { error?: unknown } | null;
+    const code = body?.error;
+    return typeof code === "string" ? code : null;
+  } catch {
+    // A non-JSON error body tells us nothing; fall through to the generic path
+    // rather than guessing. Never treat "unparseable" as "dark market".
+    return null;
+  }
+}
+
+/**
  * Notify a waitlist guest their table is ready — invokes the send-venue-sms edge
- * fn (Twilio "table's ready" via the approved toll-free + opt-out gate + the
- * mark-notified RPC). The fn handles E.164 validation + consent server-side.
+ * fn (#1541: the text now leaves through smsAdapter, so it inherits the market
+ * kill switches, country routing and the delivery ledger; the fn still owns the
+ * opt-out gate and the mark-notified RPC). E.164 validation + consent stay
+ * server-side.
+ *
+ * #1541 — a 503 `sms_market_unavailable` is surfaced as a DISTINCT error, not
+ * the generic "check the phone number" failure. The waitlist row is deliberately
+ * left un-notified by the edge fn so the operator can retry once the market goes
+ * live.
  */
 export function useNotifyWaitlist(
   brandId: string | null,
@@ -215,7 +293,13 @@ export function useNotifyWaitlist(
       const { data, error } = await supabase.functions.invoke("send-venue-sms", {
         body: { waitlistId },
       });
-      if (error !== null) throw error as unknown as Error;
+      if (error !== null) {
+        const code = await readInvokeErrorCode(error);
+        if (code === SMS_MARKET_UNAVAILABLE_CODE) {
+          throw new SmsMarketUnavailableError();
+        }
+        throw error as unknown as Error;
+      }
       return { ok: (data as { ok?: boolean } | null)?.ok ?? false };
     },
     onSuccess: () => {

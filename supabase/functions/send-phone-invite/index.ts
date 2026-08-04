@@ -4,6 +4,15 @@
 // (system/relational). Rename deferred to a separate ORCH.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// #1541 — THE SOLE SANCTIONED SMS EGRESS. This function used to POST to Twilio
+// itself, and it is one of the two paths that text people who are NOT YET
+// MINGLA USERS. It did so from a RAW `From` number when
+// TWILIO_MESSAGING_SERVICE_SID was absent (violating
+// I-PROPOSED-1161-SMS-FROM-APPROVED-SENDER-ONLY), with NO "Reply STOP" line and
+// NO StatusCallback — so an inbound STOP was never even recorded. That is a
+// CTIA opt-out exposure, not merely a routing one. The adapter fixes all three:
+// approved sender only, STOP footer appended, StatusCallback wired.
+import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,7 +23,10 @@ const corsHeaders = {
 const E164_REGEX = /^\+[1-9]\d{1,14}$/;
 const MAX_INVITES_PER_DAY = 10;
 
-serve(async (req: Request) => {
+// #1541 §4.7 — EXPORTED so the runtime companion test can drive a real Request
+// through the real handler and assert on CAPTURED provider HTTP rather than on
+// source text. `serve(handler)` below is the same call this module always made.
+export const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -234,62 +246,57 @@ serve(async (req: Request) => {
       inviterProfile?.username ||
       "A friend";
 
-    // Send SMS via Twilio Programmable Messaging
-    const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID")!;
-    const authToken = Deno.env.get("TWILIO_AUTH_TOKEN")!;
-
+    // #1541 — the inline Twilio block that lived here is GONE, including the
+    // TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN reads, the hand-built bodyParams,
+    // and the raw-`From` fallback env var (TWILIO_FROM_*). NO RAW `From` SURVIVES
+    // ANYWHERE IN THIS FILE (F-3).
+    //
+    // §4.0 — the ONE call shape. The body is today's verbatim, WITHOUT a STOP
+    // footer: the adapter appends it. That appended footer is the intended,
+    // named fix for this path's missing opt-out affordance, not drift.
+    // countryCode is omitted (the destination handset is the routing authority,
+    // #1529); messagingServiceSid is omitted, which is precisely what retires
+    // the raw-`From` fallback — omission selects the approved transactional
+    // toll-free and there is no longer any code path to anything else.
     const smsBody = `${inviterName} invited you to Mingla! Plan experiences together. Download now: https://mingla.app/invite`;
 
-    const bodyParams: Record<string, string> = {
-      To: phone_e164,
-      Body: smsBody,
-    };
+    const result = await smsAdapter.send({
+      to: phone_e164,
+      brandName: "Mingla",
+      message: smsBody,
+    });
 
-    // Use MessagingServiceSid if available, otherwise use From number
-    const messagingServiceSid = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
-    const fromPhone = Deno.env.get("TWILIO_FROM_PHONE");
+    // These paths have never had a delivery record of any kind (F-4), so their
+    // real send history is unrecoverable. Routing through the adapter gives
+    // them the notification_deliveries ledger for the first time; this log is
+    // the cheapest honest signal available in the meantime.
+    console.info(
+      JSON.stringify({
+        event: "phone_invite_sms",
+        status: result.status,
+        error: result.error ?? null,
+      }),
+    );
 
-    if (messagingServiceSid) {
-      bodyParams.MessagingServiceSid = messagingServiceSid;
-    } else if (fromPhone) {
-      bodyParams.From = fromPhone;
-    } else {
-      console.error(
-        "No TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM_PHONE configured"
-      );
-      // Still return success — the invite is created in the DB even if SMS fails
-    }
-
-    if (accountSid && authToken && (messagingServiceSid || fromPhone)) {
-      try {
-        const twilioResponse = await fetch(
-          `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: "Basic " + btoa(`${accountSid}:${authToken}`),
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: new URLSearchParams(bodyParams),
-          }
-        );
-
-        const twilioData = await twilioResponse.json();
-
-        if (!twilioResponse.ok) {
-          console.error("Twilio SMS error:", twilioData);
-          // Don't fail — invite is still stored
-        } else {
-          console.log("SMS sent successfully, SID:", twilioData.sid);
-        }
-      } catch (smsError) {
-        console.error("SMS send error:", smsError);
-        // Don't fail — invite is still stored
-      }
-    }
+    // THE INVITE ROW STAYS INDEPENDENT. `pending_invites` was written before
+    // the send and remains so: the invite exists regardless of the SMS outcome,
+    // and the endpoint keeps returning HTTP 200 { success: true } for every
+    // adapter outcome. No client change is required, and none is permitted here.
+    //
+    // #1541 (F-4) — FIX THE SUCCESS LIE. This used to return status: "sent"
+    // even when Twilio had errored, so the response asserted a delivery that
+    // never happened and nothing recorded the truth. Report the real outcome.
+    // The success/HTTP contract is unchanged, so no consumer breaks —
+    // app-mobile/src/services/phoneInviteService.ts reads `inviteId`, not
+    // `status`.
+    const reportedStatus = result.status === "sent"
+      ? "sent"
+      : result.status === "skipped"
+      ? "skipped"
+      : "send_failed";
 
     return new Response(
-      JSON.stringify({ success: true, inviteId, status: "sent" }),
+      JSON.stringify({ success: true, inviteId, status: reportedStatus }),
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -305,4 +312,6 @@ serve(async (req: Request) => {
       }
     );
   }
-});
+};
+
+serve(handler);
