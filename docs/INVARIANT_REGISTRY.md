@@ -7099,17 +7099,37 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   modification attestation as well, or the weaker token would buy the more destructive change.
   A path this range reports as new but that the BASE BRANCH already holds is a modification
   and is measured as one.
-- **Rule (b) — detection, counting and attribution answer about the SAME BYTES.** Records are
-  read NUL-delimited and carried as bytes, so no arm is ever handed a rendered spelling of a
-  path in place of the path. Counting is taken from the SAME diff that produced the entry,
-  keyed by those bytes and scoped by no pathspec at all. A path that cannot be expressed back
-  to git produces a refusal, never a substituted spelling and never an unattributed pass.
+- **Rule (b) — detection, counting and attribution answer about the SAME BYTES, taken from ONE
+  READING.** Records are read NUL-delimited and carried as bytes, so no arm is ever handed a
+  rendered spelling of a path in place of the path. Counting is taken from the SAME diff that
+  produced the entry, keyed by those bytes and scoped by no pathspec at all. A path that cannot
+  be expressed back to git produces a refusal, never a substituted spelling and never an
+  unattributed pass.
+  **Structurally, and not merely by convention:** identity — the entry list, the disposition and
+  the object ids — comes from exactly ONE reading of the change, in the format that puts every
+  field behind the record separator, so nothing has to be split apart to find a path. Two
+  parallel parses of two different formats are the same divergence this rule exists to forbid,
+  wearing a new spelling. Where a second read is unavoidable because git will not emit counts in
+  that format, it contributes NUMBERS ONLY: it is walked in lockstep with the single reading,
+  its record shape is decided by POSITION rather than by whether a column came out empty (a path
+  may be empty of nothing — it may begin with, contain, and consist of separator bytes), and its
+  path columns are used solely to CHECK against the single reading, never as a key. Any
+  disagreement — shape, path, length — is a parse fault: the index refuses to exist and every
+  entry it was asked about fails closed.
+  **And redundantly, at runtime:** every entry the reading produced MUST resolve to a count in
+  that same reading's index. A missing key is never a property of the file; it is proof the two
+  readings came apart, and it fails closed in EVERY arm — including the arms where an absent
+  record is otherwise a legitimate answer meaning "no difference", which is precisely where a
+  desync would otherwise read as "nothing was removed". This assertion is deliberately redundant
+  with the structural rule above. Redundancy is the point: every false green this gate has
+  shipped lived in the gap between two individually correct, individually tested changes, so the
+  class is closed by making the disagreement both unrepresentable AND unmissable.
 - **Rule (c) — nothing this gate PRINTS is a working attestation.** On EITHER stream, including
   author-controlled path text echoed into a message, and including the self-test stream whose
   inputs are token literals by construction. Redaction rewrites to the placeholder forms the
   grammar cases already pin as inert. Each entry occupies exactly one line of the report.
 - **Enforcement:** `.github/scripts/test-append-only-check.js --self-test`, wired into
-  `.github/workflows/tests-append-only.yml`. **79 cases.** Supersedes the case counts stated in
+  `.github/workflows/tests-append-only.yml`. **81 cases.** Supersedes the case counts stated in
   `I-1505-APPEND-ONLY-FAILS-CLOSED` (53) and `I-1510-DELETION-COUNT-IS-MEASURED` (67).
   Append-only. Fails-on-revert is proven PER FIX, not in aggregate: an aggregate number hides a
   mis-pinned case.

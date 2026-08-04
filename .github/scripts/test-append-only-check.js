@@ -251,73 +251,146 @@ function resolveBaseRef() {
   );
 }
 
-// #1534 (R-2) — detection reads NUL-DELIMITED records. Without `-z` git C-QUOTES any
-// path carrying a character it will not print raw, and the quoted spelling is a
-// different string from the path: the test-file patterns can miss it entirely, and when
-// they do not miss it the quoted spelling names no file, so every later question about
-// that path is asked about nothing. `-z` removes the transformation rather than trying
-// to invert it, and the record separator stops being a character a path may contain.
-function listChangedTestFiles(baseRef) {
-  const fields = nulFields(
-    runGitBuf(["diff", "--name-status", "--find-renames", "-z", `${baseRef}...HEAD`, "--"]),
+// #1534 REWORK (R-2, structurally) — THE SINGLE READING.
+//
+// The first pass closed "detection, counting and attribution disagree about which bytes"
+// by giving each of them its own NUL-delimited parse. That is the SAME divergence with a
+// new spelling: two parallel parses of two DIFFERENT formats can still disagree, and one
+// of those formats packs its path column together with its count columns behind tab
+// separators — a shape a path is free to imitate, because a path may contain a tab and
+// may begin with one. Deciding a record's SHAPE by asking whether a cell between the tabs
+// came out empty is therefore not a test of the record at all; it is a test of the path's
+// first byte, and a path that starts with a separator makes an ordinary record look like a
+// paired one. The parser then consumes the two records that follow as if they were that
+// record's path fields, and from there the two readings are describing different files.
+// Downstream that is silent: an arm that fails closed on a missing key refuses innocent
+// files, and an arm where absence legitimately means "no difference" passes a gutted one.
+//
+// So identity is now read exactly ONCE, in the only format that puts every field behind
+// the record separator: `--raw -z` yields the status, both object ids and both paths as
+// their own fields, so nothing in it has to be split apart to find a path. Detection, the
+// dispositions and the metadata comparison all read THIS list and nothing else.
+//
+// Counts cannot come from that format — git will not emit them there — so a second read
+// stays unavoidable. What is avoidable is letting it contribute IDENTITY. It contributes
+// NUMBERS ONLY: it is walked in lockstep with the single reading, its shape is decided by
+// POSITION rather than by cell emptiness, and its path columns are used solely to CHECK
+// against the single reading, never as a key. Any disagreement of any kind — a shape that
+// does not match, a path that does not match, a read that is shorter or longer — marks the
+// whole index desynced, and a desynced index refuses every entry. The two readings can no
+// longer diverge silently, because agreeing is a precondition for the index existing.
+function readRecords(range) {
+  const f = nulFields(
+    runGitBuf(["diff", "--raw", "--no-abbrev", "--find-renames", "-z", ...range, "--"]),
   );
-  const entries = [];
-  for (let i = 0; i < fields.length; ) {
-    const status = fields[i++];
-    // R<score> and C<score> carry TWO paths; every other status carries one.
+  const records = [];
+  for (let i = 0; i < f.length; ) {
+    const meta = f[i++];
+    if (!meta.startsWith(":")) return { records, truncated: true };
+    // ":<srcmode> <dstmode> <srcoid> <dstoid> <status>" — fixed-width fields separated by
+    // spaces, and NOT a place a path can appear, which is the whole reason to read here.
+    const cols = meta.slice(1).trim().split(/\s+/);
+    const status = cols[4] || "";
     const twoPaths = status.startsWith("R") || status.startsWith("C");
-    const first = fields[i++];
-    const second = twoPaths ? fields[i++] : undefined;
-    if (first === undefined || (twoPaths && second === undefined)) break; // truncated record
-    if (twoPaths) {
-      if (isTestPath(first) || isTestPath(second)) {
-        entries.push({ status: status.startsWith("R") ? "R" : status, oldPath: first, path: second });
+    const first = f[i++];
+    const second = twoPaths ? f[i++] : undefined;
+    if (first === undefined || (twoPaths && second === undefined)) {
+      return { records, truncated: true };
+    }
+    records.push({
+      status,
+      srcOid: cols[2],
+      dstOid: cols[3],
+      oldPath: twoPaths ? first : undefined,
+      path: twoPaths ? second : first,
+    });
+  }
+  return { records, truncated: false };
+}
+
+// Returns an array of counts positionally matching `records`, or a STRING naming the
+// disagreement. A rename or copy record ends AT its second tab and its two paths follow
+// as their own fields; every other record continues past that tab, and everything after
+// it is the path — tabs, leading separators and all. A path is never empty, so "the
+// second tab is the last byte of the field" is an exact test of the record's shape and
+// not an inference about its content.
+function attachCounts(records, range) {
+  const f = nulFields(
+    runGitBuf(["diff", "--numstat", "--find-renames", "-z", ...range, "--"]),
+  );
+  const counts = [];
+  let i = 0;
+  for (const rec of records) {
+    if (i >= f.length) return "the counting read ran out of records before the listing read did";
+    const field = f[i++];
+    const firstTab = field.indexOf("\t");
+    const secondTab = firstTab < 0 ? -1 : field.indexOf("\t", firstTab + 1);
+    if (secondTab < 0) return "a counting record did not carry both count columns";
+    const pairShaped = secondTab === field.length - 1;
+    const twoPaths = rec.oldPath !== undefined;
+    if (pairShaped !== twoPaths) return "the two readings disagree about which changes moved a file";
+    let oldPath;
+    let path;
+    if (pairShaped) {
+      oldPath = f[i++];
+      path = f[i++];
+      if (path === undefined) return "a counting record was truncated";
+    } else {
+      path = field.slice(secondTab + 1);
+    }
+    // Compared, never adopted. This is the reconciliation, and it is what fails closed.
+    if (path !== rec.path || (twoPaths && oldPath !== rec.oldPath)) {
+      return "the two readings disagree about which file a record describes";
+    }
+    const deletedColumn = field.slice(firstTab + 1, secondTab);
+    counts.push(/^\d+$/.test(deletedColumn) ? Number(deletedColumn) : null);
+  }
+  if (i !== f.length) return "the counting read carried more records than the listing read";
+  return counts;
+}
+
+// #1534 (R-1) — ONE measurement source, built ONCE per range, from the single reading.
+// Nothing here is scoped by a pathspec, so a path can neither miss its own record nor be
+// answered with a sibling's. `desync` is non-null when the two readings did not
+// reconcile; the maps are then left EMPTY on purpose, so every entry fails the presence
+// invariant in the dispatch and the run refuses rather than guessing.
+function buildLossIndex(range) {
+  const { records, truncated } = readRecords(range);
+  const numstat = new Map();
+  const oids = new Map();
+  let desync = truncated ? "the listing read was truncated" : null;
+  const counts = desync ? null : attachCounts(records, range);
+  if (typeof counts === "string") desync = counts;
+  for (let k = 0; k < records.length; k++) {
+    const rec = records[k];
+    const oid = { srcOid: rec.srcOid, dstOid: rec.dstOid };
+    oids.set(rec.path, oid);
+    if (rec.oldPath !== undefined && !oids.has(rec.oldPath)) oids.set(rec.oldPath, oid);
+    if (desync) continue;
+    numstat.set(rec.path, counts[k]);
+    if (rec.oldPath !== undefined && !numstat.has(rec.oldPath)) numstat.set(rec.oldPath, counts[k]);
+  }
+  return { range, records, numstat, oids, desync };
+}
+
+// Detection is now a FILTER over the single reading rather than a second parse of a
+// second format. `isTestPath` is unchanged and still runs against the real bytes.
+function selectTestEntries(records) {
+  const entries = [];
+  for (const rec of records) {
+    if (rec.oldPath !== undefined) {
+      if (isTestPath(rec.oldPath) || isTestPath(rec.path)) {
+        entries.push({
+          status: rec.status.startsWith("R") ? "R" : rec.status,
+          oldPath: rec.oldPath,
+          path: rec.path,
+        });
       }
-    } else if (isTestPath(first)) {
-      entries.push({ status, path: first });
+    } else if (isTestPath(rec.path)) {
+      entries.push({ status: rec.status, path: rec.path });
     }
   }
   return entries;
-}
-
-// #1534 (R-1) — ONE measurement source, built ONCE per range. Detection and counting
-// become two views of the SAME diff, taken with the SAME flags over the SAME range and
-// keyed by the SAME bytes. Nothing is scoped by a pathspec, so a path can neither miss
-// its own record nor be answered with a sibling's.
-function buildLossIndex(range) {
-  const numstat = new Map();
-  const nf = nulFields(runGitBuf(["diff", "--numstat", "--find-renames", "-z", ...range, "--"]));
-  for (let i = 0; i < nf.length; ) {
-    const cols = nf[i++].split("\t");
-    if (cols.length < 3) break;
-    const deleted = /^\d+$/.test(cols[1]) ? Number(cols[1]) : null;
-    if (cols[2] === "") {
-      // Rename/copy: the pair of paths follows as two further fields.
-      const oldPath = nf[i++];
-      const newPath = nf[i++];
-      if (newPath === undefined) break;
-      numstat.set(newPath, deleted);
-      if (!numstat.has(oldPath)) numstat.set(oldPath, deleted);
-    } else {
-      numstat.set(cols.slice(2).join("\t"), deleted);
-    }
-  }
-
-  const oids = new Map();
-  const rf = nulFields(runGitBuf(["diff", "--raw", "--no-abbrev", "--find-renames", "-z", ...range, "--"]));
-  for (let i = 0; i < rf.length; ) {
-    const meta = rf[i++];
-    if (!meta.startsWith(":")) break;
-    const f = meta.slice(1).trim().split(/\s+/);
-    const two = (f[4] || "").startsWith("R") || (f[4] || "").startsWith("C");
-    const first = rf[i++];
-    const second = two ? rf[i++] : undefined;
-    if (first === undefined || (two && second === undefined)) break;
-    const rec = { srcOid: f[2], dstOid: f[3] };
-    oids.set(two ? second : first, rec);
-    if (two && !oids.has(first)) oids.set(first, rec);
-  }
-  return { range, numstat, oids };
 }
 
 // #1527 — the set of paths the BASE BRANCH actually holds. A three-dot diff answers
@@ -481,8 +554,16 @@ function main() {
   console.log(`Append-only test check — diffing against ${baseRef}`);
 
   let entries;
+  let index;
+  let tipIndex;
+  let tipPaths;
   try {
-    entries = listChangedTestFiles(baseRef);
+    // ONE reading of this range. The entry list is a filter over it, so detection cannot
+    // be looking at a different set of records from the one the counts were attached to.
+    index = buildLossIndex([`${baseRef}...HEAD`]);
+    entries = selectTestEntries(index.records);
+    tipPaths = baseTipPaths(baseRef);
+    tipIndex = buildLossIndex([baseRef, "HEAD"]);
   } catch (err) {
     console.error(`❌ ${redactTokens(err.message)}`);
     process.exit(2);
@@ -493,27 +574,37 @@ function main() {
     process.exit(0);
   }
 
-  let index;
-  let tipIndex;
-  let tipPaths;
-  try {
-    index = buildLossIndex([`${baseRef}...HEAD`]);
-    tipPaths = baseTipPaths(baseRef);
-    tipIndex = buildLossIndex([baseRef, "HEAD"]);
-  } catch (err) {
-    console.error(`❌ ${redactTokens(err.message)}`);
-    process.exit(2);
-  }
-
   let failures = 0;
   let passes = 0;
 
   const UNMEASURED_TAIL =
     "so the number of deleted lines could not be measured. A count that was never taken is not a count of zero, so this is refused and no override token bypasses it. Restore the file to ordinary reviewable text content, or remove the attribute or diff-driver configuration that is suppressing its diff, so the gate can count the change.";
 
+  const DESYNC_TAIL =
+    "so the two readings of this change do not agree about it and no count for it can be trusted. A count that was never taken is not a count of zero, so this is refused and no override token bypasses it. Re-run the check; if it persists, this is a fault in how the gate reads git rather than something to work around in the pull request.";
+
   for (const entry of entries) {
     const shownPath = displayPath(entry.path);
     const shownOld = entry.oldPath === undefined ? undefined : displayPath(entry.oldPath);
+
+    // #1534 REWORK, part 2 — THE RECONCILIATION INVARIANT, checked for EVERY entry before
+    // any arm gets to reason about it. The entry exists because the single reading listed
+    // it; the counts were attached to that same reading; so a missing key is not a
+    // property of this file, it is proof that the two readings came apart. That is a
+    // parse fault, and it must fail closed in EVERY arm — including the arms where an
+    // absent record is otherwise a legitimate answer meaning "no difference", which is
+    // exactly where a desync would otherwise read as "nothing was removed".
+    //
+    // This is deliberately redundant with the reconciliation inside buildLossIndex. The
+    // structural fix makes the desync unrepresentable; this makes it UNMISSABLE if some
+    // future reading reintroduces one. Redundancy is the point: every false green this
+    // file has shipped lived in the gap between two individually correct changes.
+    if (!index.numstat.has(entry.path) &&
+        !(entry.oldPath !== undefined && index.numstat.has(entry.oldPath))) {
+      console.log(`❌ UNDIFFABLE ${shownPath} — git listed this test file as changed but the counting read does not account for it, ${DESYNC_TAIL}`);
+      failures += 1;
+      continue;
+    }
     // Any measurement or attribution failure is a PER-ENTRY refusal, never a whole-run
     // abort: an operator needs the rest of the report in the same CI run.
     const guard = (fn, fallback) => {
@@ -1026,7 +1117,7 @@ function scenarioT9() {
   }
 }
 
-// T10 (#1505) — the `T` arm is DIRECTION-AGNOSTIC. `--name-status` prints the
+// T10 (#1505) — the `T` arm is DIRECTION-AGNOSTIC. git's record reading prints the
 // letter only; it never discloses which way the type flipped, and distinguishing
 // symlink→file from file→symlink would mean re-reading modes from `--raw` — new
 // parsing surface on a security gate, for a case with zero occurrences in this
@@ -1065,7 +1156,7 @@ function scenarioT10() {
 // silently disarm the sole guard for test-file integrity. A guard whose unknown-input
 // behaviour is "allow" is not a guard. Statuses that cannot be produced with today's
 // flags are simulated the only honest way — a `git` shim on the child's PATH that
-// answers `--name-status` with three unmodelled statuses and `exec`s the real git for
+// answers the record and counting reads with three unmodelled statuses and `exec`s the real git for
 // everything else (so base-ref resolution still works). All three must be refused.
 // Fails-on-revert: the old terminal branch prints "ℹ️ … treating as pass" ×3, exit 0.
 function scenarioT11() {
@@ -1090,15 +1181,27 @@ function scenarioT11() {
     const realGit = execSync("command -v git", { encoding: "utf8" }).trim();
     const shim = [
       "#!/bin/sh",
-      "ns=0; z=0",
+      // The gate now takes identity from the RAW reading and counts from the counting
+      // read, and reconciles the two. A stand-in that answers only one of them is
+      // simulating a git whose own readings disagree — which the gate is now required to
+      // refuse — so it must answer BOTH, consistently, to still exercise its arm.
+      "raw=0; stats=0; z=0",
       'for arg in "$@"; do',
-      '  case "$arg" in --name-status) ns=1 ;; -z) z=1 ;; esac',
+      '  case "$arg" in --raw) raw=1 ;; --numstat) stats=1 ;; -z) z=1 ;; esac',
       "done",
-      'if [ "$ns" = 1 ]; then',
+      'if [ "$raw" = 1 ]; then',
       '  if [ "$z" = 1 ]; then',
-      "    printf 'X\\000a.test.ts\\000M100\\000a.test.ts\\000C100\\000src.test.ts\\000dst.test.ts\\000'",
+      "    printf ':100644 100644 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222 X\\000a.test.ts\\000:100644 100644 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222 M100\\000a.test.ts\\000:100644 100644 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222 C100\\000src.test.ts\\000dst.test.ts\\000'",
       "  else",
-      "    printf 'X\\ta.test.ts\\nM100\\ta.test.ts\\nC100\\tsrc.test.ts\\tdst.test.ts\\n'",
+      "    printf ':100644 100644 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222 X\\ta.test.ts\\n'",
+      "  fi",
+      "  exit 0",
+      "fi",
+      'if [ "$stats" = 1 ]; then',
+      '  if [ "$z" = 1 ]; then',
+      "    printf '1\\t0\\ta.test.ts\\0001\\t0\\ta.test.ts\\0001\\t0\\t\\000src.test.ts\\000dst.test.ts\\000'",
+      "  else",
+      "    printf '1\\t0\\ta.test.ts\\n'",
       "  fi",
       "  exit 0",
       "fi",
@@ -1268,15 +1371,25 @@ function scenarioT15() {
     // Distinct paths per status so each assertion is unambiguous.
     const shim = [
       "#!/bin/sh",
-      "ns=0; z=0",
+      // As T11: the stand-in must answer BOTH readings consistently, or it is simulating
+      // a git the gate is now required to refuse rather than the boundary under test.
+      "raw=0; stats=0; z=0",
       'for arg in "$@"; do',
-      '  case "$arg" in --name-status) ns=1 ;; -z) z=1 ;; esac',
+      '  case "$arg" in --raw) raw=1 ;; --numstat) stats=1 ;; -z) z=1 ;; esac',
       "done",
-      'if [ "$ns" = 1 ]; then',
+      'if [ "$raw" = 1 ]; then',
       '  if [ "$z" = 1 ]; then',
-      "    printf 'U\\000u.test.ts\\000T100\\000t100.test.ts\\000t\\000lower.test.ts\\000\\000blank.test.ts\\000'",
+      "    printf ':100644 100644 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222 U\\000u.test.ts\\000:100644 100644 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222 T100\\000t100.test.ts\\000:100644 100644 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222 t\\000lower.test.ts\\000:100644 100644 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222 \\000blank.test.ts\\000'",
       "  else",
-      "    printf 'U\\tu.test.ts\\nT100\\tt100.test.ts\\nt\\tlower.test.ts\\n\\tblank.test.ts\\n'",
+      "    printf ':100644 100644 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222 U\\tu.test.ts\\n'",
+      "  fi",
+      "  exit 0",
+      "fi",
+      'if [ "$stats" = 1 ]; then',
+      '  if [ "$z" = 1 ]; then',
+      "    printf '1\\t0\\tu.test.ts\\0001\\t0\\tt100.test.ts\\0001\\t0\\tlower.test.ts\\0001\\t0\\tblank.test.ts\\000'",
+      "  else",
+      "    printf '1\\t0\\tu.test.ts\\n'",
       "  fi",
       "  exit 0",
       "fi",
@@ -2260,9 +2373,41 @@ function scenarioT44() {
     "supabase/functions/_shared/__tests__/orch_1200_email_pipeline_adversarial.test.ts",
     "supabase/functions/_shared/adversarial_recordApiCall.test.ts",
   ];
-  // Resolved from this script's own location, not the working directory, so the case is
-  // deterministic wherever the self-test is invoked from.
-  const root = nodePath.resolve(__dirname, "..", "..");
+  // Resolved WITHOUT assuming where this script sits. A revert harness runs the gate from
+  // a copy, and a copy-relative lookup turns every such run into a spurious red for this
+  // case — which corrupts precisely the per-fix revert evidence the case is meant to
+  // support. Look upward from the script AND from the working directory, then ask git
+  // from each; the first location that actually holds all three sources wins.
+  const holdsAll = (dir) => sources.every((rel) => fs.existsSync(nodePath.join(dir, rel)));
+  const walkUp = (start) => {
+    let dir = nodePath.resolve(start);
+    for (;;) {
+      if (holdsAll(dir)) return dir;
+      const up = nodePath.dirname(dir);
+      if (up === dir) return null;
+      dir = up;
+    }
+  };
+  const gitTop = (cwd) => {
+    try {
+      return runGitIn(cwd, ["rev-parse", "--show-toplevel"]).trim();
+    } catch {
+      return null;
+    }
+  };
+  const starts = [__dirname, process.cwd()];
+  let root = null;
+  for (const start of starts) {
+    root = walkUp(start);
+    if (root) break;
+  }
+  if (!root) {
+    for (const start of starts) {
+      const top = gitTop(start);
+      if (top && holdsAll(top)) { root = top; break; }
+    }
+  }
+  if (!root) root = nodePath.resolve(__dirname, "..", "..");
   const bytes = sources.map((rel) => {
     try {
       return fs.readFileSync(nodePath.join(root, rel));
@@ -2317,6 +2462,79 @@ function scenarioT44() {
     gutNoToken: build(gut, null, null),
     gutToken: build(gut, null, "[TEST-MOD-APPROVED #1534] #1534 [gate hardening]"),
   };
+}
+
+// A test path whose FIRST byte is one of the separators git's own record formats use to
+// divide a record's columns. Written with an escape in this source on purpose: the gate
+// script must itself stay ordinary reviewable text.
+const SEPARATOR_LEADING_PATH = "\tlead.test.ts";
+
+// T45 (#1534 rework) — THE TWO READINGS MUST BE ABOUT THE SAME RECORDS. The gate asks git
+// two questions about one change: what changed, and by how much. Only one of the two
+// answers separates every field with the record separator; the other packs its path in
+// behind the count columns, and a path may BEGIN with the separator those columns use. A
+// reader that decides a record's shape by whether a cell came out empty is then testing
+// the path's first byte instead of the record, mistakes an ordinary record for a paired
+// one, and swallows the records that follow. From that point the two readings are
+// describing different files: the arms that fail closed refuse files that are fine, and
+// the arm where an absent record honestly means "no difference" passes one that has been
+// gutted. This runs the destructive face — a victim the base branch holds, stripped to a
+// single assertion, beside such a path — and requires that the victim is still measured.
+// Fails-on-revert: the victim prints an added pass and the run exits clean.
+function scenarioT45() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("seed.md", "x\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "root");
+    g("branch", "-M", "main");
+    const parted = runGitIn(dir, ["rev-parse", "HEAD"]).trim();
+    write("victim.test.ts", FOUR_ASSERTIONS);
+    g("add", "-A");
+    g("commit", "-q", "-m", "the base branch gains the victim after the branches part");
+    g("checkout", "-q", "-b", "feature", parted);
+    write(SEPARATOR_LEADING_PATH, ONE_ASSERTION);
+    write("victim.test.ts", ONE_ASSERTION);
+    g("add", "-A");
+    g("commit", "-q", "-m", "introduce both — NO token");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T46 (#1534 rework, NEGATIVE CONTROL — the other face, and the ship half) — the same
+// disagreement seen from the side that costs trust rather than safety. When the two
+// readings come apart, the files that lose their record are not only the one being
+// attacked: every entry after the mistake loses its place too, and the arms that fail
+// closed refuse ORDINARY files, telling their author to repair content that is perfectly
+// fine. A guard that red-lights innocent work gets switched off, which is worse than the
+// hole. Three separator-bearing names sit beside three entirely ordinary ones and every
+// single file only GROWS, so the only correct report is six passes and no refusal at all.
+// Fails-on-revert: bystanders are refused as unmeasurable and the run exits red.
+function scenarioT46() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    const names = [
+      SEPARATOR_LEADING_PATH,
+      "mid\there.test.ts",
+      "nl\nhere.test.ts",
+      "aaa.test.ts",
+      "bbb.test.ts",
+      "zzz.test.ts",
+    ];
+    for (const rel of names) write(rel, ONE_ASSERTION);
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+    for (const rel of names) write(rel, FOUR_ASSERTIONS);
+    g("add", "-A");
+    g("commit", "-q", "-m", "every one of them only grows — NO token");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 function selfTest() {
@@ -2801,21 +3019,6 @@ function selfTest() {
     `check exited ${t32.status} (expected 1); metadata-only file green=${t32Quiet}; sibling refused with its own count=${t32Sibling}; tally 1/1=${t32Tally}`,
   );
 
-  // T33 (#1514) — the hygiene invariant over the SELF-TEST's own stream, asserted on the
-  // full transcript of everything printed above rather than on a chosen sample. T5/T13/
-  // T18/T26 hold this line for the gate's operator-facing output; nothing held it for the
-  // stream whose inputs ARE token literals, which is the one place the invariant was
-  // actually being broken. Runs last so it sees every line.
-  const t33Offenders = transcript.filter((l) => MOD_TOKEN.test(l) || RENAME_TOKEN.test(l));
-  const t33Populated = transcript.length > 40 && transcript.some((l) => l.includes("TEST-MOD-APPROVED"));
-  check(
-    t33Populated && t33Offenders.length === 0,
-    "T33 (#1514): nothing this SELF-TEST prints is a working override token — its inputs are token literals by construction, so an unredacted line in a CI log is an attestation nobody wrote. Asserted over the FULL transcript of every line printed above, and non-vacuous because that transcript demonstrably still shows the token grammar it is testing",
-    `lines inspected=${transcript.length}; placeholder forms still visible=${t33Populated}; live tokens printed=${t33Offenders.length}`,
-  );
-
-
-  // --- #1534 whole-file hardening (T34..T44) ---
   const t34 = scenarioT34();
   // Matched on the count per refused entry rather than on the printed spelling: a path
   // carrying a control character is QUOTED in the report so that one entry stays on one
@@ -2934,6 +3137,40 @@ function selfTest() {
     `real sources found=${t44.count} (expected 3); additions-only green=${t44Grow}; metadata-only green=${t44Meta}; untokened removal refused=${t44Gut}; tokened removal honoured=${t44Token}`,
   );
 
+  const t45 = scenarioT45();
+  const t45Victim = /❌[^\n]*ADDED[^\n]*victim\.test\.ts[^\n]*ALREADY EXISTS on the base branch/.test(t45.out);
+  const t45BothSeen = t45.out.split("\n").filter((l) => /^(✅|❌)/.test(l)).length === 2;
+  const t45Tally = /Append-only check: 1 passed, 1 failed\./.test(t45.out);
+  check(
+    t45.status === 1 && t45Victim && t45BothSeen && t45Tally,
+    "T45 (#1534 rework): the two readings the gate takes of one change must be about the same records — only one of them separates every field with the record separator, and a test path that BEGINS with the separator the other one packs its columns behind made an ordinary record read as a paired one, swallowing the records that followed. A file the base branch holds, stripped to a single assertion beside such a path, is still measured and still refused",
+    `check exited ${t45.status} (expected 1); victim measured and refused=${t45Victim}; both entries present in the report=${t45BothSeen}; tally 1/1=${t45Tally}`,
+  );
+
+  const t46 = scenarioT46();
+  const t46Unmeasurable = /❌[^\n]*UNDIFFABLE/.test(t46.out);
+  const t46Tally = /Append-only check: 6 passed, 0 failed\./.test(t46.out);
+  check(
+    t46.status === 0 && !t46Unmeasurable && t46Tally,
+    "T46 (#1534 rework, negative control): the same disagreement seen from the side that costs trust instead of safety — when the two readings come apart, every entry after the mistake loses its place, and ORDINARY files get refused as unmeasurable with a remediation for content that is perfectly fine. Three separator-bearing names beside three ordinary ones, every file only growing, must be six passes and no refusal",
+    `check exited ${t46.status} (expected 0); any innocent file refused as unmeasurable=${t46Unmeasurable}; tally 6/0=${t46Tally}`,
+  );
+
+  // T33 (#1514) — the hygiene invariant over the SELF-TEST's own stream, asserted on the
+  // full transcript of everything printed above rather than on a chosen sample. T5/T13/
+  // T18/T26 hold this line for the gate's operator-facing output; nothing held it for the
+  // stream whose inputs ARE token literals, which is the one place the invariant was
+  // actually being broken. Runs last so it sees every line.
+  const t33Offenders = transcript.filter((l) => MOD_TOKEN.test(l) || RENAME_TOKEN.test(l));
+  const t33Populated = transcript.length > 40 && transcript.some((l) => l.includes("TEST-MOD-APPROVED"));
+  check(
+    t33Populated && t33Offenders.length === 0,
+    "T33 (#1514): nothing this SELF-TEST prints is a working override token — its inputs are token literals by construction, so an unredacted line in a CI log is an attestation nobody wrote. Asserted over the FULL transcript of every line printed above, and non-vacuous because that transcript demonstrably still shows the token grammar it is testing",
+    `lines inspected=${transcript.length}; placeholder forms still visible=${t33Populated}; live tokens printed=${t33Offenders.length}`,
+  );
+
+
+  // --- #1534 whole-file hardening (T34..T44) ---
   console.log("");
   console.log(`Self-test: ${total - failures} passed, ${failures} failed.`);
   process.exit(failures > 0 ? 1 : 0);
