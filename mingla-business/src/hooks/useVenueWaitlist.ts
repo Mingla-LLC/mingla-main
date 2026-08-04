@@ -232,6 +232,24 @@ export class SmsMarketUnavailableError extends Error {
 }
 
 /**
+ * #1541 — the ONE place that decides whether an error is a dark-market skip.
+ *
+ * The rendering surface must not re-derive this: a second copy of the rule is a
+ * second thing that can drift, and the whole failure class this issue closes is
+ * a control that is consumed in one place and produced in another. `instanceof`
+ * is the primary test; the `code` discriminator is the fallback so a duplicated
+ * module instance (bundler split, hot reload) cannot silently downgrade the
+ * message back to the generic one.
+ */
+export function isSmsMarketUnavailableError(error: unknown): boolean {
+  if (error instanceof SmsMarketUnavailableError) return true;
+  return (
+    typeof error === "object" && error !== null &&
+    (error as { code?: unknown }).code === SMS_MARKET_UNAVAILABLE_CODE
+  );
+}
+
+/**
  * `supabase.functions.invoke` collapses every non-2xx into a FunctionsHttpError
  * and hangs the raw Response off `.context`. Reading the body is the ONLY way to
  * tell a 503 dark-market skip from a 502 provider failure — the error object
