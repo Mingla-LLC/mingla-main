@@ -384,7 +384,12 @@ const mountRoute = (data: CaseData): Mounted => {
   return {
     root: mounted.root,
     json: JSON.stringify(mounted.toJSON()),
-    unmount: () => mounted.unmount(),
+    // Wrapped in act(): unmounting flushes the reducer's cleanup, and an
+    // unwrapped update logs a React warning into every run's output.
+    unmount: () =>
+      TestRenderer.act(() => {
+        mounted.unmount();
+      }),
   };
 };
 
