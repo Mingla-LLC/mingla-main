@@ -1,0 +1,54 @@
+# Issue #1532 [stay-manager-ux] — TESTER adversarial gate.
+#
+# Separate from `issue-1532-stay-manager-ux-tests.yml` (the implementor's happy
+# paths) because it asserts a DIFFERENT property and must be able to fail while
+# that one is green — which is exactly what happened on `67026d67d`.
+#
+# WHAT IT GUARDS. `stayManagerUx.issue1532.render.test.tsx` D3-R3 proves the
+# discard dialog's TEXT renders. This suite proves the dialog can actually be
+# PRESENTED on iOS: within one modal window stack, every visible RN `Modal`
+# beyond the outermost must be CONTAINED by it, because a UIKit view controller
+# presents exactly one modal at a time. React Native's jest preset renders
+# `Modal` inline, so sibling and nested modals are textually indistinguishable —
+# which is why a green D3-R3 coexisted with a completely dead Cancel button on a
+# physical iPhone 17 Pro Max.
+#
+# NOT a required check — it reports.
+
+name: Issue #1532 tester adversarial
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: issue-1532-tester-adversarial-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  issue-1532-tester-adversarial:
+    name: Stay manager UX — tester adversarial (modal presentability)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+
+      - name: Install Business dependencies
+        run: npm ci
+
+      # A-1 — the discard guard must be presentable, not merely present.
+      # A-2 — StayChipRow's cross-axis rule survives a hostile ARRAY override.
+      # Both carry positive controls and vacuity guards.
+      - name: Stay editor guard reachability (tester adversarial)
+        run: npx jest --config jest.issue1532.tester.cjs --runInBand
