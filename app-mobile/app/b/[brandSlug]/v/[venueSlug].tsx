@@ -117,6 +117,9 @@ const toVenueViewModel = (
   coverMediaType: venue.coverMediaType,
   theme: venue.theme,
   hours: venue.hours,
+  // issue #1562 — the venue's OWN clock, so "open now" is resolved where the
+  // venue is rather than where the visitor happens to be standing.
+  timezone: venue.timezone,
   galleryPhotoUrls: venue.galleryPhotoUrls,
   pitch: venue.pitch,
 });
@@ -152,6 +155,13 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
   const stayQuery = usePublicStayDetail(venue?.id ?? null, isStayVenue);
 
   const [reserved, setReserved] = useState(false);
+  // issue #1562 mitigation 2 — the guest's live quoted total, reported up from
+  // the Reservations tab's booking body. It replaces the "from" rate in the
+  // answer bar's SAME price slot, at the same size, the moment dates are
+  // chosen; `null` (no quote, expired, consumed) restores the from-rate.
+  const [stayQuote, setStayQuote] = useState<
+    { totalMinor: string; currencyCode: string } | null
+  >(null);
   const stayViewFired = useRef(false);
   const attributionFired = useRef(false);
 
@@ -291,6 +301,7 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
             palette={context.palette}
             surface={context.surface}
             theme={context.theme}
+            onQuoteChange={setStayQuote}
           />
         );
       }
@@ -420,6 +431,7 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
                 : "ready"
       }
       stayDetail={stayQuery.data ?? null}
+      stayQuote={stayQuote}
       safeAreaInsets={insets}
       loadThemeFont={useConsumerThemeFont}
       bookingBody={renderBookingBody}

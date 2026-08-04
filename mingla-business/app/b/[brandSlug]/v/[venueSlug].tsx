@@ -123,6 +123,9 @@ const toVenueViewModel = (venue: PublicVenue): PublicVenueViewModel => ({
   coverMediaType: venue.coverMediaType,
   theme: venue.theme,
   hours: venue.hours,
+  // issue #1562 — the venue's OWN clock, so "open now" is resolved where the
+  // venue is rather than where the visitor happens to be standing.
+  timezone: venue.timezone,
   galleryPhotoUrls: venue.galleryPhotoUrls,
   pitch: venue.pitch,
 });
@@ -290,6 +293,14 @@ export default function PublicVenueRoute(): React.ReactElement {
     setShareModalVisible(true);
   }, []);
 
+  // issue #1562 mitigation 2 — the guest's live quoted total, reported up from
+  // the Reservations tab's booking body. It replaces the "from" rate in the
+  // answer bar's SAME price slot, at the same size, the moment dates are
+  // chosen; `null` (no quote, expired, consumed) restores the from-rate.
+  const [stayQuote, setStayQuote] = React.useState<
+    { totalMinor: string; currencyCode: string } | null
+  >(null);
+
   const renderBookingBody = useCallback(
     (context: PublicVenueBookingSlotContext): React.ReactNode =>
       context.kind === "stay" ? (
@@ -301,6 +312,7 @@ export default function PublicVenueRoute(): React.ReactElement {
           palette={context.palette}
           surface={context.surface}
           theme={context.theme}
+          onQuoteChange={setStayQuote}
         />
       ) : (
         <GuestVenueReservation
@@ -391,6 +403,7 @@ export default function PublicVenueRoute(): React.ReactElement {
                 : "ready"
       }
       stayDetail={stayQuery.data ?? null}
+      stayQuote={stayQuote}
       safeAreaInsets={insets}
       loadThemeFont={useThemeFont}
       headSlot={

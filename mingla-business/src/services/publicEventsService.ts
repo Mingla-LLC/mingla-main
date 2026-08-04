@@ -269,6 +269,12 @@ export interface VenuePublicViewRow {
   pitch: string | null;
   created_at: string;
   updated_at: string;
+  // issue #1562: the venue's own IANA zone, appended to venue_public_view from
+  // venue_availability_config (LEFT JOIN, so NULL for a venue with no config
+  // row). OPTIONAL on the type as well as nullable in the value: a deployment
+  // whose view predates the migration returns no such key at all, and reading
+  // it as `undefined` must resolve to "no timezone", never crash.
+  iana_timezone?: string | null;
 }
 
 /** META-ORCH-1255(C) — the anon per-venue page read model (/b/{b}/v/{v}). */
@@ -294,6 +300,12 @@ export interface PublicVenue {
   coverHue: number;
   defaultCurrency: string | null;
   hours: BrandHourEntry[];
+  /**
+   * issue #1562 — the clock `hours` above is expressed in. Null when the venue
+   * has no availability-config row, or when the deployed view predates the
+   * #1562 migration. The public page treats null as "make no open-now claim".
+   */
+  timezone: string | null;
   galleryPhotoUrls: string[];
   // META-ORCH-1290(C) D-6b: the venue's public pitch (generative_summary).
   // Null/empty → the public page omits the About section (honest, no filler).
@@ -821,6 +833,10 @@ export const venuePublicViewRowToPublicVenue = (
   // Hours agg format is byte-identical to claimed_venues_public_view (M4
   // contract) so the proven parser is reused.
   hours: parseClaimedVenueHours(row.hours),
+  // issue #1562: the zone those hours belong to. `asStringOrNull` also folds an
+  // empty string to null, so a blank zone cannot reach `Intl` and raise a
+  // RangeError where an honest "unknown" belongs.
+  timezone: asStringOrNull(row.iana_timezone ?? null),
   galleryPhotoUrls: buildVenueGalleryPhotoUrls({
     coverMediaUrl: row.cover_media_url,
     profilePhotoUrl: null,

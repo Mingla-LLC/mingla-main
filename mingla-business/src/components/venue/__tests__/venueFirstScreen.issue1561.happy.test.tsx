@@ -43,17 +43,32 @@
  *     silently-absent element can never read as a pass;
  *   - `expect.assertions` pins the count in every scoring test.
  *
- * WHAT IS HONESTLY NOT 4/4 HERE, and why. A Stay scores 3/4: its price is a
- * nightly "from" rate computed from `stayDetail.offerings[].price`, and that is
- * **#1562's** work, not this step's. The answer bar carries a total
- * `Record<VenuePricingModel, …>` slot whose `nightlyFrom` arm returns null
- * today, so the bar shrinks from three cells to two exactly as the approved
- * design says absent data must behave. The test below ASSERTS the 3/4 rather
- * than hiding it, and asserts the reason — the price cell is absent, the other
- * three answers are present — so the day #1562 fills that arm in, this file
- * fails loudly and is updated to 4/4 with the change that earns it.
+ * WHAT WAS HONESTLY NOT 4/4 HERE, AND WHAT CHANGED IT.
  *
- * APPEND-ONLY — new file; modifies/deletes no existing test.
+ * This file shipped asserting a Stay at **3/4**, with the missing point named:
+ * its price is a nightly "from" rate over `stayDetail.offerings[].price`, and
+ * that was **#1562's** work. The answer bar's total `Record<VenuePricingModel,
+ * …>` slot returned null from its `nightlyFrom` arm, so the bar shrank from
+ * three cells to two exactly as the approved design says absent data must
+ * behave — and the expectations below asserted that ABSENCE rather than hiding
+ * it, precisely so that the day the arm was filled in, this file would fail
+ * loudly and be updated by the change that earned it.
+ *
+ * [TEST-MOD-APPROVED #1562] — that day is this one. The Stay fixture now
+ * carries the three live offerings the Miami property actually publishes, the
+ * `nightlyFrom` arm resolves, and the assertions below are updated from
+ * `not.toContain("From")` to a positive 4/4. The handoff worked as designed:
+ * the test failed, and it is the fix that updates it.
+ *
+ * WHY THE FIXTURE GAINS A `place` OFFERING IT DOES NOT NEED. `Pool Cabana` is
+ * priced `place_booking`, not `room_night`, and it is the CHEAPEST of the
+ * three. A naive `Math.min` over every offering would headline "$75 per night"
+ * for something that is neither a night nor a room. Its presence is what makes
+ * the 4/4 below evidence of a correct reduction rather than of any reduction.
+ *
+ * APPEND-ONLY except where the token above authorises: this file's Stay
+ * expectations are UPDATED (with deletions) by #1562; nothing is removed from
+ * the repo and no other file's tests are touched.
  *
  * Run:
  *   cd mingla-business && npx jest venueFirstScreen.issue1561 --runInBand
@@ -69,6 +84,11 @@ import {
   venueFiveSecondScore,
   venuePlaceChip,
 } from "@mingla/brand-rendering/venueFirstScreen";
+// [TEST-MOD-APPROVED #1562] — the resolver that fills the price slot.
+import {
+  resolveVenueStayRate,
+  type VenueStayRateOffering,
+} from "@mingla/brand-rendering/venueStayRate";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -317,7 +337,52 @@ const STAY_DETAIL = {
   checkOutTime: "11:00:00",
   bookingHorizonDays: 365,
   houseRules: null,
-  offerings: [],
+  // [TEST-MOD-APPROVED #1562] — was `offerings: []`, which is why the price
+  // cell was absent. These are the three LIVE offerings the production Miami
+  // Stay publishes, read off `stay_offerings` + `stay_price_versions` on
+  // 2026-08-04: two `room_night` rooms at $275.00 and $350.00 and one
+  // `place_booking` cabana at $75.00, every fee `separate`.
+  //
+  // The cabana is the load-bearing one: it is the cheapest row on the property
+  // and it is NOT a night. A from-rate that reported it would read "From $75 ·
+  // per night" for a poolside chair. The assertions below pin $275 — the
+  // cheapest ROOM — so this fixture can tell a correct reduction from a lucky
+  // one.
+  offerings: [
+    {
+      id: "aaaaaaaa-0000-4000-8000-000000000001",
+      kind: "place",
+      name: "Pool Cabana",
+      price: {
+        amountMinor: "7500",
+        currencyCode: "USD",
+        pricingUnit: "place_booking",
+      },
+      fees: [{ displayMode: "separate" }],
+    },
+    {
+      id: "aaaaaaaa-0000-4000-8000-000000000002",
+      kind: "room",
+      name: "Ocean Suite",
+      price: {
+        amountMinor: "35000",
+        currencyCode: "USD",
+        pricingUnit: "room_night",
+      },
+      fees: [{ displayMode: "separate" }],
+    },
+    {
+      id: "aaaaaaaa-0000-4000-8000-000000000003",
+      kind: "room",
+      name: "Garden Suite",
+      price: {
+        amountMinor: "27500",
+        currencyCode: "USD",
+        pricingUnit: "room_night",
+      },
+      fees: [{ displayMode: "separate" }],
+    },
+  ],
 };
 
 const RESERVABLE = {
@@ -479,6 +544,32 @@ const answerCellLabels = (mounted: Mounted): string[] => {
   return (bar.children ?? [])
     .filter((child): child is TreeNode => typeof child !== "string")
     .map((cell) => flatText((cell.children ?? [])[0] as TreeNode));
+};
+
+/**
+ * [TEST-MOD-APPROVED #1562] — the three lines of ONE cell, found by its label.
+ * THROWS when the label is not on the bar, so "the qualifier is present" can
+ * never pass because the whole cell was missing.
+ *
+ * This exists to make #1550's first from-rate mitigation checkable: the
+ * qualifier must live in the SAME BLOCK as the number, never as a footnote
+ * elsewhere. Reading both off one cell node is what proves they are not
+ * separable — a qualifier moved anywhere else on the page fails this lookup.
+ */
+const requireAnswerCellLines = (mounted: Mounted, label: string): string[] => {
+  const bar = findByTestId(mounted, "issue-1561-answer-bar");
+  if (bar === null) throw new Error("expected an answer bar and found none");
+  for (const child of bar.children ?? []) {
+    if (typeof child === "string") continue;
+    const lines = (child.children ?? [])
+      .filter((line): line is TreeNode => typeof line !== "string")
+      .map((line) => flatText(line));
+    if (lines[0] === label) return lines;
+  }
+  throw new Error(
+    `expected an answer cell labelled "${label}"; the bar carried ` +
+      `[${answerCellLabels(mounted).join(", ")}]`,
+  );
 };
 
 const hasReserveCta = (mounted: Mounted): boolean =>
@@ -691,9 +782,9 @@ describe("#1561 — the five-second test, measured on the rendered first screen"
   );
 
   test.each(WIDTHS)(
-    "STAY at $width: 3/4 today — the price cell is #1562's, and its absence is asserted",
+    "STAY at $width: 4/4 — #1562 landed the from-rate and the cell is asserted PRESENT",
     ({ width, height, isDesktop }) => {
-      expect.assertions(7);
+      expect.assertions(8);
       const mounted = mountCase(STAY, width, isDesktop);
       assertRealRender(mounted, `stay-${width}`);
 
@@ -708,10 +799,22 @@ describe("#1561 — the five-second test, measured on the rendered first screen"
       expect(place).toBe("Miami Beach, FL");
       // The time cell is check-in/check-out, never a trading-hours table.
       expect(labels).toContain("Check-in");
-      // THE HONEST GAP: no price cell until #1562 lands the from-rate. When it
-      // does, this expectation fails and is updated by the change that earns it.
+      // [TEST-MOD-APPROVED #1562] — the gap this file shipped asserting is
+      // CLOSED. It read `expect(labels).not.toContain("From")`; the arm behind
+      // it now resolves, so the same assertion is inverted by the change that
+      // earned it. A hotel is not a restaurant, so "Typically" must still be
+      // absent — pricing model, not a fallback.
+      expect(labels).toContain("From");
       expect(labels).not.toContain("Typically");
-      expect(labels).not.toContain("From");
+      // MITIGATION 1, read off the tree: the number and the qualifier that
+      // keeps it honest are three lines of ONE cell. `$275` is the cheapest
+      // ROOM — not the $75 cabana, which is priced per booking and is not a
+      // night — and it does not appear without "before taxes and fees".
+      expect(requireAnswerCellLines(mounted, "From")).toEqual([
+        "From",
+        "$275",
+        "per night · before taxes and fees",
+      ]);
 
       const bottom = answerBarBottom(mounted, width, isDesktop);
       expect(bottom).toBeLessThan(height);
@@ -745,6 +848,14 @@ describe("#1561 — the tree and the model agree, or it is a failure", () => {
         discoveryPrice: DISCOVERY_PRICE,
         stay: null,
         todayHours: HOURS.find((h) => h.weekday === (new Date().getDay() + 6) % 7) ?? null,
+        // [TEST-MOD-APPROVED #1562] — the three inputs #1562 added to
+        // `VenueAnswerBarInput`. Null/null here on purpose: this case is a
+        // RESTAURANT with no resolvable venue clock, which is the arm that
+        // falls back to stating the published row — the same behaviour this
+        // assertion has always pinned.
+        openState: null,
+        stayRate: null,
+        stayQuote: null,
         canBook: true,
       });
       const model = venueFiveSecondScore({
@@ -771,7 +882,13 @@ describe("#1561 — the tree and the model agree, or it is a failure", () => {
     },
   );
 
-  test("a STAY's model agrees that price is the ONE unanswered question", () => {
+  // [TEST-MOD-APPROVED #1562] — was "a STAY's model agrees that price is the
+  // ONE unanswered question", asserting `score === 3` and `whatDoesItCost ===
+  // false`. #1562 answered that question, so the same model now scores 4 and
+  // the assertion is inverted rather than deleted: the point of the test is
+  // unchanged (the model and the page agree about what is answered), only the
+  // answer moved.
+  test("a STAY's model now answers all four, price included", () => {
     expect.assertions(3);
     const profile = venueCategoryProfile("stay");
     const cells = buildVenueAnswerBar({
@@ -779,6 +896,11 @@ describe("#1561 — the tree and the model agree, or it is a failure", () => {
       discoveryPrice: null,
       stay: { checkInTime: "15:00:00", checkOutTime: "11:00:00" },
       todayHours: null,
+      openState: null,
+      stayRate: resolveVenueStayRate(
+        STAY_DETAIL.offerings as VenueStayRateOffering[],
+      ),
+      stayQuote: null,
       canBook: true,
     });
     const model = venueFiveSecondScore({
@@ -787,9 +909,8 @@ describe("#1561 — the tree and the model agree, or it is a failure", () => {
       cells,
       canBook: true,
     });
-    expect(model.score).toBe(3);
-    expect(model.whatDoesItCost).toBe(false);
-    // …and the other three ARE answered, so the 3 is not three failures.
+    expect(model.score).toBe(4);
+    expect(model.whatDoesItCost).toBe(true);
     expect([model.whatIsThisPlace, model.whereIsIt, model.canIBookIt]).toEqual([
       true,
       true,

@@ -49,6 +49,7 @@ export function ConsumerStayGuestExperience({
   palette,
   surface,
   theme,
+  onQuoteChange,
 }: {
   venueId: string;
   venueName: string;
@@ -56,6 +57,22 @@ export function ConsumerStayGuestExperience({
   palette: ThemePalette;
   surface: Surface;
   theme: ResolvedTheme;
+  /**
+   * issue #1562 mitigation 2 — report the guest's REAL quoted total upward so
+   * the first screen can replace the "from" rate with it IN THE SAME SLOT.
+   *
+   * WHY A CALLBACK AND NOT LIFTED STATE. The quote is produced HERE, by this
+   * component's own `stayGuestService.quote` call, and every other consumer of
+   * it (confirm, payment) is also here. Lifting the whole quote into the route
+   * would move several call sites to fix one read. Reporting it is one effect,
+   * and it keeps this component the single writer.
+   *
+   * ONLY AN `active` QUOTE IS REPORTED. A quote that has expired or been
+   * consumed is no longer the guest's total, and continuing to headline it
+   * would be exactly the stale-number problem the from-rate swap exists to
+   * prevent. Those states report `null`, and the from-rate honestly returns.
+   */
+  onQuoteChange?: (quote: { totalMinor: string; currencyCode: string } | null) => void;
 }): React.ReactElement {
   const router = useRouter();
   const detailQuery = usePublicStayDetail(venueId, true);
@@ -65,6 +82,18 @@ export function ConsumerStayGuestExperience({
   const [quote, setQuote] = useState<StayQuote | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // issue #1562 — publish the quoted total to the page's first screen. Runs on
+  // every quote transition INCLUDING back to null (a cleared or expired quote
+  // must restore the from-rate, not freeze the last total on screen).
+  React.useEffect(() => {
+    if (onQuoteChange === undefined) return;
+    onQuoteChange(
+      quote !== null && quote.status === "active"
+        ? { totalMinor: quote.totalMinor, currencyCode: quote.currencyCode }
+        : null,
+    );
+  }, [onQuoteChange, quote]);
 
   const prepareQuote = async (input: StayGuestCheckoutInput): Promise<void> => {
     const { data } = await supabase.auth.getSession();

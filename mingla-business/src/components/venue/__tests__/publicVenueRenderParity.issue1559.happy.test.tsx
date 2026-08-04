@@ -438,7 +438,25 @@ const CASES: ParityCase[] = [
       "HOURS",
       "Reserve a table",
       "Share",
-      "Open today",
+      // [TEST-MOD-APPROVED #1562] — this list HELD "Open today", and #1562
+      // deleted that string from the product.
+      //
+      // It was a literal open-now CLAIM derived from a WEEKDAY MATCH: it never
+      // compared the current clock to the venue's open or close time, and it
+      // read the VISITOR's device weekday, so #1550 Leg C photographed it
+      // asserting a Miami restaurant was open at 03:00. An anchor that pins a
+      // false claim in place is worse than no anchor.
+      //
+      // It is REMOVED rather than replaced because this fixture publishes no
+      // `timezone` (the field is new here), so the panel resolves `unknown` and
+      // deliberately states NOTHING — see `venueOpenStateLine`'s docblock for
+      // why a device-weekday degrade was rejected. The replacement is pinned
+      // far harder elsewhere: `venueOpenState.issue1562.happy.test.ts` fakes
+      // the clock and asserts every one of open / opens-later / closed /
+      // unknown, the boundary minute at both ends, an overnight span and a
+      // non-machine timezone, and `venueFirstScreen.issue1562.happy.test.tsx`
+      // reads the resulting strings off the REAL rendered tree at five widths.
+      // One substring match traded for that is a strengthening.
     ],
     data: {
       venue: baseVenue("restaurant"),
