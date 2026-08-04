@@ -2550,6 +2550,62 @@ function scenarioT46() {
   }
 }
 
+// T47 (#1534 rework) — THE RECONCILIATION INVARIANT IS THE SOLE GUARD ON ONE ARM, so it is
+// pinned there. Once the two readings are structurally prevented from diverging, the
+// invariant is unreachable in every other case — which is the design, but it also means no
+// case fails when it is deleted, and an assertion nobody notices the loss of is an assertion
+// that rots. The added arm measures against the BASE-BRANCH comparison and therefore never
+// consults this range's counts on its own account; the invariant is the only thing that
+// checks the entry resolved at all. That is precisely where the reported finding landed: an
+// arm where an absent record legitimately means "no difference", so a disagreement between
+// the readings reads as "nothing was removed". Here a stand-in accounts for one of two
+// changed test files and stays silent about the other, and BOTH must be refused — the run
+// cannot report on either when it cannot agree with itself about what it is reporting on.
+// Fails-on-revert: both files print an added pass and the run exits clean.
+function scenarioT47() {
+  const repo = makeTempRepo();
+  const shimDir = fs.mkdtempSync(
+    nodePath.join(os.tmpdir(), "append-only-selftest-gitshim5-"),
+  );
+  try {
+    const { dir, g, write } = repo;
+    write("seed.md", "x\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "root");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+    write("a.test.ts", ONE_ASSERTION);
+    write("b.test.ts", ONE_ASSERTION);
+    g("add", "-A");
+    g("commit", "-q", "-m", "two ordinary added test files, nothing removed anywhere");
+
+    const realGit = execSync("command -v git", { encoding: "utf8" }).trim();
+    const shim = [
+      "#!/bin/sh",
+      "stats=0; z=0",
+      'for arg in "$@"; do',
+      '  case "$arg" in --numstat) stats=1 ;; -z) z=1 ;; esac',
+      "done",
+      // Account for one of the two, and say nothing about the other.
+      'if [ "$stats" = 1 ] && [ "$z" = 1 ]; then',
+      "  printf '%b' '1\\t0\\ta.test.ts\\000'",
+      "  exit 0",
+      "fi",
+      `exec ${JSON.stringify(realGit)} "$@"`,
+      "",
+    ].join("\n");
+    const shimPath = nodePath.join(shimDir, "git");
+    fs.writeFileSync(shimPath, shim);
+    fs.chmodSync(shimPath, 0o755);
+    return runCheckIn(dir, {
+      PATH: `${shimDir}${nodePath.delimiter}${process.env.PATH || ""}`,
+    });
+  } finally {
+    fs.rmSync(repo.dir, { recursive: true, force: true });
+    fs.rmSync(shimDir, { recursive: true, force: true });
+  }
+}
+
 function selfTest() {
   let failures = 0;
   let total = 0;
@@ -3158,6 +3214,16 @@ function selfTest() {
     t45.status === 1 && t45Victim && t45BothSeen && t45Tally,
     "T45 (#1534 rework): the two readings the gate takes of one change must be about the same records — only one of them separates every field with the record separator, and a test path that BEGINS with the separator the other one packs its columns behind made an ordinary record read as a paired one, swallowing the records that followed. A file the base branch holds, stripped to a single assertion beside such a path, is still measured and still refused",
     `check exited ${t45.status} (expected 1); victim measured and refused=${t45Victim}; both entries present in the report=${t45BothSeen}; tally 1/1=${t45Tally}`,
+  );
+
+  const t47 = scenarioT47();
+  const t47A = /❌ UNDIFFABLE a\.test\.ts[^\n]*does not account for it/.test(t47.out);
+  const t47B = /❌ UNDIFFABLE b\.test\.ts[^\n]*does not account for it/.test(t47.out);
+  const t47Tally = /Append-only check: 0 passed, 2 failed\./.test(t47.out);
+  check(
+    t47.status === 1 && t47A && t47B && t47Tally,
+    "T47 (#1534 rework): the arm where an absent record legitimately means no difference is the one arm the reconciliation check is the SOLE guard for, and it is pinned there — a run whose two readings account for one changed test file and stay silent about the other cannot report on EITHER, because it cannot agree with itself about what it is reporting on. Once divergence is structurally prevented this assertion is unreachable everywhere else, which is the design and also the reason it needs a case of its own: an assertion nobody notices the loss of is one that rots",
+    `check exited ${t47.status} (expected 1); accounted-for file refused=${t47A}; unaccounted-for file refused=${t47B}; tally 0/2=${t47Tally}`,
   );
 
   const t46 = scenarioT46();

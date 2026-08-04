@@ -7129,7 +7129,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   inputs are token literals by construction. Redaction rewrites to the placeholder forms the
   grammar cases already pin as inert. Each entry occupies exactly one line of the report.
 - **Enforcement:** `.github/scripts/test-append-only-check.js --self-test`, wired into
-  `.github/workflows/tests-append-only.yml`. **81 cases.** Supersedes the case counts stated in
+  `.github/workflows/tests-append-only.yml`. **82 cases.** Supersedes the case counts stated in
   `I-1505-APPEND-ONLY-FAILS-CLOSED` (53) and `I-1510-DELETION-COUNT-IS-MEASURED` (67).
   Append-only. Fails-on-revert is proven PER FIX, not in aggregate: an aggregate number hides a
   mis-pinned case.
