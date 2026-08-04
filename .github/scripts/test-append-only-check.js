@@ -2698,6 +2698,60 @@ function scenarioT48() {
   }
 }
 
+// T50 (#1534 final, TESTER ADVERSARIAL — THE EMPTY REPORT) — T47 and T48 pin what happens
+// to an ENTRY when the readings disagree, one per reading. Neither can reach the case where
+// the disagreement leaves nothing to report at all: "nothing here changed" and "I could not
+// agree with myself about what changed" are opposite verdicts, and a reading that did not
+// reconcile has not earned the right to say the first one. Measured: with the guard removed
+// this prints the clean-run pass and exits zero, and no other case notices — so the branch
+// that separates those two verdicts is load-bearing and, until now, unpinned. An assertion
+// nobody notices the loss of is one that rots; this is the same argument the two cases above
+// are built on, applied to the one exit they do not cover.
+// Fails-on-revert: the run reports that no test file changed and exits clean.
+function scenarioT50() {
+  const repo = makeTempRepo();
+  const shimDir = fs.mkdtempSync(
+    nodePath.join(os.tmpdir(), "append-only-selftest-gitshim7-"),
+  );
+  try {
+    const { dir, g, write } = repo;
+    write("app.ts", "export const x = 1;\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "root");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+    // A change that touches NO test file at all, so the report would otherwise be empty.
+    write("app.ts", "export const x = 2;\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "ordinary work, no test file involved");
+
+    const realGit = whichGit();
+    const shim = [
+      "#!/bin/sh",
+      "stats=0; spanning=0",
+      'for arg in "$@"; do',
+      '  case "$arg" in --numstat) stats=1 ;; *...*) spanning=1 ;; esac',
+      "done",
+      'if [ "$stats" = 1 ] && [ "$spanning" = 1 ]; then',
+      `  ${JSON.stringify(realGit)} "$@"`,
+      "  printf '%b' '1\\t1\\tzz-phantom.test.ts\\000'",
+      "  exit 0",
+      "fi",
+      `exec ${JSON.stringify(realGit)} "$@"`,
+      "",
+    ].join("\n");
+    const shimPath = nodePath.join(shimDir, "git");
+    fs.writeFileSync(shimPath, shim);
+    fs.chmodSync(shimPath, 0o755);
+    return runCheckIn(dir, {
+      PATH: `${shimDir}${nodePath.delimiter}${process.env.PATH || ""}`,
+    });
+  } finally {
+    fs.rmSync(repo.dir, { recursive: true, force: true });
+    fs.rmSync(shimDir, { recursive: true, force: true });
+  }
+}
+
 function selfTest() {
   let failures = 0;
   let total = 0;
@@ -3357,6 +3411,47 @@ function selfTest() {
     t48.status === 1 && t48Refused && !t48Passed,
     "T48 (#1534 retest, tester adversarial): the SAME property T47 pins, asked of the OTHER reading. This gate takes two readings, one per range, and the arm whose absent record legitimately means no difference is answered from the second one — so that is the reading a disagreement must never be able to imitate. When the two readings of the base-branch comparison do not account for the same changes, the arm must refuse rather than conclude that a path being replaced by a shorter version lost nothing",
     `check exited ${t48.status} (expected 1); refused=${t48Refused}; reported as an unmeasured pass=${t48Passed} (expected false)`,
+  );
+
+  const t50 = scenarioT50();
+  const t50Refused = /❌ UNDIFFABLE \(whole run\)/.test(t50.out);
+  const t50NotClean = !/✅ No test files changed/.test(t50.out);
+  check(
+    t50.status === 1 && t50Refused && t50NotClean,
+    "T50 (#1534 final, tester adversarial): a reading that did not reconcile may not report that nothing happened. When the disagreement leaves no entry to report on, the two available verdicts are opposite — 'no test file changed' and 'I cannot agree with myself about what changed' — and only the second is safe to print. The per-entry cases cannot reach this exit because there is no entry; removing the branch turns the run clean and green and no other case notices",
+    `check exited ${t50.status} (expected 1); whole-run refusal printed=${t50Refused}; clean-run pass suppressed=${t50NotClean}`,
+  );
+
+  // T51 (#1534 final, TESTER ADVERSARIAL — THE SCOPE ITSELF). The door this pass installed
+  // works because the two functions that reach outside this process are captured in closures
+  // and nothing else in the file can reach them. That is currently a property of how the file
+  // happens to be written, and the whole thesis of this pass is that such a property must be
+  // asserted rather than remembered — every failure across four rounds was a convention that
+  // held until one more caller was added. A deliberate re-import still bypasses it and cannot
+  // be prevented in a single file; being NOTICED is a different guarantee from being
+  // prevented, and it is the one available here, at the cost of one assertion.
+  // The needles are assembled from fragments so this case cannot match its own source.
+  const t51Src = fs.readFileSync(__filename, "utf8").split("\n");
+  const t51Needles = ["child_" + "process", "exec" + "FileSync", "exec" + "Sync", "spawn" + "Sync"];
+  const t51SpanStart = t51Src.findIndex((l) => l.startsWith("const repository = (() => {"));
+  const t51SpanEnd = t51Src.findIndex((l, i) => i > t51SpanStart && l === "})();");
+  const t51SelfStart = t51Src.findIndex((l) => l.includes("} = (() => {") && l.includes("whichGit"));
+  const t51SelfEnd = t51Src.findIndex((l, i) => i > t51SelfStart && l === "})();");
+  const t51Located = t51SpanStart > 0 && t51SpanEnd > t51SpanStart && t51SelfStart > 0 && t51SelfEnd > t51SelfStart;
+  const t51Escapes = !t51Located ? ["could not locate both closures"] : t51Src
+    .map((l, i) => ({ l, i }))
+    .filter(({ l, i }) => {
+      if (/^\s*(\/\/|\*)/.test(l)) return false; // commentary, not reachable code
+      if (!t51Needles.some((nd) => l.includes(nd))) return false;
+      const inDoor = i > t51SpanStart && i < t51SpanEnd;
+      const inHarness = i > t51SelfStart && i < t51SelfEnd;
+      return !inDoor && !inHarness;
+    })
+    .map(({ l, i }) => `${i + 1}: ${l.trim().slice(0, 60)}`);
+  check(
+    t51Located && t51Escapes.length === 0,
+    "T51 (#1534 final, tester adversarial): reaching outside this process is confined to the two closures that own it, asserted over the file's own source rather than left as a property of how it currently happens to be written. A new arm cannot acquire a runner by accident because there is none in scope to acquire; a deliberate re-import is still possible and is out of reach of a single-file script, but it can no longer happen QUIETLY — which is the guarantee that is actually available here",
+    `both closures located=${t51Located}; references outside them=${t51Escapes.length}${t51Escapes.length ? `; offending: ${JSON.stringify(t51Escapes)}` : ""}`,
   );
 
   const t46 = scenarioT46();

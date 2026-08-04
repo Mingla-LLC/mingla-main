@@ -7195,6 +7195,24 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   guard in front of it and a default no case can turn red is one a future edit can quietly
   invert. This note records the response only; the RETEST status above stands until an
   independent pass re-verifies it.
+- **FINAL TEST (2026-08-04) — SATISFIED. Ready to flip ACTIVE at CLOSE.** Independent
+  adversarial verification returned PASS with zero critical and zero high findings. The
+  previously reported finding is closed at the layer, not the instance: the guarantee now
+  lives in the thing being called rather than in each caller, and it was attacked as a
+  guarantee rather than as an instance. A reading that did not reconcile yields no number
+  through any access route tried — direct, destructured, rebound, copied, or re-prototyped —
+  and four new arms written as a hurried author would write them each refuse under it. The
+  reconciliation property was verified in BOTH directions: a disagreement in a reading an arm
+  consults refuses that arm, and a disagreement in a reading it does not consult leaves its
+  verdict byte-identical, which is what keeps unrelated files in the same run from being
+  red-lighted. Replay of every test-touching range in this repository's history is identical
+  with zero false positives, and the three sources git will not render as text stay green on
+  additions and metadata while an unattested removal is still refused. **Case count 84 → 86**:
+  two assertions were appended at TEST, one pinning a load-bearing guard that no case reached,
+  and one asserting over the file's own source that reaching outside this process stays
+  confined to the two closures that own it. Each is red only for its own target. Two residuals
+  are recorded out of band, both requiring deliberate action rather than accident; neither is a
+  route an ordinary change can take.
 - **Established:** DRAFT at issue #1534 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
 ## DRAFT — issue #1481 (Explorer swipe lifecycle and deck performance)
 
