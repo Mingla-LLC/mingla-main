@@ -7084,9 +7084,9 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   green and restores an accurate count.
 - **Established:** DRAFT at issue #1510 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
 
-## DRAFT — issue #1534 (append-only gate hardened end to end)
+## ACTIVE — issue #1534 (append-only gate hardened end to end)
 
-### I-PROPOSED-1534-GATE-ANSWERS-ABOUT-THE-SAME-BYTES (DRAFT)
+### I-1534-GATE-ANSWERS-ABOUT-THE-SAME-BYTES (ACTIVE)
 - **Rule (a) — every disposition that can hide content loss MEASURES it, through one shared
   helper with one fail-closed terminal.** A count that was not taken is never reported as
   zero. Over the range an entry came from, an absent record CONTRADICTS the record that
