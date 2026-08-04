@@ -95,6 +95,18 @@ jest.mock("react-native-reanimated", () => {
       bezier: () => () => 0,
       linear: () => 0,
       out: (fn: unknown) => fn,
+      // #1532 — ADDITIVE: `Sheet` -> `SheetMobile` reads `Easing.in(Easing.cubic)`
+      // at module scope for its close timing, and this mock had no `in`, so the
+      // whole suite failed to LOAD once the Stay editor moved into the Sheet.
+      // Nothing existing is changed or removed.
+      in: (fn: unknown) => fn,
+      cubic: () => 0,
+    },
+    // #1532 — ADDITIVE: `SheetMobile` and `Modal` both cancel their animations
+    // on unmount, and this mock had no `cancelAnimation`, so a Stay suite that
+    // mounts the editor sheet threw during commit. Additive only.
+    cancelAnimation: () => undefined,
+    __easingClose: {
       inOut: (fn: unknown) => fn,
       ease: () => 0,
     },
@@ -191,6 +203,7 @@ import {
   stayFieldNumMaxWidth,
   stayProseMaxWidth,
 } from "../../../constants/designSystem";
+import { STAY_SPACING } from "../stayLayoutContracts";
 import { StayInventoryManager } from "../StayInventoryManager";
 
 type Flat = Record<string, unknown>;
@@ -266,7 +279,13 @@ describe("#1501 — field measures are axis-scoped (I-AXIS-SCOPED-FLEX)", () => 
     for (const testID of stacked) {
       const flat = styleFor(tree, `${testID}-field`);
       // The wrapper really is the field wrapper, not some unrelated View.
-      expect(flat.gap).toBe(spacing.xs);
+      // [TEST-MOD-APPROVED #1532] — the CONTRACT moved (4 -> 8), not the rule.
+      // #1532 §4 re-scales helper->input from `spacing.xs` to
+      // `STAY_SPACING.helperToInput`, so this vacuity guard now reads the same
+      // exported contract the component does instead of re-typing the token.
+      // What A-1 actually proves — that a STACKED field carries NO flex-axis
+      // key — is untouched below and still fails on any revert.
+      expect(flat.gap).toBe(STAY_SPACING.helperToInput);
       for (const key of FLEX_AXIS_KEYS) {
         expect({ testID, key, present: has(flat, key) }).toEqual({
           testID,

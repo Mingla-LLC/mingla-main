@@ -185,7 +185,11 @@ function CancellationReview({
   error: Error | null;
 }): React.ReactElement {
   return (
-    <GlassCard variant="elevated" style={styles.reviewCard}>
+    <GlassCard
+      variant="elevated"
+      style={styles.reviewCardChrome}
+      contentStyle={styles.reviewCard}
+    >
       <Text style={styles.sectionTitle}>Review cancellation</Text>
       <Text style={styles.helper}>
         Nothing changes until you confirm. This preview expires{" "}
@@ -409,7 +413,7 @@ export function StayReservationManagementDetail({
               </View>
             ) : null}
 
-            <GlassCard variant="elevated" style={styles.card}>
+            <GlassCard variant="elevated" contentStyle={styles.card}>
               <Text style={styles.sectionTitle}>Guest</Text>
               <Text style={styles.value}>{group.guest.name}</Text>
               {group.guest.email ? (
@@ -444,7 +448,7 @@ export function StayReservationManagementDetail({
             </GlassCard>
 
             {group.state === "request_pending" ? (
-              <GlassCard variant="elevated" style={styles.card}>
+              <GlassCard variant="elevated" contentStyle={styles.card}>
                 <Text style={styles.sectionTitle}>
                   Respond to the whole request
                 </Text>
@@ -541,7 +545,7 @@ export function StayReservationManagementDetail({
             ))}
 
             {selectedLineIds.length > 0 && preview === null ? (
-              <GlassCard variant="elevated" style={styles.card}>
+              <GlassCard variant="elevated" contentStyle={styles.card}>
                 <Text style={styles.sectionTitle}>Cancel selected lines</Text>
                 <Text style={styles.helper}>
                   Review the exact refund, inventory release and payout effect
@@ -576,7 +580,7 @@ export function StayReservationManagementDetail({
               />
             ) : null}
 
-            <GlassCard variant="elevated" style={styles.card}>
+            <GlassCard variant="elevated" contentStyle={styles.card}>
               <Text style={styles.sectionTitle}>Money</Text>
               <View style={styles.rowBetween}>
                 <Text style={styles.meta}>Room & Place subtotal</Text>
@@ -624,7 +628,7 @@ export function StayReservationManagementDetail({
               ))}
             </GlassCard>
 
-            <GlassCard variant="elevated" style={styles.card}>
+            <GlassCard variant="elevated" contentStyle={styles.card}>
               <Text style={styles.sectionTitle}>Timeline</Text>
               {group.events.map((event, index) => (
                 <View
@@ -709,6 +713,9 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     fontWeight: "700",
   },
+  // CONTENT-node measures (#1532 §4): passed as `contentStyle` so the gap
+  // reaches the children. On `style` it landed on the chrome node, whose only
+  // in-flow child is the clip view, and spaced nothing.
   card: { gap: spacing.sm },
   lineCard: {
     borderRadius: radius.lg,
@@ -750,7 +757,9 @@ const styles = StyleSheet.create({
   },
   warning: { ...typography.bodySm, color: semantic.warning },
   error: { ...typography.bodySm, color: semantic.error },
-  reviewCard: { gap: spacing.md, borderColor: semantic.warning },
+  reviewCard: { gap: spacing.md },
+  // CHROME-node half of the same card: a border belongs on the chrome node.
+  reviewCardChrome: { borderColor: semantic.warning },
   impactGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   impact: {
     minWidth: 210,

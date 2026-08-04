@@ -40,6 +40,26 @@ module.exports = {
     "node_modules/(?!(jest-)?react-native|@react-native|react-native-web|@react-native-community|react-native-svg|lucide-react-native|expo|@expo)",
   ],
   moduleNameMapper: {
+    // #1532 — the Stay editor now mounts inside the canonical `Sheet`, which
+    // pulls `react-native-safe-area-context` / `-gesture-handler` /
+    // `-keyboard-controller` into the graph. Under the WEB resolver those still
+    // resolve to their NATIVE implementations and reach for the RN bridge, so
+    // the whole suite fails to LOAD. Boundary stubs, in the config, so no
+    // existing test file had to change.
+    "^react-native-safe-area-context$": path.join(
+      businessRoot,
+      "jest.issue1532.safearea-stub.cjs",
+    ),
+    "^react-native-gesture-handler$": path.join(
+      businessRoot,
+      "jest.issue1532.gesture-handler-stub.cjs",
+    ),
+    "^react-native-keyboard-controller$": path.join(
+      businessRoot,
+      "node_modules",
+      "react-native-keyboard-controller",
+      "jest",
+    ),
     "^react-native$": "react-native-web",
     "^expo-blur$": path.join(businessRoot, "jest.orch1147r2.blur-stub.cjs"),
     "^expo-haptics$": path.join(businessRoot, "jest.orch1147r2.haptics-stub.cjs"),

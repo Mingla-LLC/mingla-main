@@ -88,6 +88,7 @@ import {
   type VenueOrganicAnalyticsSurface,
 } from "../../services/venueOrganicCapturePolicy";
 import { PublicVenueReservationSheet } from "./PublicVenueReservationSheet";
+import { reserveActionLabel, reserveSheetTitle } from "./venueReserveCopy";
 import {
   createPublicVenueReservationUiState,
   normalizePublicVenueReservationUiState,
@@ -643,7 +644,9 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     <Pressable
       onPress={handleReserve}
       accessibilityRole="button"
-      accessibilityLabel={isStay ? "Reserve this Stay" : "Reserve a table"}
+      // #1532 D7 — the CTA and the sheet heading now read ONE function, so the
+      // two can no longer disagree about what the guest just chose to do.
+      accessibilityLabel={reserveActionLabel(isStay)}
       style={({ pressed }) => [
         styles.reserveCta,
         { backgroundColor: palette.accent },
@@ -651,7 +654,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       ]}
     >
       <Text style={[styles.reserveCtaLabel, { color: palette.accentText }]}>
-        {isStay ? "Reserve this Stay" : "Reserve a table"}
+        {reserveActionLabel(isStay)}
       </Text>
     </Pressable>
   );
@@ -857,6 +860,10 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
         visible={normalizedReservationUiState.reservationSheetOpen}
         onClose={handleReservationSheetClose}
         onDismissed={handleReservationSheetDismissed}
+        // #1532 defect 1 — the heading now comes from the SAME function as the
+        // CTA above, so a Stay guest can no longer tap "Reserve this Stay" and
+        // land on a sheet headed "Reserve a table".
+        title={reserveSheetTitle(isStay)}
       >
         {reservationsBlock}
       </PublicVenueReservationSheet>

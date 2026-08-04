@@ -25,7 +25,9 @@ import type { StayStaffReservationSummary } from "../../types/stayReservation";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
+import { StayChipRow } from "./StayChipRow";
 import { StayReservationManagementDetail } from "./StayReservationManagementDetail";
+import { STAY_PAGE_BOTTOM_PAD, STAY_SPACING } from "./stayLayoutContracts";
 
 type StayReservationView =
   | "needs_response"
@@ -143,7 +145,7 @@ function ReservationCard({
       style={({ pressed }) => [styles.cardPressable, pressed && styles.pressed]}
       testID={`stay-reservation-card-${group.groupId}`}
     >
-      <GlassCard variant="elevated" style={styles.card}>
+      <GlassCard variant="elevated" contentStyle={styles.card}>
         <View style={styles.rowBetween}>
           <View style={styles.flexOne}>
             <Text style={styles.cardTitle}>{group.guest.name}</Text>
@@ -210,6 +212,11 @@ export function StayReservationsModule({
         contentContainerStyle={
           isWideDesktop ? styles.contentDesktop : styles.content
         }
+        // #1532 §2 — missing from every Stay scroller: without it the first tap
+        // on a tab or a card while a keyboard is open only dismisses the
+        // keyboard (Constitution #1 dead tap).
+        keyboardShouldPersistTaps="handled"
+        testID="stay-reservations-scroll"
       >
         <View style={styles.headerRow}>
           <View style={styles.flexOne}>
@@ -223,11 +230,13 @@ export function StayReservationsModule({
           ) : null}
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabs}
+        {/* #1532 defect 4 — this row was a `SmartScrollView`, so it carried the
+            same keyboard-height spacer as the module pills and inflated with
+            them on any keyboard event anywhere in the manager. */}
+        <StayChipRow
+          contentStyle={styles.tabs}
           accessibilityRole="tablist"
+          testID="stay-reservations-tabs"
         >
           {VIEWS.map((candidate) => {
             const selected = candidate.id === view;
@@ -250,7 +259,7 @@ export function StayReservationsModule({
               </Pressable>
             );
           })}
-        </ScrollView>
+        </StayChipRow>
 
         {list.isLoading ? (
           <View style={styles.centerState}>
@@ -258,7 +267,7 @@ export function StayReservationsModule({
             <Text style={styles.helper}>Loading Stay reservations…</Text>
           </View>
         ) : list.isError && list.data === undefined ? (
-          <GlassCard variant="elevated" style={styles.emptyCard}>
+          <GlassCard variant="elevated" contentStyle={styles.emptyCard}>
             <Text style={styles.emptyTitle}>Reservations could not load</Text>
             <Text style={styles.helper}>
               Check your connection or brand permission. Nothing has been
@@ -272,7 +281,7 @@ export function StayReservationsModule({
             />
           </GlassCard>
         ) : visible.length === 0 ? (
-          <GlassCard variant="elevated" style={styles.emptyCard}>
+          <GlassCard variant="elevated" contentStyle={styles.emptyCard}>
             <CalendarDays size={28} color={textTokens.primary} />
             <Text style={styles.emptyTitle}>{EMPTY_COPY[view].title}</Text>
             <Text style={styles.helper}>{EMPTY_COPY[view].body}</Text>
@@ -325,8 +334,10 @@ export function StayReservationsModule({
 const CONTENT_BASE = {
   width: "100%",
   padding: spacing.md,
-  paddingBottom: spacing.xxl * 3,
-  gap: spacing.md,
+  // #1532 §4 — was 144pt of dead scroll for a bottom nav this route does not
+  // render; now exactly what a pinned action bar occupies, plus one gutter.
+  paddingBottom: STAY_PAGE_BOTTOM_PAD,
+  gap: STAY_SPACING.captionToCard,
 } as const;
 
 const styles = StyleSheet.create({
@@ -358,7 +369,15 @@ const styles = StyleSheet.create({
   title: { ...typography.h2, color: textTokens.primary },
   helper: { ...typography.bodySm, color: textTokens.secondary },
   meta: { ...typography.caption, color: textTokens.tertiary },
-  tabs: { flexDirection: "row", gap: spacing.xs, paddingVertical: spacing.xxs },
+  // CONTENT-container measure for `StayChipRow`. It declares its own
+  // `flexDirection`, so its gaps are read against that one axis
+  // (I-AXIS-SCOPED-FLEX). `alignItems` is deliberately absent — the row
+  // re-applies `center` after this merge so no caller can restore `stretch`.
+  tabs: {
+    flexDirection: "row",
+    columnGap: spacing.xs,
+    paddingVertical: spacing.xxs,
+  },
   tab: {
     minHeight: 44,
     justifyContent: "center",

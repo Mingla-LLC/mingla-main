@@ -12,6 +12,18 @@ export interface PublicVenueReservationSheetProps {
   visible: boolean;
   onClose: () => void;
   onDismissed?: () => void;
+  /**
+   * #1532 D7 — REQUIRED, and required is the point.
+   *
+   * This heading used to be the hardcoded string "Reserve a table", so a hotel
+   * guest tapped "Reserve this Stay" and landed on a sheet headed "Reserve a
+   * table". An OPTIONAL prop with a restaurant default would have preserved
+   * exactly that failure for anyone who forgot to pass it. Being required means
+   * a new call site cannot compile without deciding, and
+   * `venueReserveCopy.reserveSheetTitle()` is the one place that decides — so
+   * the heading and the CTA that opens it can never drift apart again.
+   */
+  title: string;
   children: React.ReactNode;
 }
 
@@ -19,6 +31,7 @@ export function PublicVenueReservationSheet({
   visible,
   onClose,
   onDismissed,
+  title,
   children,
 }: PublicVenueReservationSheetProps): React.ReactElement {
   const headingRef = useRef<ViewInstance | null>(null);
@@ -71,9 +84,9 @@ export function PublicVenueReservationSheet({
           focusable
           tabIndex={-1}
           accessibilityRole="header"
-          accessibilityLabel="Reserve a table"
+          accessibilityLabel={title}
         >
-          <Text style={styles.heading}>Reserve a table</Text>
+          <Text style={styles.heading}>{title}</Text>
         </View>
         <ScrollView
           style={styles.scroll}

@@ -109,6 +109,18 @@ jest.mock("react-native-reanimated", () => {
       bezier: () => () => 0,
       linear: () => 0,
       out: (fn: unknown) => fn,
+      // #1532 — ADDITIVE: `Sheet` -> `SheetMobile` reads `Easing.in(Easing.cubic)`
+      // at module scope for its close timing, and this mock had no `in`, so the
+      // whole suite failed to LOAD once the Stay editor moved into the Sheet.
+      // Nothing existing is changed or removed.
+      in: (fn: unknown) => fn,
+      cubic: () => 0,
+    },
+    // #1532 — ADDITIVE: `SheetMobile` and `Modal` both cancel their animations
+    // on unmount, and this mock had no `cancelAnimation`, so a Stay suite that
+    // mounts the editor sheet threw during commit. Additive only.
+    cancelAnimation: () => undefined,
+    __easingClose: {
       inOut: (fn: unknown) => fn,
       ease: () => 0,
     },
