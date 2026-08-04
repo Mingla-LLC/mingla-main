@@ -7382,7 +7382,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ## DRAFT — issue #1576 (the promoted deck card renders black)
 
-### I-PROPOSED-1576-ANIMATED-STYLE-SWAP-KEY-PARITY (DRAFT)
+### I-PROPOSED-1576-ANIMATED-STYLE-SWAP-KEY-PARITY (ACTIVE)
 - **Rule:** Where one persistent host node — stable React `key`, deliberately **not** remounted —
   can have its Reanimated animated style **swapped** between two or more `useAnimatedStyle` results,
   every style in that swap set MUST return an **identical property key set**, and each style's key
