@@ -433,8 +433,22 @@ export interface DeliveryLedgerRow {
 }
 
 export interface DeliveryTallyEntry {
+  /**
+   * ATTEMPTS THAT REACHED A PROVIDER. #1537 P2-4: this deliberately EXCLUDES
+   * `skipped` and `suppressed`, because neither performed any provider I/O —
+   * a kill-switch skip returns before the HTTP call and a `can_send` denial
+   * never gets that far. Counting a non-attempt here made a deliberately dark
+   * market read as `healthy` (see DELIVERY_NON_ATTEMPT_STATUSES).
+   */
   total: number;
+  /** Of `total`: attempts the provider reported as failed/undelivered. */
   failure: number;
+  /**
+   * Rows that never reached a provider. Kept — NOT discarded — so a dark market
+   * is reported as "nothing attempted", not as an absence of data. Discarding
+   * them would recreate the invisibility P1-1 fixed, one layer up.
+   */
+  skipped: number;
 }
 
 export interface DeliveryTallyResult {
@@ -474,6 +488,37 @@ export const DELIVERY_PROVIDER_TILES: Record<string, readonly string[]> = {
 export const DELIVERY_FAIL_STATUSES: ReadonlySet<string> = new Set([
   "failed",
   "undelivered",
+]);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #1537 P2-4 — A SKIP IS NOT EVIDENCE OF PROVIDER HEALTH IN EITHER DIRECTION.
+// ═══════════════════════════════════════════════════════════════════════════
+// These statuses mean NO PROVIDER I/O HAPPENED:
+//   • `skipped`    — the per-market kill switch returned before the HTTP call
+//                    (`provider_kill_switch_off`), or there was no usable
+//                    contact for the channel (`no_contact`).
+//   • `suppressed` — the `can_send` policy chokepoint denied the send.
+//
+// They used to increment a tile's `total` while never incrementing `failure`,
+// so they were arithmetically indistinguishable from successful deliveries.
+// Applying the handler's own thresholds (total<5 ⇒ unknown, failRate>0.5 ⇒
+// down, ≥0.25 ⇒ degraded, else healthy), six kill-switch skips — which is
+// EXACTLY what a dark Nigeria produces — made the termii tile report HEALTHY
+// while not one message had been delivered.
+//
+// That is a POSITIVE FALSE CLAIM, and it is worse than the invisibility P1-1
+// fixed: invisibility prompts the question "why is there no data?", whereas
+// "healthy" stops anyone asking. It is also a Constitution rule 9 violation
+// (no fabricated data, no lying states) and the same swallow-the-value shape as
+// #1529's `?? "US"`, #1537's hardcoded provider, and the `: []` tile fallback.
+//
+// Excluding them needs NO new health state and NO threshold change: a tile with
+// only skips lands on `total === 0`, which the handler's existing
+// `total < 5 ⇒ "unknown"` branch already reports honestly. `unknown` is the
+// truthful answer — nothing was attempted, so nothing is known.
+export const DELIVERY_NON_ATTEMPT_STATUSES: ReadonlySet<string> = new Set([
+  "skipped",
+  "suppressed",
 ]);
 
 /**
@@ -520,9 +565,16 @@ export function tallyDeliveryRows(
       continue;
     }
     for (const tile of tiles) {
-      const entry = tally.get(tile) ?? { total: 0, failure: 0 };
-      entry.total += 1;
-      if (DELIVERY_FAIL_STATUSES.has(row.status)) entry.failure += 1;
+      const entry = tally.get(tile) ?? { total: 0, failure: 0, skipped: 0 };
+      // #1537 P2-4 — a non-attempt is recorded, but NOT as an attempt. The tile
+      // is still created, so "6 requested, 0 attempted" stays reportable rather
+      // than the market vanishing from the probe entirely.
+      if (DELIVERY_NON_ATTEMPT_STATUSES.has(row.status)) {
+        entry.skipped += 1;
+      } else {
+        entry.total += 1;
+        if (DELIVERY_FAIL_STATUSES.has(row.status)) entry.failure += 1;
+      }
       tally.set(tile, entry);
     }
   }

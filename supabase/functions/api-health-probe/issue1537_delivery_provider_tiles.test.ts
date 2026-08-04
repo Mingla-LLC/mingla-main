@@ -68,32 +68,40 @@ import {
 // inserts a tick's rows in ONE batch against an FK, so an unregistered tile
 // fails EVERY row, not just its own.
 const REGISTERED_SERVICE_KEYS = new Set([
-  "stripe",
-  "paystack",
-  "gemini",
-  "openai",
-  "mapbox",
-  "google_places",
-  "ticketmaster",
-  "serper",
-  "pexels",
-  "giphy",
-  "onesignal_consumer",
-  "onesignal_business",
-  "resend",
-  "twilio",
-  "termii", // migration 20270212001538
-  "cloudinary",
-  "supabase",
-  "vercel",
-  "exchangerate",
-  "thumio",
-  "revenuecat",
-  "posthog",
-  "mixpanel",
-  "sentry",
   "appsflyer",
+  // #1537 P3-3(a): this list was first written FROM MEMORY and was wrong in two
+  // ways — it carried `cloudinary`, which no longer exists (decommissioned in
+  // the Bunny migration, META-ORCH-1270), and it omitted `bunny`, which
+  // replaced it. T-6 still passed either way, which is precisely the hazard: a
+  // stale snapshot inside the one test whose job is to prevent an FK violation
+  // would have green-lit a `cloudinary` tile and let it abort every health
+  // tick. Corrected against the 25 keys read read-only from production
+  // (gqnoajqerqhnvulmnyvv, 2026-08-04), + `termii` from migration 20270212001538.
+  "bunny",
+  "exchangerate",
   "ga4",
+  "gemini",
+  "giphy",
+  "google_places",
+  "mapbox",
+  "mixpanel",
+  "onesignal_business",
+  "onesignal_consumer",
+  "openai",
+  "paystack",
+  "pexels",
+  "posthog",
+  "resend",
+  "revenuecat",
+  "sentry",
+  "serper",
+  "stripe",
+  "supabase",
+  "termii", // migration 20270212001538
+  "thumio",
+  "ticketmaster",
+  "twilio",
+  "vercel",
 ]);
 
 /**
@@ -102,7 +110,7 @@ const REGISTERED_SERVICE_KEYS = new Set([
  * tile must fail with a named error, not as an incidental value mismatch.
  */
 function assertTallyNotEmpty(
-  tally: Map<string, { total: number; failure: number }>,
+  tally: Map<string, { total: number; failure: number; skipped: number }>,
   label: string,
 ): void {
   assert(
@@ -137,6 +145,7 @@ Deno.test("#1537 T-1: a termii-ONLY ledger produces a NON-EMPTY tally on the ter
   const termii = tally.get("termii");
   assert(termii !== undefined, "the termii tile must exist in the tally");
   assertEquals(termii.total, 3);
+  assertEquals(termii.skipped, 0, "none of these were skips");
   assertEquals(termii.failure, 1, "only `failed` counts as a failure here");
 });
 
@@ -146,7 +155,7 @@ Deno.test("#1537 T-1: a termii-ONLY ledger produces a NON-EMPTY tally on the ter
 // empty tally the pre-fix code actually produced.
 // ---------------------------------------------------------------------------
 Deno.test("#1537 T-1b: the vacuity guard actually throws on an empty tally", () => {
-  const empty = new Map<string, { total: number; failure: number }>();
+  const empty = new Map<string, { total: number; failure: number; skipped: number }>();
   const err = assertThrows(
     () => assertTallyNotEmpty(empty, "a deliberately empty tally"),
     Error,
@@ -191,12 +200,15 @@ Deno.test("#1537 T-2: every real ledger provider lands on a tile with correct co
   assertTallyNotEmpty(tally, "the full production-shaped ledger");
   assertEquals(unmappedProviders, []);
 
-  assertEquals(tally.get("resend"), { total: 9, failure: 0 });
-  assertEquals(tally.get("onesignal_consumer"), { total: 7, failure: 4 });
-  assertEquals(tally.get("twilio"), { total: 6, failure: 0 });
+  assertEquals(tally.get("resend"), { total: 9, failure: 0, skipped: 0 });
+  assertEquals(tally.get("onesignal_consumer"), { total: 7, failure: 4, skipped: 0 });
+  // #1537 P2-4 — this fixture is 5 `skipped` + 1 `delivered`. The five skips
+  // performed no provider I/O, so exactly ONE attempt is counted; the skips are
+  // preserved separately rather than inflating the health denominator.
+  assertEquals(tally.get("twilio"), { total: 1, failure: 0, skipped: 5 });
   assertEquals(
     tally.get("termii"),
-    { total: 2, failure: 1 },
+    { total: 2, failure: 1, skipped: 0 },
     "`undelivered` counts as a failure; `delivered` does not",
   );
 });
@@ -229,7 +241,7 @@ Deno.test("#1537 T-3: an unmapped provider is reported loudly, and never returns
   assertTallyNotEmpty(tally, "a mixed mapped/unmapped ledger");
   // The mapped provider is still counted — one unmapped provider must not
   // suppress the rest of the tally.
-  assertEquals(tally.get("termii"), { total: 1, failure: 0 });
+  assertEquals(tally.get("termii"), { total: 1, failure: 0, skipped: 0 });
   // The unmapped ones are named, de-duplicated and sorted, so the handler's
   // structuredLog names exactly what it cannot see.
   assertEquals(unmappedProviders, ["another_unmapped", "some_future_provider"]);
@@ -248,7 +260,7 @@ Deno.test("#1537 T-4: null-provider rows are skipped without being reported as u
   ]);
 
   assertTallyNotEmpty(tally, "a ledger containing null-provider rows");
-  assertEquals(tally.get("termii"), { total: 1, failure: 0 });
+  assertEquals(tally.get("termii"), { total: 1, failure: 0, skipped: 0 });
   assertEquals(
     unmappedProviders,
     [],
@@ -272,10 +284,10 @@ Deno.test("#1537 T-5: termii does not contaminate the twilio tile", () => {
   assertTallyNotEmpty(tally, "a mixed termii/twilio ledger");
   assertEquals(
     tally.get("twilio"),
-    { total: 1, failure: 0 },
+    { total: 1, failure: 0, skipped: 0 },
     "a Nigerian failure must NOT show up as Twilio ill-health",
   );
-  assertEquals(tally.get("termii"), { total: 2, failure: 2 });
+  assertEquals(tally.get("termii"), { total: 2, failure: 2, skipped: 0 });
 });
 
 // ---------------------------------------------------------------------------
@@ -303,4 +315,111 @@ Deno.test("#1537 T-6: every tile the map can emit is a registered api_health_ser
     tiles.includes("termii"),
     "the termii tile must be emittable — its absence is the P1-1 defect",
   );
+});
+
+// ---------------------------------------------------------------------------
+// T-7 — A DELIBERATELY DARK MARKET MUST NOT READ AS "HEALTHY" (P2-4).
+//
+// This is the assertion that encodes the defect. `skipped` rows performed no
+// provider I/O — the kill switch returns before the HTTP call — yet they used
+// to raise a tile's `total` while never raising `failure`, making them
+// arithmetically identical to successful deliveries. Six of them (exactly what
+// a dark Nigeria produces) cleared the `total < 5` guard at a 0.0 failure rate
+// and the tile reported HEALTHY while nothing whatsoever was being delivered.
+//
+// "Healthy" is a POSITIVE claim. Invisibility prompts "why is there no data?";
+// "healthy" stops the question being asked at all. That makes this worse than
+// the P1 it followed, and it is a Constitution rule 9 violation outright.
+//
+// The fix needs no new health state: excluding non-attempts puts a dark tile on
+// total=0, which the handler's EXISTING `total < 5 ⇒ unknown` branch already
+// reports honestly. `unknown` is exactly right — nothing was attempted, so
+// nothing is known about the provider.
+// ---------------------------------------------------------------------------
+
+/** The handler's own threshold arithmetic (index.ts), mirrored for assertion. */
+function tileStatus(t: { total: number; failure: number }): string {
+  const failRate = t.total > 0 ? t.failure / t.total : 0;
+  if (t.total < 5) return "unknown";
+  if (failRate > 0.5) return "down";
+  if (failRate >= 0.25) return "degraded";
+  return "healthy";
+}
+
+Deno.test("#1537 T-7: a dark market reports `unknown`, never `healthy`", () => {
+  // Exactly the rows a dark Nigeria produces: every send kill-switched.
+  const darkNigeria = Array.from({ length: 6 }, () => ({
+    provider: "termii",
+    status: "skipped",
+  }));
+
+  const { tally } = tallyDeliveryRows(darkNigeria);
+  assertTallyNotEmpty(tally, "a dark-Nigeria ledger");
+
+  const t = tally.get("termii");
+  assert(t !== undefined, "the tile must still exist — a dark market is not an absence");
+  assertEquals(t.total, 0, "no attempt reached a provider, so nothing is counted");
+  assertEquals(t.failure, 0);
+  assertEquals(
+    t.skipped,
+    6,
+    "the skips are PRESERVED, not discarded — the operator must still see that " +
+      "six sends were requested and held back",
+  );
+  assertEquals(
+    tileStatus(t),
+    "unknown",
+    "SIX kill-switch skips with zero deliveries must NOT read as `healthy` — " +
+      "that is a positive false claim about a market that is entirely dark",
+  );
+
+  // The failure is specifically at 6 rows: 6 >= 5 cleared the volume guard, so
+  // before the fix this was `healthy` rather than being shielded by `total < 5`.
+  assert(darkNigeria.length >= 5, "fixture must clear the total<5 volume guard");
+
+  // `suppressed` shares the property — a can_send denial also never reached a
+  // provider — so it must behave identically.
+  const suppressedOnly = tallyDeliveryRows(
+    Array.from({ length: 6 }, () => ({ provider: "twilio", status: "suppressed" })),
+  );
+  const s = suppressedOnly.tally.get("twilio");
+  assert(s !== undefined, "a suppressed-only tile must still exist");
+  assertEquals(s.total, 0);
+  assertEquals(s.skipped, 6);
+  assertEquals(tileStatus(s), "unknown", "policy suppression is not health either");
+});
+
+// ---------------------------------------------------------------------------
+// T-8 — REAL DELIVERIES STILL DRIVE HEALTH. The control for T-7: excluding
+// non-attempts must not make a genuinely failing provider look fine, nor a
+// genuinely healthy one look unknown.
+// ---------------------------------------------------------------------------
+Deno.test("#1537 T-8: skips do not mask a real outage, nor suppress a real healthy signal", () => {
+  // A provider that is live and failing, while also skipping some sends.
+  const failing = tallyDeliveryRows([
+    ...Array.from({ length: 20 }, () => ({ provider: "termii", status: "skipped" })),
+    ...Array.from({ length: 6 }, () => ({ provider: "termii", status: "failed" })),
+    { provider: "termii", status: "delivered" },
+  ]);
+  const f = failing.tally.get("termii");
+  assert(f !== undefined);
+  assertEquals(f.total, 7, "only the 7 real attempts count");
+  assertEquals(f.failure, 6);
+  assertEquals(f.skipped, 20);
+  assertEquals(
+    tileStatus(f),
+    "down",
+    "20 skips must NOT dilute a 6/7 failure rate into looking healthy — " +
+      "which is exactly what counting them in the denominator did (26 rows, " +
+      "6 failures = 0.23, just under the 0.25 degraded threshold)",
+  );
+
+  // And a genuinely healthy provider still reads healthy.
+  const healthy = tallyDeliveryRows(
+    Array.from({ length: 10 }, () => ({ provider: "twilio", status: "delivered" })),
+  );
+  const h = healthy.tally.get("twilio");
+  assert(h !== undefined);
+  assertEquals(tileStatus(h), "healthy", "real successful deliveries still read healthy");
+  assertEquals(h.skipped, 0);
 });

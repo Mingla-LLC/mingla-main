@@ -961,6 +961,17 @@ serve(async (req) => {
         else if (failRate >= 0.25) status = "degraded";
         else status = "healthy";
         const detail: Record<string, unknown> = { success: t.total - t.failure, failure: t.failure, total: t.total };
+        // #1537 P2-4 — `total` counts only attempts that reached a provider, so
+        // a deliberately dark market lands on total=0 and the existing
+        // `total < 5 ⇒ unknown` branch above reports it honestly instead of
+        // "healthy". Surface the non-attempts rather than dropping them: the
+        // operator needs to see that sends WERE requested and held back, which
+        // is the difference between "nothing to send" and "not sending".
+        if (t.skipped > 0) {
+          detail.skipped = t.skipped;
+          detail.note_skipped =
+            "not counted toward health — no provider I/O occurred (kill switch, no contact, or policy suppression)";
+        }
         if (tile === "onesignal_consumer") detail.note = "deliveries has no per-app split; attributed to consumer";
         checkRows.push({
           service_key: tile, layer: "passive", status,
