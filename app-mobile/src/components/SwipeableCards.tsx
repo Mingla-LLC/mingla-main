@@ -1313,6 +1313,9 @@ export default function SwipeableCards({
         // items so a newly started deck can admit/finalize its native gestures.
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
         if (localDeckInteractionPhaseRef.current !== 'IDLE') break;
+        // Foreground work is intentionally one item per quiet window. Starting
+        // a second item here can starve the runOnJS boundary of the next deck.
+        if (!force) break;
       }
     } finally {
       postSwipeDrainRunningRef.current = false;
@@ -1331,7 +1334,12 @@ export default function SwipeableCards({
       if (localDeckInteractionPhaseRef.current !== 'IDLE') return;
       postSwipeScheduleRef.current.interaction = InteractionManager.runAfterInteractions(() => {
         postSwipeScheduleRef.current.interaction = null;
-        void drainPostSwipeQueue();
+        void drainPostSwipeQueue().finally(() => {
+          if (
+            postSwipeQueueRef.current.length > 0 &&
+            localDeckInteractionPhaseRef.current === 'IDLE'
+          ) scheduleQuietPostSwipeDrain();
+        });
       });
     }, remainingMs);
   }, [cancelPostSwipeSchedule, drainPostSwipeQueue]);

@@ -75,6 +75,16 @@ function assertModernNativeAdmission(sources) {
   );
   assert.match(
     sources.swipeable,
+    /if \(!force\) break;/,
+    'foreground drain processes more than one deferred card per quiet window',
+  );
+  assert.match(
+    sources.swipeable,
+    /drainPostSwipeQueue\(\)\.finally\([\s\S]{0,240}scheduleQuietPostSwipeDrain\(\)/,
+    'remaining foreground work bypasses a fresh quiet window',
+  );
+  assert.match(
+    sources.swipeable,
     /if \('exhausted' in settlement\) \{[\s\S]{0,100}scheduleQuietPostSwipeDrain\(\)/,
     'terminal settlement force-drains the entire business queue',
   );
@@ -315,6 +325,12 @@ test('source guard rejects every superseded native availability root independent
   assert.throws(
     () => assertModernNativeAdmission({ ...source, swipeable: noYieldMutant }),
     /monopolizes/,
+  );
+
+  const unboundedForegroundMutant = source.swipeable.replace('if (!force) break;', 'if (force) break;');
+  assert.throws(
+    () => assertModernNativeAdmission({ ...source, swipeable: unboundedForegroundMutant }),
+    /more than one/,
   );
 
 });
