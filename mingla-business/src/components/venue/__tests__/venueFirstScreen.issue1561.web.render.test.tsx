@@ -39,9 +39,18 @@
  *   cd mingla-business && npx jest --config jest.issue1561.web.render.cjs --runInBand
  */
 import React from "react";
-import ReactDOMServer from "react-dom/server";
 import { StyleSheet, Text, View } from "react-native";
 import { describe, expect, test } from "@jest/globals";
+
+// `react-dom/server` ships no type declarations in this install, so a bare
+// `import` adds a TS7016 — and #1403's typecheck-delta gate fails on ANY added
+// diagnostic INSTANCE across the whole graph, not just new signatures and not
+// just its own target files. The repo's typed-require idiom is the sanctioned
+// form; #1484 hit exactly this on exactly this lane and documented it at
+// `stayDesktopWidth.issue1484.web.render.test.tsx:42-47`.
+const ReactDOMServer = require("react-dom/server") as {
+  renderToStaticMarkup: (element: React.ReactElement) => string;
+};
 
 import { ParallaxCoverShell } from "../../../../../packages/offering-rendering/ParallaxCoverShell";
 import { createThemePalette } from "../../../../../packages/offering-rendering/themePalette";
