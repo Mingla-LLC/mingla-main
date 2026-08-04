@@ -15,6 +15,14 @@
 // Covers BOTH the implementor's F6 render-proof and the tester's adversarial
 // crash-safety render-proof.
 //
+// ── #1486 — RENDER-DEP RESOLUTION (worktree overlay, else business install) ─
+// The render deps (react-test-renderer + @testing-library/react-native) are
+// installed by the workflow with `npm install --no-save`, so in CI they live in
+// `mingla-business/node_modules`. Inside a git worktree that directory is a
+// SYMLINK into the shared anchor checkout, which must not be mutated, so a
+// developer provisions `.orch1118-testdeps/` instead. This resolves whichever
+// one actually has the packages. Neither is a mock — both are the real renderer.
+//
 // Run:
 //   npx jest --config jest.issue0962.render.cjs --runInBand
 
@@ -24,7 +32,13 @@ const path = require("path");
 const businessRoot = __dirname;
 const bizModules = path.join(businessRoot, "node_modules");
 
-const rtlRoot = path.join(bizModules, "@testing-library", "react-native");
+// #1486 — prefer a worktree-local overlay when present, else the business install.
+const overlay = path.join(businessRoot, ".orch1118-testdeps", "node_modules");
+const testDeps = fs.existsSync(path.join(overlay, "@testing-library", "react-native"))
+  ? overlay
+  : bizModules;
+
+const rtlRoot = path.join(testDeps, "@testing-library", "react-native");
 const matchersBuild = path.join(rtlRoot, "build", "matchers", "extend-expect.js");
 const matchersDist = path.join(rtlRoot, "dist", "matchers", "extend-expect.js");
 const extendExpect = fs.existsSync(matchersBuild) ? matchersBuild : matchersDist;
@@ -65,7 +79,7 @@ module.exports = {
     "^react$": path.join(bizModules, "react"),
     "^react/(.*)$": path.join(bizModules, "react", "$1"),
     "^react-native$": path.join(bizModules, "react-native"),
-    "^react-test-renderer$": path.join(bizModules, "react-test-renderer"),
+    "^react-test-renderer$": path.join(testDeps, "react-test-renderer"),
     "^react-test-renderer/(.*)$": path.join(
       bizModules,
       "react-test-renderer",
@@ -74,7 +88,7 @@ module.exports = {
     "^@testing-library/react-native$": rtlRoot,
     "^@testing-library/react-native/(.*)$": path.join(rtlRoot, "$1"),
   },
-  modulePaths: [bizModules],
+  modulePaths: [testDeps, bizModules],
   setupFilesAfterEnv: [extendExpect],
   haste: {
     defaultPlatform: "ios",

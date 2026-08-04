@@ -85,7 +85,27 @@ module.exports = {
     // (which installs react-test-renderer --no-save), and the nightly suite
     // installs it too — excluding them would break that per-issue workflow.
     "\\.render\\.test\\.tsx$", // every web + RN render-proof (subsumes the explicit render entries above)
-    "orch1355\\.(tester|router)\\.test\\.tsx$", // orch1355 promotion tester/router render-proofs — run under jest.orch1355.tester.cjs / .promotion.cjs
+    // #1486 — these six files now run NOWHERE, and that is a deliberate,
+    // recorded decision rather than the silent hole this line used to be.
+    // It previously handed off to the orch1355 "tester" and "promotion" render
+    // configs; no workflow ever invoked either, and both are now DELETED.
+    // (Their filenames are deliberately not spelled in full anywhere in this
+    // file: issue-1486-jest-config-invoked-by-workflow.mjs treats ANY
+    // `jest.*.cjs` token here as a live hand-off and fails hard when it cannot
+    // resolve one — which is the entire point of that gate.)
+    //
+    // Why deleting was right rather than reviving: #976 (2026-07-20, commit
+    // 81a0f0bb7) added `useNavigation` + `useFocusEffect` to both edit routes,
+    // which their `jest.mock("expo-router", …)` factories do not provide — so
+    // every one of them dies at `useNavigation is not a function` before
+    // asserting anything. Reviving them needs edits INSIDE the test files, which
+    // `tests-append-only.yml` blocks, and would only duplicate coverage that
+    // already gates: the SAME commit shipped
+    // `.github/workflows/orch-0976-draft-promotion-tests.yml`, which proves the
+    // identical no-remount invariant (1 wizard mount, 0 router.replace) on both
+    // wizards and is green at 19/19 in CI today. `jest.orch1355.render.cjs`
+    // (wired by issue-1486-dormant-render-suites.yml) carries the rest.
+    "orch1355\\.(tester|router)\\.test\\.tsx$",
 
     // ---- QUARANTINE_SAFE (16) — brittle source-text pins: readFileSync the
     // source then assert only on source-derived text (zero behavioral/render

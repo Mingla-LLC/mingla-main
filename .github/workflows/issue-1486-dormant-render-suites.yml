@@ -1,0 +1,134 @@
+# Issue #1486 — the render suites that were excluded from the main run on the
+# promise of a config no workflow invoked.
+#
+# `mingla-business/jest.config.cjs` excludes every `*.render.test.tsx` from the
+# default suite, each exclusion commented with the config that "runs" it instead.
+# 26 of those configs were invoked by nothing. This workflow is the other half of
+# that sentence: it is where they actually run.
+#
+# ONE JOB ON PURPOSE. Sixteen suites at ~1-4s each is ~35s of jest; the cost of a
+# GitHub job is checkout + `npm ci` + the render-dep install, roughly 3 minutes
+# EACH. Sixteen jobs would have bought nothing and spent ~48 minutes per PR. The
+# suites are also independent, so `if: always()` on every step means one red
+# suite still reports the other fifteen instead of masking them behind a fail-fast.
+#
+# The standing rule (`.github/scripts/strict-grep/issue-1486-jest-config-invoked-by-workflow.mjs`,
+# class A) is what stops this from rotting again: every non-helper jest config must
+# be invoked by a workflow, and every "runs under X" hand-off in
+# testPathIgnorePatterns must name a config CI actually runs. Adding a config
+# without adding it here turns that gate red.
+name: Issue #1486 Dormant Render Suites
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  issue-1486-dormant-render-suites:
+    name: "#1486 — dormant render suites (batched)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+
+      # The RN-preset render configs mount real components through
+      # react-test-renderer + @testing-library/react-native. Neither is a project
+      # dependency (they are test-only and would bloat the app install), so they
+      # are installed --no-save exactly as issue-874-business-analytics-tests.yml
+      # already does. The web-render configs need react-native-web + react-dom,
+      # which the app already depends on.
+      - name: Install render-only test dependencies
+        run: npm install --no-save react-test-renderer@19.1.0 @testing-library/react-native
+
+      # ---- gate first: a config added without a workflow fails here ---------
+      - name: Jest-config-invoked-by-workflow gate self-test
+        run: node ../.github/scripts/strict-grep/issue-1486-jest-config-invoked-by-workflow.mjs --self-test
+      - name: Jest-config-invoked-by-workflow gate
+        run: node ../.github/scripts/strict-grep/issue-1486-jest-config-invoked-by-workflow.mjs
+
+      # ---- native (react-test-renderer + RTL) render proofs -----------------
+      # ORCH-1118/1122 mount the REAL 2,260-line EditPublishedTripScreen. All
+      # three were blocked by ONE stale line: their `jest.mock("../TripCreatorStep4Pricing")`
+      # factory predates the screen's import of `makePackageKey`, so the mount threw
+      # "makePackageKey is not a function". Nothing noticed for months, because
+      # nothing ran them.
+      - name: "ORCH-1118 — EditPublishedTripScreen Mapbox pickers + save gate"
+        if: always()
+        run: npx jest --config jest.orch1118.render.cjs --runInBand --ci
+      - name: "ORCH-1122 — EditPublishedTripScreen cover dead-tap"
+        if: always()
+        run: npx jest --config jest.orch1122.render.cjs --runInBand --ci
+      - name: "ORCH-1122 — CoverPickerSheet two-way close binding (adversarial)"
+        if: always()
+        run: npx jest --config jest.orch1122.adversarial.render.cjs --runInBand --ci
+      - name: "#962 — pre-bank currency display render proof"
+        if: always()
+        run: npx jest --config jest.issue0962.render.cjs --runInBand --ci
+      - name: "#962 R5 — KPI card hide render proof"
+        if: always()
+        run: npx jest --config jest.issue0962r5.render.cjs --runInBand --ci
+      - name: "#1180 — BrandPayout adversarial render proof"
+        if: always()
+        run: npx jest --config jest.issue1180.render.cjs --runInBand --ci
+      - name: "ORCH-1143 — LiveOfferingCard + upcoming de-dup render proofs"
+        if: always()
+        run: npx jest --config jest.orch1143.render.cjs --runInBand --ci
+      - name: "ORCH-1147R2 — checkout selection all-in render proof"
+        if: always()
+        run: npx jest --config jest.orch1147r2.render.cjs --runInBand --ci
+      - name: "ORCH-1152 — empty-cart currency crash render proof"
+        if: always()
+        run: npx jest --config jest.orch1152.render.cjs --runInBand --ci
+      - name: "ORCH-1335 — RsvpStep5Setup chip-in bank banner render proof"
+        if: always()
+        run: npx jest --config jest.orch1335.render.cjs --runInBand --ci
+      - name: "ORCH-1355 — RSVP wizard focus + toggle snapback render proofs"
+        if: always()
+        run: npx jest --config jest.orch1355.render.cjs --runInBand --ci
+      # ORCH-1331 guards the LIVE Nigeria partner Paystack onboarding form. Its
+      # only other coverage (orch_1331_partner_paystack_ui.test.ts, 21 green) is a
+      # SOURCE-TEXT pin — `expect(form).toContain('testID="…"')` — which proves the
+      # string is in the file, not that the confirm-name state is reachable. This
+      # is the only runtime proof of that state machine, on a money path.
+      - name: "ORCH-1331 — NG partner Paystack onboarding state machine"
+        if: always()
+        run: npx jest --config jest.orch1331.render.cjs --runInBand --ci
+
+      # ---- WEB render proofs -------------------------------------------------
+      # react-test-renderer is structurally blind to react-native-web's atomic
+      # classes, so these are the only suites in the repo that can catch a whole
+      # class of buyer-web visual defect. Five of them were among the configs with
+      # zero references anywhere in the repo.
+      - name: "#1561 — venue first screen rendered CSS (web)"
+        if: always()
+        run: npx jest --config jest.issue1561.web.render.cjs --runInBand --ci
+      - name: "ORCH-1190 — glass chrome full-width surface (web)"
+        if: always()
+        run: npx jest --config jest.orch1190.glasschrome.web.render.cjs --runInBand --ci
+      - name: "ORCH-1190 R2 — BrandSwitch on-state colours (web)"
+        if: always()
+        run: npx jest --config jest.orch1190r2.web.render.cjs --runInBand --ci
+      - name: "ORCH-1190 R2 — venue table card mobile width (web)"
+        if: always()
+        run: npx jest --config jest.orch1190r2.tablecard.web.render.cjs --runInBand --ci
+      - name: "ORCH-1190 R2 — venue empty-state full width (web)"
+        if: always()
+        run: npx jest --config jest.orch1190r2.venuewidth.web.render.cjs --runInBand --ci
+      - name: "ORCH-1190 R3 — venue empty-state full width, second wave (web)"
+        if: always()
+        run: npx jest --config jest.orch1190r3.venuewidth.web.render.cjs --runInBand --ci
+      - name: "ORCH-1193 — sheet body scroll bounded (web)"
+        if: always()
+        run: npx jest --config jest.orch1193.sheetscroll.web.render.cjs --runInBand --ci
+      - name: "ORCH-1211 — notification row web render safety"
+        if: always()
+        run: npx jest --config jest.orch1211.notifweb.render.cjs --runInBand --ci
