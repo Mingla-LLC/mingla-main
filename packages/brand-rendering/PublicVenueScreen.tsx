@@ -1043,7 +1043,14 @@ export const PublicVenueScreen = ({
   // minute (the finest granularity the copy can express), and it is torn down
   // on unmount so a backgrounded page holds no timer.
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
+  const ticksForOpenNow = venueShowsTradingHours(profile);
   React.useEffect((): (() => void) => {
+    // Only a category that TRADES HOURS has an answer that can go stale. A
+    // hotel's cell is check-in/check-out, which is the same at 03:00 as at
+    // 15:00 — so ticking a hotel page would re-render the whole venue screen
+    // every minute to recompute a value that cannot move. Gating here rather
+    // than inside the memo is what keeps the timer off those pages entirely.
+    if (!ticksForOpenNow) return () => undefined;
     const handle = setInterval(() => setNowTick(Date.now()), 60_000);
     // `unref()` — Node only, and load-bearing there. Under Node this timer is a
     // handle on the event loop, so a jest suite that mounts this screen and
@@ -1059,7 +1066,7 @@ export const PublicVenueScreen = ({
     const unrefable = handle as unknown as { unref?: () => void };
     if (typeof unrefable.unref === "function") unrefable.unref();
     return () => clearInterval(handle);
-  }, []);
+  }, [ticksForOpenNow]);
   const openState = useMemo<VenueOpenState>(
     () =>
       // A Stay does not trade hours; asking whether a hotel is "open" is the
