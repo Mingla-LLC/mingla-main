@@ -83,15 +83,51 @@ Deno.test("ORCH-1289 #3 — transactional footer is UNCHANGED (single space) —
   assert(!txnWire.includes(`\n\n${STOP}`), "transactional footer must not be on its own line");
 });
 
-Deno.test("ORCH-1289 #3 — idempotent on both modules (no double-append; parity holds)", () => {
-  // A body that already carries a STOP line must not gain a second footer on
-  // EITHER module, and the two must still agree.
-  const withStop = "Reply STOP to opt out. Come see us.";
-  const wire = composeSmsBody(withStop, true);
-  const preview = bodyWithFooter(withStop);
-  assert(!/reply stop[\s\S]*reply stop/i.test(wire), "wire must not double-append STOP");
-  assertEquals(wire, preview, "idempotent bodies must still match preview==wire");
+// RECONCILED by issue #1556 [sms cost preview]. This test asserted the PRE-#1541
+// contract — that a body containing "reply stop" ANYWHERE never gains a footer —
+// using an input that MENTIONS the phrase at the START and does not end with it:
+//
+//   "Reply STOP to opt out. Come see us."
+//
+// #1541 deliberately reversed that. Its guard is now end-anchored
+// (`/reply stop to opt out\.\s*$/i`), because a mid-body mention is CONTENT, not
+// compliance: an event or band called "Reply Stop" was stripping the CTIA
+// opt-out line off real transactional sends (#1541 ADV-4). So this body now
+// correctly gains a footer at the tail, and the old `!/reply stop.*reply stop/i`
+// assertion has been FAILING on main since #1541 merged — undetected, because
+// this file was wired into no workflow. It is registered in
+// supabase-migrations-and-stripe-deno.yml as of #1556 so it cannot go dark again.
+//
+// What the test asserts now is the property that actually holds and that
+// ORCH-1289 fix #3 exists to protect: PARITY. Suppression fires only for a body
+// that ALREADY ENDS with the footer, it fires identically on both modules, and
+// the footer lands exactly once at the tail.
+Deno.test("ORCH-1289 #3 — suppression is end-anchored and identical on both modules (post-#1541)", () => {
+  // (a) MENTIONS the footer but does not end with it -> BOTH sides append one,
+  //     at the tail, and agree byte-for-byte.
+  const mentions = "Reply STOP to opt out. Come see us.";
+  const wire = composeSmsBody(mentions, true);
+  const preview = bodyWithFooter(mentions);
+  assertEquals(wire, preview, "mention-only bodies must still match preview==wire");
+  assert(wire.endsWith(`\n\n${STOP}`), "the opt-out line must land at the tail");
+  assertEquals(
+    wire.split(STOP).length - 1,
+    2,
+    "the user's own text is preserved verbatim AND the footer is appended once",
+  );
+
+  // (b) ALREADY ENDS with the footer -> BOTH sides suppress, no second footer.
+  const alreadyFootered = `Come see us.\n\n${STOP}`;
+  const wire2 = composeSmsBody(alreadyFootered, true);
+  const preview2 = bodyWithFooter(alreadyFootered);
+  assertEquals(wire2, preview2, "already-footered bodies must match preview==wire");
+  assertEquals(
+    wire2.split(STOP).length - 1,
+    1,
+    "a body that already ends with the footer must not gain a second one",
+  );
 
   // Re-running the client composer over its own output is a fixed point.
   assertEquals(bodyWithFooter(preview), preview, "bodyWithFooter must be a fixed point");
+  assertEquals(bodyWithFooter(preview2), preview2, "bodyWithFooter must be a fixed point");
 });
