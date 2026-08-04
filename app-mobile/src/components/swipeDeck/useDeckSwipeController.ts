@@ -18,6 +18,7 @@ import {
 } from '../../utils/swipeCommit';
 import {
   canAdmitDeckInput,
+  canAdmitDeckTapExpand,
   canFastForwardDeckExit,
   DeckSwipeCommitToken,
   DeckCommitSettlement,
@@ -26,6 +27,7 @@ import {
   deckCommitTokenKey,
   isCurrentDeckCompletion,
   nextDeckGestureEpoch,
+  shouldReleaseUnactivatedPress,
 } from './deckSwipeLifecycle';
 
 export const DECK_EXIT_MS = 200;
@@ -91,6 +93,10 @@ export function useDeckSwipeController(
   const [isTransitionDelayed, setIsTransitionDelayed] = useState(false);
   const phaseRef = useRef<DeckSwipePhase>('IDLE');
   const epochRef = useRef(0);
+  // #1579 — true means "no tap-eligible press is in flight". Initialised true so the
+  // DRAGGING branch of canAdmitDeckTapExpand can only open after a real admission
+  // arms it in beginGesture.
+  const panActivatedRef = useRef(true);
   const activeCardIdRef = useRef<string | null>(options.activeCardId);
   const mountedRef = useRef(true);
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -326,8 +332,19 @@ export function useDeckSwipeController(
     }
     countersRef.current.admitted += 1;
     epochRef.current = nextDeckGestureEpoch(epochRef.current);
+    panActivatedRef.current = false;
     setPhase('DRAGGING');
   }, [fastForwardPendingExit, rejectInput, setPhase]);
+
+  const activateGesture = useCallback((): void => {
+    if (phaseRef.current !== 'DRAGGING') return;
+    panActivatedRef.current = true;
+  }, []);
+
+  const releaseUnactivatedPress = useCallback((): void => {
+    if (!shouldReleaseUnactivatedPress(phaseRef.current, panActivatedRef.current)) return;
+    setPhase('IDLE');
+  }, [setPhase]);
 
   const finalizeGesture = useCallback((
     translationX: number,
@@ -365,9 +382,18 @@ export function useDeckSwipeController(
     .onBegin(() => {
       runOnJS(beginGesture)();
     })
+    .onStart(() => {
+      runOnJS(activateGesture)();
+    })
     .onUpdate((event) => {
       positionX.value = event.translationX;
       positionY.value = event.translationY;
+    })
+    .onTouchesUp(() => {
+      runOnJS(releaseUnactivatedPress)();
+    })
+    .onTouchesCancelled(() => {
+      runOnJS(releaseUnactivatedPress)();
     })
     .onFinalize((event, success) => {
       runOnJS(finalizeGesture)(
@@ -376,7 +402,14 @@ export function useDeckSwipeController(
         event.velocityX,
         success,
       );
-    }), [beginGesture, finalizeGesture, positionX, positionY]);
+    }), [
+      activateGesture,
+      beginGesture,
+      finalizeGesture,
+      positionX,
+      positionY,
+      releaseUnactivatedPress,
+    ]);
 
   const requestSwipe = useCallback((direction: DeckSwipeDirection): boolean => {
     if (!canAdmitDeckInput(phaseRef.current) || !activeCardIdRef.current) {
@@ -386,18 +419,23 @@ export function useDeckSwipeController(
     countersRef.current.admitted += 1;
     epochRef.current = nextDeckGestureEpoch(epochRef.current);
     latestEndYRef.current = 0;
+    panActivatedRef.current = true;
     setPhase('DRAGGING');
     return beginExit(direction);
   }, [beginExit, rejectInput, setPhase]);
 
   const requestTapExpand = useCallback((): boolean => {
-    if (!canAdmitDeckInput(phaseRef.current) || !activeCardIdRef.current) {
+    if (
+      !canAdmitDeckTapExpand(phaseRef.current, panActivatedRef.current) ||
+      !activeCardIdRef.current
+    ) {
       rejectInput();
       return false;
     }
+    releaseUnactivatedPress();          // idempotent; no-ops when already IDLE
     optionsRef.current.onExpandRequested();
     return true;
-  }, [rejectInput]);
+  }, [rejectInput, releaseUnactivatedPress]);
 
   const isIdle = useCallback((): boolean => phaseRef.current === 'IDLE', []);
 
