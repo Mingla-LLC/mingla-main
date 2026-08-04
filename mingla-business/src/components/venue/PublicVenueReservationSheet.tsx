@@ -15,11 +15,15 @@ export interface PublicVenueReservationSheetProps {
   /**
    * #1532 D7 — REQUIRED, and required is the point.
    *
-   * This heading used to be the hardcoded string "Reserve a table", so a hotel
-   * guest tapped "Reserve this Stay" and landed on a sheet headed "Reserve a
-   * table". An OPTIONAL prop with a restaurant default would have preserved
-   * exactly that failure for anyone who forgot to pass it. Being required means
-   * a new call site cannot compile without deciding, and
+   * This heading used to be a hardcoded restaurant string, so a hotel guest
+   * tapped Reserve this Stay and landed on a sheet inviting them to reserve a
+   * table — directly above their check-in and check-out times. The component
+   * took no category prop at all: it was structurally incapable of saying
+   * anything else.
+   *
+   * An OPTIONAL prop with a restaurant default would have preserved exactly
+   * that failure for anyone who forgot to pass it. Being REQUIRED means a new
+   * call site cannot compile without deciding, and
    * `venueReserveCopy.reserveSheetTitle()` is the one place that decides — so
    * the heading and the CTA that opens it can never drift apart again.
    */

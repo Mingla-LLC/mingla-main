@@ -164,9 +164,15 @@ describe("#1501 — every pre-existing testID survives the rewrite", () => {
     // The deleted entry, verbatim. Its return is the #1501 regression.
     expect(code).not.toContain("field: { flex: 1, minWidth: 140");
     // The three axis-scoped replacements exist and `fieldStack` is flex-free.
-    expect(code).toContain(
-      'fieldStack: { width: "100%", minWidth: 0, gap: spacing.xs }',
+    // [TEST-MOD-APPROVED #1532] — the GAP moved (4 -> 8) as part of the
+    // approved 2/8/16/24/32 scale; the AXIS rule this test guards did not.
+    // Pinned on the two things that actually matter — the measure is
+    // width-only and carries no flex-axis key — instead of on a formatting-
+    // sensitive one-line literal that a prettier pass could also have broken.
+    expect(code).toMatch(
+      /fieldStack:\s*\{[^}]*width:\s*"100%"[^}]*minWidth:\s*0[^}]*\}/,
     );
+    expect(code).not.toMatch(/fieldStack:\s*\{[^}]*flex/);
     expect(code).toContain("fieldPair: {");
     expect(code).toContain("fieldNum: {");
     // `span` is REQUIRED at the type level — no `?`.
