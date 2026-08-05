@@ -60,6 +60,11 @@ type SupabaseAdmin = any;
 interface PendingPlaceRow {
   id: string;
   stored_photo_urls: unknown;
+  /**
+   * Issue #1622 — fully-drained failing rounds so far. Optional so existing
+   * callers/fixtures that never selected it keep compiling; absent is read as 0.
+   */
+  thumbs_attempts?: number | null;
 }
 
 interface ProcessPlaceResult {
@@ -164,6 +169,82 @@ type PhotoOutcome =
   | { placeId: string; status: 'written' }
   | { placeId: string; status: 'present' }
   | { placeId: string; status: 'failed'; url: string; error: string };
+
+/**
+ * Issue #1622 — is this failure worth retrying, or can it NEVER succeed?
+ *
+ * The job's only exit was `thumbs_backfilled_at` (all-or-nothing success), so a
+ * place holding one permanently-dead photo was re-claimed every ~10 minutes
+ * forever. Distinguishing the two kinds of failure is what makes a terminal
+ * state safe: we must never abandon a place over a network blip, and never burn
+ * five rounds on a file that no longer exists.
+ *
+ * PERMANENT — the source is gone or is not a decodable image:
+ *   `original_fetch_failed_4xx`  the storage object returns 404/400 — deleted.
+ *   `decoded_non_image`          bytes are not an image.
+ *   any decode throw             corrupt/unsupported payload.
+ * TRANSIENT — the source may still be fine:
+ *   `original_fetch_failed_5xx` / `_429`   storage hiccup or throttle.
+ *   network/timeout throws                  connectivity.
+ *
+ * DEFAULTS TO TRANSIENT on anything unrecognised. That direction is deliberate:
+ * mis-classifying transient as permanent silently drops a healthy place from the
+ * queue (data loss, invisible), whereas mis-classifying permanent as transient
+ * merely costs five more rounds before the attempt backstop catches it. When
+ * unsure, retry.
+ */
+export function classifyThumbFailure(error: string): 'permanent' | 'transient' {
+  const e = (error ?? '').toLowerCase();
+
+  // Explicit non-image / decode failures — the bytes will not become a thumb.
+  if (e.includes('decoded_non_image')) return 'permanent';
+  if (e.includes('unsupported image') || e.includes('unsupported format')) return 'permanent';
+
+  // `original_fetch_failed_<status>` — the status decides.
+  const m = e.match(/original_fetch_failed_(\d{3})/);
+  if (m) {
+    const status = Number(m[1]);
+    // 408 (timeout) and 429 (throttle) are retryable despite being 4xx.
+    if (status === 408 || status === 429) return 'transient';
+    if (status >= 400 && status < 500) return 'permanent';
+    return 'transient'; // 5xx — storage-side, may recover
+  }
+
+  return 'transient';
+}
+
+/**
+ * Issue #1622 — decide a place's fate after a round in which every one of its
+ * photo jobs ran. Pure so the rule is testable without a database or network.
+ *
+ * MUST only be called when the round FULLY DRAINED the place. The CPU wall guard
+ * abandons places mid-batch; counting an interrupted round as an attempt would
+ * let a repeatedly-interrupted HEALTHY place be marked terminal — turning a
+ * performance safeguard into data loss. That is the sharpest edge here.
+ */
+export const THUMB_MAX_ATTEMPTS = 5;
+
+export function decideThumbTerminalState(
+  errors: string[],
+  priorAttempts: number,
+): { terminal: boolean; attempts: number; reason: string | null } {
+  const attempts = priorAttempts + 1;
+  if (errors.length === 0) return { terminal: false, attempts: priorAttempts, reason: null };
+
+  const permanent = errors.filter((e) => classifyThumbFailure(e) === 'permanent');
+  if (permanent.length > 0) {
+    // Terminal IMMEDIATELY — retrying a deleted object is pure waste.
+    return { terminal: true, attempts, reason: `permanent: ${permanent[0]}` };
+  }
+  if (attempts >= THUMB_MAX_ATTEMPTS) {
+    return {
+      terminal: true,
+      attempts,
+      reason: `transient_exhausted_after_${attempts}: ${errors[0]}`,
+    };
+  }
+  return { terminal: false, attempts, reason: null };
+}
 
 async function runPhotoJob(db: SupabaseAdmin, job: PhotoJob): Promise<PhotoOutcome> {
   try {
@@ -315,9 +396,14 @@ export async function loadPendingPlaces(
   while (true) {
     let query = db
       .from('place_pool')
-      .select('id, stored_photo_urls')
+      // Issue #1622: `thumbs_attempts` is carried so a fully-drained failing
+      // round can increment it; `thumbs_failed_at IS NULL` is the SECOND EXIT —
+      // without it a place holding one permanently-dead photo is re-claimed
+      // every ~10 minutes forever (77 places were pinned this way).
+      .select('id, stored_photo_urls, thumbs_attempts')
       .eq('is_servable', true)
       .is('thumbs_backfilled_at', null)
+      .is('thumbs_failed_at', null)
       .not('stored_photo_urls', 'is', null)
       .order('created_at', { ascending: true })
       .range(offset, offset + pageSize - 1);
@@ -614,9 +700,13 @@ export async function processBatch(
   for (const placeId of placeIds) {
     const { data: place, error } = await db
       .from('place_pool')
-      .select('id, stored_photo_urls')
+      // Issue #1622 — same shape as loadPendingPlaces: carry thumbs_attempts and
+      // honour the terminal state, so a re-claim by explicit id cannot resurrect
+      // a place the queue has already given up on.
+      .select('id, stored_photo_urls, thumbs_attempts')
       .eq('id', placeId)
       .is('thumbs_backfilled_at', null)
+      .is('thumbs_failed_at', null)
       .maybeSingle();
 
     if (error) {
@@ -700,9 +790,35 @@ export async function processBatch(
     }
     if (failures.length > 0) {
       result.failed++;
+      // Issue #1622 — the round DRAINED and still failed, so this place gets a
+      // verdict. Reached only past the `!fullyDrained` guard above: a CPU-wall
+      // interruption must NEVER land here, or a repeatedly-interrupted healthy
+      // place would be marked terminal (safeguard → data loss).
+      const verdict = decideThumbTerminalState(
+        failures.map((f) => f.error),
+        typeof place.thumbs_attempts === 'number' ? place.thumbs_attempts : 0,
+      );
+      const patch: Record<string, unknown> = { thumbs_attempts: verdict.attempts };
+      if (verdict.terminal) {
+        patch.thumbs_failed_at = new Date().toISOString();
+        patch.thumbs_last_error = verdict.reason;
+        console.warn(
+          `[backfill-place-photo-thumbs] place ${place.id} TERMINAL (#1622): ${verdict.reason}`,
+        );
+      }
+      const { error: markError } = await db
+        .from('place_pool')
+        .update(patch)
+        .eq('id', place.id);
+      if (markError) {
+        // Never mask the original photo failure with a bookkeeping error.
+        console.warn(
+          `[backfill-place-photo-thumbs] place ${place.id} attempt-mark failed: ${markError.message}`,
+        );
+      }
       result.failedPlaces.push({
         placePoolId: place.id,
-        error: 'one_or_more_photos_failed',
+        error: verdict.terminal ? 'terminal_photos_unthumbable' : 'one_or_more_photos_failed',
         failedPhotos: failures,
       });
       continue;
