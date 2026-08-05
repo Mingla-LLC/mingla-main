@@ -7608,7 +7608,18 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   surface with no verdict (G3, T-4 and T-6 all fire).
   The divider-retention clause adds a fourth: delete the `const divider = DIVIDER_H;` line from
   `plateRows()` and restore `withMeta ? DIVIDER_H : 0` — `fails-on-revert verified at aaeb08a64`
-  (C-1 and C-2 in `issue_1609_short_plate_keeps_chevron.test.mjs` fire, plus G3b and T-9).
+  (**C-1 and C-5** in `issue_1609_short_plate_keeps_chevron.test.mjs` fire, plus G3b and T-9).
+  **Corrected by the tester at Step 0.5, re-running this proof independently:** commit `ea821554b`
+  and an earlier draft of this line recorded that revert as firing "C-1, C-2, C-3 and C-5". It does
+  not — it fires C-1, C-5, G3b and T-9. C-2 ("the RENDER SITE mounts the divider outside the
+  facts-row ternary") and C-3 ("the clearance is READ from the row set, not typed") scan
+  `deckCardPlate.tsx`, which a `plateRows()` revert does not touch, so they cannot fire on it. They
+  are NOT vacuous — each was independently proven falsifiable on its own revert: move the divider
+  JSX back inside the `withMeta ? … : null` ternary and **C-2 fires**; replace
+  `marginTop: rows.clearance` with `marginTop: 8` and **C-3 fires**. Coverage is intact; only the
+  recorded proof was imprecise. Stated exactly here because this registry is what a future
+  maintainer re-runs, and a fails-on-revert record that names assertions which do not actually fire
+  is the #1607 defect class applied to the proof rather than to the guard.
   The tester's anchor-drift guard adds a fifth, and it is the one that protects the ANCHORS rather
   than the plate — `fails-on-revert verified at 868251568`, all three reverts run by the tester
   against that commit in `issue_1609_silhouette_anchor_drift.adversarial.test.mjs`:
