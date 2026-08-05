@@ -7609,6 +7609,23 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   The divider-retention clause adds a fourth: delete the `const divider = DIVIDER_H;` line from
   `plateRows()` and restore `withMeta ? DIVIDER_H : 0` — `fails-on-revert verified at aaeb08a64`
   (C-1 and C-2 in `issue_1609_short_plate_keeps_chevron.test.mjs` fire, plus G3b and T-9).
+  The tester's anchor-drift guard adds a fifth, and it is the one that protects the ANCHORS rather
+  than the plate — `fails-on-revert verified at 868251568`, all three reverts run by the tester
+  against that commit in `issue_1609_silhouette_anchor_drift.adversarial.test.mjs`:
+  (i) type the short plate in as a literal `54` in place of
+  `plateH - META_ROW_H + CHEVRON_CLEARANCE` → **A-0 fires** (measured 42pt against a derived 32pt).
+  Note this revert is the reason A-0's clause is `CI.META_ROW_H - CI.CHEVRON_CLEARANCE` and not the
+  literal `42` it carried while the short plate was 54: the old literal would have *passed* this
+  exact regression, and the obvious replacement `S1.plateH - CI.PLATE_H_NO_META` reduces through
+  `plateTop()` to `a - b === a - b` and can never fail at all.
+  (ii) make `titleBottom()` ignore its `plateH` argument and fall back to the descriptor's constant
+  96 → **A-1 fires** (100pt derived here against 132pt returned by the package).
+  (iii) restore the module-load anchor — put `bottom: S1.bottomInset + S1.plateH + S1.gap` back into
+  both trees' `cardTitle` `StyleSheet.create` entries, drop the per-render overrides, and return
+  `CuratedSlivers()` to taking no argument — i.e. the original P1-1 defect → **A-2, A-3 and A-4 all
+  fire** (52pt of dead scrim under the name; `platePresentation` imported but never called; the
+  sliver stack stranded 32pt above the plate). All 72 assertions in the workflow return green on
+  restore.
   **Note for whoever maintains this:** the design's own suggested proof — "change `PLATE.lift` by
   0.02" — does NOT fire, and that is correct behaviour rather than a gap. `plateUnderAlpha` re-solves
   for the target L* given the new lift, so the composite still lands on 23.50. The derivation
