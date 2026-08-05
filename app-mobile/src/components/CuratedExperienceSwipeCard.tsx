@@ -11,7 +11,6 @@ import { EventCoverMedia } from '@mingla/offering-rendering';
 // and would show a permanent dark `#2C2C2E` panel on a slow/failed stop image).
 import { Image as ExpoImage } from 'expo-image';
 import { BlurView } from 'expo-blur';
-import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
@@ -26,7 +25,13 @@ import { parseAndFormatDistance, formatCurrency } from './utils/formatters';
 // ORCH-1065 BUG-3: import from the leaf ./deckHeroConstants module, NOT from
 // ./SwipeableCards — SwipeableCards imports THIS file (it renders the card), so
 // importing back from it closed a require cycle. The leaf module has no such edge.
-import { CARD_FALLBACK_IMAGE, DECK_HERO_PLACEHOLDER_BLURHASH } from './deckHeroConstants';
+import {
+  CARD_FALLBACK_IMAGE,
+  DECK_HERO_PLACEHOLDER_BLURHASH,
+  DECK_SCRIM_COLORS,
+  DECK_SCRIM_LOCATIONS,
+} from './deckHeroConstants';
+import { DECK_VISIBLE_POSTER_CACHE_POLICY } from './swipeDeck/deckHeroPolicy';
 
 // ORCH-1042: fade-in within the spec's 180–300 ms band (mirrors SwipeableCards).
 const CURATED_STOP_TRANSITION_MS = 220;
@@ -47,9 +52,9 @@ function CuratedStopImage({ uri }: { uri: string }) {
   return (
     <ExpoImage
       source={{ uri: src }}
-      style={styles.stopImage}
+      style={styles.heroImage}
       contentFit="cover"
-      cachePolicy="memory-disk"
+      cachePolicy={DECK_VISIBLE_POSTER_CACHE_POLICY}
       recyclingKey={src}
       transition={CURATED_STOP_TRANSITION_MS}
       placeholder={{ blurhash: DECK_HERO_PLACEHOLDER_BLURHASH }}
@@ -217,9 +222,12 @@ function getTravelModeIcon(mode?: string): string {
   }
 }
 
-// Matches SwipeableCards.tsx IMAGE_SECTION_RATIO — shared single-card chrome.
-const IMAGE_SECTION_RATIO = 0.88;
-const DETAILS_SECTION_RATIO = 1 - IMAGE_SECTION_RATIO;
+// #1609 — the ratios are DELETED here for the same reason as in SwipeableCards: a
+// flex-axis key resolves differently under different sibling sets, which is #1593.
+// The hero is a full-bleed absolute fill and the tray is gone.
+//
+// The stop ribbon renders at most this many nodes; beyond it, 3 nodes + a "+N" chip.
+const RIBBON_MAX_NODES = 4;
 
 interface Props {
   card: CuratedExperienceCard;
@@ -254,15 +262,27 @@ interface Props {
 export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem, currencyCode, brandExperience, onBrandPress, experienceCover, ctaOverride, isTopCard = true }: Props) {
   const { t } = useTranslation(['common']);
   const insets = useSafeAreaInsets();
-  // ORCH-0991: deck is full-bleed under the floating glass top bar (HomePage safeArea has
-  // no top inset). Push the per-stop number badges below the chrome so they aren't clipped
-  // behind the status bar / Dynamic Island / preferences button. +62 matches the codebase's
-  // established "just below the glass top bar" offset.
+  // ORCH-0991: deck is full-bleed under the floating glass top bar. Keeps the brand
+  // chip below the chrome so it is not clipped behind the status bar / Dynamic Island.
+  // #1609: the per-stop number badges that also used this are gone with the strip.
   const stopBadgeTop = insets.top + 62;
 
   // Compact card shows only main (non-optional) stops
   const mainStops = card.stops.filter(s => !s.optional);
   const visibleStops = mainStops.length > 0 ? mainStops : card.stops;
+
+  // #1609 — the single hero for the non-cover path: the first stop that actually has a
+  // photo. Null when no stop has one, in which case the placeholder canvas shows and
+  // nothing is fabricated (Constitution rule 9).
+  const heroImageUrl = visibleStops.find(s => typeof s.imageUrl === 'string' && s.imageUrl.length > 0)?.imageUrl ?? null;
+
+  // #1609 — the stop ribbon's nodes. Pure text + Views: zero images, zero scrollables,
+  // zero touchables, so it adds nothing to the swipe path. Beyond RIBBON_MAX_NODES it
+  // shows the first 3 and a "+N" overflow chip.
+  const ribbonStops = visibleStops.length > RIBBON_MAX_NODES
+    ? visibleStops.slice(0, RIBBON_MAX_NODES - 1)
+    : visibleStops;
+  const ribbonOverflow = visibleStops.length - ribbonStops.length;
 
   // ORCH-1065: this card is a brand experience when the brand-attribution prop is
   // present (curated callers omit it → byte-identical render, SC-13).
@@ -305,14 +325,10 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
   // ORCH-1065: ctaOverride present ('Book') for experiences; curated keeps its
   // existing text byte-for-byte.
   const ctaText = ctaOverride ?? (isSingleStop ? 'See Details' : 'See Full Plan');
-  const isBookCta = ctaOverride != null;
-
-  const handleCtaPressIn = (): void => {
-    // ORCH-1065 DESIGN §3.3: Light haptic on the commerce action (iOS only).
-    if (isBookCta && Platform.OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    }
-  };
+  // #1609 — isBookCta / handleCtaPressIn are DELETED with the tray CTA they served.
+  // The commerce "Book" action is NOT lost: it lives on the expanded sheet, which the
+  // whole card now opens through requestTapExpand. What is gone is the second,
+  // lease-bypassing entry point to that same sheet.
 
   // First stop distance & travel time (most relevant to the user)
   const firstStop = visibleStops[0];
@@ -342,70 +358,36 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
 
   return (
     <View style={styles.card}>
-      {/* Image section (88%) — cover hero + stop strip (experience) OR full stop
-          strip (curated / cover-less experience). */}
-      <View style={styles.imageContainer}>
+      {/* #1609 — full-bleed hero, ONE image.
+          The old `imageStrip` mounted one ExpoImage PER STOP as an absolute-fill row,
+          so a 4-stop card was 4 decodes and two mounted cards were 8, against a
+          performance bound of two raster posters. It also degraded badly at N>=4
+          (100pt-wide crops of interiors are unreadable) and pinned its stop-number
+          badges to the TOP of the card rather than over the slices they labelled.
+          Curated now joins the same single-poster budget as a place card, and the
+          stops are named in the ribbon below instead — strictly more informative than
+          four unreadable crops. */}
+      <View style={styles.heroFill}>
         {showCoverHero ? (
-          <View style={styles.coverHeroSection}>
-            {/* Cover hero — the experience's real cover (image/video/gif). */}
-            <View style={styles.coverHeroMedia}>
-              <EventCoverMedia
-                hue={experienceCover?.coverHue}
-                mediaUrl={coverUrl}
-                mediaType={coverType}
-                // ORCH-1209 — only the front card streams (parity with the
-                // venue deck CardHero, I-1069). Off-front: paused on poster.
-                autoplay={isTopCard}
-                playbackActive={isTopCard}
-                muted
-                loop
-                radius={0}
-                height="100%"
-                width="100%"
-                label={card.title}
-              />
-            </View>
-            {/* Stop strip — smaller row of stop photos beneath the cover. */}
-            {visibleStops.length > 0 ? (
-              <View style={styles.stopStripRow}>
-                {visibleStops.map((stop, idx) => (
-                  <View key={`${stop.placeId}_${idx}`} style={styles.stopStripCell}>
-                    {stop.imageUrl ? (
-                      <CuratedStopImage uri={stop.imageUrl} />
-                    ) : (
-                      <View style={[styles.stopImage, styles.imagePlaceholder]} />
-                    )}
-                    {!isSingleStop && (
-                      <View style={styles.stopStripBadge}>
-                        <GlassBadge variant="circular" accessibilityLabel={`Stop ${idx + 1}`}>
-                          {idx + 1}
-                        </GlassBadge>
-                      </View>
-                    )}
-                  </View>
-                ))}
-              </View>
-            ) : null}
-          </View>
+          <EventCoverMedia
+            hue={experienceCover?.coverHue}
+            mediaUrl={coverUrl}
+            mediaType={coverType}
+            // ORCH-1209 — only the front card streams (parity with the
+            // venue deck CardHero, I-1069). Off-front: paused on poster.
+            autoplay={isTopCard}
+            playbackActive={isTopCard}
+            muted
+            loop
+            radius={0}
+            height="100%"
+            width="100%"
+            label={card.title}
+          />
+        ) : heroImageUrl ? (
+          <CuratedStopImage uri={heroImageUrl} />
         ) : (
-          <View style={styles.imageStrip}>
-            {visibleStops.map((stop, idx) => (
-              <View key={`${stop.placeId}_${idx}`} style={styles.imageWrapper}>
-                {stop.imageUrl ? (
-                  <CuratedStopImage uri={stop.imageUrl} />
-                ) : (
-                  <View style={[styles.stopImage, styles.imagePlaceholder]} />
-                )}
-                {!isSingleStop && (
-                  <View style={[styles.stopBadgeWrapper, { top: stopBadgeTop }]}>
-                    <GlassBadge variant="circular" accessibilityLabel={`Stop ${idx + 1}`}>
-                      {idx + 1}
-                    </GlassBadge>
-                  </View>
-                )}
-              </View>
-            ))}
-          </View>
+          <View style={[StyleSheet.absoluteFillObject, styles.imagePlaceholder]} />
         )}
 
         {/* ORCH-1065: brand badge (top-left, below the stop-badge baseline) —
@@ -439,24 +421,56 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
           )
         ) : null}
 
-        {/* Hero gradient — dark fade behind title + labels for legibility */}
+        {/* #1609 — the scrim, identical ramp to the place card but 62% tall because
+            curated carries an extra row (the ribbon) above the badges. Same contrast
+            derivation; see DECK_SCRIM_COLORS in SwipeableCards.tsx. */}
         <LinearGradient
-          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.55)']}
-          locations={[0, 0.5, 1]}
+          colors={DECK_SCRIM_COLORS}
+          locations={DECK_SCRIM_LOCATIONS}
           pointerEvents="none"
-          style={styles.heroGradient}
+          style={styles.heroScrim}
         />
 
         {/* Title + labels overlay — bottom-left of image, matches single-card anatomy */}
         <View style={styles.titleOverlay} pointerEvents="box-none">
-          <Text style={styles.cardTitle} numberOfLines={2}>{card.title}</Text>
+          <Text style={styles.cardTitle} numberOfLines={2} maxFontSizeMultiplier={1.4}>{card.title}</Text>
           {card.tagline && card.tagline.trim().length > 0 ? (
-            <Text style={styles.oneLiner} numberOfLines={1}>{card.tagline}</Text>
+            <Text style={styles.oneLiner} numberOfLines={2} maxFontSizeMultiplier={1.4}>{card.tagline}</Text>
+          ) : null}
+
+          {/* #1609 differentiator 2 — the stop ribbon. NAMING the stops is strictly more
+              informative than four unreadable crops: "three photos of rooms" becomes
+              "Bar Termini, Osteria, Dante". Static by design — animating it would add an
+              Animated.View per node inside the promotion diff, which is the exact shape
+              that produced #1576. */}
+          {!isSingleStop && ribbonStops.length > 0 ? (
+            <View style={styles.ribbon} pointerEvents="none">
+              {ribbonStops.map((stop, idx) => (
+                <React.Fragment key={`${stop.placeId}_${idx}`}>
+                  {idx > 0 ? <View style={styles.ribbonConnector} /> : null}
+                  <View style={styles.ribbonNode}>
+                    <View style={styles.ribbonDot} />
+                    <Text style={styles.ribbonLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                      {stop.placeName}
+                    </Text>
+                  </View>
+                </React.Fragment>
+              ))}
+              {ribbonOverflow > 0 ? (
+                <Text style={styles.ribbonOverflow} maxFontSizeMultiplier={1.2}>{`+${ribbonOverflow}`}</Text>
+              ) : null}
+            </View>
           ) : null}
 
           {/* Label chips — same GlassBadge vocabulary as single cards.
               Order matches SwipeableCards.tsx: location → travel → rating → price → category. */}
           <View style={styles.detailsBadges}>
+            {/* #1609 differentiator 1 — the LEADING chip is accent-tinted so a curated
+                card is identifiable at a glance. Colour is NOT the only signal: the
+                git-branch icon and the word "Plan" each carry it independently. */}
+            <GlassBadge variant="accent" iconName="git-branch-outline" entryIndex={0}>
+              {isSingleStop ? 'Plan' : `Plan · ${visibleStops.length} stops`}
+            </GlassBadge>
             {formattedDistance ? (
               <GlassBadge iconName="location" entryIndex={0}>
                 {formattedDistance}
@@ -483,36 +497,21 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
               {categoryChipLabel}
             </GlassBadge>
           </View>
-        </View>
-      </View>
 
-      {/* Details tray (12%) — share-style CTA for curated; filled "Book"
-          commerce CTA for brand experiences (ORCH-1065 DESIGN §3). */}
-      <View style={styles.cardDetails}>
-        {isBookCta ? (
-          <TrackedTouchableOpacity
-            logComponent="CuratedExperienceSwipeCard"
-            style={styles.bookButton}
-            onPress={onSeePlan}
-            onPressIn={handleCtaPressIn}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel={`Book ${card.title}`}
-          >
-            <Icon name="ticket-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.bookButtonText}>{ctaText}</Text>
-          </TrackedTouchableOpacity>
-        ) : (
-          <TrackedTouchableOpacity
-            logComponent="CuratedExperienceSwipeCard"
-            style={styles.seePlanButton}
-            onPress={onSeePlan}
-            activeOpacity={0.7}
-          >
-            <Icon name="list-outline" size={18} color="#6b7280" />
-            <Text style={styles.seePlanButtonText}>{ctaText}</Text>
-          </TrackedTouchableOpacity>
-        )}
+          {/* #1609 — the action rail, replacing the deleted tray and its CTA.
+              That CTA called onSeePlan -> handleCardExpand DIRECTLY, bypassing
+              requestTapExpand and therefore the deck's gesture lease entirely. Deleting
+              it means EVERY expand entry point on this card — tap, swipe-up, and the
+              VoiceOver expand action — now routes through requestTapExpand. That is a
+              real hole closed (I-PROPOSED-1579 corollary), not a side effect: the same
+              sheet is one tap away on the card itself. */}
+          <View style={styles.actionRail} pointerEvents="none">
+            <View style={styles.railHint}>
+              <Icon name="chevron-up" size={14} color="#FFFFFF" />
+              <Text style={styles.railHintText} numberOfLines={1}>{ctaText}</Text>
+            </View>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -525,66 +524,26 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
   },
-  // Hero image section — 88% of card (matches single-card IMAGE_SECTION_RATIO)
-  imageContainer: {
-    flex: IMAGE_SECTION_RATIO,
-    position: 'relative',
-  },
-  imageStrip: {
+  // #1609 — full-bleed hero. Same absoluteFillObject as the place card's heroFill:
+  // no flex-axis key, so it cannot disagree with the poster layer (#1593).
+  heroFill: {
     ...StyleSheet.absoluteFillObject,
-    flexDirection: 'row',
   },
-  // ORCH-1072: cover hero (top) + stop strip (bottom) for brand experiences.
-  coverHeroSection: {
-    ...StyleSheet.absoluteFillObject,
-    flexDirection: 'column',
-  },
-  coverHeroMedia: {
-    flex: 0.74, // cover takes ~3/4 of the image section
-    width: '100%',
-    backgroundColor: '#1C1C1E',
-    overflow: 'hidden',
-  },
-  stopStripRow: {
-    flex: 0.26, // stop photos as a smaller strip beneath the cover
-    flexDirection: 'row',
-  },
-  stopStripCell: {
-    flex: 1,
-    position: 'relative',
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: 'rgba(0,0,0,0.25)',
-  },
-  stopStripBadge: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
-  },
-  imageWrapper: {
-    flex: 1,
-    position: 'relative',
-  },
-  stopImage: {
+  heroImage: {
     width: '100%',
     height: '100%',
   },
   imagePlaceholder: {
     backgroundColor: '#2C2C2E',
   },
-  // ORCH-0566: position-only wrapper — GlassBadge (variant=circular) provides its own skin.
-  // ORCH-0991: `top` is set at runtime (safe-area inset + 62) so the badge clears the
-  // floating glass top bar; `left` is static.
-  stopBadgeWrapper: {
-    position: 'absolute',
-    left: 8,
-  },
-  // Hero fade — matches SwipeableCards.tsx heroGradient
-  heroGradient: {
+  // #1609 — replaces heroGradient. 62% (vs the place card's 52%) because curated
+  // carries the ribbon row above the badges; same contrast-derived ramp.
+  heroScrim: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    height: '45%',
+    height: '62%',
     zIndex: 1,
   },
   // Title + labels overlay — matches SwipeableCards.tsx titleOverlay
@@ -593,14 +552,16 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 20,
-    paddingBottom: 24,
+    paddingHorizontal: 20,
+    paddingTop: 0,
+    paddingBottom: 28,
     zIndex: 2,
   },
   cardTitle: {
     color: 'white',
     fontSize: 24,
     fontWeight: 'bold',
+    lineHeight: 30,
     marginBottom: 6,
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 1 },
@@ -610,45 +571,83 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
-    marginTop: 4,
-    marginBottom: 10,
+    marginTop: 6,
+    marginBottom: 0,
     textShadowColor: 'rgba(0, 0, 0, 0.7)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  // #1609 — the stop ribbon. Views and Texts only.
+  ribbon: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  ribbonNode: {
+    alignItems: 'center',
+    flexShrink: 1,
+    maxWidth: 96,
+  },
+  ribbonDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FFFFFF',
+  },
+  ribbonConnector: {
+    height: 1.5,
+    flex: 1,
+    minWidth: 12,
+    maxWidth: 28,
+    backgroundColor: 'rgba(255,255,255,0.45)',
+    marginTop: 3.25,
+    marginHorizontal: 4,
+  },
+  ribbonLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    letterSpacing: 0.1,
+    marginTop: 5,
+    textShadowColor: 'rgba(0, 0, 0, 0.7)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  ribbonOverflow: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.72)',
+    marginLeft: 6,
   },
   detailsBadges: {
     flexDirection: 'row',
     gap: 8,
     flexWrap: 'wrap',
   },
-  // Details tray — 12%, matches SwipeableCards.tsx cardDetails
-  cardDetails: {
-    flex: DETAILS_SECTION_RATIO,
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(0, 0, 0, 0.06)',
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    justifyContent: 'center',
-  },
-  // "See Full Plan" — matches SwipeableCards.tsx shareButton chrome exactly
-  seePlanButton: {
+  // #1609 — the rail. Signifier only on curated: the whole card is the expand target
+  // and routes through requestTapExpand, so there is no CTA here to bypass the lease.
+  actionRail: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(249, 250, 251, 0.7)',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.08)',
+    height: 44,
+    marginTop: 16,
   },
-  seePlanButtonText: {
-    fontSize: 15,
-    color: '#6b7280',
+  railHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 1,
+  },
+  railHintText: {
+    fontSize: 13,
     fontWeight: '500',
+    letterSpacing: 0.2,
+    color: '#FFFFFF',
+    opacity: 0.88,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   // ─── ORCH-1065 brand badge + Book CTA (DESIGN §2, §3, §7) ───────────────────
   brandChip: {
@@ -734,22 +733,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.2,
     lineHeight: 18,
-    color: '#FFFFFF',
-  },
-  bookButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,             // space.sm
-    paddingVertical: 12, // space.md
-    minHeight: 44,       // guaranteed tap target
-    backgroundColor: '#FF6B35', // brand.primary
-    borderRadius: 12,    // radius.md
-  },
-  bookButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    letterSpacing: 0.2,
     color: '#FFFFFF',
   },
 });

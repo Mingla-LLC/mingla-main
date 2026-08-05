@@ -7486,13 +7486,33 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Generalisation:** this is a property of layered composition, not of the deck. Any future layer
   pair — poster/face, blur/content, shadow/surface — inherits the hazard the moment one layer is
   transparent and the other supplies the pixels.
-- **What the enforcement does and does NOT cover, stated plainly.** The gate **executes the real
-  geometry function** (`posterPhotoBoxOverride` in `app-mobile/src/components/swipeDeck/deckPosterGeometry.ts`)
-  and statically proves the dataflow (producer -> consumer) and the role scoping. It does **NOT** run
-  Yoga and therefore does **not** prove the resulting pixel geometry — that is the runtime oracle's
-  job (SC-1/SC-2), and both are required. It does not cover layer pairs in files the gate is not
-  pointed at, nor geometry applied imperatively.
+- **MECHANISM MIGRATED at #1609 — the rule is UNCHANGED, the satisfying mechanism is not.**
+  #1593 satisfied this rule by **measure-and-copy**: the face tree measured its own hero hole via
+  `onLayout` and that single number was passed to the poster through a `heroHoleHeight` prop and a
+  pure `posterPhotoBoxOverride(role, h)` function. #1609 made the collapsed card's hero **full-bleed**
+  and deleted the white tray, which removes the flex axis altogether: both trees now use ONE axis-free
+  style, `styles.heroFill` = `{...StyleSheet.absoluteFillObject}`. Because `cardInner` is `flex: 1`
+  with a definite height in both trees, an absolute fill resolves to exactly `cardInner`'s box in
+  both — sibling-independent, no measurement, no runtime coupling. Delta is **0.00pt by construction**
+  rather than by agreement. `deckPosterGeometry.ts`, the `heroHoleHeight` prop and state,
+  `styles.imageContainer` and `styles.cardDetails` are **deleted**, so the measure-and-copy enforcement
+  now has no subject. The guards were **rewritten, not removed** — see below. This is a
+  strengthening: "no flex axis exists" is checkable statically, whereas "two measured numbers agree"
+  was only checkable at runtime.
+- **What the enforcement does and does NOT cover, stated plainly.** The gate proves **statically**
+  that exactly one axis-free hero style exists, that BOTH trees are handed that same object, that it
+  carries no `flex`/`flexGrow`/`flexBasis`/`height` key, that exactly one poster photo box exists and
+  applies the passed style alone, and that the superseded plumbing is absent. It additionally
+  **executes an independent WCAG oracle** over the real shipped scrim constants
+  (`DECK_SCRIM_COLORS` / `DECK_SCRIM_LOCATIONS` in `app-mobile/src/components/deckHeroConstants.ts`),
+  compositing them over a white hero and asserting the contrast at every text band. It does **NOT**
+  run Yoga and therefore does **not** prove the resulting pixel geometry — that is the runtime
+  oracle's job, and both are required. It does not cover layer pairs in files the gate is not pointed
+  at, nor geometry applied imperatively.
 - **Enforcement:** `.github/workflows/issue-1593-deck-layer-geometry.yml` requires and executes
-  `issue_1593_poster_hole_geometry.test.mjs` (implementor) and
-  `issue_1593_poster_hole_geometry.adversarial.test.mjs` (tester).
+  `issue_1593_poster_hole_geometry.test.mjs` (implementor),
+  `issue_1593_poster_hole_geometry.adversarial.test.mjs` (tester), and
+  `issue_1609_collapsed_card_scrim_and_geometry.test.mjs` (#1609 successor, which also carries the
+  scrim contrast oracle). The first two were rewritten under `[TEST-MOD-APPROVED #1609]`.
 - **Established:** DRAFT at #1593 SPEC 2026-08-04. Flips ACTIVE at CLOSE after tester PASS.
+  Mechanism migrated at #1609 2026-08-04; rule text unchanged.

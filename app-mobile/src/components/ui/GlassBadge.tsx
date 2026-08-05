@@ -38,7 +38,13 @@ import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../../constants/desig
 const t = glass.badge;
 
 export type GlassBadgeProps = {
-  variant?: 'default' | 'circular';
+  /**
+   * #1609 — `accent` is the curated card's LEADING chip. It is the same five-layer
+   * stack with the tint + border swapped for the existing glass.chrome.active values,
+   * so it introduces no new token. It is deliberately never the ONLY differentiator:
+   * the curated chip also carries a distinct icon and the word "Plan".
+   */
+  variant?: 'default' | 'circular' | 'accent';
   iconName?: IconName;
   children: React.ReactNode;
   onPress?: () => void;
@@ -229,11 +235,22 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
         />
       )}
 
-      {/* L2 — tint floor (glass path only; fallback is already dark) */}
+      {/* L2 — tint floor (glass path only; fallback is already dark).
+          #1609: the accent variant paints its tint on BOTH paths, because on the
+          opaque Android fallback there is no floor layer to tint and the chip would
+          otherwise lose its accent entirely. */}
       {useGlass ? (
         <View
           pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { backgroundColor: t.tint.floor }]}
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: variant === 'accent' ? glass.chrome.active.tint : t.tint.floor },
+          ]}
+        />
+      ) : variant === 'accent' ? (
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { backgroundColor: glass.chrome.active.tint }]}
         />
       ) : null}
 
@@ -275,7 +292,11 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
     </>
   );
 
-  const baseBoxStyle: StyleProp<ViewStyle> = [styles.base, shapeStyle];
+  const baseBoxStyle: StyleProp<ViewStyle> = [
+    styles.base,
+    shapeStyle,
+    variant === 'accent' ? { borderColor: glass.chrome.active.border } : null,
+  ];
 
   const animatedOuterStyle = {
     opacity: entryOpacity,
