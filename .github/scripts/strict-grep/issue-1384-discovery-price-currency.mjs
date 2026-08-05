@@ -177,9 +177,22 @@ const rules = {
     venueOnly: true,
   },
   swipeable: {
+    // #1609 Direction C — SUPERSEDED SHAPE, SAME PROPERTY.
+    //
+    // These two strings were the price GlassBadge chips' JSX guards. Direction C
+    // deletes every chip from the collapsed card face and carries the venue's
+    // price in the plate's weighted meta line instead, so the shape moved. The
+    // PROPERTY this rule defends is unchanged and is what the `forbid` list
+    // below actually enforces: the card renders the venue's OWN price string,
+    // guarded for absence, and never fabricates money, applies a client-side FX
+    // rate, or derives a figure from a tier threshold or a Google ordinal.
+    //
+    // The new anchors are the meta-span builder that produces it, and they are
+    // strictly more specific than the old ones: they name the FUNCTION that
+    // decides, not one of two call sites that happened to look alike.
     required: [
-      "{nextCard.priceRange ? (",
-      "{currentRec.priceRange ? (",
+      "function metaSpansForCard(",
+      "if (card.priceRange) spans.push({ kind: 'fact', text: card.priceRange });",
     ],
     venueOnly: true,
     forbid: [
