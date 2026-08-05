@@ -484,16 +484,16 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
             {/* #1609 differentiator 1 — the LEADING chip is accent-tinted so a curated
                 card is identifiable at a glance. Colour is NOT the only signal: the
                 git-branch icon and the word "Plan" each carry it independently. */}
-            <GlassBadge variant="accent" iconName="git-branch-outline" entryIndex={0}>
+            <GlassBadge liquid variant="accent" iconName="git-branch-outline" entryIndex={0}>
               {isSingleStop ? 'Plan' : `Plan · ${visibleStops.length} stops`}
             </GlassBadge>
             {formattedDistance ? (
-              <GlassBadge iconName="location" entryIndex={0}>
+              <GlassBadge liquid iconName="location" entryIndex={0}>
                 {formattedDistance}
               </GlassBadge>
             ) : null}
             {formattedTravelTime ? (
-              <GlassBadge iconName={getTravelModeIcon(travelMode) as any} entryIndex={1}>
+              <GlassBadge liquid iconName={getTravelModeIcon(travelMode) as any} entryIndex={1}>
                 {formattedTravelTime}
               </GlassBadge>
             ) : null}
@@ -502,14 +502,14 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
                 Hide the rating chip entirely for the experience variant; curated
                 cards (real Google ratings) keep it. */}
             {isBrandExperience ? null : (
-              <GlassBadge iconName="star" entryIndex={2}>
+              <GlassBadge liquid iconName="star" entryIndex={2}>
                 {avgRating}
               </GlassBadge>
             )}
-            <GlassBadge iconName="pricetag" entryIndex={3}>
+            <GlassBadge liquid iconName="pricetag" entryIndex={3}>
               {priceLabel}
             </GlassBadge>
-            <GlassBadge iconName={categoryIcon as any} entryIndex={4}>
+            <GlassBadge liquid iconName={categoryIcon as any} entryIndex={4}>
               {categoryChipLabel}
             </GlassBadge>
           </View>

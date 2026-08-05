@@ -3235,24 +3235,24 @@ export default function SwipeableCards({
                         {/* ORCH-0659: honest null propagation — hide the badge entirely when
                             distance is missing. No "nearby" placeholder (Constitution #9). */}
                         {nextCard.distance != null && (
-                          <GlassBadge iconName="location">
+                          <GlassBadge liquid iconName="location">
                             {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem)}
                           </GlassBadge>
                         )}
                         {/* ORCH-0660: render only when real value present. Mode-icon matches
                             card.travelMode (set server-side per user preference). */}
                         {nextCard.travelTime != null && (
-                          <GlassBadge iconName={getTravelModeIcon(nextCard.travelMode ?? effectiveTravelMode)}>
+                          <GlassBadge liquid iconName={getTravelModeIcon(nextCard.travelMode ?? effectiveTravelMode)}>
                             {nextCard.travelTime}
                           </GlassBadge>
                         )}
                         {nextCard.rating != null && nextCard.rating > 0 && (
-                          <GlassBadge iconName="star">{nextCard.rating.toFixed(1)}</GlassBadge>
+                          <GlassBadge liquid iconName="star">{nextCard.rating.toFixed(1)}</GlassBadge>
                         )}
                         {nextCard.priceRange ? (
-                          <GlassBadge iconName="pricetag">{nextCard.priceRange}</GlassBadge>
+                          <GlassBadge liquid iconName="pricetag">{nextCard.priceRange}</GlassBadge>
                         ) : null}
-                        <GlassBadge iconName={NextCategoryIcon}>
+                        <GlassBadge liquid iconName={NextCategoryIcon}>
                           {getReadableCategoryName(nextCard.category)}
                         </GlassBadge>
                       </View>
@@ -3516,25 +3516,25 @@ export default function SwipeableCards({
                       <View style={styles.detailsBadges}>
                         {/* ORCH-0659: honest null propagation — hide the badge when distance missing. */}
                         {currentRec.distance != null && (
-                          <GlassBadge iconName="location" entryIndex={0}>
+                          <GlassBadge liquid iconName="location" entryIndex={0}>
                             {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem)}
                           </GlassBadge>
                         )}
                         {/* ORCH-0660: render only when real value present; icon matches selected travel mode. */}
                         {currentRec.travelTime != null && (
-                          <GlassBadge iconName={getTravelModeIcon(currentRec.travelMode ?? effectiveTravelMode)} entryIndex={1}>
+                          <GlassBadge liquid iconName={getTravelModeIcon(currentRec.travelMode ?? effectiveTravelMode)} entryIndex={1}>
                             {currentRec.travelTime}
                           </GlassBadge>
                         )}
                         {currentRec.rating != null && currentRec.rating > 0 && (
-                          <GlassBadge iconName="star" entryIndex={2}>
+                          <GlassBadge liquid iconName="star" entryIndex={2}>
                             {currentRec.rating.toFixed(1)}
                           </GlassBadge>
                         )}
                         {currentRec.priceRange ? (
-                          <GlassBadge iconName="pricetag" entryIndex={3}>{currentRec.priceRange}</GlassBadge>
+                          <GlassBadge liquid iconName="pricetag" entryIndex={3}>{currentRec.priceRange}</GlassBadge>
                         ) : null}
-                        <GlassBadge iconName={CategoryIcon} entryIndex={4}>
+                        <GlassBadge liquid iconName={CategoryIcon} entryIndex={4}>
                           {getReadableCategoryName(currentRec.category)}
                         </GlassBadge>
                       </View>
@@ -3587,6 +3587,7 @@ export default function SwipeableCards({
                               a toggle that one more tap undoes, not a modal mid-swipe. */}
                           <BeenHereControl userId={user?.id} card={currentRec} />
                           <GlassIconButton
+                            liquid
                             iconName="share-outline"
                             onPress={handleShare}
                             accessibilityLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
@@ -4040,10 +4041,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 22,
     borderWidth: 1,
+    // #1609 rejection — this control sits on the action rail, the DEEPEST band of the
+    // bottom scrim (alpha ~0.87). glass.chrome.tint.floor is a DARKENING wash meant for
+    // bare photo; on a near-black backdrop it has nothing to darken and the control read
+    // as the flattest element on the card. Same defect and same fix as the badges: a
+    // light fill lifts it off the scrim instead of sinking into it.
+    // Derivation + measured L*: designSystem.ts -> glass.badge.liquid.
     backgroundColor: ANDROID_GLASS_USES_OPAQUE_FALLBACK
-      ? glass.chrome.fallback.solid
-      : glass.chrome.tint.floor,
-    borderColor: glass.chrome.border.hairline,
+      ? glass.badge.liquid.fallbackSolid
+      : glass.badge.liquid.fill,
+    borderColor: glass.badge.liquid.border,
   },
   // Visited is signalled by THREE independent channels — filled icon, changed label,
   // and this tint — so it never depends on colour alone.
