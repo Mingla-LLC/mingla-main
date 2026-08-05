@@ -31,6 +31,58 @@ export interface RecordVisitParams {
   };
 }
 
+/**
+ * #1618 — THE OPERATION-LEVEL BOUND.
+ *
+ * `services/supabase.ts` already wraps the client's fetch in a 20-second
+ * `Promise.race` cap, and that cap DID NOT FIRE on the 75-second hang. It is a
+ * PER-REQUEST cap, and the wait was upstream of the request:
+ *
+ *     supabase.functions.invoke(...)
+ *       -> SupabaseClient.fetch = fetchWithAuth(key, _getAccessToken, fetchWithTimeout)
+ *       -> await getAccessToken()          <-- the entire auth preamble runs HERE,
+ *            -> auth.getSession()              outside every timer below it
+ *            -> _callRefreshToken -> _refreshAccessToken, which retries with
+ *               exponential backoff while
+ *               `Date.now() + nextBackOff - startedAt < AUTO_REFRESH_TICK_DURATION_MS`
+ *               (30s), and each attempt gets its OWN fresh 20-second fetch cap
+ *       -> fetchWithTimeout(...)           <-- only now does the 20s cap start
+ *
+ * So a stalled network produces ~20s (first refresh attempt) + backoff + ~20s
+ * (second refresh attempt) + ~20s (the real request), and no single timer is
+ * ever exceeded. Capping the fetch harder would not fix it and would break the
+ * legitimately slow deck functions (discover-cards routinely takes 11-13s).
+ *
+ * The bound therefore belongs at the OPERATION, which is here. It is deliberately
+ * NOT applied to the read paths: `hasVisited` is a query whose failure is
+ * invisible and retried by React Query, whereas a WRITE that never resolves is
+ * what leaves the control looking untouched.
+ */
+export const VISIT_WRITE_TIMEOUT_MS = 15000;
+
+class VisitWriteTimeoutError extends Error {
+  constructor() {
+    super('Visit write timed out');
+    this.name = 'VisitWriteTimeoutError';
+  }
+}
+
+async function boundVisitWrite<T>(op: Promise<T>): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      op,
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new VisitWriteTimeoutError()), VISIT_WRITE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    // Without this the timer leaks until it fires and rejects into a race no
+    // one is listening to any more.
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+}
+
 function getTimeOfDay(): string {
   const hour = new Date().getHours();
   if (hour >= 5 && hour < 12) return 'morning';
@@ -40,9 +92,12 @@ function getTimeOfDay(): string {
 }
 
 export async function recordVisit(params: RecordVisitParams): Promise<{ visitId: string; isNew: boolean }> {
-  const { data, error } = await supabase.functions.invoke('record-visit', {
-    body: { ...params, timeOfDay: getTimeOfDay() },
-  });
+  // #1618 — bounded at the OPERATION, not at the request. See boundVisitWrite.
+  const { data, error } = await boundVisitWrite(
+    supabase.functions.invoke('record-visit', {
+      body: { ...params, timeOfDay: getTimeOfDay() },
+    }),
+  );
 
   if (error) throw error;
   return data;
@@ -100,14 +155,22 @@ export async function hasVisited(experienceId: string): Promise<boolean> {
 }
 
 export async function removeVisit(experienceId: string): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
+  // #1618 — the whole operation is bounded, INCLUDING the `auth.getUser()`
+  // preamble. That call is itself a network round-trip through the same
+  // fetchWithAuth -> getAccessToken path, so it can stall for exactly the same
+  // reason the write can, and it runs before any query timer exists.
+  await boundVisitWrite(
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
 
-  const { error } = await supabase
-    .from('user_visits')
-    .delete()
-    .eq('user_id', user.id)
-    .eq('experience_id', experienceId);
+      const { error } = await supabase
+        .from('user_visits')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('experience_id', experienceId);
 
-  if (error) throw error;
+      if (error) throw error;
+    })(),
+  );
 }
