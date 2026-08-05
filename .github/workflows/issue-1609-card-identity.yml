@@ -61,6 +61,9 @@ on:
       - "app-mobile/src/components/deckCardPlate.tsx"
       - "app-mobile/src/components/deckHeroConstants.ts"
       - "app-mobile/src/constants/designSystem.ts"
+      # The guards this workflow RUNS were not in its own trigger set, so a PR
+      # that changed only a guard did not run it (#1609 tester, discovery 1).
+      - "app-mobile/src/components/swipeDeck/__tests__/**"
       - "docs/INVARIANT_REGISTRY.md"
       - ".github/workflows/issue-1609-card-identity.yml"
   pull_request:
@@ -71,6 +74,9 @@ on:
       - "app-mobile/src/components/deckCardPlate.tsx"
       - "app-mobile/src/components/deckHeroConstants.ts"
       - "app-mobile/src/constants/designSystem.ts"
+      # The guards this workflow RUNS were not in its own trigger set, so a PR
+      # that changed only a guard did not run it (#1609 tester, discovery 1).
+      - "app-mobile/src/components/swipeDeck/__tests__/**"
       - "docs/INVARIANT_REGISTRY.md"
       - ".github/workflows/issue-1609-card-identity.yml"
 
@@ -89,7 +95,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Require the package and all three guards to exist
+      - name: Require the package and every guard this workflow runs to exist
         run: |
           test -f packages/card-identity/index.js
           test -f packages/card-identity/index.d.ts
@@ -100,6 +106,7 @@ jobs:
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_top_scrim_chrome_contrast.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_silhouette_anchor_drift.adversarial.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_plate_anchor_wiring.test.mjs
 
       - name: The package must stay RN-free and dependency-free
         # This is the property that lets @mingla/offering-rendering (web) and
@@ -139,3 +146,4 @@ jobs:
           app-mobile/src/components/swipeDeck/__tests__/issue_1609_liquid_glass_and_scrim_presence.test.mjs
           app-mobile/src/components/swipeDeck/__tests__/issue_1609_top_scrim_chrome_contrast.test.mjs
           app-mobile/src/components/swipeDeck/__tests__/issue_1609_silhouette_anchor_drift.adversarial.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1609_plate_anchor_wiring.test.mjs

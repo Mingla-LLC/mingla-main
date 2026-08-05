@@ -26,10 +26,29 @@
  * the promotion diff, on BOTH card faces. Per card face:
  *
  *                              main   #1610   C
- *     BlurViews                  5       5    1
+ *     BlurViews                  5       5   1-3   (see below)
  *     shadowed lifted objects    5       5    1
  *     staggered Animated.Views   5       5    0
  *     flexWrap containers        2       2    0
+ *
+ * THE BLUR COUNT IS 1 TO 3, NOT 1, AND SAYING "1" WAS WRONG. `PlateMaterial()`
+ * is mounted at THREE sites in this file — the plate, the saved disc and the
+ * scheduled disc — and each mount is one `BlurView` on iOS. So the real per-face
+ * count is:
+ *
+ *     neither saved nor scheduled   1   (the plate)
+ *     saved XOR scheduled           2
+ *     saved AND scheduled           3
+ *
+ * On Android it is 0 in every case: `ANDROID_GLASS_USES_OPAQUE_FALLBACK` returns
+ * a solid `View` and no `BlurView` is constructed at all. The state discs share
+ * the plate's material deliberately (one glass vocabulary per card), so 3 is the
+ * design, not an oversight — but "5 became 1" described the number of times the
+ * string `<BlurView` appears in this file, which is not the number of blur
+ * layers a user's card has. The T-7 guard in
+ * `issue_1609_direction_c_plate.test.mjs` now counts MOUNT SITES across the
+ * module graph and asserts these three numbers by state (#1609 tester P2-1;
+ * #1607 defect class — an assertion adjacent to its claim).
  *
  * The per-badge stagger inside a promotion diff is the exact shape that produced
  * #1576, so removing it is load-bearing rather than cosmetic. The plate's entry
@@ -86,6 +105,10 @@ import {
   SURFACES,
   plateRows,
   surfacePlateUnder,
+  // Aliased because the presentation object below has a field of the same name.
+  // The package OWNS this arithmetic; re-typing `bottomInset + plateH + gap` here
+  // would be a second source for the one number the whole silhouette hangs off.
+  titleBottom as surfaceTitleBottom,
 } from '../../../packages/card-identity/index.js';
 
 const S1 = SURFACES.s1Single;
@@ -200,8 +223,28 @@ export function CardMetaLine({ spans }: { spans: readonly MetaSpanInput[] }): Re
  * scrim immediately around it, which is nearly the same tone — at 0.34 / 0.22
  * they measure 2.85:1 and 1.98:1 and FAIL SC 1.4.11, which applies because the
  * stack is the sole curated marker.
+ *
+ * ---------------------------------------------------------------------------
+ * `plateH` IS REQUIRED, AND THAT IS THE WHOLE POINT
+ *
+ * `SLIVER.offsets` are measured UP FROM THE PLATE'S TOP EDGE. An offset measured
+ * from a thing is meaningless unless it tracks that thing, so the plate height it
+ * resolves against has to be the one BEING RENDERED — never the module-load
+ * constant `S1.plateH`. This function used to take no arguments and anchor to
+ * that constant: in the alternate silhouette the plate's top edge drops 42pt and
+ * the stack did not follow, leaving two stray 4pt lines floating over the
+ * photograph 42pt above the object they are supposed to be stacked on (#1609
+ * tester P1-1, measured at 42.7pt on a live curated card). Callers pass
+ * `platePresentation(spans).plateH` — literally the same value the plate sizes
+ * itself from — so the stack and the plate cannot disagree about which
+ * silhouette is being drawn.
+ *
+ * This is the SECOND time this one anchor has been wrong on this branch. The
+ * first was the unstyled wrapper documented below. Both were invisible to every
+ * static guard for the same reason: the arithmetic was internally consistent and
+ * externally wrong, which is what an anchor bug always looks like.
  */
-export function CuratedSlivers(): React.ReactElement {
+export function CuratedSlivers({ plateH }: { plateH: number }): React.ReactElement {
   return (
     // The wrapper MUST be an absolute fill. Caught at runtime on a live curated
     // card: with no style it is a flow View whose box collapses to 0x0 (its only
@@ -223,7 +266,8 @@ export function CuratedSlivers(): React.ReactElement {
             {
               left: SLIVER.insets[i],
               right: SLIVER.insets[i],
-              bottom: S1.bottomInset + S1.plateH + offset,
+              // The RENDERED plate height, never the constant — see the docblock.
+              bottom: S1.bottomInset + plateH + offset,
               backgroundColor: ANDROID_GLASS_USES_OPAQUE_FALLBACK
                 ? S1.sliver.opaque[i]
                 : `rgba(255,255,255,${SLIVER.alpha})`,
@@ -267,24 +311,49 @@ export function CardStateDiscs({
 }
 
 /**
- * Whether a span set is vacuous, and where the title's bottom edge therefore
- * sits. Exported so BOTH card trees derive the title's position from the SAME
- * predicate the plate uses to size itself — otherwise the title and the plate
- * could disagree about which silhouette is being drawn, which is precisely the
- * drift class this whole package exists to close.
+ * Whether a span set is vacuous, and where everything anchored to the plate
+ * therefore sits. Exported so BOTH card trees derive their plate-anchored
+ * offsets from the SAME predicate the plate uses to size itself — otherwise the
+ * title, the sliver stack and the plate can disagree about which silhouette is
+ * being drawn, which is precisely the drift class this whole package exists to
+ * close.
  *
- *     titleBottom = bottomInset + plateH + gap
- *                 = 16 + 96 + 20 = 132   (full plate)
- *                 = 16 + 54 + 20 =  90   (the alternate silhouette)
+ *     plateTop    = bottomInset + plateH
+ *                 = 16 + 96 = 112        (full plate)
+ *                 = 16 + 54 =  70        (the alternate silhouette)
+ *     titleBottom = plateTop + gap
+ *                 = 112 + 20 = 132       (full plate)
+ *                 =  70 + 20 =  90       (the alternate silhouette)
+ *
+ * ---------------------------------------------------------------------------
+ * IT WAS EXPORTED FOR THIS AND NEITHER TREE CALLED IT (#1609 tester P1-1)
+ *
+ * `CuratedExperienceSwipeCard.tsx` imported it and never called it — a dead
+ * import the compiler accepted — and `SwipeableCards.tsx` did not import it at
+ * all. Both instead baked `S1.bottomInset + S1.plateH + S1.gap` into a
+ * module-load `StyleSheet.create` entry, which is a value that CANNOT vary per
+ * render, so in the 54pt silhouette the name stayed 62pt above a plate it is
+ * supposed to sit 20pt above and the curated slivers floated 42pt over it. §3.6
+ * promises exactly ONE alternate silhouette; that produced three, and four on
+ * curated. Every plate-anchored offset on both faces now reads this object.
+ *
+ * `titleBottom` is the PACKAGE's `titleBottom()`, not arithmetic retyped here.
  */
 export function platePresentation(spans: readonly MetaSpanInput[]): {
   withMeta: boolean;
   plateH: number;
+  /** The plate's top edge, in points up from the card's bottom edge. */
+  plateTop: number;
   titleBottom: number;
 } {
   const withMeta = spans.some((s) => typeof s.text === 'string' && s.text.trim().length > 0);
   const plateH = withMeta ? S1.plateH : PLATE_H_NO_META;
-  return { withMeta, plateH, titleBottom: S1.bottomInset + plateH + S1.gap };
+  return {
+    withMeta,
+    plateH,
+    plateTop: S1.bottomInset + plateH,
+    titleBottom: surfaceTitleBottom('s1Single', plateH),
+  };
 }
 
 export interface DeckCardPlateProps {
@@ -362,7 +431,17 @@ export function DeckCardPlate({
       ) : null}
 
       <View style={[styles.controlRow, { height: rows.control }]}>
-        {beenHere ?? <View />}
+        {/*
+          NO `?? <View />` FALLBACK. It looked like a reserved slot and was not
+          one, twice over: `beenHere` is always SUPPLIED (a <BeenHereControl />
+          element, which is truthy), so the fallback could never fire — and the
+          thing that renders nothing is BeenHereControl's own `return null` while
+          the visited query is pending or the user is signed out. An unstyled
+          <View /> would not have reserved width either. The share button
+          right-anchors itself instead (see `shareButtonPlate`), so this slot is
+          free to occupy zero space without moving anything.
+        */}
+        {beenHere}
         <Pressable
           onPress={onSharePress}
           style={styles.shareButtonPlate}
@@ -496,6 +575,24 @@ const styles = StyleSheet.create({
     height: SHARE_GLYPH.target,
     alignItems: 'center',
     justifyContent: 'center',
+    // THE SHARE DISC ANCHORS ITSELF. `justifyContent: 'space-between'` above only
+    // puts this at the right edge when the row has TWO laid-out children — and it
+    // routinely has one, because BeenHereControl returns null while the visited
+    // query is pending (i.e. on every card promotion) and permanently when the
+    // user is signed out. With one child, space-between resolves to flex-start
+    // and the share glyph rendered against the plate's LEFT edge, then snapped
+    // right when the query landed (#1609 tester P1-2).
+    //
+    // An auto margin absorbs the row's free space BEFORE justifyContent gets to
+    // distribute any, so this is the anchor in both cases and space-between
+    // becomes a no-op rather than a contradiction. Chosen over reserving a
+    // placeholder slot because the Been-here control's width changes with its
+    // copy ("Been here" / "Thank you" / "You've been here" / "Couldn't save"), so
+    // a placeholder that actually held the row's shape would have to track four
+    // different measured widths — a second source of truth for a geometry that
+    // has one. Right-anchoring is a property of the share control; it should not
+    // be a property of how many siblings happen to have rendered.
+    marginLeft: 'auto',
   },
   beenHereText: {
     fontSize: BEEN_HERE.labelSize,

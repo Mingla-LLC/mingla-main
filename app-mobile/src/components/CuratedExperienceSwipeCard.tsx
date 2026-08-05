@@ -385,6 +385,23 @@ export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem
   if (priceLabel) curatedSpans.push({ kind: 'fact', text: priceLabel });
   if (categoryLabel) curatedSpans.push({ kind: 'tail', text: categoryLabel });
 
+  /**
+   * #1609 tester P1-1 — THE SILHOUETTE IS DECIDED ONCE, HERE, AND EVERYTHING ON
+   * THE FACE READS IT.
+   *
+   * `platePresentation()` is the SAME predicate `DeckCardPlate` uses to size
+   * itself. This file imported it and never called it, and instead baked
+   * `S1.bottomInset + S1.plateH + S1.gap` into a module-load `StyleSheet.create`
+   * entry, so when the span set was vacuous the plate shrank to 54pt and the name
+   * and the sliver stack stayed where a 96pt plate had been. §3.6 promises
+   * "exactly ONE alternate silhouette in the whole system"; that produced four.
+   *
+   * A module-load stylesheet cannot express a per-render value. So the anchor
+   * leaves the stylesheet: `cardTitle` no longer carries `bottom` at all, and the
+   * offset is applied at the render site from this one object.
+   */
+  const presentation = platePresentation(curatedSpans);
+
   // ORCH-1072: an experience with a real cover renders the COVER as the hero
   // (image/video via the shared EventCoverMedia) with the stop photos as a
   // smaller strip BELOW it. Curated cards (no cover prop) keep the full-bleed
@@ -493,7 +510,7 @@ export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem
             survives in the expanded card. */}
         <View style={styles.faceOverlay} pointerEvents="box-none">
           <Text
-            style={styles.cardTitle}
+            style={[styles.cardTitle, { bottom: presentation.titleBottom }]}
             numberOfLines={S1.titleLines}
             maxFontSizeMultiplier={MAX_FONT_SCALE.title}
           >
@@ -515,7 +532,7 @@ export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem
             object's silhouette. The facts move into the plate's meta line, where
             "3 stops" leads at weight 700.
           */}
-          <CuratedSlivers />
+          <CuratedSlivers plateH={presentation.plateH} />
 
           <DeckCardPlate
             spans={curatedSpans}
@@ -580,11 +597,17 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 2,
   },
+  // #1609 tester P1-1 — `bottom` IS DELIBERATELY ABSENT. It was
+  // `S1.bottomInset + S1.plateH + S1.gap`, a module-load constant that is only
+  // correct for the 96pt silhouette; in the 54pt one it stranded the name 62pt
+  // above a plate it is supposed to sit 20pt above. It is now applied at the
+  // render site from `platePresentation(curatedSpans).titleBottom`. Do not put it
+  // back — a StyleSheet.create entry is evaluated once per module, and this value
+  // is per render.
   cardTitle: {
     position: 'absolute',
     left: S1.titleInset,
     right: S1.titleInset,
-    bottom: S1.bottomInset + S1.plateH + S1.gap,
     color: '#FFFFFF',
     fontSize: S1.titleSize,
     fontWeight: S1.titleWeight as '700',

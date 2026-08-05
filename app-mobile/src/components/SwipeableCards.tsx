@@ -49,6 +49,11 @@ import {
   CuratedSlivers,
   DeckCardPlate,
   beenHereStateStyle,
+  // #1609 tester P1-1 — the ONE predicate that decides which silhouette a card
+  // draws. This tree did not import it at all and hard-coded the 96pt anchor into
+  // its stylesheet, so the name and the curated slivers did not follow the plate
+  // when it shrank to 54pt. Every face-level offset now reads this.
+  platePresentation,
   type BeenHereVisualState,
   type MetaSpanInput,
 } from "./deckCardPlate";
@@ -3148,6 +3153,16 @@ export default function SwipeableCards({
     return null;
   }
 
+  // #1609 tester P1-1 — the FRONT face's silhouette, decided once from the same
+  // predicate the plate sizes itself with, and read by both the name's anchor and
+  // the plate. The spans are computed once here rather than inline in the JSX so
+  // the two cannot be handed different span sets, which is how the name and the
+  // plate came to disagree about which silhouette was being drawn in the first
+  // place. Curated/experience cards take the CuratedExperienceSwipeCard branch
+  // above and resolve their own presentation there.
+  const currentSpans = metaSpansForCard(currentRec, accountPreferences?.measurementSystem);
+  const currentPresentation = platePresentation(currentSpans);
+
   // #1609 §1.9 — the composed VoiceOver label. Each clause is dropped when its value
   // is absent rather than rendered as a placeholder or a zero (Constitution rule 9),
   // so a card with no rating simply never mentions a rating.
@@ -3274,6 +3289,13 @@ export default function SwipeableCards({
           {availableRecommendations.length > 1 &&
             (() => {
               const nextCard = availableRecommendations[1];
+              // #1609 tester P1-1 — the behind face draws the same three
+              // plate-anchored things the front face does (name, slivers, plate),
+              // so it resolves the silhouette ONCE from the same predicate the
+              // plate sizes itself with. Computing the spans once also keeps
+              // metaSpansForCard off the promotion hot path twice over (#1481).
+              const nextSpans = metaSpansForCard(nextCard, accountPreferences?.measurementSystem);
+              const nextPresentation = platePresentation(nextSpans);
 
               return (
                 <Reanimated.View
@@ -3323,15 +3345,17 @@ export default function SwipeableCards({
                         affordance (Rule L1). Share is inert for the same reason,
                         so the plate gets a no-op handler it can never reach. */}
                     <Text
-                      style={styles.cardTitle}
+                      style={[styles.cardTitle, { bottom: nextPresentation.titleBottom }]}
                       numberOfLines={S1.titleLines}
                       maxFontSizeMultiplier={MAX_FONT_SCALE.title}
                     >
                       {nextCard.title}
                     </Text>
-                    {(nextCard as any).cardType === 'curated' ? <CuratedSlivers /> : null}
+                    {(nextCard as any).cardType === 'curated'
+                      ? <CuratedSlivers plateH={nextPresentation.plateH} />
+                      : null}
                     <DeckCardPlate
-                      spans={metaSpansForCard(nextCard, accountPreferences?.measurementSystem)}
+                      spans={nextSpans}
                       onSharePress={NOOP}
                       shareLabel={t('cards:swipeable.share_card', { title: nextCard.title })}
                     />
@@ -3597,7 +3621,7 @@ export default function SwipeableCards({
                     pointerEvents="box-none"
                   >
                     <Text
-                      style={styles.cardTitle}
+                      style={[styles.cardTitle, { bottom: currentPresentation.titleBottom }]}
                       numberOfLines={S1.titleLines}
                       maxFontSizeMultiplier={MAX_FONT_SCALE.title}
                     >
@@ -3605,7 +3629,7 @@ export default function SwipeableCards({
                     </Text>
 
                     <DeckCardPlate
-                      spans={metaSpansForCard(currentRec, accountPreferences?.measurementSystem)}
+                      spans={currentSpans}
                       beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
                       onSharePress={handleShare}
                       shareLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
@@ -3898,11 +3922,17 @@ const styles = StyleSheet.create({
   // blurb below it — and the blurb is now deleted, so the name is the ONLY thing
   // on the photograph and carries the whole first-glance read. 2 lines is the
   // only multi-line element on the card face; `flexWrap` appears nowhere.
+  // #1609 tester P1-1 — `bottom` IS DELIBERATELY ABSENT. It was
+  // `S1.bottomInset + S1.plateH + S1.gap`, a module-load constant that is only
+  // correct for the 96pt silhouette; in the 54pt one it left the name stranded
+  // 62pt above a plate it is supposed to sit 20pt above, with a band of dead
+  // scrim between them. It is now applied at each render site from
+  // `platePresentation(spans).titleBottom`. Do not put it back — StyleSheet.create
+  // is evaluated once per module and this value is per render.
   cardTitle: {
     position: "absolute",
     left: S1.titleInset,
     right: S1.titleInset,
-    bottom: S1.bottomInset + S1.plateH + S1.gap,
     color: "#FFFFFF",
     fontSize: S1.titleSize,
     fontWeight: S1.titleWeight as "700",
@@ -4019,7 +4049,11 @@ const styles = StyleSheet.create({
   // same family as the plate's, so the boundary is carried by the border alone:
   // the minimum white border alpha for a 3:1 boundary against the plate is 0.349,
   // which is why the shipped 0.46 is not negotiable down to the 0.30 the chips
-  // used (that measures 2.54:1 and fails).
+  // used (that measures 2.46:1 and fails — NOT 2.54:1, which the spec's §3.2 and
+  // this comment both carried. The shipped oracle in card_identity_single_source
+  // T-4 and the tester's independent re-derivation agree on 2.4648. Below the 3.0
+  // floor either way, so nothing downstream changes — but a negative control that
+  // states the wrong number is a control nobody can check against).
   beenHere: {
     flexDirection: "row",
     alignItems: "center",
