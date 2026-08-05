@@ -99,6 +99,7 @@ jobs:
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_liquid_glass_and_scrim_presence.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_top_scrim_chrome_contrast.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_silhouette_anchor_drift.adversarial.test.mjs
 
       - name: The package must stay RN-free and dependency-free
         # This is the property that lets @mingla/offering-rendering (web) and
@@ -137,3 +138,4 @@ jobs:
           app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs
           app-mobile/src/components/swipeDeck/__tests__/issue_1609_liquid_glass_and_scrim_presence.test.mjs
           app-mobile/src/components/swipeDeck/__tests__/issue_1609_top_scrim_chrome_contrast.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1609_silhouette_anchor_drift.adversarial.test.mjs
