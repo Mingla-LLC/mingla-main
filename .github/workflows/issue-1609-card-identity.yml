@@ -95,6 +95,7 @@ jobs:
           test -f packages/card-identity/index.d.ts
           test -f packages/card-identity/package.json
           test -f packages/card-identity/__tests__/card_identity_single_source.test.mjs
+          test -f packages/card-identity/__tests__/card_identity_isolation.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_liquid_glass_and_scrim_presence.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_top_scrim_chrome_contrast.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs
@@ -105,34 +106,29 @@ jobs:
         # (I-MOR-0827-PACKAGE-ISOLATION). A single `import ... from 'react-native'`
         # would take the OG renderer down at require time, in production, on a
         # surface nobody runs locally.
-        run: |
-          node -e "
-            const fs = require('fs');
-            const src = fs.readFileSync('packages/card-identity/index.js', 'utf8');
-            for (const bad of ['react-native', 'expo-', 'from \"react\"', \"require('react'\", 'StyleSheet', 'jsx']) {
-              if (src.includes(bad)) {
-                console.error('card-identity must be RN-free and dependency-free; found: ' + bad);
-                process.exit(1);
-              }
-            }
-            const pkg = JSON.parse(fs.readFileSync('packages/card-identity/package.json', 'utf8'));
-            for (const field of ['dependencies', 'peerDependencies', 'devDependencies']) {
-              if (pkg[field] && Object.keys(pkg[field]).length > 0) {
-                console.error('card-identity declares ' + field + '; it must have none');
-                process.exit(1);
-              }
-            }
-            // It must load under a bare Node with no install, which is what the
-            // satori/OG path will do.
-            const CI = require('./packages/card-identity/index.js');
-            for (const fn of ['scrimHeight', 'plateUnderAlpha', 'rampAlphaAtDepth', 'plateRows', 'typeLadder']) {
-              if (typeof CI[fn] !== 'function') {
-                console.error('card-identity does not export ' + fn);
-                process.exit(1);
-              }
-            }
-            console.log('card-identity is RN-free, dependency-free and loads under bare Node');
-          "
+        #
+        # This step used to be an inline `node -e` that ran `.includes()` over the
+        # RAW TEXT of index.js for ['react-native', 'expo-', ..., 'StyleSheet',
+        # 'jsx']. It went RED on a completely clean file, because index.js's own
+        # header comments explain the constraint ("renders from
+        # @mingla/offering-rendering on react-native-web", "No JSX, no
+        # react-native", "expo-blur's dark tint ..."), index.d.ts names
+        # `expo-linear-gradient` the same way, and package.json legitimately
+        # carries a `"react-native": "index.js"` bundler entry field.
+        #
+        # That is the #1607 defect class — an assertion that does not match its
+        # claim — inverted: #1607's guards were SATISFIED by prose, this one was
+        # TRIPPED by it. A guard a comment can turn red is a guard people weaken
+        # rather than fix; the cheapest way to green this step was to delete the
+        # comments that document why the rule exists. So the assertion now targets
+        # the MODULE GRAPH — statically over comment-stripped source, and again by
+        # actually requiring the package under a Module._load hook — and it
+        # self-tests its own strippers and extractor first so it can neither pass
+        # nor fail vacuously. Every sibling #1609/#1593 guard already stripped
+        # comments; this step was the only one on the branch that did not.
+        run: >-
+          node --test
+          packages/card-identity/__tests__/card_identity_isolation.test.mjs
 
       - name: Execute the single-source oracle and the deck guards
         run: >-
