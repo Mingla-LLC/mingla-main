@@ -7607,7 +7607,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   from 0.38 to the historical 0.30 (G2's T-4 fires at 2.46:1 against the 3.0 floor); add an eighth
   surface with no verdict (G3, T-4 and T-6 all fire).
   The divider-retention clause adds a fourth: delete the `const divider = DIVIDER_H;` line from
-  `plateRows()` and restore `withMeta ? DIVIDER_H : 0` — `fails-on-revert verified at __HASH__`
+  `plateRows()` and restore `withMeta ? DIVIDER_H : 0` — `fails-on-revert verified at aaeb08a64`
   (C-1 and C-2 in `issue_1609_short_plate_keeps_chevron.test.mjs` fire, plus G3b and T-9).
   **Note for whoever maintains this:** the design's own suggested proof — "change `PLATE.lift` by
   0.02" — does NOT fire, and that is correct behaviour rather than a gap. `plateUnderAlpha` re-solves
