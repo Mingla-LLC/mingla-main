@@ -39,8 +39,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { Icon } from "./ui/Icon";
 import { GlassBadge } from "./ui/GlassBadge";
+import { GlassIconButton } from "./ui/GlassIconButton";
+import { useHasVisited, useRecordVisit, useRemoveVisit } from "../hooks/useVisits";
 import { LinearGradient } from "expo-linear-gradient";
-import { colors, fontWeights, glass, radius, typography } from "../constants/designSystem";
+import { ANDROID_GLASS_USES_OPAQUE_FALLBACK, colors, fontWeights, glass, radius, typography } from "../constants/designSystem";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
 
 import { ImageWithFallback } from "./figma/ImageWithFallback";
@@ -65,6 +67,8 @@ import type { CuratedExperienceCard } from "../types/curatedExperience";
 import {
   CARD_FALLBACK_IMAGE,
   DECK_HERO_PLACEHOLDER_BLURHASH,
+  DECK_SCRIM_COLORS,
+  DECK_SCRIM_LOCATIONS,
 } from "./deckHeroConstants";
 // ORCH-1065: brand experiences expand → business-event sheet → ticket-checkout-create
 // (the proven ORCH-1016 trip pattern). NO parallel money fn (COMMS-0014/0016).
@@ -324,8 +328,12 @@ function parseDistanceToKm(distanceStr: string): number | null {
   return null;
 }
 
-const IMAGE_SECTION_RATIO = 0.88;
-const DETAILS_SECTION_RATIO = 1 - IMAGE_SECTION_RATIO;
+// #1609 — IMAGE_SECTION_RATIO / DETAILS_SECTION_RATIO are DELETED, not retuned.
+// They were the flex-axis key behind #1593: one `flex: 0.88` style applied to the
+// poster photo box (one sibling -> 689.00pt) and the face hero hole (two siblings ->
+// 667.67pt), whose 21.33pt disagreement bled through the white tray. The tray is gone
+// and the hero is a full-bleed absolute fill in both trees, so there is no flex axis
+// left to disagree about and no measurement to single-source.
 const CARD_ANIMATION_DURATION = 400;
 
 // ORCH-1042 / ORCH-1065 BUG-3: these two leaf constants moved to
@@ -348,6 +356,109 @@ const DECK_HERO_TRANSITION_MS = 220;
  * async decode window. The placeholder covers the decode gap; `CARD_FALLBACK_IMAGE`
  * is the hard-failure fallback (a real photo, distinct from the placeholder).
  */
+/**
+ * #1609 Amendment 1 — "I've been here" as a real control on the COLLAPSED card.
+ *
+ * Pillar 1 §1.6 specified a passive badge here, reasoning that an action which opens
+ * a rating flow must never be reachable by an errant thumb during a swipe burst. Seth
+ * overrode that. The override is implemented WITH the safety property preserved
+ * rather than dropped:
+ *
+ *   - it never opens the rating flow; that stays on the expanded card. The tap only
+ *     records or unrecords the visit, so a mis-tap costs a toggle, and one more tap
+ *     undoes it.
+ *   - 44pt target (touchTargets.minimum), inset from the card edges where a swipe
+ *     begins, at the card's foot rather than in the drag zone.
+ *   - it adds no gesture-handler gesture. This is a plain RN Pressable inside the
+ *     existing card subtree, so it never contends for the deck's gesture lease
+ *     (I-PROPOSED-1579-GESTURE-LEASE-RELEASE-COMPLETENESS).
+ *   - visited state is NOT carried by colour alone: the icon goes outline -> filled
+ *     AND the label changes ("Been here?" -> "Been here").
+ *
+ * Renders nothing while the visited query is pending — never a skeleton on the swipe
+ * path — and nothing at all when signed out, because the visit cannot be recorded.
+ */
+const BeenHereControl = React.memo(function BeenHereControl({
+  userId,
+  card,
+}: {
+  userId: string | undefined;
+  card: { id: string; title: string; category: string; image: string; priceRange?: string | null };
+}) {
+  const { t } = useTranslation();
+  const { data: visited, isPending } = useHasVisited(userId, card.id);
+  const recordVisit = useRecordVisit();
+  const removeVisit = useRemoveVisit();
+
+  const inFlight = recordVisit.isPending || removeVisit.isPending;
+  // Constitution rule 3 — no silent failures. useVisits' own onError only
+  // console.errors, so without this the user taps, nothing moves, and the control is a
+  // dead tap. It is currently REACHABLE: record-visit returns 500 on every call in
+  // production (see the #1609 report — its upsert targets a PARTIAL unique index that
+  // ON CONFLICT cannot match). This surfaces that instead of swallowing it.
+  const failed = recordVisit.isError || removeVisit.isError;
+
+  // Signed out, or the visited state is not known yet: render nothing rather than a
+  // control whose label would be a guess.
+  if (!userId || isPending) return null;
+
+  const isVisited = visited === true;
+
+  const onPress = (): void => {
+    if (inFlight) return;
+    HapticFeedback.light();
+    if (isVisited) {
+      removeVisit.mutate(card.id);
+      return;
+    }
+    recordVisit.mutate({
+      experienceId: card.id,
+      cardData: {
+        category: card.category,
+        title: card.title,
+        imageUrl: card.image,
+        priceTier: card.priceRange ?? undefined,
+      },
+    });
+  };
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={inFlight}
+      style={({ pressed }) => [
+        styles.beenHere,
+        isVisited && styles.beenHereActive,
+        failed && styles.beenHereFailed,
+        pressed && styles.beenHerePressed,
+      ]}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isVisited, disabled: inFlight }}
+      accessibilityLabel={
+        failed
+          ? t('cards:swipeable.been_here_failed')
+          : isVisited
+            ? t('cards:swipeable.been_here_on', { title: card.title })
+            : t('cards:swipeable.been_here_off', { title: card.title })
+      }
+    >
+      <Icon
+        name={failed ? 'alert-circle-outline' : isVisited ? 'checkmark-circle' : 'checkmark-circle-outline'}
+        size={16}
+        color="#FFFFFF"
+      />
+      <Text style={styles.beenHereText} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+        {failed
+          ? t('cards:swipeable.been_here_failed')
+          : isVisited
+            ? t('cards:swipeable.been_here')
+            : t('cards:swipeable.been_here_ask')}
+      </Text>
+    </Pressable>
+  );
+});
+
 const CardHeroImage = React.memo(function CardHeroImage({
   uri,
   style,
@@ -839,18 +950,13 @@ export default function SwipeableCards({
   const [removedCards, setRemovedCards] = useState<Set<string>>(new Set());
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
+  // #1609 — the hero is now full-bleed, so the pre-onLayout decode seed is the whole
+  // card box rather than 88% of it. This state feeds getDeckHeroDecodeTarget ONLY; it
+  // is never a layout input (see below).
   const [heroLayout, setHeroLayout] = useState({
     width: Math.max(1, Math.min(SCREEN_WIDTH, 500)),
-    height: Math.max(1, (SCREEN_HEIGHT - 280) * IMAGE_SECTION_RATIO),
+    height: Math.max(1, SCREEN_HEIGHT - 280),
   });
-
-  // #1593 — the MEASURED height of the current card's transparent hero hole, and the
-  // single source of truth for the poster layer's photo box. Deliberately NOT
-  // heroLayout.height: that state is SEEDED with an estimate
-  // ((SCREEN_HEIGHT - 280) * IMAGE_SECTION_RATIO) for the image DECODE target and is
-  // wrong by ~70pt until the first layout — using it as a layout input would paint a
-  // white sliver on the first frame. See I-PROPOSED-1593-LAYER-GEOMETRY-SINGLE-SOURCE.
-  const [heroHoleHeight, setHeroHoleHeight] = useState<number | null>(null);
 
   // Card content entrance animation values
   const cardContentOpacity = useRef(new Animated.Value(0)).current;
@@ -2952,6 +3058,30 @@ export default function SwipeableCards({
 
   const CategoryIcon = getIconComponent(currentRec.categoryIcon);
 
+  // #1609 §1.9 — the composed VoiceOver label. Each clause is dropped when its value
+  // is absent rather than rendered as a placeholder or a zero (Constitution rule 9),
+  // so a card with no rating simply never mentions a rating.
+  const composedCardAccessibilityLabel = [
+    currentRec.title || t('cards:swipeable.experience'),
+    getReadableCategoryName(currentRec.category),
+    currentRec.rating != null && currentRec.rating > 0
+      ? t('cards:swipeable.a11y_rating', { rating: currentRec.rating.toFixed(1) })
+      : null,
+    currentRec.distance != null
+      ? t('cards:swipeable.a11y_distance', {
+          distance: parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem),
+        })
+      : null,
+    currentRec.travelTime != null
+      ? t('cards:swipeable.a11y_travel_time', { travelTime: currentRec.travelTime })
+      : null,
+    currentRec.priceRange || null,
+    isCurrentCardSaved ? t('cards:swipeable.a11y_saved') : null,
+    isCurrentCardScheduled ? t('cards:swipeable.a11y_scheduled') : null,
+  ]
+    .filter((clause): clause is string => typeof clause === 'string' && clause.length > 0)
+    .join('. ');
+
   return (
     <View style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
@@ -3046,8 +3176,7 @@ export default function SwipeableCards({
             cardStyle={styles.card}
             nextCardStyle={styles.nextCard}
             cardInnerStyle={styles.cardInner}
-            imageContainerStyle={[styles.imageContainer, styles.posterImageContainer]}
-            heroHoleHeight={heroHoleHeight}
+            posterHeroStyle={[styles.heroFill, styles.posterHeroBackdrop]}
           >
           {(deckSwipe) => (
           <>
@@ -3071,15 +3200,14 @@ export default function SwipeableCards({
                   importantForAccessibility="no-hide-descendants"
                 >
                   <View style={styles.cardInner}>
-                  {/* Hero Image Section */}
-                  <View style={[styles.imageContainer, styles.transparentImageContainer]}>
-
-                    {/* ORCH-0589 v2 (G4): premium bottom-fade gradient — darker canvas for title + chips */}
+                  {/* #1609 — behind face is chrome only. The poster layer owns the
+                      photo; this tree contributes the scrim + title so the promotion
+                      diff stays small. No rail, no oneLiner (see pillar 1 §1.7). */}
                     <LinearGradient
-                      colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.55)']}
-                      locations={[0, 0.5, 1]}
+                      colors={DECK_SCRIM_COLORS}
+                      locations={DECK_SCRIM_LOCATIONS}
                       pointerEvents="none"
-                      style={styles.heroGradient}
+                      style={styles.heroScrim}
                     />
 
                     {/* ORCH-0991: image-count badge removed from cards. */}
@@ -3117,10 +3245,6 @@ export default function SwipeableCards({
                       {/* ORCH-0566 follow-up: View-more chip removed. Preview has no saved/scheduled state. */}
                     </View>
                   </View>
-
-                  {/* White Details Section */}
-                  <View style={styles.cardDetails} />
-                  </View>
                   {deckSwipe.isTransitionDelayed && (
                     <View
                       style={styles.transitionDelayOverlay}
@@ -3152,12 +3276,25 @@ export default function SwipeableCards({
               pointerEvents="none"
               accessible
               accessibilityRole="button"
-              accessibilityLabel={currentRec.title}
-              accessibilityHint={`${t('cards:expanded.save')}. ${t('cards:swipeable.pass')}. ${t('cards:expanded.more_details')}.`}
+              // #1609 — the label was the RAW TITLE only: the poster nodes carry
+              // accessibilityElementsHidden, so a VoiceOver user got no category,
+              // rating, distance, price or state. Composed here instead, with each
+              // clause omitted when its value is null (Constitution rule 9).
+              accessibilityLabel={composedCardAccessibilityLabel}
+              // The hint was a bare concatenation of the three action names,
+              // "Save. PASS. More Details.", which also leaked the SHOUTING
+              // cards:swipeable.pass string authored for the on-card swipe stamp.
+              accessibilityHint={t('cards:swipeable.card_hint')}
               accessibilityActions={[
                 { name: 'save', label: t('cards:expanded.save') },
-                { name: 'pass', label: t('cards:swipeable.pass') },
+                // NOT cards:swipeable.pass — that string is the uppercase on-card
+                // stamp and must stay uppercase.
+                { name: 'pass', label: t('cards:swipeable.pass_action') },
                 { name: 'expand', label: t('cards:expanded.more_details') },
+                // The rail Share sits beneath the `accessible` proxy and is otherwise
+                // unreachable; the button ALSO carries its own label. Deliberately
+                // redundant — both paths work.
+                { name: 'share', label: t('cards:swipeable.share_action') },
               ]}
               onAccessibilityAction={(event) => {
                 const action = event.nativeEvent.actionName;
@@ -3169,6 +3306,8 @@ export default function SwipeableCards({
                   if (!accepted) pendingAccessibilityFocusRef.current = false;
                 } else if (action === 'expand') {
                   deckSwipe.requestTapExpand();
+                } else if (action === 'share') {
+                  void handleShare();
                 }
               }}
               onLayout={() => {
@@ -3264,15 +3403,17 @@ export default function SwipeableCards({
                   />
               ) : (
                 <>
-                  {/* Hero Image Section - 60-65% of card */}
+                  {/* #1609 — full-bleed hero. `heroFill` is StyleSheet.absoluteFillObject:
+                      no flex-axis key, so it resolves to cardInner's box here AND in the
+                      poster tree regardless of siblings. onLayout feeds the image DECODE
+                      target only — it is never fed back as a layout input. */}
                   <View
-                    style={[styles.imageContainer, styles.transparentImageContainer]}
+                    style={styles.heroFill}
                     onLayout={({ nativeEvent }) => {
                       const { width, height } = nativeEvent.layout;
                       if (width !== heroLayout.width || height !== heroLayout.height) {
                         setHeroLayout({ width, height });
                       }
-                      if (height !== heroHoleHeight) setHeroHoleHeight(height);   // #1593
                     }}
                   >
                     {/* ORCH-1069: video-aware hero. isTopCard={true} → the top card
@@ -3286,19 +3427,27 @@ export default function SwipeableCards({
                       style={styles.cardImage}
                       decodeTarget={heroDecodeTarget}
                     />
+                  </View>
 
-                    {/* ORCH-0589 v2 (G4): premium bottom-fade gradient — darker canvas for title + chips */}
-                    <LinearGradient
-                      colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.2)', 'rgba(0,0,0,0.55)']}
-                      locations={[0, 0.5, 1]}
-                      pointerEvents="none"
-                      style={styles.heroGradient}
-                    />
+                  {/* #1609 — the scrim. Replaces the 3-stop/45% gradient, which failed
+                      WCAG AA at the title on a bright photo. Alphas are back-solved from
+                      the sRGB transfer function against a pure-white (255) hero: white
+                      title 24/700 counts as LARGE text (>=18.66pt bold) and needs 3:1
+                      (alpha >= 0.4165); the description at 15/600 is NORMAL text and
+                      needs 4.5:1 (alpha >= 0.535). Measured alphas at the bands where
+                      those elements land are 0.491 and 0.661, giving 3.85:1 and 7.29:1.
+                      pointerEvents="none" — it must never take a touch off the pan. */}
+                  <LinearGradient
+                    colors={DECK_SCRIM_COLORS}
+                    locations={DECK_SCRIM_LOCATIONS}
+                    pointerEvents="none"
+                    style={styles.heroScrim}
+                  />
 
-                    {/* ORCH-0991: image-count badge removed from cards. */}
+                  {/* ORCH-0991: image-count badge removed from cards. */}
 
-                    {/* Title and Details Overlay - Bottom Left of Image */}
-                    <Animated.View style={[
+                  {/* Title and Details Overlay - Bottom Left of Image */}
+                  <Animated.View style={[
                       styles.titleOverlay,
                       {
                         opacity: cardContentOpacity,
@@ -3312,9 +3461,26 @@ export default function SwipeableCards({
                           to marginBottom 6 so title+blurb read as one unit; with
                           NO pitch the guard renders nothing and the title keeps its
                           16pt gap (today's exact look — no fabricated blurb). */}
-                      <Text style={[styles.cardTitle, currentRec.oneLiner ? styles.cardTitleWithBlurb : null]}>{currentRec.title || t('cards:swipeable.experience')}</Text>
+                      {/* #1609 — the title gained numberOfLines={2}. It had NO clamp, so
+                          at 200% text size an unbounded 24pt title pushed the badge row
+                          off the card. maxFontSizeMultiplier bounds worst-case content
+                          height to ~340pt against a 783pt card — still inside the scrim. */}
+                      <Text
+                        style={[styles.cardTitle, currentRec.oneLiner ? styles.cardTitleWithBlurb : null]}
+                        numberOfLines={2}
+                        maxFontSizeMultiplier={1.4}
+                      >{currentRec.title || t('cards:swipeable.experience')}</Text>
+                      {/* #1609 Amendment 2 — the description. Sits directly under the
+                          title, above the badge row, clamped to 2 lines. It lands in the
+                          scrim band where alpha ~= 0.661, i.e. 7.29:1 against white on a
+                          pure-white photo (AAA). Omitted entirely when absent — no
+                          placeholder line, no em-dash (Constitution rule 9). */}
                       {currentRec.oneLiner && (
-                        <Text style={styles.oneLiner} numberOfLines={2}>{currentRec.oneLiner}</Text>
+                        <Text
+                          style={styles.oneLiner}
+                          numberOfLines={2}
+                          maxFontSizeMultiplier={1.4}
+                        >{currentRec.oneLiner}</Text>
                       )}
 
                       {/* ORCH-0566: glass info badges (front card — entry motion via entryIndex) */}
@@ -3364,25 +3530,42 @@ export default function SwipeableCards({
                           )}
                         </View>
                       )}
-                    </Animated.View>
-                  </View>
 
-                  {/* White Details Section */}
-                  <View style={styles.cardDetails}>
-                    {/* Share Button */}
-                    <TouchableOpacity
-                      style={styles.shareButton}
-                      onPress={handleShare}
-                      activeOpacity={0.7}
-                    >
-                      <Icon
-                        name="share-social-outline"
-                        size={18}
-                        color="#6b7280"
-                      />
-                      <Text style={styles.shareButtonText}>{t('cards:swipeable.share')}</Text>
-                    </TouchableOpacity>
-                  </View>
+                      {/* #1609 — the action rail. Replaces the deleted white tray, which
+                          spent 115.33pt (14.7% of the card) on one Share button.
+
+                          LEFT is a SIGNIFIER, not a control: pointerEvents="none", so it
+                          teaches both real gestures (tap, swipe-up) without adding a
+                          gesture owner. The expand target is activeOpacity={1} and gives
+                          no press feedback; dimming the whole card at touch-down would
+                          flash on every swipe, so a persistent signifier is the fix.
+
+                          RIGHT holds the two real controls, both inset from the card
+                          edges where a swipe begins. */}
+                      <View style={styles.actionRail}>
+                        <View style={styles.railHint} pointerEvents="none">
+                          <Icon name="chevron-up" size={14} color="#FFFFFF" />
+                          <Text style={styles.railHintText} numberOfLines={1}>
+                            {t('cards:swipeable.details_hint')}
+                          </Text>
+                        </View>
+                        <View style={styles.railActions}>
+                          {/* #1609 Amendment 1 — "I've been here" as a real control on the
+                              COLLAPSED card, overriding pillar 1 §1.6's passive badge.
+                              The risk the designer identified is engineered out, not
+                              ignored: 44pt target, inset from both card edges, and the
+                              tap ONLY records/unrecords the visit — it never opens the
+                              rating flow, which stays in expanded. So a stray thumb costs
+                              a toggle that one more tap undoes, not a modal mid-swipe. */}
+                          <BeenHereControl userId={user?.id} card={currentRec} />
+                          <GlassIconButton
+                            iconName="share-outline"
+                            onPress={handleShare}
+                            accessibilityLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
+                          />
+                        </View>
+                      </View>
+                    </Animated.View>
                 </>
               )}
             </TouchableOpacity>
@@ -3614,15 +3797,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.55)',
   },
-  imageContainer: {
-    flex: IMAGE_SECTION_RATIO,
-    position: "relative",
+  // #1609 — the full-bleed hero box, used by BOTH the poster tree and the face tree.
+  // absoluteFillObject has NO flex-axis key, so it resolves to cardInner's box in both
+  // trees regardless of how many siblings each has. That is what makes the two layers
+  // structurally incapable of disagreeing (#1593), with no measurement pass at all.
+  heroFill: {
+    ...StyleSheet.absoluteFillObject,
   },
-  posterImageContainer: {
+  // Fallback canvas under a failed decode. Only the poster tree paints it; the face
+  // tree's hero stays transparent so the poster shows through.
+  posterHeroBackdrop: {
     backgroundColor: '#1a1a2e',
-  },
-  transparentImageContainer: {
-    backgroundColor: 'transparent',
   },
   // ORCH-0589 v3 (R4): full-bleed image, no corner radii.
   cardImage: {
@@ -3652,19 +3837,24 @@ const styles = StyleSheet.create({
   },
   // ORCH-0589 v2 (G4): more breathing room — premium rhythm.
   // paddingBottom 24 → 40, cardTitle marginBottom 12 → 16.
+  // #1609 — 4pt grid. paddingHorizontal 20 / paddingBottom 28 (was a uniform 20 with
+  // paddingBottom 40; the tray no longer eats the card's foot, so the overlay sits
+  // lower and needs less bottom inset).
   titleOverlay: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 20,
-    paddingBottom: 40,
+    paddingHorizontal: 20,
+    paddingTop: 0,
+    paddingBottom: 28,
     zIndex: 2,
   },
   cardTitle: {
     color: "white",
     fontSize: 24,
     fontWeight: "bold",
+    lineHeight: 30,
     marginBottom: 16,
     textShadowColor: "rgba(0, 0, 0, 0.5)",
     textShadowOffset: { width: 0, height: 1 },
@@ -3677,14 +3867,16 @@ const styles = StyleSheet.create({
   cardTitleWithBlurb: {
     marginBottom: 6,
   },
-  // ORCH-0589 v2 (G4): premium bottom gradient over the hero photo — gives the
-  // title + chips a darker canvas to sit on, without burying the photo itself.
-  heroGradient: {
+  // #1609 — replaces heroGradient (3 stops, 45%, topping out at 0.55 alpha), which
+  // failed WCAG AA at the title on a bright photo. 52% height so the deepest stops sit
+  // under the description and rail; colours/locations are DECK_SCRIM_COLORS /
+  // DECK_SCRIM_LOCATIONS so both faces composite the identical ramp.
+  heroScrim: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    height: "45%",
+    height: "52%",
     zIndex: 1,
   },
   // META-ORCH-1290(C) D-6a (DESIGN §5a.2/5a.3): the place pitch blurb — 2-line
@@ -3763,22 +3955,73 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  cardDetails: {
-    flex: DETAILS_SECTION_RATIO,
-    backgroundColor: "rgba(255, 255, 255, 0.85)",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(0, 0, 0, 0.06)",
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    justifyContent: "center",
+  // #1609 — the action rail replaces `cardDetails`, the 115.33pt white tray that held
+  // exactly one control. Deleting the tray also deletes its borderBottom*Radius: 24,
+  // which never matched the glass.card.bezelRadius 40 shell — cardInner's
+  // overflow:'hidden' at radius 40 is now the sole corner authority.
+  actionRail: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    height: 44,
+    marginTop: 16,
   },
-  description: {
-    fontSize: 15,
-    color: "#374151",
-    marginBottom: 8,
-    lineHeight: 22,
+  railHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 1,
+  },
+  railHintText: {
+    fontSize: 13,
+    fontWeight: "500",
+    letterSpacing: 0.2,
+    color: "#FFFFFF",
+    opacity: 0.88,
+    textShadowColor: "rgba(0, 0, 0, 0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  railActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  // #1609 Amendment 1 — 44pt tall so the whole control clears touchTargets.minimum
+  // without relying on hitSlop, and it sits between the rail hint and the Share button
+  // so neither card edge is a mis-tap surface.
+  beenHere: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 22,
+    borderWidth: 1,
+    backgroundColor: ANDROID_GLASS_USES_OPAQUE_FALLBACK
+      ? glass.chrome.fallback.solid
+      : glass.chrome.tint.floor,
+    borderColor: glass.chrome.border.hairline,
+  },
+  // Visited is signalled by THREE independent channels — filled icon, changed label,
+  // and this tint — so it never depends on colour alone.
+  beenHereActive: {
+    backgroundColor: glass.chrome.active.tint,
+    borderColor: glass.chrome.active.border,
+  },
+  beenHerePressed: {
+    backgroundColor: glass.chrome.tint.pressed,
+  },
+  // Constitution rule 3 — a failed record/remove is shown, not swallowed.
+  beenHereFailed: {
+    backgroundColor: 'rgba(153, 27, 27, 0.55)',
+    borderColor: 'rgba(248, 113, 113, 0.65)',
+  },
+  beenHereText: {
+    fontSize: 13,
+    fontWeight: "500",
+    letterSpacing: 0.2,
+    color: "#FFFFFF",
   },
   highlightsContainer: {
     flexDirection: "row",
@@ -3797,22 +4040,6 @@ const styles = StyleSheet.create({
   highlightText: {
     fontSize: 12,
     color: "#eb7825",
-    fontWeight: "500",
-  },
-  shareButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
-    backgroundColor: "rgba(249, 250, 251, 0.7)",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(0, 0, 0, 0.08)",
-  },
-  shareButtonText: {
-    fontSize: 15,
-    color: "#6b7280",
     fontWeight: "500",
   },
   loadingContainer: {
