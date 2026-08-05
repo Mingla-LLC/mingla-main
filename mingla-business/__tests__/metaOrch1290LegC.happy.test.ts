@@ -6,9 +6,13 @@
  *   - public page: `venue_public_view.pitch` (= place_pool.generative_summary)
  *     → PublicVenue.pitch → an "About" section (4-line clamp + Read more) under
  *     the identity block, pitch-first meta (≤155), and a desktop 2-line clamp;
- *   - consumer deck: discover-cards already maps the pitch into the card's
- *     `oneLiner` + `description`; the swipe FACE clamps `oneLiner` to 2 lines
- *     (a one-taste hook) and the expanded modal shows the full pitch.
+ *   - consumer deck: discover-cards maps the pitch into the card's
+ *     `description`, and the EXPANDED card shows the full pitch.
+ *     [TEST-MOD-APPROVED #1609] This used to read "…the swipe FACE clamps
+ *     `oneLiner` to 2 lines (a one-taste hook) and the expanded modal shows the
+ *     full pitch." #1609 Direction C deleted the blurb from the collapsed face;
+ *     the expanded card is now the single route the owner's words take to a
+ *     buyer on the deck, and T-B below asserts that whole route end to end.
  *
  * D-6 / DESIGN §5a + §6. No fabricated data: a venue with no pitch shows
  * NOTHING on every surface (honest empty), never placeholder text.
@@ -23,8 +27,12 @@
  * FAILS-ON-REVERT (proven by TRUE LINE DELETION — see the implementation report):
  *   - drop `pitch: asStringOrNull(row.pitch)` from the mapper → the service
  *     mapper tests FAIL (pitch is undefined, not the surfaced text/null);
- *   - revert the card `oneLiner` to `numberOfLines={1}` → the 2-line-clamp
- *     assertion FAILS;
+ *   - [TEST-MOD-APPROVED #1609] re-add the `oneLiner` blurb to the collapsed
+ *     card face → T-A FAILS; delete any one of the four pitch-delivery hops
+ *     (discover-cards `description`, deckService, ExpandedCardModal,
+ *     CardInfoSection) → T-B FAILS. (This entry previously read "revert the card
+ *     `oneLiner` to `numberOfLines={1}` → the 2-line-clamp assertion FAILS",
+ *     which described a slot Direction C removed.)
  *   - revert the public meta to the mechanical-only line → the pitch-first meta
  *     assertion FAILS;
  *   - delete the aboutBlock / Read-more toggle → the About-section assertions
@@ -265,26 +273,149 @@ describe("META-ORCH-1290 Leg C — consumer swipe card pitch (§5a)", () => {
     expect(deck).toContain("description: card.description");
   });
 
-  test("place card blurb = the pitch clamped to 2 lines (a one-taste hook)", () => {
-    // The front place card's oneLiner slot is the pitch, clamped to 2 lines.
-    // Isolate the render region so the assertion bites on the place-card face
-    // (guarded by `currentRec.oneLiner &&`), not the behind-card title.
-    const guardIdx = cardSrc.indexOf("{currentRec.oneLiner && (");
-    expect(guardIdx).toBeGreaterThan(-1);
-    const region = cardSrc.slice(guardIdx, guardIdx + 200);
-    // THE fails-on-revert bite: reverting to numberOfLines={1} breaks this.
-    expect(region).toContain("numberOfLines={2}");
-    expect(region).toContain("styles.oneLiner");
+  // [TEST-MOD-APPROVED #1609] — the two assertions that stood here, "place card
+  // blurb = the pitch clamped to 2 lines (a one-taste hook)" and "title tightens
+  // ONLY when a pitch blurb follows (scoped, not global)", are REPLACED, not
+  // repaired, and deliberately not restored.
+  //
+  // WHAT SUPERSEDES THEM: #1609 Direction C DELETES `oneLiner` from the
+  // collapsed deck card face (Constitution 8, subtract before adding). The
+  // decision and its reasoning are recorded at the two Direction C comments in
+  // app-mobile/src/components/SwipeableCards.tsx — the one above the front
+  // face's `faceOverlay`, and the one above the deleted `oneLiner` style: two
+  // lines of 9pt prose under the title at identical colour was the single
+  // largest contributor to the face's register-flatness, and the pitch survives
+  // VERBATIM in the expanded card. The data path is untouched. So the old pair
+  // was not catching a regression; it was a guard that had not caught up with a
+  // product decision that supersedes it.
+  //
+  // WHY THE REPLACEMENT IS STRICTLY STRONGER: the contract worth protecting is
+  // "the venue owner's own words reach the buyer" — NOT "they reach the buyer on
+  // the collapsed card". The old pair asserted two PRESENTATION properties, a
+  // `numberOfLines={2}` clamp and a 6pt bottom margin, on one optional slot on
+  // one surface. Both would have gone on passing, green, while NO owner's pitch
+  // reached ANY buyer anywhere: `oneLiner: null` for every venue renders the
+  // clamp code and the margin perfectly well and prints not one word. They
+  // protected the user-facing promise only by implication.
+  //
+  // The replacement asserts the promise itself, on both sides:
+  //   T-A  the blurb is genuinely ABSENT from the collapsed face — comment-
+  //        stripped, so prose that merely mentions `oneLiner` cannot satisfy it,
+  //        and vacuity-guarded, so a gutted, truncated or renamed face cannot
+  //        silently widen "contains no oneLiner" into a free pass;
+  //   T-B  the pitch STILL REACHES THE BUYER, asserted as the whole delivery
+  //        chain from `place_pool.generative_summary` to the rendered <Text> in
+  //        the expanded card. Four hops, each comment-stripped and vacuity-
+  //        guarded; a break at ANY hop fails it. The old pair covered none of
+  //        this chain.
+
+  // Comments are stripped so that (a) an ABSENCE assertion cannot be satisfied
+  // by prose that merely mentions the symbol, and (b) a PRESENCE assertion
+  // cannot be satisfied by a commented-out line. Block comments go first (which
+  // also empties JSX comment bodies), then line comments — except a `//` that
+  // follows a `:`, which is a URL and not a comment.
+  const stripComments = (src: string): string =>
+    src
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+
+  // Strip, and REFUSE to hand back a source that has been emptied, truncated or
+  // over-stripped. Every assertion below runs through here, so a deleted or
+  // gutted anchor fails loudly instead of quietly turning an absence assertion
+  // into a tautology. `read()` itself throws on a missing file, which covers the
+  // rename/delete case; these two guards cover the gutted and over-stripped
+  // cases. Every source here is >55% code by character, so an unterminated block
+  // comment or a stripper regression blows past the 50% floor.
+  const liveCodeOf = (raw: string, minChars: number): string => {
+    expect(raw.length).toBeGreaterThan(minChars);
+    const live = stripComments(raw);
+    expect(live.length).toBeGreaterThan(raw.length * 0.5);
+    return live;
+  };
+
+  test("the comment stripper drops prose and keeps code (stripper self-test)", () => {
+    // Proves the mechanism T-A's absence claim rests on. Without this, a
+    // stripper that silently became a no-op would make T-A fail for the wrong
+    // reason, and one that ate everything would make it pass for the wrong one.
+    const fixture = [
+      "// oneLiner named in a LINE comment",
+      "/* oneLiner named in a BLOCK comment */",
+      "{/* oneLiner named in a JSX comment */}",
+      'const href = "https://example.com/oneLiner";',
+      "const live = currentRec.oneLiner;",
+    ].join("\n");
+    const out = stripComments(fixture);
+
+    // Prose is gone — all three comment forms.
+    expect(out).not.toContain("LINE comment");
+    expect(out).not.toContain("BLOCK comment");
+    expect(out).not.toContain("JSX comment");
+    // Code survives, and a URL's `//` is not mistaken for a comment.
+    expect(out).toContain("const live = currentRec.oneLiner;");
+    expect(out).toContain('const href = "https://example.com/oneLiner";');
+    // Exactly the two CODE occurrences remain — the three commented ones do not.
+    expect((out.match(/oneLiner/g) ?? []).length).toBe(2);
   });
 
-  test("title tightens ONLY when a pitch blurb follows (scoped, not global)", () => {
-    // cardTitleWithBlurb (marginBottom 6) is applied via a style array keyed on
-    // currentRec.oneLiner — the behind-card title keeps its base 16pt gap.
-    expect(cardSrc).toContain(
-      "currentRec.oneLiner ? styles.cardTitleWithBlurb : null",
+  test("T-A the collapsed deck card renders NO pitch blurb (#1609 Direction C)", () => {
+    const live = liveCodeOf(cardSrc, 100_000);
+
+    // VACUITY GUARD — the face this test is talking about must still exist and
+    // must still be the real thing, or "no blurb" is true for the wrong reason.
+    // These are the four things Direction C says the front face DOES render.
+    expect(live).toContain("styles.faceOverlay");
+    expect(live).toContain("styles.cardTitle");
+    expect(live).toContain(
+      "{currentRec.title || t('cards:swipeable.experience')}",
     );
-    expect(cardSrc).toContain("cardTitleWithBlurb: {");
-    expect(cardSrc).toContain("marginBottom: 6");
+    expect(live).toContain("<DeckCardPlate");
+
+    // THE CLAIM: zero LIVE references to the deleted face blurb or its
+    // title-tightening style. Fails-on-revert: re-adding the `oneLiner` render
+    // (or the `cardTitleWithBlurb` style) to the face puts a hit back here.
+    expect(live.match(/oneLiner|cardTitleWithBlurb/g) ?? []).toEqual([]);
+  });
+
+  test("T-B the pitch still reaches the buyer — origin to rendered text", () => {
+    // HOP 1 — ORIGIN. discover-cards turns the owner-authored pitch
+    // (place_pool.generative_summary) into the card payload's `description`.
+    // Reverting this to `description: ''` hides the pitch from every buyer, and
+    // the old collapsed-card pair would not have noticed.
+    const edge = liveCodeOf(
+      read("supabase/functions/discover-cards/index.ts"),
+      10_000,
+    );
+    expect(edge).toContain(
+      "description: (row.generative_summary as string | null) ?? ''",
+    );
+
+    // HOP 2 — TRANSPORT. deckService carries it onto the card model the deck and
+    // the expanded card both read.
+    const deckSrc = liveCodeOf(
+      read("app-mobile/src/services/deckService.ts"),
+      5_000,
+    );
+    expect(deckSrc).toContain("description: card.description");
+    expect(deckSrc).toContain("fullDescription: card.description");
+
+    // HOP 3 — DELIVERY. The expanded card hands it to the info section. This is
+    // the surface Direction C moved the pitch to, so this hop is now the ONLY
+    // route the owner's words take to a buyer on the deck.
+    const modalSrc = liveCodeOf(
+      read("app-mobile/src/components/ExpandedCardModal.tsx"),
+      10_000,
+    );
+    expect(modalSrc).toContain("description={card.description}");
+
+    // HOP 4 — RENDER. The info section prints it, gated on presence (honest
+    // empty: a venue with no pitch shows nothing, never placeholder text).
+    const infoSrc = liveCodeOf(
+      read("app-mobile/src/components/expandedCard/CardInfoSection.tsx"),
+      1_000,
+    );
+    expect(infoSrc).toContain(
+      "{description && <Text style={styles.description}>{description}</Text>}",
+    );
   });
 
   test("expanded modal renders the full pitch via the description slot", () => {
