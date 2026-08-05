@@ -79,6 +79,7 @@
     "@gorhom/bottom-sheet": "^5.2.8",
     "@mingla/brand-assets": "file:../packages/brand-assets",
     "@mingla/brand-rendering": "file:../packages/brand-rendering",
+    "@mingla/card-identity": "file:../packages/card-identity",
     "@mingla/location-input": "file:../packages/location-input",
     "@mingla/offering-rendering": "file:../packages/offering-rendering",
     "@mingla/payments-native": "file:../packages/payments-native",

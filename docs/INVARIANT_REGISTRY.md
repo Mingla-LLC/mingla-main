@@ -7486,13 +7486,167 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Generalisation:** this is a property of layered composition, not of the deck. Any future layer
   pair — poster/face, blur/content, shadow/surface — inherits the hazard the moment one layer is
   transparent and the other supplies the pixels.
-- **What the enforcement does and does NOT cover, stated plainly.** The gate **executes the real
-  geometry function** (`posterPhotoBoxOverride` in `app-mobile/src/components/swipeDeck/deckPosterGeometry.ts`)
-  and statically proves the dataflow (producer -> consumer) and the role scoping. It does **NOT** run
-  Yoga and therefore does **not** prove the resulting pixel geometry — that is the runtime oracle's
-  job (SC-1/SC-2), and both are required. It does not cover layer pairs in files the gate is not
-  pointed at, nor geometry applied imperatively.
+- **MECHANISM MIGRATED at #1609 — the rule is UNCHANGED, the satisfying mechanism is not.**
+  #1593 satisfied this rule by **measure-and-copy**: the face tree measured its own hero hole via
+  `onLayout` and that single number was passed to the poster through a `heroHoleHeight` prop and a
+  pure `posterPhotoBoxOverride(role, h)` function. #1609 made the collapsed card's hero **full-bleed**
+  and deleted the white tray, which removes the flex axis altogether: both trees now use ONE axis-free
+  style, `styles.heroFill` = `{...StyleSheet.absoluteFillObject}`. Because `cardInner` is `flex: 1`
+  with a definite height in both trees, an absolute fill resolves to exactly `cardInner`'s box in
+  both — sibling-independent, no measurement, no runtime coupling. Delta is **0.00pt by construction**
+  rather than by agreement. `deckPosterGeometry.ts`, the `heroHoleHeight` prop and state,
+  `styles.imageContainer` and `styles.cardDetails` are **deleted**, so the measure-and-copy enforcement
+  now has no subject. The guards were **rewritten, not removed** — see below. This is a
+  strengthening: "no flex axis exists" is checkable statically, whereas "two measured numbers agree"
+  was only checkable at runtime.
+- **What the enforcement does and does NOT cover, stated plainly.** The gate proves **statically**
+  that exactly one axis-free hero style exists, that BOTH trees are handed that same object, that it
+  carries no `flex`/`flexGrow`/`flexBasis`/`height` key, that exactly one poster photo box exists and
+  applies the passed style alone, and that the superseded plumbing is absent. It additionally
+  **executes an independent WCAG oracle** over the real shipped scrim constants
+  (`DECK_SCRIM_COLORS` / `DECK_SCRIM_LOCATIONS` in `app-mobile/src/components/deckHeroConstants.ts`),
+  compositing them over a white hero and asserting the contrast at every text band. It does **NOT**
+  run Yoga and therefore does **not** prove the resulting pixel geometry — that is the runtime
+  oracle's job, and both are required. It does not cover layer pairs in files the gate is not pointed
+  at, nor geometry applied imperatively.
 - **Enforcement:** `.github/workflows/issue-1593-deck-layer-geometry.yml` requires and executes
-  `issue_1593_poster_hole_geometry.test.mjs` (implementor) and
-  `issue_1593_poster_hole_geometry.adversarial.test.mjs` (tester).
+  `issue_1593_poster_hole_geometry.test.mjs` (implementor),
+  `issue_1593_poster_hole_geometry.adversarial.test.mjs` (tester), and
+  `issue_1609_collapsed_card_scrim_and_geometry.test.mjs` (#1609 successor, which also carries the
+  scrim contrast oracle). The first two were rewritten under `[TEST-MOD-APPROVED #1609]`.
 - **Established:** DRAFT at #1593 SPEC 2026-08-04. Flips ACTIVE at CLOSE after tester PASS.
+  Mechanism migrated at #1609 2026-08-04; rule text unchanged.
+
+---
+
+### I-PROPOSED-C-CARD-IDENTITY-SINGLE-SOURCE (DRAFT)
+
+- **Rule:** No surface that renders a Mingla place/plan card may contain a literal for the plate's
+  radius, height, fill, border, under-layer alpha, top-highlight, fallback solid, scrim ramp, scrim
+  height, or the title/meta type sizes. Every such value MUST be read from `@mingla/card-identity`
+  (RN, web) or `require('@mingla/card-identity')` (Node/satori). Where a value is size-dependent it
+  MUST be produced by the package's exported function (`scrimHeight`, `plateUnderAlpha`,
+  `plateRows`, `typeLadder`), never by a per-surface constant that happens to equal the function's
+  output.
+
+- **Why:** the ramp literal `['rgba(0,0,0,0)','rgba(0,0,0,0.42)',...]` was triplicated across
+  `SwipeableCards.tsx:3079`, `:3292` and `CuratedExperienceSwipeCard.tsx:444` before #1609, and the
+  place card and the curated card drifted apart in exactly that way — the place scrim was `'52%'`,
+  the curated one `'62%'`, and each file looked internally correct in review. Direction C puts the
+  same card on **seven** surfaces in **three** languages (React Native, react-native-web, and Node +
+  satori), so the same failure is seven times more likely and no reviewer sees more than one file at
+  a time.
+
+- **Why it is a PACKAGE and not an app module:** S6 (`@mingla/offering-rendering`, react-native-web)
+  and S5 (`mingla-business/server`, Node + satori) cannot import from `app-mobile/src` —
+  `I-MOR-0827-PACKAGE-ISOLATION` forbids it. The package is therefore **RN-free and
+  dependency-free**: plain data and pure functions, no JSX, no `react-native`, no CSS. It ships as
+  `index.js` (CommonJS) + `index.d.ts` rather than the `index.ts` its sibling packages use, so the CI
+  oracle can import the real functions under `node --test` on a bare checkout and satori can
+  `require()` them with no build step.
+
+- **The consistency mechanism, which is measured rather than asserted.** A glass plate's appearance
+  depends on what is behind it, so on seven surfaces with seven different scrim depths a FIXED recipe
+  would produce seven different-looking objects. The recipe is therefore not fixed; the RESULT is.
+  `plateUnderAlpha(alpha)` solves `L*(lift over under over backdrop) = 23.50` per surface. All seven
+  land within 0.03 L* of each other, against a ~2-3 L* just-noticeable difference, so every text
+  ratio on the plate is identical everywhere. The opaque path (`PLATE.fallbackSolid = rgb(53,56,63)`,
+  L* 23.47) is the same object on Android, in satori, and behind the CSS `@supports` fallback.
+
+- **Enforcement:** `.github/workflows/issue-1609-card-identity.yml` requires and **EXECUTES**
+  `packages/card-identity/__tests__/card_identity_single_source.test.mjs`, which:
+  - **(G1)** strips comments from the card-rendering sources and greps them for the forbidden literal
+    set, allowlisting ONLY `packages/card-identity/index.js`. Fails on any hit. G1b asserts the
+    package still declares those literals, so G1 cannot pass by the values living nowhere; G1c
+    asserts the deleted furniture (chips, `entryIndex`, the rail, "Details", "Been here?", the
+    curated ribbon) has not returned.
+  - **(G2)** imports the real `scrimHeight` / `plateUnderAlpha` / `rampAlphaAtDepth` and runs an
+    INDEPENDENT WCAG + CIE L* oracle over all seven surface descriptors, asserting: every plate
+    composite within ±2.0 L* of `PLATE.targetLstar` (and a total spread ≤ 0.5); white text on every
+    plate ≥ 4.5:1; the 0.72 dim span ≥ 4.5:1; `max(plate fill, plate border)` vs the photograph
+    ≥ 3.0:1 swept over 41 photo luminances; every title band on the photograph ≥ 3.0:1 at its TOP
+    edge; both curated slivers ≥ 3.0:1 against their own backdrop; and the Been-here control's five
+    states, including that each Android opaque equivalent is within 3 L* of its iOS composite.
+    T-0 proves the oracle reproduces published references AND that `plateUnderAlpha` is a real solver
+    rather than a constant; T-9 proves the oracle REJECTS the values the design rejected (the 0.30
+    border at 2.46:1, the 0.34/0.22 slivers, white on brand orange).
+  - **(G3)** asserts the surface descriptors are exported and complete, and that every surface
+    carries **exactly one** verdict — BUILT (a file renders it), DESIGNED (measured and clearing
+    every floor, no file yet) or KNOWN_OPEN (measured, NOT clearing a floor, shortfall pinned). An
+    eighth surface cannot be added without entering the oracle with a verdict.
+  - **(G3b)** asserts the plate's rows are a single derivation: both silhouettes' rows sum to their
+    plate height, the full plate reserves no chevron clearance, the short plate's control row equals
+    the full plate's, `CHEVRON_CLEARANCE == ceil((CHEVRON.size - DIVIDER_H) / 2)`, and
+    `PLATE_H_NO_META == plateH - META_ROW_H + CHEVRON_CLEARANCE`. It also asserts the divider is
+    **never** omitted and that the chevron's top edge lands inside the short plate's content box.
+  - **(C1-C6)** `app-mobile/src/components/swipeDeck/__tests__/issue_1609_short_plate_keeps_chevron.test.mjs`
+    carries the same rules to the RENDER SITE, because the previous P1 on this branch was a package
+    that derived the right number and a card tree that never asked for it. It asserts (over
+    comment-stripped source) that `deckCardPlate.tsx` mounts the divider row OUTSIDE the
+    `withMeta ? ... : null` gate that still governs the facts row, that the divider row applies
+    `marginTop: rows.clearance` rather than a typed number, and that neither the short plate height
+    nor any numeric `marginTop` appears in the card file.
+
+- **The plate has exactly TWO silhouettes, and only the FACTS row is data-dependent.** When the meta
+  span set is vacuous (no rating, no price, no distance, no category) the facts row is omitted and
+  the plate is `PLATE_H_NO_META` (64pt) rather than 96. **The divider is NOT omitted with it.** It
+  carries the chevron, and the chevron is the card's only visible expand affordance — it exists
+  because the word "Details" was rejected in favour of a view affordance, so dropping it on the
+  sparsest card in the pool inverts that decision at exactly the moment the user has least to go on
+  (Seth's decision on #1609, comment 5196932627, after the tester found such a card on device with
+  no affordance at all — P3-1). The divider is therefore a constant row of this object. The short
+  plate is 64 and not 56 because the 16pt chevron is centred on the 1pt divider line and reaches
+  7.5pt above it: on the full plate that overhang lands in the meta row's own vertical slack, but
+  with the facts row gone there is no row above the divider and the plate clips, so the clearance is
+  reserved explicitly (`ceil((16 - 1) / 2) = 8`). Everything from the divider down is byte-identical
+  between the two, so the pill and the share glyph never move. Both numbers are DERIVED in
+  `@mingla/card-identity`; neither may appear in a card file.
+
+- **Fails-on-revert:** proven three ways at implementation (hashes in the #1609 implementation
+  report) — restore one triplicated ramp literal to a card file (G1 fires); revert `PLATE.border`
+  from 0.38 to the historical 0.30 (G2's T-4 fires at 2.46:1 against the 3.0 floor); add an eighth
+  surface with no verdict (G3, T-4 and T-6 all fire).
+  The divider-retention clause adds a fourth: delete the `const divider = DIVIDER_H;` line from
+  `plateRows()` and restore `withMeta ? DIVIDER_H : 0` — `fails-on-revert verified at aaeb08a64`
+  (**C-1 and C-5** in `issue_1609_short_plate_keeps_chevron.test.mjs` fire, plus G3b and T-9).
+  **Corrected by the tester at Step 0.5, re-running this proof independently:** commit `ea821554b`
+  and an earlier draft of this line recorded that revert as firing "C-1, C-2, C-3 and C-5". It does
+  not — it fires C-1, C-5, G3b and T-9. C-2 ("the RENDER SITE mounts the divider outside the
+  facts-row ternary") and C-3 ("the clearance is READ from the row set, not typed") scan
+  `deckCardPlate.tsx`, which a `plateRows()` revert does not touch, so they cannot fire on it. They
+  are NOT vacuous — each was independently proven falsifiable on its own revert: move the divider
+  JSX back inside the `withMeta ? … : null` ternary and **C-2 fires**; replace
+  `marginTop: rows.clearance` with `marginTop: 8` and **C-3 fires**. Coverage is intact; only the
+  recorded proof was imprecise. Stated exactly here because this registry is what a future
+  maintainer re-runs, and a fails-on-revert record that names assertions which do not actually fire
+  is the #1607 defect class applied to the proof rather than to the guard.
+  The tester's anchor-drift guard adds a fifth, and it is the one that protects the ANCHORS rather
+  than the plate — `fails-on-revert verified at 868251568`, all three reverts run by the tester
+  against that commit in `issue_1609_silhouette_anchor_drift.adversarial.test.mjs`:
+  (i) type the short plate in as a literal `54` in place of
+  `plateH - META_ROW_H + CHEVRON_CLEARANCE` → **A-0 fires** (measured 42pt against a derived 32pt).
+  Note this revert is the reason A-0's clause is `CI.META_ROW_H - CI.CHEVRON_CLEARANCE` and not the
+  literal `42` it carried while the short plate was 54: the old literal would have *passed* this
+  exact regression, and the obvious replacement `S1.plateH - CI.PLATE_H_NO_META` reduces through
+  `plateTop()` to `a - b === a - b` and can never fail at all.
+  (ii) make `titleBottom()` ignore its `plateH` argument and fall back to the descriptor's constant
+  96 → **A-1 fires** (100pt derived here against 132pt returned by the package).
+  (iii) restore the module-load anchor — put `bottom: S1.bottomInset + S1.plateH + S1.gap` back into
+  both trees' `cardTitle` `StyleSheet.create` entries, drop the per-render overrides, and return
+  `CuratedSlivers()` to taking no argument — i.e. the original P1-1 defect → **A-2, A-3 and A-4 all
+  fire** (52pt of dead scrim under the name; `platePresentation` imported but never called; the
+  sliver stack stranded 32pt above the plate). All 72 assertions in the workflow return green on
+  restore.
+  **Note for whoever maintains this:** the design's own suggested proof — "change `PLATE.lift` by
+  0.02" — does NOT fire, and that is correct behaviour rather than a gap. `plateUnderAlpha` re-solves
+  for the target L* given the new lift, so the composite still lands on 23.50. The derivation
+  absorbing a lift change is the invariant working, not failing. Use the border revert instead.
+
+- **KNOWN OPEN at DRAFT, found by running the oracle for the first time:** S2 (grid), S3 (chat) and
+  S5 (OG) do **not** clear the 3:1 plate-boundary floor — they measure 2.20:1, 2.20:1 and 2.68:1
+  against a design that states 3.17:1 for S2 and "identical" for S3. S2's and S3's second curated
+  sliver measures 2.44:1 and 2.23:1 against a stated "exactly 3.00:1". These are pinned in the gate
+  so they cannot drift, and waves 2 and 3 cannot mark those surfaces BUILT until the shortfall is
+  designed out.
+
+- **Established:** DRAFT at #1609 wave 1, 2026-08-05. Flips ACTIVE at CLOSE after tester PASS.

@@ -3,7 +3,6 @@ import React, {
   memo,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useRef,
 } from 'react';
 import {
@@ -13,7 +12,6 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { posterPhotoBoxOverride } from './deckPosterGeometry';
 import type { DeckSwipeDirection } from './deckSwipeLifecycle';
 import {
   useDeckSwipeController,
@@ -37,8 +35,23 @@ interface DeckSwipeStageProps extends UseDeckSwipeControllerOptions {
   cardStyle: StyleProp<ViewStyle>;
   nextCardStyle: StyleProp<ViewStyle>;
   cardInnerStyle: StyleProp<ViewStyle>;
-  imageContainerStyle: StyleProp<ViewStyle>;
-  heroHoleHeight: number | null;
+  /**
+   * #1609 — the poster photo box. MUST be an axis-free absolute fill
+   * (`StyleSheet.absoluteFillObject`), never a `flex: <ratio>` style.
+   *
+   * #1593's defect was one flex-axis style (`flex: 0.88`) shared by this poster
+   * box and the face tree's hero hole under two different sibling sets, so Yoga
+   * resolved them to 689.00pt and 667.67pt and the 21.33pt overhang bled through
+   * the face tray. #1593 repaired it by MEASURING the face hole and copying the
+   * number over here via a `heroHoleHeight` prop.
+   *
+   * That plumbing is deleted. A full-bleed hero has no flex axis to disagree
+   * about: `cardInner` is `flex: 1` with a definite height in both trees, so an
+   * absolute fill resolves to exactly `cardInner`'s box in both, independent of
+   * siblings, with no measurement and no runtime coupling at all.
+   * See I-PROPOSED-1593-LAYER-GEOMETRY-SINGLE-SOURCE.
+   */
+  posterHeroStyle: StyleProp<ViewStyle>;
   children: (controller: DeckSwipeController) => React.ReactNode;
 }
 
@@ -51,13 +64,6 @@ export const DeckSwipeStage = memo(forwardRef<DeckSwipeStageHandle, DeckSwipeSta
   function DeckSwipeStage(props, ref) {
     const controller = useDeckSwipeController(props);
     const delayedAnnouncementSentRef = useRef(false);
-
-    // #1593 — single-source the poster photo box off the face tree's own measured
-    // hero hole. Role-scoped on purpose; see deckPosterGeometry.ts.
-    const posterPhotoBox = useMemo(() => ({
-      current: posterPhotoBoxOverride('current', props.heroHoleHeight),
-      behind: posterPhotoBoxOverride('behind', props.heroHoleHeight),
-    }), [props.heroHoleHeight]);
 
     useImperativeHandle(ref, () => ({
       invalidate: controller.invalidate,
@@ -100,7 +106,7 @@ export const DeckSwipeStage = memo(forwardRef<DeckSwipeStageHandle, DeckSwipeSta
             importantForAccessibility="no-hide-descendants"
           >
             <View style={props.cardInnerStyle}>
-              <View style={[props.imageContainerStyle, posterPhotoBox[card.role]]}>{card.poster}</View>
+              <View style={props.posterHeroStyle}>{card.poster}</View>
             </View>
           </Animated.View>
         ))}

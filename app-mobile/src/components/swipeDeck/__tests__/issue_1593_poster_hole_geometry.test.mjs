@@ -1,31 +1,49 @@
 // Issue #1593 — the poster layer's photo box and the interactive card's transparent
-// hero hole are the SAME rectangle drawn in two React trees. Before the fix they were
-// computed independently from one shared style (`styles.imageContainer`, flex: 0.88)
-// and resolved to 689.00pt in the poster tree and 667.67pt in the face tree. The
-// 21.33pt overhang composited through the tray's rgba(255,255,255,0.85) as a pale bar.
+// hero hole are the SAME rectangle drawn in two React trees. They must be single-sourced.
 //
-// This guard enforces I-PROPOSED-1593-LAYER-GEOMETRY-SINGLE-SOURCE by EXECUTING the real
-// geometry function (not a hand-written copy of it) and by statically proving the
-// dataflow producer -> prop -> pure function -> poster box, plus the role scoping.
+// ─────────────────────────────────────────────────────────────────────────────
+// REWRITTEN UNDER ISSUE #1609 [TEST-MOD-APPROVED #1609].
 //
-// It does NOT run Yoga and therefore does NOT prove the resulting pixel geometry — that
-// is the runtime oracle's job (SPEC SC-1/SC-2). Both are required.
+// The INVARIANT is unchanged and still ACTIVE: the poster photo box and the face hero
+// hole must be one rectangle with one source of truth. What changed is the MECHANISM.
 //
-// VACUITY DISCIPLINE (SPEC 9.0). Four guards on this deck have already been found
-// hollow, and a fifth shape — SILENT EXTRACTION FAILURE — is what this file is most
-// exposed to: a regex that finds nothing, then asserts nothing about the empty set, so a
-// rename or a reformat turns the gate into a no-op while it reports green. Therefore
-// every extraction below asserts an EXACT expected count BEFORE it inspects any content,
-// finding zero targets is a FAILURE, and source lookups run on comment-stripped source.
+//   #1593's mechanism (measure-and-copy): both trees shared `styles.imageContainer`
+//   (`flex: 0.88`), which Yoga resolved to 689.00pt in the poster tree (one child,
+//   grow-sum 0.88) and 667.67pt in the face tree (two children, the tray claiming
+//   min-content). The 21.33pt overhang composited through the tray's
+//   rgba(255,255,255,0.85) as a pale bar. #1593 repaired it by MEASURING the face
+//   hole via onLayout and copying that number to the poster through a
+//   `heroHoleHeight` prop and a pure `posterPhotoBoxOverride(role, h)` function.
 //
-// CLAIMS — T-9 mechanically asserts that each of these is really enforced in this file,
-// because "an enforcement that exists only in a comment" is the seventh failure shape
-// (SPEC 11.3 Discovery 2: two workflows claim a numeric assertion that exists nowhere).
-// Each token below must appear in a real assertion message in this file's code.
-//   CLAIM: executes-the-real-geometry-function
-//   CLAIM: behind-role-never-overridden
-//   CLAIM: degenerate-height-never-written
-//   CLAIM: exactly-one-hero-hole-producer
+//   #1609's mechanism (identical by construction): the hero is full-bleed and the
+//   tray is deleted, so there is no flex axis left to disagree about. Both trees use
+//   ONE axis-free style, `styles.heroFill` = `{...StyleSheet.absoluteFillObject}`.
+//   `cardInner` is `flex: 1` with a definite height in both trees, so an absolute
+//   fill resolves to exactly `cardInner`'s box in both — sibling-independent, with no
+//   measurement pass and no runtime coupling at all. Delta is 0.00pt by construction
+//   rather than by agreement.
+//
+// The tests that executed `posterPhotoBoxOverride` and traced
+// producer -> prop -> pure function -> poster box are therefore GONE: every one of
+// those code paths is deleted (`deckPosterGeometry.ts`, the `heroHoleHeight` prop and
+// state, `styles.imageContainer`, `styles.cardDetails`). They are replaced below by
+// the successor structural proof. This is a mechanism migration, NOT a weakening —
+// the enforcement is strictly stronger, because "no flex axis exists" is checkable
+// statically whereas "two measured numbers agree" was only checkable at runtime.
+//
+// The deeper contrast/scrim half of #1609 is enforced separately by
+// issue_1609_collapsed_card_scrim_and_geometry.test.mjs, which the same workflow runs.
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// VACUITY DISCIPLINE (unchanged). Seven guards on this deck have been found hollow
+// (#1607). Every extraction below asserts an EXACT expected count BEFORE it inspects
+// any content, finding zero targets is a FAILURE, and source lookups run on
+// comment-stripped source.
+//
+// CLAIMS — T-9 mechanically asserts that each of these is really enforced in this file.
+//   CLAIM: one-axis-free-hero-style-shared-by-both-trees
+//   CLAIM: hero-has-no-flex-axis-key
+//   CLAIM: superseded-plumbing-is-absent
 //   CLAIM: exactly-one-stage-call-site
 //   CLAIM: exactly-one-poster-photo-box
 //   CLAIM: swap-set-still-exactly-two-styles
@@ -33,24 +51,25 @@
 //   CLAIM: poster-remains-non-interactive
 //   CLAIM: mutant-anchors-are-byte-intact
 //   CLAIM: workflow-requires-and-executes-both-guards
+//   CLAIM: successor-guard-is-registered
 
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-
-import { posterPhotoBoxOverride } from '../deckPosterGeometry.ts';
 
 const IMPLEMENTOR_GUARD =
   'app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.test.mjs';
 const ADVERSARIAL_GUARD =
   'app-mobile/src/components/swipeDeck/__tests__/'
   + 'issue_1593_poster_hole_geometry.adversarial.test.mjs';
+const SUCCESSOR_GUARD =
+  'app-mobile/src/components/swipeDeck/__tests__/'
+  + 'issue_1609_collapsed_card_scrim_and_geometry.test.mjs';
 const GUARD_FILES = [IMPLEMENTOR_GUARD, ADVERSARIAL_GUARD];
 
 const urls = {
   swipeable: new URL('../../SwipeableCards.tsx', import.meta.url),
   stage: new URL('../DeckSwipeStage.tsx', import.meta.url),
-  geometry: new URL('../deckPosterGeometry.ts', import.meta.url),
   workflow: new URL(
     '../../../../../.github/workflows/issue-1593-deck-layer-geometry.yml',
     import.meta.url,
@@ -222,325 +241,131 @@ function openingTags(src, tagName) {
 }
 
 // ---------------------------------------------------------------------------
-// T-1 / T-2 / T-8 — the EXECUTED geometry contract.
+// T-1 / T-2 / T-3 / T-4 — the SUCCESSOR contract (#1609).
 //
-// The expectation table is written out LITERALLY rather than recomputed from the
-// implementation's own rules, so this is a genuine oracle and not a second copy of the
-// function under test.
+// The invariant is now enforced structurally rather than numerically, because the
+// mechanism it guards is structural: there is no measurement to compare.
 // ---------------------------------------------------------------------------
 
-const GEOMETRY_MATRIX = [
-  { role: 'current', h: null, expect: null },
-  { role: 'current', h: 0, expect: null },
-  { role: 'current', h: -1, expect: null },
-  { role: 'current', h: 0.4, expect: { flex: 0, height: 0.4 } },
-  { role: 'current', h: 1, expect: { flex: 0, height: 1 } },
-  { role: 'current', h: 320.5, expect: { flex: 0, height: 320.5 } },
-  { role: 'current', h: 500, expect: { flex: 0, height: 500 } },
-  { role: 'current', h: 667.67, expect: { flex: 0, height: 667.67 } },
-  { role: 'current', h: 689, expect: { flex: 0, height: 689 } },
-  { role: 'current', h: 900.25, expect: { flex: 0, height: 900.25 } },
-  { role: 'current', h: NaN, expect: null },
-  { role: 'current', h: Infinity, expect: null },
-  { role: 'behind', h: null, expect: null },
-  { role: 'behind', h: 0, expect: null },
-  { role: 'behind', h: -1, expect: null },
-  { role: 'behind', h: 0.4, expect: null },
-  { role: 'behind', h: 1, expect: null },
-  { role: 'behind', h: 320.5, expect: null },
-  { role: 'behind', h: 500, expect: null },
-  { role: 'behind', h: 667.67, expect: null },
-  { role: 'behind', h: 689, expect: null },
-  { role: 'behind', h: 900.25, expect: null },
-  { role: 'behind', h: NaN, expect: null },
-  { role: 'behind', h: Infinity, expect: null },
-];
+test('T-1 exactly ONE axis-free hero style exists, and both trees are handed it', () => {
+  const code = stripCommentsAndStrings(source.swipeable);
 
-/**
- * Run `fn` over the whole matrix and return distinctly-signatured failure strings.
- * Shared by T-1 (must be empty for the real function) and T-8 (must be non-empty, with
- * different signatures, for each synthetic wrong implementation).
- */
-function checkGeometry(fn) {
-  const failures = [];
-  for (const { role, h } of GEOMETRY_MATRIX) {
-    // eslint-disable-next-line no-restricted-syntax
-    const row = GEOMETRY_MATRIX.find((r) => r.role === role && Object.is(r.h, h));
-    const want = row.expect;
-    const got = fn(role, h);
-    const label = `${role}/${String(h)}`;
-
-    if (want === null) {
-      if (got !== null) {
-        if (role === 'behind') {
-          failures.push(`role-scope: ${label} must be null, got ${JSON.stringify(got)}`);
-        } else {
-          failures.push(`degenerate: ${label} must be null, got ${JSON.stringify(got)}`);
-        }
-      }
-      continue;
-    }
-    if (got === null || typeof got !== 'object') {
-      failures.push(`null-for-valid: ${label} must be an override, got ${JSON.stringify(got)}`);
-      continue;
-    }
-    const keys = Object.keys(got).sort().join(',');
-    if (keys !== 'flex,height') {
-      failures.push(`shape: ${label} key set must be flex,height — got ${keys}`);
-      continue;
-    }
-    if (got.flex !== 0) failures.push(`shape: ${label} flex must be 0, got ${got.flex}`);
-    if (!Object.is(got.height, want.height)) {
-      failures.push(`identity: ${label} height must be exactly ${want.height}, got ${got.height}`);
-    }
-  }
-  return failures;
-}
-
-test('T-1 the REAL geometry function is imported and executed over the full matrix', () => {
+  const heroFillDecls = [...code.matchAll(/\bheroFill:\s*\{/g)];
   assert.equal(
-    typeof posterPhotoBoxOverride,
-    'function',
-    'VACUITY: posterPhotoBoxOverride did not import as a function — this guard '
-    + 'executes-the-real-geometry-function and cannot fall back to a copy',
+    heroFillDecls.length,
+    1,
+    'one-axis-free-hero-style-shared-by-both-trees: expected exactly ONE `heroFill:` style '
+    + `declaration in SwipeableCards, found ${heroFillDecls.length} — zero means this guard `
+    + 'would pass by finding nothing, and two means the trees can be handed different objects',
   );
+
+  // The face tree applies it directly.
+  const faceUses = [...code.matchAll(/style=\{styles\.heroFill\}/g)];
   assert.ok(
-    GEOMETRY_MATRIX.length === 24,
-    `VACUITY: the matrix collapsed to ${GEOMETRY_MATRIX.length} rows`,
+    faceUses.length >= 1,
+    'one-axis-free-hero-style-shared-by-both-trees: no face-tree node applies '
+    + 'styles.heroFill — the face hero would compute its own box again',
   );
 
-  const failures = checkGeometry(posterPhotoBoxOverride);
-  assert.deepEqual(
-    failures,
-    [],
-    'the shipped geometry function violated the contract: ' + failures.join(' | '),
+  // The poster tree is handed the SAME object through the stage prop.
+  const posterProps = [...code.matchAll(/posterHeroStyle=\{/g)];
+  assert.equal(
+    posterProps.length,
+    1,
+    'exactly-one-stage-call-site: expected exactly ONE posterHeroStyle={ call site, found '
+    + `${posterProps.length}`,
   );
-
-  // Called out separately so a regression names the rule it broke.
-  for (const h of [0.4, 1, 320.5, 500, 667.67, 689, 900.25]) {
-    assert.equal(
-      posterPhotoBoxOverride('behind', h),
-      null,
-      'behind-role-never-overridden: the behind overlay tray is EMPTY so its hole may '
-      + 'legitimately differ; writing the current card measurement there would paint an '
-      + 'inverse white sliver on a layer that is correct today',
-    );
-  }
-  for (const h of [0, -1, NaN, Infinity, null]) {
-    assert.equal(
-      posterPhotoBoxOverride('current', h),
-      null,
-      'degenerate-height-never-written: a non-finite or non-positive measurement must '
-      + 'yield no override — writing height:0 would collapse the photo entirely, which is '
-      + 'a worse defect than the pale bar',
-    );
-  }
-  console.log(`T-1 examined ${GEOMETRY_MATRIX.length} executed geometry cases`);
+  const propText = code.slice(posterProps[0].index, posterProps[0].index + 200);
+  assert.match(
+    propText,
+    /styles\.heroFill/,
+    'one-axis-free-hero-style-shared-by-both-trees: the poster tree must receive '
+    + 'styles.heroFill — the SAME style object the face tree uses. Two separately-authored '
+    + 'hero styles is precisely how the poster and the face diverged in #1593',
+  );
+  console.log(`T-1 examined ${heroFillDecls.length} hero style, ${faceUses.length} face uses, ${posterProps.length} poster prop`);
 });
 
-test('T-2 the returned override has an invariant shape at every finite positive height', () => {
-  const shapes = new Set();
-  const finite = [0.4, 1, 320.5, 500, 667.67, 689, 900.25];
-  for (const h of finite) {
-    const got = posterPhotoBoxOverride('current', h);
-    assert.ok(got, `expected an override at h=${h}`);
-    shapes.add(Object.keys(got).sort().join(','));
-  }
-  assert.equal(
-    shapes.size,
-    1,
-    `the override shape varies with the height (${[...shapes].join(' / ')}) — a `
-    + 'conditionally-spread property would make the poster box style non-deterministic',
-  );
-  assert.equal([...shapes][0], 'flex,height');
-  assert.equal(finite.length, 7, `VACUITY: the finite sweep collapsed to ${finite.length} points`);
-});
-
-test('T-8 negative control — the checker rejects a pre-fix and a hardcoded implementation', () => {
-  const preFix = () => null;
-  const hardcoded = () => ({ flex: 0, height: 667.67 });
-
-  const preFixFailures = checkGeometry(preFix);
-  const hardcodedFailures = checkGeometry(hardcoded);
-
-  assert.ok(
-    preFixFailures.length > 0,
-    'the pre-fix implementation (always null) must be rejected, or this guard cannot '
-    + 'detect a revert',
-  );
-  assert.ok(
-    hardcodedFailures.length > 0,
-    'the hardcoded implementation must be rejected, or a device-tuned constant would pass',
-  );
-
-  // Distinct signatures — the two wrong implementations must not be diagnosed identically.
-  assert.ok(
-    preFixFailures.every((f) => f.startsWith('null-for-valid:')),
-    `pre-fix should fail only as null-for-valid, got: ${preFixFailures.join(' | ')}`,
-  );
-  assert.ok(
-    hardcodedFailures.some((f) => f.startsWith('role-scope:')),
-    `hardcoded should break the role scope, got: ${hardcodedFailures.join(' | ')}`,
-  );
-  assert.ok(
-    hardcodedFailures.some((f) => f.startsWith('identity:')),
-    `hardcoded should break height identity, got: ${hardcodedFailures.join(' | ')}`,
-  );
-  assert.notDeepEqual(
-    preFixFailures,
-    hardcodedFailures,
-    'the two synthetic failures are indistinguishable — the checker is not discriminating',
-  );
-});
-
-// ---------------------------------------------------------------------------
-// T-3 — the PRODUCER, derived from structure rather than named.
-// ---------------------------------------------------------------------------
-
-test('T-3 the hero-hole measurement is produced by the face tree onLayout, derived', () => {
-  const src = stripCommentsAndStrings(source.swipeable);
-
-  const heroHoles = openingTags(src, 'View').filter((tag) => (
-    tag.text.includes('styles.imageContainer')
-    && tag.text.includes('styles.transparentImageContainer')
-    && tag.text.includes('onLayout=')
-  ));
-  assert.equal(
-    heroHoles.length,
-    1,
-    'exactly-one-hero-hole-producer: expected exactly ONE <View> carrying both '
-    + `styles.imageContainer and styles.transparentImageContainer AND an onLayout, found `
-    + `${heroHoles.length} — zero means this guard would pass by finding nothing`,
-  );
-  const [hole] = heroHoles;
-
-  const gestureAt = src.indexOf('<GestureDetector');
-  assert.ok(
-    gestureAt >= 0,
-    'VACUITY: no <GestureDetector> in SwipeableCards — the subtree anchor is gone',
-  );
-  assert.ok(
-    hole.start > gestureAt,
-    'the measured hero hole must live inside the current card GestureDetector subtree, '
-    + 'not in the behind overlay',
-  );
-
-  // The handler body, and the setters it calls.
-  const onLayoutAt = hole.text.indexOf('onLayout=');
-  const braceAt = hole.text.indexOf('{', onLayoutAt);
-  const handler = hole.text.slice(braceAt, matchDelimiter(hole.text, braceAt) + 1);
-  assert.ok(handler.length > 40, `VACUITY: extracted onLayout body is implausibly short`);
-
-  const setters = [...handler.matchAll(/\bset[A-Z]\w*\(/g)].map((m) => m[0].slice(0, -1));
-  assert.ok(
-    setters.length >= 2,
-    `the hero onLayout must set BOTH the decode-target layout and the hole height, `
-    + `found setters: ${JSON.stringify(setters)}`,
-  );
-
-  // Derive the state identifier from the CALL SITE, then prove that identifier's setter is
-  // the one this handler calls. Nothing here hardcodes the state variable's name.
-  const stageTag = openingTags(src, 'DeckSwipeStage');
-  assert.equal(
-    stageTag.length,
-    1,
-    `exactly-one-stage-call-site: expected exactly ONE <DeckSwipeStage> call site, found `
-    + `${stageTag.length}`,
-  );
-  const propMatch = /heroHoleHeight=\{\s*([A-Za-z_$][\w$]*)\s*\}/.exec(stageTag[0].text);
-  assert.ok(
-    propMatch,
-    'the <DeckSwipeStage> call site must pass heroHoleHeight={<identifier>} — without it '
-    + 'the poster box falls back to the independently-computed flex height (#1593)',
-  );
-  const stateIdent = propMatch[1];
-
-  const decl = new RegExp(
-    `const\\s*\\[\\s*${stateIdent}\\s*,\\s*([A-Za-z_$][\\w$]*)\\s*\\]\\s*=\\s*useState`,
-  ).exec(src);
-  assert.ok(
-    decl,
-    `VACUITY: no useState declaration found for the identifier "${stateIdent}" passed as `
-    + 'heroHoleHeight — the dataflow cannot be traced',
-  );
-  assert.ok(
-    setters.includes(decl[1]),
-    `the value passed as heroHoleHeight ("${stateIdent}") is not set by the measured hero `
-    + `hole's onLayout (that handler calls ${JSON.stringify(setters)}, not ${decl[1]}) — the `
-    + 'poster would follow something other than the real measurement',
-  );
-  console.log(`T-3 examined 1 hero-hole producer and ${setters.length} setters`);
-});
-
-// ---------------------------------------------------------------------------
-// T-4 — the CONSUMER wiring.
-// ---------------------------------------------------------------------------
-
-test('T-4 the dataflow producer -> prop -> pure function -> poster box is complete', () => {
-  const swipeable = stripCommentsAndStrings(source.swipeable);
-  // Structural searches run on identifier-level source; the import specifier and the role
-  // literals are STRINGS, so those two checks run on comment-stripped-but-string-preserving
-  // source instead. Both are comment-free, which is the property that matters.
-  const stage = stripCommentsAndStrings(source.stage);
-  const stageCode = stripComments(source.stage);
-
-  const propOccurrences = [...swipeable.matchAll(/heroHoleHeight=\{/g)];
-  assert.equal(
-    propOccurrences.length,
-    1,
-    `exactly-one-stage-call-site: heroHoleHeight={ must appear exactly once in `
-    + `SwipeableCards, found ${propOccurrences.length}`,
-  );
+test('T-2 the hero style has NO flex-axis key and no explicit height', () => {
+  const src = stripComments(source.swipeable);
+  const idx = src.indexOf('heroFill: {');
+  assert.ok(idx > 0, 'VACUITY: heroFill style not found for body extraction');
+  const body = src.slice(idx, matchDelimiter(src, src.indexOf('{', idx)) + 1);
+  assert.ok(body.length > 20, `VACUITY: extracted heroFill body is implausibly short (${body.length})`);
 
   assert.match(
-    stageCode,
-    /import\s*\{\s*posterPhotoBoxOverride\s*\}\s*from\s*'\.\/deckPosterGeometry'/,
-    'DeckSwipeStage must import the single-source geometry function',
+    body,
+    /StyleSheet\.absoluteFillObject/,
+    'hero-has-no-flex-axis-key: heroFill must spread StyleSheet.absoluteFillObject. That is '
+    + 'the whole mechanism: an absolute fill is resolved against the parent box, not against '
+    + 'its siblings, so the two trees cannot disagree',
   );
-
-  const memoMatch = /const\s+([A-Za-z_$][\w$]*)\s*=\s*useMemo\(/g;
-  let memoIdent = null;
-  let m = memoMatch.exec(stage);
-  while (m) {
-    const open = stage.indexOf('(', m.index + m[0].length - 1);
-    const body = stage.slice(open, matchDelimiter(stage, open) + 1);
-    if (body.includes('posterPhotoBoxOverride')) memoIdent = m[1];
-    m = memoMatch.exec(stage);
-  }
-  assert.ok(
-    memoIdent,
-    'VACUITY: no useMemo in DeckSwipeStage resolves posterPhotoBoxOverride — the poster '
-    + 'box would never receive the measurement',
-  );
-
-  for (const role of ["'current'", "'behind'"]) {
-    assert.ok(
-      stageCode.includes(`posterPhotoBoxOverride(${role},`),
-      `the geometry function must be resolved for the ${role} role explicitly, so the role `
-      + 'scoping is visible at the call site rather than implied',
+  for (const [key, why] of [
+    ['flex', 'a flex-axis key resolves differently under different sibling sets — 689.00pt in '
+      + 'the poster tree vs 667.67pt in the face tree — which IS #1593'],
+    ['height', 'an explicit height re-introduces an independently computed box'],
+    ['flexGrow', 'flexGrow is the same axis key under another name'],
+    ['flexBasis', 'flexBasis is the same axis key under another name'],
+  ]) {
+    assert.doesNotMatch(
+      body,
+      new RegExp(`\\b${key}\\s*:`),
+      `hero-has-no-flex-axis-key: heroFill gained a \`${key}:\` key — ${why}`,
     );
   }
+});
+
+test('T-3 the superseded #1593 plumbing is absent from both trees', () => {
+  const swipeable = stripCommentsAndStrings(source.swipeable);
+  const stage = stripCommentsAndStrings(source.stage);
+
+  for (const [label, code] of [['SwipeableCards', swipeable], ['DeckSwipeStage', stage]]) {
+    for (const dead of [
+      'posterPhotoBoxOverride',
+      'heroHoleHeight',
+      'imageContainerStyle',
+      'IMAGE_SECTION_RATIO',
+      'DETAILS_SECTION_RATIO',
+    ]) {
+      assert.ok(
+        !code.includes(dead),
+        `superseded-plumbing-is-absent: ${label} still references ${dead}. #1609 removes the `
+        + 'flex-axis disagreement entirely, so the measure-and-copy plumbing is dead code — '
+        + 'layering the redesign on top of it violates Constitution rule 8 (subtract before '
+        + 'adding), and `deckPosterGeometry.ts` no longer exists to import',
+      );
+    }
+    // The white tray is the other half of the sibling problem.
+    assert.ok(
+      !code.includes('styles.cardDetails'),
+      `superseded-plumbing-is-absent: ${label} still references styles.cardDetails — the tray `
+      + 'is the SECOND child that made the face tree resolve a different hero height',
+    );
+  }
+});
+
+test('T-4 exactly one poster photo box exists, and it applies the passed style', () => {
+  const stage = stripCommentsAndStrings(source.stage);
 
   const posterBoxes = openingTags(stage, 'View').filter((tag) => (
-    tag.text.includes('props.imageContainerStyle')
+    tag.text.includes('props.posterHeroStyle')
   ));
   assert.equal(
     posterBoxes.length,
     1,
-    `exactly-one-poster-photo-box: expected exactly ONE poster photo box <View>, found `
-    + `${posterBoxes.length}`,
+    'exactly-one-poster-photo-box: expected exactly ONE poster photo box <View> carrying '
+    + `props.posterHeroStyle, found ${posterBoxes.length} — zero means this guard would pass `
+    + 'by finding nothing',
   );
-  assert.ok(
-    posterBoxes[0].text.includes(memoIdent),
-    `the poster photo box must apply the resolved override (${memoIdent}) — without it the `
-    + 'box keeps computing its own flex height and the 21.33pt overhang returns',
-  );
-  assert.match(
+  // It must apply the prop ALONE — no second style that could reintroduce an axis key.
+  assert.doesNotMatch(
     posterBoxes[0].text,
-    new RegExp(`${memoIdent}\\[\\s*card\\.role\\s*\\]`),
-    'the override must be selected BY ROLE at the poster box, not applied to every layer',
+    /style=\{\s*\[/,
+    'exactly-one-poster-photo-box: the poster box composes an ARRAY of styles. RN flattens '
+    + 'later-wins, so a second entry could silently re-add a flex axis on top of the shared '
+    + 'hero style. Pass the single shared style',
   );
-  console.log(`T-4 examined 1 call site and ${posterBoxes.length} poster photo box`);
+  console.log(`T-4 examined ${posterBoxes.length} poster photo box`);
 });
 
 // ---------------------------------------------------------------------------
@@ -715,6 +540,19 @@ test('T-9 the workflow requires AND executes both guards, and the claims are rea
       `workflow-requires-and-executes-both-guards: no \`node --test\` step executes ${file}`,
     );
   }
+
+  // #1609's successor guard must be REQUIRED and EXECUTED by this same job — otherwise
+  // the scrim half of the invariant has no gate at all.
+  assert.ok(
+    blocks.some((b) => b.includes(`test -f ${SUCCESSOR_GUARD}`)),
+    `successor-guard-is-registered: no run step does \`test -f\` on ${SUCCESSOR_GUARD}. `
+    + "#1609 superseded #1593's mechanism; if its guard is not required here, the mechanism "
+    + 'migration silently dropped a gate',
+  );
+  assert.ok(
+    blocks.some((b) => /node --test/.test(b) && b.includes(SUCCESSOR_GUARD)),
+    `successor-guard-is-registered: no \`node --test\` step executes ${SUCCESSOR_GUARD}`,
+  );
 
   // #1593 gets its OWN workflow so the other issues' steps keep their exact guard counts.
   for (const foreign of [/issue_1481_/, /issue_1576_/, /issue_1579_/]) {

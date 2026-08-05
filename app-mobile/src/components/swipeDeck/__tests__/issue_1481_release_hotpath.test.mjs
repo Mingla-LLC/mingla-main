@@ -64,9 +64,31 @@ function assertStablePosterPromotion(swipeableSource, stageSource) {
     swipeableSource.indexOf('{/* Current Card */}'),
     swipeableSource.indexOf('{/* Swipe Buttons */}'),
   );
-  const cardHero = swipeableSource.slice(
-    swipeableSource.indexOf('function CardHero({'),
-    swipeableSource.indexOf('/** Map travel mode preference'),
+  // [TEST-MOD-APPROVED #1609] THE END ANCHOR WAS A NEIGHBOURING COMMENT,
+  // `'/** Map travel mode preference'`, and #1609 deleted the helper that comment
+  // documented (travel time leaves the collapsed card under D-2). `indexOf`
+  // returned -1, `slice(start, -1)` silently widened the window to the whole rest
+  // of the file, and the guard then reported `<CardHeroImage>` from an unrelated
+  // component as a duplicate poster mount.
+  //
+  // That is the #1607 defect class exactly — a guard slicing on an anchor string
+  // that is not in the file — so the anchor is now STRUCTURAL: the CardHero
+  // function's own closing brace at column 0. It cannot be moved by editing a
+  // comment, and the anti-vacuity assertions below make a mis-slice fail loudly
+  // instead of widening.
+  const cardHeroStart = swipeableSource.indexOf('function CardHero({');
+  assert.ok(cardHeroStart > 0, 'CardHero is gone from SwipeableCards');
+  const cardHeroEnd = swipeableSource.indexOf('\n}\n', cardHeroStart);
+  assert.ok(cardHeroEnd > cardHeroStart, 'could not find the end of the CardHero function');
+  const cardHero = swipeableSource.slice(cardHeroStart, cardHeroEnd);
+  assert.ok(
+    cardHero.length > 200 && cardHero.length < 6000,
+    `CardHero slice is ${cardHero.length} chars — the window is wrong and this check would `
+    + 'either pass vacuously or report an unrelated component',
+  );
+  assert.ok(
+    !cardHero.includes('function PulseDots') && !cardHero.includes('interface SwipeableCardsProps'),
+    'the CardHero slice ran past the end of the function',
   );
 
   assert.match(

@@ -1,0 +1,151 @@
+name: Issue 1609 Card Identity Single Source
+
+# Enforces I-PROPOSED-C-CARD-IDENTITY-SINGLE-SOURCE, and runs the two #1609
+# guards that until now ran in NO WORKFLOW AT ALL.
+#
+# ---------------------------------------------------------------------------
+# WHY THIS WORKFLOW EXISTS
+#
+# Seven surfaces render the Mingla place/plan card, in three languages, and the
+# ramp literal ['rgba(0,0,0,0)','rgba(0,0,0,0.42)',...] was triplicated across
+# SwipeableCards.tsx:3079, :3292 and CuratedExperienceSwipeCard.tsx:444 before
+# #1609. The place card and the curated card drifted apart in exactly that way,
+# and it was invisible in review because each file looked internally correct.
+# With seven surfaces the same failure is seven times more likely.
+#
+# ---------------------------------------------------------------------------
+# WHAT MAKES THIS GATE DIFFERENT FROM THE SIX #1607 NAMES
+#
+# #1607 exists because six shipped guards assert something ADJACENT to the
+# behaviour instead of the behaviour — one is satisfied by a comment, one slices
+# on an anchor string that does not appear in the file it reads. So this gate:
+#
+#   - strips comments before every source scan, so no assertion can be satisfied
+#     OR tripped by prose;
+#   - IMPORTS THE REAL scrimHeight / plateUnderAlpha / rampAlphaAtDepth and runs
+#     an INDEPENDENT WCAG + CIE L* oracle over them, rather than restating the
+#     design's numbers back to itself. T-0 proves the oracle agrees with a
+#     published reference AND that plateUnderAlpha is a real solver rather than a
+#     constant; T-9 proves the oracle REJECTS the values the design rejected;
+#   - carries an anti-vacuity assertion on every scan, so a mistyped needle or an
+#     unread file fails instead of passing silently.
+#
+# ---------------------------------------------------------------------------
+# THE TWO ORPHANED GUARDS
+#
+# issue_1609_liquid_glass_and_scrim_presence.test.mjs and
+# issue_1609_top_scrim_chrome_contrast.test.mjs were shipped on branch
+# 1609-collapsed-card and registered in NO workflow — 18 assertions that ran on
+# no CI run at all. They defend the Liquid Glass treatment and the top-scrim
+# contrast, both of which Seth asked for by name. They run here.
+#
+# issue_1609_collapsed_card_scrim_and_geometry.test.mjs is deliberately NOT
+# repeated here: it is already required and executed by
+# issue-1593-deck-layer-geometry.yml, which owns its own guard list and exact
+# count.
+#
+# NOTE: no `npm ci` step, and that is deliberate. These guards import
+# @mingla/card-identity and deckHeroConstants.ts by RELATIVE path precisely so
+# they run on a bare checkout. Node 22 strips the .ts types natively. If a future
+# change makes a guard need node_modules, install it here rather than making the
+# guard resolve a bare specifier — that would silently kill every assertion in
+# the file at module load, which is the worst possible failure mode for a gate.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/card-identity/**"
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/components/CuratedExperienceSwipeCard.tsx"
+      - "app-mobile/src/components/deckCardPlate.tsx"
+      - "app-mobile/src/components/deckHeroConstants.ts"
+      - "app-mobile/src/constants/designSystem.ts"
+      # The guards this workflow RUNS were not in its own trigger set, so a PR
+      # that changed only a guard did not run it (#1609 tester, discovery 1).
+      - "app-mobile/src/components/swipeDeck/__tests__/**"
+      - "docs/INVARIANT_REGISTRY.md"
+      - ".github/workflows/issue-1609-card-identity.yml"
+  pull_request:
+    paths:
+      - "packages/card-identity/**"
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/components/CuratedExperienceSwipeCard.tsx"
+      - "app-mobile/src/components/deckCardPlate.tsx"
+      - "app-mobile/src/components/deckHeroConstants.ts"
+      - "app-mobile/src/constants/designSystem.ts"
+      # The guards this workflow RUNS were not in its own trigger set, so a PR
+      # that changed only a guard did not run it (#1609 tester, discovery 1).
+      - "app-mobile/src/components/swipeDeck/__tests__/**"
+      - "docs/INVARIANT_REGISTRY.md"
+      - ".github/workflows/issue-1609-card-identity.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  card-identity-single-source:
+    name: "Issue 1609: one source for every card value, measured"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Require the package and every guard this workflow runs to exist
+        run: |
+          test -f packages/card-identity/index.js
+          test -f packages/card-identity/index.d.ts
+          test -f packages/card-identity/package.json
+          test -f packages/card-identity/__tests__/card_identity_single_source.test.mjs
+          test -f packages/card-identity/__tests__/card_identity_isolation.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_liquid_glass_and_scrim_presence.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_top_scrim_chrome_contrast.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_silhouette_anchor_drift.adversarial.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_plate_anchor_wiring.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_short_plate_keeps_chevron.test.mjs
+
+      - name: The package must stay RN-free and dependency-free
+        # This is the property that lets @mingla/offering-rendering (web) and
+        # mingla-business/server (Node + satori) consume it at all
+        # (I-MOR-0827-PACKAGE-ISOLATION). A single `import ... from 'react-native'`
+        # would take the OG renderer down at require time, in production, on a
+        # surface nobody runs locally.
+        #
+        # This step used to be an inline `node -e` that ran `.includes()` over the
+        # RAW TEXT of index.js for ['react-native', 'expo-', ..., 'StyleSheet',
+        # 'jsx']. It went RED on a completely clean file, because index.js's own
+        # header comments explain the constraint ("renders from
+        # @mingla/offering-rendering on react-native-web", "No JSX, no
+        # react-native", "expo-blur's dark tint ..."), index.d.ts names
+        # `expo-linear-gradient` the same way, and package.json legitimately
+        # carries a `"react-native": "index.js"` bundler entry field.
+        #
+        # That is the #1607 defect class — an assertion that does not match its
+        # claim — inverted: #1607's guards were SATISFIED by prose, this one was
+        # TRIPPED by it. A guard a comment can turn red is a guard people weaken
+        # rather than fix; the cheapest way to green this step was to delete the
+        # comments that document why the rule exists. So the assertion now targets
+        # the MODULE GRAPH — statically over comment-stripped source, and again by
+        # actually requiring the package under a Module._load hook — and it
+        # self-tests its own strippers and extractor first so it can neither pass
+        # nor fail vacuously. Every sibling #1609/#1593 guard already stripped
+        # comments; this step was the only one on the branch that did not.
+        run: >-
+          node --test
+          packages/card-identity/__tests__/card_identity_isolation.test.mjs
+
+      - name: Execute the single-source oracle and the deck guards
+        run: >-
+          node --test
+          packages/card-identity/__tests__/card_identity_single_source.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1609_liquid_glass_and_scrim_presence.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1609_top_scrim_chrome_contrast.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1609_silhouette_anchor_drift.adversarial.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1609_plate_anchor_wiring.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1609_short_plate_keeps_chevron.test.mjs

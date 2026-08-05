@@ -120,5 +120,20 @@
   "collab.deadend.waiting.title_one": "Waiting on {{name}}'s location",
   "collab.deadend.waiting.title_many": "Waiting on everyone's location",
   "collab.deadend.waiting.guidance": "Hang tight — the deck fills in the moment their location lands.",
-  "collab.deadend.waiting.pending_chip": "{{name}}: getting a fix…"
+  "collab.deadend.waiting.pending_chip": "{{name}}: getting a fix…",
+  "swipeable.been_here": "Been here",
+  "swipeable.been_here_thanks": "Thank you",
+  "swipeable.been_here_settled": "You've been here",
+  "swipeable.been_here_on": "You've been to {{title}}. Double tap to remove.",
+  "swipeable.been_here_off": "Mark that you've been to {{title}}.",
+  "swipeable.card_hint": "Swipe up or double tap for details.",
+  "swipeable.pass_action": "Pass",
+  "swipeable.share_action": "Share",
+  "swipeable.share_card": "Share {{title}}",
+  "swipeable.a11y_rating": "{{rating}} stars",
+  "swipeable.a11y_distance": "{{distance}} away",
+  "swipeable.a11y_travel_time": "{{travelTime}} travel time",
+  "swipeable.a11y_saved": "Saved",
+  "swipeable.a11y_scheduled": "Scheduled",
+  "swipeable.been_here_failed": "Couldn't save"
 }

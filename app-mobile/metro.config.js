@@ -61,6 +61,17 @@ config.resolver.extraNodeModules = {
   // ISSUE-1001 — canonical brand-asset masters (wordmark + business lockup).
   // Single committed source for every Mingla mark; mirrors are parity-checked.
   "@mingla/brand-assets": path.join(WORKSPACE_ROOT, "packages", "brand-assets"),
+  // #1609 Direction C — the SINGLE source for every place/plan card value
+  // (scrim ramps, plate material + derived under-layer alpha, type ladder,
+  // Been-here states, curated slivers, the seven surface descriptors). It is a
+  // package and not an app module because @mingla/offering-rendering (web) and
+  // mingla-business/server (Node + satori) also consume it and cannot import
+  // from app-mobile/src (I-MOR-0827-PACKAGE-ISOLATION). RN-free, zero deps.
+  "@mingla/card-identity": path.join(
+    WORKSPACE_ROOT,
+    "packages",
+    "card-identity",
+  ),
   // CRITICAL — force single React + RN instance across app + packages.
   // The packages have their own node_modules/react (for type-checking
   // only) which at runtime would create a DUPLICATE React instance and

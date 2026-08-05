@@ -38,7 +38,13 @@ import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../../constants/desig
 const t = glass.badge;
 
 export type GlassBadgeProps = {
-  variant?: 'default' | 'circular';
+  /**
+   * #1609 — `accent` is the curated card's LEADING chip. It is the same five-layer
+   * stack with the tint + border swapped for the existing glass.chrome.active values,
+   * so it introduces no new token. It is deliberately never the ONLY differentiator:
+   * the curated chip also carries a distinct icon and the word "Plan".
+   */
+  variant?: 'default' | 'circular' | 'accent';
   iconName?: IconName;
   children: React.ReactNode;
   onPress?: () => void;
@@ -49,6 +55,13 @@ export type GlassBadgeProps = {
    * Reduced Motion is respected — animation is skipped when enabled.
    */
   entryIndex?: number;
+  /**
+   * #1609 — light-fill ("liquid") glass, for chips sitting ON the deck scrim rather
+   * than on bare photo. Swaps the darkening `tint.floor` for `liquid.fill`, brightens
+   * the rim and the specular top bevel. Same idiom as GlassIconButton's `liquid`.
+   * Derivation + measured L* values: designSystem.ts → glass.badge.liquid.
+   */
+  liquid?: boolean;
 };
 
 // META-ORCH-1002 Sub-1 (S2): shared Android-opaque-fallback gate (was the per-component Android-11 version gate).
@@ -61,6 +74,7 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
   onPress,
   accessibilityLabel,
   entryIndex,
+  liquid = false,
 }) => {
   const [reduceTransparency, setReduceTransparency] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -214,8 +228,8 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
       {/* L1 — blur or solid fallback */}
       {useGlass ? (
         <BlurView
-          intensity={t.blur.intensity}
-          tint={t.blur.tint}
+          intensity={liquid ? t.liquid.blurIntensity : t.blur.intensity}
+          tint={liquid ? t.liquid.blurTint : t.blur.tint}
           pointerEvents="none"
           experimentalBlurMethod={
             Platform.OS === 'android' ? 'dimezisBlurView' : undefined
@@ -225,15 +239,36 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
       ) : (
         <View
           pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { backgroundColor: t.fallback.solid }]}
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: liquid ? t.liquid.fallbackSolid : t.fallback.solid },
+          ]}
         />
       )}
 
-      {/* L2 — tint floor (glass path only; fallback is already dark) */}
+      {/* L2 — tint floor (glass path only; fallback is already dark).
+          #1609: the accent variant paints its tint on BOTH paths, because on the
+          opaque Android fallback there is no floor layer to tint and the chip would
+          otherwise lose its accent entirely. */}
       {useGlass ? (
         <View
           pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { backgroundColor: t.tint.floor }]}
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor:
+                variant === 'accent'
+                  ? glass.chrome.active.tint
+                  : liquid
+                    ? t.liquid.fill
+                    : t.tint.floor,
+            },
+          ]}
+        />
+      ) : variant === 'accent' ? (
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { backgroundColor: glass.chrome.active.tint }]}
         />
       ) : null}
 
@@ -251,8 +286,14 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
         />
       ) : null}
 
-      {/* L3 — top highlight */}
-      <View pointerEvents="none" style={styles.topHighlight} />
+      {/* L3 — top highlight (the specular bevel; brighter on the liquid path) */}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.topHighlight,
+          liquid ? { backgroundColor: t.liquid.topHighlight } : null,
+        ]}
+      />
 
       {/* Content */}
       <View style={variant === 'circular' ? styles.contentCircular : styles.contentRow}>
@@ -275,7 +316,13 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
     </>
   );
 
-  const baseBoxStyle: StyleProp<ViewStyle> = [styles.base, shapeStyle];
+  const baseBoxStyle: StyleProp<ViewStyle> = [
+    styles.base,
+    shapeStyle,
+    liquid ? { borderColor: t.liquid.border } : null,
+    // accent keeps its orange rim — it is already a lightening fill and reads.
+    variant === 'accent' ? { borderColor: glass.chrome.active.border } : null,
+  ];
 
   const animatedOuterStyle = {
     opacity: entryOpacity,
