@@ -535,12 +535,26 @@ export const glass = {
      * `fallbackSolid` is the Android/reduce-transparency path: no BlurView means
      * no backdrop to lift, so the tile must land on the target tone by itself.
      * rgb(58,62,70) measures L* 26.1, matching the iOS composite (~27.7).
+     *
+     * MEASURED CORRECTION, from the live render rather than the arithmetic. The first
+     * build of this token lifted the chip only +3 to +5 L* on device where the maths
+     * predicted +11.8. The missing term is L1: `blur.tint` is `dark`, and expo-blur's
+     * dark tint lays its OWN darkening over the backdrop before this fill ever applies.
+     * So the stack was darkening, then lightening, then partially cancelling.
+     *
+     * On a scrim that is doubly wrong, because the blur has nothing to blur — the
+     * backdrop is a smooth gradient, and convolving a smooth field is a visual no-op.
+     * The ONLY thing L1 contributed on this surface was the dark tint that was
+     * suppressing the material. `blurTint: 'light'` keeps real backdrop blur (it still
+     * refracts the photo wherever the scrim is thin) while removing the cancellation.
      */
     liquid: {
       fill: 'rgba(255, 255, 255, 0.12)',
       border: 'rgba(255, 255, 255, 0.30)',
       topHighlight: 'rgba(255, 255, 255, 0.50)',
       fallbackSolid: 'rgba(58, 62, 70, 0.94)',
+      blurTint: 'light' as const,
+      blurIntensity: 18,
     },
     padding: {
       horizontal: 11,
