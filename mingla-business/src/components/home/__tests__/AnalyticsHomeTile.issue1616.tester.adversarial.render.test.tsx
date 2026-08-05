@@ -27,13 +27,18 @@
  *   I. `minHeight: 188` is expanded-only (§B-3)
  *
  * All of A–I fail on a true revert of `AnalyticsHomeTile.tsx`.
+ *
+ * HARNESS: `react-test-renderer`, NOT `@testing-library/react-native`.
+ * `@testing-library/react-native` is NOT declared in `mingla-business/
+ * package.json` — it resolves locally only as a hoisted transitive install, so
+ * every import of it is a `TS2307` in CI. 59 existing test files already carry
+ * that diagnostic in the ratcheted baseline, and the typecheck-delta gates fail
+ * on any ADDED instance, so a 60th trips them. `react-test-renderer` is a real
+ * declared devDependency (19.1.0) and produces no diagnostic. The tree/node
+ * interfaces and the `require(...) as {...}` handle mirror the precedent in
+ * `src/components/stay/__tests__/stayGuardReachability.issue1532.tester.render.test.tsx`.
  */
 import React from "react";
-import {
-  fireEvent,
-  render,
-  type RenderResult,
-} from "@testing-library/react-native";
 import { AnalyticsHomeTile } from "../AnalyticsHomeTile";
 
 jest.mock("../../ui/Skeleton", () => {
@@ -41,6 +46,31 @@ jest.mock("../../ui/Skeleton", () => {
   const { View } = require("react-native") as typeof import("react-native");
   return { Skeleton: (props: object) => ReactModule.createElement(View, props) };
 });
+
+/**
+ * Minimal shape of a rendered node. Mirrors the local `RenderTreeNode`
+ * precedent rather than inventing a type, and deliberately avoids `any`, which
+ * would leave every tree walk below unsound while silencing the typecheck gate.
+ */
+interface RenderTreeNode {
+  type: unknown;
+  props: Record<string, unknown>;
+  findAll: (predicate: (node: RenderTreeNode) => boolean) => RenderTreeNode[];
+}
+interface RenderTree {
+  root: RenderTreeNode;
+  unmount: () => void;
+}
+const TestRenderer = require("react-test-renderer") as {
+  create: (element: React.ReactElement) => RenderTree;
+  act: (callback: () => Promise<void> | void) => Promise<void>;
+};
+
+const CARD_TESTID = "analytics-home-tile";
+const CHEVRON_TESTID = "analytics-home-tile-chevron";
+const ROOT_TESTID = "analytics-home-tile-root";
+const LOADING_TESTID = "analytics-home-loading";
+const COLLAPSED_LABEL = "Expand analytics, Customers Mingla drove you";
 
 const data = {
   brandId: "brand-1616",
@@ -52,56 +82,85 @@ const data = {
   bySource: [],
 };
 
-const COLLAPSED_LABEL = "Expand analytics, Customers Mingla drove you";
-
 type TileProps = React.ComponentProps<typeof AnalyticsHomeTile>;
-
-/**
- * Minimal shape of a rendered node for the tree walks below. `findAllByProps`
- * is untyped, so its callbacks would otherwise be implicitly `any` and the
- * repo's ratcheted typecheck gate (COMMS-0130) fails on any added diagnostic.
- * Mirrors the local `TestNode` precedent in
- * `app/(tabs)/__tests__/home.issue874.render.test.tsx` rather than inventing a
- * type — and deliberately does NOT use `any`, which would leave these walks
- * unsound while silencing the gate.
- */
-interface TestNode {
-  props: Record<string, unknown>;
-}
 
 const renderTile = async (
   overrides: Partial<TileProps> = {},
-): Promise<RenderResult> =>
-  render(
-    <AnalyticsHomeTile
-      data={data}
-      isLoading={false}
-      isError={false}
-      onPress={jest.fn()}
-      {...overrides}
-    />,
+): Promise<RenderTree> => {
+  let tree: RenderTree | null = null;
+  await TestRenderer.act(async () => {
+    tree = TestRenderer.create(
+      <AnalyticsHomeTile
+        data={data}
+        isLoading={false}
+        isError={false}
+        onPress={jest.fn()}
+        {...overrides}
+      />,
+    );
+  });
+  expect(tree).not.toBeNull();
+  return tree as unknown as RenderTree;
+};
+
+const allNodes = (scope: RenderTreeNode): RenderTreeNode[] =>
+  scope.findAll(() => true);
+
+/** Every node carrying `testID` — composite AND host instance. */
+const nodesWithTestId = (
+  scope: RenderTreeNode,
+  testID: string,
+): RenderTreeNode[] =>
+  allNodes(scope).filter((node) => node.props.testID === testID);
+
+const queryPressable = (
+  tree: RenderTree,
+  testID: string,
+): RenderTreeNode | undefined =>
+  allNodes(tree.root).find(
+    (node) =>
+      node.props.testID === testID && typeof node.props.onPress === "function",
   );
 
 /**
- * The card's glass stack (`GlassChrome`) also renders `pointerEvents="none"`
- * `absoluteFill` layers, so "the first pointerEvents:none node" is NOT the
- * chevron. Select the decorative chevron by its 24 x 24 absolute slot.
+ * The single node that both carries `testID` and owns the press handler — i.e.
+ * the `Pressable` itself. Absence is a FAILURE, never a silent skip: a missing
+ * control would make every later assertion vacuous.
  */
-const collapsedChevronSlot = (
-  card: ReturnType<RenderResult["getByTestId"]>,
-): Record<string, unknown> => {
-  const matches: Record<string, unknown>[] = card
-    .findAllByProps({ pointerEvents: "none" })
-    .map((node: TestNode) => flatten(node.props.style))
-    .filter(
-      (s: Record<string, unknown>) =>
-        s.position === "absolute" && s.width === 24 && s.height === 24,
-    );
-  // `findAllByProps` reports the composite element AND its host instance, so
-  // dedupe by value: there must be exactly ONE distinct decorative slot.
-  const distinct = new Set(matches.map((s) => JSON.stringify(s)));
-  expect(distinct.size).toBe(1);
-  return matches[0];
+const pressable = (tree: RenderTree, testID: string): RenderTreeNode => {
+  const found = allNodes(tree.root).filter(
+    (node) =>
+      node.props.testID === testID && typeof node.props.onPress === "function",
+  );
+  expect({ testID, pressables: found.length }).toEqual({
+    testID,
+    pressables: 1,
+  });
+  return found[0];
+};
+
+const press = async (tree: RenderTree, testID: string): Promise<void> => {
+  const node = pressable(tree, testID);
+  await TestRenderer.act(() => {
+    (node.props.onPress as () => void)();
+  });
+};
+
+const collectStrings = (value: unknown, out: string[]): void => {
+  if (typeof value === "string") {
+    out.push(value);
+    return;
+  }
+  if (Array.isArray(value)) value.forEach((entry) => collectStrings(entry, out));
+};
+
+/** Every rendered string in the tree — the `getByText` equivalent. */
+const hasText = (tree: RenderTree, needle: string): boolean => {
+  const out: string[] = [];
+  allNodes(tree.root).forEach((node) =>
+    collectStrings(node.props.children, out),
+  );
+  return out.includes(needle);
 };
 
 const flatten = (style: unknown): Record<string, unknown> => {
@@ -118,32 +177,56 @@ const flatten = (style: unknown): Record<string, unknown> => {
   return acc;
 };
 
+/**
+ * The card's glass stack (`GlassChrome`) also renders `pointerEvents="none"`
+ * `absoluteFill` layers, so "the first pointerEvents:none node" is NOT the
+ * chevron. Select the decorative chevron by its 24 x 24 absolute slot.
+ */
+const decorativeChevronNodes = (scope: RenderTreeNode): RenderTreeNode[] =>
+  allNodes(scope).filter((node) => {
+    if (node.props.pointerEvents !== "none") return false;
+    const s = flatten(node.props.style);
+    return s.position === "absolute" && s.width === 24 && s.height === 24;
+  });
+
+const collapsedChevronSlot = (card: RenderTreeNode): Record<string, unknown> => {
+  const matches: Record<string, unknown>[] = decorativeChevronNodes(card).map(
+    (node) => flatten(node.props.style),
+  );
+  // `findAll` reports the composite element AND its host instance, so dedupe by
+  // value: there must be exactly ONE distinct decorative slot.
+  const distinct = new Set(matches.map((s) => JSON.stringify(s)));
+  expect(distinct.size).toBe(1);
+  return matches[0];
+};
+
 describe("#1616 adversarial — the collapsed row must never navigate", () => {
   // A. THE assertion this entire issue exists to protect.
   it("does NOT call onPress when the collapsed row is pressed", async () => {
     const onPress = jest.fn();
-    const screen = await renderTile({ onPress });
+    const tree = await renderTile({ onPress });
 
-    const card = screen.getByTestId("analytics-home-tile");
-    expect(card.props.accessibilityLabel).toBe(COLLAPSED_LABEL);
+    expect(pressable(tree, CARD_TESTID).props.accessibilityLabel).toBe(
+      COLLAPSED_LABEL,
+    );
 
-    await fireEvent.press(card);
+    await press(tree, CARD_TESTID);
 
     // It must have EXPANDED (proving the press was actually delivered) …
-    expect(screen.getByText("Last 30 days")).toBeTruthy();
+    expect(hasText(tree, "Last 30 days")).toBe(true);
     // … and it must NOT have navigated.
     expect(onPress).not.toHaveBeenCalled();
   });
 
   it("does NOT navigate on repeated collapse/expand cycles", async () => {
     const onPress = jest.fn();
-    const screen = await renderTile({ onPress });
+    const tree = await renderTile({ onPress });
 
     for (let i = 0; i < 3; i += 1) {
-      await fireEvent.press(screen.getByTestId("analytics-home-tile"));
-      expect(screen.getByText("Last 30 days")).toBeTruthy();
-      await fireEvent.press(screen.getByTestId("analytics-home-tile-chevron"));
-      expect(screen.queryByText("Last 30 days")).toBeNull();
+      await press(tree, CARD_TESTID);
+      expect(hasText(tree, "Last 30 days")).toBe(true);
+      await press(tree, CHEVRON_TESTID);
+      expect(hasText(tree, "Last 30 days")).toBe(false);
     }
     // Six presses, three full open/close cycles, zero navigations.
     expect(onPress).not.toHaveBeenCalled();
@@ -152,51 +235,63 @@ describe("#1616 adversarial — the collapsed row must never navigate", () => {
   // B. The whole-card shortcut survives once open (amendment 1).
   it("DOES call onPress exactly once when the expanded card is pressed", async () => {
     const onPress = jest.fn();
-    const screen = await renderTile({ onPress });
+    const tree = await renderTile({ onPress });
 
-    await fireEvent.press(screen.getByTestId("analytics-home-tile"));
+    await press(tree, CARD_TESTID);
     expect(onPress).not.toHaveBeenCalled();
 
-    await fireEvent.press(screen.getByTestId("analytics-home-tile"));
+    await press(tree, CARD_TESTID);
     expect(onPress).toHaveBeenCalledTimes(1);
   });
 
   // C. §D-5 R-4 — the chevron collapses and must never navigate.
   it("does NOT call onPress when the expanded chevron is pressed", async () => {
     const onPress = jest.fn();
-    const screen = await renderTile({ onPress });
+    const tree = await renderTile({ onPress });
 
-    await fireEvent.press(screen.getByTestId("analytics-home-tile"));
-    await fireEvent.press(screen.getByTestId("analytics-home-tile-chevron"));
+    await press(tree, CARD_TESTID);
+    await press(tree, CHEVRON_TESTID);
 
-    expect(screen.queryByText("Last 30 days")).toBeNull();
+    expect(hasText(tree, "Last 30 days")).toBe(false);
     expect(onPress).not.toHaveBeenCalled();
   });
 });
 
 describe("#1616 adversarial — accessibility contract", () => {
   /**
-   * D. §F-2 / amendment 1 §4. RN 0.81's `Pressable` ALWAYS materialises an
-   * `accessibilityState` object with all five keys, so "absent" is
-   * `accessibilityState?.expanded === undefined` — NOT a missing object.
-   * `expect(card.props.accessibilityState).toBeUndefined()` would fail a
-   * CORRECT build, so it is deliberately not written that way.
+   * D. §F-2 / amendment 1 §4. Asserted across EVERY node carrying the card's
+   * testID — composite and host alike — because RN 0.81's `Pressable`
+   * materialises its own `accessibilityState` object on the host with all five
+   * keys. "Absent" therefore means `accessibilityState?.expanded === undefined`,
+   * NOT a missing object; `expect(accessibilityState).toBeUndefined()` would
+   * fail a CORRECT build and is deliberately not written that way.
    */
   it("never reports an expanded/collapsed state on the node that NAVIGATES", async () => {
-    const screen = await renderTile();
-    await fireEvent.press(screen.getByTestId("analytics-home-tile"));
+    const tree = await renderTile();
+    await press(tree, CARD_TESTID);
 
-    const card = screen.getByTestId("analytics-home-tile");
-    expect(card.props.accessibilityLabel).toContain("Open Analytics");
-    expect(card.props.accessibilityState?.expanded).toBeUndefined();
-    // Guard both directions: a "harmless" `{ expanded: true }` here is a real
-    // screen-reader lie, because this node does not toggle.
-    expect(card.props.accessibilityState?.expanded).not.toBe(true);
-    expect(card.props.accessibilityState?.expanded).not.toBe(false);
+    const cardNodes = nodesWithTestId(tree.root, CARD_TESTID);
+    expect(cardNodes.length).toBeGreaterThan(0);
+    cardNodes.forEach((node) => {
+      const state = node.props.accessibilityState as
+        | Record<string, unknown>
+        | undefined;
+      expect(String(node.props.accessibilityLabel)).toContain("Open Analytics");
+      expect(state?.expanded).toBeUndefined();
+      // Guard both directions: a "harmless" `{ expanded: true }` here is a real
+      // screen-reader lie, because this node does not toggle.
+      expect(state?.expanded).not.toBe(true);
+      expect(state?.expanded).not.toBe(false);
+    });
 
     // …while the node that DOES own the toggle carries it.
-    const chevron = screen.getByTestId("analytics-home-tile-chevron");
-    expect(chevron.props.accessibilityState.expanded).toBe(true);
+    const chevron = pressable(tree, CHEVRON_TESTID);
+    const chevronState = chevron.props.accessibilityState as Record<
+      string,
+      unknown
+    >;
+    expect(chevronState.expanded).toBe(true);
+    expect(chevron.props.accessibilityLabel).toBe("Collapse analytics");
   });
 
   /**
@@ -208,22 +303,22 @@ describe("#1616 adversarial — accessibility contract", () => {
    * never collapsible. No other test in the repo catches that.
    */
   it("keeps the chevron a SIBLING of the card Pressable, never a descendant", async () => {
-    const screen = await renderTile();
-    await fireEvent.press(screen.getByTestId("analytics-home-tile"));
+    const tree = await renderTile();
+    await press(tree, CARD_TESTID);
 
-    const card = screen.getByTestId("analytics-home-tile");
-    const nestedChevron = card.findAllByProps({
-      testID: "analytics-home-tile-chevron",
-    });
-    expect(nestedChevron).toHaveLength(0);
+    const card = pressable(tree, CARD_TESTID);
+    expect(nodesWithTestId(card, CHEVRON_TESTID)).toHaveLength(0);
 
     // …but both live under the shared padding-free root.
-    const root = screen.getByTestId("analytics-home-tile-root");
+    const root = allNodes(tree.root).find(
+      (node) => node.props.testID === ROOT_TESTID,
+    );
+    expect(root).toBeDefined();
     expect(
-      root.findAllByProps({ testID: "analytics-home-tile-chevron" }).length,
+      nodesWithTestId(root as RenderTreeNode, CHEVRON_TESTID).length,
     ).toBeGreaterThan(0);
     expect(
-      root.findAllByProps({ testID: "analytics-home-tile" }).length,
+      nodesWithTestId(root as RenderTreeNode, CARD_TESTID).length,
     ).toBeGreaterThan(0);
   });
 
@@ -243,15 +338,18 @@ describe("#1616 adversarial — accessibility contract", () => {
   ])(
     "announces the collapsed row identically while %s, and never as Open Analytics",
     async (_name, overrides) => {
-      const screen = await renderTile(overrides as Partial<TileProps>);
-      const card = screen.getByTestId("analytics-home-tile");
+      const tree = await renderTile(overrides as Partial<TileProps>);
+      const card = pressable(tree, CARD_TESTID);
 
       expect(card.props.accessibilityLabel).toBe(COLLAPSED_LABEL);
-      expect(card.props.accessibilityLabel).not.toContain("Open Analytics");
-      expect(card.props.accessibilityState.expanded).toBe(false);
+      expect(String(card.props.accessibilityLabel)).not.toContain(
+        "Open Analytics",
+      );
+      const state = card.props.accessibilityState as Record<string, unknown>;
+      expect(state.expanded).toBe(false);
       // A closed drawer shows no data, so it has nothing to be wrong about.
-      expect(screen.queryByText("Couldn't load your 30-day snapshot")).toBeNull();
-      expect(screen.queryByTestId("analytics-home-loading")).toBeNull();
+      expect(hasText(tree, "Couldn't load your 30-day snapshot")).toBe(false);
+      expect(nodesWithTestId(tree.root, LOADING_TESTID)).toHaveLength(0);
     },
   );
 
@@ -262,15 +360,15 @@ describe("#1616 adversarial — accessibility contract", () => {
     ["error", { data: undefined, isLoading: false, isError: true }],
   ])("still toggles while %s", async (_name, overrides) => {
     const onPress = jest.fn();
-    const screen = await renderTile({
+    const tree = await renderTile({
       ...(overrides as Partial<TileProps>),
       onPress,
     });
 
-    await fireEvent.press(screen.getByTestId("analytics-home-tile"));
-    expect(screen.getByText("Last 30 days")).toBeTruthy();
-    await fireEvent.press(screen.getByTestId("analytics-home-tile-chevron"));
-    expect(screen.queryByText("Last 30 days")).toBeNull();
+    await press(tree, CARD_TESTID);
+    expect(hasText(tree, "Last 30 days")).toBe(true);
+    await press(tree, CHEVRON_TESTID);
+    expect(hasText(tree, "Last 30 days")).toBe(false);
     expect(onPress).not.toHaveBeenCalled();
   });
 });
@@ -279,18 +377,12 @@ describe("#1616 adversarial — geometry and target-size contracts", () => {
   // G. §D-4 — the collapsed chevron must never intercept the card's touch and
   // must add no node inside the flattened accessible button.
   it("keeps the collapsed chevron inert and invisible to a screen reader", async () => {
-    const screen = await renderTile();
+    const tree = await renderTile();
 
-    expect(screen.queryByTestId("analytics-home-tile-chevron")).toBeNull();
+    expect(queryPressable(tree, CHEVRON_TESTID)).toBeUndefined();
 
-    const card = screen.getByTestId("analytics-home-tile");
-    // The 24 x 24 absolute slot specifically — not a GlassChrome absoluteFill.
-    const decorative: TestNode[] = card
-      .findAllByProps({ pointerEvents: "none" })
-      .filter((node: TestNode) => {
-        const s = flatten(node.props.style);
-        return s.position === "absolute" && s.width === 24 && s.height === 24;
-      });
+    const card = pressable(tree, CARD_TESTID);
+    const decorative = decorativeChevronNodes(card);
     expect(decorative.length).toBeGreaterThan(0);
     // EVERY node carrying that slot must be inert to a screen reader.
     decorative.forEach((node) => expect(node.props.accessible).toBe(false));
@@ -299,10 +391,10 @@ describe("#1616 adversarial — geometry and target-size contracts", () => {
   // H. §D-3 — 24pt slot + 13pt hitSlop on all four sides = 50 x 50 effective,
   // comfortably over the WCAG AA 44pt floor.
   it("gives the chevron an effective target of at least 44 x 44", async () => {
-    const screen = await renderTile();
-    await fireEvent.press(screen.getByTestId("analytics-home-tile"));
+    const tree = await renderTile();
+    await press(tree, CARD_TESTID);
 
-    const chevron = screen.getByTestId("analytics-home-tile-chevron");
+    const chevron = pressable(tree, CHEVRON_TESTID);
     const slot = flatten(chevron.props.style);
     const hitSlop = chevron.props.hitSlop as Record<string, number>;
 
@@ -319,15 +411,12 @@ describe("#1616 adversarial — geometry and target-size contracts", () => {
   // absolutely positioned against a padding-free root precisely so that a
   // wrapping headline cannot drift it (§A-4).
   it("pins the chevron to the same offset in both states", async () => {
-    const screen = await renderTile();
+    const tree = await renderTile();
 
-    const card = screen.getByTestId("analytics-home-tile");
-    const collapsedSlot = collapsedChevronSlot(card);
+    const collapsedSlot = collapsedChevronSlot(pressable(tree, CARD_TESTID));
 
-    await fireEvent.press(screen.getByTestId("analytics-home-tile"));
-    const expandedSlot = flatten(
-      screen.getByTestId("analytics-home-tile-chevron").props.style,
-    );
+    await press(tree, CARD_TESTID);
+    const expandedSlot = flatten(pressable(tree, CHEVRON_TESTID).props.style);
 
     expect(collapsedSlot.position).toBe("absolute");
     expect(expandedSlot.position).toBe("absolute");
@@ -340,16 +429,20 @@ describe("#1616 adversarial — geometry and target-size contracts", () => {
   // I. §B-3 — the 188pt jitter guard is for the EXPANDED body only. Applying
   // it while collapsed would defeat the entire issue.
   it("applies minHeight 188 only while expanded", async () => {
-    const screen = await renderTile();
+    const tree = await renderTile();
 
-    const collapsedCard = screen.getByTestId("analytics-home-tile");
-    const glassCollapsed = collapsedCard.findAllByProps({ variant: "base" })[0];
-    expect(flatten(glassCollapsed.props.style).minHeight).toBeUndefined();
+    const glassCollapsed = allNodes(tree.root).filter(
+      (node) => node.props.variant === "base",
+    );
+    expect(glassCollapsed.length).toBeGreaterThan(0);
+    expect(flatten(glassCollapsed[0].props.style).minHeight).toBeUndefined();
 
-    await fireEvent.press(screen.getByTestId("analytics-home-tile"));
+    await press(tree, CARD_TESTID);
 
-    const expandedCard = screen.getByTestId("analytics-home-tile");
-    const glassExpanded = expandedCard.findAllByProps({ variant: "base" })[0];
-    expect(flatten(glassExpanded.props.style).minHeight).toBe(188);
+    const glassExpanded = allNodes(tree.root).filter(
+      (node) => node.props.variant === "base",
+    );
+    expect(glassExpanded.length).toBeGreaterThan(0);
+    expect(flatten(glassExpanded[0].props.style).minHeight).toBe(188);
   });
 });
