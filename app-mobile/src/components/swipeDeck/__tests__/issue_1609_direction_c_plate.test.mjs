@@ -331,14 +331,106 @@ test('T-7 the swipe-path budget actually dropped', () => {
       `T-7: ${name} still staggers per-badge entry motion inside the promotion diff (#1576)`,
     );
   }
-  // Exactly ONE BlurView on the card face, and it is the plate's.
-  const blurs = [...code.plate.matchAll(/<BlurView\b/g)].length;
-  assert.equal(blurs, 1, `T-7: the plate module mounts ${blurs} BlurViews, expected exactly 1`);
+  // ── Blur layers per card face ──────────────────────────────────────────────
+  //
+  // THIS USED TO COUNT `<BlurView` OCCURRENCES IN THE PLATE MODULE'S TEXT AND
+  // REPORT THE RESULT AS A MOUNT COUNT ("expected exactly 1"). It is 1 — the
+  // string appears once — but `PlateMaterial()` is MOUNTED at three sites, so a
+  // saved-and-scheduled card carries THREE blur layers, not one. An assertion
+  // adjacent to its claim rather than on it is the #1607 defect class, and it
+  // went into a guard written the same week #1607 was raised (#1609 tester P2-1).
+  //
+  // So count MOUNT SITES over the module graph instead: how many BlurViews one
+  // PlateMaterial constructs, times how many PlateMaterials each component
+  // mounts, summed over what is actually on a face in a given saved/scheduled
+  // state. The numbers asserted below are the real per-face budget.
+  //
+  // Slicing a declaration's body: NOT `indexOf('\n}')`. Every one of these
+  // components destructures its props, so the first column-0 `}` is the end of
+  // the PARAMETER LIST (`}: DeckCardPlateProps): React.ReactElement {`) and the
+  // slice would be the signature alone — every count below would then be 0 and
+  // every assertion would pass vacuously. Slice from a declaration to the NEXT
+  // top-level declaration instead, and prove the slice is real before trusting it.
+  const topLevelStarts = (src) =>
+    [...src.matchAll(/^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|const|let|class|type|interface|enum)\b/gm)]
+      .map((m) => m.index);
+  const componentBody = (src, name) => {
+    const at = src.search(new RegExp(`^(?:export\\s+)?function ${name}\\b`, 'm'));
+    assert.ok(at >= 0, `T-7: ${name} is gone from the plate module`);
+    const next = topLevelStarts(src).find((i) => i > at);
+    const body = src.slice(at, next ?? src.length);
+    assert.ok(
+      body.length > 40 && body.length < src.length,
+      `T-7: ${name}'s extracted body is ${body.length} chars of a ${src.length}-char file — the `
+      + 'slicer is broken, so every count below would be meaningless.',
+    );
+    return body;
+  };
+  const count = (hay, re) => [...hay.matchAll(re)].length;
+
+  const plateMaterialBody = componentBody(code.plate, 'PlateMaterial');
+  const blursPerMaterial = count(plateMaterialBody, /<BlurView\b/g);
   assert.equal(
-    [...code.swipeable.matchAll(/<BlurView\b/g)].length + [...code.curated.matchAll(/<BlurView\b/g)].length,
+    blursPerMaterial, 1,
+    `T-7: PlateMaterial constructs ${blursPerMaterial} BlurViews — the per-face arithmetic below `
+    + 'assumes one, so re-derive it before changing this.',
+  );
+  // The Android path must return BEFORE the BlurView is ever constructed
+  // (ANDROID_GLASS_USES_OPAQUE_FALLBACK), so the Android face budget is 0.
+  const androidGuardAt = plateMaterialBody.indexOf('ANDROID_GLASS_USES_OPAQUE_FALLBACK');
+  assert.ok(
+    androidGuardAt > 0 && androidGuardAt < plateMaterialBody.indexOf('<BlurView'),
+    'T-7: PlateMaterial no longer short-circuits to the opaque solid before constructing a '
+    + 'BlurView — Android would now mount blur layers it cannot render (ANDROID_GLASS_USES_OPAQUE_FALLBACK).',
+  );
+
+  // Where PlateMaterial is mounted, by component.
+  const materialMounts = {
+    DeckCardPlate: count(componentBody(code.plate, 'DeckCardPlate'), /<PlateMaterial\b/g),
+    CardStateDiscs: count(componentBody(code.plate, 'CardStateDiscs'), /<PlateMaterial\b/g),
+  };
+  assert.equal(
+    materialMounts.DeckCardPlate, 1,
+    `T-7: the plate itself mounts ${materialMounts.DeckCardPlate} PlateMaterials, expected 1`,
+  );
+  assert.equal(
+    materialMounts.CardStateDiscs, 2,
+    `T-7: CardStateDiscs mounts ${materialMounts.CardStateDiscs} PlateMaterials, expected 2 — one `
+    + 'for the saved disc and one for the scheduled disc, each gated on its own flag.',
+  );
+  // Nothing else in the module graph may mount either node, or the arithmetic
+  // below stops being the whole count.
+  assert.equal(
+    count(code.plate, /<PlateMaterial\b/g), 3,
+    'T-7: the plate module mounts PlateMaterial somewhere other than the plate and the two state '
+    + 'discs — the per-face blur budget below no longer accounts for every layer.',
+  );
+  assert.equal(
+    count(code.plate, /<BlurView\b/g), blursPerMaterial,
+    'T-7: the plate module constructs a BlurView outside PlateMaterial',
+  );
+  assert.equal(
+    count(code.swipeable, /<PlateMaterial\b/g) + count(code.curated, /<PlateMaterial\b/g), 0,
+    'T-7: a card tree mounts PlateMaterial directly instead of going through the plate',
+  );
+  assert.equal(
+    count(code.swipeable, /<BlurView\b/g) + count(code.curated, /<BlurView\b/g),
     1,
     'T-7: a card tree mounts a BlurView outside the plate (the curated BrandChip is the one '
     + 'permitted exception and it is not on the collapsed face budget)',
+  );
+
+  // The claim, stated as the thing it claims: blur layers on ONE card face, by
+  // state. main shipped 5 on every face regardless of state.
+  const blurLayersOnFace = (saved, scheduled) =>
+    blursPerMaterial * (materialMounts.DeckCardPlate + (saved ? 1 : 0) + (scheduled ? 1 : 0));
+  assert.equal(blurLayersOnFace(false, false), 1, 'T-7: a plain card face is not 1 blur layer');
+  assert.equal(blurLayersOnFace(true, false), 2, 'T-7: a saved card face is not 2 blur layers');
+  assert.equal(blurLayersOnFace(false, true), 2, 'T-7: a scheduled card face is not 2 blur layers');
+  assert.equal(
+    blurLayersOnFace(true, true), 3,
+    'T-7: a saved AND scheduled card face is not 3 blur layers. If this number moved, change the '
+    + "table in deckCardPlate.tsx's header too — the two must never disagree again.",
   );
 
   // Gesture owners on the face: the card's expand target, Been-here, and Share.

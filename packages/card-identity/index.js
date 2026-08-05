@@ -211,7 +211,13 @@ const PLATE = {
    * 0.38, NOT 0.30. SC 1.4.11 is satisfied by max(fill, border) across the FULL
    * photo-luminance range, not by either alone: on a bright photo the dark fill
    * carries it, on a dark photo the light border does. At 0.30 the boundary
-   * measures 2.54:1 and FAILS. (For scale: the shipped Discover
+   * measures 2.46:1 and FAILS. (2.46, not the 2.54 this docblock and the spec's
+   * §3.2 both carried until #1609's tester re-derived it independently: the
+   * oracle in __tests__/card_identity_single_source.test.mjs measures 2.4648
+   * against this module's own scrimHeight/plateUnderAlpha. Below the 3.0 floor
+   * either way — the value 0.38 is unchanged — but a negative control is only
+   * useful if its number is the one the gate actually reports.) (For scale: the
+   * shipped Discover
    * `bottomChip`'s 0.14 border measures 1.55:1 — a live failure.) 0.38 is a
    * value that had to be raised, not one that was inherited.
    */

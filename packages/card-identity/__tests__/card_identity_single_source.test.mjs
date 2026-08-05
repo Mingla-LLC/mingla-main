@@ -467,7 +467,7 @@ test("T-4 the plate's boundary against the photograph, swept over the full lumin
         worst >= 3.0,
         `T-4 ${key}: the plate's worst-case boundary is ${worst.toFixed(2)}:1, floor 3.0 (SC 1.4.11). `
         + 'For scale, the shipped Discover bottomChip 0.14 border measures 1.55:1 and the old '
-        + 'GlassBadge 0.30 border 2.54:1 — both live failures. That is why the border is 0.38.',
+        + 'GlassBadge 0.30 border 2.46:1 — both live failures. That is why the border is 0.38.',
       );
     } else {
       const pin = KNOWN_OPEN[key];
@@ -613,7 +613,11 @@ test('T-9 the oracle REJECTS known-bad values — it is not a rubber stamp', () 
   const alpha = CI.rampAlphaAtDepth(CI.plateTopDepth('s1Single'), H);
   const plate = plateOver(backdropAt(255, alpha), CI.plateUnderAlpha(alpha));
 
-  // The 0.30 border the chips shipped with. The design says it measures 2.54:1.
+  // The 0.30 border the chips shipped with. The design's §3.2 said 2.54:1; this
+  // oracle measures 2.4648 and #1609's tester re-derived the same 2.465 from the
+  // spec's stated values alone, importing nothing from this package. 2.46 is the
+  // number; the docblocks that said 2.54 have been corrected. Both are below the
+  // 3.0 floor, so the border stays 0.38 and nothing downstream moves.
   let worst = Infinity;
   for (const photo of PHOTO_SWEEP) {
     const backdrop = backdropAt(photo, alpha);
