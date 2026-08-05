@@ -68,6 +68,7 @@ import {
   DECK_TOP_SCRIM_LOCATIONS,
   DECK_MAX_SUPPORTED_TOP_INSET_PT,
   DECK_CHROME_BAND_BOTTOM_PT,
+  DECK_BOTTOM_SCRIM_HEIGHT_PT,
   DECK_CARD_TOP_OFFSET_PT,
 } from '../../deckHeroConstants.ts';
 
@@ -369,12 +370,23 @@ test('T-4 the ramp decays to fully transparent so it never paints a visible edge
 });
 
 test('T-5 the top and bottom scrims never overlap, so the shipped bottom ramp math stays exact', () => {
-  // Curated is the tight case: its bottom scrim is 62% tall, so it begins at 0.38 of
-  // the card height. Read the two percentages out of the real sources rather than
-  // restating them here.
-  // Scope the extraction to the `heroScrim: {` style block in each file. A file-wide
-  // percentage sweep also catches `height: '100%'` on the hero image and would make this
-  // test pass vacuously on a 100% "bottom scrim" that does not exist.
+  // [TEST-MOD-APPROVED #1609] SUPERSEDED MECHANISM, STRICTLY STRONGER ASSERTION.
+  //
+  // This clause previously read a PERCENTAGE out of each `heroScrim: {` block
+  // ('52%' for the place card, '62%' for the curated one) and proved non-overlap
+  // held on the shortest supported card. Direction C DELETES both percentages.
+  //
+  // That deletion is the point, not an obstacle to it. A percentage height makes
+  // the entire contrast table valid only on the device it was computed on, so the
+  // old assertion could only ever prove an INEQUALITY over a range of devices.
+  // The bottom scrim is now an absolute point height produced by the package's
+  // scrimHeight(), so non-overlap becomes EXACT ARITHMETIC on every device at
+  // once: 200 + 316 = 516 <= 783. Nothing about it depends on the screen.
+  //
+  // Deleting the percentages also deleted the 52%/62% branch itself — curated is
+  // no longer a different composition — so this test additionally proves the two
+  // card types now resolve to the SAME height, which the old form could not
+  // express at all.
   const heights = [];
   for (const [name, src] of [['SwipeableCards', stripped.swipeable], ['CuratedExperienceSwipeCard', stripped.curated]]) {
     const blocks = [...src.matchAll(/\bheroScrim:\s*\{([\s\S]*?)\n\s*\},/g)];
@@ -385,49 +397,65 @@ test('T-5 the top and bottom scrims never overlap, so the shipped bottom ramp ma
       + `declaration in ${name}, found ${blocks.length} — this test would then be reading `
       + 'the wrong element',
     );
-    const pct = /height:\s*["']([0-9.]+)%["']/.exec(blocks[0][1]);
-    assert.ok(
-      pct,
-      `top-and-bottom-scrims-never-overlap: styles.heroScrim in ${name} no longer declares `
-      + 'a percentage height, so the non-overlap arithmetic below cannot be computed',
+    const body = blocks[0][1];
+    assert.equal(
+      /height:\s*["'][0-9.]+%["']/.test(body),
+      false,
+      `top-and-bottom-scrims-never-overlap: styles.heroScrim in ${name} declares a PERCENTAGE `
+      + 'height again. A percentage depends on the parent\'s resolved height, which is both the '
+      + '#1593 defect class and the reason the contrast table stopped being device-invariant.',
     );
-    heights.push(Number(pct[1]));
+    assert.match(
+      body,
+      /height:\s*DECK_BOTTOM_SCRIM_HEIGHT_PT/,
+      `top-and-bottom-scrims-never-overlap: styles.heroScrim in ${name} must take its height from `
+      + 'DECK_BOTTOM_SCRIM_HEIGHT_PT, which the package produces — not a local literal',
+    );
+    assert.equal(
+      /\bflex\s*:/.test(body),
+      false,
+      `top-and-bottom-scrims-never-overlap: styles.heroScrim in ${name} carries a flex-axis key`,
+    );
+    heights.push(DECK_BOTTOM_SCRIM_HEIGHT_PT);
   }
+  assert.equal(heights.length, 2, 'top-and-bottom-scrims-never-overlap: expected both card faces to be read');
+  // The 52%/62% branch is gone: both faces resolve to ONE height.
   assert.equal(
-    heights.length, 2,
-    'top-and-bottom-scrims-never-overlap: expected exactly 2 bottom-scrim heights (the '
-    + `52% place scrim and the 62% curated scrim), found ${heights.length}`,
+    heights[0],
+    heights[1],
+    `top-and-bottom-scrims-never-overlap: the place and curated scrims disagree again `
+    + `(${heights[0]} vs ${heights[1]}). That disagreement IS the drift #1609 exists to close.`,
   );
-  const tallestBottomPct = Math.max(...heights);
+  // ANTI-VACUITY: a zero or absurd height would make the arithmetic below trivial.
   assert.ok(
-    tallestBottomPct >= 62,
-    'top-and-bottom-scrims-never-overlap: the tallest bottom scrim read as '
-    + `${tallestBottomPct}% — expected the curated card's 62%. If that shrank, this test `
-    + 'is measuring the wrong element and would pass vacuously',
+    DECK_BOTTOM_SCRIM_HEIGHT_PT >= 200 && DECK_BOTTOM_SCRIM_HEIGHT_PT <= 500,
+    `top-and-bottom-scrims-never-overlap: the bottom scrim reads ${DECK_BOTTOM_SCRIM_HEIGHT_PT}pt, `
+    + 'which is outside any plausible range — this test would then pass vacuously',
   );
-  const minCardHeightPt = DECK_TOP_SCRIM_HEIGHT_PT / (1 - tallestBottomPct / 100);
+
+  // NON-OVERLAP, now exact rather than device-dependent.
+  const REFERENCE_CARD_H = 783;
+  const total = DECK_TOP_SCRIM_HEIGHT_PT + DECK_BOTTOM_SCRIM_HEIGHT_PT;
+  assert.ok(
+    total <= REFERENCE_CARD_H,
+    'top-and-bottom-scrims-never-overlap: top '
+    + `${DECK_TOP_SCRIM_HEIGHT_PT}pt + bottom ${DECK_BOTTOM_SCRIM_HEIGHT_PT}pt = ${total}pt exceeds `
+    + `the ${REFERENCE_CARD_H}pt reference card. The two ramps would STACK their alphas and every `
+    + 'contrast number in the bottom ramp derivation would be fiction.',
+  );
+  // It must also clear on the shortest supported card, where a fixed-point bottom
+  // scrim is the HARDER case than a percentage one — a percentage shrinks with the
+  // card, absolute points do not. Stating that plainly rather than hiding it.
   const SHORTEST_SUPPORTED_CARD_PT = 576; // iPhone SE 3rd gen: 667pt screen - 91pt chrome
   assert.ok(
-    minCardHeightPt <= SHORTEST_SUPPORTED_CARD_PT,
-    'top-and-bottom-scrims-never-overlap: a top scrim of '
-    + `${DECK_TOP_SCRIM_HEIGHT_PT}pt against a ${tallestBottomPct}% bottom scrim only `
-    + `clears on cards at least ${minCardHeightPt.toFixed(1)}pt tall, but the shortest `
-    + `supported card is ${SHORTEST_SUPPORTED_CARD_PT}pt. The two ramps would STACK, and `
-    + 'every contrast number in the bottom ramp derivation would be fiction',
-  );
-  // And on the #1593 reference device, prove it directly.
-  const REFERENCE_CARD_H = 783;
-  const bottomStartsAt = REFERENCE_CARD_H * (1 - tallestBottomPct / 100);
-  assert.ok(
-    DECK_TOP_SCRIM_HEIGHT_PT < bottomStartsAt,
-    'top-and-bottom-scrims-never-overlap: on the 783pt reference card the top scrim ends '
-    + `at ${DECK_TOP_SCRIM_HEIGHT_PT}pt but the bottom scrim begins at `
-    + `${bottomStartsAt.toFixed(2)}pt`,
+    total <= SHORTEST_SUPPORTED_CARD_PT,
+    'top-and-bottom-scrims-never-overlap: the two absolute scrims sum to '
+    + `${total}pt but the shortest supported card is ${SHORTEST_SUPPORTED_CARD_PT}pt (iPhone SE 3rd gen). `
+    + 'Absolute points do not shrink with the card, so the short-device case is now the binding one.',
   );
   console.log(
-    `T-5 top scrim ends ${DECK_TOP_SCRIM_HEIGHT_PT}pt; tallest bottom scrim begins `
-    + `${bottomStartsAt.toFixed(2)}pt on the 783pt reference card; clears on any card `
-    + `>= ${minCardHeightPt.toFixed(1)}pt`,
+    `T-5 top ${DECK_TOP_SCRIM_HEIGHT_PT}pt + bottom ${DECK_BOTTOM_SCRIM_HEIGHT_PT}pt = ${total}pt; `
+    + `clears the ${REFERENCE_CARD_H}pt reference card and the ${SHORTEST_SUPPORTED_CARD_PT}pt shortest card`,
   );
   // [TEST-MOD-APPROVED #1609] The original clause here froze the bottom ramp at
   // locations [0, 0.32, 0.62, 1] because amendment 4's brief said the top anchor "must

@@ -47,6 +47,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
+  DECK_BOTTOM_SCRIM_HEIGHT_PT,
   DECK_SCRIM_COLORS,
   DECK_SCRIM_LOCATIONS,
 } from '../../deckHeroConstants.ts';
@@ -207,25 +208,49 @@ function compositedChannelOverWhite(a) {
 /**
  * The measured geometry of the shipped card on the #1593 reference device
  * (iPhone 17, card 402 x 783), used to convert an element's y position into a
- * position within the 52%-tall scrim. Written out literally.
+ * position within the scrim.
+ *
+ * [TEST-MOD-APPROVED #1609] `SCRIM_FRACTION = 0.52` WAS A HARD-CODED COPY, and
+ * that made this test unfalsifiable: Direction C replaced the 52% percentage
+ * with an absolute 316pt height, and because the fraction lived HERE rather than
+ * being read from the source, every band below would have gone on passing while
+ * describing a card that no longer ships. Green CI over a stale model is the
+ * exact defect class #1607 names.
+ *
+ * It now reads the REAL shipped height. 316/783 = 40.4%, not 52% — the scrim got
+ * SHALLOWER, so every band moved deeper into it and the contrast floors below
+ * became harder to clear, not easier.
  */
 const CARD_H = 783;
-const SCRIM_FRACTION = 0.52;
-const SCRIM_TOP_Y = CARD_H * (1 - SCRIM_FRACTION); // 375.84
+const SCRIM_TOP_Y = CARD_H - DECK_BOTTOM_SCRIM_HEIGHT_PT;
 
 /** Fractional position within the scrim for an absolute y on the card. */
 function scrimPositionForY(y) {
   return (y - SCRIM_TOP_Y) / (CARD_H - SCRIM_TOP_Y);
 }
 
-// The two bands that carry text, and the WCAG floor each must clear.
-// 24/700 is LARGE text (>= 18.66pt bold) -> 3:1. 15/600 is NORMAL text -> 4.5:1.
+// The bands that carry text, and the WCAG floor each must clear.
+//
+// [TEST-MOD-APPROVED #1609] The band LIST is re-derived, because the elements it
+// named no longer exist. Direction C deletes the description (`oneLiner`) from
+// the collapsed card and moves the action rail onto the plate, so `description`,
+// `description-bottom` and `rail` were measuring empty photograph. Asserting a
+// contrast floor at a y-coordinate where nothing renders is a vacuous pass.
+//
+// What is left on the photograph is the TITLE and nothing else, and it is now
+// 30/700 at lineHeight 36 sitting 132pt off the card's bottom edge — so its
+// bottom edge is at y = 783 - 132 = 651 and its top edge at 651 - 72 = 579. Both
+// are LARGE text (>= 18.66pt bold) and take the 3:1 floor. The plate's own text
+// is NOT measured here: it sits on glass, not on the ramp, and
+// packages/card-identity/__tests__ measures it against the plate composite.
+const TITLE_BOTTOM_Y = CARD_H - 132;
+const TITLE_TOP_Y = TITLE_BOTTOM_Y - 2 * 36;
 const TEXT_BANDS = [
-  { name: 'title', y: 541, minRatio: 3.0, claim: 'title-band-clears-large-text-aa' },
-  { name: 'title-bottom', y: 601, minRatio: 3.0, claim: 'title-band-clears-large-text-aa' },
-  { name: 'description', y: 609, minRatio: 4.5, claim: 'description-band-clears-normal-text-aa' },
-  { name: 'description-bottom', y: 651, minRatio: 4.5, claim: 'description-band-clears-normal-text-aa' },
-  { name: 'rail', y: 711, minRatio: 4.5, claim: 'description-band-clears-normal-text-aa' },
+  { name: 'title-top', y: TITLE_TOP_Y, minRatio: 3.0, claim: 'title-band-clears-large-text-aa' },
+  { name: 'title-bottom', y: TITLE_BOTTOM_Y, minRatio: 3.0, claim: 'title-band-clears-large-text-aa' },
+  // The plate's top edge: the ramp must still be at or past its material floor
+  // there, which is the deepest thing the ramp is responsible for.
+  { name: 'plate-top', y: CARD_H - 112, minRatio: 3.0, claim: 'title-band-clears-large-text-aa' },
 ];
 
 /** Returns a list of failure strings; empty means the ramp passes. */
@@ -259,7 +284,18 @@ test('T-1 the REAL shipped scrim constants clear WCAG at every text band on a wh
     + `${DECK_SCRIM_COLORS.length} — dropping a stop is exactly how the ramp regresses to `
     + 'the pre-#1609 gradient',
   );
-  assert.equal(TEXT_BANDS.length, 5, `VACUITY: the band table collapsed to ${TEXT_BANDS.length} rows`);
+  // [TEST-MOD-APPROVED #1609] Was 5. Direction C deletes the description and the
+  // action rail from the photograph, so three of the five bands measured empty
+  // pixels. The anti-vacuity property is preserved — the table must not collapse
+  // to nothing, and every remaining row must sit inside the real scrim.
+  assert.equal(TEXT_BANDS.length, 3, `VACUITY: the band table collapsed to ${TEXT_BANDS.length} rows`);
+  for (const band of TEXT_BANDS) {
+    assert.ok(
+      band.y > SCRIM_TOP_Y && band.y <= CARD_H,
+      `VACUITY: band "${band.name}" at y=${band.y} falls outside the real ${DECK_BOTTOM_SCRIM_HEIGHT_PT}pt `
+      + `scrim (which spans y ${SCRIM_TOP_Y}..${CARD_H}) — it would be measuring bare photograph`,
+    );
+  }
 
   const failures = checkContrast(DECK_SCRIM_COLORS, DECK_SCRIM_LOCATIONS);
   assert.deepEqual(

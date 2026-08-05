@@ -37,7 +37,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+import { createRequire } from 'node:module';
 import {
+  DECK_BOTTOM_SCRIM_HEIGHT_PT,
   DECK_SCRIM_COLORS,
   DECK_SCRIM_LOCATIONS,
   DECK_TOP_SCRIM_COLORS,
@@ -47,6 +49,9 @@ const urls = {
   swipeable: new URL('../../SwipeableCards.tsx', import.meta.url),
   curated: new URL('../../CuratedExperienceSwipeCard.tsx', import.meta.url),
   design: new URL('../../../constants/designSystem.ts', import.meta.url),
+  // [TEST-MOD-APPROVED #1609] Direction C moved the card face's ONE piece of
+  // glass into its own leaf module, shared by both card trees.
+  plate: new URL('../../deckCardPlate.tsx', import.meta.url),
 };
 
 /**
@@ -64,12 +69,19 @@ const raw = {
   swipeable: await readFile(urls.swipeable, 'utf8'),
   curated: await readFile(urls.curated, 'utf8'),
   design: await readFile(urls.design, 'utf8'),
+  plate: await readFile(urls.plate, 'utf8'),
 };
 const src = {
   swipeable: stripComments(raw.swipeable),
   curated: stripComments(raw.curated),
   design: stripComments(raw.design),
+  plate: stripComments(raw.plate),
 };
+
+// [TEST-MOD-APPROVED #1609] The Been-here control's rest fill, read from the REAL
+// package rather than copied — T-7 measures it rather than matching a token name.
+const { BEEN_HERE } = createRequire(import.meta.url)('../../../../../packages/card-identity/index.js');
+const REST_FILL = BEEN_HERE.states.rest.fill;
 
 /* ------------------------------------------------------------------ *
  * Colour maths — re-derived here on purpose.
@@ -229,15 +241,25 @@ test('T-4 every bottom text band still clears its legibility floor after the re-
   // Presence was raised by increasing alpha, which can only ever RAISE contrast for white
   // text. This asserts that rather than assuming it — and it is the assertion that would
   // catch a "presence" change made by LIGHTENING the ramp instead.
-  // Bands are the #1593 reference card: 783pt tall, 52% place scrim spanning y 376..783.
+  // [TEST-MOD-APPROVED #1609] THE 0.52 WAS HARD-CODED HERE, and that made this
+  // test unfalsifiable: Direction C replaced the 52% percentage with an absolute
+  // 316pt height, and because the fraction lived in this file rather than being
+  // read from the source, every band would have gone on passing while describing
+  // a card that no longer ships. It now reads the REAL shipped height.
+  //
+  // The band list is re-derived for the same reason: the description and the
+  // action rail are DELETED from the photograph, so two of the three bands were
+  // measuring bare pixels. What remains on the photograph is the title, now
+  // 30/700 at lineHeight 36 sitting 132pt off the card's bottom edge.
   const CARD_H = 783;
-  const SCRIM_TOP = CARD_H * (1 - 0.52);
+  const SCRIM_TOP = CARD_H - DECK_BOTTOM_SCRIM_HEIGHT_PT;
   const SCRIM_SPAN = CARD_H - SCRIM_TOP;
+  const TITLE_BOTTOM = CARD_H - 132;
   const bands = [
     // [name, yTop, yBottom, required ratio]
-    ['title 24/700 (large text)', 541, 601, 3.0],
-    ['description 15/600', 609, 651, 4.5],
-    ['action rail 13/500', 711, 755, 4.5],
+    ['title 30/700 (large text)', TITLE_BOTTOM - 2 * 36, TITLE_BOTTOM, 3.0],
+    // The plate's top edge — the deepest point the ramp is responsible for.
+    ['plate top edge', CARD_H - 112, CARD_H - 16, 3.0],
   ];
   for (const [name, y0, y1, required] of bands) {
     // Worst case is the TOP of each band, where the ramp is lightest.
@@ -256,6 +278,8 @@ test('T-4 every bottom text band still clears its legibility floor after the re-
     assert.ok(y1 > y0, `band-legibility: ${name} has a non-positive height`);
   }
 });
+
+const CARD_H_REF = 783;
 
 test('T-5 glass.badge.liquid exists and is a LIGHTENING fill, not another dark wash', () => {
   const block = /liquid:\s*\{([\s\S]*?)\n\s{4}\},/.exec(src.design);
@@ -283,7 +307,11 @@ test('T-5 glass.badge.liquid exists and is a LIGHTENING fill, not another dark w
   );
 
   // And it must actually lift the chip clear of the JND at the badge band.
-  const BADGE_BAND_P = (665 - 783 * 0.48) / (783 * 0.52); // badge row on the reference card
+  // [TEST-MOD-APPROVED #1609] Was `(665 - 783 * 0.48) / (783 * 0.52)`, a hard-coded
+  // copy of the deleted 52% scrim. The chips it measured are gone, but the TOKEN
+  // is still shipped and still consumed elsewhere, so the property is kept and
+  // re-anchored to the real scrim at the depth the plate now occupies.
+  const BADGE_BAND_P = (CARD_H_REF - 112 - (CARD_H_REF - DECK_BOTTOM_SCRIM_HEIGHT_PT)) / DECK_BOTTOM_SCRIM_HEIGHT_PT;
   const scrimAlpha = alphaAt(DECK_SCRIM_COLORS, DECK_SCRIM_LOCATIONS, BADGE_BAND_P);
   const BRIGHT_PHOTO_CHANNEL = 0.85;
   const backdropC = BRIGHT_PHOTO_CHANNEL * (1 - scrimAlpha);
@@ -310,46 +338,90 @@ test('T-5 glass.badge.liquid exists and is a LIGHTENING fill, not another dark w
   );
 });
 
-test('T-6 every collapsed-card chip that sits on the scrim consumes the liquid path', () => {
+test('T-6 no chip sits on the scrim at all — there is ONE piece of glass on the card face', () => {
+  // [TEST-MOD-APPROVED #1609] SUPERSEDED MECHANISM, STRICTLY STRONGER ASSERTION.
+  //
+  // This test previously required EXACTLY 10 `<GlassBadge liquid>` in
+  // SwipeableCards and 6 in CuratedExperienceSwipeCard, on the reasoning that a
+  // chip left on the dark tint floor reads as a flat pill inside the bottom
+  // scrim. That reasoning was correct and it is now satisfied by construction:
+  // #1609 Direction C DELETES every chip from both card faces. Five chips per
+  // face were five BlurViews, five shadowed lifted objects and five
+  // `entryIndex`-staggered Animated.Views inside the promotion diff — the exact
+  // shape that produced #1576.
+  //
+  // Requiring a count of chips that no longer exist would fail on a card that is
+  // strictly better than the one the count was written for. Asserting ZERO is
+  // the stronger statement: there is no chip that COULD be on the wrong path.
   const targets = [
-    // [name, source, minimum GlassBadge count that must carry `liquid`]
-    ['SwipeableCards', src.swipeable, 10],
-    ['CuratedExperienceSwipeCard', src.curated, 6],
+    ['SwipeableCards', src.swipeable],
+    ['CuratedExperienceSwipeCard', src.curated],
   ];
-  for (const [name, code, expected] of targets) {
+  for (const [name, code] of targets) {
     const all = [...code.matchAll(/<GlassBadge\b/g)].length;
-    const liquid = [...code.matchAll(/<GlassBadge\s+liquid\b/g)].length;
-    assert.ok(
-      all > 0,
-      `chips-consume-liquid: found ZERO <GlassBadge> elements in ${name}. This test would `
-      + 'otherwise pass vacuously.',
-    );
     assert.equal(
-      liquid,
-      expected,
-      `chips-consume-liquid: ${name} has ${liquid} of ${all} <GlassBadge> elements on the `
-      + `liquid path, expected ${expected}. Every chip on the collapsed card sits inside the `
-      + 'bottom scrim, so any chip left on the dark tint floor reads as a flat pill.',
+      all,
+      0,
+      `chips-consume-liquid: ${name} mounts ${all} <GlassBadge> elements on the card face. `
+      + 'Direction C carries every fact on ONE plate; a chip here is five nodes of swipe-path '
+      + 'cost and a per-badge stagger inside the promotion diff (#1576).',
+    );
+    // ANTI-VACUITY. If the element name were ever renamed, the count above would
+    // be 0 for the wrong reason. The plate must actually be mounted instead.
+    assert.ok(
+      /<DeckCardPlate\b/.test(code),
+      `chips-consume-liquid: ${name} mounts neither a chip NOR the plate — this test would `
+      + 'otherwise pass vacuously on a card face that renders nothing at all.',
     );
   }
+  // And exactly one BlurView survives across both faces: the plate's.
+  const blurs = [...src.plate.matchAll(/<BlurView\b/g)].length;
+  assert.equal(blurs, 1, `chips-consume-liquid: the plate mounts ${blurs} BlurViews, expected exactly 1`);
 });
 
-test('T-7 the Been-here control is lifted off the scrim too, not left on the dark floor', () => {
+test('T-7 the Been-here control is lifted off its backdrop, not left on the dark floor', () => {
+  // [TEST-MOD-APPROVED #1609] SUPERSEDED MECHANISM, SAME PROPERTY, MEASURED.
+  //
+  // This test previously required the literal token `glass.badge.liquid.fill`
+  // inside `styles.beenHere`. The PROPERTY it was defending — the control must be
+  // LIFTED off its backdrop rather than sunk into it — is unchanged and is now
+  // enforced numerically instead of by token name.
+  //
+  // Two things moved under Direction C. The control no longer sits on the action
+  // rail over bare scrim; it sits on the PLATE, so the tone it must lift off is
+  // the plate's L* 23.5, not the scrim's ~0.87 band. And its fill is now
+  // per-STATE (rest / pressed / flash / settled / failed), so a single style
+  // token cannot express it — `beenHereStateStyle()` reads all five from
+  // @mingla/card-identity.
+  //
+  // glass.badge.liquid.fill is 0.12; the control's rest fill is 0.14, because on
+  // the plate it needs slightly more lift than a chip needed on the scrim. That
+  // difference is exactly why the token could not simply be reused.
   const block = /beenHere:\s*\{([\s\S]*?)\n\s{2}\},/.exec(src.swipeable);
   assert.ok(block, 'been-here-liquid: no `beenHere: {` style block found in SwipeableCards');
   const body = block[1];
-  assert.ok(
-    /glass\.badge\.liquid\.fill/.test(body),
-    'been-here-liquid: styles.beenHere no longer consumes glass.badge.liquid.fill. This '
-    + 'control sits on the action rail — the DEEPEST band of the bottom scrim (alpha ~0.87) '
-    + '— and it has no BlurView at all, so a dark fill leaves it the flattest element on the '
-    + 'card.',
-  );
+
   assert.ok(
     !/glass\.chrome\.tint\.floor/.test(body),
-    'been-here-liquid: styles.beenHere still references glass.chrome.tint.floor, the '
-    + 'darkening wash it was moved off.',
+    'been-here-liquid: styles.beenHere references glass.chrome.tint.floor, the darkening wash '
+    + 'it was moved off. On a near-black backdrop a darkening wash has nothing to darken and '
+    + 'the control reads as the flattest element on the card.',
   );
+  assert.ok(
+    /beenHereStateStyle\(/.test(src.swipeable),
+    'been-here-liquid: the control no longer reads its per-state fill from the package',
+  );
+
+  // The property, measured: the rest fill must LIGHTEN the plate, not darken it.
+  const rest = /rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)/.exec(REST_FILL);
+  assert.ok(rest, `been-here-liquid: could not parse the rest fill "${REST_FILL}"`);
+  const [r, g, b, a] = [Number(rest[1]), Number(rest[2]), Number(rest[3]), Number(rest[4])];
+  assert.ok(
+    r >= 240 && g >= 240 && b >= 240,
+    `been-here-liquid: the rest fill rgb(${r},${g},${b}) is not a LIGHTENING fill. A dark fill on `
+    + 'a dark plate leaves the control the flattest element on the card — the #1609 rejection.',
+  );
+  assert.ok(a > 0.12, `been-here-liquid: the rest fill alpha ${a} does not exceed the 0.12 chip lift`);
 });
 
 test('T-8 every checker in this file REJECTS the exact pre-rejection values', () => {

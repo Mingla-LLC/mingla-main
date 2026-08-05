@@ -7516,3 +7516,79 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   scrim contrast oracle). The first two were rewritten under `[TEST-MOD-APPROVED #1609]`.
 - **Established:** DRAFT at #1593 SPEC 2026-08-04. Flips ACTIVE at CLOSE after tester PASS.
   Mechanism migrated at #1609 2026-08-04; rule text unchanged.
+
+---
+
+### I-PROPOSED-C-CARD-IDENTITY-SINGLE-SOURCE (DRAFT)
+
+- **Rule:** No surface that renders a Mingla place/plan card may contain a literal for the plate's
+  radius, height, fill, border, under-layer alpha, top-highlight, fallback solid, scrim ramp, scrim
+  height, or the title/meta type sizes. Every such value MUST be read from `@mingla/card-identity`
+  (RN, web) or `require('@mingla/card-identity')` (Node/satori). Where a value is size-dependent it
+  MUST be produced by the package's exported function (`scrimHeight`, `plateUnderAlpha`,
+  `plateRows`, `typeLadder`), never by a per-surface constant that happens to equal the function's
+  output.
+
+- **Why:** the ramp literal `['rgba(0,0,0,0)','rgba(0,0,0,0.42)',...]` was triplicated across
+  `SwipeableCards.tsx:3079`, `:3292` and `CuratedExperienceSwipeCard.tsx:444` before #1609, and the
+  place card and the curated card drifted apart in exactly that way — the place scrim was `'52%'`,
+  the curated one `'62%'`, and each file looked internally correct in review. Direction C puts the
+  same card on **seven** surfaces in **three** languages (React Native, react-native-web, and Node +
+  satori), so the same failure is seven times more likely and no reviewer sees more than one file at
+  a time.
+
+- **Why it is a PACKAGE and not an app module:** S6 (`@mingla/offering-rendering`, react-native-web)
+  and S5 (`mingla-business/server`, Node + satori) cannot import from `app-mobile/src` —
+  `I-MOR-0827-PACKAGE-ISOLATION` forbids it. The package is therefore **RN-free and
+  dependency-free**: plain data and pure functions, no JSX, no `react-native`, no CSS. It ships as
+  `index.js` (CommonJS) + `index.d.ts` rather than the `index.ts` its sibling packages use, so the CI
+  oracle can import the real functions under `node --test` on a bare checkout and satori can
+  `require()` them with no build step.
+
+- **The consistency mechanism, which is measured rather than asserted.** A glass plate's appearance
+  depends on what is behind it, so on seven surfaces with seven different scrim depths a FIXED recipe
+  would produce seven different-looking objects. The recipe is therefore not fixed; the RESULT is.
+  `plateUnderAlpha(alpha)` solves `L*(lift over under over backdrop) = 23.50` per surface. All seven
+  land within 0.03 L* of each other, against a ~2-3 L* just-noticeable difference, so every text
+  ratio on the plate is identical everywhere. The opaque path (`PLATE.fallbackSolid = rgb(53,56,63)`,
+  L* 23.47) is the same object on Android, in satori, and behind the CSS `@supports` fallback.
+
+- **Enforcement:** `.github/workflows/issue-1609-card-identity.yml` requires and **EXECUTES**
+  `packages/card-identity/__tests__/card_identity_single_source.test.mjs`, which:
+  - **(G1)** strips comments from the card-rendering sources and greps them for the forbidden literal
+    set, allowlisting ONLY `packages/card-identity/index.js`. Fails on any hit. G1b asserts the
+    package still declares those literals, so G1 cannot pass by the values living nowhere; G1c
+    asserts the deleted furniture (chips, `entryIndex`, the rail, "Details", "Been here?", the
+    curated ribbon) has not returned.
+  - **(G2)** imports the real `scrimHeight` / `plateUnderAlpha` / `rampAlphaAtDepth` and runs an
+    INDEPENDENT WCAG + CIE L* oracle over all seven surface descriptors, asserting: every plate
+    composite within ±2.0 L* of `PLATE.targetLstar` (and a total spread ≤ 0.5); white text on every
+    plate ≥ 4.5:1; the 0.72 dim span ≥ 4.5:1; `max(plate fill, plate border)` vs the photograph
+    ≥ 3.0:1 swept over 41 photo luminances; every title band on the photograph ≥ 3.0:1 at its TOP
+    edge; both curated slivers ≥ 3.0:1 against their own backdrop; and the Been-here control's five
+    states, including that each Android opaque equivalent is within 3 L* of its iOS composite.
+    T-0 proves the oracle reproduces published references AND that `plateUnderAlpha` is a real solver
+    rather than a constant; T-9 proves the oracle REJECTS the values the design rejected (the 0.30
+    border at 2.46:1, the 0.34/0.22 slivers, white on brand orange).
+  - **(G3)** asserts the surface descriptors are exported and complete, and that every surface
+    carries **exactly one** verdict — BUILT (a file renders it), DESIGNED (measured and clearing
+    every floor, no file yet) or KNOWN_OPEN (measured, NOT clearing a floor, shortfall pinned). An
+    eighth surface cannot be added without entering the oracle with a verdict.
+
+- **Fails-on-revert:** proven three ways at implementation (hashes in the #1609 implementation
+  report) — restore one triplicated ramp literal to a card file (G1 fires); revert `PLATE.border`
+  from 0.38 to the historical 0.30 (G2's T-4 fires at 2.46:1 against the 3.0 floor); add an eighth
+  surface with no verdict (G3, T-4 and T-6 all fire).
+  **Note for whoever maintains this:** the design's own suggested proof — "change `PLATE.lift` by
+  0.02" — does NOT fire, and that is correct behaviour rather than a gap. `plateUnderAlpha` re-solves
+  for the target L* given the new lift, so the composite still lands on 23.50. The derivation
+  absorbing a lift change is the invariant working, not failing. Use the border revert instead.
+
+- **KNOWN OPEN at DRAFT, found by running the oracle for the first time:** S2 (grid), S3 (chat) and
+  S5 (OG) do **not** clear the 3:1 plate-boundary floor — they measure 2.20:1, 2.20:1 and 2.68:1
+  against a design that states 3.17:1 for S2 and "identical" for S3. S2's and S3's second curated
+  sliver measures 2.44:1 and 2.23:1 against a stated "exactly 3.00:1". These are pinned in the gate
+  so they cannot drift, and waves 2 and 3 cannot mark those surfaces BUILT until the shortfall is
+  designed out.
+
+- **Established:** DRAFT at #1609 wave 1, 2026-08-05. Flips ACTIVE at CLOSE after tester PASS.
