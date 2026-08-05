@@ -468,9 +468,16 @@ test('T-9 the plate is a fixed rectangle with exactly one alternate silhouette',
   const full = CI.plateRows(CI.SURFACES.s1Single.plateH, true);
   const alt = CI.plateRows(CI.PLATE_H_NO_META, false);
   assert.equal(alt.meta, 0, 'T-9: the alternate silhouette still renders a meta row');
-  assert.equal(alt.divider, 0, 'T-9: the meta row and the divider must be omitted TOGETHER');
+  // The divider is NOT omitted with the facts row (Seth, #1609 comment
+  // 5196932627): it carries the chevron, and the chevron is the only visible
+  // expand affordance on a card that has no facts to show.
+  assert.equal(
+    alt.divider, CI.DIVIDER_H,
+    'T-9: the short plate omits the divider again, which takes the chevron with it and leaves that '
+    + 'card with nothing that says it opens',
+  );
   assert.ok(full.control >= CI.BEEN_HERE.height, 'T-9: the control row cannot contain the 44pt target');
-  assert.ok(alt.control >= CI.BEEN_HERE.height, 'T-9: the 54pt plate cannot contain the 44pt target');
+  assert.ok(alt.control >= CI.BEEN_HERE.height, 'T-9: the short plate cannot contain the 44pt target');
 
   // The plate's own left/right/bottom edges never move between the two.
   assert.match(

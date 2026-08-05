@@ -702,7 +702,8 @@ test('G3 every surface descriptor is exported, complete, and has a verdict', () 
 test('G3b the plate arithmetic is a single derivation, not a typed-in number', () => {
   // 1 (border) + 40 (meta) + 1 (divider) + control + 1 (border) = plateH.
   const rows = CI.plateRows(CI.SURFACES.s1Single.plateH, true);
-  const total = 2 * CI.PLATE.borderWidth + rows.meta + rows.divider + rows.control;
+  const sum = (r) => 2 * CI.PLATE.borderWidth + r.meta + r.clearance + r.divider + r.control;
+  const total = sum(rows);
   assert.equal(
     total,
     CI.SURFACES.s1Single.plateH,
@@ -710,6 +711,8 @@ test('G3b the plate arithmetic is a single derivation, not a typed-in number', (
     + 'assertion IS the silhouette.',
   );
   assert.equal(rows.meta, CI.META_ROW_H, 'G3b: the meta row is no longer a fixed height');
+  assert.equal(rows.clearance, 0, 'G3b: the full plate reserves chevron clearance it does not need — '
+    + "the meta row's own vertical slack already absorbs the overhang");
   assert.ok(
     rows.control >= CI.BEEN_HERE.height,
     `G3b: the control row is ${rows.control}pt, which cannot contain the ${CI.BEEN_HERE.height}pt Been-here target`,
@@ -717,15 +720,70 @@ test('G3b the plate arithmetic is a single derivation, not a typed-in number', (
 
   // The ONE alternate silhouette, and it must also fit the control.
   const alt = CI.plateRows(CI.PLATE_H_NO_META, false);
+  assert.equal(
+    sum(alt), CI.PLATE_H_NO_META,
+    `G3b: the alternate silhouette's rows sum to ${sum(alt)}, not ${CI.PLATE_H_NO_META}`,
+  );
   assert.equal(alt.meta, 0, 'G3b: the alternate silhouette still renders a meta row');
-  assert.equal(alt.divider, 0, 'G3b: the meta row and the divider must be omitted TOGETHER');
   assert.ok(
     alt.control >= CI.BEEN_HERE.height,
-    `G3b: the 54pt plate's control row is ${alt.control}pt, below the ${CI.BEEN_HERE.height}pt target`,
+    `G3b: the short plate's control row is ${alt.control}pt, below the ${CI.BEEN_HERE.height}pt target`,
+  );
+
+  // ---------------------------------------------------------------------------
+  // THE DIVIDER SURVIVES THE VACUOUS SPAN SET (Seth, #1609 comment 5196932627).
+  //
+  // §3.6 used to omit the divider WITH the facts row, which took the chevron with
+  // it and left the sparsest card in the pool with no visible expand affordance
+  // at all — the tester confirmed it on device (P3-1). The chevron exists BECAUSE
+  // the word "Details" was rejected in favour of a view affordance, so dropping
+  // it exactly where the user has least to go on inverts that decision.
+  //
+  // Asserted against the DERIVED row set rather than the rendered tree because
+  // this is where the height comes from; the render site is guarded by T-9 in
+  // issue_1609_direction_c_plate.test.mjs and by the dedicated short-plate guard.
+  assert.equal(
+    alt.divider, CI.DIVIDER_H,
+    'G3b: the short plate omits the divider again. It carries the chevron, which is the only '
+    + 'thing on that card that says it opens.',
+  );
+
+  // And the chevron must be DRAWN WHOLE, which is the entire reason the short
+  // plate is not simply plateH - META_ROW_H. The chevron's box is centred on the
+  // divider LINE, so its top edge sits at `clearance + DIVIDER_H/2 -
+  // CHEVRON.size/2` inside the plate's content box. Negative means the plate's
+  // own `overflow:'hidden'` slices the icon.
+  const chevronTop = alt.clearance + CI.DIVIDER_H / 2 - CI.CHEVRON.size / 2;
+  assert.ok(
+    chevronTop >= 0,
+    `G3b: the chevron's top edge sits ${chevronTop}pt inside the short plate's content box, so the `
+    + "plate clips it. Raise CHEVRON_CLEARANCE (and PLATE_H_NO_META follows it).",
+  );
+  assert.equal(
+    CI.CHEVRON_CLEARANCE, Math.ceil((CI.CHEVRON.size - CI.DIVIDER_H) / 2),
+    'G3b: CHEVRON_CLEARANCE is no longer derived from the chevron it clears',
+  );
+  assert.equal(
+    CI.PLATE_H_NO_META,
+    CI.SURFACES.s1Single.plateH - CI.META_ROW_H + CI.CHEVRON_CLEARANCE,
+    'G3b: the short plate height is a typed-in number again. It is the full plate with the FACTS '
+    + 'ROW swapped for the chevron clearance, and nothing else.',
+  );
+  // Everything from the divider down is byte-identical between the silhouettes,
+  // which is what "the chevron sits in it exactly as it does on the 96pt plate"
+  // means in arithmetic: the pill and the share glyph do not move.
+  assert.equal(
+    alt.control, rows.control,
+    `G3b: the control row is ${alt.control}pt on the short plate and ${rows.control}pt on the full one, `
+    + 'so the Been-here pill and the share glyph move between silhouettes.',
   );
 
   // The title's bottom edge follows the plate, so the two cannot disagree about
   // which silhouette is being drawn.
   assert.equal(CI.titleBottom('s1Single'), 132, 'G3b: the title no longer sits 132pt off the card bottom');
-  assert.equal(CI.titleBottom('s1Single', CI.PLATE_H_NO_META), 90, 'G3b: the alternate title bottom is not 90pt');
+  assert.equal(
+    CI.titleBottom('s1Single', CI.PLATE_H_NO_META),
+    CI.SURFACES.s1Single.bottomInset + CI.PLATE_H_NO_META + CI.SURFACES.s1Single.gap,
+    'G3b: the alternate title bottom no longer tracks the alternate plate',
+  );
 });

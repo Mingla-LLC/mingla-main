@@ -7574,11 +7574,41 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
     carries **exactly one** verdict — BUILT (a file renders it), DESIGNED (measured and clearing
     every floor, no file yet) or KNOWN_OPEN (measured, NOT clearing a floor, shortfall pinned). An
     eighth surface cannot be added without entering the oracle with a verdict.
+  - **(G3b)** asserts the plate's rows are a single derivation: both silhouettes' rows sum to their
+    plate height, the full plate reserves no chevron clearance, the short plate's control row equals
+    the full plate's, `CHEVRON_CLEARANCE == ceil((CHEVRON.size - DIVIDER_H) / 2)`, and
+    `PLATE_H_NO_META == plateH - META_ROW_H + CHEVRON_CLEARANCE`. It also asserts the divider is
+    **never** omitted and that the chevron's top edge lands inside the short plate's content box.
+  - **(C1-C6)** `app-mobile/src/components/swipeDeck/__tests__/issue_1609_short_plate_keeps_chevron.test.mjs`
+    carries the same rules to the RENDER SITE, because the previous P1 on this branch was a package
+    that derived the right number and a card tree that never asked for it. It asserts (over
+    comment-stripped source) that `deckCardPlate.tsx` mounts the divider row OUTSIDE the
+    `withMeta ? ... : null` gate that still governs the facts row, that the divider row applies
+    `marginTop: rows.clearance` rather than a typed number, and that neither the short plate height
+    nor any numeric `marginTop` appears in the card file.
+
+- **The plate has exactly TWO silhouettes, and only the FACTS row is data-dependent.** When the meta
+  span set is vacuous (no rating, no price, no distance, no category) the facts row is omitted and
+  the plate is `PLATE_H_NO_META` (64pt) rather than 96. **The divider is NOT omitted with it.** It
+  carries the chevron, and the chevron is the card's only visible expand affordance — it exists
+  because the word "Details" was rejected in favour of a view affordance, so dropping it on the
+  sparsest card in the pool inverts that decision at exactly the moment the user has least to go on
+  (Seth's decision on #1609, comment 5196932627, after the tester found such a card on device with
+  no affordance at all — P3-1). The divider is therefore a constant row of this object. The short
+  plate is 64 and not 56 because the 16pt chevron is centred on the 1pt divider line and reaches
+  7.5pt above it: on the full plate that overhang lands in the meta row's own vertical slack, but
+  with the facts row gone there is no row above the divider and the plate clips, so the clearance is
+  reserved explicitly (`ceil((16 - 1) / 2) = 8`). Everything from the divider down is byte-identical
+  between the two, so the pill and the share glyph never move. Both numbers are DERIVED in
+  `@mingla/card-identity`; neither may appear in a card file.
 
 - **Fails-on-revert:** proven three ways at implementation (hashes in the #1609 implementation
   report) — restore one triplicated ramp literal to a card file (G1 fires); revert `PLATE.border`
   from 0.38 to the historical 0.30 (G2's T-4 fires at 2.46:1 against the 3.0 floor); add an eighth
   surface with no verdict (G3, T-4 and T-6 all fire).
+  The divider-retention clause adds a fourth: delete the `const divider = DIVIDER_H;` line from
+  `plateRows()` and restore `withMeta ? DIVIDER_H : 0` — `fails-on-revert verified at __HASH__`
+  (C-1 and C-2 in `issue_1609_short_plate_keeps_chevron.test.mjs` fire, plus G3b and T-9).
   **Note for whoever maintains this:** the design's own suggested proof — "change `PLATE.lift` by
   0.02" — does NOT fire, and that is correct behaviour rather than a gap. `plateUnderAlpha` re-solves
   for the target L* given the new lift, so the composite still lands on 23.50. The derivation

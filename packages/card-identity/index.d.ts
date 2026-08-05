@@ -156,6 +156,8 @@ export const MAX_FONT_SCALE: {
 
 export const META_ROW_H: number;
 export const DIVIDER_H: number;
+/** Points reserved ABOVE the divider on the short plate so the chevron is whole. */
+export const CHEVRON_CLEARANCE: number;
 export const PLATE_H_NO_META: number;
 export const PLATE_ALPHA_FLOOR: number;
 export const TITLE_ALPHA_FLOOR: number;
@@ -171,11 +173,17 @@ export function rampAlphaAtDepth(d: number, scrimH: number): number;
 /** Solves L*(composite) = PLATE.targetLstar for the under-layer's alpha. */
 export function plateUnderAlpha(scrimAlphaAtPlateTop: number): number;
 
-/** Row heights inside the plate's content box. `control` is the remainder. */
+/**
+ * Row heights inside the plate's content box. `control` is the remainder.
+ *
+ * `divider` is NEVER zero — it carries the chevron, which is the card's only
+ * visible expand affordance. `clearance` is the space reserved above the
+ * divider for the chevron's overhang, and is non-zero only on the short plate.
+ */
 export function plateRows(
   plateH: number,
   withMeta: boolean,
-): { meta: number; divider: number; control: number };
+): { meta: number; divider: number; clearance: number; control: number };
 
 export function typeLadder(surfaceKey: SurfaceKey): {
   title: { size: number; lineHeight: number; lines: number; weight: string };

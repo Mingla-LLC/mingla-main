@@ -231,9 +231,9 @@ export function CardMetaLine({ spans }: { spans: readonly MetaSpanInput[] }): Re
  * from a thing is meaningless unless it tracks that thing, so the plate height it
  * resolves against has to be the one BEING RENDERED — never the module-load
  * constant `S1.plateH`. This function used to take no arguments and anchor to
- * that constant: in the alternate silhouette the plate's top edge drops 42pt and
- * the stack did not follow, leaving two stray 4pt lines floating over the
- * photograph 42pt above the object they are supposed to be stacked on (#1609
+ * that constant: in the alternate silhouette the plate's top edge drops and the
+ * stack did not follow, leaving two stray 4pt lines floating over the
+ * photograph, well above the object they are supposed to be stacked on (#1609
  * tester P1-1, measured at 42.7pt on a live curated card). Callers pass
  * `platePresentation(spans).plateH` — literally the same value the plate sizes
  * itself from — so the stack and the plate cannot disagree about which
@@ -320,10 +320,10 @@ export function CardStateDiscs({
  *
  *     plateTop    = bottomInset + plateH
  *                 = 16 + 96 = 112        (full plate)
- *                 = 16 + 54 =  70        (the alternate silhouette)
+ *                 = 16 + 64 =  80        (the alternate silhouette)
  *     titleBottom = plateTop + gap
  *                 = 112 + 20 = 132       (full plate)
- *                 =  70 + 20 =  90       (the alternate silhouette)
+ *                 =  80 + 20 = 100       (the alternate silhouette)
  *
  * ---------------------------------------------------------------------------
  * IT WAS EXPORTED FOR THIS AND NEITHER TREE CALLED IT (#1609 tester P1-1)
@@ -332,8 +332,8 @@ export function CardStateDiscs({
  * import the compiler accepted — and `SwipeableCards.tsx` did not import it at
  * all. Both instead baked `S1.bottomInset + S1.plateH + S1.gap` into a
  * module-load `StyleSheet.create` entry, which is a value that CANNOT vary per
- * render, so in the 54pt silhouette the name stayed 62pt above a plate it is
- * supposed to sit 20pt above and the curated slivers floated 42pt over it. §3.6
+ * render, so in the short silhouette the name stayed stranded above a plate it is
+ * supposed to sit 20pt above and the curated slivers floated over it. §3.6
  * promises exactly ONE alternate silhouette; that produced three, and four on
  * curated. Every plate-anchored offset on both faces now reads this object.
  *
@@ -358,9 +358,10 @@ export function platePresentation(spans: readonly MetaSpanInput[]): {
 
 export interface DeckCardPlateProps {
   /**
-   * The meta spans. When every span is absent the meta row AND the divider are
-   * omitted TOGETHER and the plate is PLATE_H_NO_META instead of plateH — the
-   * ONE alternate silhouette in the whole system. Vacuity-guarded here rather
+   * The meta spans. When every span is absent the FACTS ROW is omitted and the
+   * plate is PLATE_H_NO_META instead of plateH — the ONE alternate silhouette in
+   * the whole system. The divider and its chevron are NOT omitted with it; they
+   * are the card's only visible expand affordance. Vacuity-guarded here rather
    * than at each call site so the two card trees cannot disagree about it.
    */
   readonly spans: readonly MetaSpanInput[];
@@ -383,6 +384,19 @@ export interface DeckCardPlateProps {
  * is the whole silhouette. React Native's box model always includes the border
  * in `height`, so `plateRows()` derives the control row as the remainder rather
  * than anyone typing a number that has to be kept in sync.
+ *
+ * And the ONE alternate, when the place has no rating, no price, no distance and
+ * no category — the facts row goes, NOTHING ELSE DOES:
+ *
+ *     ╔══ 374 x 64 · r24 ═══════════════════════════════╗
+ *     ║                                            8pt  ║  chevron clearance
+ *     ║ ─────────────────── ⌃ ──────────────────── 1pt  ║
+ *     ║  [ ✓ Been here ]                      ⤴   53pt  ║
+ *     ╚═════════════════════════════════════════════════╝
+ *
+ * 1 + 8 + 1 + 53 + 1 = 64, and `plateRows()` derives every row of it. The 53pt
+ * control row is the SAME NUMBER in both, so the pill and the share glyph do not
+ * move; only the facts row is data-dependent.
  */
 export function DeckCardPlate({
   spans,
@@ -417,18 +431,31 @@ export function DeckCardPlate({
         owners; the whole card is the expand target and routes through the
         caller's requestTapExpand.
 
-        It is omitted with the meta row so the alternate silhouette is one
-        discrete constant rather than two independent branches.
+        IT RENDERS IN BOTH SILHOUETTES, UNCONDITIONALLY (Seth, #1609 comment
+        5196932627). §3.6 used to omit it with the meta row, which took the only
+        visible expand affordance off the sparsest card in the pool — a place
+        with no rating, no price, no distance and no category then had nothing at
+        all to say it opens. The chevron exists BECAUSE the word "Details" was
+        rejected in favour of a view affordance; dropping it exactly where the
+        user has least to go on inverts that decision.
+
+        `rows.clearance` is the package's reserved space above the line. It is 0
+        on the full plate (the meta row's own slack absorbs the chevron's 7.5pt
+        overhang) and CHEVRON_CLEARANCE on the short one, where there is no row
+        above the divider and the plate clips. Without it the divider would land
+        on the plate's 1pt top highlight and the chevron would be sliced in half
+        by the plate's own top edge.
       */}
-      {withMeta ? (
-        <View style={styles.dividerRow} pointerEvents="none">
-          <View style={styles.dividerSegment} />
-          <View style={styles.dividerGap}>
-            <Icon name="chevron-up" size={CHEVRON.size} color={CHEVRON.color} />
-          </View>
-          <View style={styles.dividerSegment} />
+      <View
+        style={[styles.dividerRow, { marginTop: rows.clearance }]}
+        pointerEvents="none"
+      >
+        <View style={styles.dividerSegment} />
+        <View style={styles.dividerGap}>
+          <Icon name="chevron-up" size={CHEVRON.size} color={CHEVRON.color} />
         </View>
-      ) : null}
+        <View style={styles.dividerSegment} />
+      </View>
 
       <View style={[styles.controlRow, { height: rows.control }]}>
         {/*
@@ -526,8 +553,10 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   plateWithMeta: { height: S1.plateH },
-  // The ONE alternate silhouette. The card's bottom edge, the plate's bottom
-  // edge and the plate's left/right edges do not move.
+  // The ONE alternate silhouette. Only the plate's TOP edge moves: the card's
+  // bottom edge, the plate's bottom edge and the plate's left/right edges do
+  // not. The height is derived by the package from the full plate minus the
+  // facts row plus the chevron's clearance — never typed here.
   plateNoMeta: { height: PLATE_H_NO_META },
   plateTopHighlight: {
     position: 'absolute',

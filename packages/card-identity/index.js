@@ -290,10 +290,35 @@ function plateUnderAlpha(scrimAlphaAtPlateTop) {
  *
  * `withMeta === false` is the ONE alternate silhouette in the entire system:
  * when the meta row would be empty (no rating, no price, no distance, no
- * category — vacuity-guarded), the meta row AND the divider are omitted
- * together and the plate is PLATE_H_NO_META instead of PLATE_H. The card's
- * bottom edge, the plate's bottom edge and the plate's left/right edges never
- * move.
+ * category — vacuity-guarded), the FACTS ROW is omitted and the plate is
+ * PLATE_H_NO_META instead of PLATE_H. The card's bottom edge, the plate's
+ * bottom edge and the plate's left/right edges never move.
+ *
+ * ---------------------------------------------------------------------------
+ * THE DIVIDER IS NEVER OMITTED (Seth, #1609 comment 5196932627, 2026-08-05)
+ *
+ * §3.6 used to drop the divider WITH the meta row. The divider carries the
+ * chevron, and the chevron is the card's only visible expand affordance — it
+ * exists because "Details" was rejected in favour of a view affordance. Taking
+ * it away on the sparsest card in the pool inverts that decision at exactly the
+ * moment the user has least to go on: a place with no rating, no price, no
+ * distance and no category then renders with nothing at all to say it opens.
+ * The tester confirmed it on device (P3-1). So the divider is a constant row of
+ * this object, and only the FACTS row is data-dependent.
+ *
+ * `clearance` is what that costs, and it is why the short plate is NOT simply
+ * `plateH - META_ROW_H`. The chevron is `CHEVRON.size` tall and centred on the
+ * divider LINE, so it reaches `(CHEVRON.size - DIVIDER_H) / 2` above it. On the
+ * full plate that overhang lands in the meta row's own vertical slack and costs
+ * nothing. With the facts row gone there is no row above the divider at all,
+ * and the plate clips (`overflow:'hidden'`), so the overhang has to be reserved
+ * explicitly — otherwise the divider coincides with the plate's 1pt top
+ * highlight and the chevron is sliced in half by the plate's own top edge.
+ *
+ * Below the divider NOTHING changes: `control` is the same height in both
+ * silhouettes, so the Been-here pill and the share glyph sit exactly where they
+ * sit on the 96pt plate. That is the whole point of "the chevron sits in it
+ * exactly as it does on the 96pt plate".
  */
 const META_ROW_H = 40;
 const DIVIDER_H = 1;
@@ -301,8 +326,13 @@ const DIVIDER_H = 1;
 function plateRows(plateH, withMeta) {
   const content = plateH - 2 * PLATE.borderWidth;
   const meta = withMeta ? META_ROW_H : 0;
-  const divider = withMeta ? DIVIDER_H : 0;
-  return { meta, divider, control: content - meta - divider };
+  // NEVER conditional. See the docblock: the divider carries the affordance.
+  const divider = DIVIDER_H;
+  // Forward reference to section 4 — `plateRows` is only ever CALLED after this
+  // module has finished evaluating, so there is no temporal-dead-zone hazard,
+  // and CHEVRON_CLEARANCE belongs with the chevron it is derived from.
+  const clearance = withMeta ? 0 : CHEVRON_CLEARANCE;
+  return { meta, divider, clearance, control: content - meta - divider - clearance };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -349,6 +379,25 @@ const DIVIDER = {
 };
 
 const CHEVRON = { color: 'rgba(255,255,255,0.72)', size: 16 };
+
+/**
+ * The points the short plate must reserve ABOVE the divider so the chevron is
+ * drawn whole.
+ *
+ * The chevron's box is centred on the 1pt divider line, so it reaches
+ * `(CHEVRON.size - DIVIDER_H) / 2` = 7.5pt above that line's top edge. Rounded
+ * UP to a whole point: the plate is a raster-aligned rectangle and a half-point
+ * of reserved space would put the divider — and therefore the chevron — on a
+ * half-pixel at 2x. Rounding DOWN instead would clip half a point of the icon
+ * off the plate's top edge, which is the exact defect this constant exists to
+ * prevent.
+ *
+ * It is ZERO on the full plate: there the meta row sits above the divider and
+ * its own vertical slack (40pt row, 19pt line, centred → 10.5pt each side)
+ * already absorbs the overhang.
+ */
+const CHEVRON_CLEARANCE = Math.ceil((CHEVRON.size - DIVIDER_H) / 2);
+
 const SHARE_GLYPH = { color: 'rgba(255,255,255,0.90)', size: 20, target: 44 };
 
 /**
@@ -632,7 +681,7 @@ function titleTopDepth(surfaceKey) {
  * The scrim height for a surface, from its own descriptor.
  *
  * Deliberately computed from the CANONICAL plate height, not from the
- * alternate 54pt silhouette: a scrim whose height changed per card would make
+ * alternate (PLATE_H_NO_META) silhouette: a scrim whose height changed per card would make
  * the deck's dark band jump on every swipe, and the alternate silhouette's
  * title sits SHALLOWER, so the canonical (taller) scrim only ever improves its
  * contrast. The oracle asserts that, rather than assuming it.
@@ -649,10 +698,27 @@ function surfacePlateUnder(surfaceKey) {
 }
 
 /**
- * S1's alternate silhouette. The ONE data-dependent height in the system, and
- * it is a discrete constant rather than a measured one.
+ * S1's alternate silhouette. The ONE data-dependent height in the system: a
+ * discrete constant rather than a measured one, and DERIVED rather than typed.
+ *
+ *     full   1 border + 40 meta + 1 divider + 53 control + 1 border = 96
+ *     short  1 border +  8 clr  + 1 divider + 53 control + 1 border = 64
+ *
+ * The short plate is the full plate with the FACTS ROW swapped for the
+ * chevron's clearance. Everything from the divider down is byte-identical, so
+ * the divider, the chevron, the Been-here pill and the share glyph all sit
+ * exactly where they sit on the 96pt plate — which is what Seth's #1609
+ * decision requires, and the reason this is `plateH - META_ROW_H +
+ * CHEVRON_CLEARANCE` and not a fourth number somebody has to keep in sync.
+ *
+ * It was 54 until 2026-08-05, when §3.6 still omitted the divider along with
+ * the facts row. 54 cannot hold this composition at all: 2 borders + a 7.5pt
+ * chevron overhang + the divider + the 44pt Been-here target is 54.5 before any
+ * breathing room, so the pill would have touched the plate's border on both
+ * edges. The height moved because the composition changed, not to make a number
+ * rounder.
  */
-const PLATE_H_NO_META = 54;
+const PLATE_H_NO_META = SURFACES.s1Single.plateH - META_ROW_H + CHEVRON_CLEARANCE;
 
 module.exports = {
   RAMP,
@@ -668,6 +734,7 @@ module.exports = {
   MAX_FONT_SCALE,
   META_ROW_H,
   DIVIDER_H,
+  CHEVRON_CLEARANCE,
   PLATE_H_NO_META,
   PLATE_ALPHA_FLOOR,
   TITLE_ALPHA_FLOOR,

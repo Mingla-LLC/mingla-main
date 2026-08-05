@@ -392,7 +392,7 @@ export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem
    * `platePresentation()` is the SAME predicate `DeckCardPlate` uses to size
    * itself. This file imported it and never called it, and instead baked
    * `S1.bottomInset + S1.plateH + S1.gap` into a module-load `StyleSheet.create`
-   * entry, so when the span set was vacuous the plate shrank to 54pt and the name
+   * entry, so when the span set was vacuous the plate shrank and the name
    * and the sliver stack stayed where a 96pt plate had been. §3.6 promises
    * "exactly ONE alternate silhouette in the whole system"; that produced four.
    *
@@ -599,7 +599,7 @@ const styles = StyleSheet.create({
   },
   // #1609 tester P1-1 — `bottom` IS DELIBERATELY ABSENT. It was
   // `S1.bottomInset + S1.plateH + S1.gap`, a module-load constant that is only
-  // correct for the 96pt silhouette; in the 54pt one it stranded the name 62pt
+  // correct for the 96pt silhouette; in the short one it stranded the name well
   // above a plate it is supposed to sit 20pt above. It is now applied at the
   // render site from `platePresentation(curatedSpans).titleBottom`. Do not put it
   // back — a StyleSheet.create entry is evaluated once per module, and this value

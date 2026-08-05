@@ -52,7 +52,7 @@ import {
   // #1609 tester P1-1 — the ONE predicate that decides which silhouette a card
   // draws. This tree did not import it at all and hard-coded the 96pt anchor into
   // its stylesheet, so the name and the curated slivers did not follow the plate
-  // when it shrank to 54pt. Every face-level offset now reads this.
+  // when it shrank to the short silhouette. Every face-level offset now reads this.
   platePresentation,
   type BeenHereVisualState,
   type MetaSpanInput,
@@ -393,8 +393,10 @@ const NOOP = (): void => {};
  * it is the sacrificial one. Every span is omitted when its value is absent, and
  * the separators are rendered BETWEEN PRESENT SPANS ONLY by CardMetaLine — a
  * card with no rating begins at distance, with no orphaned leading "·"
- * (Constitution 9). When EVERY span is absent the plate drops to its 54pt
- * alternate silhouette.
+ * (Constitution 9). When EVERY span is absent the plate drops to its shorter
+ * alternate silhouette (`PLATE_H_NO_META`) — the FACTS ROW goes, the divider and
+ * its chevron stay, because the chevron is the card's only visible expand
+ * affordance (Seth, #1609 comment 5196932627).
  *
  * D-2 — TRAVEL TIME IS DROPPED from the collapsed card. "14 min" beside "6.7 mi"
  * is the same fact twice, and it is 8 characters in a line that has room for a
@@ -3924,8 +3926,8 @@ const styles = StyleSheet.create({
   // only multi-line element on the card face; `flexWrap` appears nowhere.
   // #1609 tester P1-1 — `bottom` IS DELIBERATELY ABSENT. It was
   // `S1.bottomInset + S1.plateH + S1.gap`, a module-load constant that is only
-  // correct for the 96pt silhouette; in the 54pt one it left the name stranded
-  // 62pt above a plate it is supposed to sit 20pt above, with a band of dead
+  // correct for the 96pt silhouette; in the short one it left the name stranded
+  // above a plate it is supposed to sit 20pt above, with a band of dead
   // scrim between them. It is now applied at each render site from
   // `platePresentation(spans).titleBottom`. Do not put it back — StyleSheet.create
   // is evaluated once per module and this value is per render.
