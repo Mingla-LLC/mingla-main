@@ -1,0 +1,10 @@
+{
+  "name": "@mingla/card-identity",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.js",
+  "types": "index.d.ts",
+  "react-native": "index.js",
+  "license": "UNLICENSED",
+  "description": "Issue #1609 Direction C — the SINGLE source for every Mingla place/plan card value: the scrim ramps, the plate's material and derived under-layer alpha, the type ladder, the meta spans, the Been-here states, the curated sliver stack, and the seven surface descriptors. RN-free and DEPENDENCY-FREE by contract: consumed by app-mobile (RN), @mingla/offering-rendering (react-native-web) and mingla-business/server (Node + satori), none of which may import from an app's src/ (I-MOR-0827-PACKAGE-ISOLATION). Plain data and pure functions only — no JSX, no react-native, no CSS. Enforced by I-PROPOSED-C-CARD-IDENTITY-SINGLE-SOURCE."
+}
