@@ -7471,7 +7471,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Established:** DRAFT at #1579 SPEC 2026-08-04. Flips ACTIVE at CLOSE after independent
   iOS **and Android** tester PASS plus the VoiceOver pass.
 
-### I-PROPOSED-1593-LAYER-GEOMETRY-SINGLE-SOURCE (DRAFT)
+### I-PROPOSED-1593-LAYER-GEOMETRY-SINGLE-SOURCE (ACTIVE)
 - **Rule:** where one visual rectangle is composed from **two sibling layers** — a non-interactive
   poster behind and an interactive face in front with a transparent hole — the two boxes MUST be the
   same rectangle **by construction**: derived from ONE measurement or ONE layout computation, never
