@@ -69,6 +69,9 @@ import {
   DECK_HERO_PLACEHOLDER_BLURHASH,
   DECK_SCRIM_COLORS,
   DECK_SCRIM_LOCATIONS,
+  DECK_TOP_SCRIM_COLORS,
+  DECK_TOP_SCRIM_HEIGHT_PT,
+  DECK_TOP_SCRIM_LOCATIONS,
 } from "./deckHeroConstants";
 // ORCH-1065: brand experiences expand → business-event sheet → ticket-checkout-create
 // (the proven ORCH-1016 trip pattern). NO parallel money fn (COMMS-0014/0016).
@@ -3210,6 +3213,17 @@ export default function SwipeableCards({
                       style={styles.heroScrim}
                     />
 
+                    {/* #1609 amendment 4 — the top scrim. The behind face carries it too:
+                        without it, a swipe would reveal a bright top band on the promoted
+                        card exactly where the front card had a dark one, which reads as a
+                        flash under the chrome on every single swipe. */}
+                    <LinearGradient
+                      colors={DECK_TOP_SCRIM_COLORS}
+                      locations={DECK_TOP_SCRIM_LOCATIONS}
+                      pointerEvents="none"
+                      style={styles.topScrim}
+                    />
+
                     {/* ORCH-0991: image-count badge removed from cards. */}
 
                     {/* Title and Details Overlay */}
@@ -3442,6 +3456,20 @@ export default function SwipeableCards({
                     locations={DECK_SCRIM_LOCATIONS}
                     pointerEvents="none"
                     style={styles.heroScrim}
+                  />
+
+                  {/* #1609 amendment 4 — the top scrim. One LinearGradient per anchor,
+                      NOT a third layered node: the top and bottom ramps never overlap
+                      (200pt vs a band starting at 0.48 x cardHeight), so no pixel is ever
+                      composited by both and the bottom ramp's WCAG numbers stay exact.
+                      Alpha 0.45 is back-solved from the 3:1 SC 1.4.11 non-text floor
+                      against a pure-white photo (minimum 0.416164) — the deck chrome sat
+                      on bare photo at 1.02:1 to 1.26:1 in every delivered capture. */}
+                  <LinearGradient
+                    colors={DECK_TOP_SCRIM_COLORS}
+                    locations={DECK_TOP_SCRIM_LOCATIONS}
+                    pointerEvents="none"
+                    style={styles.topScrim}
                   />
 
                   {/* ORCH-0991: image-count badge removed from cards. */}
@@ -3877,6 +3905,20 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: "52%",
+    zIndex: 1,
+  },
+  // #1609 amendment 4 — the TOP scrim, the mirror of heroScrim. Sized in ABSOLUTE
+  // POINTS because the chrome it protects (GlassTopBar's 44pt button row at
+  // safeAreaTop + 2, and the "Swipe History" pill) is itself laid out in absolute
+  // points. No flex-axis key and no percentage, so it depends neither on siblings nor
+  // on the parent's resolved height. Alpha is back-solved from the 3:1 SC 1.4.11
+  // non-text floor against a pure-white photo — see DECK_TOP_SCRIM_COLORS.
+  topScrim: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    height: DECK_TOP_SCRIM_HEIGHT_PT,
     zIndex: 1,
   },
   // META-ORCH-1290(C) D-6a (DESIGN §5a.2/5a.3): the place pitch blurb — 2-line
