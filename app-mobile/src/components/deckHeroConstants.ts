@@ -52,3 +52,94 @@ export const DECK_SCRIM_COLORS = [
 ] as const;
 
 export const DECK_SCRIM_LOCATIONS = [0, 0.32, 0.62, 1] as const;
+
+/**
+ * #1609 amendment 4 — the TOP scrim.
+ *
+ * Deleting the white tray gained photo everywhere, including behind the deck chrome
+ * (GlassTopBar's filter button and notification bell, and SwipeableCards' own
+ * "Swipe History" pill). Those elements previously had a calmer backdrop; they now sit
+ * on bare photo. Measured across all six delivered #1609 captures, the photo inside the
+ * chrome band reaches a 90th-percentile relative luminance of 0.783 to 0.984, and five
+ * of the six saturate to L = 1.000 somewhere in the band. White chrome against that
+ * measures 1.02:1 to 1.26:1.
+ *
+ * THE BAR. The chrome is icons and a pill, not text, so the governing criterion is
+ * WCAG 2.1 SC 1.4.11 Non-text Contrast: 3:1 for meaningful graphics and for the visual
+ * boundary of a UI component. It is NOT 4.5:1 — that is the text criterion the BOTTOM
+ * scrim's description band is derived against.
+ *
+ * THE DERIVATION (same method as DECK_SCRIM_COLORS above; back-solved, not eyeballed).
+ * Worst case is a pure-white (255) photo. For white chrome (L1 = 1.0) at ratio R:
+ *
+ *     (1.0 + 0.05) / (L2 + 0.05) >= R      =>   R = 3   =>   L2 <= 0.30
+ *
+ * A black scrim of alpha a over white composites to channel c = 255(1 - a), so
+ * c' = 1 - a, and inverting the sRGB transfer function L = ((c' + 0.055)/1.055)^2.4:
+ *
+ *     c' = 1.055 * 0.30^(1/2.4) - 0.055 = 0.583836
+ *     a >= 1 - 0.583836 = 0.416164
+ *
+ * SHIPPED ALPHA 0.45, which composites white to L = 0.263292 and yields 3.35:1 — a 12%
+ * margin over the 3:1 floor, matching the margin discipline of the bottom ramp (whose
+ * title band ships at 3.29:1 against the same 3:1 floor).
+ *
+ * WHAT ELSE WAS CHECKED AGAINST THIS ALPHA (all against the same white worst case):
+ *
+ *   - "Swipe History" pill, rgba(255,255,255,0.95) over the scrimmed backdrop:
+ *     composites to L = 0.9496 against a backdrop of L = 0.263292 => 3.19:1. PASSES.
+ *     Without the top scrim the same pill on a white photo is 1.00:1 — literally
+ *     invisible. This is the single largest gain in the amendment.
+ *
+ *   - The #eb7825 notification badge on the bell (L = 0.312360). Honest result: the
+ *     badge FILL cannot reach 3:1 against the backdrop at any usable alpha. Against an
+ *     unscrimmed white photo it is 2.90:1 (already failing); against this scrim it is
+ *     1.157:1, and it is exactly camouflaged (1.00:1) at a = 0.405. Driving the fill to
+ *     3:1 would need L2 <= 0.070787, i.e. a >= 0.705 — a scrim so heavy it would bury
+ *     the photograph. It does not need to: the badge carries its own opaque 1.5pt
+ *     rgba(18,20,26,1) ring (L = 0.007038), and SC 1.4.11 is satisfied by that boundary:
+ *         badge fill vs its ring          6.35:1
+ *         ring vs the scrimmed backdrop   5.49:1
+ *     Both clear 3:1, so the badge stays identifiable. The ring is load-bearing for
+ *     accessibility and the guard asserts it still exists.
+ *
+ * GEOMETRY. The chrome is laid out in ABSOLUTE POINTS (safe-area top + a 44pt button
+ * row), so the scrim that covers it is sized in absolute points too. It carries no
+ * flex-axis key and no percentage — it does not depend on siblings OR on the parent's
+ * resolved height, which is strictly stronger compliance with
+ * I-PROPOSED-1593-LAYER-GEOMETRY-SINGLE-SOURCE than the bottom scrim's `height: '52%'`.
+ *
+ *     card top edge          = screen y 2      (SwipeableCards container paddingTop)
+ *     chrome band bottom     = safeAreaTop + 46 (GlassTopBar topInset 2 + button 44)
+ *     => in card-local y     = safeAreaTop + 44
+ *
+ * The plateau runs to 0.60 * 200 = 120pt of card-local y, which covers every safe-area
+ * top inset up to 76pt — above the largest shipping iOS inset (62pt, iPhone 17 Pro Max)
+ * and above any common Android status bar plus cutout. Below the plateau the ramp
+ * decays to zero by 200pt so there is no visible edge.
+ *
+ * NON-OVERLAP. The top and bottom scrims must never overlap, or their alphas would
+ * stack and every number in the bottom ramp's derivation would be fiction. The bottom
+ * scrim is the taller of the two on a curated card at 62%, so non-overlap holds for any
+ * card at least 200 / 0.38 = 526.4pt tall. The shortest supported device (iPhone SE 3rd
+ * gen, 667pt screen) yields a 576pt card. The guard asserts this.
+ */
+export const DECK_TOP_SCRIM_COLORS = [
+  'rgba(0,0,0,0.45)',
+  'rgba(0,0,0,0.45)',
+  'rgba(0,0,0,0.12)',
+  'rgba(0,0,0,0)',
+] as const;
+
+export const DECK_TOP_SCRIM_LOCATIONS = [0, 0.6, 0.82, 1] as const;
+
+/** Absolute height of the top scrim, in points. No percentage, no flex axis. */
+export const DECK_TOP_SCRIM_HEIGHT_PT = 200;
+
+/**
+ * Card-local y below which the scrim must still hold its full plateau alpha.
+ * = DECK_MAX_SUPPORTED_TOP_INSET_PT + GlassTopBar row bottom (46) - card top offset (2).
+ */
+export const DECK_MAX_SUPPORTED_TOP_INSET_PT = 76;
+export const DECK_CHROME_BAND_BOTTOM_PT = 46;
+export const DECK_CARD_TOP_OFFSET_PT = 2;

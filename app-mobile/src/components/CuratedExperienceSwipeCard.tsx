@@ -30,6 +30,9 @@ import {
   DECK_HERO_PLACEHOLDER_BLURHASH,
   DECK_SCRIM_COLORS,
   DECK_SCRIM_LOCATIONS,
+  DECK_TOP_SCRIM_COLORS,
+  DECK_TOP_SCRIM_HEIGHT_PT,
+  DECK_TOP_SCRIM_LOCATIONS,
 } from './deckHeroConstants';
 import { DECK_VISIBLE_POSTER_CACHE_POLICY } from './swipeDeck/deckHeroPolicy';
 
@@ -431,6 +434,19 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
           style={styles.heroScrim}
         />
 
+        {/* #1609 amendment 4 — the top scrim. Identical ramp and identical absolute
+            height to the place card: the deck chrome sits at the same absolute y over
+            BOTH card types, so a per-type value here would be the same class of drift
+            that made the place and curated scrims disagree before. Curated's bottom
+            scrim is the taller one (62%), so non-overlap is tightest here: it holds for
+            any card at least 200 / 0.38 = 526.4pt tall. */}
+        <LinearGradient
+          colors={DECK_TOP_SCRIM_COLORS}
+          locations={DECK_TOP_SCRIM_LOCATIONS}
+          pointerEvents="none"
+          style={styles.topScrim}
+        />
+
         {/* Title + labels overlay — bottom-left of image, matches single-card anatomy */}
         <View style={styles.titleOverlay} pointerEvents="box-none">
           <Text style={styles.cardTitle} numberOfLines={2} maxFontSizeMultiplier={1.4}>{card.title}</Text>
@@ -544,6 +560,16 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: '62%',
+    zIndex: 1,
+  },
+  // #1609 amendment 4 — mirror of SwipeableCards.styles.topScrim, absolute points,
+  // no flex-axis key, no percentage.
+  topScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: DECK_TOP_SCRIM_HEIGHT_PT,
     zIndex: 1,
   },
   // Title + labels overlay — matches SwipeableCards.tsx titleOverlay
