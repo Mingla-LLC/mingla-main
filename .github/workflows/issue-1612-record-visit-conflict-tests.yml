@@ -1,0 +1,73 @@
+name: "#1612 record-visit ON CONFLICT arbiter"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/record-visit/**"
+      - ".github/workflows/issue-1612-record-visit-conflict-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/record-visit/**"
+      - ".github/workflows/issue-1612-record-visit-conflict-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1612-record-visit-conflict:
+    name: "#1612 record-visit upsert must resolve an arbiter"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # The whole point of #1612 is that the defect lives in the INTERACTION between
+      # the edge function's ON CONFLICT target and the schema's unique indexes. Only a
+      # real Postgres can adjudicate that, so we apply the entire migration chain to a
+      # clean PG17 and then execute the exact statement shape PostgREST emits.
+      - name: Apply every migration to clean PostgreSQL 17
+        run: |
+          issue1612_db_password="$(openssl rand -hex 24)"
+          docker run --name issue1612-postgres \
+            -e POSTGRES_PASSWORD="$issue1612_db_password" \
+            -d supabase/postgres:17.4.1.075
+          for attempt in {1..90}; do
+            state="$(docker inspect --format \
+              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              issue1612-postgres)"
+            if [ "$state" = "healthy" ]; then
+              break
+            fi
+            sleep 1
+          done
+          for migration_file in supabase/migrations/*.sql; do
+            docker exec -i issue1612-postgres \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              < "$migration_file"
+          done
+
+      - name: Visit upsert must resolve an arbiter, stay idempotent, and label 'visited'
+        run: |
+          docker exec -i issue1612-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1612_record_visit_conflict_target.test.sql
+
+      # Guards the arbiter contract for the record-visit write path specifically: the
+      # edge function's onConflict target must still be (user_id, experience_id), so a
+      # silent edit there cannot drift away from the constraint this migration added.
+      - name: record-visit must still upsert on (user_id, experience_id)
+        run: |
+          grep -q 'onConflict: "user_id,experience_id"' \
+            supabase/functions/record-visit/index.ts \
+            || { echo "record-visit no longer upserts on (user_id, experience_id) — re-verify the arbiter in supabase/migrations before changing this."; exit 1; }
+
+      - name: Remove disposable database
+        if: always()
+        run: docker rm -f issue1612-postgres || true
