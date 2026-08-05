@@ -56,6 +56,19 @@ const COLLAPSED_LABEL = "Expand analytics, Customers Mingla drove you";
 
 type TileProps = React.ComponentProps<typeof AnalyticsHomeTile>;
 
+/**
+ * Minimal shape of a rendered node for the tree walks below. `findAllByProps`
+ * is untyped, so its callbacks would otherwise be implicitly `any` and the
+ * repo's ratcheted typecheck gate (COMMS-0130) fails on any added diagnostic.
+ * Mirrors the local `TestNode` precedent in
+ * `app/(tabs)/__tests__/home.issue874.render.test.tsx` rather than inventing a
+ * type — and deliberately does NOT use `any`, which would leave these walks
+ * unsound while silencing the gate.
+ */
+interface TestNode {
+  props: Record<string, unknown>;
+}
+
 const renderTile = async (
   overrides: Partial<TileProps> = {},
 ): Promise<RenderResult> =>
@@ -77,11 +90,12 @@ const renderTile = async (
 const collapsedChevronSlot = (
   card: ReturnType<RenderResult["getByTestId"]>,
 ): Record<string, unknown> => {
-  const matches = card
+  const matches: Record<string, unknown>[] = card
     .findAllByProps({ pointerEvents: "none" })
-    .map((node) => flatten(node.props.style))
+    .map((node: TestNode) => flatten(node.props.style))
     .filter(
-      (s) => s.position === "absolute" && s.width === 24 && s.height === 24,
+      (s: Record<string, unknown>) =>
+        s.position === "absolute" && s.width === 24 && s.height === 24,
     );
   // `findAllByProps` reports the composite element AND its host instance, so
   // dedupe by value: there must be exactly ONE distinct decorative slot.
@@ -271,9 +285,9 @@ describe("#1616 adversarial — geometry and target-size contracts", () => {
 
     const card = screen.getByTestId("analytics-home-tile");
     // The 24 x 24 absolute slot specifically — not a GlassChrome absoluteFill.
-    const decorative = card
+    const decorative: TestNode[] = card
       .findAllByProps({ pointerEvents: "none" })
-      .filter((node) => {
+      .filter((node: TestNode) => {
         const s = flatten(node.props.style);
         return s.position === "absolute" && s.width === 24 && s.height === 24;
       });
