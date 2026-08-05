@@ -16,6 +16,7 @@
  */
 
 import React from "react";
+import { precisionFromPlaceDetails } from "@mingla/location-input";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
@@ -265,7 +266,10 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
                   countryCode: d.countryCode,
                   lat: d.location.lat,
                   lng: d.location.lng,
-                  coordinatePrecision: "approximate",
+                  // Issue #1629 — READ the precision from Mapbox's own feature_type
+                  // instead of asserting it. This branch is a REAL PICK, so hardcoding
+                  // "approximate" made `exact` unreachable everywhere (0 rows in prod).
+                  coordinatePrecision: precisionFromPlaceDetails(d),
                 });
                 savedContextRef.current = {
                   city: d.city,

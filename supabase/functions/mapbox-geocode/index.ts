@@ -557,7 +557,45 @@ type PlaceDetails = {
   regionCodeFull: string | null;
   countryCode: string | null;
   location: { lat: number; lng: number };
+  /**
+   * Issue #1629 — Mapbox's OWN `properties.feature_type`, passed through
+   * STRUCTURED and unparsed (same discipline as regionCode / META-ORCH-1060
+   * INV-3). This is the answer to "how precise is this coordinate?", and the
+   * client was previously ASSERTING it instead of reading it — every pick was
+   * hardcoded "approximate", so `exact` was unreachable and 0 rows in
+   * production carried it.
+   * https://docs.mapbox.com/api/search/search-box/
+   */
+  featureType: string | null;
 };
+
+/**
+ * Issue #1629 — how precise is the coordinate this feature carries?
+ *
+ * Per Mapbox's documented feature types (https://docs.mapbox.com/api/search/search-box/):
+ * `address` is "individual residential or business addresses as a street with
+ * house number" and `poi` is a specific business/landmark — both are a real
+ * point for THAT entity. Everything else resolves to an AREA CENTROID: `street`
+ * is explicitly "the street, with no house number", and country/region/postcode/
+ * district/place/locality/neighborhood/block are administrative areas.
+ *
+ * UNKNOWN OR MISSING → "approximate", deliberately. Over-claiming precision is
+ * fabricated data (Constitution rule 9): a caption saying "exact" over a
+ * city-centre pin is a lie the user cannot detect, whereas under-claiming is
+ * merely conservative and visible. Note this is the OPPOSITE default to #1622's
+ * failure classifier — same principle, inverted inputs: pick the direction whose
+ * failure mode is visible rather than silent.
+ */
+const EXACT_FEATURE_TYPES = new Set(["address", "poi"]);
+
+export function featureTypeToPrecision(
+  featureType: string | null | undefined,
+): "exact" | "approximate" {
+  if (typeof featureType !== "string") return "approximate";
+  return EXACT_FEATURE_TYPES.has(featureType.trim().toLowerCase())
+    ? "exact"
+    : "approximate";
+}
 
 /**
  * Normalize a Mapbox Search Box GeoJSON feature into the shared PlaceDetails
@@ -625,6 +663,9 @@ export function featureToDetails(
     regionCodeFull,
     countryCode,
     location: { lat: coords[1], lng: coords[0] }, // GeoJSON is [lng, lat]
+    // Issue #1629 — STRUCTURED pass-through, never parsed from a display
+    // string. Additive: existing consumers that ignore it are unaffected.
+    featureType: typeof props.feature_type === "string" ? props.feature_type : null,
   };
 }
 

@@ -13,6 +13,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { precisionFromPlaceDetails } from "@mingla/location-input";
 import {
   Modal,
   Platform,
@@ -630,7 +631,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               departureLocationText: label,
               departureLat: place.location.lat,
               departureLng: place.location.lng,
-              departureCoordinatePrecision: "approximate",
+              // Issue #1629 — real pick: read Mapbox's feature_type, do not assert.
+              departureCoordinatePrecision: precisionFromPlaceDetails(place),
             });
             departureContextRef.current = {
               city: place.city,
@@ -706,7 +708,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               destinationLocationText: label,
               destinationLat: place.location.lat,
               destinationLng: place.location.lng,
-              destinationCoordinatePrecision: "approximate",
+              // Issue #1629 — real pick: read Mapbox's feature_type, do not assert.
+              destinationCoordinatePrecision: precisionFromPlaceDetails(place),
             });
             destinationContextRef.current = {
               city: place.city,
