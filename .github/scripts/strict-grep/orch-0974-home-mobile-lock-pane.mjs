@@ -251,14 +251,25 @@ if (homeSource.length > 0) {
 
   const sectionHeader = extractStyleBlock(homeSource, "mobileSectionHeaderRow");
   const kpiStack = extractStyleBlock(homeSource, "mobileKpiStack");
+  // #1616 [analytics card collapse] — the TOP half of this contract moved from
+  // spacing.lg (24) to spacing.sm (8), on purpose. `mobileSectionHeaderRow`
+  // .paddingTop was one of three paddings (`mobileKpiOuter.paddingBottom` 16 +
+  // `mobileBody.paddingTop` 16 + this 24) that stacked to 56pt of dead space
+  // between the analytics card and the "Upcoming" header whenever
+  // `renderLiveSection()` returned null. It now converges on the desktop pane's
+  // `sectionHeaderRow`, which already used spacing.sm. This gate is where the
+  // ORCH-0974 T-04 assertion actually lives (`jest.config.cjs` quarantines
+  // `home.orch_0974.test.tsx` with "invariant -> updated
+  // orch-0974-home-mobile-lock-pane.mjs"), so the pin is updated in BOTH files.
+  // The paddingBottom half is unchanged and still explicitly pinned.
   if (
     sectionHeader === null ||
     !sectionHeader.includes("paddingBottom: spacing.md") ||
-    !sectionHeader.includes("paddingTop: spacing.lg")
+    !sectionHeader.includes("paddingTop: spacing.sm")
   ) {
     fail(
       "C3: spacing-contract-explicit",
-      "styles.mobileSectionHeaderRow must contain paddingTop: spacing.lg and paddingBottom: spacing.md.",
+      "styles.mobileSectionHeaderRow must contain paddingTop: spacing.sm and paddingBottom: spacing.md.",
     );
   }
   if (kpiStack === null || !kpiStack.includes("gap: spacing.sm")) {

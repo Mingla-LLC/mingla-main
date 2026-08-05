@@ -1132,11 +1132,20 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    // #1616 — `paddingTop` deliberately ABSENT (not `0`): `spacing` has no zero
+    // token, and an absent key is honest where a `0` invites someone to
+    // "restore" it. It was one of the three paddings that stacked to 56pt of
+    // dead space between the analytics card and the "Upcoming" header whenever
+    // `renderLiveSection()` returned null.
   },
   mobileKpiOuter: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
+    // #1616 — STAYS at spacing.md. This is the only separator between the KPI
+    // block and whatever follows it, which is the Live now card when one is
+    // present. Tightening it would collapse the analytics card onto the Live
+    // card, so the 32pt comes out of `mobileBody` + `mobileSectionHeaderRow`
+    // instead — both of which sit BELOW the Live section.
     paddingBottom: spacing.md,
   },
   mobileNoVenueBody: {
@@ -1156,7 +1165,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 0,
-    paddingTop: spacing.lg,
+    // #1616 — spacing.lg (24) -> spacing.sm (8). Converges on the desktop
+    // pane's `sectionHeaderRow`, which already uses spacing.sm; the mobile pane
+    // was the outlier. Post-change rhythm: 16pt between adjacent cards, 24pt
+    // before a section header.
+    paddingTop: spacing.sm,
     paddingBottom: spacing.md,
   },
   mobileUpcomingList: {

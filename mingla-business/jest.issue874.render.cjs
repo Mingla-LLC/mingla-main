@@ -16,6 +16,11 @@ module.exports = {
     "**/__tests__/analytics.issue874.tester.adversarial.render.test.tsx",
     "**/__tests__/BrandAnalyticsA11y.issue874.tester.adversarial.render.test.tsx",
     "**/__tests__/AnalyticsHomeTile.issue874.render.test.tsx",
+    // #1616 [analytics card collapse] — tester-owned adversarial proof that the
+    // COLLAPSED row never navigates, the expanded chevron never navigates, and
+    // the chevron stays a SIBLING of the card Pressable (the invariant iOS
+    // VoiceOver reachability rests on).
+    "**/__tests__/AnalyticsHomeTile.issue1616.tester.adversarial.render.test.tsx",
     "**/__tests__/BrandAnalyticsScreen.issue874.render.test.tsx",
     "**/__tests__/RegularsSection.issue874.render.test.tsx",
     "**/__tests__/home.issue874.render.test.tsx",
