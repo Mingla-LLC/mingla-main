@@ -91,9 +91,17 @@ describe("ORCH-1038 Home to-do toggle + ORCH-0974 lock pane", () => {
     expect(scoped).toContain("{hasUpcomingItems ? (");
   });
 
-  test("T-04: section header keeps 24px top / 16px bottom spacing", () => {
+  // #1616 [analytics card collapse] — the top half of this contract MOVED, on
+  // purpose. `mobileSectionHeaderRow.paddingTop` was one of three paddings
+  // (`mobileKpiOuter.paddingBottom` 16 + `mobileBody.paddingTop` 16 + this 24)
+  // that stacked to 56pt of dead space between the analytics card and the
+  // "Upcoming" header whenever `renderLiveSection()` returned null. It is now
+  // spacing.sm (8), converging on the desktop pane's `sectionHeaderRow`, which
+  // already used spacing.sm. The `paddingBottom: spacing.md` half of the
+  // contract is unchanged and this test still guards the same style block.
+  test("T-04: section header keeps 8px top / 16px bottom spacing", () => {
     const sectionHeader = styleBlock("mobileSectionHeaderRow");
-    expect(sectionHeader).toContain("paddingTop: spacing.lg");
+    expect(sectionHeader).toContain("paddingTop: spacing.sm");
     expect(sectionHeader).toContain("paddingBottom: spacing.md");
     expect(scopedMobilePopulated()).toContain(
       "<Text style={styles.sectionTitle}>Upcoming</Text>",
