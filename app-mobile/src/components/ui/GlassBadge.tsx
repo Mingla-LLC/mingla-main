@@ -55,6 +55,13 @@ export type GlassBadgeProps = {
    * Reduced Motion is respected — animation is skipped when enabled.
    */
   entryIndex?: number;
+  /**
+   * #1609 — light-fill ("liquid") glass, for chips sitting ON the deck scrim rather
+   * than on bare photo. Swaps the darkening `tint.floor` for `liquid.fill`, brightens
+   * the rim and the specular top bevel. Same idiom as GlassIconButton's `liquid`.
+   * Derivation + measured L* values: designSystem.ts → glass.badge.liquid.
+   */
+  liquid?: boolean;
 };
 
 // META-ORCH-1002 Sub-1 (S2): shared Android-opaque-fallback gate (was the per-component Android-11 version gate).
@@ -67,6 +74,7 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
   onPress,
   accessibilityLabel,
   entryIndex,
+  liquid = false,
 }) => {
   const [reduceTransparency, setReduceTransparency] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -231,7 +239,10 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
       ) : (
         <View
           pointerEvents="none"
-          style={[StyleSheet.absoluteFill, { backgroundColor: t.fallback.solid }]}
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: liquid ? t.liquid.fallbackSolid : t.fallback.solid },
+          ]}
         />
       )}
 
@@ -244,7 +255,14 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
           pointerEvents="none"
           style={[
             StyleSheet.absoluteFill,
-            { backgroundColor: variant === 'accent' ? glass.chrome.active.tint : t.tint.floor },
+            {
+              backgroundColor:
+                variant === 'accent'
+                  ? glass.chrome.active.tint
+                  : liquid
+                    ? t.liquid.fill
+                    : t.tint.floor,
+            },
           ]}
         />
       ) : variant === 'accent' ? (
@@ -268,8 +286,14 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
         />
       ) : null}
 
-      {/* L3 — top highlight */}
-      <View pointerEvents="none" style={styles.topHighlight} />
+      {/* L3 — top highlight (the specular bevel; brighter on the liquid path) */}
+      <View
+        pointerEvents="none"
+        style={[
+          styles.topHighlight,
+          liquid ? { backgroundColor: t.liquid.topHighlight } : null,
+        ]}
+      />
 
       {/* Content */}
       <View style={variant === 'circular' ? styles.contentCircular : styles.contentRow}>
@@ -295,6 +319,8 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
   const baseBoxStyle: StyleProp<ViewStyle> = [
     styles.base,
     shapeStyle,
+    liquid ? { borderColor: t.liquid.border } : null,
+    // accent keeps its orange rim — it is already a lightening fill and reads.
     variant === 'accent' ? { borderColor: glass.chrome.active.border } : null,
   ];
 

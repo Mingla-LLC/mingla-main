@@ -501,6 +501,47 @@ export const glass = {
     fallback: {
       solid: 'rgba(20, 22, 26, 0.92)',
     },
+    /**
+     * #1609 — "liquid" (light-fill) glass, for chips that sit ON the deck scrim
+     * instead of on bare photo. Same idiom as GlassIconButton's `liquid` prop:
+     * a light translucent fill + a specular top bevel, rather than the dark
+     * `tint.floor` readability wash.
+     *
+     * WHY A SECOND FILL EXISTS. `tint.floor` rgba(12,14,18,0.42) is a DARKENING
+     * layer. Its job is to pull a bright, busy photo down so white text reads.
+     * That is correct on bare photo and wrong on a scrim: the collapsed card's
+     * badge row lands at scrim alpha ~0.82, so the backdrop is already near-black
+     * and a darkening fill has nothing left to darken. Measured on the delivered
+     * #1609 capture, the default chip's body sat at L* 12.9 against a surround of
+     * L* 15.6-17.9 — a delta of -2.7 to -5.0, at or below the ~2-3 L* just-
+     * noticeable difference. The chip had no perceptible body; only its 1px
+     * hairline (1.57:1) marked it, so it read as a flat dark pill.
+     *
+     * The proof is inside that same capture: the ONE chip that read correctly was
+     * the curated `accent` chip, whose fill (orange 0.28) LIGHTENS rather than
+     * darkens — measured at L* 32.7 against the same surround, +11.3 to +26.7.
+     *
+     * DERIVATION of the 0.12 fill. Backdrop at the badge band on a bright photo
+     * (channel 0.85) under the re-derived scrim (alpha 0.818) composites to
+     * Y = 0.020725, L* = 15.80. A white fill at alpha a lifts it to:
+     *     0.075 -> L* 23.33  (delta L* +7.5)   <- GlassIconButton's value
+     *     0.12  -> L* 27.68  (delta L* +11.9)  <- SHIPPED
+     * 0.12 rather than the icon button's 0.075 because the badge row sits in a
+     * deeper scrim band than the top chrome (alpha 0.82 vs 0.60) and needs more
+     * lift to clear the same perceptual bar. White label on the lifted fill is
+     * 10.2:1 — the legibility floor is not merely kept, it improves, because the
+     * fill is still overwhelmingly darker than the white text on it.
+     *
+     * `fallbackSolid` is the Android/reduce-transparency path: no BlurView means
+     * no backdrop to lift, so the tile must land on the target tone by itself.
+     * rgb(58,62,70) measures L* 26.1, matching the iOS composite (~27.7).
+     */
+    liquid: {
+      fill: 'rgba(255, 255, 255, 0.12)',
+      border: 'rgba(255, 255, 255, 0.30)',
+      topHighlight: 'rgba(255, 255, 255, 0.50)',
+      fallbackSolid: 'rgba(58, 62, 70, 0.94)',
+    },
     padding: {
       horizontal: 11,
       vertical: 7,

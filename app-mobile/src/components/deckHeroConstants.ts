@@ -43,15 +43,56 @@ export const DECK_HERO_PLACEHOLDER_BLURHASH = 'L23%jdof00WB~qj[ayfQayfQfQfQ';
  * 0.661 at the description band, giving 3.85:1 and 7.29:1 against white. The existing
  * textShadow is kept as perceptual reinforcement only — it does NOT count toward WCAG
  * and none of the math above relies on it.
+ *
+ * ---------------------------------------------------------------------------
+ * #1609 REJECTION (2026-08-05) — THE PRESENCE FLOOR.
+ *
+ * Seth rejected the first ramp: "The gradient at the top and bottom needs to show."
+ * The contrast maths above was never the complaint — it passes, and it still does.
+ * The defect is that neither ramp read as a DESIGNED ELEMENT: the bottom looked like
+ * the photo happening to be dark rather than like deliberate treatment.
+ *
+ * Passing a contrast ratio at the text band is necessary and NOT sufficient. WCAG
+ * ratio answers "can the text be read". It does not answer "can the layer be seen",
+ * and at low luminance it is actively misleading — the +0.05 flare term dominates, so
+ * two tones that are obviously different to the eye can score a near-1.0 ratio.
+ *
+ * The right perceptual measure is CIE L* (lightness), where a difference of ~2-3 units
+ * is the just-noticeable difference for large flat fields. So this ramp is now derived
+ * against BOTH floors, and both must hold:
+ *
+ *   LEGIBILITY FLOOR (unchanged, inherited above): WCAG 2.1 contrast at each text band.
+ *   PRESENCE FLOOR   (new): on the worst-case white photo the ramp must traverse
+ *                    >= 40 L* units, and its deep end must resolve toward a definite
+ *                    tone rather than a dimmed photo.
+ *
+ * Raising alpha only ever RAISES contrast for white text, so every legibility number
+ * in the derivation above is preserved or improved — verified band-by-band below.
+ *
+ * BOTTOM RAMP, re-derived. Deep end 0.82 -> 0.94, mid 0.68 -> 0.78, onset 0.35 -> 0.42,
+ * and the first stop pulled in 0.32 -> 0.30 so the ramp starts working sooner.
+ *
+ *   deep end on a white photo:  alpha 0.82 -> L* 18.9   (reads "dark grey photo")
+ *                               alpha 0.94 -> L*  4.4   (reads "black treatment")
+ *   residual photo texture transmitted at the tail: 18% -> 6%, a 3x reduction. This is
+ *   what converts the band from "dim photograph" into "designed layer" — the texture
+ *   stops competing with the tone.
+ *
+ *   Legibility re-check on the 52% scrim over a 783pt card, all against white:
+ *     title band  (y 541-601): alpha 0.491 -> 0.538   3.85:1 -> 4.55:1   (now clears
+ *                              even the 4.5:1 NORMAL-text bar, not just its 3:1 one)
+ *     description (y 609-651): alpha 0.661 -> 0.726   7.29:1 -> 9.46:1
+ *     action rail (y 711-755): alpha 0.760 -> 0.865  10.80:1 -> 15.8:1
+ *   Every band improves. Nothing regresses.
  */
 export const DECK_SCRIM_COLORS = [
   'rgba(0,0,0,0)',
-  'rgba(0,0,0,0.35)',
-  'rgba(0,0,0,0.68)',
-  'rgba(0,0,0,0.82)',
+  'rgba(0,0,0,0.42)',
+  'rgba(0,0,0,0.78)',
+  'rgba(0,0,0,0.94)',
 ] as const;
 
-export const DECK_SCRIM_LOCATIONS = [0, 0.32, 0.62, 1] as const;
+export const DECK_SCRIM_LOCATIONS = [0, 0.3, 0.62, 1] as const;
 
 /**
  * #1609 amendment 4 — the TOP scrim.
@@ -123,11 +164,45 @@ export const DECK_SCRIM_LOCATIONS = [0, 0.32, 0.62, 1] as const;
  * scrim is the taller of the two on a curated card at 62%, so non-overlap holds for any
  * card at least 200 / 0.38 = 526.4pt tall. The shortest supported device (iPhone SE 3rd
  * gen, 667pt screen) yields a 576pt card. The guard asserts this.
+ *
+ * ---------------------------------------------------------------------------
+ * #1609 REJECTION (2026-08-05) — TOP RAMP RE-DERIVED FOR PRESENCE.
+ *
+ * Same story as the bottom ramp: 3.35:1 was a passing legibility number and Seth's
+ * complaint was that the band did not READ. Measured on the delivered bright-hero
+ * capture, the plateau sat at a median L* of ~47 while the clear photo below the ramp
+ * measured L* ~76 — a real difference, but the photo's own content variation inside
+ * the plateau swung +/- 8 L*, the same order as the ramp's onset. When the layer's
+ * signal is no stronger than the photo's noise, the eye reads "darkish photo", not
+ * "gradient". Fixing that means raising the tone AND suppressing the texture.
+ *
+ * PLATEAU 0.45 -> 0.60. Geometry is deliberately UNCHANGED (200pt, stops at
+ * [0, 0.60, 0.82, 1]) so the non-overlap proof below and every geometry assertion in
+ * the guard stand exactly as written. Only the alphas move.
+ *
+ *   white chrome vs plateau:  3.35:1 -> 5.74:1   (floor was 3:1; margin 12% -> 91%)
+ *   plateau tone on white:    L* 58.3 -> L* 43.2 (delta L* from clear white: 42 -> 57)
+ *   photo texture transmitted: 55% -> 40%, a 27% reduction — the band now reads as
+ *   tone with a photograph behind it rather than as a photograph that is a bit dark.
+ *   "Swipe History" pill vs plateau: 3.19:1 -> 5.37:1.
+ *
+ * WHY 0.60 AND NOT MORE — THE BINDING CONSTRAINT IS THE NOTIFICATION BADGE RING.
+ * The #eb7825 badge cannot reach 3:1 against the backdrop at any usable alpha (that
+ * was established above), so SC 1.4.11 is carried by its opaque 1.5pt rgba(18,20,26,1)
+ * ring, Y = 0.007038. Darkening the scrim moves the backdrop TOWARD that ring and
+ * therefore ERODES the very boundary the badge depends on. Solving
+ *     (Yb + 0.05) / (0.007038 + 0.05) >= 3   =>   Yb >= 0.121114   =>   alpha <= 0.617
+ * gives a hard ceiling. Shipped 0.60 lands the ring at 3.21:1 — a 7% margin — where
+ * 0.62 would have measured 2.97:1 and quietly broken it. This constraint is the reason
+ * the plateau is 0.60 and not a rounder, darker number, and the guard asserts it.
+ *
+ * The mid stop moves 0.12 -> 0.30 so the decay is a visible ramp rather than an abrupt
+ * release into bare photo.
  */
 export const DECK_TOP_SCRIM_COLORS = [
-  'rgba(0,0,0,0.45)',
-  'rgba(0,0,0,0.45)',
-  'rgba(0,0,0,0.12)',
+  'rgba(0,0,0,0.60)',
+  'rgba(0,0,0,0.60)',
+  'rgba(0,0,0,0.30)',
   'rgba(0,0,0,0)',
 ] as const;
 

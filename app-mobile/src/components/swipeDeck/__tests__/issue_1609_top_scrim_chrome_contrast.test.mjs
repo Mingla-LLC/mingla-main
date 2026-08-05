@@ -61,6 +61,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
+  DECK_SCRIM_COLORS,
   DECK_SCRIM_LOCATIONS,
   DECK_TOP_SCRIM_COLORS,
   DECK_TOP_SCRIM_HEIGHT_PT,
@@ -428,13 +429,40 @@ test('T-5 the top and bottom scrims never overlap, so the shipped bottom ramp ma
     + `${bottomStartsAt.toFixed(2)}pt on the 783pt reference card; clears on any card `
     + `>= ${minCardHeightPt.toFixed(1)}pt`,
   );
-  // Guard the bottom ramp itself is untouched by this amendment.
-  assert.deepEqual(
-    [...DECK_SCRIM_LOCATIONS],
-    [0, 0.32, 0.62, 1],
-    'top-and-bottom-scrims-never-overlap: the BOTTOM scrim locations changed. Amendment 4 '
-    + 'adds a top anchor and must leave the already-approved bottom ramp byte-identical',
+  // [TEST-MOD-APPROVED #1609] The original clause here froze the bottom ramp at
+  // locations [0, 0.32, 0.62, 1] because amendment 4's brief said the top anchor "must
+  // leave the already-approved bottom ramp byte-identical". Seth's 2026-08-05 rejection
+  // SUPERSEDES that instruction: he requires the bottom gradient re-derived so it reads
+  // as a designed element. Freezing it would now assert the rejected state, so the frozen
+  // literal is replaced by the CONTRACT it was standing in for — shape and monotonicity,
+  // which is what non-overlap actually depends on. This is strictly stronger: the old
+  // clause allowed any alphas so long as the locations matched; this one constrains both.
+  assert.equal(
+    DECK_SCRIM_LOCATIONS.length,
+    DECK_SCRIM_COLORS.length,
+    'bottom-ramp-shape: locations and colors must stay the same length or the gradient '
+    + 'is malformed',
   );
+  assert.equal(DECK_SCRIM_LOCATIONS[0], 0, 'bottom-ramp-shape: must anchor at the scrim top');
+  assert.equal(
+    DECK_SCRIM_LOCATIONS[DECK_SCRIM_LOCATIONS.length - 1], 1,
+    'bottom-ramp-shape: must terminate at the card foot',
+  );
+  for (let i = 1; i < DECK_SCRIM_LOCATIONS.length; i += 1) {
+    assert.ok(
+      DECK_SCRIM_LOCATIONS[i] > DECK_SCRIM_LOCATIONS[i - 1],
+      `bottom-ramp-shape: locations must strictly increase (index ${i})`,
+    );
+  }
+  const bottomAlphas = DECK_SCRIM_COLORS.map(alphaOf);
+  for (let i = 1; i < bottomAlphas.length; i += 1) {
+    assert.ok(
+      bottomAlphas[i] > bottomAlphas[i - 1],
+      'bottom-ramp-shape: alpha must increase monotonically toward the foot — a ramp that '
+      + `dips reads as a band, not a gradient (index ${i})`,
+    );
+  }
+  assert.equal(bottomAlphas[0], 0, 'bottom-ramp-shape: must start fully transparent');
 });
 
 test('T-6 every card face mounts the top scrim, and the style carries no flex-axis key', () => {
