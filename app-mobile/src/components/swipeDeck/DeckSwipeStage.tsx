@@ -3,6 +3,7 @@ import React, {
   memo,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
 } from 'react';
 import {
@@ -12,6 +13,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { posterPhotoBoxOverride } from './deckPosterGeometry';
 import type { DeckSwipeDirection } from './deckSwipeLifecycle';
 import {
   useDeckSwipeController,
@@ -36,6 +38,7 @@ interface DeckSwipeStageProps extends UseDeckSwipeControllerOptions {
   nextCardStyle: StyleProp<ViewStyle>;
   cardInnerStyle: StyleProp<ViewStyle>;
   imageContainerStyle: StyleProp<ViewStyle>;
+  heroHoleHeight: number | null;
   children: (controller: DeckSwipeController) => React.ReactNode;
 }
 
@@ -48,6 +51,13 @@ export const DeckSwipeStage = memo(forwardRef<DeckSwipeStageHandle, DeckSwipeSta
   function DeckSwipeStage(props, ref) {
     const controller = useDeckSwipeController(props);
     const delayedAnnouncementSentRef = useRef(false);
+
+    // #1593 — single-source the poster photo box off the face tree's own measured
+    // hero hole. Role-scoped on purpose; see deckPosterGeometry.ts.
+    const posterPhotoBox = useMemo(() => ({
+      current: posterPhotoBoxOverride('current', props.heroHoleHeight),
+      behind: posterPhotoBoxOverride('behind', props.heroHoleHeight),
+    }), [props.heroHoleHeight]);
 
     useImperativeHandle(ref, () => ({
       invalidate: controller.invalidate,
@@ -90,7 +100,7 @@ export const DeckSwipeStage = memo(forwardRef<DeckSwipeStageHandle, DeckSwipeSta
             importantForAccessibility="no-hide-descendants"
           >
             <View style={props.cardInnerStyle}>
-              <View style={props.imageContainerStyle}>{card.poster}</View>
+              <View style={[props.imageContainerStyle, posterPhotoBox[card.role]]}>{card.poster}</View>
             </View>
           </Animated.View>
         ))}

@@ -1,0 +1,65 @@
+name: Issue 1593 Deck Layer Geometry
+
+# Enforces I-PROPOSED-1593-LAYER-GEOMETRY-SINGLE-SOURCE.
+#
+# The poster layer's photo box and the interactive card's transparent hero hole are the
+# SAME rectangle drawn in two React trees. Before #1593 each tree computed its own height
+# from one shared style (styles.imageContainer, flex: 0.88) and they disagreed by 21.33pt:
+# 689.00pt in the poster tree (grow-sum 0.88 < 1, single child) against 667.67pt in the
+# face tree (two children, the tray claiming min-content). The overhang composited through
+# the tray's rgba(255,255,255,0.85) as a pale bar on the app's primary surface, in
+# production. Both trees "used the same style", which is exactly why it survived review.
+#
+# These guards prove the CAUSE, by EXECUTING the real geometry function and by statically
+# proving the dataflow producer -> prop -> pure function -> poster box plus the role
+# scoping. They do NOT run Yoga, so they do NOT prove the resulting pixel geometry — that
+# is the runtime oracle's job (SPEC SC-1/SC-2) and both are required.
+#
+# This is a SEPARATE workflow from issue-1481-explorer-deck-tests.yml,
+# issue-1576-deck-promoted-card.yml and issue-1579-deck-tap-expand.yml on purpose: those
+# jobs own their own guard lists and must keep their exact counts.
+#
+# NOTE ON THE ADVERSARIAL GUARD: issue_1593_poster_hole_geometry.adversarial.test.mjs is
+# the tester's deliverable (SPEC #1593 section 9.2) and lands on this same branch before
+# merge, exactly as #1576's did. Until it lands this job FAILS at the require step by
+# design — an enforcement workflow that silently tolerates a missing guard is not an
+# enforcement workflow. Do not weaken this step to make the PR green; land the guard.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/src/components/swipeDeck/**"
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "docs/INVARIANT_REGISTRY.md"
+      - ".github/workflows/issue-1593-deck-layer-geometry.yml"
+  pull_request:
+    paths:
+      - "app-mobile/src/components/swipeDeck/**"
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "docs/INVARIANT_REGISTRY.md"
+      - ".github/workflows/issue-1593-deck-layer-geometry.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1593-layer-geometry-single-source:
+    name: "Issue 1593: layered poster/face geometry is single-sourced"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Require both independent append-only guards
+        run: |
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.adversarial.test.mjs
+      - name: Execute the real poster/hole geometry function and prove the dataflow
+        run: >-
+          node --test
+          app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.adversarial.test.mjs

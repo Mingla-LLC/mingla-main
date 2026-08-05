@@ -844,6 +844,14 @@ export default function SwipeableCards({
     height: Math.max(1, (SCREEN_HEIGHT - 280) * IMAGE_SECTION_RATIO),
   });
 
+  // #1593 — the MEASURED height of the current card's transparent hero hole, and the
+  // single source of truth for the poster layer's photo box. Deliberately NOT
+  // heroLayout.height: that state is SEEDED with an estimate
+  // ((SCREEN_HEIGHT - 280) * IMAGE_SECTION_RATIO) for the image DECODE target and is
+  // wrong by ~70pt until the first layout — using it as a layout input would paint a
+  // white sliver on the first frame. See I-PROPOSED-1593-LAYER-GEOMETRY-SINGLE-SOURCE.
+  const [heroHoleHeight, setHeroHoleHeight] = useState<number | null>(null);
+
   // Card content entrance animation values
   const cardContentOpacity = useRef(new Animated.Value(0)).current;
   const matchBadgeSlide = useRef(new Animated.Value(-20)).current;
@@ -3039,6 +3047,7 @@ export default function SwipeableCards({
             nextCardStyle={styles.nextCard}
             cardInnerStyle={styles.cardInner}
             imageContainerStyle={[styles.imageContainer, styles.posterImageContainer]}
+            heroHoleHeight={heroHoleHeight}
           >
           {(deckSwipe) => (
           <>
@@ -3263,6 +3272,7 @@ export default function SwipeableCards({
                       if (width !== heroLayout.width || height !== heroLayout.height) {
                         setHeroLayout({ width, height });
                       }
+                      if (height !== heroHoleHeight) setHeroHoleHeight(height);   // #1593
                     }}
                   >
                     {/* ORCH-1069: video-aware hero. isTopCard={true} → the top card
