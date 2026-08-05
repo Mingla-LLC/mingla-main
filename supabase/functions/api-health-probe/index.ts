@@ -30,6 +30,7 @@ import { bunnyFetchLibraryUsage, bunnyUsagePct } from "../_shared/bunnyStream.ts
 import { resolveAlertRecipientValue } from "../_shared/secretBundle.ts";
 import { resolveRuntimeConfigValue } from "../_shared/runtimeConfig.ts";
 import {
+  bodyVerdict,
   buildCheckRows,
   CLASS_B_DEPLETION,
   type ClassBHeader,
@@ -186,7 +187,9 @@ async function probeGemini(): Promise<ProbeResult> {
     );
     const body = await res.json().catch(() => null) as { models?: unknown[] } | null;
     const ok = res.ok && Array.isArray(body?.models);
-    return { ok, latencyMs, httpStatus: res.status, status: ok ? "healthy" : httpToStatus(res.status), detail: {} };
+    // #1620: bodyVerdict, NOT httpToStatus — a 200 without a `models` array is a
+    // failure and must never resolve to "healthy".
+    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: {} };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
   }
@@ -278,7 +281,11 @@ async function probePaystack(): Promise<ProbeResult> {
     const first = json?.data?.[0];
     return {
       ok: statusOk, latencyMs, httpStatus: res.status,
-      status: statusOk ? "healthy" : httpToStatus(res.status),
+      // #1620: bodyVerdict, NOT httpToStatus. Paystack exposes NO
+      // charges_enabled equivalent — a restricted account is signalled ONLY by
+      // `{status:false}` inside an HTTP 200. The old 2xx fallback turned that
+      // restriction signal green on a live money rail.
+      status: bodyVerdict(statusOk, res.status),
       detail: {
         mode,
         balance: first?.balance ?? null,
@@ -301,7 +308,9 @@ async function probeMapbox(): Promise<ProbeResult> {
     );
     const body = await res.json().catch(() => null) as { features?: unknown[] } | null;
     const ok = res.ok && Array.isArray(body?.features);
-    return { ok, latencyMs, httpStatus: res.status, status: ok ? "healthy" : httpToStatus(res.status), detail: {} };
+    // #1620: bodyVerdict, NOT httpToStatus — a 200 without a `features` array is
+    // a failure and must never resolve to "healthy".
+    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: {} };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
   }
@@ -316,7 +325,10 @@ async function probeGooglePlaces(): Promise<ProbeResult> {
     );
     const body = await res.json().catch(() => null) as { status?: string } | null;
     const ok = res.ok && (body?.status === "OK" || body?.status === "ZERO_RESULTS");
-    return { ok, latencyMs, httpStatus: res.status, status: ok ? "healthy" : httpToStatus(res.status), detail: { google_status: body?.status ?? null } };
+    // #1620: bodyVerdict, NOT httpToStatus. Google answers HTTP 200 with
+    // `{status:"REQUEST_DENIED"}`; the old 2xx fallback logged 500 consecutive
+    // "healthy" rows over a dead API (2026-06-22 → 2026-08-05).
+    return { ok, latencyMs, httpStatus: res.status, status: bodyVerdict(ok, res.status), detail: { google_status: body?.status ?? null } };
   } catch (e) {
     return { ok: false, latencyMs: null, status: "down", detail: { error: String(e) } };
   }
@@ -519,7 +531,9 @@ async function probeExchangeRate(): Promise<ProbeResult> {
     const remaining = typeof b?.requests_remaining === "number" ? b.requests_remaining : null;
     return {
       ok: b?.result === "success", latencyMs, httpStatus: res.status,
-      status: b?.result === "success" ? "healthy" : httpToStatus(res.status),
+      // #1620: bodyVerdict, NOT httpToStatus — a 200 whose body says
+      // `result != "success"` is a failure and must never resolve to "healthy".
+      status: bodyVerdict(b?.result === "success", res.status),
       detail: { requests_remaining: remaining, plan_quota: b?.plan_quota ?? null },
     };
   } catch (e) {

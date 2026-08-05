@@ -476,6 +476,25 @@ jobs:
             # NOTE: no workflow runs api-health-probe's OTHER six test files at
             # all; they are dark. Raised as a Discovery, not fixed here.
             supabase/functions/api-health-probe/issue1537_delivery_provider_tiles.test.ts
+            # Issue #1620 — the probe's verdict function. Five probes computed
+            # `ok` from the RESPONSE BODY and then discarded it via
+            # `ok ? "healthy" : httpToStatus(res.status)`, and httpToStatus(200)
+            # returns "healthy" — so a provider answering HTTP 200 with the
+            # failure inside the body was recorded GREEN. Proven in production:
+            # google_places logged 500 consecutive status='healthy' rows each
+            # carrying google_status='REQUEST_DENIED' (2026-06-22 → 2026-08-05).
+            # Paystack is the severe case: {status:false} in a 200 is its ONLY
+            # account-restriction signal, on a live NG money rail.
+            # T-2 asserts each provider's REAL documented error body, not a
+            # synthetic fixture — a `{error:true}` stand-in would pass against a
+            # probe that only inspects HTTP and would not have caught this.
+            # T-1 sweeps EVERY 2xx because the defect's home was the 2xx
+            # fallback, and carries a vacuity guard so emptying the case list
+            # fails rather than silently passing over nothing.
+            # WIRED HERE DELIBERATELY: the note above records that six sibling
+            # test files run in no workflow at all. A regression test for a
+            # monitor that could not report failure must not itself be dark.
+            supabase/functions/api-health-probe/issue1620_body_verdict.test.ts
             # Issue #1537 (rework) — TESTER ADVERSARIAL on the Layer-C mapping.
             # Attacks the EDGES of the tile map, where the original P1 lived —
             # a provider nobody thought about. R-1 is a CONSERVATION invariant
