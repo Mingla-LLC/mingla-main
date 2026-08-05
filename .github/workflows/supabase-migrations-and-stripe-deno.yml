@@ -495,6 +495,24 @@ jobs:
             # test files run in no workflow at all. A regression test for a
             # monitor that could not report failure must not itself be dark.
             supabase/functions/api-health-probe/issue1620_body_verdict.test.ts
+            # Issue #1622 — the thumbnail backfill's SECOND EXIT. Its only exit
+            # was `thumbs_backfilled_at IS NOT NULL`, set only when EVERY photo
+            # for a place succeeds, so a place holding one permanently dead photo
+            # was re-claimed every ~10 minutes forever: 77 places pinned in
+            # production against 40,031 completed, 84 wasted runs a day.
+            # T-6 is the sharpest test and the reason this is wired: the CPU wall
+            # guard abandons places mid-batch, so a CLEAN round must never advance
+            # the attempt counter. If it did, a repeatedly-interrupted HEALTHY
+            # place would march to the backstop and be marked terminal — turning
+            # a performance safeguard into silent data loss, strictly worse than
+            # the bug being fixed.
+            # T-8 is a vacuity guard: a THUMB_MAX_ATTEMPTS of 0 or 1 would make
+            # T-4's loop assert over nothing and pass hollow.
+            # WIRED HERE DELIBERATELY: this function's OWN index.test.ts runs in
+            # no workflow at all and has 3 failing tests on main that nobody has
+            # seen. A test for a job that could not stop retrying must not itself
+            # be dark.
+            supabase/functions/backfill-place-photo-thumbs/issue1622_terminal_state.test.ts
             # Issue #1537 (rework) — TESTER ADVERSARIAL on the Layer-C mapping.
             # Attacks the EDGES of the tile map, where the original P1 lived —
             # a provider nobody thought about. R-1 is a CONSERVATION invariant
