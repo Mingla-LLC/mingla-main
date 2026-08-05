@@ -585,3 +585,35 @@ export function tallyDeliveryRows(
     nullProviderRows,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #1620 — verdict for a probe whose `ok` is derived from the RESPONSE BODY.
+//
+// THE BUG THIS EXISTS TO KILL: five probes computed `ok` correctly from the body
+// and then threw it away:
+//
+//   status: ok ? "healthy" : httpToStatus(res.status)   // httpToStatus(200) === "healthy"
+//
+// Providers routinely answer HTTP 200 with the failure INSIDE the body — Google
+// Places `{status:"REQUEST_DENIED"}`, Paystack `{status:false}` (its ONLY
+// account-restriction signal). The 2xx fallback converted every one of those to
+// green: `google_places` logged 500 consecutive `status='healthy'` rows each
+// carrying `detail->>'google_status'='REQUEST_DENIED'` (2026-06-22 → 2026-08-05).
+// The monitor was structurally incapable of reporting failure.
+//
+// RULE: once `ok` is false, the transport status may only choose HOW BAD, never
+// whether it failed. `healthy` is unreachable when `ok` is false — that is the
+// whole invariant, and the reason this is a named function rather than an inline
+// ternary that the next edit can quietly reintroduce.
+//
+// Mirrors the shape already used correctly by probeStripe / probeBunny.
+// Constitution rule 3 (no silent failures) + rule 9 (no fabricated health).
+export function bodyVerdict(ok: boolean, httpStatus: number | null | undefined): HealthStatus {
+  if (ok) return "healthy";
+  // Retryable/transient transport → degraded; anything else (incl. a 2xx that
+  // carried a body-level error) → down. NEVER "healthy".
+  if (httpStatus === 429 || (typeof httpStatus === "number" && httpStatus >= 500)) {
+    return "degraded";
+  }
+  return "down";
+}
