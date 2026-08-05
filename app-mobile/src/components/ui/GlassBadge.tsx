@@ -228,8 +228,8 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
       {/* L1 — blur or solid fallback */}
       {useGlass ? (
         <BlurView
-          intensity={t.blur.intensity}
-          tint={t.blur.tint}
+          intensity={liquid ? t.liquid.blurIntensity : t.blur.intensity}
+          tint={liquid ? t.liquid.blurTint : t.blur.tint}
           pointerEvents="none"
           experimentalBlurMethod={
             Platform.OS === 'android' ? 'dimezisBlurView' : undefined
