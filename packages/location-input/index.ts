@@ -23,6 +23,9 @@ export {
   forwardGeocodeMapbox,
   forwardHierarchyMapbox,
   newMapboxSessionToken,
+  // Issue #1629 — single source for "how precise is this coordinate?". Every
+  // address surface must call this instead of hardcoding a precision string.
+  precisionFromPlaceDetails,
 } from "./src/mapboxGeocodeService";
 export type {
   PlaceAutocompleteSuggestion,

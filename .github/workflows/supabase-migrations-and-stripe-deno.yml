@@ -1036,7 +1036,21 @@ jobs:
           #    T-14..T-17 stay green), ADV-INC1-2 both-empty graceful terminal, and
           #    ADV-INC1-3 the FALLBACK's own 5xx swallowed to 200-empty (§12.4; T-17
           #    only covers the BIASED error). Fails-on-revert proven in the QA report.
+          #  - issue1629_feature_type_precision (#1629): coordinate precision must
+          #    be READ from Mapbox's `properties.feature_type`, never asserted by
+          #    the client. Every business address surface hardcoded
+          #    `coordinatePrecision: "approximate"` inside onPick — the branch that
+          #    fires on a REAL pick — so `"exact"` was unreachable and production
+          #    carried 0 exact rows across events/venue_listings/experience_stops.
+          #    #1373's "Approximate location" caption would have appeared on every
+          #    venue, event and trip including precise ones. T-5 is the adversarial
+          #    edge: an unknown/missing feature_type must NEVER resolve to exact,
+          #    because over-claiming precision is fabricated data the user cannot
+          #    detect (Constitution rule 9) — the OPPOSITE default to #1622's
+          #    classifier, same principle, inverted inputs. T-1 carries a vacuity
+          #    guard so emptying the type lists fails rather than passing hollow.
           DENO_TEST_FILES=(
+            supabase/functions/mapbox-geocode/__tests__/issue1629_feature_type_precision.test.ts
             supabase/functions/mapbox-geocode/__tests__/countryNames.orch1365.test.ts
             supabase/functions/mapbox-geocode/__tests__/mapboxPlaceSuggest.orch1365.test.ts
             supabase/functions/mapbox-geocode/__tests__/mapboxPlacesService.orch1365.test.ts

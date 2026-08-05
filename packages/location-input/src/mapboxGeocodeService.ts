@@ -57,6 +57,17 @@ export interface PlaceDetails {
   /** ISO 3166-1 alpha-2 (e.g. "GB", "US") — nullable. */
   countryCode: string | null;
   location: { lat: number; lng: number };
+  /**
+   * Issue #1629 — Mapbox's own `properties.feature_type`, passed through
+   * STRUCTURED (never parsed from a display string). This is how precise the
+   * coordinate is: `address`/`poi` are a real point for that entity, everything
+   * else is an area centroid. The client used to ASSERT precision instead of
+   * reading it — every pick was hardcoded "approximate", so `exact` was
+   * unreachable and 0 production rows carried it.
+   * Optional so pre-#1629 callers/fixtures keep compiling; absent → approximate.
+   * https://docs.mapbox.com/api/search/search-box/
+   */
+  featureType?: string | null;
 }
 
 export interface SavedLocationContext {
@@ -329,4 +340,39 @@ export async function forwardHierarchyMapbox(
     throw new Error("mapbox_forward_hierarchy_empty_response");
   }
   return data as HierarchicalForwardResult;
+}
+
+/**
+ * Issue #1629 — derive coordinate precision from Mapbox's OWN feature type
+ * instead of asserting it.
+ *
+ * THE DEFECT THIS REPLACES: every business address surface hardcoded
+ * `coordinatePrecision: "approximate"` inside `onPick` — the branch that fires
+ * when a brand picks a REAL suggestion. `"exact"` existed in the type and was
+ * unreachable; production carried 0 exact rows across events, venue_listings
+ * and experience_stops. #1373's "Approximate location" caption would therefore
+ * have appeared on every venue, event and trip, including precise ones.
+ *
+ * Mapbox's documented taxonomy (https://docs.mapbox.com/api/search/search-box/):
+ *   address — "individual residential or business addresses as a street with
+ *             house number"           → a real point  → EXACT
+ *   poi     — a specific business/landmark             → a real point → EXACT
+ *   street  — "the street, with no house number"       → area        → approximate
+ *   country | region | postcode | district | place | locality |
+ *   neighborhood | block                                → centroid    → approximate
+ *
+ * UNKNOWN OR MISSING → "approximate", deliberately. Over-claiming precision is
+ * fabricated data (Constitution rule 9) and a lie the user cannot detect;
+ * under-claiming is conservative and visible. This is the OPPOSITE default to
+ * #1622's failure classifier — same principle, inverted inputs: choose the
+ * direction whose failure mode is VISIBLE rather than silent.
+ */
+const EXACT_FEATURE_TYPES: ReadonlySet<string> = new Set(["address", "poi"]);
+
+export function precisionFromPlaceDetails(
+  details: Pick<PlaceDetails, "featureType"> | null | undefined,
+): "exact" | "approximate" {
+  const ft = details?.featureType;
+  if (typeof ft !== "string") return "approximate";
+  return EXACT_FEATURE_TYPES.has(ft.trim().toLowerCase()) ? "exact" : "approximate";
 }

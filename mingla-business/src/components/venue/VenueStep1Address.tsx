@@ -6,6 +6,7 @@
  */
 
 import React from "react";
+import { precisionFromPlaceDetails } from "@mingla/location-input";
 import { StyleSheet, Text, View } from "react-native";
 
 import { spacing, text as textTokens, typography } from "../../constants/designSystem";
@@ -145,7 +146,10 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
             lng: p.lng,
             city: p.city,
             countryCode: p.countryCode,
-            coordinatePrecision: "approximate",
+            // Issue #1629 — READ the precision from Mapbox's own feature_type
+            // instead of asserting it. This branch is a REAL PICK, so hardcoding
+            // "approximate" made `exact` unreachable everywhere (0 rows in prod).
+            coordinatePrecision: precisionFromPlaceDetails(details),
           });
           savedContextRef.current = {
             city: p.city,
