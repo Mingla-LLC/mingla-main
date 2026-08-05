@@ -16,8 +16,19 @@
  * IT. The card name sits `gap` above the plate. The two curated slivers sit on the
  * plate's top edge. Both are positioned from `S1.plateH` — the CONSTANT 96 — baked
  * into a module-load `StyleSheet.create` entry, while the plate itself switches to
- * `PLATE_H_NO_META` (54) at render time. When the meta row is vacuity-guarded away,
- * the plate shrinks by 42pt and the name and the slivers do not follow.
+ * `PLATE_H_NO_META` (64) at render time. When the meta row is vacuity-guarded away,
+ * the plate shrinks by 32pt and the name and the slivers do not follow.
+ *
+ * (Those two numbers were 54 and 42 when this file was written, because §3.6 then
+ * dropped the DIVIDER along with the facts row. Seth reversed that on 2026-08-05
+ * (#1609 comment 5196932627) — the divider carries the chevron, and the chevron is
+ * the card's only visible expand affordance, so the sparsest card in the pool was
+ * rendering with nothing at all to say it opens. The short plate is now
+ * `plateH - META_ROW_H + CHEVRON_CLEARANCE` = 64. Every behavioural assertion below
+ * (A-2..A-5) was unaffected by that move, which is the point of evaluating the
+ * shipped anchor expressions against BOTH silhouettes instead of against a number:
+ * only A-0's and A-1's hard-coded scaffolding had to change, and it is now derived
+ * rather than re-pinned so the next composition change cannot make it stale again.)
  *
  * That produces a THIRD and a FOURTH composition, which §3.6 forbids in terms
  * ("There is exactly ONE alternate silhouette in the whole system"), and it is the
@@ -147,8 +158,28 @@ test('A-0 VACUITY the three sources were really read, stripped, and are parseabl
   assert.equal(probe.value, S1.plateR, 'A-0: the style extractor evaluated a known key to the wrong value');
   // And the two silhouettes must genuinely differ, or the whole file is vacuous.
   assert.notEqual(S1.plateH, CI.PLATE_H_NO_META, 'A-0: the package no longer has two silhouettes');
-  assert.equal(plateTop(S1.plateH) - plateTop(CI.PLATE_H_NO_META), 42,
-    'A-0: the two silhouettes no longer differ by 42pt — re-derive this file');
+  // The delta was pinned at the literal 42 while the short plate was 54pt. It went
+  // stale the moment Seth's decision (#1609 comment 5196932627) kept the divider and
+  // the chevron and moved the short plate to 64 — so it is now DERIVED.
+  //
+  // Deliberately NOT `S1.plateH - CI.PLATE_H_NO_META`. `plateTop(h)` is
+  // `S1.bottomInset + h`, so that form reduces to `a - b === a - b` and can never
+  // fail for any value of anything — a literal replaced by an unfalsifiable
+  // tautology is the SAME defect one line lower, not a fix for it.
+  //
+  // The package builds the short plate as `plateH - META_ROW_H + CHEVRON_CLEARANCE`,
+  // so the delta between the silhouettes is the facts row MINUS the chevron's
+  // reserved clearance. Re-deriving it from those two independent exports keeps the
+  // assertion falsifiable: a short plate typed in as a fourth number, a dropped
+  // `CHEVRON_CLEARANCE` term, a resized facts row and a resized chevron all fire it.
+  assert.equal(
+    plateTop(S1.plateH) - plateTop(CI.PLATE_H_NO_META),
+    CI.META_ROW_H - CI.CHEVRON_CLEARANCE,
+    'A-0: the silhouette delta is no longer the facts row minus the chevron clearance. '
+    + `Measured ${plateTop(S1.plateH) - plateTop(CI.PLATE_H_NO_META)}pt against a derived `
+    + `${CI.META_ROW_H} - ${CI.CHEVRON_CLEARANCE} = ${CI.META_ROW_H - CI.CHEVRON_CLEARANCE}pt. `
+    + 'PLATE_H_NO_META must stay `plateH - META_ROW_H + CHEVRON_CLEARANCE` — re-derive this file.',
+  );
 });
 
 test('A-1 platePresentation returns a DIFFERENT title anchor per silhouette, so a constant cannot serve both', () => {
@@ -157,8 +188,27 @@ test('A-1 platePresentation returns a DIFFERENT title anchor per silhouette, so 
   //     titleBottom = bottomInset + plateH + gap
   const full = S1.bottomInset + S1.plateH + S1.gap;
   const alt = S1.bottomInset + CI.PLATE_H_NO_META + S1.gap;
-  assert.equal(full, 132, 'A-1: the full silhouette no longer anchors the name at 132pt');
-  assert.equal(alt, 90, 'A-1: the alternate silhouette no longer anchors the name at 90pt');
+  // These were pinned at the literals 132 and 90. 90 was a SECOND COPY of a value the
+  // package already derives, and it went stale the moment the short plate moved
+  // 54 -> 64pt — exactly the duplicate-derived-value defect this whole branch exists
+  // to remove, so neither is re-pinned.
+  //
+  // Note that re-pinning them as `plateTop(...) + S1.gap` would be no better: this
+  // block's `full`/`alt` ARE that expression, so the assertion would restate itself
+  // and never fail. What is worth asserting is that this file's hand-arithmetic still
+  // agrees with the package function `platePresentation()` actually calls
+  // (`deckCardPlate.tsx` -> `surfaceTitleBottom('s1Single', plateH)` -> CI.titleBottom).
+  // That is a cross-implementation check, and it fires on the precise anchor-drift
+  // class this file was written for: a `titleBottom()` that ignores its `plateH`
+  // argument and falls back to the descriptor's constant 96 breaks the second
+  // assertion immediately.
+  assert.equal(full, CI.titleBottom('s1Single', S1.plateH),
+    'A-1: the full silhouette no longer anchors the name where the package\'s titleBottom() puts it');
+  assert.equal(alt, CI.titleBottom('s1Single', CI.PLATE_H_NO_META),
+    'A-1: the alternate silhouette no longer anchors the name where the package\'s titleBottom() puts '
+    + `it — this file derives ${alt}pt, CI.titleBottom() returns `
+    + `${CI.titleBottom('s1Single', CI.PLATE_H_NO_META)}pt. If titleBottom() has stopped honouring its `
+    + 'plateH argument, the name is anchored to the 96pt plate on a card that draws the short one.');
   assert.notEqual(full, alt,
     'A-1: the two silhouettes imply the same title anchor, which would make this whole file moot');
   assert.equal(full - alt, S1.plateH - CI.PLATE_H_NO_META,
