@@ -38,9 +38,21 @@ import { useTranslation } from 'react-i18next';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { Icon } from "./ui/Icon";
-import { GlassBadge } from "./ui/GlassBadge";
-import { GlassIconButton } from "./ui/GlassIconButton";
 import { useHasVisited, useRecordVisit, useRemoveVisit } from "../hooks/useVisits";
+// #1609 Direction C — the plate. One piece of glass replaces five chips, the
+// action rail and the "Details" text. Lives in a leaf module so BOTH card trees
+// can read it without reopening the SwipeableCards <-> CuratedExperienceSwipeCard
+// require cycle.
+import {
+  BeenHereBody,
+  CardStateDiscs,
+  CuratedSlivers,
+  DeckCardPlate,
+  beenHereStateStyle,
+  type BeenHereVisualState,
+  type MetaSpanInput,
+} from "./deckCardPlate";
+import { BEEN_HERE, MAX_FONT_SCALE, SURFACES } from "../../../packages/card-identity/index.js";
 import { LinearGradient } from "expo-linear-gradient";
 import { ANDROID_GLASS_USES_OPAQUE_FALLBACK, colors, fontWeights, glass, radius, typography } from "../constants/designSystem";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
@@ -66,6 +78,7 @@ import type { CuratedExperienceCard } from "../types/curatedExperience";
 // (which imports CuratedExperienceSwipeCard back — that closed a require cycle).
 import {
   CARD_FALLBACK_IMAGE,
+  DECK_BOTTOM_SCRIM_HEIGHT_PT,
   DECK_HERO_PLACEHOLDER_BLURHASH,
   DECK_SCRIM_COLORS,
   DECK_SCRIM_LOCATIONS,
@@ -359,6 +372,52 @@ const DECK_HERO_TRANSITION_MS = 220;
  * async decode window. The placeholder covers the decode gap; `CARD_FALLBACK_IMAGE`
  * is the hard-failure fallback (a real photo, distinct from the placeholder).
  */
+const S1 = SURFACES.s1Single;
+
+/** The behind face is `pointerEvents="none"`; its plate can never be pressed. */
+const NOOP = (): void => {};
+
+/**
+ * #1609 Direction C §3.4 — the card's meta spans, in TRUNCATION-PRIORITY order.
+ *
+ *     ★ 4.4  ·  6.7 mi  ·  ££  ·  Whiskey Bar
+ *     └700┘    └──── 500 @1.0 ────┘  └500 @0.72┘
+ *
+ * The rating leads because it is the only fact that ranks places against each
+ * other; the category trails because tail-ellipsis eats the last span first and
+ * it is the sacrificial one. Every span is omitted when its value is absent, and
+ * the separators are rendered BETWEEN PRESENT SPANS ONLY by CardMetaLine — a
+ * card with no rating begins at distance, with no orphaned leading "·"
+ * (Constitution 9). When EVERY span is absent the plate drops to its 54pt
+ * alternate silhouette.
+ *
+ * D-2 — TRAVEL TIME IS DROPPED from the collapsed card. "14 min" beside "6.7 mi"
+ * is the same fact twice, and it is 8 characters in a line that has room for a
+ * category instead. `I-DECK-CARD-CONTRACT-DISTANCE-AND-TIME` is unaffected: it
+ * governs what the edge functions must EMIT (both, dropping to null together),
+ * not what the card must render, and its mobile clause is "branches on null to
+ * hide the badge".
+ */
+function metaSpansForCard(
+  card: { rating?: number | null; distance?: string | number | null; priceRange?: string | null; category?: string | null },
+  measurementSystem: 'Metric' | 'Imperial' | undefined,
+): MetaSpanInput[] {
+  const spans: MetaSpanInput[] = [];
+  if (card.rating != null && card.rating > 0) {
+    spans.push({ kind: 'rating', text: `★ ${card.rating.toFixed(1)}` });
+  }
+  if (card.distance != null) {
+    const d = parseAndFormatDistance(card.distance as any, measurementSystem);
+    if (typeof d === 'string' && d.length > 0) spans.push({ kind: 'fact', text: d });
+  }
+  if (card.priceRange) spans.push({ kind: 'fact', text: card.priceRange });
+  if (card.category) {
+    const c = getReadableCategoryName(card.category);
+    if (typeof c === 'string' && c.length > 0) spans.push({ kind: 'tail', text: c });
+  }
+  return spans;
+}
+
 /**
  * #1609 Amendment 1 — "I've been here" as a real control on the COLLAPSED card.
  *
@@ -370,17 +429,57 @@ const DECK_HERO_TRANSITION_MS = 220;
  *   - it never opens the rating flow; that stays on the expanded card. The tap only
  *     records or unrecords the visit, so a mis-tap costs a toggle, and one more tap
  *     undoes it.
- *   - 44pt target (touchTargets.minimum), inset from the card edges where a swipe
- *     begins, at the card's foot rather than in the drag zone.
+ *   - 44pt target (touchTargets.minimum), inboard of BOTH card edges where a swipe
+ *     begins, on the plate at the card's foot rather than in the drag zone.
  *   - it adds no gesture-handler gesture. This is a plain RN Pressable inside the
  *     existing card subtree, so it never contends for the deck's gesture lease
  *     (I-PROPOSED-1579-GESTURE-LEASE-RELEASE-COMPLETENESS).
- *   - visited state is NOT carried by colour alone: the icon goes outline -> filled
- *     AND the label changes ("Been here?" -> "Been here").
+ *   - state is NOT carried by colour alone: THREE independent channels move
+ *     together — the glyph, the copy, and the fill category.
  *
  * Renders nothing while the visited query is pending — never a skeleton on the swipe
  * path — and nothing at all when signed out, because the visit cannot be recorded.
+ *
+ * ---------------------------------------------------------------------------
+ * #1618 — THE SILENT 75-SECOND HANG. Two defects, both fixed here.
+ *
+ * The issue recorded the cause as "no timeout is set at all". That is wrong, and
+ * knowing why matters for the fix. A 20-second cap DOES exist, on the Supabase
+ * client's fetch (services/supabase.ts `fetchWithTimeout`). It did not fire
+ * because the wait was UPSTREAM OF THE FETCH:
+ *
+ *     supabase.functions.invoke('record-visit')
+ *       -> SupabaseClient.fetch  =  fetchWithAuth(key, _getAccessToken, fetchWithTimeout)
+ *       -> await getAccessToken()            <-- the whole auth preamble runs HERE
+ *            -> auth.getSession()
+ *            -> _callRefreshToken -> _refreshAccessToken, which retries with
+ *               exponential backoff for up to AUTO_REFRESH_TICK_DURATION_MS (30s),
+ *               each attempt itself capped at 20s
+ *       -> fetchWithTimeout(...)             <-- the 20s cap only starts NOW
+ *
+ * `fetchWithTimeout` is a PER-REQUEST cap, not a per-operation one, and every
+ * token-refresh attempt gets its own fresh 20 seconds. So the 75 seconds is the
+ * auth preamble's retry ladder plus the real request, and no single timer was
+ * ever exceeded. The operation-level bound therefore has to live at the
+ * operation, which is why visitService now wraps both mutations (see
+ * `VISIT_WRITE_TIMEOUT_MS` there) rather than anything changing in supabase.ts.
+ *
+ * Defect 1 — NOTHING VISUAL BOUND TO `inFlight`. The `inFlight` / `disabled`
+ * wiring already existed; the control simply looked identical while it worked.
+ * Fixed by `showSpinner`: past BEEN_HERE.inFlightAfterMs (6s) a spinner replaces
+ * the glyph. Below that threshold the press feedback alone is the signal —
+ * flashing a spinner on a 300ms write is worse than none.
+ *
+ * Defect 2 — THE PRESS FELL THROUGH AND OPENED THE CARD. `disabled` on an RN
+ * `Pressable` means it does not claim the touch, so while the write was in
+ * flight a deliberate, accurate press on the control passed straight through to
+ * the card's expand handler underneath. That is the exact accident the control's
+ * placement was engineered to prevent, triggered by CORRECT use. Fixed by
+ * keeping the Pressable ENABLED and making `onPress` a no-op while in flight:
+ * the touch is consumed, and nothing opens.
  */
+const BEEN_HERE_SPINNER_TICK_MS = 250;
+
 const BeenHereControl = React.memo(function BeenHereControl({
   userId,
   card,
@@ -396,10 +495,41 @@ const BeenHereControl = React.memo(function BeenHereControl({
   const inFlight = recordVisit.isPending || removeVisit.isPending;
   // Constitution rule 3 — no silent failures. useVisits' own onError only
   // console.errors, so without this the user taps, nothing moves, and the control is a
-  // dead tap. It is currently REACHABLE: record-visit returns 500 on every call in
-  // production (see the #1609 report — its upsert targets a PARTIAL unique index that
-  // ON CONFLICT cannot match). This surfaces that instead of swallowing it.
+  // dead tap.
   const failed = recordVisit.isError || removeVisit.isError;
+
+  const [pressed, setPressed] = React.useState(false);
+  // #1618 defect 1 — the write's elapsed time, so a slow write becomes VISIBLE.
+  const startedAtRef = React.useRef<number | null>(null);
+  const [slow, setSlow] = React.useState(false);
+  // The 1400ms "Thank you" flash after a write resolves, before it settles.
+  const [flashing, setFlashing] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!inFlight) {
+      startedAtRef.current = null;
+      setSlow(false);
+      return;
+    }
+    if (startedAtRef.current == null) startedAtRef.current = Date.now();
+    const id = setInterval(() => {
+      const startedAt = startedAtRef.current;
+      if (startedAt != null && Date.now() - startedAt >= BEEN_HERE.inFlightAfterMs) setSlow(true);
+    }, BEEN_HERE_SPINNER_TICK_MS);
+    return () => clearInterval(id);
+  }, [inFlight]);
+
+  const wasInFlight = React.useRef(false);
+  React.useEffect(() => {
+    // A write just resolved successfully -> flash, then settle.
+    if (wasInFlight.current && !inFlight && !failed) {
+      setFlashing(true);
+      const id = setTimeout(() => setFlashing(false), BEEN_HERE.flashHoldMs);
+      wasInFlight.current = inFlight;
+      return () => clearTimeout(id);
+    }
+    wasInFlight.current = inFlight;
+  }, [inFlight, failed]);
 
   // Signed out, or the visited state is not known yet: render nothing rather than a
   // control whose label would be a guess.
@@ -407,9 +537,35 @@ const BeenHereControl = React.memo(function BeenHereControl({
 
   const isVisited = visited === true;
 
+  const state: BeenHereVisualState = failed
+    ? 'failed'
+    : flashing
+      ? 'flash'
+      : isVisited
+        ? 'settled'
+        : pressed
+          ? 'pressed'
+          : 'rest';
+
+  const label = failed
+    ? t('cards:swipeable.been_here_failed')
+    : flashing
+      ? t('cards:swipeable.been_here_thanks')
+      : isVisited
+        ? t('cards:swipeable.been_here_settled')
+        : t('cards:swipeable.been_here');
+
   const onPress = (): void => {
+    // #1618 defect 2 — NOT `disabled`. A disabled RN Pressable does not claim the
+    // touch, so the press fell through to the card and opened it. Consuming the
+    // press and doing nothing is the whole fix.
     if (inFlight) return;
     HapticFeedback.light();
+    if (failed) {
+      // Constitution rule 3 — the failure offers a retry rather than dead-ending.
+      recordVisit.reset();
+      removeVisit.reset();
+    }
     if (isVisited) {
       removeVisit.mutate(card.id);
       return;
@@ -428,16 +584,12 @@ const BeenHereControl = React.memo(function BeenHereControl({
   return (
     <Pressable
       onPress={onPress}
-      disabled={inFlight}
-      style={({ pressed }) => [
-        styles.beenHere,
-        isVisited && styles.beenHereActive,
-        failed && styles.beenHereFailed,
-        pressed && styles.beenHerePressed,
-      ]}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      style={[styles.beenHere, beenHereStateStyle(state)]}
       hitSlop={8}
       accessibilityRole="button"
-      accessibilityState={{ selected: isVisited, disabled: inFlight }}
+      accessibilityState={{ selected: isVisited, busy: inFlight }}
       accessibilityLabel={
         failed
           ? t('cards:swipeable.been_here_failed')
@@ -446,18 +598,7 @@ const BeenHereControl = React.memo(function BeenHereControl({
             : t('cards:swipeable.been_here_off', { title: card.title })
       }
     >
-      <Icon
-        name={failed ? 'alert-circle-outline' : isVisited ? 'checkmark-circle' : 'checkmark-circle-outline'}
-        size={16}
-        color="#FFFFFF"
-      />
-      <Text style={styles.beenHereText} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-        {failed
-          ? t('cards:swipeable.been_here_failed')
-          : isVisited
-            ? t('cards:swipeable.been_here')
-            : t('cards:swipeable.been_here_ask')}
-      </Text>
+      <BeenHereBody state={state} label={label} showSpinner={inFlight && slow} />
     </Pressable>
   );
 });
@@ -558,17 +699,10 @@ function CardHero({
   );
 }
 
-/** Map travel mode preference to an icon name */
-function getTravelModeIcon(mode?: string): string {
-  switch (mode) {
-    case 'driving': return 'car';
-    case 'transit': return 'bus-outline';
-    case 'bicycling':
-    case 'biking': return 'bicycle-outline';
-    case 'walking':
-    default: return 'walk-outline';
-  }
-}
+// #1609 Direction C — `getTravelModeIcon` is DELETED here. It existed only to
+// pick the icon for the travel-time chip, and travel time leaves the collapsed
+// card with D-2: "14 min" beside "6.7 mi" is the same fact twice. The curated
+// tree keeps its own copy for as long as it needs one.
 
 interface StrollData {
   anchor: {
@@ -662,55 +796,10 @@ interface SwipeableCardsProps {
 
 // Real data will be fetched from Supabase
 
-const getIconComponent = (iconName: string) => {
-  // If iconName is already an Ionicons name (from getCategoryIcon), return it directly
-  const ioniconsNames = [
-    "walk-outline",
-    "cafe",
-    "restaurant",
-    "film",
-    "brush",
-    "basketball",
-    "wine",
-    "sparkles",
-    "basket",
-    "location",
-    "leaf",
-    "fitness",
-    "eye",
-    "heart",
-    "calendar",
-    "time",
-    "star",
-    "navigate",
-    "color-palette",
-    "bookmark",
-  ];
-
-  if (ioniconsNames.includes(iconName)) {
-    return iconName;
-  }
-
-  // Map component names to Ionicons names (for backward compatibility)
-  const iconMap: { [key: string]: string } = {
-    Coffee: "cafe",
-    TreePine: "leaf",
-    Sparkles: "sparkles",
-    Dumbbell: "fitness",
-    Utensils: "restaurant",
-    Eye: "eye",
-    Heart: "heart",
-    Calendar: "calendar",
-    MapPin: "location",
-    Clock: "time",
-    Star: "star",
-    Navigation: "navigate",
-    Palette: "color-palette",
-    Bookmark: "bookmark",
-  };
-
-  return iconMap[iconName] || iconName || "heart";
-};
+// #1609 Direction C — `getIconComponent` is DELETED. Its only consumer was the
+// category GlassBadge on the card face, and the five chips are gone: the category
+// is now the meta line's trailing 0.72 span, which carries no icon by design (the
+// weighted spans create the register the icons used to, without five more nodes).
 
 /** Shared pulsing-dots loading indicator */
 function PulseDots({
@@ -3059,8 +3148,6 @@ export default function SwipeableCards({
     return null;
   }
 
-  const CategoryIcon = getIconComponent(currentRec.categoryIcon);
-
   // #1609 §1.9 — the composed VoiceOver label. Each clause is dropped when its value
   // is absent rather than rendered as a placeholder or a zero (Constitution rule 9),
   // so a card with no rating simply never mentions a rating.
@@ -3187,7 +3274,6 @@ export default function SwipeableCards({
           {availableRecommendations.length > 1 &&
             (() => {
               const nextCard = availableRecommendations[1];
-              const NextCategoryIcon = getIconComponent(nextCard.categoryIcon);
 
               return (
                 <Reanimated.View
@@ -3226,38 +3312,29 @@ export default function SwipeableCards({
 
                     {/* ORCH-0991: image-count badge removed from cards. */}
 
-                    {/* Title and Details Overlay */}
-                    <View style={styles.titleOverlay}>
-                      <Text style={styles.cardTitle}>{nextCard.title}</Text>
+                    {/* #1609 Direction C — the behind face carries the name on the
+                        photograph and the plate, exactly as the front face does.
+                        The five GlassBadge chips are DELETED: they were five
+                        BlurViews and five shadowed lifted objects per face, on a
+                        face whose only job is continuity during a swipe.
 
-                      {/* ORCH-0566: glass info badges (preview layer — no entry motion, not pressable) */}
-                      <View style={styles.detailsBadges}>
-                        {/* ORCH-0659: honest null propagation — hide the badge entirely when
-                            distance is missing. No "nearby" placeholder (Constitution #9). */}
-                        {nextCard.distance != null && (
-                          <GlassBadge liquid iconName="location">
-                            {parseAndFormatDistance(nextCard.distance, accountPreferences?.measurementSystem)}
-                          </GlassBadge>
-                        )}
-                        {/* ORCH-0660: render only when real value present. Mode-icon matches
-                            card.travelMode (set server-side per user preference). */}
-                        {nextCard.travelTime != null && (
-                          <GlassBadge liquid iconName={getTravelModeIcon(nextCard.travelMode ?? effectiveTravelMode)}>
-                            {nextCard.travelTime}
-                          </GlassBadge>
-                        )}
-                        {nextCard.rating != null && nextCard.rating > 0 && (
-                          <GlassBadge liquid iconName="star">{nextCard.rating.toFixed(1)}</GlassBadge>
-                        )}
-                        {nextCard.priceRange ? (
-                          <GlassBadge liquid iconName="pricetag">{nextCard.priceRange}</GlassBadge>
-                        ) : null}
-                        <GlassBadge liquid iconName={NextCategoryIcon}>
-                          {getReadableCategoryName(nextCard.category)}
-                        </GlassBadge>
-                      </View>
-                      {/* ORCH-0566 follow-up: View-more chip removed. Preview has no saved/scheduled state. */}
-                    </View>
+                        No Been-here here — the preview is `pointerEvents="none"`,
+                        and a control that cannot be pressed is a lie about
+                        affordance (Rule L1). Share is inert for the same reason,
+                        so the plate gets a no-op handler it can never reach. */}
+                    <Text
+                      style={styles.cardTitle}
+                      numberOfLines={S1.titleLines}
+                      maxFontSizeMultiplier={MAX_FONT_SCALE.title}
+                    >
+                      {nextCard.title}
+                    </Text>
+                    {(nextCard as any).cardType === 'curated' ? <CuratedSlivers /> : null}
+                    <DeckCardPlate
+                      spans={metaSpansForCard(nextCard, accountPreferences?.measurementSystem)}
+                      onSharePress={NOOP}
+                      shareLabel={t('cards:swipeable.share_card', { title: nextCard.title })}
+                    />
                   </View>
                   {deckSwipe.isTransitionDelayed && (
                     <View
@@ -3373,10 +3450,14 @@ export default function SwipeableCards({
                   // prop, so curated is byte-unaffected — SC-13).
                   <CuratedExperienceSwipeCard
                     card={currentRec as unknown as CuratedExperienceCard}
-                    onSeePlan={handleCardExpand}
                     travelMode={effectiveTravelMode}
                     measurementSystem={accountPreferences?.measurementSystem}
                     currencyCode={accountPreferences?.currency || 'USD'}
+                    // #1609 Direction C — the plate's control row. Passed IN as an
+                    // element so the curated tree never imports SwipeableCards back.
+                    beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
+                    onSharePress={handleShare}
+                    shareLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
                     brandExperience={{
                       brandName: (currentRec as any).brandName,
                       brandLogoUrl: (currentRec as any).brandLogoUrl ?? null,
@@ -3406,10 +3487,12 @@ export default function SwipeableCards({
               ) : (currentRec as any).cardType === 'curated' ? (
                   <CuratedExperienceSwipeCard
                     card={currentRec as unknown as CuratedExperienceCard}
-                    onSeePlan={handleCardExpand}
                     travelMode={effectiveTravelMode}
                     measurementSystem={accountPreferences?.measurementSystem}
                     currencyCode={accountPreferences?.currency || 'USD'}
+                    beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
+                    onSharePress={handleShare}
+                    shareLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
                     // ORCH-1209: front-card render (curated cards carry no cover
                     // so this is a no-op today, kept for symmetry / future cover
                     // support). A behind-card render MUST pass isTopCard={false}.
@@ -3443,13 +3526,14 @@ export default function SwipeableCards({
                     />
                   </View>
 
-                  {/* #1609 — the scrim. Replaces the 3-stop/45% gradient, which failed
-                      WCAG AA at the title on a bright photo. Alphas are back-solved from
-                      the sRGB transfer function against a pure-white (255) hero: white
-                      title 24/700 counts as LARGE text (>=18.66pt bold) and needs 3:1
-                      (alpha >= 0.4165); the description at 15/600 is NORMAL text and
-                      needs 4.5:1 (alpha >= 0.535). Measured alphas at the bands where
-                      those elements land are 0.491 and 0.661, giving 3.85:1 and 7.29:1.
+                  {/* #1609 Direction C — the scrim, BOTTOM-ANCHORED IN ABSOLUTE POINTS.
+                      `height: '52%'` is deleted: a percentage makes the whole contrast
+                      table valid only on the device it was computed on, and it also
+                      carried the `isCurated` 52%/62% branch that let the place card and
+                      the curated card drift apart. The height now comes from
+                      scrimHeight() — 316pt at S1, giving alpha 0.7908 under the plate's
+                      top edge and 0.481 at the title's top edge (3.73:1 against a
+                      pure-white photo, floor 3.0 for 30/700 large text).
                       pointerEvents="none" — it must never take a touch off the pan. */}
                   <LinearGradient
                     colors={DECK_SCRIM_COLORS}
@@ -3474,127 +3558,59 @@ export default function SwipeableCards({
 
                   {/* ORCH-0991: image-count badge removed from cards. */}
 
-                  {/* Title and Details Overlay - Bottom Left of Image */}
-                  <Animated.View style={[
-                      styles.titleOverlay,
+                  {/* #1609 Direction C — the saved / scheduled state discs. They move
+                      from a chip row at the card's foot to the TOP-RIGHT, on the top
+                      scrim, because the foot is now the plate and the plate is not a
+                      place for brand-coloured state. Same material as the plate, so the
+                      card has exactly one glass vocabulary. */}
+                  <CardStateDiscs
+                    saved={isCurrentCardSaved}
+                    scheduled={isCurrentCardScheduled}
+                    savedLabel={t('cards:swipeable.saved')}
+                    scheduledLabel={t('cards:swipeable.scheduled')}
+                  />
+
+                  {/* #1609 Direction C — the name, and NOTHING ELSE, on the photograph.
+                      One animated node carries both the name and the plate, replacing
+                      five per-badge `entryIndex`-staggered Animated.Views. That stagger
+                      lived inside the promotion diff and is the exact shape that
+                      produced #1576.
+
+                      DELETED here, and each for a stated reason:
+                        - the 5 GlassBadge chips  -> their content is the plate's meta line
+                        - `oneLiner`              -> two lines of prose 9pt under the title
+                                                     at identical colour is the single
+                                                     largest contributor to register
+                                                     flatness. It survives VERBATIM in
+                                                     the expanded card.
+                        - the action rail         -> moves onto the plate
+                        - the "Details" text      -> replaced by the chevron in the
+                                                     plate's divider */}
+                  <Animated.View
+                    style={[
+                      styles.faceOverlay,
                       {
                         opacity: cardContentOpacity,
                         transform: [{ translateY: titleOverlaySlide }],
                       },
-                    ]}>
-                      {/* META-ORCH-1290(C) D-6a: a place venue's owner-authored
-                          pitch (place_pool.generative_summary) lands in this
-                          existing `oneLiner` slot as a 2-line one-taste hook
-                          (DESIGN §5a). When a pitch is present the title tightens
-                          to marginBottom 6 so title+blurb read as one unit; with
-                          NO pitch the guard renders nothing and the title keeps its
-                          16pt gap (today's exact look — no fabricated blurb). */}
-                      {/* #1609 — the title gained numberOfLines={2}. It had NO clamp, so
-                          at 200% text size an unbounded 24pt title pushed the badge row
-                          off the card. maxFontSizeMultiplier bounds worst-case content
-                          height to ~340pt against a 783pt card — still inside the scrim. */}
-                      <Text
-                        style={[styles.cardTitle, currentRec.oneLiner ? styles.cardTitleWithBlurb : null]}
-                        numberOfLines={2}
-                        maxFontSizeMultiplier={1.4}
-                      >{currentRec.title || t('cards:swipeable.experience')}</Text>
-                      {/* #1609 Amendment 2 — the description. Sits directly under the
-                          title, above the badge row, clamped to 2 lines. It lands in the
-                          scrim band where alpha ~= 0.661, i.e. 7.29:1 against white on a
-                          pure-white photo (AAA). Omitted entirely when absent — no
-                          placeholder line, no em-dash (Constitution rule 9). */}
-                      {currentRec.oneLiner && (
-                        <Text
-                          style={styles.oneLiner}
-                          numberOfLines={2}
-                          maxFontSizeMultiplier={1.4}
-                        >{currentRec.oneLiner}</Text>
-                      )}
+                    ]}
+                    pointerEvents="box-none"
+                  >
+                    <Text
+                      style={styles.cardTitle}
+                      numberOfLines={S1.titleLines}
+                      maxFontSizeMultiplier={MAX_FONT_SCALE.title}
+                    >
+                      {currentRec.title || t('cards:swipeable.experience')}
+                    </Text>
 
-                      {/* ORCH-0566: glass info badges (front card — entry motion via entryIndex) */}
-                      {/* Saved/scheduled state badges retain their brand-color semantic treatment (out of spec scope). */}
-                      <View style={styles.detailsBadges}>
-                        {/* ORCH-0659: honest null propagation — hide the badge when distance missing. */}
-                        {currentRec.distance != null && (
-                          <GlassBadge liquid iconName="location" entryIndex={0}>
-                            {parseAndFormatDistance(currentRec.distance, accountPreferences?.measurementSystem)}
-                          </GlassBadge>
-                        )}
-                        {/* ORCH-0660: render only when real value present; icon matches selected travel mode. */}
-                        {currentRec.travelTime != null && (
-                          <GlassBadge liquid iconName={getTravelModeIcon(currentRec.travelMode ?? effectiveTravelMode)} entryIndex={1}>
-                            {currentRec.travelTime}
-                          </GlassBadge>
-                        )}
-                        {currentRec.rating != null && currentRec.rating > 0 && (
-                          <GlassBadge liquid iconName="star" entryIndex={2}>
-                            {currentRec.rating.toFixed(1)}
-                          </GlassBadge>
-                        )}
-                        {currentRec.priceRange ? (
-                          <GlassBadge liquid iconName="pricetag" entryIndex={3}>{currentRec.priceRange}</GlassBadge>
-                        ) : null}
-                        <GlassBadge liquid iconName={CategoryIcon} entryIndex={4}>
-                          {getReadableCategoryName(currentRec.category)}
-                        </GlassBadge>
-                      </View>
-
-                      {/* State badges row — saved/scheduled chips live here (moved down from the meta row
-                          so the brand-colored state signals get their own line, replacing the removed
-                          "View more" chip). Row is empty when neither flag is true — React renders nothing. */}
-                      {(isCurrentCardSaved || isCurrentCardScheduled) && (
-                        <View style={styles.stateBadgesRow}>
-                          {isCurrentCardSaved && (
-                            <View style={styles.savedBadge}>
-                              <Icon name="heart" size={10} color="white" />
-                              <Text style={styles.savedBadgeText}>{t('cards:swipeable.saved')}</Text>
-                            </View>
-                          )}
-                          {isCurrentCardScheduled && (
-                            <View style={styles.scheduledBadge}>
-                              <Icon name="calendar" size={10} color="white" />
-                              <Text style={styles.scheduledBadgeText}>{t('cards:swipeable.scheduled')}</Text>
-                            </View>
-                          )}
-                        </View>
-                      )}
-
-                      {/* #1609 — the action rail. Replaces the deleted white tray, which
-                          spent 115.33pt (14.7% of the card) on one Share button.
-
-                          LEFT is a SIGNIFIER, not a control: pointerEvents="none", so it
-                          teaches both real gestures (tap, swipe-up) without adding a
-                          gesture owner. The expand target is activeOpacity={1} and gives
-                          no press feedback; dimming the whole card at touch-down would
-                          flash on every swipe, so a persistent signifier is the fix.
-
-                          RIGHT holds the two real controls, both inset from the card
-                          edges where a swipe begins. */}
-                      <View style={styles.actionRail}>
-                        <View style={styles.railHint} pointerEvents="none">
-                          <Icon name="chevron-up" size={14} color="#FFFFFF" />
-                          <Text style={styles.railHintText} numberOfLines={1}>
-                            {t('cards:swipeable.details_hint')}
-                          </Text>
-                        </View>
-                        <View style={styles.railActions}>
-                          {/* #1609 Amendment 1 — "I've been here" as a real control on the
-                              COLLAPSED card, overriding pillar 1 §1.6's passive badge.
-                              The risk the designer identified is engineered out, not
-                              ignored: 44pt target, inset from both card edges, and the
-                              tap ONLY records/unrecords the visit — it never opens the
-                              rating flow, which stays in expanded. So a stray thumb costs
-                              a toggle that one more tap undoes, not a modal mid-swipe. */}
-                          <BeenHereControl userId={user?.id} card={currentRec} />
-                          <GlassIconButton
-                            liquid
-                            iconName="share-outline"
-                            onPress={handleShare}
-                            accessibilityLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
-                          />
-                        </View>
-                      </View>
-                    </Animated.View>
+                    <DeckCardPlate
+                      spans={metaSpansForCard(currentRec, accountPreferences?.measurementSystem)}
+                      beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
+                      onSharePress={handleShare}
+                      shareLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
+                    />
+                  </Animated.View>
                 </>
               )}
             </TouchableOpacity>
@@ -3869,43 +3885,47 @@ const styles = StyleSheet.create({
   // #1609 — 4pt grid. paddingHorizontal 20 / paddingBottom 28 (was a uniform 20 with
   // paddingBottom 40; the tray no longer eats the card's foot, so the overlay sits
   // lower and needs less bottom inset).
-  titleOverlay: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 0,
-    paddingBottom: 28,
+  // #1609 Direction C — the face overlay is an absolute FILL whose two children
+  // (the name and the plate) are each bottom-anchored in absolute points. It has
+  // no padding and no flow layout of its own, so nothing on the face can shift
+  // because a sibling's content changed. `box-none` so it never takes a touch
+  // off the pan — only the plate's own controls are pressable.
+  faceOverlay: {
+    ...StyleSheet.absoluteFillObject,
     zIndex: 2,
   },
+  // 30/700, not 24/700. At 24 the title had no register separation from the 15pt
+  // blurb below it — and the blurb is now deleted, so the name is the ONLY thing
+  // on the photograph and carries the whole first-glance read. 2 lines is the
+  // only multi-line element on the card face; `flexWrap` appears nowhere.
   cardTitle: {
-    color: "white",
-    fontSize: 24,
-    fontWeight: "bold",
-    lineHeight: 30,
-    marginBottom: 16,
+    position: "absolute",
+    left: S1.titleInset,
+    right: S1.titleInset,
+    bottom: S1.bottomInset + S1.plateH + S1.gap,
+    color: "#FFFFFF",
+    fontSize: S1.titleSize,
+    fontWeight: S1.titleWeight as "700",
+    lineHeight: S1.titleLH,
+    zIndex: 2,
+    // Perceptual reinforcement only — it does NOT count toward WCAG and none of
+    // the scrim derivation relies on it.
     textShadowColor: "rgba(0, 0, 0, 0.5)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  // META-ORCH-1290(C) D-6a (DESIGN §5a.2): scoped tighten applied to the front
-  // place card's title ONLY when a pitch blurb follows, so title (24) → 6 →
-  // blurb → 10 → badges reads as one unit. The behind-card title (no blurb)
-  // keeps the base 16pt gap.
-  cardTitleWithBlurb: {
-    marginBottom: 6,
-  },
-  // #1609 — replaces heroGradient (3 stops, 45%, topping out at 0.55 alpha), which
-  // failed WCAG AA at the title on a bright photo. 52% height so the deepest stops sit
-  // under the description and rail; colours/locations are DECK_SCRIM_COLORS /
-  // DECK_SCRIM_LOCATIONS so both faces composite the identical ramp.
+  // #1609 Direction C — replaces `height: '52%'`. Bottom-anchored in ABSOLUTE
+  // POINTS from the package's scrimHeight(): no percentage, no flex-axis key, so
+  // the layer depends neither on a sibling nor on the parent's resolved height,
+  // and the contrast table is device-invariant rather than valid only on the
+  // device it was computed on. Deleting the percentage also deletes the
+  // `isCurated` 52%/62% branch — curated is NOT a different composition.
   heroScrim: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    height: "52%",
+    height: DECK_BOTTOM_SCRIM_HEIGHT_PT,
     zIndex: 1,
   },
   // #1609 amendment 4 — the TOP scrim, the mirror of heroScrim. Sized in ABSOLUTE
@@ -3922,32 +3942,16 @@ const styles = StyleSheet.create({
     height: DECK_TOP_SCRIM_HEIGHT_PT,
     zIndex: 1,
   },
-  // META-ORCH-1290(C) D-6a (DESIGN §5a.2/5a.3): the place pitch blurb — 2-line
-  // clamp (numberOfLines={2}), sitting on the darkened heroGradient band. Type
-  // treatment unchanged; margins tightened to marginTop 0 / marginBottom 10 so
-  // the +56pt of blurb stays inside the existing 45% gradient (photo not buried).
-  oneLiner: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#FFFFFF",
-    marginTop: 0,
-    marginBottom: 10,
-    textShadowColor: "rgba(0, 0, 0, 0.7)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  detailsBadges: {
-    flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-  // State badges row (saved/scheduled). Occupies the position formerly held by the
-  // removed "View more" chip. ORCH-0589 v2 (G4): marginTop 8 → 12 for premium breathing room.
-  stateBadgesRow: {
-    flexDirection: "row",
-    marginTop: 12,
-    gap: 8,
-  },
+  // #1609 Direction C — `oneLiner`, `detailsBadges` and `stateBadgesRow` are
+  // DELETED from the card face (Constitution 8: subtract before adding).
+  //   - `oneLiner` (the place pitch blurb) survives VERBATIM in the expanded
+  //     card. Two lines of prose 9pt under the title at identical colour was the
+  //     single largest contributor to the face's register-flatness.
+  //   - `detailsBadges` was one of the two `flexWrap` containers on the face;
+  //     `flexWrap` now appears NOWHERE on the card face, which is what makes the
+  //     silhouette guarantee hold.
+  //   - `stateBadgesRow`'s saved/scheduled chips become the top-right state
+  //     discs (see CardStateDiscs), on the top scrim rather than at the foot.
   addressRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -3998,41 +4002,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  // #1609 — the action rail replaces `cardDetails`, the 115.33pt white tray that held
-  // exactly one control. Deleting the tray also deletes its borderBottom*Radius: 24,
-  // which never matched the glass.card.bezelRadius 40 shell — cardInner's
-  // overflow:'hidden' at radius 40 is now the sole corner authority.
-  actionRail: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    height: 44,
-    marginTop: 16,
-  },
-  railHint: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    flexShrink: 1,
-  },
-  railHintText: {
-    fontSize: 13,
-    fontWeight: "500",
-    letterSpacing: 0.2,
-    color: "#FFFFFF",
-    opacity: 0.88,
-    textShadowColor: "rgba(0, 0, 0, 0.5)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  railActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  // #1609 Amendment 1 — 44pt tall so the whole control clears touchTargets.minimum
-  // without relying on hitSlop, and it sits between the rail hint and the Share button
-  // so neither card edge is a mis-tap surface.
+  // #1609 Direction C — `actionRail`, `railHint`, `railHintText` and `railActions`
+  // are DELETED. The rail sat on bare scrim; its two controls move onto the
+  // plate's control row, and its left-hand "Details" signifier is replaced by the
+  // chevron that BREAKS THE PLATE'S DIVIDER — the affordance is now part of the
+  // object's construction rather than a sticker on it. Zero gesture owners either
+  // way; the whole card is the expand target and routes through requestTapExpand.
+  //
+  // #1609 Amendment 1 — the Been-here control. 44pt tall so the whole control
+  // clears touchTargets.minimum without relying on hitSlop, and it sits INBOARD
+  // OF BOTH card edges on the plate, so neither edge (where a swipe begins) is a
+  // mis-tap surface. Its fill and border are per-STATE and come from
+  // beenHereStateStyle() — see @mingla/card-identity BEEN_HERE.
+  //
+  // THE BORDER IS LOAD-BEARING. The control sits ON the plate and its fill is the
+  // same family as the plate's, so the boundary is carried by the border alone:
+  // the minimum white border alpha for a 3:1 boundary against the plate is 0.349,
+  // which is why the shipped 0.46 is not negotiable down to the 0.30 the chips
+  // used (that measures 2.54:1 and fails).
   beenHere: {
     flexDirection: "row",
     alignItems: "center",
@@ -4041,36 +4028,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 22,
     borderWidth: 1,
-    // #1609 rejection — this control sits on the action rail, the DEEPEST band of the
-    // bottom scrim (alpha ~0.87). glass.chrome.tint.floor is a DARKENING wash meant for
-    // bare photo; on a near-black backdrop it has nothing to darken and the control read
-    // as the flattest element on the card. Same defect and same fix as the badges: a
-    // light fill lifts it off the scrim instead of sinking into it.
-    // Derivation + measured L*: designSystem.ts -> glass.badge.liquid.
-    backgroundColor: ANDROID_GLASS_USES_OPAQUE_FALLBACK
-      ? glass.badge.liquid.fallbackSolid
-      : glass.badge.liquid.fill,
-    borderColor: glass.badge.liquid.border,
-  },
-  // Visited is signalled by THREE independent channels — filled icon, changed label,
-  // and this tint — so it never depends on colour alone.
-  beenHereActive: {
-    backgroundColor: glass.chrome.active.tint,
-    borderColor: glass.chrome.active.border,
-  },
-  beenHerePressed: {
-    backgroundColor: glass.chrome.tint.pressed,
-  },
-  // Constitution rule 3 — a failed record/remove is shown, not swallowed.
-  beenHereFailed: {
-    backgroundColor: 'rgba(153, 27, 27, 0.55)',
-    borderColor: 'rgba(248, 113, 113, 0.65)',
-  },
-  beenHereText: {
-    fontSize: 13,
-    fontWeight: "500",
-    letterSpacing: 0.2,
-    color: "#FFFFFF",
   },
   highlightsContainer: {
     flexDirection: "row",

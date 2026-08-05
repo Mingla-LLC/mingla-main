@@ -15,9 +15,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
-import { Icon } from './ui/Icon';
-import { GlassBadge } from './ui/GlassBadge';
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../constants/designSystem';
+// #1609 Direction C — the SAME plate the place card carries. Curated is not a
+// different composition: it is this card plus two 4pt slivers. The shared module
+// is a leaf, so importing it does NOT reopen the SwipeableCards <-> this-file
+// require cycle (data flows down; the Been-here control is passed IN).
+import {
+  CuratedSlivers,
+  DeckCardPlate,
+  platePresentation,
+  type MetaSpanInput,
+} from './deckCardPlate';
+import { MAX_FONT_SCALE, SURFACES } from '../../../packages/card-identity/index.js';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
 import { parseAndFormatDistance, formatCurrency } from './utils/formatters';
 // ORCH-1042: reuse the SAME hard-failure fallback URL + placeholder blurhash as the
@@ -27,6 +36,7 @@ import { parseAndFormatDistance, formatCurrency } from './utils/formatters';
 // importing back from it closed a require cycle. The leaf module has no such edge.
 import {
   CARD_FALLBACK_IMAGE,
+  DECK_BOTTOM_SCRIM_HEIGHT_PT,
   DECK_HERO_PLACEHOLDER_BLURHASH,
   DECK_SCRIM_COLORS,
   DECK_SCRIM_LOCATIONS,
@@ -69,14 +79,9 @@ function CuratedStopImage({ uri }: { uri: string }) {
   );
 }
 
-const CURATED_ICON_MAP: Record<string, string> = {
-  'Adventurous':   'compass-outline',
-  'First Date':    'sparkles',
-  'Romantic':      'heart',
-  'Group Fun':     'people',
-  'Picnic Dates':  'sandwich',
-  'Take a Stroll': 'walk-outline',
-};
+// #1609 Direction C — `CURATED_ICON_MAP` is DELETED with the category chip it fed.
+// The curated identity is the sliver stack, not an icon: a silhouette reads at
+// every size and is colour-blind-safe, where an icon needs a chip to sit in.
 
 // ─── ORCH-1065 [consumer-experience-deck-card]: brand badge + Book CTA ─────────
 // Built to DESIGN_ORCH-1065_BRAND_EXPERIENCE_DECK_CARD.md. Both elements are
@@ -214,27 +219,16 @@ function BrandChip({ brandName, brandLogoUrl, top, wrapped = false }: BrandChipP
 }
 // ─── end ORCH-1065 brand badge ────────────────────────────────────────────────
 
-function getTravelModeIcon(mode?: string): string {
-  switch (mode) {
-    case 'driving': return 'car';
-    case 'transit': return 'bus-outline';
-    case 'bicycling':
-    case 'biking': return 'bicycle-outline';
-    case 'walking':
-    default: return 'walk-outline';
-  }
-}
+// #1609 Direction C — `getTravelModeIcon` is DELETED. Travel time leaves the
+// collapsed card (D-2), so nothing needs a mode icon here any more.
 
 // #1609 — the ratios are DELETED here for the same reason as in SwipeableCards: a
 // flex-axis key resolves differently under different sibling sets, which is #1593.
 // The hero is a full-bleed absolute fill and the tray is gone.
 //
-// The stop ribbon renders at most this many nodes; beyond it, 3 nodes + a "+N" chip.
-const RIBBON_MAX_NODES = 4;
 
 interface Props {
   card: CuratedExperienceCard;
-  onSeePlan: () => void;
   travelMode?: string;
   measurementSystem?: 'Metric' | 'Imperial';
   currencyCode?: string;
@@ -255,6 +249,14 @@ interface Props {
     coverHue?: number;
   };
   ctaOverride?: string;
+  // #1609 Direction C — the plate's control row. The Been-here control is passed
+  // IN as an element rather than imported, so this file never imports
+  // SwipeableCards (which imports it back — that closes the require cycle).
+  // Absent on the behind/preview face, which is pointerEvents="none" and where a
+  // control would be a lie about affordance (Rule L1).
+  beenHere?: React.ReactNode;
+  onSharePress?: () => void;
+  shareLabel?: string;
   // ORCH-1209: only the front/active deck card streams its cover video. When
   // false the cover mounts paused on its poster (playbackActive=false) and
   // downloads nothing. Defaults true so non-deck callers (none today) are
@@ -262,7 +264,23 @@ interface Props {
   isTopCard?: boolean;
 }
 
-export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measurementSystem, currencyCode, brandExperience, onBrandPress, experienceCover, ctaOverride, isTopCard = true }: Props) {
+/** The behind face is `pointerEvents="none"`; its plate can never be pressed. */
+const NOOP = (): void => {};
+
+const S1 = SURFACES.s1Single;
+
+/** "2h 15m" / "45m" — never "0m", which would be a fabricated duration. */
+function formatDuration(totalMinutes: number | null | undefined): string | null {
+  if (typeof totalMinutes !== 'number' || !Number.isFinite(totalMinutes) || totalMinutes <= 0) return null;
+  const mins = Math.round(totalMinutes);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem, currencyCode, brandExperience, onBrandPress, experienceCover, ctaOverride, isTopCard = true, beenHere, onSharePress, shareLabel }: Props) {
   const { t } = useTranslation(['common']);
   const insets = useSafeAreaInsets();
   // ORCH-0991: deck is full-bleed under the floating glass top bar. Keeps the brand
@@ -279,19 +297,21 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
   // nothing is fabricated (Constitution rule 9).
   const heroImageUrl = visibleStops.find(s => typeof s.imageUrl === 'string' && s.imageUrl.length > 0)?.imageUrl ?? null;
 
-  // #1609 — the stop ribbon's nodes. Pure text + Views: zero images, zero scrollables,
-  // zero touchables, so it adds nothing to the swipe path. Beyond RIBBON_MAX_NODES it
-  // shows the first 3 and a "+N" overflow chip.
-  const ribbonStops = visibleStops.length > RIBBON_MAX_NODES
-    ? visibleStops.slice(0, RIBBON_MAX_NODES - 1)
-    : visibleStops;
-  const ribbonOverflow = visibleStops.length - ribbonStops.length;
+  // #1609 Direction C — the stop RIBBON is deleted with the chips. The stop names
+  // leave the collapsed card, and this is the design's single most arguable cut:
+  // the 300ms question is "is this a plan, how long, how much", which the count,
+  // duration and price answer; WHICH three bars is deliberation, one tap away in
+  // the expanded card's stops accordion, where they appear in full with images.
+  // The ribbon also cost a wrapping row — a variable-height element on a card whose
+  // whole strength is a fixed silhouette (D-5).
 
   // ORCH-1065: this card is a brand experience when the brand-attribution prop is
   // present (curated callers omit it → byte-identical render, SC-13).
   const isBrandExperience = brandExperience != null;
 
-  const avgRating = (visibleStops.reduce((s, st) => s + st.rating, 0) / visibleStops.length).toFixed(1);
+  // #1609 Direction C — `avgRating` is DELETED. A mean of the stops' Google ratings
+  // is not a rating OF THE PLAN, and the plan's characterising fact is its stop
+  // COUNT, which now takes the meta line's leading 700 slot.
 
   // ORCH-0629: Cumulative price — sum from the displayed stops directly.
   // Do NOT trust `card.totalPriceMin/Max` (card-level totals can be stale or left at 0
@@ -324,30 +344,46 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
   const isSingleStop = visibleStops.length === 1;
   const rawIntentKey = (card.experienceType || 'adventurous').replace(/-/g, '_');
   const categoryLabel = t(`common:intent_${rawIntentKey}`);
-  const categoryIcon = CURATED_ICON_MAP[card.categoryLabel || 'Adventurous'] || 'compass-outline';
-  // ORCH-1065: ctaOverride present ('Book') for experiences; curated keeps its
-  // existing text byte-for-byte.
-  const ctaText = ctaOverride ?? (isSingleStop ? 'See Details' : 'See Full Plan');
-  // #1609 — isBookCta / handleCtaPressIn are DELETED with the tray CTA they served.
-  // The commerce "Book" action is NOT lost: it lives on the expanded sheet, which the
-  // whole card now opens through requestTapExpand. What is gone is the second,
-  // lease-bypassing entry point to that same sheet.
+  // #1609 — isBookCta / handleCtaPressIn / ctaText are DELETED with the tray CTA
+  // they served. That CTA called onSeePlan -> handleCardExpand DIRECTLY, bypassing
+  // requestTapExpand and therefore the deck's gesture lease entirely. With it gone,
+  // EVERY expand entry point on this card — tap, swipe-up and the VoiceOver expand
+  // action — routes through requestTapExpand. That is a real hole closed
+  // (I-PROPOSED-1579 corollary), not a side effect: the same sheet is one tap away
+  // on the card itself, and the commerce "Book" action lives on it.
 
-  // First stop distance & travel time (most relevant to the user)
+  // First stop distance (most relevant to the user). Travel time is NOT rendered —
+  // D-2: "14 min" beside "6.7 mi" is the same fact twice.
   const firstStop = visibleStops[0];
   const distanceKm = firstStop?.distanceFromUserKm;
-  const travelMin = firstStop?.travelTimeFromUserMin;
   const formattedDistance = distanceKm != null && distanceKm > 0
     ? parseAndFormatDistance(`${distanceKm.toFixed(1)} km`, measurementSystem)
     : null;
-  const formattedTravelTime = travelMin != null && travelMin > 0
-    ? `${Math.round(travelMin)} min`
-    : null;
 
-  // Category chip copy: "Group Fun · N stops" (single chip carries identity + stop count)
-  const categoryChipLabel = isSingleStop
-    ? categoryLabel
-    : `${categoryLabel} · ${visibleStops.length} stops`;
+  /**
+   * #1609 Direction C §3.4 — the curated meta line:
+   *
+   *     3 stops  ·  2h 15m  ·  £28–£54  ·  Adventurous
+   *     └─700──┘  └──── 500 @1.0 ────┘   └─500 @0.72─┘
+   *
+   * The stop COUNT takes the 700 slot the rating takes on a place card, because
+   * it is the fact that characterises a plan. Every span is omitted when its value
+   * is absent and CardMetaLine renders separators between PRESENT SPANS ONLY, so a
+   * plan with no price begins at duration with no orphaned "·" (Constitution 9).
+   * A single-stop plan falls back to distance, which is the only positional fact
+   * it has.
+   */
+  const formattedDuration = formatDuration(card.estimatedDurationMinutes);
+  const curatedSpans: MetaSpanInput[] = [];
+  if (!isSingleStop) {
+    curatedSpans.push({ kind: 'rating', text: `${visibleStops.length} stops` });
+  } else if (formattedDistance) {
+    curatedSpans.push({ kind: 'rating', text: formattedDistance });
+  }
+  if (!isSingleStop && formattedDistance) curatedSpans.push({ kind: 'fact', text: formattedDistance });
+  if (formattedDuration) curatedSpans.push({ kind: 'fact', text: formattedDuration });
+  if (priceLabel) curatedSpans.push({ kind: 'fact', text: priceLabel });
+  if (categoryLabel) curatedSpans.push({ kind: 'tail', text: categoryLabel });
 
   // ORCH-1072: an experience with a real cover renders the COVER as the hero
   // (image/video via the shared EventCoverMedia) with the stop photos as a
@@ -424,9 +460,12 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
           )
         ) : null}
 
-        {/* #1609 — the scrim, identical ramp to the place card but 62% tall because
-            curated carries an extra row (the ribbon) above the badges. Same contrast
-            derivation; see DECK_SCRIM_COLORS in SwipeableCards.tsx. */}
+        {/* #1609 Direction C — the scrim. IDENTICAL to the place card: same ramp AND
+            same absolute point height. The 62%-vs-52% branch is DELETED. That branch
+            existed because curated carried an extra row the place card did not, and it
+            is exactly how the two card types drifted apart — a per-type geometry value
+            is the drift, not a response to it. Curated is now the same rectangle with
+            two extra 4pt views. */}
         <LinearGradient
           colors={DECK_SCRIM_COLORS}
           locations={DECK_SCRIM_LOCATIONS}
@@ -447,86 +486,43 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
           style={styles.topScrim}
         />
 
-        {/* Title + labels overlay — bottom-left of image, matches single-card anatomy */}
-        <View style={styles.titleOverlay} pointerEvents="box-none">
-          <Text style={styles.cardTitle} numberOfLines={2} maxFontSizeMultiplier={1.4}>{card.title}</Text>
-          {card.tagline && card.tagline.trim().length > 0 ? (
-            <Text style={styles.oneLiner} numberOfLines={2} maxFontSizeMultiplier={1.4}>{card.tagline}</Text>
-          ) : null}
+        {/* #1609 Direction C — the name on the photograph, then the plate, exactly as
+            the place card. `tagline` leaves the collapsed card for the same reason
+            `oneLiner` does on the place card: a second prose line under the title at
+            identical colour flattens the register the plate exists to create. It
+            survives in the expanded card. */}
+        <View style={styles.faceOverlay} pointerEvents="box-none">
+          <Text
+            style={styles.cardTitle}
+            numberOfLines={S1.titleLines}
+            maxFontSizeMultiplier={MAX_FONT_SCALE.title}
+          >
+            {card.title}
+          </Text>
 
-          {/* #1609 differentiator 2 — the stop ribbon. NAMING the stops is strictly more
-              informative than four unreadable crops: "three photos of rooms" becomes
-              "Bar Termini, Osteria, Dante". Static by design — animating it would add an
-              Animated.View per node inside the promotion diff, which is the exact shape
-              that produced #1576. */}
-          {!isSingleStop && ribbonStops.length > 0 ? (
-            <View style={styles.ribbon} pointerEvents="none">
-              {ribbonStops.map((stop, idx) => (
-                <React.Fragment key={`${stop.placeId}_${idx}`}>
-                  {idx > 0 ? <View style={styles.ribbonConnector} /> : null}
-                  <View style={styles.ribbonNode}>
-                    <View style={styles.ribbonDot} />
-                    <Text style={styles.ribbonLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>
-                      {stop.placeName}
-                    </Text>
-                  </View>
-                </React.Fragment>
-              ))}
-              {ribbonOverflow > 0 ? (
-                <Text style={styles.ribbonOverflow} maxFontSizeMultiplier={1.2}>{`+${ribbonOverflow}`}</Text>
-              ) : null}
-            </View>
-          ) : null}
+          {/*
+            #1609 Direction C — THE CURATED MARK IS THE SILHOUETTE, NOT A LABEL.
 
-          {/* Label chips — same GlassBadge vocabulary as single cards.
-              Order matches SwipeableCards.tsx: location → travel → rating → price → category. */}
-          <View style={styles.detailsBadges}>
-            {/* #1609 differentiator 1 — the LEADING chip is accent-tinted so a curated
-                card is identifiable at a glance. Colour is NOT the only signal: the
-                git-branch icon and the word "Plan" each carry it independently. */}
-            <GlassBadge liquid variant="accent" iconName="git-branch-outline" entryIndex={0}>
-              {isSingleStop ? 'Plan' : `Plan · ${visibleStops.length} stops`}
-            </GlassBadge>
-            {formattedDistance ? (
-              <GlassBadge liquid iconName="location" entryIndex={0}>
-                {formattedDistance}
-              </GlassBadge>
-            ) : null}
-            {formattedTravelTime ? (
-              <GlassBadge liquid iconName={getTravelModeIcon(travelMode) as any} entryIndex={1}>
-                {formattedTravelTime}
-              </GlassBadge>
-            ) : null}
-            {/* ORCH-1065 BUG-2: brand experiences have NO star rating (their stops
-                carry rating 0 → "0.0", which is meaningless, not a real score).
-                Hide the rating chip entirely for the experience variant; curated
-                cards (real Google ratings) keep it. */}
-            {isBrandExperience ? null : (
-              <GlassBadge liquid iconName="star" entryIndex={2}>
-                {avgRating}
-              </GlassBadge>
-            )}
-            <GlassBadge liquid iconName="pricetag" entryIndex={3}>
-              {priceLabel}
-            </GlassBadge>
-            <GlassBadge liquid iconName={categoryIcon as any} entryIndex={4}>
-              {categoryChipLabel}
-            </GlassBadge>
-          </View>
+            Deleted here: the accent "Plan · N stops" GlassBadge and the four
+            metadata chips, the vector stop ribbon, and the rail's "See Full Plan"
+            text. All six chips were BlurViews with per-badge entryIndex staggers
+            inside the promotion diff — the exact shape that produced #1576 — and
+            the accent chip additionally carried a colour-only identity signal.
 
-          {/* #1609 — the action rail, replacing the deleted tray and its CTA.
-              That CTA called onSeePlan -> handleCardExpand DIRECTLY, bypassing
-              requestTapExpand and therefore the deck's gesture lease entirely. Deleting
-              it means EVERY expand entry point on this card — tap, swipe-up, and the
-              VoiceOver expand action — now routes through requestTapExpand. That is a
-              real hole closed (I-PROPOSED-1579 corollary), not a side effect: the same
-              sheet is one tap away on the card itself. */}
-          <View style={styles.actionRail} pointerEvents="none">
-            <View style={styles.railHint}>
-              <Icon name="chevron-up" size={14} color="#FFFFFF" />
-              <Text style={styles.railHintText} numberOfLines={1}>{ctaText}</Text>
-            </View>
-          </View>
+            What replaces them is two 4pt slivers peeking above the plate's top
+            edge. No text, no colour, no extra image decode, no gesture owner, and
+            it reads at 402pt for the same reason it will read at 173pt: it is the
+            object's silhouette. The facts move into the plate's meta line, where
+            "3 stops" leads at weight 700.
+          */}
+          <CuratedSlivers />
+
+          <DeckCardPlate
+            spans={curatedSpans}
+            beenHere={beenHere}
+            onSharePress={onSharePress ?? NOOP}
+            shareLabel={shareLabel ?? card.title}
+          />
         </View>
       </View>
     </View>
@@ -534,11 +530,16 @@ export function CuratedExperienceSwipeCard({ card, onSeePlan, travelMode, measur
 }
 
 const styles = StyleSheet.create({
+  // #1609 Direction C — the SHARED SHELL. `borderRadius: 20` and
+  // `backgroundColor: '#1C1C1E'` are DELETED: this card renders INSIDE
+  // SwipeableCards' `cardInner`, which already clips at
+  // glass.card.bezelRadius (40) with overflow:'hidden'. A second, smaller
+  // radius on the inner box meant the curated card drew a 20pt corner inside a
+  // 40pt one — two silhouettes for one object — and the opaque #1C1C1E slab
+  // behind a full-bleed hero was a panel that could only ever be seen when
+  // something else had already failed.
   card: {
     flex: 1,
-    backgroundColor: '#1C1C1E',
-    borderRadius: 20,
-    overflow: 'hidden',
   },
   // #1609 — full-bleed hero. Same absoluteFillObject as the place card's heroFill:
   // no flex-axis key, so it cannot disagree with the poster layer (#1593).
@@ -552,14 +553,14 @@ const styles = StyleSheet.create({
   imagePlaceholder: {
     backgroundColor: '#2C2C2E',
   },
-  // #1609 — replaces heroGradient. 62% (vs the place card's 52%) because curated
-  // carries the ribbon row above the badges; same contrast-derived ramp.
+  // #1609 Direction C — IDENTICAL to the place card's heroScrim: same ramp, same
+  // absolute point height from the package. The 62%-vs-52% branch is deleted.
   heroScrim: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    height: '62%',
+    height: DECK_BOTTOM_SCRIM_HEIGHT_PT,
     zIndex: 1,
   },
   // #1609 amendment 4 — mirror of SwipeableCards.styles.topScrim, absolute points,
@@ -572,109 +573,34 @@ const styles = StyleSheet.create({
     height: DECK_TOP_SCRIM_HEIGHT_PT,
     zIndex: 1,
   },
-  // Title + labels overlay — matches SwipeableCards.tsx titleOverlay
-  titleOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 0,
-    paddingBottom: 28,
+  // #1609 Direction C — an absolute FILL whose two children (the name and the
+  // plate) are each bottom-anchored in absolute points. Identical to the place
+  // card's faceOverlay, because curated is the same composition.
+  faceOverlay: {
+    ...StyleSheet.absoluteFillObject,
     zIndex: 2,
   },
   cardTitle: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
-    lineHeight: 30,
-    marginBottom: 6,
+    position: 'absolute',
+    left: S1.titleInset,
+    right: S1.titleInset,
+    bottom: S1.bottomInset + S1.plateH + S1.gap,
+    color: '#FFFFFF',
+    fontSize: S1.titleSize,
+    fontWeight: S1.titleWeight as '700',
+    lineHeight: S1.titleLH,
+    zIndex: 2,
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  oneLiner: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginTop: 6,
-    marginBottom: 0,
-    textShadowColor: 'rgba(0, 0, 0, 0.7)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  // #1609 — the stop ribbon. Views and Texts only.
-  ribbon: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 12,
-    marginBottom: 12,
-  },
-  ribbonNode: {
-    alignItems: 'center',
-    flexShrink: 1,
-    maxWidth: 96,
-  },
-  ribbonDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FFFFFF',
-  },
-  ribbonConnector: {
-    height: 1.5,
-    flex: 1,
-    minWidth: 12,
-    maxWidth: 28,
-    backgroundColor: 'rgba(255,255,255,0.45)',
-    marginTop: 3.25,
-    marginHorizontal: 4,
-  },
-  ribbonLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    letterSpacing: 0.1,
-    marginTop: 5,
-    textShadowColor: 'rgba(0, 0, 0, 0.7)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  ribbonOverflow: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.72)',
-    marginLeft: 6,
-  },
-  detailsBadges: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  // #1609 — the rail. Signifier only on curated: the whole card is the expand target
-  // and routes through requestTapExpand, so there is no CTA here to bypass the lease.
-  actionRail: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 44,
-    marginTop: 16,
-  },
-  railHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexShrink: 1,
-  },
-  railHintText: {
-    fontSize: 13,
-    fontWeight: '500',
-    letterSpacing: 0.2,
-    color: '#FFFFFF',
-    opacity: 0.88,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
+  // #1609 Direction C — DELETED: `titleOverlay` (flow layout replaced by absolute
+  // anchoring), `oneLiner` (the tagline; it flattens the register and survives in
+  // expanded), `ribbon` / `ribbonNode` / `ribbonDot` / `ribbonConnector` /
+  // `ribbonLabel` / `ribbonOverflow` (D-5 — the stop names move to the expanded
+  // card's accordion), `detailsBadges` (the second and last `flexWrap` container
+  // on a card face), and `actionRail` / `railHint` / `railHintText` (the rail moves
+  // onto the plate and its text is replaced by the divider's chevron).
   // ─── ORCH-1065 brand badge + Book CTA (DESIGN §2, §3, §7) ───────────────────
   brandChip: {
     position: 'absolute',
