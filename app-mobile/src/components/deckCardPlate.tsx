@@ -203,7 +203,18 @@ export function CardMetaLine({ spans }: { spans: readonly MetaSpanInput[] }): Re
  */
 export function CuratedSlivers(): React.ReactElement {
   return (
-    <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    // The wrapper MUST be an absolute fill. Caught at runtime on a live curated
+    // card: with no style it is a flow View whose box collapses to 0x0 (its only
+    // children are absolutely positioned and contribute no size), and RN resolves
+    // `bottom: 112` against the nearest positioned ancestor — so the slivers were
+    // drawn 112pt above the TOP of the card, off-screen. Every static guard
+    // passed; only a screenshot showed the stack was missing.
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
       {SLIVER.offsets.map((offset, i) => (
         <View
           key={`sliver_${i}`}
