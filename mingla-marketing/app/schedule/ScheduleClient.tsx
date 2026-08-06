@@ -231,7 +231,13 @@ export function ScheduleClient() {
   return (
     <Shell>
       <div className="overflow-hidden rounded-md border border-divider-strong bg-parchment">
-        <div className="grid md:grid-cols-[minmax(0,240px)_1fr]">
+        {/* grid-cols-1 is load-bearing on mobile, not decorative: with no explicit
+            track the single implicit column is `auto` = max-content, so the 28
+            shrink-0 day buttons and the 2-up time grid size it to ~1769px. The
+            wrapper is overflow-hidden, so the times get CLIPPED (not scrolled)
+            and read as empty pills. Tailwind's grid-cols-1 emits
+            repeat(1,minmax(0,1fr)) — the zero minimum the md: tracks already have. */}
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,240px)_1fr]">
           {/* Day rail — a full month of open days, scrollable */}
           <div className="border-b border-divider-strong p-4 md:border-b-0 md:border-r md:p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
