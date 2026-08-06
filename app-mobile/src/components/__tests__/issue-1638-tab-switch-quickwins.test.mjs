@@ -144,10 +144,15 @@ test('C1.2 #1638 CORE: Android is no longer silent — a haptic fires on a tab s
   );
 });
 
-test('C1.3 Android uses performAndroidHapticsAsync(clock-tick), NOT the Vibrator path', () => {
+test('C1.3 Android uses performAndroidHapticsAsync(context-click), NOT the Vibrator path', () => {
   const { trigger, calls } = loadHaptics('android');
   trigger();
-  assert.deepEqual(calls, [{ api: 'performAndroidHapticsAsync', arg: 'clock-tick' }]);
+  assert.deepEqual(calls, [{ api: 'performAndroidHapticsAsync', arg: 'context-click' }],
+    // #1638 follow-up: was 'clock-tick'. Changed ONLY after device verification —
+    // clock-tick and keyboard-tap both RESOLVED OK on the SM-A725F and were felt as
+    // nothing. context-click was felt. A resolved promise does not mean a rendered
+    // haptic; only hardware plus a human can decide that.
+    'Android must send the device-verified constant to the native module');
   // impactAsync on Android is `Vibrator.vibrate(...)` — a 43ms motor buzz that needs
   // android.permission.VIBRATE (which app.json does NOT declare) and reads as a
   // notification rather than an acknowledgement. expo's own JSDoc says not to use it.
@@ -163,9 +168,17 @@ test('C1.4 the Android constant is one expo-haptics guarantees on EVERY API leve
   // API level) it falls back to a hard-coded `when (this)` list, and anything NOT in that
   // list throws HapticsNotSupportedException. `SEGMENT_TICK` — the semantically perfect
   // constant for "switching between discrete choices" — is API 34+ and is NOT in the
-  // fallback list, so it would THROW on the Samsung SM-A725F (Android 13 / API 33) that
-  // #1638 was filed against. This test reads the REAL vendored Kotlin so the guarantee
-  // cannot drift silently under an expo-haptics upgrade.
+  // fallback list, so it would THROW on any API 33 device.
+  //
+  // CORRECTION 2026-08-06: this comment previously claimed the SM-A725F #1638 was filed
+  // against is API 33. It is NOT — it runs Android 14 / API 34, confirmed by
+  // `getprop ro.build.version.sdk`. Segment_Tick fires fine on it. That unchecked premise
+  // is why the first fix shipped a deliberately weak constant and was inaudible.
+  // The GUARANTEE this test enforces is still correct and still wanted: we support API 33
+  // devices too, so the constant must be in the fallback set regardless of what the
+  // operator's own phone happens to be. Verify device facts; do not inherit them.
+  // This test reads the REAL vendored Kotlin so the guarantee cannot drift silently
+  // under an expo-haptics upgrade.
   const kotlinPath = path.join(
     APP_MOBILE_ROOT,
     'node_modules/expo-haptics/android/src/main/java/expo/modules/haptics/HapticsRecord.kt',
