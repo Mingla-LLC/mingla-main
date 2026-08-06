@@ -23,8 +23,13 @@ on:
       - "supabase/functions/backfill-place-photos/**"
       - "supabase/functions/backfill-place-photo-thumbs/**"
       - "supabase/functions/run-place-intelligence-trial/index.ts"
+      - "supabase/functions/_shared/__tests__/collageUpload.issue1644.cacheControl.test.ts"
       - "supabase/migrations/20270219001644_issue_1644_storage_backfill_guard.sql"
       - "supabase/migrations/__tests__/issue_1644_storage_backfill_guard.test.sql"
+      # Stage 2 — the collage re-encode.
+      - "scripts/issue-1644/**"
+      - "supabase/migrations/20270221001644_issue_1644_collage_reencode_jobs.sql"
+      - "supabase/migrations/__tests__/issue_1644_collage_reencode_jobs.test.sql"
       - ".github/workflows/issue-1644-storage-guardrail-collage-fill-tests.yml"
   pull_request:
     paths:
@@ -38,8 +43,13 @@ on:
       - "supabase/functions/backfill-place-photos/**"
       - "supabase/functions/backfill-place-photo-thumbs/**"
       - "supabase/functions/run-place-intelligence-trial/index.ts"
+      - "supabase/functions/_shared/__tests__/collageUpload.issue1644.cacheControl.test.ts"
       - "supabase/migrations/20270219001644_issue_1644_storage_backfill_guard.sql"
       - "supabase/migrations/__tests__/issue_1644_storage_backfill_guard.test.sql"
+      # Stage 2 — the collage re-encode.
+      - "scripts/issue-1644/**"
+      - "supabase/migrations/20270221001644_issue_1644_collage_reencode_jobs.sql"
+      - "supabase/migrations/__tests__/issue_1644_collage_reencode_jobs.test.sql"
       - ".github/workflows/issue-1644-storage-guardrail-collage-fill-tests.yml"
 
 permissions:
@@ -73,6 +83,29 @@ jobs:
             supabase/functions/backfill-place-photo-thumbs/index.ts \
             supabase/functions/run-place-intelligence-trial/index.ts
 
+      # STAGE 2. The re-encode tooling is type-checked separately because it
+      # carries its own deno.json (scripts/package.json otherwise flips Deno into
+      # node_modules resolution and `npm:@jsquash/webp` stops resolving).
+      - name: Type-check the Stage 2 collage re-encode tooling
+        run: |
+          deno check \
+            scripts/issue-1644/collageReencode.ts \
+            scripts/issue-1644/reencode-collages.ts \
+            scripts/issue-1644/delete-superseded-pngs.ts \
+            scripts/issue-1644/collageReencode.test.ts
+
+      # STAGE 2 CONTRACT. Every stored collage was generated with the
+      # transparent-red fill bug, so a naive PNG -> WebP conversion would bake the
+      # defect permanently into the new format while deleting the only originals.
+      # This suite asserts DECODED OUTPUT: zero transparent pixels, empty grid
+      # cells decoding to rgba(0,0,0,255), and no ALPH chunk in the container.
+      # Deleting the flatten call reproduces the exact production signature
+      # (262,144 / 589,824 = 44.444%) and fails it.
+      - name: Re-encode must correct the corpus, not convert it as-is
+        run: |
+          deno test --allow-env --allow-net --allow-read --no-check \
+            scripts/issue-1644/collageReencode.test.ts
+
       # CHANGE 1. Asserts the OBSERVABLE OUTPUT — that the empty cells of a
       # 5-photo 3x3 collage decode to rgba(0,0,0,255) and that no pixel is
       # transparent. Reverting the fill constant reproduces the exact production
@@ -88,6 +121,17 @@ jobs:
         run: |
           deno test --allow-env --allow-net --allow-read --no-check \
             supabase/functions/_shared/__tests__/storageHeadroomGuard.issue1644.test.ts
+
+      # STAGE 2. Drives the REAL handleComposeCollage against a fake storage
+      # client and a local photo server, and asserts the options it actually
+      # passes to upload() — the one-year cache-control, the content-type and the
+      # content-addressed key — plus the ordering of the Stage 0 guardrail
+      # relative to the fingerprint cache-hit. Not a source-substring assertion:
+      # #1584 records what those are worth once the source moves.
+      - name: Collage uploads must be immutable-cacheable, and the guard must precede the write
+        run: |
+          deno test --allow-env --allow-net --allow-read --no-check \
+            supabase/functions/_shared/__tests__/collageUpload.issue1644.cacheControl.test.ts
 
       # Collateral protection: these all existed and were dark. They cover the
       # thumb-fallback contract on the file whose fill constant changed, the
@@ -169,3 +213,130 @@ jobs:
         run: >-
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
           -f supabase/migrations/__tests__/issue_1644_storage_backfill_guard.test.sql
+
+  # ---------------------------------------------------------------------------
+  # STAGE 2 SQL side. The re-encode's commit RPC is the ONLY sanctioned write to
+  # place_pool.photo_collage_url outside run-place-intelligence-trial
+  # (I-COLLAGE-SOLE-OWNER), and the delete step reads its manifest. A bug in it
+  # repoints live places at objects that do not exist and then removes the only
+  # copies of the originals — so it is proven against the FULL schema (every
+  # migration applied to a clean PostgreSQL 17), not a hand-built stub.
+  #
+  # Also proves the production blocker fix: `place-collages` shipped with
+  # allowed_mime_types = {image/png,image/jpeg}, so every WebP upload would have
+  # returned invalid_mime_type. The CI image's storage.buckets is MINIMAL and has
+  # no such column, so that path is exercised deliberately by adding the column
+  # and seeding production's exact value.
+  # ---------------------------------------------------------------------------
+  postgres-17-collage-reencode-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start a clean PostgreSQL 17 and apply EVERY migration except Stage 2's
+        run: |
+          set -euo pipefail
+          issue1644_pw="$(openssl rand -hex 24)"
+          echo "::add-mask::$issue1644_pw"
+          echo "ISSUE1644_PW=$issue1644_pw" >> "$GITHUB_ENV"
+          docker run --name issue1644-stage2-pg \
+            -e POSTGRES_PASSWORD="$issue1644_pw" \
+            -d supabase/postgres:17.4.1.075
+          for _ in $(seq 1 120); do
+            state="$(docker inspect --format \
+              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              issue1644-stage2-pg)"
+            [ "$state" = "healthy" ] && break
+            sleep 1
+          done
+          [ "$state" = "healthy" ]
+          for migration in supabase/migrations/*.sql; do
+            case "$(basename "$migration")" in
+              20270221001644_*) continue ;;   # ours — applied after the non-vacuity proof
+            esac
+            docker exec -i issue1644-stage2-pg \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration" > /dev/null
+          done
+
+      # NON-VACUITY GUARD. If the contract passes WITHOUT the migration it is not
+      # testing anything and the step after it would be a false green.
+      - name: The Stage 2 contract MUST fail before its migration is applied
+        run: |
+          if docker exec -i issue1644-stage2-pg \
+               psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+               < supabase/migrations/__tests__/issue_1644_collage_reencode_jobs.test.sql \
+               > /dev/null 2>&1; then
+            echo "VACUOUS TEST: the re-encode contract passed without its migration." >&2
+            exit 1
+          fi
+          echo "Contract correctly fails without the migration."
+
+      - name: Apply the Stage 2 migration
+        run: |
+          docker exec -i issue1644-stage2-pg \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/20270221001644_issue_1644_collage_reencode_jobs.sql
+
+      - name: Prove the manifest, the format-only commit, the skips and the rollback
+        run: |
+          docker exec -i issue1644-stage2-pg \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1644_collage_reencode_jobs.test.sql
+
+      # THE PRODUCTION BLOCKER. The stock CI image ships storage.buckets WITHOUT
+      # allowed_mime_types, so the step above can only prove the "no MIME policy"
+      # branch. Here we reshape the table to match production, seed production's
+      # exact value, and prove the migration adds image/webp, is idempotent, and
+      # leaves an unrestricted (NULL) bucket alone.
+      - name: Prove the place-collages bucket gains image/webp on a production-shaped table
+        run: |
+          set -euo pipefail
+          docker exec -e PGPASSWORD="$ISSUE1644_PW" -i issue1644-stage2-pg \
+            psql -v ON_ERROR_STOP=1 -U supabase_admin -h 127.0.0.1 -d postgres <<'SQL'
+          SET ROLE supabase_storage_admin;
+          ALTER TABLE storage.buckets ADD COLUMN IF NOT EXISTS allowed_mime_types text[];
+          RESET ROLE;
+          INSERT INTO storage.buckets (id, name, allowed_mime_types)
+          VALUES ('place-collages', 'place-collages', ARRAY['image/png','image/jpeg'])
+          ON CONFLICT (id) DO UPDATE SET allowed_mime_types = ARRAY['image/png','image/jpeg'];
+          INSERT INTO storage.buckets (id, name, allowed_mime_types)
+          VALUES ('issue1644-unrestricted', 'issue1644-unrestricted', NULL)
+          ON CONFLICT (id) DO NOTHING;
+          SQL
+
+          # Applied as `postgres` — the same role the Management-API lane uses in
+          # production, where `has_table_privilege('postgres','storage.buckets','UPDATE')`
+          # is true even though supabase_storage_admin owns the table.
+          docker exec -i issue1644-stage2-pg \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/20270221001644_issue_1644_collage_reencode_jobs.sql > /dev/null
+          docker exec -i issue1644-stage2-pg \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/20270221001644_issue_1644_collage_reencode_jobs.sql > /dev/null
+
+          docker exec -i issue1644-stage2-pg psql -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL'
+          DO $$
+          DECLARE v_types text[]; v_null text[]; v_res jsonb;
+          BEGIN
+            SELECT allowed_mime_types INTO v_types FROM storage.buckets WHERE id = 'place-collages';
+            IF NOT ('image/webp' = ANY (v_types)) THEN
+              RAISE EXCEPTION 'place-collages must accept image/webp, got %', v_types;
+            END IF;
+            IF array_length(v_types, 1) <> 3 THEN
+              RAISE EXCEPTION 'a second apply must be idempotent, got %', v_types;
+            END IF;
+            SELECT allowed_mime_types INTO v_null FROM storage.buckets WHERE id = 'issue1644-unrestricted';
+            IF v_null IS NOT NULL THEN
+              RAISE EXCEPTION 'an unrestricted (NULL) bucket must be left alone, got %', v_null;
+            END IF;
+            SELECT public.issue_1644_collage_bucket_accepts_webp() INTO v_res;
+            IF (v_res ->> 'accepts_webp')::boolean IS NOT TRUE THEN
+              RAISE EXCEPTION 'the pre-flight must report the bucket as webp-ready, got %', v_res;
+            END IF;
+          END $$;
+          SQL
+
+      - name: Remove the disposable database
+        if: always()
+        run: docker rm -f issue1644-stage2-pg || true

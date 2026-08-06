@@ -25,6 +25,7 @@ import {
 } from "../_shared/photoAestheticEnums.ts";
 import { recordApiCall } from "../_shared/apiHealthLog.ts"; // ORCH-1201-R2 Layer-C (Serper depletion)
 import {
+  COLLAGE_CACHE_CONTROL_SECONDS,
   composeCollage,
   fingerprintPhotos,
   MAX_PHOTOS,
@@ -641,7 +642,14 @@ const Q2_TOOL = {
 // HTTP entry
 // ═══════════════════════════════════════════════════════════════════════════
 
-serve(async (req: Request) => {
+// [#1644 Stage 2] The handler is defined, then served only when this module is
+// the entry point. Previously `serve(...)` ran at import time, so merely
+// IMPORTING this file to unit-test one of its handlers bound a real HTTP
+// listener — which is why nothing had ever tested a handler in here directly.
+// 49 of the 194 deployed edge functions already ship with exactly this guard
+// (including backfill-place-photo-thumbs at version 328), so the runtime does
+// treat index.ts as the main module.
+export const httpHandler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -763,7 +771,11 @@ serve(async (req: Request) => {
       error: err instanceof Error ? err.message : "Internal error",
     }, 500);
   }
-});
+};
+
+if (import.meta.main) {
+  serve(httpHandler);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // preview_run — ORCH-0734 city-scoped sampled-sync
@@ -996,7 +1008,10 @@ async function handleFetchReviews(
 // compose_collage
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function handleComposeCollage(
+// EXPORTED for the #1644 Stage 2 contract test. Exporting is the whole change —
+// no behaviour differs — and it is what makes the storage-guard ordering and the
+// upload's cache-control assertable at runtime instead of by reading the source.
+export async function handleComposeCollage(
   db: SupabaseClient,
   body: Record<string, unknown>,
 ): Promise<Response> {
@@ -1102,6 +1117,14 @@ async function handleComposeCollage(
     .upload(path, result.pngBytes, {
       contentType: "image/png",
       upsert: true,
+      // [#1644 Stage 2] Omitting cacheControl let Supabase Storage default these
+      // objects to `max-age=3600`, while place-photos next door serve
+      // `max-age=31536000`. The key is `<placeId>/<12-hex fingerprint>.png` where
+      // the fingerprint is a SHA-256 of the source photo URLs — so the object at a
+      // given key can never change, and a one-hour TTL was pure wasted egress on
+      // every re-read by Gemini and by the admin console. Rotating photos mint a
+      // NEW key, which is exactly why the long TTL is safe here.
+      cacheControl: String(COLLAGE_CACHE_CONTROL_SECONDS),
     });
   if (uploadErr) {
     return json({ error: `Storage upload failed: ${uploadErr.message}` }, 500);

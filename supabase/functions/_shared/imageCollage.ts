@@ -19,6 +19,26 @@ export const TARGET_SIZE = 768;
 export const MAX_PHOTOS = 16;
 
 /**
+ * [#1644 Stage 2] Cache-Control max-age, in seconds, for every object written to
+ * the `place-collages` bucket — by the generator here and by the one-time WebP
+ * re-encode worker (`scripts/issue-1644/`).
+ *
+ * ONE YEAR, matching `place-photos`. Until #1644 the collage upload passed no
+ * `cacheControl` at all, so Supabase Storage defaulted it to `max-age=3600` while
+ * the place photos next door served `max-age=31536000`. A collage key is
+ * `<placeId>/<12-hex fingerprint>.<ext>` where the fingerprint is a SHA-256 of the
+ * SOURCE PHOTO URLs — the bytes at a given key therefore never change, and a
+ * photo rotation mints a NEW key rather than overwriting an old one. These
+ * objects are genuinely immutable, so the one-hour TTL was pure wasted egress on
+ * every re-read by Gemini and by the admin console.
+ *
+ * Single definition on purpose (Constitution #2, one owner per truth): both the
+ * generator and the re-encoder read THIS constant, so the two can never drift and
+ * leave half the bucket on a one-hour TTL.
+ */
+export const COLLAGE_CACHE_CONTROL_SECONDS = 31_536_000;
+
+/**
  * Compute adaptive grid dimension for N photos.
  * Returns { grid, tile } where grid is the N-per-side and tile is pixel size per cell.
  */
