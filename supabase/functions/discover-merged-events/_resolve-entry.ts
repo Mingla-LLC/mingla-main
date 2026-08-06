@@ -34,6 +34,7 @@ function cachedResponseStub(): DiscoverMergedResponse {
       ticketmasterTotalAvailable: 0,
       tmCalled: false,
       tmError: null,
+      tmUsedFallback: false,
       page: 1,
       pageSize: 20,
       fromCache: true,

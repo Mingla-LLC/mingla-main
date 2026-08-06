@@ -34,8 +34,16 @@ const corsHeaders = {
 };
 
 interface DiscoverMergedRequest {
+  /**
+   * The query ANCHOR. #1637: `name` is OPTIONAL as long as the coordinate
+   * triple is present. A consumer cold launch has device coordinates seconds
+   * before a reverse-geocode can name the city, and requiring the name here was
+   * the single gate that forced Discover into two sequential fetches — a
+   * Ticketmaster-only one first (structurally unable to carry a Mingla event),
+   * then a merged one that re-ordered the deck under the user's thumb.
+   */
   city: {
-    name: string;
+    name?: string | null;
     stateCode?: string | null;
     countryCode?: string | null;
     fallbackLat?: number;
@@ -98,8 +106,25 @@ serve(async (req: Request): Promise<Response> => {
     return jsonError({ status: "warm" }, 200);
   }
 
-  const cityName = body.city?.name?.trim();
-  if (!cityName) {
+  // ── #1637 The anchor: a city name OR a coordinate triple. ────────────────
+  // The error code stays `city_required` for wire compatibility (and the
+  // keep-warm coverage gate pins the warm short-circuit ahead of it), but the
+  // condition is now "no anchor at all" rather than "no city name". Coordinates
+  // alone are a complete query: the business RPC has an ST_DWithin geo
+  // predicate (issue #1020) and Ticketmaster has latlong+radius mode, so both
+  // supplies answer the same coords-anchored question concurrently.
+  const cityNameRaw = body.city?.name?.trim();
+  const cityName: string | null =
+    cityNameRaw && cityNameRaw.length > 0 ? cityNameRaw : null;
+  const hasGeoAnchor =
+    typeof body.city?.fallbackLat === "number" &&
+    Number.isFinite(body.city.fallbackLat) &&
+    typeof body.city?.fallbackLng === "number" &&
+    Number.isFinite(body.city.fallbackLng) &&
+    typeof body.city?.fallbackRadiusKm === "number" &&
+    Number.isFinite(body.city.fallbackRadiusKm) &&
+    body.city.fallbackRadiusKm > 0;
+  if (!cityName && !hasGeoAnchor) {
     return jsonError({ error: "city_required" }, 400);
   }
 

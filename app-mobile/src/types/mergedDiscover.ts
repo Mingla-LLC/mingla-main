@@ -185,6 +185,15 @@ export interface DiscoverMergedResponse {
     tmCalled: boolean;
     /** Non-null when TM upstream failed but business results still returned. */
     tmError: string | null;
+    /**
+     * #1637 — true when the nested Ticketmaster call fell back from city-mode
+     * to lat/lng because the city returned fewer than 5 results. Feeds
+     * Discover's "Showing events near you" banner, which before #1637 was fed
+     * only by the deleted Ticketmaster-only client path and was therefore
+     * effectively unreachable. Optional: a client pinned to a pre-#1637 edge
+     * deployment receives undefined → banner off (no fabrication).
+     */
+    tmUsedFallback?: boolean;
     page: number;
     pageSize: number;
     fromCache: boolean;
@@ -192,8 +201,15 @@ export interface DiscoverMergedResponse {
 }
 
 export interface DiscoverMergedSearchInput {
+  /**
+   * The query ANCHOR. #1637: supply EITHER `name` (an explicitly chosen city)
+   * OR the `fallback*` coordinate triple. `name: null` with coordinates is the
+   * cold-launch shape — the device knows where it is long before a
+   * reverse-geocode can name the place, and waiting for the name is what made
+   * Mingla events structurally last.
+   */
   city: {
-    name: string;
+    name: string | null;
     stateCode?: string | null;
     countryCode?: string | null;
     fallbackLat?: number;

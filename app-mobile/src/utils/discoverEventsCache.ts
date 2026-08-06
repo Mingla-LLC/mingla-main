@@ -237,3 +237,235 @@ export function readLastResolvedDiscoverCity(): ResolvedDiscoverCity | null {
 export function __resetResolvedDiscoverCityForTests(): void {
   lastResolvedCity = null;
 }
+
+/* ────────────────────────────────────────────────────────────────────────
+ * #1637 [discover-single-fetch] — THE QUERY ANCHOR.
+ *
+ * THE BUG THIS REPLACES. Discover used to derive its data query from
+ * `effectiveCity = selectedCity ?? gpsDefaultCity`, where `gpsDefaultCity` is
+ * the REVERSE-GEOCODED chip label. On a cold launch with no saved city — 44 of
+ * 53 live users — that produced two fetches against two different endpoints:
+ *
+ *   1. GPS resolves      → effectiveCity is still null → the TM-ONLY endpoint,
+ *                          with `setBusinessEvents([])` hard-coded. Structurally
+ *                          incapable of carrying a single Mingla event.
+ *   2. geocode resolves  → effectiveCity becomes non-null → a SECOND, 300ms-
+ *                          debounced fetch to the merged endpoint.
+ *
+ * Ticketmaster was therefore gated on STRICTLY LESS than Mingla (GPS alone vs
+ * GPS + a reverse-geocode round trip + a debounce), so Mingla could never
+ * arrive first — and the second commit re-ordered a deck the user was already
+ * reading.
+ *
+ * THE RULE NOW, and it is the whole fix: the reverse-geocoded city is a LABEL.
+ * It never enters the query. The query is anchored on exactly one of
+ *
+ *   • an EXPLICIT city  — picked in CityPickerSheet or restored from the user's
+ *     saved `discover_city_*` preference. A deliberate user choice; a deck
+ *     change here is expected and wanted.
+ *   • the DEVICE COORDS — everything else. The merged endpoint accepts
+ *     coordinates (it already threaded fallbackLat/Lng/RadiusKm into both the
+ *     business RPC's ST_DWithin predicate and Ticketmaster), so one fetch
+ *     carries BOTH supplies from the first millisecond GPS is available.
+ *
+ * Consequences that make the reshuffle structurally impossible on cold launch:
+ *   • the geocode landing changes NOTHING in this anchor → no second fetch;
+ *   • device-GPS jitter cannot re-key a city-anchored query (coords are dropped
+ *     entirely when a city anchor is present);
+ *   • one fetch ⇒ one commit ⇒ the ordered card list is decided once.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Minimal city shape the query anchor needs. Structurally matches
+ * DiscoverScreen's `DiscoverCity`.
+ */
+export interface DiscoverAnchorCity {
+  name: string;
+  lat: number;
+  lng: number;
+}
+
+export type DiscoverQueryAnchor =
+  | { kind: "city"; cityName: string; cityLat: number; cityLng: number }
+  | { kind: "coords"; gpsLat: number; gpsLng: number }
+  | { kind: "none" };
+
+/**
+ * Snap a raw device coordinate to the same ~110m bucket the resolved-city cache
+ * uses, so the query identity is stable across launches.
+ *
+ * WHY THIS EXISTS. A GPS fix carries 7+ decimals and never repeats. Feeding it
+ * raw into the query would mint a brand-new client cache key AND a brand-new
+ * `discover_merged_events_cache` row on every single request — the merged
+ * endpoint's key already folds the geo center in (issue #1020), so an unsnapped
+ * coordinate fragments that cache to exactly one row per request and the L2
+ * layer stops being a cache at all.
+ *
+ * 3 decimals (~110m) is deliberately the SAME bucket as
+ * RESOLVED_CITY_COORD_PRECISION, and deliberately NOT coarser: Discover renders
+ * Ticketmaster distances to one decimal of a kilometre, and a coarser snap would
+ * visibly move the search anchor away from the user (Constitution #9 — nothing
+ * displayed may be fabricated).
+ */
+export function snapDiscoverQueryCoord(
+  value: number | null | undefined,
+): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Number(value.toFixed(RESOLVED_CITY_COORD_PRECISION));
+}
+
+/**
+ * Resolve the ONE anchor the Discover data query runs against.
+ *
+ * `selectedCity` is the EXPLICIT city only (CityPickerSheet / saved
+ * preference). The reverse-geocoded `gpsDefaultCity` is deliberately NOT a
+ * parameter — passing it would reintroduce #1637 — and the CI gate
+ * `app-mobile/src/utils/__tests__/issue_1637_discover_single_fetch.test.ts`
+ * (contract C-1) fails the build if DiscoverScreen ever feeds it here.
+ */
+export function resolveDiscoverQueryAnchor(args: {
+  selectedCity: DiscoverAnchorCity | null;
+  gpsLat: number | null;
+  gpsLng: number | null;
+}): DiscoverQueryAnchor {
+  const city = args.selectedCity;
+  if (
+    city &&
+    typeof city.name === "string" &&
+    city.name.trim().length > 0 &&
+    Number.isFinite(city.lat) &&
+    Number.isFinite(city.lng)
+  ) {
+    return {
+      kind: "city",
+      cityName: city.name,
+      cityLat: city.lat,
+      cityLng: city.lng,
+    };
+  }
+  const lat = snapDiscoverQueryCoord(args.gpsLat);
+  const lng = snapDiscoverQueryCoord(args.gpsLng);
+  if (lat !== null && lng !== null) {
+    return { kind: "coords", gpsLat: lat, gpsLng: lng };
+  }
+  return { kind: "none" };
+}
+
+/** True when the anchor can produce a real request. Feeds `hasUsableQuery`. */
+export function hasUsableDiscoverQuery(anchor: DiscoverQueryAnchor): boolean {
+  return anchor.kind !== "none";
+}
+
+/**
+ * The anchor's VALUE identity, as a string.
+ *
+ * WHY THIS EXISTS (#1637 follow-up, found by instrumented device capture on the
+ * Samsung SM-A725F). `resolveDiscoverQueryAnchor` is pure and correctly drops
+ * GPS when a city anchor is present — but DiscoverScreen memoised it on its
+ * INPUTS (`[selectedCity, snappedGpsLat, snappedGpsLng]`). In city mode a GPS
+ * snap that the anchor deliberately ignores still changed the memo's deps, so
+ * React handed the fetch effect a NEW OBJECT describing an IDENTICAL query, and
+ * the effect fired a debounced refetch. Device capture, city-anchored on
+ * "Raleigh": a third `searchMerged` 6.8s after the second, same anchor, same
+ * body. Memoising on this key instead makes "same query ⇒ same identity" true
+ * at the React layer, not just at the value layer.
+ */
+export function discoverQueryAnchorKey(anchor: DiscoverQueryAnchor): string {
+  switch (anchor.kind) {
+    case "city":
+      return `city:${anchor.cityName}:${anchor.cityLat}:${anchor.cityLng}`;
+    case "coords":
+      return `coords:${anchor.gpsLat}:${anchor.gpsLng}`;
+    default:
+      return "none";
+  }
+}
+
+/**
+ * The saved `discover_city_*` preference, as an anchor city — or null.
+ *
+ * Pure, and shared by BOTH reads of that preference (the fast local mirror and
+ * the authoritative network row) so the two can never disagree about what
+ * counts as a usable saved city.
+ */
+export function discoverCityFromPreferences(
+  prefs: {
+    discover_city_name?: string | null;
+    discover_city_state_code?: string | null;
+    discover_city_country_code?: string | null;
+    discover_city_lat?: number | null;
+    discover_city_lng?: number | null;
+  } | null,
+): {
+  name: string;
+  stateCode: string | null;
+  countryCode: string | null;
+  lat: number;
+  lng: number;
+} | null {
+  if (!prefs) return null;
+  const name = prefs.discover_city_name;
+  const lat = prefs.discover_city_lat;
+  const lng = prefs.discover_city_lng;
+  if (typeof name !== "string" || name.trim().length === 0) return null;
+  if (typeof lat !== "number" || !Number.isFinite(lat)) return null;
+  if (typeof lng !== "number" || !Number.isFinite(lng)) return null;
+  return {
+    name,
+    stateCode: prefs.discover_city_state_code ?? null,
+    countryCode: prefs.discover_city_country_code ?? null,
+    lat,
+    lng,
+  };
+}
+
+/**
+ * Do two saved-city reads describe the same anchor?
+ *
+ * Used to decide whether the authoritative network row may re-anchor a query
+ * the local mirror already anchored. When they agree — the overwhelmingly
+ * common case — the authoritative read must change NOTHING, or it re-introduces
+ * the very second fetch #1637 exists to remove.
+ */
+export function sameDiscoverAnchorCity(
+  a: DiscoverAnchorCity | null,
+  b: DiscoverAnchorCity | null,
+): boolean {
+  if (a === null || b === null) return a === b;
+  return a.name === b.name && a.lat === b.lat && a.lng === b.lng;
+}
+
+/**
+ * Build the full cache signature from the anchor + the active filters.
+ *
+ * Note the two `null` slots per branch: a city-anchored query carries NO gps
+ * facets (so a later GPS fix cannot re-key it and force a refetch whose request
+ * body would be byte-identical), and a coords-anchored query carries NO city
+ * facets (so the reverse-geocode landing cannot re-key it either). That
+ * mutual exclusion is the reshuffle fix expressed as a cache key.
+ */
+export function buildDiscoverSignatureForAnchor(
+  anchor: DiscoverQueryAnchor,
+  filters: {
+    date: string;
+    segment: string;
+    genre: string;
+    partyTypes: string[];
+    vibeTags: string[];
+    musicGenres: string[];
+  },
+): DiscoverCacheSignature {
+  return {
+    cityName: anchor.kind === "city" ? anchor.cityName : null,
+    cityLat: anchor.kind === "city" ? anchor.cityLat : null,
+    cityLng: anchor.kind === "city" ? anchor.cityLng : null,
+    gpsLat: anchor.kind === "coords" ? anchor.gpsLat : null,
+    gpsLng: anchor.kind === "coords" ? anchor.gpsLng : null,
+    date: filters.date,
+    segment: filters.segment,
+    genre: filters.genre,
+    partyTypes: filters.partyTypes,
+    vibeTags: filters.vibeTags,
+    musicGenres: filters.musicGenres,
+  };
+}

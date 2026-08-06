@@ -12,7 +12,11 @@ export const DISCOVER_STALE_TTL_MS = Number(
 );
 
 export interface DiscoverCacheParams {
-  cityName: string;
+  /**
+   * #1637 — null for a coords-anchored request (a cold consumer launch, before
+   * any reverse-geocode). The `geo` slot below then carries the whole anchor.
+   */
+  cityName: string | null;
   stateCode?: string | null;
   countryCode?: string | null;
   page: number;
@@ -36,7 +40,13 @@ export interface DiscoverCacheParams {
 
 export function buildDiscoverCacheKey(p: DiscoverCacheParams): string {
   const normalized = {
-    city: p.cityName.trim().toLowerCase(),
+    // #1637 — null (not "") for a coords-anchored request, so a coords key can
+    // never collide with a city key and JSON.stringify keeps the slot explicit.
+    // The client snaps device coordinates to ~110m before they arrive here, so
+    // the 4-dp rounding below is a float-jitter guard, not the deduplicator —
+    // without the client-side snap a 7-decimal GPS fix would mint one cache row
+    // per request and the L2 layer would stop being a cache.
+    city: p.cityName === null ? null : p.cityName.trim().toLowerCase(),
     state: p.stateCode ?? null,
     country: p.countryCode ?? null,
     page: p.page,
