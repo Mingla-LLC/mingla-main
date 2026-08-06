@@ -32,6 +32,9 @@ import { Icon } from "../ui/Icon";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
+// #1669 [expanded-card-one-producer]: Likes routes through the ONE canonical
+// producer instead of its own two hand-written literals.
+import { savedCardToExpandedCardData } from "../utils/savedCardToExpandedCardData";
 import { mixpanelService } from "../../services/mixpanelService";
 import { logAppsFlyerEvent } from "../../services/appsFlyerService";
 import { recordCardExpand } from "../../services/cardEngagementService";
@@ -67,7 +70,6 @@ import type { GatedFeature } from "../../hooks/useFeatureGate";
 import { useKeyboard } from "../../hooks/useKeyboard";
 import { useTranslation } from 'react-i18next';
 import {
-  canonicalDiscoveryPriceFields,
   type CanonicalDiscoveryPrice,
 } from "../../utils/priceTiers";
 
@@ -1725,71 +1727,29 @@ const SavedTab = ({
         );
       }
 
-      // Transform card to ExpandedCardData format for calendar entry
+      // #1669 [expanded-card-one-producer]: this is the payload PERSISTED as the
+      // calendar entry, and CalendarTab reads it straight back into the same
+      // modal — so its two fabrications (`rating || 4.5` and
+      // `travelTime || "15 min"`) were not just displayed, they were WRITTEN TO
+      // THE DATABASE and then re-read as if they were facts about the venue.
+      // Both are gone: the canonical mapper hides missing data instead of
+      // inventing it (Constitution #9).
       const isCurated = Array.isArray((cardToSchedule as any).stops)
         && (cardToSchedule as any).stops.length > 0;
 
-      const cardData: ExpandedCardData = {
-        id: cardToSchedule.id,
-        placeId: (cardToSchedule as any).placeId ?? cardToSchedule.id,
-        title: cardToSchedule.title,
-        category: cardToSchedule.category,
-        categoryIcon: cardToSchedule.categoryIcon,
-        description: cardToSchedule.description,
-        fullDescription:
-          cardToSchedule.fullDescription || cardToSchedule.description,
-        image: cardToSchedule.image,
-        images: cardToSchedule.images?.length ? cardToSchedule.images : [cardToSchedule.image].filter(Boolean),
-        rating: cardToSchedule.rating || 4.5,
-        reviewCount: cardToSchedule.reviewCount || 0,
-        priceRange: cardToSchedule.priceRange || "",
-        ...canonicalDiscoveryPriceFields(cardToSchedule),
-        distance: (cardToSchedule as any).distance || "",
-        travelTime: cardToSchedule.travelTime || "15 min",
-        address: cardToSchedule.address || "",
-        openingHours: cardToSchedule.openingHours,
-        utcOffsetMinutes: cardToSchedule.utcOffsetMinutes ?? cardToSchedule.utc_offset_minutes ?? null,
-        highlights: cardToSchedule.highlights || [],
-        tags: (cardToSchedule as any).tags || [],
-        matchScore: cardToSchedule.matchScore || 0,
-        matchFactors: (cardToSchedule as any).matchFactors || {
-          location: 0,
-          budget: 0,
-          category: 0,
-          time: 0,
-          popularity: 0,
-        },
-        socialStats: {
-          views: cardToSchedule.socialStats?.views || 0,
-          likes: cardToSchedule.socialStats?.likes || 0,
-          saves: cardToSchedule.socialStats?.saves || 0,
-          shares: (cardToSchedule.socialStats as any)?.shares || 0,
-        },
-        location: (cardToSchedule as any).location
-          ? (cardToSchedule as any).location
-          : cardToSchedule.lat && cardToSchedule.lng
-          ? { lat: cardToSchedule.lat, lng: cardToSchedule.lng }
-          : undefined,
-        // Add sessionName if it's a collaboration card
-        ...(source === "collaboration" && cardToSchedule.sessionName
-          ? { sessionName: cardToSchedule.sessionName }
-          : {}),
-        // Curated fields — pass through if present
-        ...(isCurated && {
-          cardType: 'curated' as const,
-          stops: (cardToSchedule as any).stops,
-          tagline: (cardToSchedule as any).tagline,
-          pairingKey: (cardToSchedule as any).pairingKey,
-          totalPriceMin: (cardToSchedule as any).totalPriceMin,
-          totalPriceMax: (cardToSchedule as any).totalPriceMax,
-          estimatedDurationMinutes: (cardToSchedule as any).estimatedDurationMinutes,
-          experienceType: (cardToSchedule as any).experienceType,
-        }),
-      };
+      const cardData = savedCardToExpandedCardData(
+        cardToSchedule as unknown as Record<string, unknown>,
+      );
+      if (!cardData) return;
 
       const cardWithSource = {
         ...cardData,
         source,
+        // Collaboration cards carry the originating session's name through to
+        // the calendar entry.
+        ...(source === "collaboration" && cardToSchedule.sessionName
+          ? { sessionName: cardToSchedule.sessionName }
+          : {}),
       };
 
       // Add to calendar in Supabase (lockedIn)
@@ -1871,70 +1831,24 @@ const SavedTab = ({
     // Detect if this is a curated multi-stop card
     const isCurated = Array.isArray((card as any).stops) && (card as any).stops.length > 0;
 
-    const expandedCardData: ExpandedCardData = {
-      id: card.id,
-      placeId: (card as any).placeId ?? card.id,
-      title: card.title,
-      category: card.category,
-      categoryIcon: card.categoryIcon,
-      description: card.description,
-      fullDescription: card.fullDescription || card.description,
-      image: card.image,
-      images: card.images?.length ? card.images : [card.image].filter(Boolean),
-      rating: card.rating || 4.5,
-      reviewCount: card.reviewCount || 0,
-      // [ORCH-0649 — INVARIANT I-NO-FABRICATED-DISPLAY-N/A]
-      // Pass undefined (not literal "N/A") so the renderer's truthy guard
-      // hides the pill. Constitution #9 forbids fabricated display values.
-      priceRange: card.priceRange || undefined,
-      ...canonicalDiscoveryPriceFields(card),
-      distance: (card as any).distance || "",
-      travelTime: card.travelTime || undefined,
-      address: card.address || "",
-      openingHours: card.openingHours,
-      utcOffsetMinutes: card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null,
-      highlights: card.highlights || [],
-      tags: (card as any).tags || [],
-      matchScore: matchScore || 0,
-      matchFactors: (card as any).matchFactors || {
-        location: 0,
-        budget: 0,
-        category: 0,
-        time: 0,
-        popularity: 0,
+    // #1669 [expanded-card-one-producer]: Likes used to hand-write this object.
+    // That literal is where the fabricated `rating: … || 4.5` lived (a place
+    // with no rating showed 4.5 stars from Likes and no chip from the deck —
+    // Constitution #9), and where a curated plan was rebuilt from a fixed
+    // 9-key allowlist instead of passed through, which is the half of
+    // ORCH-1054 that was never repaired here. One producer now. The only thing
+    // Likes still owns is its own match-score resolution and the "planning
+    // for" datetime; every field-survival decision lives in the mapper.
+    const expandedCardData = savedCardToExpandedCardData(
+      { ...(card as unknown as Record<string, unknown>), matchScore },
+      {
+        // [ORCH-0649] Must be a real Date or undefined — never the string "N/A".
+        selectedDateTime: (card as any)?.dateAdded
+          ? new Date((card as any).dateAdded)
+          : undefined,
       },
-      socialStats: {
-        views: card.socialStats?.views || 0,
-        likes: card.socialStats?.likes || 0,
-        saves: card.socialStats?.saves || 0,
-        shares: (card.socialStats as any)?.shares || 0,
-      },
-      location:
-        (card as any).location ||
-        ((card as any).lat && (card as any).lng
-          ? { lat: (card as any).lat, lng: (card as any).lng }
-          : undefined),
-      // [ORCH-0649] Must be a real Date or undefined — never the string "N/A".
-      selectedDateTime: (card as any)?.dateAdded
-        ? new Date((card as any).dateAdded)
-        : undefined,
-      strollData: (card as any).strollData,
-      picnicData: (card as any).picnicData,
-      website: (card as any).website || undefined,
-      phone: (card as any).phone || undefined,
-      // Curated fields — pass through if present
-      ...(isCurated && {
-        cardType: 'curated' as const,
-        stops: (card as any).stops,
-        tagline: (card as any).tagline,
-        pairingKey: (card as any).pairingKey,
-        totalPriceMin: (card as any).totalPriceMin,
-        totalPriceMax: (card as any).totalPriceMax,
-        estimatedDurationMinutes: (card as any).estimatedDurationMinutes,
-        experienceType: (card as any).experienceType,
-        shoppingList: (card as any).shoppingList,
-      }),
-    };
+    );
+    if (!expandedCardData) return;
 
     setSelectedCardForModal(expandedCardData);
     setOriginalSavedCard(card);
@@ -2404,6 +2318,10 @@ const SavedTab = ({
           onPurchase={handleModalPurchase}
           onShare={handleModalShare}
           userPreferences={userPreferences}
+          // #1669: without this the modal fell back to its Imperial/USD
+          // defaults, so a Metric user saw miles and °F from Likes and km and
+          // °C from the deck for the same place.
+          accountPreferences={accountPreferences}
           onStrollDataFetched={handleStrollDataFetched}
           onPicnicDataFetched={handlePicnicDataFetched}
           canAccessCurated={canAccess('curated_cards')}

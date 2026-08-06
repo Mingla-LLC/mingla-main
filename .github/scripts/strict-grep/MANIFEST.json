@@ -16,7 +16,7 @@
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
   "expectedStrictGrepMjsFiles": 478,
-  "selfTestWiredFloor": 289,
+  "selfTestWiredFloor": 290,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -6764,6 +6764,20 @@
       "selfTest": "none",
       "jobKeys": [
         "orch-1054-matches-expanded-card-parity-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/issue-1669-expanded-card-one-producer.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1669-expanded-card-one-producer"
       ]
     },
     {

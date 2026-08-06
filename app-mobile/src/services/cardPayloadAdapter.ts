@@ -5,20 +5,29 @@
  * Replaces the unsafe `useState<any>` typing (and the latent `as unknown as`
  * cast it permitted) at MessageInterface.tsx:187 + :943 — Constitution #12 fix.
  *
- * Fields not carried in CardPayload are filled with null-safe defaults that
- * let ExpandedCardModal render its sections honestly:
- *   - distance, travelTime: null (Constitution #9 — never fabricate from sender;
- *     these are recipient-relative per ORCH-0659/0660 lesson)
- *   - tags: [] (CardInfoSection renders empty tag row gracefully)
- *   - matchFactors, socialStats: zero-valued objects (modal does not render
- *     today; forward-positioned per ORCH-0685.D-5 deferral)
- *   - fullDescription: falls back to description (CardPayload only carries one)
- *   - strollData, picnicData, nightOutData: undefined (chat-share doesn't carry these)
- *   - cardType + stops: passed through when present (ORCH-0910 — unlocks the modal's
- *     isCuratedCard branch for chat-shared intent cards)
+ * ── #1669 [expanded-card-one-producer] ──
+ * This is now a NORMALISER, not a second producer. It resolves everything that
+ * is specific to a chat-share snapshot — the ORCH-0908 legacy `.card_data`
+ * nesting, the snake_case lock-in keys, and the deliberate suppression of the
+ * SENDER's distance/travel-time — and then hands a plain pool-card record to
+ * the ONE canonical producer, `savedCardToExpandedCardData`.
+ *
+ * That is what restores the price pill in chat: the canonical mapper spreads
+ * `canonicalDiscoveryPriceFields`, and this adapter never did. It also means a
+ * field added to the mapper tomorrow reaches chat for free, instead of chat
+ * silently keeping an older field list.
+ *
+ * Chat-specific decisions preserved verbatim:
+ *   - distance, travelTime: null (Constitution #9 — never fabricate from the
+ *     sender; these are recipient-relative, per the ORCH-0659/0660 lesson).
+ *     The modal recomputes viewer-relative travel at open time.
+ *   - fullDescription falls back to description (CardPayload carries only one).
+ *   - socialStats.shares is forced to 0 (the payload does not carry it).
+ *   - lock-in metadata (ORCH-0908) and curated stops (ORCH-0910) pass through.
  */
 import type { CardPayload } from './messagingService';
 import type { ExpandedCardData } from '../types/expandedCardTypes';
+import { savedCardToExpandedCardData } from '../components/utils/savedCardToExpandedCardData';
 
 export function cardPayloadToExpandedCardData(p: CardPayload): ExpandedCardData {
   // ORCH-0908: defensive legacy-payload normalizer. The first cut of the
@@ -29,47 +38,30 @@ export function cardPayloadToExpandedCardData(p: CardPayload): ExpandedCardData 
   // (scheduled_at, locker_user_id, etc.) to camelCase.
   const raw = p as any;
   const legacy = raw.card_data && typeof raw.card_data === 'object' ? raw.card_data : {};
-  const f = <T,>(key: string, fallback?: T): T => (raw[key] ?? legacy[key] ?? fallback) as T;
   const scheduledAt = raw.scheduledAt ?? raw.scheduled_at ?? undefined;
-  const cardType = (raw.cardType ?? legacy.cardType) === 'curated' ? 'curated' : undefined;
-  return {
-    id: f('id', ''),
-    title: f('title', 'Saved experience'),
-    category: f('category', '') ?? '',
-    categoryIcon: f('categoryIcon', '') ?? '',
-    description: f('description', '') ?? '',
-    fullDescription: f('description', '') ?? '',
-    image: f('image', '') ?? '',
-    images: (raw.images ?? legacy.images) ?? (() => {
-      const img = f<string | null>('image', null);
-      return img ? [img] : [];
-    })(),
-    rating: f('rating', 0) ?? 0,
-    reviewCount: f('reviewCount', 0) ?? 0,
-    priceRange: f('priceRange', undefined),
-    distance: null,
-    travelTime: null,
+  const socialStats = raw.socialStats ?? legacy.socialStats;
+
+  const record: Record<string, unknown> = {
+    // Flatten legacy-nested first so top-level keys win.
+    ...legacy,
+    ...raw,
+    card_data: undefined,
+    id: (raw.id ?? legacy.id) ?? '',
+    title: (raw.title ?? legacy.title) ?? 'Saved experience',
+    // Left empty on purpose when the payload has none: ExpandedCardModal
+    // resolves `card.categoryIcon || getCategoryIcon(card.category)`, which is
+    // strictly more informative than any placeholder we could stamp here.
+    categoryIcon: (raw.categoryIcon ?? legacy.categoryIcon) ?? '',
+    // The SENDER's distance and travel time are meaningless to the recipient.
+    // Undefined here → `null` out of the mapper → the modal hides the pills and
+    // recomputes from the viewer's own GPS.
+    distance: undefined,
+    travelTime: undefined,
     travelMode: undefined,
-    address: f('address', '') ?? '',
-    openingHours: (raw.openingHours ?? legacy.openingHours) ?? null,
-    phone: f('phone', undefined),
-    website: f('website', undefined),
-    highlights: f('highlights', []) ?? [],
-    tags: f('tags', []) ?? [],
-    matchScore: f('matchScore', 0) ?? 0,
-    matchFactors: f('matchFactors', { location: 0, budget: 0, category: 0, time: 0, popularity: 0 }),
-    socialStats: (raw.socialStats ?? legacy.socialStats)
-      ? { ...(raw.socialStats ?? legacy.socialStats), shares: 0 }
+    socialStats: socialStats
+      ? { views: 0, likes: 0, saves: 0, ...socialStats, shares: 0 }
       : { views: 0, likes: 0, saves: 0, shares: 0 },
-    location: raw.location ?? (legacy.lat != null && legacy.lng != null ? { lat: legacy.lat, lng: legacy.lng } : legacy.location),
-    selectedDateTime: p.selectedDateTime
-      ? new Date(p.selectedDateTime)
-      : scheduledAt
-        ? new Date(scheduledAt)
-        : undefined,
-    placeId: f('placeId', undefined),
-    // ORCH-0908: pass lock-in metadata through so ExpandedCardModal renders
-    // the LockedInBanner + Add-to-Calendar CTA when present.
+    // ORCH-0908 lock-in metadata, camelCased.
     lockInEvent: raw.lockInEvent
       ?? (raw.event === 'card_locked_and_scheduled' ? 'card_locked_and_scheduled' : undefined),
     scheduledAt,
@@ -77,13 +69,21 @@ export function cardPayloadToExpandedCardData(p: CardPayload): ExpandedCardData 
     lockerUserId: raw.lockerUserId ?? raw.locker_user_id,
     savedCardId: raw.savedCardId ?? raw.saved_card_id,
     sessionId: raw.sessionId ?? raw.session_id,
-    // ORCH-0910: pass curated/intent fields through so ExpandedCardModal's
-    // isCuratedCard branch fires for chat-mounted intent cards.
-    cardType,
-    stops: raw.stops ?? legacy.stops,
-    tagline: raw.tagline ?? legacy.tagline,
-    totalPriceMin: raw.totalPriceMin ?? legacy.totalPriceMin,
-    totalPriceMax: raw.totalPriceMax ?? legacy.totalPriceMax,
-    estimatedDurationMinutes: raw.estimatedDurationMinutes ?? legacy.estimatedDurationMinutes,
+    // ORCH-0910: only ever the literal discriminator the modal reads.
+    cardType: (raw.cardType ?? legacy.cardType) === 'curated' ? 'curated' : undefined,
+    selectedDateTime: p.selectedDateTime
+      ? new Date(p.selectedDateTime)
+      : scheduledAt
+        ? new Date(scheduledAt)
+        : undefined,
   };
+
+  // A CardPayload always has at least an id, so the mapper never returns null
+  // here; the fallback is for the compiler, not a reachable state.
+  return (
+    savedCardToExpandedCardData(record) ?? ({
+      ...record,
+      distance: null,
+    } as unknown as ExpandedCardData)
+  );
 }

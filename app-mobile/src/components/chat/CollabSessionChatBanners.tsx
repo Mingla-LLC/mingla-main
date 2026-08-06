@@ -231,7 +231,12 @@ function CompactCollabBottomSheet({
   );
 }
 
-export function ScheduleSheet({ visible, onClose, sessionId }: SheetProps) {
+export function ScheduleSheet({
+  visible,
+  onClose,
+  sessionId,
+  accountPreferences,
+}: SheetProps & { accountPreferences?: Props["accountPreferences"] }) {
   const { rows, isLoading, isError, refetch } =
     useSessionScheduledCards(sessionId);
   const [expandedCard, setExpandedCard] = useState<ExpandedCardData | null>(
@@ -306,6 +311,9 @@ export function ScheduleSheet({ visible, onClose, sessionId }: SheetProps) {
         onClose={() => setExpandedCard(null)}
         onSave={() => {}}
         currentMode="collab"
+        // #1669: both collab sheets dropped the viewer's units/currency, so the
+        // same card rendered in miles/°F here and km/°C on the deck.
+        accountPreferences={accountPreferences}
       />
     </>
   );
@@ -389,6 +397,9 @@ export function SavedToSessionCardsSheet({
         onClose={() => setExpandedCard(null)}
         onSave={() => {}}
         currentMode="collab"
+        // #1669: both collab sheets dropped the viewer's units/currency, so the
+        // same card rendered in miles/°F here and km/°C on the deck.
+        accountPreferences={accountPreferences}
       />
     </>
   );

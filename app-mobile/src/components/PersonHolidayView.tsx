@@ -20,7 +20,10 @@ import { BaseBottomSheet } from './ui/BaseBottomSheet';
 import { Icon, type IconName } from './ui/Icon';
 import { GlassBadge } from './ui/GlassBadge';
 import type { ExpandedCardData } from '../types/expandedCardTypes';
-import { holidayCardToExpandedCardData } from './utils/holidayCardToExpandedCardData';
+import {
+  holidayCardToExpandedCardData,
+  fallbackCardToExpandedCardData,
+} from './utils/holidayCardToExpandedCardData';
 import {
   GenderOption,
   HolidayDefinition,
@@ -608,29 +611,15 @@ function CardRow({
               isCurated={false}
               experienceType={null}
               stops={0}
-              onPress={() =>
-                onCardPress?.({
-                  id: c.id,
-                  title: c.title,
-                  category: c.category,
-                  categoryIcon: getCategoryIcon(c.category),
-                  description: '',
-                  fullDescription: '',
-                  image: c.image ?? '',
-                  images: c.image ? [c.image] : [],
-                  rating: c.rating ?? 0,
-                  reviewCount: 0,
-                  priceRange: c.priceRange ?? undefined,
-                  distance: null,
-                  travelMode,
-                  address: c.address ?? '',
-                  highlights: [],
-                  tags: [],
-                  matchScore: 0,
-                  matchFactors: { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
-                  socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
-                })
-              }
+              // #1669 [expanded-card-one-producer]: this row used to bypass
+              // `holidayCardToExpandedCardData` with a second inline literal —
+              // an eighth producer for the same modal, sitting next to the
+              // adapter that exists precisely so it would not. It now goes
+              // through the ONE canonical producer like everything else.
+              onPress={() => {
+                const expanded = fallbackCardToExpandedCardData(c, { travelMode });
+                if (expanded) onCardPress?.(expanded);
+              }}
             />
           ))}
       <ShuffleButton onShuffle={handleShuffle} />

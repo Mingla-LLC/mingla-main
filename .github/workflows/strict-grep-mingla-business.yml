@@ -712,6 +712,17 @@ jobs:
             src/services/__tests__/deckService.issue1384.test.ts \
             src/utils/__tests__/priceTiers.issue1384.test.ts \
             src/utils/__tests__/discoveryPriceRuntimeParity.issue1384.test.ts
+      # Issue #1669 — the BEHAVIOURAL half of the one-producer work. The
+      # structural half (the producer registry) runs as a class-A gate; this
+      # opens the SAME place through four real production entry points and
+      # asserts the rendered price pill, the Open-now badge, the rating chip and
+      # the weather-block location agree. A registry that proves everyone calls
+      # the mapper is worth nothing if the mapper stops carrying the fields.
+      - name: "Issue #1669: expanded-card one-producer parity"
+        working-directory: app-mobile
+        run: |
+          npx jest --runInBand \
+            src/components/utils/__tests__/issue_1669_one_producer_parity.test.ts
       - name: Run class D suites (batched)
         run: node .github/scripts/strict-grep/run-batch.mjs --class D
       - name: Upload class D gate results
