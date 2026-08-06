@@ -29,6 +29,7 @@ import {
   fingerprintPhotos,
   MAX_PHOTOS,
 } from "../_shared/imageCollage.ts";
+import { checkStorageHeadroom } from "../_shared/storageHeadroomGuard.ts";
 import {
   CHILD_RECONCILE_PAGE_SIZE,
   type ChildTruthReconciliationResult,
@@ -1057,6 +1058,31 @@ async function handleComposeCollage(
       fingerprint,
       photoCount: allPhotos.length,
     });
+  }
+
+  // [#1644] Storage guardrail. Placed AFTER the fingerprint cache check above so
+  // an idempotent cache hit stays free, and BEFORE composeCollage so we do not
+  // burn CPU on an image we are about to refuse to store.
+  //
+  // This function is the SOLE writer of `place-collages` (I-COLLAGE-SOLE-OWNER),
+  // and it is reached BOTH over HTTP (admin UI) and IN-PROCESS from the
+  // `kick_pending_trial_runs` cron worker's prep phase — which is why the guard
+  // lives here rather than in the HTTP action dispatch, where the cron path
+  // would bypass it entirely.
+  //
+  // Collage paths are content-addressed (`<placeId>/<fingerprint>.png`) and
+  // nothing ever deletes the superseded object, so every photo rotation mints a
+  // NEW ~1 MB object. A re-run over a new city is exactly the 29.3 GiB/week
+  // burst this guardrail exists to stop.
+  const headroom = await checkStorageHeadroom(db, "run-place-intelligence-trial compose_collage");
+  if (!headroom.ok) {
+    console.error(headroom.message);
+    return json({
+      error: headroom.message,
+      reason: headroom.reason,
+      totalBytes: headroom.totalBytes,
+      thresholdBytes: headroom.thresholdBytes,
+    }, 507);
   }
 
   // Compose

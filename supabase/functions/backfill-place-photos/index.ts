@@ -6,6 +6,7 @@ import {
   photoBackfillFailureSummary,
   type PhotoBackfillFailedPlace,
 } from '../_shared/photoStorageService.ts';
+import { checkStorageHeadroom } from '../_shared/storageHeadroomGuard.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -379,6 +380,21 @@ async function handleCreateRun(
     return json({ status: 'nothing_to_do', totalPlaces: 0, analysis, reason });
   }
 
+  // [#1644] Storage guardrail. Placed AFTER the 'nothing_to_do' branch above so
+  // an empty city stays a quiet no-op, and BEFORE the run/batch inserts so we
+  // refuse to START rather than creating a run that cannot legally write.
+  // This is the city-scale ingest that produced the 29.3 GiB/week burst.
+  const headroom = await checkStorageHeadroom(db, 'backfill-place-photos create_run');
+  if (!headroom.ok) {
+    console.error(headroom.message);
+    return json({
+      error: headroom.message,
+      reason: headroom.reason,
+      totalBytes: headroom.totalBytes,
+      thresholdBytes: headroom.thresholdBytes,
+    }, 507);
+  }
+
   const totalPlaces = eligiblePlaces.length;
   const totalBatches = Math.ceil(totalPlaces / batchSize);
   const estimatedCostUsd = +(totalPlaces * COST_PER_PLACE).toFixed(4);
@@ -513,6 +529,21 @@ async function handleRunNextBatch(
       .update({ status: 'completed', completed_at: new Date().toISOString() })
       .eq('id', runId);
     return json({ done: true });
+  }
+
+  // [#1644] Storage guardrail. Placed AFTER the `!batch` completion branch above
+  // — a drained run must still be able to flip to 'completed' — and BEFORE the
+  // batch is claimed, so a refusal leaves the batch 'pending' and resumable.
+  const headroom = await checkStorageHeadroom(db, 'backfill-place-photos run_next_batch');
+  if (!headroom.ok) {
+    console.error(headroom.message);
+    return json({
+      error: headroom.message,
+      reason: headroom.reason,
+      totalBytes: headroom.totalBytes,
+      thresholdBytes: headroom.thresholdBytes,
+      runId,
+    }, 507);
   }
 
   // Set batch to running
