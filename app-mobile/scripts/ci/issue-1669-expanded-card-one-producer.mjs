@@ -524,17 +524,42 @@ function ratingGuardVerdict(cardInfoSource) {
     };
   }
   const expr = m[1].trim();
-  let guard;
+  let compiled;
   try {
     // eslint-disable-next-line no-new-func
-    guard = new Function("rating", `return Boolean(${expr});`);
+    compiled = new Function("rating", `return Boolean(${expr});`);
   } catch (e) {
     return { ok: false, why: `The star-chip guard \`${expr}\` is not evaluable: ${e.message}` };
   }
+  // A guard that calls a helper defined elsewhere in the component THROWS here
+  // rather than returning — and an uncaught throw would take the whole gate
+  // down with a stack trace instead of a verdict. Report it as the rule being
+  // un-evaluable, which is a real failure: R5's entire value is that it runs
+  // this expression, so a guard it cannot run leaves the rule asserting nothing.
+  let threw = null;
+  const guard = (v) => {
+    if (threw) return false;
+    try {
+      return compiled(v);
+    } catch (e) {
+      threw = e;
+      return false;
+    }
+  };
   const mustHide = [undefined, null, 0, 0.0, -1];
   const mustShow = [4.2, 0.1, 5];
   const shown = mustHide.filter((v) => guard(v));
   const hidden = mustShow.filter((v) => !guard(v));
+  if (threw) {
+    return {
+      ok: false,
+      why:
+        `The star-chip guard \`${expr}\` could not be EXECUTED: ${threw.message}. R5 proves an unrated ` +
+        "place shows no chip by running this expression against undefined / null / 0, so a guard that " +
+        "depends on something outside it (a helper, a hook, another prop) leaves the rule asserting " +
+        "nothing. Keep the condition self-contained in `rating`, or re-point the rule deliberately.",
+    };
+  }
   if (shown.length) {
     return {
       ok: false,
