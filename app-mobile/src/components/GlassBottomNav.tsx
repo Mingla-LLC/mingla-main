@@ -33,7 +33,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
-import * as Haptics from 'expo-haptics';
+import { triggerTabSwitchHaptic } from '../utils/navTabHaptics';
 import { Icon, type IconName } from './ui/Icon';
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../constants/designSystem';
 
@@ -249,9 +249,13 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
               onPress={() => {
                 // Guard against re-tapping the already-selected tab (optimistic-aware).
                 if (key === displayPage) return;
-                if (Platform.OS === 'ios') {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-                }
+                // Issue #1638: BOTH platforms now get a tactile acknowledgement. This used
+                // to be a bare `if (Platform.OS === 'ios')` around impactAsync(Medium), so
+                // Android — where the destination-screen wait is longest — was completely
+                // silent to the touch and only the spotlight pill moved. The per-platform
+                // API choice (and why Android is NOT impactAsync) lives in navTabHaptics.ts.
+                // Fire-and-forget by contract: never awaited, never throws.
+                triggerTabSwitchHaptic();
                 // ORCH-0995 IMPLEMENT-2: set optimistic selection FIRST so the
                 // spotlight + active styling move on the tap frame, then trigger the
                 // (heavier) navigation. The reconcile effect clears pendingPage once

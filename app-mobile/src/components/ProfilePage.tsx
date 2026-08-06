@@ -21,6 +21,12 @@ import { GlassCard } from "./ui/GlassCard";
 import { glass } from "../constants/designSystem";
 import * as Location from "expo-location";
 import { throttledReverseGeocode } from "../utils/throttledGeocode";
+import {
+  PROFILE_LOCATION_PLACE_KEY,
+  PROFILE_LOCATION_TS_KEY,
+  isProfileLocationFresh,
+  parseProfileLocationTimestamp,
+} from "../utils/profileLocationFreshness";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFriends } from "../hooks/useFriends";
@@ -95,12 +101,17 @@ function ProfilePage({
   const [legalBrowserVisible, setLegalBrowserVisible] = useState(false);
   const [legalBrowserUrl, setLegalBrowserUrl] = useState('');
   const [legalBrowserTitle, setLegalBrowserTitle] = useState('');
-  const { friends: realFriends, fetchFriends, friendCount } = useFriends();
+  // Issue #1638: `fetchFriends` is deliberately NOT destructured here any more.
+  // It is `queryClient.invalidateQueries(friendsKeys.list(...))` — a forced cache
+  // invalidation, not a read — and calling it from a mount effect defeated the 30s
+  // `useFriendsList` staleTime on EVERY switch to the Profile tab (Path B unmounts the
+  // tab on every switch away, so mount == every tap). `useFriends()` already subscribes
+  // to the friends query; React Query's `refetchOnMount` + staleTime own freshness, and
+  // the shell keeps a permanent observer with a 5-minute `refetchInterval`.
+  // Action-driven invalidations (accept/decline/remove/block, pull-to-refresh, the
+  // Friends error-state retry) are UNCHANGED — see useFriends.ts.
+  const { friends: realFriends, friendCount } = useFriends();
   const actualConnectionsCount = friendCount;
-
-  useEffect(() => {
-    fetchFriends();
-  }, [fetchFriends]);
 
   const [currentLocation, setCurrentLocation] = useState("");
   const [isUploading, setIsUploading] = useState(false);
@@ -223,9 +234,50 @@ function ProfilePage({
   const { data: interests } = useProfileInterests();
   const updateInterestsMutation = useUpdateProfileInterests();
 
-  // Location
+  // Location — issue #1638.
+  //
+  // This effect used to be a bare `updateLocation()` with `[]` deps and no cache check.
+  // Under Wave 2.8 Path B (`I-ONLY-ACTIVE-TAB-MOUNTED`) the Profile tab fully unmounts on
+  // every switch away, so `[]` meant EVERY tap on the Profile tab fired a foreground
+  // permission request, a real `getCurrentPositionAsync` fused GPS fix (1-5s on mid-range
+  // Android), a reverse geocode, an AsyncStorage write AND a Supabase `profiles` UPDATE.
+  //
+  // Now: hydrate the display from the existing cache IMMEDIATELY (no GPS, no network —
+  // this makes the location appear FASTER than before, where it stayed blank behind a
+  // spinner until the fix resolved), then pay for the full chain only when that cached
+  // value is absent or older than PROFILE_LOCATION_MAX_AGE_MS. Every ambiguous cache state
+  // resolves to "refresh" — see profileLocationFreshness.ts.
+  //
+  // The manual override is untouched: the hero's location row tap-to-refresh
+  // (`onLocationRefresh={updateLocation}`) still runs the full chain unconditionally.
   useEffect(() => {
-    updateLocation();
+    let cancelled = false;
+    (async (): Promise<void> => {
+      let cachedPlace: string | null = null;
+      let cachedAtMs = 0;
+      try {
+        const entries = await AsyncStorage.multiGet([
+          PROFILE_LOCATION_PLACE_KEY,
+          PROFILE_LOCATION_TS_KEY,
+        ]);
+        const byKey = new Map(entries);
+        cachedPlace = byKey.get(PROFILE_LOCATION_PLACE_KEY) ?? null;
+        cachedAtMs = parseProfileLocationTimestamp(byKey.get(PROFILE_LOCATION_TS_KEY));
+      } catch (err) {
+        // An unreadable cache is an ABSENT cache — fall through and refresh.
+        console.warn('[ProfilePage] location cache read failed:', err);
+      }
+      if (cancelled) return;
+
+      if (cachedPlace) setCurrentLocation(cachedPlace);
+
+      if (isProfileLocationFresh(cachedPlace, cachedAtMs, Date.now())) return;
+
+      await updateLocation();
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const updateLocation = async () => {
@@ -247,7 +299,15 @@ function ProfilePage({
         : `${loc.coords.latitude.toFixed(2)}, ${loc.coords.longitude.toFixed(2)}`;
 
       setCurrentLocation(placeString || "");
-      await AsyncStorage.setItem("mingla_user_location", placeString || "");
+      await AsyncStorage.setItem(PROFILE_LOCATION_PLACE_KEY, placeString || "");
+      // #1638: stamp AFTER the place string, never before. A process kill between the two
+      // writes then leaves an OLD stamp against a NEW string, so the next mount refreshes —
+      // the gate always fails toward refreshing, never toward pinning a stale city.
+      // An empty placeString is deliberately NOT stamped: `isProfileLocationFresh` treats
+      // "" as absent, so stamping it would be a no-op at best and misleading at worst.
+      if (placeString) {
+        await AsyncStorage.setItem(PROFILE_LOCATION_TS_KEY, String(Date.now()));
+      }
       if (user?.id && placeString) {
         await supabase
           .from('profiles')
@@ -257,7 +317,7 @@ function ProfilePage({
     } catch (error: any) {
       setLocationError(error?.message || "Unable to fetch location");
       try {
-        const lastLocation = await AsyncStorage.getItem("mingla_user_location");
+        const lastLocation = await AsyncStorage.getItem(PROFILE_LOCATION_PLACE_KEY);
         if (lastLocation) setCurrentLocation(lastLocation);
       } catch (_) {}
     } finally {
