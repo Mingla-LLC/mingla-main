@@ -617,3 +617,112 @@ export function bodyVerdict(ok: boolean, httpStatus: number | null | undefined):
   }
   return "down";
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Issue #1647 — pg_cron JOB HEALTH.
+// ═══════════════════════════════════════════════════════════════════════════
+// `refresh_admin_place_pool_mv` failed 4,320 of 4,320 runs over 66 days and
+// NOTHING told anyone. The timeout was the bug; the silence was the defect. This
+// is the evaluator that turns the DB's own run history into a tile status, so the
+// alert state machine already running in this function emails ops after two
+// consecutive failed hourly ticks instead of never.
+//
+// It lives HERE, not inline in index.ts, for the reason #1537 documents above:
+// index.ts calls serve() unguarded at module scope, so nothing in it can be
+// imported by a test. A watchdog that cannot itself be tested is the same shape
+// as the thing it is watching for.
+
+export interface CronJobHealthRow {
+  jobid: number;
+  jobname: string;
+  schedule: string;
+  runs: number;
+  successes: number;
+  failures: number;
+  consecutive_failures: number;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  last_error: string | null;
+  hours_since_success: number | null;
+}
+
+export interface CronHealthThresholds {
+  /** consecutive trailing failures at which a job is DOWN. */
+  downStreak: number;
+  /** consecutive trailing failures at which a job is DEGRADED. */
+  degradedStreak: number;
+}
+
+export const CRON_HEALTH_DEFAULTS: CronHealthThresholds = {
+  downStreak: 3,
+  degradedStreak: 1,
+};
+
+/**
+ * Reduce the per-job rows to ONE tile status.
+ *
+ * `unknown` when there is nothing to judge — an empty read is never reported as
+ * healthy (constitutional rule 9: no fabricated health). That distinction is the
+ * whole point: a probe that reports green when it learned nothing is how a dead
+ * job stays invisible.
+ */
+export function evaluateCronJobHealth(
+  rows: CronJobHealthRow[] | null | undefined,
+  thresholds: CronHealthThresholds = CRON_HEALTH_DEFAULTS,
+): { status: HealthStatus; detail: Record<string, unknown> } {
+  if (rows == null) {
+    return {
+      status: "unknown",
+      detail: { error: "cron health could not be read", jobs: null },
+    };
+  }
+  if (rows.length === 0) {
+    return {
+      status: "unknown",
+      detail: { error: "no active pg_cron jobs reported", jobs: 0 },
+    };
+  }
+
+  const failing = rows
+    .filter((r) => (r.consecutive_failures ?? 0) >= thresholds.downStreak)
+    .sort((a, b) => (b.consecutive_failures ?? 0) - (a.consecutive_failures ?? 0));
+  const wobbling = rows.filter(
+    (r) =>
+      (r.consecutive_failures ?? 0) >= thresholds.degradedStreak &&
+      (r.consecutive_failures ?? 0) < thresholds.downStreak,
+  );
+
+  const describe = (r: CronJobHealthRow) => ({
+    job: r.jobname,
+    jobid: r.jobid,
+    schedule: r.schedule,
+    consecutive_failures: r.consecutive_failures,
+    runs: r.runs,
+    failures: r.failures,
+    // The number that would have made #1647 obvious on sight.
+    last_success_at: r.last_success_at,
+    hours_since_success: r.hours_since_success,
+    last_error: r.last_error,
+  });
+
+  const detail: Record<string, unknown> = {
+    jobs: rows.length,
+    failing: failing.map(describe),
+    degraded: wobbling.map(describe),
+  };
+
+  if (failing.length > 0) {
+    const worst = failing[0];
+    detail.summary = `${worst.jobname} has failed its last ${worst.consecutive_failures} runs` +
+      (worst.hours_since_success == null
+        ? " and has never succeeded"
+        : ` — last success ${Math.round(worst.hours_since_success / 24)} day(s) ago`);
+    return { status: "down", detail };
+  }
+  if (wobbling.length > 0) {
+    detail.summary = `${wobbling.length} scheduled job(s) failed their most recent run`;
+    return { status: "degraded", detail };
+  }
+  detail.summary = `all ${rows.length} active scheduled jobs are succeeding`;
+  return { status: "healthy", detail };
+}
