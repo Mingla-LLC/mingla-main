@@ -1,0 +1,18 @@
+{
+  "$comment": [
+    "Issue #1644 Stage 2 — Deno config for the collage re-encode tooling.",
+    "",
+    "WHY THIS FILE EXISTS: scripts/package.json declares npm dependencies for the",
+    "Node-based scripts that live alongside these. Deno walks UP from the entrypoint,",
+    "finds that package.json, and switches to node_modules resolution — at which point",
+    "`npm:@jsquash/webp` fails with 'Could not find a matching package in the",
+    "node_modules directory', because scripts/ has no node_modules and never should.",
+    "",
+    "Pinning nodeModulesDir to 'none' keeps this tooling on Deno's own global npm cache,",
+    "so it resolves identically on a laptop, in a spawned worktree (where node_modules is",
+    "a symlink into the anchor checkout — see COMMS-0130) and in CI. Without it the tool",
+    "works or fails depending on which directory you happen to run it from, which is the",
+    "worst possible property for a one-time 34,024-object migration."
+  ],
+  "nodeModulesDir": "none"
+}
