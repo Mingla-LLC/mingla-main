@@ -11,7 +11,6 @@ import {
   Dimensions,
   Animated,
   Easing,
-  AccessibilityInfo,
   useWindowDimensions,
   ScrollView,
 } from "react-native";
@@ -19,6 +18,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { KeyboardAwareScrollView } from "./ui/KeyboardAwareScrollView";
 import { GlassCard } from "./ui/GlassCard";
 import { glass } from "../constants/designSystem";
+import { useA11yPreferences } from "../hooks/useA11yPreferences";
 import * as Location from "expo-location";
 import { throttledReverseGeocode } from "../utils/throttledGeocode";
 import {
@@ -96,6 +96,8 @@ function ProfilePage({
   }
 
   useScreenLogger('profile');
+  // Issue #1638 — one shared app-wide a11y probe (see useA11yPreferences.ts).
+  const { reduceMotion } = useA11yPreferences();
   const { t } = useTranslation(['profile', 'common']);
   const insets = useSafeAreaInsets();
   const [legalBrowserVisible, setLegalBrowserVisible] = useState(false);
@@ -448,46 +450,39 @@ function ProfilePage({
   const glowOpacityRef = useRef(
     new Animated.Value(glass.profile.heroGlow.breathingOpacityRange[1]),
   ).current;
+  // Issue #1638 — the reduce-motion answer now comes from the shared app-wide probe
+  // (useA11yPreferences.ts) instead of a native a11y round trip on every
+  // mount. Because Path B unmounts the tab, "every mount" meant every single tap on
+  // Profile; the breathing loop had to WAIT for that promise before it could start.
+  // It now starts synchronously on the first frame after the cached answer is known.
   useEffect(() => {
-    let mounted = true;
-    let loop: Animated.CompositeAnimation | null = null;
-
-    AccessibilityInfo.isReduceMotionEnabled()
-      .then((reduceMotion) => {
-        if (!mounted) return;
-        if (reduceMotion) {
-          glowOpacityRef.setValue(0.92);
-          return;
-        }
-        const [lo, hi] = glass.profile.heroGlow.breathingOpacityRange;
-        const halfMs = glass.profile.heroGlow.breathingRangeMs / 2;
-        loop = Animated.loop(
-          Animated.sequence([
-            Animated.timing(glowOpacityRef, {
-              toValue: lo,
-              duration: halfMs,
-              easing: Easing.inOut(Easing.sin),
-              useNativeDriver: true,
-            }),
-            Animated.timing(glowOpacityRef, {
-              toValue: hi,
-              duration: halfMs,
-              easing: Easing.inOut(Easing.sin),
-              useNativeDriver: true,
-            }),
-          ]),
-        );
-        loop.start();
-      })
-      .catch(() => {
-        glowOpacityRef.setValue(0.92);
-      });
-
+    if (reduceMotion) {
+      glowOpacityRef.setValue(0.92);
+      return;
+    }
+    const [lo, hi] = glass.profile.heroGlow.breathingOpacityRange;
+    const halfMs = glass.profile.heroGlow.breathingRangeMs / 2;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowOpacityRef, {
+          toValue: lo,
+          duration: halfMs,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(glowOpacityRef, {
+          toValue: hi,
+          duration: halfMs,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
     return () => {
-      mounted = false;
-      loop?.stop();
+      loop.stop();
     };
-  }, [glowOpacityRef]);
+  }, [glowOpacityRef, reduceMotion]);
 
   return (
     <View style={styles.container}>

@@ -17,14 +17,33 @@ const fmt = (data?: Record<string, unknown>): string => {
   }
 };
 
-/** Log + record breadcrumb in one call. */
+/**
+ * Log + record breadcrumb in one call.
+ *
+ * Issue #1638 — the console call is `__DEV__`-gated. It was not, and `babel.config.js`
+ * carries no `transform-remove-console`, so every `logger.*` call was a REAL native round
+ * trip in production. Two of them sat directly on the tab-switch critical path
+ * (`logger.action('Tab pressed: …')` inside the press handler, `logger.nav('Page: …')` in
+ * the post-commit effect) and hundreds more fire elsewhere.
+ *
+ * Nothing is lost. `breadcrumbs.add` is itself already `__DEV__`-only
+ * (utils/breadcrumbs.ts), so in a release build this function's ONLY observable effect was
+ * writing to logcat/oslog — a channel nothing in production reads. Sentry is the field
+ * diagnostic channel and is untouched. `logger.warn` / `.error` / `.errorWithStack` are
+ * deliberately NOT gated: they are rare, they carry real diagnostic weight, and they are
+ * not on any hot path.
+ */
 const logAndCrumb = (
   domain: string,
   category: BreadcrumbCategory,
   message: string,
   data?: Record<string, unknown>,
 ) => {
-  console.log(`[${domain}] ${message}${fmt(data)}`);
+  if (__DEV__) {
+    // `fmt(data)` is inside the guard on purpose — the string building is the other half
+    // of the cost.
+    console.log(`[${domain}] ${message}${fmt(data)}`);
+  }
   breadcrumbs.add(category, message, data);
 };
 
@@ -89,7 +108,11 @@ export const logger = {
   render(message: string, data?: Record<string, unknown>) {
     // Render logs are high-frequency — log to console but do NOT record breadcrumbs
     // to avoid flooding the 30-entry buffer with noise.
-    console.log(`[RENDER] ${message}${fmt(data)}`);
+    // Issue #1638: `__DEV__`-gated. This is the highest-frequency channel in the app and
+    // it was doing a native round trip per render in production.
+    if (__DEV__) {
+      console.log(`[RENDER] ${message}${fmt(data)}`);
+    }
   },
 
   /** Log a tap event (used by TrackedTouchableOpacity — but also available for manual use). */

@@ -627,7 +627,14 @@ export function useAppState() {
     safeAsyncStorageSet("mingla_boards_sessions", updatedBoards);
   };
 
-  const handleUserIdentityUpdate = async (updatedIdentity: any) => {
+  // ORCH-0679 I-TAB-PROPS-STABLE — this was the LAST surviving breach in the live tab
+  // switch. `app/index.tsx` passes it straight to `<ProfilePage onUserIdentityUpdate=…>`,
+  // and as a bare arrow declared inside `useAppState()` it had a fresh identity on every
+  // shell render, busting `React.memo(ProfilePage)` every time. Wave 2.7 papered over the
+  // same problem for `useAppHandlers`' 21 handlers with `handlersRef` + nine
+  // `stableHandleX` wrappers in the shell; this one came from `useAppState` and was
+  // missed. Fixed properly here rather than wrapped again in the shell (#1638).
+  const handleUserIdentityUpdate = useCallback(async (updatedIdentity: any) => {
     try {
       // Update local state first
       setUserIdentity(updatedIdentity);
@@ -718,7 +725,7 @@ export function useAppState() {
         },
       ]);
     }
-  };
+  }, [user?.id, user?.email, profile, setProfile, setNotifications]);
 
   const handleAccountPreferencesUpdate = (updatedPreferences: any) => {
     setAccountPreferences(updatedPreferences);

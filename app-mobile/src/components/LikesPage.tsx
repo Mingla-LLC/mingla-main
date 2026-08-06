@@ -10,10 +10,21 @@ import {
   Pressable,
   StyleSheet,
   Platform,
-  AccessibilityInfo,
-  Animated,
-  Easing,
 } from "react-native";
+// Issue #1638 — the header spotlight moved from RN `Animated` (JS thread) to Reanimated
+// (UI thread), mirroring what ORCH-0995 already did for the bottom nav. That removed the
+// file's only RN-`Animated`/`Easing` consumers, so both of those imports are gone and
+// `Animated` here is Reanimated's.
+//
+// These names are deliberately NOT aliased. `react-native-worklets/plugin` decides what
+// to auto-workletize by matching the CALLEE NAME, so an aliased `useAnimatedStyle` is
+// silently left as a plain JS function and the app hard-crashes on the UI thread with
+// "[Worklets] Tried to synchronously call a non-worklet function". Caught on-device.
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from "react-native-reanimated";
 import { BlurView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
@@ -24,6 +35,7 @@ import { mixpanelService } from "../services/mixpanelService";
 import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useAppLayout } from "../hooks/useAppLayout";
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
+import { useA11yPreferences } from "../hooks/useA11yPreferences";
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from "../store/appStore";
 
@@ -109,35 +121,8 @@ function LikesPage({
   }, [activeTab, setLikesActiveTabRegistry]);
 
   // ── Accessibility state (glass + spotlight motion) ───────────
-  const [reduceTransparency, setReduceTransparency] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
-  useEffect(() => {
-    let mounted = true;
-    (async (): Promise<void> => {
-      try {
-        const [rt, rm] = await Promise.all([
-          AccessibilityInfo.isReduceTransparencyEnabled(),
-          AccessibilityInfo.isReduceMotionEnabled(),
-        ]);
-        if (mounted) {
-          setReduceTransparency(rt);
-          setReduceMotion(rm);
-        }
-      } catch {
-        if (mounted) {
-          setReduceTransparency(true);
-          setReduceMotion(true);
-        }
-      }
-    })();
-    const rtSub = AccessibilityInfo.addEventListener('reduceTransparencyChanged', setReduceTransparency);
-    const rmSub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => {
-      mounted = false;
-      rtSub.remove();
-      rmSub.remove();
-    };
-  }, []);
+  // Issue #1638 — served from the shared app-wide probe. See useA11yPreferences.ts.
+  const { reduceTransparency, reduceMotion } = useA11yPreferences();
 
   const useGlass = !reduceTransparency && !isAndroidPreBlur;
 
@@ -199,8 +184,17 @@ function LikesPage({
     calendar: undefined,
   });
   const [layoutTick, setLayoutTick] = useState(0);
-  const spotlightX = useRef(new Animated.Value(0)).current;
-  const spotlightWidth = useRef(new Animated.Value(0)).current;
+  // Issue #1638 — `left`/`width` now animate on the UI THREAD via Reanimated shared
+  // values. They used to be an RN Animated.spring WITHOUT the native driver, i.e. a
+  // JS-thread-driven layout spring, and its `layoutTick` dep guarantees it fires ONE
+  // FRAME INTO THE NEW PAGE'S LIFE — precisely when the JS thread is busiest committing
+  // the rest of the mount. ORCH-0995 already did exactly this migration for the bottom
+  // nav (GlassBottomNav.tsx) and left the page headers behind; this closes that gap for
+  // Likes. Reanimated animates `left`/`width` on the UI thread — it is NOT subject to the
+  // RN-Animated native-driver restriction on layout props — and the resting geometry is
+  // pixel-identical (true `left`/`width`, no scaleX radius distortion).
+  const spotlightX = useSharedValue(0);
+  const spotlightWidth = useSharedValue(0);
 
   const handleTabLayout = (id: LikesTab, x: number, width: number): void => {
     tabLayoutsRef.current[id] = { x, width };
@@ -216,27 +210,26 @@ function LikesPage({
     const targetWidth = layout.width - c.nav.spotlightInset * 2;
 
     if (reduceMotion) {
-      spotlightX.setValue(targetX);
-      spotlightWidth.setValue(targetWidth);
+      // Instant set, no animation (a11y reduce-motion path preserved).
+      spotlightX.value = targetX;
+      spotlightWidth.value = targetWidth;
       return;
     }
-    Animated.parallel([
-      Animated.spring(spotlightX, {
-        toValue: targetX,
-        damping: c.motion.springDamping,
-        stiffness: c.motion.springStiffness,
-        mass: c.motion.springMass,
-        useNativeDriver: false,
-      }),
-      Animated.spring(spotlightWidth, {
-        toValue: targetWidth,
-        damping: c.motion.springDamping,
-        stiffness: c.motion.springStiffness,
-        mass: c.motion.springMass,
-        useNativeDriver: false,
-      }),
-    ]).start();
+    // designSystem motion tokens map 1:1 onto Reanimated withSpring config.
+    const springConfig = {
+      damping: c.motion.springDamping,
+      stiffness: c.motion.springStiffness,
+      mass: c.motion.springMass,
+    };
+    spotlightX.value = withSpring(targetX, springConfig);
+    spotlightWidth.value = withSpring(targetWidth, springConfig);
   }, [activeTab, layoutTick, reduceMotion, spotlightX, spotlightWidth, c.motion.springDamping, c.motion.springStiffness, c.motion.springMass, c.nav.spotlightInset]);
+
+  // UI-thread animated style for the spotlight pill (left + width).
+  const spotlightAnimatedStyle = useAnimatedStyle(() => ({
+    left: spotlightX.value,
+    width: spotlightWidth.value,
+  }));
 
   return (
     <View style={styles.container}>
@@ -292,10 +285,7 @@ function LikesPage({
             {/* Orange spotlight */}
             <Animated.View
               pointerEvents="none"
-              style={[
-                styles.spotlight,
-                { left: spotlightX, width: spotlightWidth },
-              ]}
+              style={[styles.spotlight, spotlightAnimatedStyle]}
             />
             {/* Tabs */}
             <View style={styles.tabsRow}>

@@ -16,7 +16,6 @@ import {
   StyleSheet,
   Animated,
   Easing,
-  AccessibilityInfo,
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,6 +23,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GlassIconButton } from './ui/GlassIconButton';
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../constants/designSystem';
+import { useA11yPreferences } from '../hooks/useA11yPreferences';
 
 const c = glass.chrome;
 
@@ -52,54 +52,16 @@ export const GlassTopBar: React.FC<GlassTopBarProps> = ({
   coachPrefsRef,
 }) => {
   const insets = useSafeAreaInsets();
-  const [reduceMotion, setReduceMotion] = useState(false);
-  const [reduceTransparency, setReduceTransparency] = useState(false);
+  // Issue #1638 — one shared app-wide probe, read synchronously from cache after the
+  // first resolution. This component ran TWO separate native a11y probe effects with
+  // two listener pairs and two post-resolve re-renders, and it mounts on every switch to
+  // Explore. See useA11yPreferences.ts.
+  const { reduceMotion, reduceTransparency } = useA11yPreferences();
   const [mounted, setMounted] = useState(visible);
-
-  // ORCH-0589 v3 (R3): Reduce-Transparency listener for the new backdrop layer —
-  // when enabled (iOS setting or Android API < 31), swap BlurView for a solid tile.
-  useEffect(() => {
-    let m = true;
-    AccessibilityInfo.isReduceTransparencyEnabled()
-      .then((rt) => {
-        if (m) setReduceTransparency(rt);
-      })
-      .catch(() => {
-        // Non-fatal: default to solid-tile fallback (more readable).
-        if (m) setReduceTransparency(true);
-      });
-    const sub = AccessibilityInfo.addEventListener(
-      'reduceTransparencyChanged',
-      (enabled: boolean) => setReduceTransparency(enabled),
-    );
-    return () => {
-      m = false;
-      sub.remove();
-    };
-  }, []);
 
   // META-ORCH-1002 Sub-1 (S2): shared Android-opaque-fallback gate (was the per-component Android-11 version gate).
   const isAndroidPreBlur = ANDROID_GLASS_USES_OPAQUE_FALLBACK;
   const useBackdropGlass = !reduceTransparency && !isAndroidPreBlur;
-
-  useEffect(() => {
-    let m = true;
-    AccessibilityInfo.isReduceMotionEnabled()
-      .then((rm) => {
-        if (m) setReduceMotion(rm);
-      })
-      .catch(() => {
-        // Non-fatal; default to motion on.
-      });
-    const sub = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      (rm: boolean) => setReduceMotion(rm),
-    );
-    return () => {
-      m = false;
-      sub.remove();
-    };
-  }, []);
 
   // Always initialize hidden so the enter animation fires on first mount when visible=true.
   // This matches spec SC-7: "re-appears on Swipe with fade+slide" every time HomePage mounts.

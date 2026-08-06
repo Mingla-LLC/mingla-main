@@ -18,14 +18,13 @@
  * Spec: Mingla_Artifacts/outputs/SPEC_ORCH-0566_GLASS_CARD_LABELS.md
  * Tokens: designSystem.ts → glass.badge.*
  */
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
   Platform,
-  AccessibilityInfo,
   Animated,
   Easing,
 } from 'react-native';
@@ -34,6 +33,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { Icon, type IconName } from './Icon';
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../../constants/designSystem';
+import { useA11yPreferences } from '../../hooks/useA11yPreferences';
 
 const t = glass.badge;
 
@@ -76,50 +76,10 @@ export const GlassBadge: React.FC<GlassBadgeProps> = ({
   entryIndex,
   liquid = false,
 }) => {
-  const [reduceTransparency, setReduceTransparency] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-
-    (async (): Promise<void> => {
-      try {
-        const [rt, rm] = await Promise.all([
-          AccessibilityInfo.isReduceTransparencyEnabled(),
-          AccessibilityInfo.isReduceMotionEnabled(),
-        ]);
-        if (mounted) {
-          setReduceTransparency(rt);
-          setReduceMotion(rm);
-        }
-      } catch (err) {
-        // On rare devices AccessibilityInfo may throw during init. Fall back
-        // to the solid-tile + no-motion path (safe, more-readable default).
-        if (__DEV__) {
-          console.warn('[GlassBadge] AccessibilityInfo init failed:', err);
-        }
-        if (mounted) {
-          setReduceTransparency(true);
-          setReduceMotion(true);
-        }
-      }
-    })();
-
-    const rtSub = AccessibilityInfo.addEventListener(
-      'reduceTransparencyChanged',
-      (enabled: boolean) => setReduceTransparency(enabled),
-    );
-    const rmSub = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      (enabled: boolean) => setReduceMotion(enabled),
-    );
-
-    return () => {
-      mounted = false;
-      rtSub.remove();
-      rmSub.remove();
-    };
-  }, []);
+  // Issue #1638 — shared app-wide probe instead of a PER-INSTANCE one. Badges are
+  // rendered several to a card, so this component multiplied the per-mount
+  // per-instance a11y-probe cost more than any other. See useA11yPreferences.ts.
+  const { reduceTransparency, reduceMotion } = useA11yPreferences();
 
   const useGlass = !reduceTransparency && !isAndroidPreBlur;
   const animateEntry = typeof entryIndex === 'number' && !reduceMotion;

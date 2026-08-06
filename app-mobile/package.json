@@ -63,7 +63,11 @@
     "test:issue-1636": "node --experimental-strip-types --test ./src/components/activity/__tests__/issue_1636_likes_load.test.ts",
     "test:issue-1636-adversarial": "node --experimental-strip-types --test ./src/components/activity/__tests__/issue_1636_likes_thumb_contract.adversarial.test.ts",
     "test:orch-1189": "node ./src/components/activity/__tests__/orch_1189_likes_floating_nav_clearance.test.mjs",
-    "test:issue-1638": "node --test ./src/components/__tests__/issue-1638-tab-switch-quickwins.test.mjs"
+    "test:issue-1638": "node --test ./src/components/__tests__/issue-1638-tab-switch-quickwins.test.mjs",
+    "test:issue-1638-scheduling": "node --test ./src/components/__tests__/issue-1638-tab-switch-scheduling.test.mjs",
+    "test:orch-0995-spotlight": "node ./src/components/__tests__/orch-0995-bottom-nav-spotlight-ui-thread.test.tsx",
+    "test:orch-0995-impl2": "node ./src/components/__tests__/orch-0995-impl2-optimistic-tab-feedback.test.tsx",
+    "test:orch-0995-adversarial": "node ./src/components/__tests__/orch-0995-tester-optimistic-desync-adversarial.test.tsx"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",
