@@ -119,8 +119,14 @@ export function useShufflePairedCards() {
       // pairedProfile cache, not the legacy per-section key. Splice the shuffled
       // cards into the matching section slice of the pairedProfile cache so the
       // row updates immediately. Writing the old per-section key was a dead write.
-      queryClient.setQueryData<PairedProfileCardsResponse>(
-        personCardKeys.pairedProfile(pairedUserId, mode),
+      //
+      // Issue #1639: the read key gained a fifth element (the section-set digest),
+      // so an EXACT `setQueryData` on the 4-element key would write to a key nobody
+      // reads — the dead write ORCH-0986 removed, re-introduced. `setQueriesData`
+      // matches by PREFIX (`exact` defaults to false), so it lands on whichever
+      // section-variant of this (friend, mode) pair is currently mounted.
+      queryClient.setQueriesData<PairedProfileCardsResponse>(
+        { queryKey: personCardKeys.pairedProfile(pairedUserId, mode) },
         (old) => {
           if (!old) return old;
           return {

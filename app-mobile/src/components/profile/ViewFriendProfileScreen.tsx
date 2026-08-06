@@ -427,12 +427,23 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   const [customHolidays, setCustomHolidays] = useState<Array<{ id: string; name: string; month: number; day: number; year: number }>>([]);
   const [archivedHolidayIds, setArchivedHolidayIds] = useState<string[]>([]);
   const [showCustomHolidayModal, setShowCustomHolidayModal] = useState(false);
+  // Issue #1639: both lists below feed PersonHolidayView's BATCHED card request, and
+  // both resolve after it has already mounted. These flags are the explicit "settled"
+  // signal — set on EVERY terminal path (rows, empty, failure, nothing-to-load) so the
+  // card request can never be blocked forever by an input that will never arrive.
+  const [customHolidaysLoaded, setCustomHolidaysLoaded] = useState(false);
+  const [archivedHolidaysLoaded, setArchivedHolidaysLoaded] = useState(false);
 
   // Load custom holidays for this pairing
   useEffect(() => {
     if (!isPaired || !pairedPill) return;
     const pairingId = pairedPill.pairingId ?? pairedPill.id;
-    if (!pairingId) return;
+    if (!pairingId) {
+      // Nothing to load — do not leave the batched card request waiting on a fetch
+      // that can never happen (#1639).
+      setCustomHolidaysLoaded(true);
+      return;
+    }
 
     getSharedCustomHolidaysByPairing(pairingId)
       .then((holidays) => {
@@ -446,6 +457,9 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
       })
       .catch((e) => {
         console.warn('[ViewFriendProfile] Custom holidays fetch failed:', e);
+      })
+      .finally(() => {
+        setCustomHolidaysLoaded(true);
       });
   }, [isPaired, pairedPill]);
 
@@ -460,7 +474,10 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           const parsed = JSON.parse(stored) as Record<string, string[]>;
           setArchivedHolidayIds(parsed[userId] ?? []);
         }
-      } catch { /* ignore */ }
+      } catch { /* ignore */ } finally {
+        // #1639: a MISSING key and a THROWN read are both "settled, nothing archived".
+        setArchivedHolidaysLoaded(true);
+      }
     };
     loadArchived();
   }, [isPaired, currentUserId, userId]);
@@ -787,6 +804,10 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
                 userId={currentUserId}
                 customHolidays={customHolidays}
                 onAddCustomDay={handleAddCustomDay}
+                // #1639: the batched card request stays disabled until BOTH of the
+                // async inputs to its section list have settled, so it goes out once,
+                // already knowing the custom days and the archived days.
+                holidayInputsReady={customHolidaysLoaded && archivedHolidaysLoaded}
                 archivedHolidayIds={archivedHolidayIds}
                 onArchiveHoliday={handleArchiveHoliday}
                 onUnarchiveHoliday={handleUnarchiveHoliday}
