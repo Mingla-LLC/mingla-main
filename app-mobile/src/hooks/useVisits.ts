@@ -41,7 +41,7 @@ import { savedCardKeys } from './queryKeys';
  * of anything, and asserting connectivity there would resume every other paused
  * mutation in the app on the strength of a request that did not arrive.
  */
-function confirmOnlineFromCompletedWrite(): void {
+export function confirmOnlineFromCompletedWrite(): void {
   if (!onlineManager.isOnline()) onlineManager.setOnline(true);
 }
 

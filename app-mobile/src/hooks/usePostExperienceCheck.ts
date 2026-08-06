@@ -5,8 +5,19 @@ import { supabase } from '../services/supabase';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
+/**
+ * A place the user can rate.
+ *
+ * #1687 — `calendarEntryId`, `scheduledAt` and `cardData` are OPTIONAL. They are
+ * always set on the scheduled path below, which is the only producer of this
+ * shape from `calendar_entries`. They are absent on the voluntary "Been here"
+ * path, which is anchored to the PLACE (`place_pool_id` / `google_place_id` /
+ * `card_id`) and has no calendar entry at all — `place_reviews.calendar_entry_id`
+ * has always been nullable, and the only genuinely calendar-dependent code in the
+ * modal is the reschedule handler, which that path never reaches.
+ */
 export interface PendingExperienceReview {
-  calendarEntryId: string;
+  calendarEntryId?: string;
   cardId: string;
   placeName: string;
   placeAddress?: string;
@@ -14,8 +25,8 @@ export interface PendingExperienceReview {
   placeImage?: string;
   placePoolId?: string;
   googlePlaceId?: string;
-  scheduledAt: string;
-  cardData: any;
+  scheduledAt?: string;
+  cardData?: any;
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────

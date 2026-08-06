@@ -52,6 +52,11 @@ import ShareModal from "../src/components/ShareModal";
 
 import PostExperienceModal from "../src/components/PostExperienceModal";
 import { usePostExperienceCheck } from "../src/hooks/usePostExperienceCheck";
+import {
+  usePlaceReviewRequest,
+  confirmPlaceReviewRequest,
+  cancelPlaceReviewRequest,
+} from "../src/store/placeReviewRequestStore";
 import { CoachMarkProvider, useCoachMarkContext } from "../src/contexts/CoachMarkContext";
 import { useCoachMark } from "../src/hooks/useCoachMark";
 import SpotlightOverlay from "../src/components/SpotlightOverlay";
@@ -295,6 +300,39 @@ function AppContent() {
 
   // Pending experience reviews — shows review modal after scheduled experiences
   const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
+
+  /**
+   * #1687 — the VOLUNTARY entry into the SAME modal instance.
+   *
+   * `PostExperienceModal` is mounted exactly once, below, and must stay that way:
+   * ORCH-1063 was a total app freeze caused by a second RN <Modal> instance being
+   * unmounted mid-presentation. The deck's "Been here" control therefore does not
+   * mount its own — it writes a request into `placeReviewRequestStore`, which this
+   * mount reads and turns into the same modal's props.
+   *
+   * Precedence: a voluntary request wins while it is open. The scheduled prompt is
+   * a locked full-screen modal, so the deck is unreachable while it is up; the
+   * only overlap is the 3-second arming window after a pending review is found,
+   * and a tap the user just made outranks a prompt that has not appeared yet. The
+   * scheduled prompt re-arms on its own next check.
+   */
+  const voluntaryPlaceReview = usePlaceReviewRequest();
+  const voluntaryReviewTarget = useMemo(
+    () =>
+      voluntaryPlaceReview
+        ? {
+            cardId: voluntaryPlaceReview.cardId,
+            placeName: voluntaryPlaceReview.placeName,
+            placeAddress: voluntaryPlaceReview.placeAddress,
+            placeCategory: voluntaryPlaceReview.placeCategory,
+            placeImage: voluntaryPlaceReview.placeImage,
+            placePoolId: voluntaryPlaceReview.placePoolId,
+            googlePlaceId: voluntaryPlaceReview.googlePlaceId,
+          }
+        : null,
+    [voluntaryPlaceReview],
+  );
+  const activeReviewTarget = voluntaryReviewTarget ?? pendingReview;
   const viewShotRef = useRef<any>(null);
   // V2: pending deep link from push notification received before auth
   const pendingDeepLinkRef = useRef<string | null>(null);
@@ -2656,15 +2694,35 @@ function AppContent() {
 
 
 
-                    {/* Post-Experience Review Modal — locked modal for voice reviews */}
-                    {pendingReview && (
+                    {/* Post-Experience Review Modal — ONE instance (ORCH-1063), fed by
+                        BOTH entries: the scheduled calendar poll (locked, opens on
+                        "did you go?") and #1687's voluntary "Been here" tap
+                        (dismissible, opens on the rating step). */}
+                    {activeReviewTarget && (
                       <PostExperienceModal
-                        visible={showReviewModal}
-                        review={pendingReview}
+                        visible={voluntaryPlaceReview ? true : showReviewModal}
+                        review={activeReviewTarget}
+                        voluntaryVisit={voluntaryPlaceReview}
+                        dismissible={!!voluntaryPlaceReview}
                         onComplete={() => {
+                          if (voluntaryPlaceReview) {
+                            // The write already landed — arm the deck control's
+                            // "Thank you" flash and clear the request.
+                            confirmPlaceReviewRequest();
+                            return;
+                          }
                           dismissReview();
                           // Check for next pending review after a brief delay
                           setTimeout(() => recheckPending(), 1000);
+                        }}
+                        onCancel={() => {
+                          if (voluntaryPlaceReview) {
+                            // Nothing was written, so nothing is undone and the
+                            // control returns to rest with no flash.
+                            cancelPlaceReviewRequest();
+                            return;
+                          }
+                          dismissReview();
                         }}
                       />
                     )}
