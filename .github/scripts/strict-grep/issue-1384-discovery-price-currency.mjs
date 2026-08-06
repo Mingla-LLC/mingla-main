@@ -97,8 +97,20 @@ const rules = {
     required: ["...canonicalDiscoveryPriceFields(cardData)"],
   },
   savedTab: {
+    // #1669 RE-POINT, protection preserved. Likes used to hand-write its own
+    // expanded-card literal and spread `...canonicalDiscoveryPriceFields(card)`
+    // into it. That literal is gone: Likes now calls the ONE canonical producer,
+    // which spreads the canonical price fields once for every surface — and the
+    // `savedMapper` entry above pins exactly that spread in the mapper.
+    //
+    // So the carrier chain is unchanged in effect and shorter in fact, and it is
+    // checked as a chain: Likes must delegate, and the mapper must spread. Do
+    // NOT restore the old spread here — it would be dead code carrying a second
+    // opinion about which price fields survive, which is the divergence #1669
+    // removed. `priceTier` stays pinned because Likes genuinely still owns that
+    // one (its analytics call, not the modal's input).
     required: [
-      "...canonicalDiscoveryPriceFields(card)",
+      "savedCardToExpandedCardData(",
       "priceTier: isCurated ? card.priceTier : undefined",
     ],
   },

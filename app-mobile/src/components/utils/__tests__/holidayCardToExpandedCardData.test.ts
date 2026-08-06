@@ -64,7 +64,15 @@ describe('holidayCardToExpandedCardData (ORCH-0997 RC#2)', () => {
     expect(out.image).toBe('');
     expect(out.images).toEqual([]);
     expect(out.location).toBeUndefined();
-    expect(out.rating).toBe(0);
+    // [TEST-MOD-APPROVED #1669] Was `toBe(0)`. That assertion encoded the same
+    // false premise #1669 removed everywhere else: it treated a coerced zero as
+    // an "honest empty". It is not — `CardInfoSection` gated the star chip on
+    // `rating !== undefined`, so a zero rendered as `★ 0.0`, an invented score
+    // that reads as real and terrible. An unrated place now carries NO rating
+    // and the chip does not render at all. The test still asserts the same
+    // property (nothing is fabricated); it just no longer asserts the wrong
+    // value for it.
+    expect(out.rating).toBeUndefined();
     expect(out.priceRange).toBeUndefined();
   });
 

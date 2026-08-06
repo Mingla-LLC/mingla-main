@@ -712,6 +712,27 @@ jobs:
             src/services/__tests__/deckService.issue1384.test.ts \
             src/utils/__tests__/priceTiers.issue1384.test.ts \
             src/utils/__tests__/discoveryPriceRuntimeParity.issue1384.test.ts
+      # Issue #1669 — the BEHAVIOURAL half of the one-producer work. The
+      # structural half (the producer registry) runs as a class-A gate; this
+      # opens the SAME place through four real production entry points and
+      # asserts the rendered price pill, the Open-now badge, the rating chip and
+      # the weather-block location agree. A registry that proves everyone calls
+      # the mapper is worth nothing if the mapper stops carrying the fields.
+      # The two ORCH-0997 holiday-adapter suites are appended because they were
+      # DARK — present in the tree since PR #253 and wired into no workflow at
+      # all. One of them asserted the friend page's Constitution-#9 behaviour for
+      # an unrated place and nothing ran it, which is how it kept asserting a
+      # premise (`rating` coerced to 0 counts as "hidden") that was false. They
+      # cover the same producer as the suites above, so they belong in the same
+      # step rather than a workflow of their own.
+      - name: "Issue #1669: expanded-card one-producer parity"
+        working-directory: app-mobile
+        run: |
+          npx jest --runInBand \
+            src/components/utils/__tests__/issue_1669_one_producer_parity.test.ts \
+            src/components/utils/__tests__/issue_1669_tester_adversarial.test.ts \
+            src/components/utils/__tests__/holidayCardToExpandedCardData.test.ts \
+            src/components/utils/__tests__/holidayCardToExpandedCardData.adversarial.test.ts
       - name: Run class D suites (batched)
         run: node .github/scripts/strict-grep/run-batch.mjs --class D
       - name: Upload class D gate results

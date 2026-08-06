@@ -1188,6 +1188,8 @@ export default function ConsumerTripDetailScreen({
         <View style={styles.guestProfileOverlay}>
           <ViewFriendProfileScreen
             userId={guestProfileUserId}
+            // #1669: this overlay already carries the viewer's preference.
+            accountPreferences={accountPreferences}
             onBack={() => setGuestProfileUserId(null)}
             onMessage={(userId) => {
               setGuestProfileUserId(null);

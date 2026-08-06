@@ -2185,6 +2185,10 @@ export default function MessageInterface({
           onSave={handleSaveSharedCard}  // ORCH-0685: CF-2 dead-tap fix
           isSaved={sharedCardIsSaved}    // ORCH-0685: button transitions to "Saved"
           currentMode="solo"
+          // #1669: this mount dropped the viewer's units/currency, so a card
+          // opened from a chat thread rendered in miles and °F for a Metric
+          // user while the same card rendered in km and °C from the deck.
+          accountPreferences={accountPreferences}
         />
       )}
 
@@ -2351,6 +2355,7 @@ export default function MessageInterface({
             onClose={() => setShowCollabPlansSheet(false)}
             sessionId={friend.sessionId}
             currentUserId={currentUserId}
+            accountPreferences={accountPreferences}
           />
         </>
       ) : null}

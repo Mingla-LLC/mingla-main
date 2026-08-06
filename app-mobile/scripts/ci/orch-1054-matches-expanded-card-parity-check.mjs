@@ -76,10 +76,16 @@ const maybeRevert = (source, kind) => {
 const bannersRel = "app-mobile/src/components/chat/CollabSessionChatBanners.tsx";
 const mapperRel = "app-mobile/src/components/utils/savedCardToExpandedCardData.ts";
 const deckRel = "app-mobile/src/components/SwipeableCards.tsx";
+// #1669: the deck's producer, extracted out of SwipeableCards so it is one
+// module rather than two in-component literals — and so it can be proven to
+// delegate rather than merely resemble (C4).
+const deckProducerRel =
+  "app-mobile/src/components/utils/recommendationToExpandedCardData.ts";
 
 const banners = maybeRevert(read(bannersRel), "banners");
 const mapper = maybeRevert(read(mapperRel), "mapper");
 const deck = read(deckRel);
+const deckProducer = read(deckProducerRel);
 
 const checks = [];
 const check = (name, pass, detail) => checks.push({ name, pass, detail });
@@ -118,16 +124,31 @@ check(
   "Curated cards must be returned verbatim (matching deck SwipeableCards.tsx:1830), preserving stops/itinerary.",
 );
 
-// ── 4. The deck mapper anchor it mirrors still exists (parity source). ──
+// ── 4. The deck no longer MIRRORS this mapper — it USES it. ──
+//
+// #1669 [expanded-card-one-producer] STRENGTHENED this check. Until #1669 the
+// deck kept its own hand-written mapper and C4 asserted the two were still
+// shaped alike, which is exactly the arrangement that let them drift: the deck
+// silently stopped carrying the canonical price fields and `utcOffsetMinutes`
+// while this gate stayed green, because "mirrors" was only ever checked as a
+// pair of matching regexes. The deck's producer now lives in
+// `utils/recommendationToExpandedCardData.ts` and DELEGATES to the same
+// canonical mapper, so parity is structural rather than asserted — and this
+// check proves the delegation, not a resemblance.
 check(
-  "C4 deck canonical mapper recommendationToExpanded curated pass-through unchanged",
-  /const recommendationToExpanded = useCallback\(\(card: Recommendation\): ExpandedCardData =>/.test(
-    deck,
-  ) &&
-    /if \(\(card as any\)\.cardType === 'curated'\) \{\s*return card as unknown as ExpandedCardData;\s*\}/.test(
-      deck,
-    ),
-  "The deck mapper this mirrors must still pass curated through; if the deck changes, re-mirror the Matches mapper.",
+  "C4 [FAILS-ON-REVERT] the deck producer DELEGATES to the canonical mapper (no parallel deck mapper)",
+  // The deck component owns no mapping of its own; it calls the extracted producer.
+  /import \{ recommendationToExpandedCardData \} from "\.\/utils\/recommendationToExpandedCardData";/
+    .test(deck) &&
+    /recommendationToExpandedCardData\(card, \{/.test(deck) &&
+    // …and that producer delegates to the very mapper this gate protects,
+    // while still handing a curated plan straight through.
+    /import \{\s*savedCardToExpandedCardData,/.test(deckProducer) &&
+    /savedCardToExpandedCardData\(\s*\n?\s*card as unknown as Record<string, unknown>,/.test(
+      deckProducer,
+    ) &&
+    /return card as unknown as ExpandedCardData;/.test(deckProducer),
+  "The deck must not regrow its own ExpandedCardData mapper. It delegates to savedCardToExpandedCardData; a second deck mapper is how the price pill and the Open-now timezone drifted apart in the first place (#1669).",
 );
 
 // ── 5. Single-place map preserves the REAL category (no forced "night_out"). ──

@@ -39,6 +39,9 @@ import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
 import { CardDiscussionModal } from "./board/CardDiscussionModal";
 import ExpandedCardModal from "./ExpandedCardModal";
 import { ExpandedCardData } from "../types/expandedCardTypes";
+// #1669 [expanded-card-one-producer]: the collab session view routes through
+// the ONE canonical producer instead of a hand-written literal.
+import { savedCardToExpandedCardData } from "./utils/savedCardToExpandedCardData";
 import ShareModal from "./ShareModal";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
@@ -607,60 +610,32 @@ export default function SessionViewModal({
     }
 
 
-    const expandedCardData: ExpandedCardData = {
-      id: cardData.id || card.id,
-      placeId: cardData.placeId || card.id,
-      title: cardData.title || t('modals:session_view.session_fallback'),
-      category: cardData.category || t('modals:session_view.session_fallback'),
-      categoryIcon: cardData.categoryIcon || "star",
-      description: cardData.description || "",
-      fullDescription: cardData.fullDescription || cardData.description || "",
-      image: cardData.image || "",
-      images: cardData.images || [cardData.image].filter(Boolean) as string[],
-      rating: cardData.rating || 4.5,
-      reviewCount: cardData.reviewCount || 0,
-      // [ORCH-0649 — INVARIANT I-NO-FABRICATED-DISPLAY-N/A] no "N/A" fabrication.
-      priceRange: cardData.priceRange || undefined,
-      distance: cardData.distance || "",
-      travelTime: cardData.travelTime || undefined,
-      address: cardData.address || "",
-      openingHours: cardData.openingHours,
-      phone: cardData.phone,
-      website: cardData.websiteUri || cardData.website,
-      highlights: cardData.highlights || [],
-      tags: cardData.tags || [],
-      matchScore: cardData.matchScore || 0,
-      matchFactors: (cardData.matchFactors as any) || {
-        location: 0,
-        budget: 0,
-        category: 0,
-        time: 0,
-        popularity: 0,
+    // #1669 [expanded-card-one-producer]: the session view used to hand-write
+    // this object. It fabricated `rating || 4.5`, dropped the canonical price
+    // fields (so the price pill vanished here), dropped `utcOffsetMinutes` (so
+    // Open now / Closed was computed against the VIEWER's clock), and rebuilt
+    // curated plans from a fixed 9-key allowlist — the half of ORCH-1054 that
+    // was repaired on the Matches/Plans sheets and never here. One producer now.
+    const expandedCardData = savedCardToExpandedCardData(
+      {
+        ...(cardData as Record<string, unknown>),
+        id: cardData.id || card.id,
+        placeId: cardData.placeId || card.id,
+        title: cardData.title || t('modals:session_view.session_fallback'),
+        category: cardData.category || t('modals:session_view.session_fallback'),
+        categoryIcon: cardData.categoryIcon || "star",
       },
-      socialStats: {
-        views: cardData.socialStats?.views || 0,
-        likes: cardData.socialStats?.likes || 0,
-        saves: cardData.socialStats?.saves || 0,
-        shares: cardData.socialStats?.shares || 0,
+      // The card's OWN planning datetime wins when it has one — the pre-#1669
+      // literal read `cardData.selectedDateTime || new Date()`, and passing an
+      // unconditional `new Date()` as the option would override it, because the
+      // option deliberately takes precedence over the record. Passing
+      // `undefined` lets the mapper read the card's own; "now" is only the
+      // fallback for a card that was never scheduled.
+      {
+        selectedDateTime: cardData.selectedDateTime ? undefined : new Date(),
       },
-      priceTier: (cardData as any).priceTier as ExpandedCardData['priceTier'],
-      location: cardData.location || (cardData.lat && cardData.lng ? { lat: cardData.lat, lng: cardData.lng } : undefined),
-      selectedDateTime: cardData.selectedDateTime || new Date(),
-      strollData: cardData.strollData,
-      picnicData: cardData.picnicData,
-      // Curated card fields
-      ...(cardData.cardType === 'curated' ? {
-        cardType: cardData.cardType,
-        stops: cardData.stops,
-        tagline: cardData.tagline,
-        totalPriceMin: cardData.totalPriceMin,
-        totalPriceMax: cardData.totalPriceMax,
-        estimatedDurationMinutes: cardData.estimatedDurationMinutes,
-        pairingKey: cardData.pairingKey,
-        experienceType: cardData.experienceType,
-        shoppingList: cardData.shoppingList,
-      } : {}),
-    };
+    );
+    if (!expandedCardData) return;
 
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);

@@ -38,6 +38,9 @@ import {
   ExpandedCardData,
   ReservationPass,
 } from "../../types/expandedCardTypes";
+// #1669 [expanded-card-one-producer]: Calendar's saved-card rows route through
+// the ONE canonical producer instead of a hand-written literal.
+import { savedCardToExpandedCardData } from "../utils/savedCardToExpandedCardData";
 import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { toastManager } from "../ui/Toast";
@@ -2028,78 +2031,40 @@ const CalendarTab = ({
     const isCurated = Array.isArray(cardData.stops) &&
       cardData.stops.length > 0;
 
-    const expandedCardData: ExpandedCardData = {
-      id: entry.id,
-      placeId: experience.placeId || (entry as any).placeId || entry.id,
-      title: experience.title || entry.title,
-      category: experience.category || entry.category || "Experience",
-      categoryIcon: ExperienceIcon,
-      description: experience.description || entry.description || "",
-      fullDescription: experience.fullDescription ||
-        experience.description ||
-        entry.fullDescription ||
-        entry.description ||
-        "",
-      image: experience.image || entry.image || "",
-      images: experience.images?.length
-        ? experience.images
-        : entry.images?.length
-        ? entry.images
-        : [experience.image || entry.image].filter(Boolean),
-      rating: experience.rating || entry.rating || 4.5,
-      reviewCount: experience.reviewCount || entry.reviewCount || 0,
-      // [ORCH-0649 — INVARIANT I-NO-FABRICATED-DISPLAY-N/A] no "N/A" fabrication.
-      priceRange: experience.priceRange || entry.priceRange || undefined,
-      ...canonicalDiscoveryPriceFields(
-        Object.keys(experience).length > 0 ? experience : entry,
-      ),
-      distance: (experience as any).distance || "",
-      travelTime: experience.travelTime || undefined,
-      address: experience.address || entry.address || "",
-      openingHours: (experience as any).openingHours,
-      phone: experience.phoneNumber || entry.phoneNumber,
-      website: experience.website || entry.website,
-      highlights: experience.highlights || entry.highlights || [],
-      tags: (experience as any).tags || [],
-      matchScore: experience.matchScore || (entry as any).matchScore || 0,
-      matchFactors: (experience as any).matchFactors || {
-        location: 0,
-        budget: 0,
-        category: 0,
-        time: 0,
-        popularity: 0,
-      },
-      socialStats: experience.socialStats ||
-        entry.socialStats || {
-        views: 0,
-        likes: 0,
-        saves: 0,
-        shares: 0,
-      },
-      location: (experience as any).location ||
-        ((experience as any).lat && (experience as any).lng
-          ? { lat: (experience as any).lat, lng: (experience as any).lng }
-          : undefined),
+    // #1669 [expanded-card-one-producer]: Calendar used to hand-write this
+    // object. That literal fabricated `rating || 4.5`, dropped
+    // `utcOffsetMinutes` (so Open now / Closed was computed against the
+    // VIEWER's clock, not the venue's), and rebuilt curated plans from a fixed
+    // 9-key allowlist. It now normalises its own two-level source shape
+    // (`entry` + `entry.experience`) and hands that to the ONE producer.
+    //
+    // The merge keeps the old `experience.X || entry.X` preference: a value on
+    // the nested experience wins only when it is actually present.
+    const source: Record<string, unknown> = {
+      ...(entry as unknown as Record<string, unknown>),
+    };
+    for (const [key, value] of Object.entries(
+      experience as unknown as Record<string, unknown>,
+    )) {
+      if (value !== undefined && value !== null && value !== "") {
+        source[key] = value;
+      }
+    }
+    // Calendar-owned identity + field-name normalisation.
+    source.id = entry.id;
+    source.placeId = experience.placeId || (entry as any).placeId || entry.id;
+    source.category = experience.category || entry.category || "Experience";
+    source.categoryIcon = ExperienceIcon;
+    source.phone = experience.phoneNumber || entry.phoneNumber;
+
+    const expandedCardData = savedCardToExpandedCardData(source, {
       selectedDateTime: entry.suggestedDates?.[0]
         ? new Date(entry.suggestedDates[0])
         : entry.date && entry.time
         ? new Date(`${entry.date}T${entry.time}`)
         : new Date(),
-      strollData: (experience as any).strollData,
-      picnicData: (experience as any).picnicData,
-      // Curated fields — pass through if present
-      ...(isCurated && {
-        cardType: "curated" as const,
-        stops: cardData.stops,
-        tagline: cardData.tagline,
-        pairingKey: cardData.pairingKey,
-        totalPriceMin: cardData.totalPriceMin,
-        totalPriceMax: cardData.totalPriceMax,
-        estimatedDurationMinutes: cardData.estimatedDurationMinutes,
-        experienceType: cardData.experienceType,
-        shoppingList: cardData.shoppingList,
-      }),
-    };
+    });
+    if (!expandedCardData) return;
 
     setSelectedCardForExpansion(expandedCardData);
     setIsExpandedModalVisible(true);
@@ -3133,6 +3098,9 @@ const CalendarTab = ({
           onPurchase={handlePurchaseFromModal}
           onShare={handleShareFromModal}
           userPreferences={userPreferences}
+          // #1669: the Calendar mount dropped this, so a Metric user got miles
+          // and °F here and km and °C on the deck for the same place.
+          accountPreferences={accountPreferences}
           isSaved={true}
           currentMode={calendarEntries.find((e) =>
               e.id === selectedCardForExpansion.id

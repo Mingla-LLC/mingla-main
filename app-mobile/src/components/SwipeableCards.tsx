@@ -75,6 +75,9 @@ import { savedCardsService } from "../services/savedCardsService";
 import { useAppStore } from "../store/appStore";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import ExpandedCardModal from "./ExpandedCardModal";
+// #1669 [expanded-card-one-producer]: the deck's producer, which delegates to
+// the ONE canonical mapper. The deck no longer hand-writes the object.
+import { recommendationToExpandedCardData } from "./utils/recommendationToExpandedCardData";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 import { CuratedExperienceSwipeCard } from "./CuratedExperienceSwipeCard";
 import type { CuratedExperienceCard } from "../types/curatedExperience";
@@ -2208,6 +2211,21 @@ export default function SwipeableCards({
     previousBatchIdsRef.current = newFirstIds;
   }, [recommendations, isDeckExpandingWithinContext, activeDeckContextKey]);
 
+  // #1669 [expanded-card-one-producer]: the deck's SINGLE producer, shared by
+  // the tap/swipe-up path (`handleCardExpand`) and the review / dismissed-card
+  // path — which were two separate hand-written literals before. The mapping
+  // itself lives in `utils/recommendationToExpandedCardData` so it is
+  // importable and the regression test can open the same place from the deck
+  // and from Likes and compare the facts. All this closure adds is the one
+  // thing a module cannot know: which datetime the viewer is planning for.
+  const recommendationToExpanded = useCallback((card: Recommendation): ExpandedCardData => {
+    return recommendationToExpandedCardData(card, {
+      selectedDateTime: userPreferences?.datetime_pref
+        ? new Date(userPreferences.datetime_pref)
+        : new Date(),
+    });
+  }, [userPreferences]);
+
   const handleCardExpand = async () => {
     if (!currentRec) return;
     // ORCH-1064: re-open guard — ignore an open within 500ms of the last close so
@@ -2259,46 +2277,13 @@ export default function SwipeableCards({
       rating: currentRec.rating || 0,
     });
 
-    // Transform Recommendation to ExpandedCardData
-    const expandedCardData: ExpandedCardData = {
-      id: currentRec.id,
-      placeId: currentRec.placeId ?? currentRec.id,
-      title: currentRec.title,
-      category: currentRec.category,
-      categoryIcon: currentRec.categoryIcon,
-      description: currentRec.description,
-      fullDescription: currentRec.fullDescription || currentRec.description,
-      image: currentRec.image,
-      images: currentRec.images?.length ? currentRec.images : [currentRec.image].filter(Boolean),
-      rating: currentRec.rating ?? 0,
-      reviewCount: currentRec.reviewCount ?? 0,
-      priceRange: currentRec.priceRange,
-      distance: currentRec.distance || '',
-      travelTime: currentRec.travelTime || '',
-      address: currentRec.address,
-      openingHours: currentRec.openingHours,
-      highlights: currentRec.highlights || [],
-      tags: currentRec.tags || [],
-      matchScore: currentRec.matchScore,
-      matchFactors: currentRec.matchFactors,
-      socialStats: currentRec.socialStats,
-      location:
-        currentRec.lat != null && currentRec.lng != null
-          ? { lat: currentRec.lat, lng: currentRec.lng }
-          : userLocation
-          ? { lat: userLocation.lat, lng: userLocation.lng }
-          : undefined,
-      selectedDateTime: userPreferences?.datetime_pref
-        ? new Date(userPreferences.datetime_pref)
-        : new Date(),
-      tip: currentRec.tip ?? undefined,
-      // Include strollData if it already exists on the card
-      strollData: currentRec.strollData,
-      // Pass through website/phone for Policies & Reservations button
-      website: currentRec.website ?? undefined,
-      phone: currentRec.phone ?? undefined,
-      priceTier: currentRec.priceTier as ExpandedCardData['priceTier'],
-    };
+    // #1669 [expanded-card-one-producer]: the deck used to hand-write this
+    // object, which is how the price pill went missing on the deck (it never
+    // spread `canonicalDiscoveryPriceFields`), how the Open-now badge got
+    // computed against the viewer's clock (no `utcOffsetMinutes`), and how a
+    // coordinate-less card ended up rendering the VIEWER's weather under the
+    // venue's name (`: userLocation` fallback). One producer now.
+    const expandedCardData = recommendationToExpanded(currentRec);
 
     setSelectedCardForExpansion(expandedCardData);
   };
@@ -2722,48 +2707,6 @@ export default function SwipeableCards({
       onCardLike(card);
     }
   }, [onCardLike, isBoardSession, resolvedSessionId, user?.id, t]);
-
-  const recommendationToExpanded = useCallback((card: Recommendation): ExpandedCardData => {
-    if ((card as any).cardType === 'curated') {
-      return card as unknown as ExpandedCardData;
-    }
-    return {
-      id: card.id,
-      placeId: card.placeId ?? card.id,
-      title: card.title,
-      category: card.category,
-      categoryIcon: card.categoryIcon,
-      description: card.description,
-      fullDescription: card.fullDescription || card.description,
-      image: card.image,
-      images: card.images?.length ? card.images : [card.image].filter(Boolean),
-      rating: card.rating ?? 0,
-      reviewCount: card.reviewCount ?? 0,
-      priceRange: card.priceRange,
-      distance: card.distance || '',
-      travelTime: card.travelTime || '',
-      address: card.address,
-      openingHours: card.openingHours,
-      highlights: card.highlights || [],
-      tags: card.tags || [],
-      matchScore: card.matchScore,
-      matchFactors: card.matchFactors,
-      socialStats: card.socialStats,
-      location:
-        card.lat != null && card.lng != null
-          ? { lat: card.lat, lng: card.lng }
-          : userLocation
-          ? { lat: userLocation.lat, lng: userLocation.lng }
-          : undefined,
-      selectedDateTime: userPreferences?.datetime_pref
-        ? new Date(userPreferences.datetime_pref)
-        : new Date(),
-      tip: card.tip ?? undefined,
-      strollData: card.strollData,
-      website: card.website ?? undefined,
-      phone: card.phone ?? undefined,
-    };
-  }, [userLocation, userPreferences]);
 
   const handleDismissedCardPress = useCallback((card: Recommendation) => {
     // Find this card's index in the reversed session list (most recent first)

@@ -60,6 +60,19 @@ interface ViewFriendProfileScreenProps {
   userId: string;
   onBack: () => void;
   onMessage?: (userId: string) => void;
+  /**
+   * #1669 [expanded-card-one-producer]: this screen used to HARD-CODE
+   * `{ currency: 'USD', measurementSystem: 'Imperial' }` on its ExpandedCardModal
+   * mount, so a Metric user opening a friend's card saw miles and Fahrenheit
+   * while the same card on the deck was km and Celsius. Threaded from the
+   * caller that owns the preference (app/index.tsx). Optional because the
+   * business-detail-screen overlays do not carry it; absent falls through to
+   * the modal's own defaults rather than a hard-coded lie.
+   */
+  accountPreferences?: {
+    currency: string;
+    measurementSystem: 'Metric' | 'Imperial';
+  };
 }
 
 function displayName(
@@ -307,6 +320,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
   userId,
   onBack,
   onMessage,
+  accountPreferences,
 }) => {
   const { t } = useTranslation(['profile', 'common', 'discover']);
   const insets = useSafeAreaInsets();
@@ -850,7 +864,7 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
           onShare={() => {}}
           isSaved={false}
           currentMode="solo"
-          accountPreferences={{ currency: 'USD', measurementSystem: 'Imperial' }}
+          accountPreferences={accountPreferences}
         />
       )}
 

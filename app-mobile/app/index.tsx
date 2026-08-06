@@ -2411,6 +2411,9 @@ function AppContent() {
                         ) : viewingFriendProfileId ? (
                           <ViewFriendProfileScreen
                             userId={viewingFriendProfileId}
+                            // #1669: replaces the screen's hard-coded
+                            // USD/Imperial on its ExpandedCardModal mount.
+                            accountPreferences={accountPreferencesMemo}
                             onBack={() => setViewingFriendProfileId(null)}
                             onMessage={(userId) => {
                               setViewingFriendProfileId(null);
