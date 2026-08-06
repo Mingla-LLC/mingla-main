@@ -57,6 +57,16 @@ export interface RecordVisitParams {
  * NOT applied to the read paths: `hasVisited` is a query whose failure is
  * invisible and retried by React Query, whereas a WRITE that never resolves is
  * what leaves the control looking untouched.
+ *
+ * #1642 — THIS BOUND IS ONLY REACHABLE BECAUSE THE MUTATIONS THAT CALL IT
+ * DECLARE `networkMode: 'always'` (hooks/useVisits.ts). React Query's default
+ * `networkMode` is `'online'`, and with `onlineManager` wired to NetInfo a
+ * device with no signal makes query-core pause the mutation BEFORE it ever
+ * calls `mutationFn` — so none of the code below runs and the timer here is
+ * never even created. That is why the 15s cap did not fire in airplane mode
+ * on a physical Samsung: not because 15s was too long, but because nothing
+ * here executed. If you ever remove `networkMode` from those mutations, every
+ * line below becomes dead code again under exactly the failure it exists for.
  */
 export const VISIT_WRITE_TIMEOUT_MS = 15000;
 
