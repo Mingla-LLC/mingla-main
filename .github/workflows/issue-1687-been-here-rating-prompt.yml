@@ -38,6 +38,7 @@ on:
       - "app-mobile/app/index.tsx"
       - "app-mobile/src/i18n/locales/en/cards.json"
       - "app-mobile/src/hooks/__tests__/issue_1687_been_here_opens_rating_prompt.test.mjs"
+      - "app-mobile/src/services/__tests__/issue_1687_tester_partial_write_and_stale_request.test.mjs"
       - "app-mobile/package-lock.json"
       - ".github/workflows/issue-1687-been-here-rating-prompt.yml"
   pull_request:
@@ -54,6 +55,7 @@ on:
       - "app-mobile/app/index.tsx"
       - "app-mobile/src/i18n/locales/en/cards.json"
       - "app-mobile/src/hooks/__tests__/issue_1687_been_here_opens_rating_prompt.test.mjs"
+      - "app-mobile/src/services/__tests__/issue_1687_tester_partial_write_and_stale_request.test.mjs"
       - "app-mobile/package-lock.json"
       - ".github/workflows/issue-1687-been-here-rating-prompt.yml"
 
@@ -77,10 +79,12 @@ jobs:
           cache: npm
           cache-dependency-path: app-mobile/package-lock.json
 
-      - name: The suite must exist
+      - name: The suites must exist
         # Without this the job is green when the file is deleted — the exact
         # "assertion that does not assert" shape #1687 was filed alongside.
-        run: test -f src/hooks/__tests__/issue_1687_been_here_opens_rating_prompt.test.mjs
+        run: |
+          test -f src/hooks/__tests__/issue_1687_been_here_opens_rating_prompt.test.mjs
+          test -f src/services/__tests__/issue_1687_tester_partial_write_and_stale_request.test.mjs
 
       - run: npm ci
 
@@ -88,6 +92,15 @@ jobs:
         run: >
           node --test --test-reporter=spec
           src/hooks/__tests__/issue_1687_been_here_opens_rating_prompt.test.mjs
+
+      - name: "TESTER adversarial: partial writes, stale requests, colliding entries"
+        # The other half of the partial write (the VISIT failing), the orphaned
+        # visit a cancelled-after-failure tap leaves, the cross-session re-record
+        # drift, the place_pool_id derivation's FK blast radius, and the
+        # voluntary-vs-scheduled precedence on the single modal mount.
+        run: >
+          node --test --test-reporter=spec
+          src/services/__tests__/issue_1687_tester_partial_write_and_stale_request.test.mjs
 
       - name: Re-run the #1609 collapsed-control contract (superseded by #1687, still enforced)
         # #1687 inverts the Amendment 1 assertion — `recordVisit.mutate` is now
