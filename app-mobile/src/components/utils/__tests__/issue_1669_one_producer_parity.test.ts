@@ -568,4 +568,124 @@ describe("#1669 G — the deck's cards carry the venue's UTC offset at all", () 
       "an absent offset must be null, never a fabricated 0 (which would silently mean UTC)",
     );
   });
+
+  it("G-3: an unrated server row stays unrated at the deck's own mapper, not zero", () => {
+    // The rating fabrication has TWO sources, and collapsing the producers only
+    // closed one. `unifiedCardToRecommendation` is upstream of every producer:
+    // it coerced `card.rating ?? 0`, so an unrated place arrived at the mapper
+    // already carrying a number, and no amount of honesty downstream could tell
+    // absence from a real zero. 763 of 35,249 servable place_pool rows have
+    // `rating IS NULL`; the deck is the surface most of them are seen on.
+    const rec = unifiedCardToRecommendation({
+      id: "p3",
+      title: "The Parlour",
+      category: "Icebreakers",
+      address: "117 Market St, Durham, NC",
+      lat: 35.9968,
+      lng: -78.8999,
+      openingHours: OPENING_HOURS,
+    });
+    assert.equal(
+      rec.rating,
+      undefined,
+      "the deck stamped a rating onto a place the server has none for. Downstream this is indistinguishable from a real 0, and the expanded card printed it as `★ 0.0` — an invented zero that reads as a real, terrible score.",
+    );
+    assert.equal(
+      recommendationToExpandedCardData(rec).rating,
+      undefined,
+      "the fabricated rating survived into the modal's input",
+    );
+
+    // A real rating is untouched.
+    const rated = unifiedCardToRecommendation({
+      id: "p4",
+      title: "Frankie's of Raleigh",
+      category: "Icebreakers",
+      address: "11190 Fun Park Dr, Raleigh, NC",
+      lat: 35.9,
+      lng: -78.8,
+      rating: 4.4,
+    });
+    assert.equal(rated.rating, 4.4, "a real rating stopped being carried");
+  });
+});
+
+// ── H · the Calendar persistence hop ────────────────────────────────────────
+//
+// The PR claimed "a field either survives for all of them or for none of them."
+// That is true of the eleven PRODUCERS, and false across this hop. Scheduling a
+// card writes `card_data` through `CalendarService`'s own `allowedCardFields`
+// allowlist, and CalendarTab reads that row straight back into the canonical
+// mapper — so a field the allowlist omits is permanently absent on the Calendar
+// surface no matter what the mapper carries. `utcOffsetMinutes` was omitted, so
+// Calendar would have kept computing Open now / Closed on the VIEWER's clock
+// even after #1683 widens the serving RPCs. 0 of the 19 live rows carry it.
+//
+// This asserts the RENDERED CONSEQUENCE, not the presence of a string in an
+// array: it schedules a Lagos venue, reads the persisted row back through the
+// mapper exactly as CalendarTab does, and asks `isPlaceOpenAt` the question the
+// badge asks. A London viewer at 22:30 UTC would read OPEN; Lagos is 23:30 and
+// CLOSED. If the offset does not survive the round-trip, the badge lies.
+
+describe("#1669 H — a scheduled card keeps the venue's clock across the database", () => {
+  it("H-1: utcOffsetMinutes survives CalendarService's allowlist, and the badge stays the venue's", async () => {
+    jest.resetModules();
+    const inserts: any[] = [];
+    (globalThis as any).__DEV__ = false;
+    jest.doMock("../../../services/supabase", () => ({
+      supabase: {
+        auth: { getSession: async () => ({ data: { session: null } }) },
+        rpc: async () => ({ data: null, error: null }),
+        from: () => ({
+          insert: (payload: any) => {
+            inserts.push(payload);
+            return {
+              select: () => ({
+                single: async () => ({ data: { id: "row_1", ...payload }, error: null }),
+              }),
+            };
+          },
+        }),
+      },
+      trackedInvoke: jest.fn(),
+    }));
+    jest.doMock("../../../services/userActivityService", () => ({
+      userActivityService: { recordActivity: jest.fn(async () => undefined) },
+    }));
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { CalendarService } = require("../../../services/calendarService");
+
+    const card = savedCardToExpandedCardData(asSavedCard());
+    assert.equal(
+      card.utcOffsetMinutes,
+      LAGOS_OFFSET_MINUTES,
+      "vacuity guard: the mapper must carry the offset before we can ask whether persistence keeps it",
+    );
+
+    await CalendarService.addEntryFromSavedCard(
+      "user_1",
+      { ...card, source: "solo" },
+      "2027-01-08T19:00:00.000Z",
+    );
+    const persisted = inserts[0].card_data;
+
+    assert.equal(
+      persisted.utcOffsetMinutes,
+      LAGOS_OFFSET_MINUTES,
+      "CalendarService.allowedCardFields dropped utcOffsetMinutes, so the row the Calendar reads back has no venue clock. Calendar would keep computing Open now / Closed on the VIEWER's device clock even after the serving RPCs start returning the offset (#1683) — because the row, not the RPC, is what that surface reads.",
+    );
+
+    // The rendered consequence, from the row and not from the card in memory.
+    const reread = savedCardToExpandedCardData(persisted);
+    const at2230Utc = new Date("2027-01-08T22:30:00.000Z");
+    assert.equal(
+      isPlaceOpenAt(
+        extractWeekdayText(reread.openingHours),
+        at2230Utc,
+        reread.utcOffsetMinutes,
+      ),
+      false,
+      "read back from the persisted row, the venue reads OPEN at 22:30 UTC. It is 23:30 in Lagos and the venue shut at 23:00 — this is the viewer's London clock answering a question about a Lagos venue.",
+    );
+  });
 });
