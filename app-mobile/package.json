@@ -60,6 +60,7 @@
     "test:issue-1516": "node ./src/contexts/__tests__/issue-1516-coach-mark-single-process.test.tsx",
     "test:issue-1516-adv": "node ./src/contexts/__tests__/issue-1516-coach-mark-grammar-and-blast-radius.tester-adversarial.test.tsx",
     "test:issue-1636": "node --experimental-strip-types --test ./src/components/activity/__tests__/issue_1636_likes_load.test.ts",
+    "test:issue-1636-adversarial": "node --experimental-strip-types --test ./src/components/activity/__tests__/issue_1636_likes_thumb_contract.adversarial.test.ts",
     "test:orch-1189": "node ./src/components/activity/__tests__/orch_1189_likes_floating_nav_clearance.test.mjs"
   },
   "dependencies": {

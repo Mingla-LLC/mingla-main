@@ -20,6 +20,8 @@ on:
       - "app-mobile/src/components/figma/ImageWithFallback.tsx"
       - "app-mobile/src/utils/placePhotoThumb.ts"
       - "app-mobile/src/components/activity/__tests__/issue_1636_likes_load.test.ts"
+      - "app-mobile/src/components/activity/__tests__/issue_1636_likes_thumb_contract.adversarial.test.ts"
+      - "supabase/functions/backfill-place-photo-thumbs/index.ts"
       - "app-mobile/src/components/activity/__tests__/orch_1189_likes_floating_nav_clearance.test.mjs"
       - "app-mobile/package.json"
       - ".github/workflows/issue-1636-likes-load-tests.yml"
@@ -32,6 +34,8 @@ on:
       - "app-mobile/src/components/figma/ImageWithFallback.tsx"
       - "app-mobile/src/utils/placePhotoThumb.ts"
       - "app-mobile/src/components/activity/__tests__/issue_1636_likes_load.test.ts"
+      - "app-mobile/src/components/activity/__tests__/issue_1636_likes_thumb_contract.adversarial.test.ts"
+      - "supabase/functions/backfill-place-photo-thumbs/index.ts"
       - "app-mobile/src/components/activity/__tests__/orch_1189_likes_floating_nav_clearance.test.mjs"
       - "app-mobile/package.json"
       - ".github/workflows/issue-1636-likes-load-tests.yml"
@@ -53,9 +57,11 @@ jobs:
 
       # Fail loudly if a suite is renamed or deleted rather than silently
       # running nothing — the #1584 failure class.
-      - name: Require both regression suites to exist
+      - name: Require all three regression suites and their inputs to exist
         run: |
           test -f app-mobile/src/components/activity/__tests__/issue_1636_likes_load.test.ts
+          test -f app-mobile/src/components/activity/__tests__/issue_1636_likes_thumb_contract.adversarial.test.ts
+          test -f supabase/functions/backfill-place-photo-thumbs/index.ts
           test -f app-mobile/src/components/activity/__tests__/orch_1189_likes_floating_nav_clearance.test.mjs
           test -f app-mobile/src/utils/placePhotoThumb.ts
           test -f app-mobile/src/components/activity/savedTabEntrance.ts
@@ -66,6 +72,16 @@ jobs:
       - name: Issue 1636 regression suite
         working-directory: app-mobile
         run: npm run test:issue-1636
+
+      # TESTER adversarial suite (#1636). Different angles from the suite above:
+      # a reader/writer differential against REAL production object names, the
+      # retry being armed only where a second request could succeed, the 384 px
+      # thumb staying off full-bleed surfaces, removeClippedSubviews staying off
+      # (it swallows touches on Android and every row here is interactive), and
+      # the unbounded stagger staying gone from the CALL SITE.
+      - name: Issue 1636 tester adversarial suite
+        working-directory: app-mobile
+        run: npm run test:issue-1636-adversarial
 
       # ORCH-1189 floating-nav clearance. Virtualisation moved this contract from
       # the ScrollView's contentContainerStyle to the FlatList's, so it is the
