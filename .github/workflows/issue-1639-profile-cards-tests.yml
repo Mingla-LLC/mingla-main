@@ -33,8 +33,14 @@ name: Issue 1639 Profile Cards Batched Request Tests
 # that would go on the wire.
 #
 # EXPLICIT registry (never a glob) — add a suite by appending its path below.
-# Invokes no .mjs under .github/scripts/strict-grep/, so MANIFEST.json totality
-# and parity are untouched.
+#
+# MANIFEST NOTE: this workflow invokes no .mjs under .github/scripts/strict-grep/, so
+# `expectedStrictGrepMjsFiles` is untouched. It DOES invoke
+# `app-mobile/scripts/ci/issue-1639-orch1016-fixc-guard.mjs`, which lives under a
+# registered `externalGateDirs` entry and therefore carries its own gates[] row in
+# MANIFEST.json (`external:issue-1639-profile-cards-tests.yml`, selfTest "none").
+# P11 refuses any unregistered file in that directory, and P4 refuses a registration
+# whose named workflow does not actually invoke it.
 
 on:
   push:
@@ -103,5 +109,14 @@ jobs:
       # here would make this gate red for an unrelated, pre-existing reason. Its FIX-C
       # assertions are re-asserted directly instead, so the contract THIS pr could
       # actually break stays guarded.
+      #
+      # Invoked with the REPO-ROOT-relative path (and `working-directory: .` overriding
+      # this job's app-mobile default) because meta-1383-manifest-parity's P4 check
+      # tokenises each `run:` block and compares those tokens against the MANIFEST
+      # `script` field verbatim — it does NOT resolve `working-directory`. A bare
+      # `./scripts/ci/...` leaves this registered gate looking un-invoked and fails
+      # manifest parity with "it is now enforced by nothing" (verified by reverting this
+      # line locally). Same shape as issue-1481-explorer-deck-tests.yml.
       - name: ORCH-1016 FIX-C contract on PersonHolidayView is intact (chips still contained)
-        run: node ./scripts/ci/issue-1639-orch1016-fixc-guard.mjs
+        working-directory: .
+        run: node app-mobile/scripts/ci/issue-1639-orch1016-fixc-guard.mjs

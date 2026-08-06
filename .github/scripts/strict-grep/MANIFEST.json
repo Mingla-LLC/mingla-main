@@ -7334,6 +7334,19 @@
       ]
     },
     {
+      "script": "app-mobile/scripts/ci/issue-1639-orch1016-fixc-guard.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-1639-profile-cards-tests.yml",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-1639-batched-card-request"
+      ]
+    },
+    {
       "script": ".github/scripts/strict-grep/issue-1541-sms-provider-sole-send-path.mjs",
       "kind": "file",
       "enforcement": "batch:A",
