@@ -39,7 +39,23 @@ export const useFriends = (options?: { autoFetchBlockedUsers?: boolean }) => {
   const requestsLoading = requestsQuery.isLoading;
   const error = friendsQuery.error?.message ?? null;
 
-  // ── Refetch functions (backwards-compatible) ──
+  // ── Forced cache INVALIDATIONS (backwards-compatible names) ──
+  //
+  // Issue #1638 — READ THIS BEFORE CALLING ANY OF THE THREE BELOW.
+  // Despite the `fetch*` / `load*` names these are NOT reads. Each one is a
+  // `queryClient.invalidateQueries(...)` that marks the query invalidated and forces a
+  // network round trip REGARDLESS of staleTime. The reads are the `useFriendsList` /
+  // `useFriendRequests` / `useBlockedUsers` subscriptions above; simply calling
+  // `useFriends()` is already enough to get the data.
+  //
+  // CONTRACT: call these ONLY after an action whose effect the user must see immediately
+  // (accepting a request, blocking someone, pull-to-refresh, an explicit retry). NEVER
+  // from a mount effect. Both #1638 mount call sites — `ProfilePage` and `ConnectionsPage`
+  // — were removed because Wave 2.8 Path B unmounts a tab on every switch away, so "on
+  // mount" meant "on every single tab tap", which defeated the 30s `useFriendsList`
+  // staleTime and the 5-minute global default and made every Profile/Friends switch a
+  // guaranteed network round trip. React Query's `refetchOnMount` + staleTime own mount
+  // freshness; these functions own ACTION freshness.
   const fetchFriends = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: friendsKeys.list(userId ?? "") });
   }, [queryClient, userId]);

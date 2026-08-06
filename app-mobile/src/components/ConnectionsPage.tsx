@@ -1431,12 +1431,22 @@ function ConnectionsPageRefactored({
     fetchConversations(user.id);
   }, [user?.id, fetchConversations]);
 
-  // ── Fetch friends & requests on mount ────────────────────
-  useEffect(() => {
-    if (!user?.id) return;
-    fetchFriends().catch((e) => console.error("Error fetching friends:", e));
-    loadFriendRequests().catch((e) => console.error("Error fetching requests:", e));
-  }, [user?.id, fetchFriends, loadFriendRequests]);
+  // ── Friends & requests freshness — issue #1638 ───────────
+  // There used to be a mount effect here calling `fetchFriends()` + `loadFriendRequests()`.
+  // Both are `queryClient.invalidateQueries(...)`, NOT reads (useFriends.ts), so under
+  // Wave 2.8 Path B — where this page fully unmounts on every switch away — every single
+  // tap on the Friends tab forced two network round trips and defeated both the 30s
+  // `useFriendsList` staleTime and the 5-minute global default.
+  //
+  // The `useFriends()` call above already subscribes to the friends / requests / blocked
+  // queries. React Query's `refetchOnMount` (default true, not overridden in
+  // config/queryClient.ts) refetches them on mount when they are STALE and serves cache
+  // when they are not; `useFriendsQuery.ts` additionally carries a 5-minute
+  // `refetchInterval` safety net, and `app/index.tsx` polls friend requests every 60s.
+  //
+  // Action-driven invalidations are UNCHANGED and still fire: pull-to-refresh
+  // (`handleRefresh`), the error-state "Try again" button, `onRequestSent`, and every
+  // accept / decline / remove / block / unblock / cancel mutation in useFriends.ts.
 
   useEffect(() => {
     if (!user?.id || pendingCreatorCollabSessionIds.length === 0) return;
