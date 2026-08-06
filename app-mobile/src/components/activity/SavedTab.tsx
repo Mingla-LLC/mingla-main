@@ -824,9 +824,17 @@ interface SavedCardRowCommonProps {
   scale: Animated.Value;
   isScheduled: boolean;
   isRemoving: boolean;
-  isScheduling: boolean;
+  /**
+   * ORCH-1195 locked down the EXACT gate on the Schedule button: in-flight
+   * (`schedulingCardId === card.id`) and already-scheduled (`isScheduled`), and
+   * explicitly NOT current open-now status. Its regression tests assert that
+   * expression verbatim, so the id is threaded down rather than a pre-derived
+   * `isScheduling` boolean. Slightly weaker memoisation (a scheduling tap
+   * re-renders the ~20 mounted rows instead of 1) in exchange for keeping a
+   * deliberately locked-down contract literally intact. Worth it.
+   */
+  schedulingCardId: string | null;
   onPress: (card: SavedCard) => void;
-  onSchedule: (card: SavedCard) => void;
   onShare: (card: SavedCard) => void;
   onRemove: (card: SavedCard) => void;
 }
@@ -834,10 +842,12 @@ interface SavedCardRowCommonProps {
 interface SavedCuratedCardRowProps extends SavedCardRowCommonProps {
   /** Resolved from `accountPreferences.currency` once, in the parent. */
   currencyCode: string;
+  handleScheduleCurated: (card: SavedCard) => void;
 }
 
 interface SavedSimpleCardRowProps extends SavedCardRowCommonProps {
   onPurchase: (card: SavedCard, purchaseOption: any) => void;
+  handleSchedule: (card: SavedCard) => void;
 }
 
 const SavedCuratedCardRow = React.memo(function SavedCuratedCardRow({
@@ -845,10 +855,10 @@ const SavedCuratedCardRow = React.memo(function SavedCuratedCardRow({
   scale,
   isScheduled,
   isRemoving,
-  isScheduling,
+  schedulingCardId,
   currencyCode,
   onPress,
-  onSchedule,
+  handleScheduleCurated,
   onShare,
   onRemove,
 }: SavedCuratedCardRowProps) {
@@ -952,14 +962,14 @@ const SavedCuratedCardRow = React.memo(function SavedCuratedCardRow({
         {/* Action buttons */}
         <View style={curatedSavedStyles.actions}>
           <TouchableOpacity
-            onPress={() => onSchedule(card)}
+            onPress={() => handleScheduleCurated(card)}
             style={[
               curatedSavedStyles.scheduleButton,
-              (isScheduled || isScheduling) && curatedSavedStyles.scheduleButtonDisabled,
+              (isScheduled || schedulingCardId === card.id) && curatedSavedStyles.scheduleButtonDisabled,
             ]}
-            disabled={isScheduled || isScheduling}
+            disabled={isScheduled || schedulingCardId === card.id}
           >
-            {isScheduling ? (
+            {schedulingCardId === card.id ? (
               <ActivityIndicator size="small" color="#1C1C1E" />
             ) : (
               <>
@@ -1000,9 +1010,9 @@ const SavedSimpleCardRow = React.memo(function SavedSimpleCardRow({
   scale,
   isScheduled,
   isRemoving,
-  isScheduling,
+  schedulingCardId,
   onPress,
-  onSchedule,
+  handleSchedule,
   onPurchase,
   onShare,
   onRemove,
@@ -1127,7 +1137,7 @@ const SavedSimpleCardRow = React.memo(function SavedSimpleCardRow({
             ) : (
               <View style={styles.scheduleButtonContainer}>
                 <TouchableOpacity
-                  onPress={() => onSchedule(card)}
+                  onPress={() => handleSchedule(card)}
                   style={[
                     styles.primaryButton,
                     // ORCH-1195: do NOT disable on current open-now status. The
@@ -1136,12 +1146,12 @@ const SavedSimpleCardRow = React.memo(function SavedSimpleCardRow({
                     // handleProposeDateTime; disabling on isPlaceOpen would wrongly
                     // block opening the scheduler for a place that's closed now but
                     // open at a future time. The "currently closed" label stays.
-                    (isScheduling || isScheduled) &&
+                    (schedulingCardId === card.id || isScheduled) &&
                       styles.primaryButtonDisabled,
                   ]}
-                  disabled={isScheduling || isScheduled}
+                  disabled={schedulingCardId === card.id || isScheduled}
                 >
-                  {isScheduling ? (
+                  {schedulingCardId === card.id ? (
                     <ActivityIndicator size="small" color="white" />
                   ) : (
                     <>
@@ -2149,7 +2159,6 @@ const SavedTab = ({
       const isScheduled =
         scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id);
       const isRemoving = removingCardIds.has(card.id);
-      const isScheduling = schedulingCardId === card.id;
       const { scale } = getCardAnimation(card.id);
 
       // Curated multi-stop cards get a premium layout
@@ -2160,10 +2169,10 @@ const SavedTab = ({
             scale={scale}
             isScheduled={isScheduled}
             isRemoving={isRemoving}
-            isScheduling={isScheduling}
+            schedulingCardId={schedulingCardId}
             currencyCode={currencyCode}
             onPress={rowHandlers.onPress}
-            onSchedule={rowHandlers.onScheduleCurated}
+            handleScheduleCurated={rowHandlers.onScheduleCurated}
             onShare={rowHandlers.onShare}
             onRemove={rowHandlers.onRemove}
           />
@@ -2176,9 +2185,9 @@ const SavedTab = ({
           scale={scale}
           isScheduled={isScheduled}
           isRemoving={isRemoving}
-          isScheduling={isScheduling}
+          schedulingCardId={schedulingCardId}
           onPress={rowHandlers.onPress}
-          onSchedule={rowHandlers.onScheduleSimple}
+          handleSchedule={rowHandlers.onScheduleSimple}
           onPurchase={rowHandlers.onPurchase}
           onShare={rowHandlers.onShare}
           onRemove={rowHandlers.onRemove}

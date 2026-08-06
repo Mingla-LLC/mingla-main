@@ -1,3 +1,8 @@
+// @ts-nocheck
+// Node's type-stripping runner requires the explicit `.ts` extension on relative
+// imports, which tsc rejects without `allowImportingTsExtensions`. This file is
+// executed by `node --test`, never bundled, so it opts out of tsc exactly the
+// way the ORCH-1195 tests beside it do.
 /**
  * Issue #1636 — "Likes takes a long time to load once you have a lot of liked
  * places."
@@ -105,7 +110,28 @@ describe("A. place-photo thumbnail helper", () => {
   test("A-3 NON-SUPABASE HOSTS PASS THROUGH UNTOUCHED", () => {
     // 11 of 458 production saved cards point off-bucket. Rewriting any of these
     // renders a broken image, which is the worst possible outcome for this fix.
+    //
+    // THIS TEST IS THE ONLY THING PROTECTING THE PASS-THROUGH CASE. All 201
+    // images on the 148-card ceiling account (sethogieva) are Supabase place
+    // photos, so a device pass on that account proves exactly nothing here. The
+    // demo account (rambleawaypod, 92 cards) carries a single foreign image —
+    // the Ticketmaster URL below, verbatim from production — and it has to come
+    // back byte-identical.
+    const TICKETMASTER_PRODUCTION_URL =
+      "https://s1.ticketm.net/dam/c/060/c5c08e7a-9912-456c-a060-2758be94e060_105881_TABLET_LANDSCAPE_16_9.jpg";
+    assert.equal(
+      getPlacePhotoThumbUrl(TICKETMASTER_PRODUCTION_URL),
+      null,
+      "the real production Ticketmaster URL must never be rewritten",
+    );
+    assert.deepEqual(
+      resolvePlacePhotoThumbSource(TICKETMASTER_PRODUCTION_URL),
+      { uri: TICKETMASTER_PRODUCTION_URL },
+      "the real production Ticketmaster URL must pass through byte-identical, with no fallback armed",
+    );
+
     const foreign = [
+      TICKETMASTER_PRODUCTION_URL,
       "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4.jpg",
       "https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=abc",
       "https://lh3.googleusercontent.com/places/ABC/0.jpg",
