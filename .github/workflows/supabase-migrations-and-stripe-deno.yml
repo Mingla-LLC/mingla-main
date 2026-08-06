@@ -229,6 +229,20 @@ jobs:
           # card's chips and the claimed/pending block.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1649_normalised_place_name_search.test.sql
+          # Issue #1653 — publishing an event must KEEP the pin the wizard
+          # collected. business_publish_event_draft promoted title/slug/city/
+          # taxonomy and stopped; the theme write even stripped 'locationGeo' as
+          # "cached client-side only". Production: 65 events, 16 with a pin, 0
+          # with a precision, 48 of 58 drafts with NEITHER city NOR pin — and an
+          # event with neither is undiscoverable (browse matches city string OR
+          # geo-radius). B-04 is the trap worth the whole file: point() takes
+          # (x,y) = (LONGITUDE, LATITUDE), so swapping the arguments is SILENT —
+          # the row still has "a pin", every other assertion still passes, and
+          # London lands in the Indian Ocean. B-05 pins the preserve-existing
+          # branch: publishing without a coordinate must never NULL a pin a
+          # later edit set, which would be worse than the bug being fixed.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1653_publish_keeps_the_pin.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1388_stay_reservation.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
