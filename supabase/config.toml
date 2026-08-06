@@ -74,6 +74,19 @@ verify_jwt = false
 [functions.claim-search-pool]
 verify_jwt = true
 
+# Issue #1648 — resolve a PICKED address to a place we already hold, so a venue
+# already in our directory cannot duplicate itself when the NAME search missed.
+# verify_jwt = true is mandatory, not cosmetic: every call spends money at
+# Google and reads the pool, so it can never be anonymous. Rate-limited per user
+# on the same bucket shape as claim-search-pool.
+# BOUNDARY (ORCH-1079): this does NOT autocomplete anything. Mapbox still owns
+# every suggestion the brand sees. Google is asked one question, once, AFTER the
+# brand has already picked — "which place is this?" — and the answer is used
+# only to look up our own directory.
+# GOOGLE MAY RESOLVE IDENTITY; IT MAY NEVER DRIVE SUGGESTIONS.
+[functions.venue-address-pool-match]
+verify_jwt = true
+
 # Ve1 — venue operator confirmation after biz_create_venue_brand_pending_review.
 [functions.venue-claim-submitted-email]
 verify_jwt = true

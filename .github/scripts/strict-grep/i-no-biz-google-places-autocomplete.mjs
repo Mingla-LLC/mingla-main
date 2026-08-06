@@ -27,6 +27,22 @@
  * Pass condition: the 4 files absent AND zero mingla-business/src references AND
  *   the key still present in the keep-list.
  *
+ *
+ * ── Issue #1648 — THE SANCTIONED BOUNDARY (gate UNCHANGED, read this first) ──
+ * #1648 added `supabase/functions/venue-address-pool-match`, which calls Google
+ * Places `searchText` ONCE after a brand has already picked an address, purely
+ * to resolve it to a `google_place_id` and look that up in OUR OWN place_pool.
+ * This gate is deliberately NOT amended and still passes unmodified, because
+ * that is a different thing from what ORCH-1079 retired:
+ *
+ *   GOOGLE MAY RESOLVE IDENTITY.  IT MAY NEVER DRIVE SUGGESTIONS.
+ *
+ * Mapbox still owns every suggestion a brand sees; `i-biz-venue-input-uses-mapbox`
+ * still passes unmodified too. One call per PICK, not per keystroke.
+ * If a future change puts Google back behind an autocomplete field — under any
+ * filename — this gate's INTENT is violated even where its letter is not. Widen
+ * it rather than route around it.
+ *
  * Exit codes: 0 pass · 1 fail · 2 fs error
  * Self-test mode (--self-test) validates the detectors against fixtures.
  */
