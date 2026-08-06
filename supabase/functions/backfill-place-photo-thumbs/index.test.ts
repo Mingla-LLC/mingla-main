@@ -323,6 +323,12 @@ function makeClaimRaceLostDb(pendingCount: number) {
   };
   const db = {
     storage: { from() { return { getPublicUrl: (p: string) => ({ data: { publicUrl: `https://x/${p}` } }), upload: () => Promise.resolve({ error: null }) }; } },
+    // Issue #1644: process_chunk now consults the storage-headroom guardrail
+    // before claiming a batch (it is the byte-writing path). This mock reports a
+    // healthy 10 GiB so T-08 keeps exercising CLAIM-RACE semantics and nothing
+    // else. A mock WITHOUT this responds "unmeasurable" and the guard correctly
+    // fails CLOSED — see storageHeadroomGuard.issue1644.test.ts for that contract.
+    rpc: (_fn: string) => Promise.resolve({ data: 10 * 1024 * 1024 * 1024, error: null }),
     from(table: string) {
       if (table === "photo_backfill_runs") {
         const b: Record<string, unknown> = {};
