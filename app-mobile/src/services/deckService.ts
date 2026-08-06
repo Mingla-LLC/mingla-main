@@ -259,6 +259,26 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
     // like "OpenNow: false" / "Periods: [object Object]" — see Phase 1+2
     // investigation INVESTIGATION_ORCH-0649_EXPANDED_CARD_QUARTET.md.
     openingHours: card.openingHours ?? null,
+    // #1669 [expanded-card-one-producer] — found at RUNTIME, not in the source
+    // read. `discover-cards` has always emitted `utcOffsetMinutes`
+    // (index.ts:920) and `Recommendation` has always declared the field, but
+    // this mapper never copied it, so EVERY deck card reached the client with
+    // no offset at all. Collapsing the expanded-card producers onto one mapper
+    // is necessary but not sufficient: with the offset missing this far
+    // upstream, `isPlaceOpenAt` still silently fell back to the device clock
+    // and a Durham cafe open until 9pm read "Closed" to a viewer whose phone
+    // was on another continent's clock. Proven on a Samsung S-series against
+    // this branch's Metro: TZ=Asia/Tokyo, venue-local Thu 12:21, badge said
+    // Closed with every producer already collapsed.
+    //
+    // NOTE (Discovery for the orchestrator): this repairs the CLIENT half only.
+    // None of the three serving RPCs — issue_1384_query_servable_places_by_signal,
+    // query_servable_places_by_signal, query_servable_places_by_signal_intersection
+    // — returns `utc_offset_minutes` at all, so today the value is still null in
+    // production and the badge is still device-relative. The remaining fix is a
+    // migration widening those RETURNS TABLE signatures, which is out of this
+    // issue's stated scope.
+    utcOffsetMinutes: card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null,
     tags: [card.placeType, card.placeTypeLabel].filter(Boolean),
     matchScore: card.matchScore ?? 85,
     reviewCount: card.reviewCount ?? 0,

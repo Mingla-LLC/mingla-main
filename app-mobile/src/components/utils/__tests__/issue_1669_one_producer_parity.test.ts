@@ -64,6 +64,23 @@ import {
   extractWeekdayText,
   isPlaceOpenAt,
 } from "../../../utils/openingHoursUtils";
+// `deckService` pulls the RN network + feature-flag surface at module load, so
+// the same stubs the sibling deckService.issue1384 suite uses are applied here.
+// The mapper under test is pure — none of the stubs touch it.
+jest.mock("../../../services/supabase", () => ({
+  supabase: {},
+  trackedInvoke: jest.fn(),
+}));
+jest.mock("../../../services/curatedExperiencesService", () => ({
+  curatedExperiencesService: {
+    generateCuratedExperiences: jest.fn(async () => ({ cards: [] })),
+  },
+}));
+jest.mock("../../../config/featureFlags", () => ({
+  FEATURE_FLAG_PROGRESSIVE_DELIVERY: false,
+  FEATURE_FLAG_ACCOUNT_SIDE_TOGGLE: false,
+}));
+import { unifiedCardToRecommendation } from "../../../services/deckService";
 
 // ── the one place, in each surface's own source shape ────────────────────────
 
@@ -440,5 +457,55 @@ describe("#1669 F — collapsing chat onto the mapper kept chat's own rules", ()
     assert.equal(chat.lockerUserId, "user-1");
     assert.equal(chat.savedCardId, "saved-1");
     assert.equal(chat.sessionId, "session-1");
+  });
+});
+
+// ── G · the upstream half, found on a device and not in the source read ─────
+
+describe("#1669 G — the deck's cards carry the venue's UTC offset at all", () => {
+  it("G-1: unifiedCardToRecommendation keeps utcOffsetMinutes", () => {
+    // Runtime finding, Samsung + this branch's Metro, TZ=Asia/Tokyo: a Durham
+    // cafe open 8am–9pm still read "Closed" with every expanded-card producer
+    // collapsed. `discover-cards` emits `utcOffsetMinutes` and `Recommendation`
+    // declares it, but this client mapper never copied it — so the field the
+    // Open-now badge reads was already gone one layer ABOVE every producer the
+    // investigation named. Collapsing the producers cannot fix a field that
+    // never arrives.
+    const rec = unifiedCardToRecommendation({
+      id: "p1",
+      title: "Yonder Coffee",
+      category: "Icebreakers",
+      address: "108 E Main St, Durham, NC",
+      lat: 35.9946091,
+      lng: -78.9005212,
+      rating: 4.6,
+      utcOffsetMinutes: -240,
+      openingHours: OPENING_HOURS,
+    });
+    assert.equal(
+      rec.utcOffsetMinutes,
+      -240,
+      "the deck's Recommendation dropped the venue's UTC offset, so every downstream producer had nothing to pass on",
+    );
+
+    // And it survives the whole way to the modal's input.
+    const expanded = recommendationToExpandedCardData(rec);
+    assert.equal(expanded.utcOffsetMinutes, -240);
+  });
+
+  it("G-2: a card the server sends no offset for stays honestly null", () => {
+    const rec = unifiedCardToRecommendation({
+      id: "p2",
+      title: "No offset",
+      category: "Icebreakers",
+      address: "",
+      lat: 1,
+      lng: 2,
+    });
+    assert.equal(
+      rec.utcOffsetMinutes,
+      null,
+      "an absent offset must be null, never a fabricated 0 (which would silently mean UTC)",
+    );
   });
 });
