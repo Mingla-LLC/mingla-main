@@ -513,7 +513,54 @@ function CardRow({
     );
   }
 
-  if (pairedCards.length === 0 && sectionData?.summary?.emptyReason) {
+  // Issue #1639 — this guard used to read `sectionData?.summary?.emptyReason`, which
+  // is `undefined` when `sectionData` ITSELF is undefined: exactly the failure case it
+  // exists to catch. A section the batched request never asked for (or that the server
+  // dropped) fell straight through to the horizontal strip below, which then rendered
+  // an empty `pairedCards.map`, an empty `sectionFallback.map`, and a LONE SHUFFLE
+  // BUTTON — no skeleton, no empty state, no error, no retry, permanently. That is the
+  // vacuity pattern in feedback_unfalsifiable_test_bug_class: a guard interrogating a
+  // field on an object that does not exist, so the honest branch is unreachable
+  // precisely when it is needed. The condition is now on what is actually true — there
+  // is nothing to put in the strip — and it distinguishes the three real cases.
+  if (pairedCards.length === 0 && sectionFallback.length === 0) {
+    // The section is genuinely absent from the response, not reported-empty by it.
+    const sectionMissing = !sectionData;
+
+    // A batched refetch is in flight (a section was ADDED, or the viewer hit retry),
+    // so this section has not had its chance yet — that is waiting, not emptiness.
+    if (sectionMissing && isProfileFetching) {
+      return (
+        <View style={styles.skeletonRow}>
+          <View style={styles.skeletonCuratedCard} />
+          <View style={styles.skeletonSingleCard} />
+        </View>
+      );
+    }
+
+    if (sectionMissing) {
+      return (
+        <View style={styles.noCardsCard}>
+          <Icon name="cloud-offline-outline" size={s(22)} color="#eb7825" />
+          <Text style={styles.noCardsTitle}>{t('social:holiday.couldnt_load')}</Text>
+          <Text style={styles.noCardsBody}>
+            Mingla did not get picks for this day. Nothing is missing on your side — try again.
+          </Text>
+          <TouchableOpacity
+            style={styles.noCardsRetry}
+            onPress={refetchProfile}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t('social:holiday.retry')}
+          >
+            <Icon name="refresh-outline" size={s(14)} color="#eb7825" />
+            <Text style={styles.retryText}>{t('social:holiday.retry')}</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // The server answered for this section and had nothing good to offer.
     return (
       <View style={styles.noCardsCard}>
         <Icon name="sparkles-outline" size={s(22)} color="#eb7825" />
@@ -596,7 +643,7 @@ function CardRow({
 function HolidaySectionView({
   holiday, daysAway, date,
   pairedUserId, pairingId, firstName,
-  sectionData, isProfileLoading, isProfileError, locationStatus, refetchProfile,
+  sectionData, isProfileLoading, isProfileFetching, isProfileError, locationStatus, refetchProfile,
   fallbackCards, onCardPress,
   isExpanded, onToggle, onArchive,
   travelMode, excludeCardIds, enabled,
@@ -610,6 +657,7 @@ function HolidaySectionView({
   firstName: string;
   sectionData?: { cards: HolidayCardsResponse["cards"]; summary?: { emptyReason: string } };
   isProfileLoading: boolean;
+  isProfileFetching?: boolean;
   isProfileError: boolean;
   locationStatus: "ok" | "missing";
   refetchProfile: () => void;
@@ -624,7 +672,16 @@ function HolidaySectionView({
   mode?: "default" | "individual" | "bilateral";
 }) {
   const { t } = useTranslation(['social', 'common']);
-  const { sections: aiSections, invalidate } = useHolidayCategories(holiday.id, holiday.name);
+  // Issue #1639: `enabled: isExpanded` moves this OpenAI-backed call behind the expand
+  // gate. Its result is read ONLY by the shuffle button (`resolveSections` below) — the
+  // batched card request uses the static `holiday.sections` — so firing it for all ~16
+  // sections at mount was pure contention in the window the user is waiting on cards.
+  const { sections: aiSections, invalidate, resolveSections } = useHolidayCategories(
+    holiday.id,
+    holiday.name,
+    undefined,
+    { enabled: isExpanded },
+  );
   const cd = countdownText(daysAway, t);
 
   return (
@@ -663,11 +720,13 @@ function HolidaySectionView({
             sections={aiSections}
             sectionData={sectionData}
             isProfileLoading={isProfileLoading}
+            isProfileFetching={isProfileFetching}
             isProfileError={isProfileError}
             locationStatus={locationStatus}
             refetchProfile={refetchProfile}
             fallbackCards={fallbackCards} onCardPress={onCardPress}
             onShuffleCategories={invalidate}
+            resolveSections={resolveSections}
             travelMode={travelMode}
             excludeCardIds={excludeCardIds}
             enabled={enabled}
@@ -684,7 +743,7 @@ function HolidaySectionView({
 
 function CustomHolidaySectionView({
   holiday, pairedUserId, pairingId, firstName,
-  sectionData, isProfileLoading, isProfileError, locationStatus, refetchProfile,
+  sectionData, isProfileLoading, isProfileFetching, isProfileError, locationStatus, refetchProfile,
   fallbackCards, onCardPress, isExpanded, onToggle, onDelete,
   travelMode, excludeCardIds, enabled,
   mode,                  // ORCH-0684
@@ -693,6 +752,7 @@ function CustomHolidaySectionView({
   pairedUserId: string; pairingId: string; firstName: string;
   sectionData?: { cards: HolidayCardsResponse["cards"]; summary?: { emptyReason: string } };
   isProfileLoading: boolean;
+  isProfileFetching?: boolean;
   isProfileError: boolean;
   locationStatus: "ok" | "missing";
   refetchProfile: () => void;
@@ -709,7 +769,13 @@ function CustomHolidaySectionView({
   const da = getDaysUntil(holiday.month - 1, holiday.day);
   const nd = getNextOccurrenceDate(holiday.month - 1, holiday.day);
   const cd = countdownText(da, t);
-  const { sections: ai, invalidate } = useHolidayCategories(`custom_${holiday.id}`, holiday.name);
+  // Issue #1639: same expand gate as the standard sections — see HolidaySectionView.
+  const { sections: ai, invalidate, resolveSections } = useHolidayCategories(
+    `custom_${holiday.id}`,
+    holiday.name,
+    undefined,
+    { enabled: isExpanded },
+  );
   const yr = new Date().getFullYear();
   const elapsed = yr - holiday.year;
   const commem = elapsed <= 0 ? t('social:holiday.first_year') : t('social:holiday.year_ordinal', { ordinal: ordinal(elapsed) });
@@ -754,11 +820,13 @@ function CustomHolidaySectionView({
             sections={ai}
             sectionData={sectionData}
             isProfileLoading={isProfileLoading}
+            isProfileFetching={isProfileFetching}
             isProfileError={isProfileError}
             locationStatus={locationStatus}
             refetchProfile={refetchProfile}
             fallbackCards={fallbackCards} onCardPress={onCardPress}
             onShuffleCategories={invalidate}
+            resolveSections={resolveSections}
             travelMode={travelMode}
             excludeCardIds={excludeCardIds}
             enabled={enabled}
@@ -772,12 +840,16 @@ function CustomHolidaySectionView({
   );
 }
 
+// Issue #1639: stable identity so a pre-gate render never mints a new array (which
+// would recompute the section digest and, through it, the query key).
+const EMPTY_SECTION_REQUESTS: PairedProfileSectionRequest[] = [];
+
 // ── Main Component ─────────────────────────────────────────────────────────
 
 export default function PersonHolidayView({
   pairedUserId, pairingId, displayName, birthday, gender,
   userId, customHolidays, onAddCustomDay,
-  fallbackCards, archivedHolidayIds, onArchiveHoliday, onUnarchiveHoliday,
+  fallbackCards, holidayInputsReady, archivedHolidayIds, onArchiveHoliday, onUnarchiveHoliday,
   onCardPress, onSaveCardPress, onDeleteCustomDay, travelMode,
   autoOpenSaves, onAutoOpenSavesConsumed,
 }: PersonHolidayViewProps) {
@@ -793,6 +865,11 @@ export default function PersonHolidayView({
   // bilateral when both users meet the preference threshold. The AsyncStorage
   // value (if set) is the user's explicit override.
   const [bilateralMode, setBilateralMode] = useState<"default" | "individual" | "bilateral">("default");
+  // Issue #1639: the THIRD async input to the batched request. The AsyncStorage read
+  // below resolves AFTER mount, and a stored "bilateral"/"individual" override flips
+  // `mode` — which is in the query key — so firing before it settles minted a second
+  // key and a second full ~17-section request, the first one wasted.
+  const [bilateralModeLoaded, setBilateralModeLoaded] = useState(false);
   const [showSavesList, setShowSavesList] = useState(false);
   const [showVisitsList, setShowVisitsList] = useState(false);
 
@@ -802,13 +879,19 @@ export default function PersonHolidayView({
   // ORCH-0684 D-Q4: only "individual" or "bilateral" persist as overrides;
   // the absence of a value means "default" (auto-decide in edge fn).
   useEffect(() => {
+    // Issue #1639: a different friend has a different stored override, so the gate
+    // must close again until this read settles — otherwise the first request for the
+    // new friend can go out under the PREVIOUS friend's mode and be re-issued.
+    setBilateralModeLoaded(false);
     AsyncStorage.getItem(`bilateral_mode_${pairedUserId}`).then((stored) => {
       if (stored === "bilateral" || stored === "individual") {
         setBilateralMode(stored);
       } else {
         setBilateralMode("default");
       }
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => {
+      setBilateralModeLoaded(true);
+    });
   }, [pairedUserId]);
 
   const handleModeChange = useCallback((mode: "default" | "individual" | "bilateral") => {
@@ -979,10 +1062,43 @@ export default function PersonHolidayView({
     return requests;
   }, [customHolidays, hasBirthday, visible]);
 
+  // ── Issue #1639: what the batched request is actually allowed to ask for ─────
+  //
+  // `cardRequestReady` is the gate. Every input to `sections` and `mode` is loaded
+  // asynchronously and lands AFTER this component mounts: custom holidays (Supabase,
+  // parent), archived holiday ids (AsyncStorage, parent), the bilateral override
+  // (AsyncStorage, here). The request fans out server-side to ~17 sections, each
+  // running a geospatial RPC measured at 1.8 s warm / 3.9 s cold, so it must go out
+  // exactly ONCE, and it must go out already knowing all three.
+  const cardRequestReady = holidayInputsReady && bilateralModeLoaded;
+
+  // `committedSectionRequests` is GROW-ONLY on purpose. The section set is now part
+  // of the query key, so any change to it re-issues the whole fan-out — and a
+  // SHRINKING set never needs one: archiving a holiday or deleting a custom day only
+  // removes a row from the screen, and the response we already hold is a superset of
+  // what is still rendered. Committing shrinks would cost a full 17-section refetch
+  // for zero new data on every archive tap, and unarchiving would no longer be
+  // instant. Only GROWTH (a new custom day; unarchiving a holiday that was already
+  // archived when the first request went out) genuinely needs cards we do not have —
+  // and on growth we re-commit the CURRENT set, which is also how sections archived
+  // in the meantime get dropped from the payload.
+  const committedSectionsRef = useRef<PairedProfileSectionRequest[] | null>(null);
+  const committedSectionRequests = useMemo<PairedProfileSectionRequest[]>(() => {
+    if (!cardRequestReady) return EMPTY_SECTION_REQUESTS;
+    const previous = committedSectionsRef.current;
+    const previousKeys = new Set((previous ?? []).map((r) => r.holidayKey));
+    const grew =
+      previous === null || batchedSectionRequests.some((r) => !previousKeys.has(r.holidayKey));
+    const next = grew ? batchedSectionRequests : previous;
+    committedSectionsRef.current = next;
+    return next;
+  }, [batchedSectionRequests, cardRequestReady]);
+
   const profileCards = usePairedProfileCards({
     pairedUserId,
-    sections: batchedSectionRequests,
+    sections: committedSectionRequests,
     mode: bilateralMode,
+    enabled: cardRequestReady,
   });
 
   // Sub-screen handling moved to Modals at end of return (fixes FlatList-in-ScrollView nesting)
@@ -1039,6 +1155,7 @@ export default function PersonHolidayView({
               sections={DEFAULT_PERSON_SECTIONS}
               sectionData={profileCards.sections.birthday}
               isProfileLoading={profileCards.isLoading}
+              isProfileFetching={profileCards.isFetching}
               isProfileError={profileCards.isError}
               locationStatus={profileCards.locationStatus}
               refetchProfile={() => { profileCards.refetch(); }}
@@ -1071,6 +1188,7 @@ export default function PersonHolidayView({
               firstName={firstName}
               sectionData={profileCards.sections[`custom_${ch.id}`]}
               isProfileLoading={profileCards.isLoading}
+              isProfileFetching={profileCards.isFetching}
               isProfileError={profileCards.isError}
               locationStatus={profileCards.locationStatus}
               refetchProfile={() => { profileCards.refetch(); }}
@@ -1112,6 +1230,7 @@ export default function PersonHolidayView({
               firstName={firstName}
               sectionData={profileCards.sections[holiday.id]}
               isProfileLoading={profileCards.isLoading}
+              isProfileFetching={profileCards.isFetching}
               isProfileError={profileCards.isError}
               locationStatus={profileCards.locationStatus}
               refetchProfile={() => { profileCards.refetch(); }}
@@ -1500,6 +1619,18 @@ const styles = StyleSheet.create({
     lineHeight: s(18),
     color: "#6b7280",
     marginTop: s(4),
+  },
+  // Issue #1639: retry affordance for a section that never came back at all.
+  noCardsRetry: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: s(4),
+    paddingHorizontal: s(12),
+    paddingVertical: vs(6),
+    borderRadius: s(8),
+    backgroundColor: "#fff7ed",
+    marginTop: s(12),
   },
   skeletonRow: {
     flexDirection: "row",
