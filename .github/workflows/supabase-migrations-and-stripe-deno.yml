@@ -215,6 +215,20 @@ jobs:
             -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1387_stay_inventory.adversarial.test.sql
+          # Issue #1649 — behavioural probe for the normalised place-name claim
+          # search. Runs against the REAL applied schema because the whole point
+          # is row-level behaviour: does typing "Cafe Kayte" find "Café Kayté".
+          # On production the raw substring match split the directory three ways
+          # (Cafe 2,157 vs Café 942; "Fish & Chips" 30 vs "Fish and Chips" 14;
+          # "katye" -> 0 rows), so a venue could be unfindable to its own owner.
+          # B-05/B-06 are the adversarial pair: fuzzy must not become a firehose,
+          # and exact-prefix must still outrank fuzzy so pre-1649 results never
+          # reorder. B-09 pins the 18-column shape — an earlier draft rebuilt the
+          # function from a SUPERSEDED 12-column definition and would have
+          # silently deleted the ORCH-1263 presence facts that drive the match
+          # card's chips and the claimed/pending block.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1649_normalised_place_name_search.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1388_stay_reservation.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
