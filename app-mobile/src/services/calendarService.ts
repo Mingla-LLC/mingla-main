@@ -209,6 +209,24 @@ export class CalendarService {
     // Sanitize card_data: only allow known, serializable, display-relevant fields.
     // This prevents non-serializable values (Date objects, functions, React internals)
     // from being dumped into the JSONB column and causing INSERT failures.
+    //
+    // #1669 [expanded-card-one-producer] — THIS ALLOWLIST IS A FIELD-SURVIVAL
+    // DECISION, and it is the ONE place in the app where a field the canonical
+    // mapper carries can still be lost. CalendarTab reads this row straight
+    // back into `savedCardToExpandedCardData`, so anything dropped here is
+    // permanently absent on the Calendar surface no matter what the mapper does.
+    // When you add a field to the mapper, decide about it HERE too.
+    //
+    // Deliberately EXCLUDED, with reasons — do not add these without thinking:
+    //   selectedDateTime — the row's own `scheduled_at` column IS the planning
+    //     datetime; CalendarTab passes it into the mapper as an option. A copy
+    //     inside card_data could disagree with the column (two owners, one truth).
+    //   distance / travelTime are allowed but VIEWER-RELATIVE — they are stored
+    //     as a snapshot and the modal recomputes them at open time.
+    //   matchFactors / socialStats — all-zero neutral defaults the mapper
+    //     re-supplies for free; storing them is bytes for nothing.
+    //   travelMode — the viewer's own current preference, not a fact about the
+    //     venue; the mounting screen supplies it per open.
     const allowedCardFields = [
       "id", "placeId", "title", "category", "categoryIcon", "description",
       "fullDescription", "image", "images", "rating", "reviewCount",
@@ -220,6 +238,15 @@ export class CalendarService {
       "fxProviderUpdatedAt", "fxFreshness",
       "openingHours", "phone", "website", "highlights", "tags",
       "matchScore", "location",
+      // #1669: the venue's OWN UTC offset. Without it CalendarTab computes
+      // Open now / Closed against the VIEWER's clock — wrong for every
+      // cross-timezone venue, and it would have stayed wrong on this one
+      // surface even after #1683 widens the serving RPCs, because the row is
+      // the source and the row did not carry it. 0 of 19 live rows have it.
+      "utcOffsetMinutes",
+      // #1669: the price tier the modal renders as a chip; carried by the
+      // mapper on every other surface, dropped only by this hop.
+      "priceTier",
       "cardType", "tagline", "stops", "totalPriceMin", "totalPriceMax",
       "estimatedDurationMinutes", "experienceType", "pairingKey",
       "shoppingList", "strollData", "picnicData", "nightOutData",

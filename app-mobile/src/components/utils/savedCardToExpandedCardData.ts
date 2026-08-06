@@ -33,7 +33,13 @@
 //   D4 curated plans were rebuilt field-by-field on Likes, Calendar and the
 //      collab session view (the unfixed half of ORCH-1054);
 //   D5 three producers fabricated `rating: … || 4.5` for unrated places
-//      (Constitution #9 — missing data is HIDDEN, never faked).
+//      (Constitution #9 — missing data is HIDDEN, never faked). The first
+//      repair pass swapped that for `?? 0`, which is not a fix: `0` is not
+//      `undefined`, so the chip still rendered and an unrated place read
+//      `★ 0.0` — an invented zero looks like a real, terrible score. Absence
+//      is now carried as absence all the way to the renderer, and the renderer
+//      gates the chip on a POSITIVE value so a stored `0` cannot print either
+//      (one servable place in the pool has exactly that).
 //
 // Every pool-card surface now calls THIS function. It is the only place a
 // single-place ExpandedCardData is minted, so a field either survives for all
@@ -95,9 +101,10 @@ export interface PoolCardMapOptions {
  *
  * Honesty (Constitution #9): the mapper preserves the card's REAL category
  * (never fabricating "night_out"); missing image → `image:''` + `images:[]` (the
- * modal renders its own honest empty state); missing rating → `0` (modal hides
- * the chip — never a fabricated 4.5); missing coords → `location:undefined` (no
- * fake distance, and NEVER the viewer's own GPS).
+ * modal renders its own honest empty state); missing rating → `undefined`, so
+ * `CardInfoSection` renders NO star chip at all — not a 4.5, and not a `0.0`
+ * either; missing coords → `location:undefined` (no fake distance, and NEVER
+ * the viewer's own GPS).
  */
 export function savedCardToExpandedCardData(
   cardData: Record<string, unknown> | null | undefined,
@@ -168,7 +175,11 @@ export function savedCardToExpandedCardData(
     fullDescription: str(c.fullDescription) ?? str(c.description) ?? "",
     image,
     images: images && images.length ? images : image ? [image] : [],
-    rating: num(c.rating) ?? 0,
+    // D5 — an unrated place has NO rating. Not 4.5, and not 0 either: the first
+    // repair pass coerced to `0` and CardInfoSection printed `★ 0.0`, which
+    // reads as a real, terrible score. `num()` already yields undefined for a
+    // missing/non-numeric value, so absence simply survives.
+    rating: num(c.rating),
     reviewCount: num(c.reviewCount) ?? 0,
     priceRange: str(c.priceRange),
     // D1 — the price pill renders ONLY from these. Spread once, here, for

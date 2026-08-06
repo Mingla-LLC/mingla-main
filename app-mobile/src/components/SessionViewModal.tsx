@@ -625,7 +625,15 @@ export default function SessionViewModal({
         category: cardData.category || t('modals:session_view.session_fallback'),
         categoryIcon: cardData.categoryIcon || "star",
       },
-      { selectedDateTime: new Date() },
+      // The card's OWN planning datetime wins when it has one — the pre-#1669
+      // literal read `cardData.selectedDateTime || new Date()`, and passing an
+      // unconditional `new Date()` as the option would override it, because the
+      // option deliberately takes precedence over the record. Passing
+      // `undefined` lets the mapper read the card's own; "now" is only the
+      // fallback for a card that was never scheduled.
+      {
+        selectedDateTime: cardData.selectedDateTime ? undefined : new Date(),
+      },
     );
     if (!expandedCardData) return;
 

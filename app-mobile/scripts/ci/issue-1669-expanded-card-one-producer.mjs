@@ -40,21 +40,41 @@
  *                          the registry, and each is capped at its declared
  *                          number of mint sites.
  * R4 PRODUCER DELEGATION — the set of exported `*ToExpandedCardData` functions
- *                          is EXACTLY the registry, and every one of them
- *                          except the canonical mapper delegates to it.
- * R5 NO FABRICATED RATING— nowhere in app-mobile may a `rating:` field fall
- *                          back to a non-zero number (the D5 fabrication).
+ *                          is EXACTLY the registry — PER EXPORTED FUNCTION, not
+ *                          per file — and every one of them except the canonical
+ *                          mapper delegates to it inside its OWN body.
+ * R5 UNRATED IS HIDDEN   — no producer fabricates a rating, the canonical mapper
+ *                          carries absence as absence, and — proven by EXECUTING
+ *                          the real render guard — the star chip cannot render
+ *                          for a missing or zero rating.
  * R6 NO VIEWER-GPS SWAP  — no producer may substitute the viewer's location for
  *                          a card's missing coordinates (the D3 fabrication).
- * R7 CANONICAL CONTENT   — the canonical mapper still carries the four fields
- *                          the divergences were actually about.
+ * R7 CANONICAL CONTENT   — the canonical mapper still carries the fields the
+ *                          divergences were actually about.
+ * R8 CAST TOTALITY       — every `as ExpandedCardData` / `as unknown as
+ *                          ExpandedCardData` in app-mobile is at a registered
+ *                          site, within budget.
  *
- * R5 and R6 run against COMMENT-STRIPPED source: a gate that matches its own
+ * R5, R6 and R8 run against COMMENT-STRIPPED source: a gate that matches its own
  * explanatory comment is a gate that passes on a revert (#1633).
+ *
+ * ── WHY R8 EXISTS: the boundary of R3, stated plainly ──
+ * R3 identifies a mint by the REQUIRED-field quartet `categoryIcon` +
+ * `fullDescription` + `matchFactors` + `socialStats`. That quartet is a reliable
+ * signature only because TypeScript is the co-enforcer: all four are mandatory
+ * on `ExpandedCardData`, so a producer CANNOT omit one and still typecheck.
+ *
+ * A deliberate `as unknown as ExpandedCardData` disarms that co-enforcer, and a
+ * producer that then omits a single quartet key is invisible to R3 — proven by
+ * the tester on PR #1682, where exactly such a module passed all seven rules.
+ * The cast is the necessary step in that bypass, and R8 is the rule that closes
+ * it: you may still cast, but only at a site the registry names.
  *
  * Run:       node ./scripts/ci/issue-1669-expanded-card-one-producer.mjs
  * Self-test: node ./scripts/ci/issue-1669-expanded-card-one-producer.mjs --self-test
- *            (injects a synthetic NEW bypassing producer and proves R1/R3/R4 fire)
+ *            (injects TWO synthetic bypassing producers — a naive one that
+ *            trips R1/R3/R4/R5, and the tester's quartet-minus-one + cast that
+ *            trips R8 — and proves the gate rejects both)
  */
 
 import fs from "node:fs";
@@ -206,18 +226,96 @@ const MINTS = [
   },
 ];
 
-/** Every module allowed to export a `*ToExpandedCardData` producer. */
+/**
+ * Every EXPORTED `*ToExpandedCardData` function, named individually.
+ *
+ * Per-EXPORT, not per-file (#1669 rework, tester P2-2): the first cut asked
+ * "does this FILE import and call the canonical mapper?", and the tester forked
+ * `fallbackCardToExpandedCardData` back into a hand-written literal while its
+ * sibling export `holidayCardToExpandedCardData` in the same file kept
+ * delegating — so the file-level question still answered yes and R4 passed on a
+ * genuine fork. The question is now asked of each function's OWN body.
+ */
 const PRODUCERS = [
-  { file: CANONICAL_MAPPER, canonical: true },
+  {
+    file: CANONICAL_MAPPER,
+    fn: "savedCardToExpandedCardData",
+    canonical: true,
+  },
   {
     file: "app-mobile/src/components/utils/recommendationToExpandedCardData.ts",
+    fn: "recommendationToExpandedCardData",
     canonical: false,
   },
   {
     file: "app-mobile/src/components/utils/holidayCardToExpandedCardData.ts",
+    fn: "holidayCardToExpandedCardData",
     canonical: false,
   },
-  { file: "app-mobile/src/services/cardPayloadAdapter.ts", canonical: false },
+  {
+    file: "app-mobile/src/components/utils/holidayCardToExpandedCardData.ts",
+    fn: "fallbackCardToExpandedCardData",
+    canonical: false,
+  },
+  {
+    file: "app-mobile/src/services/cardPayloadAdapter.ts",
+    fn: "cardPayloadToExpandedCardData",
+    canonical: false,
+  },
+];
+
+/**
+ * Every site allowed to assert a value IS an `ExpandedCardData` without the
+ * compiler agreeing, and how many such casts the file may contain.
+ *
+ * See the R8 rationale in the header: the cast is what lets a producer skip a
+ * required field and stay invisible to R3. Each entry below is a curated
+ * pass-through or a compiler-appeasing non-null assertion — none of them decides
+ * which fields survive. Adding a row here is a visible diff that asks the
+ * reviewer the right question: why does this code know better than the type?
+ *
+ * Indexed-access casts (`as ExpandedCardData["location"]`) are NOT counted —
+ * they narrow a single field to its declared type and cannot mint a card.
+ */
+const EXPANDED_CARD_CASTS = [
+  {
+    file: CANONICAL_MAPPER,
+    casts: 2,
+    reason:
+      "The two curated pass-throughs. A curated plan is returned VERBATIM — " +
+      "rebuilding it field-by-field was the ORCH-1054 bug.",
+  },
+  {
+    file: "app-mobile/src/components/utils/recommendationToExpandedCardData.ts",
+    casts: 1,
+    reason: "The deck's curated pass-through, mirroring the canonical mapper.",
+  },
+  {
+    file: "app-mobile/src/components/utils/holidayCardToExpandedCardData.ts",
+    casts: 1,
+    reason:
+      "A HolidayCard always has an id + title, so the mapper never returns " +
+      "null here; the cast drops the null, it does not build a card.",
+  },
+  {
+    file: "app-mobile/src/services/cardPayloadAdapter.ts",
+    casts: 1,
+    reason:
+      "Same shape: a CardPayload always has an id, so the ?? branch is for the " +
+      "compiler and not a reachable state.",
+  },
+  {
+    file: "app-mobile/src/components/SwipeableCards.tsx",
+    casts: 1,
+    reason: "The deck mount's curated pass-through, straight to the modal.",
+  },
+  {
+    file: "app-mobile/src/components/ExpandedCardModal.tsx",
+    casts: 1,
+    reason:
+      "The modal handing its own local card state to a child renderer — a " +
+      "consumer, downstream of every producer.",
+  },
 ];
 
 // ── source access ───────────────────────────────────────────────────────────
@@ -302,11 +400,160 @@ function countMintSites(stripped) {
 
 const PRODUCER_EXPORT_RE = /export\s+function\s+(\w*[Tt]oExpandedCardData)\s*\(/g;
 
+/**
+ * Blank the CONTENTS of string and template literals while preserving every
+ * offset, so brace-matching (function-body extraction) cannot be thrown off by
+ * a `{` inside a string. Quotes themselves are kept; only the interior becomes
+ * spaces, and newlines survive so reported positions stay meaningful.
+ */
+function blankStringContents(src) {
+  const out = src.split("");
+  let i = 0;
+  while (i < out.length) {
+    const quote = out[i];
+    if (quote !== '"' && quote !== "'" && quote !== "`") {
+      i++;
+      continue;
+    }
+    let j = i + 1;
+    while (j < out.length) {
+      if (out[j] === "\\") {
+        out[j] = " ";
+        if (j + 1 < out.length && out[j + 1] !== "\n") out[j + 1] = " ";
+        j += 2;
+        continue;
+      }
+      if (out[j] === quote) break;
+      // An unterminated single/double-quoted string cannot cross a newline.
+      if (quote !== "`" && out[j] === "\n") break;
+      if (out[j] !== "\n") out[j] = " ";
+      j++;
+    }
+    i = j + 1;
+  }
+  return out.join("");
+}
+
+/**
+ * Return the source of ONE function's body, given the index at which its
+ * `export function` match started. Brace-matched on string-blanked source so a
+ * brace inside a literal cannot end the body early.
+ *
+ * This is what makes R4 per-export (tester P2-2): a fork inside one function
+ * can no longer hide behind a delegating sibling in the same file.
+ */
+function functionBody(blanked, matchIndex) {
+  const open = blanked.indexOf("{", matchIndex);
+  if (open === -1) return "";
+  let depth = 0;
+  for (let i = open; i < blanked.length; i++) {
+    if (blanked[i] === "{") depth++;
+    else if (blanked[i] === "}") {
+      depth--;
+      if (depth === 0) return blanked.slice(open, i + 1);
+    }
+  }
+  return blanked.slice(open);
+}
+
+/** Every exported `*ToExpandedCardData` in a file, with its own body. */
+function producerExports(stripped) {
+  const blanked = blankStringContents(stripped);
+  const out = [];
+  const re = new RegExp(PRODUCER_EXPORT_RE.source, "g");
+  let m;
+  while ((m = re.exec(blanked)) !== null) {
+    out.push({ fn: m[1], body: functionBody(blanked, m.index) });
+  }
+  return out;
+}
+
+/**
+ * A whole-object assertion to `ExpandedCardData`. Deliberately does NOT match an
+ * indexed access (`as ExpandedCardData["location"]`), which narrows one field
+ * and cannot mint a card.
+ */
+const EXPANDED_CARD_CAST_RE =
+  /\bas\s+(?:unknown\s+as\s+)?ExpandedCardData\b(?!\s*\[)/g;
+
+function countExpandedCardCasts(stripped) {
+  const matches = blankStringContents(stripped).match(EXPANDED_CARD_CAST_RE);
+  return matches ? matches.length : 0;
+}
+
 /** `rating:` falling back to a NON-ZERO number — the D5 fabrication. */
 const FABRICATED_RATING_RE = /\brating\s*:[^,;\n]*(?:\|\||\?\?)\s*(?!0\b)\d/;
 
+/**
+ * `rating:` COERCED TO ZERO — the D5 fabrication's second form, and the one the
+ * first repair pass shipped. `0` is not `undefined`, so the chip still rendered
+ * and an unrated place read `★ 0.0`. Checked only inside the producer modules:
+ * those are the four files that decide what `ExpandedCardData.rating` is.
+ */
+const ZERO_COERCED_RATING_RE = /\brating\s*:[^,;\n]*(?:\|\||\?\?)\s*0\b/;
+
+/** The canonical mapper must carry a missing rating through as absence. */
+const HONEST_RATING_RE = /rating:\s*num\(c\.rating\)\s*,/;
+
 /** A card's location falling back to the VIEWER's position — the D3 fabrication. */
 const VIEWER_GPS_SWAP_RE = /:\s*\n?\s*userLocation\s*\n?\s*\?\s*\{\s*lat:\s*userLocation/;
+
+/**
+ * The file that actually decides whether the star chip appears, and the JSX
+ * guard that decides it. R5 EXECUTES this guard rather than describing it.
+ */
+const RATING_RENDER_FILE =
+  "app-mobile/src/components/expandedCard/CardInfoSection.tsx";
+const RATING_GUARD_RE =
+  /\{\s*([^{}]*\brating\b[^{}]*?)&&\s*\(\s*<View style=\{styles\.metricPill\}>\s*<Icon name="star"/;
+
+/**
+ * Pull the real guard expression out of CardInfoSection and RUN it against the
+ * values an unrated place actually produces. A gate that only greps for a
+ * pattern is describing the fix; this one asks the source whether the chip
+ * renders, and takes the answer.
+ */
+function ratingGuardVerdict(cardInfoSource) {
+  const m = RATING_GUARD_RE.exec(cardInfoSource);
+  if (!m) {
+    return {
+      ok: false,
+      why:
+        `Could not find the star-chip guard in ${RATING_RENDER_FILE}. R5 proves the chip is HIDDEN by ` +
+        "executing that guard, so if the JSX moved, this rule is asserting nothing and must be re-pointed.",
+    };
+  }
+  const expr = m[1].trim();
+  let guard;
+  try {
+    // eslint-disable-next-line no-new-func
+    guard = new Function("rating", `return Boolean(${expr});`);
+  } catch (e) {
+    return { ok: false, why: `The star-chip guard \`${expr}\` is not evaluable: ${e.message}` };
+  }
+  const mustHide = [undefined, null, 0, 0.0, -1];
+  const mustShow = [4.2, 0.1, 5];
+  const shown = mustHide.filter((v) => guard(v));
+  const hidden = mustShow.filter((v) => !guard(v));
+  if (shown.length) {
+    return {
+      ok: false,
+      why:
+        `The star chip RENDERS for ${shown.map((v) => String(v)).join(", ")} under the real guard \`${expr}\`. ` +
+        "An unrated place therefore shows a star pill — `rating !== undefined` printed `★ 0.0`, and an " +
+        "invented zero reads as a real, terrible score. Constitution #9: missing data is HIDDEN.",
+    };
+  }
+  if (hidden.length) {
+    return {
+      ok: false,
+      why:
+        `The star chip is HIDDEN for the genuine rating(s) ${hidden.join(", ")} under \`${expr}\`. ` +
+        "Hiding a real rating is the opposite failure and just as wrong.",
+    };
+  }
+  return { ok: true, expr };
+}
 
 // ── rules ───────────────────────────────────────────────────────────────────
 
@@ -380,56 +627,103 @@ function runChecks(sources) {
       .join(" | "),
   );
 
-  // ── R4 · producer totality + delegation ──────────────────────────────────
-  const registeredProducers = new Map(PRODUCERS.map((p) => [p.file, p]));
-  const actualProducerFiles = [];
-  for (const [file, src] of stripped) {
-    PRODUCER_EXPORT_RE.lastIndex = 0;
-    if (PRODUCER_EXPORT_RE.test(src)) actualProducerFiles.push(file);
-  }
-  const unregisteredProducers = actualProducerFiles.filter(
-    (f) => !registeredProducers.has(f),
+  // ── R4 · producer totality + delegation, PER EXPORTED FUNCTION ───────────
+  // Keyed by `file::fn`, not by file. A file with two exports where only one
+  // delegates used to pass; the tester proved it by forking
+  // `fallbackCardToExpandedCardData` back into a literal while its sibling in
+  // the same file kept calling the mapper (P2-2).
+  const producerKey = (file, fn) => `${file}::${fn}`;
+  const registeredProducers = new Map(
+    PRODUCERS.map((p) => [producerKey(p.file, p.fn), p]),
   );
-  const nonDelegating = PRODUCERS.filter((p) => !p.canonical).filter((p) => {
-    const src = stripped.get(p.file) ?? "";
-    return !(
-      /import\s*\{[^}]*savedCardToExpandedCardData[^}]*\}\s*from/.test(src) &&
-      /savedCardToExpandedCardData\s*\(/.test(src)
-    );
-  });
+  const actualProducers = [];
+  for (const [file, src] of stripped) {
+    for (const { fn, body } of producerExports(src)) {
+      actualProducers.push({ file, fn, body, key: producerKey(file, fn) });
+    }
+  }
+  const unregisteredProducers = actualProducers
+    .filter((p) => !registeredProducers.has(p.key))
+    .map((p) => p.key);
+  // The delegation question is asked of each function's OWN body. The file-level
+  // import is still required — a body cannot call what the module never imported.
+  const nonDelegating = actualProducers
+    .filter((p) => registeredProducers.get(p.key)?.canonical === false)
+    .filter((p) => {
+      const src = stripped.get(p.file) ?? "";
+      const imports =
+        /import\s*\{[^}]*savedCardToExpandedCardData[^}]*\}\s*from/.test(src);
+      const bodyDelegates = /savedCardToExpandedCardData\s*\(/.test(p.body);
+      return !(imports && bodyDelegates);
+    })
+    .map((p) => p.key);
+  const actualKeys = new Set(actualProducers.map((p) => p.key));
   const missingProducers = [...registeredProducers.keys()].filter(
-    (f) => !actualProducerFiles.includes(f),
+    (k) => !actualKeys.has(k),
   );
   check(
-    "R4 [FAILS-ON-REVERT] every *ToExpandedCardData producer is registered AND delegates to the canonical mapper",
+    "R4 [FAILS-ON-REVERT] every exported *ToExpandedCardData function is registered AND delegates, per export",
     unregisteredProducers.length === 0 &&
       nonDelegating.length === 0 &&
       missingProducers.length === 0,
     [
       unregisteredProducers.length
-        ? `UNREGISTERED producer module(s): ${unregisteredProducers.join(", ")}. A new named mapper is the same defect as a new inline literal.`
+        ? `UNREGISTERED producer export(s): ${unregisteredProducers.join(", ")}. A new named mapper is the same defect as a new inline literal.`
         : "",
       nonDelegating.length
-        ? `Producer(s) that FORK instead of delegating: ${nonDelegating
-            .map((p) => p.file)
-            .join(", ")}. A normaliser may rename fields; it may not decide which fields survive.`
+        ? `Producer export(s) that FORK instead of delegating: ${nonDelegating.join(
+            ", ",
+          )}. A normaliser may rename fields; it may not decide which fields survive. This is checked inside each function's OWN body, so a delegating sibling in the same file no longer covers for a forked one.`
         : "",
       missingProducers.length
-        ? `Registered producer module(s) that export nothing: ${missingProducers.join(", ")}.`
+        ? `Registered producer export(s) that no longer exist: ${missingProducers.join(", ")}.`
         : "",
     ]
       .filter(Boolean)
       .join(" | "),
   );
 
-  // ── R5 · no fabricated rating (comment-stripped) ─────────────────────────
+  // ── R5 · an unrated place shows NO chip — verified, not described ────────
+  // Three parts, because the first repair pass got the sign right and the value
+  // wrong: it removed `|| 4.5` and wrote `?? 0`, and three artefacts on that
+  // branch — this rule's own failure message included — then ASSERTED that the
+  // modal hides the chip at 0 while it demonstrably printed `★ 0.0`.
+  //   (a) no producer invents a non-zero rating   — the original D5;
+  //   (b) no producer coerces a missing one to 0  — the D5 the repair shipped;
+  //   (c) the REAL render guard is extracted from CardInfoSection and EXECUTED
+  //       against undefined / null / 0, and must hide for all three.
+  // (c) is the part that stops this rule ever again describing behaviour it has
+  // not checked (the #1607/#1627/#1631/#1633 defect class).
   const fabricatedRating = [...stripped]
     .filter(([, src]) => FABRICATED_RATING_RE.test(src))
     .map(([file]) => file);
+  const producerFiles = [...new Set(PRODUCERS.map((p) => p.file))];
+  const zeroCoercedRating = producerFiles.filter((f) =>
+    ZERO_COERCED_RATING_RE.test(stripped.get(f) ?? ""),
+  );
+  const mapperSrc = stripped.get(CANONICAL_MAPPER) ?? "";
+  const mapperCarriesAbsence = HONEST_RATING_RE.test(mapperSrc);
+  const guard = ratingGuardVerdict(stripped.get(RATING_RENDER_FILE) ?? "");
   check(
-    "R5 [FAILS-ON-REVERT] no producer fabricates a rating for an unrated place",
-    fabricatedRating.length === 0,
-    `\`rating: … || <non-zero>\` found in: ${fabricatedRating.join(", ")}. Constitution #9 — missing data is HIDDEN (rating 0 hides the chip), never invented. A place with no rating showed 4.5 stars from Likes and no chip from the deck.`,
+    "R5 [FAILS-ON-REVERT] an unrated place renders NO star chip (render guard executed, not described)",
+    fabricatedRating.length === 0 &&
+      zeroCoercedRating.length === 0 &&
+      mapperCarriesAbsence &&
+      guard.ok,
+    [
+      fabricatedRating.length
+        ? `\`rating: … || <non-zero>\` found in: ${fabricatedRating.join(", ")}. A place with no rating showed 4.5 stars.`
+        : "",
+      zeroCoercedRating.length
+        ? `\`rating: … ?? 0\` found in producer(s): ${zeroCoercedRating.join(", ")}. Coercing a missing rating to zero is not hiding it — \`0\` is a number, and the modal printed it as \`★ 0.0\`. An invented zero is worse than an invented 4.5 because it looks like a real, terrible score. Carry absence as absence.`
+        : "",
+      mapperCarriesAbsence
+        ? ""
+        : `The canonical mapper no longer carries a missing rating through as absence (expected \`rating: num(c.rating),\` in ${CANONICAL_MAPPER}). Every surface inherits this one line.`,
+      guard.ok ? "" : guard.why,
+    ]
+      .filter(Boolean)
+      .join(" | "),
   );
 
   // ── R6 · no viewer-GPS substitution (comment-stripped) ───────────────────
@@ -449,7 +743,9 @@ function runChecks(sources) {
     utcOffset:
       /utcOffsetMinutes:\s*\n?\s*num\(c\.utcOffsetMinutes\)\s*\?\?\s*num\(c\.utc_offset_minutes\)\s*\?\?\s*null/
         .test(mapper),
-    honestRating: /rating:\s*num\(c\.rating\)\s*\?\?\s*0/.test(mapper),
+    // The rating's HONESTY is R5's job now (it executes the render guard);
+    // R7 only asserts the field is still carried at all.
+    honestRating: HONEST_RATING_RE.test(mapper),
     honestLocation:
       /location:\s*\n?\s*savedLocation\s*\?\?\s*\n?\s*\(lat != null && lng != null \? \{ lat, lng \} : undefined\)/
         .test(mapper),
@@ -465,6 +761,46 @@ function runChecks(sources) {
     "R7 [FAILS-ON-REVERT] the canonical mapper carries price, utcOffset, honest rating, honest location and selectedDateTime",
     missingFields.length === 0,
     `The canonical mapper stopped carrying: ${missingFields.join(", ")}. Collapsing every surface onto one mapper only helps while the mapper still carries the fields the surfaces disagreed about.`,
+  );
+
+  // ── R8 · cast totality ───────────────────────────────────────────────────
+  // R3's quartet detector works because TypeScript makes all four keys
+  // mandatory. `as unknown as ExpandedCardData` is the one move that removes
+  // that co-enforcement, and a producer that then omits ONE quartet key is
+  // invisible to R3 — demonstrated on PR #1682, where such a module passed all
+  // seven rules. Casting is still allowed; casting UNREGISTERED is not.
+  const castBudgets = new Map(EXPANDED_CARD_CASTS.map((c) => [c.file, c.casts]));
+  const castCounts = new Map(
+    [...stripped]
+      .map(([file, src]) => [file, countExpandedCardCasts(src)])
+      .filter(([, n]) => n > 0),
+  );
+  const unregisteredCasts = [...castCounts.keys()].filter(
+    (f) => !castBudgets.has(f),
+  );
+  const castsOverBudget = [...castCounts]
+    .filter(([f]) => castBudgets.has(f))
+    .filter(([f, n]) => n > castBudgets.get(f))
+    .map(([f, n]) => `${f} (${n} > ${castBudgets.get(f)})`);
+  const vanishedCasts = [...castBudgets.keys()].filter((f) => !castCounts.has(f));
+  check(
+    "R8 [FAILS-ON-REVERT] every ExpandedCardData cast is at a registered site, within budget",
+    unregisteredCasts.length === 0 &&
+      castsOverBudget.length === 0 &&
+      vanishedCasts.length === 0,
+    [
+      unregisteredCasts.length
+        ? `UNREGISTERED \`as ExpandedCardData\` cast(s) in: ${unregisteredCasts.join(", ")}. The cast disarms the compiler, which is what lets a producer omit a required field and stay invisible to R3's quartet detector. Route the shape through savedCardToExpandedCardData; if it genuinely must be asserted, register the site in EXPANDED_CARD_CASTS with the reason.`
+        : "",
+      castsOverBudget.length
+        ? `Over cast budget: ${castsOverBudget.join(", ")}. A sanctioned curated pass-through is not a licence for a second, hand-built one beside it.`
+        : "",
+      vanishedCasts.length
+        ? `Registered cast site(s) no longer cast: ${vanishedCasts.join(", ")}. Drop the stale row so the budget keeps meaning something.`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" | "),
   );
 
   return checks;
@@ -528,7 +864,7 @@ export default function BrandNewSurface({ card }: any) {
   );
 
   const checks = runChecks(sources);
-  const failures = report(checks, "self-test (synthetic bypassing producer)");
+  const failures = report(checks, "self-test A (naive bypassing producer)");
   const failed = new Set(failures.map((f) => f.name.slice(0, 2)));
   const expected = ["R1", "R3", "R4", "R5"];
   const missed = expected.filter((r) => !failed.has(r));
@@ -540,8 +876,123 @@ export default function BrandNewSurface({ card }: any) {
     process.exit(1);
   }
   console.log(
-    `\n#1669 self-test passed: a new bypassing producer trips ${expected.join(", ")}.`,
+    `\n#1669 self-test A passed: a new bypassing producer trips ${expected.join(", ")}.`,
   );
+
+  // ── self-test B · the tester's bypass (PR #1682, P2-1) ────────────────────
+  // A producer that OMITS `matchFactors` and reaches the required type with
+  // `as unknown as ExpandedCardData`. It does not mount the modal itself — it
+  // hands the object to a mount that IS registered and DOES import a sanctioned
+  // producer — so R1 and R2 stay quiet, and with only three of the four quartet
+  // keys R3's detector never sees it. This passed all seven rules before R8.
+  const castSources = collectSources();
+  castSources.set(
+    "app-mobile/src/components/utils/quietBypassProducer.ts",
+    `
+import type { ExpandedCardData } from "../../types/expandedCardTypes";
+
+export function buildQuietly(card: any) {
+  return {
+    id: card.id,
+    title: card.title,
+    category: card.category,
+    categoryIcon: card.categoryIcon,
+    description: card.description,
+    fullDescription: card.description,
+    image: card.image,
+    images: [card.image],
+    rating: card.rating,
+    reviewCount: 0,
+    distance: null,
+    address: card.address,
+    highlights: [],
+    tags: [],
+    matchScore: 0,
+    socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+  } as unknown as ExpandedCardData;
+}
+`,
+  );
+  const castChecks = runChecks(castSources);
+  const castFailures = report(
+    castChecks,
+    "self-test B (quartet-minus-one + cast — the tester's bypass)",
+  );
+  const castFailed = new Set(castFailures.map((f) => f.name.slice(0, 2)));
+  if (!castFailed.has("R8")) {
+    console.error(
+      "\n#1669 self-test ERROR: a producer that omits `matchFactors` and casts " +
+        "`as unknown as ExpandedCardData` did NOT trip R8. That is the exact bypass the " +
+        "tester demonstrated on PR #1682 — it evades R3's quartet detector because the cast " +
+        "removes TypeScript as the co-enforcer, and it evades R1/R2 because it never mounts " +
+        "the modal itself. Without R8 the gate is blind to it.",
+    );
+    process.exit(1);
+  }
+  console.log(
+    "\n#1669 self-test B passed: the quartet-minus-one + cast bypass trips R8.",
+  );
+
+  // ── self-test C · a forked export hiding behind a delegating sibling ──────
+  // R4 used to ask its question of the FILE. The tester forked
+  // `fallbackCardToExpandedCardData` into a hand-written literal and R4 still
+  // passed, because `holidayCardToExpandedCardData` in the same file kept
+  // delegating. Prove the per-export check catches exactly that.
+  const forkSources = collectSources();
+  const holidayFile =
+    "app-mobile/src/components/utils/holidayCardToExpandedCardData.ts";
+  const holidaySrc = forkSources.get(holidayFile) ?? "";
+  const forkedFallback = holidaySrc.replace(
+    /export function fallbackCardToExpandedCardData\([\s\S]*$/,
+    `export function fallbackCardToExpandedCardData(
+  c: FallbackCardLike,
+  opts: HolidayCardMapOpts,
+): ExpandedCardData | null {
+  return {
+    id: c.id,
+    title: c.title,
+    category: c.category,
+    categoryIcon: getCategoryIcon(c.category),
+    description: '',
+    fullDescription: '',
+    image: c.image,
+    images: c.image ? [c.image] : [],
+    rating: c.rating,
+    reviewCount: 0,
+    distance: null,
+    travelTime: null,
+    travelMode: opts.travelMode,
+    address: c.address,
+    highlights: [],
+    tags: [],
+    matchScore: 0,
+    matchFactors: { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
+    socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
+  };
+}
+`,
+  );
+  forkSources.set(holidayFile, forkedFallback);
+  const forkChecks = runChecks(forkSources);
+  const forkFailures = report(
+    forkChecks,
+    "self-test C (one export forked, its sibling still delegating)",
+  );
+  const forkFailed = new Set(forkFailures.map((f) => f.name.slice(0, 2)));
+  if (!forkFailed.has("R4")) {
+    console.error(
+      "\n#1669 self-test ERROR: `fallbackCardToExpandedCardData` was forked back into a " +
+        "hand-written literal and R4 did NOT fire. Its sibling export in the same file still " +
+        "delegates, which is exactly how the file-level check passed on a genuine fork " +
+        "(tester P2-2). R4 must ask the question of each exported function's own body.",
+    );
+    process.exit(1);
+  }
+  console.log(
+    "\n#1669 self-test C passed: a forked export trips R4 even with a delegating sibling.",
+  );
+
+  console.log("\n#1669 self-test passed (A, B and C).");
   process.exit(0);
 }
 

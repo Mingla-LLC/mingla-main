@@ -16,7 +16,14 @@ export interface ExpandedCardData extends Partial<CanonicalDiscoveryPrice> {
   fullDescription: string;
   image: string;
   images: string[];
-  rating: number;
+  // [#1669] OPTIONAL, and that is the whole point. A required `number` made
+  // "this place has no rating" UNREPRESENTABLE, so every producer had to invent
+  // one: three invented `|| 4.5`, and the first repair pass invented `?? 0` —
+  // which CardInfoSection then printed as `★ 0.0`, a real-looking terrible
+  // score. 763 servable places have `rating IS NULL` and one has a stored `0`.
+  // Constitution #9: missing data is HIDDEN. The renderer shows the chip only
+  // for a POSITIVE rating, so neither `undefined` nor `0` can ever print.
+  rating?: number;
   reviewCount: number;
   // [ORCH-0649] priceRange + travelTime may be absent. Renderers use truthy
   // guards (`{travelTime && ...}`) to hide pills. Never fabricate "N/A".

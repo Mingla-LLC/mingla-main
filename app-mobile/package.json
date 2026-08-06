@@ -39,7 +39,7 @@
     "test:orch-1029-adv": "node ./src/contexts/__tests__/orch-1029-coach-mark-adversarial.test.tsx",
     "test:orch-1049": "node ./scripts/ci/orch-1049-matches-sheet-bottom-inset-check.mjs",
     "test:orch-1054": "node ./scripts/ci/orch-1054-matches-expanded-card-parity-check.mjs",
-    "test:issue-1669": "node ./scripts/ci/issue-1669-expanded-card-one-producer.mjs && node ./scripts/ci/issue-1669-expanded-card-one-producer.mjs --self-test && npx jest --runInBand src/components/utils/__tests__/issue_1669_one_producer_parity.test.ts src/components/utils/__tests__/issue_1669_tester_adversarial.test.ts",
+    "test:issue-1669": "node ./scripts/ci/issue-1669-expanded-card-one-producer.mjs && node ./scripts/ci/issue-1669-expanded-card-one-producer.mjs --self-test && npx jest --runInBand src/components/utils/__tests__/issue_1669_one_producer_parity.test.ts src/components/utils/__tests__/issue_1669_tester_adversarial.test.ts src/components/utils/__tests__/holidayCardToExpandedCardData.test.ts src/components/utils/__tests__/holidayCardToExpandedCardData.adversarial.test.ts",
     "test:orch-1125": "node ./scripts/ci/orch-1125-regression-check.mjs && node --experimental-strip-types --test app/__tests__/coldRouteQueryProvider.orch1125.test.ts",
     "test:orch-1149": "node ./scripts/ci/orch-1149-inapp-browser-bottom-anchored.mjs",
     "test:orch-1148": "node ./scripts/ci/orch-1148-reserve-sheet-mount-on-open-check.mjs",

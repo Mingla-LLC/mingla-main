@@ -18,7 +18,11 @@ export interface Recommendation {
   lng?: number;
   description: string;
   budget: string;
-  rating: number;
+  // [#1669] OPTIONAL. 763 servable place-pool rows have `rating IS NULL`, and a
+  // required `number` here forced deckService to stamp `?? 0` on every one of
+  // them — a fabricated zero that then travelled into the expanded card and
+  // into the rows we persist. Every reader already guards with `!= null && > 0`.
+  rating?: number;
   image: string;
   images: string[];
   priceRange: string;

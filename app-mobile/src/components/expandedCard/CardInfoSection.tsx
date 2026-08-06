@@ -123,7 +123,16 @@ export default function CardInfoSection({
 
       {/* Metrics Row — compact pill chips */}
       <View style={styles.metricsRow}>
-        {rating !== undefined && (
+        {/* #1669: a POSITIVE rating only. `rating !== undefined` rendered the
+            chip for an unrated place as `★ 0.0`, because `0` is not
+            `undefined` — an invented zero reads as a real, terrible score,
+            which is worse than the 4.5 it replaced. Constitution #9: missing
+            data is HIDDEN. This is also the guard the curated stop list, the
+            alternates row and the picnic grocery row already use, and it is
+            what makes the hiding true regardless of which producer minted the
+            card — including for the one servable pool place whose stored
+            rating is literally 0. */}
+        {rating != null && rating > 0 && (
           <View style={styles.metricPill}>
             <Icon name="star" size={12} color="#fbbf24" />
             <Text style={styles.metricPillText}>{rating.toFixed(1)}</Text>

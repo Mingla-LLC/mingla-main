@@ -33,9 +33,11 @@ export interface HolidayCardMapOpts {
  *
  * Honesty (Constitution #9): missing image → `image:''` + `images:[]` (the modal
  * renders its own honest empty state, never a fabricated photo); missing rating →
- * `0` (modal hides the chip); missing coords → `location:undefined` (no fake
- * distance). reviewCount/highlights/tags/matchFactors/socialStats are neutral
- * zero/empty — the source carries no such data and we never invent it.
+ * `undefined`, carried through as absence so the modal renders NO star chip (a
+ * coerced `0` printed `★ 0.0`, which is an invented score, not a hidden one);
+ * missing coords → `location:undefined` (no fake distance).
+ * reviewCount/highlights/tags/matchFactors/socialStats are neutral zero/empty —
+ * the source carries no such data and we never invent it.
  */
 export function holidayCardToExpandedCardData(
   c: HolidayCard,
@@ -63,7 +65,9 @@ export function holidayCardToExpandedCardData(
     fullDescription: c.description ?? '',
     image,
     images: image ? [image] : [],
-    rating: c.rating ?? 0,
+    // #1669 D5: absence stays absence. `?? 0` here would reach the modal as a
+    // real number and print `★ 0.0` for a place that has no rating.
+    rating: c.rating ?? undefined,
     reviewCount: 0,
     priceRange: c.priceRange ?? undefined,
     ...canonicalDiscoveryPriceFields(c),
@@ -112,7 +116,9 @@ export interface FallbackCardLike {
   title: string;
   category: string;
   image: string;
-  rating: number;
+  /** #1669: optional — a category-fallback row need not know a rating, and an
+   *  unknown one must stay unknown rather than becoming a zero. */
+  rating?: number;
   address: string;
   priceRange: string;
 }
@@ -131,7 +137,8 @@ export function fallbackCardToExpandedCardData(
     fullDescription: '',
     image,
     images: image ? [image] : [],
-    rating: c.rating ?? 0,
+    // #1669 D5: see above — an unrated fallback card gets no star chip, not a zero.
+    rating: c.rating ?? undefined,
     reviewCount: 0,
     priceRange: c.priceRange ?? undefined,
     distance: null,

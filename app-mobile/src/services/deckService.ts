@@ -240,7 +240,10 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
     lng: card.lng,
     description: card.description,
     budget: priceText,
-    rating: card.rating ?? 0,
+    // #1669 D5: an unrated place stays unrated all the way from the server row.
+    // `?? 0` here was the source of the fabricated zero the expanded card
+    // printed as `★ 0.0` — 763 servable rows have `rating IS NULL`.
+    rating: typeof card.rating === 'number' ? card.rating : undefined,
     image: card.image,
     images: card.images?.length > 0 ? card.images : [card.image].filter(Boolean),
     priceRange: priceText,

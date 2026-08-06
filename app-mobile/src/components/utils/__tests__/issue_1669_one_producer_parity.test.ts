@@ -28,7 +28,8 @@
  *   price pill    `canonicalDiscoveryPriceDetail(card)`  — CardInfoSection.tsx:55
  *   open / closed `isPlaceOpenAt(extractWeekdayText(card.openingHours),
  *                                now, card.utcOffsetMinutes)` — ActionButtons.tsx:153
- *   rating chip   `card.rating`                          — hidden at 0
+ *   rating chip   CardInfoSection's OWN guard, extracted and executed — an
+ *                 unrated place must render no star pill at all
  *   weather block `card.location`                        — ExpandedCardModal fetch gate
  *
  * It is deliberately NOT a test that a mapper is imported. Every assertion is
@@ -54,6 +55,9 @@ process.env.TZ = "Europe/London";
 // `expect(...).toBe(...)` has no message parameter, and a bare "expected true,
 // got false" would tell the next reader nothing about a timezone badge.
 import assert from "node:assert/strict";
+// C-3 reads the renderer's own source and executes its star-chip guard.
+import fs from "node:fs";
+import path from "node:path";
 
 import { savedCardToExpandedCardData } from "../savedCardToExpandedCardData";
 import { recommendationToExpandedCardData } from "../recommendationToExpandedCardData";
@@ -321,9 +325,18 @@ describe("#1669 B — Open now / Closed is the venue's clock on every entry poin
 });
 
 // ── C · the rating chip ─────────────────────────────────────────────────────
+//
+// The first cut of this fix asserted `card.rating === 0` here, with the message
+// "the modal hides the chip at 0". That claim was FALSE and the test passed
+// anyway: `CardInfoSection` gated on `rating !== undefined`, so `0` rendered as
+// `★ 0.0` — an invented zero that reads as a real, terrible score. 763 servable
+// place-pool rows have `rating IS NULL`, and one has a stored `0`.
+//
+// C-1 now asserts absence rather than a sentinel, and C-3 asks the RENDERER
+// whether the chip appears instead of asserting what the renderer does.
 
 describe("#1669 C — an unrated place is unrated on every entry point", () => {
-  it("C-1: no producer invents 4.5 stars", () => {
+  it("C-1: an unrated place reaches the modal with NO rating — not 4.5, and not 0", () => {
     const { deck, likes, chat } = openFromEveryEntryPoint();
     const friend = holidayCardToExpandedCardData(asHolidayCard(), {
       travelMode: "walking",
@@ -331,8 +344,8 @@ describe("#1669 C — an unrated place is unrated on every entry point", () => {
     for (const [surface, card] of Object.entries({ deck, likes, chat, friend })) {
       assert.equal(
         card.rating,
-        0,
-        `${surface} fabricated a rating for a place that has none (the modal hides the chip at 0). Constitution #9.`,
+        undefined,
+        `${surface} produced a rating for a place that has none. Constitution #9: missing data is HIDDEN, and a coerced 0 is not hidden — CardInfoSection printed it as "★ 0.0".`,
       );
     }
   });
@@ -342,6 +355,53 @@ describe("#1669 C — an unrated place is unrated on every entry point", () => {
     assert.equal(deck.rating, 4.2);
     assert.equal(likes.rating, 4.2);
     assert.equal(chat.rating, 4.2);
+  });
+
+  it("C-3: the REAL render guard hides the chip for every unrated form, and shows it for a real rating", () => {
+    // Read the star-chip condition out of CardInfoSection.tsx and RUN it. The
+    // point of C-3 is that no sentence in this file describes what the renderer
+    // does — the renderer answers for itself. If the JSX moves, this fails
+    // loudly rather than quietly asserting nothing (the vacuity guard).
+    const source = fs.readFileSync(
+      path.resolve(__dirname, "../../expandedCard/CardInfoSection.tsx"),
+      "utf8",
+    );
+    const match =
+      /\{\s*([^{}]*\brating\b[^{}]*?)&&\s*\(\s*<View style=\{styles\.metricPill\}>\s*<Icon name="star"/.exec(
+        source,
+      );
+    assert.ok(
+      match,
+      "Could not find the star-chip guard in CardInfoSection.tsx. This test proves the chip is hidden by executing that guard — if it moved, re-point the test rather than deleting it.",
+    );
+    const expr = match[1].trim();
+    // eslint-disable-next-line no-new-func
+    const chipRenders = new Function("rating", `return Boolean(${expr});`) as (
+      r: unknown,
+    ) => boolean;
+
+    // The value the mapper emits for a place with no rating…
+    const { deck, likes, chat } = openFromEveryEntryPoint();
+    for (const [surface, card] of Object.entries({ deck, likes, chat })) {
+      assert.equal(
+        chipRenders(card.rating),
+        false,
+        `${surface}: the star chip RENDERS for an unrated place under the real guard \`${expr}\`.`,
+      );
+    }
+    // …and the two other shapes an unrated place arrives in.
+    assert.equal(chipRenders(null), false, `\`${expr}\` renders a chip for null`);
+    assert.equal(
+      chipRenders(0),
+      false,
+      `\`${expr}\` renders "★ 0.0" for a stored zero — one servable place in the pool has exactly that`,
+    );
+    // And a genuine rating must still show, or this is the opposite bug.
+    assert.equal(
+      chipRenders(4.2),
+      true,
+      `\`${expr}\` hides a REAL rating — hiding a fact is as wrong as inventing one`,
+    );
   });
 });
 
