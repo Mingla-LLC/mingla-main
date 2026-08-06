@@ -1,0 +1,171 @@
+# QUOTED name: an unquoted leading '#' would truncate the workflow name to "Issue".
+name: "Issue #1644 storage guardrail + collage fill"
+
+# Issue #1584 records that a Deno test wired into NO workflow is dark by default.
+# Every suite below was dark before this file existed, including the pre-existing
+# imageCollage / photoStorageService / backfill contracts that protect the exact
+# files #1644 changes. Wiring them here is the point: a test nothing runs is not
+# a test.
+# NOTE: the two path lists are duplicated verbatim rather than shared via a YAML
+# anchor — GitHub Actions does not support anchors/aliases in workflow files, and
+# no other workflow in this repo uses them. Keep the two lists in sync by hand.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/_shared/imageCollage.ts"
+      - "supabase/functions/_shared/storageHeadroomGuard.ts"
+      - "supabase/functions/_shared/photoStorageService.ts"
+      - "supabase/functions/_shared/__tests__/imageCollage.issue1644.fill.test.ts"
+      - "supabase/functions/_shared/__tests__/imageCollage.thumbFallback.test.ts"
+      - "supabase/functions/_shared/__tests__/storageHeadroomGuard.issue1644.test.ts"
+      - "supabase/functions/_shared/photoStorageService.test.ts"
+      - "supabase/functions/backfill-place-photos/**"
+      - "supabase/functions/backfill-place-photo-thumbs/**"
+      - "supabase/functions/run-place-intelligence-trial/index.ts"
+      - "supabase/migrations/20270219001644_issue_1644_storage_backfill_guard.sql"
+      - "supabase/migrations/__tests__/issue_1644_storage_backfill_guard.test.sql"
+      - ".github/workflows/issue-1644-storage-guardrail-collage-fill-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/imageCollage.ts"
+      - "supabase/functions/_shared/storageHeadroomGuard.ts"
+      - "supabase/functions/_shared/photoStorageService.ts"
+      - "supabase/functions/_shared/__tests__/imageCollage.issue1644.fill.test.ts"
+      - "supabase/functions/_shared/__tests__/imageCollage.thumbFallback.test.ts"
+      - "supabase/functions/_shared/__tests__/storageHeadroomGuard.issue1644.test.ts"
+      - "supabase/functions/_shared/photoStorageService.test.ts"
+      - "supabase/functions/backfill-place-photos/**"
+      - "supabase/functions/backfill-place-photo-thumbs/**"
+      - "supabase/functions/run-place-intelligence-trial/index.ts"
+      - "supabase/migrations/20270219001644_issue_1644_storage_backfill_guard.sql"
+      - "supabase/migrations/__tests__/issue_1644_storage_backfill_guard.test.sql"
+      - ".github/workflows/issue-1644-storage-guardrail-collage-fill-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Deno side. Two NEW contracts (the collage fill fix and the storage
+  # guardrail) plus the adjacent suites that were already dark and that guard
+  # the same files against collateral damage.
+  # ---------------------------------------------------------------------------
+  issue-1644-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.7.14
+
+      - name: Type-check every module touched by #1644
+        run: |
+          deno check \
+            supabase/functions/_shared/storageHeadroomGuard.ts \
+            supabase/functions/_shared/imageCollage.ts \
+            supabase/functions/backfill-place-photos/index.ts \
+            supabase/functions/backfill-place-photo-thumbs/index.ts \
+            supabase/functions/run-place-intelligence-trial/index.ts
+
+      # CHANGE 1. Asserts the OBSERVABLE OUTPUT — that the empty cells of a
+      # 5-photo 3x3 collage decode to rgba(0,0,0,255) and that no pixel is
+      # transparent. Reverting the fill constant reproduces the exact production
+      # signature (262,144 / 589,824 = 44.444%) and fails this suite.
+      - name: Collage background must be OPAQUE BLACK, not transparent red
+        run: |
+          deno test --allow-env --allow-net --allow-read --no-check \
+            supabase/functions/_shared/__tests__/imageCollage.issue1644.fill.test.ts
+
+      # CHANGE 2. Permit below the ceiling, refuse at/above it, and FAIL CLOSED
+      # on every unmeasurable path.
+      - name: Storage guardrail must refuse above the ceiling and fail closed
+        run: |
+          deno test --allow-env --allow-net --allow-read --no-check \
+            supabase/functions/_shared/__tests__/storageHeadroomGuard.issue1644.test.ts
+
+      # Collateral protection: these all existed and were dark. They cover the
+      # thumb-fallback contract on the file whose fill constant changed, the
+      # photo storage writer, and both backfill engines the guard now gates.
+      - name: Adjacent contracts on the changed files (previously dark)
+        run: |
+          deno test --allow-env --allow-net --allow-read --no-check \
+            supabase/functions/_shared/__tests__/imageCollage.thumbFallback.test.ts \
+            supabase/functions/_shared/photoStorageService.test.ts \
+            supabase/functions/backfill-place-photos/index.test.ts \
+            supabase/functions/backfill-place-photo-thumbs/index.test.ts \
+            supabase/functions/backfill-place-photo-thumbs/index.adversarial.test.ts \
+            supabase/functions/backfill-place-photo-thumbs/issue1622_terminal_state.test.ts
+
+  # ---------------------------------------------------------------------------
+  # SQL side. The guard is only as trustworthy as the RPC it reads, so the RPC
+  # is proven against a real Supabase Postgres: it must exist, be SECURITY
+  # DEFINER, be EXECUTE-able by service_role and NOT by anon/authenticated, and
+  # it must sum real seeded sizes exactly. A function that silently returned 0
+  # would disable the guardrail entirely while every Deno test stayed green.
+  # ---------------------------------------------------------------------------
+  postgres-17-guard-rpc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-1644-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for PostgreSQL 17 (storage schema + roles present)
+        env:
+          PGPASSWORD: ${{ format('issue-1644-ci-{0}', github.run_id) }}
+        run: |
+          for i in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('storage') IS NOT NULL AND to_regrole('service_role') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+
+      # NON-VACUITY GUARD. The contract test MUST fail before the migration is
+      # applied. If it passes here, the test is not actually testing anything
+      # and the step below would be a false green.
+      - name: The contract test must FAIL before the migration is applied
+        env:
+          PGPASSWORD: ${{ format('issue-1644-ci-{0}', github.run_id) }}
+        run: |
+          if psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+               -f supabase/migrations/__tests__/issue_1644_storage_backfill_guard.test.sql \
+               >/dev/null 2>&1; then
+            echo "VACUOUS TEST: the guard contract passed without the migration." >&2
+            exit 1
+          fi
+          echo "Contract correctly fails without the migration."
+
+      - name: Apply the #1644 migration
+        env:
+          PGPASSWORD: ${{ format('issue-1644-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/20270219001644_issue_1644_storage_backfill_guard.sql
+
+      - name: Prove the guard RPC exists, is service_role-only, and sums exactly
+        env:
+          PGPASSWORD: ${{ format('issue-1644-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1644_storage_backfill_guard.test.sql

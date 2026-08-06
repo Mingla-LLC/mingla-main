@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { Image, decode } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
+import { checkStorageHeadroom } from '../_shared/storageHeadroomGuard.ts';
 
 const BUCKET = 'place-photos';
 // ORCH-1044: shrink the default batch so a freshly-created run's batches are
@@ -563,6 +564,22 @@ async function handleCreateRun(
     return json({ status: 'already_active', runId: existing.id });
   }
 
+  // [#1644] Same contract as ensure_auto_run: prove there is work, THEN check
+  // storage headroom before creating a run that would write objects.
+  const pendingProbe = await loadPendingPlaces(db, { limit: 1, cityId });
+  if (pendingProbe.length === 0) return json({ status: 'nothing_to_do', totalPlaces: 0 });
+
+  const headroom = await checkStorageHeadroom(db, 'backfill-place-photo-thumbs create_run');
+  if (!headroom.ok) {
+    console.error(headroom.message);
+    return json({
+      error: headroom.message,
+      reason: headroom.reason,
+      totalBytes: headroom.totalBytes,
+      thresholdBytes: headroom.thresholdBytes,
+    }, 507);
+  }
+
   const created = await createRunRecord(db, { batchSize, cityId, triggeredBy: userId });
   if (created.status === 'nothing_to_do') return json({ status: 'nothing_to_do', totalPlaces: 0 });
   if (created.status === 'error' || !created.runId) return json({ error: created.error ?? 'Failed to create run' }, 500);
@@ -905,6 +922,39 @@ export async function handleProcessChunk(db: SupabaseAdmin, body: Record<string,
   } else if (liveRun.status === 'cancelled') {
     exitReason = 'cancelled';
   } else {
+    // [#1644] Storage guardrail — checked ONLY when a pending batch actually
+    // exists. A drained run must still be able to flip to 'completed' below, and
+    // the every-10-minute empty-queue tick must stay quiet, so the guard is not
+    // consulted on either of those paths.
+    const { count: pendingBeforeClaim } = await db
+      .from('photo_backfill_batches')
+      .select('id', { count: 'exact', head: true })
+      .eq('run_id', runId)
+      .eq('status', 'pending');
+
+    if ((pendingBeforeClaim ?? 0) > 0) {
+      const headroom = await checkStorageHeadroom(db, 'backfill-place-photo-thumbs process_chunk');
+      if (!headroom.ok) {
+        console.error(headroom.message);
+        // Pause the run so the self-invoke chain AND the pg_cron re-kick both
+        // stop: handleEnsureAutoRun does not kick a paused run. Without this the
+        // refusal would repeat every 10 minutes forever. Resuming is a normal
+        // 'resume_run' once storage has been reclaimed.
+        await db
+          .from('photo_backfill_runs')
+          .update({ status: 'paused' })
+          .eq('id', runId);
+        return json({
+          error: headroom.message,
+          reason: headroom.reason,
+          totalBytes: headroom.totalBytes,
+          thresholdBytes: headroom.thresholdBytes,
+          runId,
+          runPaused: true,
+        }, 507);
+      }
+    }
+
     const step = await claimAndProcessNextBatch(db, runId);
     if (!step.claimed) {
       // ORCH-1044 hotfix: a failed claim does NOT prove the run is done. With the
@@ -1008,6 +1058,25 @@ async function handleEnsureAutoRun(db: SupabaseAdmin): Promise<Response> {
     return json({ ok: true, status: 'already_active', runId: existing.id });
   }
 
+  // [#1644] Probe for real work BEFORE consulting the storage guardrail.
+  // `kick_pending_thumb_backfill` POSTs this action every 10 minutes with no
+  // backlog check in SQL, so on an empty queue this MUST stay a quiet 200
+  // 'nothing_to_do' — it must not become an error, and it must not pay for a
+  // full seq scan of storage.objects.
+  const pendingProbe = await loadPendingPlaces(db, { limit: 1 });
+  if (pendingProbe.length === 0) return json({ ok: true, status: 'nothing_to_do' });
+
+  const headroom = await checkStorageHeadroom(db, 'backfill-place-photo-thumbs ensure_auto_run');
+  if (!headroom.ok) {
+    console.error(headroom.message);
+    return json({
+      error: headroom.message,
+      reason: headroom.reason,
+      totalBytes: headroom.totalBytes,
+      thresholdBytes: headroom.thresholdBytes,
+    }, 507);
+  }
+
   // No active run — create one over the GLOBAL servable backlog if any exists.
   const created = await createRunRecord(db, { batchSize: DEFAULT_BATCH_SIZE, triggeredBy: AUTO_RUN_TRIGGERED_BY });
   if (created.status === 'nothing_to_do') return json({ ok: true, status: 'nothing_to_do' });
@@ -1040,6 +1109,29 @@ async function handleRunNextBatch(db: SupabaseAdmin, body: Record<string, unknow
     const updates: Record<string, unknown> = { status: 'running' };
     if (!run.started_at) updates.started_at = new Date().toISOString();
     await db.from('photo_backfill_runs').update(updates).eq('id', runId);
+  }
+
+  // [#1644] Storage guardrail on the manual single-step path too — it uploads
+  // the same objects as process_chunk. Gated on a pending batch existing so a
+  // drained run can still be completed below.
+  const { count: pendingBeforeClaim } = await db
+    .from('photo_backfill_batches')
+    .select('id', { count: 'exact', head: true })
+    .eq('run_id', runId)
+    .eq('status', 'pending');
+
+  if ((pendingBeforeClaim ?? 0) > 0) {
+    const headroom = await checkStorageHeadroom(db, 'backfill-place-photo-thumbs run_next_batch');
+    if (!headroom.ok) {
+      console.error(headroom.message);
+      return json({
+        error: headroom.message,
+        reason: headroom.reason,
+        totalBytes: headroom.totalBytes,
+        thresholdBytes: headroom.thresholdBytes,
+        runId,
+      }, 507);
+    }
   }
 
   const step = await claimAndProcessNextBatch(db, runId);

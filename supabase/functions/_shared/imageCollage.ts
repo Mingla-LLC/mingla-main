@@ -242,8 +242,23 @@ export async function composeCollage(photoUrls: string[]): Promise<{
   // Canvas dimensions snap to grid * tile (may be slightly less than 1024 due to floor)
   const canvasSize = grid * tile;
   const canvas = new Image(canvasSize, canvasSize);
-  // imagescript Image starts as transparent; fill black for clean appearance
-  canvas.fill(0xff_00_00_00); // ARGB black opaque (high byte = alpha)
+  // [#1644] imagescript Image starts as transparent; fill OPAQUE BLACK so that
+  // grid cells with no photo render black rather than transparent.
+  //
+  // CHANNEL ORDER IS RGBA, NOT ARGB — high byte = RED, low byte = ALPHA.
+  // Verified in imagescript@1.2.17 source:
+  //   rgbaToColor(r,g,b,a) => (r<<24) | (g<<16) | (b<<8) | a
+  //   colorToRGBA(color)   => [color>>24, color>>16, color>>8, color] & 0xff
+  //
+  // The previous value `0xff_00_00_00` was annotated "ARGB black opaque" but
+  // under RGBA it decodes to red=255, green=0, blue=0, ALPHA=0 — i.e. fully
+  // TRANSPARENT RED, the exact opposite of the stated intent. Measured on real
+  // production collages: a 5-photo place in a 3x3 grid had 262,144 / 589,824 =
+  // 44.444% of pixels at alpha=0 (exactly the 4/9 unfilled cells), while a
+  // 9-photo place measured 0%. Consequences were (a) every PNG carried a
+  // needless alpha channel, inflating the encoded size, and (b) Gemini received
+  // an image whose empty cells composite to a decoder-dependent colour.
+  canvas.fill(0x00_00_00_ff); // RGBA opaque black (R=0, G=0, B=0, A=255)
 
   let placed = 0;
   let failed = 0;
