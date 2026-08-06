@@ -76,9 +76,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
 import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 
-// META-ORCH-0991 Wave B Batch 5: fixed snap translated from the old filter
-// modal's `maxHeight: "85%"`.
-const FILTER_SNAP_POINTS = ["85%"] as const;
 // ORCH-0809 M2: city picker + segment switcher
 import { CityPickerSheet } from "./discover/CityPickerSheet";
 import {
@@ -100,10 +97,32 @@ import {
   writeResolvedDiscoverCity,
   readResolvedDiscoverCity,
   readLastResolvedDiscoverCity,
+  // #1637 — the query anchor. See discoverEventsCache.ts for why the
+  // reverse-geocoded chip city is NOT allowed to reach it.
+  resolveDiscoverQueryAnchor,
+  buildDiscoverSignatureForAnchor,
+  hasUsableDiscoverQuery,
+  snapDiscoverQueryCoord,
   type DiscoverCacheSignature,
+  type DiscoverQueryAnchor,
 } from "../utils/discoverEventsCache";
+// #1637 — the deck is one ordered list, decided in one place.
+import { buildDiscoverDeckOrder } from "../utils/discoverDeckOrder";
+
+// META-ORCH-0991 Wave B Batch 5: fixed snap translated from the old filter
+// modal's `maxHeight: "85%"`.
+const FILTER_SNAP_POINTS = ["85%"] as const;
 
 // ORCH-0839-A F-4: cache-key prefix const removed — mobile cache deleted.
+// #1637: the ONE search radius, used by both anchors. It was a bare `50` in two
+// places (the merged city request's fallbackRadiusKm and the deleted
+// Ticketmaster-only request's `radius`), which is how the two fetches ended up
+// asking Ticketmaster two different questions.
+const DISCOVER_SEARCH_RADIUS_KM = 50;
+// #1637: hard cap on the saved-city preference gate below. The read runs
+// alongside the 1-3s GPS acquisition so it normally costs nothing; this only
+// bounds a hung read so Discover can never be left permanently silent.
+const PREFS_GATE_MAX_WAIT_MS = 1500;
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const d = glass.discover;
 const GRID_CARD_WIDTH = (SCREEN_WIDTH - d.grid.horizontalPadding * 2 - d.grid.columnGap) / 2;
@@ -1148,28 +1167,31 @@ function DiscoverScreen({
       : { date: "any", segment: "music", genre: "all", partyTypes: [], vibeTags: [], musicGenres: [] }
   );
   // ORCH-0996 REWORK 1: synchronously read the events cache at MOUNT TIME using
-  // the seeds available now (the resolved-city seed → effectiveCity, its coords
-  // → gps facets, and the snapshotted filters). selectedCity (preferences) is
-  // still null this early, so effectiveCity-at-mount == the GPS-seeded city —
-  // exactly the signature under which the prior session cached. This lets the
-  // card arrays + loading flag initialize from the cache, so a fresh remount
-  // paints the prior cards on the FIRST render with no skeleton flash. The
-  // network fetch still runs immediately underneath and overwrites.
+  // the seeds available now (the resolved-city seed's coords and the snapshotted
+  // filters). This lets the card arrays + loading flag initialize from the
+  // cache, so a fresh remount paints the prior cards on the FIRST render with no
+  // skeleton flash. The network fetch still runs immediately underneath and
+  // overwrites.
+  //
+  // #1637: the key is now built through the SAME query anchor the live fetch
+  // uses. At mount `selectedCity` (preferences / picker) is still null, so the
+  // anchor is COORDS — seeded from the prior session's resolved-city snapshot,
+  // which stores the exact coordinate the geocode ran at. The prior session's
+  // fetch wrote under that same coords-anchored key, so the remount still hits.
+  // Before #1637 this key was city-anchored; both halves moved together, so the
+  // ORCH-0996 REWORK-1 "instant re-open" guarantee is preserved, not traded.
   const initialEventsCacheSeed = useMemo(() => {
     if (!seededResolvedCity) return null;
-    const key = buildDiscoverCacheKey({
-      cityName: seededResolvedCity.name,
-      cityLat: seededResolvedCity.lat,
-      cityLng: seededResolvedCity.lng,
-      gpsLat: seededResolvedCity.lat,
-      gpsLng: seededResolvedCity.lng,
-      date: selectedFilters.date,
-      segment: selectedFilters.segment,
-      genre: selectedFilters.genre,
-      partyTypes: selectedFilters.partyTypes,
-      vibeTags: selectedFilters.vibeTags,
-      musicGenres: selectedFilters.musicGenres,
-    });
+    const key = buildDiscoverCacheKey(
+      buildDiscoverSignatureForAnchor(
+        resolveDiscoverQueryAnchor({
+          selectedCity: null,
+          gpsLat: seededResolvedCity.lat,
+          gpsLng: seededResolvedCity.lng,
+        }),
+        selectedFilters,
+      ),
+    );
     const hit = readDiscoverCache<NightOutCardData, BusinessEventCardData>(key);
     return hit && isDiscoverCacheFresh(hit) ? hit : null;
     // Mount-time seed only — intentionally not reactive to later filter changes.
@@ -1183,18 +1205,22 @@ function DiscoverScreen({
     initialEventsCacheSeed?.businessEvents ?? [],
   );
 
-  // ORCH-0809 M2: city picker state. selectedCity comes from preferences;
-  // gpsDefaultCity comes from reverse-geocoding the device GPS on first paint.
-  // effectiveCity = selectedCity ?? gpsDefaultCity.
+  // ORCH-0809 M2: city picker state.
+  //
+  // #1637 — THESE TWO ARE NOT INTERCHANGEABLE, and conflating them is the whole
+  // issue. `selectedCity` is an EXPLICIT choice (CityPickerSheet, or the saved
+  // `discover_city_*` preference) and is the only one of the two that may anchor
+  // a data query. `gpsDefaultCity` is a reverse-geocoded LABEL for the chip —
+  // display only. `effectiveCity` below is the DISPLAY city (chip text, banner
+  // copy, the picker's current value) and deliberately reaches nothing else.
   const [selectedCity, setSelectedCity] = useState<DiscoverCity | null>(null);
-  // ORCH-0996 REWORK 1: seed the GPS-derived city SYNCHRONOUSLY from the last
-  // resolved-city snapshot so `effectiveCity` is non-null on the FIRST
-  // post-remount render → the events-cache signature reproduces the prior
-  // "Raleigh"-keyed entry → instant paint, instead of waiting ~2-3s for the
-  // async reverseGeocode chain to re-run (which was leaving `effectiveCity`
-  // null and forcing a cache MISS + the skeleton + "Set city"). selectedCity
-  // (user-set, from preferences) still wins via `effectiveCity` below; the
-  // async reverseGeocode still runs and overwrites this seed authoritatively.
+  // ORCH-0996 REWORK 1: seed the GPS-derived chip city SYNCHRONOUSLY from the
+  // last resolved-city snapshot so a remount shows the city name on the FIRST
+  // render instead of flashing "Set city" for ~2-3s while the async
+  // reverseGeocode chain re-runs. (The events-cache hit that makes the CARDS
+  // paint instantly now comes from the same snapshot's COORDS — see
+  // `initialEventsCacheSeed` above.) The async reverseGeocode still runs and
+  // overwrites this seed authoritatively.
   const [gpsDefaultCity, setGpsDefaultCity] = useState<DiscoverCity | null>(
     () => {
       const seed = readLastResolvedDiscoverCity();
@@ -1213,6 +1239,9 @@ function DiscoverScreen({
   const [fallbackActive, setFallbackActive] = useState(
     initialEventsCacheSeed?.fallbackActive ?? false,
   );
+  // #1637: DISPLAY ONLY. Never pass this to the query anchor, the cache
+  // signature, or the fetch — it folds in the reverse-geocoded chip city, and
+  // that fold was the sole reason Discover ran two fetches on a cold launch.
   const effectiveCity: DiscoverCity | null = selectedCity ?? gpsDefaultCity;
 
   // Sync local filter state back to the Zustand registry on every change so
@@ -1261,34 +1290,69 @@ function DiscoverScreen({
     fetchErrorTextRef.current = t("discover:errors.failed_events");
   }, [t]);
 
+  // #1637: the first fetch waits for this to be true. The saved
+  // `discover_city_*` preference is one of only two things allowed to anchor
+  // the query, so firing before we know whether the user has one is what used
+  // to produce a THIRD fetch (and a third commit) for the 9-of-53 users who do.
+  // The read is a ~100-300ms local table lookup that starts at mount and runs
+  // ALONGSIDE the 1-3s GPS acquisition, so in practice it costs nothing — it is
+  // a correctness gate, not an added wait. It is capped below so a hung read can
+  // never leave Discover permanently silent, and it is skipped entirely for a
+  // signed-out user (nobody to have a preference).
+  const [prefsSettled, setPrefsSettled] = useState(false);
+
   // ORCH-0809 M2: load persisted Discover city from preferences on mount.
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setPrefsSettled(true);
+      return;
+    }
     let cancelled = false;
+    // Hard cap: whatever happens to the read, the query is never gated for
+    // longer than this. Constitution #3 — a stalled dependency must degrade
+    // loudly-in-behaviour (we fetch anyway), never silently (we never fetch).
+    const capId = setTimeout(() => {
+      if (!cancelled) setPrefsSettled(true);
+    }, PREFS_GATE_MAX_WAIT_MS);
     (async () => {
-      const prefs = await PreferencesService.getUserPreferences(user.id);
-      if (cancelled || !prefs) return;
-      if (
-        prefs.discover_city_name &&
-        typeof prefs.discover_city_lat === "number" &&
-        typeof prefs.discover_city_lng === "number"
-      ) {
-        setSelectedCity({
-          name: prefs.discover_city_name,
-          stateCode: prefs.discover_city_state_code ?? null,
-          countryCode: prefs.discover_city_country_code ?? null,
-          lat: prefs.discover_city_lat,
-          lng: prefs.discover_city_lng,
-        });
+      try {
+        const prefs = await PreferencesService.getUserPreferences(user.id);
+        if (cancelled) return;
+        if (
+          prefs &&
+          prefs.discover_city_name &&
+          typeof prefs.discover_city_lat === "number" &&
+          typeof prefs.discover_city_lng === "number"
+        ) {
+          setSelectedCity({
+            name: prefs.discover_city_name,
+            stateCode: prefs.discover_city_state_code ?? null,
+            countryCode: prefs.discover_city_country_code ?? null,
+            lat: prefs.discover_city_lat,
+            lng: prefs.discover_city_lng,
+          });
+        }
+      } finally {
+        // Always release the gate — success, empty, or throw.
+        if (!cancelled) setPrefsSettled(true);
       }
     })();
     return () => {
       cancelled = true;
+      clearTimeout(capId);
     };
   }, [user?.id]);
 
   // ORCH-0809 M2 / ORCH-0996 REWORK 1: reverse-geocode GPS to derive the
   // default city chip value when the user hasn't picked one.
+  //
+  // #1637 — THIS IS A LABEL, NOT A QUERY. Everything this effect produces feeds
+  // the city chip's TEXT and nothing else. `gpsDefaultCity` is deliberately
+  // absent from `queryAnchor` / `cacheSignature` / `fetchNightOutEvents`, so
+  // this round trip cannot delay the first fetch, cannot mint a second one, and
+  // cannot move a card that has already painted. It used to do all three: it was
+  // the sole gate that flipped Discover from the Ticketmaster-only endpoint to
+  // the merged one, which is why Mingla events were structurally last.
   //
   // The chip may already be SEEDED synchronously from the resolved-city cache
   // (see useState above) so a remount paints instantly. This effect still runs
@@ -1385,31 +1449,54 @@ function DiscoverScreen({
 
   const nightOutFetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // #1637: the ONE anchor the data query runs against — an explicitly chosen
+  // city, or the device coordinates. `selectedCity` is passed, NOT
+  // `effectiveCity`: feeding the reverse-geocoded `gpsDefaultCity` in here is
+  // precisely the defect this issue exists for, and the source-contract half of
+  // app-mobile/src/utils/__tests__/issue_1637_discover_single_fetch.test.ts
+  // fails the build if it ever comes back.
+  //
+  // The memo is keyed on the SNAPPED coordinates, not the raw fix. A GPS fix
+  // carries 7+ decimals and never repeats, so keying on the raw value would mint
+  // a new anchor OBJECT — and therefore a new fetch — every time the device
+  // re-reported the same street corner. Snapping first means an unchanged
+  // location is an unchanged identity all the way up to React.
+  const snappedGpsLat = snapDiscoverQueryCoord(nightOutGpsLat);
+  const snappedGpsLng = snapDiscoverQueryCoord(nightOutGpsLng);
+  const queryAnchor: DiscoverQueryAnchor = useMemo(
+    () =>
+      resolveDiscoverQueryAnchor({
+        selectedCity,
+        gpsLat: snappedGpsLat,
+        gpsLng: snappedGpsLng,
+      }),
+    [selectedCity, snappedGpsLat, snappedGpsLng],
+  );
+
   // ORCH-0996: the exact full-signature key for the current query. Drives
   // the paint-first in-memory cache. MUST include every facet the server
   // reads (see discoverEventsCache.ts) so two distinct filter sets can never
   // collide — this is what makes the ORCH-0839-A C-1 cross-filter leakage
   // structurally impossible to recur here.
+  //
+  // #1637: built from the anchor, so the city and GPS facets are mutually
+  // exclusive. A city-anchored query carries no GPS facets (a later GPS fix
+  // cannot re-key a request whose body would be byte-identical), and a
+  // coords-anchored query carries no city facets (the geocode landing cannot
+  // re-key it). Every facet the SERVER reads is still present, so the C-1
+  // cross-filter isolation the ORCH-0996 suite asserts is untouched.
   const cacheSignature: DiscoverCacheSignature = useMemo(
-    () => ({
-      cityName: effectiveCity?.name ?? null,
-      cityLat: effectiveCity?.lat ?? null,
-      cityLng: effectiveCity?.lng ?? null,
-      gpsLat: nightOutGpsLat ?? null,
-      gpsLng: nightOutGpsLng ?? null,
-      date: selectedFilters.date,
-      segment: selectedFilters.segment,
-      genre: selectedFilters.genre,
-      partyTypes: selectedFilters.partyTypes,
-      vibeTags: selectedFilters.vibeTags,
-      musicGenres: selectedFilters.musicGenres,
-    }),
+    () =>
+      buildDiscoverSignatureForAnchor(queryAnchor, {
+        date: selectedFilters.date,
+        segment: selectedFilters.segment,
+        genre: selectedFilters.genre,
+        partyTypes: selectedFilters.partyTypes,
+        vibeTags: selectedFilters.vibeTags,
+        musicGenres: selectedFilters.musicGenres,
+      }),
     [
-      effectiveCity?.name,
-      effectiveCity?.lat,
-      effectiveCity?.lng,
-      nightOutGpsLat,
-      nightOutGpsLng,
+      queryAnchor,
       selectedFilters.date,
       selectedFilters.segment,
       selectedFilters.genre,
@@ -1438,93 +1525,95 @@ function DiscoverScreen({
       // ORCH-0996: an in-memory paint-first cache exists again, but it NEVER
       // short-circuits this fetch — the network ALWAYS runs and overwrites,
       // so `skipCache` remains a no-op and the server stays authoritative.
-      // ORCH-0809 M2: require EITHER an effective city OR GPS to fetch.
+      // #1637: require a usable ANCHOR — an explicit city or device coords.
       void skipCache;
       const writeKey = cacheKeyRef.current;
-      if (!effectiveCity && (!nightOutGpsLat || !nightOutGpsLng)) return;
+      if (queryAnchor.kind === "none") return;
       setNightOutLoading(true);
       setNightOutError(null);
       try {
         const { localStartEndDateTime } = getDateRange(selectedFilters.date);
         const genreSlugs: DiscoverGenreSlug[] =
           selectedFilters.genre === "all" ? [] : [selectedFilters.genre];
-        // ORCH-0824: merged endpoint when we have a city; falls back to
-        // TM-only `search()` when only GPS is available (the merged
-        // endpoint requires a structured city). The merged endpoint
-        // handles TM suppression and business-first ranking server-side.
-        if (effectiveCity) {
-          const merged = await NightOutExperiencesService.searchMerged({
-            city: {
-              name: effectiveCity.name,
-              stateCode: effectiveCity.stateCode,
-              countryCode: effectiveCity.countryCode,
-              fallbackLat: effectiveCity.lat,
-              fallbackLng: effectiveCity.lng,
-              fallbackRadiusKm: 50,
-            },
-            segmentSlug: selectedFilters.segment,
-            genreSlugs,
-            localStartEndDateTime: localStartEndDateTime ?? undefined,
-            sort: "date,asc",
-            partyTypeSlugs: selectedFilters.partyTypes,
-            vibeTagSlugs: selectedFilters.vibeTags,
-            musicGenreSlugs: selectedFilters.musicGenres,
-          });
-          // ORCH-0839-A F-6: surface tmError to the inline non-fatal banner.
-          // Reads `merged.meta?.tmError` defensively because older clients
-          // pinned to the prior response shape might receive undefined.
-          setTmError(
-            (merged.meta as { tmError?: string | null } | undefined)?.tmError ??
-              null,
-          );
-          // Partition the merged items: business events first, TM second.
-          const bizItems: BusinessEventCardData[] = [];
-          const tmVenues: NightOutVenue[] = [];
-          for (const it of merged.items as MergedDiscoverItem[]) {
-            if (it.source === "business_event") bizItems.push(it.item);
-            else tmVenues.push(it.item);
-          }
-          setBusinessEvents(bizItems);
-          setFallbackActive(false);
-          const cards = tmVenues.map(transformNightOutVenue);
-          setNightOutCards(cards);
-          // ORCH-0996: store this exact-signature result so a re-open paints
-          // instantly. Full-signature key ⇒ no cross-filter leakage (C-1).
-          writeDiscoverCache<NightOutCardData, BusinessEventCardData>(writeKey, {
-            nightOutCards: cards,
-            businessEvents: bizItems,
-            tmError:
-              (merged.meta as { tmError?: string | null } | undefined)
-                ?.tmError ?? null,
-            fallbackActive: false,
-          });
-        } else {
-          // GPS-only path keeps the legacy TM-only call. No business events
-          // until the user picks a city via CityPickerSheet.
-          setBusinessEvents([]);
-          setTmError(null);
-          const { events, meta } = await NightOutExperiencesService.search({
-            location: nightOutGpsLat && nightOutGpsLng
-              ? { lat: nightOutGpsLat, lng: nightOutGpsLng }
-              : undefined,
-            radius: 50,
-            segmentSlug: selectedFilters.segment,
-            genreSlugs,
-            localStartEndDateTime: localStartEndDateTime ?? undefined,
-            sort: "date,asc",
-          });
-          const usedFallbackNow = meta?.usedFallback === true;
-          setFallbackActive(usedFallbackNow);
-          const cards = events.map(transformNightOutVenue);
-          setNightOutCards(cards);
-          // ORCH-0996: cache the GPS-only result under its exact signature too.
-          writeDiscoverCache<NightOutCardData, BusinessEventCardData>(writeKey, {
-            nightOutCards: cards,
-            businessEvents: [],
-            tmError: null,
-            fallbackActive: usedFallbackNow,
-          });
+        // #1637: ONE call, ONE endpoint, ONE commit — for both anchors.
+        //
+        // There used to be a second branch here that called the Ticketmaster-only
+        // endpoint whenever no city was resolved yet, with `setBusinessEvents([])`
+        // written into it. On a cold launch that branch ALWAYS won the race
+        // (coords arrive before a reverse-geocode of those same coords can), so
+        // the first thing every user saw was a deck that could not contain a
+        // single Mingla event, and the merged result then landed on top of it and
+        // moved every card. Both halves of #1637 came from that one `else`.
+        //
+        // The merged endpoint now accepts a coords-only anchor. The server-side
+        // fan-out (business RPC + Ticketmaster in `Promise.all`) is identical for
+        // both anchors, so Mingla and Ticketmaster are genuinely concurrent from
+        // the first request rather than one behind the other.
+        const merged = await NightOutExperiencesService.searchMerged({
+          city:
+            queryAnchor.kind === "city"
+              ? {
+                  name: queryAnchor.cityName,
+                  stateCode: selectedCity?.stateCode ?? null,
+                  countryCode: selectedCity?.countryCode ?? null,
+                  fallbackLat: queryAnchor.cityLat,
+                  fallbackLng: queryAnchor.cityLng,
+                  fallbackRadiusKm: DISCOVER_SEARCH_RADIUS_KM,
+                }
+              : {
+                  // Coords anchor: no city name at all. The server runs the
+                  // business RPC on its ST_DWithin geo predicate and asks
+                  // Ticketmaster in latlong+radius mode — the exact query the
+                  // old Ticketmaster-only first fetch used, so the Ticketmaster
+                  // half of the deck is unchanged from what users see today.
+                  name: null,
+                  stateCode: null,
+                  countryCode: null,
+                  fallbackLat: queryAnchor.gpsLat,
+                  fallbackLng: queryAnchor.gpsLng,
+                  fallbackRadiusKm: DISCOVER_SEARCH_RADIUS_KM,
+                },
+          segmentSlug: selectedFilters.segment,
+          genreSlugs,
+          localStartEndDateTime: localStartEndDateTime ?? undefined,
+          sort: "date,asc",
+          partyTypeSlugs: selectedFilters.partyTypes,
+          vibeTagSlugs: selectedFilters.vibeTags,
+          musicGenreSlugs: selectedFilters.musicGenres,
+        });
+        // ORCH-0839-A F-6: surface tmError to the inline non-fatal banner.
+        // Reads `merged.meta?.tmError` defensively because older clients
+        // pinned to the prior response shape might receive undefined.
+        const mergedMeta = merged.meta as
+          | { tmError?: string | null; tmUsedFallback?: boolean }
+          | undefined;
+        const nextTmError = mergedMeta?.tmError ?? null;
+        setTmError(nextTmError);
+        // Partition the merged items: business events first, TM second.
+        const bizItems: BusinessEventCardData[] = [];
+        const tmVenues: NightOutVenue[] = [];
+        for (const it of merged.items as MergedDiscoverItem[]) {
+          if (it.source === "business_event") bizItems.push(it.item);
+          else tmVenues.push(it.item);
         }
+        // #1637: the merged endpoint now reports whether its nested Ticketmaster
+        // call fell back from city-mode to lat/lng. Before, this banner was fed
+        // only by the deleted Ticketmaster-only branch — a branch that by
+        // construction ran with no city — so `fallbackActive && effectiveCity`
+        // could essentially never both be true and the banner was unreachable.
+        const usedFallbackNow = mergedMeta?.tmUsedFallback === true;
+        setBusinessEvents(bizItems);
+        setFallbackActive(usedFallbackNow);
+        const cards = tmVenues.map(transformNightOutVenue);
+        setNightOutCards(cards);
+        // ORCH-0996: store this exact-signature result so a re-open paints
+        // instantly. Full-signature key ⇒ no cross-filter leakage (C-1).
+        writeDiscoverCache<NightOutCardData, BusinessEventCardData>(writeKey, {
+          nightOutCards: cards,
+          businessEvents: bizItems,
+          tmError: nextTmError,
+          fallbackActive: usedFallbackNow,
+        });
       } catch (err) {
         console.error("[Discover] Error fetching events:", err);
         // ORCH-0996: read the translated error from a ref so `t` stays out
@@ -1540,11 +1629,22 @@ function DiscoverScreen({
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
-      effectiveCity?.name,
-      effectiveCity?.lat,
-      effectiveCity?.lng,
-      nightOutGpsLat,
-      nightOutGpsLng,
+      // #1637: the identity of this callback IS the identity of the query, and
+      // the fetch effect below fires on exactly that. So this list must name
+      // every input that changes the request body — and NOTHING that does not.
+      //
+      // `queryAnchor` replaces the old (effectiveCity.name/lat/lng +
+      // nightOutGpsLat + nightOutGpsLng) group. That group had two spurious
+      // triggers: the reverse-geocoded city landing (a label, not a query) and a
+      // GPS fix arriving while a city was already chosen (whose request body is
+      // byte-identical because city mode ignores device coords). Each of those
+      // was an extra fetch and therefore an extra commit — an extra chance for
+      // the deck to move under the user's thumb.
+      //
+      // `selectedCity.stateCode/countryCode` are read in the city branch but are
+      // properties of a city the user explicitly chose; they cannot change
+      // without `selectedCity` itself changing, which changes `queryAnchor`.
+      queryAnchor,
       selectedFilters.date,
       selectedFilters.segment,
       selectedFilters.genre,
@@ -1575,11 +1675,17 @@ function DiscoverScreen({
   //     (b) fire the fetch IMMEDIATELY (no 300ms wait).
   //   • Every SUBSEQUENT change (filter pills, city switch, GPS refine) keeps
   //     the 300ms debounce to coalesce rapid taps.
+  //
+  // #1637 adds ONE more condition to "usable": the saved-city preference read
+  // must have settled. That read runs concurrently with the 1-3s GPS
+  // acquisition and is capped at 1.5s, so it does not delay the first fetch in
+  // practice — it just stops a saved city landing AFTER the first fetch and
+  // minting a third one. `decideDiscoverFetchMode` itself is untouched; it
+  // still owns the immediate/debounced/skip decision (ORCH-0996 contract).
   const initialFetchFiredRef = useRef(false);
   useEffect(() => {
-    const hasUsableQuery = Boolean(
-      effectiveCity || (nightOutGpsLat && nightOutGpsLng),
-    );
+    const hasUsableQuery =
+      prefsSettled && hasUsableDiscoverQuery(queryAnchor);
     const mode = decideDiscoverFetchMode({
       hasUsableQuery,
       hasFiredInitial: initialFetchFiredRef.current,
@@ -1633,7 +1739,13 @@ function DiscoverScreen({
         clearTimeout(nightOutFetchTimeoutRef.current);
       }
     };
-  }, [fetchNightOutEvents, effectiveCity, nightOutGpsLat, nightOutGpsLng]);
+    // #1637: the trigger set is exactly (query identity, gate). Before, this
+    // array ALSO listed `effectiveCity` — which includes the reverse-geocoded
+    // chip city — plus the raw device coords, so the effect re-ran on inputs the
+    // request body does not depend on. `fetchNightOutEvents`'s own dependency
+    // list is now the query identity, so listing it here is sufficient AND
+    // complete; adding anything else back re-opens the multi-fetch door.
+  }, [fetchNightOutEvents, queryAnchor, prefsSettled]);
 
 
   const handleRefresh = async (): Promise<void> => {
@@ -1778,7 +1890,7 @@ function DiscoverScreen({
   const handleCityPicked = (city: DiscoverCity): void => {
     setSelectedCity(city);
     setIsCityPickerVisible(false);
-    // Fetch refreshes via the useEffect dependency on effectiveCity.name/lat/lng
+    // #1637: the fetch re-fires via the query anchor's dependency on selectedCity.
   };
 
   // ORCH-0809 M2: price filter REMOVED. The prior client-side tier overlap-check
@@ -1793,6 +1905,12 @@ function DiscoverScreen({
       return dateA.localeCompare(dateB);
     });
   }, [nightOutCards]);
+
+  // #1637: the deck's ORDER, decided once. See discoverDeckOrder.ts.
+  const discoverDeck = useMemo(
+    () => buildDiscoverDeckOrder(businessEvents, filteredNightOutCards),
+    [businessEvents, filteredNightOutCards],
+  );
 
   // ORCH-0996: prefetch the first row of event-cover images as soon as
   // results land so the 2-col grid doesn't fade in cold. We prefetch the
@@ -2256,32 +2374,45 @@ function DiscoverScreen({
               </View>
             ) : null}
             <View style={styles.gridWrap}>
-              {/* ORCH-0824: business events render above the Ticketmaster
-                  grid. Their tap handler opens the same ExpandedCardModal
-                  (Step 20) with a business_event discriminator (Step 19). */}
-              {businessEvents.map((be) => (
-                <BusinessEventCard
-                  key={be.eventId}
-                  data={be}
-                  width={GRID_CARD_WIDTH}
-                  height={GRID_CARD_HEIGHT}
-                  onPress={handleBusinessEventCardPress}
-                />
-              ))}
-              {filteredNightOutCards.map((card) => (
-                <EventGridCard
-                  key={card.id}
-                  card={card}
-                  currency={accountPreferences?.currency}
-                  isSaved={savedCardIds.has(card.id)}
-                  onPress={() => handleNightOutCardPress(card)}
-                  onSaveToggle={() => {
-                    handleToggleSave(card);
-                  }}
-                  reduceTransparency={reduceTransparency}
-                  reduceMotion={reduceMotion}
-                />
-              ))}
+              {/* ORCH-0824: business events rank above the Ticketmaster block.
+                  Their tap handler opens the same ExpandedCardModal (Step 20)
+                  with a business_event discriminator (Step 19).
+
+                  #1637: this used to be TWO adjacent `.map()` calls inside this
+                  one wrapping 2-column container, so the deck's order was an
+                  emergent property of their adjacency and nothing could assert
+                  on it. When the second fetch landed, N business cards were
+                  inserted at the head and every painted Ticketmaster card
+                  shifted down N slots — and because the container WRAPS, an odd
+                  N flipped every card between the left and right columns. The
+                  ranking is unchanged and the keys are the same values, so
+                  reconciliation is identical; what changed is that one function
+                  now states the order and a regression test can compare the
+                  ordered id list across renders. */}
+              {discoverDeck.map((entry) =>
+                entry.kind === "business" ? (
+                  <BusinessEventCard
+                    key={entry.key}
+                    data={entry.data}
+                    width={GRID_CARD_WIDTH}
+                    height={GRID_CARD_HEIGHT}
+                    onPress={handleBusinessEventCardPress}
+                  />
+                ) : (
+                  <EventGridCard
+                    key={entry.key}
+                    card={entry.data}
+                    currency={accountPreferences?.currency}
+                    isSaved={savedCardIds.has(entry.data.id)}
+                    onPress={() => handleNightOutCardPress(entry.data)}
+                    onSaveToggle={() => {
+                      handleToggleSave(entry.data);
+                    }}
+                    reduceTransparency={reduceTransparency}
+                    reduceMotion={reduceMotion}
+                  />
+                ),
+              )}
             </View>
           </View>
         ) : null}

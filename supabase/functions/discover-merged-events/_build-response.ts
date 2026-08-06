@@ -16,7 +16,8 @@ import type {
 
 export interface BuildDiscoverContext {
   supabase: SupabaseClient;
-  cityName: string;
+  /** #1637 — null for a coords-anchored request; `city.fallback*` is the anchor. */
+  cityName: string | null;
   city: {
     stateCode?: string | null;
     countryCode?: string | null;
@@ -69,7 +70,15 @@ export async function buildDiscoverMergedResponse(
   const businessOffset = (page - 1) * size;
 
   const businessPromise = fetchDiscoverBusinessEvents(supabase, {
-    cities: cityMatchValues(cityName),
+    // #1637 — a coords-anchored request passes NO city names. In
+    // pg_discover_business_events the predicate is
+    // `e.city = ANY(p_cities) OR ST_DWithin(pin, center, radius)`, and
+    // `= ANY('{}')` is FALSE (never NULL), so an empty array cleanly hands the
+    // whole selection to the geo branch. That branch is the one issue #1020
+    // added precisely because a venue's own town label under-delivers against a
+    // browsed metro, so a coords anchor is not a degraded query — for a user
+    // standing in a suburb it is the better one.
+    cities: cityName === null ? [] : cityMatchValues(cityName),
     lowerBoundUtc,
     upperStartUtc: dateWindowUtc?.endUtc ?? null,
     partyTypeSlugs,
@@ -87,29 +96,68 @@ export async function buildDiscoverMergedResponse(
 
   const ticketmasterPromise = (async () => {
     if (!tmGate) {
-      return { tmCalled: false, tmError: null as string | null, tmItems: [] as Record<string, unknown>[], tmTotal: 0 };
+      return {
+        tmCalled: false,
+        tmError: null as string | null,
+        tmItems: [] as Record<string, unknown>[],
+        tmTotal: 0,
+        tmUsedFallback: false,
+      };
     }
 
     let tmError: string | null = null;
     let tmItems: Record<string, unknown>[] = [];
     let tmTotal = 0;
+    let tmUsedFallback = false;
     const mergedTmGenreSlugs = [...(genreSlugs ?? []), ...tmMappable];
 
-    const tmPayload: Record<string, unknown> = {
-      city: cityName,
-      stateCode: city.stateCode ?? null,
-      countryCode: city.countryCode ?? null,
-      latFallback: city.fallbackLat,
-      lngFallback: city.fallbackLng,
-      radiusFallback: city.fallbackRadiusKm,
-      segmentSlug,
-      genreSlugs: mergedTmGenreSlugs.length > 0 ? mergedTmGenreSlugs : undefined,
-      localStartEndDateTime,
-      keywords,
-      sort,
-      page,
-      size,
-    };
+    // #1637 — page indexing. This function is 1-indexed on the wire
+    // (`Math.max(1, body.page ?? 1)` in index.ts, pinned by the ORCH-0839-A
+    // T-A1 gate) but the Ticketmaster Discovery API is 0-indexed, and the value
+    // was being forwarded unconverted. So the merged path asked Ticketmaster for
+    // its SECOND page while the deleted Ticketmaster-only client path asked for
+    // its FIRST — two fetches, two disjoint event sets, which is why the deck
+    // did not merely shift when the second one landed, it swapped. One page
+    // index now, for every anchor.
+    const tmPage = Math.max(0, page - 1);
+
+    const tmPayload: Record<string, unknown> = cityName === null
+      ? {
+        // #1637 coords anchor: latlong+radius mode. Byte-for-byte the query the
+        // deleted Ticketmaster-only first fetch used, so the Ticketmaster half
+        // of the very first deck is unchanged from what users see today — the
+        // Mingla half simply arrives with it instead of seconds later.
+        // `ticketmaster-events` rejects city AND location together, so the city
+        // fields are omitted entirely rather than sent as null.
+        location: { lat: city.fallbackLat, lng: city.fallbackLng },
+        radius: city.fallbackRadiusKm,
+        segmentSlug,
+        genreSlugs: mergedTmGenreSlugs.length > 0
+          ? mergedTmGenreSlugs
+          : undefined,
+        localStartEndDateTime,
+        keywords,
+        sort,
+        page: tmPage,
+        size,
+      }
+      : {
+        city: cityName,
+        stateCode: city.stateCode ?? null,
+        countryCode: city.countryCode ?? null,
+        latFallback: city.fallbackLat,
+        lngFallback: city.fallbackLng,
+        radiusFallback: city.fallbackRadiusKm,
+        segmentSlug,
+        genreSlugs: mergedTmGenreSlugs.length > 0
+          ? mergedTmGenreSlugs
+          : undefined,
+        localStartEndDateTime,
+        keywords,
+        sort,
+        page: tmPage,
+        size,
+      };
 
     try {
       const tmRes = await supabase.functions.invoke("ticketmaster-events", {
@@ -121,6 +169,12 @@ export async function buildDiscoverMergedResponse(
       } else if (tmRes.data && Array.isArray(tmRes.data.events)) {
         tmItems = tmRes.data.events;
         tmTotal = tmRes.data.meta?.totalResults ?? tmItems.length;
+        // #1637 — surface the city→lat/lng widening so the consumer's
+        // "Showing events near you" banner can finally fire. It was previously
+        // dropped here and fed only by the client's Ticketmaster-only path,
+        // which by construction ran with no city, so the banner's
+        // `fallbackActive && effectiveCity` condition was unsatisfiable.
+        tmUsedFallback = tmRes.data.meta?.usedFallback === true;
         if (tmItems.length === 0 && tmTotal > 0) {
           tmError = tmError ?? "ticketmaster_upstream_dropped_events";
         }
@@ -131,7 +185,7 @@ export async function buildDiscoverMergedResponse(
     }
 
     void minglaOnly;
-    return { tmCalled: true, tmError, tmItems, tmTotal };
+    return { tmCalled: true, tmError, tmItems, tmTotal, tmUsedFallback };
   })();
 
   const [{ businessItems, businessTotal }, tmResult] = await Promise.all([
@@ -157,6 +211,8 @@ export function mergeDiscoverResponse(args: {
     tmError: string | null;
     tmItems: Record<string, unknown>[];
     tmTotal: number;
+    /** #1637 — optional so a caller built before this field still type-checks. */
+    tmUsedFallback?: boolean;
   };
   page: number;
   size: number;
@@ -180,6 +236,7 @@ export function mergeDiscoverResponse(args: {
       ticketmasterTotalAvailable: tmResult.tmTotal,
       tmCalled: tmResult.tmCalled,
       tmError: tmResult.tmError,
+      tmUsedFallback: tmResult.tmUsedFallback === true,
       page,
       pageSize: size,
       fromCache,

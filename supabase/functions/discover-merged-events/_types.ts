@@ -53,6 +53,12 @@ export interface DiscoverMergedResponse {
     ticketmasterTotalAvailable: number;
     tmCalled: boolean;
     tmError: string | null;
+    /**
+     * #1637 — true when the nested Ticketmaster call widened from city-mode to
+     * lat/lng because the city had fewer than 5 results. Feeds the consumer's
+     * "Showing events near you" banner, which was unreachable before.
+     */
+    tmUsedFallback: boolean;
     page: number;
     pageSize: number;
     fromCache: boolean;

@@ -1,0 +1,146 @@
+# QUOTED name: an unquoted leading '#' would truncate the workflow name to "Issue".
+name: "Issue 1637 Discover single fetch"
+
+# #1637 [discover-single-fetch] — "Discover paints Ticketmaster events first and
+# Mingla events reshuffle in moments later."
+#
+# On a cold launch with no saved city (44 of 53 live users) DiscoverScreen ran
+# TWO sequential fetches: a Ticketmaster-ONLY one the moment GPS resolved (with
+# `setBusinessEvents([])` hard-coded into it), then a merged one ~300ms after the
+# reverse-geocode named the city. Ticketmaster was gated on strictly LESS than
+# Mingla, so Mingla could never be first; and the second commit inserted N cards
+# at the head of a wrapping 2-column grid, so every painted card moved.
+#
+# This gate protects the two halves of the fix:
+#   • the reverse-geocoded city is a LABEL and never anchors the query, so a cold
+#     mount issues exactly ONE fetch and it carries both supplies;
+#   • the deck's order is built once by one function, so the ordered id list can
+#     be asserted rather than inferred.
+#
+# WITHOUT THIS WORKFLOW THE SUITES WOULD BE DARK (issue #1584's failure class).
+# This repo has NO test auto-discovery: a .test.ts runs only when a workflow
+# names it. Two of the four suites below — the ORCH-0996 pair that owns the
+# fetch-mode state machine and the ORCH-0839-A C-1 cross-filter cache-key
+# isolation — were themselves dark before #1637, wired into no workflow and no
+# npm script despite being the contract this change had to preserve. They are
+# adopted here, so this PR retires two dark suites rather than adding a ninth.
+#
+# `paths:` must name EVERY file these suites read (they scan real product source),
+# or the gate goes dark the first time one of them is edited alone.
+#
+# Adds no file under a registered `externalGateDirs` path
+# (`app-mobile/scripts/ci`) and invokes no .mjs under
+# .github/scripts/strict-grep/, so MANIFEST.json totality, parity and the ratchet
+# counters are untouched.
+#
+# The strict-grep workflow already covers `app-mobile/**` and
+# `supabase/functions/**`, so the ORCH-0839-A gates (T-A1 merged page derivation,
+# T-B0/T-B1/T-B2 meta-vs-items counts, T-C0..T-C4 mobile-cache removal) and the
+# #1637 keep-warm coverage gate run against these same files on every PR that
+# touches them. They are deliberately NOT duplicated here.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/src/utils/__tests__/issue_1637_discover_single_fetch.test.ts"
+      - "app-mobile/src/utils/__tests__/discoverEventsCache.test.ts"
+      - "app-mobile/src/utils/__tests__/discoverEventsCache.adversarial.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_1637_coords_anchor.test.ts"
+      - "app-mobile/src/utils/discoverEventsCache.ts"
+      - "app-mobile/src/utils/discoverDeckOrder.ts"
+      - "app-mobile/src/components/DiscoverScreen.tsx"
+      - "app-mobile/src/services/nightOutExperiencesService.ts"
+      - "app-mobile/src/types/mergedDiscover.ts"
+      - "supabase/functions/discover-merged-events/index.ts"
+      - "supabase/functions/discover-merged-events/_build-response.ts"
+      - "supabase/functions/discover-merged-events/_business-query.ts"
+      - "supabase/functions/discover-merged-events/_cache.ts"
+      - "supabase/functions/discover-merged-events/_types.ts"
+      - "supabase/functions/discover-merged-events/_resolve-entry.ts"
+      - ".github/workflows/issue-1637-discover-single-fetch-tests.yml"
+  pull_request:
+    paths:
+      - "app-mobile/src/utils/__tests__/issue_1637_discover_single_fetch.test.ts"
+      - "app-mobile/src/utils/__tests__/discoverEventsCache.test.ts"
+      - "app-mobile/src/utils/__tests__/discoverEventsCache.adversarial.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_1637_coords_anchor.test.ts"
+      - "app-mobile/src/utils/discoverEventsCache.ts"
+      - "app-mobile/src/utils/discoverDeckOrder.ts"
+      - "app-mobile/src/components/DiscoverScreen.tsx"
+      - "app-mobile/src/services/nightOutExperiencesService.ts"
+      - "app-mobile/src/types/mergedDiscover.ts"
+      - "supabase/functions/discover-merged-events/index.ts"
+      - "supabase/functions/discover-merged-events/_build-response.ts"
+      - "supabase/functions/discover-merged-events/_business-query.ts"
+      - "supabase/functions/discover-merged-events/_cache.ts"
+      - "supabase/functions/discover-merged-events/_types.ts"
+      - "supabase/functions/discover-merged-events/_resolve-entry.ts"
+      - ".github/workflows/issue-1637-discover-single-fetch-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1637-single-fetch:
+    name: "#1637 CONS: a cold Discover open issues ONE fetch carrying both supplies, and nothing re-orders after paint (fails-on-revert)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          # 1.46.x is the CI-canonical Deno for this repo.
+          deno-version: "1.46.x"
+
+      # Fail LOUDLY if a suite or one of its scan targets is renamed or deleted,
+      # rather than silently running nothing — the #1584 failure class. The
+      # source files matter as much as the tests: the #1637 suite READS
+      # DiscoverScreen.tsx and nightOutExperiencesService.ts to prove the screen
+      # delegates to the pure functions the behavioural tests exercise.
+      - name: Require every suite and scan target to exist
+        run: |
+          set -euo pipefail
+          for f in \
+            app-mobile/src/utils/__tests__/issue_1637_discover_single_fetch.test.ts \
+            app-mobile/src/utils/__tests__/discoverEventsCache.test.ts \
+            app-mobile/src/utils/__tests__/discoverEventsCache.adversarial.test.ts \
+            supabase/functions/discover-merged-events/__tests__/issue_1637_coords_anchor.test.ts \
+            app-mobile/src/utils/discoverEventsCache.ts \
+            app-mobile/src/utils/discoverDeckOrder.ts \
+            app-mobile/src/components/DiscoverScreen.tsx \
+            app-mobile/src/services/nightOutExperiencesService.ts \
+            supabase/functions/discover-merged-events/_build-response.ts \
+            supabase/functions/discover-merged-events/_cache.ts ; do
+            test -f "$f" || { echo "MISSING: $f"; exit 1; }
+          done
+
+      # CLIENT half. T-1..T-8 replay the real cold-mount timeline through the
+      # exported pure decisions the screen calls; C-0..C-6 read the real
+      # DiscoverScreen.tsx / nightOutExperiencesService.ts source to prove the
+      # screen has no second fetch path and no separate render block left.
+      - name: "#1637 client: one fetch, one commit, one deck order"
+        run: >-
+          deno test --allow-read
+          app-mobile/src/utils/__tests__/issue_1637_discover_single_fetch.test.ts
+
+      # SERVER half. Proves the merged endpoint answers a coords-only anchor:
+      # p_cities: [] + center/radius to the business RPC, latlong+radius to
+      # Ticketmaster, a 0-indexed TM page for BOTH anchors, and separate cache
+      # slots for coords vs city.
+      - name: "#1637 server: discover-merged-events accepts a coords anchor"
+        run: >-
+          deno test --allow-read --allow-env
+          supabase/functions/discover-merged-events/__tests__/issue_1637_coords_anchor.test.ts
+
+      # ORCH-0996 — the fetch-mode state machine (immediate / debounced / skip)
+      # and the ORCH-0839-A C-1 cross-filter cache-key isolation. #1637 rewrote
+      # what FEEDS the cache signature, so these are the contract most exposed by
+      # this change. Both suites were DARK before #1637; adopting them here is
+      # part of the fix, not incidental.
+      - name: "ORCH-0996 Discover cache contract (adopted — was dark)"
+        run: >-
+          deno test --allow-read
+          app-mobile/src/utils/__tests__/discoverEventsCache.test.ts
+          app-mobile/src/utils/__tests__/discoverEventsCache.adversarial.test.ts
