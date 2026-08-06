@@ -5,7 +5,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  ScrollView,
+  FlatList,
+  type ListRenderItemInfo,
   Modal,
   Platform,
   Alert,
@@ -15,6 +16,18 @@ import {
 } from "react-native";
 
 const ANIMATION_DURATION = 250;
+
+/**
+ * Issue #1636 — how much of the Likes list is allowed to be mounted at once.
+ *
+ * A simple card is ~180pt tall and a curated card ~260pt, so 4-5 fit on an
+ * SM-A725F screen. Rendering 8 up front fills the viewport with a row of
+ * headroom; a window of 5 viewports keeps roughly 20-25 rows alive, which is
+ * what bounds the image fan-out (was: all N, 201 requests / 37 MB at the
+ * production ceiling).
+ */
+const ISSUE_1636_INITIAL_RENDER_COUNT = 8;
+const ISSUE_1636_WINDOW_SIZE = 5;
 import { Icon } from "../ui/Icon";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ExpandedCardModal from "../ExpandedCardModal";
@@ -43,6 +56,11 @@ import {
 } from "../../utils/singleCardAvailability";
 import { getReadableCategoryName } from "../../utils/categoryUtils";
 import { CardFilterBar, WhenFilter } from './CardFilterBar';
+import { resolvePlacePhotoThumbSource } from "../../utils/placePhotoThumb";
+import {
+  ENTRANCE_START_SCALE,
+  getEntranceStaggerDelayMs,
+} from "./savedTabEntrance";
 import { useFeatureGate } from "../../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import type { GatedFeature } from "../../hooks/useFeatureGate";
@@ -106,6 +124,1067 @@ interface SavedCard extends Partial<CanonicalDiscoveryPrice> {
   lat: number;
   lng: number;
 }
+
+// ---------------------------------------------------------------------------
+// Issue #1636 — these two StyleSheet blocks used to live INSIDE the component
+// body, so ~660 style objects were re-allocated (and, in a __DEV__ build,
+// individually Object.freeze'd) on every single render of SavedTab, and every
+// card subtree got brand-new style-object identities that defeated any memo
+// boundary below it. They are pure literals — nothing here closes over a prop,
+// theme value or state — so they are hoisted to module scope and allocated
+// once per process. The ONE style that genuinely depends on a prop
+// (mainScrollContent, which carries the ORCH-1189 floating-nav clearance
+// `bottomNavTotalHeight + 24`) stays in the component as `dynamicStyles`.
+// ---------------------------------------------------------------------------
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  // Issue #1636: the virtualised list's own frame. Was an inline `{ flex: 1 }`
+  // on the ScrollView this FlatList replaced.
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    gap: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 62, // Add padding to prevent tab bar from touching last card
+  },
+  cardWrapper: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  experienceCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 1,
+    overflow: "hidden",
+  },
+  cardContent: {
+    padding: 16,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  cardImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  // Issue #1636: was an inline `{ width: "100%", height: "100%" }` object on the
+  // card thumbnail, re-allocated per card per render.
+  cardImageInner: {
+    width: "100%",
+    height: "100%",
+  },
+  cardInfo: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    marginBottom: 4,
+  },
+  cardSubtitle: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.72)",
+    flexShrink: 1,
+  },
+  cardTitleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  cardTitleTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  cardSubtitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 4,
+    minWidth: 0,
+  },
+  recentlySavedWrap: {
+    alignItems: "flex-end",
+    flexShrink: 0,
+    marginLeft: 8,
+  },
+  recentlySavedText: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.55)",
+  },
+  cardMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  cardStats: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+    minWidth: 0,
+  },
+  statItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  statIcon: {
+    width: 16,
+    height: 16,
+    color: "#eb7825",
+  },
+  statText: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.72)",
+  },
+  priceText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#eb7825",
+    flexShrink: 1,
+  },
+  sourceIndicator: {
+    marginTop: 4,
+  },
+  sourceBadge: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  soloBadge: {
+    backgroundColor: "#dbeafe",
+  },
+  collaborationBadge: {
+    backgroundColor: "#f3e8ff",
+  },
+  soloText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#1e40af",
+  },
+  collaborationText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#7c3aed",
+  },
+  sourceIcon: {
+    width: 12,
+    height: 12,
+  },
+  sourceText: {
+    fontSize: 12,
+  },
+  quickActions: {
+    paddingTop: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#f3f4f6",
+  },
+  actionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  scheduleButtonContainer: {
+    flex: 1,
+    gap: 6,
+  },
+  primaryButton: {
+    flex: 1,
+    backgroundColor: "#eb7825",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.7,
+  },
+  primaryButtonText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  shareButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)", // Light gray border
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderWidth: 0.5,
+    borderColor: "#ef4444", // Red border
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  expandedContent: {
+    borderTopWidth: 1,
+    borderTopColor: "#f3f4f6",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+  },
+  imageGallery: {
+    position: "relative",
+  },
+  galleryImage: {
+    aspectRatio: 16 / 9,
+    overflow: "hidden",
+  },
+  imageNavigation: {
+    position: "absolute",
+    top: "50%",
+    transform: [{ translateY: -16 }],
+    width: 32,
+    height: 32,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  leftNav: {
+    left: 8,
+  },
+  rightNav: {
+    right: 8,
+  },
+  navIcon: {
+    width: 16,
+    height: 16,
+    color: "white",
+  },
+  imageIndicators: {
+    position: "absolute",
+    bottom: 8,
+    left: "50%",
+    transform: [{ translateX: -50 }],
+    flexDirection: "row",
+    gap: 4,
+  },
+  indicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  activeIndicator: {
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+  },
+  inactiveIndicator: {
+    backgroundColor: "rgba(255, 255, 255, 0.5)",
+  },
+  detailsSection: {
+    padding: 16,
+    gap: 16,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#FFFFFF",
+    marginBottom: 8,
+  },
+  sectionText: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.72)",
+    lineHeight: 20,
+  },
+  highlightsContainer: {
+    gap: 8,
+  },
+  highlightsList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  highlightTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: "#fef3e2",
+    borderRadius: 8,
+  },
+  highlightText: {
+    fontSize: 12,
+    color: "#ea580c",
+  },
+  locationContainer: {
+    gap: 8,
+  },
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  locationIcon: {
+    width: 16,
+    height: 16,
+    color: "#eb7825",
+    marginTop: 2,
+    flexShrink: 0,
+  },
+  locationText: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.72)",
+    flex: 1,
+  },
+  socialStatsContainer: {
+    gap: 8,
+  },
+  socialStatsTitle: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#FFFFFF",
+    marginBottom: 8,
+  },
+  socialStatsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  socialStatItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  socialStatIcon: {
+    width: 16,
+    height: 16,
+  },
+  socialStatText: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.72)",
+  },
+  emptyState: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: "rgba(235, 120, 37, 0.08)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#f5e6d3",
+    // META-ORCH-1002 Sub-B (C5, dark-canvas): clip the translucent orange fill +
+    // bright border to the radius (kills the corner ring). Glass fill preserved.
+    overflow: "hidden",
+  },
+  emptyStateIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#fef3e2",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  emptyStateTextContainer: {
+    flex: 1,
+  },
+  emptyStateTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    marginBottom: 2,
+  },
+  emptyStateSubtitle: {
+    fontSize: 13,
+    color: "rgba(255, 255, 255, 0.55)",
+    lineHeight: 18,
+  },
+  clearFiltersButton: {
+    marginTop: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#fff7ed',
+  },
+  clearFiltersText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#eb7825',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 48,
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.72)",
+    marginTop: 8,
+  },
+  closedMessage: {
+    fontSize: 12,
+    color: "#ef4444",
+    textAlign: "center",
+    marginTop: 4,
+    fontWeight: "500",
+  },
+  warningMessage: {
+    fontSize: 12,
+    color: "#f59e0b",
+    textAlign: "center",
+    marginTop: 4,
+    fontWeight: "500",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.12)",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  modalHeaderButtons: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  modalCancelButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  modalCancelText: {
+    fontSize: 16,
+    color: "rgba(255, 255, 255, 0.72)",
+  },
+  modalConfirmButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  modalConfirmText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#eb7825",
+  },
+  dateTimePicker: {
+    height: 200,
+  },
+  retryPill: {
+    backgroundColor: "#eb7825",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  retryPillText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+});
+
+const curatedSavedStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 16,
+    marginBottom: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  imageStrip: {
+    flexDirection: 'row',
+    height: 100,
+  },
+  imageContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  stopImage: {
+    width: '100%',
+    height: '100%',
+  },
+  stopBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#F59E0B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stopBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1C1C1E',
+  },
+  content: {
+    padding: 14,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  typeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(245,158,11,0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  typeBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#F59E0B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  stopCountBadge: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  stopCountText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.5)',
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#ffffff',
+    marginBottom: 4,
+    lineHeight: 22,
+  },
+  tagline: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.5)',
+    fontStyle: 'italic',
+    marginBottom: 10,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  statText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
+    fontWeight: '500',
+  },
+  statDot: {
+    color: 'rgba(255,255,255,0.3)',
+    marginHorizontal: 6,
+    fontSize: 12,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    gap: 10,
+  },
+  scheduleButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#F59E0B',
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  scheduleButtonDisabled: {
+    backgroundColor: 'rgba(245,158,11,0.4)',
+  },
+  scheduleButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1C1C1E',
+  },
+  iconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockedCardOverflow: {
+    overflow: 'hidden',
+  },
+  lockedBody: {
+    backgroundColor: '#1C1C1E',
+    padding: 24,
+    alignItems: 'center',
+    gap: 12,
+  },
+  lockedTeaserText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  lockedSubtext: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  lockedUpgradeButton: {
+    backgroundColor: '#f97316',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  lockedUpgradeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  lockedRemoveButton: {
+    marginTop: 4,
+  },
+  lockedRemoveText: {
+    color: '#6B7280',
+    fontSize: 12,
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Issue #1636 — the two Likes row types, extracted to module scope and
+// memoised.
+//
+// They used to be plain functions (`renderCuratedCard` / `renderCard`) declared
+// INSIDE SavedTab's body, so there was no component boundary per row: React
+// could not bail out of an individual card, and every SavedTab render re-ran
+// every card's subtree. Now each row is a real `React.memo` component whose
+// props are either the card itself or a primitive derived from it, so a
+// scheduling / removal / filter change re-renders only the row it actually
+// touched.
+//
+// Every callback arrives already-stable from SavedTab (see `rowHandlers`), and
+// the entrance-scale Animated.Value is owned by SavedTab's ref map, so neither
+// busts the memo.
+// ---------------------------------------------------------------------------
+
+interface SavedCardRowCommonProps {
+  card: SavedCard;
+  /** Entrance-scale value owned by SavedTab's `cardAnimations` ref map. */
+  scale: Animated.Value;
+  isScheduled: boolean;
+  isRemoving: boolean;
+  isScheduling: boolean;
+  onPress: (card: SavedCard) => void;
+  onSchedule: (card: SavedCard) => void;
+  onShare: (card: SavedCard) => void;
+  onRemove: (card: SavedCard) => void;
+}
+
+interface SavedCuratedCardRowProps extends SavedCardRowCommonProps {
+  /** Resolved from `accountPreferences.currency` once, in the parent. */
+  currencyCode: string;
+}
+
+interface SavedSimpleCardRowProps extends SavedCardRowCommonProps {
+  onPurchase: (card: SavedCard, purchaseOption: any) => void;
+}
+
+const SavedCuratedCardRow = React.memo(function SavedCuratedCardRow({
+  card,
+  scale,
+  isScheduled,
+  isRemoving,
+  isScheduling,
+  currencyCode,
+  onPress,
+  onSchedule,
+  onShare,
+  onRemove,
+}: SavedCuratedCardRowProps) {
+  const { t } = useTranslation(['activity', 'common']);
+  const stops = (card as any).stops as CuratedStop[];
+
+  // Curated cards are viewable by all tiers — save-gating is handled at save time
+
+  // Computed display values
+  const avgRating = stops.length > 0
+    ? (stops.reduce((sum, st) => sum + st.rating, 0) / stops.length).toFixed(1)
+    : '–';
+  const totalPriceMin = (card as any).totalPriceMin ?? 0;
+  const totalPriceMax = (card as any).totalPriceMax ?? 0;
+  const totalPrice = totalPriceMin === 0 && totalPriceMax === 0
+    ? 'Free'
+    : `${formatCurrency(totalPriceMin, currencyCode)}–${formatCurrency(totalPriceMax, currencyCode)}`;
+  const totalMin = (card as any).estimatedDurationMinutes ?? 0;
+  const hrs = Math.floor(totalMin / 60);
+  const mins = totalMin % 60;
+  const durationLabel = hrs > 0
+    ? `${hrs}h ${mins > 0 ? `${mins}min` : ''}`
+    : `${mins}min`;
+  const rawType = (card as any).experienceType || 'adventurous';
+  const experienceLabel = t(`common:intent_${rawType.replace(/-/g, '_')}`);
+
+  return (
+    <Animated.View style={[styles.cardWrapper, { transform: [{ scale }] }]}>
+      <View style={curatedSavedStyles.card}>
+        {/* 3-image strip with numbered badges */}
+        <View style={curatedSavedStyles.imageStrip}>
+          {stops.slice(0, 3).map((stop, idx) => {
+            // Issue #1636: each strip cell is roughly a third of the screen
+            // wide by 100pt tall, so the 384px thumb is the right asset and the
+            // 800x1066 original never was.
+            const stopThumb = resolvePlacePhotoThumbSource(stop.imageUrl);
+            return (
+              <View key={`${stop.placeId}_${idx}`} style={curatedSavedStyles.imageContainer}>
+                <ImageWithFallback
+                  source={{ uri: stopThumb?.uri ?? stop.imageUrl }}
+                  fallbackUri={stopThumb?.fallbackUri}
+                  alt={stop.placeName}
+                  style={curatedSavedStyles.stopImage}
+                />
+                <View style={curatedSavedStyles.stopBadge}>
+                  <Text style={curatedSavedStyles.stopBadgeText}>{idx + 1}</Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Tappable content area */}
+        <TouchableOpacity
+          onPress={() => onPress(card)}
+          activeOpacity={0.7}
+          style={curatedSavedStyles.content}
+        >
+          {/* Experience type + stop count badges */}
+          <View style={curatedSavedStyles.badgeRow}>
+            <View style={curatedSavedStyles.typeBadge}>
+              <Icon name="map-outline" size={12} color="#F59E0B" />
+              <Text style={curatedSavedStyles.typeBadgeText}>{experienceLabel}</Text>
+            </View>
+            <View style={curatedSavedStyles.stopCountBadge}>
+              <Text style={curatedSavedStyles.stopCountText}>{stops.length} Stops</Text>
+            </View>
+          </View>
+
+          {/* Title: experience title, fallback to stop names */}
+          <Text style={curatedSavedStyles.title} numberOfLines={2}>
+            {card.title?.trim() || stops.map(s => s.placeName).join(' → ')}
+          </Text>
+
+          {/* Tagline */}
+          {(card as any).tagline ? (
+            <Text style={curatedSavedStyles.tagline} numberOfLines={1}>
+              {(card as any).tagline}
+            </Text>
+          ) : null}
+
+          {/* Stats row: avg rating, duration, price */}
+          <View style={curatedSavedStyles.statsRow}>
+            <View style={curatedSavedStyles.statItem}>
+              <Icon name="star" size={13} color="white" />
+              <Text style={curatedSavedStyles.statText}>{avgRating} avg</Text>
+            </View>
+            <Text style={curatedSavedStyles.statDot}>·</Text>
+            <View style={curatedSavedStyles.statItem}>
+              <Icon name="time-outline" size={13} color="rgba(255,255,255,0.6)" />
+              <Text style={curatedSavedStyles.statText}>{durationLabel}</Text>
+            </View>
+            <Text style={curatedSavedStyles.statDot}>·</Text>
+            <View style={curatedSavedStyles.statItem}>
+              <Icon name="cash-outline" size={13} color="rgba(255,255,255,0.6)" />
+              <Text style={curatedSavedStyles.statText}>{totalPrice}</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {/* Action buttons */}
+        <View style={curatedSavedStyles.actions}>
+          <TouchableOpacity
+            onPress={() => onSchedule(card)}
+            style={[
+              curatedSavedStyles.scheduleButton,
+              (isScheduled || isScheduling) && curatedSavedStyles.scheduleButtonDisabled,
+            ]}
+            disabled={isScheduled || isScheduling}
+          >
+            {isScheduling ? (
+              <ActivityIndicator size="small" color="#1C1C1E" />
+            ) : (
+              <>
+                <Icon name="calendar" size={16} color="#1C1C1E" />
+                <Text style={curatedSavedStyles.scheduleButtonText}>
+                  {isScheduled ? 'Scheduled' : 'Schedule Plan'}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => onShare(card)}
+            style={curatedSavedStyles.iconButton}
+          >
+            <Icon name="share-social-outline" size={18} color="rgba(255,255,255,0.7)" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => onRemove(card)}
+            style={curatedSavedStyles.iconButton}
+            disabled={isRemoving}
+          >
+            {isRemoving ? (
+              <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" />
+            ) : (
+              <Icon name="trash-outline" size={18} color="rgba(255,255,255,0.7)" />
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
+
+const SavedSimpleCardRow = React.memo(function SavedSimpleCardRow({
+  card,
+  scale,
+  isScheduled,
+  isRemoving,
+  isScheduling,
+  onPress,
+  onSchedule,
+  onPurchase,
+  onShare,
+  onRemove,
+}: SavedSimpleCardRowProps) {
+  const { t } = useTranslation(['activity', 'common']);
+
+  // Check if place is currently open using live client-side time computation
+  const liveStatus = isPlaceOpenNow(
+    extractWeekdayText(card.openingHours),
+    card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null,
+  );
+  const isPlaceOpen = liveStatus !== false; // true or null (unknown) → allow scheduling
+
+  // Issue #1636: an 80x80pt box needs ~210px on an SM-A725F and 240px at 3x on
+  // iPhone. The 384px `_thumb.jpg` covers both; the 800x1066 original was 4.7x
+  // the bytes for pixels this box can never show.
+  const thumb = resolvePlacePhotoThumbSource(card.image);
+
+  return (
+    <Animated.View style={[styles.cardWrapper, { transform: [{ scale }] }]}>
+      <View style={styles.experienceCard}>
+        <TouchableOpacity
+          onPress={() => onPress(card)}
+          activeOpacity={0.7}
+          style={styles.cardContent}
+        >
+          <View style={styles.cardHeader}>
+            <View style={styles.cardImage}>
+              <ImageWithFallback
+                source={{ uri: thumb?.uri ?? card.image }}
+                fallbackUri={thumb?.fallbackUri}
+                alt={card.title}
+                style={styles.cardImageInner}
+              />
+            </View>
+
+            <View style={styles.cardInfo}>
+              <View style={styles.cardTitleRow}>
+                <View style={styles.cardTitleTextWrap}>
+                  <Text style={styles.cardTitle} numberOfLines={1} ellipsizeMode="tail">{card.title}</Text>
+                  {/* Subtitle - use category or a default subtitle */}
+                  <View style={styles.cardSubtitleRow}>
+                    <Icon name="heart" size={16} color="orange" />
+                    <Text style={styles.cardSubtitle} numberOfLines={1} ellipsizeMode="tail">
+                      {(card as any).subtitle || getReadableCategoryName(card.category) || "Experience"}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.recentlySavedWrap}>
+                  <Text style={styles.recentlySavedText} numberOfLines={1}>{t('activity:savedTab.recentlySaved')}</Text>
+                </View>
+              </View>
+
+              {/* Stats row: Rating, Duration, Price, Chevron */}
+              <View style={styles.cardMeta}>
+                <View style={styles.cardStats}>
+                  {card.rating != null && Number(card.rating) > 0 && (
+                    <View style={styles.statItem}>
+                      <Icon name="star" size={14} color="#fbbf24" />
+                      <Text style={styles.statText}>{Number(card.rating).toFixed(1)}</Text>
+                    </View>
+                  )}
+                  {card.travelTime && card.travelTime !== '0 min' && (
+                    <View style={styles.statItem}>
+                      <Icon name={getTravelModeIcon((card as any).travelMode)} size={14} color="#6b7280" />
+                      <Text style={styles.statText}>
+                        {card.travelTime}
+                      </Text>
+                    </View>
+                  )}
+                  {card.priceRange ? (
+                    <Text style={styles.priceText} numberOfLines={1} ellipsizeMode="tail">
+                      {card.priceRange}
+                    </Text>
+                  ) : null}
+                </View>
+                <Icon name="chevron-forward" size={16} color="#9ca3af" />
+              </View>
+
+              {/* Source badge */}
+              <View style={styles.sourceIndicator}>
+                <View
+                  style={[
+                    styles.sourceBadge,
+                    card.source === "solo"
+                      ? styles.soloBadge
+                      : styles.collaborationBadge,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.sourceText,
+                      card.source === "solo"
+                        ? styles.soloText
+                        : styles.collaborationText,
+                    ]}
+                  >
+                    {card.source === "solo"
+                      ? t('activity:savedTab.soloDiscovery')
+                      : t('activity:savedTab.fromSession', { name: card.sessionName })}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <View style={styles.actionsRow}>
+            {/* Conditional Buy Now/Schedule button */}
+            {card.purchaseOptions && card.purchaseOptions.length > 0 ? (
+              <TouchableOpacity
+                onPress={() =>
+                  onPurchase(card, card.purchaseOptions?.[0])
+                }
+                style={styles.primaryButton}
+              >
+                <Icon name="bag" size={16} color="white" />
+                <Text style={styles.primaryButtonText}>{t('activity:savedTab.buyNow')}</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.scheduleButtonContainer}>
+                <TouchableOpacity
+                  onPress={() => onSchedule(card)}
+                  style={[
+                    styles.primaryButton,
+                    // ORCH-1195: do NOT disable on current open-now status. The
+                    // scheduler validates the user's SELECTED future datetime via
+                    // checkSingleCardSchedulingAvailability (isPlaceOpenAt) inside
+                    // handleProposeDateTime; disabling on isPlaceOpen would wrongly
+                    // block opening the scheduler for a place that's closed now but
+                    // open at a future time. The "currently closed" label stays.
+                    (isScheduling || isScheduled) &&
+                      styles.primaryButtonDisabled,
+                  ]}
+                  disabled={isScheduling || isScheduled}
+                >
+                  {isScheduling ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <>
+                      <Icon name="calendar" size={16} color="white" />
+                      <Text style={styles.primaryButtonText}>
+                        {isScheduled ? t('activity:savedTab.scheduled') : t('activity:savedTab.schedule')}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                {!isPlaceOpen && (
+                  <Text style={styles.closedMessage}>
+                    {t('activity:savedTab.placeClosed')}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            <TouchableOpacity
+              onPress={() => onShare(card)}
+              style={styles.shareButton}
+            >
+              <Icon name="share-social-outline" size={18} color="#374151" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => onRemove(card)}
+              style={styles.deleteButton}
+              disabled={isRemoving}
+            >
+              {isRemoving ? (
+                <ActivityIndicator size="small" color="#ef4444" />
+              ) : (
+                <Icon name="trash-outline" size={18} color="#ef4444" />
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Animated.View>
+  );
+});
+
 
 interface SavedTabProps {
   savedCards?: SavedCard[];
@@ -192,15 +1271,22 @@ const SavedTab = ({
   const searchBarSlide = useRef(new Animated.Value(30)).current;
   const cardAnimations = useRef<{ [key: string]: { scale: Animated.Value } }>({});
 
+  /**
+   * Issue #1636: card ids that have already played their entrance for THIS
+   * mount. A card animates in exactly once — which is what stops every search
+   * keystroke from resetting the whole list to 0.8 and restarting the ramp.
+   */
+  const entranceAnimatedIdsRef = useRef<Set<string>>(new Set());
+
   // Initialize animation for each card
-  const getCardAnimation = (cardId: string) => {
+  const getCardAnimation = useCallback((cardId: string) => {
     if (!cardAnimations.current[cardId]) {
       cardAnimations.current[cardId] = {
-        scale: new Animated.Value(0.8),
+        scale: new Animated.Value(ENTRANCE_START_SCALE),
       };
     }
     return cardAnimations.current[cardId];
-  };
+  }, []);
 
   // Run search bar entrance animation on mount
   useEffect(() => {
@@ -323,22 +1409,41 @@ const SavedTab = ({
     selectedTier,
   ]);
 
-  // Run card pop animations when filtered cards change
+  /**
+   * Issue #1636 — bounded, once-per-card entrance.
+   *
+   * BEFORE: every card in the list was reset to 0.8 and given its own
+   * `setTimeout(..., index * 60)`, so the last card of a 148-card set did not
+   * begin its spring until 8.9 s after mount — and because the dependency was
+   * `[filteredCards.length]`, every search keystroke that changed the match
+   * count restarted the entire ramp from zero.
+   *
+   * AFTER: a card animates in exactly once per mount (tracked by id), and the
+   * delay is clamped by `getEntranceStaggerDelayMs`, so the tail is 480 ms at
+   * N = 10, N = 148 or N = 10 000. The delay is handed to `Animated.spring`
+   * itself rather than to a `setTimeout`, so there are no pending timers to
+   * leak or to cancel — a cancelled timer would have stranded its card at 0.8
+   * forever.
+   */
   useEffect(() => {
-    filteredCards.forEach((card, index) => {
-      const animation = getCardAnimation(card.id);
-      animation.scale.setValue(0.8);
+    let newCardIndex = 0;
+    for (const card of filteredCards) {
+      if (entranceAnimatedIdsRef.current.has(card.id)) continue;
+      entranceAnimatedIdsRef.current.add(card.id);
 
-      setTimeout(() => {
-        Animated.spring(animation.scale, {
-          toValue: 1,
-          friction: 6,
-          tension: 100,
-          useNativeDriver: true,
-        }).start();
-      }, index * 60);
-    });
-  }, [filteredCards.length]);
+      const animation = getCardAnimation(card.id);
+      animation.scale.setValue(ENTRANCE_START_SCALE);
+      Animated.spring(animation.scale, {
+        toValue: 1,
+        friction: 6,
+        tension: 100,
+        delay: getEntranceStaggerDelayMs(newCardIndex),
+        useNativeDriver: true,
+      }).start();
+
+      newCardIndex += 1;
+    }
+  }, [filteredCards, getCardAnimation]);
 
   const getMatchScore = (card: SavedCard): number | null => {
     if (typeof card?.matchScore === "number") return card.matchScore;
@@ -351,665 +1456,6 @@ const SavedTab = ({
     return null;
   };
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-    },
-    mainScrollContent: {
-      // ORCH-1189: clear the floating GlassBottomNav from the INNER scroll content
-      // (LikesPage's `content` View no longer carries a frame-shrinking
-      // paddingBottom, so the tab paints full-bleed to the screen bottom).
-      paddingBottom: bottomNavTotalHeight + 24,
-    },
-    listContent: {
-      gap: 16,
-      paddingHorizontal: 16,
-      paddingTop: 16,
-      paddingBottom: 62, // Add padding to prevent tab bar from touching last card
-    },
-    cardWrapper: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-    },
-    experienceCard: {
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: "#f0f0f0",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.06,
-      shadowRadius: 16,
-      elevation: 1,
-      overflow: "hidden",
-    },
-    cardContent: {
-      padding: 16,
-    },
-    cardHeader: {
-      flexDirection: "row",
-      gap: 12,
-    },
-    cardImage: {
-      width: 80,
-      height: 80,
-      borderRadius: 12,
-      overflow: "hidden",
-      backgroundColor: "rgba(255, 255, 255, 0.08)",
-    },
-    cardInfo: {
-      flex: 1,
-      minWidth: 0,
-      overflow: "hidden",
-    },
-    cardTitle: {
-      fontSize: 16,
-      fontWeight: "700",
-      color: "#FFFFFF",
-      marginBottom: 4,
-    },
-    cardSubtitle: {
-      fontSize: 14,
-      color: "rgba(255, 255, 255, 0.72)",
-      flexShrink: 1,
-    },
-    cardTitleRow: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      justifyContent: "space-between",
-      marginBottom: 4,
-    },
-    cardTitleTextWrap: {
-      flex: 1,
-      minWidth: 0,
-    },
-    cardSubtitleRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "flex-start",
-      gap: 4,
-      minWidth: 0,
-    },
-    recentlySavedWrap: {
-      alignItems: "flex-end",
-      flexShrink: 0,
-      marginLeft: 8,
-    },
-    recentlySavedText: {
-      fontSize: 12,
-      color: "rgba(255, 255, 255, 0.55)",
-    },
-    cardMeta: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: 8,
-    },
-    cardStats: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      flex: 1,
-      minWidth: 0,
-    },
-    statItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-    },
-    statIcon: {
-      width: 16,
-      height: 16,
-      color: "#eb7825",
-    },
-    statText: {
-      fontSize: 14,
-      color: "rgba(255, 255, 255, 0.72)",
-    },
-    priceText: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: "#eb7825",
-      flexShrink: 1,
-    },
-    sourceIndicator: {
-      marginTop: 4,
-    },
-    sourceBadge: {
-      alignSelf: "flex-start",
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: 999,
-    },
-    soloBadge: {
-      backgroundColor: "#dbeafe",
-    },
-    collaborationBadge: {
-      backgroundColor: "#f3e8ff",
-    },
-    soloText: {
-      fontSize: 12,
-      fontWeight: "500",
-      color: "#1e40af",
-    },
-    collaborationText: {
-      fontSize: 12,
-      fontWeight: "500",
-      color: "#7c3aed",
-    },
-    sourceIcon: {
-      width: 12,
-      height: 12,
-    },
-    sourceText: {
-      fontSize: 12,
-    },
-    quickActions: {
-      paddingTop: 12,
-      paddingHorizontal: 16,
-      paddingBottom: 16,
-      borderTopWidth: 1,
-      borderTopColor: "#f3f4f6",
-    },
-    actionsRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    scheduleButtonContainer: {
-      flex: 1,
-      gap: 6,
-    },
-    primaryButton: {
-      flex: 1,
-      backgroundColor: "#eb7825",
-      paddingVertical: 10,
-      paddingHorizontal: 16,
-      borderRadius: 12,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-    },
-    primaryButtonDisabled: {
-      opacity: 0.7,
-    },
-    primaryButtonText: {
-      color: "white",
-      fontSize: 14,
-      fontWeight: "600",
-    },
-    shareButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
-      borderWidth: 1,
-      borderColor: "rgba(255, 255, 255, 0.12)", // Light gray border
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    deleteButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
-      borderWidth: 0.5,
-      borderColor: "#ef4444", // Red border
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    expandedContent: {
-      borderTopWidth: 1,
-      borderTopColor: "#f3f4f6",
-      backgroundColor: "rgba(255, 255, 255, 0.04)",
-    },
-    imageGallery: {
-      position: "relative",
-    },
-    galleryImage: {
-      aspectRatio: 16 / 9,
-      overflow: "hidden",
-    },
-    imageNavigation: {
-      position: "absolute",
-      top: "50%",
-      transform: [{ translateY: -16 }],
-      width: 32,
-      height: 32,
-      backgroundColor: "rgba(0, 0, 0, 0.5)",
-      borderRadius: 16,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    leftNav: {
-      left: 8,
-    },
-    rightNav: {
-      right: 8,
-    },
-    navIcon: {
-      width: 16,
-      height: 16,
-      color: "white",
-    },
-    imageIndicators: {
-      position: "absolute",
-      bottom: 8,
-      left: "50%",
-      transform: [{ translateX: -50 }],
-      flexDirection: "row",
-      gap: 4,
-    },
-    indicator: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-    },
-    activeIndicator: {
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
-    },
-    inactiveIndicator: {
-      backgroundColor: "rgba(255, 255, 255, 0.5)",
-    },
-    detailsSection: {
-      padding: 16,
-      gap: 16,
-    },
-    sectionTitle: {
-      fontSize: 16,
-      fontWeight: "500",
-      color: "#FFFFFF",
-      marginBottom: 8,
-    },
-    sectionText: {
-      fontSize: 14,
-      color: "rgba(255, 255, 255, 0.72)",
-      lineHeight: 20,
-    },
-    highlightsContainer: {
-      gap: 8,
-    },
-    highlightsList: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-    },
-    highlightTag: {
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      backgroundColor: "#fef3e2",
-      borderRadius: 8,
-    },
-    highlightText: {
-      fontSize: 12,
-      color: "#ea580c",
-    },
-    locationContainer: {
-      gap: 8,
-    },
-    locationRow: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 8,
-    },
-    locationIcon: {
-      width: 16,
-      height: 16,
-      color: "#eb7825",
-      marginTop: 2,
-      flexShrink: 0,
-    },
-    locationText: {
-      fontSize: 14,
-      color: "rgba(255, 255, 255, 0.72)",
-      flex: 1,
-    },
-    socialStatsContainer: {
-      gap: 8,
-    },
-    socialStatsTitle: {
-      fontSize: 16,
-      fontWeight: "500",
-      color: "#FFFFFF",
-      marginBottom: 8,
-    },
-    socialStatsRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 16,
-    },
-    socialStatItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-    },
-    socialStatIcon: {
-      width: 16,
-      height: 16,
-    },
-    socialStatText: {
-      fontSize: 14,
-      color: "rgba(255, 255, 255, 0.72)",
-    },
-    emptyState: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginHorizontal: 16,
-      marginVertical: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      backgroundColor: "rgba(235, 120, 37, 0.08)",
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: "#f5e6d3",
-      // META-ORCH-1002 Sub-B (C5, dark-canvas): clip the translucent orange fill +
-      // bright border to the radius (kills the corner ring). Glass fill preserved.
-      overflow: "hidden",
-    },
-    emptyStateIconCircle: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: "#fef3e2",
-      alignItems: "center",
-      justifyContent: "center",
-      marginRight: 12,
-    },
-    emptyStateTextContainer: {
-      flex: 1,
-    },
-    emptyStateTitle: {
-      fontSize: 15,
-      fontWeight: "600",
-      color: "#FFFFFF",
-      marginBottom: 2,
-    },
-    emptyStateSubtitle: {
-      fontSize: 13,
-      color: "rgba(255, 255, 255, 0.55)",
-      lineHeight: 18,
-    },
-    clearFiltersButton: {
-      marginTop: 12,
-      paddingHorizontal: 20,
-      paddingVertical: 10,
-      borderRadius: 8,
-      backgroundColor: '#fff7ed',
-    },
-    clearFiltersText: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: '#eb7825',
-    },
-    loadingContainer: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      paddingVertical: 48,
-      gap: 12,
-    },
-    loadingText: {
-      fontSize: 14,
-      color: "rgba(255, 255, 255, 0.72)",
-      marginTop: 8,
-    },
-    closedMessage: {
-      fontSize: 12,
-      color: "#ef4444",
-      textAlign: "center",
-      marginTop: 4,
-      fontWeight: "500",
-    },
-    warningMessage: {
-      fontSize: 12,
-      color: "#f59e0b",
-      textAlign: "center",
-      marginTop: 4,
-      fontWeight: "500",
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0, 0, 0, 0.5)",
-      justifyContent: "flex-end",
-    },
-    modalContent: {
-      backgroundColor: "rgba(255, 255, 255, 0.06)",
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      paddingBottom: 20,
-    },
-    modalHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingHorizontal: 16,
-      paddingVertical: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: "rgba(255, 255, 255, 0.12)",
-    },
-    modalTitle: {
-      fontSize: 18,
-      fontWeight: "600",
-      color: "#FFFFFF",
-    },
-    modalHeaderButtons: {
-      flexDirection: "row",
-      gap: 16,
-    },
-    modalCancelButton: {
-      paddingVertical: 8,
-      paddingHorizontal: 16,
-    },
-    modalCancelText: {
-      fontSize: 16,
-      color: "rgba(255, 255, 255, 0.72)",
-    },
-    modalConfirmButton: {
-      paddingVertical: 8,
-      paddingHorizontal: 16,
-    },
-    modalConfirmText: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: "#eb7825",
-    },
-    dateTimePicker: {
-      height: 200,
-    },
-    retryPill: {
-      backgroundColor: "#eb7825",
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 8,
-      marginLeft: 8,
-    },
-    retryPillText: {
-      color: "#ffffff",
-      fontSize: 13,
-      fontWeight: "600",
-    },
-  });
-
-  const curatedSavedStyles = StyleSheet.create({
-    card: {
-      backgroundColor: '#1C1C1E',
-      borderRadius: 16,
-      marginBottom: 12,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.08)',
-    },
-    imageStrip: {
-      flexDirection: 'row',
-      height: 100,
-    },
-    imageContainer: {
-      flex: 1,
-      position: 'relative',
-    },
-    stopImage: {
-      width: '100%',
-      height: '100%',
-    },
-    stopBadge: {
-      position: 'absolute',
-      bottom: 6,
-      left: 6,
-      width: 22,
-      height: 22,
-      borderRadius: 11,
-      backgroundColor: '#F59E0B',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    stopBadgeText: {
-      fontSize: 11,
-      fontWeight: '700',
-      color: '#1C1C1E',
-    },
-    content: {
-      padding: 14,
-    },
-    badgeRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      marginBottom: 8,
-    },
-    typeBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      backgroundColor: 'rgba(245,158,11,0.12)',
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 6,
-    },
-    typeBadgeText: {
-      fontSize: 11,
-      fontWeight: '600',
-      color: '#F59E0B',
-      textTransform: 'uppercase',
-      letterSpacing: 0.3,
-    },
-    stopCountBadge: {
-      backgroundColor: 'rgba(255,255,255,0.08)',
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 6,
-    },
-    stopCountText: {
-      fontSize: 11,
-      fontWeight: '600',
-      color: 'rgba(255,255,255,0.5)',
-    },
-    title: {
-      fontSize: 16,
-      fontWeight: '700',
-      color: '#ffffff',
-      marginBottom: 4,
-      lineHeight: 22,
-    },
-    tagline: {
-      fontSize: 13,
-      color: 'rgba(255,255,255,0.5)',
-      fontStyle: 'italic',
-      marginBottom: 10,
-    },
-    statsRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginTop: 4,
-    },
-    statItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-    },
-    statText: {
-      fontSize: 12,
-      color: 'rgba(255,255,255,0.6)',
-      fontWeight: '500',
-    },
-    statDot: {
-      color: 'rgba(255,255,255,0.3)',
-      marginHorizontal: 6,
-      fontSize: 12,
-    },
-    actions: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 14,
-      paddingBottom: 14,
-      gap: 10,
-    },
-    scheduleButton: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      backgroundColor: '#F59E0B',
-      paddingVertical: 10,
-      borderRadius: 10,
-    },
-    scheduleButtonDisabled: {
-      backgroundColor: 'rgba(245,158,11,0.4)',
-    },
-    scheduleButtonText: {
-      fontSize: 14,
-      fontWeight: '700',
-      color: '#1C1C1E',
-    },
-    iconButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 10,
-      backgroundColor: 'rgba(255,255,255,0.06)',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    lockedCardOverflow: {
-      overflow: 'hidden',
-    },
-    lockedBody: {
-      backgroundColor: '#1C1C1E',
-      padding: 24,
-      alignItems: 'center',
-      gap: 12,
-    },
-    lockedTeaserText: {
-      color: '#fff',
-      fontSize: 15,
-      fontWeight: '600',
-      textAlign: 'center',
-    },
-    lockedSubtext: {
-      color: '#9CA3AF',
-      fontSize: 12,
-      textAlign: 'center',
-    },
-    lockedUpgradeButton: {
-      backgroundColor: '#f97316',
-      paddingHorizontal: 20,
-      paddingVertical: 10,
-      borderRadius: 10,
-      marginTop: 4,
-    },
-    lockedUpgradeText: {
-      color: '#fff',
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    lockedRemoveButton: {
-      marginTop: 4,
-    },
-    lockedRemoveText: {
-      color: '#6B7280',
-      fontSize: 12,
-    },
-  });
 
   const getIconComponent = (iconName: any) => {
     if (typeof iconName === "function") {
@@ -1629,321 +2075,126 @@ const SavedTab = ({
     }
   };
 
-  const renderCuratedCard = (card: SavedCard) => {
-    const stops = (card as any).stops as CuratedStop[];
-    const isRemoving = removingCardIds.has(card.id);
+  // ─── Issue #1636: virtualised-list plumbing ────────────────────────────────
 
-    // Curated cards are viewable by all tiers — save-gating is handled at save time
+  /**
+   * The ONE style that genuinely depends on a prop, kept out of the hoisted
+   * module-scope block.
+   *
+   * ORCH-1189 contract: LikesPage's `content` View deliberately carries NO
+   * frame-shrinking paddingBottom, so this tab paints full-bleed to the
+   * physical screen bottom. The floating GlassBottomNav clearance is applied
+   * HERE, on the inner scroll content, as `bottomNavTotalHeight + 24`. Moving
+   * this onto the FlatList's `contentContainerStyle` keeps that contract
+   * byte-for-byte — see
+   * `__tests__/orch_1189_likes_floating_nav_clearance.test.mjs` T-3.
+   */
+  const dynamicStyles = useMemo(
+    () =>
+      StyleSheet.create({
+        mainScrollContent: {
+          paddingBottom: bottomNavTotalHeight + 24,
+        },
+      }),
+    [bottomNavTotalHeight],
+  );
 
-    const isScheduled = scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id);
-
-    // Computed display values
-    const avgRating = stops.length > 0
-      ? (stops.reduce((sum, st) => sum + st.rating, 0) / stops.length).toFixed(1)
-      : '–';
-    const totalPriceMin = (card as any).totalPriceMin ?? 0;
-    const totalPriceMax = (card as any).totalPriceMax ?? 0;
-    const currencyCode = accountPreferences?.currency || 'USD';
-    const totalPrice = totalPriceMin === 0 && totalPriceMax === 0
-      ? 'Free'
-      : `${formatCurrency(totalPriceMin, currencyCode)}–${formatCurrency(totalPriceMax, currencyCode)}`;
-    const totalMin = (card as any).estimatedDurationMinutes ?? 0;
-    const hrs = Math.floor(totalMin / 60);
-    const mins = totalMin % 60;
-    const durationLabel = hrs > 0
-      ? `${hrs}h ${mins > 0 ? `${mins}min` : ''}`
-      : `${mins}min`;
-    const rawType = (card as any).experienceType || 'adventurous';
-    const experienceLabel = t(`common:intent_${rawType.replace(/-/g, '_')}`);
-
-    return (
-      <View style={curatedSavedStyles.card}>
-        {/* 3-image strip with numbered badges */}
-        <View style={curatedSavedStyles.imageStrip}>
-          {stops.slice(0, 3).map((stop, idx) => (
-            <View key={`${stop.placeId}_${idx}`} style={curatedSavedStyles.imageContainer}>
-              <ImageWithFallback
-                source={{ uri: stop.imageUrl }}
-                alt={stop.placeName}
-                style={curatedSavedStyles.stopImage}
-              />
-              <View style={curatedSavedStyles.stopBadge}>
-                <Text style={curatedSavedStyles.stopBadgeText}>{idx + 1}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-
-        {/* Tappable content area */}
-        <TouchableOpacity
-          onPress={() => handleCardPress(card)}
-          activeOpacity={0.7}
-          style={curatedSavedStyles.content}
-        >
-          {/* Experience type + stop count badges */}
-          <View style={curatedSavedStyles.badgeRow}>
-            <View style={curatedSavedStyles.typeBadge}>
-              <Icon name="map-outline" size={12} color="#F59E0B" />
-              <Text style={curatedSavedStyles.typeBadgeText}>{experienceLabel}</Text>
-            </View>
-            <View style={curatedSavedStyles.stopCountBadge}>
-              <Text style={curatedSavedStyles.stopCountText}>{stops.length} Stops</Text>
-            </View>
-          </View>
-
-          {/* Title: experience title, fallback to stop names */}
-          <Text style={curatedSavedStyles.title} numberOfLines={2}>
-            {card.title?.trim() || stops.map(s => s.placeName).join(' → ')}
-          </Text>
-
-          {/* Tagline */}
-          {(card as any).tagline ? (
-            <Text style={curatedSavedStyles.tagline} numberOfLines={1}>
-              {(card as any).tagline}
-            </Text>
-          ) : null}
-
-          {/* Stats row: avg rating, duration, price */}
-          <View style={curatedSavedStyles.statsRow}>
-            <View style={curatedSavedStyles.statItem}>
-              <Icon name="star" size={13} color="white" />
-              <Text style={curatedSavedStyles.statText}>{avgRating} avg</Text>
-            </View>
-            <Text style={curatedSavedStyles.statDot}>·</Text>
-            <View style={curatedSavedStyles.statItem}>
-              <Icon name="time-outline" size={13} color="rgba(255,255,255,0.6)" />
-              <Text style={curatedSavedStyles.statText}>{durationLabel}</Text>
-            </View>
-            <Text style={curatedSavedStyles.statDot}>·</Text>
-            <View style={curatedSavedStyles.statItem}>
-              <Icon name="cash-outline" size={13} color="rgba(255,255,255,0.6)" />
-              <Text style={curatedSavedStyles.statText}>{totalPrice}</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        {/* Action buttons */}
-        <View style={curatedSavedStyles.actions}>
-          <TouchableOpacity
-            onPress={() => handleScheduleCurated(card)}
-            style={[
-              curatedSavedStyles.scheduleButton,
-              (isScheduled || schedulingCardId === card.id) && curatedSavedStyles.scheduleButtonDisabled,
-            ]}
-            disabled={isScheduled || schedulingCardId === card.id}
-          >
-            {schedulingCardId === card.id ? (
-              <ActivityIndicator size="small" color="#1C1C1E" />
-            ) : (
-              <>
-                <Icon name="calendar" size={16} color="#1C1C1E" />
-                <Text style={curatedSavedStyles.scheduleButtonText}>
-                  {isScheduled ? 'Scheduled' : 'Schedule Plan'}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => onShareCard(card)}
-            style={curatedSavedStyles.iconButton}
-          >
-            <Icon name="share-social-outline" size={18} color="rgba(255,255,255,0.7)" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => handleRemoveSaved(card)}
-            style={curatedSavedStyles.iconButton}
-            disabled={isRemoving}
-          >
-            {isRemoving ? (
-              <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" />
-            ) : (
-              <Icon name="trash-outline" size={18} color="rgba(255,255,255,0.7)" />
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
+  /**
+   * Permanently-stable row callbacks.
+   *
+   * The row components are `React.memo`'d, so a callback whose identity changed
+   * every render would defeat the memo entirely. Rather than hand-maintaining a
+   * `useCallback` dependency array for each handler — where one missing entry is
+   * a stale closure and a real bug — the newest handler is parked in a ref every
+   * render and the exposed callbacks read through it. The exposed identities
+   * never change; the behaviour is always the latest.
+   */
+  const latestRowHandlersRef = useRef({
+    onPress: handleCardPress,
+    onScheduleSimple: handleSchedule,
+    onScheduleCurated: handleScheduleCurated,
+    onPurchase: onPurchaseFromSaved,
+    onShare: onShareCard,
+    onRemove: handleRemoveSaved,
+  });
+  latestRowHandlersRef.current = {
+    onPress: handleCardPress,
+    onScheduleSimple: handleSchedule,
+    onScheduleCurated: handleScheduleCurated,
+    onPurchase: onPurchaseFromSaved,
+    onShare: onShareCard,
+    onRemove: handleRemoveSaved,
   };
 
-  const renderCard = ({ item: card }: { item: SavedCard }) => {
-    // Curated multi-stop cards get a premium layout
-    const isCuratedCard = Array.isArray((card as any).stops) && (card as any).stops.length > 0;
-    if (isCuratedCard) {
-      return renderCuratedCard(card);
-    }
+  const rowHandlers = useRef({
+    onPress: (card: SavedCard) => latestRowHandlersRef.current.onPress(card),
+    onScheduleSimple: (card: SavedCard) =>
+      latestRowHandlersRef.current.onScheduleSimple(card),
+    onScheduleCurated: (card: SavedCard) =>
+      latestRowHandlersRef.current.onScheduleCurated(card),
+    onPurchase: (card: SavedCard, purchaseOption: any) =>
+      latestRowHandlersRef.current.onPurchase(card, purchaseOption),
+    onShare: (card: SavedCard) => latestRowHandlersRef.current.onShare(card),
+    onRemove: (card: SavedCard) => latestRowHandlersRef.current.onRemove(card),
+  }).current;
 
-    const isScheduled = scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id);
-    const isRemoving = removingCardIds.has(card.id);
+  const currencyCode = accountPreferences?.currency || 'USD';
 
-    // Check if place is currently open using live client-side time computation
-    const liveStatus = isPlaceOpenNow(
-      extractWeekdayText(card.openingHours),
-      card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null,
-    );
-    const isPlaceOpen = liveStatus !== false; // true or null (unknown) → allow scheduling
+  const keyExtractor = useCallback((card: SavedCard) => card.id, []);
 
-    return (
-      <View style={styles.experienceCard}>
-        <TouchableOpacity
-          onPress={() => handleCardPress(card)}
-          activeOpacity={0.7}
-          style={styles.cardContent}
-        >
-          <View style={styles.cardHeader}>
-            <View style={styles.cardImage}>
-              <ImageWithFallback
-                source={{ uri: card.image }}
-                alt={card.title}
-                style={{ width: "100%", height: "100%" }}
-              />
-            </View>
+  const renderItem = useCallback(
+    ({ item: card }: ListRenderItemInfo<SavedCard>) => {
+      const isCuratedCard =
+        Array.isArray((card as any).stops) && (card as any).stops.length > 0;
+      const isScheduled =
+        scheduledCardIdsSet.has(card.id) || calendarCardIdsSet.has(card.id);
+      const isRemoving = removingCardIds.has(card.id);
+      const isScheduling = schedulingCardId === card.id;
+      const { scale } = getCardAnimation(card.id);
 
-            <View style={styles.cardInfo}>
-              <View style={styles.cardTitleRow}>
-                <View style={styles.cardTitleTextWrap}>
-                  <Text style={styles.cardTitle} numberOfLines={1} ellipsizeMode="tail">{card.title}</Text>
-                  {/* Subtitle - use category or a default subtitle */}
-                  <View style={styles.cardSubtitleRow}>
-                    <Icon name="heart" size={16} color="orange" />
-                    <Text style={styles.cardSubtitle} numberOfLines={1} ellipsizeMode="tail">
-                      {(card as any).subtitle || getReadableCategoryName(card.category) || "Experience"}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.recentlySavedWrap}>
-                  <Text style={styles.recentlySavedText} numberOfLines={1}>{t('activity:savedTab.recentlySaved')}</Text>
-                </View>
-              </View>
+      // Curated multi-stop cards get a premium layout
+      if (isCuratedCard) {
+        return (
+          <SavedCuratedCardRow
+            card={card}
+            scale={scale}
+            isScheduled={isScheduled}
+            isRemoving={isRemoving}
+            isScheduling={isScheduling}
+            currencyCode={currencyCode}
+            onPress={rowHandlers.onPress}
+            onSchedule={rowHandlers.onScheduleCurated}
+            onShare={rowHandlers.onShare}
+            onRemove={rowHandlers.onRemove}
+          />
+        );
+      }
 
-              {/* Stats row: Rating, Duration, Price, Chevron */}
-              <View style={styles.cardMeta}>
-                <View style={styles.cardStats}>
-                  {card.rating != null && Number(card.rating) > 0 && (
-                    <View style={styles.statItem}>
-                      <Icon name="star" size={14} color="#fbbf24" />
-                      <Text style={styles.statText}>{Number(card.rating).toFixed(1)}</Text>
-                    </View>
-                  )}
-                  {card.travelTime && card.travelTime !== '0 min' && (
-                    <View style={styles.statItem}>
-                      <Icon name={getTravelModeIcon((card as any).travelMode)} size={14} color="#6b7280" />
-                      <Text style={styles.statText}>
-                        {card.travelTime}
-                      </Text>
-                    </View>
-                  )}
-                  {card.priceRange ? (
-                    <Text style={styles.priceText} numberOfLines={1} ellipsizeMode="tail">
-                      {card.priceRange}
-                    </Text>
-                  ) : null}
-                </View>
-                <Icon name="chevron-forward" size={16} color="#9ca3af" />
-              </View>
-
-              {/* Source badge */}
-              <View style={styles.sourceIndicator}>
-                <View
-                  style={[
-                    styles.sourceBadge,
-                    card.source === "solo"
-                      ? styles.soloBadge
-                      : styles.collaborationBadge,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.sourceText,
-                      card.source === "solo"
-                        ? styles.soloText
-                        : styles.collaborationText,
-                    ]}
-                  >
-                    {card.source === "solo"
-                      ? t('activity:savedTab.soloDiscovery')
-                      : t('activity:savedTab.fromSession', { name: card.sessionName })}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <View style={styles.actionsRow}>
-            {/* Conditional Buy Now/Schedule button */}
-            {card.purchaseOptions && card.purchaseOptions.length > 0 ? (
-              <TouchableOpacity
-                onPress={() =>
-                  onPurchaseFromSaved(card, card.purchaseOptions?.[0])
-                }
-                style={styles.primaryButton}
-              >
-                <Icon name="bag" size={16} color="white" />
-                <Text style={styles.primaryButtonText}>{t('activity:savedTab.buyNow')}</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.scheduleButtonContainer}>
-                <TouchableOpacity
-                  onPress={() => handleSchedule(card)}
-                  style={[
-                    styles.primaryButton,
-                    // ORCH-1195: do NOT disable on current open-now status. The
-                    // scheduler validates the user's SELECTED future datetime via
-                    // checkSingleCardSchedulingAvailability (isPlaceOpenAt) inside
-                    // handleProposeDateTime; disabling on isPlaceOpen would wrongly
-                    // block opening the scheduler for a place that's closed now but
-                    // open at a future time. The "currently closed" label stays.
-                    (schedulingCardId === card.id || isScheduled) &&
-                      styles.primaryButtonDisabled,
-                  ]}
-                  disabled={schedulingCardId === card.id || isScheduled}
-                >
-                  {schedulingCardId === card.id ? (
-                    <ActivityIndicator size="small" color="white" />
-                  ) : (
-                    <>
-                      <Icon name="calendar" size={16} color="white" />
-                      <Text style={styles.primaryButtonText}>
-                        {isScheduled ? t('activity:savedTab.scheduled') : t('activity:savedTab.schedule')}
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-                {!isPlaceOpen && (
-                  <Text style={styles.closedMessage}>
-                    {t('activity:savedTab.placeClosed')}
-                  </Text>
-                )}
-              </View>
-            )}
-
-            <TouchableOpacity
-              onPress={() => onShareCard(card)}
-              style={styles.shareButton}
-            >
-              <Icon name="share-social-outline" size={18} color="#374151" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => handleRemoveSaved(card)}
-              style={styles.deleteButton}
-              disabled={isRemoving}
-            >
-              {isRemoving ? (
-                <ActivityIndicator size="small" color="#ef4444" />
-              ) : (
-                <Icon name="trash-outline" size={18} color="#ef4444" />
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    );
-  };
+      return (
+        <SavedSimpleCardRow
+          card={card}
+          scale={scale}
+          isScheduled={isScheduled}
+          isRemoving={isRemoving}
+          isScheduling={isScheduling}
+          onPress={rowHandlers.onPress}
+          onSchedule={rowHandlers.onScheduleSimple}
+          onPurchase={rowHandlers.onPurchase}
+          onShare={rowHandlers.onShare}
+          onRemove={rowHandlers.onRemove}
+        />
+      );
+    },
+    [
+      scheduledCardIdsSet,
+      calendarCardIdsSet,
+      removingCardIds,
+      schedulingCardId,
+      currencyCode,
+      getCardAnimation,
+      rowHandlers,
+    ],
+  );
 
   const renderEmptyComponent = () => {
     if (effectiveIsLoading) {
@@ -2021,6 +2272,56 @@ const SavedTab = ({
     );
   };
 
+  /**
+   * Issue #1636: the filter bar is the list HEADER, not a sibling above the
+   * list, so it keeps scrolling with the content exactly as it did inside the
+   * ScrollView. Memoised because an unstable ListHeaderComponent element would
+   * remount the search TextInput on every render and drop the keyboard.
+   */
+  const listHeader = useMemo(
+    () => (
+      <Animated.View
+        style={{
+          opacity: searchBarOpacity,
+          transform: [{ translateY: searchBarSlide }],
+        }}
+      >
+        <CardFilterBar
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          selectedWhen={selectedWhen}
+          onWhenChange={setSelectedWhen}
+          selectedCategory={selectedCategory}
+          onCategoryChange={setSelectedCategory}
+          selectedTier={selectedTier}
+          onTierChange={setSelectedTier}
+        />
+      </Animated.View>
+    ),
+    [
+      searchBarOpacity,
+      searchBarSlide,
+      searchQuery,
+      selectedWhen,
+      selectedCategory,
+      selectedTier,
+    ],
+  );
+
+  // Same four states the ScrollView branch rendered when filteredCards was
+  // empty: loading, error+retry, filters-with-no-matches, and truly-empty.
+  const listEmpty = useMemo(
+    () => renderEmptyComponent(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [effectiveIsLoading, isError, onRetry, savedCards.length, t],
+  );
+
+  // The keyboard spacer that used to be the ScrollView's last child.
+  const listFooter = useMemo(
+    () => (keyboardHeight > 0 ? <View style={{ height: keyboardHeight }} /> : null),
+    [keyboardHeight],
+  );
+
   return (
     <View style={styles.container}>
       {/* Date/Time Picker Modal */}
@@ -2040,51 +2341,47 @@ const SavedTab = ({
         }
       />
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.mainScrollContent}
+      {/*
+        Issue #1636 — this was a plain <ScrollView> with `filteredCards.map(...)`,
+        which mounts 100 % of its children regardless of viewport. At the real
+        production ceiling (148 saves / 52 curated) that committed every card
+        subtree in one synchronous pass and fired 201 image requests totalling
+        37 MB before the screen was interactive. FlatList mounts only the window.
+
+        Everything the ScrollView did is preserved deliberately:
+          - the filter bar is the list header (still scrolls with the content,
+            still carries its entrance animation),
+          - the empty / loading / error / no-matches states are the list's empty
+            component, still rendered BELOW the filter bar,
+          - pull-to-refresh, keyboardShouldPersistTaps="handled",
+            keyboardDismissMode="on-drag" and the keyboard spacer are unchanged,
+          - the ORCH-1189 floating-nav clearance stays on the scroll CONTENT.
+      */}
+      <FlatList
+        data={filteredCards}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        style={styles.list}
+        contentContainerStyle={dynamicStyles.mainScrollContent}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={listEmpty}
+        ListFooterComponent={listFooter}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#999" />}
-      >
-        {/* Search & Filters */}
-        <Animated.View
-          style={{
-            opacity: searchBarOpacity,
-            transform: [{ translateY: searchBarSlide }],
-          }}
-        >
-          <CardFilterBar
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            selectedWhen={selectedWhen}
-            onWhenChange={setSelectedWhen}
-            selectedCategory={selectedCategory}
-            onCategoryChange={setSelectedCategory}
-            selectedTier={selectedTier}
-            onTierChange={setSelectedTier}
-          />
-        </Animated.View>
-        {/* Saved Cards List */}
-        {filteredCards.length === 0
-          ? renderEmptyComponent()
-          : filteredCards.map((card) => {
-              const animation = getCardAnimation(card.id);
-              return (
-                <Animated.View
-                  key={card.id}
-                  style={[
-                    styles.cardWrapper,
-                    { transform: [{ scale: animation.scale }] },
-                  ]}
-                >
-                  {renderCard({ item: card })}
-                </Animated.View>
-              );
-            })}
-        {keyboardHeight > 0 && <View style={{ height: keyboardHeight }} />}
-      </ScrollView>
+        // Rows are two heterogeneous heights (simple ~180pt, curated ~260pt), so
+        // there is no honest getItemLayout to give. These bounds keep the mounted
+        // window small without leaving blank cells on a normal flick.
+        initialNumToRender={ISSUE_1636_INITIAL_RENDER_COUNT}
+        maxToRenderPerBatch={ISSUE_1636_INITIAL_RENDER_COUNT}
+        updateCellsBatchingPeriod={50}
+        windowSize={ISSUE_1636_WINDOW_SIZE}
+        // Left off deliberately: removeClippedSubviews has long-standing
+        // touch-swallowing bugs on Android, and this list's rows are all
+        // interactive.
+        removeClippedSubviews={false}
+      />
 
       {/* Expanded Card Modal */}
       {isModalVisible && selectedCardForModal && (
@@ -2119,4 +2416,10 @@ const SavedTab = ({
   );
 };
 
-export default SavedTab;
+/**
+ * Issue #1636: LikesPage is already `React.memo`'d but SavedTab was not, so any
+ * LikesPage render re-ran this entire body. With the style blocks now hoisted
+ * and the rows memoised, the remaining win is skipping the body altogether when
+ * nothing it reads has changed.
+ */
+export default React.memo(SavedTab);
