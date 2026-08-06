@@ -26,17 +26,31 @@
  *     the system "Touch feedback" setting, so a user who has turned haptics OFF gets
  *     silence for free — no preference plumbing of our own.
  *
- * WHY `Clock_Tick` AND NOT `Segment_Tick`?
- * `Segment_Tick` is the semantically perfect constant ("the user is switching between a
- * series of potential choices"), but `HapticFeedbackConstants.SEGMENT_TICK` is **API 34+**.
- * `HapticsRecord.kt#toHapticFeedbackType()` resolves constants by REFLECTION and, on a
- * `NoSuchFieldException`, falls back to a hard-coded list of five constants that exist on
- * every API level — `CLOCK_TICK`, `CONTEXT_CLICK`, `KEYBOARD_TAP`, `LONG_PRESS`,
- * `VIRTUAL_KEY`. `SEGMENT_TICK` is NOT in that list, so on anything below API 34 it
- * **throws `HapticsNotSupportedException`** — including the Samsung SM-A725F (Android 13 /
- * API 33) that #1638 was filed against. `Clock_Tick` is in the guaranteed set, is a short
- * crisp tick rather than a buzz, and is Android's idiomatic "discrete selection changed"
- * feedback — the closest analogue of iOS's selection/impact acknowledgement.
+ * WHY `Context_Click`? (CORRECTED 2026-08-06 BY DEVICE TEST — the original
+ * reasoning below was based on a wrong premise and produced a silent haptic.)
+ *
+ * The first implementation chose `Clock_Tick` to avoid `Segment_Tick`, which is
+ * API 34+ and would throw on an API 33 device. That reasoning was sound but the
+ * premise was not checked: the SM-A725F this issue was filed against runs
+ * **Android 14 / API 34**, not 33. `Segment_Tick` fires fine on it.
+ *
+ * More importantly, `Clock_Tick` was IMPERCEPTIBLE on that device. Verified on
+ * hardware by firing every constant in the guaranteed set 1.5s apart and having
+ * the operator report what he could feel:
+ *
+ *   Clock_Tick    -> resolved OK, FELT NOTHING
+ *   Keyboard_Tap  -> resolved OK, FELT NOTHING
+ *   Context_Click -> resolved OK, FELT IT              <- chosen
+ *
+ * Note every one of those RESOLVED SUCCESSFULLY. Android accepts the request and
+ * silently does nothing if the constant is too weak for the device's motor, so a
+ * green promise proves the call was made, NOT that the user felt anything. This
+ * is only decidable on hardware by a human.
+ *
+ * `Context_Click` is in the five-constant set `HapticsRecord.kt` guarantees on
+ * every API level (CLOCK_TICK, CONTEXT_CLICK, KEYBOARD_TAP, LONG_PRESS,
+ * VIRTUAL_KEY), so it is safe on API 33 devices too — we keep the original
+ * safety property while fixing the perceptibility.
  *
  * NEVER THROWS. `performAndroidHapticsAsync` does not `await` the native call
  * (see expo-haptics/src/Haptics.ts), so a native rejection would otherwise surface as an
@@ -64,7 +78,7 @@ export function triggerTabSwitchHaptic(): void {
       return;
     }
     if (Platform.OS === 'android') {
-      Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Clock_Tick).catch(() => {});
+      Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Context_Click).catch(() => {});
       return;
     }
     // web / any other platform: no haptics engine worth invoking. Silence is correct.
