@@ -1,0 +1,92 @@
+name: Issue 1661 Completed Write Unparks Invalidation
+
+# #1661 — after a Been-here failure, later SUCCESSFUL taps left the control on
+# "Been here" for the rest of the session. The row landed; the UI never learned.
+#
+# It was reported as error-state poisoning ("after any error, later writes stop
+# invalidating"). It is not. The trigger is `onlineManager.isOnline() === false`
+# at the moment a write COMPLETES: `onSuccess` runs, `invalidateQueries` runs,
+# query-core records `isInvalidated: true` and then PARKS the refetch at
+# `fetchStatus: 'paused'`, because every read in the app is on query-core's
+# default `networkMode: 'online'`. The error and the parked invalidation are
+# co-symptoms of the same stale belief, which is why they always appeared
+# together on a device. The suite proves both directions: an error while ONLINE
+# poisons nothing (T-1), and a write that completes while the belief is stale
+# breaks the control with no error involved at all (T-2/T-3).
+#
+# The belief does not reliably self-correct: NetInfo's default
+# `useNativeReachability: true` drives `isInternetReachable` from native events
+# only, with no JS polling fallback in that branch, so it can stay false until
+# relaunch — which is exactly what #1642's iOS run observed.
+#
+# The suite is BEHAVIOURAL. It loads the REAL hooks/useVisits.ts through Node's
+# TypeScript stripper with useMutation/useQueryClient stubbed, captures the
+# SHIPPED onSuccess as a live function, and drives it through the REAL
+# @tanstack/react-query machinery against the REAL onlineManager singleton and a
+# REAL QueryObserver whose queryFn invocations are counted. Nothing greps for an
+# option name. T-3 is the negative control that proves the pause mechanism is
+# present, so T-2's pass is meaningful rather than vacuous; T-5 proves the
+# online path is unchanged.
+#
+# node_modules is REQUIRED (unlike most gates here): the whole point is the real
+# library's pause/resume semantics, so it must resolve the version
+# app-mobile/package-lock.json actually pins — which is why the lockfile is in
+# the trigger set. A react-query major could change networkMode semantics
+# underneath this fix without touching a line of our source.
+#
+# Node 22 is REQUIRED for `module.stripTypeScriptTypes` (>= 22.13).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/src/hooks/useVisits.ts"
+      - "app-mobile/src/hooks/queryKeys.ts"
+      - "app-mobile/src/config/queryClient.ts"
+      - "app-mobile/src/services/visitService.ts"
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/hooks/__tests__/issue_1661_completed_write_unparks_invalidation.test.mjs"
+      - "app-mobile/package-lock.json"
+      - ".github/workflows/issue-1661-completed-write-unparks-invalidation.yml"
+  pull_request:
+    paths:
+      - "app-mobile/src/hooks/useVisits.ts"
+      - "app-mobile/src/hooks/queryKeys.ts"
+      - "app-mobile/src/config/queryClient.ts"
+      - "app-mobile/src/services/visitService.ts"
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/hooks/__tests__/issue_1661_completed_write_unparks_invalidation.test.mjs"
+      - "app-mobile/package-lock.json"
+      - ".github/workflows/issue-1661-completed-write-unparks-invalidation.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  completed-write-unparks-invalidation:
+    name: "Issue 1661: a completed Been-here write always refreshes the control"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app-mobile/package-lock.json
+
+      - name: The suite must exist
+        # Without this the job is green when the file is deleted — the exact
+        # "assertion that does not assert" shape this suite was written against.
+        run: test -f src/hooks/__tests__/issue_1661_completed_write_unparks_invalidation.test.mjs
+
+      - run: npm ci
+
+      - name: A completed write must un-park its own invalidation
+        run: >
+          node --test --test-reporter=spec
+          src/hooks/__tests__/issue_1661_completed_write_unparks_invalidation.test.mjs
