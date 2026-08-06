@@ -722,7 +722,8 @@ jobs:
         working-directory: app-mobile
         run: |
           npx jest --runInBand \
-            src/components/utils/__tests__/issue_1669_one_producer_parity.test.ts
+            src/components/utils/__tests__/issue_1669_one_producer_parity.test.ts \
+            src/components/utils/__tests__/issue_1669_tester_adversarial.test.ts
       - name: Run class D suites (batched)
         run: node .github/scripts/strict-grep/run-batch.mjs --class D
       - name: Upload class D gate results
