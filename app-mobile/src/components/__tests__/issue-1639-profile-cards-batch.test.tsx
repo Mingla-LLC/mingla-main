@@ -386,8 +386,16 @@ function makeHarness(options) {
       }
       return { locationStatus: 'ok', sections };
     },
-    fetchPersonHeroCards: async () => ({ cards: cardsFor('shuffled') }),
+    fetchPersonHeroCards: async (body) => {
+      shuffleRequests.push({
+        holidayKey: body.holidayKey,
+        categorySlugs: body.categorySlugs,
+        mode: body.mode,
+      });
+      return { cards: cardsFor('shuffled') };
+    },
   };
+  const shuffleRequests = [];
 
   const categoryCalls = [];
   const holidayCategoryService = {
@@ -397,7 +405,9 @@ function makeHarness(options) {
       if (opts.categoriesFail) throw new Error('generate-holiday-categories unavailable');
       return [
         { label: 'Romantic', type: 'romantic' },
-        { label: 'Nature', type: 'category', categorySlug: 'nature' },
+        // A slug that appears in NO preset, so "the shuffle used the AI categories"
+        // is distinguishable from "the shuffle fell back to DEFAULT_PERSON_SECTIONS".
+        { label: 'Nature', type: 'category', categorySlug: 'ai_only_marker_slug' },
         { label: 'Play', type: 'category', categorySlug: 'play' },
         { label: 'Drinks', type: 'category', categorySlug: 'drinks_and_music' },
         { label: 'Dining', type: 'category', categorySlug: 'upscale_fine_dining' },
@@ -516,6 +526,7 @@ function makeHarness(options) {
     storage,
     requests,
     categoryCalls,
+    shuffleRequests,
     queryKeysModule,
     holidaysModule,
     pairedCardsModule,
@@ -817,6 +828,39 @@ async function run() {
       'R-6c a shuffle tapped during the category load resolves the REAL categories',
       Array.isArray(resolved) && resolved.length === 6 && resolved[0].label === 'Romantic',
       `resolveSections returned ${JSON.stringify(resolved)}`,
+    );
+
+    // R-6d — THE SHUFFLE BUTTON STILL WORKS. Deferring the category load to expand
+    // means the first shuffle can now land while that load is in flight. Press the
+    // button's real `onShuffle` on a FRESHLY-mounted expanded section, with no settle
+    // in between, and the outgoing shuffle request must still carry the AI categories.
+    // A regression here is silent: the request would succeed with DEFAULT_PERSON_SECTIONS
+    // and simply return less personal picks.
+    const fresh = h.rt.mount(sectionNode.type, Object.assign({}, sectionNode.props, { isExpanded: true }));
+    const freshRow = findOne(
+      fresh.element,
+      (n) => n.props && typeof n.props.refetchProfile === 'function' && n.props.resolveSections,
+      'the CardRow',
+    );
+    const mountedRow = h.rt.mount(freshRow.type, freshRow.props);
+    const shuffleBtn = findOne(mountedRow.element, (n) => n.type === h.ShuffleButtonStub, 'the ShuffleButton');
+    ok(
+      'R-6d the shuffle button is rendered with a real async onShuffle (ShuffleButton spins for its whole duration)',
+      typeof shuffleBtn.props.onShuffle === 'function',
+      'the row no longer hands ShuffleButton a callback',
+    );
+
+    const before = h.shuffleRequests.length;
+    await shuffleBtn.props.onShuffle();
+    ok(
+      'R-6e a shuffle pressed DURING the deferred category load still fires exactly one request',
+      h.shuffleRequests.length === before + 1,
+      `fired ${h.shuffleRequests.length - before}`,
+    );
+    ok(
+      'R-6f ...and that request carries the AI categories, not the DEFAULT_PERSON_SECTIONS fallback',
+      h.shuffleRequests[before].categorySlugs.includes('ai_only_marker_slug'),
+      `shuffle sent ${JSON.stringify(h.shuffleRequests[before].categorySlugs)}`,
     );
   }
 
