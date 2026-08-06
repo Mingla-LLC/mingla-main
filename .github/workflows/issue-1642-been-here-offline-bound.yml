@@ -40,6 +40,11 @@ on:
       - "app-mobile/src/components/SwipeableCards.tsx"
       - "app-mobile/src/i18n/locales/en/cards.json"
       - "app-mobile/src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs"
+      - "app-mobile/src/hooks/__tests__/issue_1642_abandoned_write_cannot_resurrect.adversarial.test.mjs"
+      # A-0b asserts the root layout still leaves shouldDehydrateMutation to
+      # query-core's `(m) => m.state.isPaused` default. If that changes, #1642's
+      # "nothing is ever queued" guarantee stops resting on networkMode alone.
+      - "app-mobile/app/_layout.tsx"
       - "app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs"
       - "app-mobile/package-lock.json"
       - ".github/workflows/issue-1642-been-here-offline-bound.yml"
@@ -51,6 +56,11 @@ on:
       - "app-mobile/src/components/SwipeableCards.tsx"
       - "app-mobile/src/i18n/locales/en/cards.json"
       - "app-mobile/src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs"
+      - "app-mobile/src/hooks/__tests__/issue_1642_abandoned_write_cannot_resurrect.adversarial.test.mjs"
+      # A-0b asserts the root layout still leaves shouldDehydrateMutation to
+      # query-core's `(m) => m.state.isPaused` default. If that changes, #1642's
+      # "nothing is ever queued" guarantee stops resting on networkMode alone.
+      - "app-mobile/app/_layout.tsx"
       - "app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs"
       - "app-mobile/package-lock.json"
       - ".github/workflows/issue-1642-been-here-offline-bound.yml"
@@ -75,10 +85,12 @@ jobs:
           cache: npm
           cache-dependency-path: app-mobile/package-lock.json
 
-      - name: The suite must exist
-        # Without this the job is green when the file is deleted — the exact
+      - name: Both suites must exist
+        # Without this the job is green when a file is deleted — the exact
         # "assertion that does not assert" shape #1642 was filed against.
-        run: test -f src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs
+        run: |
+          test -f src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs
+          test -f src/hooks/__tests__/issue_1642_abandoned_write_cannot_resurrect.adversarial.test.mjs
 
       - run: npm ci
 
@@ -86,6 +98,17 @@ jobs:
         run: >
           node --test --test-reporter=spec
           src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs
+
+      - name: TESTER ADVERSARIAL — the abandoned write cannot resurrect
+        # Different angle from the suite above: that one proves the offline tap
+        # REACHES a bounded failure; this one proves the failure is ABANDONED,
+        # across the two routes by which an abandoned write comes back — the REAL
+        # AsyncStorage persister across an app restart, and connectivity returning
+        # mid-tap. Models the partition shape both physical devices actually
+        # showed (fetch REJECTS: Android 86ms, iOS 24ms) rather than a hung socket.
+        run: >
+          node --test --test-reporter=spec
+          src/hooks/__tests__/issue_1642_abandoned_write_cannot_resurrect.adversarial.test.mjs
 
       - name: Re-run the #1609/#1618 operation-bound contract on visitService
         # #1642 edits visitService.ts, whose bound is asserted by #1609's T-6.
