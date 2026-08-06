@@ -77,9 +77,12 @@ export default function PostExperienceModal({
 
   const submitVoluntary = useSubmitVoluntaryPlaceReview();
   /**
-   * Set only when the visit landed but the review insert did not. A retry then
-   * skips the re-record: `record-visit` upserts `visited_at` at execution time,
-   * so recording twice rewrites the recorded time of the user's own visit.
+   * Set only when the visit landed, the review insert did not, AND the visit
+   * could not be rolled back. A retry then skips the re-record: `record-visit`
+   * upserts `visited_at` at execution time, so recording twice rewrites the
+   * recorded time of the user's own visit. When the rollback SUCCEEDS the write
+   * hands back a null visit id — there is nothing left to reuse, and the retry
+   * must record afresh.
    */
   const recordedVisitIdRef = useRef<string | null>(null);
 
@@ -221,8 +224,11 @@ export default function PostExperienceModal({
       setStep("thank-you");
     } catch (error) {
       console.error("[PostExperienceModal] Voluntary submit failed:", error);
-      // The visit landed and only the review failed: remember it so the retry
-      // does not re-stamp visited_at.
+      // #1687 rework — the visit is rolled back by the write itself when the
+      // review is refused, and `visitId` comes back NULL when that succeeded, so
+      // this is null exactly when there is nothing left to reuse. A non-null id
+      // means the rollback ALSO failed and a real row is outstanding: reuse it so
+      // the retry does not re-stamp `visited_at`.
       if (error instanceof PlaceReviewWriteError) {
         recordedVisitIdRef.current = error.visitId;
       }

@@ -46,6 +46,14 @@ export function usePostExperienceCheck() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isCheckingRef = useRef(false);
   const hasCheckedRef = useRef(false);
+  /**
+   * #1687 rework (P2-2) — read by `deferScheduledPrompt`, which must not be
+   * re-created every time `pendingReview` changes: it is passed to the modal's
+   * `onCancel`/`onComplete`, and a callback identity that churns re-renders the
+   * single mount for a signal it does not use.
+   */
+  const pendingReviewRef = useRef<PendingExperienceReview | null>(null);
+  pendingReviewRef.current = pendingReview;
 
   // ── Core check function ─────────────────────────────────────────────────
   const checkForPendingReviews = useCallback(async () => {
@@ -176,6 +184,35 @@ export function usePostExperienceCheck() {
     }
   }, []);
 
+  /**
+   * #1687 rework (P2-2) — RE-ARM the scheduled prompt instead of presenting it
+   * in the same commit that closed a voluntary one.
+   *
+   * The poll re-runs on every foreground and every 60s, and arms the prompt
+   * `MODAL_DELAY_MS` later. A voluntary "Been here" tap inside that window
+   * correctly outranks it and holds the modal — but the timer keeps running, so
+   * `showReviewModal` is already true by the time the user presses ✕, and the
+   * SAME modal instance switched straight to the LOCKED scheduled prompt. The
+   * user pressed a close button and got something they could not dismiss.
+   *
+   * The precedence is right and is untouched. Only the hand-off changes: the
+   * scheduled prompt goes back to its arming state and presents on its own delay,
+   * exactly as it would have if the tap had never happened.
+   */
+  const deferScheduledPrompt = useCallback(() => {
+    setShowReviewModal(false);
+
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (!pendingReviewRef.current) return;
+
+    timerRef.current = setTimeout(() => {
+      setShowReviewModal(true);
+    }, MODAL_DELAY_MS);
+  }, []);
+
   // ── Recheck (called after a review is submitted) ────────────────────────
   const recheckPending = useCallback(async () => {
     setPendingReview(null);
@@ -198,6 +235,7 @@ export function usePostExperienceCheck() {
     pendingReview,
     showReviewModal,
     dismissReview,
+    deferScheduledPrompt,
     recheckPending,
   };
 }

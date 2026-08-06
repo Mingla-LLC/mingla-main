@@ -36,6 +36,17 @@ export interface PlaceReviewCard {
   address?: string;
   placeId?: string;
   priceRange?: string | null;
+  /**
+   * The deck's own discriminator, carried verbatim off the card. `'curated'` and
+   * `'experience'` are set by `deckService`; a single pool place carries none.
+   * Read here so a place identity is never INFERRED — see `resolvePlacePoolId`.
+   */
+  cardType?: string;
+  /**
+   * `place_pool.id`, set by the producer that KNOWS the card is a pool place
+   * (`deckService.unifiedCardToRecommendation`). When present it is used verbatim.
+   */
+  placePoolId?: string;
 }
 
 export interface VoluntaryPlaceReviewRequest {
@@ -85,17 +96,57 @@ export const usePlaceReviewRequestStore = create<PlaceReviewRequestState>((set) 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Build the request from a deck card.
- *
- * `place_pool_id` is derived, not guessed: on the current serving shape a SINGLE
- * place card's `id` IS its `place_pool.id` (verified in prod — `user_visits`
- * rows for single places carry a `place_pool` uuid in `experience_id`), while a
- * curated card's id is `curated_<type>_<ts>_<rand>` and has no place at all. A
- * non-uuid id therefore yields no `place_pool_id` rather than a fabricated one
- * (Constitution rule 9). `google_place_id` comes only from the card's own
- * `placeId` — never from `card.id`, which would write a uuid into a text column
- * that means something else.
+ * The ONE card type whose `id` is a `place_pool.id`. Every other type the deck
+ * serves — and every type added after this line was written — must declare
+ * itself, and declaring anything else yields NO place anchor at all.
  */
+const SINGLE_PLACE_CARD_TYPE = 'place';
+
+/**
+ * `place_reviews.place_pool_id` carries a LIVE foreign key to `place_pool(id)`,
+ * so a value that is merely uuid-SHAPED is not an answer — it is a row Postgres
+ * will refuse with 23503 after the visit has already landed.
+ *
+ * The original derivation was `UUID_RE.test(card.id) ? card.id : undefined`, and
+ * it was wrong on the fourth card type. The deck serves four: a pool place, a
+ * claimed venue (both `place_pool` rows, so `card.id` IS the place), a curated
+ * plan (`curated_<type>_<ts>_<rand>` — not uuid-shaped, so it fell out
+ * correctly by accident) and a BRAND EXPERIENCE, which `discover-cards`
+ * builds with `id: String(row.event_id)`. An `events.id` is uuid-shaped and is
+ * not a place: 0 of the 65 `events` rows in production exist in `place_pool`.
+ * `BeenHereControl` renders on that tree ungated, so the shape test would have
+ * written an `events.id` into a `place_pool` foreign key.
+ *
+ * So identity is no longer inferred from a string. In order:
+ *
+ *  1. A card that DECLARES a type other than `'place'` yields nothing, whatever
+ *     its id looks like. This is the rule that closes the class rather than the
+ *     instance — a fifth card type is refused before anyone has to remember it.
+ *  2. A card that CARRIES its `place_pool.id` is believed. `deckService`
+ *     attaches it in the single-place branch, which is the only place in the
+ *     pipeline that knows the id is a pool row.
+ *  3. [TRANSITIONAL] a card with no declared type and no carried id falls back
+ *     to the shape test, because not every producer of a place card goes through
+ *     `deckService.unifiedCardToRecommendation` (saved cards, collab decks and
+ *     seeded decks all rebuild the shape). Exit condition: delete this branch
+ *     once every place-card producer sets `placePoolId` — tracked on #1687.
+ *
+ * `google_place_id` comes only from the card's own `placeId` — never from
+ * `card.id`, which would write a uuid into a text column that means something
+ * else. A card that yields neither is written with NULLs, never a guess
+ * (Constitution rule 9).
+ */
+function resolvePlacePoolId(card: PlaceReviewCard): string | undefined {
+  if (typeof card.cardType === 'string' && card.cardType !== SINGLE_PLACE_CARD_TYPE) {
+    return undefined;
+  }
+  if (typeof card.placePoolId === 'string' && UUID_RE.test(card.placePoolId)) {
+    return card.placePoolId;
+  }
+  return UUID_RE.test(card.id) ? card.id : undefined;
+}
+
+/** Build the request from a deck card. */
 export function placeReviewRequestFromCard(card: PlaceReviewCard): VoluntaryPlaceReviewRequest {
   return {
     cardId: card.id,
@@ -103,7 +154,7 @@ export function placeReviewRequestFromCard(card: PlaceReviewCard): VoluntaryPlac
     placeCategory: card.category,
     placeImage: card.image,
     placeAddress: card.address,
-    placePoolId: UUID_RE.test(card.id) ? card.id : undefined,
+    placePoolId: resolvePlacePoolId(card),
     googlePlaceId: card.placeId,
     priceTier: card.priceRange ?? undefined,
   };

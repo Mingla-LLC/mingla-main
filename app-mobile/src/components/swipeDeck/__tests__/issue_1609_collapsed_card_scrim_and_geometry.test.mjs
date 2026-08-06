@@ -547,6 +547,38 @@ test('T-6 the collapsed been-here control opens the rating prompt and writes NOT
     );
   }
 
+  // #1687 REWORK — RESTORED, and widened. The T-6 rewrite above inverted the
+  // record assertions (a genuine strengthening: a mis-tap now costs nothing at
+  // all) but it ALSO dropped 'Rating' and 'rating' from the forbidden list, and
+  // that drop was not required by the decision — neither substring is present in
+  // the control body, so the guard passed either way. Dropping them narrowed the
+  // guard to two named symbols, and a write re-introduced through ANY other one
+  // slipped past T-6, past #1687's S-1 and past the behavioural half, which
+  // drives the service directly and never sees this component.
+  //
+  // Both are back, together with the write surface itself. `rating`/`Rating`
+  // keeps rating STATE and rating UI out of a control that must only hand off to
+  // the modal; the rest keeps any direct database write out of it, whatever it
+  // is called. What the control may reach is exactly one thing:
+  // `openPlaceReviewRequest`, asserted above.
+  for (const forbidden of [
+    'Rating',
+    'rating',
+    'supabase',
+    'place_reviews',
+    'user_visits',
+    'submitVoluntaryPlaceReview',
+    'mutateAsync',
+  ]) {
+    assert.ok(
+      !body.includes(forbidden),
+      `been-here-opens-the-prompt-and-writes-nothing: BeenHereControl reaches "${forbidden}". `
+      + 'The tap must WRITE NOTHING and must hold no rating state of its own — it opens the '
+      + 'prompt (openPlaceReviewRequest) and the modal owns everything after that. Naming only '
+      + 'recordVisit.mutate/useRecordVisit would let the same write back in under a new symbol.',
+    );
+  }
+
   // It must still reach NO expand surface. The control owns its own press and
   // nothing else — that is what keeps it off the swipe path's gesture ledger.
   for (const forbidden of [

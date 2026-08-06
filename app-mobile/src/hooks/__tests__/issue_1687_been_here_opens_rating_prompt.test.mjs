@@ -54,7 +54,16 @@ const SRC = {
   plate: path.join(appMobile, 'src/components/deckCardPlate.tsx'),
   index: path.join(appMobile, 'app/index.tsx'),
   hook: path.join(appMobile, 'src/hooks/usePlaceReviews.ts'),
+  // #1687 rework — the seams the P1/P2 fixes added.
+  deckService: path.join(appMobile, 'src/services/deckService.ts'),
+  scheduledCheck: path.join(appMobile, 'src/hooks/usePostExperienceCheck.ts'),
 };
+
+/** #1687 rework (P2-1) — the schema half, outside app-mobile. */
+const REVIEW_UNIQUENESS_MIGRATION = path.resolve(
+  appMobile,
+  '../supabase/migrations/20270223001687_issue_1687_one_voluntary_review_per_place.sql',
+);
 
 const read = (key) => fs.readFileSync(SRC[key], 'utf8');
 
@@ -143,6 +152,16 @@ export function resetDb() {
   control.recordVisitFails = false;
 }
 
+// #1687 rework — the DELETE side of user_visits, so the compensating rollback
+// runs against the same in-memory database the forward write does. Added, never
+// swapped in: everything above is untouched and B-1..B-6 still drive it.
+export const deletes = [];
+export const rollbackControl = { fails: false };
+export function resetRollback() {
+  deletes.length = 0;
+  rollbackControl.fails = false;
+}
+
 let visitSeq = 0;
 let reviewSeq = 0;
 
@@ -175,8 +194,36 @@ export const supabase = {
       return { data: { visitId: row.id, isNew: true }, error: null };
     },
   },
+  auth: {
+    async getUser() {
+      return { data: { user: { id: '${USER_ID}' } }, error: null };
+    },
+  },
   from(table) {
     return {
+      delete() {
+        const filters = {};
+        const builder = {
+          eq(column, value) { filters[column] = value; return builder; },
+          then(resolve) {
+            if (table !== 'user_visits') {
+              return resolve({ error: { message: 'unexpected delete on ' + table } });
+            }
+            if (rollbackControl.fails) {
+              return resolve({ error: { message: 'delete refused' } });
+            }
+            const kept = db.user_visits.filter(
+              (r) => r.experience_id !== filters.experience_id,
+            );
+            const removed = db.user_visits.length - kept.length;
+            db.user_visits.length = 0;
+            db.user_visits.push(...kept);
+            deletes.push({ table, filters, removed });
+            return resolve({ error: null });
+          },
+        };
+        return builder;
+      },
       insert(row) {
         return {
           select() {
@@ -643,5 +690,365 @@ test('S-5 #1686 — the settled state reads as pressable to everyone, not just V
     /remove/i,
     'S-5: the VoiceOver removal label is gone — the sighted affordance ADDS to it, it does not '
     + 'replace it',
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #1687 REWORK — the tester's P1-1 (CONDITIONAL PASS, comment 5209937972).
+//
+// `place_pool_id` was derived from the SHAPE of the card's id. That is correct
+// for the two `place_pool` card types (a pool place and a claimed venue) and
+// falls out correctly for a curated plan, whose id is not uuid-shaped. It is
+// WRONG for the fourth type the same ungated control renders on: a brand
+// experience, which `discover-cards` builds with `id: String(row.event_id)`.
+// An `events.id` is uuid-shaped, and 0 of the 65 `events` rows in production
+// exist in `place_pool`, so `place_reviews_place_pool_id_fkey` refuses the row
+// with 23503 — AFTER the visit has landed, on every retry, with no user DELETE
+// policy to clear it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A BRAND EXPERIENCE card as `deckService.experienceCardToRecommendation` builds
+ * it: the explicit discriminator, and an `events.id` in `id`.
+ */
+const EXPERIENCE_CARD = {
+  cardType: 'experience',
+  id: '4d0f0be1-1a5a-4f7f-9d3f-6a0a6a1c2e77',
+  title: 'Sunset Rooftop Tasting',
+  category: 'Date Night',
+  image: 'https://example.invalid/exp.jpg',
+  priceRange: '$$$',
+};
+
+/** A single place card carrying its `place_pool.id` explicitly, per the rework. */
+const CARRIED_PLACE_CARD = {
+  id: 'a1b2c3d4-0000-4000-8000-000000000001',
+  placePoolId: 'f0e1d2c3-1111-4111-8111-000000000002',
+  title: 'Bar Virgile',
+  category: 'Drinks',
+  image: 'https://example.invalid/virgile.jpg',
+  placeId: 'ChIJ_carried_place',
+  priceRange: '$$',
+};
+
+function freshSession(card) {
+  supabaseStub.resetDb();
+  supabaseStub.resetRollback();
+  store.usePlaceReviewRequestStore.setState({
+    request: null,
+    confirmedCardId: null,
+    confirmToken: 0,
+  });
+  if (card) store.openPlaceReviewRequest(store.placeReviewRequestFromCard(card));
+}
+
+/**
+ * EXACTLY what `useSubmitVoluntaryPlaceReview`'s mutationFn does — the write,
+ * then the compensating rollback on failure. S-6 pins that the shipped hook is
+ * this pair and not a re-implementation of it.
+ */
+async function submitWithRollback(rating, recordedVisitId = null) {
+  const request = store.usePlaceReviewRequestStore.getState().request;
+  assert.ok(request, 'VACUITY: submit was driven with no open request');
+  try {
+    return await placeReviewService.submitVoluntaryPlaceReview(
+      { userId: USER_ID, ...request, rating },
+      recordedVisitId,
+    );
+  } catch (error) {
+    throw await placeReviewService.rollBackHalfLandedVisit(error, request.cardId);
+  }
+}
+
+test('B-7 a BRAND EXPERIENCE yields no place anchor — its id is an events.id, not a place', async () => {
+  const request = store.placeReviewRequestFromCard(EXPERIENCE_CARD);
+
+  assert.equal(
+    request.placePoolId,
+    undefined,
+    'B-7: the events.id of a brand experience was written into place_pool_id. It is uuid-SHAPED '
+    + 'and it is not a place: place_reviews_place_pool_id_fkey refuses the row with 23503 AFTER '
+    + 'record-visit has already landed, every retry reproduces it, and place_reviews grants '
+    + 'users no DELETE — an orphaned visit that can never be cleaned up. The card carries its '
+    + 'own cardType; identity must come from that, never from the shape of a string.',
+  );
+
+  freshSession(null);
+  store.openPlaceReviewRequest(request);
+  const result = await submitWithRollback(5);
+
+  assert.deepEqual(
+    rows(),
+    { visits: 1, reviews: 1 },
+    'B-7: the experience review did not land as a normal, place-less review',
+  );
+  const [review] = supabaseStub.db.place_reviews;
+  assert.equal(review.place_pool_id, null, 'B-7: a place_pool_id was fabricated for an experience');
+  assert.equal(review.card_id, EXPERIENCE_CARD.id);
+  assert.ok(result.reviewId, 'B-7: the write did not return the row it claims to have made');
+});
+
+test('B-8 the place id is CARRIED, and an unknown card type yields nothing at all', () => {
+  const carried = store.placeReviewRequestFromCard(CARRIED_PLACE_CARD);
+  assert.equal(
+    carried.placePoolId,
+    CARRIED_PLACE_CARD.placePoolId,
+    'B-8: a card that carries its own place_pool.id was ignored in favour of its card id. '
+    + 'deckService attaches it in the single-place branch — the one place in the pipeline that '
+    + 'KNOWS the id is a pool row — so this is the value that must win.',
+  );
+  assert.notEqual(
+    carried.placePoolId,
+    CARRIED_PLACE_CARD.id,
+    'VACUITY: the fixture cannot tell the carried id from the card id',
+  );
+
+  // The rule that closes the CLASS rather than this instance: a fifth card type
+  // nobody has written yet must not inherit "looks like a uuid, must be a place".
+  const future = store.placeReviewRequestFromCard({
+    cardType: 'itinerary',
+    id: '9f8e7d6c-2222-4222-8222-000000000003',
+    title: 'Something newer than this test',
+    category: 'New',
+    image: 'https://example.invalid/new.jpg',
+  });
+  assert.equal(
+    future.placePoolId,
+    undefined,
+    'B-8: a card DECLARING a type this code has never heard of was still treated as a place. '
+    + 'The default must be "no place anchor" — the experience bug was exactly this assumption, '
+    + 'and #1672 was the same assumption on the saved path.',
+  );
+});
+
+test('B-9 a REFUSED review rolls the visit back — a failed write leaves nothing behind', async () => {
+  freshSession(SINGLE_CARD);
+  supabaseStub.control.reviewInsertFails = true;
+
+  let caught = null;
+  try {
+    await submitWithRollback(4);
+  } catch (error) {
+    caught = error;
+  }
+
+  assert.equal(caught?.name, 'PlaceReviewWriteError', 'B-9: the refusal did not surface');
+  assert.deepEqual(
+    rows(),
+    { visits: 0, reviews: 0 },
+    'B-9: a refused review left an orphaned user_visits row. "A cancelled tap writes nothing" '
+    + 'must hold when the write FAILS too, or the FK-refusal path leaves a permanently '
+    + 'unretryable visit the user cannot delete.',
+  );
+  assert.equal(
+    supabaseStub.deletes.length,
+    1,
+    'B-9: the compensating delete was never issued',
+  );
+  assert.equal(
+    supabaseStub.deletes[0].filters.experience_id,
+    SINGLE_CARD.id,
+    'B-9: the rollback deleted a different card\'s visit',
+  );
+  assert.equal(
+    caught.visitId,
+    null,
+    'B-9: the error still names a visit that no longer exists. A retry would pass it as '
+    + '`recordedVisitId` and SKIP the record, so the second review would attach to nothing.',
+  );
+
+  // And the retry, which must now record afresh, works end to end.
+  supabaseStub.control.reviewInsertFails = false;
+  await submitWithRollback(4, caught.visitId);
+  assert.deepEqual(rows(), { visits: 1, reviews: 1 }, 'B-9: the retry after a rollback did not land');
+});
+
+test('B-10 a visit the user ALREADY had is never deleted on their behalf', async () => {
+  freshSession(SINGLE_CARD);
+  await submitWithRollback(5);
+  assert.deepEqual(rows(), { visits: 1, reviews: 1 }, 'VACUITY: the first submit did not land');
+  const preExistingVisitId = supabaseStub.db.user_visits[0].id;
+
+  // A second rating of the same place. record-visit upserts, so it comes back
+  // isNew: false — this attempt did NOT create the row.
+  supabaseStub.control.reviewInsertFails = true;
+  let caught = null;
+  try {
+    await submitWithRollback(2);
+  } catch (error) {
+    caught = error;
+  }
+
+  assert.equal(caught?.name, 'PlaceReviewWriteError');
+  assert.equal(
+    supabaseStub.db.user_visits.length,
+    1,
+    'B-10: the rollback deleted a visit this attempt did not create. record-visit upserts on '
+    + '(user_id, experience_id) and removeVisit deletes by (user, experience) rather than by row '
+    + 'id, so a blanket rollback erases history the user already had.',
+  );
+  assert.equal(supabaseStub.deletes.length, 0, 'B-10: a delete was issued for a pre-existing visit');
+  assert.equal(
+    caught.visitId,
+    preExistingVisitId,
+    'B-10: the surviving visit is not named in the failure, so the retry would re-record it and '
+    + 're-stamp visited_at (#1661 X-3)',
+  );
+});
+
+test('B-11 a rollback that ITSELF fails keeps the visit id, so nothing is silently lost', async () => {
+  freshSession(SINGLE_CARD);
+  supabaseStub.control.reviewInsertFails = true;
+  supabaseStub.rollbackControl.fails = true;
+
+  let caught = null;
+  try {
+    await submitWithRollback(3);
+  } catch (error) {
+    caught = error;
+  }
+
+  assert.equal(caught?.name, 'PlaceReviewWriteError', 'B-11: the refusal did not surface');
+  assert.deepEqual(
+    rows(),
+    { visits: 1, reviews: 0 },
+    'VACUITY: the rollback was supposed to fail and leave the row',
+  );
+  assert.equal(
+    caught.visitId,
+    supabaseStub.db.user_visits[0].id,
+    'B-11: a failed rollback reported the visit as gone. The row is real and outstanding — its '
+    + 'id is what stops the retry re-stamping visited_at, and what tells the mutation to '
+    + 'invalidate ["visits"] so the pill stops claiming the user has not been.',
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Structural — the rework's seams.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('S-6 the write owns the rollback, and the derivation reads provenance not shape', () => {
+  const hook = stripComments(read('hook'));
+
+  assert.match(
+    hook,
+    /mutationFn[\s\S]{0,400}rollBackHalfLandedVisit\(\s*error\s*,\s*input\.cardId\s*\)/,
+    'S-6: the voluntary write no longer rolls back a half-landed visit. B-9 proves the pair '
+    + 'behaves; this proves the SHIPPED mutation is that pair rather than a re-implementation '
+    + 'of it. Putting the rollback in the component instead would race the component\'s own '
+    + 'unmount — the modal is rendered conditionally on the open request.',
+  );
+  const onError = hook.slice(hook.indexOf('onError'));
+  assert.match(
+    onError,
+    /error\.visitId[\s\S]{0,400}invalidateQueries/,
+    'S-6: a visit that SURVIVED the rollback no longer invalidates the visit queries. The row '
+    + 'exists, useHasVisited still says it does not, and the pill sits at REST while the '
+    + 'database disagrees — the tester\'s X-2, with no way for the user to see or clear it.',
+  );
+
+  const storeSrc = stripComments(read('store'));
+  assert.match(
+    storeSrc,
+    /card\.cardType\s*!==\s*SINGLE_PLACE_CARD_TYPE/,
+    'S-6: the store no longer refuses a card that DECLARES a non-place type. That single line is '
+    + 'what closes the class: a curated plan, a brand experience and every card type added after '
+    + 'this was written all fail closed instead of being guessed at.',
+  );
+  assert.ok(
+    !/placePoolId:\s*UUID_RE\.test\(card\.id\)/.test(storeSrc),
+    'S-6: place_pool_id is derived from the shape of the card id again. An events.id is '
+    + 'uuid-shaped and is not a place; the FK is live.',
+  );
+
+  const deck = stripComments(read('deckService'));
+  assert.match(
+    deck,
+    /placeId:\s*card\.placeId,[\s\S]{0,200}placePoolId:/,
+    'S-6: the single-place branch of deckService no longer attaches the place_pool id. It is the '
+    + 'only point in the pipeline that KNOWS `card.id` is a place_pool row (discover-cards '
+    + 'builds these with `id: row.place_id`), so nothing downstream has to infer it.',
+  );
+});
+
+test('S-7 a voluntary close hands the deck back, not a LOCKED scheduled prompt', () => {
+  const check = stripComments(read('scheduledCheck'));
+
+  assert.match(
+    check,
+    /const\s+deferScheduledPrompt\s*=\s*useCallback\([\s\S]{0,600}setTimeout\([\s\S]{0,120}MODAL_DELAY_MS\)/,
+    'S-7: the scheduled prompt can no longer be RE-ARMED. The poll arms it 3 seconds after every '
+    + 'foreground; a voluntary tap inside that window correctly holds the modal, but the timer '
+    + 'keeps running, so pressing the close icon handed the SAME instance straight to a locked '
+    + 'prompt with no way out. It must go back to arming and present on its own delay.',
+  );
+  assert.match(
+    check,
+    /deferScheduledPrompt,/,
+    'S-7: deferScheduledPrompt is no longer returned from the hook, so the mount cannot call it',
+  );
+
+  // Anchored on the MOUNT, not on the first onComplete in a 3000-line file —
+  // `app/index.tsx` has several, and the onboarding flow's is not this one.
+  const index = stripComments(read('index'));
+  const mountAt = index.indexOf('<PostExperienceModal');
+  assert.ok(mountAt > 0, 'VACUITY: the single PostExperienceModal mount is gone');
+  const mount = index.slice(mountAt, index.indexOf('/>', mountAt));
+  assert.ok(mount.length > 400, `VACUITY: the extracted mount is too short (${mount.length})`);
+
+  const cancelAt = mount.indexOf('onCancel={');
+  assert.ok(cancelAt > 0, 'VACUITY: the modal mount has no onCancel');
+  assert.match(
+    mount.slice(cancelAt),
+    /deferScheduledPrompt\(\)/,
+    'S-7: cancelling a voluntary review no longer defers the scheduled prompt — the ✕ opens '
+    + 'something the user cannot dismiss.',
+  );
+  const completeAt = mount.indexOf('onComplete={');
+  assert.ok(completeAt > 0, 'VACUITY: the modal mount has no onComplete');
+  assert.match(
+    mount.slice(completeAt, cancelAt > completeAt ? cancelAt : mount.length),
+    /deferScheduledPrompt\(\)/,
+    'S-7: finishing a voluntary review no longer defers the scheduled prompt. "Done" has the '
+    + 'same collision as ✕ — the arming timer ran while the user was rating.',
+  );
+});
+
+test('S-8 the database, not the client, is what makes a re-rate replace rather than duplicate', () => {
+  assert.ok(
+    fs.existsSync(REVIEW_UNIQUENESS_MIGRATION),
+    'S-8: the uniqueness migration is gone. Reproduced live by the tester: rate, un-toggle the '
+    + 'pill (which deletes the visit and leaves the review), rate again — two rows for one place, '
+    + 'and RLS gives users no DELETE so they cannot undo their own duplicate.',
+  );
+  const sql = fs.readFileSync(REVIEW_UNIQUENESS_MIGRATION, 'utf8');
+
+  const cleanupAt = sql.indexOf('DELETE FROM public.place_reviews r');
+  const indexAt = sql.indexOf('CREATE UNIQUE INDEX');
+  assert.ok(cleanupAt > 0, 'S-8: the existing duplicates are no longer collapsed');
+  assert.ok(
+    indexAt > cleanupAt,
+    'S-8: the unique index is created BEFORE the cleanup, so `db push` aborts on the duplicate '
+    + 'production already holds (user c727d491…, curated_adventurous_1779562052422_1pg5oi, two '
+    + 'rows from 2026-05-30).',
+  );
+  assert.match(
+    sql,
+    /CREATE UNIQUE INDEX[\s\S]{0,400}\(user_id,\s*card_id\)[\s\S]{0,300}WHERE\s+calendar_entry_id\s+IS\s+NULL/,
+    'S-8: the index is no longer a partial unique index on (user_id, card_id) scoped to '
+    + 'voluntary rows. Widening it to every row breaks the SCHEDULED path, where the same place '
+    + 'legitimately carries one review per calendar entry.',
+  );
+  assert.match(
+    sql,
+    /BEFORE INSERT ON public\.place_reviews/,
+    'S-8: the replace-on-re-rate trigger is gone, so a second rating raises a raw 23505 the user '
+    + 'can never resolve — they cannot delete the first one.',
+  );
+  assert.match(
+    sql,
+    /IF NEW\.calendar_entry_id IS NOT NULL THEN\s*\n\s*RETURN NEW;/,
+    'S-8: the trigger no longer returns early for scheduled reviews, so it would delete a row '
+    + 'the calendar flow owns.',
   );
 });

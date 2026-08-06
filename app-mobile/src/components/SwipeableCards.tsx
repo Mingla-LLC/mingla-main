@@ -539,6 +539,12 @@ const BeenHereControl = React.memo(function BeenHereControl({
     priceRange?: string | null;
     address?: string;
     placeId?: string;
+    // #1687 rework — the card's PROVENANCE, carried through so the request
+    // builder never has to infer a place identity from the shape of an id. This
+    // control renders on all four deck trees, and one of them (cardType
+    // 'experience') carries an events.id.
+    cardType?: string;
+    placePoolId?: string;
   };
 }) {
   const { t } = useTranslation();

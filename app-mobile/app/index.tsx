@@ -299,7 +299,7 @@ function AppContent() {
   } | null>(null);
 
   // Pending experience reviews — shows review modal after scheduled experiences
-  const { pendingReview, showReviewModal, dismissReview, recheckPending } = usePostExperienceCheck();
+  const { pendingReview, showReviewModal, dismissReview, deferScheduledPrompt, recheckPending } = usePostExperienceCheck();
 
   /**
    * #1687 — the VOLUNTARY entry into the SAME modal instance.
@@ -2709,6 +2709,7 @@ function AppContent() {
                             // The write already landed — arm the deck control's
                             // "Thank you" flash and clear the request.
                             confirmPlaceReviewRequest();
+                            deferScheduledPrompt();
                             return;
                           }
                           dismissReview();
@@ -2720,6 +2721,12 @@ function AppContent() {
                             // Nothing was written, so nothing is undone and the
                             // control returns to rest with no flash.
                             cancelPlaceReviewRequest();
+                            // #1687 rework (P2-2) — a scheduled prompt that armed
+                            // during the voluntary session must NOT be handed the
+                            // same modal instance in this commit. Pressing ✕ would
+                            // open a LOCKED prompt the user cannot dismiss. It goes
+                            // back to arming and presents on its own delay.
+                            deferScheduledPrompt();
                             return;
                           }
                           dismissReview();

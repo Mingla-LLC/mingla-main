@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { recordVisit } from './visitService';
+import { recordVisit, removeVisit } from './visitService';
 
 /**
  * #1687 — the voluntary "Been here" rating, written on CONFIRM.
@@ -30,6 +30,32 @@ import { recordVisit } from './visitService';
  *
  * The reverse order was rejected: a review written before the visit leaves an
  * orphaned rating whose retry would insert a SECOND review row.
+ *
+ * #1687 REWORK — A FAILED REVIEW MUST NOT LEAVE A VISIT BEHIND.
+ *
+ * "A cancelled tap writes nothing" stopped being true the moment a submit
+ * half-landed: the visit was recorded, the review was refused, and the row sat
+ * there with the deck pill at REST because `useHasVisited` was never
+ * invalidated. The screen and the database disagreed, and on the one failure
+ * that never resolves — a `place_pool_id` the FK refuses — every retry
+ * reproduced it and `place_reviews` grants users no DELETE.
+ *
+ * THE DECISION IS ROLLBACK, NOT A REVIEW WRITTEN WITHOUT THE FOREIGN KEY.
+ * Stripping `place_pool_id` and re-inserting would launder a bad place anchor
+ * into the table this feature exists to fill, and it would hide the derivation
+ * defect instead of surfacing it. Undoing the visit restores the stated
+ * contract exactly: the tap records both rows or it records nothing.
+ *
+ * THIS IS NOT THE DELETE-RACES-AN-INSERT SHAPE THE ORDER WAS CHOSEN TO AVOID.
+ * That hazard is a delete issued against a write still in flight — the 11.8s
+ * cold path. Here `recordVisit` has RESOLVED and handed back a visit id, so the
+ * row provably exists before the delete is issued. The two are different events.
+ *
+ * The compensating delete is `rollBackHalfLandedVisit` below. It is a SEPARATE
+ * entry point rather than a branch inside the write, because the write's job is
+ * to report exactly what landed — `submitVoluntaryPlaceReview` still resolves or
+ * throws precisely as it did — and because the rollback is only ever correct for
+ * a visit THIS attempt created (`PlaceReviewWriteError.visitCreated`).
  */
 
 export interface VoluntaryPlaceReviewInput {
@@ -54,14 +80,24 @@ export interface VoluntaryPlaceReviewResult {
 /**
  * Raised when the review insert fails AFTER the visit landed. `visitId` is the
  * row that already exists, so a retry can skip re-recording it.
+ *
+ * #1687 rework — `visitCreated` says whether THIS attempt is what put that row
+ * there. It is the difference between a leftover the caller may undo and a visit
+ * the user already had, which must never be deleted on our behalf:
+ * `record-visit` upserts on (user_id, experience_id), so a place the user had
+ * already marked returns `isNew: false` and its row predates this submit
+ * entirely. The caller compensates — see `PostExperienceModal.handleSubmitVoluntary`.
  */
 export class PlaceReviewWriteError extends Error {
   readonly visitId: string | null;
+  /** True only when this attempt created the visit row named by `visitId`. */
+  readonly visitCreated: boolean;
 
-  constructor(message: string, visitId: string | null) {
+  constructor(message: string, visitId: string | null, visitCreated = false) {
     super(message);
     this.name = 'PlaceReviewWriteError';
     this.visitId = visitId;
+    this.visitCreated = visitCreated;
   }
 }
 
@@ -71,6 +107,8 @@ export async function submitVoluntaryPlaceReview(
 ): Promise<VoluntaryPlaceReviewResult> {
   // 1 — the visit. Skipped only when a previous attempt already landed it.
   let visitId = recordedVisitId ?? null;
+  // #1687 rework — did THIS attempt create the row? Only then is it ours to undo.
+  let visitCreated = false;
   if (!visitId) {
     const recorded = await recordVisit({
       experienceId: input.cardId,
@@ -82,6 +120,7 @@ export async function submitVoluntaryPlaceReview(
       },
     });
     visitId = recorded.visitId;
+    visitCreated = recorded.isNew === true;
   }
 
   // 2 — the review. Anchored to the PLACE, never to a calendar entry: this entry
@@ -106,10 +145,50 @@ export async function submitVoluntaryPlaceReview(
     .single();
 
   if (error) {
-    // Constitution rule 3 — surfaced, with the state the caller needs to retry
-    // without corrupting the visit's timestamp.
-    throw new PlaceReviewWriteError(error.message, visitId);
+    // Constitution rule 3 — surfaced, with the state the caller needs BOTH to
+    // retry without corrupting the visit's timestamp AND to undo the half-write.
+    throw new PlaceReviewWriteError(error.message, visitId, visitCreated);
   }
 
   return { visitId, reviewId: data.id };
+}
+
+/**
+ * #1687 rework (P1-1) — UNDO A VISIT WHOSE REVIEW WAS REFUSED.
+ *
+ * Given whatever `submitVoluntaryPlaceReview` threw, return the error the caller
+ * should surface — with `visitId` cleared when the visit has been undone, and
+ * left intact when it has not, so the caller's retry logic reads one field and
+ * is right either way.
+ *
+ * ONLY a visit this attempt CREATED is undone. `record-visit` upserts on
+ * (user_id, experience_id): a place the user had already marked comes back as
+ * `isNew: false`, and its row predates this submit entirely. Deleting that would
+ * destroy state we never wrote — `removeVisit` deletes by (user, experience),
+ * not by row id, so it cannot tell the two apart. `visitCreated` can.
+ *
+ * NOT the delete-races-an-insert shape the confirm-time order exists to avoid.
+ * That hazard is a delete issued against a write still in flight on an
+ * 11.8-second cold path. Here `recordVisit` has already RESOLVED and handed back
+ * the row's id, so the row provably exists before the delete is issued.
+ *
+ * A rollback that itself fails is not swallowed: the original error comes back
+ * with its `visitId` intact, which is the signal the mutation uses to invalidate
+ * the visit queries so the deck stops claiming the row is not there.
+ */
+export async function rollBackHalfLandedVisit(
+  error: unknown,
+  cardId: string,
+): Promise<unknown> {
+  if (!(error instanceof PlaceReviewWriteError)) return error;
+  if (!error.visitId || !error.visitCreated) return error;
+
+  try {
+    await removeVisit(cardId);
+  } catch (rollbackError) {
+    console.error('[placeReviewService] Visit rollback failed:', rollbackError);
+    return error;
+  }
+
+  return new PlaceReviewWriteError(error.message, null, false);
 }
