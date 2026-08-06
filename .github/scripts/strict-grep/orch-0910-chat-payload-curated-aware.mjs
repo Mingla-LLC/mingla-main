@@ -34,6 +34,12 @@ const files = {
   modal: read("app-mobile/src/components/ExpandedCardModal.tsx"),
   bubble: read("app-mobile/src/components/chat/MessageBubble.tsx"),
   migration: read("supabase/migrations/20260722000000_orch_0910_chat_intent_card_backfill.sql"),
+  // #1669: the adapter is now a NORMALISER that delegates to the one canonical
+  // producer, so half the curated contract is enforced there. Read it here so
+  // this gate still checks the whole chain rather than only its first link.
+  canonicalMapper: read(
+    "app-mobile/src/components/utils/savedCardToExpandedCardData.ts",
+  ),
 };
 
 const failures = [];
@@ -82,12 +88,38 @@ check(
   "Curated collab save payload must emit top-level image and images.",
 );
 
+// #1669 RE-POINT, protection preserved and strengthened.
+//
+// This used to pin three literals in the adapter: the `cardType` normalisation,
+// `stops: raw.stops ?? legacy.stops`, and `totalPriceMin: raw.totalPriceMin ??
+// legacy.totalPriceMin` — i.e. a field-by-field allowlist of the curated keys.
+// That is precisely the shape ORCH-1054 identified as the bug: a curated plan
+// rebuilt from a fixed list silently loses whichever field nobody remembered to
+// add. #1669 replaced it with a flatten-and-delegate: `...legacy` then `...raw`
+// carries EVERY curated key including ones added later, `cardType` is still
+// normalised to the literal discriminator the modal reads, and the canonical
+// mapper returns a curated record VERBATIM.
+//
+// So the three literals are legitimately gone and re-adding them would be dead
+// code. What replaced them is a stronger guarantee, and it is what is checked
+// now — across both links of the chain, not just the adapter.
 check(
-  "cardPayloadAdapter passes curated fields through",
-  /const cardType = \(raw\.cardType \?\? legacy\.cardType\) === 'curated'/.test(files.adapter) &&
-    /cardType,\s*\n\s*stops: raw\.stops \?\? legacy\.stops/.test(files.adapter) &&
-    /totalPriceMin: raw\.totalPriceMin \?\? legacy\.totalPriceMin/.test(files.adapter),
-  "Adapter must pass cardType, stops, tagline, totals, and duration.",
+  "cardPayloadAdapter passes curated fields through (flatten + delegate, both links)",
+  // 1. Legacy-nested keys are flattened first and top-level keys win, so every
+  //    curated field survives without being named.
+  /\.\.\.legacy,\s*\n\s*\.\.\.raw,/.test(files.adapter) &&
+    // 2. The discriminator the modal branches on is still normalised to the
+    //    literal, never passed through as an arbitrary string.
+    /cardType: \(raw\.cardType \?\? legacy\.cardType\) === ['"]curated['"] \? ['"]curated['"] : undefined/.test(
+      files.adapter,
+    ) &&
+    // 3. The adapter hands the record to the ONE canonical producer …
+    /savedCardToExpandedCardData\(record\)/.test(files.adapter) &&
+    // 4. … which returns a curated card verbatim rather than rebuilding it.
+    /if \(c\.cardType === ["']curated["']\) \{\s*\n\s*return cardData as unknown as ExpandedCardData;/.test(
+      files.canonicalMapper,
+    ),
+  "Adapter must flatten legacy-then-top-level (so every curated key survives), normalise cardType to the literal discriminator, and delegate to savedCardToExpandedCardData — which must keep returning curated records VERBATIM. Do not go back to a field-by-field allowlist: that was the ORCH-1054 bug.",
 );
 
 check(
