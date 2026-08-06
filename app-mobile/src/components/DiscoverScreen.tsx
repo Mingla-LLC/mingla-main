@@ -86,6 +86,10 @@ import {
 } from "../types/discoverFilters";
 import { geocodingService } from "../services/geocodingService";
 import { PreferencesService } from "../services/preferencesService";
+// #1637 follow-up — the AsyncStorage mirror of the preferences row. Reading it
+// BEFORE the network row is what stops the 1.5s gate cap from anchoring a
+// saved-city user on coordinates. See the prefs effect for the device capture.
+import { offlineService } from "../services/offlineService";
 // ORCH-0996: paint-first, full-signature in-memory cache (NOT the ORCH-0839-A
 // AsyncStorage cache — see discoverEventsCache.ts header for why C-1 can't recur).
 import {
@@ -103,6 +107,12 @@ import {
   buildDiscoverSignatureForAnchor,
   hasUsableDiscoverQuery,
   snapDiscoverQueryCoord,
+  // #1637 follow-up — value-identity for the anchor, and the ONE shared reading
+  // of the saved `discover_city_*` preference used by both the local mirror and
+  // the authoritative row.
+  discoverQueryAnchorKey,
+  discoverCityFromPreferences,
+  sameDiscoverAnchorCity,
   type DiscoverCacheSignature,
   type DiscoverQueryAnchor,
 } from "../utils/discoverEventsCache";
@@ -1293,12 +1303,39 @@ function DiscoverScreen({
   // #1637: the first fetch waits for this to be true. The saved
   // `discover_city_*` preference is one of only two things allowed to anchor
   // the query, so firing before we know whether the user has one is what used
-  // to produce a THIRD fetch (and a third commit) for the 9-of-53 users who do.
-  // The read is a ~100-300ms local table lookup that starts at mount and runs
-  // ALONGSIDE the 1-3s GPS acquisition, so in practice it costs nothing — it is
-  // a correctness gate, not an added wait. It is capped below so a hung read can
-  // never leave Discover permanently silent, and it is skipped entirely for a
-  // signed-out user (nobody to have a preference).
+  // to produce a second fetch (and a second commit) for the 9-of-54 users who
+  // have one. It is capped below so a hung read can never leave Discover
+  // permanently silent, and it is skipped entirely for a signed-out user
+  // (nobody to have a preference).
+  //
+  // #1637 FOLLOW-UP — WHY THE GATE ALONE WAS NOT ENOUGH. The original gate
+  // waited on `PreferencesService.getUserPreferences`, described in this comment
+  // as "a ~100-300ms local table lookup". IT IS NOT LOCAL. It is a PostgREST
+  // round trip to Supabase with no cache, issued while a cold launch is already
+  // saturating the connection with discover-cards + 6 curated-experience calls.
+  // Instrumented on the physical Samsung SM-A725F, signed in, saved city
+  // "Raleigh":
+  //
+  //   T+0ms      prefs read START
+  //   T+1500ms   gate OPENED BY THE CAP — read still in flight
+  //   T+1643ms   searchMerged #1  anchor: coords     <-- wrong anchor, painted
+  //   T+3774ms   prefs read DONE  city=Raleigh
+  //   T+4278ms   searchMerged #2  anchor: city       <-- the deck re-commits
+  //
+  // The cap won the race, so the user with an EXPLICIT saved city got the
+  // coords deck first and had it replaced 2.6s later — the exact defect this
+  // issue is about, still live for the 17% of signed-in users who have one, the
+  // operator among them.
+  //
+  // THE FIX: read the LOCAL MIRROR FIRST. `offlineService` already persists the
+  // preferences row to AsyncStorage (it is written by `useUserPreferences`,
+  // which RecommendationsContext + SwipeableCards already mount at app start),
+  // so a returning user's saved city is available in ~10-50ms of local I/O. That
+  // seeds the anchor BEFORE the gate opens; the network row still runs, and is
+  // now pure reconciliation that changes nothing unless the city actually
+  // differs (`sameDiscoverAnchorCity`). The gate is once again what it claims to
+  // be — a correctness check that costs nothing — instead of a race the network
+  // usually wins.
   const [prefsSettled, setPrefsSettled] = useState(false);
 
   // ORCH-0809 M2: load persisted Discover city from preferences on mount.
@@ -1307,6 +1344,7 @@ function DiscoverScreen({
       setPrefsSettled(true);
       return;
     }
+    const userId = user.id;
     let cancelled = false;
     // Hard cap: whatever happens to the read, the query is never gated for
     // longer than this. Constitution #3 — a stalled dependency must degrade
@@ -1314,23 +1352,41 @@ function DiscoverScreen({
     const capId = setTimeout(() => {
       if (!cancelled) setPrefsSettled(true);
     }, PREFS_GATE_MAX_WAIT_MS);
+    // What the anchor was seeded with, so the authoritative read can tell
+    // "confirms the seed" (do nothing) from "genuinely changed" (re-anchor).
+    let seeded: ReturnType<typeof discoverCityFromPreferences> = null;
     (async () => {
+      // ── 1. LOCAL MIRROR — fast, and what actually beats the cap ──────────
       try {
-        const prefs = await PreferencesService.getUserPreferences(user.id);
+        const mirrored = discoverCityFromPreferences(
+          await offlineService.getOfflineUserPreferences(),
+        );
         if (cancelled) return;
-        if (
-          prefs &&
-          prefs.discover_city_name &&
-          typeof prefs.discover_city_lat === "number" &&
-          typeof prefs.discover_city_lng === "number"
-        ) {
-          setSelectedCity({
-            name: prefs.discover_city_name,
-            stateCode: prefs.discover_city_state_code ?? null,
-            countryCode: prefs.discover_city_country_code ?? null,
-            lat: prefs.discover_city_lat,
-            lng: prefs.discover_city_lng,
-          });
+        if (mirrored) {
+          seeded = mirrored;
+          setSelectedCity(mirrored);
+          // The anchor is now known to be correct — open the gate without
+          // waiting on the network. This is the whole point.
+          setPrefsSettled(true);
+        }
+      } catch {
+        // A missing/corrupt mirror is not an error: fall through to the row.
+      }
+      // ── 2. AUTHORITATIVE ROW — reconciliation, not a gate ────────────────
+      try {
+        const prefs = await PreferencesService.getUserPreferences(userId);
+        if (cancelled) return;
+        const authoritative = discoverCityFromPreferences(prefs);
+        // Keep the mirror current for the NEXT launch. Fire-and-forget: a
+        // failed write costs a slow gate next time, never a wrong anchor.
+        if (prefs) {
+          void offlineService.cacheUserPreferences(prefs).catch(() => {});
+        }
+        // Re-anchor ONLY on a real change. When the row confirms the seed —
+        // the overwhelmingly common case — this is a no-op, which is what
+        // keeps the fetch count at one.
+        if (!sameDiscoverAnchorCity(seeded, authoritative)) {
+          setSelectedCity(authoritative);
         }
       } finally {
         // Always release the gate — success, empty, or throw.
@@ -1461,8 +1517,23 @@ function DiscoverScreen({
   // a new anchor OBJECT — and therefore a new fetch — every time the device
   // re-reported the same street corner. Snapping first means an unchanged
   // location is an unchanged identity all the way up to React.
+  //
+  // #1637 FOLLOW-UP: the memo is keyed on the anchor's VALUE, not its inputs.
+  // Keying on `[selectedCity, snappedGpsLat, snappedGpsLng]` meant a GPS snap
+  // the anchor deliberately DISCARDS (city mode drops coords entirely) still
+  // minted a new anchor object, and the fetch effect — which lists `queryAnchor`
+  // — fired a debounced refetch for a byte-identical request. Caught on device:
+  // a third city-anchored `searchMerged` for "Raleigh", 6.8s after the second,
+  // triggered by nothing but the device refining its own position.
   const snappedGpsLat = snapDiscoverQueryCoord(nightOutGpsLat);
   const snappedGpsLng = snapDiscoverQueryCoord(nightOutGpsLng);
+  const queryAnchorKey = discoverQueryAnchorKey(
+    resolveDiscoverQueryAnchor({
+      selectedCity,
+      gpsLat: snappedGpsLat,
+      gpsLng: snappedGpsLng,
+    }),
+  );
   const queryAnchor: DiscoverQueryAnchor = useMemo(
     () =>
       resolveDiscoverQueryAnchor({
@@ -1470,7 +1541,9 @@ function DiscoverScreen({
         gpsLat: snappedGpsLat,
         gpsLng: snappedGpsLng,
       }),
-    [selectedCity, snappedGpsLat, snappedGpsLng],
+    // Value identity, deliberately: same key ⇒ same query ⇒ same object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [queryAnchorKey],
   );
 
   // ORCH-0996: the exact full-signature key for the current query. Drives

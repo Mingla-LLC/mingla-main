@@ -357,6 +357,85 @@ export function hasUsableDiscoverQuery(anchor: DiscoverQueryAnchor): boolean {
 }
 
 /**
+ * The anchor's VALUE identity, as a string.
+ *
+ * WHY THIS EXISTS (#1637 follow-up, found by instrumented device capture on the
+ * Samsung SM-A725F). `resolveDiscoverQueryAnchor` is pure and correctly drops
+ * GPS when a city anchor is present — but DiscoverScreen memoised it on its
+ * INPUTS (`[selectedCity, snappedGpsLat, snappedGpsLng]`). In city mode a GPS
+ * snap that the anchor deliberately ignores still changed the memo's deps, so
+ * React handed the fetch effect a NEW OBJECT describing an IDENTICAL query, and
+ * the effect fired a debounced refetch. Device capture, city-anchored on
+ * "Raleigh": a third `searchMerged` 6.8s after the second, same anchor, same
+ * body. Memoising on this key instead makes "same query ⇒ same identity" true
+ * at the React layer, not just at the value layer.
+ */
+export function discoverQueryAnchorKey(anchor: DiscoverQueryAnchor): string {
+  switch (anchor.kind) {
+    case "city":
+      return `city:${anchor.cityName}:${anchor.cityLat}:${anchor.cityLng}`;
+    case "coords":
+      return `coords:${anchor.gpsLat}:${anchor.gpsLng}`;
+    default:
+      return "none";
+  }
+}
+
+/**
+ * The saved `discover_city_*` preference, as an anchor city — or null.
+ *
+ * Pure, and shared by BOTH reads of that preference (the fast local mirror and
+ * the authoritative network row) so the two can never disagree about what
+ * counts as a usable saved city.
+ */
+export function discoverCityFromPreferences(
+  prefs: {
+    discover_city_name?: string | null;
+    discover_city_state_code?: string | null;
+    discover_city_country_code?: string | null;
+    discover_city_lat?: number | null;
+    discover_city_lng?: number | null;
+  } | null,
+): {
+  name: string;
+  stateCode: string | null;
+  countryCode: string | null;
+  lat: number;
+  lng: number;
+} | null {
+  if (!prefs) return null;
+  const name = prefs.discover_city_name;
+  const lat = prefs.discover_city_lat;
+  const lng = prefs.discover_city_lng;
+  if (typeof name !== "string" || name.trim().length === 0) return null;
+  if (typeof lat !== "number" || !Number.isFinite(lat)) return null;
+  if (typeof lng !== "number" || !Number.isFinite(lng)) return null;
+  return {
+    name,
+    stateCode: prefs.discover_city_state_code ?? null,
+    countryCode: prefs.discover_city_country_code ?? null,
+    lat,
+    lng,
+  };
+}
+
+/**
+ * Do two saved-city reads describe the same anchor?
+ *
+ * Used to decide whether the authoritative network row may re-anchor a query
+ * the local mirror already anchored. When they agree — the overwhelmingly
+ * common case — the authoritative read must change NOTHING, or it re-introduces
+ * the very second fetch #1637 exists to remove.
+ */
+export function sameDiscoverAnchorCity(
+  a: DiscoverAnchorCity | null,
+  b: DiscoverAnchorCity | null,
+): boolean {
+  if (a === null || b === null) return a === b;
+  return a.name === b.name && a.lat === b.lat && a.lng === b.lng;
+}
+
+/**
  * Build the full cache signature from the anchor + the active filters.
  *
  * Note the two `null` slots per branch: a city-anchored query carries NO gps

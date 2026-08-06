@@ -53,6 +53,11 @@ import {
   resolveDiscoverQueryAnchor,
   snapDiscoverQueryCoord,
   RESOLVED_CITY_COORD_PRECISION,
+  // #1637 follow-up — value-identity for the anchor, and the one shared reading
+  // of the saved `discover_city_*` preference.
+  discoverQueryAnchorKey,
+  discoverCityFromPreferences,
+  sameDiscoverAnchorCity,
 } from "../discoverEventsCache.ts";
 import {
   buildDiscoverDeckOrder,
@@ -561,7 +566,7 @@ Deno.test("#1637 C-4 the fetch callback's dependency list IS the query identity"
   }
 });
 
-Deno.test("#1637 C-7 the anchor memo is keyed on the SNAPPED coords, not the raw GPS fix", () => {
+Deno.test("#1637 C-7 the anchor memo is keyed on the anchor's VALUE, not on its inputs", () => {
   const dense = denseCode(read(SCREEN_REL));
   assert(
     dense.includes("constsnappedGpsLat=snapDiscoverQueryCoord(nightOutGpsLat)"),
@@ -570,11 +575,217 @@ Deno.test("#1637 C-7 the anchor memo is keyed on the SNAPPED coords, not the raw
   assert(
     dense.includes("constsnappedGpsLng=snapDiscoverQueryCoord(nightOutGpsLng)"),
   );
+  // WHY THIS ASSERTION CHANGED (#1637 follow-up). It previously pinned the deps
+  // to `[selectedCity,snappedGpsLat,snappedGpsLng]` — the SNAPPED INPUTS. That
+  // is one bug narrower than it needs to be. Snapping stops a 7-decimal jitter
+  // from re-keying the anchor, but a genuine ~110m move still changes
+  // `snappedGpsLat` — and in CITY mode `resolveDiscoverQueryAnchor` DISCARDS the
+  // coords entirely, so the memo handed React a new object describing a
+  // byte-identical query and the fetch effect re-fired. Caught on the physical
+  // Samsung SM-A725F: a third city-anchored `searchMerged` for "Raleigh", 6.8s
+  // after the second, caused by nothing but the device refining its position.
+  // The memo now keys on `queryAnchorKey`, which is computed FROM the resolved
+  // anchor, so "same query" and "same identity" are the same statement.
   assert(
-    dense.includes(
-      "gpsLat:snappedGpsLat,gpsLng:snappedGpsLng,}),[selectedCity,snappedGpsLat,snappedGpsLng],",
-    ),
-    "the useMemo deps must be the SNAPPED values — keying on the raw 7-decimal fix would mint a new anchor object, and therefore a new fetch, for the same street corner",
+    dense.includes("constqueryAnchorKey=discoverQueryAnchorKey("),
+    "the screen must derive the anchor's value-identity key",
+  );
+  assert(
+    dense.includes("gpsLat:snappedGpsLat,gpsLng:snappedGpsLng,}),[queryAnchorKey],"),
+    "the useMemo deps must be the anchor's VALUE key — keying on the inputs re-fires a city-anchored query that discards those very inputs",
+  );
+  assert(
+    !dense.includes("}),[selectedCity,snappedGpsLat,snappedGpsLng],"),
+    "the input-keyed dependency array must not come back — it is the third-fetch defect",
+  );
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// #1637 FOLLOW-UP — what the first fix did NOT fix, found by instrumented
+// capture on the physical Samsung SM-A725F rather than by reading the code.
+//
+// The first fix gated the initial fetch on `prefsSettled` so a saved
+// `discover_city_*` preference could not land AFTER the deck painted. The gate
+// was correct; its premise was not. The comment above it described
+// `PreferencesService.getUserPreferences` as "a ~100-300ms local table lookup".
+// It is an uncached PostgREST round trip. Measured on device, signed in, during
+// a cold launch already issuing discover-cards + six curated-experience calls:
+//
+//   T+0ms      prefs read START
+//   T+1500ms   gate OPENED BY THE CAP — the read is still in flight
+//   T+1643ms   searchMerged #1  anchor: coords    <-- wrong anchor, PAINTED
+//   T+3774ms   prefs read DONE  city=Raleigh
+//   T+4278ms   searchMerged #2  anchor: city      <-- the deck re-commits
+//   T+11032ms  searchMerged #3  anchor: city      <-- C-7's defect, GPS refine
+//
+// So for the 9-of-54 signed-in users with a saved city — 17%, the operator
+// among them — the reported symptom survived the fix intact.
+//
+// WHY THE ORIGINAL SUITE PASSED ANYWAY, which is the more important lesson:
+// `replayMount` takes `prefsSettled` as an INPUT. It replays the timeline the
+// design intends, and can therefore never observe the cap winning the race it
+// was meant to lose. T-9 below replays the timeline the DEVICE produced.
+// ───────────────────────────────────────────────────────────────────────────
+
+Deno.test("#1637 T-9 a saved-city user gets ONE city-anchored fetch even when the row lands after the cap", () => {
+  const SAVED = { name: "Raleigh", lat: 35.779557, lng: -78.638148 };
+  // The mirror read is local I/O; the row is the network. Both resolve to the
+  // same city — the normal case for a returning user.
+  const mirrored = discoverCityFromPreferences({
+    discover_city_name: SAVED.name,
+    discover_city_state_code: "NC",
+    discover_city_country_code: "US",
+    discover_city_lat: SAVED.lat,
+    discover_city_lng: SAVED.lng,
+  });
+  assert(mirrored !== null, "the mirror must yield a usable anchor city");
+
+  const fired = replayMount([
+    // Mount: nothing known yet. The gate is shut, so nothing may fire.
+    { label: "mount", selectedCity: null, gpsLat: null, gpsLng: null, prefsSettled: false },
+    // GPS lands BEFORE either preference read returns — the real cold-launch
+    // order, and what used to be fetch #1 on coordinates.
+    { label: "gps", selectedCity: null, gpsLat: GPS.lat, gpsLng: GPS.lng, prefsSettled: false },
+    // The LOCAL MIRROR resolves in ~10-50ms and seeds the anchor, then opens
+    // the gate itself. This is the change: the anchor is right BEFORE the
+    // first fetch, not 2.6s after it.
+    { label: "mirror", selectedCity: mirrored, gpsLat: GPS.lat, gpsLng: GPS.lng, prefsSettled: true },
+    // The authoritative row lands 3.8s later and CONFIRMS the seed. Because
+    // `sameDiscoverAnchorCity` says they agree, the screen does not re-anchor,
+    // so this step presents an unchanged anchor.
+    { label: "row", selectedCity: mirrored, gpsLat: GPS.lat, gpsLng: GPS.lng, prefsSettled: true },
+    // The device refines its position by more than the ~110m snap bucket. In
+    // city mode this must change nothing (C-7's defect).
+    { label: "gps-refine", selectedCity: mirrored, gpsLat: 35.791, gpsLng: -78.739, prefsSettled: true },
+  ]);
+
+  assertEquals(
+    fired.map((f) => f.label),
+    ["mirror"],
+    "exactly ONE fetch, and it is the mirror-seeded one — the device measured three before this fix",
+  );
+  assert(
+    fired[0].key.includes("Raleigh"),
+    "the one fetch must be anchored on the SAVED city, not on coordinates",
+  );
+});
+
+Deno.test("#1637 T-10 the cap losing the race is what the ORIGINAL fix shipped — non-vacuity oracle", () => {
+  const SAVED = { name: "Raleigh", lat: 35.779557, lng: -78.638148 };
+  // Replay of the pre-follow-up behaviour: no mirror, so the 1.5s cap opens the
+  // gate while the row is still in flight, and the row re-anchors afterwards.
+  // If this does NOT produce two fetches, T-9 proves nothing.
+  const fired = replayMount([
+    { label: "mount", selectedCity: null, gpsLat: null, gpsLng: null, prefsSettled: false },
+    { label: "gps", selectedCity: null, gpsLat: GPS.lat, gpsLng: GPS.lng, prefsSettled: false },
+    { label: "cap-opens-gate", selectedCity: null, gpsLat: GPS.lat, gpsLng: GPS.lng, prefsSettled: true },
+    { label: "row-lands-late", selectedCity: SAVED, gpsLat: GPS.lat, gpsLng: GPS.lng, prefsSettled: true },
+  ]);
+  assertEquals(
+    fired.map((f) => f.label),
+    ["cap-opens-gate", "row-lands-late"],
+    "the shipped-first-fix timeline must still reproduce TWO fetches, or T-9's single fetch is vacuous",
+  );
+  assert(
+    !fired[0].key.includes("Raleigh") && fired[1].key.includes("Raleigh"),
+    "and the anchor must genuinely flip coords -> city, which is the deck re-commit the user sees",
+  );
+});
+
+Deno.test("#1637 T-11 a city anchor's identity key ignores GPS; a coords anchor's tracks it", () => {
+  const city = { name: "Raleigh", lat: 35.779557, lng: -78.638148 };
+  const keyA = discoverQueryAnchorKey(
+    resolveDiscoverQueryAnchor({ selectedCity: city, gpsLat: 35.779, gpsLng: -78.638 }),
+  );
+  const keyB = discoverQueryAnchorKey(
+    resolveDiscoverQueryAnchor({ selectedCity: city, gpsLat: 35.791, gpsLng: -78.739 }),
+  );
+  assertEquals(keyA, keyB, "a GPS move must not change a city-anchored query's identity");
+
+  const coordsA = discoverQueryAnchorKey(
+    resolveDiscoverQueryAnchor({ selectedCity: null, gpsLat: 35.779, gpsLng: -78.638 }),
+  );
+  const coordsB = discoverQueryAnchorKey(
+    resolveDiscoverQueryAnchor({ selectedCity: null, gpsLat: 35.791, gpsLng: -78.739 }),
+  );
+  assertNotEquals(coordsA, coordsB, "a real move MUST re-key a coords-anchored query");
+  assertNotEquals(coordsA, keyA, "coords and city anchors must never collide");
+  assertEquals(
+    discoverQueryAnchorKey(resolveDiscoverQueryAnchor({ selectedCity: null, gpsLat: null, gpsLng: null })),
+    "none",
+  );
+});
+
+Deno.test("#1637 T-12 the saved-preference reading rejects every unusable row", () => {
+  const full = {
+    discover_city_name: "Raleigh",
+    discover_city_state_code: "NC",
+    discover_city_country_code: "US",
+    discover_city_lat: 35.779557,
+    discover_city_lng: -78.638148,
+  };
+  const ok = discoverCityFromPreferences(full);
+  assertEquals(ok, {
+    name: "Raleigh",
+    stateCode: "NC",
+    countryCode: "US",
+    lat: 35.779557,
+    lng: -78.638148,
+  });
+  assertEquals(discoverCityFromPreferences(null), null);
+  assertEquals(discoverCityFromPreferences({ ...full, discover_city_name: null }), null);
+  assertEquals(discoverCityFromPreferences({ ...full, discover_city_name: "  " }), null);
+  assertEquals(discoverCityFromPreferences({ ...full, discover_city_lat: null }), null);
+  assertEquals(discoverCityFromPreferences({ ...full, discover_city_lng: undefined }), null);
+  assertEquals(discoverCityFromPreferences({ ...full, discover_city_lat: Number.NaN }), null);
+  // State/country are optional labels, not part of the anchor's usability.
+  assertEquals(
+    discoverCityFromPreferences({ ...full, discover_city_state_code: null })?.name,
+    "Raleigh",
+  );
+});
+
+Deno.test("#1637 T-13 reconciliation re-anchors on a real change and on nothing else", () => {
+  const a = { name: "Raleigh", lat: 35.779557, lng: -78.638148 };
+  assert(sameDiscoverAnchorCity(a, { ...a }), "a confirming row must be a no-op");
+  assert(sameDiscoverAnchorCity(null, null), "no saved city on either read is agreement, not a change");
+  assert(!sameDiscoverAnchorCity(null, a), "a city appearing where there was none IS a change");
+  assert(!sameDiscoverAnchorCity(a, null), "a city being cleared IS a change");
+  assert(
+    !sameDiscoverAnchorCity(a, { ...a, name: "Durham" }),
+    "the user changing city on another device must re-anchor",
+  );
+  assert(
+    !sameDiscoverAnchorCity(a, { ...a, lat: 35.9 }),
+    "same name, different coordinates is a different query",
+  );
+});
+
+Deno.test("#1637 C-8 the prefs effect reads the LOCAL MIRROR before the network row", () => {
+  const dense = denseCode(read(SCREEN_REL));
+  const mirror = dense.indexOf("offlineService.getOfflineUserPreferences()");
+  const row = dense.indexOf("PreferencesService.getUserPreferences(userId)");
+  assert(mirror !== -1, "the AsyncStorage mirror must be read — it is what beats the 1.5s cap");
+  assert(row !== -1, "vacuity guard: the authoritative row must still be read");
+  assert(
+    mirror < row,
+    "the mirror must be read FIRST; behind the network row it cannot open the gate in time",
+  );
+  assert(
+    dense.includes("setSelectedCity(mirrored);setPrefsSettled(true);"),
+    "a mirrored city must seed the anchor AND open the gate, without waiting on the network",
+  );
+});
+
+Deno.test("#1637 C-9 the authoritative row re-anchors only when it disagrees with the seed", () => {
+  const dense = denseCode(read(SCREEN_REL));
+  assert(
+    dense.includes("if(!sameDiscoverAnchorCity(seeded,authoritative)){setSelectedCity(authoritative);}"),
+    "an unguarded setSelectedCity here re-commits the deck on every launch — it is the second fetch, restored",
+  );
+  assert(
+    dense.includes("offlineService.cacheUserPreferences(prefs)"),
+    "the mirror must be refreshed from the authoritative row, or it goes stale and stops helping",
   );
 });
 
