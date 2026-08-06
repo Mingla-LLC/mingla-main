@@ -102,6 +102,17 @@ interface PersonHolidayViewProps {
   }>;
   onAddCustomDay?: () => void;
   fallbackCards?: FallbackCard[];
+  /**
+   * Issue #1639 — TRUE once the parent's asynchronously-loaded `customHolidays`
+   * (Supabase) AND `archivedHolidayIds` (AsyncStorage) have both SETTLED, whether
+   * they resolved with rows, resolved empty, or failed. Both feed the batched card
+   * request's `sections` list, and both land AFTER this component has mounted, so
+   * without an explicit settled signal the first request either misses every custom
+   * holiday (they are not in the list yet) or pays for holidays the user explicitly
+   * archived (the archive list is not loaded yet) — and putting `sections` in the
+   * query key without this gate simply fires the ~17-section fan-out TWICE.
+   */
+  holidayInputsReady: boolean;
   /** Persisted set of archived holiday IDs for the current person */
   archivedHolidayIds?: string[];
   /** Called when user archives a holiday — parent persists to AsyncStorage */
@@ -393,12 +404,14 @@ function CardRow({
   sections,
   sectionData,
   isProfileLoading,
+  isProfileFetching,
   isProfileError,
   locationStatus,
   refetchProfile,
   fallbackCards,
   onCardPress,
   onShuffleCategories,
+  resolveSections,
   travelMode,
   onLoaded,
   excludeCardIds = [],
@@ -412,12 +425,21 @@ function CardRow({
   sections: HolidayCardSection[];
   sectionData?: { cards: HolidayCardsResponse["cards"]; summary?: { emptyReason: string } };
   isProfileLoading: boolean;
+  /** Issue #1639 — a batched refetch is in flight (a section was ADDED, or a manual retry). */
+  isProfileFetching?: boolean;
   isProfileError: boolean;
   locationStatus: "ok" | "missing";
   refetchProfile: () => void;
   fallbackCards?: FallbackCard[];
   onCardPress?: PersonHolidayViewProps["onCardPress"];
   onShuffleCategories?: () => Promise<void>;
+  /**
+   * Issue #1639 — resolves the AI category sections the shuffle should use, awaiting
+   * the in-flight load when there is one. Supplied by `useHolidayCategories`, which
+   * now starts loading on EXPAND rather than on mount; `sections` is the last-known
+   * value and stays the fallback for callers (the birthday row) that pass a constant.
+   */
+  resolveSections?: () => Promise<HolidayCardSection[]>;
   travelMode?: string;
   onLoaded?: () => void;
   excludeCardIds?: string[];
@@ -435,9 +457,13 @@ function CardRow({
     // ORCH-0986 (QA P1-002 fix): pass the active mode so the shuffle result is
     // spliced into the SAME pairedProfile cache slice this row renders from.
     // No refetchProfile() — that reloaded default cards and discarded the shuffle.
-    await shufflePairedCards(pairedUserId, holidayKey, sections, mode ?? "default", excludeCardIds, isCustomHoliday, yearsElapsed);
+    // Issue #1639: await the category load when one is in flight, so a shuffle tapped
+    // straight after expanding still shuffles against the AI categories rather than
+    // silently falling back to DEFAULT_PERSON_SECTIONS.
+    const effectiveSections = resolveSections ? await resolveSections() : sections;
+    await shufflePairedCards(pairedUserId, holidayKey, effectiveSections, mode ?? "default", excludeCardIds, isCustomHoliday, yearsElapsed);
     if (onShuffleCategories) onShuffleCategories();
-  }, [shufflePairedCards, pairedUserId, holidayKey, sections, mode, excludeCardIds, isCustomHoliday, yearsElapsed, onShuffleCategories]);
+  }, [shufflePairedCards, pairedUserId, holidayKey, sections, resolveSections, mode, excludeCardIds, isCustomHoliday, yearsElapsed, onShuffleCategories]);
 
   // Signal parent that loading finished
   useEffect(() => {

@@ -73,6 +73,16 @@ export const personCardKeys = {
   // call sites that pass 3 args.
   paired: (pairedUserId: string, holidayKey: string, locationKey: string, mode: string = 'default') =>
     [...personCardKeys.all, 'paired', pairedUserId, holidayKey, locationKey, mode] as const,
+  // Issue #1639: PREFIX only. `get-paired-profile-cards` is a BATCHED request whose
+  // body carries a `sections` list, so the section list is a request input and must
+  // appear in the key (I-PROPOSED-BO clause 2 / Constitution #4) — otherwise custom
+  // holidays that resolve AFTER PersonHolidayView mounted grow the request body while
+  // the key stays put, React Query never refetches, and `sections['custom_<id>']` is
+  // `undefined` for the life of the cache entry. Use `pairedProfileSections` for the
+  // real query key; this 4-element prefix stays for cache WRITES/filters that must
+  // match every section-variant of one (friend, mode) pair (useShufflePairedCards).
   pairedProfile: (pairedUserId: string, mode: string = 'default') =>
     [...personCardKeys.all, 'pairedProfile', pairedUserId, mode] as const,
+  pairedProfileSections: (pairedUserId: string, mode: string = 'default', sectionsKey: string) =>
+    [...personCardKeys.pairedProfile(pairedUserId, mode), sectionsKey] as const,
 };
