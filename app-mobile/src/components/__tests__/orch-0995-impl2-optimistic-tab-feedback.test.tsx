@@ -227,6 +227,72 @@ function runSourceWiringTests() {
     !/closeProfileOverlays\(\)\s*;\s*\n\s*setCurrentPage\(page\)\s*;/.test(idx),
     'T-18 the old un-deferred setCurrentPage(page) immediately after closeProfileOverlays() must be wrapped in startTransition'
   );
+
+  // ===== ISSUE #1638 AMENDMENT — T-19 =====
+  //
+  // WHY THIS GATE WAS AMENDED, AND WHY T-18 ABOVE IS UNCHANGED.
+  //
+  // Issue #1638 is Seth's third report of the same thing: "the switch happens and the
+  // screen catches up later slowly. Too slow." The Phase-A investigation proved the cause
+  // is not a regression — it is ORCH-0995's intended behaviour. This file's own T-18 was
+  // named in that investigation as the gate any remedy would have to amend, and it was
+  // explicitly forbidden to delete, weaken, or route around it.
+  //
+  // The implementation RE-AFFIRMED the T-18 contract instead of reversing it, with
+  // numbers. Physical Samsung SM-A725F, cold-launched, 53 switches:
+  //   - the transition's own scheduling gap (setCurrentPage -> destination render begins)
+  //     is 48ms p50 / 106ms p90 — 7% of the 694ms p50 tap-to-first-frame total;
+  //   - the JS thread blocks for 256ms p50 / 703ms p90 during the commit ANYWAY, so the
+  //     transition buys no responsiveness — commits are not interruptible and these trees
+  //     are large;
+  //   - what the transition DOES buy is ORDERING, and that ordering is load-bearing: it is
+  //     the only reason an urgent update can commit and PAINT before the heavy mount.
+  //     Remove it and the pending state below lands in the same render pass as the mount,
+  //     so it could never paint first — and ORCH-0995's original defect (the highlight
+  //     hostage to the mount) returns.
+  //   - transition restarts were ruled out as a counter-argument: pre-commit render passes
+  //     measured p50 1 / p90 1 / max 2.
+  //
+  // So T-18 stands, unmodified. What was MISSING is added here at equal strictness: a
+  // deferred mount with NOTHING rendered in the interim is exactly defect #1638. React
+  // keeps the previous UI committed for the whole transition render, and this app has no
+  // Suspense boundary and no isPending consumer anywhere. T-19 makes the pending state a
+  // precondition of the deferral, so the two can never again be separated — deleting the
+  // pending state now fails this suite just as loudly as deleting the transition does.
+
+  // ---- T-19 [FAILS-ON-REVERT]: the deferral is paired with an URGENT pending state ----
+  const beginIdx = idx.indexOf('tabSwitchHostRef.current?.beginSwitch(page)');
+  const transitionIdx = idx.indexOf('React.startTransition(');
+  assert.notEqual(
+    beginIdx,
+    -1,
+    'T-19 onNavigate must raise the tab-switch pending state (tabSwitchHostRef.current?.beginSwitch(page)). A deferred mount with nothing rendered in the gap IS issue #1638 — the pill moves, the haptic fires, and the user keeps looking at the screen they just left.'
+  );
+  assert.ok(
+    beginIdx < transitionIdx,
+    'T-19 beginSwitch(page) must run BEFORE React.startTransition(...) — it is an urgent update and has to commit and paint while the transition-lane mount is still rendering'
+  );
+
+  // ---- T-19b [FAILS-ON-REVERT]: the pending state is transition-bound, not timer-bound ----
+  const host = readSource('src/components/navigation/TabSwitchHost.tsx');
+  assert.match(
+    host,
+    /useLayoutEffect\(\(\)\s*=>\s*\{[\s\S]*?setPendingPage\(null\)\s*;[\s\S]*?\},\s*\[currentPage[^\]]*\]\)/,
+    'T-19b TabSwitchHost must clear the pending state from a useLayoutEffect keyed on [currentPage], i.e. from the destination COMMIT. A duration-driven dismissal would be the masking umbrella #1635 rejects, and it could outlive or undercut the data.'
+  );
+  const hostTimeouts = host.match(/setTimeout\(/g) || [];
+  assert.equal(
+    hostTimeouts.length,
+    1,
+    `T-19b TabSwitchHost may contain exactly ONE setTimeout — the named PENDING_FAILSAFE_MS ceiling that guards against a page commit that never arrives. Found ${hostTimeouts.length}.`
+  );
+
+  // ---- T-19c [FAILS-ON-REVERT]: the pending state shows STRUCTURE, never a spinner ----
+  const scaffold = readSource('src/components/navigation/TabSwitchScaffold.tsx');
+  assert.ok(
+    !/ActivityIndicator/.test(scaffold),
+    'T-19c the pending state must never be a naked spinner — umbrella #1635 bans one where real structure could be shown'
+  );
 }
 
 function runAll() {
@@ -238,7 +304,7 @@ if (require.main === module) {
   try {
     runAll();
     console.log(
-      'PASS T-08..T-18 ORCH-0995 IMPLEMENT-2 optimistic tab-tap feedback (instant displayPage on press, reconcile clears on currentPage commit, programmatic nav reflected, no desync) + source wired for optimistic nav + startTransition-deferred mount'
+      'PASS T-08..T-19c ORCH-0995 IMPLEMENT-2 optimistic tab-tap feedback (instant displayPage on press, reconcile clears on currentPage commit, programmatic nav reflected, no desync) + source wired for optimistic nav + startTransition-deferred mount + #1638 amendment: the deferral is paired with an urgent, commit-bound, structure-showing pending state'
     );
   } catch (error) {
     console.error(error);

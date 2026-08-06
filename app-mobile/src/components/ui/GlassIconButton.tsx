@@ -19,14 +19,13 @@
  * Spec: Mingla_Artifacts/outputs/SPEC_ORCH-0589_FLOATING_GLASS_HOME.md §4.2 + §4.3
  * Tokens: designSystem.ts → glass.chrome.*
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef } from 'react';
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
   Platform,
-  AccessibilityInfo,
   Animated,
   Easing,
 } from 'react-native';
@@ -35,6 +34,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { Icon, type IconName } from './Icon';
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../../constants/designSystem';
+import { useA11yPreferences } from '../../hooks/useA11yPreferences';
 
 const c = glass.chrome;
 
@@ -64,28 +64,11 @@ export const GlassIconButton: React.FC<GlassIconButtonProps> = ({
   size,
   liquid = false,
 }) => {
-  const [reduceTransparency, setReduceTransparency] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    (async (): Promise<void> => {
-      try {
-        const rt = await AccessibilityInfo.isReduceTransparencyEnabled();
-        if (mounted) setReduceTransparency(rt);
-      } catch (err) {
-        if (__DEV__) console.warn('[GlassIconButton] a11y init failed:', err);
-        if (mounted) setReduceTransparency(true);
-      }
-    })();
-    const sub = AccessibilityInfo.addEventListener(
-      'reduceTransparencyChanged',
-      (enabled: boolean) => setReduceTransparency(enabled),
-    );
-    return () => {
-      mounted = false;
-      sub.remove();
-    };
-  }, []);
+  // Issue #1638 — shared app-wide probe instead of a PER-INSTANCE one. Every glass
+  // control on a screen used to run its own native a11y round trip, its own
+  // listener registration and its own extra post-resolve render, repeated on every tab
+  // switch because Path B unmounts the tab. See useA11yPreferences.ts.
+  const { reduceTransparency } = useA11yPreferences();
 
   const useGlass = !reduceTransparency && !isAndroidPreBlur;
 

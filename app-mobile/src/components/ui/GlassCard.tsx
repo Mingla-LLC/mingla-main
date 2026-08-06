@@ -19,16 +19,16 @@
  * Tokens: designSystem.ts → glass.profile.card / glass.profile.cardElevated
  * Spec:   Mingla_Artifacts/outputs/DESIGN_ORCH-0627_PROFILE_GLASS_REFRESH_SPEC.md §2
  */
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   View,
   StyleSheet,
   Platform,
-  AccessibilityInfo,
 } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../../constants/designSystem';
+import { useA11yPreferences } from '../../hooks/useA11yPreferences';
 
 export type GlassCardVariant = 'base' | 'elevated';
 
@@ -48,30 +48,12 @@ export const GlassCard: React.FC<GlassCardProps> = ({
   style,
   accessibilityLabel,
 }) => {
-  const [reduceTransparency, setReduceTransparency] = useState<boolean>(false);
-
-  useEffect(() => {
-    let mounted = true;
-
-    AccessibilityInfo.isReduceTransparencyEnabled()
-      .then((enabled) => {
-        if (mounted) setReduceTransparency(enabled);
-      })
-      .catch(() => {
-        // Fall back to solid (more readable default) on init failure.
-        if (mounted) setReduceTransparency(true);
-      });
-
-    const sub = AccessibilityInfo.addEventListener(
-      'reduceTransparencyChanged',
-      (enabled: boolean) => setReduceTransparency(enabled),
-    );
-
-    return () => {
-      mounted = false;
-      sub.remove();
-    };
-  }, []);
+  // Issue #1638 — shared app-wide probe instead of a PER-INSTANCE one. This component is
+  // rendered many times per screen (ProfilePage alone mounts six), and every instance used
+  // to pay its own native a11y round trip, its own listener registration,
+  // and its own second render when the promise resolved — on every tab switch, because
+  // Path B unmounts the tab. The answer is identical for every card on screen.
+  const { reduceTransparency } = useA11yPreferences();
 
   const t = variant === 'elevated' ? glass.profile.cardElevated : glass.profile.card;
   const useGlass = !reduceTransparency && !isAndroidPreBlur;

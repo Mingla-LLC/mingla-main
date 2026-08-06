@@ -17,7 +17,6 @@ import {
   RefreshControl,
   InteractionManager,
   Image,
-  AccessibilityInfo,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
@@ -40,6 +39,7 @@ import { useScreenLogger } from "../hooks/useScreenLogger";
 import { useKeyboard } from "../hooks/useKeyboard";
 import { useAppLayout } from "../hooks/useAppLayout";
 import { colors, spacing, typography, fontWeights, glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
+import { useA11yPreferences } from "../hooks/useA11yPreferences";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNetworkMonitor } from "../services/networkMonitor";
 import { withTimeout } from "../utils/withTimeout";
@@ -599,22 +599,10 @@ function ConnectionsPageRefactored({
   const { dismiss: dismissKeyboard } = useKeyboard({ disableLayoutAnimation: true });
 
   // ── ORCH-0600: Accessibility state for glass header ──────
-  const [reduceTransparency, setReduceTransparency] = useState(false);
-  useEffect(() => {
-    let mounted = true;
-    AccessibilityInfo.isReduceTransparencyEnabled()
-      .then((rt) => {
-        if (mounted) setReduceTransparency(rt);
-      })
-      .catch(() => {
-        if (mounted) setReduceTransparency(true);
-      });
-    const sub = AccessibilityInfo.addEventListener('reduceTransparencyChanged', setReduceTransparency);
-    return () => {
-      mounted = false;
-      sub.remove();
-    };
-  }, []);
+  // Issue #1638 — served from the shared app-wide probe, so this 4600-line page no longer
+  // pays a native a11y round trip plus an extra post-resolve render on
+  // every switch to Friends. See useA11yPreferences.ts.
+  const { reduceTransparency } = useA11yPreferences();
 
   // ── UI state ─────────────────────────────────────────────
   const [activePanel, setActivePanel] = useState<PanelId>(null); // [TRANSITIONAL] legacy — being replaced by showFriendsModal

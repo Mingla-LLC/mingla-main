@@ -1,0 +1,107 @@
+name: Issue 1638 Tab Switch Scheduling Tests
+
+# #1638 [tab-switch scheduling] — "the switch happens and the screen catches up later
+# slowly. Too slow." The CORE defect, after PR #1660 shipped three quick wins that
+# explicitly did not fix the lag.
+#
+# TWO JOBS IN ONE WORKFLOW, and the second one is the more important of the two.
+#
+# ── 1. The #1638 scheduling suite ──────────────────────────────────────────────────
+# The pending state (Track B) and the mount-cost reductions (Track A). See the suite
+# header for the full contract and the measured basis.
+#
+# ── 2. THE THREE ORCH-0995 SUITES, WHICH WERE DARK ────────────────────────────────
+# `src/components/__tests__/orch-0995-*.test.tsx` are three real, passing, fails-on-revert
+# regression suites — and NO WORKFLOW RAN THEM. app-mobile has no jest, its tests run under
+# plain `node`, and nothing swept that directory. One of them
+# (orch-0995-impl2-optimistic-tab-feedback.test.tsx T-18) is the gate that protects the
+# EXACT `React.startTransition` line #1638 re-decided. It would not have stopped a bad
+# change, because nothing executed it.
+#
+# They are wired here, in the issue that had to reason about them, rather than left for a
+# later sweep. A gate nobody runs is not protection; it is a comment that looks like one.
+#
+# EXPLICIT registry (never a glob) — add a suite by appending its path below.
+# Invokes no .mjs under .github/scripts/strict-grep/ and adds no file under a registered
+# externalGateDirs path (`app-mobile/scripts/ci`), so MANIFEST.json totality, parity and
+# the ratchet counters are untouched.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/src/components/__tests__/issue-1638-tab-switch-scheduling.test.mjs"
+      - "app-mobile/src/components/__tests__/orch-0995-bottom-nav-spotlight-ui-thread.test.tsx"
+      - "app-mobile/src/components/__tests__/orch-0995-impl2-optimistic-tab-feedback.test.tsx"
+      - "app-mobile/src/components/__tests__/orch-0995-tester-optimistic-desync-adversarial.test.tsx"
+      - "app-mobile/src/components/navigation/**"
+      - "app-mobile/src/components/GlassBottomNav.tsx"
+      - "app-mobile/src/components/GlassTopBar.tsx"
+      - "app-mobile/src/components/LikesPage.tsx"
+      - "app-mobile/src/components/ConnectionsPage.tsx"
+      - "app-mobile/src/components/ProfilePage.tsx"
+      - "app-mobile/src/components/AppStateManager.tsx"
+      - "app-mobile/src/components/ui/GlassCard.tsx"
+      - "app-mobile/src/components/ui/GlassIconButton.tsx"
+      - "app-mobile/src/components/ui/GlassBadge.tsx"
+      - "app-mobile/src/hooks/useA11yPreferences.ts"
+      - "app-mobile/src/utils/tabSwitchPerf.ts"
+      - "app-mobile/src/utils/logger.ts"
+      - "app-mobile/app/index.tsx"
+      - "app-mobile/package.json"
+      - ".github/workflows/issue-1638-tab-switch-scheduling-tests.yml"
+  pull_request:
+    paths:
+      - "app-mobile/src/components/__tests__/issue-1638-tab-switch-scheduling.test.mjs"
+      - "app-mobile/src/components/__tests__/orch-0995-bottom-nav-spotlight-ui-thread.test.tsx"
+      - "app-mobile/src/components/__tests__/orch-0995-impl2-optimistic-tab-feedback.test.tsx"
+      - "app-mobile/src/components/__tests__/orch-0995-tester-optimistic-desync-adversarial.test.tsx"
+      - "app-mobile/src/components/navigation/**"
+      - "app-mobile/src/components/GlassBottomNav.tsx"
+      - "app-mobile/src/components/GlassTopBar.tsx"
+      - "app-mobile/src/components/LikesPage.tsx"
+      - "app-mobile/src/components/ConnectionsPage.tsx"
+      - "app-mobile/src/components/ProfilePage.tsx"
+      - "app-mobile/src/components/AppStateManager.tsx"
+      - "app-mobile/src/components/ui/GlassCard.tsx"
+      - "app-mobile/src/components/ui/GlassIconButton.tsx"
+      - "app-mobile/src/components/ui/GlassBadge.tsx"
+      - "app-mobile/src/hooks/useA11yPreferences.ts"
+      - "app-mobile/src/utils/tabSwitchPerf.ts"
+      - "app-mobile/src/utils/logger.ts"
+      - "app-mobile/app/index.tsx"
+      - "app-mobile/package.json"
+      - ".github/workflows/issue-1638-tab-switch-scheduling-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1638-tab-switch-scheduling:
+    name: "#1638 CONS: the destination's own structure is on screen on the tap frame, and the deferred mount is cheaper (fails-on-revert)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Node 22 — the app-mobile convention (there is no jest in this app).
+          node-version: "22"
+      # No `npm ci`: every suite in this job reads sources as strings or drives a pure
+      # in-file model. Nothing here imports react-native, so installing 1.4GB of
+      # node_modules would only buy latency.
+      - name: "#1638 scheduling suite (implementor happy-path)"
+        run: npm run test:issue-1638-scheduling
+
+      # ── The three previously-DARK ORCH-0995 suites ──────────────────────────────
+      # Run as separate steps, not one `&&` chain, so a failure names itself in the UI.
+      - name: "ORCH-0995 T-01..T-07 — bottom-nav spotlight stays on the UI thread (was dark)"
+        run: npm run test:orch-0995-spotlight
+      - name: "ORCH-0995 T-08..T-18 — optimistic tab feedback + deferred mount (was dark)"
+        run: npm run test:orch-0995-impl2
+      - name: "ORCH-0995 ADV-1..ADV-W4 — optimistic-nav desync adversarial (was dark)"
+        run: npm run test:orch-0995-adversarial

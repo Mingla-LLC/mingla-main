@@ -6,9 +6,11 @@
 // .github/workflows/issue-1638-tab-switch-quickwins-tests.yml.
 //
 // #1638 is "switching tabs acknowledges the tap before the screen is ready". This suite
-// covers the three quick wins that were in scope. The `React.startTransition` scheduling
-// decision at app/index.tsx:2725 is explicitly OUT of scope and is untouched — it remains
-// protected by orch-0995-impl2-optimistic-tab-feedback.test.tsx's T-18 gate.
+// covers the three quick wins that were in scope FOR PR #1660, which explicitly did not fix
+// the lag. The scheduling rework landed afterwards, in the same issue: see
+// issue-1638-tab-switch-scheduling.test.mjs for the pending state and the Track-A mount
+// reductions, and orch-0995-impl2-optimistic-tab-feedback.test.tsx T-18/T-19 for the
+// scheduling contract itself. S1 below was amended when that landed — see its comment.
 //
 //   C1  ANDROID GETS A TACTILE ACKNOWLEDGEMENT AT ALL.
 //       GlassBottomNav.tsx gated `Haptics.impactAsync(Medium)` behind
@@ -565,14 +567,32 @@ test('C3.8 the 60s friend-request poll in the shell is untouched', () => {
 // OUT-OF-SCOPE TRIPWIRE
 // ═══════════════════════════════════════════════════════════════════════════════
 
-test('S1 the ORCH-0995 startTransition scheduling was NOT touched by #1638', () => {
-  // #1638's scope excluded the scheduling rework: it is protected by the T-18
-  // fails-on-revert gate in orch-0995-impl2-optimistic-tab-feedback.test.tsx and changing
-  // it requires an explicit, documented amendment to that gate. This tripwire makes an
-  // accidental drive-by change loud.
+test('S1 the ORCH-0995 startTransition scheduling still holds, and is now paired with a pending state', () => {
+  // AMENDED when the #1638 scheduling leg landed.
+  //
+  // This started life as an OUT-OF-SCOPE tripwire: PR #1660 shipped three quick wins and
+  // deliberately did not touch the scheduling, so S1 asserted "unchanged". The scheduling
+  // leg then landed in the same issue and RE-AFFIRMED the transition with measurements on
+  // a physical Samsung SM-A725F (48ms p50 scheduling gap vs a 256ms p50 JS-thread block
+  // during the commit — the transition buys ordering, not responsiveness, and that
+  // ordering is what lets the pending state paint first).
+  //
+  // So the first assertion is unchanged and still fails on revert. The second is ADDED,
+  // not substituted: what #1660 could not assert is that the deferral is paired with
+  // something to render in the gap, which is the actual defect. Weakening was not an
+  // option and was not taken — this tripwire is strictly stronger than it was.
   const src = fs.readFileSync(path.join(APP_MOBILE_ROOT, 'app/index.tsx'), 'utf8');
   assert.match(
     src, /React\.startTransition\(\(\) => \{[\s\S]{0,200}?setCurrentPage\(page\)/,
-    'app/index.tsx must still wrap setCurrentPage in React.startTransition (#1638 out of scope)',
+    'app/index.tsx must still wrap setCurrentPage in React.startTransition',
+  );
+  const beginIdx = src.indexOf('tabSwitchHostRef.current?.beginSwitch(page)');
+  assert.notEqual(
+    beginIdx, -1,
+    'the deferred mount must be paired with an urgent pending state (beginSwitch) — a transition with nothing rendered in the interim IS the #1638 defect',
+  );
+  assert.ok(
+    beginIdx < src.indexOf('React.startTransition('),
+    'beginSwitch(page) must run before the transition is scheduled',
   );
 });

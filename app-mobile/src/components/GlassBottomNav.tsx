@@ -25,7 +25,6 @@ import {
   Pressable,
   StyleSheet,
   Platform,
-  AccessibilityInfo,
 } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -34,6 +33,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { triggerTabSwitchHaptic } from '../utils/navTabHaptics';
+import { beginTabSwitchRun } from '../utils/tabSwitchPerf';
+import { useA11yPreferences } from '../hooks/useA11yPreferences';
 import { Icon, type IconName } from './ui/Icon';
 import { glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../constants/designSystem';
 
@@ -83,8 +84,12 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
   badges,
   coachLikesRef,
 }) => {
-  const [reduceTransparency, setReduceTransparency] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
+  // Issue #1638 — one shared app-wide probe, read synchronously from cache after the
+  // first resolution. This used to be a per-component useState + useEffect + native
+  // reduce-motion/reduce-transparency probe, with its own listener pair and its own extra
+  // post-resolve re-render. See useA11yPreferences.ts for why 25 of those were a real
+  // per-mount cost on the tab-switch path.
+  const { reduceTransparency, reduceMotion } = useA11yPreferences();
 
   // ORCH-0995 IMPLEMENT-2: optimistic tab selection.
   // The destination screen mounts synchronously on the JS thread when the parent
@@ -103,41 +108,6 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
   useEffect(() => {
     setPendingPage(null);
   }, [currentPage]);
-
-  useEffect(() => {
-    let mounted = true;
-    (async (): Promise<void> => {
-      try {
-        const [rt, rm] = await Promise.all([
-          AccessibilityInfo.isReduceTransparencyEnabled(),
-          AccessibilityInfo.isReduceMotionEnabled(),
-        ]);
-        if (mounted) {
-          setReduceTransparency(rt);
-          setReduceMotion(rm);
-        }
-      } catch (err) {
-        if (__DEV__) console.warn('[GlassBottomNav] a11y init failed:', err);
-        if (mounted) {
-          setReduceTransparency(true);
-          setReduceMotion(true);
-        }
-      }
-    })();
-    const rtSub = AccessibilityInfo.addEventListener(
-      'reduceTransparencyChanged',
-      (enabled: boolean) => setReduceTransparency(enabled),
-    );
-    const rmSub = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      (enabled: boolean) => setReduceMotion(enabled),
-    );
-    return () => {
-      mounted = false;
-      rtSub.remove();
-      rmSub.remove();
-    };
-  }, []);
 
   const useGlass = !reduceTransparency && !isAndroidPreBlur;
 
@@ -249,6 +219,10 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
               onPress={() => {
                 // Guard against re-tapping the already-selected tab (optimistic-aware).
                 if (key === displayPage) return;
+                // T0 — origin of the #1638 latency clock. `__DEV__`-only; compiled out
+                // of release builds. Must be the first statement after the re-tap guard
+                // so nothing this handler does is excluded from the measurement.
+                beginTabSwitchRun(displayPage, key);
                 // Issue #1638: BOTH platforms now get a tactile acknowledgement. This used
                 // to be a bare `if (Platform.OS === 'ios')` around impactAsync(Medium), so
                 // Android — where the destination-screen wait is longest — was completely
@@ -267,7 +241,15 @@ export const GlassBottomNav: React.FC<GlassBottomNavProps> = ({
                 const { x, width } = e.nativeEvent.layout;
                 handleTabLayout(key, x, width);
               }}
-              style={styles.tab}
+              // Issue #1638 — press-IN feedback. This was a bare static style object with
+              // no pressed branch, no ripple and no opacity change, so the FIRST feedback
+              // of any kind was at press-OUT — which is why ORCH-0995 had to reach for an
+              // optimistic highlight to make the tap feel answered at all. A pressed state
+              // answers the finger while it is genuinely still down: honest, free, and it
+              // needs no scheduling trickery. Deliberately a plain style branch and NOT an
+              // animation — ORCH-0995's T-01 gate bans JS-thread-driven animation in this
+              // file, and an instant state is the correct affordance for a press anyway.
+              style={({ pressed }) => (pressed ? pressedTabStyle : styles.tab)}
               accessibilityRole="tab"
               accessibilityLabel={labels[key]}
               accessibilityState={{ selected: active }}
@@ -331,6 +313,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: glass.chrome.nav.labelGap,
   },
+  // Issue #1638 — press-IN state. Same box, dimmed and very slightly compressed, so the
+  // tab answers the finger on touch-down instead of only at touch-up.
+  tabPressed: {
+    opacity: 0.62,
+    transform: [{ scale: glass.chrome.motion.pressScale }],
+  },
   tabIconWrap: {
     position: 'relative',
     width: glass.chrome.nav.iconSize + 4,
@@ -393,5 +381,9 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
 });
+
+// Issue #1638 — allocated once at module load, not per render: `Pressable`'s
+// function-form style runs on every press-state change.
+const pressedTabStyle = [styles.tab, styles.tabPressed];
 
 export default GlassBottomNav;

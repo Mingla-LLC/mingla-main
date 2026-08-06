@@ -12,6 +12,8 @@ import {
 } from "react-native";
 import { vs, ms, s } from "../src/utils/responsive";
 import { GlassBottomNav, type BottomNavPage } from "../src/components/GlassBottomNav";
+import { TabSwitchHost, type TabSwitchHostHandle } from "../src/components/navigation/TabSwitchHost";
+import { markTabSwitch } from "../src/utils/tabSwitchPerf";
 import { useAppLayout } from "../src/hooks/useAppLayout";
 import * as Linking from "expo-linking";
 import { useStripe } from "@stripe/stripe-react-native";
@@ -2172,6 +2174,25 @@ function AppContent() {
     setViewingFriendProfileId(null);
   }, [setViewingFriendProfileId]);
 
+  // Issue #1638 — imperative handle into the tab-switch host. A ref (not state, not
+  // context) on purpose: the host must be told about the tap WITHOUT re-rendering this
+  // 2900-line shell, which is the very work the switch is trying to get out of the way.
+  const tabSwitchHostRef = useRef<TabSwitchHostHandle>(null);
+
+  // Issue #1638 — one memoized label map, shared by the bottom nav and by the pending
+  // state's screen-reader announcement. Previously an inline object literal in the
+  // GlassBottomNav JSX, i.e. a fresh object on every shell render.
+  const tabLabels = useMemo(
+    () => ({
+      home: t('navigation:tabs.explore'),
+      discover: t('navigation:tabs.discover'),
+      connections: t('navigation:tabs.friends'),
+      likes: t('navigation:tabs.likes'),
+      profile: t('navigation:tabs.profile'),
+    }),
+    [t],
+  );
+
   // ─── ORCH-0679 Wave 2.7 — handlers.X stabilization (RC-1) ──────────────────
   // useAppHandlers returns a fresh object every render (TS-1.5 — god-hook fix
   // deferred). These wrappers read via handlersRef.current so empty dep arrays
@@ -2295,203 +2316,13 @@ function AppContent() {
   const isOverlayActive =
     !!viewingFriendProfileId || !!viewingTrip || (showPaywall && !!user?.id);
 
-  // Function to render current page based on navigation
-  const renderCurrentPage = () => {
-    switch (currentPage) {
-      case "home":
-        return (
-          <HomePage
-            onOpenPreferences={() => {
-              logger.action('Open preferences pressed');
-              setShowPreferences(true);
-            }}
-
-            userPreferences={userPreferences}
-            accountPreferences={{
-              currency: accountPreferences?.currency || "USD",
-              measurementSystem:
-                (accountPreferences?.measurementSystem as
-                  | "Metric"
-                  | "Imperial") || "Imperial",
-            }}
-            onAddToCalendar={(experienceData: any) =>
-              console.log("Add to calendar:", experienceData)
-            }
-            savedCards={savedCards}
-            onSaveCard={handlers.handleSaveCard}
-            onShareCard={handlers.handleShareCard}
-            onPurchaseComplete={(experienceData: any, purchaseOption: any) =>
-              console.log("Purchase complete:", experienceData, purchaseOption)
-            }
-            removedCardIds={removedCardIds}
-            onResetCards={() => setRemovedCardIds([])}
-            generateNewMockCard={() => console.log("Generate new card")}
-            refreshKey={preferencesRefreshKey}
-            onNotificationNavigate={handleNotificationNavigate}
-            userId={user?.id}
-          />
-        );
-      case "discover":
-        return (
-          <DiscoverScreen
-            onOpenChatWithUser={(friendUserId) => {
-              setPendingOpenDmUserId(friendUserId);
-              setCurrentPage("connections");
-            }}
-            onViewFriendProfile={(friendUserId) => setViewingFriendProfileId(friendUserId)}
-            accountPreferences={{
-              currency: accountPreferences?.currency || "USD",
-              measurementSystem:
-                (accountPreferences?.measurementSystem as
-                  | "Metric"
-                  | "Imperial") || "Imperial",
-            }}
-            preferencesRefreshKey={preferencesRefreshKey}
-            deepLinkParams={currentPage === 'discover' ? deepLinkParams : null}
-            onDeepLinkHandled={() => setDeepLinkParams(null)}
-            onOpenPreferences={() => setShowPreferences(true)}
-          />
-        );
-      case "saved":
-        return (
-          <SavedExperiencesPage
-            savedCards={savedCards}
-            isLoading={isLoadingSavedCards}
-            userPreferences={userPreferences}
-            onScheduleFromSaved={(card: any) => {
-              console.log("Scheduling from saved:", card);
-            }}
-            onPurchaseFromSaved={(card: any, option: any) => {
-              console.log("Purchasing from saved:", card, option);
-            }}
-            onShareCard={handlers.handleShareCard}
-          />
-        );
-      case "connections":
-        return (
-          <ConnectionsPage
-            onShareSavedCard={handlers.handleShareSavedCard}
-            onRemoveFriend={handlers.handleRemoveFriend}
-            onBlockUser={handlers.handleBlockUser}
-            onReportUser={handlers.handleReportUser}
-            accountPreferences={accountPreferences}
-            onCardLike={handlers.handleSaveCard}
-            onAddToCalendar={handleAddToCalendar}
-            onShareCard={handlers.handleShareCard}
-            onPurchaseComplete={handlePurchaseComplete}
-            boardsSessions={boardsSessions}
-            onRefreshSessions={refreshAllSessions}
-            onCreateGroupChat={handleCreateGroupChat}
-            onAcceptPendingInvite={handleAcceptInvite}
-            onDeclinePendingInvite={handleDeclineInvite}
-            availableFriendsForCreate={availableFriendsForSessions}
-            isCreatingGroupChat={isCreatingSession}
-            userPreferences={userPreferences}
-            savedCards={savedCards}
-            onOpenPreferences={() => setShowPreferences(true)}
-            onOpenCollabPreferences={handleOpenCollabPreferences}
-            onUnreadCountChange={setTotalUnreadMessages}
-            onNavigateToFriendProfile={(userId: string) => setViewingFriendProfileId(userId)}
-            onFriendAccepted={() => refreshAllSessions({ showLoading: false })}
-            openDirectMessageWithUserId={pendingOpenDmUserId}
-            onOpenDirectMessageHandled={() => setPendingOpenDmUserId(null)}
-            initialPanel={pendingConnectionsPanel}
-            onInitialPanelHandled={() => setPendingConnectionsPanel(null)}
-            deepLinkParams={connectionsDeepLinkParams}
-            onDeepLinkHandled={handleDeepLinkHandled}
-          />
-        );
-      case "likes":
-        return (
-          <LikesPage
-            savedCards={savedCards}
-            isLoadingSavedCards={isLoadingSavedCards}
-            isSavedCardsError={isSavedCardsError}
-            onRetrySavedCards={refetchSavedCards}
-            isLoadingCalendarEntries={isLoadingCalendarEntries}
-            calendarEntries={calendarEntries}
-            userPreferences={userPreferences}
-            accountPreferences={accountPreferences}
-            navigationData={activityNavigation}
-            onNavigationComplete={() => setActivityNavigation(null)}
-            deepLinkParams={likesDeepLinkParams}
-            onDeepLinkHandled={handleDeepLinkHandled}
-            onPurchaseFromSaved={(card: any, purchaseOption: any) => {
-              console.log("Purchasing from saved:", card, purchaseOption);
-              // Handle purchase logic here
-            }}
-            onRemoveFromCalendar={handlers.handleRemoveFromCalendar}
-            onShareCard={handlers.handleShareCard}
-            onAddToCalendar={(entry: any) => {
-              console.log("Adding to calendar:", entry);
-              // Handle add to calendar logic here
-            }}
-            onShowQRCode={(entryId: string) => {
-              console.log("Showing QR code for:", entryId);
-              // Handle show QR code logic here
-            }}
-          />
-        );
-      case "activity":
-        // Legacy — redirect to likes page
-        setCurrentPage("likes");
-        return null;
-      case "profile":
-        return (
-          <ProfilePage
-            onSignOut={async () => {
-              logger.action('Sign out pressed');
-              await handleSignOut();
-            }}
-            onUserIdentityUpdate={handleUserIdentityUpdate}
-            onNavigateToActivity={handlers.handleNavigateToActivity}
-            onNavigateToConnections={() => {
-              logger.action('Navigate to connections from profile');
-              setPendingConnectionsPanel("friends");
-              setCurrentPage("connections");
-            }}
-            onViewFriendProfile={handleViewFriendProfile}
-            savedExperiences={savedCards?.length || 0}
-            scheduledCount={calendarEntries?.length || 0}
-            notificationsEnabled={notificationsEnabled}
-            onNotificationsToggle={handlers.handleNotificationsToggle}
-            userIdentity={userIdentity}
-          />
-        );
-      default:
-        return (
-          <HomePage
-            onOpenPreferences={() => {
-              logger.action('Open preferences pressed');
-              setShowPreferences(true);
-            }}
-
-            userPreferences={userPreferences}
-            accountPreferences={{
-              currency: accountPreferences?.currency || "USD",
-              measurementSystem:
-                (accountPreferences?.measurementSystem as
-                  | "Metric"
-                  | "Imperial") || "Imperial",
-            }}
-            onAddToCalendar={(experienceData: any) =>
-              console.log("Add to calendar:", experienceData)
-            }
-            savedCards={savedCards}
-            onSaveCard={handlers.handleSaveCard}
-            onShareCard={handlers.handleShareCard}
-            onPurchaseComplete={(experienceData: any, purchaseOption: any) =>
-              console.log("Purchase complete:", experienceData, purchaseOption)
-            }
-            removedCardIds={removedCardIds}
-            onResetCards={() => setRemovedCardIds([])}
-            generateNewMockCard={() => console.log("Generate new card")}
-            onNotificationNavigate={handleNotificationNavigate}
-            userId={user?.id}
-          />
-        );
-    }
-  };
+  // ORCH-0679 Wave 2.8 Path B left a 196-line dead `renderCurrentPage()` here — an
+  // unreferenced second copy of the tab switch, still written in the pre-Wave-2A style
+  // it replaced: inline arrow props, inline object literals and raw unstable
+  // `handlers.X` on every tab. Nothing called it (the live switch is the
+  // `switch (currentPage)` IIFE below); it was a loaded gun that would restore the
+  // ORCH-0679 render storm wholesale for anyone who re-wired it, and it diluted the
+  // region scoping of the I-NO-INLINE-MAP-IN-APPCONTENT gate. Deleted by issue #1638.
 
   // closeProfileOverlays useCallback was originally here — relocated to above
   // early returns by Wave 2.6 hot-fix (Rules of Hooks compliance).
@@ -2532,6 +2363,22 @@ function AppContent() {
                       backgroundColor="transparent"
                     />
                     <View style={styles.container}>
+                      {/* Issue #1638 — the tab-switch host wraps mainContent and renders the
+                          pending scaffold as mainContent's SIBLING, not as a child of the tab
+                          subtree. Placement is the whole point: the scaffold must cover the
+                          ENTIRE outgoing page (which runs edge to edge and under the floating
+                          nav) while the nav itself stays painted and tappable on top of it —
+                          the spotlight pill has already moved, so hiding the nav would be a
+                          worse lie than the one being fixed. Sitting here, between mainContent
+                          and CoachMarkNavigationGate, that ordering falls out of plain sibling
+                          draw order plus the existing zIndex ladder (mainContent 0 → scaffold
+                          40 → bottomNavigation 50) instead of depending on Android elevation,
+                          which does not respect the view hierarchy. */}
+                      <TabSwitchHost
+                        ref={tabSwitchHostRef}
+                        currentPage={currentPage}
+                        labels={tabLabels}
+                      >
                       {/* ORCH-0589 v2 (G3) + ORCH-0590 Phase 3 + ORCH-0600 + ORCH-0610: Swipe,
                           Profile, Discover, Connections, and Likes all render full-bleed —
                           paddingTop 0 so the glass header extends under the status bar.
@@ -2718,6 +2565,7 @@ function AppContent() {
                           </View>
                         )}
                       </View>
+                      </TabSwitchHost>
 
                       {/* Coach Mark Spotlight Overlay */}
                       <SpotlightOverlay />
@@ -2731,7 +2579,24 @@ function AppContent() {
                           <GlassBottomNavWithCoach
                             currentPage={currentPage as BottomNavPage}
                             onNavigate={(page: BottomNavPage) => {
+                              markTabSwitch('T2a.onNavigate');
                               logger.action(`Tab pressed: ${page}`);
+                              markTabSwitch('T2b.afterLog');
+                              // Issue #1638 — raise the pending state on the URGENT lane,
+                              // BEFORE the transition below is scheduled. This is the half
+                              // ORCH-0995 never had: the transition de-prioritizes the
+                              // mount, but React keeps the PREVIOUS UI committed for the
+                              // whole render, and with no Suspense boundary and no
+                              // isPending consumer there was nothing to show in the gap —
+                              // so the pill moved, the haptic fired, and the user kept
+                              // staring at the screen they had just left (measured on a
+                              // Samsung SM-A725F: 694ms p50 / 1576ms p90 from tap to the
+                              // destination's first frame). This paints the DESTINATION's
+                              // own structure on the tap frame; TabSwitchHost clears it
+                              // from the destination's own commit, never from a timer.
+                              // Imperative-by-ref so this 2900-line shell does not
+                              // re-render to show it.
+                              tabSwitchHostRef.current?.beginSwitch(page);
                               // Closing profile overlays is URGENT — it must commit
                               // synchronously so the overlay is gone before the new
                               // screen paints.
@@ -2745,17 +2610,27 @@ function AppContent() {
                               // is interruptible and no longer blocks tap feedback. The
                               // mount structure is unchanged — only WHEN setCurrentPage
                               // commits is deferred.
+                              //
+                              // Issue #1638 RE-AFFIRMED THIS, WITH NUMBERS, rather than
+                              // reversing it. Samsung SM-A725F, 53 cold-launched switches:
+                              // the transition costs 48ms p50 / 106ms p90 of pure
+                              // scheduling gap (T4−T3) — 7% of the 694ms p50 tap-to-frame
+                              // total — while the JS thread blocks for 256ms p50 / 703ms
+                              // p90 during the commit anyway, so the transition buys no
+                              // responsiveness. What it DOES buy is ORDERING: it is the
+                              // only reason an urgent update (the pending scaffold above,
+                              // and the nav highlight) can commit and PAINT before the
+                              // heavy mount. Delete it and both land in the same render
+                              // pass — the scaffold could never paint first and ORCH-0995's
+                              // "highlight is hostage to the mount" defect returns.
+                              // Re-render restarts were ruled out as a reason to remove it:
+                              // pre-commit render passes measured p50 1 / p90 1 / max 2.
                               React.startTransition(() => {
+                                markTabSwitch('T3.schedule');
                                 setCurrentPage(page);
                               });
                             }}
-                            labels={{
-                              home: t('navigation:tabs.explore'),
-                              discover: t('navigation:tabs.discover'),
-                              connections: t('navigation:tabs.friends'),
-                              likes: t('navigation:tabs.likes'),
-                              profile: t('navigation:tabs.profile'),
-                            }}
+                            labels={tabLabels}
                             badges={{
                               connections: totalUnreadMessages,
                               likes: totalUnreadBoardMessages,
