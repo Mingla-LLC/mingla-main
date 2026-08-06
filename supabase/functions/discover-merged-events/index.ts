@@ -53,6 +53,11 @@ interface DiscoverMergedRequest {
   vibeTagSlugs?: string[];
   musicGenreSlugs?: string[];
   timezone?: string;
+  /**
+   * #1637 — keep-warm ping marker. `city` is REQUIRED for every real request,
+   * so a warm ping cannot be expressed as a real body; it is its own shape.
+   */
+  warmPing?: boolean;
 }
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -78,6 +83,19 @@ serve(async (req: Request): Promise<Response> => {
     body = await req.json();
   } catch {
     return jsonError({ error: "invalid_json" }, 400);
+  }
+
+  // ── #1637 Keep-warm ping: boot the isolate without running business logic ──
+  // MUST stay above the `city_required` check. This function is on the consumer
+  // Discover cold-open path and had zero traffic in 24h, so it was cold on every
+  // real open (1.5-4s isolate boot vs ~90-120ms warm). The cron ping carries no
+  // city by design — priming an L2 row instead would buy a row that is already
+  // stale (120s fresh TTL vs the 300s cron period) at the cost of a real
+  // Ticketmaster API call and a DB write every 5 minutes. Matches the
+  // discover-cards / generate-curated-experiences / get-person-hero-cards /
+  // record-visit / get-paired-saves / get-paired-profile-cards convention.
+  if (body.warmPing) {
+    return jsonError({ status: "warm" }, 200);
   }
 
   const cityName = body.city?.name?.trim();

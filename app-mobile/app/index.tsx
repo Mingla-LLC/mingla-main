@@ -815,8 +815,31 @@ function AppContent() {
   // (highest-priority request). Failures are silently ignored — normal fetch
   // handles it on tab mount.
   // NOTE: Discover prefetch was removed because DiscoverScreen manages its own
-  // state outside React Query — the prefetch data was never read. The keep-warm
-  // cron handles edge function warming instead.
+  // state outside React Query — the prefetch data was never read.
+  //
+  // #1637 — a sentence used to follow here claiming the keep-warm cron took
+  // care of edge-function warming on its own. It was FALSE for the whole time
+  // it stood, and being false is exactly what made the problem invisible: it
+  // read as coverage, so nobody checked. (It is not reproduced verbatim: a CI
+  // gate now fails on that exact wording, however it is reflowed or recased.)
+  // Warming is not automatic. The pg_cron job `keep-functions-warm` (*/5) calls
+  // the `keep-warm` edge function, and the ONLY functions it warms are the ones
+  // hardcoded in `FUNCTIONS_TO_WARM` in supabase/functions/keep-warm/index.ts.
+  // Discover's two endpoints — `discover-merged-events` and `ticketmaster-events`
+  // — were NOT in that list, so both were cold on every real Discover open
+  // (1.5-4s isolate boot vs ~90-120ms warm; zero invocations logged in 24h).
+  // They are in the list now.
+  //
+  // If you add an edge function to a cold-open path, add it to
+  // supabase/functions/keep-warm/index.ts — nothing else warms it — and give it
+  // a `warmPing` short-circuit so the ping does not answer 400. Coverage for
+  // Discover's two is enforced by
+  // .github/scripts/strict-grep/issue-1637-discover-keep-warm-coverage.mjs.
+  //
+  // This comment does NOT claim Discover is fast. Warming removes the server-side
+  // cold start only; the client-side two-phase fetch that paints Ticketmaster
+  // first and reshuffles Mingla events in later is untouched and still open on
+  // #1637.
   useEffect(() => {
     if (currentPage !== 'home' || !user?.id) return;
 

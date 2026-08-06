@@ -55,6 +55,10 @@ interface RequestBody {
   latFallback?: number;
   lngFallback?: number;
   radiusFallback?: number;
+
+  // #1637 — keep-warm ping marker. Every real request needs `city` or
+  // `location`, so a warm ping cannot be expressed as a real body.
+  warmPing?: boolean;
 }
 
 interface TicketmasterEvent {
@@ -440,6 +444,23 @@ serve(async (req: Request) => {
     }
 
     const body: RequestBody = await req.json();
+
+    // ── #1637 Keep-warm ping: boot the isolate without running business logic ──
+    // MUST stay above the "city or location is required" validation, or the
+    // 5-minute cron ping answers 400 forever and ~8.6k/month of fabricated 4xx
+    // hides a real one. Deliberately BELOW the TICKETMASTER_API_KEY check, so
+    // the cron doubles as a 5-minute canary for that key going missing — that
+    // 500 is a real failure and SHOULD be loud. No TM API call is made here, so
+    // the warm costs nothing against the Ticketmaster quota.
+    // Discover pays this cold start TWICE: once directly, once nested from
+    // discover-merged-events (_build-response.ts).
+    if (body.warmPing) {
+      return new Response(
+        JSON.stringify({ status: "warm" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const {
       location,
       radius,

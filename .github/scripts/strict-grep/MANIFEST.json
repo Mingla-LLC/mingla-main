@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 476,
-  "selfTestWiredFloor": 287,
+  "expectedStrictGrepMjsFiles": 477,
+  "selfTestWiredFloor": 288,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -7382,6 +7382,18 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-1486-jest-config-invoked-by-workflow.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1637-discover-keep-warm-coverage.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",
