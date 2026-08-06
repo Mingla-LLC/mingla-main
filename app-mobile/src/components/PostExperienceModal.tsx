@@ -362,7 +362,15 @@ export default function PostExperienceModal({
   // ── Render: rate step ──────────────────────────────────────────────────
 
   const renderRateStep = () => (
-    <View style={styles.rateContainer}>
+    <View
+      style={[
+        styles.rateContainer,
+        // The voluntary entry has no step above this one, so its title would sit
+        // level with the close icon. Scoped to this path: the scheduled prompt's
+        // rate step arrives from "did you go?" and is unchanged.
+        isVoluntary && { paddingTop: insets.top + 64 },
+      ]}
+    >
       {/* #1687 — no back arrow on the voluntary entry: there is no "did you go?"
           step behind it to go back to. The close icon is the way out. */}
       {!isVoluntary && (
@@ -578,7 +586,12 @@ export default function PostExperienceModal({
             nothing left to cancel and the step carries its own Done button. */}
         {dismissible && step !== "thank-you" && (
           <TouchableOpacity
-            style={styles.dismissButton}
+            // The absolute inset is measured from the SCREEN, not from the
+            // SafeAreaView's padded box — verified on an iPhone 17 Pro Max, where
+            // a bare `top: 16` put this icon on top of the battery indicator. The
+            // inset is added here rather than left to `edges` because the button
+            // does not participate in that layout.
+            style={[styles.dismissButton, { top: insets.top + 8 }]}
             onPress={handleDismiss}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityLabel={t('modals:post_experience.close_label')}

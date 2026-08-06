@@ -126,6 +126,21 @@ export function useHasVisited(userId: string | undefined, experienceId: string |
  * persisted or resumed. Retry is one tap away — the failed state already calls
  * `.reset()` and re-mutates.
  */
+/**
+ * #1687 REMOVED THIS HOOK'S LAST PRODUCT CONSUMER, and it is retained on purpose.
+ *
+ * `BeenHereControl` no longer records on tap — the visit is written on confirm by
+ * `useSubmitVoluntaryPlaceReview`, which declares this hook's contract verbatim
+ * (`networkMode: 'always'`, `confirmOnlineFromCompletedWrite()` before the
+ * invalidations). This is still the reference declaration of that contract, and
+ * the #1642 / #1661 suites drive THESE options through a real MutationObserver to
+ * prove the pause/resume and belief-correction semantics that both writes depend
+ * on. Deleting it would delete the thing those guards actually exercise.
+ *
+ * If a second record-on-tap entry point is never added, this is a candidate for
+ * removal together with a rehoming of those two suites — raised on #1687 for the
+ * orchestrator to decide, deliberately not done inside this issue's scope.
+ */
 export function useRecordVisit() {
   const queryClient = useQueryClient();
 
