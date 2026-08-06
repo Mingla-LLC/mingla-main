@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 477,
-  "selfTestWiredFloor": 288,
+  "expectedStrictGrepMjsFiles": 478,
+  "selfTestWiredFloor": 289,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -7407,6 +7407,18 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-1637-discover-keep-warm-coverage.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/i-1674-schedule-mobile-grid-zero-min-column.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",
