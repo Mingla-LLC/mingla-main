@@ -58,7 +58,9 @@
     "test:issue-0963": "node ./scripts/ci/issue-0963-consumer-currency-no-gbp-fallback-check.mjs",
     "test:issue-0963-adv": "node ./scripts/ci/issue-0963-consumer-currency-no-gbp-fallback.tester-adversarial.mjs",
     "test:issue-1516": "node ./src/contexts/__tests__/issue-1516-coach-mark-single-process.test.tsx",
-    "test:issue-1516-adv": "node ./src/contexts/__tests__/issue-1516-coach-mark-grammar-and-blast-radius.tester-adversarial.test.tsx"
+    "test:issue-1516-adv": "node ./src/contexts/__tests__/issue-1516-coach-mark-grammar-and-blast-radius.tester-adversarial.test.tsx",
+    "test:issue-1636": "node --experimental-strip-types --test ./src/components/activity/__tests__/issue_1636_likes_load.test.ts",
+    "test:orch-1189": "node ./src/components/activity/__tests__/orch_1189_likes_floating_nav_clearance.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",
