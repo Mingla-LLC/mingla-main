@@ -93,5 +93,24 @@ BEGIN
   SELECT count(*) INTO n FROM public.biz_match_place_pool_by_google_id('ChIJ_440_test');
   IF n <> 0 THEN RAISE EXCEPTION 'B-05 FAIL: an inactive place was offered'; END IF;
 END $$;
+
+-- B-06 SECURITY: anon and authenticated must NOT be able to execute this.
+-- Supabase's ALTER DEFAULT PRIVILEGES grants EXECUTE to those roles DIRECTLY,
+-- and `REVOKE ... FROM PUBLIC` does NOT remove a direct named-role grant. The
+-- first draft of this migration revoked only from PUBLIC and the function was
+-- anon-executable; the anon-grant CI gate caught it. This pins the fix.
+DO $$
+DECLARE r text;
+BEGIN
+  FOREACH r IN ARRAY ARRAY['anon','authenticated'] LOOP
+    IF has_function_privilege(r, 'public.biz_match_place_pool_by_google_id(text)', 'EXECUTE') THEN
+      RAISE EXCEPTION 'B-06 FAIL: % can EXECUTE a SECURITY DEFINER pool lookup', r;
+    END IF;
+  END LOOP;
+  IF NOT has_function_privilege('service_role', 'public.biz_match_place_pool_by_google_id(text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'B-06 FAIL: service_role lost EXECUTE — the edge fn cannot call it';
+  END IF;
+END $$;
+
 ROLLBACK;
-\echo 'issue #1648: all behavioural cases passed (B-00..B-05)'
+\echo 'issue #1648: all behavioural cases passed (B-00..B-06)'

@@ -79,7 +79,16 @@ AS $$
   LIMIT 1;
 $$;
 
-REVOKE ALL ON FUNCTION public.biz_match_place_pool_by_google_id(text) FROM PUBLIC;
+-- SECURITY: `REVOKE ... FROM PUBLIC` alone is NOT enough on Supabase. The
+-- project runs `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON
+-- FUNCTIONS TO anon, authenticated, service_role`, which grants EXECUTE to
+-- those roles DIRECTLY — and revoking from PUBLIC does not remove a direct
+-- grant to a named role. anon and authenticated must be named explicitly or
+-- this SECURITY DEFINER function is callable by anyone, unauthenticated.
+-- Only service_role needs it: the caller is an edge function using the
+-- service-role key, behind its own JWT check and per-user rate limit.
+REVOKE ALL ON FUNCTION public.biz_match_place_pool_by_google_id(text)
+  FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_match_place_pool_by_google_id(text) TO service_role;
 
 COMMENT ON FUNCTION public.biz_match_place_pool_by_google_id IS
