@@ -24,6 +24,7 @@ on:
       - "supabase/functions/backfill-place-photo-thumbs/**"
       - "supabase/functions/run-place-intelligence-trial/index.ts"
       - "supabase/functions/_shared/__tests__/collageUpload.issue1644.cacheControl.test.ts"
+      - "supabase/functions/_shared/__tests__/collageGeminiHandoff.issue1644.test.ts"
       - "supabase/migrations/20270219001644_issue_1644_storage_backfill_guard.sql"
       - "supabase/migrations/__tests__/issue_1644_storage_backfill_guard.test.sql"
       # Stage 2 — the collage re-encode.
@@ -44,6 +45,7 @@ on:
       - "supabase/functions/backfill-place-photo-thumbs/**"
       - "supabase/functions/run-place-intelligence-trial/index.ts"
       - "supabase/functions/_shared/__tests__/collageUpload.issue1644.cacheControl.test.ts"
+      - "supabase/functions/_shared/__tests__/collageGeminiHandoff.issue1644.test.ts"
       - "supabase/migrations/20270219001644_issue_1644_storage_backfill_guard.sql"
       - "supabase/migrations/__tests__/issue_1644_storage_backfill_guard.test.sql"
       # Stage 2 — the collage re-encode.
@@ -132,6 +134,17 @@ jobs:
         run: |
           deno test --allow-env --allow-net --allow-read --no-check \
             supabase/functions/_shared/__tests__/collageUpload.issue1644.cacheControl.test.ts
+
+      # STAGE 2. Gemini takes its mime STRAIGHT from the collage's HTTP
+      # content-type (fetchAsBase64), which is the entire basis of the claim that
+      # PNG -> WebP is transparent to it. Asserted at runtime against a REAL
+      # Stage-2-re-encoded WebP: the mime is image/webp, the base64 round-trips
+      # byte-identically, PNG still works (the corpus converts incrementally), and
+      # a missing collage still raises the diagnosable "Collage fetch failed".
+      - name: A WebP collage must reach Gemini as image/webp, intact
+        run: |
+          deno test --allow-env --allow-net --allow-read --no-check \
+            supabase/functions/_shared/__tests__/collageGeminiHandoff.issue1644.test.ts
 
       # Collateral protection: these all existed and were dark. They cover the
       # thumb-fallback contract on the file whose fill constant changed, the

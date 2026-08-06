@@ -104,6 +104,20 @@ function makeFakeDb(state: FakeState): any {
   };
 }
 
+/**
+ * Copy bytes into a plain `ArrayBuffer` for `new Response(...)`.
+ *
+ * imagescript and the WebP encoder hand back `Uint8Array<ArrayBufferLike>`, and
+ * lib.dom's `BodyInit` admits neither that nor a `Blob` built from it (the
+ * `ArrayBufferLike` union includes `SharedArrayBuffer`). Copying into a freshly
+ * constructed `ArrayBuffer` satisfies the type exactly, with no cast and no `any`.
+ */
+function asResponseBody(bytes: Uint8Array): ArrayBuffer {
+  const ab = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(ab).set(bytes);
+  return ab;
+}
+
 /** Serve real, decodable photo bytes so `composeCollage` runs for real. */
 async function startPhotoServer(): Promise<{ base: string; stop: () => Promise<void> }> {
   const tile = new Image(256, 256);
@@ -113,7 +127,7 @@ async function startPhotoServer(): Promise<{ base: string; stop: () => Promise<v
   const ac = new AbortController();
   const server = Deno.serve(
     { port: 0, signal: ac.signal, onListen: () => {} },
-    () => new Response(png, { headers: { "content-type": "image/png" } }),
+    () => new Response(asResponseBody(png), { headers: { "content-type": "image/png" } }),
   );
   const port = (server.addr as Deno.NetAddr).port;
   return {

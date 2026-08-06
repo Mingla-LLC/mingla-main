@@ -543,7 +543,12 @@ async function callGeminiWithRetry(
 }
 
 // Fetch a public URL and return base64-encoded bytes for Gemini inline_data.
-async function fetchAsBase64(url: string): Promise<{
+// EXPORTED for the #1644 Stage 2 contract test. This function decides the
+// `mime_type` Gemini is handed for the collage (see the inline_data call site),
+// and Stage 2 changes those objects from PNG to WebP — so the format-transparency
+// claim needs to be a RUNTIME assertion, not a comment. Exporting is the whole
+// change; the behaviour is untouched.
+export async function fetchAsBase64(url: string): Promise<{
   base64: string;
   mimeType: string;
   rawBytes: number;
