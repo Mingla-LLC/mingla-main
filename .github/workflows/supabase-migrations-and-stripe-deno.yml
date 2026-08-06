@@ -243,6 +243,18 @@ jobs:
           # later edit set, which would be worse than the bug being fixed.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1653_publish_keeps_the_pin.test.sql
+          # Issue #1648 — the exact google_place_id pool lookup that stops a
+          # venue we already hold from duplicating itself when the NAME search
+          # missed. B-00 is the one that matters most: it asserts the return
+          # shape is IDENTICAL to biz_search_place_pool_for_claim, because that
+          # shape carries the ORCH-1263 presence facts which ARE the match
+          # card's "5 photos / Hours / Website / Rated on Google" chips and its
+          # claimed/pending block — a divergent shape would strip them silently.
+          # B-03 pins why an exact key was required at all: a neighbour 60m away
+          # must NOT match, and production has 2-18 pool rows within ~130m of
+          # every venue, so proximity returns a shortlist, never an identity.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1648_match_pool_by_google_id.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1388_stay_reservation.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -523,6 +535,18 @@ jobs:
             # test files run in no workflow at all. A regression test for a
             # monitor that could not report failure must not itself be dark.
             supabase/functions/api-health-probe/issue1620_body_verdict.test.ts
+            # Issue #1648 — the address-identity endpoint. T-05 is the critical
+            # one and the same failure shape as #1620: if a Google outage were
+            # reported as "no match", we would tell a venue we DO hold that we
+            # have never heard of them, and they would duplicate themselves —
+            # the precise harm this endpoint exists to prevent. It must throw.
+            # T-06 pins the field mask at `places.id` ONLY: adding any Pro field
+            # (displayName et al) silently moves every call off Google's free
+            # Essentials tier for data we already hold in our own pool.
+            # T-02 keeps junk — null island 0,0 above all — from ever reaching a
+            # paid call, since a coordinate-less query degrades into discovery
+            # and could match a same-named venue in another city.
+            supabase/functions/venue-address-pool-match/index.test.ts
             # Issue #1622 — the thumbnail backfill's SECOND EXIT. Its only exit
             # was `thumbs_backfilled_at IS NOT NULL`, set only when EVERY photo
             # for a place succeeds, so a place holding one permanently dead photo
