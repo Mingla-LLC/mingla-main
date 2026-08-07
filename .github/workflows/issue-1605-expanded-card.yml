@@ -114,15 +114,21 @@ jobs:
         run: |
           test -f app-mobile/src/components/expandedCard/__tests__/issue_1605_expanded_card_one_spine.test.mjs
           test -f app-mobile/src/components/expandedCard/__tests__/issue_1605_tester_adversarial_one_spine.test.mjs
+          test -f app-mobile/src/components/expandedCard/__tests__/issue_1605_tester_retest_adversarial.test.mjs
           test -f app-mobile/src/components/expandedCard/__tests__/issue_1605_ts_resolve_hooks.mjs
           test -f .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs
           test -f packages/card-identity/index.js
 
-      - name: The implementor gate and the tester's adversarial gate
+      - name: The implementor gate and both tester adversarial gates
+        # The retest gate is listed EXPLICITLY, like its two siblings, because
+        # this workflow names files rather than globbing a directory. A tester
+        # gate added to the tree and not added here is the #1605 P1-2 defect
+        # repeated: a suite that exists, passes locally, and never runs.
         run: >-
           node --test
           app-mobile/src/components/expandedCard/__tests__/issue_1605_expanded_card_one_spine.test.mjs
           app-mobile/src/components/expandedCard/__tests__/issue_1605_tester_adversarial_one_spine.test.mjs
+          app-mobile/src/components/expandedCard/__tests__/issue_1605_tester_retest_adversarial.test.mjs
 
       - name: ORCH-1148 — the Reserve button and its sheet gate on ALL THREE conditions
         run: |
