@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import {
   View,
   Text,
-  FlatList,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -18,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "./ui/Icon";
-import { BaseBottomSheet } from "./ui/BaseBottomSheet";
+import { BaseBottomSheet, BottomSheetFlatList } from "./ui/BaseBottomSheet";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
 import { formatCurrency } from "./utils/formatters";
@@ -1513,8 +1512,27 @@ export default function ExpandedCardModal({
               Slot 5 — the gallery, `images.length > 1`, SINGLE PLACE ONLY. Not a
               branch: a plan has no second photo of its own, its stops do.
 
-              It is a horizontal FlatList, and it is the ONE horizontal scrollable
-              on this sheet. What it replaces is the 402x300 in-flow #000000 pager
+              It is a horizontal list, and it is the ONE horizontal scrollable
+              on this sheet.
+
+              #1702 — AND IT IS `BottomSheetFlatList`, NOT A PLAIN RN `FlatList`.
+              Seth, on a physical Samsung: "the single card photo gallery
+              thumbnails don't scroll horizontally when i scroll them on the
+              expanded sheet. Only when i expand them."
+
+              A raw RN list nested in a gorhom sheet does not participate in the
+              sheet's gesture negotiation, so on Android the sheet's pan handler
+              claims the horizontal drag before the list ever sees it. It works
+              in the lightbox because that view is OUTSIDE the sheet — which is
+              exactly the "only when i expand them" half of the report.
+
+              This file already knew: the replace-alternatives strip was
+              deliberately rebuilt as a wrapping grid a few hundred lines below
+              because "it fought the sheet's pan gesture every time a thumb
+              crossed it". The same fight, the same file, the wrong conclusion
+              drawn once. `BaseBottomSheet` — the sole permitted importer of
+              @gorhom/bottom-sheet — already re-exports the sheet-aware list for
+              precisely this, and its own comment says so. What it replaces is the 402x300 in-flow #000000 pager
               that used to BE the hero, with its 40pt chevrons, its dot row and its
               dead `.counter` style — and the 402x200 #f3f4f6 "no images" box that
               produced a 100pt layout jump against it.
@@ -1525,13 +1543,13 @@ export default function ExpandedCardModal({
             */}
             {!isCuratedCard && galleryPhotos.length > 0 ? (
               <Section title={t('cards:expanded.photos', { defaultValue: 'Photos' })}>
-                <FlatList
+                <BottomSheetFlatList
                   data={galleryPhotos}
-                  keyExtractor={(uri, i) => `${uri}_${i}`}
+                  keyExtractor={(uri: string, i: number) => `${uri}_${i}`}
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.galleryStrip}
-                  renderItem={({ item, index }) => (
+                  renderItem={({ item, index }: { item: string; index: number }) => (
                     <TouchableOpacity
                       activeOpacity={0.85}
                       onPress={() =>
