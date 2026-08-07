@@ -1,0 +1,15 @@
+{
+  "$comment": [
+    "Issue #1647 — Deno config for the archive export tool.",
+    "",
+    "Same reason as scripts/issue-1644/deno.json: scripts/package.json declares npm",
+    "dependencies for the Node scripts alongside these, Deno walks UP from the entrypoint,",
+    "finds it, and switches to node_modules resolution — at which point remote specifiers",
+    "start resolving against a node_modules directory that scripts/ does not have.",
+    "",
+    "Pinning nodeModulesDir to 'none' keeps this tool on Deno's own cache so it resolves",
+    "identically on a laptop, in a spawned worktree (where node_modules is a symlink into",
+    "the anchor checkout — COMMS-0130) and in CI."
+  ],
+  "nodeModulesDir": "none"
+}

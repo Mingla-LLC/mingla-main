@@ -1,0 +1,209 @@
+# QUOTED name: an unquoted leading '#' would truncate the workflow name to "Issue".
+name: "Issue #1647 admin matview + cron watchdog + DB reclaim"
+
+# #1584 records that a test wired into NO workflow is dark by default, and #1647
+# itself is a job that failed 4,320 consecutive times with nobody watching. Both
+# suites below are wired here explicitly, and BOTH postgres jobs prove their SQL
+# contract FAILS before its migration is applied — a contract that passes on an
+# unmigrated database is not a contract, it is a green light with no bulb.
+#
+# NOTE: the two path lists are duplicated verbatim rather than shared via a YAML
+# anchor — GitHub Actions does not support anchors/aliases in workflow files, and
+# no other workflow in this repo uses them. Keep the two lists in sync by hand.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270222001647_issue_1647_admin_place_pool_mv_slim.sql"
+      - "supabase/migrations/20270222001648_issue_1647_cron_health_and_retention.sql"
+      - "supabase/migrations/20270222001649_issue_1647_archive_export_then_drop.sql"
+      - "supabase/migrations/__tests__/issue_1647_admin_place_pool_mv_slim.test.sql"
+      - "supabase/migrations/__tests__/issue_1647_cron_health_and_retention.test.sql"
+      - "supabase/migrations/__tests__/issue_1647_archive_export_then_drop.test.sql"
+      - "supabase/functions/api-health-probe/**"
+      - "scripts/issue-1647/**"
+      - ".github/workflows/issue-1647-admin-mv-and-db-reclaim-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/20270222001647_issue_1647_admin_place_pool_mv_slim.sql"
+      - "supabase/migrations/20270222001648_issue_1647_cron_health_and_retention.sql"
+      - "supabase/migrations/20270222001649_issue_1647_archive_export_then_drop.sql"
+      - "supabase/migrations/__tests__/issue_1647_admin_place_pool_mv_slim.test.sql"
+      - "supabase/migrations/__tests__/issue_1647_cron_health_and_retention.test.sql"
+      - "supabase/migrations/__tests__/issue_1647_archive_export_then_drop.test.sql"
+      - "supabase/functions/api-health-probe/**"
+      - "scripts/issue-1647/**"
+      - ".github/workflows/issue-1647-admin-mv-and-db-reclaim-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Deno side. The watchdog evaluator, plus the api-health-probe suites that were
+  # already wired elsewhere but that this change now touches — the probe is the
+  # thing that turns a dead cron job into an email, so a regression in it puts us
+  # straight back to sixty-six days of silence.
+  # ---------------------------------------------------------------------------
+  issue-1647-watchdog-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.7.14
+
+      - name: Type-check the probe and the archive export tool
+        run: |
+          deno check \
+            supabase/functions/api-health-probe/logic.ts \
+            supabase/functions/api-health-probe/index.ts
+          deno check scripts/issue-1647/export-archive-tables.ts
+
+      # THE NEW CONTRACT. Asserts the evaluator's OUTPUT on the exact production
+      # shape of #1647 (jobid 13: 36 runs, 0 successes, 66 days stale, statement
+      # timeout) — and, just as importantly, that an empty or unreadable read is
+      # `unknown` and never `healthy`. A watchdog that reports green when it
+      # learned nothing is the bug it exists to catch.
+      - name: A 100%-failing scheduled job must read DOWN, and an empty read must read UNKNOWN
+        run: |
+          deno test --allow-env --allow-net --allow-read --no-check \
+            supabase/functions/api-health-probe/__tests__/cronJobHealth.issue1647.test.ts
+
+      # Collateral protection on the file this change edits. All of these were
+      # DARK — no workflow ran any api-health-probe suite before this file.
+      #
+      # DELIBERATELY EXCLUDED: tester_adversarial_r2.test.ts. It has ONE test
+      # already failing on origin/main — "ADV-R2 A2: cloudinary boundary", which
+      # asserts `evaluateBalanceForSignal("cloudinary", …)` behaviour for a
+      # provider #966 decommissioned. Verified by extracting origin/main's own
+      # logic.ts and test file into a throwaway directory and running them there:
+      # 20 passed, 1 failed, with none of this branch's code present. Wiring it in
+      # would make this PR red on someone else's pre-existing defect, which is the
+      # same call #1644 made for runRemainder_adversarial.test.ts. It is the
+      # EIGHTH dark test found this week and is reported on the issue rather than
+      # silently absorbed here.
+      - name: Existing api-health-probe contracts still hold
+        run: |
+          deno test --allow-env --allow-net --allow-read --no-check \
+            supabase/functions/api-health-probe/logic.test.ts \
+            supabase/functions/api-health-probe/class_routing.test.ts \
+            supabase/functions/api-health-probe/allsettled.test.ts \
+            supabase/functions/api-health-probe/adversarial_statemachine.test.ts \
+            supabase/functions/api-health-probe/issue1537_delivery_provider_tiles.test.ts \
+            supabase/functions/api-health-probe/issue1537_provider_tiles.tester.adversarial.test.ts \
+            supabase/functions/api-health-probe/issue1620_body_verdict.test.ts \
+            supabase/functions/api-health-probe/orch_1213_payment_webhook_silence_info.test.ts \
+            supabase/functions/api-health-probe/orch_1213_tester_adversarial.test.ts
+
+  # ---------------------------------------------------------------------------
+  # SQL side. All three migrations are proven against the FULL schema — every
+  # other migration applied to a clean PostgreSQL 17 — because the matview is
+  # rebuilt from place_pool and the archive drop reaches through real foreign
+  # keys. A hand-built stub would prove nothing about either.
+  #
+  # Each contract is first proven to FAIL without its migration. Each migration
+  # is then applied TWICE: these run against production data and an operator may
+  # legitimately re-run one, so "idempotent" has to be tested, not asserted.
+  # ---------------------------------------------------------------------------
+  postgres-17-issue-1647-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start a clean PostgreSQL 17 and apply EVERY migration except #1647's
+        run: |
+          set -euo pipefail
+          issue1647_pw="$(openssl rand -hex 24)"
+          echo "::add-mask::$issue1647_pw"
+          docker run --name issue1647-pg \
+            -e POSTGRES_PASSWORD="$issue1647_pw" \
+            -d supabase/postgres:17.4.1.075
+          for _ in $(seq 1 180); do
+            state="$(docker inspect --format \
+              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              issue1647-pg)"
+            [ "$state" = "healthy" ] && break
+            sleep 1
+          done
+          [ "$state" = "healthy" ]
+          for migration in supabase/migrations/*.sql; do
+            case "$(basename "$migration")" in
+              20270222001647_*|20270222001648_*|20270222001649_*) continue ;;  # ours
+            esac
+            docker exec -i issue1647-pg \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres < "$migration" > /dev/null
+          done
+
+      # NON-VACUITY GUARD, one per contract. If any of these PASSES on the
+      # unmigrated database it is not testing anything and every step after it is
+      # a false green.
+      - name: All three contracts MUST fail before their migrations are applied
+        run: |
+          set -uo pipefail
+          for t in issue_1647_admin_place_pool_mv_slim \
+                   issue_1647_cron_health_and_retention \
+                   issue_1647_archive_export_then_drop; do
+            if docker exec -i issue1647-pg \
+                 psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+                 < "supabase/migrations/__tests__/$t.test.sql" > /dev/null 2>&1; then
+              echo "VACUOUS TEST: $t passed without its migration." >&2
+              exit 1
+            fi
+            echo "$t correctly fails without its migration."
+          done
+
+      - name: Apply each #1647 migration TWICE (idempotency is a production requirement)
+        run: |
+          set -euo pipefail
+          for m in 20270222001647_issue_1647_admin_place_pool_mv_slim \
+                   20270222001648_issue_1647_cron_health_and_retention \
+                   20270222001649_issue_1647_archive_export_then_drop; do
+            docker exec -i issue1647-pg \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              < "supabase/migrations/$m.sql" > /dev/null
+            docker exec -i issue1647-pg \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              < "supabase/migrations/$m.sql" > /dev/null
+            echo "$m applied twice, cleanly."
+          done
+
+      # The matview contract drives the REAL concurrent refresh against real
+      # place_pool rows and reads back has_photos / photo_count / the sentinel
+      # guard, then proves an UPDATE propagates — the behaviour that was dead for
+      # 66 days. It is not a source grep.
+      - name: The matview must be slim, service_role-only, and ACTUALLY refresh
+        run: >-
+          docker exec -i issue1647-pg
+          psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+          < supabase/migrations/__tests__/issue_1647_admin_place_pool_mv_slim.test.sql
+
+      # Seeds a job whose last runs all failed and whose only success is 40 days
+      # old — the #1647 shape — and proves the watchdog reports it, names the
+      # error, and does not report a healthy job as failing. Also proves the
+      # purge is BOUNDED, because an unbounded purge would inherit the same
+      # 2-minute timeout that killed job 13.
+      - name: The cron watchdog must see a dead job, and the purge must stay bounded
+        run: >-
+          docker exec -i issue1647-pg
+          psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+          < supabase/migrations/__tests__/issue_1647_cron_health_and_retention.test.sql
+
+      # Mostly asserts REFUSALS: no export on record, a stale export, a malformed
+      # hash, an unsanctioned table, an un-elapsed retention window. A guard never
+      # proven to fire is indistinguishable from no guard.
+      - name: The archive drop must refuse without a verified export
+        run: >-
+          docker exec -i issue1647-pg
+          psql -v ON_ERROR_STOP=1 -U postgres -d postgres
+          < supabase/migrations/__tests__/issue_1647_archive_export_then_drop.test.sql
+
+      - name: Remove the disposable database
+        if: always()
+        run: docker rm -f issue1647-pg || true

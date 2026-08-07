@@ -36,12 +36,15 @@ import {
   type ClassBHeader,
   type ClassBReactive,
   computeEffectiveStatus,
+  // Issue #1647 — the pg_cron watchdog's pure evaluator.
+  type CronJobHealthRow,
   decideAvailabilityTransitions,
   decideBalanceTransition,
   DELIVERY_PROVIDER_TILES,
   type DeliveryLedgerRow,
   type DepletionObs,
   evaluateBalanceForSignal,
+  evaluateCronJobHealth,
   type HealthStatus,
   indicatorToStatus,
   matchClassBDepletion,
@@ -888,6 +891,60 @@ serve(async (req) => {
           latency_ms: Date.now() - t0, mode: null, http_status: null, detail: { error: String(e) },
         });
       }
+    }
+
+    // ── ISSUE #1647: pg_cron job health ────────────────────────────────────
+    // `refresh_admin_place_pool_mv` failed every ten minutes for sixty-six days
+    // and nothing told anyone. Nobody reads cron.job_run_details, so a scheduled
+    // job can be 100% dead indefinitely and the only symptom is a screen quietly
+    // showing old numbers. This tile puts that on the rail that already emails:
+    // two consecutive failed hourly ticks -> ops alert, 6h cooldown re-alert,
+    // recovery stand-down. Had it existed on 2026-05-31, Seth would have known
+    // within two hours.
+    //
+    // GATED ON REGISTRATION — api_health_checks.service_key is FK-constrained and
+    // every row this tick is inserted in ONE batch, so an unregistered key would
+    // fail the WHOLE insert, every service, every layer (#1537's lesson). This
+    // keeps the function safe to deploy before OR after migration
+    // 20270222001648, in either order.
+    if (registeredServiceKeys.has("pg_cron")) {
+      const t0 = Date.now();
+      try {
+        // `cron` is not a PostgREST-exposed schema; the RPC is the only route.
+        const { data, error } = await serviceClient.rpc("issue_1647_cron_job_health", {
+          p_window_hours: 6,
+        });
+        if (error) {
+          // NOT "healthy". A watchdog that cannot read reports that it cannot
+          // read — reporting green on a failed read is the exact shape of the
+          // silence this tile exists to end.
+          checkRows.push({
+            service_key: "pg_cron", layer: "passive", status: "unknown",
+            latency_ms: Date.now() - t0, mode: null, http_status: null,
+            detail: { error: error.message, hint: "issue_1647_cron_job_health() missing or not granted to service_role" },
+          });
+        } else {
+          const verdict = evaluateCronJobHealth((data ?? []) as CronJobHealthRow[]);
+          checkRows.push({
+            service_key: "pg_cron", layer: "passive", status: verdict.status,
+            latency_ms: Date.now() - t0, mode: null, http_status: null,
+            detail: verdict.detail,
+          });
+        }
+      } catch (e) {
+        checkRows.push({
+          service_key: "pg_cron", layer: "passive", status: "unknown",
+          latency_ms: Date.now() - t0, mode: null, http_status: null,
+          detail: { error: String(e) },
+        });
+      }
+    } else {
+      structuredLog(
+        "warn",
+        "api_health: pg_cron tile is not a registered api_health_services key — the scheduled-job "
+          + "watchdog is NOT reporting. Apply migration 20270222001648 (issue #1647).",
+        { fn: "api-health-probe" },
+      );
     }
 
     // ── ORCH-1201-R2 §3.4: cached-header carry-forward (Pexels/Ticketmaster) ──
