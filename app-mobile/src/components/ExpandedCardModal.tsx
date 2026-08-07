@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import {
   View,
   Text,
+  FlatList,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -10,7 +11,6 @@ import {
   Linking,
   Platform,
   Animated,
-  LayoutAnimation,
   PanResponder,
   Alert,
 } from "react-native";
@@ -21,30 +21,33 @@ import { Icon } from "./ui/Icon";
 import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
-import { formatDistanceFromMeters, formatPriceRange, formatCurrency } from "./utils/formatters";
-import { tierLabel, tierRangeLabel, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
+import { formatCurrency } from "./utils/formatters";
 import { canonicalDiscoveryPriceDetail } from '../utils/priceTiers';
-import { curatedStopsToTimeline } from "../utils/curatedToTimeline";
-import { extractWeekdayText } from "../utils/openingHoursUtils";
-import { getReadableCategoryName, getCategoryIcon } from "../utils/categoryUtils";  // ORCH-0685
-import { normalizeWebsiteUrl } from "../utils/normalizeWebsiteUrl";
+import { getReadableCategoryName } from "../utils/categoryUtils";  // ORCH-0685
 import { weatherService, WeatherData } from "../services/weatherService";
 import { busynessService, BusynessData } from "../services/busynessService";
 import { bookingService, BookingOption } from "../services/bookingService";
 import { stopReplacementService } from "../services/stopReplacementService"; // ORCH-0640 ch09: experienceGenerationService DELETED; methods moved to stopReplacementService
 import { useRecommendationsOptional } from "../contexts/RecommendationsContext";
 import ExpandedCardHeader from "./expandedCard/ExpandedCardHeader";
-import { getUserLocale } from "../utils/localeUtils";
-import ImageGallery from "./expandedCard/ImageGallery";
 import CardInfoSection from "./expandedCard/CardInfoSection";
-import WeatherSection from "./expandedCard/WeatherSection";
-import BusynessSection from "./expandedCard/BusynessSection";
+// #1605 wave 4 — WeatherSection + BusynessSection are DELETED. Two orange-tinted
+// boxes with 26pt icon badges became two fact rows under one RIGHT NOW heading.
+import ConditionsSection from "./expandedCard/ConditionsSection";
 import PracticalDetailsSection from "./expandedCard/PracticalDetailsSection";
+import { ExpandedCardHero } from "./expandedCard/ExpandedCardHero";
+import StopList, { type StopListStop } from "./expandedCard/StopList";
+import { Section, SectionError } from "./expandedCard/SpineParts";
+import { SPINE, GALLERY } from "./expandedCard/spineTokens";
+import { curatedPlanSpans, singlePlaceSpans, stopMetaText } from "./expandedCard/expandedCardFacts";
+// The ONE Been-here state machine in the app. Declared in SwipeableCards.tsx (the
+// #1687 gate delimits it there); imported here so the sheet mounts the SAME
+// component rather than a second one in a different shape. The import edge is a
+// documented, render-time-only cycle — see that component's header.
+import { BeenHereControl } from "./SwipeableCards";
 import ReservationPassSection from "./expandedCard/ReservationPassSection";
 import TimelineSection from "./expandedCard/TimelineSection";
 import EventDetailLayout from "./expandedCard/EventDetailLayout";
-import CompanionStopsSection from "./expandedCard/CompanionStopsSection";
-import { StopImageGallery } from "./expandedCard/StopImageGallery";
 // ORCH-1072: brand experiences claimed-to-this-venue, rendered as compact rows
 // beneath the stars/miles/price block and above the weather section.
 import VenueExperiencesSection from "./expandedCard/VenueExperiencesSection";
@@ -77,19 +80,17 @@ function isExperienceCard(card: BusinessEventCard): boolean {
     Array.isArray(card.upcomingOccurrences)
   );
 }
-import { PicnicShoppingList } from './PicnicShoppingList';
 import { useReplaceStop } from '../hooks/useReplaceStop';
 import { estimateTravelMinutes, haversineKm, replaceStopInCard, StopAlternative } from '../utils/mutateCuratedCard';
 import * as Haptics from 'expo-haptics';
-import { colors } from "../constants/colors";
 import { glass } from "../constants/designSystem";
-import { SCREEN_HEIGHT } from "../utils/responsive";
-import { useIsPlaceOpen } from "../hooks/useIsPlaceOpen";
 // ORCH-0908: lock-in banner + Add-to-Calendar CTA
 import { DeviceCalendarService } from "../services/deviceCalendarService";
 import { CalendarService } from "../services/calendarService";
 import { supabase } from "../services/supabase";
 import { useAppStore } from "../store/appStore";
+import { toastManager } from "./ui/Toast";
+import { useWindowDimensions } from "react-native";
 import { useUserLocation } from "../hooks/useUserLocation";
 
 
@@ -226,1160 +227,41 @@ const lockedBannerStyles = StyleSheet.create({
   ctaDoneText: { color: 'hsl(140, 50%, 35%)' },
 });
 
-const curatedStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 16,
-    backgroundColor: '#1C1C1E',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginBottom: 4,
-  },
-  tagline: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.7)',
-    marginBottom: 12,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  summaryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  summaryText: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
-  },
-  summaryDot: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: 13,
-  },
-  stopsContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    gap: 0,
-  },
-  travelConnector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 6,
-    gap: 8,
-  },
-  travelLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#e5e7eb',
-  },
-  travelBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  travelText: {
-    fontSize: 11,
-    color: '#6b7280',
-    fontWeight: '500',
-  },
-  stopCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  stopLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-    gap: 8,
-    flex: 1,
-    overflow: 'hidden',
-  },
-  stopLabelTextWrap: {
-    flex: 1,
-    flexShrink: 1,
-  },
-  stopNumberBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#eb7825',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stopNumberText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  stopLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#eb7825',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  placeName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 2,
-  },
-  roleSubtitle: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#6b7280',
-    marginBottom: 4,
-  },
-  descriptionPreview: {
-    fontSize: 13,
-    fontWeight: '400',
-    fontStyle: 'italic',
-    color: '#9ca3af',
-    marginBottom: 6,
-  },
-  stopMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 4,
-    marginBottom: 8,
-  },
-  stopMetaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  stopMetaText: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  stopMetaDot: {
-    color: '#d1d5db',
-    fontSize: 12,
-  },
-  stopAddressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 10,
-  },
-  stopAddress: {
-    fontSize: 12,
-    color: '#9ca3af',
-    flex: 1,
-  },
-  directionsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    alignSelf: 'flex-start',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#eb7825',
-  },
-  directionsText: {
-    fontSize: 12,
-    color: '#eb7825',
-    fontWeight: '600',
-  },
-  stopHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    gap: 8,
-  },
-  openBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  openBadgeOpen: {
-    backgroundColor: 'rgba(16,185,129,0.15)',
-  },
-  openBadgeClosed: {
-    backgroundColor: 'rgba(239,68,68,0.15)',
-  },
-  openBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  openBadgeTextOpen: {
-    color: '#10b981',
-  },
-  openBadgeTextClosed: {
-    color: '#ef4444',
-  },
-  expandedSection: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-  },
-  aiDescription: {
-    fontSize: 14,
-    color: '#4b5563',
-    lineHeight: 20,
-    marginBottom: 10,
-  },
-  hoursSection: {
-    marginTop: 8,
-    marginBottom: 8,
-    backgroundColor: '#f9fafb',
-    borderRadius: 10,
-    padding: 10,
-  },
-  hoursSectionLabel: {
-    fontSize: 11,
-    color: '#6b7280',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  hoursRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    borderRadius: 6,
-  },
-  hoursRowToday: {
-    backgroundColor: '#fff7ed',
-  },
-  todayIndicator: {
-    width: 3,
-    height: 16,
-    borderRadius: 1.5,
-    backgroundColor: '#ea580c',
-    marginRight: 8,
-  },
-  hoursLineText: {
-    fontSize: 13,
-    color: '#374151',
-    lineHeight: 20,
-  },
-  hoursLineTextToday: {
-    fontWeight: '700',
-    color: '#9a3412',
-  },
-  policiesButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#333338',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    marginTop: 4,
-    gap: 6,
-  },
-  policiesButtonText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  totalTimeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(235,120,37,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(235,120,37,0.3)',
-    borderRadius: 14,
-    padding: 12,
-    marginTop: 12,
-  },
-  totalTimeTextBlock: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  totalTimeLabel: {
-    fontSize: 12,
-    color: '#9ca3af',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    fontWeight: '600',
-  },
-  totalTimeValue: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#111827',
-    marginTop: 2,
-  },
-  totalTimeBreakdown: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 2,
-  },
-  optionalStopCard: {
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderStyle: 'dashed',
-    backgroundColor: '#fafafa',
-  },
-  optionalBadge: {
-    backgroundColor: '#9ca3af',
-  },
-  optionalLabel: {
-    color: '#9ca3af',
-  },
-  todayHoursRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#fff7ed',
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    marginBottom: 8,
-  },
-  todayHoursText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#9a3412',
-    flex: 1,
-  },
-  expandToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(235,120,37,0.3)',
-    backgroundColor: 'rgba(235,120,37,0.06)',
-    marginTop: 4,
-  },
-  expandToggleText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#eb7825',
-  },
-  replaceButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#eb7825',
-    alignSelf: 'flex-start',
-    marginTop: 8,
-  },
-  replaceButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#eb7825',
-  },
-  alternativesContainer: {
-    marginTop: 10,
-    paddingVertical: 8,
-  },
-  alternativesLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6b7280',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  alternativesScroll: {
-    gap: 10,
-  },
-  altCard: {
-    width: 140,
-    borderRadius: 10,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    overflow: 'hidden',
-  },
-  altCardImage: {
-    width: 140,
-    height: 90,
-  },
-  altCardBody: {
-    padding: 8,
-    gap: 4,
-  },
-  altCardName: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  altCardMeta: {
-    fontSize: 11,
-    color: '#6b7280',
-  },
-  altCardSelect: {
-    backgroundColor: '#eb7825',
-    borderRadius: 6,
-    paddingVertical: 5,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  altCardSelectText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  alternativesEmpty: {
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  alternativesEmptyText: {
-    fontSize: 13,
-    color: '#9ca3af',
-  },
-  alternativesError: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 12,
-  },
-  alternativesErrorText: {
-    fontSize: 13,
-    color: '#ef4444',
-    flex: 1,
-  },
-  customizedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 4,
-  },
-  customizedText: {
-    fontSize: 11,
-    color: '#9ca3af',
-    fontWeight: '500',
-  },
-  undoToast: {
-    position: 'absolute',
-    bottom: 100,
-    left: 20,
-    right: 20,
-    backgroundColor: '#1C1C1E',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
-    zIndex: 100,
-  },
-  undoToastText: {
-    fontSize: 14,
-    color: '#ffffff',
-    flex: 1,
-  },
-  undoToastButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    backgroundColor: '#eb7825',
-  },
-  undoToastButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-});
-
-/** Private component — renders the multi-stop plan for a curated experience */
-function CuratedPlanView({
-  card,
-  isSaved,
-  onSave,
-  onShare,
-  onClose,
-  onOpenBrowser,
-  onOpenImageLightbox,
-  onSchedulePickerModalVisibilityChange,
-  userPreferences,
-  currentMode,
-  onCardRemoved,
-  currencyCode,
-  onPaywallRequired,
-  canAccessCurated,
-}: {
-  card: CuratedExperienceCard;
-  isSaved?: boolean;
-  onSave: (card: ExpandedCardData) => Promise<void> | void;
-  onShare?: (card: ExpandedCardData) => void;
-  onClose: () => void;
-  onOpenBrowser: (url: string, title: string) => void;
-  onOpenImageLightbox: (images: string[], initialIndex: number) => void;
-  onSchedulePickerModalVisibilityChange: (isOpen: boolean) => void;
-  userPreferences?: any;
-  currentMode?: string;
-  onCardRemoved?: (cardId: string) => void;
-  currencyCode?: string;
-  onPaywallRequired?: () => void;
-  canAccessCurated?: boolean;
-}) {
-  return (
-    <MultiStopPlanView
-      card={card}
-      isSaved={isSaved}
-      onSave={onSave}
-      onShare={onShare}
-      onClose={onClose}
-      onOpenBrowser={onOpenBrowser}
-      onOpenImageLightbox={onOpenImageLightbox}
-      onSchedulePickerModalVisibilityChange={onSchedulePickerModalVisibilityChange}
-      userPreferences={userPreferences}
-      currentMode={currentMode}
-      onCardRemoved={onCardRemoved}
-      currencyCode={currencyCode}
-      onPaywallRequired={onPaywallRequired}
-      canAccessCurated={canAccessCurated}
-    />
-  );
-}
-
-// ── Multi-stop expanded card (Adventurous curated cards) ──
-function MultiStopPlanView({
-  card,
-  isSaved,
-  onSave,
-  onShare,
-  onClose,
-  onOpenBrowser,
-  onOpenImageLightbox,
-  onSchedulePickerModalVisibilityChange,
-  userPreferences,
-  currentMode,
-  onCardRemoved,
-  currencyCode,
-  onPaywallRequired,
-  canAccessCurated,
-}: {
-  card: CuratedExperienceCard;
-  isSaved?: boolean;
-  onSave: (card: ExpandedCardData) => Promise<void> | void;
-  onShare?: (card: ExpandedCardData) => void;
-  onClose: () => void;
-  onOpenBrowser: (url: string, title: string) => void;
-  onOpenImageLightbox: (images: string[], initialIndex: number) => void;
-  onSchedulePickerModalVisibilityChange: (isOpen: boolean) => void;
-  userPreferences?: any;
-  currentMode?: string;
-  onCardRemoved?: (cardId: string) => void;
-  currencyCode?: string;
-  onPaywallRequired?: () => void;
-  canAccessCurated?: boolean;
-}) {
-  const { t } = useTranslation(['cards', 'common']);
-  // ── Local card state (mutable for stop replacements) ──────────────────────
-  const [localCard, setLocalCard] = useState<CuratedExperienceCard>(card);
-  const isCustomized = localCard !== card; // Reference equality — true after any replacement
-
-  // Defensive: stops may be undefined if card data is stale or cast from ExpandedCardData
-  const stops = Array.isArray(localCard.stops) ? localCard.stops : [];
-
-  const avgRating =
-    stops.length > 0
-      ? (stops.reduce((s, st) => s + st.rating, 0) / stops.length).toFixed(1)
-      : '–';
-
-  const effectiveCurrency = currencyCode || 'USD';
-  const priceText =
-    localCard.totalPriceMin === 0 && localCard.totalPriceMax === 0
-      ? t('cards:swipeable.free')
-      : `${formatCurrency(localCard.totalPriceMin, effectiveCurrency)}–${formatCurrency(localCard.totalPriceMax, effectiveCurrency)}`;
-
-  // Total time calculation
-  const totalStopMinutes = stops.reduce((s, st) => s + (typeof st.estimatedDurationMinutes === 'number' && st.estimatedDurationMinutes > 0 ? st.estimatedDurationMinutes : 45), 0);
-  const totalTravelMinutes = stops
-    .slice(1)
-    .reduce((s, st) => s + (st.travelTimeFromPreviousStopMin ?? 0), 0);
-  const grandTotalMinutes = totalStopMinutes + totalTravelMinutes;
-  const totalHrs = Math.floor(grandTotalMinutes / 60);
-  const totalMins = grandTotalMinutes % 60;
-  const totalTimeLabel = totalHrs > 0
-    ? `${totalHrs}h ${totalMins > 0 ? totalMins + 'min' : ''}`
-    : `${totalMins}min`;
-
-  // Accordion state
-  const [expandedStops, setExpandedStops] = useState<Set<number>>(new Set());
-  // Dismissed optional stops (resets when modal reopens — acceptable)
-  const [dismissedStops, setDismissedStops] = useState<Set<number>>(new Set());
-
-  // ── Stop replacement state ──────────────────────────────────────────────
-  const { alternatives, isLoading: isLoadingAlts, error: altsError, fetchAlternatives, clearAlternatives } = useReplaceStop();
-  const [replacingStopIndex, setReplacingStopIndex] = useState<number | null>(null);
-  const undoRef = useRef<{ stopIndex: number; originalStop: CuratedStop; previousCard: CuratedExperienceCard } | null>(null);
-  const [showUndo, setShowUndo] = useState(false);
-  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleReplace = (stopIndex: number): void => {
-    const stop = stops[stopIndex];
-    // comboCategory is the Mingla slug from the combo that originally selected this stop.
-    // Set by the generator (buildCardStop). Falls back to placeType for older cards.
-    // ORCH-0985: terminal fallback is 'casual_food' — a real slug the backend
-    // accepts. The prior 'casual_eats' existed in neither the generator's slug
-    // universe nor COMBO_SLUG_TO_FILTER_SIGNAL, so it always 400-rejected.
-    const categoryId = stop.comboCategory || stop.placeType || 'casual_food';
-    // ORCH-0985: exclude EVERY stop already in the plan — including the one being
-    // replaced — so you never see the current stop (or a sibling) offered as an
-    // alternative to itself.
-    const excludePlaceIds = stops
-      .map(s => s.placeId)
-      .filter(Boolean);
-
-    setReplacingStopIndex(stopIndex);
-    clearAlternatives();
-    fetchAlternatives({
-      categoryId,
-      // ORCH-0985: search around the STOP BEING REPLACED, not the user's location
-      // or the midpoint of the other stops. This is what makes Replace return
-      // "the deck for this stop" — alternatives near where the stop actually is.
-      location: { lat: stop.lat, lng: stop.lng },
-      travelMode: userPreferences?.travel_mode || 'walking',
-      excludePlaceIds,
-      // ORCH-0985: order alternatives by the same vibe signal this stop was
-      // ranked by (undefined for older cards → backend uses the category signal).
-      rankSignal: stop.rankSignal,
-      limit: 10,
-    });
-  };
-
-  const handleSelectAlternative = (alt: StopAlternative): void => {
-    if (replacingStopIndex === null) return;
-
-    // Store undo state
-    undoRef.current = {
-      stopIndex: replacingStopIndex,
-      originalStop: stops[replacingStopIndex],
-      previousCard: localCard,
-    };
-
-    const userLat = userPreferences?.location?.lat ?? stops[0]?.lat ?? 0;
-    const userLng = userPreferences?.location?.lng ?? stops[0]?.lng ?? 0;
-    const travelMode = userPreferences?.travel_mode || 'walking';
-
-    const newCard = replaceStopInCard(localCard, replacingStopIndex, alt, travelMode, userLat, userLng);
-    setLocalCard(newCard);
-    setReplacingStopIndex(null);
-    clearAlternatives();
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    // Show undo toast
-    setShowUndo(true);
-    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-    undoTimerRef.current = setTimeout(() => {
-      setShowUndo(false);
-      undoRef.current = null;
-    }, 4000);
-  };
-
-  const handleUndo = (): void => {
-    if (!undoRef.current) return;
-    setLocalCard(undoRef.current.previousCard);
-    setShowUndo(false);
-    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-    undoRef.current = null;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  };
-
-  const dismissAlternatives = (): void => {
-    setReplacingStopIndex(null);
-    clearAlternatives();
-  };
-
-  // Stagger entry animations
-  const stopAnims = useRef(stops.map(() => new Animated.Value(0))).current;
-  useEffect(() => {
-    Animated.stagger(
-      120,
-      stopAnims.map(anim =>
-        Animated.timing(anim, { toValue: 1, duration: 350, useNativeDriver: true })
-      )
-    ).start();
-  }, []);
-
-  const toggleStop = (stopNumber: number) => {
-    if (Platform.OS === 'android') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedStops(prev => {
-      const next = new Set(prev);
-      next.has(stopNumber) ? next.delete(stopNumber) : next.add(stopNumber);
-      return next;
-    });
-  };
-
-  const travelIcon = (mode: string | null): any => {
-    if (mode === 'driving') return 'car-outline';
-    if (mode === 'walking') return 'walk-outline';
-    if (mode === 'bicycling' || mode === 'biking') return 'bicycle-outline';
-    if (mode === 'transit') return 'bus-outline';
-    return 'navigate-outline';
-  };
-
-  const openDirectionsForStop = (stop: CuratedStop) => {
-    const url = Platform.select({
-      ios: `maps:0,0?q=${encodeURIComponent(stop.address)}`,
-      android: `geo:0,0?q=${encodeURIComponent(stop.address)}`,
-    });
-    if (url) Linking.openURL(url);
-  };
-
-  const todayName = new Date().toLocaleDateString(getUserLocale(), { weekday: 'long' });
-
-  return (
-    <View style={curatedStyles.container}>
-      {/* Header */}
-      <View style={curatedStyles.header}>
-        <Text style={curatedStyles.title} numberOfLines={2}>{localCard.title}</Text>
-        <Text style={curatedStyles.tagline}>{localCard.tagline}</Text>
-        {isCustomized && (
-          <View style={curatedStyles.customizedBadge}>
-            <Icon name="create-outline" size={12} color="#9ca3af" />
-            <Text style={curatedStyles.customizedText}>{t('cards:expanded.customized')}</Text>
-          </View>
-        )}
-        <View style={curatedStyles.summaryRow}>
-          <View style={curatedStyles.summaryItem}>
-            <Icon name="cash-outline" size={14} color="rgba(255,255,255,0.7)" />
-            <Text style={curatedStyles.summaryText}>{priceText}</Text>
-          </View>
-          <Text style={curatedStyles.summaryDot}>·</Text>
-          <View style={curatedStyles.summaryItem}>
-            <Icon name="time-outline" size={14} color="rgba(255,255,255,0.7)" />
-            <Text style={curatedStyles.summaryText}>{totalTimeLabel}</Text>
-          </View>
-          <Text style={curatedStyles.summaryDot}>·</Text>
-          <View style={curatedStyles.summaryItem}>
-            <Icon name="star" size={14} color="white" />
-            <Text style={curatedStyles.summaryText}>{t('cards:expanded.avg', { rating: avgRating })}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Shopping List — prep before journey (picnic-dates type) */}
-      {localCard.shoppingList && localCard.shoppingList.length > 0 && (
-        <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-          <PicnicShoppingList items={localCard.shoppingList} />
-        </View>
-      )}
-
-      {/* Stops */}
-      <View style={curatedStyles.stopsContainer}>
-        {stops.filter((_, idx) => !dismissedStops.has(idx)).map((stop, idx) => {
-          const isExpanded = expandedStops.has(stop.stopNumber);
-          const isOptional = !!stop.optional;
-          const originalIdx = stops.indexOf(stop);
-          const anim = stopAnims[originalIdx] ?? stopAnims[0];
-          return (
-            <Animated.View
-              key={`${stop.placeId}_${idx}`}
-              style={{
-                opacity: anim,
-                transform: [{
-                  translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }),
-                }],
-              }}
-            >
-              {/* Travel connector from previous stop */}
-              {idx > 0 && stop.travelTimeFromPreviousStopMin != null && (
-                <View style={curatedStyles.travelConnector}>
-                  <View style={curatedStyles.travelLine} />
-                  <View style={curatedStyles.travelBadge}>
-                    <Icon
-                      name={travelIcon(stop.travelModeFromPreviousStop)}
-                      size={12}
-                      color="#6b7280"
-                    />
-                    <Text style={curatedStyles.travelText}>
-                      {Math.round(stop.travelTimeFromPreviousStopMin)} min
-                    </Text>
-                  </View>
-                  <View style={curatedStyles.travelLine} />
-                </View>
-              )}
-
-              {/* Stop card */}
-              <View style={[curatedStyles.stopCard, isOptional && curatedStyles.optionalStopCard]}>
-                {/* Header row */}
-                <View style={curatedStyles.stopHeaderRow}>
-                  <View style={curatedStyles.stopLabelRow}>
-                    <View style={[curatedStyles.stopNumberBadge, isOptional && curatedStyles.optionalBadge]}>
-                      {isOptional ? (
-                        <Icon name="sparkles-outline" size={12} color="#ffffff" />
-                      ) : (
-                        <Text style={curatedStyles.stopNumberText}>{stop.stopNumber}</Text>
-                      )}
-                    </View>
-                    <View style={curatedStyles.stopLabelTextWrap}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={[curatedStyles.stopLabel, isOptional && curatedStyles.optionalLabel]}>
-                          {isOptional ? t('cards:expanded.suggested') : stop.stopLabel}
-                        </Text>
-                        {isOptional && (
-                          <TouchableOpacity
-                            onPress={() => {
-                              if (Platform.OS === 'android') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                              setDismissedStops(prev => new Set([...prev, originalIdx]));
-                            }}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            accessibilityLabel={t('cards:expanded.dismiss_optional_stop')}
-                            accessibilityRole="button"
-                          >
-                            <Icon name="close-circle-outline" size={16} color="#9ca3af" />
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                      <Text style={curatedStyles.placeName} numberOfLines={2}>{stop.placeName}</Text>
-                      {stop.role ? (
-                        <Text style={curatedStyles.roleSubtitle} numberOfLines={1}>
-                          {stop.optional
-                            ? (stop.role === 'Flowers' ? t('cards:expanded.pick_up_flowers') : stop.role === 'Groceries' ? t('cards:expanded.grab_groceries') : stop.role)
-                            : `Your ${stop.role.toLowerCase()} stop`}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </View>
-                </View>
-
-                {/* Always-visible: scrollable image gallery + quick meta */}
-                {(stop.imageUrls?.length || stop.imageUrl) ? (
-                  <StopImageGallery
-                    images={
-                      stop.imageUrls && stop.imageUrls.length > 0
-                        ? stop.imageUrls
-                        : [stop.imageUrl].filter(Boolean)
-                    }
-                    onImagePress={(index) => {
-                      const images = stop.imageUrls && stop.imageUrls.length > 0
-                        ? stop.imageUrls
-                        : [stop.imageUrl].filter(Boolean);
-                      onOpenImageLightbox(images, index);
-                    }}
-                  />
-                ) : null}
-
-                {stop.aiDescription && !isExpanded ? (
-                  <Text style={curatedStyles.descriptionPreview} numberOfLines={2} ellipsizeMode="tail">
-                    {stop.aiDescription}
-                  </Text>
-                ) : null}
-
-                <View style={curatedStyles.stopMetaRow}>
-                  {stop.rating > 0 && (
-                    <View style={curatedStyles.stopMetaItem}>
-                      <Icon name="star" size={12} color="#fbbf24" />
-                      <Text style={curatedStyles.stopMetaText}>{stop.rating.toFixed(1)}</Text>
-                    </View>
-                  )}
-                  {(() => {
-                    const tier = stop.priceTier as PriceTierSlug | undefined;
-                    const tierData = tier ? TIER_BY_SLUG[tier] : undefined;
-                    if (!tier && !stop.priceLevelLabel) return null;
-                    const tierColor = tierData?.color ?? '#6b7280';
-                    return (
-                      <>
-                        <Text style={curatedStyles.stopMetaDot}>·</Text>
-                        <Text style={[curatedStyles.stopMetaText, { color: tierColor, fontWeight: '600' }]}>
-                          {tierData ? tierLabel(tier!) : stop.priceLevelLabel}
-                        </Text>
-                        {tierData ? (
-                          <>
-                            <Text style={[curatedStyles.stopMetaDot, { color: tierColor }]}>·</Text>
-                            <Text style={[curatedStyles.stopMetaText, { color: tierColor }]}>
-                              {tierRangeLabel(tier!)}
-                            </Text>
-                          </>
-                        ) : null}
-                      </>
-                    );
-                  })()}
-                  <StopOpenBadge openingHours={stop.openingHours} />
-                </View>
-
-                {/* Today's hours — always visible */}
-                {(() => {
-                  const weekdayLines = extractWeekdayText(stop.openingHours);
-                  if (!weekdayLines || weekdayLines.length === 0) return null;
-                  const todayLine = weekdayLines.find(line => line.startsWith(todayName));
-                  if (!todayLine) return null;
-                  return (
-                    <View style={curatedStyles.todayHoursRow}>
-                      <Icon name="time-outline" size={12} color="#ea580c" />
-                      <Text style={curatedStyles.todayHoursText} numberOfLines={1}>
-                        {todayLine}
-                      </Text>
-                    </View>
-                  );
-                })()}
-
-                {/* Policies & Reservations — only when website normalizes.
-                    [ORCH-0649 — INVARIANT I-WEBVIEW-URL-NORMALIZED]
-                    Previously passed raw stop.website; http:// tripped iOS ATS
-                    (NSURLErrorDomain -1022). normalizeWebsiteUrl rewrites to
-                    https:// with whitespace/case hardening. */}
-                {stop.website && normalizeWebsiteUrl(stop.website) ? (
-                  <TouchableOpacity
-                    style={curatedStyles.policiesButton}
-                    onPress={() => {
-                      const normalized = normalizeWebsiteUrl(stop.website);
-                      if (!normalized) return;
-                      onOpenBrowser(normalized, stop.placeName);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Icon name="globe-outline" size={15} color="#ffffff" />
-                    <Text style={curatedStyles.policiesButtonText}>{t('cards:expanded.policies_reservations')}</Text>
-                  </TouchableOpacity>
-                ) : null}
-
-                {/* Expand / collapse toggle — prominent button, below policies */}
-                <TouchableOpacity
-                  style={curatedStyles.expandToggle}
-                  onPress={() => toggleStop(stop.stopNumber)}
-                  activeOpacity={0.7}
-                  accessibilityLabel={isExpanded ? t('cards:expanded.collapse_stop_details') : t('cards:expanded.expand_stop_details')}
-                  accessibilityRole="button"
-                >
-                  <Text style={curatedStyles.expandToggleText}>
-                    {isExpanded ? t('cards:expanded.less_details') : t('cards:expanded.more_details')}
-                  </Text>
-                  <Icon
-                    name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                    size={14}
-                    color="#eb7825"
-                  />
-                </TouchableOpacity>
-
-                {/* Replace button — not shown on optional/dismissible stops */}
-                {!isOptional && (
-                  <TouchableOpacity
-                    style={curatedStyles.replaceButton}
-                    onPress={() => handleReplace(originalIdx)}
-                    activeOpacity={0.7}
-                    accessibilityLabel={`Replace ${stop.placeName}`}
-                    accessibilityRole="button"
-                  >
-                    <Icon name="refresh-outline" size={14} color="#eb7825" />
-                    <Text style={curatedStyles.replaceButtonText}>{t('cards:expanded.replace')}</Text>
-                  </TouchableOpacity>
-                )}
-
-                {/* Alternatives picker — shown when replacing this stop */}
-                {replacingStopIndex === originalIdx && (
-                  <View style={curatedStyles.alternativesContainer}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={curatedStyles.alternativesLabel}>{t('cards:expanded.alternatives')}</Text>
-                      <TouchableOpacity onPress={dismissAlternatives} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Icon name="close" size={16} color="#9ca3af" />
-                      </TouchableOpacity>
-                    </View>
-                    {isLoadingAlts && (
-                      <View style={curatedStyles.alternativesEmpty}>
-                        <ActivityIndicator size="small" color="#eb7825" />
-                        <Text style={[curatedStyles.alternativesEmptyText, { marginTop: 6 }]}>{t('cards:expanded.finding_alternatives')}</Text>
-                      </View>
-                    )}
-                    {altsError && (
-                      <View style={curatedStyles.alternativesError}>
-                        <Text style={curatedStyles.alternativesErrorText}>{t('cards:expanded.couldnt_load_alternatives')}</Text>
-                        <TouchableOpacity onPress={() => handleReplace(originalIdx)}>
-                          <Text style={{ color: '#eb7825', fontWeight: '600', fontSize: 13 }}>{t('cards:expanded.retry')}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                    {!isLoadingAlts && !altsError && alternatives.length === 0 && (
-                      <View style={curatedStyles.alternativesEmpty}>
-                        <Text style={curatedStyles.alternativesEmptyText}>{t('cards:expanded.no_alternatives')}</Text>
-                      </View>
-                    )}
-                    {!isLoadingAlts && alternatives.length > 0 && (
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={curatedStyles.alternativesScroll}>
-                        {alternatives.map((alt) => (
-                          <View key={alt.placeId} style={curatedStyles.altCard}>
-                            {alt.imageUrl ? (
-                              <Image source={{ uri: alt.imageUrl }} style={curatedStyles.altCardImage} resizeMode="cover" />
-                            ) : (
-                              <View style={[curatedStyles.altCardImage, { backgroundColor: '#f3f4f6', justifyContent: 'center', alignItems: 'center' }]}>
-                                <Icon name="image-outline" size={20} color="#d1d5db" />
-                              </View>
-                            )}
-                            <View style={curatedStyles.altCardBody}>
-                              <Text style={curatedStyles.altCardName} numberOfLines={1}>{alt.placeName}</Text>
-                              <Text style={curatedStyles.altCardMeta} numberOfLines={1}>
-                                {alt.rating > 0 ? `★ ${alt.rating.toFixed(1)}` : ''}{alt.rating > 0 && alt.priceTier ? ' · ' : ''}{alt.priceTier ? tierLabel(alt.priceTier as PriceTierSlug) : ''}
-                              </Text>
-                              <TouchableOpacity style={curatedStyles.altCardSelect} onPress={() => handleSelectAlternative(alt)} activeOpacity={0.8}>
-                                <Text style={curatedStyles.altCardSelectText}>{t('cards:expanded.select')}</Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        ))}
-                      </ScrollView>
-                    )}
-                  </View>
-                )}
-
-                {/* Opening Hours — visible when expanded */}
-                {isExpanded && (() => {
-                  const weekdayLines = extractWeekdayText(stop.openingHours);
-                  if (!weekdayLines || weekdayLines.length === 0) return null;
-                  return (
-                    <View style={curatedStyles.hoursSection}>
-                      <Text style={curatedStyles.hoursSectionLabel}>{t('cards:expanded.weekly_hours')}</Text>
-                      {weekdayLines.map((line, index) => {
-                        const isToday = line.startsWith(todayName);
-                        return (
-                          <View key={index} style={[
-                            curatedStyles.hoursRow,
-                            isToday && curatedStyles.hoursRowToday,
-                          ]}>
-                            {isToday && <View style={curatedStyles.todayIndicator} />}
-                            <Text style={[
-                              curatedStyles.hoursLineText,
-                              isToday && curatedStyles.hoursLineTextToday,
-                            ]} numberOfLines={1}>
-                              {line}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  );
-                })()}
-
-                {/* Expanded detail section */}
-                {isExpanded && (
-                  <View style={curatedStyles.expandedSection}>
-                    {/* AI Description */}
-                    {stop.aiDescription ? (
-                      <Text style={curatedStyles.aiDescription} numberOfLines={4} ellipsizeMode="tail">{stop.aiDescription}</Text>
-                    ) : null}
-
-                    {/* Address + Directions */}
-                    <View style={curatedStyles.stopAddressRow}>
-                      <Icon name="location-outline" size={13} color="#9ca3af" />
-                      <Text style={curatedStyles.stopAddress} numberOfLines={2}>
-                        {stop.address}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={curatedStyles.directionsButton}
-                      onPress={() => openDirectionsForStop(stop)}
-                      activeOpacity={0.7}
-                    >
-                      <Icon name="navigate-outline" size={14} color="#eb7825" />
-                      <Text style={curatedStyles.directionsText}>{t('cards:expanded.get_directions')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-              </View>
-            </Animated.View>
-          );
-        })}
-
-        {/* Total time estimate footer */}
-        <View style={curatedStyles.totalTimeCard}>
-          <Icon name="time-outline" size={20} color="#eb7825" />
-          <View style={curatedStyles.totalTimeTextBlock}>
-            <Text style={curatedStyles.totalTimeLabel}>{t('cards:expanded.total_time_estimate')}</Text>
-            <Text style={curatedStyles.totalTimeValue}>{totalTimeLabel}</Text>
-            <Text style={curatedStyles.totalTimeBreakdown}>
-              {t('cards:expanded.at_stops', { minutes: totalStopMinutes })} · {t('cards:expanded.travel_time', { minutes: totalTravelMinutes })}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Action Buttons (Save, Schedule, Share) — uses localCard for persistence */}
-      <ActionButtons
-        card={localCard as unknown as ExpandedCardData}
-        bookingOptions={[]}
-        onSave={onSave}
-        onShare={onShare}
-        onClose={onClose}
-        isSaved={isSaved}
-        userPreferences={userPreferences}
-        currentMode={currentMode}
-        onCardRemoved={onCardRemoved}
-        onScheduleSuccess={() => onClose()}
-        onOpenBrowser={onOpenBrowser}
-        onSchedulePickerModalVisibilityChange={onSchedulePickerModalVisibilityChange}
-        onPaywallRequired={onPaywallRequired}
-        canAccessCurated={canAccessCurated}
-      />
-
-      {/* Undo toast — shown for 4s after a stop replacement */}
-      {showUndo && undoRef.current && (
-        <View style={curatedStyles.undoToast}>
-          <Text style={curatedStyles.undoToastText} numberOfLines={1}>
-            {t('cards:expanded.replaced', { name: undoRef.current.originalStop.placeName })}
-          </Text>
-          <TouchableOpacity style={curatedStyles.undoToastButton} onPress={handleUndo} activeOpacity={0.8}>
-            <Text style={curatedStyles.undoToastButtonText}>{t('cards:expanded.undo')}</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-    </View>
-  );
-}
-
-/** Wrapper component so each curated stop gets its own useIsPlaceOpen hook instance */
-// ORCH-1019 F-7: prop type widened to CuratedStop['openingHours'] (the
-// Google-v1-object-or-legacy union). useIsPlaceOpen already accepts this union
-// and routes through extractWeekdayText — no day-key index here.
-function StopOpenBadge({ openingHours }: { openingHours: CuratedStop['openingHours'] | undefined }) {
-  const { t } = useTranslation(['cards', 'common']);
-  const liveOpenStatus = useIsPlaceOpen(openingHours);
-  if (liveOpenStatus === null) return null;
-  return (
-    <>
-      <Text style={curatedStyles.stopMetaDot}>·</Text>
-      <View style={[
-        curatedStyles.openBadge,
-        liveOpenStatus ? curatedStyles.openBadgeOpen : curatedStyles.openBadgeClosed,
-      ]}>
-        <Text style={[
-          curatedStyles.openBadgeText,
-          liveOpenStatus ? curatedStyles.openBadgeTextOpen : curatedStyles.openBadgeTextClosed,
-        ]}>
-          {liveOpenStatus ? t('cards:expanded.open_now') : t('cards:expanded.closed')}
-        </Text>
-      </View>
-    </>
-  );
-}
+/**
+ * #1605 wave 4 — `curatedStyles`, `CuratedPlanView`, `MultiStopPlanView` and
+ * `StopOpenBadge` ARE DELETED. ~640 lines, and every one of them existed because
+ * the same screen was built twice.
+ *
+ * What went, and why:
+ *
+ *   `curatedStyles.header`  the dark #1C1C1E slab. Full-bleed with SQUARE corners
+ *                           starting 24pt below the sheet's 28pt ROUNDED ones — a
+ *                           black rectangle framed in white, and the only reason
+ *                           the sheet's `theme` had to be keyed on `isNightOut`.
+ *                           Its four pieces are re-homed, not lost: the title to
+ *                           the hero, the tagline to the body description, the
+ *                           price/time/rating summary row to the plate's meta
+ *                           line, and the "Customized" badge to the Plan
+ *                           section's heading chip.
+ *   `MultiStopPlanView`     a second, parallel composition. Its stop cards are
+ *                           now `StopList` at a fixed 72pt; its per-stop
+ *                           `StopImageGallery` and its alternatives strip were
+ *                           the NESTED SCROLLABLES (N+1 horizontal ScrollViews
+ *                           inside a gorhom sheet, each fighting the sheet's pan);
+ *                           its `Animated.stagger(120, …350ms)` per-stop entry
+ *                           took 1.4 SECONDS to render ten rows and is the exact
+ *                           shape that produced #1576; and its action row sat
+ *                           MID-SCROLL with Weather, Busyness and Timeline below
+ *                           it, which is the split the action band closes.
+ *   `StopOpenBadge`         computed against the DEVICE clock — it never received
+ *                           a UTC offset. `StopList` renders the badge iff the
+ *                           offset is known.
+ *
+ * The `TimelineSection` render for a curated card goes with them: it was a
+ * SECOND full drawing of the same stops on the same screen, and its orange spine
+ * at `left: 30` was painted over by every opaque step card, so it has never been
+ * visible.
+ */
 
 export default function ExpandedCardModal({
   visible,
@@ -1495,6 +377,35 @@ export default function ExpandedCardModal({
   const [selectedVenueExperience, setSelectedVenueExperience] =
     useState<BusinessEventCard | null>(null);
 
+  // ── #1605 wave 4 — the spine's own state ─────────────────────────────────
+  const { height: windowHeight } = useWindowDimensions();
+  /**
+   * The sheet's resolved height at the 90% snap, so the hero can take what the
+   * fold leaves (`expandedHeroHeight`). `wrapInRNModal` makes the percentage
+   * resolve against the FULL physical screen, which is why this reads the window
+   * and not a measured parent — a measured parent is exactly the flex-axis
+   * dependence I-PROPOSED-1593-LAYER-GEOMETRY-SINGLE-SOURCE forbids.
+   */
+  const sheetHeight = Math.round(windowHeight * 0.9);
+  const scrollRef = useRef<ScrollView>(null);
+  const [planSectionY, setPlanSectionY] = useState(0);
+  /**
+   * The user's LOCAL edits to a curated plan (a replaced stop). `null` until the
+   * first replacement, so "customized" is a real state rather than the reference
+   * inequality it used to be — and it RESETS when the card changes, which the
+   * old `useState(card)` inside MultiStopPlanView never did (a prop change
+   * without a remount left the previous plan on screen).
+   */
+  const [curatedLocalCard, setCuratedLocalCard] = useState<CuratedExperienceCard | null>(null);
+  const {
+    alternatives,
+    isLoading: isLoadingAlts,
+    error: altsError,
+    fetchAlternatives,
+    clearAlternatives,
+  } = useReplaceStop();
+  const [replacingStopIndex, setReplacingStopIndex] = useState<number | null>(null);
+
   // META-ORCH-1148 2.2b — reservable-venue gate for the consumer reserve flow.
   // card.id is a place_pool.id; the hook is disabled (no fetch) for non-uuid ids
   // (stroll/picnic/curated/Ticketmaster). reservable=false → no affordance.
@@ -1567,6 +478,13 @@ export default function ExpandedCardModal({
       setIsSchedulePickerOpen(false);
       setCuratedLightbox({ visible: false, images: [], initialIndex: 0 });
     }
+    // A replaced stop belongs to the card it was replaced on. The old
+    // `useState(card)` inside MultiStopPlanView had no sync effect at all, so on
+    // the deck — a single stable mount whose `target` prop changes — a previous
+    // plan could survive onto the next card.
+    setCuratedLocalCard(null);
+    setReplacingStopIndex(null);
+    clearAlternatives();
   }, [visible, card, viewerLoc?.lat, viewerLoc?.lng, effectiveTravelMode]);
 
   const computeViewerTravelForChatMount = () => {
@@ -1864,6 +782,158 @@ export default function ExpandedCardModal({
   const isNightOut = !isCuratedCard && !!card.nightOutData;
   const nightOut = isCuratedCard ? null : card.nightOutData;
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // #1605 wave 4 — ONE SPINE. `isCurated` appears in exactly TWO expressions
+  // below (which facts the plate's spans come from, and whether the sliver stack
+  // and the Plan section render) and in NO geometry, colour or section-order
+  // expression. Everything else is present-or-absent by DATA.
+  // ───────────────────────────────────────────────────────────────────────────
+  const planCard = curatedLocalCard ?? curatedCard;
+  const planStops: CuratedStop[] = Array.isArray(planCard?.stops) ? planCard!.stops : [];
+
+  /**
+   * THE COVER. `images[0] ?? stops[0].imageUrl ?? null` — ONE decode, never N.
+   *
+   * This is the resolution `MessageBubble` already uses for the in-chat card
+   * (`intentHeroImage`), so a plan resolves the same way on every surface. A plan
+   * had NO hero image at all before this wave: `ImageGallery` was gated behind
+   * `!isCuratedCard`, so the only thing at the top of a plan was a black slab.
+   *
+   * The remaining stop photographs stay on their own stop rows, which is why the
+   * Gallery section does not render for a plan — not because of a branch, but
+   * because a plan has no second photo OF ITS OWN.
+   */
+  const heroCover: string | null =
+    (Array.isArray(card.images) && card.images.length > 0 ? card.images[0] : null) ??
+    (planStops.length > 0 ? planStops[0].imageUrl ?? null : null) ??
+    null;
+
+  const planPriceLabel =
+    planCard == null
+      ? null
+      : planCard.totalPriceMin === 0 && planCard.totalPriceMax === 0
+        ? t('cards:swipeable.free')
+        : `${formatCurrency(planCard.totalPriceMin, accountPreferences?.currency || 'USD')}–${formatCurrency(planCard.totalPriceMax, accountPreferences?.currency || 'USD')}`;
+
+  const planDurationLabel = (() => {
+    if (planStops.length === 0) return null;
+    // Only REAL per-stop durations count. `cardConverters.ts` synthesises 60
+    // minutes a stop for a curated card, and a total built out of synthesised
+    // parts is a fabricated total (Constitution 9).
+    const stopMinutes = planStops.reduce(
+      (sum, st) =>
+        sum +
+        (typeof st.estimatedDurationMinutes === 'number' && st.estimatedDurationMinutes > 0
+          ? st.estimatedDurationMinutes
+          : 0),
+      0,
+    );
+    const travelMinutes = planStops
+      .slice(1)
+      .reduce((sum, st) => sum + (st.travelTimeFromPreviousStopMin ?? 0), 0);
+    const total = Math.round(stopMinutes + travelMinutes);
+    if (total <= 0) return null;
+    const hrs = Math.floor(total / 60);
+    const mins = total % 60;
+    return hrs > 0 ? (mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`) : `${mins}m`;
+  })();
+
+  const heroSpans = isCuratedCard && planCard
+    ? curatedPlanSpans(planCard, {
+        planPriceLabel,
+        planDurationLabel,
+        stopCountLabel:
+          planStops.length > 0
+            ? t('cards:expanded.stop_count', {
+                defaultValue: '{{count}} stops',
+                count: planStops.length,
+              })
+            : null,
+      })
+    : singlePlaceSpans(card, {
+        measurementSystem: accountPreferences?.measurementSystem,
+      });
+
+  /** The venue's UTC offset, top-level or legacy-cased. Absent = no badge. */
+  const cardUtcOffsetMinutes = card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null;
+
+  const planListStops: StopListStop[] = planStops.map((stop, i) => ({
+    key: `${stop.placeId ?? 'stop'}_${i}`,
+    index: i + 1,
+    indexLabel: String(i + 1),
+    name: stop.placeName,
+    imageUrl:
+      (Array.isArray(stop.imageUrls) && stop.imageUrls.length > 0 ? stop.imageUrls[0] : null) ??
+      stop.imageUrl ??
+      null,
+    meta: stopMetaText(stop, (minutes) =>
+      t('cards:expanded.minutes_here', { defaultValue: '{{count}} min here', count: minutes }),
+    ),
+    address: stop.address ?? null,
+    description: stop.aiDescription ?? null,
+    openingHours: stop.openingHours,
+    // A stop carries no offset today, so the badge hides rather than lying about
+    // a Lagos venue against a London clock. Producer-side; see #1605's D2.
+    utcOffsetMinutes: (stop as { utcOffsetMinutes?: number | null }).utcOffsetMinutes ?? null,
+    travelMinutes: stop.travelTimeFromPreviousStopMin ?? null,
+    travelMode: stop.travelModeFromPreviousStop ?? null,
+    canReplace: !stop.optional,
+  }));
+
+  /**
+   * The companion stops of a single place — a stroll's, a picnic's, and the
+   * picnic's grocery store — through the SAME component as the Plan.
+   *
+   * A stroll IS a multi-stop plan with a different producer, so it gets the same
+   * furniture: one component, two producers. This is what deletes the ~80 inline
+   * lines of grocery-store block (it becomes ONE row with a `SHOP` chip) and the
+   * 2.54:1 #9CA3AF text that `CompanionStopsSection` shipped.
+   */
+  const companionStops: StopListStop[] = (() => {
+    const rows: StopListStop[] = [];
+    const grocery = picnicData?.groceryStore;
+    if (grocery) {
+      rows.push({
+        key: `grocery_${grocery.name}`,
+        index: 0,
+        indexLabel: t('cards:expanded.shop_chip', { defaultValue: 'SHOP' }),
+        name: grocery.name,
+        imageUrl: grocery.imageUrl ?? null,
+        meta:
+          grocery.rating != null && grocery.rating > 0 ? `★ ${grocery.rating.toFixed(1)}` : null,
+        address: grocery.address ?? null,
+        description: null,
+        openingHours: undefined,
+        utcOffsetMinutes: null,
+        travelMinutes: null,
+        travelMode: null,
+        canReplace: false,
+      });
+    }
+    const companions = strollData?.companionStops ?? [];
+    companions.forEach((companion: any, i: number) => {
+      rows.push({
+        key: `companion_${companion?.id ?? i}`,
+        index: rows.length + 1,
+        indexLabel: String(rows.length + 1),
+        name: companion?.name ?? '',
+        imageUrl: companion?.imageUrl ?? null,
+        meta:
+          companion?.rating != null && companion.rating > 0
+            ? `★ ${Number(companion.rating).toFixed(1)}`
+            : null,
+        address: companion?.address ?? null,
+        description: companion?.description ?? null,
+        openingHours: undefined,
+        utcOffsetMinutes: null,
+        travelMinutes: null,
+        travelMode: null,
+        canReplace: false,
+      });
+    });
+    return rows.filter((row) => row.name.trim().length > 0);
+  })();
+
   // Helper to open directions in maps app
   const openDirections = () => {
     const address = card.address;
@@ -1881,6 +951,80 @@ export default function ExpandedCardModal({
       });
       if (url) Linking.openURL(url);
     }
+  };
+
+  /**
+   * Directions for a stop or a companion. ONE implementation for every address
+   * on this sheet, with a WEB arm.
+   *
+   * `Platform.select` with only ios/android keys returns `undefined` on web and
+   * the `if (url)` then silently no-ops — a dead tap nobody could see (#1605 bug
+   * ledger item 3). And `Linking.openURL` was called at six sites here with ZERO
+   * `canOpenURL` pre-flights and ONE console-only `.catch` between them, so a
+   * device with no maps app produced nothing at all (Constitution 1 and 3).
+   */
+  const openDirectionsForAddress = (address: string | null): void => {
+    if (address === null || address.trim().length === 0) return;
+    const q = encodeURIComponent(address);
+    const url =
+      Platform.OS === 'ios'
+        ? `maps:0,0?q=${q}`
+        : Platform.OS === 'android'
+          ? `geo:0,0?q=${q}`
+          : `https://www.google.com/maps/search/?api=1&query=${q}`;
+    void (async () => {
+      try {
+        const can = await Linking.canOpenURL(url);
+        if (!can) {
+          toastManager.show(t('cards:expanded.directions_unavailable', {
+              defaultValue: "Couldn't open directions",
+            }), 'error');
+          return;
+        }
+        await Linking.openURL(url);
+      } catch {
+        toastManager.show(t('cards:expanded.directions_unavailable', {
+            defaultValue: "Couldn't open directions",
+          }), 'error');
+      }
+    })();
+  };
+
+  /** Replace a stop — the alternatives are fetched around the STOP, not the user. */
+  const handleReplaceStop = (stopIndex: number): void => {
+    const source = curatedLocalCard ?? curatedCard;
+    const stop = source?.stops?.[stopIndex];
+    if (!stop) return;
+    setReplacingStopIndex(stopIndex);
+    clearAlternatives();
+    fetchAlternatives({
+      categoryId: stop.comboCategory || stop.placeType || 'casual_food',
+      location: { lat: stop.lat, lng: stop.lng },
+      travelMode: userPreferences?.travel_mode || 'walking',
+      excludePlaceIds: (source?.stops ?? []).map((st) => st.placeId).filter(Boolean),
+      rankSignal: stop.rankSignal,
+      limit: 10,
+    });
+  };
+
+  const handleSelectAlternative = (alt: StopAlternative): void => {
+    const source = curatedLocalCard ?? curatedCard;
+    if (replacingStopIndex === null || !source) return;
+    const userLat = userPreferences?.location?.lat ?? source.stops?.[0]?.lat ?? 0;
+    const userLng = userPreferences?.location?.lng ?? source.stops?.[0]?.lng ?? 0;
+    setCuratedLocalCard(
+      replaceStopInCard(
+        source,
+        replacingStopIndex,
+        alt,
+        userPreferences?.travel_mode || 'walking',
+        userLat,
+        userLng,
+      ),
+    );
+    setReplacingStopIndex(null);
+    clearAlternatives();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   // [ORCH-0696 S-6] Conditionally render sticky header + review nav for
@@ -1932,440 +1076,449 @@ export default function ExpandedCardModal({
         visible={visible && !anyChildModalOpen}
         onClose={handleRootSheetClose}
         wrapInRNModal
+        /*
+          A POOL CARD IS A LIGHT SHEET, AND THAT IS SAID ONCE.
+
+          `theme` is still keyed on `isNightOut` because a Ticketmaster event is
+          genuinely a dark surface with its own layout — but `isNightOut` is
+          ALWAYS FALSE for a curated card (`!isCuratedCard && !!card.nightOutData`),
+          which is how a plan ended up rendering a black #1C1C1E slab on a white
+          sheet. The slab is deleted; the pool spine is light on both branches.
+        */
         theme={isNightOut ? 'dark' : 'light'}
         snapPoints={glass.bottomSheet.snapPoints as unknown as (string | number)[]}
         initialIndex={1}
         backdropOpacity={0.55}
-        handleStyle={{
-          // [ORCH-0696 hotfix-3] Conditional chrome theme:
-          //   • Ticketmaster events → dark sheet (designs perfect per operator)
-          //   • Place / curated cards → light sheet (operator directive: cards
-          //     keep their original light theme; only chrome is new)
-          backgroundColor: isNightOut ? "rgba(255,255,255,0.30)" : "rgba(0,0,0,0.30)",
-          width: glass.bottomSheet.handle.width,
-          height: glass.bottomSheet.handle.height,
-        }}
+        /*
+          THE HERO DRAWS ITS OWN HANDLE (pool cards only).
+
+          gorhom's 24pt handle block sits ABOVE the sheet body, so it would push
+          the hero down and put a band of white above the photograph — the sheet
+          would open onto chrome instead of onto the card the user tapped. The
+          hero's handle is an opaque core with a dark ring (4.10:1 worst case over
+          a 41-luminance sweep) and carries the accessible Close role, because
+          suppressing gorhom's takes its affordance with it.
+        */
+        showHandle={isNightOut}
+        handleStyle={
+          isNightOut
+            ? {
+                backgroundColor: "rgba(255,255,255,0.30)",
+                width: glass.bottomSheet.handle.width,
+                height: glass.bottomSheet.handle.height,
+              }
+            : undefined
+        }
         backgroundStyle={{
-          backgroundColor: isNightOut ? "rgba(12, 14, 18, 1)" : "#ffffff",
+          backgroundColor: isNightOut ? "rgba(12, 14, 18, 1)" : SPINE.paper,
           borderTopLeftRadius: glass.bottomSheet.topRadius,
           borderTopRightRadius: glass.bottomSheet.topRadius,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: isNightOut ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
+          /*
+            NO TOP HAIRLINE on a pool card. The hero is a photograph, and a
+            rgba(0,0,0,0.08) line over it is invisible on a dark photo and a
+            scratch on a pale one. The hero's own clip IS the edge.
+          */
+          ...(isNightOut
+            ? {
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: "rgba(255,255,255,0.08)",
+              }
+            : {}),
         }}
         header={reviewNavHeader}
         scrollMode="scroll"
         accessibilityLabel={card.title}
         scrollProps={{
+          ref: scrollRef,
           style: styles.scrollView,
           contentContainerStyle: [
             styles.scrollContent,
-            { paddingBottom: Math.max(insets.bottom, 16) },
+            { paddingBottom: Math.max(insets.bottom, 16) + 24 },
           ],
         }}
       >
-            {/* ORCH-0908: locked-in banner — renders for ANY card type (curated/event/place) when shared via lock-and-schedule */}
+            {/*
+              THE NIGHT-OUT BRANCH IS NOT PART OF THIS WAVE AND IS UNTOUCHED.
+
+              A Ticketmaster event card (`nightOutData`) is not a pool card: it
+              has its own `EventDetailLayout`, its own dark chrome and its own
+              ticket flow. #1605 wave 4 is scoped to Mingla's OWN place pool — a
+              single place, a claimed venue (which is a pool row and renders
+              identically) and a curated multi-stop plan. Everything below the
+              ternary is the pool spine.
+            */}
+            {isNightOut && nightOut ? (
+              <>
+                {card && <LockedInBanner card={card} />}
+                {reservationPass && <ReservationPassSection pass={reservationPass} />}
+                <EventDetailLayout
+                  card={card}
+                  nightOut={nightOut}
+                  isSaved={!!isSaved}
+                  onSave={onSave}
+                  onShare={onShare}
+                  onClose={onClose}
+                  onOpenBrowser={(url, title) => {
+                    setBrowserUrl(url);
+                    setBrowserTitle(title);
+                  }}
+                  accountPreferences={accountPreferences}
+                  seatMapFailed={seatMapFailed}
+                  setSeatMapFailed={setSeatMapFailed}
+                  openDirections={openDirections}
+                />
+              </>
+            ) : (
+              <>
+            {/*
+              ═══════════════════════════════════════════════════════════════
+              THE HERO. Always. On both branches.
+
+              It carries the SAME PLATE as the collapsed deck card — same size,
+              same radius, same position — so opening a card CONTINUES it rather
+              than cutting to a new screen. That continuity is arithmetic, not an
+              impression: the scrim formula reads only the plate's card-local
+              geometry, so every contrast figure comes out identical to the deck
+              card's. See ExpandedCardHero's header, and T-11 in
+              packages/card-identity/__tests__, which measures it.
+              ═══════════════════════════════════════════════════════════════
+            */}
+            <ExpandedCardHero
+              cover={heroCover}
+              title={card.title}
+              spans={heroSpans}
+              curated={isCuratedCard}
+              sheetHeight={sheetHeight}
+              beenHere={
+                /*
+                  THE ONLY BEEN-HERE CONTROL IN THE SYSTEM, and it lives on the
+                  plate. `ActionButtons`' implementation — gated on two props no
+                  caller has ever passed — is DELETED rather than wired up;
+                  wiring it would have given this sheet a second Been-here in a
+                  different shape at a different size with a different state
+                  machine, three sections below the first one.
+
+                  Because it renders here, it is reachable from the six entry
+                  points that have no collapsed card behind them: Likes,
+                  Calendar, chat, both collab sheets and a friend's profile.
+                */
+                <BeenHereControl
+                  userId={user?.id}
+                  card={{
+                    id: card.id,
+                    title: card.title,
+                    category: card.category,
+                    image: card.image,
+                    priceRange: card.priceRange ?? null,
+                    address: card.address,
+                    placeId: card.placeId ?? (card as any).source?.placeId,
+                    cardType: (card as any).cardType,
+                    placePoolId: (card as any).placePoolId,
+                  }}
+                />
+              }
+              onSharePress={() => onShare?.(card)}
+              shareLabel={t('cards:swipeable.share_card', {
+                defaultValue: 'Share {{title}}',
+                title: card.title,
+              })}
+              onClosePress={onClose}
+              closeLabel={t('common:close', { defaultValue: 'Close' })}
+            />
+
+            {/* Slot 1 — a system message, not a content section: it keeps its fill. */}
             {card && <LockedInBanner card={card} />}
 
-            {/* META-ORCH-1148 2.2f: when opened from a booked reservation, the
-                injected Confirmed pass (banner + check-in QR + details) sits at
-                the top of the existing expanded card design. */}
+            {/* Slot 2 — the QR's light quiet zone is what the white body gives it for free. */}
             {reservationPass && <ReservationPassSection pass={reservationPass} />}
 
-            {/* ===== Curated Experience Plan ===== */}
-            {isCuratedCard && curatedCard && Array.isArray(curatedCard.stops) && (
-              <>
-                <CuratedPlanView
-                  card={curatedCard}
-                  isSaved={isSaved}
-                  onSave={onSave}
-                  onShare={onShare}
-                  onClose={onClose}
-                  onOpenBrowser={(url, title) => {
-                    setBrowserUrl(url);
-                    setBrowserTitle(title);
-                  }}
-                  onOpenImageLightbox={(images, initialIndex) => {
-                    setCuratedLightbox({ visible: true, images, initialIndex });
-                  }}
-                  onSchedulePickerModalVisibilityChange={setIsSchedulePickerOpen}
-                  userPreferences={userPreferences}
-                  currentMode={currentMode}
-                  onCardRemoved={onCardRemoved}
-                  currencyCode={accountPreferences?.currency || 'USD'}
-                  onPaywallRequired={onPaywallRequired}
-                  canAccessCurated={canAccessCurated}
-                />
+            {/*
+              Slot 3 — THE ACTION BAND, immediately below the hero, ON BOTH
+              BRANCHES. Before this wave it was LAST on a single place and
+              MID-SCROLL on a plan. There is one position now and it does not
+              depend on what kind of card you opened.
+            */}
+            <ActionButtons
+              card={(planCard ?? card) as ExpandedCardData}
+              onSave={onSave}
+              onClose={onClose}
+              isSaved={isSaved}
+              userPreferences={userPreferences}
+              currentMode={currentMode}
+              onCardRemoved={onCardRemoved}
+              onScheduleSuccess={() => onClose()}
+              onSchedulePickerModalVisibilityChange={setIsSchedulePickerOpen}
+              onPaywallRequired={onPaywallRequired}
+              canAccessCurated={canAccessCurated}
+              reserve={
+                venueReservable?.reservable === true &&
+                venueReservable.brand_id !== null && (
+                  <TouchableOpacity
+                    style={reserveStyles.reserveButton}
+                    activeOpacity={0.85}
+                    onPress={() => setIsReserveSheetOpen(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Reserve a table at ${card.title}`}
+                  >
+                    <Icon name="restaurant-outline" size={18} color={SPINE.onAccent} />
+                    <Text style={reserveStyles.reserveButtonText} numberOfLines={1}>
+                      Reserve a table
+                    </Text>
+                  </TouchableOpacity>
+                )
+              }
+            />
 
-                {/* Weather for first stop */}
-                <WeatherSection
-                  weatherData={weatherData}
-                  loading={loadingWeather}
-                  category={curatedCard.categoryLabel || curatedCard.experienceType || 'adventurous'}
-                  selectedDateTime={undefined}
-                  measurementSystem={accountPreferences?.measurementSystem}
-                />
+            {/*
+              Slot 4 — the description, the typical spend and the tip. A plan's
+              TAGLINE is a description, so it lands here too: before this wave the
+              tagline lived in the dark header at 14pt on rgba(255,255,255,0.7),
+              and the single-place branch dropped its description entirely along
+              with the rest of this component.
+            */}
+            <CardInfoSection
+              description={isCuratedCard ? planCard?.tagline : card.description}
+              tip={isCuratedCard ? null : card.tip}
+              discoveryPrice={card}
+            />
 
-                {/* Busyness for first stop */}
-                <BusynessSection
-                  busynessData={busynessData}
-                  loading={loadingBusyness}
-                  travelTime={viewerTravelTime ?? undefined}
-                />
+            {/*
+              Slot 5 — the gallery, `images.length > 1`, SINGLE PLACE ONLY. Not a
+              branch: a plan has no second photo of its own, its stops do.
 
-                {/* Animated Timeline for Curated Cards */}
-                {curatedCard.stops && curatedCard.stops.length > 0 && (
-                  <TimelineSection
-                    category={curatedCard.categoryLabel || curatedCard.experienceType || 'adventurous'}
-                    title={curatedCard.title}
-                    address={curatedCard.stops[0]?.address}
-                    priceRange={curatedCard.totalPriceMin === 0 && curatedCard.totalPriceMax === 0 ? t('cards:swipeable.free') : `${formatCurrency(curatedCard.totalPriceMin, accountPreferences?.currency || 'USD')}–${formatCurrency(curatedCard.totalPriceMax, accountPreferences?.currency || 'USD')}`}
-                    travelTime={viewerTravelTime ?? (curatedCard.stops[0]?.travelTimeFromUserMin != null && curatedCard.stops[0].travelTimeFromUserMin > 0 ? `${Math.round(curatedCard.stops[0].travelTimeFromUserMin)} min` : undefined)}
-                    strollTimeline={curatedStopsToTimeline(curatedCard.stops)}
-                    routeDuration={curatedCard.estimatedDurationMinutes}
-                  />
-                )}
-              </>
-            )}
+              It is a horizontal FlatList, and it is the ONE horizontal scrollable
+              on this sheet. What it replaces is the 402x300 in-flow #000000 pager
+              that used to BE the hero, with its 40pt chevrons, its dot row and its
+              dead `.counter` style — and the 402x200 #f3f4f6 "no images" box that
+              produced a 100pt layout jump against it.
 
-            {/* Image Gallery (place branch only — EventDetailLayout has its own hero poster) */}
-            {!isCuratedCard && !isNightOut && (card.images && card.images.length > 0 ? (
-              <ImageGallery images={card.images} initialImage={card.image} />
-            ) : (
-              <View
-                style={{
-                  height: 200,
-                  backgroundColor: "#f3f4f6",
-                  justifyContent: "center",
-                  alignItems: "center",
-                }}
-              >
-                <Text>{t('cards:expanded.no_images')}</Text>
-              </View>
-            ))}
-
-            {/* ===== [ORCH-0696 S-2 lock-in] Render branching =====
-                Event branch fires on `card.nightOutData != null` OR
-                `card.cardType === 'event'`. Do NOT change without spec approval.
-                `cardType === 'event'` has 0 callers today (audit-verified) — kept
-                as forward-looking guard. Live trigger is `nightOutData != null`. */}
-            {!isCuratedCard && (isNightOut && nightOut ? (
-              <EventDetailLayout
-                card={card}
-                nightOut={nightOut}
-                isSaved={!!isSaved}
-                onSave={onSave}
-                onShare={onShare}
-                onClose={onClose}
-                onOpenBrowser={(url, title) => {
-                  setBrowserUrl(url);
-                  setBrowserTitle(title);
-                }}
-                accountPreferences={accountPreferences}
-                seatMapFailed={seatMapFailed}
-                setSeatMapFailed={setSeatMapFailed}
-                openDirections={openDirections}
-              />
-            ) : (
-              <>
-                {/* ===== Regular Place Detail Layout (preserved unchanged structurally) ===== */}
-                {/* Card Info Section: Title, Tags, Metrics, Description */}
-                <CardInfoSection
-                  title={card.title}
-                  category={card.category}
-                  categoryIcon={card.categoryIcon || getCategoryIcon(card.category)}
-                  tags={card.tags}
-                  rating={card.rating}
-                  distance={viewerDistance != null ? `${viewerDistance} km` : card.distance}
-                  travelTime={viewerTravelTime ?? card.travelTime}
-                  travelMode={card.travelMode ?? effectiveTravelMode}
-                  measurementSystem={accountPreferences?.measurementSystem}
-                  discoveryPrice={card}
-                  description={card.description}
-                  tip={card.tip}
-                  currency={accountPreferences?.currency}
-                />
-
-                {/* See Full Plan Button (for Stroll cards) */}
-                {isStrollCard && !(strollData && strollData.timeline) && (
-                  <View style={styles.seeFullPlanSection}>
+              Tapping opens `ImageLightbox`, which today has exactly one importer
+              and is reachable ONLY from a curated stop — so a single place's
+              photos have never been openable at all.
+            */}
+            {!isCuratedCard && Array.isArray(card.images) && card.images.length > 1 ? (
+              <Section title={t('cards:expanded.photos', { defaultValue: 'Photos' })}>
+                <FlatList
+                  data={card.images.filter((uri) => uri !== heroCover)}
+                  keyExtractor={(uri, i) => `${uri}_${i}`}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.galleryStrip}
+                  renderItem={({ item, index }) => (
                     <TouchableOpacity
-                      style={styles.routePairingButton}
-                      onPress={fetchStrollData}
-                      disabled={loadingStrollData}
-                      activeOpacity={0.7}
-                    >
-                      {loadingStrollData ? (
-                        <>
-                          <ActivityIndicator
-                            size="small"
-                            color="#ffffff"
-                            style={{ marginRight: 8 }}
-                          />
-                          <Text style={styles.routePairingButtonText}>
-                            Loading Plan...
-                          </Text>
-                        </>
-                      ) : (
-                        <>
-                          <Icon
-                            name="map-outline"
-                            size={20}
-                            color="#ffffff"
-                            style={{ marginRight: 8 }}
-                          />
-                          <Text style={styles.routePairingButtonText}>
-                            See Full Plan
-                          </Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {/* See Full Plan Button (for Picnic cards) */}
-                {isPicnicCard && !(picnicData && picnicData.timeline) && (
-                  <View style={styles.seeFullPlanSection}>
-                    <TouchableOpacity
-                      style={styles.routePairingButton}
-                      onPress={fetchPicnicData}
-                      disabled={loadingPicnicData}
-                      activeOpacity={0.7}
-                    >
-                      {loadingPicnicData ? (
-                        <>
-                          <ActivityIndicator
-                            size="small"
-                            color="#ffffff"
-                            style={{ marginRight: 8 }}
-                          />
-                          <Text style={styles.routePairingButtonText}>
-                            Loading Plan...
-                          </Text>
-                        </>
-                      ) : (
-                        <>
-                          <Icon
-                            name="map-outline"
-                            size={20}
-                            color="#ffffff"
-                            style={{ marginRight: 8 }}
-                          />
-                          <Text style={styles.routePairingButtonText}>
-                            See Full Plan
-                          </Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {/* META-ORCH-1148 2.2b: Reserve a table — ONLY for a place
-                    whose verified-claimed brand has reservations enabled
-                    (useVenueReservable gate). reservable=false / unknown brand
-                    → nothing renders (NO dead tap). Tapping opens the 3-step
-                    reserve sheet (mounted as a sibling of the root sheet). */}
-                {venueReservable?.reservable === true &&
-                  venueReservable.brand_id !== null &&
-                  venueReservable.venue_id !== null && (
-                    <TouchableOpacity
-                      style={reserveStyles.reserveButton}
                       activeOpacity={0.85}
-                      onPress={() => setIsReserveSheetOpen(true)}
+                      onPress={() =>
+                        setCuratedLightbox({
+                          visible: true,
+                          images: card.images ?? [],
+                          initialIndex: (card.images ?? []).indexOf(item),
+                        })
+                      }
                       accessibilityRole="button"
-                      accessibilityLabel={`Reserve a table at ${card.title}`}
+                      accessibilityLabel={t('cards:expanded.photo_a11y', {
+                        defaultValue: 'Photo {{n}}',
+                        n: index + 1,
+                      })}
                     >
-                      <Icon name="restaurant-outline" size={18} color="#ffffff" />
-                      <Text style={reserveStyles.reserveButtonText}>
-                        Reserve a table
-                      </Text>
+                      <Image source={{ uri: item }} style={styles.galleryItem} resizeMode="cover" />
                     </TouchableOpacity>
                   )}
-
-                {/* ORCH-1072: Experiences at this venue (claimed-brand only).
-                    Renders nothing for unclaimed venues or non-uuid card ids
-                    (stroll/picnic/curated/Ticketmaster). */}
-                <VenueExperiencesSection
-                  placePoolId={card.id}
-                  currency={accountPreferences?.currency}
-                  onOpenExperience={setSelectedVenueExperience}
                 />
+              </Section>
+            ) : null}
 
-                {/* Weather Section */}
-                <WeatherSection
-                  weatherData={weatherData}
-                  loading={loadingWeather}
-                  category={getReadableCategoryName(card.category)}
-                  selectedDateTime={
-                    card.selectedDateTime instanceof Date
-                      ? card.selectedDateTime
-                      : typeof card.selectedDateTime === "string"
-                      ? new Date(card.selectedDateTime)
-                      : undefined
-                  }
-                  measurementSystem={accountPreferences?.measurementSystem}
-                />
-
-                {/* Busyness Section */}
-                <BusynessSection
-                  busynessData={busynessData}
-                  loading={loadingBusyness}
-                  travelTime={viewerTravelTime ?? card.travelTime ?? undefined}
-                />
-
-                {/* Practical Details Section */}
-                <PracticalDetailsSection
-                  address={card.address}
-                  openingHours={card.openingHours}
-                  phone={card.phone}
-                  website={card.website}
-                />
-
-                {/* Companion Stops Section (for stroll cards) */}
-                {strollData && strollData.companionStops && (
-                  <CompanionStopsSection
-                    companionStops={strollData.companionStops}
-                  />
-                )}
-
-                {/* Grocery Store Section (for picnic cards) */}
-                {picnicData && picnicData.groceryStore && (
-                  <View style={styles.groceryStoreSection}>
-                    <View style={styles.groceryStoreHeader}>
-                      <Icon name="storefront" size={20} color="#eb7825" />
-                      <Text style={styles.groceryStoreTitle}>
-                        Start Your Picnic
-                      </Text>
-                    </View>
-                    <Text style={styles.groceryStoreSubtitle}>
-                      Pick up supplies at this nearby grocery store
-                    </Text>
-                    <View style={styles.groceryStoreCard}>
-                      {picnicData.groceryStore.imageUrl && (
-                        <Image
-                          source={{ uri: picnicData.groceryStore.imageUrl }}
-                          style={styles.groceryStoreImage}
-                          resizeMode="cover"
+            {/* Slot 6 — THE PLAN (a plan has stops) … */}
+            <View onLayout={(e) => setPlanSectionY(e.nativeEvent.layout.y)}>
+              <StopList
+                heading={t('cards:expanded.the_plan', { defaultValue: 'The plan' })}
+                stops={planListStops}
+                customized={curatedLocalCard !== null}
+                onDirections={(stop) => openDirectionsForAddress(stop.address)}
+                onReplace={(stop) => handleReplaceStop(stop.index - 1)}
+                onExpandedRowLayout={(y) =>
+                  scrollRef.current?.scrollTo({ y: planSectionY + y, animated: true })
+                }
+                replacePanel={(stop) =>
+                  replacingStopIndex === stop.index - 1 ? (
+                    <View style={styles.altPanel}>
+                      {isLoadingAlts ? (
+                        <ActivityIndicator size="small" color={SPINE.accentFill} />
+                      ) : altsError ? (
+                        <SectionError
+                          message={t('cards:expanded.couldnt_load_alternatives')}
+                          retryLabel={t('cards:expanded.retry')}
+                          onRetry={() => handleReplaceStop(stop.index - 1)}
                         />
-                      )}
-                      <View style={styles.groceryStoreContent}>
-                        <View style={styles.groceryStoreInfo}>
-                          <Icon
-                            name="storefront-outline"
-                            size={20}
-                            color="#eb7825"
-                          />
-                          <View style={styles.groceryStoreDetails}>
-                            <Text style={styles.groceryStoreName}>
-                              {picnicData.groceryStore.name}
-                            </Text>
-                            <Text style={styles.groceryStoreType}>
-                              {picnicData.groceryStore.type
-                                .replace(/_/g, " ")
-                                .replace(/\b\w/g, (l) => l.toUpperCase())}
-                            </Text>
-                          </View>
-                        </View>
-                        {(picnicData.groceryStore.rating ?? 0) > 0 && (
-                          <View style={styles.groceryStoreRating}>
-                            <Icon name="star" size={14} color="#fbbf24" />
-                            <Text style={styles.ratingText}>
-                              {(picnicData.groceryStore.rating ?? 0).toFixed(1)}
-                            </Text>
-                            {picnicData.groceryStore.reviewCount && (
-                              <Text style={styles.reviewText}>
-                                ({picnicData.groceryStore.reviewCount} reviews)
-                              </Text>
-                            )}
-                          </View>
-                        )}
-                        {picnicData.groceryStore.address && (
-                          <View style={styles.groceryStoreAddress}>
-                            <Icon
-                              name="location-outline"
-                              size={12}
-                              color="#9ca3af"
-                            />
-                            <Text style={styles.addressText} numberOfLines={1}>
-                              {picnicData.groceryStore.address}
-                            </Text>
-                          </View>
-                        )}
-                        {picnicData.groceryStore.distance && (
-                          <View style={styles.groceryStoreDistance}>
-                            <Icon
-                              name="walk-outline"
-                              size={12}
-                              color="#9ca3af"
-                            />
-                            <Text style={styles.distanceText}>
-                              {formatDistanceFromMeters(
-                                picnicData.groceryStore.distance,
-                                accountPreferences?.measurementSystem,
-                                'away'
+                      ) : alternatives.length === 0 ? (
+                        <Text style={styles.altEmpty}>{t('cards:expanded.no_alternatives')}</Text>
+                      ) : (
+                        /*
+                          A WRAPPING GRID, not a horizontal ScrollView. The strip
+                          was one of the nested scrollables inside the sheet's
+                          vertical scroll, and it fought the sheet's pan gesture
+                          every time a thumb crossed it.
+                        */
+                        <View style={styles.altGrid}>
+                          {alternatives.map((alt) => (
+                            <TouchableOpacity
+                              key={alt.placeId}
+                              style={styles.altCard}
+                              activeOpacity={0.85}
+                              onPress={() => handleSelectAlternative(alt)}
+                              accessibilityRole="button"
+                              accessibilityLabel={alt.placeName}
+                            >
+                              {alt.imageUrl ? (
+                                <Image
+                                  source={{ uri: alt.imageUrl }}
+                                  style={styles.altImage}
+                                  resizeMode="cover"
+                                />
+                              ) : (
+                                <View style={styles.altImage} />
                               )}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
+                              <Text style={styles.altName} numberOfLines={1}>
+                                {alt.placeName}
+                              </Text>
+                              {alt.rating > 0 ? (
+                                <Text style={styles.altMeta} numberOfLines={1}>
+                                  {`★ ${alt.rating.toFixed(1)}`}
+                                </Text>
+                              ) : null}
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
                     </View>
-                  </View>
-                )}
+                  ) : null
+                }
+              />
+            </View>
 
-                {/* Timeline Section (for Take a Stroll cards) */}
-                {isStrollCard && strollData && strollData.timeline && (
-                  <TimelineSection
-                    category={getReadableCategoryName(card.category)}
-                    title={card.title}
-                    address={card.address}
-                    priceRange={canonicalDiscoveryPriceDetail(card)?.source}
-                    travelTime={viewerTravelTime ?? card.travelTime ?? undefined}
-                    strollTimeline={strollData.timeline}
-                    routeDuration={strollData.route?.duration}
-                    currency={accountPreferences?.currency}
-                  />
-                )}
+            {/*
+              … and slot 6 again — COMPANION STOPS, the same component with a
+              different producer. A stroll is a multi-stop plan; a picnic's
+              grocery store is one stop of it with a SHOP chip.
+            */}
+            {!isCuratedCard && companionStops.length > 0 ? (
+              <StopList
+                heading={
+                  isPicnicCard
+                    ? t('cards:expanded.your_picnic', { defaultValue: 'Your picnic' })
+                    : t('cards:expanded.your_stroll', { defaultValue: 'Your stroll' })
+                }
+                stops={companionStops}
+                onDirections={(stop) => openDirectionsForAddress(stop.address)}
+              />
+            ) : null}
 
-                {/* Timeline Section (for Picnic cards) */}
-                {isPicnicCard && picnicData && picnicData.timeline && (
-                  <TimelineSection
-                    category={getReadableCategoryName(card.category)}
-                    title={card.title}
-                    address={card.address}
-                    priceRange={canonicalDiscoveryPriceDetail(card)?.source}
-                    travelTime={viewerTravelTime ?? card.travelTime ?? undefined}
-                    strollTimeline={picnicData.timeline}
-                    routeDuration={picnicData.route?.duration}
-                    currency={accountPreferences?.currency}
-                  />
-                )}
+            {/*
+              The "See full plan" fetchers stay: they are what PRODUCE the
+              companion stops above, and a stroll card that has never been
+              expanded has none until they run.
+            */}
+            {!isCuratedCard && (isStrollCard || isPicnicCard) &&
+            companionStops.length === 0 ? (
+              <View style={styles.seeFullPlanSection}>
+                <TouchableOpacity
+                  style={styles.routePairingButton}
+                  onPress={isPicnicCard ? fetchPicnicData : fetchStrollData}
+                  disabled={loadingStrollData || loadingPicnicData}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                >
+                  {loadingStrollData || loadingPicnicData ? (
+                    <ActivityIndicator size="small" color={SPINE.onAccent} />
+                  ) : (
+                    <Icon name="map-outline" size={20} color={SPINE.onAccent} />
+                  )}
+                  <Text style={styles.routePairingButtonText}>
+                    {t('cards:expanded.see_full_plan', { defaultValue: 'See full plan' })}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
 
-                {/* Action Buttons */}
-                <ActionButtons
-                  card={card}
-                  bookingOptions={bookingOptions}
-                  onSave={onSave}
-                  onPurchase={onPurchase}
-                  onShare={onShare}
-                  onClose={onClose}
-                  isSaved={isSaved}
-                  userPreferences={userPreferences}
-                  currentMode={currentMode}
-                  onCardRemoved={onCardRemoved}
-                  onScheduleSuccess={(scheduledCard) => {
-                    // Don't show feedback immediately — reviews are shown the day after
-                    // the scheduled experience when the user returns to the app.
-                    onClose();
-                  }}
-                  onOpenBrowser={(url, title) => {
-                    setBrowserUrl(url);
-                    setBrowserTitle(title);
-                  }}
-                  onSchedulePickerModalVisibilityChange={setIsSchedulePickerOpen}
-                  onPaywallRequired={onPaywallRequired}
-                  canAccessCurated={canAccessCurated}
-                />
+            {/* Slot 7 — experiences at this venue (claimed brands only, single place). */}
+            {!isCuratedCard ? (
+              <VenueExperiencesSection
+                placePoolId={card.id}
+                currency={accountPreferences?.currency}
+                onOpenExperience={setSelectedVenueExperience}
+              />
+            ) : null}
+
+            {/*
+              Slot 8 — RIGHT NOW. ONE call site, ONE prop shape, both branches.
+
+              Before this wave the curated call passed `selectedDateTime={undefined}`
+              — so a SCHEDULED plan never got time-of-day-aware weather — and took
+              its coordinates from `stops[0]` while the single branch used
+              `card.location`. A plan's coordinate IS `stops[0]`, because that is
+              where the plan starts; it is now stated once, at the fetch, rather
+              than discovered twice.
+            */}
+            <ConditionsSection
+              weather={weatherData}
+              busyness={busynessData}
+              loadingWeather={loadingWeather}
+              loadingBusyness={loadingBusyness}
+              measurementSystem={accountPreferences?.measurementSystem}
+            />
+
+            {/* Slot 9 — DETAILS. A plan gets Starts at / Ends near; a place gets the rest. */}
+            <PracticalDetailsSection
+              address={isCuratedCard ? undefined : card.address}
+              openingHours={isCuratedCard ? undefined : card.openingHours}
+              phone={isCuratedCard ? undefined : card.phone}
+              website={isCuratedCard ? undefined : card.website}
+              utcOffsetMinutes={isCuratedCard ? null : cardUtcOffsetMinutes}
+              plan={
+                isCuratedCard
+                  ? {
+                      startsAt: planStops[0]?.address ?? null,
+                      endsNear: planStops[planStops.length - 1]?.address ?? null,
+                    }
+                  : undefined
+              }
+              onLinkUnavailable={(what) =>
+                toastManager.show(t('cards:expanded.link_unavailable', {
+                    defaultValue: "Couldn't open {{what}}",
+                    what,
+                  }), 'error')
+              }
+            />
+
+            {/* Timeline Section (for Take a Stroll cards) */}
+            {isStrollCard && strollData && strollData.timeline && (
+              <TimelineSection
+                category={getReadableCategoryName(card.category)}
+                title={card.title}
+                address={card.address}
+                priceRange={canonicalDiscoveryPriceDetail(card)?.source}
+                travelTime={viewerTravelTime ?? card.travelTime ?? undefined}
+                strollTimeline={strollData.timeline}
+                routeDuration={strollData.route?.duration}
+                currency={accountPreferences?.currency}
+              />
+            )}
+
+            {/* Timeline Section (for Picnic cards) */}
+            {isPicnicCard && picnicData && picnicData.timeline && (
+              <TimelineSection
+                category={getReadableCategoryName(card.category)}
+                title={card.title}
+                address={card.address}
+                priceRange={canonicalDiscoveryPriceDetail(card)?.source}
+                travelTime={viewerTravelTime ?? card.travelTime ?? undefined}
+                strollTimeline={picnicData.timeline}
+                routeDuration={picnicData.route?.duration}
+                currency={accountPreferences?.currency}
+              />
+            )}
+
               </>
-            ))}
+            )}
       </BaseBottomSheet>
 
       {/* ORCH-1072 → ORCH-1138 Leg 3 — experience opened from the
@@ -2625,101 +1778,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  groceryStoreSection: {
-    backgroundColor: "#ffffff",
-    paddingVertical: 20,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
+  /**
+   * #1605 wave 4 — the ~80-line grocery-store block's styles are DELETED. The
+   * store is now ONE row of the companion `StopList` with a `SHOP` index chip,
+   * which is the same furniture every other stop gets.
+   */
+
+  // The body gallery strip — the ONE horizontal scrollable on this sheet, and
+  // the thing that finally gives a single place's photos a lightbox.
+  galleryStrip: { paddingHorizontal: SPINE.gutter, gap: GALLERY.gap },
+  galleryItem: {
+    width: GALLERY.itemWidth,
+    height: GALLERY.height,
+    borderRadius: GALLERY.itemRadius,
+    backgroundColor: SPINE.chipFill,
+    marginRight: GALLERY.gap,
   },
-  groceryStoreHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    marginBottom: 8,
-    gap: 8,
-  },
-  groceryStoreTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  groceryStoreSubtitle: {
-    fontSize: 14,
-    color: "#6b7280",
-    paddingHorizontal: 16,
-    marginBottom: 16,
-  },
-  groceryStoreCard: {
-    backgroundColor: "#f9fafb",
-    borderRadius: 12,
-    marginHorizontal: 16,
-    overflow: "hidden",
+
+  // The alternatives panel. A WRAPPING GRID, not a horizontal ScrollView — see
+  // the render site: the strip was one of the nested scrollables.
+  altPanel: { gap: 12, paddingTop: 4 },
+  altEmpty: { fontSize: 14, color: SPINE.factLabel },
+  altGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  altCard: { width: 140, gap: 4 },
+  altImage: {
+    width: 140,
+    height: 96,
+    borderRadius: 10,
+    backgroundColor: SPINE.chipFill,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: SPINE.rule,
   },
-  groceryStoreImage: {
-    width: "100%",
-    height: 120,
-    backgroundColor: "#e5e7eb",
-  },
-  groceryStoreContent: {
-    padding: 12,
-  },
-  groceryStoreInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-    gap: 12,
-  },
-  groceryStoreDetails: {
-    flex: 1,
-  },
-  groceryStoreName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 2,
-  },
-  groceryStoreType: {
-    fontSize: 12,
-    color: "#6b7280",
-    textTransform: "capitalize",
-  },
-  groceryStoreRating: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginBottom: 6,
-  },
-  groceryStoreAddress: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginBottom: 4,
-  },
-  groceryStoreDistance: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  distanceText: {
-    fontSize: 12,
-    color: "#9ca3af",
-  },
-  ratingText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  reviewText: {
-    fontSize: 12,
-    color: "#9ca3af",
-  },
-  addressText: {
-    fontSize: 12,
-    color: "#9ca3af",
-    flex: 1,
-  },
+  altName: { fontSize: 14, fontWeight: '600', color: SPINE.factValue },
+  altMeta: { fontSize: 13, color: SPINE.muted },
 });
 
 // META-ORCH-1148 2.2b — the consumer "Reserve a table" affordance in the

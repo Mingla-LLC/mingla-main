@@ -502,10 +502,19 @@ const VIEWER_GPS_SWAP_RE = /:\s*\n?\s*userLocation\s*\n?\s*\?\s*\{\s*lat:\s*user
  * The file that actually decides whether the star chip appears, and the JSX
  * guard that decides it. R5 EXECUTES this guard rather than describing it.
  */
+// #1605 wave 4 — RE-POINTED, deliberately, because the chip MOVED.
+//
+// The star is no longer a `metricPill` inside CardInfoSection: it is span 1 of
+// the hero plate's meta line, produced by `singlePlaceSpans`. R5's contract is
+// unchanged — EXECUTE the real guard against the values an unrated place
+// actually produces — and it is now executed one layer EARLIER, at the point
+// that decides whether the fact exists at all rather than at one of the places
+// that renders it. That is strictly stronger: the same expression now governs
+// the deck card, the sheet's plate and anything else that draws the meta line.
 const RATING_RENDER_FILE =
-  "app-mobile/src/components/expandedCard/CardInfoSection.tsx";
+  "app-mobile/src/components/expandedCard/expandedCardFacts.ts";
 const RATING_GUARD_RE =
-  /\{\s*([^{}]*\brating\b[^{}]*?)&&\s*\(\s*<View style=\{styles\.metricPill\}>\s*<Icon name="star"/;
+  /if\s*\(([^)]*\brating\b[^)]*)\)\s*\{\s*spans\.push\(\{\s*kind:\s*'rating'/;
 
 /**
  * Pull the real guard expression out of CardInfoSection and RUN it against the
@@ -513,8 +522,8 @@ const RATING_GUARD_RE =
  * pattern is describing the fix; this one asks the source whether the chip
  * renders, and takes the answer.
  */
-function ratingGuardVerdict(cardInfoSource) {
-  const m = RATING_GUARD_RE.exec(cardInfoSource);
+function ratingGuardVerdict(ratingSourceFile) {
+  const m = RATING_GUARD_RE.exec(ratingSourceFile);
   if (!m) {
     return {
       ok: false,
