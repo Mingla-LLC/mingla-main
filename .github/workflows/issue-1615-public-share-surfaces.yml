@@ -36,4 +36,5 @@ jobs:
       - run: npm ci --ignore-scripts
         working-directory: mingla-business
       - run: node --experimental-strip-types --test scripts/issue-1615/public-share-surfaces.happy.test.cjs
+      - run: node --experimental-strip-types --test scripts/issue-1615/public-share-surfaces.adversarial.test.cjs
       - run: node --test packages/card-identity/__tests__/card_identity_single_source.test.mjs packages/card-identity/__tests__/issue_1714_contrast_tokens_happy_path.test.mjs packages/card-identity/__tests__/issue_1714_contrast_tokens_adversarial.test.mjs
