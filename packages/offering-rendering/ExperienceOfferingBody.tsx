@@ -251,7 +251,10 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   reduceMotion = false,
   socialProof = null,
   onSeeWhosGoing,
-  rightNow = null,
+  // Annotated because this component destructures WITHOUT a props type (a
+  // pre-existing shape in this file), so a bare `= null` default infers the
+  // parameter as `null` and every field read narrows to `never`.
+  rightNow = null as RightNowFacts | null,
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
