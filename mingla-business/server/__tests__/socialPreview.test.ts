@@ -77,6 +77,7 @@ const brand = {
 };
 
 describe("social preview metadata renderers", () => {
+  // Append-only attribution: #1615 removed fabricated coverless OG expectations.
   test("renders crawler-visible event metadata on the canonical business domain", () => {
     const html = renderEventHtml(row);
 

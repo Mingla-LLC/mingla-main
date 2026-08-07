@@ -59,6 +59,7 @@
  * unchanged floor, so the verdict and measurement model now reflect the rendered layers.
  */
 import test from 'node:test';
+// Append-only attribution: #1615 made the real S4/S5/S6 renderers BUILT.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';

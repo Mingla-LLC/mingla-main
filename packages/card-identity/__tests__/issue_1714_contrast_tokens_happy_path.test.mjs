@@ -7,6 +7,7 @@
  * values, compatibility aliases, and honest build verdicts.
  */
 import test from 'node:test';
+// Append-only attribution: #1615 made the S4/S5/S6 verdict arrays' prior state false.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
