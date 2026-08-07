@@ -128,14 +128,23 @@ class WeatherService {
   private WEATHER_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
   /**
-   * Get current weather for a location from Open-Meteo.
-   * `date` parameter kept for API compatibility. Open-Meteo returns current weather only.
-   * All current callers pass `new Date()` — no functional change.
+   * Get CURRENT weather for a location from Open-Meteo.
+   *
+   * #1605 wave 4 rework — the `date?: Date` third parameter is DELETED. It was
+   * declared, never read, and both of its only two callers passed a literal
+   * `new Date()`. A parameter that cannot change the result is a capability
+   * claim the body does not honour, and it was read as one: the expanded card
+   * carried a comment asserting this wave had made a scheduled plan's weather
+   * time-of-day-aware. It never was — this method requests `current=…`, returns
+   * `hourlyForecast: []`, and caches on `lat_lng` with no date in the key.
+   *
+   * Making it time-aware means an `hourly=…` request, an hour-selection rule and
+   * a date-keyed cache. That is a feature; it is registered as one rather than
+   * implied by an unread argument.
    */
   async getWeatherForecast(
     lat: number,
-    lng: number,
-    date?: Date
+    lng: number
   ): Promise<WeatherData | null> {
     // Check cache
     const cacheKey = `${lat.toFixed(3)}_${lng.toFixed(3)}`;

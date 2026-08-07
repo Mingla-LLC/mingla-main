@@ -47,14 +47,7 @@
     "error_past_date_message": "यह समय बीत चुका है। कृपया भविष्य का समय चुनें।"
   },
   "busyness": {
-    "traffic": "ट्रैफ़िक",
-    "busy_level": "भीड़ का स्तर",
-    "busy": "भीड़",
-    "clear_roads": "खाली सड़कें",
-    "clear": "खाली",
-    "moderate": "मध्यम",
-    "heavy": "भारी",
-    "estimated": "Est."
+    "busy_level": "भीड़ का स्तर"
   },
   "match_factors": {
     "title": "मैच विश्लेषण",

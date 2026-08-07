@@ -369,6 +369,22 @@ export interface DeckCardPlateProps {
   readonly beenHere?: React.ReactNode;
   readonly onSharePress: () => void;
   readonly shareLabel: string;
+  /**
+   * WHICH WAY THE AFFORDANCE POINTS. `'up'` (the default, S1) means *this
+   * opens*; `'down'` (S7, the expanded sheet's hero) means *this closes*. It is
+   * the ONE element whose meaning differs between the collapsed card and the
+   * expanded hero, and it is a prop rather than a second component because
+   * everything else about the plate — the 374 x 96, the r24, the 28pt gap, the
+   * 53pt control row, the fills — is byte-identical on both surfaces, which is
+   * the entire continuity argument (see ExpandedCardHero's header).
+   *
+   * It does NOT animate its turn — §9 row 3 is NOT IMPLEMENTED, not
+   * impossible. `BaseBottomSheet` simply does not forward the
+   * `animatedPosition` that `useBottomSheetInternal` already exposes from the
+   * sheet's EXISTING driver; no second driver is needed. See
+   * ExpandedCardHero's header for the correction and the remaining work.
+   */
+  readonly chevron?: 'up' | 'down';
 }
 
 /**
@@ -403,6 +419,7 @@ export function DeckCardPlate({
   beenHere,
   onSharePress,
   shareLabel,
+  chevron = 'up',
 }: DeckCardPlateProps): React.ReactElement {
   const meta = <CardMetaLine spans={spans} />;
   const { withMeta } = platePresentation(spans);
@@ -452,7 +469,20 @@ export function DeckCardPlate({
       >
         <View style={styles.dividerSegment} />
         <View style={styles.dividerGap}>
-          <Icon name="chevron-up" size={CHEVRON.size} color={CHEVRON.color} />
+          {/*
+            TWO LITERAL ICONS, NOT ONE COMPUTED NAME. A computed
+            `name={chevron === 'down' ? … : …}` is invisible to a source scan,
+            and TWO shipped #1609 guards assert the literal `name="chevron-up"`
+            is present in this file exactly once — they exist because the chevron
+            IS the card's only visible expand affordance and it was dropped once
+            already. Branching on the element keeps the affordance greppable on
+            both surfaces instead of hiding it inside an expression.
+          */}
+          {chevron === 'down' ? (
+            <Icon name="chevron-down" size={CHEVRON.size} color={CHEVRON.color} />
+          ) : (
+            <Icon name="chevron-up" size={CHEVRON.size} color={CHEVRON.color} />
+          )}
         </View>
         <View style={styles.dividerSegment} />
       </View>

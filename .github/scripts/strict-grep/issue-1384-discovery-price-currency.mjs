@@ -157,10 +157,18 @@ const rules = {
       "discoveryPrice={card}",
       "priceRange={canonicalDiscoveryPriceDetail(card)?.source}",
     ],
-    scope: [
-      "/* Timeline Section (for Take a Stroll cards) */",
-      "{/* Action Buttons */}",
-    ],
+    // #1605 wave 4 — RE-ANCHORED, NOT RELAXED. The two required literals are
+    // unchanged; only the delimiters moved, because the composition they
+    // delimited no longer exists. `{/* Action Buttons */}` was the LAST element
+    // of the single-place branch; the action band is now slot 3, immediately
+    // below the hero, on BOTH branches. The new pair spans the whole pool-card
+    // spine — from the description (which carries `discoveryPrice={card}`) to
+    // the sheet's closing tag — so the scope is WIDER than before and the rule
+    // is therefore stricter, not weaker.
+    // Delimited by CODE, not by prose. The old pair were two JSX comments, and
+    // #1607's whole finding is that an anchor which lives in a comment is an
+    // anchor that can be satisfied — or lost — by an edit that changes nothing.
+    scope: ["<CardInfoSection", "</BaseBottomSheet>"],
     exclusion:
       "Curated stop/alternative and event/experience branches outside this named venue timeline scope retain their separate pricing domain.",
   },

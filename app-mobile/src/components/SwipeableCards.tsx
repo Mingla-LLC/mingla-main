@@ -526,7 +526,22 @@ function metaSpansForCard(
  */
 const BEEN_HERE_SPINNER_TICK_MS = 250;
 
-const BeenHereControl = React.memo(function BeenHereControl({
+// #1605 wave 4 — EXPORTED, and deliberately NOT MOVED. The expanded sheet's
+// hero mounts this exact component so there is ONE Been-here state machine in
+// the app, not two in two shapes (Constitution 2). It stays declared HERE
+// because the #1687 gate delimits the control by slicing this file between
+// `const BeenHereControl` and `const CardHeroImage` and asserts its internals —
+// moving the body to a leaf module would take those assertions down with it, and
+// an existing test may not be modified to accommodate a refactor.
+//
+// THE IMPORT EDGE IS SAFE, AND HERE IS WHY. `SwipeableCards -> ExpandedCardModal`
+// already exists (the deck mounts the sheet), so `ExpandedCardModal ->
+// SwipeableCards` closes a cycle. Neither side reads the other at MODULE scope:
+// this control is referenced only inside the sheet's render, and the sheet is
+// referenced only inside this file's render, so both bindings resolve after both
+// module bodies have finished. Verified at runtime from BOTH entry orders — the
+// deck (SwipeableCards first) and Likes (ExpandedCardModal first).
+export const BeenHereControl = React.memo(function BeenHereControl({
   userId,
   card,
 }: {

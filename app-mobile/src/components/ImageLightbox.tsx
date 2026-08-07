@@ -90,13 +90,32 @@ export function ImageLightbox({ images, initialIndex, visible, onClose }: ImageL
           contentOffset={{ x: initialIndex * SCREEN_WIDTH, y: 0 }}
           style={styles.scrollView}
         >
+          {/*
+            PER-SLIDE LAZY LOAD — #1605 rework.
+
+            `StopImageGallery` (deleted this wave) mounted an `<Image>` only for
+            the current page and its immediate neighbours, so a five-photo stop
+            decoded at most three. Its photos now open HERE instead, and this
+            lightbox mounted every page at once — full-screen `resizeMode:
+            "contain"` decodes, all of them, the moment it becomes visible. That
+            is the one capability of the deleted component that its replacement
+            did not carry, so it is carried here.
+
+            The window is ±1, which is what makes it invisible: the neighbour is
+            already decoded before a paging swipe can reach it, and `bounces` is
+            off so nothing past ±1 can come into view without a scroll event
+            first. Off-window pages keep their full width, so the scroll offsets
+            and the initial `contentOffset` are unchanged.
+          */}
           {images.map((uri, index) => (
             <View key={`${uri}-${index}`} style={styles.imageContainer}>
-              <Image
-                source={{ uri }}
-                style={styles.fullImage}
-                resizeMode="contain"
-              />
+              {Math.abs(index - currentIndex) <= 1 ? (
+                <Image
+                  source={{ uri }}
+                  style={styles.fullImage}
+                  resizeMode="contain"
+                />
+              ) : null}
             </View>
           ))}
         </ScrollView>

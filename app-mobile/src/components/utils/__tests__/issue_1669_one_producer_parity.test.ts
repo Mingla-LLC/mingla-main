@@ -358,21 +358,30 @@ describe("#1669 C — an unrated place is unrated on every entry point", () => {
   });
 
   it("C-3: the REAL render guard hides the chip for every unrated form, and shows it for a real rating", () => {
-    // Read the star-chip condition out of CardInfoSection.tsx and RUN it. The
-    // point of C-3 is that no sentence in this file describes what the renderer
-    // does — the renderer answers for itself. If the JSX moves, this fails
-    // loudly rather than quietly asserting nothing (the vacuity guard).
+    // Read the star-chip condition out of its real source and RUN it. The point
+    // of C-3 is that no sentence in this file describes what the renderer does —
+    // the renderer answers for itself. If the JSX moves, this fails loudly
+    // rather than quietly asserting nothing (the vacuity guard).
+    //
+    // #1605 wave 4 [TEST-MOD-APPROVED #1605] — RE-POINTED, on this test's own
+    // instruction ("if it moved, re-point the test rather than deleting it").
+    // The star is no longer a `metricPill` in CardInfoSection: it is span 1 of
+    // the hero plate's meta line, produced by `singlePlaceSpans`. The assertion
+    // is byte-identical in meaning and now runs one layer EARLIER — at the point
+    // that decides whether the fact EXISTS, which governs the deck card, the
+    // expanded sheet's plate and every other surface that draws the meta line.
+    // Nothing was weakened: the same expression is extracted and executed
+    // against the same unrated forms.
     const source = fs.readFileSync(
-      path.resolve(__dirname, "../../expandedCard/CardInfoSection.tsx"),
+      path.resolve(__dirname, "../../expandedCard/expandedCardFacts.ts"),
       "utf8",
     );
-    const match =
-      /\{\s*([^{}]*\brating\b[^{}]*?)&&\s*\(\s*<View style=\{styles\.metricPill\}>\s*<Icon name="star"/.exec(
-        source,
-      );
+    const match = /if\s*\(([^)]*\brating\b[^)]*)\)\s*\{\s*spans\.push\(\{\s*kind:\s*'rating'/.exec(
+      source,
+    );
     assert.ok(
       match,
-      "Could not find the star-chip guard in CardInfoSection.tsx. This test proves the chip is hidden by executing that guard — if it moved, re-point the test rather than deleting it.",
+      "Could not find the star-chip guard in expandedCardFacts.ts. This test proves the chip is hidden by executing that guard — if it moved, re-point the test rather than deleting it.",
     );
     const expr = match[1].trim();
     // eslint-disable-next-line no-new-func

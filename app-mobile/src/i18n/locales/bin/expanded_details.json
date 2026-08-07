@@ -47,14 +47,7 @@
     "error_past_date_message": "Ẹgheghe na guolo nẹ. Zẹ ẹgheghe ne ọ rre ne odẹ."
   },
   "busyness": {
-    "traffic": "Ọda Imọtọ",
-    "busy_level": "Ebe Iwinna",
-    "busy": "Ọ ya iwinna",
-    "clear_roads": "Ọda Ne Ọ Sẹ",
-    "clear": "Ọ Sẹ",
-    "moderate": "Ọ Vbe Agbọn",
-    "heavy": "Ọ Bu",
-    "estimated": "Est."
+    "busy_level": "Ebe Iwinna"
   },
   "match_factors": {
     "title": "Ẹmwẹ Isẹ",

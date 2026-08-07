@@ -47,14 +47,7 @@
     "error_past_date_message": "Oge ahụ agafeela. Biko họrọ oge n'ihu."
   },
   "busyness": {
-    "traffic": "Okporo Ụzọ",
-    "busy_level": "Ọkwa Ọrụ",
-    "busy": "Na-arụ ọrụ",
-    "clear_roads": "Okporo Ụzọ Dị Mma",
-    "clear": "Dị Mma",
-    "moderate": "Nkwurịta",
-    "heavy": "Dị Ukwuu",
-    "estimated": "Est."
+    "busy_level": "Ọkwa Ọrụ"
   },
   "match_factors": {
     "title": "Nkọwa Ndakọrịta",

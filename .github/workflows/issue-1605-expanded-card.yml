@@ -1,0 +1,168 @@
+name: Issue 1605 Expanded Card One Spine
+
+# Runs #1605 wave 4's OWN gates. Until this file existed they ran in NO
+# WORKFLOW AT ALL.
+#
+# ---------------------------------------------------------------------------
+# WHY THIS WORKFLOW EXISTS
+#
+# `grep -rln issue_1605 .github/` returned nothing. The branch carried 20 rules
+# across two suites — the implementor's structural gate and the tester's
+# adversarial one — and `gh pr view --json statusCheckRollup` showed 46 checks,
+# none of which mentioned 1605 or the expanded card. "46 checks, none failing"
+# said exactly nothing about this wave.
+#
+# Every sibling in the same programme ships one: issue-1609-card-identity.yml,
+# issue-1687-been-here-rating-prompt.yml, issue-1642-been-here-offline-bound.yml,
+# issue-1661-completed-write-unparks-invalidation.yml. This was the seventh
+# instance in one week of a check that could not fire.
+#
+# ---------------------------------------------------------------------------
+# THE GATE PROVES ITS OWN TEETH, IN CI
+#
+# #1605's P0 was a dead tap that the ORCH-1148 gate PASSED on — the gate pinned
+# two of the three conditions the sheet requires, so `main` and the branch both
+# went green and only `main` was correct. A guard that cannot fail is worse than
+# no guard, because it is believed.
+#
+# So the last two steps do not merely run the guard: they inject each of its
+# documented reverts and assert it goes RED. If a future refactor breaks the
+# guard's extraction anchors, those steps fail here rather than silently
+# reducing the guard to an expensive no-op.
+#
+# ---------------------------------------------------------------------------
+# THE PATH FILTERS MUST COVER EVERY FILE THE GUARDS READ
+#
+# A gate that reads a file its workflow does not watch is a gate that goes
+# stale in silence: the file changes, the job does not run, and the assertion
+# is only re-checked the next time somebody happens to touch a watched path.
+# The rework added four such readers — S-6b parses `busynessService.ts` and
+# `expandedCardTypes.ts`, S-8 sweeps the 29 `expanded_details.json` locale
+# files and S-9 executes an expression out of `messagingService.ts` — so all of
+# them are watched here. If you add a `read()` to either suite, add its path.
+#
+# NOTE: no `npm ci` step, and that is deliberate — the same rule the #1609
+# workflow follows. Both suites import `@mingla/card-identity` and the app's own
+# `.ts` modules by RELATIVE path, and Node 22 strips TypeScript types natively,
+# so they run on a bare checkout. `issue_1605_ts_resolve_hooks.mjs` supplies the
+# extensionless-import resolution the bundler normally does. If a future change
+# makes a guard need `node_modules`, INSTALL IT HERE rather than making the
+# guard resolve a bare specifier — that would silently kill every assertion in
+# the file at module load, which is the worst possible failure mode for a gate.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/src/components/ExpandedCardModal.tsx"
+      - "app-mobile/src/components/CuratedExperienceSwipeCard.tsx"
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/components/deckCardPlate.tsx"
+      - "app-mobile/src/components/expandedCard/**"
+      - "app-mobile/src/components/ImageLightbox.tsx"
+      - "app-mobile/src/hooks/useVisits.ts"
+      - "app-mobile/src/services/busynessService.ts"
+      - "app-mobile/src/services/messagingService.ts"
+      - "app-mobile/src/services/visitService.ts"
+      - "app-mobile/src/store/placeReviewRequestStore.ts"
+      - "app-mobile/src/types/expandedCardTypes.ts"
+      - "app-mobile/src/utils/openingHoursUtils.ts"
+      - "app-mobile/src/i18n/locales/*/expanded_details.json"
+      - "packages/card-identity/**"
+      - ".github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs"
+      - ".github/workflows/issue-1605-expanded-card.yml"
+  pull_request:
+    paths:
+      - "app-mobile/src/components/ExpandedCardModal.tsx"
+      - "app-mobile/src/components/CuratedExperienceSwipeCard.tsx"
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/components/deckCardPlate.tsx"
+      - "app-mobile/src/components/expandedCard/**"
+      - "app-mobile/src/components/ImageLightbox.tsx"
+      - "app-mobile/src/hooks/useVisits.ts"
+      - "app-mobile/src/services/busynessService.ts"
+      - "app-mobile/src/services/messagingService.ts"
+      - "app-mobile/src/services/visitService.ts"
+      - "app-mobile/src/store/placeReviewRequestStore.ts"
+      - "app-mobile/src/types/expandedCardTypes.ts"
+      - "app-mobile/src/utils/openingHoursUtils.ts"
+      - "app-mobile/src/i18n/locales/*/expanded_details.json"
+      - "packages/card-identity/**"
+      - ".github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs"
+      - ".github/workflows/issue-1605-expanded-card.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  expanded-card-one-spine:
+    name: "Issue 1605: the expanded card is one spine"
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Require every guard this workflow runs to exist
+        # A `node --test` invocation naming a missing file is not an error the
+        # runner surfaces usefully, so the existence check is explicit — a
+        # deleted or renamed guard must turn this job RED, not quietly reduce
+        # its assertion count.
+        run: |
+          test -f app-mobile/src/components/expandedCard/__tests__/issue_1605_expanded_card_one_spine.test.mjs
+          test -f app-mobile/src/components/expandedCard/__tests__/issue_1605_tester_adversarial_one_spine.test.mjs
+          test -f app-mobile/src/components/expandedCard/__tests__/issue_1605_tester_retest_adversarial.test.mjs
+          test -f app-mobile/src/components/expandedCard/__tests__/issue_1605_ts_resolve_hooks.mjs
+          test -f .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs
+          test -f packages/card-identity/index.js
+
+      - name: The implementor gate and both tester adversarial gates
+        # The retest gate is listed EXPLICITLY, like its two siblings, because
+        # this workflow names files rather than globbing a directory. A tester
+        # gate added to the tree and not added here is the #1605 P1-2 defect
+        # repeated: a suite that exists, passes locally, and never runs.
+        run: >-
+          node --test
+          app-mobile/src/components/expandedCard/__tests__/issue_1605_expanded_card_one_spine.test.mjs
+          app-mobile/src/components/expandedCard/__tests__/issue_1605_tester_adversarial_one_spine.test.mjs
+          app-mobile/src/components/expandedCard/__tests__/issue_1605_tester_retest_adversarial.test.mjs
+
+      - name: ORCH-1148 — the Reserve button and its sheet gate on ALL THREE conditions
+        run: |
+          node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs --self-test
+          node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs
+
+      - name: …and that gate must FAIL on each of its documented reverts
+        # #1605 P0-1: the two-condition version of this guard passed on a branch
+        # that had introduced the exact dead tap it exists to forbid. A guard
+        # whose fails-on-revert harness is never executed is a guard whose
+        # anchors go stale in silence — this one's literal anchor had already
+        # gone stale against `origin/main`.
+        run: |
+          set +e
+          node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1
+          BASELINE=$?
+          ORCH1148_SIMULATE_REVERT=1 node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1
+          NIGHTOUT=$?
+          ORCH1148_SIMULATE_VENUEID_REVERT=1 node .github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs >/dev/null 2>&1
+          VENUEID=$?
+          set -e
+          echo "baseline=$BASELINE isNightOut-revert=$NIGHTOUT venue_id-revert=$VENUEID"
+          if [ "$BASELINE" -ne 0 ]; then
+            echo "FAIL: the gate is red on unmodified source."; exit 1
+          fi
+          if [ "$NIGHTOUT" -ne 1 ]; then
+            echo "FAIL: re-adding isNightOut/nightOut to the SHEET gate did not fail the guard (exit $NIGHTOUT)."
+            echo "      Exit 2 means the harness could not find its target — the anchors are stale and the"
+            echo "      fails-on-revert proof is asserting nothing. Re-point it; do not delete it."
+            exit 1
+          fi
+          if [ "$VENUEID" -ne 1 ]; then
+            echo "FAIL: removing venue_id from the BUTTON gate did not fail the guard (exit $VENUEID)."
+            echo "      That is the #1605 P0-1 dead tap, and it is the regression this guard missed once."
+            exit 1
+          fi
+          echo "OK: the guard is green on HEAD and red on both documented reverts."

@@ -47,14 +47,7 @@
     "error_past_date_message": "Waktu itu sudah berlalu. Silakan pilih waktu yang akan datang."
   },
   "busyness": {
-    "traffic": "Lalu Lintas",
-    "busy_level": "Tingkat Keramaian",
-    "busy": "Ramai",
-    "clear_roads": "Jalan Lancar",
-    "clear": "Lancar",
-    "moderate": "Sedang",
-    "heavy": "Padat",
-    "estimated": "Est."
+    "busy_level": "Tingkat Keramaian"
   },
   "match_factors": {
     "title": "Rincian Kecocokan",

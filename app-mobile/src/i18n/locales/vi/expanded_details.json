@@ -47,14 +47,7 @@
     "error_past_date_message": "Thời gian đó đã qua. Vui lòng chọn thời gian trong tương lai."
   },
   "busyness": {
-    "traffic": "Giao thông",
-    "busy_level": "Mức độ đông đúc",
-    "busy": "Đông đúc",
-    "clear_roads": "Đường thông thoáng",
-    "clear": "Thông thoáng",
-    "moderate": "Vừa phải",
-    "heavy": "Tắc nghẽn",
-    "estimated": "Est."
+    "busy_level": "Mức độ đông đúc"
   },
   "match_factors": {
     "title": "Chi tiết độ phù hợp",

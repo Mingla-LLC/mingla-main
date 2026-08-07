@@ -119,7 +119,7 @@ function plateOver(backdrop, under) {
  * not, goes through G2's oracle, because the point of the descriptor table is
  * that a value cannot enter the system without being measured.
  */
-const BUILT = new Set(['s1Single', 's1Curated']);
+const BUILT = new Set(['s1Single', 's1Curated', 's7Expanded']);
 
 /**
  * Designed, measured, and CLEARING every floor — but no file renders them yet
@@ -168,6 +168,12 @@ const SCANNED = {
   'CuratedExperienceSwipeCard.tsx': 'app-mobile/src/components/CuratedExperienceSwipeCard.tsx',
   'deckCardPlate.tsx': 'app-mobile/src/components/deckCardPlate.tsx',
   'deckHeroConstants.ts': 'app-mobile/src/components/deckHeroConstants.ts',
+  // #1605 wave 4 — S7. The expanded sheet's hero renders the SAME plate at the
+  // same inset, so it is held to exactly the same forbidden-literal scan. That is
+  // what makes "the plate on the sheet is the plate on the deck" a mechanism
+  // rather than a claim: neither file can carry a fill, radius, ramp stop or type
+  // size of its own.
+  'ExpandedCardHero.tsx': 'app-mobile/src/components/expandedCard/ExpandedCardHero.tsx',
 };
 
 function read(rel) {
@@ -785,5 +791,127 @@ test('G3b the plate arithmetic is a single derivation, not a typed-in number', (
     CI.titleBottom('s1Single', CI.PLATE_H_NO_META),
     CI.SURFACES.s1Single.bottomInset + CI.PLATE_H_NO_META + CI.SURFACES.s1Single.gap,
     'G3b: the alternate title bottom no longer tracks the alternate plate',
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-10 / T-11 — S7, the first surface whose HEIGHT is not fixed (#1605 wave 4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('T-10 a variable-height surface cannot invalidate its own scrim', () => {
+  // heroH = min(520, max(432, sheetH - 216)). Every measured value in the S7
+  // column depends on the plate's CARD-LOCAL geometry and on nothing else, and
+  // `scrimHeight`'s only height-dependent term is the clamp to `cardH`. So the
+  // whole claim reduces to: the clamp never binds anywhere in the range.
+  //
+  // Asserted by CALLING the real function across the range rather than by
+  // repeating the argument — a surface whose height varies is exactly where a
+  // "the numbers are device-invariant" claim would fail silently.
+  const dPlate = CI.plateTopDepth('s7Expanded');
+  const dTitle = CI.titleTopDepth('s7Expanded');
+  const expected = CI.scrimHeight(dPlate, dTitle, CI.SURFACES.s7Expanded.h);
+
+  for (const h of [CI.S7_HERO_MIN, 480, 515, CI.S7_HERO_MAX]) {
+    assert.equal(
+      CI.scrimHeight(dPlate, dTitle, h),
+      expected,
+      `T-10: at heroH ${h} the scrim clamps to something other than ${expected}. Every ratio in `
+      + 'the S7 column would then be valid only on the device it was computed on.',
+    );
+  }
+
+  // The descriptor's `h` must BE the clamp minimum, or entering it into the
+  // oracle measures something the product never renders.
+  assert.equal(
+    CI.SURFACES.s7Expanded.h,
+    CI.S7_HERO_MIN,
+    "T-10: s7Expanded.h is no longer the clamp MINIMUM. It is entered as the worst case — a "
+    + 'smaller h can only shorten the scrim, so the minimum is the only honest value to measure.',
+  );
+
+  // And the clamp function itself must actually clamp, in both directions.
+  assert.equal(CI.expandedHeroHeight(600), CI.S7_HERO_MIN, 'T-10: the hero does not clamp UP on a short sheet');
+  assert.equal(CI.expandedHeroHeight(2000), CI.S7_HERO_MAX, 'T-10: the hero does not clamp DOWN on a tall sheet');
+  // 731 is the iPhone 13 mini's 90% sheet — the one device in the fleet that
+  // lands BETWEEN the clamps, so it is the only value that proves the middle of
+  // the range is a real computation and not a constant wearing a clamp.
+  assert.equal(
+    CI.expandedHeroHeight(731),
+    731 - CI.S7_FOLD_RESERVE,
+    'T-10: between the clamps the hero no longer takes what the fold leaves',
+  );
+  assert.ok(
+    CI.expandedHeroHeight(731) > CI.S7_HERO_MIN && CI.expandedHeroHeight(731) < CI.S7_HERO_MAX,
+    'T-10 (vacuity): 731 no longer lands between the clamps, so the assertion above is measuring a '
+    + 'clamp rather than the computation it exists to check.',
+  );
+  // The fold must be big enough to prove there IS more below it.
+  assert.ok(
+    CI.S7_FOLD_RESERVE >= 92,
+    `T-10: the fold reserve is ${CI.S7_FOLD_RESERVE}pt, which cannot even contain the 92pt action band`,
+  );
+});
+
+test('T-11 S7 and S1 are the SAME plate, measured — not the same numbers retyped', () => {
+  // This is the continuity claim, and it is arithmetic. The scrim formula reads
+  // only `bottomInset + plateH` and `bottomInset + plateH + gap + lines*lh`, so
+  // any surface that puts the same plate at the same inset gets the same scrim,
+  // the same alpha, the same derived under-layer and therefore the same L* and
+  // the same ratios. Asserted by calling the real functions on BOTH surfaces.
+  assert.equal(
+    CI.plateTopDepth('s7Expanded'), CI.plateTopDepth('s1Single'),
+    'T-11: the plate no longer sits at the same depth on the sheet as on the deck card, so opening '
+    + 'a card CUTS to a new object instead of continuing the one the user was looking at.',
+  );
+  assert.equal(
+    CI.titleTopDepth('s7Expanded'), CI.titleTopDepth('s1Single'),
+    'T-11: the title no longer sits at the same depth on both surfaces',
+  );
+  assert.equal(
+    CI.surfaceScrimHeight('s7Expanded'), CI.surfaceScrimHeight('s1Single'),
+    'T-11: the two surfaces resolve different scrim heights',
+  );
+  assert.equal(
+    CI.surfacePlateUnder('s7Expanded'), CI.surfacePlateUnder('s1Single'),
+    'T-11: the derived under-layer alphas differ, so the two plates are different tones',
+  );
+
+  // And the measured composite, through the independent oracle, not through the
+  // package's own maths.
+  const l = (key) => {
+    const alpha = CI.rampAlphaAtDepth(CI.plateTopDepth(key), CI.surfaceScrimHeight(key));
+    return lStar(luminance(plateOver(backdropAt(255, alpha), CI.plateUnderAlpha(alpha))));
+  };
+  assert.ok(
+    Math.abs(l('s7Expanded') - l('s1Single')) < 1e-9,
+    `T-11: the plate measures L* ${l('s7Expanded').toFixed(4)} on the sheet and `
+    + `${l('s1Single').toFixed(4)} on the deck card. The continuity argument is arithmetic; if these `
+    + 'differ, something re-tuned a value that is supposed to be derived.',
+  );
+
+  // The geometry the two share, field by field. A drift here is what "the same
+  // plate" would quietly stop meaning.
+  for (const field of ['sideInset', 'bottomInset', 'plateW', 'plateH', 'plateR', 'gap', 'titleSize', 'titleLH', 'titleLines', 'titleWeight', 'metaSize', 'titleOnPlate']) {
+    assert.equal(
+      CI.SURFACES.s7Expanded[field], CI.SURFACES.s1Single[field],
+      `T-11: s7Expanded.${field} diverged from s1Single.${field}. The plate must be BYTE-IDENTICAL `
+      + 'or the continuity claim is decorative.',
+    );
+  }
+
+  // S7 omits the top scrim, and it must DECLARE that rather than overlap.
+  assert.equal(
+    CI.SURFACES.s7Expanded.topScrim, false,
+    'T-10/T-11: S7 must omit the top scrim — 200 + 316 = 516 leaves 4pt of clean photograph at the '
+    + 'clamp maximum and does not fit at the minimum. The drag handle carries its own boundary.',
+  );
+
+  // The coverless slab is derived from the same type ladder as the glass hero.
+  const s7 = CI.SURFACES.s7Expanded;
+  assert.equal(
+    CI.expandedCoverlessHeroHeight(),
+    CI.titleBottom('s7Expanded') + s7.titleLines * s7.titleLH + 28,
+    'T-11: the coverless hero height is a typed-in number again. It is the title block plus its '
+    + 'breathing room, measured off the SAME plate-anchored title bottom the glass hero uses.',
   );
 });

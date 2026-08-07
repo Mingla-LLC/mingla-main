@@ -47,14 +47,7 @@
     "error_past_date_message": "Ta godzina już minęła. Wybierz godzinę w przyszłości."
   },
   "busyness": {
-    "traffic": "Traffic",
-    "busy_level": "Busy Level",
-    "busy": "Busy",
-    "clear_roads": "Clear Roads",
-    "clear": "Clear",
-    "moderate": "Moderate",
-    "heavy": "Heavy",
-    "estimated": "Est."
+    "busy_level": "Busy Level"
   },
   "match_factors": {
     "title": "Match Breakdown",

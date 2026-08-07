@@ -9,7 +9,6 @@ import {
   Linking,
   ActivityIndicator,
   Platform,
-  Animated,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
@@ -18,23 +17,21 @@ import { TrackedTouchableOpacity } from "../TrackedTouchableOpacity";
 import { useQueryClient } from "@tanstack/react-query";
 import { savedCardKeys } from "../../hooks/queryKeys";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { ExpandedCardData, BookingOption } from "../../types/expandedCardTypes";
+import { ExpandedCardData } from "../../types/expandedCardTypes";
 import { savedCardsService } from "../../services/savedCardsService";
 import { CalendarService } from "../../services/calendarService";
 import { useAppStore } from "../../store/appStore";
 import { useCalendarEntries } from "../../hooks/useCalendarEntries";
 import { toastManager } from "../ui/Toast";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
-import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
-import { extractWeekdayText } from "../../utils/openingHoursUtils";
 import { checkAllCuratedStopsOpen } from "../../utils/curatedStopsAvailability";
 import {
   buildSingleCardNotSafeMessage,
   checkSingleCardSchedulingAvailability,
 } from "../../utils/singleCardAvailability";
-import { normalizeWebsiteUrl } from "../../utils/normalizeWebsiteUrl";
 import { canonicalDiscoveryPriceFields } from "../../utils/priceTiers";
 import { useTranslation } from "react-i18next";
+import { ACTION_BAND, SPINE } from "./spineTokens";
 
 
 // META-ORCH-0991 Wave B Batch 4: the iOS date/time picker <Modal> (a flex-end
@@ -46,23 +43,27 @@ const DATE_TIME_PICKER_SNAP_POINTS = ['45%'];
 
 interface ActionButtonsProps {
   card: ExpandedCardData;
-  bookingOptions: BookingOption[];
   onSave: (card: ExpandedCardData) => Promise<void> | void;
-  onPurchase?: (card: ExpandedCardData, bookingOption: BookingOption) => void;
-  onShare?: (card: ExpandedCardData) => void;
   onClose?: () => void;
   isSaved?: boolean;
   userPreferences?: any;
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void; // Callback to remove card from deck
   onScheduleSuccess?: (card: ExpandedCardData) => void; // Callback after successful scheduling
-  onOpenBrowser?: (url: string, title: string) => void; // Opens in-app browser (for Policies & Reservations)
   onSchedulePickerModalVisibilityChange?: (isOpen: boolean) => void;
-  isVisited?: boolean;
-  isVisitLoading?: boolean;
-  onVisitPress?: () => void;
-  onRemoveVisitPress?: () => void;
-  hasCalendarEntry?: boolean;
+  /**
+   * #1605 wave 4 — the RESERVE slot.
+   *
+   * The band's third button is supplied by the caller, already gated, because
+   * its gate (`venueReservable`) belongs to the modal and is asserted by
+   * ORCH-1148's strict-grep guard against the SHEET's gate in the same file. A
+   * `bookingOptions.length > 0` gate here would be a DEAD TAP: nothing in this
+   * component has ever read `bookingOptions` or invoked `onPurchase`.
+   *
+   * The BAND'S HEIGHT DOES NOT CHANGE when it is absent — Save and Schedule
+   * simply take 176pt each. Same silhouette discipline as the plate.
+   */
+  reserve?: React.ReactNode;
   /** Called when a gated action is attempted on a curated card by a free user */
   onPaywallRequired?: () => void;
   /** Whether the current user can access curated card actions (save/schedule) */
@@ -71,23 +72,15 @@ interface ActionButtonsProps {
 
 export default function ActionButtons({
   card,
-  bookingOptions,
   onSave,
-  onPurchase,
-  onShare,
   onClose,
   isSaved = false,
   userPreferences,
   currentMode = "solo",
   onCardRemoved,
   onScheduleSuccess,
-  onOpenBrowser,
   onSchedulePickerModalVisibilityChange,
-  isVisited = false,
-  isVisitLoading = false,
-  onVisitPress,
-  onRemoveVisitPress,
-  hasCalendarEntry = false,
+  reserve,
   onPaywallRequired,
   canAccessCurated = true,
 }: ActionButtonsProps) {
@@ -107,8 +100,6 @@ export default function ActionButtons({
   const [hasCheckedAvailability, setHasCheckedAvailability] = useState(false);
   // ORCH-0690 S-2: holds the Android-OK'd date while the preview/confirm Alert is open.
   const [pendingDateConfirmation, setPendingDateConfirmation] = useState<Date | null>(null);
-  const [showAllHours, setShowAllHours] = useState(false);
-  const visitScaleAnim = useRef(new Animated.Value(1)).current;
   const setDateTimePickerVisible = useCallback(
     (isOpen: boolean) => {
       setShowDateTimePicker(isOpen);
@@ -142,22 +133,15 @@ export default function ActionButtons({
     );
   }, [calendarEntries, card.id]);
 
-  // Normalize opening hours for display — uses the same canonical parser
-  // as useIsPlaceOpen so both hours list and Open/Closed badge always agree.
-  const parsedOpeningHours = useMemo(() => {
-    const lines = extractWeekdayText(card.openingHours);
-    return lines ? { lines } : null;
-  }, [card.openingHours]);
-
-  // Live open/closed status computed from weekday_text against local clock
-  const cardUtcOffset = card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null;
-  const liveOpenStatus = useIsPlaceOpen(card.openingHours, cardUtcOffset);
-
-  // Get today's day name for highlighting
-  const todayDayName = useMemo(() => {
-    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    return days[new Date().getDay()];
-  }, []);
+  /**
+   * #1605 wave 4 — THE HOURS BLOCK MOVED OUT, AND SO DID THE OPEN/CLOSED BADGE.
+   *
+   * `PracticalDetailsSection` has ALWAYS accepted an `openingHours` prop and has
+   * never rendered it: the hours table actually rendered here, inside the action
+   * component, under an orange-tinted "Opening Hours" card. That split is what
+   * this wave ends — hours are a practical detail, so they render in Details, and
+   * the badge renders next to them.
+   */
 
   // [ORCH-0649 — CONSTITUTION #2] Local parseTimeString + checkPlaceAvailability
   // DELETED. Scheduling-time availability now routes through shared helpers so
@@ -197,37 +181,31 @@ export default function ActionButtons({
     return suggestions;
   };
 
-  const handleVisitPress = () => {
-    if (isVisitLoading) return;
-    if (isVisited) {
-      onRemoveVisitPress?.();
-    } else {
-      // Scale down → color transition → scale back + haptic
-      Animated.sequence([
-        Animated.timing(visitScaleAnim, {
-          toValue: 0.95,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(visitScaleAnim, {
-          toValue: 1.0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      });
-      onVisitPress?.();
-      mixpanelService.trackExperienceVisited({
-        card_id: card.id,
-        card_title: card.title,
-        category: card.category,
-      });
-    }
-  };
-
-  // Show visit button when card is saved and has no calendar entry
-  const showVisitButton = isSaved && !hasCalendarEntry && (onVisitPress || onRemoveVisitPress);
+  /**
+   * #1605 wave 4 — THE BEEN-THERE IMPLEMENTATION THAT LIVED HERE IS DELETED.
+   *
+   * `handleVisitPress`, its `visitScaleAnim` wrapper, its `mixpanelService
+   * .trackExperienceVisited` call, the `isVisited` / `isVisitLoading` /
+   * `onVisitPress` / `onRemoveVisitPress` props and the button's three state
+   * styles are gone. They were gated on
+   *
+   *     showVisitButton = isSaved && !hasCalendarEntry && (onVisitPress || onRemoveVisitPress)
+   *
+   * and `git grep` finds those two props ONLY inside this file. No caller has
+   * ever passed either, so the button, its `been_there` / `i_went_here` copy and
+   * its `visitService` wiring have never rendered on ANY screen.
+   *
+   * Deleting it is what makes the control reachable, not what removes it. There
+   * is exactly ONE Been-here control in the system and it lives on the plate
+   * (`BeenHereControl`), which the expanded hero now mounts — so the control
+   * reaches the six entry points that have no collapsed card behind them: Likes,
+   * Calendar, chat, both collab sheets and a friend's profile. Wiring this one up
+   * instead would have given the sheet a SECOND Been-here, in a different shape,
+   * at a different size, with a different state machine, three sections below the
+   * first one.
+   *
+   * Constitution 8: subtract before adding.
+   */
 
   const handleSave = async () => {
     if (isSaving) {
@@ -621,27 +599,22 @@ export default function ActionButtons({
     }
   };
 
-  const handleShare = () => {
-    if (onShare) {
-      onShare(card);
-    } else {
-      Alert.alert(t('expanded_details:action_buttons.share_prompt', { title: card.title }));
-    }
-  };
-
-  const handlePoliciesAndReservations = () => {
-    if (!onOpenBrowser) return;
-    // [ORCH-0649] Normalize via shared helper — http→https, whitespace trim,
-    // case-insensitive scheme check. iOS ATS blocks plain http:// in WebView.
-    const url = normalizeWebsiteUrl(card.website);
-    if (!url) return;
-    onOpenBrowser(url, card.title);
-  };
-
-  const showPoliciesButton = !!card.website;
+  /**
+   * #1605 wave 4 — SHARE AND "POLICIES & RESERVATIONS" LEFT THIS COMPONENT.
+   *
+   * Share is on the plate, next to Been-here, because both are IDENTITY actions
+   * and the plate is where identity lives.
+   *
+   * "Policies & Reservations" was a full-width #1f2937 slab gated on
+   * `!!card.website` whose handler bailed when `normalizeWebsiteUrl` returned
+   * null — a VISIBLE DEAD BUTTON on any non-normalizable website (#1605 bug
+   * ledger item 1, Constitution 1). It was a website link wearing a costume, so
+   * it is now the Website row in Details, gated on the NORMALIZED url and
+   * pre-flighted with `canOpenURL`.
+   */
 
   return (
-    <View style={styles.container}>
+    <View>
       {/* Date/Time Picker Modal */}
       {showDateTimePicker && (
         <>
@@ -719,200 +692,105 @@ export default function ActionButtons({
         </>
       )}
 
-      {/* Top Row: Schedule Button + Share/Bookmark Button */}
+      {/*
+        THE ACTION BAND — slot 3, immediately below the hero, ON BOTH BRANCHES.
 
-      {/* Opening Hours Section */}
-      {parsedOpeningHours && (
-        <View style={styles.openingHoursSection}>
-          <View style={styles.openingHoursHeader}>
-            <Icon name="time" size={18} color="#ea580c" />
-            <Text style={styles.openingHoursTitle}>{t('expanded_details:action_buttons.opening_hours')}</Text>
-            {liveOpenStatus !== null && (
-              <View style={[
-                styles.openNowBadge,
-                liveOpenStatus ? styles.openNowBadgeOpen : styles.openNowBadgeClosed,
-              ]}>
-                <View style={[
-                  styles.openNowDot,
-                  liveOpenStatus ? styles.openNowDotOpen : styles.openNowDotClosed,
-                ]} />
-                <Text style={[
-                  styles.openNowText,
-                  liveOpenStatus ? styles.openNowTextOpen : styles.openNowTextClosed,
-                ]}>
-                  {liveOpenStatus ? t('expanded_details:action_buttons.open_now') : t('expanded_details:action_buttons.closed')}
-                </Text>
-              </View>
-            )}
-          </View>
-          {parsedOpeningHours.lines.map((line: string, index: number) => {
-            const isToday = line.startsWith(todayDayName);
-            // Show today always, show others only when expanded
-            if (!showAllHours && !isToday) return null;
-            return (
-              <View key={index} style={[
-                styles.openingHoursRow,
-                isToday && styles.openingHoursRowToday,
-              ]}>
-                {isToday && <View style={styles.todayIndicator} />}
-                <Text style={[
-                  styles.openingHoursText,
-                  isToday && styles.openingHoursTextToday,
-                ]}>{line}</Text>
-              </View>
-            );
-          })}
-          {parsedOpeningHours.lines.length > 1 && (
-            <TrackedTouchableOpacity logComponent="ActionButtons" logId="toggle_hours" onPress={() => setShowAllHours(!showAllHours)} style={styles.showAllHoursButton}>
-              <Text style={styles.showAllHoursText}>
-                {showAllHours ? t('expanded_details:action_buttons.show_less') : t('expanded_details:action_buttons.show_all_hours')}
-              </Text>
-              <Icon name={showAllHours ? "chevron-up" : "chevron-down"} size={14} color="#ea580c" />
-            </TrackedTouchableOpacity>
-          )}
-        </View>
-      )}
+        Before this wave the action row was LAST on a single place and MID-SCROLL
+        on a curated plan (inside MultiStopPlanView, with Weather, Busyness and
+        Timeline rendered BELOW it). There is now one position for the commitment
+        actions and it does not depend on what kind of card you opened.
 
-      {/* Action Buttons Row: Save + Schedule + Share */}
-      <View style={styles.topRow}>
-        {/* Save Button */}
+        Height is 92pt and FIXED: 20 + 52 + 20. Whether Reserve renders changes
+        the buttons' widths and never the band's height — the same silhouette
+        discipline the plate obeys, and the reason the fold below it is a stable
+        number the hero can be sized against.
+
+        Save and Schedule carry NO FILL. The indigo #6366F1 Save with a white
+        label measured 4.47:1 — below the 4.5 floor, and the only indigo in the
+        app. Unfilled, they are identified by a #111827 label at 17.74:1 and a
+        #374151 icon at 10.31:1, which is a stronger identification than the fill
+        ever was.
+      */}
+      <View style={styles.band}>
         <TrackedTouchableOpacity
           logComponent="ActionButtons"
           logId="save"
-          style={[
-            styles.saveButton,
-            (isSaving || isSaved) && styles.actionButtonDisabled,
-          ]}
+          style={[styles.bandButton, (isSaving || isSaved) && styles.bandButtonDisabled]}
           onPress={handleSave}
-          activeOpacity={0.7}
+          activeOpacity={0.55}
           disabled={isSaving || isSaved}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isSaving || isSaved, selected: isSaved }}
+          accessibilityLabel={
+            isSaved
+              ? t('expanded_details:action_buttons.saved')
+              : t('expanded_details:action_buttons.save')
+          }
         >
           {isSaving ? (
-            <ActivityIndicator size="small" color="#ffffff" />
+            <ActivityIndicator size="small" color={SPINE.factValue} />
           ) : (
             <>
               <Icon
-                name={isSaved ? "bookmark" : "bookmark-outline"}
-                size={20}
-                color="#ffffff"
+                name={isSaved ? 'bookmark' : 'bookmark-outline'}
+                size={ACTION_BAND.iconSize}
+                color={SPINE.prose}
               />
-              <Text style={styles.saveButtonText}>
-                {isSaved ? t('expanded_details:action_buttons.saved') : t('expanded_details:action_buttons.save')}
+              <Text
+                style={[styles.bandLabel, (isSaving || isSaved) && styles.bandLabelDisabled]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.2}
+              >
+                {isSaved
+                  ? t('expanded_details:action_buttons.saved')
+                  : t('expanded_details:action_buttons.save')}
               </Text>
             </>
           )}
         </TrackedTouchableOpacity>
 
-        {/* Schedule Button */}
         <TrackedTouchableOpacity
           logComponent="ActionButtons"
           logId="schedule"
-          style={[
-            styles.scheduleButton,
-            (isScheduling || isScheduled) && styles.scheduleButtonDisabled,
-          ]}
+          style={[styles.bandButton, (isScheduling || isScheduled) && styles.bandButtonDisabled]}
           onPress={handleSchedule}
-          activeOpacity={0.7}
+          activeOpacity={0.55}
           disabled={isScheduling || isScheduled}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isScheduling || isScheduled, selected: isScheduled }}
+          accessibilityLabel={
+            isScheduled
+              ? t('expanded_details:action_buttons.scheduled')
+              : t('expanded_details:action_buttons.schedule')
+          }
         >
           {isScheduling ? (
-            <ActivityIndicator size="small" color="#ffffff" />
+            <ActivityIndicator size="small" color={SPINE.factValue} />
           ) : (
             <>
               <Icon
-                name={isScheduled ? "checkmark-circle" : "calendar-outline"}
-                size={20}
-                color="#ffffff"
+                name={isScheduled ? 'checkmark-circle' : 'calendar-outline'}
+                size={ACTION_BAND.iconSize}
+                color={SPINE.prose}
               />
-              <Text style={styles.scheduleButtonText}>
-                {isScheduled ? t('expanded_details:action_buttons.scheduled') : t('expanded_details:action_buttons.schedule')}
+              <Text
+                style={[
+                  styles.bandLabel,
+                  (isScheduling || isScheduled) && styles.bandLabelDisabled,
+                ]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.2}
+              >
+                {isScheduled
+                  ? t('expanded_details:action_buttons.scheduled')
+                  : t('expanded_details:action_buttons.schedule')}
               </Text>
             </>
           )}
         </TrackedTouchableOpacity>
 
-        {/* Share Button */}
-        <TrackedTouchableOpacity
-          logComponent="ActionButtons"
-          logId="share"
-          style={styles.shareIconButton}
-          onPress={handleShare}
-          activeOpacity={0.7}
-        >
-          <Icon name="share-outline" size={20} color="#6b7280" />
-        </TrackedTouchableOpacity>
+        {reserve}
       </View>
-
-      {/* Policies & Reservations — all categories with website or placeId */}
-      {showPoliciesButton && (
-        <TrackedTouchableOpacity
-          logComponent="ActionButtons"
-          logId="policies"
-          style={styles.policiesButton}
-          onPress={handlePoliciesAndReservations}
-          activeOpacity={0.8}
-        >
-          <Icon name="globe-outline" size={18} color="#ffffff" />
-          <Text style={styles.policiesButtonText}>
-            {t('expanded_details:action_buttons.policies_reservations')}
-          </Text>
-        </TrackedTouchableOpacity>
-      )}
-
-      {/* Visit Button */}
-      {showVisitButton && (
-        <Animated.View style={{ transform: [{ scale: visitScaleAnim }] }}>
-          <TrackedTouchableOpacity
-            logComponent="ActionButtons"
-            logId="visit"
-            style={[
-              styles.visitButton,
-              isVisited && styles.visitButtonVisited,
-              isVisitLoading && styles.visitButtonLoading,
-            ]}
-            onPress={handleVisitPress}
-            activeOpacity={0.7}
-            disabled={isVisitLoading}
-            accessibilityLabel={
-              isVisited
-                ? t('expanded_details:action_buttons.visited_label')
-                : t('expanded_details:action_buttons.mark_visited_label')
-            }
-            accessibilityHint={
-              isVisited
-                ? t('expanded_details:action_buttons.visited_hint')
-                : t('expanded_details:action_buttons.mark_visited_hint')
-            }
-          >
-            {isVisitLoading ? (
-              <>
-                <ActivityIndicator size="small" color="#9ca3af" />
-                <Text style={styles.visitButtonTextLoading}>{t('expanded_details:action_buttons.on_it')}</Text>
-              </>
-            ) : isVisited ? (
-              <>
-                <Icon
-                  name="checkmark-circle"
-                  size={20}
-                  color="#16a34a"
-                />
-                <Text style={styles.visitButtonTextVisited}>
-                  {t('expanded_details:action_buttons.been_there')} ✓
-                </Text>
-              </>
-            ) : (
-              <>
-                <Icon
-                  name="checkmark-circle-outline"
-                  size={20}
-                  color="#9ca3af"
-                />
-                <Text style={styles.visitButtonTextDefault}>{t('expanded_details:action_buttons.i_went_here')}</Text>
-              </>
-            )}
-          </TrackedTouchableOpacity>
-        </Animated.View>
-      )}
 
       {/* Availability Messages */}
       {hasCheckedAvailability &&
@@ -931,92 +809,34 @@ export default function ActionButtons({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: "#ffffff",
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#f3f4f6",
-    gap: 12,
-  },
-  topRow: {
+  /**
+   * The band. NOTHING above it and nothing below it — no top border, no card, no
+   * background of its own. It sits on the paper directly under the hero, so the
+   * hero's bottom edge is the only boundary the eye needs.
+   */
+  band: {
+    height: ACTION_BAND.height,
+    paddingHorizontal: ACTION_BAND.padding,
+    paddingVertical: ACTION_BAND.padding,
     flexDirection: "row",
-    gap: 12,
-    alignItems: "flex-start",
+    gap: ACTION_BAND.gap,
   },
-  saveButton: {
+  bandButton: {
     flex: 1,
+    height: ACTION_BAND.buttonHeight,
+    borderRadius: ACTION_BAND.buttonRadius,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#6366F1",
-    paddingVertical: 14,
-    borderRadius: 12,
     gap: 8,
   },
-  saveButtonText: {
-    fontSize: 16,
+  bandButtonDisabled: { opacity: 0.4 },
+  bandLabel: {
+    fontSize: ACTION_BAND.labelSize,
     fontWeight: "600",
-    color: "#ffffff",
+    color: SPINE.factValue,
   },
-  actionButtonDisabled: {
-    opacity: 0.6,
-  },
-  scheduleButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#eb7825",
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-  },
-  scheduleButtonDisabled: {
-    opacity: 0.6,
-    backgroundColor: "#eb7825",
-  },
-  scheduleButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
-  shareIconButton: {
-    width: 48,
-    height: 48,
-    backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  policiesButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#1f2937",
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-  },
-  policiesButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#ffffff",
-  },
-  shareButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    gap: 8,
-  },
-  shareButtonText: {
-    fontSize: 15,
-    color: "#6b7280",
-    fontWeight: "500",
-  },
+  bandLabelDisabled: { color: SPINE.disabledLabel },
   // META-ORCH-0991 Wave B Batch 4: removed the iOS date/time picker <Modal>'s
   // hand-rolled chrome (`modalOverlay` scrim, `backdropTouch`, `modalContent`
   // card). The picker is now a light BaseBottomSheet at ['45%'] with the real
@@ -1062,6 +882,13 @@ const styles = StyleSheet.create({
   dateTimePicker: {
     height: 200,
   },
+  /**
+   * The scheduling-availability messages keep a tinted panel, and that is the ONE
+   * exception in the body. They are SYSTEM MESSAGES about the action the user
+   * just attempted, not content sections — the reason the locked-in banner keeps
+   * its fill too. Every content section lost its tint; these two did not, because
+   * they are not content.
+   */
   closedMessageContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -1070,7 +897,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#eb782566",
     padding: 12,
-    marginTop: 8,
+    marginHorizontal: SPINE.gutter,
+    marginBottom: 8,
     gap: 8,
   },
   closedMessage: {
@@ -1079,149 +907,5 @@ const styles = StyleSheet.create({
     color: "#9a3412",
     fontWeight: "500",
     lineHeight: 18,
-  },
-  warningMessageContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff7ed",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#eb782566",
-    padding: 12,
-    marginTop: 8,
-    gap: 8,
-  },
-  warningMessage: {
-    flex: 1,
-    fontSize: 13,
-    color: "#9a3412",
-    fontWeight: "500",
-    lineHeight: 18,
-  },
-  visitButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#ffffff",
-    borderWidth: 1.5,
-    borderColor: "#d1d5db",
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-  },
-  visitButtonVisited: {
-    backgroundColor: "#f0fdf4",
-    borderColor: "#22c55e",
-  },
-  visitButtonLoading: {
-    borderColor: "#e5e7eb",
-  },
-  visitButtonTextDefault: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#4b5563",
-  },
-  visitButtonTextLoading: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#9ca3af",
-  },
-  visitButtonTextVisited: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#15803d",
-  },
-  openingHoursSection: {
-    backgroundColor: "#eb78251a",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#eb782566",
-    padding: 14,
-    marginBottom: 16,
-  },
-  openingHoursHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-    gap: 8,
-  },
-  openingHoursTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#333333",
-    flex: 1,
-  },
-  openNowBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    gap: 5,
-  },
-  openNowBadgeOpen: {
-    backgroundColor: "#fff7ed",
-  },
-  openNowBadgeClosed: {
-    backgroundColor: "#fef2f2",
-  },
-  openNowDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  openNowDotOpen: {
-    backgroundColor: "#eb7825",
-  },
-  openNowDotClosed: {
-    backgroundColor: "#ef4444",
-  },
-  openNowText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  openNowTextOpen: {
-    color: "#9a3412",
-  },
-  openNowTextClosed: {
-    color: "#991b1b",
-  },
-  openingHoursRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    borderRadius: 6,
-  },
-  openingHoursRowToday: {
-    backgroundColor: "#fff7ed",
-  },
-  todayIndicator: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#ea580c",
-    marginRight: 8,
-  },
-  openingHoursText: {
-    fontSize: 13,
-    color: "#374151",
-    lineHeight: 20,
-  },
-  openingHoursTextToday: {
-    fontWeight: "700",
-    color: "#9a3412",
-  },
-  showAllHoursButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 6,
-    gap: 4,
-  },
-  showAllHoursText: {
-    fontSize: 13,
-    color: "#ea580c",
-    fontWeight: "600",
   },
 });

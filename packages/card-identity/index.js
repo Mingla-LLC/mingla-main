@@ -489,6 +489,39 @@ const BEEN_HERE = {
  */
 const SLIVER = { height: 4, radius: 2, offsets: [0, 6], insets: [24, 34], alpha: 0.44 };
 
+/**
+ * The drag handle, for a surface that draws its own (S7 — the expanded sheet's
+ * hero, where gorhom's handle is suppressed so it cannot push the hero down and
+ * put white above the photograph).
+ *
+ * IT SITS ON AN UNKNOWN PHOTOGRAPH, WITH NO TOP SCRIM UNDER IT. `200 + 316 = 516`
+ * of a 520pt hero would leave 4pt of clean photograph, so the top scrim is
+ * omitted and the handle has to carry its own boundary.
+ *
+ * The construction is OPAQUE CORE + DARK RING, the same two-tone answer the
+ * S2/S3 slivers use, so the system has one answer to "a light mark on an unknown
+ * photograph". Swept over 41 photo luminances, `max(fill, ring)` measures 4.10:1
+ * worst case against a 3.0 floor. The obvious first try — a 0.90 white over a
+ * 0.45 black ring — measures 2.65:1 and FAILS, because both layers are
+ * translucent and therefore fail in the SAME place: on a mid-grey photo the fill
+ * and the ring converge on the backdrop together.
+ *
+ * `coverlessFill` is the one case where a translucent handle is safe: the
+ * coverless hero is a known solid slab, so there is no photograph to fail
+ * against and the ring would be a border around nothing.
+ */
+const HANDLE = {
+  width: 36,
+  height: 5,
+  radius: 2.5,
+  top: 10,
+  target: 44,
+  fill: '#FFFFFF',
+  ringWidth: 0.5,
+  ring: 'rgba(0,0,0,0.75)',
+  coverlessFill: 'rgba(255,255,255,0.90)',
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 5 · The type ladder
 // ─────────────────────────────────────────────────────────────────────────────
@@ -648,7 +681,97 @@ const SURFACES = {
     curated: true,
     sliver: { height: 4, radius: 2, alpha: 0.44, opaque: ['rgb(143,143,143)', 'rgb(145,145,145)'], forcedOpaque: false },
   },
+  /**
+   * S7 — the expanded sheet's hero (#1605 wave 4).
+   *
+   * THE PLATE IS BYTE-IDENTICAL TO S1's, AND THAT IS THE WHOLE DESIGN. Opening a
+   * card must CONTINUE it rather than cut to a new screen, so the hero puts the
+   * same 374 x 96 r24 plate at the same 14/16 inset with the same 20pt gap and
+   * the same 30/36 two-line title. Because `scrimHeight` reads only the plate's
+   * CARD-LOCAL geometry, that alone forces H = 316, alpha = 0.791, u = 0.622 and
+   * therefore every ratio on the plate to equal s1Single's — measured, not
+   * asserted (the oracle's T-2/T-3/T-4/T-7 iterate this descriptor like any
+   * other, and T-10 below pins the height-independence).
+   *
+   * `h: 432` IS THE CLAMP MINIMUM, NOT A FIXED HEIGHT. S7 is the first surface
+   * whose height varies with the device:
+   *
+   *     heroH = min(520, max(432, sheetH - 216))
+   *
+   * `scrimHeight` clamps to `cardH`, so a SMALLER h can only SHORTEN the scrim —
+   * entering the minimum is entering the worst case, and 432 > 316 proves the
+   * clamp never binds anywhere in the range. T-10 asserts that across the whole
+   * range rather than trusting the argument.
+   *
+   * `topScrim: false`: 200 (top) + 316 (bottom) = 516 of a 520pt hero would leave
+   * 4pt of clean photograph at the clamp MAXIMUM and does not fit at the minimum
+   * at all. The one piece of chrome that sat on the top scrim — the drag handle —
+   * carries its own two-tone boundary instead (opaque white core + dark ring,
+   * 4.10:1 worst case over a 41-luminance sweep).
+   *
+   * `controls: true` by rule L1: the sheet accepts touch AND owns the primary
+   * interaction, so the Been-here control belongs here. That is what makes it
+   * reachable from the six entry points that have no collapsed card behind them.
+   */
+  s7Expanded: {
+    label: 'S7 expanded sheet — hero',
+    w: 402, h: 432, cardR: 28,
+    sideInset: 14, bottomInset: 16,
+    plateW: 374, plateH: 96, plateR: 24,
+    titleSize: 30, titleLH: 36, titleLines: 2, titleWeight: '700', titleInset: 20,
+    metaSize: 14,
+    gap: 20,
+    titleOnPlate: false,
+    controls: true,
+    topScrim: false,
+    curated: true,
+    sliver: { height: 4, radius: 2, alpha: 0.44, opaque: ['rgb(143,143,143)', 'rgb(145,145,145)'], forcedOpaque: false },
+  },
 };
+
+/**
+ * S7's hero height, from the sheet's own resolved height. The ONE variable
+ * height in the system, and it is a FUNCTION so no surface can retype it.
+ *
+ *     216 = 92 (the action band) + 120 (five lines of description) + 4
+ *
+ * The fold is sized to PROVE there is more below it; the hero takes what is
+ * left, bounded to [432, 520]. Every ratio in the S7 column is invariant across
+ * that range because `scrimHeight` clamps to `cardH` and 432 > 316 (T-10).
+ */
+const S7_HERO_MIN = 432;
+const S7_HERO_MAX = 520;
+const S7_FOLD_RESERVE = 216;
+
+function expandedHeroHeight(sheetH) {
+  if (!(sheetH > 0)) return S7_HERO_MIN;
+  return Math.min(S7_HERO_MAX, Math.max(S7_HERO_MIN, sheetH - S7_FOLD_RESERVE));
+}
+
+/**
+ * The COVERLESS hero. There is no photograph, so there is no glass — the
+ * material needs media and there is none. The hero collapses to ONE slab of
+ * `PLATE.fallbackSolid` (L* 23.47, i.e. 0.01 L* from the glass composite), not a
+ * plate drawn on a slab: a plate on a same-toned slab has only its 0.38 border to
+ * separate it, which is furniture pretending to be structure.
+ *
+ *     232 = 132 (title bottom) + 2 x 36 (two title lines) + 20 (breathing) + 8
+ *
+ * Derived from `titleBottom('s7Expanded')` and the descriptor's own type ladder
+ * so it cannot drift from the plate it is shaped around.
+ */
+const S7_COVERLESS_TOP_BREATHING = 20;
+const S7_COVERLESS_TOP_PAD = 8;
+
+function expandedCoverlessHeroHeight() {
+  const s = SURFACES.s7Expanded;
+  return (
+    titleBottom('s7Expanded') +
+    s.titleLines * s.titleLH +
+    S7_COVERLESS_TOP_BREATHING +
+    S7_COVERLESS_TOP_PAD
+  );
+}
 
 /**
  * The two depths every derived value hangs off, in points from the card's
@@ -730,6 +853,7 @@ module.exports = {
   STATE_DISC,
   BEEN_HERE,
   SLIVER,
+  HANDLE,
   SURFACES,
   MAX_FONT_SCALE,
   META_ROW_H,
@@ -740,6 +864,11 @@ module.exports = {
   TITLE_ALPHA_FLOOR,
   K_PLATE,
   K_TITLE,
+  S7_HERO_MIN,
+  S7_HERO_MAX,
+  S7_FOLD_RESERVE,
+  expandedHeroHeight,
+  expandedCoverlessHeroHeight,
   scrimHeight,
   rampAlphaAtDepth,
   plateUnderAlpha,

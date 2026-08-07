@@ -89,23 +89,35 @@ describe("ORCH-1133 (1) — Sound pill clears the public-event details panel wit
   });
 });
 
-describe("ORCH-1133 (2) — pill stays fully on-screen on the SHORTEST bottomRight consumer (ImageGallery h=300)", () => {
+describe("ORCH-1133 (2) — pill stays fully on-screen on the SHORTEST bottomRight consumer (the expanded hero)", () => {
   const pill = styleBody(ECM, "audioControlBottomRight");
   const base = styleBody(ECM, "audioControl"); // base style carries minHeight
   const pillBottom = numProp(pill, "bottom"); // 40
   const pillMinHeight = numProp(base, "minHeight"); // 36
 
-  // expandedCard/ImageGallery renders a full-bleed video cover at height:300 with
-  // audioControlPosition="bottomRight" — the shortest real bottomRight box.
-  const SHORTEST_BOTTOMRIGHT_BOX = 300;
+  // #1605 wave 4 [TEST-MOD-APPROVED #1605] — RE-POINTED, because the box this
+  // guarded was DELETED, not shrunk. `expandedCard/ImageGallery` was a 300px
+  // full-bleed video cover and the only surface exposing the unmute control; the
+  // expanded sheet's hero replaced it and CARRIED THE CONTROL WITH IT, so the
+  // shortest real bottomRight box is now the hero's clamp MINIMUM. It is 432, not
+  // 300, so the clearance this suite exists to protect strictly IMPROVED — but
+  // the guard has to name the box that actually exists or it proves nothing.
+  const SHORTEST_BOTTOMRIGHT_BOX = Number(
+    /S7_HERO_MIN\s*=\s*(\d+)/.exec(
+      fs.readFileSync(path.join(repoRoot, "packages/card-identity/index.js"), "utf8"),
+    )?.[1],
+  );
 
-  test("ImageGallery still uses a 300px bottomRight cover (guards the assumption)", () => {
-    const gallery = fs.readFileSync(
-      path.join(repoRoot, "app-mobile/src/components/expandedCard/ImageGallery.tsx"),
+  test("the expanded hero is the bottomRight cover, and its height is read from the package", () => {
+    const hero = fs.readFileSync(
+      path.join(repoRoot, "app-mobile/src/components/expandedCard/ExpandedCardHero.tsx"),
       "utf8",
     );
-    expect(gallery).toMatch(/audioControlPosition="bottomRight"/);
-    expect(gallery).toMatch(/height:\s*300/);
+    expect(hero).toMatch(/audioControlPosition="bottomRight"/);
+    // The hero's height is DERIVED (expandedHeroHeight), never typed, so the box
+    // is guarded by the package's own clamp minimum rather than by a literal.
+    expect(hero).toMatch(/expandedHeroHeight/);
+    expect(SHORTEST_BOTTOMRIGHT_BOX).toBeGreaterThanOrEqual(300);
   });
 
   test("pill TOP edge stays inside the box (not clipped off the top)", () => {

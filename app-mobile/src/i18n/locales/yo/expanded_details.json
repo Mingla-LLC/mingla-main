@@ -47,14 +47,7 @@
     "error_past_date_message": "Akoko yẹn ti kọja tẹlẹ. Jọwọ yan akoko ọjọ iwaju."
   },
   "busyness": {
-    "traffic": "Ìjá-àrà Ọkọ̀",
-    "busy_level": "Ìpele Ìṣiṣẹ́",
-    "busy": "Ń ṣiṣẹ́",
-    "clear_roads": "Ọ̀nà Gbangba",
-    "clear": "Gbangba",
-    "moderate": "Àárín",
-    "heavy": "Pípọ̀",
-    "estimated": "Est."
+    "busy_level": "Ìpele Ìṣiṣẹ́"
   },
   "match_factors": {
     "title": "Ìtúpalẹ̀ Ìbámu",

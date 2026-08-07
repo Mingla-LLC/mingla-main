@@ -47,14 +47,7 @@
     "share_prompt": "Share {{title}} with friends"
   },
   "busyness": {
-    "traffic": "Traffic",
-    "busy_level": "Busy Level",
-    "busy": "Busy",
-    "clear_roads": "Clear Roads",
-    "clear": "Clear",
-    "moderate": "Moderate",
-    "heavy": "Heavy",
-    "estimated": "Est."
+    "busy_level": "Busy Level"
   },
   "match_factors": {
     "title": "Match Breakdown",

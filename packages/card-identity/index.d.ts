@@ -144,7 +144,8 @@ export type SurfaceKey =
   | 's3Chat'
   | 's4Snippet'
   | 's5Og'
-  | 's6Phone';
+  | 's6Phone'
+  | 's7Expanded';
 
 export const SURFACES: Readonly<Record<SurfaceKey, SurfaceDescriptor>>;
 
@@ -197,3 +198,27 @@ export function titleBottom(surfaceKey: SurfaceKey, plateH?: number): number;
 export function titleTopDepth(surfaceKey: SurfaceKey): number;
 export function surfaceScrimHeight(surfaceKey: SurfaceKey): number;
 export function surfacePlateUnder(surfaceKey: SurfaceKey): number;
+
+/** S7's hero clamp. `h: 432` in the descriptor is this MINIMUM, not a fixed height. */
+export const HANDLE: {
+  width: number;
+  height: number;
+  radius: number;
+  top: number;
+  target: number;
+  fill: string;
+  ringWidth: number;
+  ring: string;
+  coverlessFill: string;
+};
+
+export const S7_HERO_MIN: number;
+export const S7_HERO_MAX: number;
+/** 92 (action band) + 120 (five lines of description) + 4 — the fold the hero leaves. */
+export const S7_FOLD_RESERVE: number;
+
+/** heroH = min(S7_HERO_MAX, max(S7_HERO_MIN, sheetH - S7_FOLD_RESERVE)). */
+export function expandedHeroHeight(sheetH: number): number;
+
+/** The coverless hero's single-slab height, derived from S7's own type ladder. */
+export function expandedCoverlessHeroHeight(): number;

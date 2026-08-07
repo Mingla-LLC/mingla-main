@@ -47,14 +47,7 @@
     "error_past_date_message": "이미 지난 시간입니다. 미래의 시간을 선택해 주세요."
   },
   "busyness": {
-    "traffic": "교통 상황",
-    "busy_level": "혼잡도",
-    "busy": "혼잡",
-    "clear_roads": "도로 원활",
-    "clear": "한산",
-    "moderate": "보통",
-    "heavy": "혼잡",
-    "estimated": "Est."
+    "busy_level": "혼잡도"
   },
   "match_factors": {
     "title": "매칭 분석",

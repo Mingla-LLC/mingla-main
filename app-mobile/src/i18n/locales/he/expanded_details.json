@@ -47,14 +47,7 @@
     "error_past_date_message": "השעה הזו כבר עברה. בחר שעה עתידית."
   },
   "busyness": {
-    "traffic": "תנועה",
-    "busy_level": "רמת עומס",
-    "busy": "עמוס",
-    "clear_roads": "כבישים פנויים",
-    "clear": "פנוי",
-    "moderate": "בינוני",
-    "heavy": "כבד",
-    "estimated": "Est."
+    "busy_level": "רמת עומס"
   },
   "match_factors": {
     "title": "פירוט התאמה",

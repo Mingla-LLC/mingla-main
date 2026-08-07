@@ -1,278 +1,188 @@
+/**
+ * THE BODY'S PROSE — description, typical spend, and the tip. Issue #1605 wave 4.
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT THIS COMPONENT USED TO BE, AND WHERE EACH PIECE WENT
+ *
+ * It was the whole single-place info block: a 24/700 title, a #D97706 category
+ * chip, a tag, four orange metric pills (rating, distance, travel time, price),
+ * the price provenance, the description and the tip. Under one spine those
+ * pieces belong to different materials:
+ *
+ *     title                 -> the HERO's title, 30/700 on the photograph
+ *     rating / distance     -> the PLATE's meta line, spans 1 and 2
+ *     price TIER            -> the PLATE's meta line, span 3
+ *     category              -> the PLATE's meta line, span 4 (the 0.72 tail)
+ *     travel time           -> the plate is one row; a travel time is not an
+ *                              identity fact and it is already on the card
+ *     description           -> here, as body prose
+ *     price (FX-converted)  -> here, as a fact row
+ *     tip                   -> here
+ *
+ * A curated plan's TAGLINE is a description, so it renders here too — the dark
+ * header used to carry it at 14pt on rgba(255,255,255,0.7) and the single-place
+ * branch dropped it on the floor along with the rest of this component.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE CONVERTED PRICE IS A ROW AND THE TIER IS A SPAN
+ *
+ * `canonicalDiscoveryPriceDetail` produces a real money range in the viewer's
+ * currency, plus the date of the rates it used and the attribution the licence
+ * requires. NONE of that fits in a two-character span on a fixed-height plate,
+ * and dropping the attribution to make it fit would be a licence problem rather
+ * than a design one. So the PLATE carries the tier — the fact that ranks places
+ * against each other at a glance, and the one the collapsed card already shows —
+ * and the BODY carries the converted figure with its provenance intact.
+ *
+ * Nothing is lost: this is the same `discoveryPrice={card}` value, through the
+ * same `canonicalDiscoveryPriceDetail(discoveryPrice as CanonicalDiscoveryPrice
+ * | undefined)` call, rendered where it has room to be honest.
+ */
 import React from "react";
-import { View, Text, StyleSheet, Linking } from "react-native";
-import { Icon } from "../ui/Icon";
-import { parseAndFormatDistance } from "../utils/formatters";
+import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import { getReadableCategoryName } from "../../utils/categoryUtils";
 import {
   canonicalDiscoveryPriceDetail,
   type CanonicalDiscoveryPrice,
 } from "../../utils/priceTiers";
+import { FactRow, Section, present } from "./SpineParts";
+import { SPINE } from "./spineTokens";
+
+/** Five lines, then a Read more. Long enough to be a paragraph, short enough to be a fold. */
+const DESCRIPTION_CLAMP_LINES = 5;
 
 interface CardInfoSectionProps {
-  title: string;
-  category: string;
-  categoryIcon?: string;
-  tags?: string[];
-  rating?: number;
-  distance?: string | null;
-  travelTime?: string | null;
-  travelMode?: string;
-  measurementSystem?: "Metric" | "Imperial";
-  discoveryPrice?: Partial<CanonicalDiscoveryPrice>;
-  description?: string;
+  /**
+   * `generative_summary` only. `fullDescription` stays unrendered
+   * (I-1290-PITCH-CONSUMER-FACING — the pitch is not consumer-facing copy).
+   */
+  description?: string | null;
   tip?: string | null;
-  currency?: string;
-}
-
-/** Map travel mode preference to an icon name */
-function getTravelModeIcon(mode?: string): string {
-  switch (mode) {
-    case 'driving': return 'car-outline';
-    case 'transit': return 'bus-outline';
-    case 'bicycling':
-    case 'biking': return 'bicycle-outline';
-    case 'walking': return 'walk-outline';
-    default: return 'navigate-outline';
-  }
+  discoveryPrice?: Partial<CanonicalDiscoveryPrice>;
 }
 
 export default function CardInfoSection({
-  title,
-  category,
-  categoryIcon,
-  tags = [],
-  rating,
-  distance,
-  travelTime,
-  travelMode,
-  measurementSystem,
-  discoveryPrice,
   description,
   tip,
-}: CardInfoSectionProps) {
-  const { t } = useTranslation(['expanded_details', 'common']);
+  discoveryPrice,
+}: CardInfoSectionProps): React.ReactElement | null {
+  const { t } = useTranslation(["expanded_details", "cards", "common"]);
+  const [expanded, setExpanded] = React.useState(false);
+
   const priceDetail = canonicalDiscoveryPriceDetail(
     discoveryPrice as CanonicalDiscoveryPrice | undefined,
   );
-  // Get category icon component
-  const getCategoryIcon = () => {
-    if (categoryIcon) {
-      return categoryIcon;
-    }
-    // Default icons based on category
-    const categoryLower = category.toLowerCase();
-    if (categoryLower.includes("stroll") || categoryLower.includes("walk")) {
-      return "cafe";
-    }
-    if (categoryLower.includes("sip") || categoryLower.includes("chill")) {
-      return "wine";
-    }
-    if (
-      categoryLower.includes("dining") ||
-      categoryLower.includes("restaurant")
-    ) {
-      return "restaurant";
-    }
-    if (categoryLower.includes("picnic")) {
-      return "basket";
-    }
-    if (categoryLower.includes("wellness")) {
-      return "leaf";
-    }
-    if (
-      categoryLower.includes("creative") ||
-      categoryLower.includes("hands-on")
-    ) {
-      return "color-palette";
-    }
-    if (categoryLower.includes("play") || categoryLower.includes("move")) {
-      return "game-controller";
-    }
-    return "star";
-  };
 
-  // Format a raw tag into a user-friendly label (e.g. "state_park" → "State Park")
-  const formatTag = (tag: string): string =>
-    tag
-      .replace(/_/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase());
-
-  // Find "Romantic" tag or use first tag
-  const romanticTag =
-    tags.find((tag) => tag.toLowerCase().includes("romantic")) || tags[0];
+  const hasDescription = present(description);
+  const hasTip = present(tip);
+  const hasPrice = priceDetail !== null && present(priceDetail.source);
+  if (!hasDescription && !hasTip && !hasPrice) return null;
 
   return (
     <View style={styles.container}>
-      {/* Title */}
-      <Text style={styles.title}>{title}</Text>
-
-      {/* Tags Row */}
-      <View style={styles.tagsRow}>
-        <View style={styles.categoryTag}>
-          <Icon name={getCategoryIcon()} size={14} color="#d97706" />
-          <Text style={styles.categoryText}>{getReadableCategoryName(category)}</Text>
-        </View>
-        {romanticTag && (
-          <>
-            <Text style={styles.bullet}>•</Text>
-            <Text style={styles.tagText}>{formatTag(romanticTag)}</Text>
-          </>
-        )}
-      </View>
-
-      {/* Metrics Row — compact pill chips */}
-      <View style={styles.metricsRow}>
-        {/* #1669: a POSITIVE rating only. `rating !== undefined` rendered the
-            chip for an unrated place as `★ 0.0`, because `0` is not
-            `undefined` — an invented zero reads as a real, terrible score,
-            which is worse than the 4.5 it replaced. Constitution #9: missing
-            data is HIDDEN. This is also the guard the curated stop list, the
-            alternates row and the picnic grocery row already use, and it is
-            what makes the hiding true regardless of which producer minted the
-            card — including for the one servable pool place whose stored
-            rating is literally 0. */}
-        {rating != null && rating > 0 && (
-          <View style={styles.metricPill}>
-            <Icon name="star" size={12} color="#fbbf24" />
-            <Text style={styles.metricPillText}>{rating.toFixed(1)}</Text>
-          </View>
-        )}
-        {/* ORCH-0659: honest null propagation; no "nearby" fallback. */}
-        {distance != null && (
-          <View style={styles.metricPill}>
-            <Icon name="location-outline" size={12} color="#eb7825" />
-            <Text style={styles.metricPillText}>{parseAndFormatDistance(distance, measurementSystem)}</Text>
-          </View>
-        )}
-        {/* ORCH-0660: travelMode prop now threaded; icon matches user's selected mode. */}
-        {travelTime != null && (
-          <View style={styles.metricPill}>
-            <Icon name={getTravelModeIcon(travelMode)} size={12} color="#eb7825" />
-            <Text style={styles.metricPillText}>{travelTime}</Text>
-          </View>
-        )}
-        {priceDetail ? (
-          <View style={styles.metricPill}>
-            <Icon name="cash-outline" size={12} color="#eb7825" />
-            <Text style={styles.metricPillText}>{priceDetail.source}</Text>
-          </View>
-        ) : null}
-      </View>
-
-      {priceDetail?.approximate ? (
-        <View style={styles.priceProvenance}>
-          <Text style={styles.priceApproximate}>
-            Approx. {priceDetail.approximate}
-            {priceDetail.ratesDate
-              ? ` · rates from ${new Date(priceDetail.ratesDate).toLocaleDateString()}`
-              : ""}
+      {hasDescription ? (
+        <View style={styles.prose}>
+          <Text
+            style={styles.description}
+            numberOfLines={expanded ? undefined : DESCRIPTION_CLAMP_LINES}
+          >
+            {description}
           </Text>
-          {priceDetail.attributionUrl ? (
-            <Text
-              accessibilityRole="link"
-              style={styles.priceAttribution}
-              onPress={() => Linking.openURL(priceDetail.attributionUrl as string)}
-            >
-              Rates by ExchangeRate-API
+          {/*
+            `Read more` expands IN PLACE. It is 14/600 #C2410C (5.18:1) on a 44pt
+            target — the only accent-coloured text in the body, and it is a
+            control, not decoration.
+          */}
+          <Pressable
+            onPress={() => setExpanded((v) => !v)}
+            style={styles.readMore}
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            accessibilityLabel={
+              expanded
+                ? t("expanded_details:action_buttons.show_less")
+                : t("cards:expanded.read_more", { defaultValue: "Read more" })
+            }
+          >
+            <Text style={styles.readMoreText}>
+              {expanded
+                ? t("expanded_details:action_buttons.show_less")
+                : t("cards:expanded.read_more", { defaultValue: "Read more" })}
             </Text>
-          ) : null}
+          </Pressable>
         </View>
       ) : null}
 
-      {/* Description */}
-      {description && <Text style={styles.description}>{description}</Text>}
-      {tip && <Text style={styles.tip}>{tip}</Text>}
+      {hasPrice ? (
+        <Section
+          title={t("expanded_details:action_buttons.typical_spend", {
+            defaultValue: "Typical spend",
+          })}
+        >
+          <FactRow
+            first
+            label={t("expanded_details:action_buttons.per_person", {
+              defaultValue: "Per person",
+            })}
+            value={priceDetail.source}
+            tail={present(priceDetail.approximate) ? `≈ ${priceDetail.approximate}` : null}
+          />
+          {present(priceDetail.ratesDate) || present(priceDetail.attributionUrl) ? (
+            <View style={styles.provenance}>
+              {present(priceDetail.ratesDate) ? (
+                <Text style={styles.provenanceText}>
+                  {t("expanded_details:action_buttons.rates_from", {
+                    defaultValue: "Rates from {{date}}",
+                    date: new Date(priceDetail.ratesDate).toLocaleDateString(),
+                  })}
+                </Text>
+              ) : null}
+              {present(priceDetail.attributionUrl) ? (
+                <Text
+                  accessibilityRole="link"
+                  style={styles.attribution}
+                  onPress={() => {
+                    void Linking.openURL(priceDetail.attributionUrl as string).catch(() => {
+                      // The attribution is a courtesy link, not an action the user
+                      // asked for; a failure here has nothing to surface and
+                      // nothing to retry. Swallowed DELIBERATELY and visibly.
+                    });
+                  }}
+                >
+                  Rates by ExchangeRate-API
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+        </Section>
+      ) : null}
+
+      {hasTip ? (
+        <View style={styles.tipRow}>
+          {/* 7.56:1 — was #9CA3AF at 2.54:1, which is not text, it is a suggestion of text. */}
+          <Text style={styles.tip}>{tip}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 12,
-    lineHeight: 32,
-  },
-  tagsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-    flexWrap: "wrap",
-  },
-  categoryTag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  categoryText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#d97706",
-  },
-  bullet: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginHorizontal: 8,
-  },
-  tagText: {
-    fontSize: 14,
-    color: "#6b7280",
-    fontWeight: 600,
-  },
-  metricsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  metricPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "#fff7ed",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#fed7aa",
-  },
-  metricPillText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#92400e",
-  },
-  priceProvenance: {
-    marginTop: -8,
-    marginBottom: 16,
-  },
-  priceApproximate: {
-    fontSize: 12,
-    color: "#6b7280",
-  },
-  priceAttribution: {
-    fontSize: 12,
-    color: "#d97706",
-    textDecorationLine: "underline",
-    marginTop: 2,
-  },
+  container: {},
+  prose: { paddingHorizontal: SPINE.gutter, paddingBottom: SPINE.sectionPaddingVertical },
   description: {
-    fontSize: 15,
-    color: "#374151",
-    lineHeight: 22,
-    marginBottom: 8,
+    fontSize: SPINE.proseSize,
+    lineHeight: SPINE.proseLineHeight,
+    color: SPINE.prose,
   },
-  tip: {
-    fontSize: 13,
-    fontStyle: "italic",
-    color: "#9CA3AF",
-    marginTop: 2,
+  readMore: { minHeight: SPINE.factRowMinHeight, justifyContent: "center" },
+  readMoreText: { fontSize: 14, fontWeight: "600", color: SPINE.link },
+  provenance: { paddingHorizontal: SPINE.gutter, paddingTop: 6, gap: 2 },
+  provenanceText: { fontSize: 12, color: SPINE.factLabel },
+  attribution: { fontSize: 12, color: SPINE.link, textDecorationLine: "underline" },
+  tipRow: {
+    paddingHorizontal: SPINE.gutter,
+    paddingBottom: SPINE.sectionPaddingVertical,
   },
+  tip: { fontSize: 14, fontStyle: "italic", color: SPINE.muted, lineHeight: 20 },
 });
