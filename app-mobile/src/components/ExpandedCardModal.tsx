@@ -838,6 +838,18 @@ export default function ExpandedCardModal({
     return hrs > 0 ? (mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`) : `${mins}m`;
   })();
 
+  /**
+   * The body's prose. A single place's is the venue owner's pitch
+   * (`card.description`, META-ORCH-1290's only route to a buyer on the deck); a
+   * plan's is its TAGLINE, which the deleted dark header used to carry at 14pt on
+   * rgba(255,255,255,0.7) and which the single-place branch dropped on the floor
+   * along with the rest of CardInfoSection.
+   *
+   * One slot, two sources — the same shape as the meta spans, and the reason this
+   * is a DATA difference rather than a second composition.
+   */
+  const bodyDescription = isCuratedCard ? planCard?.tagline : card.description;
+
   const heroSpans = isCuratedCard && planCard
     ? curatedPlanSpans(planCard, {
         planPriceLabel,
@@ -1277,7 +1289,7 @@ export default function ExpandedCardModal({
               with the rest of this component.
             */}
             <CardInfoSection
-              description={isCuratedCard ? planCard?.tagline : card.description}
+              description={bodyDescription}
               tip={isCuratedCard ? null : card.tip}
               discoveryPrice={card}
             />

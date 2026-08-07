@@ -405,7 +405,15 @@ describe("META-ORCH-1290 Leg C — consumer swipe card pitch (§5a)", () => {
       read("app-mobile/src/components/ExpandedCardModal.tsx"),
       10_000,
     );
-    expect(modalSrc).toContain("description={card.description}");
+    // #1605 wave 4 [TEST-MOD-APPROVED #1605] — RE-POINTED, behaviour unchanged.
+    // The pitch still reaches the same slot; it now travels through a NAMED
+    // derivation because the expanded card is one spine and a curated plan's
+    // prose is its tagline. Both halves of the hop are still asserted: the
+    // derivation must READ card.description, and the slot must RECEIVE it.
+    expect(modalSrc).toMatch(
+      /const bodyDescription[\s\S]{0,120}card\.description/,
+    );
+    expect(modalSrc).toMatch(/description=\{bodyDescription\}/);
 
     // HOP 4 — RENDER. The info section prints it, gated on presence (honest
     // empty: a venue with no pitch shows nothing, never placeholder text).
@@ -413,20 +421,23 @@ describe("META-ORCH-1290 Leg C — consumer swipe card pitch (§5a)", () => {
       read("app-mobile/src/components/expandedCard/CardInfoSection.tsx"),
       1_000,
     );
-    expect(infoSrc).toContain(
-      "{description && <Text style={styles.description}>{description}</Text>}",
-    );
+    // The presence gate is now `present()` — a TRIMMING predicate, so a pitch of
+    // whitespace is hidden too, which the old truthiness check would have printed
+    // as an empty paragraph. Strictly more honest, same contract.
+    expect(infoSrc).toMatch(/const hasDescription = present\(description\)/);
+    expect(infoSrc).toMatch(/hasDescription \? \(/);
   });
 
   test("expanded modal renders the full pitch via the description slot", () => {
     const modal = read("app-mobile/src/components/ExpandedCardModal.tsx");
-    expect(modal).toContain("description={card.description}");
+    // [TEST-MOD-APPROVED #1605] — see the note in T-B above.
+    expect(modal).toMatch(/const bodyDescription[\s\S]{0,120}card\.description/);
+    expect(modal).toMatch(/description=\{bodyDescription\}/);
     const info = read(
       "app-mobile/src/components/expandedCard/CardInfoSection.tsx",
     );
-    // Honest empty: the description Text renders only when text is present.
-    expect(info).toContain(
-      "{description && <Text style={styles.description}>{description}</Text>}",
-    );
+    // Honest empty: the description renders only when text is present.
+    expect(info).toMatch(/const hasDescription = present\(description\)/);
+    expect(info).toMatch(/hasDescription \? \(/);
   });
 });

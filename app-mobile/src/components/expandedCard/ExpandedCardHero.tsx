@@ -273,6 +273,16 @@ export function ExpandedCardHero({
           playbackActive
           muted
           loop
+          /*
+            THE UNMUTE CONTROL SURVIVES THE GALLERY'S DELETION. `ImageGallery`
+            was the only surface that exposed it (OQ-1: show it on the
+            deliberate-attention surface, keep the deck muted), and deleting the
+            gallery without moving it would have taken the only way to hear a
+            cover video with it. The hero is a taller box than the 300pt gallery
+            was, so the pill's bottom-right clearance strictly improves.
+          */
+          showAudioControl
+          audioControlPosition="bottomRight"
           style={styles.media}
         />
       ) : (
