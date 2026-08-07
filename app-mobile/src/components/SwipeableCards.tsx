@@ -3934,7 +3934,6 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     backgroundColor: "white",
-    borderRadius: glass.card.bezelRadius,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
