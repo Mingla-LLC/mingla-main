@@ -211,12 +211,23 @@ export default function PlanTimeline({
   );
 }
 
+const RAIL_INSET = 26;
 const RAIL_LEFT = 5;
 const RAIL_W = 2;
 
 const styles = StyleSheet.create({
-  wrap: { position: 'relative', paddingLeft: 26, paddingTop: 2, paddingBottom: 2 },
-  rail: { position: 'absolute', left: RAIL_LEFT, top: 12, bottom: 12, width: RAIL_W },
+  // #1706 rework — THE GUTTER. `Section` does not pad horizontally; every one of
+  // its children supplies its own `paddingHorizontal: SPINE.gutter`, and this one
+  // did not, so the spine sat hard against the screen edge while every other row
+  // on the sheet was inset 20pt. Seth saw it immediately.
+  wrap: {
+    position: 'relative',
+    paddingLeft: SPINE.gutter + RAIL_INSET,
+    paddingRight: SPINE.gutter,
+    paddingTop: 2,
+    paddingBottom: 2,
+  },
+  rail: { position: 'absolute', left: SPINE.gutter + RAIL_LEFT, top: 12, bottom: 12, width: RAIL_W },
   railTrack: { ...StyleSheet.absoluteFillObject, backgroundColor: SPINE.rule, borderRadius: RAIL_W },
   railFill: {
     ...StyleSheet.absoluteFillObject,
@@ -230,7 +241,7 @@ const styles = StyleSheet.create({
   legStep: { paddingVertical: 2 },
   node: {
     position: 'absolute',
-    left: -26 + RAIL_LEFT - 4.5,
+    left: -RAIL_INSET + RAIL_LEFT - 4.5,
     top: 12,
     width: 11,
     height: 11,

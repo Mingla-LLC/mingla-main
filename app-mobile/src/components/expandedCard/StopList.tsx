@@ -105,6 +105,8 @@ export interface StopListStop {
   readonly travelMinutes: number | null;
   readonly travelMode: string | null;
   readonly canReplace: boolean;
+  /** #1703 — the resolved, dialable number. null → NO Call control at all. */
+  readonly dialable: { display: string; tel: string } | null;
   /**
    * #1705 — what this stop is FOR, resolved by `stopPurpose` from the slot's own
    * `comboCategory`. `null` for any stop whose role we cannot state without
@@ -145,6 +147,8 @@ interface StopListProps {
   /** Scrolls the newly opened row to `y = heroH`, so it lands under the hero. */
   readonly onExpandedRowLayout?: (y: number) => void;
   readonly replacePanel?: (stop: StopListStop) => React.ReactNode;
+  /** #1703 — dial a stop. Absent → the control does not render. */
+  readonly onCall?: (stop: StopListStop) => void;
 }
 
 export default function StopList({
@@ -158,6 +162,7 @@ export default function StopList({
   onOpenWebsite,
   onExpandedRowLayout,
   replacePanel,
+  onCall,
 }: StopListProps): React.ReactElement | null {
   const { t } = useTranslation(["cards", "expanded_details", "common"]);
   // ONE open at a time. A Set would allow two, and two is what turns a scannable
@@ -226,6 +231,7 @@ export default function StopList({
             onOpenWebsite={onOpenWebsite}
             onExpandedRowLayout={onExpandedRowLayout}
             replacePanel={replacePanel}
+            onCall={onCall}
           />
         </View>
       ))}
@@ -251,6 +257,7 @@ function StopRow({
   onOpenWebsite,
   onExpandedRowLayout,
   replacePanel,
+  onCall,
 }: {
   stop: StopListStop;
   expanded: boolean;
@@ -261,6 +268,7 @@ function StopRow({
   onOpenWebsite?: (stop: StopListStop) => void;
   onExpandedRowLayout?: (y: number) => void;
   replacePanel?: (stop: StopListStop) => React.ReactNode;
+  onCall?: (stop: StopListStop) => void;
 }): React.ReactElement {
   const { t } = useTranslation(["cards", "expanded_details", "common"]);
   /*
@@ -452,6 +460,26 @@ function StopRow({
           Gated on the NORMALIZED url by the caller, exactly like the
           single-place Website row — no url, no control, no dead tap.
         */}
+        {/*
+          #1703 rework — CALL THE STOP. Absent, never disabled: most stops have
+          no number (the field did not exist on a stop until now), and a greyed
+          control would be the common case rather than the edge case.
+        */}
+        {stop.dialable !== null && onCall ? (
+          <Pressable
+            onPress={() => onCall(stop)}
+            style={({ pressed }) => [styles.control, pressed ? styles.controlPressed : null]}
+            accessibilityRole="button"
+            accessibilityLabel={t("expanded_details:action_buttons.call_place", {
+              defaultValue: "Call {{name}}",
+              name: stop.name,
+            })}
+          >
+            <Text style={styles.controlText}>
+              {t("expanded_details:action_buttons.call", { defaultValue: "Call" })}
+            </Text>
+          </Pressable>
+        ) : null}
         {present(stop.website) && onOpenWebsite ? (
           <Pressable
             onPress={() => onOpenWebsite(stop)}

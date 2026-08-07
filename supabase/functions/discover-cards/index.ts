@@ -1139,6 +1139,46 @@ function curatedStopPlacePoolIds(card: any): string[] {
     .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
 }
 
+
+/**
+ * Issue #1703 rework — a CURATED PLAN's stops get a phone number too.
+ *
+ * Seth: "that stops should also have a call button in the curated cards."
+ *
+ * A stop is a real venue and it carries `placePoolId`, so the number is one
+ * keyed lookup away — the same shape as `enrichRowsWithPlaceFields`, keyed on
+ * `place_pool.id` instead of the row's own `place_id`. `CuratedStop` carried no
+ * phone field at all, which is why there was no Call control to hide: the data
+ * never existed rather than never rendering.
+ *
+ * Non-fatal, exactly like its sibling: a plan that cannot fetch a phone number
+ * is still a plan.
+ */
+async function enrichCuratedStopsWithPhone(db: any, cards: any[]): Promise<void> {
+  if (!Array.isArray(cards) || cards.length === 0) return;
+  const ids = new Set<string>();
+  for (const card of cards) for (const id of curatedStopPlacePoolIds(card)) ids.add(id);
+  if (ids.size === 0) return;
+  try {
+    const { data, error } = await db
+      .from('place_pool')
+      .select('id, national_phone_number, country_code')
+      .in('id', [...ids]);
+    if (error || !Array.isArray(data)) return;
+    const byId = new Map<string, any>(data.map((d: any) => [d.id, d]));
+    for (const card of cards) {
+      for (const stop of (Array.isArray(card?.stops) ? card.stops : [])) {
+        const extra = byId.get(stop?.placePoolId);
+        if (!extra) continue;
+        stop.phone = extra.national_phone_number ?? null;
+        stop.countryCode = extra.country_code ?? null;
+      }
+    }
+  } catch {
+    // Non-fatal by design.
+  }
+}
+
 async function fetchCuratedBatchInternal(args: {
   sessionId: string;
   experienceType: string;
@@ -1165,7 +1205,18 @@ async function fetchCuratedBatchInternal(args: {
     throw new Error(`generate-curated-experiences returned ${resp.status}: ${text.slice(0, 200)}`);
   }
   const json = await resp.json();
-  return { cards: Array.isArray(json?.cards) ? json.cards : [], summary: json?.summary };
+  const curatedCards = Array.isArray(json?.cards) ? json.cards : [];
+  // #1703 rework — every curated plan's stops get their venue's phone number, in
+  // ONE keyed lookup across the whole batch. Seth: "stops should also have a call
+  // button in the curated cards."
+  // A service-role client of its own: this helper runs outside any request
+  // handler's scope, and reaching for one that only exists inside `serve` is how
+  // a build passes and a runtime throws.
+  await enrichCuratedStopsWithPhone(
+    createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY),
+    curatedCards,
+  );
+  return { cards: curatedCards, summary: json?.summary };
 }
 
 async function handleDeterministicV2(args: {

@@ -51,6 +51,7 @@ import PlanTimeline, { type PlanTimelineLeg } from "./expandedCard/PlanTimeline"
 import { ExpandedCardHero } from "./expandedCard/ExpandedCardHero";
 import StopList, { type StopListStop } from "./expandedCard/StopList";
 import { occasionFromCategory, stopPurpose } from "./expandedCard/stopPurpose";
+import { dialablePhone } from "../../../packages/card-identity/phone.js";
 // #1605 P1-3 — the picnic Shopping List, re-homed onto the spine. It rendered on
 // `main` at :990-992 via the deleted PicnicShoppingList and was not in the
 // spec's deletion list; five producers still carry `shoppingList`.
@@ -1038,6 +1039,13 @@ export default function ExpandedCardModal({
     // 'groceries' on stop 1 and 'nature' on stop 2). Null for anything we cannot
     // state without guessing; the row then renders exactly as it did before.
     purpose: stopPurpose(stop),
+    // #1703 rework — resolved ONCE here, and the only thing that decides whether
+    // the stop gets a Call control. A separate presence test on `stop.phone`
+    // would let the control render for a number the link cannot be built from.
+    dialable: (() => {
+      const d = dialablePhone(stop.phone ?? null, stop.countryCode ?? null);
+      return d === null ? null : { display: d.display, tel: d.tel };
+    })(),
     optional: isOptional,
     };
   });
@@ -1152,6 +1160,9 @@ export default function ExpandedCardModal({
         canReplace: false,
         // #1705 — no comboCategory on this producer, so no purpose. Never guessed.
         purpose: null,
+        // No comboCategory and no place-pool row on this producer, so neither a
+        // purpose nor a phone. Never guessed.
+        dialable: null,
         optional: false,
       });
     }
@@ -1184,6 +1195,9 @@ export default function ExpandedCardModal({
         canReplace: false,
         // #1705 — no comboCategory on this producer, so no purpose. Never guessed.
         purpose: null,
+        // No comboCategory and no place-pool row on this producer, so neither a
+        // purpose nor a phone. Never guessed.
+        dialable: null,
         optional: false,
       });
     });
@@ -1696,6 +1710,12 @@ export default function ExpandedCardModal({
                   })
                 }
                 onOpenWebsite={(stop) => openStopWebsite(stop.website)}
+                onCall={(stop) => {
+                  if (stop.dialable === null) return;
+                  Linking.openURL(`tel:${stop.dialable.tel}`).catch(() =>
+                    toastManager.show(stop.dialable?.display ?? '', 'error'),
+                  );
+                }}
                 onExpandedRowLayout={(y) =>
                   scrollRef.current?.scrollTo({ y: planSectionY + y, animated: true })
                 }
