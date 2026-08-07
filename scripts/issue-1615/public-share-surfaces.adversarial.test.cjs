@@ -158,3 +158,90 @@ test("A15 public snapshot responses strip owner, source IDs and nested stop IDs"
   for (const secret of ["private-stop", "private-card", "private-owner", "source_ids", "owner_profile_id", "placeId"])
     assert.doesNotMatch(serialized, new RegExp(secret));
 });
+
+test("A16 the shared fact selector executes in domain order and every renderer consumes it", () => {
+  const metadata = {};
+  metadata.duration = "2 hours";
+  metadata.ignored = "must never render";
+  metadata.price = "$20";
+  metadata.location = "Durham";
+  metadata.category = "Cafe";
+
+  const identity = require(path.join(ROOT, "packages/card-identity"));
+  assert.deepEqual(identity.selectSharedCardFacts(metadata), ["Cafe", "Durham"]);
+  assert.deepEqual(identity.selectSharedCardFacts(metadata, 4), ["Cafe", "Durham", "$20", "2 hours"]);
+
+  const cardRenderer = require(path.join(ROOT, "mingla-business/server/cardIdentityRenderer.js"));
+  assert.deepEqual(cardRenderer.factsFor({ metadata }), ["Cafe", "Durham"]);
+  const { renderSharedCardHtml } = require(path.join(ROOT, "mingla-business/server/socialPreview.js"));
+  const html = renderSharedCardHtml({ share_id: "f".repeat(36), kind: "place", title: "Truth", cover_url: null, metadata, stops: [] }, "https://go.usemingla.com/w36m");
+  assert.match(html, /Cafe · Durham/);
+  assert.doesNotMatch(html, /must never render|2 hours · \$20/);
+
+  const withoutComments = (source) => source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|\s)\/\/.*$/gm, "$1");
+  const server = withoutComments(read("mingla-business/server/socialPreview.js"));
+  const image = withoutComments(read("mingla-business/server/cardIdentityRenderer.js"));
+  const native = withoutComments(read("app-mobile/app/p/[shareId].tsx"));
+  assert.match(server, /require\("@mingla\/card-identity"\)/);
+  assert.match(server, /const facts = selectSharedCardFacts\(metadata\)/);
+  assert.match(image, /selectSharedCardFacts[\s\S]*require\("@mingla\/card-identity"\)/);
+  assert.match(image, /return selectSharedCardFacts\(m\)/);
+  assert.match(native, /import \{[^}]*selectSharedCardFacts[^}]*\} from '@mingla\/card-identity'/);
+  assert.match(native, /const facts = selectSharedCardFacts\(metadata\)\.join\(' · '\)/);
+  for (const source of [server, image, native]) assert.doesNotMatch(source, /Object\.values\(/);
+});
+
+test("A17 shared no-store headers execute on every success, missing, gone and error path", async () => {
+  const { sendSharedHtml } = require(path.join(ROOT, "mingla-business/server/socialPreview.js"));
+  const { createSharedCardImageHandler } = require(path.join(ROOT, "mingla-business/api/shared-card-image.js"));
+  const response = () => ({
+    statusCode: 200,
+    headers: {},
+    setHeader(key, value) { this.headers[key.toLowerCase()] = value; },
+    end(body) { this.body = body; },
+  });
+  const assertNoStore = (res) => {
+    assert.match(res.headers["cache-control"], /private[\s\S]*no-store/);
+    assert.equal(res.headers["cdn-cache-control"], "no-store");
+    assert.equal(res.headers["vercel-cdn-cache-control"], "no-store");
+  };
+
+  for (const status of [200, 404, 410, 500]) {
+    const res = response();
+    sendSharedHtml(res, "body", status);
+    assert.equal(res.statusCode, status);
+    assertNoStore(res);
+  }
+
+  const cases = [
+    { fetch: async () => ({ status: 200, snapshot: { cover_url: "https://img.test/cover.jpg" } }), render: async () => Buffer.from("png"), status: 200 },
+    { fetch: async () => ({ status: 404, snapshot: null }), render: async () => Buffer.from("unused"), status: 404 },
+    { fetch: async () => ({ status: 410, snapshot: null }), render: async () => Buffer.from("unused"), status: 410 },
+    { fetch: async () => { throw new Error("upstream"); }, render: async () => Buffer.from("unused"), status: 404 },
+    { fetch: async () => ({ status: 200, snapshot: { cover_url: "https://img.test/cover.jpg" } }), render: async () => { throw new Error("render"); }, status: 404 },
+  ];
+  for (const entry of cases) {
+    const res = response();
+    await createSharedCardImageHandler(entry.fetch, entry.render)({ query: { shareId: "a".repeat(36), surface: "s5" } }, res);
+    assert.equal(res.statusCode, entry.status);
+    assertNoStore(res);
+  }
+});
+
+test("A18 anonymous missing-ID spend and known-link availability are not protected by a resource-only post-read bucket", () => {
+  const getBlock = edge()
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|\s)\/\/.*$/gm, "$1")
+    .split('if (req.method !== "POST")')[0]
+    .split('if (req.method === "GET")')[1];
+  assert.ok(getBlock, "GET branch exists");
+  const lookup = getBlock.indexOf('from("shared_card_snapshots")');
+  const limiter = getBlock.indexOf('rpc("consume_shared_card_rate_limit"');
+  assert.ok(lookup >= 0 && limiter >= 0, "snapshot lookup and limiter both exist");
+  assert.ok(limiter < lookup,
+    "shape-valid random missing IDs must be throttled before they spend a database lookup");
+  assert.doesNotMatch(getBlock, /actorHash\(serviceKey,\s*`share:\$\{shareId\}`\)/,
+    "a share-wide bucket lets one caller exhaust the link for every legitimate crawler and user");
+});
