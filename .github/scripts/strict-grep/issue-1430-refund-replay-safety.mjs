@@ -122,11 +122,11 @@ export function violations(files) {
     failures.push("manifest: invalid JSON");
     manifest = {};
   }
-  if (manifest.rollout?.expected_user_managed_count !== 85) {
-    failures.push("manifest: expected user-managed count must be 85");
+  if (manifest.rollout?.expected_user_managed_count !== 86) {
+    failures.push("manifest: expected user-managed count must be 86");
   }
-  if (manifest.policy?.normal_ceiling !== 85) {
-    failures.push("manifest: normal ceiling must remain 85");
+  if (manifest.policy?.normal_ceiling !== 86) {
+    failures.push("manifest: normal ceiling must remain 86");
   }
   if (manifest.policy?.absolute_ceiling !== 90) {
     failures.push("manifest: absolute ceiling must remain 90");
@@ -165,9 +165,9 @@ export function violations(files) {
   ) {
     failures.push("manifest: bundled notification HMAC authority missing");
   }
-  if (records.size !== 85) {
+  if (records.size !== 86) {
     failures.push(
-      `manifest: exact record count must be 85, got ${records.size}`,
+      `manifest: exact record count must be 86, got ${records.size}`,
     );
   }
   if (!Array.isArray(manifest.exceptions) || manifest.exceptions.length !== 0) {
@@ -314,7 +314,7 @@ function selfTest() {
     {
       key: "manifest",
       value: valid.manifest.replace(
-        '"expected_user_managed_count": 85',
+        '"expected_user_managed_count": 86',
         '"expected_user_managed_count": 89',
       ),
       expected: "expected user-managed count",
@@ -400,6 +400,6 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "issue-1430 refund replay safety gate PASS (provider identity, dark Stripe failure, bundled authority, exact 85-name manifest)",
+    "issue-1430 refund replay safety gate PASS (provider identity, dark Stripe failure, bundled authority, exact 86-name manifest)",
   );
 }

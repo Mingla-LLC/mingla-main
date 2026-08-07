@@ -7,7 +7,7 @@ response into GitHub, chat, logs, artifacts, or this file.
 
 ## Capacity policy
 
-- Normal ceiling: 85 user-managed names, leaving 15 slots.
+- Normal ceiling: 86 user-managed names, leaving 14 slots.
 - Slots 86–90 require a linked issue, named owner, data class, reader list, secure source,
   review/expiry date, reason an existing store is unsuitable, and explicit approval.
 - A temporary migration name expires within 72 hours unless its issue records a shorter
@@ -18,14 +18,14 @@ response into GitHub, chat, logs, artifacts, or this file.
 - Review names monthly. Escalate an expired, unexpected, missing, duplicate, or consumerless
   name immediately regardless of the count.
 
-The pull-request audit validates the exact 85-name target manifest offline. The scheduled/manual
+The pull-request audit validates the exact 86-name target manifest offline. The scheduled/manual
 workflow uses the dedicated least-privilege `SUPABASE_SECRET_AUDIT_ACCESS_TOKEN` only at live
 runtime and emits sorted names/reasons/counts, never raw CLI output. Until that separately
 authorized credential exists, the live step records an explicit warning and does not invoke the
 CLI.
 
 `supabase/secrets.manifest.json` is in `enforced` / `complete` mode. The live audit accepts only
-the exact 85-name manifest set and applies the 85/90 ceilings. The historical `transition` /
+the exact 86-name manifest set and applies the 86/90 ceilings. The historical `transition` /
 `pre_rollout` mode remains test-covered solely to prove the original #1203 consolidation math; it
 is not an authorized production state.
 
@@ -91,8 +91,8 @@ authorize a secret, provider, or operational-boolean change.
 5. Remove only the approved direct names, one at a time, verifying after each. For the #1436
    exit the locked order is: `SOURCE_REFUNDS_POST_DISABLED`, `PAYOUT_RELEASE_EXECUTE`,
    `PAYOUT_HOLD_ONBOARD_FLIP`, then `NOTIFICATION_RECIPIENT_HMAC_SECRET`.
-6. Run the exact names-only audit. The #1436 exit is complete only at exactly 85 user-managed
-   names, 15 free slots, no exception, and no missing or unexpected name.
+6. Run the exact names-only audit. After the #1615 approved standalone credential, the enforced
+   state is exactly 86 user-managed names, 14 free slots, no exception, and no missing or unexpected name.
 7. Merge repository truth only after live truth exists and independent testing passes. Removing
    compatibility code requires a separate reviewed issue.
 

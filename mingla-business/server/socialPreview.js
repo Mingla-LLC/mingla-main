@@ -6,6 +6,7 @@ const path = require("node:path");
 const React = require("react");
 const { s6CardCss } = require("./cardIdentityRenderer");
 const { selectSharedCardFacts } = require("@mingla/card-identity");
+const { SHARED_CARD_PROXY_HEADER } = require("./sharedCardProxyAuth");
 
 const DEFAULT_SUPABASE_URL = "https://gqnoajqerqhnvulmnyvv.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY =
@@ -217,8 +218,17 @@ const requestJson = async (pathname, searchParams) => {
 
 const fetchSharedCardSnapshot = async (shareId) => {
   if (!/^[a-f0-9]{36}$/.test(asText(shareId))) return { status: 404, snapshot: null };
+  const proxySecret = process.env.SHARED_CARD_PROXY_SECRET;
+  if (typeof proxySecret !== "string" || proxySecret.length === 0) {
+    return { status: 503, snapshot: null };
+  }
   const response = await fetch(`${SUPABASE_URL}/functions/v1/shared-card?shareId=${encodeURIComponent(shareId)}`, {
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+    redirect: "manual",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      [SHARED_CARD_PROXY_HEADER]: proxySecret,
+    },
   });
   if (response.status === 410) return { status: 410, snapshot: null };
   if (!response.ok) return { status: response.status, snapshot: null };

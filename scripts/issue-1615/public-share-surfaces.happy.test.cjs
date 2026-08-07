@@ -250,3 +250,154 @@ test("H25 one ordered selector owns facts across server renderers and native", (
     assert.doesNotMatch(read(file), /Object\.values\(metadata\)/, file);
   }
 });
+
+test("H26 usemingla owns four local proxy routes and no external rewrite", () => {
+  const config = JSON.parse(read("mingla-marketing/vercel.json"));
+  assert.deepEqual(config.rewrites.map((entry) => entry.source), [
+    "/p/:shareId",
+    "/share/:shareId.png",
+    "/og/share/:shareId.png",
+    "/api/shared-card/:shareId",
+  ]);
+  for (const route of config.rewrites) {
+    assert.match(route.destination, /^\/api\/internal-share-proxy\//);
+    assert.doesNotMatch(route.destination, /^https?:\/\//);
+    assert.deepEqual(route.has, [{ type: "host", value: "route-manifest.invalid" }]);
+  }
+  for (const surface of ["page", "snippet", "og", "data"]) {
+    assert.ok(fs.existsSync(path.join(ROOT, `mingla-marketing/app/api/internal-share-proxy/${surface}/[shareId]/route.ts`)));
+  }
+});
+
+test("H26b middleware atomically rewrites public routes and strips spoofed internal markers", () => {
+  const source = read("mingla-marketing/middleware.ts");
+  assert.match(source, /requestHeaders\.delete\(INTERNAL_PROXY_HEADER\)/);
+  assert.match(source, /requestHeaders\.set\(INTERNAL_PROXY_HEADER, process\.env\.SHARED_CARD_PROXY_SECRET \|\| ''\)[\s\S]*NextResponse\.rewrite\(url, \{ request: \{ headers: requestHeaders \} \}\)/);
+  assert.match(source, /\/api\/internal-share-proxy\/data\/\$\{match\[1\]\}/);
+  assert.match(source, /api\/internal-share-proxy\/\|/);
+});
+
+test("H27 marketing proxy forwards only its secret and preserves allowlisted responses", async () => {
+  const { proxySharedCard } = await import(path.join(ROOT, "mingla-marketing/lib/shared-card-proxy.ts"));
+  const previous = process.env.SHARED_CARD_PROXY_SECRET;
+  process.env.SHARED_CARD_PROXY_SECRET = "proxy-secret";
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    return new Response("{\"snapshot\":{},\"appUrl\":\"https://go.usemingla.com/w36m\"}", {
+      status: 200,
+      headers: { "content-type": "application/json", "x-hostile-upstream": "must-not-pass" },
+    });
+  };
+  const shareId = "a".repeat(36);
+  const request = new Request(`https://usemingla.com/api/shared-card/${shareId}`, {
+    headers: { "x-mingla-internal-share-route": "proxy-secret", authorization: "must-not-pass" },
+  });
+  const response = await proxySharedCard(request, shareId, "data", fetchImpl);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /^application\/json/);
+  assert.match(response.headers.get("cache-control"), /no-store/);
+  assert.equal(response.headers.get("x-hostile-upstream"), null);
+  assert.equal(calls[0].url, `https://business.usemingla.com/api/shared-card-data?shareId=${shareId}`);
+  assert.deepEqual(calls[0].init.headers, { "x-mingla-shared-card-proxy": "proxy-secret" });
+  assert.equal(calls[0].init.redirect, "manual");
+  assert.equal(calls[0].init.cache, "no-store");
+  if (previous === undefined) delete process.env.SHARED_CARD_PROXY_SECRET; else process.env.SHARED_CARD_PROXY_SECRET = previous;
+});
+
+test("H28 marketing proxy fails closed before fetch and rejects bad upstream types/statuses", async () => {
+  const { proxySharedCard } = await import(path.join(ROOT, "mingla-marketing/lib/shared-card-proxy.ts"));
+  const shareId = "b".repeat(36);
+  let fetches = 0;
+  const never = async () => { fetches += 1; throw new Error("must not fetch"); };
+  const previous = process.env.SHARED_CARD_PROXY_SECRET;
+  delete process.env.SHARED_CARD_PROXY_SECRET;
+  const marked = new Request("https://usemingla.com/p/x", { headers: { "x-mingla-internal-share-route": "proxy-secret" } });
+  assert.equal((await proxySharedCard(marked, shareId, "page", never)).status, 503);
+  process.env.SHARED_CARD_PROXY_SECRET = "proxy-secret";
+  assert.equal((await proxySharedCard(new Request("https://usemingla.com/p/x"), shareId, "page", never)).status, 404);
+  assert.equal(fetches, 0);
+  const wrongType = await proxySharedCard(marked, shareId, "page", async () => new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+  assert.equal(wrongType.status, 502);
+  const redirect = await proxySharedCard(marked, shareId, "page", async () => new Response(null, { status: 302 }));
+  assert.equal(redirect.status, 502);
+  const gone = await proxySharedCard(marked, shareId, "page", async () => new Response("ignored", { status: 410, headers: { "content-type": "text/html" } }));
+  assert.equal(gone.status, 410);
+  assert.match(gone.headers.get("cache-control"), /no-store/);
+  if (previous === undefined) delete process.env.SHARED_CARD_PROXY_SECRET; else process.env.SHARED_CARD_PROXY_SECRET = previous;
+});
+
+test("H29 business entry handlers reject bypasses before downstream and accept the exact secret", async () => {
+  const previous = process.env.SHARED_CARD_PROXY_SECRET;
+  process.env.SHARED_CARD_PROXY_SECRET = "business-secret";
+  const { createSharedCardHandler } = require(path.join(ROOT, "mingla-business/api/shared-card.js"));
+  const { createSharedCardDataHandler } = require(path.join(ROOT, "mingla-business/api/shared-card-data.js"));
+  const response = () => ({ statusCode: 200, headers: {}, setHeader(k,v){this.headers[k.toLowerCase()]=v;}, end(body){this.body=body;} });
+  let reads = 0;
+  const fetchSnapshot = async () => { reads += 1; return { status: 404, snapshot: null }; };
+  for (const headers of [{}, { "x-mingla-shared-card-proxy": "wrong" }]) {
+    const res = response();
+    await createSharedCardHandler(fetchSnapshot)({ headers, query: { shareId: "a".repeat(36) } }, res);
+    assert.equal(res.statusCode, 404);
+  }
+  assert.equal(reads, 0);
+  const res = response();
+  await createSharedCardDataHandler(fetchSnapshot)({ headers: { "x-mingla-shared-card-proxy": "business-secret" }, query: { shareId: "a".repeat(36) } }, res);
+  assert.equal(reads, 1);
+  assert.equal(res.statusCode, 404);
+  assert.match(res.headers["cache-control"], /no-store/);
+  const unavailable = response();
+  await createSharedCardDataHandler(async () => ({ status: 503, snapshot: null }))({ headers: { "x-mingla-shared-card-proxy": "business-secret" }, query: { shareId: "a".repeat(36) } }, unavailable);
+  assert.equal(unavailable.statusCode, 503);
+  if (previous === undefined) delete process.env.SHARED_CARD_PROXY_SECRET; else process.env.SHARED_CARD_PROXY_SECRET = previous;
+});
+
+test("H30 business forwards the proxy secret to Edge without following redirects", async () => {
+  const previousSecret = process.env.SHARED_CARD_PROXY_SECRET;
+  const previousFetch = global.fetch;
+  process.env.SHARED_CARD_PROXY_SECRET = "edge-secret";
+  let captured;
+  global.fetch = async (url, init) => {
+    captured = { url, init };
+    return new Response(JSON.stringify({ snapshot: { title: "Real" }, appUrl: "https://go.usemingla.com/w36m" }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const { fetchSharedCardSnapshot } = require(path.join(ROOT, "mingla-business/server/socialPreview.js"));
+  const result = await fetchSharedCardSnapshot("c".repeat(36));
+  assert.equal(result.status, 200);
+  assert.equal(captured.init.headers["x-mingla-shared-card-proxy"], "edge-secret");
+  assert.equal(captured.init.redirect, "manual");
+  global.fetch = previousFetch;
+  if (previousSecret === undefined) delete process.env.SHARED_CARD_PROXY_SECRET; else process.env.SHARED_CARD_PROXY_SECRET = previousSecret;
+});
+
+test("H31 Edge authenticates GET before any RPC or table read while POST stays bearer-only", () => {
+  const source = read("supabase/functions/shared-card/index.ts");
+  const getBlock = source.split('if (req.method !== "POST")')[0].split('if (req.method === "GET")')[1];
+  const auth = getBlock.indexOf("constantTimeEqualSecret");
+  assert.ok(auth >= 0);
+  assert.ok(auth < getBlock.indexOf("createClient("));
+  assert.ok(auth < getBlock.indexOf('rpc("consume_shared_card_rate_limit"'));
+  assert.ok(auth < getBlock.indexOf('from("shared_card_snapshots")'));
+  const postBlock = source.split('if (req.method !== "POST")')[1];
+  assert.doesNotMatch(postBlock, /SHARED_CARD_PROXY_SECRET|x-mingla-shared-card-proxy/);
+  assert.match(postBlock, /db\.auth\.getUser\(jwt\)/);
+});
+
+test("H32 native anonymous read enters through usemingla.com and never direct Supabase", () => {
+  const source = read("app-mobile/src/services/sharedCardService.ts");
+  const readBlock = source.split("export async function readSharedCard")[1];
+  assert.match(readBlock, /https:\/\/usemingla\.com\/api\/shared-card\//);
+  assert.doesNotMatch(readBlock, /supabaseUrl|functions\/v1\/shared-card|getSupabaseFunctionHeaders/);
+  assert.match(source.split("export async function createSharedCard")[1].split("export async function readSharedCard")[0], /supabase\.functions\.invoke/);
+});
+
+test("H33 proxy credential is standalone governed authority and excluded from runtime bundle", () => {
+  const manifest = JSON.parse(read("supabase/secrets.manifest.json"));
+  const record = manifest.secrets.find((entry) => entry.name === "SHARED_CARD_PROXY_SECRET");
+  assert.equal(manifest.rollout.expected_user_managed_count, 86);
+  assert.equal(record.class, "authentication_secret");
+  assert.deepEqual(record.readers, ["supabase/functions/shared-card/index.ts"]);
+  assert.equal(record.issue, 1615);
+  const runtime = manifest.secrets.find((entry) => entry.name === "MINGLA_RUNTIME_CONFIG_JSON");
+  assert.equal(runtime.bundle_fields.some((entry) => /secret/i.test(entry.name)), false);
+});

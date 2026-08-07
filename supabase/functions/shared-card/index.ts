@@ -4,7 +4,7 @@ import { mapCuratedSnapshot, mapPlaceSnapshot, publicSnapshotResponse, sharedCar
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-mingla-shared-card-proxy",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
@@ -17,31 +17,53 @@ async function actorHash(secret: string, actor: string) {
   return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
     .map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+async function constantTimeEqualSecret(provided: string, expected: string) {
+  const encoder = new TextEncoder();
+  const [providedHash, expectedHash] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(provided)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+  const left = new Uint8Array(providedHash);
+  const right = new Uint8Array(expectedHash);
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) difference |= left[index] ^ right[index];
+  return difference === 0;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-  const url = Deno.env.get("SUPABASE_URL")!;
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const db = createClient(url, serviceKey, { auth: { persistSession: false } });
   try {
     if (req.method === "GET") {
+      const expectedProxySecret = Deno.env.get("SHARED_CARD_PROXY_SECRET") || "";
+      const providedProxySecret = req.headers.get("x-mingla-shared-card-proxy") || "";
+      if (!expectedProxySecret || !providedProxySecret ||
+        !(await constantTimeEqualSecret(providedProxySecret, expectedProxySecret))) {
+        return json({ error: "not_found" }, 404);
+      }
+      const url = Deno.env.get("SUPABASE_URL")!;
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const db = createClient(url, serviceKey, { auth: { persistSession: false } });
       const shareId = new URL(req.url).searchParams.get("shareId") || "";
       if (!SHARE_RE.test(shareId)) return json({ error: "not_found" }, 404);
-      const { data, error } = await db.from("shared_card_snapshots").select("share_id,snapshot_version,kind,title,cover_url,metadata,stops,attribution,created_at,expires_at,revoked_at").eq("share_id", shareId).maybeSingle();
-      if (error || !data) return json({ error: "not_found" }, 404);
-      // No gateway address is trusted: the anonymous read rate-limit actor is
-      // the validated, existing opaque shareId. Shape-valid guesses that do not
-      // exist return before allocating a limiter row, bounding storage growth.
-      const hash = await actorHash(serviceKey, `share:${shareId}`);
+      // Vercel WAF is the gateway-backed rate limit and owns caller fairness.
+      // This single aggregate bucket is only a
+      // defense-in-depth circuit breaker, so no public share can exhaust a
+      // per-share bucket and deny that link to every other viewer.
+      const hash = await actorHash(serviceKey, "trusted-vercel-share-proxy");
       const { data: allowed, error: limitError } = await db.rpc("consume_shared_card_rate_limit", {
-        p_actor_hash: hash, p_action: "read", p_limit: 120, p_window_seconds: 60,
+        p_actor_hash: hash, p_action: "read", p_limit: 6000, p_window_seconds: 60,
       });
       if (limitError) throw limitError;
       if (!allowed) return json({ error: "rate_limited" }, 429);
+      const { data, error } = await db.from("shared_card_snapshots").select("share_id,snapshot_version,kind,title,cover_url,metadata,stops,attribution,created_at,expires_at,revoked_at").eq("share_id", shareId).maybeSingle();
+      if (error || !data) return json({ error: "not_found" }, 404);
       if (data.revoked_at || new Date(data.expires_at).getTime() <= Date.now()) return json({ error: "gone" }, 410);
       return json(publicSnapshotResponse(data));
     }
     if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+    const url = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const db = createClient(url, serviceKey, { auth: { persistSession: false } });
     const auth = req.headers.get("authorization") || "";
     const jwt = auth.replace(/^Bearer\s+/i, "");
     const { data: userData } = await db.auth.getUser(jwt);

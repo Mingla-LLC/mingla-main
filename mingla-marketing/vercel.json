@@ -1,8 +1,9 @@
 {
   "rewrites": [
-    { "source": "/p/:shareId", "destination": "https://business.usemingla.com/api/shared-card?shareId=:shareId" },
-    { "source": "/share/:shareId.png", "destination": "https://business.usemingla.com/api/shared-card-image?shareId=:shareId&surface=s4" },
-    { "source": "/og/share/:shareId.png", "destination": "https://business.usemingla.com/api/shared-card-image?shareId=:shareId&surface=s5" }
+    { "source": "/p/:shareId", "has": [{ "type": "host", "value": "route-manifest.invalid" }], "destination": "/api/internal-share-proxy/page/:shareId" },
+    { "source": "/share/:shareId.png", "has": [{ "type": "host", "value": "route-manifest.invalid" }], "destination": "/api/internal-share-proxy/snippet/:shareId" },
+    { "source": "/og/share/:shareId.png", "has": [{ "type": "host", "value": "route-manifest.invalid" }], "destination": "/api/internal-share-proxy/og/:shareId" },
+    { "source": "/api/shared-card/:shareId", "has": [{ "type": "host", "value": "route-manifest.invalid" }], "destination": "/api/internal-share-proxy/data/:shareId" }
   ],
   "headers": [
     {
