@@ -153,3 +153,51 @@ test('S-7 every purpose and occasion string exists in every locale', () => {
   }
   assert.deepEqual(missing.slice(0, 8), [], `S-7: ${missing.length} missing strings, e.g. ${missing.slice(0, 8).join(', ')}`);
 });
+
+test('S-8 no hook is declared below the sheet\'s early returns', () => {
+  // FOUND ON THE DEVICE, by Seth: tapping a card threw "Rendered more hooks than
+  // during the previous render."
+  //
+  // `ExpandedCardModal` returns early twice — once for the business-event branch
+  // and once for `!card`. I added two `useMemo`s BELOW both, so on any render
+  // that took an early path the hooks were skipped and the count changed. It is
+  // the same mistake I caught and fixed in SwipeableCards two commits earlier,
+  // repeated in a second file, and neither value needed to be a hook at all.
+  const src = read('app-mobile/src/components/ExpandedCardModal.tsx');
+  const guard = src.indexOf('  if (!card) {');
+  assert.ok(guard > 0, 'S-8 (vacuity): the !card early return is gone');
+  const below = src.slice(guard);
+  const hooks = [...below.matchAll(/\b(useMemo|useState|useEffect|useCallback|useRef)\s*\(/g)]
+    .map((m) => m[1]);
+  assert.deepEqual(
+    hooks, [],
+    `S-8: ${hooks.length} hook(s) declared below \`if (!card) return null\` (${[...new Set(hooks)].join(', ')}). `
+    + 'Every render that takes an early return skips them, so React sees a different hook count and throws.',
+  );
+});
+
+test('S-9 the busyness value is never the thing that shrinks', () => {
+  // Seth, on a device: "Estiated should take another line. Also the text usually..
+  // is not shown fully on android." He was reading "Usually stea…".
+  //
+  // The cause was NOT the deck plate's wrapping law — it was this row: `value`
+  // carried flexShrink 1 and `estimated` carried flexShrink 0, so Android clipped
+  // the FACT to preserve the CAVEAT.
+  const src = read('app-mobile/src/components/expandedCard/ConditionsSection.tsx');
+  const value = /^  value: \{([^}]*)\},/m.exec(src);
+  assert.ok(value, 'S-9: the busyness value style is gone');
+  assert.equal(
+    /flexShrink:\s*1/.test(value[1]), false,
+    'S-9: the busyness value can shrink again, so Android will clip "Usually steady" to make room '
+    + 'for the disclosure beside it',
+  );
+  // And the value must not be clamped to one line either.
+  const row = src.slice(src.indexOf('<Text style={styles.value}'), src.indexOf('<Text style={styles.value}') + 120);
+  assert.equal(/numberOfLines=\{1\}/.test(row), false, 'S-9: the busyness value is clamped to one line');
+  // The disclosure is a sibling of the value's ROW, not a sibling of the value.
+  assert.match(src, /busyTop:/, 'S-9: the value and sparkline are no longer their own line');
+  assert.match(
+    src, /flexDirection: "column"/,
+    'S-9: the busyness body is a row again, which is what made the value shrink',
+  );
+});

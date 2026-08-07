@@ -979,7 +979,7 @@ export default function ExpandedCardModal({
    * Null when the plan carries no figure. Nothing is invented to fill the gap —
    * the leg simply does not render.
    */
-  const planTimelineLeg: PlanTimelineLeg | null = useMemo(() => {
+  const planTimelineLeg: PlanTimelineLeg | null = (() => {
     const last = planStops[planStops.length - 1];
     const minutes = last?.travelTimeFromPreviousStopMin;
     if (typeof minutes !== 'number' || !(minutes > 0)) return null;
@@ -988,7 +988,7 @@ export default function ExpandedCardModal({
       mode: last?.travelModeFromPreviousStop ?? userPreferences?.travel_mode ?? null,
       estimated: true,
     };
-  }, [planStops, userPreferences?.travel_mode]);
+  })();
 
   const planListStops: StopListStop[] = planStops.map((stop, i) => {
     const isOptional = stop.optional === true && planMainStopCount > 0;
@@ -1075,7 +1075,7 @@ export default function ExpandedCardModal({
    * recognised occasion -> no line at all, and `SuppliesList` renders exactly as
    * it did before.
    */
-  const suppliesPurposeLine = useMemo((): string | null => {
+  const suppliesPurposeLine = ((): string | null => {
     if (!Array.isArray(supplies) || supplies.length === 0) return null;
     // `CuratedExperienceCard` names it `categoryLabel`; the single-place shape
     // uses `category`. Read both rather than asserting one — a wrong field here
@@ -1100,7 +1100,7 @@ export default function ExpandedCardModal({
       defaultValue: 'Get these for {{occasion}}',
       occasion: t(`cards:${occasion.key}`, { defaultValue: occasion.defaultValue }),
     });
-  }, [supplies, planCard, card, planStops, t]);
+  })();
 
 
   /**
