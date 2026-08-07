@@ -142,14 +142,37 @@ before(async () => {
   fs.writeFileSync(
     supabasePath,
     `
-export const db = { user_visits: [], place_reviews: [], invokes: [] };
-export const control = { reviewInsertFails: false, recordVisitFails: false };
+export const db = { user_visits: [], place_reviews: [], invokes: [], user_interactions: [] };
+export const control = {
+  reviewInsertFails: false,
+  recordVisitFails: false,
+  // #1687 rework 2 (P1-2) — record-visit:143 swallows a failed interaction insert
+  // as non-fatal and STILL reports isNew: true. Modelled so the divergence this
+  // harness previously could not express is drivable.
+  interactionInsertFails: false,
+};
 export function resetDb() {
   db.user_visits.length = 0;
   db.place_reviews.length = 0;
   db.invokes.length = 0;
+  db.user_interactions.length = 0;
   control.reviewInsertFails = false;
   control.recordVisitFails = false;
+  control.interactionInsertFails = false;
+}
+
+/**
+ * The state an UN-TOGGLE leaves: removeVisit deletes from user_visits only
+ * (visitService.ts:167), so the user_interactions row survives it. 3 places in
+ * production are in exactly this state today.
+ */
+export function seedOrphanInteraction(experienceId) {
+  interactionSeq += 1;
+  db.user_interactions.push({
+    id: 'interaction-' + interactionSeq,
+    experience_id: experienceId,
+    interaction_type: 'visit',
+  });
 }
 
 // #1687 rework — the DELETE side of user_visits, so the compensating rollback
@@ -164,6 +187,7 @@ export function resetRollback() {
 
 let visitSeq = 0;
 let reviewSeq = 0;
+let interactionSeq = 0;
 
 export const supabase = {
   functions: {
@@ -176,22 +200,56 @@ export const supabase = {
         return { data: null, error: { message: 'record-visit exploded' } };
       }
       const { experienceId, cardData } = options.body;
-      // The edge function UPSERTS on (user_id, experience_id).
+
+      // #1687 rework 2 (P1-2) — THIS IS NOW THE REAL SHAPE OF record-visit, and
+      // the previous model of it is what let the bug through. The function does
+      // TWO independent things, and the flag it returns describes the SECOND.
+      //
+      // Step 1: UPSERT user_visits on (user_id, experience_id). The result is
+      // consumed for the row id ONLY (record-visit/index.ts:88-101) — whether it
+      // inserted or updated is never looked at and never returned.
       const existing = db.user_visits.find((r) => r.experience_id === experienceId);
+      let visitId;
       if (existing) {
         existing.visited_at = new Date().toISOString();
-        return { data: { visitId: existing.id, isNew: false }, error: null };
+        visitId = existing.id;
+      } else {
+        visitSeq += 1;
+        const row = {
+          id: 'visit-' + visitSeq,
+          experience_id: experienceId,
+          card_data: cardData,
+          visited_at: new Date().toISOString(),
+          source: 'manual',
+        };
+        db.user_visits.push(row);
+        visitId = row.id;
       }
-      visitSeq += 1;
-      const row = {
-        id: 'visit-' + visitSeq,
-        experience_id: experienceId,
-        card_data: cardData,
-        visited_at: new Date().toISOString(),
-        source: 'manual',
-      };
-      db.user_visits.push(row);
-      return { data: { visitId: row.id, isNew: true }, error: null };
+
+      // Step 2: isNew comes from a DIFFERENT TABLE — whether a user_interactions
+      // row of type 'visit' already exists (record-visit/index.ts:113-148). The
+      // old harness returned it off db.user_visits, so it agreed with the
+      // implementation's assumption instead of testing it, and B-10 could not
+      // fail. The two tables drift: removeVisit deletes only from user_visits, and
+      // the interaction insert below is swallowed when it fails.
+      const existingInteraction = db.user_interactions.find(
+        (r) => r.experience_id === experienceId && r.interaction_type === 'visit',
+      );
+      let isNew = true;
+      if (existingInteraction) {
+        isNew = false;
+      } else if (!control.interactionInsertFails) {
+        interactionSeq += 1;
+        db.user_interactions.push({
+          id: 'interaction-' + interactionSeq,
+          experience_id: experienceId,
+          interaction_type: 'visit',
+        });
+      }
+      // record-visit:143 — "Non-fatal: visit was recorded, interaction tracking
+      // failed". isNew stays true even though nothing was inserted anywhere new.
+
+      return { data: { visitId, isNew }, error: null };
     },
   },
   auth: {
@@ -731,7 +789,14 @@ const CARRIED_PLACE_CARD = {
   priceRange: '$$',
 };
 
-function freshSession(card) {
+/**
+ * #1687 rework 2 (P1-2) — `hadVisitBeforeTap` is the second argument because it
+ * is the second argument in the product: `BeenHereControl` passes
+ * `useHasVisited`'s value into `placeReviewRequestFromCard` at the tap. Passing
+ * it here is what makes these tests drive the shipped decision rather than a
+ * default; leaving it off drives the [TRANSITIONAL] `isNew` fallback on purpose.
+ */
+function freshSession(card, hadVisitBeforeTap) {
   supabaseStub.resetDb();
   supabaseStub.resetRollback();
   store.usePlaceReviewRequestStore.setState({
@@ -739,7 +804,11 @@ function freshSession(card) {
     confirmedCardId: null,
     confirmToken: 0,
   });
-  if (card) store.openPlaceReviewRequest(store.placeReviewRequestFromCard(card));
+  if (card) {
+    store.openPlaceReviewRequest(
+      store.placeReviewRequestFromCard(card, hadVisitBeforeTap),
+    );
+  }
 }
 
 /**
@@ -822,7 +891,9 @@ test('B-8 the place id is CARRIED, and an unknown card type yields nothing at al
 });
 
 test('B-9 a REFUSED review rolls the visit back — a failed write leaves nothing behind', async () => {
-  freshSession(SINGLE_CARD);
+  // `false` is what BeenHereControl passes: the pill was NOT settled, so
+  // `useHasVisited` had already answered "no visit for this card".
+  freshSession(SINGLE_CARD, false);
   supabaseStub.control.reviewInsertFails = true;
 
   let caught = null;
@@ -864,14 +935,35 @@ test('B-9 a REFUSED review rolls the visit back — a failed write leaves nothin
 });
 
 test('B-10 a visit the user ALREADY had is never deleted on their behalf', async () => {
-  freshSession(SINGLE_CARD);
+  // #1687 rework 2 (P1-2) — REWRITTEN, because the version this replaces could not
+  // fail. It read `isNew` off the harness's own `user_visits` array, which is not
+  // where record-visit reads it, so it asserted against an edge function that does
+  // not exist and agreed with the bug it was supposed to catch. This drives the
+  // divergence for real, in the direction that would DESTROY the user's data.
+  //
+  // Seed the pre-existing visit with the interaction insert FAILING — that is how
+  // production reaches "a user_visits row with no user_interactions row behind
+  // it" (record-visit:143 logs it and carries on). The NEXT call then reports
+  // `isNew: true` for a row that already existed.
+  freshSession(SINGLE_CARD, false);
+  supabaseStub.control.interactionInsertFails = true;
   await submitWithRollback(5);
   assert.deepEqual(rows(), { visits: 1, reviews: 1 }, 'VACUITY: the first submit did not land');
   const preExistingVisitId = supabaseStub.db.user_visits[0].id;
+  assert.equal(
+    supabaseStub.db.user_interactions.length,
+    0,
+    'VACUITY: the swallowed interaction insert did not leave the two tables diverged, so the '
+    + 'next record-visit would report isNew:false and this test would prove nothing.',
+  );
 
-  // A second rating of the same place. record-visit upserts, so it comes back
-  // isNew: false — this attempt did NOT create the row.
+  // The deck now shows this card as settled, so `useHasVisited` answers TRUE.
+  // That is the fact the rollback must obey — over the server flag, which is
+  // about to say the opposite.
+  supabaseStub.control.interactionInsertFails = false;
+  store.openPlaceReviewRequest(store.placeReviewRequestFromCard(SINGLE_CARD, true));
   supabaseStub.control.reviewInsertFails = true;
+
   let caught = null;
   try {
     await submitWithRollback(2);
@@ -881,11 +973,19 @@ test('B-10 a visit the user ALREADY had is never deleted on their behalf', async
 
   assert.equal(caught?.name, 'PlaceReviewWriteError');
   assert.equal(
+    supabaseStub.db.user_interactions.length,
+    1,
+    'VACUITY: record-visit did not take the "no interaction row -> insert one" branch, so it did '
+    + 'NOT return isNew:true and this test is not exercising the lying flag at all.',
+  );
+  assert.equal(
     supabaseStub.db.user_visits.length,
     1,
-    'B-10: the rollback deleted a visit this attempt did not create. record-visit upserts on '
-    + '(user_id, experience_id) and removeVisit deletes by (user, experience) rather than by row '
-    + 'id, so a blanket rollback erases history the user already had.',
+    'B-10: the rollback deleted a visit the user already had. record-visit reported isNew:true '
+    + 'for it — that flag counts user_interactions rows, not user_visits rows, and one swallowed '
+    + 'interaction insert is all it takes to make it lie in this direction. removeVisit deletes '
+    + 'by (user, experience) rather than by row id, so believing it erases history the user '
+    + 'marked weeks ago.',
   );
   assert.equal(supabaseStub.deletes.length, 0, 'B-10: a delete was issued for a pre-existing visit');
   assert.equal(
@@ -894,10 +994,59 @@ test('B-10 a visit the user ALREADY had is never deleted on their behalf', async
     'B-10: the surviving visit is not named in the failure, so the retry would re-record it and '
     + 're-stamp visited_at (#1661 X-3)',
   );
+  assert.equal(caught.visitCreated, false, 'B-10: a pre-existing visit was reported as ours');
+});
+
+test('B-11a record-visit says isNew:FALSE for a row it just created — undo it anyway', async () => {
+  // #1687 rework 2 (P1-2) — THE DEFECT, reproduced. The tester hit this on an
+  // iPhone against production: The Parlour carried a user_interactions row from
+  // an earlier un-toggle (18:31:05) and no user_visits row. The tap CREATED
+  // `user_visits 44c459c9` at 00:53:12.679, and because the interaction row was
+  // still there record-visit reported isNew:FALSE. The first rework's guard read
+  // that flag and would have refused to undo a row it had just created — exactly
+  // the orphan P1-1 exists to remove, on the likeliest path to reach it (three
+  // pairs in production are in this state today).
+  freshSession(SINGLE_CARD, false);
+  supabaseStub.seedOrphanInteraction(SINGLE_CARD.id);
+  assert.deepEqual(rows(), { visits: 0, reviews: 0 }, 'VACUITY: the un-toggled state is not empty');
+  assert.equal(
+    supabaseStub.db.user_interactions.length,
+    1,
+    'VACUITY: no orphaned interaction row, so record-visit would report isNew:true and the '
+    + 'divergence this test exists for would not be present.',
+  );
+
+  supabaseStub.control.reviewInsertFails = true;
+  let caught = null;
+  try {
+    await submitWithRollback(4);
+  } catch (error) {
+    caught = error;
+  }
+
+  assert.equal(caught?.name, 'PlaceReviewWriteError', 'B-11a: the refusal did not surface');
+  assert.deepEqual(
+    rows(),
+    { visits: 0, reviews: 0 },
+    'B-11a: a visit CREATED by this submit survived a refused review, because record-visit '
+    + 'reported isNew:false for it. That flag is computed from user_interactions '
+    + '(record-visit/index.ts:113-148), and removeVisit deletes only from user_visits '
+    + '(visitService.ts:167), so every un-toggled place is permanently in the state where the '
+    + 'two disagree. The rollback must decide from what useHasVisited said before the tap.',
+  );
+  assert.equal(supabaseStub.deletes.length, 1, 'B-11a: the compensating delete was never issued');
+  assert.equal(supabaseStub.deletes[0].filters.experience_id, SINGLE_CARD.id);
+  assert.equal(caught.visitId, null, 'B-11a: a rolled-back visit must hand back a null id');
+  assert.equal(
+    supabaseStub.db.user_interactions.length,
+    1,
+    'VACUITY: a second interaction row appeared, which means record-visit took the isNew:true '
+    + 'branch and the flag was never lying in this fixture.',
+  );
 });
 
 test('B-11 a rollback that ITSELF fails keeps the visit id, so nothing is silently lost', async () => {
-  freshSession(SINGLE_CARD);
+  freshSession(SINGLE_CARD, false);
   supabaseStub.control.reviewInsertFails = true;
   supabaseStub.rollbackControl.fails = true;
 
@@ -1050,5 +1199,105 @@ test('S-8 the database, not the client, is what makes a re-rate replace rather t
     /IF NEW\.calendar_entry_id IS NOT NULL THEN\s*\n\s*RETURN NEW;/,
     'S-8: the trigger no longer returns early for scheduled reviews, so it would delete a row '
     + 'the calendar flow owns.',
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #1687 rework 2 (P1-2) — THE SEAM THAT CARRIES THE PRE-TAP FACT.
+//
+// B-10 and B-11a prove the DECISION is right. They cannot see whether the
+// product actually states the fact the decision is made from: the behavioural
+// half constructs its own requests, so a control that stopped passing
+// `useHasVisited`'s value, or a modal that stopped forwarding it, would leave
+// every one of them green while the shipped write silently fell back to the flag
+// that lies. This pins the three joints of that thread, and the model the harness
+// above is built on.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The deployed edge function the whole finding is about. */
+const RECORD_VISIT_FN = path.resolve(
+  appMobile,
+  '../supabase/functions/record-visit/index.ts',
+);
+
+test('S-9 the pre-tap answer is stated by the control, forwarded by the modal, and preferred by the write', () => {
+  // 1 — the control. It has already read useHasVisited to pick its own label;
+  //     that same value must reach the request, verbatim.
+  const swipeable = stripComments(read('swipeable'));
+  const start = swipeable.indexOf('const BeenHereControl');
+  const end = swipeable.indexOf('const CardHeroImage', start);
+  assert.ok(start > 0 && end > start, 'VACUITY: could not delimit BeenHereControl');
+  const control = swipeable.slice(start, end);
+  assert.match(
+    control,
+    /const\s*\{\s*data:\s*visited[\s\S]{0,200}useHasVisited\(/,
+    'VACUITY: BeenHereControl no longer reads useHasVisited into `visited`, so the assertion '
+    + 'below is about a name that means something else now.',
+  );
+  assert.match(
+    control,
+    /placeReviewRequestFromCard\(\s*card\s*,\s*visited\s*\)/,
+    'S-9: the tap no longer carries what useHasVisited said. That value is the ONLY evidence '
+    + 'the app has about whether a half-landed visit is its own to undo — record-visit\'s isNew '
+    + 'is computed from user_interactions and disagrees with user_visits in both directions '
+    + '(#1694). Without it the write falls back to that flag and B-11a\'s orphan comes back.',
+  );
+
+  // 2 — the modal. One mount for the whole app, no useHasVisited of its own, and
+  //     by submit time the answer would already have been changed by the write it
+  //     is asking about. So it forwards; it must not re-derive.
+  const modal = stripComments(read('modal'));
+  assert.match(
+    modal,
+    /hadVisitBeforeTap:\s*voluntaryVisit\.hadVisitBeforeTap/,
+    'S-9: the modal stopped forwarding the pre-tap answer into the write, so the request carries '
+    + 'it and nothing reads it.',
+  );
+
+  // 3 — the write. The client's stated answer must OUTRANK the server flag, and
+  //     the flag must be reachable only when nothing was stated.
+  const service = stripComments(read('placeReviewService'));
+  const fn = service.slice(service.indexOf('function visitIsOursToUndo'));
+  assert.ok(fn.length > 80, 'S-9: visitIsOursToUndo is gone — the derivation moved or was inlined');
+  const statedFalseAt = fn.indexOf('hadVisitBeforeTap === false');
+  const statedTrueAt = fn.indexOf('hadVisitBeforeTap === true');
+  // Anchored on the RETURN, not on the name: `serverIsNew` also appears in the
+  // signature, which is above both branches by construction.
+  const serverAt = fn.indexOf('return serverIsNew');
+  assert.ok(statedFalseAt > 0, 'S-9: a stated "the user had no visit" is no longer honoured');
+  assert.ok(statedTrueAt > 0, 'S-9: a stated "the user already had one" is no longer honoured');
+  assert.ok(
+    serverAt > statedFalseAt && serverAt > statedTrueAt,
+    'S-9: record-visit\'s isNew is consulted BEFORE the client\'s own answer. It is the '
+    + '[TRANSITIONAL] last resort for a caller that stated nothing, not the rule — reversing the '
+    + 'order restores the P1 exactly.',
+  );
+  assert.ok(
+    !/visitCreated\s*=\s*recorded\.isNew\s*===\s*true/.test(service),
+    'S-9: the rollback guard is derived straight from record-visit\'s isNew again. Proven on '
+    + 'device: a tap created user_visits 44c459c9 at 00:53:12.679 while the interaction row still '
+    + 'read 18:31:05, and the function reported isNew:false for the row it had just created.',
+  );
+
+  // 4 — the model this whole file is built on. If #1694 ever makes isNew describe
+  //     the user_visits upsert, the harness above is no longer faithful and the
+  //     [TRANSITIONAL] fallback stops being a hazard — both need revisiting, and
+  //     this is what will say so.
+  const fnSrc = fs.readFileSync(RECORD_VISIT_FN, 'utf8');
+  const isNewAt = fnSrc.indexOf('let isNew');
+  assert.ok(isNewAt > 0, 'S-9: record-visit no longer computes isNew the way this harness models');
+  const derivation = fnSrc.slice(fnSrc.indexOf('user_interactions'), isNewAt);
+  assert.match(
+    derivation,
+    /interaction_type"?,?\s*,?\s*"visit"/,
+    'S-9 (model check): record-visit no longer derives isNew from a user_interactions lookup. '
+    + 'If #1694 landed and it now reports the user_visits upsert itself, this suite\'s stub is '
+    + 'modelling a function that no longer exists — fix the stub, then re-read '
+    + 'visitIsOursToUndo\'s [TRANSITIONAL] fallback, which exists only because of this.',
+  );
+  assert.ok(
+    !/xmax/.test(fnSrc),
+    'S-9 (model check): record-visit appears to report the upsert itself now (#1694). Same '
+    + 'action as above — the stub and the fallback both assume it does not.',
   );
 });

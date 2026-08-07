@@ -38,6 +38,10 @@ on:
       - "app-mobile/src/services/deckService.ts"
       - "app-mobile/src/types/recommendation.ts"
       - "supabase/migrations/20270223001687_issue_1687_one_voluntary_review_per_place.sql"
+      # #1687 rework 2 (P1-2) — S-9 reads this function to check that the
+      # harness above still models it faithfully. If #1694 changes how
+      # `isNew` is derived, this suite must re-run and say so.
+      - "supabase/functions/record-visit/index.ts"
       - "app-mobile/src/components/swipeDeck/__tests__/issue_1609_collapsed_card_scrim_and_geometry.test.mjs"
       - "app-mobile/src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs"
       - "app-mobile/app/index.tsx"
@@ -61,6 +65,10 @@ on:
       - "app-mobile/src/services/deckService.ts"
       - "app-mobile/src/types/recommendation.ts"
       - "supabase/migrations/20270223001687_issue_1687_one_voluntary_review_per_place.sql"
+      # #1687 rework 2 (P1-2) — S-9 reads this function to check that the
+      # harness above still models it faithfully. If #1694 changes how
+      # `isNew` is derived, this suite must re-run and say so.
+      - "supabase/functions/record-visit/index.ts"
       - "app-mobile/src/components/swipeDeck/__tests__/issue_1609_collapsed_card_scrim_and_geometry.test.mjs"
       - "app-mobile/src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs"
       - "app-mobile/app/index.tsx"

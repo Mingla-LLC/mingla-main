@@ -209,6 +209,13 @@ export default function PostExperienceModal({
           googlePlaceId: voluntaryVisit.googlePlaceId,
           placeImage: voluntaryVisit.placeImage,
           priceTier: voluntaryVisit.priceTier,
+          // #1687 rework 2 (P1-2) — carried from the tap, and the ONLY thing that
+          // decides whether a half-landed visit may be rolled back. Forwarded
+          // rather than re-derived: this modal is mounted once for the whole app
+          // and has no `useHasVisited` of its own, and by the time it submits the
+          // answer would already have been changed by the write it is asking
+          // about.
+          hadVisitBeforeTap: voluntaryVisit.hadVisitBeforeTap,
           rating,
         },
         recordedVisitId: recordedVisitIdRef.current,

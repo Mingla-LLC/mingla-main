@@ -60,6 +60,20 @@ export interface VoluntaryPlaceReviewRequest {
   placePoolId?: string;
   googlePlaceId?: string;
   priceTier?: string;
+  /**
+   * #1687 rework 2 (P1-2) — WHAT `useHasVisited` SAID AT THE MOMENT OF THE TAP.
+   *
+   * Captured here, before anything is written, because this is the only moment
+   * the answer is knowable for free: `BeenHereControl` has already read
+   * `useHasVisited` to choose its own label. `false` means the user had no visit
+   * for this card, so anything in `user_visits` after the submit was put there by
+   * the submit; `true` means they already had one and it must never be deleted on
+   * their behalf. Absent means the control could not answer (the query errored)
+   * and the write falls back to `record-visit`'s `isNew` — see
+   * `visitIsOursToUndo` in `services/placeReviewService.ts` for why that fallback
+   * is a last resort and not the rule.
+   */
+  hadVisitBeforeTap?: boolean;
 }
 
 interface PlaceReviewRequestState {
@@ -146,8 +160,20 @@ function resolvePlacePoolId(card: PlaceReviewCard): string | undefined {
   return UUID_RE.test(card.id) ? card.id : undefined;
 }
 
-/** Build the request from a deck card. */
-export function placeReviewRequestFromCard(card: PlaceReviewCard): VoluntaryPlaceReviewRequest {
+/**
+ * Build the request from a deck card.
+ *
+ * `hadVisitBeforeTap` is the SECOND argument and not another card field on
+ * purpose: it is not a property of the card, it is what the app knew about this
+ * user and this card in the instant the tap happened. The caller passes
+ * `useHasVisited`'s value straight through, `undefined` included — an unknown
+ * must stay an unknown rather than be flattened into a `false` the rollback would
+ * then act on.
+ */
+export function placeReviewRequestFromCard(
+  card: PlaceReviewCard,
+  hadVisitBeforeTap?: boolean,
+): VoluntaryPlaceReviewRequest {
   return {
     cardId: card.id,
     placeName: card.title,
@@ -157,6 +183,7 @@ export function placeReviewRequestFromCard(card: PlaceReviewCard): VoluntaryPlac
     placePoolId: resolvePlacePoolId(card),
     googlePlaceId: card.placeId,
     priceTier: card.priceRange ?? undefined,
+    hadVisitBeforeTap,
   };
 }
 
