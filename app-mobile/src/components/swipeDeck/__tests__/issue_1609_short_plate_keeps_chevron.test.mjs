@@ -34,6 +34,17 @@
  * a guard), and every scan is preceded by a vacuity assertion, so a moved file or
  * a mistyped needle fails loudly instead of passing silently.
  */
+
+/**
+ * MODIFIED under #1700 — [TEST-MOD-APPROVED #1700].
+ *
+ * C-5 matched `plateWithMeta:` / `plateNoMeta:` by name, which is a shape assertion. Replaced
+ * with the property it protected: the control row is IDENTICAL across every silhouette, so
+ * the pill and the share glyph cannot move as a card's facts line wraps.
+ *
+ * Recorded here, in the file, so the next reader finds the reason beside the
+ * assertion rather than in a commit message they will not go looking for.
+ */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -232,10 +243,30 @@ test('C-5 nothing below the divider moves between the silhouettes', () => {
     SHORT.control >= CI.BEEN_HERE.height,
     `C-5: the short plate's control row cannot contain the ${CI.BEEN_HERE.height}pt Been-here target`,
   );
+  // #1700 — and it must hold across ALL THREE silhouettes, not just these two.
+  // The wrapping law added a two-line plate; if its control row differed, the
+  // pill would jump every time a card's facts happened to wrap.
+  const everyControl = CI.surfaceSilhouettes('s1Single')
+    .map((n) => CI.plateRows(CI.plateHeightForMetaLines('s1Single', n), n, 's1Single').control);
+  assert.equal(
+    new Set(everyControl).size, 1,
+    `C-5: the control row differs across silhouettes (${everyControl.join(', ')}pt), so the pill and `
+    + 'the share glyph move as a card\'s facts line wraps',
+  );
+
   // The plate's own bottom/left/right edges are shared style keys, so only the
-  // HEIGHT may differ between the two silhouettes.
-  assert.match(plate, /plateWithMeta:\s*\{\s*height:\s*S1\.plateH\s*\}/, 'C-5: the full height is not the descriptor\'s');
-  assert.match(plate, /plateNoMeta:\s*\{\s*height:\s*PLATE_H_NO_META\s*\}/, 'C-5: the short height is not the package\'s');
+  // HEIGHT may differ between silhouettes — and the height now arrives inline
+  // from the derived SILHOUETTES table rather than from two named entries.
+  // (This asserted `plateWithMeta` / `plateNoMeta` by name until #1700, which
+  // made it a shape assertion that a correct third silhouette turned red.)
+  assert.equal(
+    /plateWithMeta:|plateNoMeta:/.test(plate), false,
+    'C-5: a named per-silhouette height style is back; heights must come from SILHOUETTES',
+  );
+  assert.match(
+    plate, /const SILHOUETTES\s*=[\s\S]{0,400}?plateHeightForMetaLines\(/,
+    'C-5: the silhouette heights are no longer produced by the package',
+  );
 });
 
 test('C-6 the short plate height is DERIVED, and no card file carries it as a literal', () => {

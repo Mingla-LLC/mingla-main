@@ -272,6 +272,14 @@ interface Props {
   beenHere?: React.ReactNode;
   onSharePress?: () => void;
   shareLabel?: string;
+  /**
+   * #1701 — the Details control. Supplied by the caller because the caller owns
+   * the deck's one expand path (`requestTapExpand`); this card must not grow a
+   * second. Absent -> the control does not render, which is correct on any
+   * surface that has no expand path at all.
+   */
+  onDetailsPress?: () => void;
+  detailsLabel?: string;
   // ORCH-1209: only the front/active deck card streams its cover video. When
   // false the cover mounts paused on its poster (playbackActive=false) and
   // downloads nothing. Defaults true so non-deck callers (none today) are
@@ -290,7 +298,7 @@ const S1 = SURFACES.s1Single;
   either side of a producer split is how the split stays invisible.
 */
 
-export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem, currencyCode, brandExperience, onBrandPress, experienceCover, ctaOverride, isTopCard = true, beenHere, onSharePress, shareLabel }: Props) {
+export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem, currencyCode, brandExperience, onBrandPress, experienceCover, ctaOverride, isTopCard = true, beenHere, onSharePress, shareLabel, onDetailsPress, detailsLabel }: Props) {
   // `cards` joins `common` because the shared span producer's labels ("Free",
   // "{{count}} stops") are the SAME keys the expanded sheet resolves — the
   // collapsed card used to hardcode both in English (#1605 P1-6).
@@ -375,7 +383,15 @@ export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem
    * leaves the stylesheet: `cardTitle` no longer carries `bottom` at all, and the
    * offset is applied at the render site from this one object.
    */
-  const presentation = platePresentation(curatedSpans);
+  /**
+   * #1700 — the measured facts-line count. Local state here rather than lifted
+   * to SwipeableCards because this component owns its own title and sliver
+   * anchors: the number that sizes the plate and the number that positions the
+   * name above it MUST be the same one, and that is only guaranteed while a
+   * single `presentation` object is the only thing either reads.
+   */
+  const [metaLines, setMetaLines] = React.useState(1);
+  const presentation = platePresentation(curatedSpans, metaLines);
 
   // ORCH-1072: an experience with a real cover renders the COVER as the hero
   // (image/video via the shared EventCoverMedia) with the stop photos as a
@@ -511,6 +527,13 @@ export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem
 
           <DeckCardPlate
             spans={curatedSpans}
+            metaLines={presentation.metaLines}
+            onMetaLinesChange={setMetaLines}
+            // #1701 — Details, on the curated plan and the brand experience too.
+            // The handler is supplied by the CALLER, which owns the one expand
+            // path; this card never opens anything itself.
+            onDetailsPress={onDetailsPress}
+            detailsLabel={detailsLabel}
             beenHere={beenHere}
             onSharePress={onSharePress ?? NOOP}
             shareLabel={shareLabel ?? card.title}

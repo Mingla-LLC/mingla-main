@@ -62,6 +62,28 @@ import { BadgeCheck, Calendar, Clock, MapPin, Sparkles, Users } from "./LucideIc
 // ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
 import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
+
+/**
+ * #1708 — every row independently optional, and every VALUE pre-formatted by the
+ * surface. The package does no unit conversion and no locale work: a number
+ * formatted twice in two places is how "20.9 mi" and "33.6 km" end up on one
+ * screen.
+ */
+export interface RightNowFacts {
+  /** e.g. "Partly cloudy, 24°". Absent → no row. */
+  readonly weather?: string | null;
+  /** e.g. "12 min drive · 4.2 mi". Absent → no row (the web page has no viewer). */
+  readonly travel?: string | null;
+  /** e.g. "Usually busy". Absent → no row. */
+  readonly busyness?: string | null;
+  /**
+   * TRUE when travel/busyness are computed rather than measured. NOT optional in
+   * spirit: traffic was deleted from the place sheet for rendering a computed
+   * figure unlabelled beside a real one, and this is the same number under a
+   * different roof (Constitution 9).
+   */
+  readonly estimated?: boolean;
+}
 import { buildStaticMapUrl } from "./mapboxStaticImage";
 import {
   experienceAvailabilityBanner as computeAvailabilityBanner,
@@ -192,6 +214,26 @@ export interface ExperienceOfferingBodyProps {
    * cluster, no dead tap (ORCH-1341/1342 wire the per-surface handlers).
    */
   onSeeWhosGoing?: () => void;
+  /**
+   * Issue #1708 — "RIGHT NOW": weather, travel and busyness for this experience's
+   * location. Seth's decision of 2026-08-07, after the routing correction: a
+   * business experience keeps its OWN page, and what crosses over from the place
+   * sheet is the intelligence.
+   *
+   * IT IS DATA, NOT A NODE, and it is fetched by the SURFACE. This body is shared
+   * with the public web offering page (I-PUBLIC-TRIP-OFFERING-ALL-SURFACE-PARITY),
+   * and I-MOR-0827 forbids the package reaching into an app's services. So the
+   * app fetches and this renders — which is also what lets each surface supply
+   * only what it can honestly know.
+   *
+   * THE CROSS-SURFACE CONSEQUENCE, STATED RATHER THAN DISCOVERED LATER. Weather
+   * needs only coordinates (Open-Meteo: no key, no login) and works everywhere.
+   * The travel estimate needs the VIEWER's position, which the web page has never
+   * asked for. So web supplies `weather` and `busyness` and omits `travel`, and
+   * the row is ABSENT there rather than fabricated. Every row is independently
+   * optional for exactly this reason.
+   */
+  rightNow?: RightNowFacts | null;
   testID?: string;
 }
 
@@ -209,6 +251,10 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
   reduceMotion = false,
   socialProof = null,
   onSeeWhosGoing,
+  // Annotated because this component destructures WITHOUT a props type (a
+  // pre-existing shape in this file), so a bare `= null` default infers the
+  // parameter as `null` and every field read narrows to `never`.
+  rightNow = null as RightNowFacts | null,
   testID,
 }) => {
   const surface = offeringSurfaceStyles(palette);
@@ -426,6 +472,47 @@ export const ExperienceOfferingBody: React.FC<ExperienceOfferingBodyProps> = ({
         </View>
       ) : null}
 
+      {/*
+        (6b) RIGHT NOW — #1708. Weather, travel and busyness for this location.
+
+        Placed BEFORE About for the same reason it sits high on the place sheet:
+        it answers "is it worth leaving the house", which is a decision the
+        reader makes before they read the prose, not after.
+
+        Every row is `rule 9` gated independently — see `RightNowFacts`. A
+        surface that can honestly supply one row and not another supplies one row.
+      */}
+      {rightNow && (rightNow.weather || rightNow.travel || rightNow.busyness) ? (
+        <View style={styles.section} testID="experience-body-right-now">
+          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+            Right now
+          </Text>
+          {rightNow.weather ? (
+            <View style={styles.rightNowRow}>
+              <Text style={[styles.rightNowLabel, surface.secondaryText]}>Weather</Text>
+              <Text style={[styles.rightNowValue, surface.primaryText]}>{rightNow.weather}</Text>
+            </View>
+          ) : null}
+          {rightNow.travel ? (
+            <View style={styles.rightNowRow}>
+              <Text style={[styles.rightNowLabel, surface.secondaryText]}>Travel</Text>
+              <Text style={[styles.rightNowValue, surface.primaryText]}>{rightNow.travel}</Text>
+            </View>
+          ) : null}
+          {rightNow.busyness ? (
+            <View style={styles.rightNowRow}>
+              <Text style={[styles.rightNowLabel, surface.secondaryText]}>Busyness</Text>
+              <Text style={[styles.rightNowValue, surface.primaryText]}>{rightNow.busyness}</Text>
+            </View>
+          ) : null}
+          {rightNow.estimated ? (
+            <Text style={[styles.rightNowEstimated, surface.secondaryText]}>
+              Estimated from distance and typical patterns
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       {/* (7) About — collapsible (rule 9: only when present). */}
       {aboutText.length > 0 ? (
         <View style={styles.section} testID="experience-body-about">
@@ -550,6 +637,12 @@ const MetaChip: React.FC<{
 };
 
 const styles = StyleSheet.create({
+  // #1708 — Right now. Label/value rows in the body's existing register; no new
+  // colour, no accent, no icon badge. It is a fact list, not a feature.
+  rightNowRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingVertical: 7 },
+  rightNowLabel: { flex: 0, width: 84, fontSize: 13, lineHeight: 19 },
+  rightNowValue: { flex: 1, fontSize: 14, fontWeight: "500", lineHeight: 19 },
+  rightNowEstimated: { fontSize: 12.5, lineHeight: 18, marginTop: 4 },
   leadBlock: { marginBottom: 4 },
   eyebrowLead: {
     fontSize: 11,

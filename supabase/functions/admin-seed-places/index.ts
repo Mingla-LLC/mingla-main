@@ -12,6 +12,7 @@ import {
 import { derivePoolCategory } from "../_shared/derivePoolCategory.ts";
 // Phase 2: type exclusion imports removed — AI is the sole quality gate
 // import { GLOBAL_EXCLUDED_PLACE_TYPES, getExcludedTypesForCategory } from "../_shared/categoryPlaceTypes.ts";
+import { seedCountryFields } from "./countryLogic.ts";
 
 // ── Admin Seed Places Edge Function ──────────────────────────────────────────
 // Ten actions:
@@ -251,7 +252,17 @@ function calculateTileEstimates(
 // ── Google Place → place_pool row (selective fields for upsert) ─────────────
 
 // deno-lint-ignore no-explicit-any
-function transformGooglePlaceForSeed(gPlace: any, cityId: string, country: string, city: string) {
+function transformGooglePlaceForSeed(
+  // deno-lint-ignore no-explicit-any
+  gPlace: any,
+  cityId: string,
+  country: string,
+  city: string,
+  // #1704 — ISO-3166-1 alpha-2 from `seeding_cities.country_code`. Passed
+  // explicitly rather than left to the trigger so the row is correct at the
+  // moment it is built, not one statement later.
+  countryCode: string | null,
+) {
   const priceLevel = gPlace.priceLevel as string | undefined;
   const priceInfo = PRICE_LEVEL_MAP[priceLevel ?? ""] ?? {
     tier: null,
@@ -368,6 +379,7 @@ function transformGooglePlaceForSeed(gPlace: any, cityId: string, country: strin
     is_active: true,
     city_id: cityId,
     country: country,
+    country_code: countryCode,
     city: city,
     utc_offset_minutes: (gPlace.utcOffsetMinutes as number) ?? null,
   };
@@ -409,13 +421,26 @@ function applyPostFetchFilters(places: any[], _categoryId: string): FilterResult
   return { passed, rejectedNoPhotos, rejectedClosed, rejectedExcludedType: 0 };
 }
 
-// ── Parse country from formattedAddress ─────────────────────────────────────
-
-function parseCountry(address: string | undefined | null, fallback: string): string {
-  if (!address) return fallback;
-  const parts = address.split(",");
-  return parts[parts.length - 1]?.trim() || fallback;
-}
+// ── Country ─────────────────────────────────────────────────────────────────
+//
+// #1704: `parseCountry` LIVED HERE and is deleted.
+//
+// It took `formattedAddress`, split on commas and returned the last piece, with
+// the seeded city's country as a FALLBACK. Both call sites read
+// `parseCountry(p.formattedAddress, cityCountry)` — so the clean, curated value
+// was already in hand at the moment of the call, and the parse won over it.
+// 88,411 rows were written that way: 'USA', 'UK', 'US' and 'United Kingdom' for
+// the same two countries, plus rows reading 'U0邮政编码: SE18 5NR'.
+//
+// There is nothing to parse. `seeding_cities` carries `country` (prose, for
+// display) AND `country_code` (ISO-3166-1 alpha-2, the field anything may branch
+// on), and every place we seed belongs to exactly one seeded city. Both are now
+// read from that row and passed straight through.
+//
+// A BEFORE INSERT/UPDATE trigger (`place_pool_fill_country_code_trg`) derives
+// `country_code` from `city_id` for any writer that omits it, and a CHECK
+// constraint rejects anything that is not two capitals — so this defect cannot
+// come back through a different door.
 
 // CITY TEXT EXTRACTION (Block 4 — hardened 2026-03-21)
 // Extracts city name from Google addressComponents (locality type).
@@ -860,11 +885,12 @@ async function handleRunNextBatch(body: any, supabase: any) {
   // Load city for name/country
   const { data: city } = await supabase
     .from("seeding_cities")
-    .select("name, country")
+    .select("name, country, country_code")
     .eq("id", batch.city_id)
     .single();
   const cityName = city?.name ?? "Unknown";
-  const cityCountry = city?.country ?? "Unknown";
+  // #1704 — both fields from the seeded city row. No address is consulted.
+  const { country: cityCountry, countryCode: cityCountryCode } = seedCountryFields(city);
 
   // Load tile
   const { data: tile } = await supabase
@@ -997,7 +1023,7 @@ async function handleRunNextBatch(body: any, supabase: any) {
       // Upsert to place_pool
       if (uniquePlaces.size > 0) {
         const rows = Array.from(uniquePlaces.values()).map((p) =>
-          transformGooglePlaceForSeed(p, batch.city_id, parseCountry(p.formattedAddress, cityCountry), parseCity(p, cityName))
+          transformGooglePlaceForSeed(p, batch.city_id, cityCountry, parseCity(p, cityName), cityCountryCode)
         );
 
         // Step 1: Insert new places only
@@ -1324,11 +1350,12 @@ async function handleRetryBatch(body: any, supabase: any) {
   // Load city for name/country
   const { data: city } = await supabase
     .from("seeding_cities")
-    .select("name, country")
+    .select("name, country, country_code")
     .eq("id", batch.city_id)
     .single();
   const cityName = city?.name ?? "Unknown";
-  const cityCountry = city?.country ?? "Unknown";
+  // #1704 — both fields from the seeded city row. No address is consulted.
+  const { country: cityCountry, countryCode: cityCountryCode } = seedCountryFields(city);
 
   // Load tile
   const { data: tile } = await supabase
@@ -1450,7 +1477,7 @@ async function handleRetryBatch(body: any, supabase: any) {
 
       if (uniquePlaces.size > 0) {
         const rows = Array.from(uniquePlaces.values()).map((p) =>
-          transformGooglePlaceForSeed(p, batch.city_id, parseCountry(p.formattedAddress, cityCountry), parseCity(p, cityName))
+          transformGooglePlaceForSeed(p, batch.city_id, cityCountry, parseCity(p, cityName), cityCountryCode)
         );
 
         // Step 1: Insert new places only

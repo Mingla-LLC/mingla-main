@@ -214,11 +214,28 @@ export function ExpandedCardHero({
 }: ExpandedCardHeroProps): React.ReactElement {
   const coverless = cover === null || cover.length === 0;
   const heroH = coverless ? COVERLESS_HERO_H : expandedHeroHeight(sheetHeight);
-  const { plateH, titleBottom } = platePresentation(spans);
+  /**
+   * #1700 — THE SHEET'S HERO MEASURES ITS OWN FACTS LINE.
+   *
+   * It did not, and a curated plan is exactly the card that exposes it: "2 stops
+   * · 0.3 mi · 3h 3m · $100.00-$0.00 · Romantic" wraps to two lines, the plate
+   * stayed at its one-line height, and the second line ran into the divider and
+   * the chevron. Seth photographed it.
+   *
+   * The measurement was wired into both DECK faces and not into this one. The
+   * plate has always been the same component on both surfaces — that is the
+   * whole continuity argument — so it needs the same two props here, or the
+   * sheet's copy silently disagrees with the deck's about which silhouette it is
+   * drawing.
+   */
+  const [metaLines, setMetaLines] = React.useState(1);
+  const { plateH, titleBottom, metaLines: lines } = platePresentation(spans, metaLines);
 
   const plate = (
     <DeckCardPlate
       spans={spans}
+      metaLines={lines}
+      onMetaLinesChange={setMetaLines}
       beenHere={beenHere}
       onSharePress={onSharePress}
       shareLabel={shareLabel}

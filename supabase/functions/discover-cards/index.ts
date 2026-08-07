@@ -806,6 +806,62 @@ function filterByDateTime(
 // canonical Google v1 periods-shape rows the old text-only reader skipped).
 // Do NOT re-declare them here.
 
+
+/**
+ * Issues #1683 / #1703 — the three per-place columns the serving RPCs do not
+ * return, fetched in ONE primary-key lookup and merged onto the rows.
+ *
+ * WHY NOT WIDEN THE RPCs. That is the obvious fix and it is the riskier one.
+ * Postgres cannot change a RETURNS TABLE in place (42P13), so each of the three
+ * functions would have to be DROPped and recreated — three SECURITY DEFINER
+ * functions, one of which is deliberately granted to `service_role` ONLY while
+ * the other two are granted to `anon` and `authenticated`, and DROP takes every
+ * grant with it. Getting one GRANT wrong there is a silent privilege change on
+ * the path that serves every deck card. One of them also carries the collab
+ * deck's determinism in its ORDER BY.
+ *
+ * This buys the same three fields for one indexed lookup on ids we already hold,
+ * server-side, in the same region, and it is revertible by deleting a function.
+ *
+ * WHAT THE FIELDS ARE FOR:
+ *   utc_offset_minutes    #1683 — "Open now" is currently computed against the
+ *                         VIEWER's clock, so a Durham cafe open until 9pm reads
+ *                         Closed to somebody on Tokyo time. `deckService.ts`
+ *                         already maps this field and its own comment records
+ *                         that the RPCs never returned it.
+ *   national_phone_number #1703 — there is no Call button because the number
+ *                         never reached the client at all.
+ *   country_code          #1703 (via #1704) — what turns a local number into one
+ *                         that dials from another country.
+ *
+ * Failure is NON-FATAL and silent-by-omission: if the lookup errors the rows are
+ * returned untouched, every field stays null, and the UI hides the badge and the
+ * button exactly as it does today. A deck that fails to load because a phone
+ * number could not be fetched would be a worse bug than the one being fixed.
+ */
+async function enrichRowsWithPlaceFields(db: any, rows: any[]): Promise<void> {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  const ids = [...new Set(rows.map((r) => r?.place_id).filter((id) => typeof id === 'string' && id.length > 0))];
+  if (ids.length === 0) return;
+  try {
+    const { data, error } = await db
+      .from('place_pool')
+      .select('id, utc_offset_minutes, national_phone_number, country_code')
+      .in('id', ids);
+    if (error || !Array.isArray(data)) return;
+    const byId = new Map<string, any>(data.map((d: any) => [d.id, d]));
+    for (const row of rows) {
+      const extra = byId.get(row?.place_id);
+      if (!extra) continue;
+      row.utc_offset_minutes = extra.utc_offset_minutes ?? null;
+      row.national_phone_number = extra.national_phone_number ?? null;
+      row.country_code = extra.country_code ?? null;
+    }
+  } catch {
+    // Non-fatal by design. See the docblock.
+  }
+}
+
 // ─── ORCH-0588 Slice 1: signal-serving response shape ────────────────────────
 // Maps the new query_servable_places_by_signal RPC row → the same card shape
 // mobile already expects (mirrors unifiedCardToRecommendation in deckService.ts).
@@ -919,6 +975,10 @@ function transformServablePlaceToCard(
     openingHours: row.opening_hours ?? null,
     utcOffsetMinutes: row.utc_offset_minutes ?? null,
     isOpenNow: null, // computed downstream — mirrors today's behavior
+    // #1703 — the venue's own number and the country it dials from. Both null
+    // when unknown; the client renders no Call button rather than a dead one.
+    phone: row.national_phone_number ?? null,
+    countryCode: row.country_code ?? null,
     website: row.website,
     placeType: row.primary_type,
     placeTypeLabel: row.primary_type,
@@ -1079,6 +1139,46 @@ function curatedStopPlacePoolIds(card: any): string[] {
     .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
 }
 
+
+/**
+ * Issue #1703 rework — a CURATED PLAN's stops get a phone number too.
+ *
+ * Seth: "that stops should also have a call button in the curated cards."
+ *
+ * A stop is a real venue and it carries `placePoolId`, so the number is one
+ * keyed lookup away — the same shape as `enrichRowsWithPlaceFields`, keyed on
+ * `place_pool.id` instead of the row's own `place_id`. `CuratedStop` carried no
+ * phone field at all, which is why there was no Call control to hide: the data
+ * never existed rather than never rendering.
+ *
+ * Non-fatal, exactly like its sibling: a plan that cannot fetch a phone number
+ * is still a plan.
+ */
+async function enrichCuratedStopsWithPhone(db: any, cards: any[]): Promise<void> {
+  if (!Array.isArray(cards) || cards.length === 0) return;
+  const ids = new Set<string>();
+  for (const card of cards) for (const id of curatedStopPlacePoolIds(card)) ids.add(id);
+  if (ids.size === 0) return;
+  try {
+    const { data, error } = await db
+      .from('place_pool')
+      .select('id, national_phone_number, country_code')
+      .in('id', [...ids]);
+    if (error || !Array.isArray(data)) return;
+    const byId = new Map<string, any>(data.map((d: any) => [d.id, d]));
+    for (const card of cards) {
+      for (const stop of (Array.isArray(card?.stops) ? card.stops : [])) {
+        const extra = byId.get(stop?.placePoolId);
+        if (!extra) continue;
+        stop.phone = extra.national_phone_number ?? null;
+        stop.countryCode = extra.country_code ?? null;
+      }
+    }
+  } catch {
+    // Non-fatal by design.
+  }
+}
+
 async function fetchCuratedBatchInternal(args: {
   sessionId: string;
   experienceType: string;
@@ -1105,7 +1205,18 @@ async function fetchCuratedBatchInternal(args: {
     throw new Error(`generate-curated-experiences returned ${resp.status}: ${text.slice(0, 200)}`);
   }
   const json = await resp.json();
-  return { cards: Array.isArray(json?.cards) ? json.cards : [], summary: json?.summary };
+  const curatedCards = Array.isArray(json?.cards) ? json.cards : [];
+  // #1703 rework — every curated plan's stops get their venue's phone number, in
+  // ONE keyed lookup across the whole batch. Seth: "stops should also have a call
+  // button in the curated cards."
+  // A service-role client of its own: this helper runs outside any request
+  // handler's scope, and reaching for one that only exists inside `serve` is how
+  // a build passes and a runtime throws.
+  await enrichCuratedStopsWithPhone(
+    createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY),
+    curatedCards,
+  );
+  return { cards: curatedCards, summary: json?.summary };
 }
 
 async function handleDeterministicV2(args: {
@@ -1650,6 +1761,9 @@ async function handleDeterministicV2(args: {
     ),
   );
 
+  // #1683/#1703 — one PK lookup across every chip's rows, before bucketing.
+  await Promise.all(rpcResults.map(({ res }) => enrichRowsWithPlaceFields(supabaseAdmin, (res.data as any[]) ?? [])));
+
   const perChipBuckets = new Map<string, Map<string, any>>();
   const failedTasks: string[] = [];
   for (const { task, res } of rpcResults) {
@@ -1983,6 +2097,23 @@ async function handleDeterministicV2(args: {
           sourceBreakdown: { path: 'pipeline-error', reason: insertCacheRes.error.message },
         }, 500);
       }
+    }
+
+    /*
+      #1703 rework — ENRICH AT THE POINT OF SERVING, not only at generation.
+
+      A curated card served from `session_curated_cache` never touches
+      `fetchCuratedBatchInternal`, so enriching only there left every CACHE HIT
+      without stop phone numbers — which is most of them, and is why Seth still
+      saw no Call button on a plan after the first deploy. Every cached card
+      written before this shipped is also missing them permanently.
+
+      Doing it here covers both paths: the freshly generated card (already
+      enriched, so this is a cheap no-op on ids it will find unchanged) and the
+      cached one. Non-fatal, like its siblings.
+    */
+    if (pickedCard) {
+      await enrichCuratedStopsWithPhone(supabaseAdmin, [pickedCard]);
     }
 
     if (!pickedCard) {
@@ -2607,6 +2738,9 @@ export async function handleDiscoverCards(
 
     // Step 5: bucket results by chip, merging within a chip by place_id max-score.
     // Skip failed RPCs but keep going (partial failure tolerance).
+    // #1683/#1703 — one PK lookup across every chip's rows, before bucketing.
+    await Promise.all(rpcResults.map(({ res }) => enrichRowsWithPlaceFields(supabaseAdmin, (res.data as any[]) ?? [])));
+
     const perChipBuckets = new Map<string, Map<string, any>>(); // chip → place_id → row
     const failedTasks: string[] = [];
     for (const { task, res } of rpcResults) {

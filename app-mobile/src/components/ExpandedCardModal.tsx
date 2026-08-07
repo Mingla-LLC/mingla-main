@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import {
   View,
   Text,
-  FlatList,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -18,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "./ui/Icon";
-import { BaseBottomSheet } from "./ui/BaseBottomSheet";
+import { BaseBottomSheet, BottomSheetFlatList } from "./ui/BaseBottomSheet";
 import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardTypes";
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
 import { formatCurrency } from "./utils/formatters";
@@ -48,8 +47,11 @@ import CardInfoSection from "./expandedCard/CardInfoSection";
 // boxes with 26pt icon badges became two fact rows under one RIGHT NOW heading.
 import ConditionsSection from "./expandedCard/ConditionsSection";
 import PracticalDetailsSection from "./expandedCard/PracticalDetailsSection";
+import PlanTimeline, { type PlanTimelineLeg } from "./expandedCard/PlanTimeline";
 import { ExpandedCardHero } from "./expandedCard/ExpandedCardHero";
 import StopList, { type StopListStop } from "./expandedCard/StopList";
+import { occasionFromCategory, stopPurpose } from "./expandedCard/stopPurpose";
+import { dialablePhone } from "../../../packages/card-identity/phone.js";
 // #1605 P1-3 — the picnic Shopping List, re-homed onto the spine. It rendered on
 // `main` at :990-992 via the deleted PicnicShoppingList and was not in the
 // spec's deletion list; five producers still carry `shoppingList`.
@@ -305,6 +307,13 @@ export default function ExpandedCardModal({
   isSaved,
   currentMode = "solo",
   onCardRemoved,
+  /**
+   * #1707 — the edited plan, handed back so the DECK's copy changes too.
+   *
+   * Without it `curatedLocalCard` is component state that dies with the sheet:
+   * the swap works, closing throws it away, and reopening shows the original.
+   */
+  onCardEdited,
   onStrollDataFetched,
   onPicnicDataFetched,
   // ORCH-0659/0660: hideTravelTime prop deleted — was dead code (zero callers).
@@ -959,6 +968,29 @@ export default function ExpandedCardModal({
   */
   const planMainStopCount = planStops.filter((stop) => stop.optional !== true).length;
   let planOrdinal = 0;
+  /**
+   * #1706 — the leg between the plan's first and last stop.
+   *
+   * `travelTimeFromPreviousStopMin` is written by `replaceStopInCard` using
+   * `estimateTravelMinutes(haversineKm(...))` — real per-mode speeds over the
+   * real distance between two real coordinates. It is COMPUTED, never measured,
+   * so `estimated: true` is not a hedge: see `PlanTimelineLeg.estimated` for why
+   * that disclosure is the condition of this number being on the sheet at all.
+   *
+   * Null when the plan carries no figure. Nothing is invented to fill the gap —
+   * the leg simply does not render.
+   */
+  const planTimelineLeg: PlanTimelineLeg | null = (() => {
+    const last = planStops[planStops.length - 1];
+    const minutes = last?.travelTimeFromPreviousStopMin;
+    if (typeof minutes !== 'number' || !(minutes > 0)) return null;
+    return {
+      minutes,
+      mode: last?.travelModeFromPreviousStop ?? userPreferences?.travel_mode ?? null,
+      estimated: true,
+    };
+  })();
+
   const planListStops: StopListStop[] = planStops.map((stop, i) => {
     const isOptional = stop.optional === true && planMainStopCount > 0;
     if (!isOptional) planOrdinal += 1;
@@ -1003,6 +1035,17 @@ export default function ExpandedCardModal({
     travelMinutes: stop.travelTimeFromPreviousStopMin ?? null,
     travelMode: stop.travelModeFromPreviousStop ?? null,
     canReplace: !isOptional,
+    // #1705 — from the slot's OWN comboCategory (the real picnic plan carries
+    // 'groceries' on stop 1 and 'nature' on stop 2). Null for anything we cannot
+    // state without guessing; the row then renders exactly as it did before.
+    purpose: stopPurpose(stop),
+    // #1703 rework — resolved ONCE here, and the only thing that decides whether
+    // the stop gets a Call control. A separate presence test on `stop.phone`
+    // would let the control render for a number the link cannot be built from.
+    dialable: (() => {
+      const d = dialablePhone(stop.phone ?? null, stop.countryCode ?? null);
+      return d === null ? null : { display: d.display, tel: d.tel };
+    })(),
     optional: isOptional,
     };
   });
@@ -1028,6 +1071,45 @@ export default function ExpandedCardModal({
       .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
       .map((item) => item.trim());
   })();
+
+  /**
+   * #1705 — the supplies list's occasion line, composed from the plan's OWN
+   * data and NOTHING ELSE.
+   *
+   * Two facts, both already on the card: the plan's category ("Picnic Dates" ->
+   * "your picnic") and which stop, if any, is the one that sells them (the first
+   * stop whose purpose is the groceries one). Either may be missing, and the
+   * line degrades rather than inventing: no shop -> just the occasion; no
+   * recognised occasion -> no line at all, and `SuppliesList` renders exactly as
+   * it did before.
+   */
+  const suppliesPurposeLine = ((): string | null => {
+    if (!Array.isArray(supplies) || supplies.length === 0) return null;
+    // `CuratedExperienceCard` names it `categoryLabel`; the single-place shape
+    // uses `category`. Read both rather than asserting one — a wrong field here
+    // would silently disable the line on every plan.
+    const occasionKey =
+      (planCard as { categoryLabel?: string | null } | null)?.categoryLabel
+      ?? (card as { category?: string | null } | null)?.category
+      ?? null;
+    const occasion = occasionFromCategory(occasionKey);
+    if (occasion === null) return null;
+    const shopIndex = planStops.findIndex(
+      (st) => stopPurpose(st)?.key === 'expanded.purpose_groceries',
+    );
+    if (shopIndex >= 0) {
+      return t('cards:expanded.supplies_for_at_stop', {
+        defaultValue: 'Get these for {{occasion}} — stop {{n}} sells them',
+        occasion: t(`cards:${occasion.key}`, { defaultValue: occasion.defaultValue }),
+        n: shopIndex + 1,
+      });
+    }
+    return t('cards:expanded.supplies_for', {
+      defaultValue: 'Get these for {{occasion}}',
+      occasion: t(`cards:${occasion.key}`, { defaultValue: occasion.defaultValue }),
+    });
+  })();
+
 
   /**
    * The companion stops of a single place — a stroll's, a picnic's, and the
@@ -1076,6 +1158,11 @@ export default function ExpandedCardModal({
         travelMinutes: null,
         travelMode: null,
         canReplace: false,
+        // #1705 — no comboCategory on this producer, so no purpose. Never guessed.
+        purpose: null,
+        // No comboCategory and no place-pool row on this producer, so neither a
+        // purpose nor a phone. Never guessed.
+        dialable: null,
         optional: false,
       });
     }
@@ -1106,6 +1193,11 @@ export default function ExpandedCardModal({
         travelMinutes: null,
         travelMode: null,
         canReplace: false,
+        // #1705 — no comboCategory on this producer, so no purpose. Never guessed.
+        purpose: null,
+        // No comboCategory and no place-pool row on this producer, so neither a
+        // purpose nor a phone. Never guessed.
+        dialable: null,
         optional: false,
       });
     });
@@ -1227,16 +1319,30 @@ export default function ExpandedCardModal({
     if (replacingStopIndex === null || !source) return;
     const userLat = userPreferences?.location?.lat ?? source.stops?.[0]?.lat ?? 0;
     const userLng = userPreferences?.location?.lng ?? source.stops?.[0]?.lng ?? 0;
-    setCuratedLocalCard(
-      replaceStopInCard(
-        source,
-        replacingStopIndex,
-        alt,
-        userPreferences?.travel_mode || 'walking',
-        userLat,
-        userLng,
-      ),
+    const edited = replaceStopInCard(
+      source,
+      replacingStopIndex,
+      alt,
+      userPreferences?.travel_mode || 'walking',
+      userLat,
+      userLng,
     );
+    setCuratedLocalCard(edited);
+    /*
+      #1707 — AND HAND IT BACK. `setCuratedLocalCard` alone is where this bug
+      lived: state local to this sheet, four readers all in this file, nothing
+      writing it anywhere. The sheet unmounts and the edit is gone.
+
+      Keyed on the card's OWN id rather than whatever the caller last opened, so
+      a sheet opened from Likes or the calendar patches the right card. Only the
+      fields a replacement changes are sent — see `applyCuratedEdit`.
+    */
+    onCardEdited?.(edited.id, {
+      stops: edited.stops,
+      title: edited.title,
+      travelTime: (edited as { travelTime?: string | null }).travelTime ?? null,
+      distance: (edited as { distance?: string | null }).distance ?? null,
+    } as never);
     setReplacingStopIndex(null);
     clearAlternatives();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1513,8 +1619,27 @@ export default function ExpandedCardModal({
               Slot 5 — the gallery, `images.length > 1`, SINGLE PLACE ONLY. Not a
               branch: a plan has no second photo of its own, its stops do.
 
-              It is a horizontal FlatList, and it is the ONE horizontal scrollable
-              on this sheet. What it replaces is the 402x300 in-flow #000000 pager
+              It is a horizontal list, and it is the ONE horizontal scrollable
+              on this sheet.
+
+              #1702 — AND IT IS `BottomSheetFlatList`, NOT A PLAIN RN `FlatList`.
+              Seth, on a physical Samsung: "the single card photo gallery
+              thumbnails don't scroll horizontally when i scroll them on the
+              expanded sheet. Only when i expand them."
+
+              A raw RN list nested in a gorhom sheet does not participate in the
+              sheet's gesture negotiation, so on Android the sheet's pan handler
+              claims the horizontal drag before the list ever sees it. It works
+              in the lightbox because that view is OUTSIDE the sheet — which is
+              exactly the "only when i expand them" half of the report.
+
+              This file already knew: the replace-alternatives strip was
+              deliberately rebuilt as a wrapping grid a few hundred lines below
+              because "it fought the sheet's pan gesture every time a thumb
+              crossed it". The same fight, the same file, the wrong conclusion
+              drawn once. `BaseBottomSheet` — the sole permitted importer of
+              @gorhom/bottom-sheet — already re-exports the sheet-aware list for
+              precisely this, and its own comment says so. What it replaces is the 402x300 in-flow #000000 pager
               that used to BE the hero, with its 40pt chevrons, its dot row and its
               dead `.counter` style — and the 402x200 #f3f4f6 "no images" box that
               produced a 100pt layout jump against it.
@@ -1525,13 +1650,13 @@ export default function ExpandedCardModal({
             */}
             {!isCuratedCard && galleryPhotos.length > 0 ? (
               <Section title={t('cards:expanded.photos', { defaultValue: 'Photos' })}>
-                <FlatList
+                <BottomSheetFlatList
                   data={galleryPhotos}
-                  keyExtractor={(uri, i) => `${uri}_${i}`}
+                  keyExtractor={(uri: string, i: number) => `${uri}_${i}`}
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.galleryStrip}
-                  renderItem={({ item, index }) => (
+                  renderItem={({ item, index }: { item: string; index: number }) => (
                     <TouchableOpacity
                       activeOpacity={0.85}
                       onPress={() =>
@@ -1554,6 +1679,18 @@ export default function ExpandedCardModal({
               </Section>
             ) : null}
 
+            {/*
+              Slot 5c — SUPPLIES, ABOVE THE PLAN. #1705.
+
+              It sat BELOW the stops ("directly under the stops it is shopped
+              for"). Seth, after using it: "The supplies section should come just
+              before the plan and indicate what it's for." He is right about the
+              order for the same reason the list exists — you buy before you go,
+              so the list is the first thing the plan asks of you, not a footnote
+              to it.
+            */}
+            <SuppliesList items={supplies} purposeLine={suppliesPurposeLine} />
+
             {/* Slot 6 — THE PLAN (a plan has stops) … */}
             <View onLayout={(e) => setPlanSectionY(e.nativeEvent.layout.y)}>
               <StopList
@@ -1573,6 +1710,12 @@ export default function ExpandedCardModal({
                   })
                 }
                 onOpenWebsite={(stop) => openStopWebsite(stop.website)}
+                onCall={(stop) => {
+                  if (stop.dialable === null) return;
+                  Linking.openURL(`tel:${stop.dialable.tel}`).catch(() =>
+                    toastManager.show(stop.dialable?.display ?? '', 'error'),
+                  );
+                }}
                 onExpandedRowLayout={(y) =>
                   scrollRef.current?.scrollTo({ y: planSectionY + y, animated: true })
                 }
@@ -1691,15 +1834,6 @@ export default function ExpandedCardModal({
               </View>
             ) : null}
 
-            {/*
-              Slot 6c — SUPPLIES. The picnic shopping checklist, directly under
-              the stops it is shopped for. It rendered on `main` inside the
-              curated branch and was deleted with `PicnicShoppingList` without
-              being in the spec's deletion list, while five producers kept
-              carrying the field (#1605 P1-3).
-            */}
-            <SuppliesList items={supplies} />
-
             {/* Slot 7 — experiences at this venue (claimed brands only, single place). */}
             {!isCuratedCard ? (
               <VenueExperiencesSection
@@ -1736,16 +1870,15 @@ export default function ExpandedCardModal({
               address={isCuratedCard ? undefined : card.address}
               openingHours={isCuratedCard ? undefined : card.openingHours}
               phone={isCuratedCard ? undefined : card.phone}
+              countryCode={isCuratedCard ? undefined : card.countryCode}
               website={isCuratedCard ? undefined : card.website}
               utcOffsetMinutes={isCuratedCard ? null : cardUtcOffsetMinutes}
-              plan={
-                isCuratedCard
-                  ? {
-                      startsAt: planStops[0]?.address ?? null,
-                      endsNear: planStops[planStops.length - 1]?.address ?? null,
-                    }
-                  : undefined
-              }
+              /*
+                #1706 — the PLAN's Details is now `PlanTimeline` below, so this
+                section renders the single-place branch only. Two rows that
+                happen to be ordered do not say a plan is a sequence; a drawn
+                spine does.
+              */
               onLinkUnavailable={(what) =>
                 toastManager.show(t('cards:expanded.link_unavailable', {
                     defaultValue: "Couldn't open {{what}}",
@@ -1753,6 +1886,25 @@ export default function ExpandedCardModal({
                   }), 'error')
               }
             />
+
+            {/*
+              #1706 — THE PLAN'S DETAILS, DRAWN. Seth: "Details section should
+              show an animated vertical timeline."
+
+              Curated branch only. A single place's Details is an address, hours,
+              a phone and a website — attributes with no order among them, so a
+              timeline over them would be decoration pretending to be structure.
+            */}
+            {isCuratedCard ? (
+              <PlanTimeline
+                heading={t('expanded_details:action_buttons.details', { defaultValue: 'Details' })}
+                startsAt={planStops[0]?.address ?? null}
+                startsAtName={planStops[0]?.placeName ?? null}
+                endsNear={planStops[planStops.length - 1]?.address ?? null}
+                endsNearName={planStops[planStops.length - 1]?.placeName ?? null}
+                leg={planTimelineLeg}
+              />
+            ) : null}
 
             {/* Timeline Section (for Take a Stroll cards) */}
             {isStrollCard && strollData && strollData.timeline && (

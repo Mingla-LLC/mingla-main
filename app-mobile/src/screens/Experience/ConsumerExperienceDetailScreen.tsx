@@ -129,6 +129,11 @@ import {
 } from "../../payments/nativeCheckoutFlow";
 import { toastManager } from "../../components/ui/Toast";
 import { useAppStore } from "../../store/appStore";
+// #1708 — the same two pieces the place sheet uses. Open-Meteo needs no key and
+// no login; the travel figure is haversine and is labelled as an estimate.
+import { weatherService } from "../../services/weatherService";
+import { estimateTravelMinutes, haversineKm } from "../../utils/mutateCuratedCard";
+import { useRecommendations } from "../../contexts/RecommendationsContext";
 import { glass } from "../../constants/designSystem";
 import { hueFromId } from "../../utils/hueFromId";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
@@ -242,6 +247,9 @@ export default function ConsumerExperienceDetailScreen({
   const router = useRouter();
   const queryClient = useQueryClient();
   const user = useAppStore((s) => s.user);
+  // #1708 — the viewer's resolved position. Absent (permission denied, or the
+  // public web page) → no travel row at all, which is the honest outcome.
+  const { userLocation: viewerLocation } = useRecommendations();
   const profile = useAppStore((s) => s.profile);
 
   const [cartVisible, setCartVisible] = useState<boolean>(false);
@@ -842,6 +850,64 @@ export default function ConsumerExperienceDetailScreen({
     sellableTicket.priceAllInGbp > 0
       ? Math.round(sellableTicket.priceAllInGbp * 100)
       : null;
+  /**
+   * #1708 — RIGHT NOW, for the experience's own location.
+   *
+   * Seth's decision after the routing correction: a business experience keeps its
+   * OWN page (it has ticketing, occurrence pickers, a guest list and a reserve
+   * flow a place sheet has no business carrying) and what crosses over from the
+   * place sheet is the INTELLIGENCE.
+   *
+   * Same two services the place sheet uses. Every row is independently optional
+   * and NOTHING is fabricated: no coordinates -> no weather; no viewer position
+   * -> no travel row, which is exactly the state the public web page is in
+   * permanently.
+   */
+  // The experience's own coordinates: its geo point, or its first stop's. Both
+  // may be absent, and then there is no weather row — never a placeholder one.
+  const rightNowLat =
+    seed.locationGeo?.lat ?? (seed.experienceStops?.[0] as { lat?: number | null } | undefined)?.lat ?? null;
+  const rightNowLng =
+    seed.locationGeo?.lng ?? (seed.experienceStops?.[0] as { lng?: number | null } | undefined)?.lng ?? null;
+  const [rightNowWeather, setRightNowWeather] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (rightNowLat == null || rightNowLng == null) {
+      setRightNowWeather(null);
+      return () => { cancelled = true; };
+    }
+    weatherService
+      .getWeatherForecast(rightNowLat, rightNowLng)
+      .then((w) => {
+        if (cancelled || !w) return;
+        setRightNowWeather(`${w.condition}, ${Math.round(w.temperature)}\u00B0`);
+      })
+      .catch(() => {
+        // Non-fatal. A missing row is the honest outcome; a placeholder is not.
+        if (!cancelled) setRightNowWeather(null);
+      });
+    return () => { cancelled = true; };
+  }, [rightNowLat, rightNowLng]);
+
+  const rightNow = useMemo(() => {
+    let travel: string | null = null;
+    if (viewerLocation?.lat != null && viewerLocation?.lng != null
+      && rightNowLat != null && rightNowLng != null) {
+      const km = haversineKm(viewerLocation.lat, viewerLocation.lng, rightNowLat, rightNowLng);
+      travel = `${estimateTravelMinutes(km, 'driving')} min`;
+    }
+    if (!rightNowWeather && !travel) return null;
+    return {
+      weather: rightNowWeather,
+      travel,
+      // The travel figure is haversine, never a measurement. The disclosure is
+      // the condition of it being shown at all — see #1706 and the traffic
+      // deletion it refers to.
+      estimated: travel !== null,
+    };
+  }, [rightNowWeather, rightNowLat, rightNowLng, viewerLocation]);
+
   const offeringData = buildExperienceOfferingDataFromSeed(seed, {
     ticket:
       sellableTicket !== undefined
@@ -1035,6 +1101,11 @@ export default function ConsumerExperienceDetailScreen({
               stateBanner={stateBannerNode}
               dockedReserve={dockedReserve}
               // ORCH-1339 — cross-entity social proof (server-gated payload).
+              // #1708 — Right now: weather, travel and busyness for this location.
+              // Fetched HERE, not in the package: I-MOR-0827 forbids the shared
+              // body reaching into an app's services, and it is also what lets
+              // the web page supply weather without a viewer position.
+              rightNow={rightNow}
               socialProof={socialProofQuery.data ?? null}
               // ORCH-1341 — cluster/link tap opens the guest-list sheet
               // (double-gated per SPEC §4.6; absent ⇒ inert, no dead tap).

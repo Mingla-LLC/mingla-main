@@ -127,7 +127,17 @@ export function FactRow({
         {label}
       </Text>
       <View style={styles.factValueWrap}>
-        <Text style={styles.factValue} numberOfLines={2}>
+        {/*
+          #1700 — NO CLAMP. This was `numberOfLines={2}`, so a three-line address
+          was cut and the row looked crushed against its own padding: the text
+          filled the box exactly and the 10pt breathing room read as none.
+          Seth: "It does not expand vertically to contain the elements."
+
+          The wrapping law applies here for the same reason it applies to the
+          facts line — nothing on a card may be cut off. `minHeight` is a FLOOR,
+          so the row grows to whatever the value needs and keeps its padding.
+        */}
+        <Text style={styles.factValue}>
           {value}
           {present(tail) ? <Text style={styles.factTail}>{`  ${tail}`}</Text> : null}
         </Text>
@@ -357,7 +367,10 @@ const styles = StyleSheet.create({
   factRow: {
     minHeight: SPINE.factRowMinHeight,
     flexDirection: 'row',
-    alignItems: 'center',
+    // #1700 — flex-start, not center. With the clamp gone a value can be three
+    // lines, and centring it against a one-line label floats the label into the
+    // middle of the row instead of leading it.
+    alignItems: 'flex-start',
     gap: 12,
     paddingHorizontal: SPINE.gutter,
     paddingVertical: 10,

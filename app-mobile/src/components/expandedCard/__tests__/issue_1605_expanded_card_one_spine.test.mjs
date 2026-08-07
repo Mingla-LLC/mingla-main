@@ -20,6 +20,18 @@
  * Each rule also carries an anti-vacuity check: if the anchor it slices on has
  * moved, it FAILS rather than passing on an empty string.
  */
+
+/**
+ * MODIFIED under #1700 — [TEST-MOD-APPROVED #1700].
+ *
+ * S-1 compared the sheet's scrim against the deck's using the CANONICAL plate depths. The scrim
+ * is now solved from the tallest silhouette, so the comparison read 316 !== 346 and failed a
+ * correct change. The property — both surfaces resolve the SAME height at every hero height —
+ * is unchanged; only which silhouette defines it moved.
+ *
+ * Recorded here, in the file, so the next reader finds the reason beside the
+ * assertion rather than in a commit message they will not go looking for.
+ */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -161,8 +173,15 @@ test('S-1 the sheet\'s hero renders the deck card\'s plate, at every hero height
 
   // And it must hold at EVERY hero height the clamp can produce, because S7 is
   // the first surface whose height is not fixed.
-  const dPlate = CI.plateTopDepth('s7Expanded');
-  const dTitle = CI.titleTopDepth('s7Expanded');
+  // #1700 — the TALLEST silhouette's depths, not the canonical plate's. The
+  // scrim is solved from the deepest-reaching composition a surface can render
+  // (a two-line facts row), so comparing against the canonical depths here made
+  // this assert 316 !== 346 and go red for a scrim that had just been made
+  // CORRECT. The property — sheet and deck resolve the same height at every hero
+  // height — is unchanged; only which silhouette defines it moved.
+  const tallestLines = CI.surfaceSilhouettes('s7Expanded').at(-1);
+  const dPlate = CI.plateTopDepthForLines('s7Expanded', tallestLines);
+  const dTitle = CI.titleTopDepthForLines('s7Expanded', tallestLines);
   const heights = [600, 648, 731, 787, 874, 1200].map((sheet) => CI.expandedHeroHeight(sheet));
   assert.ok(new Set(heights).size >= 3, 'S-1 (vacuity): the sampled sheet heights collapse to one hero height');
   for (const h of heights) {

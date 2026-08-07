@@ -60,6 +60,12 @@ export interface ExpandedCardData extends Partial<CanonicalDiscoveryPrice> {
   utcOffsetMinutes?: number | null;
   utc_offset_minutes?: number | null;
   phone?: string;
+  /**
+   * #1703 — ISO-3166-1 alpha-2 from `place_pool.country_code`. What turns the
+   * stored LOCAL number into one that dials from another country. Optional and
+   * honestly absent; without it the number is dialled exactly as it is today.
+   */
+  countryCode?: string | null;
   website?: string;
   highlights: string[];
   tags: string[];
@@ -289,6 +295,15 @@ export interface ExpandedCardModalProps {
   isSaved?: boolean;
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void; // Callback to remove card from deck
+  /**
+   * #1707 — hand an EDITED plan back so the deck's own copy changes.
+   *
+   * The sheet held a replaced stop in local state with no writer, so closing it
+   * threw the edit away and reopening the card showed the original. Optional: a
+   * surface with no deck behind it (Likes, the calendar) simply does not pass it
+   * and the sheet behaves as it did.
+   */
+  onCardEdited?: (cardId: string, edited: Partial<ExpandedCardData>) => void;
   onStrollDataFetched?: (
     card: ExpandedCardData,
     strollData: ExpandedCardData["strollData"],

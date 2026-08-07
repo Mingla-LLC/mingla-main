@@ -282,6 +282,10 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
     // migration widening those RETURNS TABLE signatures, which is out of this
     // issue's stated scope.
     utcOffsetMinutes: card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null,
+    // #1703 — the venue's own number and the country it dials from. Both null
+    // when unknown, and the Call control is then ABSENT rather than disabled.
+    phone: card.phone ?? card.national_phone_number ?? null,
+    countryCode: card.countryCode ?? card.country_code ?? null,
     tags: [card.placeType, card.placeTypeLabel].filter(Boolean),
     matchScore: card.matchScore ?? 85,
     reviewCount: card.reviewCount ?? 0,

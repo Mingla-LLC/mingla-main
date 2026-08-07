@@ -196,6 +196,9 @@ export function savedCardToExpandedCardData(
       num(c.utcOffsetMinutes) ?? num(c.utc_offset_minutes) ?? null,
     website: str(c.website) ?? str(c.websiteUri),
     phone: str(c.phone),
+    // #1703 — the country the number dials from. Carried through the ONE mapper
+    // (#1669) so every producer gets it, not just the deck.
+    countryCode: str(c.countryCode) ?? str(c.country_code) ?? null,
     highlights: strArr(c.highlights) ?? [],
     tags: strArr(c.tags) ?? [],
     matchScore: num(c.matchScore) ?? 0,

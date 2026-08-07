@@ -51,9 +51,21 @@ import { SPINE } from "./spineTokens";
 interface SuppliesListProps {
   /** Already trimmed and non-empty by the caller. */
   readonly items: readonly string[];
+  /**
+   * #1705 — WHAT THE LIST IS FOR, and where to get it.
+   *
+   * Seth: "The supplies section should come just before the plan and indicate
+   * what it's for — get supplies for a picnic."
+   *
+   * A bare "Supplies" heading over ten grocery items on a two-stop plan leaves
+   * the user to work out both the occasion and which stop sells them. Supplied
+   * by the caller from the plan's OWN category and stop roles — never composed
+   * here, and never rendered at all when the caller cannot say.
+   */
+  readonly purposeLine?: string | null;
 }
 
-export default function SuppliesList({ items }: SuppliesListProps): React.ReactElement | null {
+export default function SuppliesList({ items, purposeLine }: SuppliesListProps): React.ReactElement | null {
   const { t } = useTranslation(["cards", "common"]);
   const [checked, setChecked] = React.useState<ReadonlySet<number>>(() => new Set<number>());
 
@@ -76,6 +88,12 @@ export default function SuppliesList({ items }: SuppliesListProps): React.ReactE
       title={t("cards:expanded.supplies", { defaultValue: "Supplies" })}
       trailing={<Chip label={`${checked.size}/${items.length}`} />}
     >
+      {/* #1705 — the occasion, from the plan's own category. Absent when unknown. */}
+      {typeof purposeLine === "string" && purposeLine.trim().length > 0 ? (
+        <View style={styles.purpose}>
+          <Text style={styles.purposeText}>{purposeLine}</Text>
+        </View>
+      ) : null}
       {items.map((item, index) => {
         const isChecked = checked.has(index);
         return (
@@ -105,6 +123,25 @@ export default function SuppliesList({ items }: SuppliesListProps): React.ReactE
 }
 
 const styles = StyleSheet.create({
+  /**
+   * #1705 — the occasion line. A tinted strip rather than plain prose, because
+   * it is an instruction ("buy these, at stop 1") and not a description. The
+   * label is `SPINE.link` at 5.18:1 on the tint, and the tint carries its own
+   * SC 1.4.11 boundary via `accentRing`.
+   */
+  purpose: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 11,
+    marginBottom: 10,
+  },
+  purposeText: { fontSize: 12.5, fontWeight: "600", color: SPINE.link, flexShrink: 1 },
   row: {
     minHeight: SPINE.factRowMinHeight,
     flexDirection: "row",

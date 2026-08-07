@@ -103,6 +103,7 @@ interface RecommendationsContextType {
   hasCompletedInitialFetch: boolean;
   refreshRecommendations: (refreshKey?: number | string) => void;
   clearRecommendations: () => void;
+  applyCuratedEdit: (cardId: string, edited: Partial<Recommendation>) => void;
   updateCardStrollData: (
     cardId: string,
     strollData: Recommendation["strollData"]
@@ -1621,6 +1622,50 @@ export const RecommendationsProvider: React.FC<
   ]);
 
   // ── Update Card Stroll Data ─────────────────────────────────────────────
+  /**
+   * Issue #1707 — a stop the user REPLACED survives closing the sheet.
+   *
+   * Seth: "When i choose replace a stop, it works, but it does not persist. It
+   * goes back to the same thing when i close it."
+   *
+   * `ExpandedCardModal` held the edited plan in `curatedLocalCard`, a piece of
+   * component state with four readers, all inside that one file. Nothing wrote it
+   * anywhere, so unmounting the sheet threw the edit away and reopening the card
+   * re-read the ORIGINAL from the deck.
+   *
+   * This is the write-back. It patches the card in the live deck AND in the
+   * cache the deck restores from — both, because patching only the state means
+   * the edit survives closing the sheet and dies on the next cold launch, which
+   * is a subtler version of the same bug. `updateCardStrollData` above already
+   * established that pairing; this reuses its shape deliberately.
+   *
+   * ONLY the fields a replacement actually changes are merged, so a stale editor
+   * cannot revert unrelated fields the deck has refreshed underneath it.
+   */
+  const applyCuratedEdit = useCallback(
+    (cardId: string, edited: Partial<Recommendation>) => {
+      const patch = (card: Recommendation): Recommendation =>
+        card.id === cardId ? ({ ...card, ...edited } as Recommendation) : card;
+
+      setRecommendations((prev) => prev.map(patch));
+
+      if (currentCacheKeyRef.current) {
+        const cachedEntry = cardsCache.getCachedCards(currentCacheKeyRef.current);
+        if (cachedEntry) {
+          cardsCache.setCachedCards(
+            currentCacheKeyRef.current,
+            cachedEntry.cards.map(patch),
+            cachedEntry.currentCardIndex,
+            cachedEntry.removedCardIds,
+            cachedEntry.mode,
+            cachedEntry.location,
+          );
+        }
+      }
+    },
+    [],
+  );
+
   const updateCardStrollData = useCallback(
     (cardId: string, strollData: Recommendation["strollData"]) => {
       setRecommendations((prev) =>
@@ -1920,6 +1965,7 @@ export const RecommendationsProvider: React.FC<
     hasCompletedInitialFetch,
     refreshRecommendations,
     clearRecommendations,
+    applyCuratedEdit,
     updateCardStrollData,
     handleDeckCardProgress,
     hasMoreCards,

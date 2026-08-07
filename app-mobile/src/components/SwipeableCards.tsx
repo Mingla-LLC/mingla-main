@@ -417,7 +417,13 @@ const NOOP = (): void => {};
  * hide the badge".
  */
 function metaSpansForCard(
-  card: { rating?: number | null; distance?: string | number | null; priceRange?: string | null; category?: string | null },
+  card: {
+    rating?: number | null;
+    distance?: string | number | null;
+    travelTime?: string | null;
+    priceRange?: string | null;
+    category?: string | null;
+  },
   measurementSystem: 'Metric' | 'Imperial' | undefined,
 ): MetaSpanInput[] {
   const spans: MetaSpanInput[] = [];
@@ -427,6 +433,26 @@ function metaSpansForCard(
   if (card.distance != null) {
     const d = parseAndFormatDistance(card.distance as any, measurementSystem);
     if (typeof d === 'string' && d.length > 0) spans.push({ kind: 'fact', text: d });
+  }
+  /*
+    #1701 — TRAVEL TIME. Seth: "Travel time is missing on the cards."
+    `Recommendation.travelTime` has always existed and has always been populated
+    — the real saved picnic plan carries "16 min" today — and this function
+    simply never read it. Nothing was computed and nothing was fetched to fix
+    this; a field with a producer and no reader got a reader.
+
+    NOT FABRICATED WHEN ABSENT (Constitution 9). `travelTime` is honestly null
+    whenever the user's GPS or the place's coordinates are missing, and the span
+    is then omitted exactly like the rating and the distance are. The old
+    `travelTime || "15 min"` default that #1669 found and deleted does not come
+    back in through this door.
+
+    It sits AFTER distance because the two are read together, and the wrapping
+    law (#1700) means a long row now costs a second line rather than the
+    category.
+  */
+  if (typeof card.travelTime === 'string' && card.travelTime.trim().length > 0) {
+    spans.push({ kind: 'fact', text: card.travelTime.trim() });
   }
   if (card.priceRange) spans.push({ kind: 'fact', text: card.priceRange });
   if (card.category) {
@@ -1086,6 +1112,7 @@ export default function SwipeableCards({
 
   const {
     recommendations,
+    applyCuratedEdit,
     loading,
     isFetching,
     error,
@@ -1160,6 +1187,29 @@ export default function SwipeableCards({
     useState<ExpandedCardData | null>(null);
   // ORCH-1065: brand experiences expand to the business-event sheet (NOT the
   // curated itinerary). Parallel state keeps them a first-class branch.
+  /**
+   * #1700 — how many lines each card's facts row actually needs, MEASURED.
+   *
+   * Keyed BY CARD ID rather than held as one number, because the deck promotes a
+   * new card under the same tree: a single `metaLines` would apply the outgoing
+   * card's silhouette to the incoming one until its first layout pass, and on a
+   * fast swipe burst that is a visible plate-height flicker at exactly the moment
+   * #1576 taught us not to touch. A card that has never been measured reads 1,
+   * which is the pre-#1700 height, so the first frame is never wrong-by-default.
+   *
+   * Bounded by the deck's own length (tens of cards per session).
+   *
+   * DECLARED HERE, with the component's other state, and NOT beside the
+   * `platePresentation` call that reads it — that spot is below
+   * `if (!currentRec) return null`, so on an empty deck these two hooks would be
+   * skipped and every hook after them would shift index. React's rules of hooks,
+   * broken by placement rather than by logic.
+   */
+  const [metaLinesByCard, setMetaLinesByCard] = useState<Record<string, number>>({});
+  const noteMetaLines = useCallback((cardId: string, lines: number): void => {
+    setMetaLinesByCard((prev) => (prev[cardId] === lines ? prev : { ...prev, [cardId]: lines }));
+  }, []);
+
   const [expandedBrandExperience, setExpandedBrandExperience] =
     useState<BusinessEventCard | null>(null);
   const [showNextBatchLoader, setShowNextBatchLoader] = useState(false);
@@ -3193,7 +3243,7 @@ export default function SwipeableCards({
   // place. Curated/experience cards take the CuratedExperienceSwipeCard branch
   // above and resolve their own presentation there.
   const currentSpans = metaSpansForCard(currentRec, accountPreferences?.measurementSystem);
-  const currentPresentation = platePresentation(currentSpans);
+  const currentPresentation = platePresentation(currentSpans, metaLinesByCard[currentRec.id] ?? 1);
 
   // #1609 §1.9 — the composed VoiceOver label. Each clause is dropped when its value
   // is absent rather than rendered as a placeholder or a zero (Constitution rule 9),
@@ -3327,7 +3377,7 @@ export default function SwipeableCards({
               // plate sizes itself with. Computing the spans once also keeps
               // metaSpansForCard off the promotion hot path twice over (#1481).
               const nextSpans = metaSpansForCard(nextCard, accountPreferences?.measurementSystem);
-              const nextPresentation = platePresentation(nextSpans);
+              const nextPresentation = platePresentation(nextSpans, metaLinesByCard[nextCard.id] ?? 1);
 
               return (
                 <Reanimated.View
@@ -3388,6 +3438,11 @@ export default function SwipeableCards({
                       : null}
                     <DeckCardPlate
                       spans={nextSpans}
+                      metaLines={nextPresentation.metaLines}
+                      // #1700 — the behind face does NOT report. It renders the
+                      // same spans as the card that is about to be promoted, so
+                      // letting it measure too would give one card two writers
+                      // racing on the same key. It reads; the front face writes.
                       onSharePress={NOOP}
                       shareLabel={t('cards:swipeable.share_card', { title: nextCard.title })}
                     />
@@ -3514,6 +3569,8 @@ export default function SwipeableCards({
                     beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
                     onSharePress={handleShare}
                     shareLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
+                    onDetailsPress={() => deckSwipe.requestTapExpand()}
+                    detailsLabel={t('cards:swipeable.details', { defaultValue: 'Details' })}
                     brandExperience={{
                       brandName: (currentRec as any).brandName,
                       brandLogoUrl: (currentRec as any).brandLogoUrl ?? null,
@@ -3549,6 +3606,8 @@ export default function SwipeableCards({
                     beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
                     onSharePress={handleShare}
                     shareLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
+                    onDetailsPress={() => deckSwipe.requestTapExpand()}
+                    detailsLabel={t('cards:swipeable.details', { defaultValue: 'Details' })}
                     // ORCH-1209: front-card render (curated cards carry no cover
                     // so this is a no-op today, kept for symmetry / future cover
                     // support). A behind-card render MUST pass isTopCard={false}.
@@ -3662,6 +3721,13 @@ export default function SwipeableCards({
 
                     <DeckCardPlate
                       spans={currentSpans}
+                      metaLines={currentPresentation.metaLines}
+                      onMetaLinesChange={(lines) => noteMetaLines(currentRec.id, lines)}
+                      // #1701 — the labelled way in. It does NOT own an expand
+                      // path: it calls the same `requestTapExpand` the card face
+                      // already routes through, so the deck keeps exactly one.
+                      onDetailsPress={() => deckSwipe.requestTapExpand()}
+                      detailsLabel={t('cards:swipeable.details', { defaultValue: 'Details' })}
                       beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
                       onSharePress={handleShare}
                       shareLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
@@ -3776,6 +3842,13 @@ export default function SwipeableCards({
         onShare={(card) => {
           onShareCard?.(card);
         }}
+        /*
+          #1707 — the edited plan reaches the DECK. `applyCuratedEdit` patches the
+          live list AND the cache the deck restores from: patching only the state
+          would make the edit survive closing the sheet and die on the next cold
+          launch, which is the same bug one layer down.
+        */
+        onCardEdited={(cardId, edited) => applyCuratedEdit(cardId, edited as never)}
         onCardRemoved={(cardId) => {
           // Remove card from deck when scheduled
           if (currentRec && cardId === currentRec.id) {
@@ -3860,13 +3933,24 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: "white",
-    borderRadius: glass.card.bezelRadius,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8,
+    // #1701 item 8 — TRANSPARENT, AND NO SHADOW. Both follow from the same
+    // finding and neither is a preference.
+    //
+    // The dark side bands were this view's own elevation shadow: Android builds
+    // it from the view's OUTLINE, the outline comes from background + radius, and
+    // a rounded outline on a screen-filling card paints the shadow INBOARD down
+    // both edges for the radius's width (40dp, measured).
+    //
+    // Removing the radius fixed that and exposed the next layer of the same
+    // mistake: `backgroundColor: "white"` on a SQUARE view behind a photo that
+    // `cardInner` clips to a 40pt radius, which showed white wedges in all four
+    // corners. Seth saw them immediately.
+    //
+    // Transparent fixes the wedges — and an elevation shadow cannot render over
+    // a transparent background on either platform, so the shadow keys are
+    // DELETED rather than left in place looking load-bearing. `cardInner` owns
+    // the radius and the clip; this view owns position and stacking only.
+    backgroundColor: "transparent",
     zIndex: 2,
   },
   cardOverlay: {

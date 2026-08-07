@@ -52,6 +52,14 @@ export interface CuratedStop {
   optional?: boolean;
   dismissible?: boolean;
   role?: string;
+  /**
+   * #1703 rework — the stop's own phone number, local format, and the country it
+   * dials from. Seth: "stops should also have a call button in the curated
+   * cards." Enriched in `discover-cards` from `place_pool` via `placePoolId`;
+   * both null when the venue has no number, and the control is then ABSENT.
+   */
+  phone?: string | null;
+  countryCode?: string | null;
   comboCategory?: string;  // Mingla category slug from the combo that selected this stop (e.g., 'fine_dining')
   rankSignal?: string;     // ORCH-0985: vibe signal this stop was ranked by (e.g. 'romantic'); used by Replace to order alternatives
 }

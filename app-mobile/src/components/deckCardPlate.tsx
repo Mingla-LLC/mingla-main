@@ -80,6 +80,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  type LayoutChangeEvent,
   Platform,
   Pressable,
   StyleSheet,
@@ -94,17 +95,21 @@ import { ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../constants/designSystem';
 import {
   BEEN_HERE,
   CHEVRON,
+  DETAILS,
   DIVIDER,
   MAX_FONT_SCALE,
   META,
+  META_LINES_MAX,
   PLATE,
   PLATE_H_NO_META,
   SHARE_GLYPH,
   SLIVER,
   STATE_DISC,
   SURFACES,
+  metaLineHeight,
+  plateHeightForMetaLines,
   plateRows,
-  surfacePlateUnder,
+  plateUnderForHeight,
   // Aliased because the presentation object below has a field of the same name.
   // The package OWNS this arithmetic; re-typing `bottomInset + plateH + gap` here
   // would be a second source for the one number the whole silhouette hangs off.
@@ -113,12 +118,39 @@ import {
 
 const S1 = SURFACES.s1Single;
 
-/** Derived once at module load — never a per-render solve, never a literal. */
-const PLATE_UNDER_ALPHA = surfacePlateUnder('s1Single');
-const PLATE_UNDER_FILL = `rgba(${PLATE.underRgb[0]},${PLATE.underRgb[1]},${PLATE.underRgb[2]},${PLATE_UNDER_ALPHA})`;
+/**
+ * The meta line's line box, from the package. #1700 replaced a hardcoded
+ * `lineHeight: 19` that lived only in this StyleSheet — the two-line row is
+ * measured against it, so it cannot be a number two files disagree about.
+ */
+const META_LH = metaLineHeight('s1Single');
 
-const ROWS_WITH_META = plateRows(S1.plateH, true);
-const ROWS_NO_META = plateRows(PLATE_H_NO_META, false);
+/**
+ * The three silhouettes, derived once at module load — never a per-render solve
+ * and never a literal. `lines` is 0 (no facts), 1, or 2 (#1700's wrapped row).
+ *
+ * The under-layer alpha is PER SILHOUETTE. The plate composites over the scrim
+ * at its OWN top edge, and that edge rises when the facts line wraps; one shared
+ * alpha would make the two-line plate render measurably LIGHTER than the
+ * one-line plate on the very next card. `plateUnderForHeight` re-solves each to
+ * L* 23.50, so the object's tone is identical at all three heights.
+ */
+const SILHOUETTES = [0, 1, META_LINES_MAX].map((lines) => {
+  const plateH = plateHeightForMetaLines('s1Single', lines);
+  const underAlpha = plateUnderForHeight('s1Single', plateH);
+  return {
+    lines,
+    plateH,
+    rows: plateRows(plateH, lines, 's1Single'),
+    underFill: `rgba(${PLATE.underRgb[0]},${PLATE.underRgb[1]},${PLATE.underRgb[2]},${underAlpha})`,
+  };
+});
+
+/** Clamp any incoming line count onto a real silhouette. */
+function silhouetteFor(lines: number): (typeof SILHOUETTES)[number] {
+  const n = Math.max(0, Math.min(META_LINES_MAX, Math.round(lines)));
+  return SILHOUETTES.find((s) => s.lines === n) ?? SILHOUETTES[1];
+}
 
 /**
  * The plate's two-layer fill over the blurred backdrop.
@@ -134,7 +166,7 @@ const ROWS_NO_META = plateRows(PLATE_H_NO_META, false);
  * blur anyway (convolving a smooth gradient is a visual no-op), so a dark tint
  * would contribute only suppression.
  */
-function PlateMaterial(): React.ReactElement {
+function PlateMaterial({ underFill }: { underFill?: string }): React.ReactElement {
   if (ANDROID_GLASS_USES_OPAQUE_FALLBACK) {
     return (
       <View
@@ -154,7 +186,7 @@ function PlateMaterial(): React.ReactElement {
       />
       <View
         pointerEvents="none"
-        style={[StyleSheet.absoluteFill, { backgroundColor: PLATE_UNDER_FILL }]}
+        style={[StyleSheet.absoluteFill, { backgroundColor: underFill ?? SILHOUETTES[1].underFill }]}
       />
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: PLATE.lift }]} />
     </>
@@ -173,42 +205,112 @@ export interface MetaSpanInput {
 }
 
 /**
- * The meta line — ONE `Text` with weighted spans, not a middot-separated line at
- * one weight (which is a flatter version of the problem C exists to fix).
+ * The meta line.
  *
- *     * 4.4  ·  6.7 mi  ·  ££  ·  Whiskey Bar
- *     └─700─┘  └──500 @1.0──┘   └─500 @0.72─┘
+ *     * 4.4  ·  6.7 mi  ·  14 min drive  ·  Whiskey Bar
+ *     └─700─┘  └────────500 @1.0────────┘  └─500 @0.72─┘
  *
- * ORDER IS TRUNCATION PRIORITY. Tail-ellipsis eats the last span first, so the
- * least valuable fact is placed last on purpose. Separators render BETWEEN
- * PRESENT SPANS ONLY — never leading, never trailing. A card with no rating
- * begins at distance with no orphaned "·" (Constitution 9).
+ * ---------------------------------------------------------------------------
+ * #1700 — THE WRAPPING LAW. Seth, 2026-08-07:
  *
- * `numberOfLines={1}` with `ellipsizeMode="tail"`, and NO `flexWrap` anywhere:
- * the plate is a fixed rectangle, so the row ellipsises rather than growing, and
- * that is what makes a 1-line meta and an absent meta occupy the same box.
+ *   *"I want everything to take one line but when something is cut off, or
+ *    bleeds out of the box, it should go to the next line so everything is
+ *    visible."*
+ *
+ * This was ONE `Text` with nested spans, `numberOfLines={1}`, `ellipsizeMode
+ * ="tail"` and "NO flexWrap anywhere". On a real Samsung that rendered
+ * "★ 4.6 · 20.9 mi · Icebrea…" — the category the card was matched on, deleted,
+ * with 20pt of unused vertical slack sitting directly above it.
+ *
+ * IT IS NOW A WRAPPING ROW OF ATOMIC SPANS, AND THAT SHAPE IS THE POINT.
+ * Turning the old single `Text` to `numberOfLines={2}` would have wrapped it at
+ * WORD boundaries, breaking "14 min drive" across two lines mid-phrase and
+ * stranding a separator at a line end. A `flexDirection: 'row'` +
+ * `flexWrap: 'wrap'` container of one `Text` PER SPAN wraps at span boundaries
+ * instead: a fact is atomic, and either fits on the line or moves to the next
+ * one whole. Separators are their own spans and never lead a line, because a
+ * separator only ever renders after a present span.
+ *
+ * The weights are unchanged and still per-span, so the "not a middot-separated
+ * line at one weight" argument survives intact — the spans simply stopped being
+ * nested inside one Text and became siblings in a row.
+ *
+ * ORDER IS STILL PRIORITY, for a different reason: nothing is dropped any more,
+ * but the last span is the one that moves to line two, so the least valuable
+ * fact is still placed last on purpose.
+ *
+ * `onLinesChange` reports 1 or 2 so the plate can grow by exactly one line box.
+ * It is measured — `onLayout` on the row, divided by the line height from the
+ * package — because RN gives no synchronous text metrics, and a plate sized by
+ * a guess is a plate that clips or floats. Guarded against a layout loop: the
+ * value is clamped to [1, META_LINES_MAX] and only emitted when it CHANGES.
  */
-export function CardMetaLine({ spans }: { spans: readonly MetaSpanInput[] }): React.ReactElement | null {
+export function CardMetaLine({
+  spans,
+  onLinesChange,
+}: {
+  spans: readonly MetaSpanInput[];
+  onLinesChange?: (lines: number) => void;
+}): React.ReactElement | null {
   const present = spans.filter((s) => typeof s.text === 'string' && s.text.trim().length > 0);
+  const lastReported = React.useRef(1);
+
+  const handleLayout = React.useCallback(
+    (e: LayoutChangeEvent) => {
+      if (!onLinesChange) return;
+      const h = e.nativeEvent.layout.height;
+      if (!(h > 0)) return;
+      // Half a line of tolerance: a row of 1.0–1.5 line boxes is one line.
+      const measured = Math.max(1, Math.min(META_LINES_MAX, Math.round(h / META_LH)));
+      if (measured === lastReported.current) return;
+      lastReported.current = measured;
+      onLinesChange(measured);
+    },
+    [onLinesChange],
+  );
+
   if (present.length === 0) return null;
+
   return (
-    <Text
-      style={styles.meta}
-      numberOfLines={1}
-      ellipsizeMode="tail"
-      maxFontSizeMultiplier={MAX_FONT_SCALE.meta}
-    >
+    <View style={styles.metaWrap} onLayout={handleLayout}>
       {present.map((span, i) => (
-        <React.Fragment key={`${span.kind}_${i}`}>
+        /*
+          THE SEPARATOR TRAVELS WITH THE SPAN IT INTRODUCES, in one non-shrinking
+          chip. Rendering separators as their own flex items wraps them
+          independently, so a line break landing just after one leaves a dangling
+          "★ 4.6 · 20.9 mi ·" at the end of line one — a trailing separator,
+          which is the exact thing Constitution 9 forbids at the other end of the
+          line. Grouped, the break can only ever fall BETWEEN chips, and line two
+          begins "· Icebreakers".
+
+          `flexShrink: 0` is what makes a chip MOVE rather than SQUEEZE. Without
+          it the row would shrink the last chip and RN would wrap its Text
+          internally at a word boundary — "34 min" / "drive" — which is the
+          mid-phrase break this whole shape exists to prevent. A chip wider than
+          the plate itself still wraps internally, and that is the correct last
+          resort: a fact too long for any line is shown broken, never cut.
+        */
+        <View key={`${span.kind}_${i}`} style={styles.metaChip}>
           {i > 0 ? (
-            <Text style={styles.metaSeparator}>{META.separator.text}</Text>
+            <Text
+              style={[styles.meta, styles.metaSeparator]}
+              maxFontSizeMultiplier={MAX_FONT_SCALE.meta}
+            >
+              {META.separator.text}
+            </Text>
           ) : null}
-          <Text style={span.kind === 'rating' ? styles.metaRating : span.kind === 'tail' ? styles.metaTail : styles.metaFact}>
+          <Text
+            style={[
+              styles.meta,
+              span.kind === 'rating' ? styles.metaRating : span.kind === 'tail' ? styles.metaTail : styles.metaFact,
+            ]}
+            maxFontSizeMultiplier={MAX_FONT_SCALE.meta}
+          >
             {span.text}
           </Text>
-        </React.Fragment>
+        </View>
       ))}
-    </Text>
+    </View>
   );
 }
 
@@ -339,17 +441,35 @@ export function CardStateDiscs({
  *
  * `titleBottom` is the PACKAGE's `titleBottom()`, not arithmetic retyped here.
  */
-export function platePresentation(spans: readonly MetaSpanInput[]): {
+export function platePresentation(
+  spans: readonly MetaSpanInput[],
+  /**
+   * #1700 — how many lines the facts row actually occupies, as MEASURED by
+   * `CardMetaLine`'s onLayout. Defaults to 1, which is the pre-#1700 behaviour
+   * and the correct first-frame value: a row that turns out to need two lines
+   * reports it on its first layout pass, before the user can read it.
+   *
+   * It is an argument rather than something computed here on purpose. React
+   * Native gives no synchronous text metrics, so this is the ONLY honest source
+   * — and keeping it an input means every anchor (plate height, title bottom,
+   * sliver stack) still resolves from ONE object, which is the whole reason
+   * this function exists.
+   */
+  metaLines: number = 1,
+): {
   withMeta: boolean;
+  metaLines: number;
   plateH: number;
   /** The plate's top edge, in points up from the card's bottom edge. */
   plateTop: number;
   titleBottom: number;
 } {
   const withMeta = spans.some((s) => typeof s.text === 'string' && s.text.trim().length > 0);
-  const plateH = withMeta ? S1.plateH : PLATE_H_NO_META;
+  const lines = withMeta ? Math.max(1, Math.min(META_LINES_MAX, Math.round(metaLines))) : 0;
+  const plateH = silhouetteFor(lines).plateH;
   return {
     withMeta,
+    metaLines: lines,
     plateH,
     plateTop: S1.bottomInset + plateH,
     titleBottom: surfaceTitleBottom('s1Single', plateH),
@@ -385,6 +505,27 @@ export interface DeckCardPlateProps {
    * ExpandedCardHero's header for the correction and the remaining work.
    */
   readonly chevron?: 'up' | 'down';
+  /**
+   * #1700 — how many lines the facts row occupies (1 or 2). The plate grows by
+   * exactly one line box for the second. Supplied by the CALLER because the
+   * caller also anchors the title and the sliver stack off the same number, and
+   * two components measuring independently is how anchors drift apart.
+   */
+  readonly metaLines?: number;
+  /** Reports the MEASURED line count back so the caller can re-anchor. */
+  readonly onMetaLinesChange?: (lines: number) => void;
+  /**
+   * #1701 — the LABELLED way into the card. Seth, 2026-08-07: "I want a button
+   * beside been there which indicates view more with an eye icon."
+   *
+   * The chevron STAYS. It is the gesture hint and Seth kept it explicitly at
+   * #1609; this is the affordance for everyone who never discovers a chevron.
+   * Absent (and the control unrendered) when the caller supplies no handler —
+   * a button that opens nothing is a dead tap, and the behind face has no
+   * expand path at all.
+   */
+  readonly onDetailsPress?: () => void;
+  readonly detailsLabel?: string;
 }
 
 /**
@@ -420,20 +561,28 @@ export function DeckCardPlate({
   onSharePress,
   shareLabel,
   chevron = 'up',
+  metaLines = 1,
+  onMetaLinesChange,
+  onDetailsPress,
+  detailsLabel,
 }: DeckCardPlateProps): React.ReactElement {
-  const meta = <CardMetaLine spans={spans} />;
-  const { withMeta } = platePresentation(spans);
-  const rows = withMeta ? ROWS_WITH_META : ROWS_NO_META;
+  // #1700 — ONE resolution of the silhouette, read by the height, the row
+  // heights AND the material. Three reads of one object; never three parallel
+  // ternaries that can disagree (I-PROPOSED-1593-LAYER-GEOMETRY-SINGLE-SOURCE).
+  const { withMeta, metaLines: lines } = platePresentation(spans, metaLines);
+  const silhouette = silhouetteFor(lines);
+  const rows = silhouette.rows;
+  const meta = <CardMetaLine spans={spans} onLinesChange={onMetaLinesChange} />;
 
   return (
     <View
-      style={[styles.plate, withMeta ? styles.plateWithMeta : styles.plateNoMeta]}
+      style={[styles.plate, { height: silhouette.plateH }]}
       // The plate is a CONTAINER, not a control. VoiceOver reaches the card
       // through the composed label on the face and the two real buttons below.
       accessibilityRole="none"
       accessible={false}
     >
-      <PlateMaterial />
+      <PlateMaterial underFill={silhouette.underFill} />
       <View pointerEvents="none" style={styles.plateTopHighlight} />
 
       {withMeta ? (
@@ -499,6 +648,35 @@ export function DeckCardPlate({
           free to occupy zero space without moving anything.
         */}
         {beenHere}
+        {/*
+          #1701 — DETAILS. A second gesture owner on this plate, and the module
+          header's "exactly ONE gesture owner" line is updated with it rather
+          than left to rot.
+
+          It is a plain RN Pressable, like Been-here: it adds no
+          gesture-handler gesture, so it never contends for the deck's gesture
+          lease (I-PROPOSED-1579). It sits INBOARD of both card edges, on the
+          plate at the card's foot, away from where a swipe begins — the same
+          placement argument that made Been-here safe.
+
+          It does NOT own the expand logic. The tap is handed straight back to
+          the caller, which routes it through the existing `requestTapExpand`,
+          so there remains exactly one expand path in the deck.
+        */}
+        {onDetailsPress ? (
+          <Pressable
+            onPress={onDetailsPress}
+            style={({ pressed }) => [styles.detailsButton, pressed ? styles.detailsButtonPressed : null]}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={detailsLabel}
+          >
+            <Icon name="eye-outline" size={DETAILS.glyphSize} color={DETAILS.color} />
+            <Text style={styles.detailsLabel} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE.controlLabel}>
+              {detailsLabel}
+            </Text>
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={onSharePress}
           style={styles.shareButtonPlate}
@@ -605,12 +783,12 @@ const styles = StyleSheet.create({
     borderColor: PLATE.border,
     zIndex: 2,
   },
-  plateWithMeta: { height: S1.plateH },
-  // The ONE alternate silhouette. Only the plate's TOP edge moves: the card's
-  // bottom edge, the plate's bottom edge and the plate's left/right edges do
-  // not. The height is derived by the package from the full plate minus the
-  // facts row plus the chevron's clearance — never typed here.
-  plateNoMeta: { height: PLATE_H_NO_META },
+  // #1700 — `plateWithMeta` / `plateNoMeta` are DELETED. The height is now one
+  // of THREE silhouettes and arrives as an inline `{ height }` read straight off
+  // the resolved silhouette object, so a fourth height cannot be introduced by
+  // adding a fourth StyleSheet entry that nothing derives. Only the plate's TOP
+  // edge ever moves: the card's bottom edge, the plate's bottom edge and the
+  // plate's left/right edges are the same in all three.
   plateTopHighlight: {
     position: 'absolute',
     top: 0,
@@ -623,9 +801,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: S1.sideInset,
     justifyContent: 'center',
   },
+  /**
+   * #1700 — the wrapping row. `flexWrap: 'wrap'` over ATOMIC span children is
+   * what makes a fact move to line two whole instead of breaking mid-phrase,
+   * and it is the shape a single `<Text numberOfLines={2}>` cannot produce.
+   *
+   * `alignItems: 'center'` rather than 'baseline': the spans carry different
+   * weights, and on Android a baseline row with mixed weights lands the
+   * separator visibly low. All spans share one lineHeight, so centring gives the
+   * same result as a baseline would have on iOS and a correct one on Android.
+   */
+  metaWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  /**
+   * One fact plus the separator that introduces it, as an atomic unit.
+   * `flexShrink: 0` is load-bearing — see the render site. A shrinking chip
+   * wraps its own Text mid-phrase instead of moving to the next line.
+   */
+  metaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
   meta: {
     fontSize: S1.metaSize,
-    lineHeight: 19,
+    // From the package (#1700). It was a bare `19` that only this file knew.
+    lineHeight: META_LH,
   },
   metaRating: { fontWeight: META.rating.weight as '700', color: META.rating.color },
   metaFact: { fontWeight: META.fact.weight as '500', color: META.fact.color },
@@ -651,6 +855,37 @@ const styles = StyleSheet.create({
     // Been-here control grows and shrinks with its copy and collides with
     // nothing.
     justifyContent: 'space-between',
+  },
+  /**
+   * #1701 — Details. Same 44pt-minimum target and same pill geometry as
+   * Been-here (both read BEEN_HERE from the package), so the two read as one
+   * pair of controls rather than a button and a decoration.
+   */
+  detailsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: DETAILS.gap,
+    height: BEEN_HERE.height,
+    minWidth: BEEN_HERE.height,
+    paddingHorizontal: DETAILS.paddingH,
+    borderRadius: BEEN_HERE.borderRadius,
+    borderWidth: BEEN_HERE.borderWidth,
+    borderColor: ANDROID_GLASS_USES_OPAQUE_FALLBACK ? DETAILS.androidBorder : DETAILS.border,
+    // Android's plate is an opaque solid, so a translucent fill would composite
+    // over a DIFFERENT backdrop than the one the ratios above were solved
+    // against. The opaque equivalents are pre-solved in the package.
+    backgroundColor: ANDROID_GLASS_USES_OPAQUE_FALLBACK ? DETAILS.androidFill : DETAILS.fill,
+    // The row is space-between with a right-anchored share disc; this sits
+    // immediately after Been-here rather than being pushed to the middle.
+    marginLeft: DETAILS.gapFromBeenHere,
+  },
+  detailsButtonPressed: {
+    backgroundColor: ANDROID_GLASS_USES_OPAQUE_FALLBACK ? DETAILS.androidFillPressed : DETAILS.fillPressed,
+  },
+  detailsLabel: {
+    fontSize: DETAILS.labelSize,
+    fontWeight: DETAILS.labelWeight as '600',
+    color: DETAILS.color,
   },
   shareButtonPlate: {
     width: SHARE_GLYPH.target,

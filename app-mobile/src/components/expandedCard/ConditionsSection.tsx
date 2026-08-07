@@ -150,21 +150,29 @@ export default function ConditionsSection({
           </Text>
           <View style={styles.busyBody}>
             {/*
+              #1700 / #1705 — THE WRAPPING LAW REACHES THIS ROW.
+              Seth, on a device: "Estiated should take another line. Also the text
+              usually.. is not shown fully on android."
+
+              He was reading "Usually stea…". The cause was here and not in the
+              deck's plate: `value` carried `flexShrink: 1` and `estimated`
+              carried `flexShrink: 0`, so when the row ran short Android shrank
+              and clipped THE VALUE while the disclosure held its full width — the
+              fact sacrificed to keep the caveat.
+
+              The value and the sparkline now hold one line and the disclosure
+              drops beneath, so neither can crowd the other out at any text size.
+            */}
+            <View style={styles.busyTop}>
+            {/*
               THE BAND, NOT THE PERCENTAGE. `busyness.message` is
               "Not busy (3%) — great time to visit!" — a compile-time curve
               value plus advice. §6.6's design is a qualitative word, and a
               qualitative word is the only honest rendering of a typical curve.
             */}
-            <Text style={styles.value} numberOfLines={1}>
+            <Text style={styles.value}>
               {bandLabel(busyness, t)}
             </Text>
-            {busyness.isEstimated ? (
-              <Text style={styles.estimated} numberOfLines={1}>
-                {t("expanded_details:busyness.estimated_disclosure", {
-                  defaultValue: "Estimated",
-                })}
-              </Text>
-            ) : null}
             {/*
               The sparkline is a 48x5 track with a proportional fill — the only
               non-text mark in the body, and it is decoration ON a value that is
@@ -185,6 +193,17 @@ export default function ConditionsSection({
                 ]}
               />
             </View>
+            </View>
+
+            {/* #1700 — the disclosure, on its own line. It can no longer crowd
+                the value it qualifies, at any text size. */}
+            {busyness.isEstimated ? (
+              <Text style={styles.estimated}>
+                {t("expanded_details:busyness.estimated_disclosure", {
+                  defaultValue: "Estimated",
+                })}
+              </Text>
+            ) : null}
           </View>
         </View>
       )}
@@ -278,8 +297,15 @@ const styles = StyleSheet.create({
     color: SPINE.factLabel,
     width: 118,
   },
-  busyBody: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },
-  value: { fontSize: SPINE.factValueSize, fontWeight: "500", color: SPINE.factValue, flexShrink: 1 },
+  // #1700 — a COLUMN now: the value and its sparkline on one line, the
+  // disclosure beneath. It was a row, and in a row the value was the thing that
+  // shrank.
+  busyBody: { flex: 1, flexDirection: "column", alignItems: "flex-start" },
+  busyTop: { flexDirection: "row", alignItems: "center", gap: 10, alignSelf: "stretch" },
+  // #1700 — `flexShrink: 1` DELETED. It is what let Android clip "Usually
+  // steady" to "Usually stea…" while the disclosure beside it kept its full
+  // width. The value never shrinks; anything that will not fit moves.
+  value: { fontSize: SPINE.factValueSize, fontWeight: "500", color: SPINE.factValue, flex: 1 },
   /*
     The disclosure that replaces `estimatedText`. The shipped one was
     rgba(194,65,12,0.5) at 9pt = 2.20:1 — a caption that fails AA is not
@@ -288,7 +314,7 @@ const styles = StyleSheet.create({
     BESIDE the value so a screen reader reads "Usually quiet, Estimated" as one
     thought rather than finding it a line later.
   */
-  estimated: { fontSize: 14, fontWeight: "400", color: SPINE.muted, flexShrink: 0 },
+  estimated: { fontSize: 14, fontWeight: "400", color: SPINE.muted, marginTop: 2 },
   spark: {
     width: 48,
     height: 5,
