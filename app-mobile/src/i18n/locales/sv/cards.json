@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "Ingen skrivbar kalender hittades på den här enheten.",
   "expanded.calendar_date_parse_error": "Kunde inte läsa evenemangets tid.",
   "expanded.calendar_added": "Tillagt i kalendern",
-  "expanded.calendar_error": "Det gick inte att lägga till i kalendern. Försök igen."
+  "expanded.calendar_error": "Det gick inte att lägga till i kalendern. Försök igen.",
+  "swipeable.details": "Details"
 }

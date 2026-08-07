@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "このデバイスに書き込み可能なカレンダーがありません。",
   "expanded.calendar_date_parse_error": "イベントの時刻を読み取れませんでした。",
   "expanded.calendar_added": "カレンダーに追加しました",
-  "expanded.calendar_error": "カレンダーに追加できませんでした。もう一度お試しください。"
+  "expanded.calendar_error": "カレンダーに追加できませんでした。もう一度お試しください。",
+  "swipeable.details": "Details"
 }

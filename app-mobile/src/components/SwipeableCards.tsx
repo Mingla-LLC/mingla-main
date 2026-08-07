@@ -417,7 +417,13 @@ const NOOP = (): void => {};
  * hide the badge".
  */
 function metaSpansForCard(
-  card: { rating?: number | null; distance?: string | number | null; priceRange?: string | null; category?: string | null },
+  card: {
+    rating?: number | null;
+    distance?: string | number | null;
+    travelTime?: string | null;
+    priceRange?: string | null;
+    category?: string | null;
+  },
   measurementSystem: 'Metric' | 'Imperial' | undefined,
 ): MetaSpanInput[] {
   const spans: MetaSpanInput[] = [];
@@ -427,6 +433,26 @@ function metaSpansForCard(
   if (card.distance != null) {
     const d = parseAndFormatDistance(card.distance as any, measurementSystem);
     if (typeof d === 'string' && d.length > 0) spans.push({ kind: 'fact', text: d });
+  }
+  /*
+    #1701 — TRAVEL TIME. Seth: "Travel time is missing on the cards."
+    `Recommendation.travelTime` has always existed and has always been populated
+    — the real saved picnic plan carries "16 min" today — and this function
+    simply never read it. Nothing was computed and nothing was fetched to fix
+    this; a field with a producer and no reader got a reader.
+
+    NOT FABRICATED WHEN ABSENT (Constitution 9). `travelTime` is honestly null
+    whenever the user's GPS or the place's coordinates are missing, and the span
+    is then omitted exactly like the rating and the distance are. The old
+    `travelTime || "15 min"` default that #1669 found and deleted does not come
+    back in through this door.
+
+    It sits AFTER distance because the two are read together, and the wrapping
+    law (#1700) means a long row now costs a second line rather than the
+    category.
+  */
+  if (typeof card.travelTime === 'string' && card.travelTime.trim().length > 0) {
+    spans.push({ kind: 'fact', text: card.travelTime.trim() });
   }
   if (card.priceRange) spans.push({ kind: 'fact', text: card.priceRange });
   if (card.category) {
@@ -3542,6 +3568,8 @@ export default function SwipeableCards({
                     beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
                     onSharePress={handleShare}
                     shareLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
+                    onDetailsPress={() => deckSwipe.requestTapExpand()}
+                    detailsLabel={t('cards:swipeable.details', { defaultValue: 'Details' })}
                     brandExperience={{
                       brandName: (currentRec as any).brandName,
                       brandLogoUrl: (currentRec as any).brandLogoUrl ?? null,
@@ -3577,6 +3605,8 @@ export default function SwipeableCards({
                     beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
                     onSharePress={handleShare}
                     shareLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
+                    onDetailsPress={() => deckSwipe.requestTapExpand()}
+                    detailsLabel={t('cards:swipeable.details', { defaultValue: 'Details' })}
                     // ORCH-1209: front-card render (curated cards carry no cover
                     // so this is a no-op today, kept for symmetry / future cover
                     // support). A behind-card render MUST pass isTopCard={false}.
@@ -3692,6 +3722,11 @@ export default function SwipeableCards({
                       spans={currentSpans}
                       metaLines={currentPresentation.metaLines}
                       onMetaLinesChange={(lines) => noteMetaLines(currentRec.id, lines)}
+                      // #1701 — the labelled way in. It does NOT own an expand
+                      // path: it calls the same `requestTapExpand` the card face
+                      // already routes through, so the deck keeps exactly one.
+                      onDetailsPress={() => deckSwipe.requestTapExpand()}
+                      detailsLabel={t('cards:swipeable.details', { defaultValue: 'Details' })}
                       beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
                       onSharePress={handleShare}
                       shareLabel={t('cards:swipeable.share_card', { title: currentRec.title })}

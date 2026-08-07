@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "Nenhum calendário editável encontrado neste dispositivo.",
   "expanded.calendar_date_parse_error": "Não conseguimos ler o horário do evento.",
   "expanded.calendar_added": "Adicionado ao calendário",
-  "expanded.calendar_error": "Não foi possível adicionar ao calendário. Tente novamente."
+  "expanded.calendar_error": "Não foi possível adicionar ao calendário. Tente novamente.",
+  "swipeable.details": "Details"
 }

@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "Tidak ada kalender yang dapat ditulis di perangkat ini.",
   "expanded.calendar_date_parse_error": "Tidak dapat membaca waktu acara.",
   "expanded.calendar_added": "Ditambahkan ke kalender",
-  "expanded.calendar_error": "Tidak dapat menambahkan ke kalender. Coba lagi."
+  "expanded.calendar_error": "Tidak dapat menambahkan ke kalender. Coba lagi.",
+  "swipeable.details": "Details"
 }

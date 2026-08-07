@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "Không tìm thấy lịch có thể ghi trên thiết bị này.",
   "expanded.calendar_date_parse_error": "Không đọc được thời gian sự kiện.",
   "expanded.calendar_added": "Đã thêm vào lịch",
-  "expanded.calendar_error": "Không thể thêm vào lịch. Thử lại."
+  "expanded.calendar_error": "Không thể thêm vào lịch. Thử lại.",
+  "swipeable.details": "Details"
 }

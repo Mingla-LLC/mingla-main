@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "Bu cihazda yazılabilir bir takvim bulunamadı.",
   "expanded.calendar_date_parse_error": "Etkinlik saati okunamadı.",
   "expanded.calendar_added": "Takvime eklendi",
-  "expanded.calendar_error": "Takvime eklenemedi. Tekrar deneyin."
+  "expanded.calendar_error": "Takvime eklenemedi. Tekrar deneyin.",
+  "swipeable.details": "Details"
 }

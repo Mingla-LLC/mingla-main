@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "在此设备上未找到可写日历。",
   "expanded.calendar_date_parse_error": "无法读取活动时间。",
   "expanded.calendar_added": "已添加到日历",
-  "expanded.calendar_error": "无法添加到日历。请重试。"
+  "expanded.calendar_error": "无法添加到日历。请重试。",
+  "swipeable.details": "Details"
 }

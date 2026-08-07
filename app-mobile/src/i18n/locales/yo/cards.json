@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "Ko si kalẹnda ti o le kọ silẹ lori ẹrọ yii.",
   "expanded.calendar_date_parse_error": "A ko le ka akoko iṣẹlẹ.",
   "expanded.calendar_added": "Ti fi kun kalẹnda",
-  "expanded.calendar_error": "Ko le fi kun kalẹnda. Gbiyanju lẹẹkansi."
+  "expanded.calendar_error": "Ko le fi kun kalẹnda. Gbiyanju lẹẹkansi.",
+  "swipeable.details": "Details"
 }

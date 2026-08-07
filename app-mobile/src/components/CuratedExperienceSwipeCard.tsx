@@ -272,6 +272,14 @@ interface Props {
   beenHere?: React.ReactNode;
   onSharePress?: () => void;
   shareLabel?: string;
+  /**
+   * #1701 — the Details control. Supplied by the caller because the caller owns
+   * the deck's one expand path (`requestTapExpand`); this card must not grow a
+   * second. Absent -> the control does not render, which is correct on any
+   * surface that has no expand path at all.
+   */
+  onDetailsPress?: () => void;
+  detailsLabel?: string;
   // ORCH-1209: only the front/active deck card streams its cover video. When
   // false the cover mounts paused on its poster (playbackActive=false) and
   // downloads nothing. Defaults true so non-deck callers (none today) are
@@ -290,7 +298,7 @@ const S1 = SURFACES.s1Single;
   either side of a producer split is how the split stays invisible.
 */
 
-export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem, currencyCode, brandExperience, onBrandPress, experienceCover, ctaOverride, isTopCard = true, beenHere, onSharePress, shareLabel }: Props) {
+export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem, currencyCode, brandExperience, onBrandPress, experienceCover, ctaOverride, isTopCard = true, beenHere, onSharePress, shareLabel, onDetailsPress, detailsLabel }: Props) {
   // `cards` joins `common` because the shared span producer's labels ("Free",
   // "{{count}} stops") are the SAME keys the expanded sheet resolves — the
   // collapsed card used to hardcode both in English (#1605 P1-6).
@@ -521,6 +529,11 @@ export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem
             spans={curatedSpans}
             metaLines={presentation.metaLines}
             onMetaLinesChange={setMetaLines}
+            // #1701 — Details, on the curated plan and the brand experience too.
+            // The handler is supplied by the CALLER, which owns the one expand
+            // path; this card never opens anything itself.
+            onDetailsPress={onDetailsPress}
+            detailsLabel={detailsLabel}
             beenHere={beenHere}
             onSharePress={onSharePress ?? NOOP}
             shareLabel={shareLabel ?? card.title}

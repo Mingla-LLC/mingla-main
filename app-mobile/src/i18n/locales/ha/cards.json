@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "Ba a sami kalanda da za a iya rubutawa ba a wannan na'urar.",
   "expanded.calendar_date_parse_error": "Ba mu iya karanta lokacin taron ba.",
   "expanded.calendar_added": "An ƙara zuwa kalanda",
-  "expanded.calendar_error": "Ba a iya ƙarawa zuwa kalanda. Sake gwadawa."
+  "expanded.calendar_error": "Ba a iya ƙarawa zuwa kalanda. Sake gwadawa.",
+  "swipeable.details": "Details"
 }

@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "Δεν βρέθηκε εγγράψιμο ημερολόγιο σε αυτή τη συσκευή.",
   "expanded.calendar_date_parse_error": "Δεν μπορέσαμε να διαβάσουμε την ώρα της εκδήλωσης.",
   "expanded.calendar_added": "Προστέθηκε στο ημερολόγιο",
-  "expanded.calendar_error": "Αδυναμία προσθήκης στο ημερολόγιο. Δοκιμάστε ξανά."
+  "expanded.calendar_error": "Αδυναμία προσθήκης στο ημερολόγιο. Δοκιμάστε ξανά.",
+  "swipeable.details": "Details"
 }

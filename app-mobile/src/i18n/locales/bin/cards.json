@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "I miẹ kalẹnda ne u ya ya gbe.",
   "expanded.calendar_date_parse_error": "I ma fian re ẹgheghe ye oghẹ.",
   "expanded.calendar_added": "I sin re kalẹnda",
-  "expanded.calendar_error": "I ma sin re kalẹnda. Ye vbe."
+  "expanded.calendar_error": "I ma sin re kalẹnda. Ye vbe.",
+  "swipeable.details": "Details"
 }

@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "এই ডিভাইসে কোনো লেখার যোগ্য ক্যালেন্ডার পাওয়া যায়নি।",
   "expanded.calendar_date_parse_error": "ইভেন্টের সময় পড়া যায়নি।",
   "expanded.calendar_added": "ক্যালেন্ডারে যোগ করা হয়েছে",
-  "expanded.calendar_error": "ক্যালেন্ডারে যোগ করা যায়নি। আবার চেষ্টা করুন।"
+  "expanded.calendar_error": "ক্যালেন্ডারে যোগ করা যায়নি। আবার চেষ্টা করুন।",
+  "swipeable.details": "Details"
 }

@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "ไม่พบปฏิทินที่เขียนได้ในอุปกรณ์นี้",
   "expanded.calendar_date_parse_error": "ไม่สามารถอ่านเวลาของกิจกรรมได้",
   "expanded.calendar_added": "เพิ่มในปฏิทินแล้ว",
-  "expanded.calendar_error": "ไม่สามารถเพิ่มในปฏิทินได้ ลองอีกครั้ง"
+  "expanded.calendar_error": "ไม่สามารถเพิ่มในปฏิทินได้ ลองอีกครั้ง",
+  "swipeable.details": "Details"
 }

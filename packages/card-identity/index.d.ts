@@ -170,6 +170,15 @@ export const DIVIDER_H: number;
 /** Points reserved ABOVE the divider on the short plate so the chevron is whole. */
 export const CHEVRON_CLEARANCE: number;
 export const PLATE_H_NO_META: number;
+
+/** #1701 — the Details control. Geometry is BEEN_HERE's; only the fill differs. */
+export const DETAILS: {
+  fill: string; fillPressed: string;
+  androidFill: string; androidFillPressed: string;
+  color: string; glyphSize: number; gap: number; paddingH: number;
+  labelSize: number; labelWeight: string;
+  border: string; androidBorder: string; gapFromBeenHere: number;
+};
 export const PLATE_ALPHA_FLOOR: number;
 export const TITLE_ALPHA_FLOOR: number;
 export const K_PLATE: number;

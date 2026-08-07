@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "לא נמצא יומן הניתן לעריכה במכשיר זה.",
   "expanded.calendar_date_parse_error": "לא הצלחנו לקרוא את זמן האירוע.",
   "expanded.calendar_added": "נוסף ליומן",
-  "expanded.calendar_error": "לא ניתן היה להוסיף ליומן. נסה שוב."
+  "expanded.calendar_error": "לא ניתן היה להוסיף ליומן. נסה שוב.",
+  "swipeable.details": "Details"
 }

@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "Kein beschreibbarer Kalender auf diesem Gerät gefunden.",
   "expanded.calendar_date_parse_error": "Konnten die Eventzeit nicht lesen.",
   "expanded.calendar_added": "Zum Kalender hinzugefügt",
-  "expanded.calendar_error": "Konnte nicht zum Kalender hinzugefügt werden. Versuche es erneut."
+  "expanded.calendar_error": "Konnte nicht zum Kalender hinzugefügt werden. Versuche es erneut.",
+  "swipeable.details": "Details"
 }

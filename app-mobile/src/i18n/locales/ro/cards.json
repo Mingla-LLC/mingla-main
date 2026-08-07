@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "Niciun calendar editabil găsit pe acest dispozitiv.",
   "expanded.calendar_date_parse_error": "Nu am putut citi ora evenimentului.",
   "expanded.calendar_added": "Adăugat în calendar",
-  "expanded.calendar_error": "Nu s-a putut adăuga în calendar. Încearcă din nou."
+  "expanded.calendar_error": "Nu s-a putut adăuga în calendar. Încearcă din nou.",
+  "swipeable.details": "Details"
 }

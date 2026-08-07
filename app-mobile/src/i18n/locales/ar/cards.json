@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "لم يتم العثور على تقويم قابل للكتابة على هذا الجهاز.",
   "expanded.calendar_date_parse_error": "لم نتمكن من قراءة وقت الحدث.",
   "expanded.calendar_added": "تمت الإضافة إلى التقويم",
-  "expanded.calendar_error": "تعذرت الإضافة إلى التقويم. حاول مرة أخرى."
+  "expanded.calendar_error": "تعذرت الإضافة إلى التقويم. حاول مرة أخرى.",
+  "swipeable.details": "Details"
 }

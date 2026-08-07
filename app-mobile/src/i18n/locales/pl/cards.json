@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "Nie znaleziono zapisywalnego kalendarza na tym urządzeniu.",
   "expanded.calendar_date_parse_error": "Nie udało się odczytać czasu wydarzenia.",
   "expanded.calendar_added": "Dodano do kalendarza",
-  "expanded.calendar_error": "Nie udało się dodać do kalendarza. Spróbuj ponownie."
+  "expanded.calendar_error": "Nie udało się dodać do kalendarza. Spróbuj ponownie.",
+  "swipeable.details": "Details"
 }

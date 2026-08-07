@@ -107,5 +107,6 @@
   "expanded.calendar_unavailable": "На этом устройстве не найден доступный для записи календарь.",
   "expanded.calendar_date_parse_error": "Не удалось прочитать время события.",
   "expanded.calendar_added": "Добавлено в календарь",
-  "expanded.calendar_error": "Не удалось добавить в календарь. Попробуйте снова."
+  "expanded.calendar_error": "Не удалось добавить в календарь. Попробуйте снова.",
+  "swipeable.details": "Details"
 }

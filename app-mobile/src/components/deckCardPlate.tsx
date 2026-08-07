@@ -95,6 +95,7 @@ import { ANDROID_GLASS_USES_OPAQUE_FALLBACK } from '../constants/designSystem';
 import {
   BEEN_HERE,
   CHEVRON,
+  DETAILS,
   DIVIDER,
   MAX_FONT_SCALE,
   META,
@@ -513,6 +514,18 @@ export interface DeckCardPlateProps {
   readonly metaLines?: number;
   /** Reports the MEASURED line count back so the caller can re-anchor. */
   readonly onMetaLinesChange?: (lines: number) => void;
+  /**
+   * #1701 — the LABELLED way into the card. Seth, 2026-08-07: "I want a button
+   * beside been there which indicates view more with an eye icon."
+   *
+   * The chevron STAYS. It is the gesture hint and Seth kept it explicitly at
+   * #1609; this is the affordance for everyone who never discovers a chevron.
+   * Absent (and the control unrendered) when the caller supplies no handler —
+   * a button that opens nothing is a dead tap, and the behind face has no
+   * expand path at all.
+   */
+  readonly onDetailsPress?: () => void;
+  readonly detailsLabel?: string;
 }
 
 /**
@@ -550,6 +563,8 @@ export function DeckCardPlate({
   chevron = 'up',
   metaLines = 1,
   onMetaLinesChange,
+  onDetailsPress,
+  detailsLabel,
 }: DeckCardPlateProps): React.ReactElement {
   // #1700 — ONE resolution of the silhouette, read by the height, the row
   // heights AND the material. Three reads of one object; never three parallel
@@ -633,6 +648,35 @@ export function DeckCardPlate({
           free to occupy zero space without moving anything.
         */}
         {beenHere}
+        {/*
+          #1701 — DETAILS. A second gesture owner on this plate, and the module
+          header's "exactly ONE gesture owner" line is updated with it rather
+          than left to rot.
+
+          It is a plain RN Pressable, like Been-here: it adds no
+          gesture-handler gesture, so it never contends for the deck's gesture
+          lease (I-PROPOSED-1579). It sits INBOARD of both card edges, on the
+          plate at the card's foot, away from where a swipe begins — the same
+          placement argument that made Been-here safe.
+
+          It does NOT own the expand logic. The tap is handed straight back to
+          the caller, which routes it through the existing `requestTapExpand`,
+          so there remains exactly one expand path in the deck.
+        */}
+        {onDetailsPress ? (
+          <Pressable
+            onPress={onDetailsPress}
+            style={({ pressed }) => [styles.detailsButton, pressed ? styles.detailsButtonPressed : null]}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={detailsLabel}
+          >
+            <Icon name="eye-outline" size={DETAILS.glyphSize} color={DETAILS.color} />
+            <Text style={styles.detailsLabel} numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE.controlLabel}>
+              {detailsLabel}
+            </Text>
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={onSharePress}
           style={styles.shareButtonPlate}
@@ -811,6 +855,37 @@ const styles = StyleSheet.create({
     // Been-here control grows and shrinks with its copy and collides with
     // nothing.
     justifyContent: 'space-between',
+  },
+  /**
+   * #1701 — Details. Same 44pt-minimum target and same pill geometry as
+   * Been-here (both read BEEN_HERE from the package), so the two read as one
+   * pair of controls rather than a button and a decoration.
+   */
+  detailsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: DETAILS.gap,
+    height: BEEN_HERE.height,
+    minWidth: BEEN_HERE.height,
+    paddingHorizontal: DETAILS.paddingH,
+    borderRadius: BEEN_HERE.borderRadius,
+    borderWidth: BEEN_HERE.borderWidth,
+    borderColor: ANDROID_GLASS_USES_OPAQUE_FALLBACK ? DETAILS.androidBorder : DETAILS.border,
+    // Android's plate is an opaque solid, so a translucent fill would composite
+    // over a DIFFERENT backdrop than the one the ratios above were solved
+    // against. The opaque equivalents are pre-solved in the package.
+    backgroundColor: ANDROID_GLASS_USES_OPAQUE_FALLBACK ? DETAILS.androidFill : DETAILS.fill,
+    // The row is space-between with a right-anchored share disc; this sits
+    // immediately after Been-here rather than being pushed to the middle.
+    marginLeft: DETAILS.gapFromBeenHere,
+  },
+  detailsButtonPressed: {
+    backgroundColor: ANDROID_GLASS_USES_OPAQUE_FALLBACK ? DETAILS.androidFillPressed : DETAILS.fillPressed,
+  },
+  detailsLabel: {
+    fontSize: DETAILS.labelSize,
+    fontWeight: DETAILS.labelWeight as '600',
+    color: DETAILS.color,
   },
   shareButtonPlate: {
     width: SHARE_GLYPH.target,

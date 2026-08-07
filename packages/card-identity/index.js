@@ -598,6 +598,40 @@ const BEEN_HERE = {
  * SC 1.4.11 (which applies, because the stack is the sole curated marker).
  * 0.44 / 0.44 measure 3.69:1 and 3.60:1.
  */
+/**
+ * #1701 — DETAILS, the labelled way into the card.
+ *
+ * Seth, 2026-08-07: "I want a button beside been there which indicates view more
+ * with an eye icon." The chevron stays — he kept it deliberately at #1609 and it
+ * is the gesture hint. This is the affordance for everyone who never discovers
+ * a chevron, which on a card whose whole face is the tap target is most people.
+ *
+ * IT IS BEEN-HERE'S GEOMETRY, NOT A NEW SHAPE. Height, radius, border width,
+ * gap, label size and label weight are all read from `BEEN_HERE` below rather
+ * than retyped, because the two sit side by side in one row and a 2pt disagreement
+ * between them reads as a mistake. Only the FILL differs, and that difference is
+ * the whole point: one control records something about the past, the other opens
+ * something. Measured against the plate's own L* 23.50:
+ *
+ *     white label on the orange fill ....... 8.74:1   (AA needs 4.5)
+ *     the border against the plate ......... 3.84:1   (SC 1.4.11 needs 3.0)
+ *     the fill against the plate ........... 1.34:1   -- NOT a boundary
+ *
+ * The border is Been-here's `rgba(255,255,255,0.46)` and not an orange one, and
+ * that is deliberate: an orange border needs alpha 0.70 to reach 3:1 against the
+ * plate, at which point it reads hotter than the accent it is edging. The fill
+ * carries the accent; the border carries the boundary. Those are different jobs
+ * and giving both to one colour is what forces the 0.70.
+ */
+const DETAILS = {
+  fill: 'rgba(235,120,37,0.22)',
+  fillPressed: 'rgba(235,120,37,0.32)',
+  /** Android's plate is opaque, so the composites are pre-solved. */
+  androidFill: 'rgb(93,70,57)',
+  androidFillPressed: 'rgb(111,76,55)',
+  color: '#FFFFFF',
+};
+
 const SLIVER = { height: 4, radius: 2, offsets: [0, 6], insets: [24, 34], alpha: 0.44 };
 
 /**
@@ -1032,6 +1066,20 @@ function surfacePlateUnder(surfaceKey) {
  */
 const PLATE_H_NO_META = SURFACES.s1Single.plateH - META_ROW_H + CHEVRON_CLEARANCE;
 
+// Attached AFTER BEEN_HERE evaluates: DETAILS is declared above it (next to the
+// other furniture) but its geometry IS Been-here's, and reading it at declaration
+// time would be a temporal-dead-zone bug rather than a design decision.
+DETAILS.glyphSize = BEEN_HERE.glyphSize.rest;
+DETAILS.gap = BEEN_HERE.gap;
+DETAILS.paddingH = BEEN_HERE.paddingHorizontal;
+DETAILS.labelSize = BEEN_HERE.labelSize;
+DETAILS.labelWeight = BEEN_HERE.labelWeight;
+DETAILS.border = BEEN_HERE.states.rest.border;
+DETAILS.androidBorder = BEEN_HERE.states.rest.androidBorder;
+/** The gap between Been-here and Details in the control row. */
+DETAILS.gapFromBeenHere = 8;
+Object.freeze(DETAILS);
+
 module.exports = {
   RAMP,
   PLATE,
@@ -1041,6 +1089,7 @@ module.exports = {
   SHARE_GLYPH,
   STATE_DISC,
   BEEN_HERE,
+  DETAILS,
   SLIVER,
   HANDLE,
   SURFACES,
