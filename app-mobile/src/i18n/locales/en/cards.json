@@ -153,5 +153,8 @@
   "expanded.occasion_camping": "your camping trip",
   "expanded.occasion_roadtrip": "the drive",
   "expanded.supplies_for": "Get these for {{occasion}}",
-  "expanded.supplies_for_at_stop": "Get these for {{occasion}} — stop {{n}} sells them"
+  "expanded.supplies_for_at_stop": "Get these for {{occasion}} — stop {{n}} sells them",
+  "expanded.estimated": "estimated",
+  "expanded.starts_at": "Starts at",
+  "expanded.ends_near": "Ends near"
 }

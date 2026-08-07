@@ -200,6 +200,17 @@ export default function StopList({
                     count: Math.round(stop.travelMinutes),
                   })}
                 </Text>
+                {/*
+                  #1706 — THE DISCLOSURE, on the same number wherever it appears.
+                  This figure comes from `estimateTravelMinutes(haversineKm(...))`
+                  — computed from two real coordinates, never measured. Traffic
+                  was deleted from this sheet for showing a computed figure
+                  UNLABELLED beside a real one; labelling it is the condition of
+                  it being here (Constitution 9).
+                */}
+                <Text style={styles.connectorEstimated}>
+                  {t("cards:expanded.estimated", { defaultValue: "estimated" })}
+                </Text>
               </View>
               <View style={styles.connectorLine} />
             </View>
@@ -664,6 +675,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
+  connectorEstimated: { fontSize: 11.5, fontWeight: "400", color: SPINE.muted },
   connectorText: { fontSize: 11, fontWeight: "500", color: SPINE.factLabel },
 });
 

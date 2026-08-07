@@ -47,6 +47,7 @@ import CardInfoSection from "./expandedCard/CardInfoSection";
 // boxes with 26pt icon badges became two fact rows under one RIGHT NOW heading.
 import ConditionsSection from "./expandedCard/ConditionsSection";
 import PracticalDetailsSection from "./expandedCard/PracticalDetailsSection";
+import PlanTimeline, { type PlanTimelineLeg } from "./expandedCard/PlanTimeline";
 import { ExpandedCardHero } from "./expandedCard/ExpandedCardHero";
 import StopList, { type StopListStop } from "./expandedCard/StopList";
 import { occasionFromCategory, stopPurpose } from "./expandedCard/stopPurpose";
@@ -966,6 +967,29 @@ export default function ExpandedCardModal({
   */
   const planMainStopCount = planStops.filter((stop) => stop.optional !== true).length;
   let planOrdinal = 0;
+  /**
+   * #1706 — the leg between the plan's first and last stop.
+   *
+   * `travelTimeFromPreviousStopMin` is written by `replaceStopInCard` using
+   * `estimateTravelMinutes(haversineKm(...))` — real per-mode speeds over the
+   * real distance between two real coordinates. It is COMPUTED, never measured,
+   * so `estimated: true` is not a hedge: see `PlanTimelineLeg.estimated` for why
+   * that disclosure is the condition of this number being on the sheet at all.
+   *
+   * Null when the plan carries no figure. Nothing is invented to fill the gap —
+   * the leg simply does not render.
+   */
+  const planTimelineLeg: PlanTimelineLeg | null = useMemo(() => {
+    const last = planStops[planStops.length - 1];
+    const minutes = last?.travelTimeFromPreviousStopMin;
+    if (typeof minutes !== 'number' || !(minutes > 0)) return null;
+    return {
+      minutes,
+      mode: last?.travelModeFromPreviousStop ?? userPreferences?.travel_mode ?? null,
+      estimated: true,
+    };
+  }, [planStops, userPreferences?.travel_mode]);
+
   const planListStops: StopListStop[] = planStops.map((stop, i) => {
     const isOptional = stop.optional === true && planMainStopCount > 0;
     if (!isOptional) planOrdinal += 1;
@@ -1829,14 +1853,12 @@ export default function ExpandedCardModal({
               countryCode={isCuratedCard ? undefined : card.countryCode}
               website={isCuratedCard ? undefined : card.website}
               utcOffsetMinutes={isCuratedCard ? null : cardUtcOffsetMinutes}
-              plan={
-                isCuratedCard
-                  ? {
-                      startsAt: planStops[0]?.address ?? null,
-                      endsNear: planStops[planStops.length - 1]?.address ?? null,
-                    }
-                  : undefined
-              }
+              /*
+                #1706 — the PLAN's Details is now `PlanTimeline` below, so this
+                section renders the single-place branch only. Two rows that
+                happen to be ordered do not say a plan is a sequence; a drawn
+                spine does.
+              */
               onLinkUnavailable={(what) =>
                 toastManager.show(t('cards:expanded.link_unavailable', {
                     defaultValue: "Couldn't open {{what}}",
@@ -1844,6 +1866,25 @@ export default function ExpandedCardModal({
                   }), 'error')
               }
             />
+
+            {/*
+              #1706 — THE PLAN'S DETAILS, DRAWN. Seth: "Details section should
+              show an animated vertical timeline."
+
+              Curated branch only. A single place's Details is an address, hours,
+              a phone and a website — attributes with no order among them, so a
+              timeline over them would be decoration pretending to be structure.
+            */}
+            {isCuratedCard ? (
+              <PlanTimeline
+                heading={t('expanded_details:action_buttons.details', { defaultValue: 'Details' })}
+                startsAt={planStops[0]?.address ?? null}
+                startsAtName={planStops[0]?.placeName ?? null}
+                endsNear={planStops[planStops.length - 1]?.address ?? null}
+                endsNearName={planStops[planStops.length - 1]?.placeName ?? null}
+                leg={planTimelineLeg}
+              />
+            ) : null}
 
             {/* Timeline Section (for Take a Stroll cards) */}
             {isStrollCard && strollData && strollData.timeline && (
