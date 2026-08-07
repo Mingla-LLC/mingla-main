@@ -1112,6 +1112,7 @@ export default function SwipeableCards({
 
   const {
     recommendations,
+    applyCuratedEdit,
     loading,
     isFetching,
     error,
@@ -3841,6 +3842,13 @@ export default function SwipeableCards({
         onShare={(card) => {
           onShareCard?.(card);
         }}
+        /*
+          #1707 — the edited plan reaches the DECK. `applyCuratedEdit` patches the
+          live list AND the cache the deck restores from: patching only the state
+          would make the edit survive closing the sheet and die on the next cold
+          launch, which is the same bug one layer down.
+        */
+        onCardEdited={(cardId, edited) => applyCuratedEdit(cardId, edited as never)}
         onCardRemoved={(cardId) => {
           // Remove card from deck when scheduled
           if (currentRec && cardId === currentRec.id) {

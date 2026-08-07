@@ -295,6 +295,15 @@ export interface ExpandedCardModalProps {
   isSaved?: boolean;
   currentMode?: string;
   onCardRemoved?: (cardId: string) => void; // Callback to remove card from deck
+  /**
+   * #1707 — hand an EDITED plan back so the deck's own copy changes.
+   *
+   * The sheet held a replaced stop in local state with no writer, so closing it
+   * threw the edit away and reopening the card showed the original. Optional: a
+   * surface with no deck behind it (Likes, the calendar) simply does not pass it
+   * and the sheet behaves as it did.
+   */
+  onCardEdited?: (cardId: string, edited: Partial<ExpandedCardData>) => void;
   onStrollDataFetched?: (
     card: ExpandedCardData,
     strollData: ExpandedCardData["strollData"],

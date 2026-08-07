@@ -305,6 +305,13 @@ export default function ExpandedCardModal({
   isSaved,
   currentMode = "solo",
   onCardRemoved,
+  /**
+   * #1707 — the edited plan, handed back so the DECK's copy changes too.
+   *
+   * Without it `curatedLocalCard` is component state that dies with the sheet:
+   * the swap works, closing throws it away, and reopening shows the original.
+   */
+  onCardEdited,
   onStrollDataFetched,
   onPicnicDataFetched,
   // ORCH-0659/0660: hideTravelTime prop deleted — was dead code (zero callers).
@@ -1274,16 +1281,30 @@ export default function ExpandedCardModal({
     if (replacingStopIndex === null || !source) return;
     const userLat = userPreferences?.location?.lat ?? source.stops?.[0]?.lat ?? 0;
     const userLng = userPreferences?.location?.lng ?? source.stops?.[0]?.lng ?? 0;
-    setCuratedLocalCard(
-      replaceStopInCard(
-        source,
-        replacingStopIndex,
-        alt,
-        userPreferences?.travel_mode || 'walking',
-        userLat,
-        userLng,
-      ),
+    const edited = replaceStopInCard(
+      source,
+      replacingStopIndex,
+      alt,
+      userPreferences?.travel_mode || 'walking',
+      userLat,
+      userLng,
     );
+    setCuratedLocalCard(edited);
+    /*
+      #1707 — AND HAND IT BACK. `setCuratedLocalCard` alone is where this bug
+      lived: state local to this sheet, four readers all in this file, nothing
+      writing it anywhere. The sheet unmounts and the edit is gone.
+
+      Keyed on the card's OWN id rather than whatever the caller last opened, so
+      a sheet opened from Likes or the calendar patches the right card. Only the
+      fields a replacement changes are sent — see `applyCuratedEdit`.
+    */
+    onCardEdited?.(edited.id, {
+      stops: edited.stops,
+      title: edited.title,
+      travelTime: (edited as { travelTime?: string | null }).travelTime ?? null,
+      distance: (edited as { distance?: string | null }).distance ?? null,
+    } as never);
     setReplacingStopIndex(null);
     clearAlternatives();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
