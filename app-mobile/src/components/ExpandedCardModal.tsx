@@ -26,7 +26,20 @@ import { canonicalDiscoveryPriceDetail } from '../utils/priceTiers';
 import { getReadableCategoryName } from "../utils/categoryUtils";  // ORCH-0685
 import { weatherService, WeatherData } from "../services/weatherService";
 import { busynessService, BusynessData } from "../services/busynessService";
-import { bookingService, BookingOption } from "../services/bookingService";
+/*
+  #1605 P2-1 — `bookingService` is GONE from this sheet, not left fetching.
+
+  `ActionButtons` declared `bookingOptions` and `onPurchase` as props and
+  referenced NEITHER in its body — the never-consumed pair that made §6.1's
+  proposed Reserve gate a dead tap. Wave 4 deleted the props and left the
+  FETCH: `getBookingOptions` still ran once per expanded card, against an
+  external service, and `setBookingOptions` still populated state that nothing
+  read. One discarded round trip per card open.
+
+  Subtract before adding (Constitution 8). The real reserve affordance is the
+  `useVenueReservable` gate on the action band, which reads a claimed brand's
+  own reservation settings — not a third-party booking-link lookup.
+*/
 import { stopReplacementService } from "../services/stopReplacementService"; // ORCH-0640 ch09: experienceGenerationService DELETED; methods moved to stopReplacementService
 import { useRecommendationsOptional } from "../contexts/RecommendationsContext";
 import ExpandedCardHeader from "./expandedCard/ExpandedCardHeader";
@@ -37,6 +50,10 @@ import ConditionsSection from "./expandedCard/ConditionsSection";
 import PracticalDetailsSection from "./expandedCard/PracticalDetailsSection";
 import { ExpandedCardHero } from "./expandedCard/ExpandedCardHero";
 import StopList, { type StopListStop } from "./expandedCard/StopList";
+// #1605 P1-3 — the picnic Shopping List, re-homed onto the spine. It rendered on
+// `main` at :990-992 via the deleted PicnicShoppingList and was not in the
+// spec's deletion list; five producers still carry `shoppingList`.
+import SuppliesList from "./expandedCard/SuppliesList";
 import { Section, SectionError } from "./expandedCard/SpineParts";
 import { SPINE, GALLERY } from "./expandedCard/spineTokens";
 import { curatedPlanSpans, singlePlaceSpans, stopMetaText } from "./expandedCard/expandedCardFacts";
@@ -57,6 +74,10 @@ import VenueExperiencesSection from "./expandedCard/VenueExperiencesSection";
 import VenueReserveSheet from "./expandedCard/VenueReserveSheet";
 import { useVenueReservable } from "../hooks/useVenueReservable";
 import { ImageLightbox } from "./ImageLightbox";
+import { normalizeWebsiteUrl } from "../utils/normalizeWebsiteUrl";
+// #1605 P2-2 — the body strip renders plain <Image>, and ImageLightbox is
+// images-only, so a video entry past the hero was a broken tile.
+import { isVideoUrl } from "../utils/videoUrl";
 import ActionButtons from "./expandedCard/ActionButtons";
 import ShareModal from "./ShareModal";
 import InAppBrowserModal from "./InAppBrowserModal";
@@ -349,12 +370,10 @@ export default function ExpandedCardModal({
   const effectiveTravelMode = collabTravelMode ?? userPreferences?.travel_mode ?? 'driving';
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [busynessData, setBusynessData] = useState<BusynessData | null>(null);
-  const [bookingOptions, setBookingOptions] = useState<BookingOption[]>([]);
   const [viewerTravelTime, setViewerTravelTime] = useState<string | null>(null);
   const [viewerDistance, setViewerDistance] = useState<number | null>(null);
   const [loadingWeather, setLoadingWeather] = useState(false);
   const [loadingBusyness, setLoadingBusyness] = useState(false);
-  const [loadingBooking, setLoadingBooking] = useState(false);
   const [strollData, setStrollData] = useState(card?.strollData);
   const [loadingStrollData, setLoadingStrollData] = useState(false);
   const [picnicData, setPicnicData] = useState(card?.picnicData);
@@ -465,7 +484,6 @@ export default function ExpandedCardModal({
       // Reset state when modal closes
       setWeatherData(null);
       setBusynessData(null);
-      setBookingOptions([]);
       setViewerTravelTime(null);
       setViewerDistance(null);
       setStrollData(undefined);
@@ -602,26 +620,6 @@ export default function ExpandedCardModal({
     }
 
     computeViewerTravelForChatMount();
-
-    // Fetch booking options
-    if (card.location) {
-      setLoadingBooking(true);
-      try {
-        const booking = await bookingService.getBookingOptions(
-          card.title,
-          card.category,
-          card.location.lat,
-          card.location.lng,
-          card.website,
-          card.phone
-        );
-        setBookingOptions(booking.options);
-      } catch (error) {
-        console.error("Error fetching booking options:", error);
-      } finally {
-        setLoadingBooking(false);
-      }
-    }
   };
 
   const fetchStrollData = async () => {
@@ -808,36 +806,6 @@ export default function ExpandedCardModal({
     (planStops.length > 0 ? planStops[0].imageUrl ?? null : null) ??
     null;
 
-  const planPriceLabel =
-    planCard == null
-      ? null
-      : planCard.totalPriceMin === 0 && planCard.totalPriceMax === 0
-        ? t('cards:swipeable.free')
-        : `${formatCurrency(planCard.totalPriceMin, accountPreferences?.currency || 'USD')}–${formatCurrency(planCard.totalPriceMax, accountPreferences?.currency || 'USD')}`;
-
-  const planDurationLabel = (() => {
-    if (planStops.length === 0) return null;
-    // Only REAL per-stop durations count. `cardConverters.ts` synthesises 60
-    // minutes a stop for a curated card, and a total built out of synthesised
-    // parts is a fabricated total (Constitution 9).
-    const stopMinutes = planStops.reduce(
-      (sum, st) =>
-        sum +
-        (typeof st.estimatedDurationMinutes === 'number' && st.estimatedDurationMinutes > 0
-          ? st.estimatedDurationMinutes
-          : 0),
-      0,
-    );
-    const travelMinutes = planStops
-      .slice(1)
-      .reduce((sum, st) => sum + (st.travelTimeFromPreviousStopMin ?? 0), 0);
-    const total = Math.round(stopMinutes + travelMinutes);
-    if (total <= 0) return null;
-    const hrs = Math.floor(total / 60);
-    const mins = total % 60;
-    return hrs > 0 ? (mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`) : `${mins}m`;
-  })();
-
   /**
    * The body's prose. A single place's is the venue owner's pitch
    * (`card.description`, META-ORCH-1290's only route to a buyer on the deck); a
@@ -850,34 +818,84 @@ export default function ExpandedCardModal({
    */
   const bodyDescription = isCuratedCard ? planCard?.tagline : card.description;
 
+  /*
+    THE PLATE'S FACTS — from the SAME producer the collapsed deck card calls.
+
+    #1605 P1-6: this call used to pass three already-resolved labels the modal
+    derived itself (envelope price, a locally re-summed duration, a stop count
+    over ALL stops) while `CuratedExperienceSwipeCard` derived five spans its
+    own way. Same card, one tap apart, and the count, the duration and the
+    distance all changed — which contradicts the one claim the whole wave rests
+    on. Both surfaces now hand `curatedPlanSpans` the CARD and nothing but
+    viewer state, so they cannot disagree.
+  */
   const heroSpans = isCuratedCard && planCard
     ? curatedPlanSpans(planCard, {
-        planPriceLabel,
-        planDurationLabel,
-        stopCountLabel:
-          planStops.length > 0
-            ? t('cards:expanded.stop_count', {
-                defaultValue: '{{count}} stops',
-                count: planStops.length,
-              })
-            : null,
+        measurementSystem: accountPreferences?.measurementSystem,
+        formatMoney: (amount) => formatCurrency(amount, accountPreferences?.currency || 'USD'),
+        freeLabel: t('cards:swipeable.free', { defaultValue: 'Free' }),
+        stopCountLabel: (count) =>
+          t('cards:expanded.stop_count', { defaultValue: '{{count}} stops', count }),
+        intentLabel: (slug) => t(`common:intent_${slug}`),
       })
     : singlePlaceSpans(card, {
         measurementSystem: accountPreferences?.measurementSystem,
+        // The viewer-relative distance the modal already computes for
+        // chat-mounted cards, which by definition carry no `card.distance`.
+        // Nothing read it after the wave-4 rewrite (#1605 rework).
+        viewerDistanceKm: viewerDistance,
       });
 
   /** The venue's UTC offset, top-level or legacy-cased. Absent = no badge. */
   const cardUtcOffsetMinutes = card.utcOffsetMinutes ?? card.utc_offset_minutes ?? null;
 
-  const planListStops: StopListStop[] = planStops.map((stop, i) => ({
+  /**
+   * THE BODY GALLERY'S ENTRIES — PHOTOS, and only photos. #1605 P2-2.
+   *
+   * `ImageGallery` routed ANY `isVideoUrl(mediaUri)` entry through
+   * `EventCoverMedia`, so a venue with a second video played it. The hero
+   * handles `images[0]` (video or photo, correctly, with the unmute control);
+   * the strip below renders a plain `<Image source={{uri}}>` for everything
+   * else, and `ImageLightbox` is images-only. An `.mp4` at `images[1]` was
+   * therefore a broken tile that opened a broken lightbox page — a dead tap on
+   * a rendering failure.
+   *
+   * A tile that cannot play is not a video, so it is not rendered (Constitution
+   * 9: missing is hidden, never faked). Playing a SECOND video in a 160x120
+   * tile is a real capability the gallery had and this does not restore — it
+   * needs a decode-per-tile policy the sheet does not have, and it is declared
+   * rather than silently dropped.
+   */
+  const galleryPhotos: string[] = (Array.isArray(card.images) ? card.images : [])
+    .filter((uri): uri is string => typeof uri === 'string' && uri.trim().length > 0)
+    .filter((uri) => uri !== heroCover && !isVideoUrl(uri));
+
+  const planListStops: StopListStop[] = planStops.map((stop, i) => {
+    // Cover first, then the rest, de-duplicated and photos only. `imageUrls`
+    // carries up to five per stop and only the first was reachable after the
+    // per-stop pager was deleted (#1605 P2-3).
+    const stopPhotos = [
+      ...(Array.isArray(stop.imageUrls) ? stop.imageUrls : []),
+      stop.imageUrl,
+    ].filter(
+      (uri, idx, all): uri is string =>
+        typeof uri === 'string' &&
+        uri.trim().length > 0 &&
+        !isVideoUrl(uri) &&
+        all.indexOf(uri) === idx,
+    );
+    return {
     key: `${stop.placeId ?? 'stop'}_${i}`,
     index: i + 1,
     indexLabel: String(i + 1),
     name: stop.placeName,
-    imageUrl:
-      (Array.isArray(stop.imageUrls) && stop.imageUrls.length > 0 ? stop.imageUrls[0] : null) ??
-      stop.imageUrl ??
-      null,
+    imageUrl: stopPhotos[0] ?? null,
+    imageUrls: stopPhotos,
+    // Normalized HERE so the row's gate is the url, not the raw string — the
+    // same fix the single-place Website row carries (a handler that bails on a
+    // null normalization behind a control gated on the raw value is a visible
+    // dead button).
+    website: normalizeWebsiteUrl(stop.website ?? undefined),
     meta: stopMetaText(stop, (minutes) =>
       t('cards:expanded.minutes_here', { defaultValue: '{{count}} min here', count: minutes }),
     ),
@@ -890,7 +908,30 @@ export default function ExpandedCardModal({
     travelMinutes: stop.travelTimeFromPreviousStopMin ?? null,
     travelMode: stop.travelModeFromPreviousStop ?? null,
     canReplace: !stop.optional,
-  }));
+    };
+  });
+
+  /**
+   * THE PICNIC SUPPLIES. #1605 P1-3.
+   *
+   * One resolution for both branches, like every other value on this sheet: a
+   * curated picnic plan carries it on the plan card (`mutateCuratedCard`
+   * regenerates it when a stop is replaced, so the LOCAL card is read first),
+   * and a picnic card that arrived through `cardConverters` /
+   * `savedCardToExpandedCardData` / `holidayCardToExpandedCardData` carries it
+   * at the top level. Empty or absent renders nothing — the section takes its
+   * own rule with it.
+   */
+  const supplies: string[] = (() => {
+    const raw =
+      planCard?.shoppingList ??
+      (card as { shoppingList?: unknown }).shoppingList ??
+      null;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim());
+  })();
 
   /**
    * The companion stops of a single place — a stroll's, a picnic's, and the
@@ -911,6 +952,10 @@ export default function ExpandedCardModal({
         indexLabel: t('cards:expanded.shop_chip', { defaultValue: 'SHOP' }),
         name: grocery.name,
         imageUrl: grocery.imageUrl ?? null,
+        imageUrls: typeof grocery.imageUrl === 'string' && grocery.imageUrl.length > 0
+          ? [grocery.imageUrl]
+          : [],
+        website: null,
         meta:
           grocery.rating != null && grocery.rating > 0 ? `★ ${grocery.rating.toFixed(1)}` : null,
         address: grocery.address ?? null,
@@ -930,6 +975,10 @@ export default function ExpandedCardModal({
         indexLabel: String(rows.length + 1),
         name: companion?.name ?? '',
         imageUrl: companion?.imageUrl ?? null,
+        imageUrls: typeof companion?.imageUrl === 'string' && companion.imageUrl.length > 0
+          ? [companion.imageUrl]
+          : [],
+        website: null,
         meta:
           companion?.rating != null && companion.rating > 0
             ? `★ ${Number(companion.rating).toFixed(1)}`
@@ -998,6 +1047,43 @@ export default function ExpandedCardModal({
         toastManager.show(t('cards:expanded.directions_unavailable', {
             defaultValue: "Couldn't open directions",
           }), 'error');
+      }
+    })();
+  };
+
+  /**
+   * A stop's own booking / policies page. #1605 rework.
+   *
+   * The url is already normalized by the producer, so this cannot be handed a
+   * string the OS will reject for a shape reason. The `canOpenURL` pre-flight
+   * and the toast are the SAME contract `LinkRow` gives the single place's
+   * Website row — six `Linking.openURL` sites on this sheet had zero pre-flights
+   * and one console-only catch between them before this wave (Constitution 3).
+   */
+  const openStopWebsite = (url: string | null): void => {
+    if (url === null || url.trim().length === 0) return;
+    void (async () => {
+      try {
+        const can = await Linking.canOpenURL(url);
+        if (!can) {
+          toastManager.show(
+            t('cards:expanded.link_unavailable', {
+              defaultValue: "Couldn't open {{what}}",
+              what: t('expanded_details:action_buttons.website', { defaultValue: 'Website' }),
+            }),
+            'error',
+          );
+          return;
+        }
+        await Linking.openURL(url);
+      } catch {
+        toastManager.show(
+          t('cards:expanded.link_unavailable', {
+            defaultValue: "Couldn't open {{what}}",
+            what: t('expanded_details:action_buttons.website', { defaultValue: 'Website' }),
+          }),
+          'error',
+        );
       }
     })();
   };
@@ -1263,8 +1349,20 @@ export default function ExpandedCardModal({
               onPaywallRequired={onPaywallRequired}
               canAccessCurated={canAccessCurated}
               reserve={
+                /*
+                  ALL THREE CONDITIONS, BECAUSE THE SHEET REQUIRES ALL THREE.
+
+                  `venue_id !== null` is not decoration: `VenueReserveSheet`
+                  takes `venueId` and its own render gate below requires it. A
+                  button gated on two of the three conditions renders "Reserve a
+                  table" on a reservable venue whose `venue_id` is null, the tap
+                  sets `isReserveSheetOpen`, the sheet's gate is false and
+                  NOTHING OPENS, forever, with no feedback — Constitution 1.
+                  The ORCH-1148 strict-grep gate pins all three on both sites.
+                */
                 venueReservable?.reservable === true &&
-                venueReservable.brand_id !== null && (
+                venueReservable.brand_id !== null &&
+                venueReservable.venue_id !== null && (
                   <TouchableOpacity
                     style={reserveStyles.reserveButton}
                     activeOpacity={0.85}
@@ -1308,10 +1406,10 @@ export default function ExpandedCardModal({
               and is reachable ONLY from a curated stop — so a single place's
               photos have never been openable at all.
             */}
-            {!isCuratedCard && Array.isArray(card.images) && card.images.length > 1 ? (
+            {!isCuratedCard && galleryPhotos.length > 0 ? (
               <Section title={t('cards:expanded.photos', { defaultValue: 'Photos' })}>
                 <FlatList
-                  data={card.images.filter((uri) => uri !== heroCover)}
+                  data={galleryPhotos}
                   keyExtractor={(uri, i) => `${uri}_${i}`}
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -1322,8 +1420,8 @@ export default function ExpandedCardModal({
                       onPress={() =>
                         setCuratedLightbox({
                           visible: true,
-                          images: card.images ?? [],
-                          initialIndex: (card.images ?? []).indexOf(item),
+                          images: galleryPhotos,
+                          initialIndex: galleryPhotos.indexOf(item),
                         })
                       }
                       accessibilityRole="button"
@@ -1347,6 +1445,17 @@ export default function ExpandedCardModal({
                 customized={curatedLocalCard !== null}
                 onDirections={(stop) => openDirectionsForAddress(stop.address)}
                 onReplace={(stop) => handleReplaceStop(stop.index - 1)}
+                /* #1605 P2-3 — the stop's own photos, through the SHARED
+                   lightbox. It had exactly one entry point in the app and it
+                   was the deleted per-stop pager. */
+                onOpenPhotos={(stop) =>
+                  setCuratedLightbox({
+                    visible: true,
+                    images: [...stop.imageUrls],
+                    initialIndex: 0,
+                  })
+                }
+                onOpenWebsite={(stop) => openStopWebsite(stop.website)}
                 onExpandedRowLayout={(y) =>
                   scrollRef.current?.scrollTo({ y: planSectionY + y, animated: true })
                 }
@@ -1450,6 +1559,15 @@ export default function ExpandedCardModal({
                 </TouchableOpacity>
               </View>
             ) : null}
+
+            {/*
+              Slot 6c — SUPPLIES. The picnic shopping checklist, directly under
+              the stops it is shopped for. It rendered on `main` inside the
+              curated branch and was deleted with `PicnicShoppingList` without
+              being in the spec's deletion list, while five producers kept
+              carrying the field (#1605 P1-3).
+            */}
+            <SuppliesList items={supplies} />
 
             {/* Slot 7 — experiences at this venue (claimed brands only, single place). */}
             {!isCuratedCard ? (

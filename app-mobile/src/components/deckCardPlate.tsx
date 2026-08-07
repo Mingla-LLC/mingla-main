@@ -378,10 +378,11 @@ export interface DeckCardPlateProps {
    * 53pt control row, the fills — is byte-identical on both surfaces, which is
    * the entire continuity argument (see ExpandedCardHero's header).
    *
-   * It does NOT animate its turn. See ExpandedCardHero's header: the design puts
-   * the rotation on the SHEET's driver, `BaseBottomSheet` pins a 280ms timing
-   * config it does not expose, and a second driver is precisely what the design
-   * forbids.
+   * It does NOT animate its turn — §9 row 3 is NOT IMPLEMENTED, not
+   * impossible. `BaseBottomSheet` simply does not forward the
+   * `animatedPosition` that `useBottomSheetInternal` already exposes from the
+   * sheet's EXISTING driver; no second driver is needed. See
+   * ExpandedCardHero's header for the correction and the remaining work.
    */
   readonly chevron?: 'up' | 'down';
 }

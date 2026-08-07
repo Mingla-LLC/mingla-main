@@ -94,7 +94,19 @@ export default function PracticalDetailsSection({
   const [showWeek, setShowWeek] = React.useState(false);
 
   // Hooks run unconditionally, above every early return.
-  const isOpen = useIsPlaceOpen(openingHours ?? null, utcOffsetMinutes ?? null);
+  /*
+    #1605 P1-5 — THE OFFSET DECIDES, NOT THE RETURN VALUE.
+
+    The prop's docblock above has always promised "WITHOUT IT THE OPEN/CLOSED
+    BADGE DOES NOT RENDER", and the render gate below was `isOpen !== null`,
+    which does not deliver that promise: `isPlaceOpenAt` returns `null` only
+    when the HOURS are missing, and falls back to the DEVICE clock (returning a
+    confident boolean) when the OFFSET is missing. So the badge rendered
+    everywhere the hours existed, computed against whatever clock the phone
+    happened to be on. The gate now reads the offset itself.
+  */
+  const isOpenComputed = useIsPlaceOpen(openingHours ?? null, utcOffsetMinutes ?? null);
+  const isOpen = utcOffsetMinutes != null ? isOpenComputed : null;
   const weekdayLines = React.useMemo(
     () => extractWeekdayText(openingHours ?? null) ?? [],
     [openingHours],

@@ -12,10 +12,43 @@
  *   the 26pt orange icon badges       decoration; the label says what the row is
  *   the `conditionBadge` chips        a chip inside a chip inside a card
  *   #EA580C values                    3.19:1 as text; values are #111827 (17.74:1)
- *   the `estimatedText` caption       rgba(194,65,12,0.5) at 9pt = 2.20:1. DELETED,
- *                                     not recoloured — a 9pt half-alpha caption
- *                                     is not information.
+ *   the `estimatedText` caption       rgba(194,65,12,0.5) at 9pt = 2.20:1.
+ *                                     Recoloured and re-sized, NOT deleted — see
+ *                                     the busyness block below.
  *   the hardcoded literal "Weather"   untranslated, shipped, at WeatherSection:82
+ *
+ * ---------------------------------------------------------------------------
+ * BUSYNESS IS AN ESTIMATE AND THE ROW SAYS SO (Constitution 9) — #1605 P1-4
+ *
+ * `busynessService.getVenueTypeHeuristic()` synthesises busyness from a
+ * COMPILE-TIME `VENUE_POPULARITY[category].weekday[hour]` curve and returns
+ * `isEstimated: true`. There is no code path in the app that returns
+ * `isEstimated: false` today — every busyness value on this sheet is a typical
+ * pattern, not a measurement.
+ *
+ * The first cut of this wave deleted the 9pt 2.20:1 disclosure for a legitimate
+ * contrast reason and kept the VALUE, rendering `busyness.message` verbatim:
+ *
+ *     Busy Level   Not busy (3%) — great time to visit!
+ *
+ * at #111827 / 17.74:1 with an accent-filled sparkline — a compile-time curve
+ * position, promoted to look like a BestTime reading, with an exhortation
+ * attached. Two unrelated venues read the same 3% forty minutes apart on both
+ * platforms, because `weekday[1]` is a constant.
+ *
+ * A disclosure that fails AA is not a disclosure, but deleting it and keeping
+ * the number is worse than either. So the row now does BOTH of the things the
+ * fix could have done:
+ *
+ *   1. the VALUE is the qualitative band (§6.6's own design: `Usually quiet`),
+ *      never the percentage and never the advice. A synthesised percentage
+ *      cannot be rendered as a fact because it is no longer rendered at all;
+ *   2. the DISCLOSURE returns at the fact-row token scale — 14/400 #4B5563,
+ *      7.56:1 — beside the value where it is read WITH it, not under it at 9pt.
+ *
+ * The word carries the estimate's meaning by itself ("Usually", not "Now"), so
+ * the two are belt and braces on purpose: the sheet is where a user decides
+ * whether to leave the house.
  *
  * ---------------------------------------------------------------------------
  * BOTH BRANCHES PASS THE SAME PROPS, AND THAT IS THE POINT
@@ -91,9 +124,22 @@ export default function ConditionsSection({
             {t("expanded_details:busyness.busy_level", { defaultValue: "Busy level" })}
           </Text>
           <View style={styles.busyBody}>
+            {/*
+              THE BAND, NOT THE PERCENTAGE. `busyness.message` is
+              "Not busy (3%) — great time to visit!" — a compile-time curve
+              value plus advice. §6.6's design is a qualitative word, and a
+              qualitative word is the only honest rendering of a typical curve.
+            */}
             <Text style={styles.value} numberOfLines={1}>
-              {busyness.message}
+              {bandLabel(busyness, t)}
             </Text>
+            {busyness.isEstimated ? (
+              <Text style={styles.estimated} numberOfLines={1}>
+                {t("expanded_details:busyness.estimated_disclosure", {
+                  defaultValue: "Estimated",
+                })}
+              </Text>
+            ) : null}
             {/*
               The sparkline is a 48x5 track with a proportional fill — the only
               non-text mark in the body, and it is decoration ON a value that is
@@ -125,6 +171,50 @@ export default function ConditionsSection({
 function clampPercent(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(100, value));
+}
+
+/**
+ * The busyness BAND as a word. #1605 P1-4.
+ *
+ * Two vocabularies, and the difference between them is the whole point. An
+ * ESTIMATED value comes from a typical-popularity curve for this venue category
+ * and this hour, so it can only honestly say what this place is USUALLY like. A
+ * MEASURED value (no producer returns one today — the service's only busyness
+ * path sets `isEstimated: true`) may speak about right now.
+ *
+ * The percentage never appears in either vocabulary. `busynessLevel` is the
+ * band the service already computed from it (<25 / <50 / <75 / else), so this
+ * function invents nothing — it renames a band the producer owns.
+ */
+function bandLabel(
+  busyness: BusynessData,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  const typical = busyness.isEstimated;
+  switch (busyness.busynessLevel) {
+    case "Very Busy":
+      return typical
+        ? t("expanded_details:busyness.typical_packed", { defaultValue: "Usually packed" })
+        : t("expanded_details:busyness.now_packed", { defaultValue: "Packed right now" });
+    case "Busy":
+      return typical
+        ? t("expanded_details:busyness.typical_busy", { defaultValue: "Usually busy" })
+        : t("expanded_details:busyness.now_busy", { defaultValue: "Busy right now" });
+    case "Moderate":
+      return typical
+        ? t("expanded_details:busyness.typical_steady", { defaultValue: "Usually steady" })
+        : t("expanded_details:busyness.now_steady", { defaultValue: "Steady right now" });
+    case "Not Busy":
+      return typical
+        ? t("expanded_details:busyness.typical_quiet", { defaultValue: "Usually quiet" })
+        : t("expanded_details:busyness.now_quiet", { defaultValue: "Quiet right now" });
+    default: {
+      // Exhaustive. A new band from the producer must be named here rather than
+      // falling through to a percentage.
+      const never: never = busyness.busynessLevel;
+      return String(never);
+    }
+  }
 }
 
 function conditionWord(
@@ -165,6 +255,15 @@ const styles = StyleSheet.create({
   },
   busyBody: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },
   value: { fontSize: SPINE.factValueSize, fontWeight: "500", color: SPINE.factValue, flexShrink: 1 },
+  /*
+    The disclosure that replaces `estimatedText`. The shipped one was
+    rgba(194,65,12,0.5) at 9pt = 2.20:1 — a caption that fails AA is not
+    information, which is why the first cut deleted it. This one is 14/400
+    #4B5563 = 7.56:1, the same token the body uses for secondary prose, sitting
+    BESIDE the value so a screen reader reads "Usually quiet, Estimated" as one
+    thought rather than finding it a line later.
+  */
+  estimated: { fontSize: 14, fontWeight: "400", color: SPINE.muted, flexShrink: 0 },
   spark: {
     width: 48,
     height: 5,

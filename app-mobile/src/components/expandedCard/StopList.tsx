@@ -71,6 +71,31 @@ export interface StopListStop {
   readonly indexLabel: string;
   readonly name: string;
   readonly imageUrl: string | null;
+  /**
+   * EVERY photo this stop has, cover first. #1605 P2-3.
+   *
+   * §6.4 specifies "the stop's own photo strip (`StopImageGallery`, 100% x 140,
+   * radius 8)" and `S-4c` forbids a `horizontal` scrollable in this file — the
+   * spec is internally in tension, because `StopImageGallery` WAS a horizontal
+   * ScrollView, one per stop, N of them fighting the sheet's pan gesture.
+   *
+   * Both are satisfied by keeping ONE photo at exactly the strip's geometry and
+   * making it OPEN the lightbox on the rest. Nothing nests, and the up-to-five
+   * photos a stop carries stop being unreachable — `ImageLightbox` had exactly
+   * one entry point in the app and it was the deleted per-stop pager, so a
+   * plan's stop photos had become undisplayable.
+   */
+  readonly imageUrls: readonly string[];
+  /**
+   * The stop's own booking / policies page. #1605 rework.
+   *
+   * `CuratedStop.website` is populated by the generator and rendered on `main`
+   * as a per-stop "Policies & Reservations" row. Nothing in the new tree read
+   * it, so a curated stop's booking link became unreachable — the same defect
+   * the single-place Website row exists to fix, one level down. Already
+   * normalized by the caller; `null` renders no control.
+   */
+  readonly website: string | null;
   readonly meta: string | null;
   readonly address: string | null;
   readonly description: string | null;
@@ -88,6 +113,10 @@ interface StopListProps {
   readonly customized?: boolean;
   readonly onDirections: (stop: StopListStop) => void;
   readonly onReplace?: (stop: StopListStop) => void;
+  /** Opens the shared lightbox on this stop's photos (#1605 P2-3). */
+  readonly onOpenPhotos?: (stop: StopListStop) => void;
+  /** Opens the stop's own booking / policies page (#1605 rework). */
+  readonly onOpenWebsite?: (stop: StopListStop) => void;
   /** Scrolls the newly opened row to `y = heroH`, so it lands under the hero. */
   readonly onExpandedRowLayout?: (y: number) => void;
   readonly replacePanel?: (stop: StopListStop) => React.ReactNode;
@@ -99,6 +128,8 @@ export default function StopList({
   customized,
   onDirections,
   onReplace,
+  onOpenPhotos,
+  onOpenWebsite,
   onExpandedRowLayout,
   replacePanel,
 }: StopListProps): React.ReactElement | null {
@@ -153,6 +184,8 @@ export default function StopList({
             onToggle={() => toggle(stop.key)}
             onDirections={onDirections}
             onReplace={onReplace}
+            onOpenPhotos={onOpenPhotos}
+            onOpenWebsite={onOpenWebsite}
             onExpandedRowLayout={onExpandedRowLayout}
             replacePanel={replacePanel}
           />
@@ -176,6 +209,8 @@ function StopRow({
   onToggle,
   onDirections,
   onReplace,
+  onOpenPhotos,
+  onOpenWebsite,
   onExpandedRowLayout,
   replacePanel,
 }: {
@@ -184,12 +219,31 @@ function StopRow({
   onToggle: () => void;
   onDirections: (stop: StopListStop) => void;
   onReplace?: (stop: StopListStop) => void;
+  onOpenPhotos?: (stop: StopListStop) => void;
+  onOpenWebsite?: (stop: StopListStop) => void;
   onExpandedRowLayout?: (y: number) => void;
   replacePanel?: (stop: StopListStop) => React.ReactNode;
 }): React.ReactElement {
   const { t } = useTranslation(["cards", "expanded_details", "common"]);
-  // The badge is computed against VENUE-LOCAL time or not at all.
-  const isOpen = useIsPlaceOpen(stop.openingHours ?? null, stop.utcOffsetMinutes);
+  /*
+    THE BADGE IS COMPUTED AGAINST VENUE-LOCAL TIME OR NOT AT ALL — AND THE
+    OFFSET IS WHAT DECIDES THAT, NOT THE RESULT.
+
+    `isPlaceOpenAt` (openingHoursUtils.ts) returns `null` ONLY when the HOURS
+    are missing. When the offset is null it falls back to the DEVICE clock
+    (`checkDate = targetDate`, `DAY_NAMES[checkDate.getDay()]`) and returns a
+    perfectly confident BOOLEAN. So `isOpen !== null` cannot hide the
+    offset-missing case: it only hides the hours-missing case, and a stop with
+    hours but no offset rendered `Closed` computed against the simulator's
+    clock. Observed on both platforms, #1605 P1-5.
+
+    The offset is therefore read HERE, at the gate, rather than being inferred
+    from a return value that does not carry it. #1683 owns the deeper fix (the
+    serving RPCs never return the offset); until then a state we cannot compute
+    is a state we do not render. Constitution 9 applied to a derived value.
+  */
+  const isOpenComputed = useIsPlaceOpen(stop.openingHours ?? null, stop.utcOffsetMinutes);
+  const isOpen = stop.utcOffsetMinutes != null ? isOpenComputed : null;
   const weekdayLines = React.useMemo(
     () => extractWeekdayText(stop.openingHours ?? null) ?? [],
     [stop.openingHours],
@@ -268,7 +322,36 @@ function StopRow({
 
       {expanded ? (
         <View style={styles.expanded}>
-          {present(stop.imageUrl) ? (
+          {/*
+            §6.4's photo strip, at its exact geometry (100% x 140, radius 8),
+            as ONE photo that OPENS the rest — never a per-stop horizontal
+            ScrollView, which is what `S-4c` forbids and what fought the sheet's
+            pan gesture N times over. A stop with a second photo gets a press
+            target and a count; a stop with one gets a plain image and no
+            affordance that would do nothing (Constitution 1).
+          */}
+          {present(stop.imageUrl) && stop.imageUrls.length > 1 && onOpenPhotos ? (
+            <Pressable
+              onPress={() => onOpenPhotos(stop)}
+              style={({ pressed }) => [styles.photoWrap, pressed ? styles.controlPressed : null]}
+              accessibilityRole="button"
+              accessibilityLabel={t("cards:expanded.stop_photos_a11y", {
+                defaultValue: "{{count}} photos of {{name}}",
+                count: stop.imageUrls.length,
+                name: stop.name,
+              })}
+            >
+              <Image source={{ uri: stop.imageUrl }} style={styles.photo} resizeMode="cover" />
+              <View
+                style={styles.photoCount}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              >
+                <Icon name="images-outline" size={12} color={SPINE.onAccent} />
+                <Text style={styles.photoCountText}>{stop.imageUrls.length}</Text>
+              </View>
+            </Pressable>
+          ) : present(stop.imageUrl) ? (
             <Image source={{ uri: stop.imageUrl }} style={styles.photo} resizeMode="cover" />
           ) : null}
 
@@ -311,6 +394,27 @@ function StopRow({
             >
               <Text style={styles.controlText}>{t("cards:expanded.get_directions")}</Text>
             </Pressable>
+            {/*
+              THE STOP'S OWN BOOKING PAGE. `CuratedStop.website` rendered on
+              `main` as a per-stop "Policies & Reservations" row and nothing in
+              the new tree read it, so a stop's booking link was unreachable.
+              Gated on the NORMALIZED url by the caller, exactly like the
+              single-place Website row — no url, no control, no dead tap.
+            */}
+            {present(stop.website) && onOpenWebsite ? (
+              <Pressable
+                onPress={() => onOpenWebsite(stop)}
+                style={({ pressed }) => [styles.control, pressed ? styles.controlPressed : null]}
+                accessibilityRole="button"
+                accessibilityLabel={t("expanded_details:action_buttons.website", {
+                  defaultValue: "Website",
+                })}
+              >
+                <Text style={styles.controlText}>
+                  {t("expanded_details:action_buttons.website", { defaultValue: "Website" })}
+                </Text>
+              </Pressable>
+            ) : null}
             {stop.canReplace && onReplace ? (
               <Pressable
                 onPress={() => onReplace(stop)}
@@ -379,12 +483,28 @@ const styles = StyleSheet.create({
   badgeTextOpen: { color: SPINE.openText },
   badgeTextClosed: { color: SPINE.closedText },
   expanded: { paddingHorizontal: SPINE.gutter, paddingBottom: SPINE.gutter, gap: 12 },
+  photoWrap: { width: "100%", height: STOP_ROW.photoStripHeight },
   photo: {
     width: "100%",
     height: STOP_ROW.photoStripHeight,
     borderRadius: STOP_ROW.photoStripRadius,
     backgroundColor: SPINE.chipFill,
   },
+  // The count pill sits on the photo, so its label is the near-black on-accent
+  // token (6.47:1) over the accent fill, never white (2.90:1).
+  photoCount: {
+    position: "absolute",
+    right: 8,
+    bottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: SPINE.accentFill,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  photoCountText: { fontSize: 11, fontWeight: "700", color: SPINE.onAccent },
   description: { fontSize: 15, lineHeight: 22, color: SPINE.prose },
   hours: { gap: 2 },
   hoursRow: { flexDirection: "row", alignItems: "center", gap: 8 },

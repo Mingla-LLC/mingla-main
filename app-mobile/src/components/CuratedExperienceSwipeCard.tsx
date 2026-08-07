@@ -28,7 +28,22 @@ import {
 } from './deckCardPlate';
 import { MAX_FONT_SCALE, SURFACES } from '../../../packages/card-identity/index.js';
 import type { CuratedExperienceCard } from '../types/curatedExperience';
-import { parseAndFormatDistance, formatCurrency } from './utils/formatters';
+// `parseAndFormatDistance` moved with the rest of the span derivation into
+// `expandedCard/expandedCardFacts` (#1605 P1-6).
+import { formatCurrency } from './utils/formatters';
+/*
+  #1605 P1-6 — THE META SPANS ARE PRODUCED ONCE, HERE AND ON THE SHEET.
+
+  This file used to assemble the curated meta line inline while
+  `expandedCardFacts.curatedPlanSpans` assembled a DIFFERENT one for the
+  expanded sheet: five spans from the non-optional stops here, four from all of
+  them there, with no distance and another duration rule. Same card, one tap
+  apart, three of five spans changed — and the wave's entire claim is that
+  opening a card continues it. Nothing gated span parity because there was
+  nothing shared to gate. There is now, and it is a leaf module (types +
+  formatters), so importing it opens no cycle.
+*/
+import { curatedPlanSpans, planVisibleStops } from './expandedCard/expandedCardFacts';
 // ORCH-1042: reuse the SAME hard-failure fallback URL + placeholder blurhash as the
 // single-place deck hero (one source of truth — do not duplicate the literals).
 // ORCH-1065 BUG-3: import from the leaf ./deckHeroConstants module, NOT from
@@ -269,28 +284,27 @@ const NOOP = (): void => {};
 
 const S1 = SURFACES.s1Single;
 
-/** "2h 15m" / "45m" — never "0m", which would be a fabricated duration. */
-function formatDuration(totalMinutes: number | null | undefined): string | null {
-  if (typeof totalMinutes !== 'number' || !Number.isFinite(totalMinutes) || totalMinutes <= 0) return null;
-  const mins = Math.round(totalMinutes);
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
-}
+/*
+  `formatDuration` moved to `expandedCard/expandedCardFacts.formatPlanDuration`
+  with the rest of the span derivation (#1605 P1-6). Two copies of a formatter
+  either side of a producer split is how the split stays invisible.
+*/
 
 export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem, currencyCode, brandExperience, onBrandPress, experienceCover, ctaOverride, isTopCard = true, beenHere, onSharePress, shareLabel }: Props) {
-  const { t } = useTranslation(['common']);
+  // `cards` joins `common` because the shared span producer's labels ("Free",
+  // "{{count}} stops") are the SAME keys the expanded sheet resolves — the
+  // collapsed card used to hardcode both in English (#1605 P1-6).
+  const { t } = useTranslation(['common', 'cards']);
   const insets = useSafeAreaInsets();
   // ORCH-0991: deck is full-bleed under the floating glass top bar. Keeps the brand
   // chip below the chrome so it is not clipped behind the status bar / Dynamic Island.
   // #1609: the per-stop number badges that also used this are gone with the strip.
   const stopBadgeTop = insets.top + 62;
 
-  // Compact card shows only main (non-optional) stops
-  const mainStops = card.stops.filter(s => !s.optional);
-  const visibleStops = mainStops.length > 0 ? mainStops : card.stops;
+  // Compact card shows only main (non-optional) stops. The SAME selection the
+  // expanded sheet's plate uses — it is `planVisibleStops`, exported by the one
+  // span producer, so "which stops is this plan" is stated once.
+  const visibleStops = planVisibleStops(card.stops);
 
   // #1609 — the single hero for the non-cover path: the first stop that actually has a
   // photo. Null when no stop has one, in which case the placeholder canvas shows and
@@ -313,37 +327,6 @@ export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem
   // is not a rating OF THE PLAN, and the plan's characterising fact is its stop
   // COUNT, which now takes the meta line's leading 700 slot.
 
-  // ORCH-0629: Cumulative price — sum from the displayed stops directly.
-  // Do NOT trust `card.totalPriceMin/Max` (card-level totals can be stale or left at 0
-  // by the generator). Local sum is the truth the user sees on the card.
-  //
-  // ORCH-1065 BUG-1: that "distrust the envelope total" rule is correct for CURATED
-  // cards (whose per-stop prices ARE the source of truth), but WRONG for a brand
-  // experience: an experience carries its all-in price as the envelope
-  // total (`total_price_cents` → totalPriceMin/Max from discover-cards), and its
-  // stops carry NO per-stop price (price_cents=0 each). Summing those stops yields
-  // 0 → "Free" for a genuinely priced experience. So for an experience we read the
-  // envelope total directly (the same currency-aware formatCurrency helper, no
-  // fabrication — a 0 envelope total still shows "Free" honestly).
-  const effectiveCurrency = currencyCode || 'USD';
-  const experienceTotalMin = typeof card.totalPriceMin === 'number' ? card.totalPriceMin : 0;
-  const experienceTotalMax = typeof card.totalPriceMax === 'number' ? card.totalPriceMax : 0;
-  const cumulativePriceMin = isBrandExperience
-    ? experienceTotalMin
-    : visibleStops.reduce((sum, stop) => sum + (stop.priceMin || 0), 0);
-  const cumulativePriceMax = isBrandExperience
-    ? experienceTotalMax
-    : visibleStops.reduce((sum, stop) => sum + (stop.priceMax || 0), 0);
-  const priceLabel = (() => {
-    if (cumulativePriceMin === 0 && cumulativePriceMax === 0) return 'Free';
-    if (cumulativePriceMin === cumulativePriceMax) return formatCurrency(cumulativePriceMin, effectiveCurrency);
-    // U+2013 en-dash (not hyphen) — typographic convention for ranges.
-    return `${formatCurrency(cumulativePriceMin, effectiveCurrency)}–${formatCurrency(cumulativePriceMax, effectiveCurrency)}`;
-  })();
-
-  const isSingleStop = visibleStops.length === 1;
-  const rawIntentKey = (card.experienceType || 'adventurous').replace(/-/g, '_');
-  const categoryLabel = t(`common:intent_${rawIntentKey}`);
   // #1609 — isBookCta / handleCtaPressIn / ctaText are DELETED with the tray CTA
   // they served. That CTA called onSeePlan -> handleCardExpand DIRECTLY, bypassing
   // requestTapExpand and therefore the deck's gesture lease entirely. With it gone,
@@ -352,38 +335,30 @@ export function CuratedExperienceSwipeCard({ card, travelMode, measurementSystem
   // (I-PROPOSED-1579 corollary), not a side effect: the same sheet is one tap away
   // on the card itself, and the commerce "Book" action lives on it.
 
-  // First stop distance (most relevant to the user). Travel time is NOT rendered —
-  // D-2: "14 min" beside "6.7 mi" is the same fact twice.
-  const firstStop = visibleStops[0];
-  const distanceKm = firstStop?.distanceFromUserKm;
-  const formattedDistance = distanceKm != null && distanceKm > 0
-    ? parseAndFormatDistance(`${distanceKm.toFixed(1)} km`, measurementSystem)
-    : null;
-
   /**
    * #1609 Direction C §3.4 — the curated meta line:
    *
-   *     3 stops  ·  2h 15m  ·  £28–£54  ·  Adventurous
-   *     └─700──┘  └──── 500 @1.0 ────┘   └─500 @0.72─┘
+   *     3 stops  ·  6.7 mi  ·  2h 15m  ·  £28–£54  ·  Adventurous
+   *     └─700──┘  └────────── 500 @1.0 ─────────┘   └─500 @0.72─┘
    *
-   * The stop COUNT takes the 700 slot the rating takes on a place card, because
-   * it is the fact that characterises a plan. Every span is omitted when its value
-   * is absent and CardMetaLine renders separators between PRESENT SPANS ONLY, so a
-   * plan with no price begins at duration with no orphaned "·" (Constitution 9).
-   * A single-stop plan falls back to distance, which is the only positional fact
-   * it has.
+   * #1605 P1-6 — ASSEMBLED BY THE SHARED PRODUCER, NOT HERE. Everything that
+   * used to be computed inline above this line — the ORCH-0629 stop-sum price,
+   * the ORCH-1065 brand-experience envelope exception, the first-stop distance
+   * (D-2: travel time is NOT rendered, "14 min" beside "6.7 mi" is the same fact
+   * twice), the duration formatter and the single-stop distance fallback — moved
+   * into `curatedPlanSpans` VERBATIM so the expanded sheet renders the identical
+   * array. What stays here is only what is viewer state: the currency, the
+   * measurement system and the three i18n resolvers.
    */
-  const formattedDuration = formatDuration(card.estimatedDurationMinutes);
-  const curatedSpans: MetaSpanInput[] = [];
-  if (!isSingleStop) {
-    curatedSpans.push({ kind: 'rating', text: `${visibleStops.length} stops` });
-  } else if (formattedDistance) {
-    curatedSpans.push({ kind: 'rating', text: formattedDistance });
-  }
-  if (!isSingleStop && formattedDistance) curatedSpans.push({ kind: 'fact', text: formattedDistance });
-  if (formattedDuration) curatedSpans.push({ kind: 'fact', text: formattedDuration });
-  if (priceLabel) curatedSpans.push({ kind: 'fact', text: priceLabel });
-  if (categoryLabel) curatedSpans.push({ kind: 'tail', text: categoryLabel });
+  const curatedSpans: MetaSpanInput[] = curatedPlanSpans(card, {
+    measurementSystem,
+    formatMoney: (amount) => formatCurrency(amount, currencyCode || 'USD'),
+    freeLabel: t('cards:swipeable.free', { defaultValue: 'Free' }),
+    stopCountLabel: (count) =>
+      t('cards:expanded.stop_count', { defaultValue: '{{count}} stops', count }),
+    intentLabel: (slug) => t(`common:intent_${slug}`),
+    isBrandExperience,
+  });
 
   /**
    * #1609 tester P1-1 — THE SILHOUETTE IS DECIDED ONCE, HERE, AND EVERYTHING ON

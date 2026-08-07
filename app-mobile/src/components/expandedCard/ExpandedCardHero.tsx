@@ -181,14 +181,24 @@ function HeroHandle({
  * the sheet a chevron-down means *this closes*. It is the only element whose
  * MEANING changes between the two surfaces.
  *
- * It does NOT animate its 180° turn, and that is deliberate rather than
- * unfinished. The design says the rotation must run on THE SHEET'S OWN DRIVER —
- * `BaseBottomSheet` pins a 280ms timing config (ORCH-1064, anti-stall) and does
- * not expose gorhom's `animatedPosition`, so the only way to animate it here
- * would be a SECOND driver racing the first: the plate would lead the sheet,
- * then lag it, then overshoot past the object it is supposed to be part of.
- * The design's own reduced-motion behaviour is "instant swap at the end", so
- * shipping that for everyone is a graceful degradation rather than a new shape.
+ * It does NOT animate its 180° turn. §9 row 3 is **NOT IMPLEMENTED**, and the
+ * word matters: it is not impossible, it is unbuilt.
+ *
+ * The first version of this comment said a second driver would be required and
+ * that is WRONG, corrected by the #1605 tester and recorded here so nobody
+ * re-derives the same wrong conclusion. `@gorhom/bottom-sheet@5.2.8` exports
+ * `useBottomSheetInternal` from its PUBLIC `index.d.ts`, and it yields
+ * `animatedPosition` / `animatedIndex` FROM THE SHEET'S EXISTING DRIVER. This
+ * hero renders inside the `BottomSheet` subtree, so it can consume it. What is
+ * true is only that `BaseBottomSheet` does not forward it (it pins a 280ms
+ * timing config for ORCH-1064's anti-stall and keeps the rest to itself) —
+ * which is a shape to change, not a physics problem.
+ *
+ * Shipping the instant swap is the interim, and it is a defensible one: the
+ * design's own reduced-motion behaviour IS "instant swap at the end", so every
+ * user gets what reduced-motion users were always going to get. But it is an
+ * interim. The work is: forward `animatedPosition` out of `BaseBottomSheet`, or
+ * call `useBottomSheetInternal` here. Modest, and in spec.
  */
 export function ExpandedCardHero({
   cover,
