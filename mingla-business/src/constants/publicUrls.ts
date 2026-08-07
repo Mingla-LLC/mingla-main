@@ -202,3 +202,15 @@ export const brandOgImageUrl = (input: {
     "brandSlug",
   )}.png`;
 };
+
+export const venueOgImageUrl = (input: {
+  brandSlug: string;
+  venueSlug: string;
+  coverMediaUrl?: string | null;
+}): string => {
+  if (!isAbsoluteHttpUrl(input.coverMediaUrl)) return "";
+  return `${BUSINESS_PUBLIC_ORIGIN}/og/venue/${requireSegment(
+    input.brandSlug,
+    "brandSlug",
+  )}/${requireSegment(input.venueSlug, "venueSlug")}.png`;
+};

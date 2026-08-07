@@ -66,6 +66,8 @@
 
 'use strict';
 
+const { S6_PHONE, S6_PLATE, S6_PLATE_BOUNDARY } = require('./s6');
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 1 · The scrims
 // ─────────────────────────────────────────────────────────────────────────────
@@ -212,7 +214,7 @@ function over(fg, alpha, bg) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PLATE_BOUNDARIES = {
-  standard: { color: 'rgba(255,255,255,0.38)', rgb: [255, 255, 255], alpha: 0.38, width: 1 },
+  standard: S6_PLATE_BOUNDARY,
   compact: { color: 'rgba(255,255,255,0.86)', rgb: [255, 255, 255], alpha: 0.86, width: 1 },
   ogOpaque: { color: 'rgba(255,255,255,0.48)', rgb: [255, 255, 255], alpha: 0.48, width: 1 },
 };
@@ -253,8 +255,8 @@ const PLATE = {
    * Android + satori + the CSS `@supports not (backdrop-filter)` fallback.
    * L* 23.47 — matched to the glass composite, not to a badge composite.
    */
-  fallbackSolid: 'rgb(53,56,63)',
-  fallbackSolidRgb: [53, 56, 63],
+  fallbackSolid: S6_PLATE.fallbackSolid,
+  fallbackSolidRgb: S6_PLATE.fallbackSolidRgb,
   blurIntensity: 18,
   /**
    * 'light', NOT 'dark', and this is load-bearing.
@@ -862,23 +864,7 @@ const SURFACES = {
     sliverBoundary: 'none',
     sliver: { height: 12, radius: 6, alpha: 0.54, alpha2: 0.58, opaque: ['rgb(176,176,176)', 'rgb(187,187,187)'], forcedOpaque: true, insets: [66, 76] },
   },
-  s6Phone: {
-    label: 'S6 public web page — phone breakpoint',
-    w: 390, h: 480, cardR: 24,
-    sideInset: 16, bottomInset: 16,
-    plateW: 358, plateH: 96, plateR: 22,
-    titleSize: 30, titleLH: 36, titleLines: 2, titleWeight: '700', titleInset: 16,
-    metaSize: 14,
-    metaLines: 2,
-    gap: 20,
-    titleOnPlate: false,
-    controls: true,
-    topScrim: false,
-    curated: true,
-    plateBoundary: 'standard',
-    sliverBoundary: 'none',
-    sliver: { height: 4, radius: 2, alpha: 0.44, opaque: ['rgb(143,143,143)', 'rgb(145,145,145)'], forcedOpaque: false, insets: [24, 34] },
-  },
+  s6Phone: S6_PHONE,
   /**
    * S7 — the expanded sheet's hero (#1605 wave 4).
    *

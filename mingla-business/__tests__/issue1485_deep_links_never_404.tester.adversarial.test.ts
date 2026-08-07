@@ -92,9 +92,17 @@ const catchAll = vercel.rewrites[vercel.rewrites.length - 1];
  * A.0 asserts this map covers every rewrite, so it cannot silently rot.
  */
 const COMPILED_SRC: Record<string, string> = {
+  // [TEST-MOD-APPROVED #1615] These four public-share/venue rewrites did not
+  // exist when #1485 froze this exhaustive transcription. Adding their real
+  // compiled forms preserves the test's fail-loud coverage of every rewrite.
+  "/share/:shareId.png": "^/share(?:/([^/]+?))\\.png$",
+  "/og/share/:shareId.png": "^/og/share(?:/([^/]+?))\\.png$",
+  "/p/:shareId": "^/p(?:/([^/]+?))$",
   "/og/event/:eventId.png": "^/og/event(?:/([^/]+?))\\.png$",
   "/og/brand/:brandSlug.png": "^/og/brand(?:/([^/]+?))\\.png$",
   "/og/trip/:tripId.png": "^/og/trip(?:/([^/]+?))\\.png$",
+  "/og/venue/:brandSlug/:venueSlug.png":
+    "^/og/venue(?:/([^/]+?))(?:/([^/]+?))\\.png$",
   "/e/:brandSlug/:eventSlug": "^/e(?:/([^/]+?))(?:/([^/]+?))$",
   "/t/:brandSlug/:tripSlug": "^/t(?:/([^/]+?))(?:/([^/]+?))$",
   "/b/:brandSlug": "^/b(?:/([^/]+?))$",
@@ -287,7 +295,9 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
     // because resolveForBrowser() deliberately skips them.
     for (const [pathname, expected] of [
       ["/e/acme/summer-party", "/api/public-event?brandSlug=:brandSlug&eventSlug=:eventSlug"],
-      ["/b/acme/v/rooftop", "/api/public-brand?brandSlug=:brandSlug"],
+      // [TEST-MOD-APPROVED #1615] Venue crawlers now receive the venue's own
+      // canonical metadata rather than the parent brand's generic metadata.
+      ["/b/acme/v/rooftop", "/api/public-venue?brandSlug=:brandSlug&venueSlug=:venueSlug"],
     ] as [string, string][]) {
       const hit = vercel.rewrites.find(
         (r) =>

@@ -53,7 +53,11 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { PLATE, SURFACES, surfacePlateBoundary } from "@mingla/card-identity";
+import {
+  S6_PHONE,
+  S6_PLATE,
+  S6_PLATE_BOUNDARY,
+} from "@mingla/card-identity/s6";
 
 import { EventCoverMedia } from "./EventCoverMedia";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
@@ -175,7 +179,7 @@ export interface ParallaxCoverShellProps {
   testID?: string;
 }
 
-export const ParallaxCoverShell = ({
+export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   palette,
   theme,
   coverMediaUrl,
@@ -204,7 +208,7 @@ export const ParallaxCoverShell = ({
   galleryImages,
   coverPlaceholderLabel = null,
   testID,
-}: ParallaxCoverShellProps): React.ReactElement => {
+}: ParallaxCoverShellProps) => {
   const { isDesktop, isWeb } = useResponsiveLayout();
   const Scroll = ScrollComponent ?? ScrollView;
 
@@ -569,8 +573,8 @@ export const ParallaxCoverShell = ({
   );
 };
 
-const S6 = SURFACES.s6Phone;
-const S6_BOUNDARY = surfacePlateBoundary("s6Phone");
+const S6 = S6_PHONE;
+const S6_BOUNDARY = S6_PLATE_BOUNDARY;
 
 export interface DirectionCIdentityOverlayProps {
   title: string;
@@ -742,7 +746,7 @@ const styles = StyleSheet.create({
     borderRadius: S6.plateR,
     borderWidth: S6_BOUNDARY.width,
     borderColor: S6_BOUNDARY.color,
-    backgroundColor: PLATE.fallbackSolid,
+    backgroundColor: S6_PLATE.fallbackSolid,
     paddingHorizontal: S6.titleInset,
     flexDirection: "row",
     alignItems: "center",

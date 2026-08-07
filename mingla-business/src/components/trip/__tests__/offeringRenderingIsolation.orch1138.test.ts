@@ -82,6 +82,10 @@ describe("RT-3 ORCH-1138 — offering-rendering package isolation", () => {
     // packages/offering-rendering/package.json peerDependencies). Same I-MOR-0827 spirit:
     // local files + RN + the declared peers; NEVER an app src/ import.
     const ALLOWED_EXTERNAL = new Set([
+      // [TEST-MOD-APPROVED #1615] The old allowlist predated the approved
+      // shared card identity package. This remains package-to-package and
+      // dependency-free; app source imports are still rejected above.
+      "@mingla/card-identity/s6",
       "react",
       "react-native",
       "react-native-svg",

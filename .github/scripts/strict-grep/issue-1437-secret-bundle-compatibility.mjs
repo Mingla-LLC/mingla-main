@@ -145,8 +145,11 @@ export function violations(files) {
     failures.push("manifest: invalid JSON");
     manifest = {};
   }
-  if (manifest.rollout?.expected_user_managed_count !== 85) {
-    failures.push("manifest: Phase B must enforce expected count at 85");
+  // [TEST-MOD-APPROVED #1615] The old 85 baseline became wrong when Seth
+  // approved SHARED_CARD_PROXY_SECRET as the sole new secret for the WAF-backed
+  // public share proxy. Keep the exact-count guard; advance it by one.
+  if (manifest.rollout?.expected_user_managed_count !== 86) {
+    failures.push("manifest: Phase B must enforce expected count at 86");
   }
   const records = new Map(
     (manifest.secrets ?? []).map((record) => [record.name, record]),

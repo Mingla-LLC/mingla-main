@@ -51,6 +51,15 @@
  */
 
 /**
+ * MODIFIED under #1615 — [TEST-MOD-APPROVED #1615].
+ *
+ * G1b used to assume every owned literal lived in `index.js`. S6 now has a
+ * deliberately tiny browser entry so the full seven-surface oracle does not
+ * inflate the eager web bundle. The ownership rule is unchanged: the guard
+ * reads both package runtime entries and still fails if a value lives nowhere.
+ */
+
+/**
  * MODIFIED under #1714 — [TEST-MOD-APPROVED #1714].
  *
  * The old KNOWN_OPEN values deliberately pinned a proven design defect, T-4 evaluated an
@@ -288,7 +297,10 @@ test('G1 no card surface carries a literal the package owns', () => {
 });
 
 test('G1b the package itself DOES own the literals — the allowlist is not empty', () => {
-  const pkg = readFileSync(fileURLToPath(new URL('../index.js', import.meta.url)), 'utf8');
+  const pkg = [
+    readFileSync(fileURLToPath(new URL('../index.js', import.meta.url)), 'utf8'),
+    readFileSync(fileURLToPath(new URL('../s6.js', import.meta.url)), 'utf8'),
+  ].join('\n');
   // If the values did not live here, G1 would pass vacuously by them living nowhere.
   for (const needle of ['rgba(0,0,0,0.42)', 'rgb(53,56,63)', 'rgba(255,255,255,0.38)', 'rgba(34,197,94,0.42)']) {
     assert.ok(pkg.includes(needle), `G1b: @mingla/card-identity no longer declares ${needle}`);

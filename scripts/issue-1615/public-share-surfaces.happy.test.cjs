@@ -185,7 +185,9 @@ test("H19 Explorer payload is canonical S5/S6 URL while CTA remains attributed w
 
 test("H20 existing business human pages and bot S5 share Direction C identity", () => {
   const shell = read("packages/offering-rendering/ParallaxCoverShell.tsx");
-  for (const needle of ["SURFACES.s6Phone", "surfacePlateBoundary(\"s6Phone\")", "PLATE.fallbackSolid", "DirectionCIdentityOverlay"]) assert.ok(shell.includes(needle), needle);
+  for (const needle of ["S6_PHONE", "S6_PLATE_BOUNDARY", "S6_PLATE.fallbackSolid", "DirectionCIdentityOverlay"]) assert.ok(shell.includes(needle), needle);
+  const s6Runtime = read("packages/card-identity/s6.js");
+  for (const needle of ["rgba(255,255,255,0.38)", "rgb(53,56,63)", "S6_PHONE"]) assert.ok(s6Runtime.includes(needle), needle);
   assert.match(read("packages/offering-rendering/PublicEventPage.tsx"), /<DirectionCIdentityOverlay/);
   assert.match(read("mingla-business/src/components/event/FoundationEventPreview.tsx"), /directionCIdentity=\{\{/);
   assert.match(read("packages/brand-rendering/PublicBrandPage.tsx"), /directionCIdentity=\{useDirectionCIdentity/);
