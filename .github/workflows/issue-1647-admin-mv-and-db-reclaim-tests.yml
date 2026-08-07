@@ -182,7 +182,7 @@ jobs:
         run: >-
           docker exec -i issue1647-pg
           psql -v ON_ERROR_STOP=1 -U postgres -d postgres
-          -f supabase/migrations/__tests__/issue_1647_admin_place_pool_mv_slim.test.sql
+          < supabase/migrations/__tests__/issue_1647_admin_place_pool_mv_slim.test.sql
 
       # Seeds a job whose last runs all failed and whose only success is 40 days
       # old — the #1647 shape — and proves the watchdog reports it, names the
@@ -193,7 +193,7 @@ jobs:
         run: >-
           docker exec -i issue1647-pg
           psql -v ON_ERROR_STOP=1 -U postgres -d postgres
-          -f supabase/migrations/__tests__/issue_1647_cron_health_and_retention.test.sql
+          < supabase/migrations/__tests__/issue_1647_cron_health_and_retention.test.sql
 
       # Mostly asserts REFUSALS: no export on record, a stale export, a malformed
       # hash, an unsanctioned table, an un-elapsed retention window. A guard never
@@ -202,7 +202,7 @@ jobs:
         run: >-
           docker exec -i issue1647-pg
           psql -v ON_ERROR_STOP=1 -U postgres -d postgres
-          -f supabase/migrations/__tests__/issue_1647_archive_export_then_drop.test.sql
+          < supabase/migrations/__tests__/issue_1647_archive_export_then_drop.test.sql
 
       - name: Remove the disposable database
         if: always()
