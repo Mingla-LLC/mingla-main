@@ -61,19 +61,28 @@ export async function proxySharedCard(
     return privateResponse(null, 404, contentType)
   }
 
-  const upstream = await fetchImpl(`${BUSINESS_ORIGIN}${upstreamPath(surface, shareId)}`, {
-    method: 'GET',
-    cache: 'no-store',
-    redirect: 'manual',
-    headers: { [DOWNSTREAM_PROXY_HEADER]: secret },
-  })
+  let upstream: Response
+  try {
+    upstream = await fetchImpl(`${BUSINESS_ORIGIN}${upstreamPath(surface, shareId)}`, {
+      method: 'GET',
+      cache: 'no-store',
+      redirect: 'manual',
+      headers: { [DOWNSTREAM_PROXY_HEADER]: secret },
+    })
+  } catch {
+    return privateResponse(null, 502, contentType)
+  }
   const status = ALLOWED_STATUSES.has(upstream.status) ? upstream.status : 502
   if (status !== 200) return privateResponse(null, status, contentType)
 
   const receivedType = upstream.headers.get('content-type')?.toLowerCase() || ''
   const requiredType = contentType.split(';')[0]
   if (!receivedType.startsWith(requiredType)) return privateResponse(null, 502, contentType)
-  return privateResponse(await upstream.arrayBuffer(), 200, contentType)
+  try {
+    return privateResponse(await upstream.arrayBuffer(), 200, contentType)
+  } catch {
+    return privateResponse(null, 502, contentType)
+  }
 }
 
 export { INTERNAL_PROXY_HEADER }
