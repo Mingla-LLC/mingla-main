@@ -44,6 +44,7 @@ on:
       - "app-mobile/src/i18n/locales/en/cards.json"
       - "app-mobile/src/hooks/__tests__/issue_1687_been_here_opens_rating_prompt.test.mjs"
       - "app-mobile/src/services/__tests__/issue_1687_tester_partial_write_and_stale_request.test.mjs"
+      - "app-mobile/src/services/__tests__/issue_1687_tester_retest_identity_provenance_and_rollback.test.mjs"
       - "app-mobile/package-lock.json"
       - ".github/workflows/issue-1687-been-here-rating-prompt.yml"
   pull_request:
@@ -66,6 +67,7 @@ on:
       - "app-mobile/src/i18n/locales/en/cards.json"
       - "app-mobile/src/hooks/__tests__/issue_1687_been_here_opens_rating_prompt.test.mjs"
       - "app-mobile/src/services/__tests__/issue_1687_tester_partial_write_and_stale_request.test.mjs"
+      - "app-mobile/src/services/__tests__/issue_1687_tester_retest_identity_provenance_and_rollback.test.mjs"
       - "app-mobile/package-lock.json"
       - ".github/workflows/issue-1687-been-here-rating-prompt.yml"
 
@@ -95,6 +97,7 @@ jobs:
         run: |
           test -f src/hooks/__tests__/issue_1687_been_here_opens_rating_prompt.test.mjs
           test -f src/services/__tests__/issue_1687_tester_partial_write_and_stale_request.test.mjs
+          test -f src/services/__tests__/issue_1687_tester_retest_identity_provenance_and_rollback.test.mjs
 
       - run: npm ci
 
@@ -111,6 +114,20 @@ jobs:
         run: >
           node --test --test-reporter=spec
           src/services/__tests__/issue_1687_tester_partial_write_and_stale_request.test.mjs
+
+      - name: "TESTER adversarial 2: carried identity, the transitional residual, and the rollback"
+        # RETEST. The first tester suite calls the SERVICE directly, so it cannot
+        # see the rollback (which lives in useSubmitVoluntaryPlaceReview's
+        # mutationFn), and its EXPERIENCE_CARD fixture omits the `cardType` the
+        # real serving shape sets — so its X-4 no longer detects the derivation bug
+        # it named. This suite carries the faithful fixture, pins rule 1's boundary
+        # (declared types fail closed; an UNDECLARED one still falls through the
+        # [TRANSITIONAL] shape test), and attacks the rollback: the refused review,
+        # the rollback that itself fails, and the pre-existing visit that must never
+        # be deleted on the user's behalf.
+        run: >
+          node --test --test-reporter=spec
+          src/services/__tests__/issue_1687_tester_retest_identity_provenance_and_rollback.test.mjs
 
       - name: Re-run the #1609 collapsed-control contract (superseded by #1687, still enforced)
         # #1687 inverts the Amendment 1 assertion — `recordVisit.mutate` is now
