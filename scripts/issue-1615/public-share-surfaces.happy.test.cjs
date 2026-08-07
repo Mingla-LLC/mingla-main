@@ -405,7 +405,7 @@ test("H33 proxy credential is standalone governed authority and excluded from ru
 test("H34 production WebP collages yield to the authoritative renderable gallery photo", async () => {
   const { mapPlaceSnapshot } = await import(path.join(ROOT, "supabase/functions/shared-card/snapshot.ts"));
   const { prepareCoverForOg } = require(path.join(ROOT, "mingla-business/server/cardIdentityRenderer.js"));
-  assert.match(read("mingla-business/server/cardIdentityRenderer.js"), /cardIdentityElement\(\{ \.\.\.snapshot, cover_url: await prepareCoverForOg\(snapshot\.cover_url\) \}/);
+  assert.match(read("mingla-business/server/cardIdentityRenderer.js"), /cardIdentityElement\(\{ \.\.\.snapshot, cover_url: await prepareCoverForOg\(snapshot\.cover_url\) \}, surfaceKey, scale\)/);
   const mapped = mapPlaceSnapshot({
     id: "pool-webp",
     google_place_id: "google-webp",
@@ -422,4 +422,19 @@ test("H34 production WebP collages yield to the authoritative renderable gallery
   );
   assert.match(converted, /^data:image\/png;base64,/);
   assert.equal(Buffer.from(converted.split(",")[1], "base64").subarray(1, 4).toString(), "PNG");
+});
+
+test("H35 S4 scales the actual photo across the 1080px output, not only its layout box", async () => {
+  const { renderCardIdentityPng } = require(path.join(ROOT, "mingla-business/server/cardIdentityRenderer.js"));
+  const sharp = require(path.join(ROOT, "mingla-business/node_modules/sharp"));
+  const orange = await sharp({ create: { width: 4, height: 4, channels: 4, background: "#eb7825" } }).png().toBuffer();
+  const png = await renderCardIdentityPng({
+    kind: "place",
+    title: "Full width",
+    cover_url: `data:image/png;base64,${orange.toString("base64")}`,
+    metadata: {},
+  }, "s4Snippet");
+  const { data, info } = await sharp(png).raw().toBuffer({ resolveWithObject: true });
+  const farRightTop = (100 * info.width + 900) * info.channels;
+  assert.ok(data[farRightTop] > 180 && data[farRightTop + 1] > 70, `far-right photo pixel was ${Array.from(data.subarray(farRightTop, farRightTop + 3))}`);
 });

@@ -51,27 +51,28 @@ const factsFor = (snapshot) => {
 
 /** The sole S4/S5 visual substrate. Geometry and boundaries come from the
  * measured package descriptors; this file owns composition, never copied tokens. */
-function cardIdentityElement(snapshot, surfaceKey) {
+function cardIdentityElement(snapshot, surfaceKey, scale = 1) {
   const s = SURFACES[surfaceKey];
   if (!s || !["s4Snippet", "s5Og"].includes(surfaceKey)) throw new Error("unsupported share surface");
+  const px = (value) => value * scale;
   const boundary = surfacePlateBoundary(surfaceKey);
   const sliverBoundary = surfaceSliverBoundary(surfaceKey);
   const facts = factsFor(snapshot);
-  const titleBottom = s.bottomInset + s.plateH + s.gap;
-  const scrimH = surfaceScrimHeight(surfaceKey);
+  const titleBottom = px(s.bottomInset + s.plateH + s.gap);
+  const scrimH = px(surfaceScrimHeight(surfaceKey));
   const cover = safeText(snapshot.cover_url);
   if (!cover) throw new Error("cover_required");
   return React.createElement("div", { style: {
-    width: s.w, height: s.h, display: "flex", position: "relative", overflow: "hidden",
-    borderRadius: s.cardR, color: "white", fontFamily: "Inter, Arial, sans-serif", background: "#171717",
+    width: px(s.w), height: px(s.h), display: "flex", position: "relative", overflow: "hidden",
+    borderRadius: px(s.cardR), color: "white", fontFamily: "Inter, Arial, sans-serif", background: "#171717",
   } },
   React.createElement("img", { src: cover, style: { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" } }),
   React.createElement("div", { style: { position: "absolute", left: 0, right: 0, bottom: 0, height: scrimH, background: cssGradient(RAMP.bottom) } }),
-  React.createElement("div", { style: { display: "flex", position: "absolute", left: s.sideInset + s.titleInset, right: s.sideInset + s.titleInset, bottom: titleBottom, fontSize: s.titleSize, lineHeight: `${s.titleLH}px`, fontWeight: Number(s.titleWeight), maxHeight: s.titleLH * s.titleLines, overflow: "hidden" } }, safeText(snapshot.title)),
-  snapshot.kind === "curated" ? SLIVER.offsets.map((offset, index) => React.createElement("div", { key: `sliver-${index}`, style: { position: "absolute", left: s.sideInset + s.sliver.insets[index], right: s.sideInset + s.sliver.insets[index], bottom: s.bottomInset + s.plateH + offset, height: s.sliver.height, borderRadius: s.sliver.radius, border: `${sliverBoundary.width}px solid ${sliverBoundary.color}`, background: `linear-gradient(90deg,${s.sliver.opaque[0]},${s.sliver.opaque[1]})` } })) : null,
-  React.createElement("div", { style: { position: "absolute", left: s.sideInset, bottom: s.bottomInset, width: s.plateW, height: s.plateH, borderRadius: s.plateR, border: `${boundary.width}px solid ${boundary.color}`, background: PLATE.fallbackSolid, boxShadow: `inset 0 1px 0 ${PLATE.topHighlight}`, display: "flex", alignItems: "center", paddingLeft: s.titleInset, paddingRight: s.titleInset } },
-    React.createElement("div", { style: { display: "flex", fontSize: s.metaSize, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, facts.join(" · ")),
-    React.createElement("div", { style: { display: "flex", marginLeft: "auto", color: "rgba(255,255,255,0.72)", fontSize: Math.max(13, Math.round(s.metaSize * .72)), fontWeight: 800 } }, "mingla"),
+  React.createElement("div", { style: { display: "flex", position: "absolute", left: px(s.sideInset + s.titleInset), right: px(s.sideInset + s.titleInset), bottom: titleBottom, fontSize: px(s.titleSize), lineHeight: `${px(s.titleLH)}px`, fontWeight: Number(s.titleWeight), maxHeight: px(s.titleLH * s.titleLines), overflow: "hidden" } }, safeText(snapshot.title)),
+  snapshot.kind === "curated" ? SLIVER.offsets.map((offset, index) => React.createElement("div", { key: `sliver-${index}`, style: { position: "absolute", left: px(s.sideInset + s.sliver.insets[index]), right: px(s.sideInset + s.sliver.insets[index]), bottom: px(s.bottomInset + s.plateH + offset), height: px(s.sliver.height), borderRadius: px(s.sliver.radius), border: `${px(sliverBoundary.width)}px solid ${sliverBoundary.color}`, background: `linear-gradient(90deg,${s.sliver.opaque[0]},${s.sliver.opaque[1]})` } })) : null,
+  React.createElement("div", { style: { position: "absolute", left: px(s.sideInset), bottom: px(s.bottomInset), width: px(s.plateW), height: px(s.plateH), borderRadius: px(s.plateR), border: `${px(boundary.width)}px solid ${boundary.color}`, background: PLATE.fallbackSolid, boxShadow: `inset 0 ${px(1)}px 0 ${PLATE.topHighlight}`, display: "flex", alignItems: "center", paddingLeft: px(s.titleInset), paddingRight: px(s.titleInset) } },
+    React.createElement("div", { style: { display: "flex", fontSize: px(s.metaSize), fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, facts.join(" · ")),
+    React.createElement("div", { style: { display: "flex", marginLeft: "auto", color: "rgba(255,255,255,0.72)", fontSize: px(Math.max(13, Math.round(s.metaSize * .72))), fontWeight: 800 } }, "mingla"),
   ));
 }
 
@@ -79,9 +80,8 @@ async function renderCardIdentityPng(snapshot, surfaceKey) {
   const { ImageResponse } = await import("@vercel/og");
   const s = SURFACES[surfaceKey];
   const scale = surfaceKey === "s4Snippet" ? 3 : 1;
-  const card = cardIdentityElement({ ...snapshot, cover_url: await prepareCoverForOg(snapshot.cover_url) }, surfaceKey);
-  const element = scale === 1 ? card : React.createElement("div", { style: { width: s.w * scale, height: s.h * scale, display: "flex" } }, React.createElement("div", { style: { display: "flex", width: s.w, height: s.h, transform: `scale(${scale})`, transformOrigin: "top left" } }, card));
-  const response = new ImageResponse(element, { width: s.w * scale, height: s.h * scale });
+  const card = cardIdentityElement({ ...snapshot, cover_url: await prepareCoverForOg(snapshot.cover_url) }, surfaceKey, scale);
+  const response = new ImageResponse(card, { width: s.w * scale, height: s.h * scale });
   return Buffer.from(await response.arrayBuffer());
 }
 
