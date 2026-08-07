@@ -246,3 +246,50 @@ test('A-8 no plate dimension is a literal, and only the plate module sizes the p
     );
   }
 });
+
+test('A-9 EVERY surface that mounts the plate measures its facts line', () => {
+  // Found on a device, twice. The measurement was wired into the two DECK faces
+  // and not into the expanded sheet's hero, so a curated plan whose facts line
+  // wraps ("2 stops · 0.3 mi · 3h 3m · $100.00-$0.00 · Romantic") kept the
+  // one-line plate height and the second line ran into the divider and chevron.
+  //
+  // The plate is deliberately the SAME component on every surface — that is the
+  // whole continuity argument — so an unmeasured mount is a surface silently
+  // disagreeing with the others about which silhouette it is drawing. Asserting
+  // per-file would have missed the hero; this asserts the RULE.
+  const files = [
+    'app-mobile/src/components/SwipeableCards.tsx',
+    'app-mobile/src/components/CuratedExperienceSwipeCard.tsx',
+    'app-mobile/src/components/expandedCard/ExpandedCardHero.tsx',
+  ];
+  const unmeasured = [];
+  for (const rel of files) {
+    const code = strip(read(rel));
+    for (const m of code.matchAll(/<DeckCardPlate[\s\S]*?\/>/g)) {
+      if (!/metaLines=\{/.test(m[0])) unmeasured.push(`${rel.split('/').pop()}`);
+    }
+  }
+  assert.deepEqual(
+    unmeasured, [],
+    `A-9: ${unmeasured.length} plate mount(s) are not sized from a measured line count `
+    + `(${[...new Set(unmeasured)].join(', ')}). A wrapped facts line will overrun the divider there.`,
+  );
+  // And every surface that OWNS a plate must also anchor its title off the same
+  // resolution, or the name and the plate move independently.
+  for (const rel of files) {
+    const code = strip(read(rel));
+    if (!/platePresentation\(/.test(code)) continue;
+    // A SECOND ARGUMENT, whatever its shape. The first cut demanded two bare
+    // identifiers and fired on `platePresentation(currentSpans,
+    // metaLinesByCard[currentRec.id] ?? 1)` — correct code, rejected for using
+    // an expression.
+    for (const call of code.matchAll(/platePresentation\(([^)]*(?:\([^)]*\)[^)]*)*)\)/g)) {
+      const args = call[1].split(',');
+      assert.ok(
+        args.length >= 2 && args[1].trim() !== '',
+        `A-9: ${rel.split('/').pop()} calls platePresentation with no line count, so its title `
+        + 'anchors to the one-line plate height while the plate itself may be taller',
+      );
+    }
+  }
+});

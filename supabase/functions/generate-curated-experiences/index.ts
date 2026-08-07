@@ -1,3 +1,48 @@
+
+/**
+ * Issue #1703 rework 2 — a curated plan's stops carry their venue's phone number.
+ *
+ * Seth, after TWO deploys that did not fix it: "te stops on the curated card
+ * still dont have a call button."
+ *
+ * Both earlier attempts patched `discover-cards`. THE SOLO DECK NEVER CALLS IT
+ * for curated plans — `deckService.ts` says so in its own header ("Curated pills
+ * -> still use generate-curated-experiences") and calls this function directly
+ * through `curatedExperiencesService`. So the enrichment was real, deployed, and
+ * on a path the cards never travelled.
+ *
+ * Every stop carries `placePoolId`, so this is one keyed lookup for a whole
+ * response. Non-fatal: a plan that cannot fetch a phone number is still a plan.
+ */
+async function enrichStopsWithPhone(db: any, cards: any[]): Promise<void> {
+  if (!Array.isArray(cards) || cards.length === 0) return;
+  const ids = new Set<string>();
+  for (const card of cards) {
+    for (const stop of (Array.isArray(card?.stops) ? card.stops : [])) {
+      if (typeof stop?.placePoolId === 'string' && stop.placePoolId.length > 0) ids.add(stop.placePoolId);
+    }
+  }
+  if (ids.size === 0) return;
+  try {
+    const { data, error } = await db
+      .from('place_pool')
+      .select('id, national_phone_number, country_code')
+      .in('id', [...ids]);
+    if (error || !Array.isArray(data)) return;
+    const byId = new Map<string, any>(data.map((d: any) => [d.id, d]));
+    for (const card of cards) {
+      for (const stop of (Array.isArray(card?.stops) ? card.stops : [])) {
+        const extra = byId.get(stop?.placePoolId);
+        if (!extra) continue;
+        stop.phone = extra.national_phone_number ?? null;
+        stop.countryCode = extra.country_code ?? null;
+      }
+    }
+  } catch {
+    // Non-fatal by design.
+  }
+}
+
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SEEDING_CATEGORY_MAP } from '../_shared/seedingCategories.ts';
@@ -1998,6 +2043,11 @@ export const handler = async (req: Request): Promise<Response> => {
         console.warn(`[curated-v2] experience front-load failed (tolerating): ${(expErr as Error)?.message}`);
       }
     }
+    // #1703 — the stops' phone numbers, immediately before they are returned.
+    // At the point of SERVING, so every path that reaches this response is
+    // covered rather than whichever one happened to be patched.
+    await enrichStopsWithPhone(supabaseAdmin, normalizedCards);
+
     return new Response(
       JSON.stringify({
         cards: normalizedCards,
