@@ -145,7 +145,33 @@ test('T-2 the scrims are absolute points from the package, with no percentage an
     /DECK_BOTTOM_SCRIM_HEIGHT_PT[^=]*=\s*surfaceScrimHeight\(/,
     'T-2: DECK_BOTTOM_SCRIM_HEIGHT_PT is no longer produced by the package\'s scrimHeight()',
   );
-  assert.equal(CI.surfaceScrimHeight('s1Single'), 316, 'T-2: S1\'s scrim is no longer 316pt');
+  // #1700 — this was `assert.equal(CI.surfaceScrimHeight('s1Single'), 316)`.
+  // A typed-in 316 is the very thing the assertion above forbids one line
+  // earlier: it pinned the scrim to the number that happened to fall out of the
+  // CANONICAL plate, so the wrapping law's taller silhouette turned it red for
+  // being CORRECT. Replaced by the property, which cannot go stale:
+  //   1. the height is what the package's own solver produces, and
+  //   2. it is solved from the TALLEST silhouette, so no silhouette sits above
+  //      the scrim's coverage. (At 316 the two-line title measured 2.96:1
+  //      against a white photograph, under the 3.0 large-text floor.)
+  const s1 = CI.SURFACES.s1Single;
+  const tallest = CI.surfaceSilhouettes('s1Single').at(-1);
+  assert.equal(
+    CI.surfaceScrimHeight('s1Single'),
+    CI.scrimHeight(
+      CI.plateTopDepthForLines('s1Single', tallest),
+      CI.titleTopDepthForLines('s1Single', tallest),
+      s1.h,
+    ),
+    "T-2: S1's scrim is not the height solved from its tallest silhouette",
+  );
+  assert.ok(
+    CI.surfaceScrimHeight('s1Single') >= CI.scrimHeight(
+      CI.plateTopDepth('s1Single'), CI.titleTopDepth('s1Single'), s1.h,
+    ),
+    "T-2: S1's scrim is SHORTER than the canonical plate needs — a wrapped facts "
+    + 'line would then sit above the scrim it depends on',
+  );
   // Both card types must resolve to the SAME height — that is the deleted branch.
   assert.equal(
     CI.surfaceScrimHeight('s1Single'),
@@ -462,39 +488,79 @@ test('T-8 the curated card no longer draws a second shell inside the deck bezel'
   );
 });
 
-test('T-9 the plate is a fixed rectangle with exactly one alternate silhouette', () => {
-  // The silhouette guarantee: a 1-line meta and an absent meta occupy the same
-  // box, and the ONE exception is a discrete constant rather than a measurement.
-  const full = CI.plateRows(CI.SURFACES.s1Single.plateH, true);
-  const alt = CI.plateRows(CI.PLATE_H_NO_META, false);
-  assert.equal(alt.meta, 0, 'T-9: the alternate silhouette still renders a meta row');
-  // The divider is NOT omitted with the facts row (Seth, #1609 comment
-  // 5196932627): it carries the chevron, and the chevron is the only visible
-  // expand affordance on a card that has no facts to show.
+test('T-9 the plate has exactly three DERIVED silhouettes and nothing else varies', () => {
+  // #1700 gave the plate a THIRD height: the facts line may wrap to two lines
+  // rather than ellipsise, and the plate grows by one line box to hold it.
+  //
+  // This test used to assert two StyleSheet entries by name —
+  //   /plateWithMeta:\s*\{\s*height:\s*S1\.plateH\s*\}/
+  //   /plateNoMeta:\s*\{\s*height:\s*PLATE_H_NO_META\s*\}/
+  // — which is a shape assertion, not a property one: it pinned the design to
+  // exactly two named constants and would have gone red for any correct third.
+  // It is now the property, which holds at any count: every height is PRODUCED
+  // by the package, and everything except the height is shared.
+  const silhouettes = CI.surfaceSilhouettes('s1Single');
   assert.equal(
-    alt.divider, CI.DIVIDER_H,
+    silhouettes.length, CI.META_LINES_MAX + 1,
+    `T-9: S1 renders ${silhouettes.length} silhouettes; it must render one per line count plus the `
+    + 'no-facts alternate',
+  );
+
+  const rows = silhouettes.map((n) => CI.plateRows(CI.plateHeightForMetaLines('s1Single', n), n, 's1Single'));
+
+  // The no-facts alternate: no meta row, and the divider SURVIVES it (Seth,
+  // #1609 comment 5196932627) because it carries the chevron, the only visible
+  // expand affordance on a card with no facts to show.
+  assert.equal(rows[0].meta, 0, 'T-9: the no-facts silhouette still renders a meta row');
+  assert.equal(
+    rows[0].divider, CI.DIVIDER_H,
     'T-9: the short plate omits the divider again, which takes the chevron with it and leaves that '
     + 'card with nothing that says it opens',
   );
-  assert.ok(full.control >= CI.BEEN_HERE.height, 'T-9: the control row cannot contain the 44pt target');
-  assert.ok(alt.control >= CI.BEEN_HERE.height, 'T-9: the short plate cannot contain the 44pt target');
 
-  // The plate's own left/right/bottom edges never move between the two.
+  // The control row must hold the 44pt target in EVERY silhouette, and be the
+  // SAME in every one — that is what stops the pill moving as facts wrap.
+  for (const [i, r] of rows.entries()) {
+    assert.ok(
+      r.control >= CI.BEEN_HERE.height,
+      `T-9: silhouette ${silhouettes[i]} has a ${r.control}pt control row, which cannot contain the `
+      + `${CI.BEEN_HERE.height}pt Been-here target`,
+    );
+    assert.equal(
+      r.control, rows[0].control,
+      `T-9: silhouette ${silhouettes[i]}'s control row is ${r.control}pt, not ${rows[0].control}pt — `
+      + 'the pill and the share glyph move when the facts line wraps',
+    );
+  }
+
+  // Every silhouette's height is PRODUCED by the package, never typed here.
   assert.match(
     code.plate,
-    /plateWithMeta:\s*\{\s*height:\s*S1\.plateH\s*\}/,
-    'T-9: the full plate height is no longer the descriptor\'s plateH',
+    /const SILHOUETTES\s*=[\s\S]{0,400}?plateHeightForMetaLines\(/,
+    'T-9: the plate heights are no longer produced by plateHeightForMetaLines',
   );
+  // ...and the material re-solves per silhouette, or a taller plate renders lighter.
   assert.match(
     code.plate,
-    /plateNoMeta:\s*\{\s*height:\s*PLATE_H_NO_META\s*\}/,
-    'T-9: the alternate silhouette height is no longer the package constant',
+    /plateUnderForHeight\(/,
+    'T-9: the under-layer alpha is no longer re-solved per silhouette',
   );
+  // The old two-entry form must be gone, or a fourth height can be added by
+  // adding a fourth StyleSheet key that nothing derives.
+  assert.equal(
+    /plateWithMeta:|plateNoMeta:/.test(code.plate), false,
+    'T-9: a named per-silhouette height style is back; heights must come from SILHOUETTES',
+  );
+
   // Only the HEIGHT may differ; a second inset or radius would be a second object.
   const plateBlock = /\bplate:\s*\{([\s\S]*?)\n\s*\},/.exec(code.plate);
   assert.ok(plateBlock, 'T-9: the plate style block is gone');
   assert.match(plateBlock[1], /left:\s*S1\.sideInset/, 'T-9: the plate no longer reads its inset from the package');
   assert.match(plateBlock[1], /borderRadius:\s*S1\.plateR/, 'T-9: the plate no longer reads its radius from the package');
+  assert.equal(
+    /\bheight:/.test(plateBlock[1]), false,
+    'T-9: the shared plate style declares a height again — it must arrive per silhouette',
+  );
 });
 
 test('T-10 missing data is hidden, never faked (Constitution 9)', () => {

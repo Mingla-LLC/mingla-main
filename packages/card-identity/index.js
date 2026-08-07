@@ -323,16 +323,127 @@ function plateUnderAlpha(scrimAlphaAtPlateTop) {
 const META_ROW_H = 40;
 const DIVIDER_H = 1;
 
-function plateRows(plateH, withMeta) {
+/**
+ * ISSUE #1700 — THE WRAPPING LAW, AND WHY IT COSTS A THIRD SILHOUETTE.
+ *
+ * Seth, 2026-08-07: *"I want everything to take one line but when something is
+ * cut off, or bleeds out of the box, it should go to the next line so everything
+ * is visible."*
+ *
+ * The facts line used to be `numberOfLines={1}` + `ellipsizeMode="tail"`, which
+ * is how "★ 4.6 · 20.9 mi · Icebreakers" became "★ 4.6 · 20.9 mi · Icebrea…" —
+ * the fact a user swiped for, silently deleted, on a plate with 20pt of unused
+ * vertical slack directly above it.
+ *
+ * So the meta row may now hold TWO lines, and the plate grows by exactly one
+ * line box to hold them. Everything from the divider DOWN is byte-identical in
+ * all three silhouettes — the pill and the share glyph never move — and the
+ * plate's bottom and side edges never move either. Only its TOP edge rises.
+ *
+ * ---------------------------------------------------------------------------
+ * AND THAT TOP EDGE IS NOT FREE. Measured, not assumed:
+ *
+ *   silhouette   plate top   scrim alpha there   title top   title contrast
+ *   no meta          80          0.8334            172          5.64:1
+ *   one line        112          0.7908            204          3.73:1
+ *   two lines       131          0.7411            223          2.96:1   <-- FAIL
+ *
+ * A taller plate pushes the TITLE into a thinner part of the scrim, and against
+ * a pure-white photograph 30/700 text landed at 2.96:1 — under the 3.0 floor
+ * SC 1.4.3 sets for large text. Growing the plate without touching the scrim
+ * would have shipped a WCAG failure that no screenshot review could catch.
+ *
+ * THE FIX IS NOT A PER-CARD SCRIM. `surfaceScrimHeight`'s docblock is right that
+ * a scrim whose height varied per card would make the deck's dark band jump on
+ * every swipe. It stays ONE number — solved from the TALLEST silhouette the
+ * surface can produce rather than from its canonical one. 316 -> 346pt (44.2% of
+ * a 783pt card). Every shallower silhouette then gets strictly MORE contrast,
+ * which is the same argument the short plate already relied on:
+ *
+ *   silhouette   title contrast @316   @346
+ *   no meta            5.64             6.93
+ *   one line           3.73             4.66
+ *   two lines          2.96             3.74
+ *
+ * The plate's own tone is held at L* 23.50 in all three by re-deriving its
+ * under-layer alpha at its actual top edge (`plateUnderForHeight`) — the plate
+ * does not lighten as it grows, it compensates.
+ */
+const META_LINES_MAX = 2;
+
+/**
+ * The meta line's line box. Derived from the surface's own `metaSize` so a
+ * second line cannot be measured against a number that lives in one app's
+ * StyleSheet — `deckCardPlate.tsx` carried a hardcoded `lineHeight: 19` that
+ * nothing here knew about, and the two-line row is `META_ROW_H + this`.
+ *
+ * 1.36 reproduces that shipped 19 at `metaSize: 14` exactly (14 * 1.36 = 19.04),
+ * so no surface's one-line rendering moves by a pixel.
+ */
+const META_LH_RATIO = 1.36;
+
+function metaLineHeight(surfaceKey) {
+  const s = SURFACES[surfaceKey];
+  if (!s) throw new Error(`@mingla/card-identity: unknown surface "${surfaceKey}"`);
+  return Math.round(s.metaSize * META_LH_RATIO);
+}
+
+/** The meta row's height for `lines` lines on a surface. 0 lines = no row. */
+function metaRowHeight(lines, surfaceKey) {
+  if (!lines || lines < 1) return 0;
+  return META_ROW_H + (Math.min(lines, META_LINES_MAX) - 1) * metaLineHeight(surfaceKey);
+}
+
+/**
+ * The no-facts plate, PER SURFACE.
+ *
+ * `PLATE_H_NO_META` is 64, and its docblock says plainly that it is *S1's*
+ * alternate silhouette — but it is a bare constant, so anything that reached for
+ * "the plate with no facts" got S1's number whatever surface it was on. On
+ * s3Chat, whose whole plate is 56pt, that is 8pt TALLER than the plate it is
+ * supposedly a shortened version of, and it lands the plate's top edge at a
+ * scrim alpha of 0.3043 — under the 0.42 material floor. Found by #1700's
+ * silhouette sweep; the constant was never wrong for S1 and never right anywhere
+ * else, and nothing had ever asked.
+ *
+ * The alternate exists only where the composition it is derived FROM exists: the
+ * facts row swapped for the chevron's clearance, with the divider surviving. That
+ * is the control-surface composition. A surface with no controls has no chevron,
+ * so it has no clearance to reserve and no alternate — its plate keeps its
+ * canonical height and simply renders no facts in it.
+ */
+function plateHeightNoMeta(surfaceKey) {
+  const s = SURFACES[surfaceKey];
+  if (!s) throw new Error(`@mingla/card-identity: unknown surface "${surfaceKey}"`);
+  if (!s.controls) return s.plateH;
+  return s.plateH - META_ROW_H + CHEVRON_CLEARANCE;
+}
+
+/** The plate's outer height for `lines` lines of facts on a surface. */
+function plateHeightForMetaLines(surfaceKey, lines) {
+  const s = SURFACES[surfaceKey];
+  if (!s) throw new Error(`@mingla/card-identity: unknown surface "${surfaceKey}"`);
+  if (!lines || lines < 1) return plateHeightNoMeta(surfaceKey);
+  return s.plateH + (Math.min(lines, s.metaLines) - 1) * metaLineHeight(surfaceKey);
+}
+
+/**
+ * `meta` is the LINE COUNT (0, 1 or 2). `true`/`false` are still accepted and
+ * mean 1 and 0 — every pre-#1700 call site and the oracle's own G3b assertions
+ * pass booleans, and silently reinterpreting `true` as something other than one
+ * line is how a compatibility shim becomes a bug.
+ */
+function plateRows(plateH, meta, surfaceKey) {
+  const lines = meta === true ? 1 : meta === false ? 0 : Number(meta) || 0;
   const content = plateH - 2 * PLATE.borderWidth;
-  const meta = withMeta ? META_ROW_H : 0;
+  const metaH = metaRowHeight(lines, surfaceKey || 's1Single');
   // NEVER conditional. See the docblock: the divider carries the affordance.
   const divider = DIVIDER_H;
   // Forward reference to section 4 — `plateRows` is only ever CALLED after this
   // module has finished evaluating, so there is no temporal-dead-zone hazard,
   // and CHEVRON_CLEARANCE belongs with the chevron it is derived from.
-  const clearance = withMeta ? 0 : CHEVRON_CLEARANCE;
-  return { meta, divider, clearance, control: content - meta - divider - clearance };
+  const clearance = lines >= 1 ? 0 : CHEVRON_CLEARANCE;
+  return { meta: metaH, divider, clearance, control: content - metaH - divider - clearance };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -588,6 +699,7 @@ const SURFACES = {
     plateW: 374, plateH: 96, plateR: 24,
     titleSize: 30, titleLH: 36, titleLines: 2, titleWeight: '700', titleInset: 20,
     metaSize: 14,
+    metaLines: 2,
     gap: 20,
     titleOnPlate: false,
     controls: true,
@@ -602,6 +714,7 @@ const SURFACES = {
     plateW: 374, plateH: 96, plateR: 24,
     titleSize: 30, titleLH: 36, titleLines: 2, titleWeight: '700', titleInset: 20,
     metaSize: 14,
+    metaLines: 2,
     gap: 20,
     titleOnPlate: false,
     controls: true,
@@ -616,6 +729,7 @@ const SURFACES = {
     plateW: 153, plateH: 76, plateR: 14,
     titleSize: 14, titleLH: 18, titleLines: 2, titleWeight: '600', titleInset: 10,
     metaSize: 11,
+    metaLines: 1,
     gap: 0,
     titleOnPlate: true,
     controls: false,
@@ -630,6 +744,7 @@ const SURFACES = {
     plateW: 225, plateH: 56, plateR: 14,
     titleSize: 18, titleLH: 22, titleLines: 2, titleWeight: '600', titleInset: 8,
     metaSize: 13,
+    metaLines: 1,
     gap: 0,
     titleOnPlate: true,
     controls: false,
@@ -644,6 +759,7 @@ const SURFACES = {
     plateW: 334, plateH: 40, plateR: 22,
     titleSize: 27, titleLH: 33, titleLines: 2, titleWeight: '700', titleInset: 18,
     metaSize: 13,
+    metaLines: 1,
     gap: 18,
     titleOnPlate: false,
     controls: false,
@@ -658,6 +774,7 @@ const SURFACES = {
     plateW: 1088, plateH: 168, plateR: 28,
     titleSize: 56, titleLH: 64, titleLines: 1, titleWeight: '800', titleInset: 56,
     metaSize: 30,
+    metaLines: 1,
     gap: 28,
     titleOnPlate: false,
     controls: false,
@@ -674,6 +791,7 @@ const SURFACES = {
     plateW: 358, plateH: 96, plateR: 22,
     titleSize: 30, titleLH: 36, titleLines: 2, titleWeight: '700', titleInset: 16,
     metaSize: 14,
+    metaLines: 2,
     gap: 20,
     titleOnPlate: false,
     controls: true,
@@ -720,6 +838,7 @@ const SURFACES = {
     plateW: 374, plateH: 96, plateR: 24,
     titleSize: 30, titleLH: 36, titleLines: 2, titleWeight: '700', titleInset: 20,
     metaSize: 14,
+    metaLines: 2,
     gap: 20,
     titleOnPlate: false,
     controls: true,
@@ -801,23 +920,93 @@ function titleTopDepth(surfaceKey) {
 }
 
 /**
- * The scrim height for a surface, from its own descriptor.
+ * #1700 — the same two depths, for ANY silhouette the surface can produce.
  *
- * Deliberately computed from the CANONICAL plate height, not from the
- * alternate (PLATE_H_NO_META) silhouette: a scrim whose height changed per card would make
- * the deck's dark band jump on every swipe, and the alternate silhouette's
- * title sits SHALLOWER, so the canonical (taller) scrim only ever improves its
- * contrast. The oracle asserts that, rather than assuming it.
+ * `plateTopDepth` / `titleTopDepth` answer for the canonical one-line plate and
+ * keep doing so; these take the line count. They exist so the scrim solver and
+ * the CI oracle can sweep EVERY silhouette instead of trusting that the
+ * canonical one is the worst case — which, from #1700, it is not.
+ *
+ * `lines` of 0 is the no-facts plate (PLATE_H_NO_META), 1 the canonical one,
+ * and up to `SURFACES[key].metaLines` the wrapped one.
+ */
+function plateTopDepthForLines(surfaceKey, lines) {
+  const s = SURFACES[surfaceKey];
+  if (!s) throw new Error(`@mingla/card-identity: unknown surface "${surfaceKey}"`);
+  return s.bottomInset + plateHeightForMetaLines(surfaceKey, lines);
+}
+
+function titleTopDepthForLines(surfaceKey, lines) {
+  const s = SURFACES[surfaceKey];
+  if (!s) throw new Error(`@mingla/card-identity: unknown surface "${surfaceKey}"`);
+  if (s.titleOnPlate) return 0;
+  return plateTopDepthForLines(surfaceKey, lines) + s.gap + s.titleLines * s.titleLH;
+}
+
+/** Every silhouette a surface can render, shallowest plate first: [0, 1, ... metaLines]. */
+function surfaceSilhouettes(surfaceKey) {
+  const s = SURFACES[surfaceKey];
+  if (!s) throw new Error(`@mingla/card-identity: unknown surface "${surfaceKey}"`);
+  const out = [];
+  for (let n = 0; n <= s.metaLines; n += 1) out.push(n);
+  return out;
+}
+
+/**
+ * The scrim height for a surface — ONE number per surface, never per card.
+ *
+ * #1700 CHANGED WHICH SILHOUETTE IT IS SOLVED FROM, and not which axis varies.
+ * It used to solve from the CANONICAL plate. It now solves from the TALLEST
+ * silhouette the surface can produce (`metaLines` lines of facts), because the
+ * plate's top edge is the shallowest point the scrim has to carry and the
+ * canonical plate is no longer that point.
+ *
+ * The reason the original chose the canonical one still holds and is still
+ * honoured: a scrim whose height changed per card would make the deck's dark
+ * band jump on every swipe. This is a fixed number computed from a worst case,
+ * so nothing jumps — and every shallower silhouette sits DEEPER in a scrim that
+ * is now longer, i.e. gets strictly more contrast. Measured on s1Single, white
+ * 30/700 title against a pure-white photograph:
+ *
+ *     no meta  5.64 -> 6.93   one line  3.73 -> 4.66   two lines  2.96 -> 3.74
+ *
+ * Without this change the two-line silhouette shipped at 2.96:1, under the 3.0
+ * floor. The oracle asserts the floors at EVERY silhouette, not just the
+ * canonical one, so this cannot regress silently.
  */
 function surfaceScrimHeight(surfaceKey) {
   const s = SURFACES[surfaceKey];
   if (!s) throw new Error(`@mingla/card-identity: unknown surface "${surfaceKey}"`);
-  return scrimHeight(plateTopDepth(surfaceKey), titleTopDepth(surfaceKey), s.h);
+  // Both depths through the per-line helpers: `titleTopDepthForLines` is what
+  // self-disables clause 2 on a title-on-plate surface (S3/S4 return 0). Doing
+  // the arithmetic inline here instead skipped that and gave S2 a 190pt scrim
+  // where 124 is correct.
+  return scrimHeight(
+    plateTopDepthForLines(surfaceKey, s.metaLines),
+    titleTopDepthForLines(surfaceKey, s.metaLines),
+    s.h,
+  );
 }
 
-/** The derived under-layer alpha for a surface. */
+/**
+ * The derived under-layer alpha for a surface at a GIVEN plate height.
+ *
+ * #1700: the plate's rendered tone is pinned to L* 23.50, and the backdrop it
+ * composites over is the scrim at the plate's own top edge — which moves when
+ * the plate grows. Re-solving here is what stops a two-line plate reading
+ * lighter than a one-line one; the plate compensates rather than drifting.
+ */
+function plateUnderForHeight(surfaceKey, plateH) {
+  const s = SURFACES[surfaceKey];
+  if (!s) throw new Error(`@mingla/card-identity: unknown surface "${surfaceKey}"`);
+  return plateUnderAlpha(
+    rampAlphaAtDepth(s.bottomInset + plateH, surfaceScrimHeight(surfaceKey)),
+  );
+}
+
+/** The derived under-layer alpha for a surface's canonical (one-line) plate. */
 function surfacePlateUnder(surfaceKey) {
-  return plateUnderAlpha(rampAlphaAtDepth(plateTopDepth(surfaceKey), surfaceScrimHeight(surfaceKey)));
+  return plateUnderForHeight(surfaceKey, SURFACES[surfaceKey].plateH);
 }
 
 /**
@@ -857,6 +1046,8 @@ module.exports = {
   SURFACES,
   MAX_FONT_SCALE,
   META_ROW_H,
+  META_LINES_MAX,
+  META_LH_RATIO,
   DIVIDER_H,
   CHEVRON_CLEARANCE,
   PLATE_H_NO_META,
@@ -873,10 +1064,18 @@ module.exports = {
   rampAlphaAtDepth,
   plateUnderAlpha,
   plateRows,
+  metaLineHeight,
+  metaRowHeight,
+  plateHeightNoMeta,
+  plateHeightForMetaLines,
+  plateUnderForHeight,
   typeLadder,
   plateTopDepth,
+  plateTopDepthForLines,
   titleBottom,
   titleTopDepth,
+  titleTopDepthForLines,
+  surfaceSilhouettes,
   surfaceScrimHeight,
   surfacePlateUnder,
 };

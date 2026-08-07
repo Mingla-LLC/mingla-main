@@ -308,12 +308,47 @@ test('G1c the deleted card furniture has not come back', () => {
   }
   // The plate module is small and wholly card-face, so it CAN be swept broadly.
   const plate = stripComments(read(SCANNED['deckCardPlate.tsx']));
-  assert.equal(
-    /flexWrap/.test(plate),
-    false,
-    'G1c: deckCardPlate.tsx uses flexWrap. Every variable-length row on the card face must be '
-    + 'numberOfLines-clamped; the title is the only 2-line element, and that is what makes the '
-    + 'silhouette guarantee hold.',
+
+  // #1700 — THIS RULE INVERTED, DELIBERATELY, AND THE GUARD CHANGED WITH IT.
+  //
+  // It used to be a flat ban: `assert.equal(/flexWrap/.test(plate), false)`, on
+  // the reasoning that every variable-length row must be numberOfLines-clamped
+  // or the silhouette guarantee fails. The clamp is exactly what shipped
+  // "★ 4.6 · 20.9 mi · Icebrea…" to a real device, and Seth's instruction on
+  // 2026-08-07 is that nothing may be cut off.
+  //
+  // The guarantee the ban protected is REAL, so it is now asserted directly
+  // instead of being approximated by banning a CSS property: the facts row may
+  // wrap, the wrap is BOUNDED by META_LINES_MAX, and the plate's height is one
+  // of a derived, finite set. An unbounded row still fails — it just fails on
+  // the property it actually breaks.
+  const wraps = [...plate.matchAll(/flexWrap:\s*'wrap'/g)];
+  assert.ok(
+    wraps.length <= 1,
+    `G1c: deckCardPlate.tsx has ${wraps.length} wrapping rows. Exactly one — the facts line — may `
+    + 'wrap; anything else grows the plate by an amount no silhouette accounts for.',
+  );
+  if (wraps.length === 1) {
+    // It must be the meta row, and nothing else.
+    const metaWrapBlock = /metaWrap:\s*\{([\s\S]*?)\n\s*\},/.exec(plate);
+    assert.ok(metaWrapBlock, 'G1c: something wraps, but it is not the metaWrap row');
+    assert.match(metaWrapBlock[1], /flexWrap:\s*'wrap'/, 'G1c: the wrap is not on metaWrap');
+    // And the growth it causes must be bounded and derived.
+    assert.match(
+      plate, /META_LINES_MAX/,
+      'G1c: the facts row wraps without reading the package\'s line ceiling — it can grow forever',
+    );
+    assert.match(
+      plate, /plateHeightForMetaLines\(/,
+      'G1c: the plate\'s height is not produced from the line count, so a wrapped row overflows it',
+    );
+  }
+  // Whatever happens, the TITLE stays clamped: it is 30/700 and a third line
+  // would push it off the card entirely.
+  assert.match(
+    read(SCANNED['deckCardPlate.tsx']) + read('app-mobile/src/components/SwipeableCards.tsx'),
+    /numberOfLines=\{S1\.titleLines\}/,
+    'G1c: the card title is no longer clamped to the descriptor\'s titleLines',
   );
   // Anti-vacuity: the needles must be findable SOMEWHERE, or this test passes
   // because the strings are simply misspelled.
@@ -361,35 +396,90 @@ test('T-0 the independent oracle reproduces a published reference value', () => 
 test('T-1 the REAL scrimHeight() reproduces every surface height from first principles', () => {
   // Not a table of numbers copied from the design — the FUNCTION is called, and
   // its two clauses are checked to actually bind.
+  //
+  // #1700 — SWEPT OVER EVERY SILHOUETTE, not just the canonical plate. The
+  // wrapping law gave the plate a THIRD height (two lines of facts), and its top
+  // edge sits 19pt shallower than the canonical one. This test used to evaluate
+  // the clauses at `plateTopDepth(key)` alone, so it would have passed while the
+  // two-line silhouette rendered its title at 2.96:1 against a white photograph
+  // — under the 3.0 large-text floor. The scrim is solved from the TALLEST
+  // silhouette precisely so that every clause binds at every one of them, and
+  // that is now what is asserted.
   for (const key of Object.keys(CI.SURFACES)) {
     const s = CI.SURFACES[key];
-    const dPlate = CI.plateTopDepth(key);
-    const dTitle = CI.titleTopDepth(key);
     const H = CI.surfaceScrimHeight(key);
+    const silhouettes = CI.surfaceSilhouettes(key);
 
-    assert.equal(H, CI.scrimHeight(dPlate, dTitle, s.h), `T-1 ${key}: surfaceScrimHeight disagrees with scrimHeight`);
     assert.equal(H % 2, 0, `T-1 ${key}: scrim height ${H} is odd — it must round to an even point`);
     assert.ok(H <= s.h, `T-1 ${key}: scrim ${H} exceeds the card height ${s.h}`);
 
-    // Clause 1: alpha at the plate's top edge clears the plate's material floor.
-    const aPlate = CI.rampAlphaAtDepth(dPlate, H);
-    assert.ok(
-      aPlate >= CI.PLATE_ALPHA_FLOOR - 1e-9,
-      `T-1 ${key}: scrim alpha at the plate's top edge is ${aPlate.toFixed(4)}, below the `
-      + `${CI.PLATE_ALPHA_FLOOR} material floor — plateUnderAlpha would have to exceed 0.95 and `
-      + 'the glass would stop being glass',
+    // The scrim is the one solved from the surface's TALLEST silhouette.
+    const tallest = silhouettes[silhouettes.length - 1];
+    assert.equal(
+      H,
+      CI.scrimHeight(
+        CI.plateTopDepthForLines(key, tallest),
+        CI.titleTopDepthForLines(key, tallest),
+        s.h,
+      ),
+      `T-1 ${key}: surfaceScrimHeight is not the height solved from its tallest silhouette`,
     );
 
-    // Clause 2: alpha at the title's top edge, when the title is on the photo.
-    if (!s.titleOnPlate) {
-      const aTitle = CI.rampAlphaAtDepth(dTitle, H);
+    // And the canonical plate is a member of the swept set, so the pre-#1700
+    // depth helpers cannot silently drift away from the per-line ones.
+    assert.equal(CI.plateTopDepthForLines(key, 1), CI.plateTopDepth(key), `T-1 ${key}: plate depth drift at 1 line`);
+    assert.equal(CI.titleTopDepthForLines(key, 1), CI.titleTopDepth(key), `T-1 ${key}: title depth drift at 1 line`);
+
+    for (const lines of silhouettes) {
+      const dPlate = CI.plateTopDepthForLines(key, lines);
+      const dTitle = CI.titleTopDepthForLines(key, lines);
+
+      // Clause 1: alpha at the plate's top edge clears the plate's material floor.
+      const aPlate = CI.rampAlphaAtDepth(dPlate, H);
       assert.ok(
-        aTitle >= CI.TITLE_ALPHA_FLOOR - 1e-9,
-        `T-1 ${key}: scrim alpha at the title's top edge is ${aTitle.toFixed(4)}, below the `
-        + `${CI.TITLE_ALPHA_FLOOR} floor back-solved from the 3:1 large-text bar`,
+        aPlate >= CI.PLATE_ALPHA_FLOOR - 1e-9,
+        `T-1 ${key} @${lines} line(s): scrim alpha at the plate's top edge is ${aPlate.toFixed(4)}, `
+        + `below the ${CI.PLATE_ALPHA_FLOOR} material floor — plateUnderAlpha would have to exceed `
+        + '0.95 and the glass would stop being glass',
       );
-    } else {
-      assert.equal(dTitle, 0, `T-1 ${key}: title is on the plate, so dTitleTop must self-disable to 0`);
+
+      // Clause 2: alpha at the title's top edge, when the title is on the photo.
+      if (!s.titleOnPlate) {
+        const aTitle = CI.rampAlphaAtDepth(dTitle, H);
+        assert.ok(
+          aTitle >= CI.TITLE_ALPHA_FLOOR - 1e-9,
+          `T-1 ${key} @${lines} line(s): scrim alpha at the title's top edge is ${aTitle.toFixed(4)}, `
+          + `below the ${CI.TITLE_ALPHA_FLOOR} floor back-solved from the 3:1 large-text bar`,
+        );
+      } else {
+        assert.equal(dTitle, 0, `T-1 ${key}: title is on the plate, so dTitleTop must self-disable to 0`);
+      }
+    }
+  }
+});
+
+test('T-1b the plate holds L* 23.50 at EVERY silhouette, not only the canonical one', () => {
+  // #1700. The plate composites over the scrim at ITS OWN top edge, and that
+  // edge moves when the facts line wraps. A single module-load `plateUnder`
+  // would make the two-line plate render LIGHTER than the one-line plate on the
+  // same card — the "one object at every size" claim breaking within one
+  // surface. `plateUnderForHeight` re-solves; this measures the result.
+  for (const key of Object.keys(CI.SURFACES)) {
+    const H = CI.surfaceScrimHeight(key);
+    for (const lines of CI.surfaceSilhouettes(key)) {
+      const plateH = CI.plateHeightForMetaLines(key, lines);
+      const u = CI.plateUnderForHeight(key, plateH);
+      assert.ok(u > 0 && u < 0.95, `T-1b ${key} @${lines}: under-alpha ${u} left the glass range`);
+
+      // The derivation's worst case: a pure-white photograph, under the scrim at
+      // this silhouette's own plate-top depth. Uses the oracle's own compositor.
+      const aPlate = CI.rampAlphaAtDepth(CI.plateTopDepthForLines(key, lines), H);
+      const L = lStar(luminance(plateOver(backdropAt(255, aPlate), u)));
+      assert.ok(
+        Math.abs(L - CI.PLATE.targetLstar) < 0.05,
+        `T-1b ${key} @${lines} line(s): the plate renders at L* ${L.toFixed(3)}, not `
+        + `${CI.PLATE.targetLstar}. A plate that lightens as it grows is a different object.`,
+      );
     }
   }
 });

@@ -128,6 +128,12 @@ export interface SurfaceDescriptor {
   readonly titleWeight: string;
   readonly titleInset: number;
   readonly metaSize: number;
+  /**
+   * #1700 — how many lines this surface's facts row may grow to. 2 on the
+   * control surfaces (S1, S6, S7), 1 on the static ones. A surface's scrim is
+   * solved from its TALLEST silhouette, so this value is load-bearing.
+   */
+  readonly metaLines: number;
   readonly gap: number;
   readonly titleOnPlate: boolean;
   readonly controls: boolean;
@@ -156,6 +162,10 @@ export const MAX_FONT_SCALE: {
 };
 
 export const META_ROW_H: number;
+/** #1700 — the ceiling on facts-line wrapping. Nothing renders a third line. */
+export const META_LINES_MAX: number;
+/** lineHeight = round(metaSize * this). Reproduces the shipped 19 at size 14. */
+export const META_LH_RATIO: number;
 export const DIVIDER_H: number;
 /** Points reserved ABOVE the divider on the short plate so the chevron is whole. */
 export const CHEVRON_CLEARANCE: number;
@@ -183,8 +193,41 @@ export function plateUnderAlpha(scrimAlphaAtPlateTop: number): number;
  */
 export function plateRows(
   plateH: number,
-  withMeta: boolean,
+  /**
+   * The facts-line COUNT (0, 1 or 2). `true`/`false` are still accepted and mean
+   * 1 and 0 — every pre-#1700 call site passes a boolean.
+   */
+  meta: boolean | number,
+  surfaceKey?: SurfaceKey,
 ): { meta: number; divider: number; clearance: number; control: number };
+
+/** The meta line's line box on a surface: round(metaSize * META_LH_RATIO). */
+export function metaLineHeight(surfaceKey: SurfaceKey): number;
+
+/** The facts row's height for `lines` lines. 0 lines = no row. */
+export function metaRowHeight(lines: number, surfaceKey: SurfaceKey): number;
+
+/**
+ * The no-facts plate FOR A SURFACE. `PLATE_H_NO_META` is S1's value and is 8pt
+ * taller than S3's entire plate; this derives the alternate only where the
+ * composition it comes from (facts row swapped for chevron clearance) exists.
+ */
+export function plateHeightNoMeta(surfaceKey: SurfaceKey): number;
+
+/** The plate's outer height for `lines` lines of facts on a surface. */
+export function plateHeightForMetaLines(surfaceKey: SurfaceKey, lines: number): number;
+
+/** The under-layer alpha re-solved at a GIVEN plate height (#1700). */
+export function plateUnderForHeight(surfaceKey: SurfaceKey, plateH: number): number;
+
+/** Plate-top depth for a given silhouette. `plateTopDepth` is this at 1 line. */
+export function plateTopDepthForLines(surfaceKey: SurfaceKey, lines: number): number;
+
+/** Title-top depth for a given silhouette; 0 when the title sits on the plate. */
+export function titleTopDepthForLines(surfaceKey: SurfaceKey, lines: number): number;
+
+/** Every silhouette a surface renders, shallowest first: [0, 1, ... metaLines]. */
+export function surfaceSilhouettes(surfaceKey: SurfaceKey): number[];
 
 export function typeLadder(surfaceKey: SurfaceKey): {
   title: { size: number; lineHeight: number; lines: number; weight: string };

@@ -1160,6 +1160,29 @@ export default function SwipeableCards({
     useState<ExpandedCardData | null>(null);
   // ORCH-1065: brand experiences expand to the business-event sheet (NOT the
   // curated itinerary). Parallel state keeps them a first-class branch.
+  /**
+   * #1700 — how many lines each card's facts row actually needs, MEASURED.
+   *
+   * Keyed BY CARD ID rather than held as one number, because the deck promotes a
+   * new card under the same tree: a single `metaLines` would apply the outgoing
+   * card's silhouette to the incoming one until its first layout pass, and on a
+   * fast swipe burst that is a visible plate-height flicker at exactly the moment
+   * #1576 taught us not to touch. A card that has never been measured reads 1,
+   * which is the pre-#1700 height, so the first frame is never wrong-by-default.
+   *
+   * Bounded by the deck's own length (tens of cards per session).
+   *
+   * DECLARED HERE, with the component's other state, and NOT beside the
+   * `platePresentation` call that reads it — that spot is below
+   * `if (!currentRec) return null`, so on an empty deck these two hooks would be
+   * skipped and every hook after them would shift index. React's rules of hooks,
+   * broken by placement rather than by logic.
+   */
+  const [metaLinesByCard, setMetaLinesByCard] = useState<Record<string, number>>({});
+  const noteMetaLines = useCallback((cardId: string, lines: number): void => {
+    setMetaLinesByCard((prev) => (prev[cardId] === lines ? prev : { ...prev, [cardId]: lines }));
+  }, []);
+
   const [expandedBrandExperience, setExpandedBrandExperience] =
     useState<BusinessEventCard | null>(null);
   const [showNextBatchLoader, setShowNextBatchLoader] = useState(false);
@@ -3193,7 +3216,7 @@ export default function SwipeableCards({
   // place. Curated/experience cards take the CuratedExperienceSwipeCard branch
   // above and resolve their own presentation there.
   const currentSpans = metaSpansForCard(currentRec, accountPreferences?.measurementSystem);
-  const currentPresentation = platePresentation(currentSpans);
+  const currentPresentation = platePresentation(currentSpans, metaLinesByCard[currentRec.id] ?? 1);
 
   // #1609 §1.9 — the composed VoiceOver label. Each clause is dropped when its value
   // is absent rather than rendered as a placeholder or a zero (Constitution rule 9),
@@ -3327,7 +3350,7 @@ export default function SwipeableCards({
               // plate sizes itself with. Computing the spans once also keeps
               // metaSpansForCard off the promotion hot path twice over (#1481).
               const nextSpans = metaSpansForCard(nextCard, accountPreferences?.measurementSystem);
-              const nextPresentation = platePresentation(nextSpans);
+              const nextPresentation = platePresentation(nextSpans, metaLinesByCard[nextCard.id] ?? 1);
 
               return (
                 <Reanimated.View
@@ -3388,6 +3411,11 @@ export default function SwipeableCards({
                       : null}
                     <DeckCardPlate
                       spans={nextSpans}
+                      metaLines={nextPresentation.metaLines}
+                      // #1700 — the behind face does NOT report. It renders the
+                      // same spans as the card that is about to be promoted, so
+                      // letting it measure too would give one card two writers
+                      // racing on the same key. It reads; the front face writes.
                       onSharePress={NOOP}
                       shareLabel={t('cards:swipeable.share_card', { title: nextCard.title })}
                     />
@@ -3662,6 +3690,8 @@ export default function SwipeableCards({
 
                     <DeckCardPlate
                       spans={currentSpans}
+                      metaLines={currentPresentation.metaLines}
+                      onMetaLinesChange={(lines) => noteMetaLines(currentRec.id, lines)}
                       beenHere={<BeenHereControl userId={user?.id} card={currentRec} />}
                       onSharePress={handleShare}
                       shareLabel={t('cards:swipeable.share_card', { title: currentRec.title })}
