@@ -77,12 +77,13 @@ export default function PostExperienceModal({
 
   const submitVoluntary = useSubmitVoluntaryPlaceReview();
   /**
-   * Set only when the visit landed, the review insert did not, AND the visit
-   * could not be rolled back. A retry then skips the re-record: `record-visit`
-   * upserts `visited_at` at execution time, so recording twice rewrites the
-   * recorded time of the user's own visit. When the rollback SUCCEEDS the write
-   * hands back a null visit id — there is nothing left to reuse, and the retry
-   * must record afresh.
+   * Set whenever the visit landed and the review insert did not. A retry then
+   * skips the re-record: `record-visit` upserts `visited_at` at execution time,
+   * so recording twice rewrites the recorded time of the user's own visit.
+   *
+   * #1687 rework 3 — nothing deletes that row any more, so this id is never
+   * pointing at something that has since been removed. That ambiguity is what
+   * the rollback introduced and it is gone with it.
    */
   const recordedVisitIdRef = useRef<string | null>(null);
 
@@ -209,13 +210,6 @@ export default function PostExperienceModal({
           googlePlaceId: voluntaryVisit.googlePlaceId,
           placeImage: voluntaryVisit.placeImage,
           priceTier: voluntaryVisit.priceTier,
-          // #1687 rework 2 (P1-2) — carried from the tap, and the ONLY thing that
-          // decides whether a half-landed visit may be rolled back. Forwarded
-          // rather than re-derived: this modal is mounted once for the whole app
-          // and has no `useHasVisited` of its own, and by the time it submits the
-          // answer would already have been changed by the write it is asking
-          // about.
-          hadVisitBeforeTap: voluntaryVisit.hadVisitBeforeTap,
           rating,
         },
         recordedVisitId: recordedVisitIdRef.current,
@@ -231,11 +225,11 @@ export default function PostExperienceModal({
       setStep("thank-you");
     } catch (error) {
       console.error("[PostExperienceModal] Voluntary submit failed:", error);
-      // #1687 rework — the visit is rolled back by the write itself when the
-      // review is refused, and `visitId` comes back NULL when that succeeded, so
-      // this is null exactly when there is nothing left to reuse. A non-null id
-      // means the rollback ALSO failed and a real row is outstanding: reuse it so
-      // the retry does not re-stamp `visited_at`.
+      // #1687 rework 3 — the visit is never rolled back, so `visitId` names a row
+      // that is really there whenever it is set. Reuse it: `record-visit` upserts
+      // `visited_at` at execution time, so a retry that re-recorded would rewrite
+      // the recorded time of the user's own visit (#1661 X-3). It is null only
+      // when the record itself failed and there is nothing to reuse.
       if (error instanceof PlaceReviewWriteError) {
         recordedVisitIdRef.current = error.visitId;
       }

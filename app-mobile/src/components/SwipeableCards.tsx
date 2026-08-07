@@ -653,15 +653,14 @@ const BeenHereControl = React.memo(function BeenHereControl({
     // PostExperienceModal instance in app/index.tsx; the visit is recorded there,
     // on confirm, together with the review. A cancelled tap leaves nothing.
     //
-    // #1687 rework 2 (P1-2) — `visited` rides along, and it is the whole safety
-    // guard for the confirm-time write. If that write half-lands (visit in,
-    // review refused) the compensating delete must undo ONLY a row this submit
-    // created, and this is the moment that is knowable: the control has already
-    // read `useHasVisited` above to decide its own label. The server cannot
-    // answer it — `record-visit`'s `isNew` is computed from `user_interactions`,
-    // which outlives the row it claims to describe (#1694). Passed verbatim,
-    // `undefined` included: the query can fail, and an unknown must stay one.
-    openPlaceReviewRequest(placeReviewRequestFromCard(card, visited));
+    // #1687 rework 3 — `visited` deliberately does NOT ride along any more.
+    // Rework 2 sent it so a half-landed write could decide whether to delete the
+    // visit; `useHasVisited` is cached for ten minutes, so that answer destroyed a
+    // three-day-old visit on device. The confirm-time write no longer deletes
+    // anything, so there is nothing here to authorise. `visited` still does its
+    // real job two lines up: it is why an already-settled pill un-toggles instead
+    // of opening this prompt at all.
+    openPlaceReviewRequest(placeReviewRequestFromCard(card));
   };
 
   return (

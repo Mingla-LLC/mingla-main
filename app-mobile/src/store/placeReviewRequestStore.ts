@@ -61,19 +61,16 @@ export interface VoluntaryPlaceReviewRequest {
   googlePlaceId?: string;
   priceTier?: string;
   /**
-   * #1687 rework 2 (P1-2) — WHAT `useHasVisited` SAID AT THE MOMENT OF THE TAP.
+   * #1687 rework 3 — THERE IS DELIBERATELY NO `hadVisitBeforeTap` HERE ANY MORE.
    *
-   * Captured here, before anything is written, because this is the only moment
-   * the answer is knowable for free: `BeenHereControl` has already read
-   * `useHasVisited` to choose its own label. `false` means the user had no visit
-   * for this card, so anything in `user_visits` after the submit was put there by
-   * the submit; `true` means they already had one and it must never be deleted on
-   * their behalf. Absent means the control could not answer (the query errored)
-   * and the write falls back to `record-visit`'s `isNew` — see
-   * `visitIsOursToUndo` in `services/placeReviewService.ts` for why that fallback
-   * is a last resort and not the rule.
+   * Rework 2 carried `useHasVisited`'s pre-tap answer through this request so the
+   * write could decide whether a half-landed visit was its own to delete. That
+   * query is cached for TEN MINUTES (`useVisits.ts:80`), so the answer can be a
+   * stale `false` over a visit the user really made — and on device it destroyed
+   * one that was three days old (`99081740`, deleted 21:57:01.253). The field is
+   * gone because the write it fed is gone: a refused review now keeps the visit
+   * and tells the user, and nothing on this path deletes anything.
    */
-  hadVisitBeforeTap?: boolean;
 }
 
 interface PlaceReviewRequestState {
@@ -163,16 +160,14 @@ function resolvePlacePoolId(card: PlaceReviewCard): string | undefined {
 /**
  * Build the request from a deck card.
  *
- * `hadVisitBeforeTap` is the SECOND argument and not another card field on
- * purpose: it is not a property of the card, it is what the app knew about this
- * user and this card in the instant the tap happened. The caller passes
- * `useHasVisited`'s value straight through, `undefined` included — an unknown
- * must stay an unknown rather than be flattened into a `false` the rollback would
- * then act on.
+ * #1687 rework 3 — ONE ARGUMENT. The second one carried what `useHasVisited` had
+ * answered before the tap, and existed solely so a failed review could decide
+ * whether to delete the visit. Nothing deletes the visit any more, so there is
+ * nothing for a pre-tap belief to authorise, and a ten-minute-stale belief has no
+ * way back into this path.
  */
 export function placeReviewRequestFromCard(
   card: PlaceReviewCard,
-  hadVisitBeforeTap?: boolean,
 ): VoluntaryPlaceReviewRequest {
   return {
     cardId: card.id,
@@ -183,7 +178,6 @@ export function placeReviewRequestFromCard(
     placePoolId: resolvePlacePoolId(card),
     googlePlaceId: card.placeId,
     priceTier: card.priceRange ?? undefined,
-    hadVisitBeforeTap,
   };
 }
 

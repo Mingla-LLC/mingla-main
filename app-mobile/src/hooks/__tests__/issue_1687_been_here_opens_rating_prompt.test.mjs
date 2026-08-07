@@ -111,6 +111,13 @@ let tmpDir;
 let store;
 let placeReviewService;
 let supabaseStub;
+/**
+ * #1687 rework 3 — the REAL `visitService`, imported so the tests can drive the
+ * ONE delete that is still legitimate: the user's own un-toggle of a settled
+ * pill. The "a visit with no review is recoverable" argument is only true if that
+ * path works, so B-9 drives it rather than asserting it.
+ */
+let visitService;
 
 /** A single place card as the deck actually serves it: `id` IS the place_pool id. */
 const SINGLE_CARD = {
@@ -173,6 +180,33 @@ export function seedOrphanInteraction(experienceId) {
     experience_id: experienceId,
     interaction_type: 'visit',
   });
+}
+
+/**
+ * #1687 rework 3 — A VISIT THE USER ALREADY HAD, put there by something other
+ * than the deck in front of us: another device, an earlier session, or this one
+ * before useHasVisited's TEN-MINUTE cache (useVisits.ts:80) was last filled.
+ * The tester created exactly this on the demo account — visit \`99081740\`, dated
+ * three days back — and rework 2 destroyed it.
+ *
+ * Seeded WITHOUT a user_interactions row on purpose: that is how production
+ * reaches the state where record-visit reports \`isNew: true\` for a row that
+ * already existed (record-visit:143 swallows a failed interaction insert). So
+ * this fixture is a lie in BOTH available signals at once — the server flag says
+ * "new", and a stale deck would say "no visit" — which is precisely why neither
+ * may authorise a delete.
+ */
+export function seedPreExistingVisit(experienceId, visitedAt) {
+  visitSeq += 1;
+  const row = {
+    id: 'pre-existing-visit-' + visitSeq,
+    experience_id: experienceId,
+    card_data: { title: 'seeded by another client' },
+    visited_at: visitedAt,
+    source: 'manual',
+  };
+  db.user_visits.push(row);
+  return row.id;
 }
 
 // #1687 rework — the DELETE side of user_visits, so the compensating rollback
@@ -359,6 +393,7 @@ export const supabase = {
   supabaseStub = await import(pathToFileURL(supabasePath).href);
   placeReviewService = await import(pathToFileURL(prsPath).href);
   store = await import(pathToFileURL(storePath).href);
+  visitService = await import(pathToFileURL(visitPath).href);
 });
 
 after(() => {
@@ -790,13 +825,11 @@ const CARRIED_PLACE_CARD = {
 };
 
 /**
- * #1687 rework 2 (P1-2) — `hadVisitBeforeTap` is the second argument because it
- * is the second argument in the product: `BeenHereControl` passes
- * `useHasVisited`'s value into `placeReviewRequestFromCard` at the tap. Passing
- * it here is what makes these tests drive the shipped decision rather than a
- * default; leaving it off drives the [TRANSITIONAL] `isNew` fallback on purpose.
+ * #1687 rework 3 — ONE ARGUMENT, because the product's tap now passes one. The
+ * second one carried `useHasVisited`'s pre-tap answer and existed only to
+ * authorise a delete; there is no delete to authorise.
  */
-function freshSession(card, hadVisitBeforeTap) {
+function freshSession(card) {
   supabaseStub.resetDb();
   supabaseStub.resetRollback();
   store.usePlaceReviewRequestStore.setState({
@@ -805,18 +838,18 @@ function freshSession(card, hadVisitBeforeTap) {
     confirmToken: 0,
   });
   if (card) {
-    store.openPlaceReviewRequest(
-      store.placeReviewRequestFromCard(card, hadVisitBeforeTap),
-    );
+    store.openPlaceReviewRequest(store.placeReviewRequestFromCard(card));
   }
 }
 
 /**
- * EXACTLY what `useSubmitVoluntaryPlaceReview`'s mutationFn does — the write,
- * then the compensating rollback on failure. S-6 pins that the shipped hook is
- * this pair and not a re-implementation of it.
+ * EXACTLY what `useSubmitVoluntaryPlaceReview`'s `mutationFn` does — which, since
+ * rework 3, is the write and nothing else. There is no catch, because there is no
+ * compensating action: a refused review keeps the visit and reports it, and
+ * `onError` invalidates so the deck settles to what the database holds. S-6 pins
+ * that the shipped hook really is this and not a re-implementation of it.
  */
-async function submitWithRollback(rating, recordedVisitId = null) {
+async function submitVoluntary(rating, recordedVisitId = null) {
   const request = store.usePlaceReviewRequestStore.getState().request;
   assert.ok(request, 'VACUITY: submit was driven with no open request');
   try {
@@ -825,7 +858,28 @@ async function submitWithRollback(rating, recordedVisitId = null) {
       recordedVisitId,
     );
   } catch (error) {
-    throw await placeReviewService.rollBackHalfLandedVisit(error, request.cardId);
+    // THE TRAP THIS AVOIDS. Writing the helper as the bare write would make every
+    // behavioural test below stop EXERCISING a reintroduced rollback rather than
+    // fail on it — green suite, deleted visits, exactly the unfalsifiable shape
+    // that let the first B-10 through. So the helper re-composes whatever
+    // compensating entry point the service grows back, on purpose: if one
+    // returns, these tests RUN it and fail. S-6 separately pins that the SHIPPED
+    // mutationFn composes nothing.
+    const compensate = placeReviewService.rollBackHalfLandedVisit;
+    if (typeof compensate === 'function') {
+      throw await compensate(error, request.cardId);
+    }
+    throw error;
+  }
+}
+
+/** Drive `rating` stars and hand back whatever came out, thrown or returned. */
+async function submitAndCatch(rating, recordedVisitId = null) {
+  try {
+    await submitVoluntary(rating, recordedVisitId);
+    return null;
+  } catch (error) {
+    return error;
   }
 }
 
@@ -844,7 +898,7 @@ test('B-7 a BRAND EXPERIENCE yields no place anchor — its id is an events.id, 
 
   freshSession(null);
   store.openPlaceReviewRequest(request);
-  const result = await submitWithRollback(5);
+  const result = await submitVoluntary(5);
 
   assert.deepEqual(
     rows(),
@@ -890,114 +944,151 @@ test('B-8 the place id is CARRIED, and an unknown card type yields nothing at al
   );
 });
 
-test('B-9 a REFUSED review rolls the visit back — a failed write leaves nothing behind', async () => {
-  // `false` is what BeenHereControl passes: the pill was NOT settled, so
-  // `useHasVisited` had already answered "no visit for this card".
-  freshSession(SINGLE_CARD, false);
+test('B-9 a REFUSED review KEEPS the visit, deletes NOTHING, and the user can undo it themselves', async () => {
+  // #1687 rework 3 — THE DECISION, in one test. Two attempts to compensate a
+  // half-landed submit by deleting the visit each shipped a defect, in opposite
+  // directions, because both had to decide whether the row was theirs to destroy
+  // and neither signal on the client answers that. So the write stopped asking.
+  //
+  // What replaces the delete is not "nothing" — it is the pair below: the error
+  // NAMES the row that landed, and `onError` (S-6) invalidates so the deck pill
+  // settles to "You've been to X. Double tap to remove." That tap is the second
+  // half, and it is driven here rather than assumed: a visit with no review is
+  // only acceptable because the user can retract it.
+  freshSession(SINGLE_CARD);
   supabaseStub.control.reviewInsertFails = true;
 
-  let caught = null;
-  try {
-    await submitWithRollback(4);
-  } catch (error) {
-    caught = error;
-  }
+  const caught = await submitAndCatch(4);
 
   assert.equal(caught?.name, 'PlaceReviewWriteError', 'B-9: the refusal did not surface');
   assert.deepEqual(
     rows(),
+    { visits: 1, reviews: 0 },
+    'B-9: the visit did not survive a refused review. It must: the user DID say they went, that '
+    + 'is the truth, and a deleted user_visits row is unrecoverable — no history table, no user '
+    + 'DELETE policy on place_reviews, nothing to restore it from.',
+  );
+  assert.equal(
+    supabaseStub.deletes.length,
+    0,
+    'B-9: A COMPENSATING DELETE WAS ISSUED. Nothing on this path may delete a user_visits row. '
+    + 'Deciding "is this visit mine to destroy" from the client produced a defect twice — '
+    + 'record-visit\'s isNew describes user_interactions, and useHasVisited is cached for ten '
+    + 'minutes — and a wrong answer in this direction is silent and permanent.',
+  );
+  assert.equal(
+    caught.visitId,
+    supabaseStub.db.user_visits[0].id,
+    'B-9: the error does not name the row that landed. That id is what stops the retry '
+    + 're-stamping visited_at (#1661 X-3) AND what tells the mutation a real row exists, which '
+    + 'is what licenses the invalidation that settles the pill.',
+  );
+
+  // The recoverability claim, driven rather than asserted: the settled pill's own
+  // un-toggle is a real delete on the same transport, and it clears the row.
+  await visitService.removeVisit(SINGLE_CARD.id);
+  assert.deepEqual(
+    rows(),
     { visits: 0, reviews: 0 },
-    'B-9: a refused review left an orphaned user_visits row. "A cancelled tap writes nothing" '
-    + 'must hold when the write FAILS too, or the FK-refusal path leaves a permanently '
-    + 'unretryable visit the user cannot delete.',
+    'B-9: the user\'s own un-toggle no longer clears the visit. "Leave it, the user can undo it" '
+    + 'is the whole argument for not deleting; if removeVisit stops working the leftover really '
+    + 'is stranded and this design needs revisiting.',
   );
   assert.equal(
     supabaseStub.deletes.length,
     1,
-    'B-9: the compensating delete was never issued',
-  );
-  assert.equal(
-    supabaseStub.deletes[0].filters.experience_id,
-    SINGLE_CARD.id,
-    'B-9: the rollback deleted a different card\'s visit',
-  );
-  assert.equal(
-    caught.visitId,
-    null,
-    'B-9: the error still names a visit that no longer exists. A retry would pass it as '
-    + '`recordedVisitId` and SKIP the record, so the second review would attach to nothing.',
+    'VACUITY: the un-toggle did not reach the same in-memory transport the assertions above read, '
+    + 'so "deletes.length === 0" up there proves nothing.',
   );
 
-  // And the retry, which must now record afresh, works end to end.
+  // And the retry reuses the visit rather than recording a second time.
+  freshSession(SINGLE_CARD);
+  supabaseStub.control.reviewInsertFails = true;
+  const first = await submitAndCatch(4);
   supabaseStub.control.reviewInsertFails = false;
-  await submitWithRollback(4, caught.visitId);
-  assert.deepEqual(rows(), { visits: 1, reviews: 1 }, 'B-9: the retry after a rollback did not land');
+  const invokesBefore = supabaseStub.db.invokes.length;
+  await submitVoluntary(4, first.visitId);
+  assert.deepEqual(rows(), { visits: 1, reviews: 1 }, 'B-9: the retry did not complete cleanly');
+  assert.equal(
+    supabaseStub.db.invokes.length,
+    invokesBefore,
+    'B-9: the retry called record-visit again and re-stamped visited_at on the user\'s own visit.',
+  );
+  assert.equal(supabaseStub.deletes.length, 0, 'B-9: the retry path issued a delete');
 });
 
-test('B-10 a visit the user ALREADY had is never deleted on their behalf', async () => {
-  // #1687 rework 2 (P1-2) — REWRITTEN, because the version this replaces could not
-  // fail. It read `isNew` off the harness's own `user_visits` array, which is not
-  // where record-visit reads it, so it asserted against an edge function that does
-  // not exist and agreed with the bug it was supposed to catch. This drives the
-  // divergence for real, in the direction that would DESTROY the user's data.
+test('B-10 a THREE-DAY-OLD visit survives a refused review, with BOTH client signals lying about it', async () => {
+  // #1687 rework 3 — THE P1-3 REGRESSION, reproduced, and the reason the delete
+  // is gone rather than re-guarded. The tester drove this on an iPhone against
+  // production: visit `99081740`, dated 2026-08-04, upserted at 21:57:00.79 and
+  // DELETED at 21:57:01.253 by a review the foreign key refused.
   //
-  // Seed the pre-existing visit with the interaction insert FAILING — that is how
-  // production reaches "a user_visits row with no user_interactions row behind
-  // it" (record-visit:143 logs it and carries on). The NEXT call then reports
-  // `isNew: true` for a row that already existed.
-  freshSession(SINGLE_CARD, false);
-  supabaseStub.control.interactionInsertFails = true;
-  await submitWithRollback(5);
-  assert.deepEqual(rows(), { visits: 1, reviews: 1 }, 'VACUITY: the first submit did not land');
-  const preExistingVisitId = supabaseStub.db.user_visits[0].id;
+  // The fixture makes BOTH signals a rework could consult say "delete it", at the
+  // same time, which is the whole point — there is no third signal to add:
+  //
+  //   * `useHasVisited` answers FALSE. Its staleTime is TEN MINUTES
+  //     (useVisits.ts:80), so a visit written by another client, another session,
+  //     or out of band sits behind a cached "no". Rework 2 trusted this and
+  //     destroyed the row. Here the request carries no such field at all, so a
+  //     revert that reintroduces it lands on exactly this state.
+  //   * `record-visit` answers isNew: TRUE. The seeded row has no
+  //     `user_interactions` row behind it — the state record-visit:143 leaves
+  //     whenever the interaction insert is swallowed — so the flag reports "new"
+  //     for a row that is three days old. Rework 1 trusted this.
+  //
+  // Nothing may delete this row. Not on a stale client answer, not on a server
+  // flag about another table, not on the two of them agreeing.
+  freshSession(SINGLE_CARD);
+  const preExistingVisitId = supabaseStub.seedPreExistingVisit(
+    SINGLE_CARD.id,
+    '2026-08-04T01:56:29.000Z',
+  );
+  assert.deepEqual(rows(), { visits: 1, reviews: 0 }, 'VACUITY: the pre-existing visit was not seeded');
   assert.equal(
     supabaseStub.db.user_interactions.length,
     0,
-    'VACUITY: the swallowed interaction insert did not leave the two tables diverged, so the '
-    + 'next record-visit would report isNew:false and this test would prove nothing.',
+    'VACUITY: the seeded visit has an interaction row behind it, so record-visit would report '
+    + 'isNew:false and this test would not be driving the destructive direction of that flag.',
   );
 
-  // The deck now shows this card as settled, so `useHasVisited` answers TRUE.
-  // That is the fact the rollback must obey — over the server flag, which is
-  // about to say the opposite.
-  supabaseStub.control.interactionInsertFails = false;
-  store.openPlaceReviewRequest(store.placeReviewRequestFromCard(SINGLE_CARD, true));
   supabaseStub.control.reviewInsertFails = true;
+  const caught = await submitAndCatch(2);
 
-  let caught = null;
-  try {
-    await submitWithRollback(2);
-  } catch (error) {
-    caught = error;
-  }
-
-  assert.equal(caught?.name, 'PlaceReviewWriteError');
+  assert.equal(caught?.name, 'PlaceReviewWriteError', 'B-10: the refusal did not surface');
   assert.equal(
     supabaseStub.db.user_interactions.length,
     1,
     'VACUITY: record-visit did not take the "no interaction row -> insert one" branch, so it did '
-    + 'NOT return isNew:true and this test is not exercising the lying flag at all.',
+    + 'NOT return isNew:true and the flag was never lying in this fixture.',
   );
   assert.equal(
     supabaseStub.db.user_visits.length,
     1,
-    'B-10: the rollback deleted a visit the user already had. record-visit reported isNew:true '
-    + 'for it — that flag counts user_interactions rows, not user_visits rows, and one swallowed '
-    + 'interaction insert is all it takes to make it lie in this direction. removeVisit deletes '
-    + 'by (user, experience) rather than by row id, so believing it erases history the user '
-    + 'marked weeks ago.',
+    'B-10: A VISIT THE USER MADE THREE DAYS AGO WAS DESTROYED by a failed review write. There is '
+    + 'no user_visits history and no way to restore it, and the user is never told. This is the '
+    + 'harm the whole design change exists to remove: whatever a rollback thinks it knows about '
+    + 'this row, it is wrong often enough that it must not act.',
   );
-  assert.equal(supabaseStub.deletes.length, 0, 'B-10: a delete was issued for a pre-existing visit');
+  assert.equal(
+    supabaseStub.db.user_visits[0].id,
+    preExistingVisitId,
+    'B-10: the surviving row is not the original — it was deleted and re-created, which loses the '
+    + 'real visited_at the user\'s history is built on.',
+  );
+  assert.equal(
+    supabaseStub.deletes.length,
+    0,
+    'B-10: a DELETE was issued against a visit this submit did not create.',
+  );
   assert.equal(
     caught.visitId,
     preExistingVisitId,
     'B-10: the surviving visit is not named in the failure, so the retry would re-record it and '
-    + 're-stamp visited_at (#1661 X-3)',
+    + 're-stamp visited_at (#1661 X-3).',
   );
-  assert.equal(caught.visitCreated, false, 'B-10: a pre-existing visit was reported as ours');
 });
 
-test('B-11a record-visit says isNew:FALSE for a row it just created — undo it anyway', async () => {
+test('B-11a record-visit says isNew:FALSE for a row it just created — keep it anyway', async () => {
   // #1687 rework 2 (P1-2) — THE DEFECT, reproduced. The tester hit this on an
   // iPhone against production: The Parlour carried a user_interactions row from
   // an earlier un-toggle (18:31:05) and no user_visits row. The tap CREATED
@@ -1006,7 +1097,7 @@ test('B-11a record-visit says isNew:FALSE for a row it just created — undo it 
   // that flag and would have refused to undo a row it had just created — exactly
   // the orphan P1-1 exists to remove, on the likeliest path to reach it (three
   // pairs in production are in this state today).
-  freshSession(SINGLE_CARD, false);
+  freshSession(SINGLE_CARD);
   supabaseStub.seedOrphanInteraction(SINGLE_CARD.id);
   assert.deepEqual(rows(), { visits: 0, reviews: 0 }, 'VACUITY: the un-toggled state is not empty');
   assert.equal(
@@ -1017,58 +1108,131 @@ test('B-11a record-visit says isNew:FALSE for a row it just created — undo it 
   );
 
   supabaseStub.control.reviewInsertFails = true;
-  let caught = null;
-  try {
-    await submitWithRollback(4);
-  } catch (error) {
-    caught = error;
-  }
+  const caught = await submitAndCatch(4);
 
   assert.equal(caught?.name, 'PlaceReviewWriteError', 'B-11a: the refusal did not surface');
+  // #1687 rework 3 — B-10's fixture makes the flag say "new" about an old row;
+  // this one makes it say "old" about a row created a millisecond ago. The write
+  // must behave IDENTICALLY in both, because it no longer reads the flag: the
+  // visit stays, the user is told, and the pill settles to the truth.
   assert.deepEqual(
     rows(),
-    { visits: 0, reviews: 0 },
-    'B-11a: a visit CREATED by this submit survived a refused review, because record-visit '
-    + 'reported isNew:false for it. That flag is computed from user_interactions '
-    + '(record-visit/index.ts:113-148), and removeVisit deletes only from user_visits '
-    + '(visitService.ts:167), so every un-toggled place is permanently in the state where the '
-    + 'two disagree. The rollback must decide from what useHasVisited said before the tap.',
+    { visits: 1, reviews: 0 },
+    'B-11a: the visit this submit created did not survive the refused review.',
   );
-  assert.equal(supabaseStub.deletes.length, 1, 'B-11a: the compensating delete was never issued');
-  assert.equal(supabaseStub.deletes[0].filters.experience_id, SINGLE_CARD.id);
-  assert.equal(caught.visitId, null, 'B-11a: a rolled-back visit must hand back a null id');
+  assert.equal(
+    supabaseStub.deletes.length,
+    0,
+    'B-11a: A DELETE WAS ISSUED. A newly created visit is no more deletable than an old one — the '
+    + 'app cannot reliably tell them apart, which is the finding, and the one it CAN act on '
+    + '(record-visit\'s isNew) says "not new" about this very row.',
+  );
+  assert.equal(
+    caught.visitId,
+    supabaseStub.db.user_visits[0].id,
+    'B-11a: the created visit is not named in the failure.',
+  );
   assert.equal(
     supabaseStub.db.user_interactions.length,
     1,
     'VACUITY: a second interaction row appeared, which means record-visit took the isNew:true '
     + 'branch and the flag was never lying in this fixture.',
   );
+
+  // The user's own un-toggle still clears it — the same recovery B-9 drives, on
+  // the row that made the tester file P1-1 in the first place.
+  await visitService.removeVisit(SINGLE_CARD.id);
+  assert.deepEqual(rows(), { visits: 0, reviews: 0 }, 'B-11a: the leftover could not be undone');
 });
 
-test('B-11 a rollback that ITSELF fails keeps the visit id, so nothing is silently lost', async () => {
-  freshSession(SINGLE_CARD, false);
-  supabaseStub.control.reviewInsertFails = true;
-  supabaseStub.rollbackControl.fails = true;
+test('B-11 EVERY failure this write can reach deletes nothing — the sweep', async () => {
+  // #1687 rework 3 — B-9/B-10/B-11a each pin one state. This walks all of them
+  // plus the two the others do not reach, on ONE transport, and asserts the same
+  // two things every time: `user_visits` never shrinks, and no delete is issued.
+  // A reintroduced delete cannot hide in a corner of the state space.
+  const cases = [
+    {
+      name: 'nothing existed, the review is refused',
+      seed: () => null,
+      control: { reviewInsertFails: true },
+      expectVisits: 1,
+      halfLanded: true,
+    },
+    {
+      name: 'a pre-existing visit behind a stale deck, the review is refused',
+      seed: () => supabaseStub.seedPreExistingVisit(SINGLE_CARD.id, '2026-08-04T01:56:29.000Z'),
+      control: { reviewInsertFails: true },
+      expectVisits: 1,
+      halfLanded: true,
+    },
+    {
+      name: 'an un-toggled place, so record-visit lies the other way',
+      seed: () => { supabaseStub.seedOrphanInteraction(SINGLE_CARD.id); return null; },
+      control: { reviewInsertFails: true },
+      expectVisits: 1,
+      halfLanded: true,
+    },
+    {
+      name: 'the VISIT itself fails — nothing landed, nothing to compensate',
+      seed: () => null,
+      control: { recordVisitFails: true },
+      expectVisits: 0,
+      halfLanded: false,
+    },
+    {
+      name: 'a pre-existing visit and the VISIT call fails',
+      seed: () => supabaseStub.seedPreExistingVisit(SINGLE_CARD.id, '2026-08-04T01:56:29.000Z'),
+      control: { recordVisitFails: true },
+      expectVisits: 1,
+      halfLanded: false,
+    },
+  ];
 
-  let caught = null;
-  try {
-    await submitWithRollback(3);
-  } catch (error) {
-    caught = error;
+  for (const c of cases) {
+    freshSession(SINGLE_CARD);
+    const seeded = c.seed();
+    Object.assign(supabaseStub.control, c.control);
+
+    const caught = await submitAndCatch(3);
+
+    assert.ok(caught, `B-11 [${c.name}]: the failure did not surface at all`);
+    assert.equal(
+      caught instanceof placeReviewService.PlaceReviewWriteError,
+      c.halfLanded,
+      `B-11 [${c.name}]: a half-landed write and a write that landed nothing must be `
+      + 'distinguishable — the retry skips the re-record on one and not the other.',
+    );
+    assert.equal(
+      supabaseStub.db.user_visits.length,
+      c.expectVisits,
+      `B-11 [${c.name}]: the visit count moved. Every failure on this path must leave `
+      + 'user_visits exactly as it found it, plus at most the row record-visit itself wrote.',
+    );
+    assert.equal(
+      supabaseStub.deletes.length,
+      0,
+      `B-11 [${c.name}]: A DELETE WAS ISSUED. No failure state on the voluntary review path may `
+      + 'remove a user_visits row — the app cannot tell whose it is, and the mistake is silent '
+      + 'and permanent.',
+    );
+    if (seeded) {
+      assert.equal(
+        supabaseStub.db.user_visits[0].id,
+        seeded,
+        `B-11 [${c.name}]: the pre-existing row was replaced rather than left alone`,
+      );
+    }
   }
 
-  assert.equal(caught?.name, 'PlaceReviewWriteError', 'B-11: the refusal did not surface');
-  assert.deepEqual(
-    rows(),
-    { visits: 1, reviews: 0 },
-    'VACUITY: the rollback was supposed to fail and leave the row',
-  );
+  // VACUITY: the same transport records a delete when one really is issued, so
+  // the five zeros above are zeros-because-nothing-deleted.
+  freshSession(SINGLE_CARD);
+  supabaseStub.seedPreExistingVisit(SINGLE_CARD.id, '2026-08-04T01:56:29.000Z');
+  await visitService.removeVisit(SINGLE_CARD.id);
   assert.equal(
-    caught.visitId,
-    supabaseStub.db.user_visits[0].id,
-    'B-11: a failed rollback reported the visit as gone. The row is real and outstanding — its '
-    + 'id is what stops the retry re-stamping visited_at, and what tells the mutation to '
-    + 'invalidate ["visits"] so the pill stops claiming the user has not been.',
+    supabaseStub.deletes.length,
+    1,
+    'VACUITY: a real delete does not register on this transport, so B-11 cannot detect one.',
   );
 });
 
@@ -1076,16 +1240,45 @@ test('B-11 a rollback that ITSELF fails keeps the visit id, so nothing is silent
 // Structural — the rework's seams.
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('S-6 the write owns the rollback, and the derivation reads provenance not shape', () => {
+test('S-6 NO DELETE PATH EXISTS on the voluntary write, and the recovery that replaces it is wired', () => {
   const hook = stripComments(read('hook'));
+  const service = stripComments(read('placeReviewService'));
 
+  // 1 — the source-level half of B-9/B-10/B-11. Those drive behaviour through a
+  //     transport; this refuses the machinery outright, so a delete cannot come
+  //     back through a path they happen not to reach.
+  for (const [label, src] of [['placeReviewService.ts', service], ['usePlaceReviews.ts', hook]]) {
+    for (const banned of ['removeVisit', 'rollBackHalfLandedVisit', 'visitIsOursToUndo', 'visitCreated']) {
+      assert.ok(
+        !src.includes(banned),
+        `S-6: \`${banned}\` is back in ${label}. The voluntary review write must not be able to `
+        + 'delete a user_visits row. Two attempts to decide "is this visit mine to undo" shipped '
+        + 'defects in opposite directions — isNew describes user_interactions, useHasVisited is '
+        + 'cached for ten minutes — and the wrong answer is silent and unrecoverable. If a '
+        + 'rollback genuinely needs to come back, it needs a fresh read of user_visits at write '
+        + 'time (#1694), not another client-side guess, and this assertion is where to argue it.',
+      );
+    }
+    assert.ok(
+      !/\.delete\(/.test(src),
+      `S-6: ${label} issues a delete directly. Same rule, one layer down: this file writes.`,
+    );
+  }
+  assert.match(
+    service,
+    /import\s*\{\s*recordVisit\s*\}\s*from\s*'\.\/visitService'/,
+    'S-6: placeReviewService no longer imports EXACTLY `recordVisit` from visitService. It must '
+    + 'not be able to reach removeVisit at all — the narrow import is the guard.',
+  );
+
+  // 2 — what replaces the delete. A leftover visit is acceptable ONLY because the
+  //     deck settles to it and the user can un-toggle it, so both halves of that
+  //     are load-bearing: the invalidation here, and the un-toggle in S-9.
   assert.match(
     hook,
-    /mutationFn[\s\S]{0,400}rollBackHalfLandedVisit\(\s*error\s*,\s*input\.cardId\s*\)/,
-    'S-6: the voluntary write no longer rolls back a half-landed visit. B-9 proves the pair '
-    + 'behaves; this proves the SHIPPED mutation is that pair rather than a re-implementation '
-    + 'of it. Putting the rollback in the component instead would race the component\'s own '
-    + 'unmount — the modal is rendered conditionally on the open request.',
+    /mutationFn:\s*\(\{\s*input,\s*recordedVisitId\s*\}\)\s*=>\s*\n?\s*submitVoluntaryPlaceReview\(input,\s*recordedVisitId\)/,
+    'S-6: the shipped mutationFn is no longer the bare write. Anything wrapped around it is where '
+    + 'a compensating action would live.',
   );
   const onError = hook.slice(hook.indexOf('onError'));
   assert.match(
@@ -1203,27 +1396,75 @@ test('S-8 the database, not the client, is what makes a re-rate replace rather t
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// #1687 rework 2 (P1-2) — THE SEAM THAT CARRIES THE PRE-TAP FACT.
+// #1687 rework 3 — THE SEAM THAT NO LONGER CARRIES ANYTHING, AND THE ONE THAT
+// CARRIES THE RECOVERY.
 //
-// B-10 and B-11a prove the DECISION is right. They cannot see whether the
-// product actually states the fact the decision is made from: the behavioural
-// half constructs its own requests, so a control that stopped passing
-// `useHasVisited`'s value, or a modal that stopped forwarding it, would leave
-// every one of them green while the shipped write silently fell back to the flag
-// that lies. This pins the three joints of that thread, and the model the harness
-// above is built on.
+// Rework 2 threaded `useHasVisited`'s pre-tap answer from the control, through
+// the store, into the write, so a failed review could decide whether to delete
+// the visit. That answer is up to TEN MINUTES old and it destroyed a real visit
+// on device. The thread is gone — S-9 refuses it at all three joints, because a
+// field that still exists anywhere is a field a future rollback can read.
+//
+// What must exist instead is the user's own way out: the settled pill un-toggles.
+// That is the entire reason a leftover visit is acceptable, so it is pinned here
+// as hard as the absence is.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The deployed edge function the whole finding is about. */
+/** The deployed edge function whose `isNew` this write deliberately ignores. */
 const RECORD_VISIT_FN = path.resolve(
   appMobile,
   '../supabase/functions/record-visit/index.ts',
 );
 
-test('S-9 the pre-tap answer is stated by the control, forwarded by the modal, and preferred by the write', () => {
-  // 1 — the control. It has already read useHasVisited to pick its own label;
-  //     that same value must reach the request, verbatim.
+test('S-9 the pre-tap belief is gone from every joint, and the user-visible undo is still wired', () => {
   const swipeable = stripComments(read('swipeable'));
+  const modal = stripComments(read('modal'));
+  const storeSrc = stripComments(read('store'));
+  const service = stripComments(read('placeReviewService'));
+
+  // 1 — the flag is gone from all four files it touched. Anywhere it survives is
+  //     somewhere a rollback can be re-derived from a ten-minute-old belief.
+  for (const [label, src] of [
+    ['SwipeableCards.tsx', swipeable],
+    ['PostExperienceModal.tsx', modal],
+    ['placeReviewRequestStore.ts', storeSrc],
+    ['placeReviewService.ts', service],
+  ]) {
+    assert.ok(
+      !src.includes('hadVisitBeforeTap'),
+      `S-9: \`hadVisitBeforeTap\` is back in ${label}. useHasVisited's staleTime is ten minutes `
+      + '(useVisits.ts:80), so that value can be a cached "no visit" over a visit the user really '
+      + 'made — on device it deleted one that was three days old (99081740, 21:57:01.253). It '
+      + 'exists only to authorise a delete; nothing on this path deletes.',
+    );
+  }
+  assert.match(
+    storeSrc,
+    /export function placeReviewRequestFromCard\(\s*card: PlaceReviewCard,\s*\): VoluntaryPlaceReviewRequest/,
+    'S-9: placeReviewRequestFromCard takes more than the card again. The second parameter WAS the '
+    + 'pre-tap belief; re-adding one is how it comes back without the name.',
+  );
+  assert.match(
+    swipeable,
+    /placeReviewRequestFromCard\(\s*card\s*\)/,
+    'S-9: the tap passes something extra into the request again.',
+  );
+
+  // 2 — the write reads no provenance signal at all. `isNew` is still returned by
+  //     record-visit and must stay unread here: it describes user_interactions.
+  assert.ok(
+    !/isNew/.test(service),
+    'S-9: the write consults record-visit\'s `isNew` again. It is computed from a '
+    + 'user_interactions lookup, not from the user_visits upsert, and it lied in BOTH directions '
+    + 'on device — isNew:false for a row it had just created (124da062), isNew:true for rows that '
+    + 'already existed. Nothing may branch on it here.',
+  );
+
+  // 3 — THE UNDO. A visit with no review is acceptable ONLY because the deck
+  //     settles to it and one tap removes it. B-9 drives removeVisit through the
+  //     service; this pins that the settled pill is what calls it, and that the
+  //     settled pill does NOT open the prompt (which is why the "already visited"
+  //     branch of any rollback guard was unreachable in the first place).
   const start = swipeable.indexOf('const BeenHereControl');
   const end = swipeable.indexOf('const CardHeroImage', start);
   assert.ok(start > 0 && end > start, 'VACUITY: could not delimit BeenHereControl');
@@ -1231,73 +1472,54 @@ test('S-9 the pre-tap answer is stated by the control, forwarded by the modal, a
   assert.match(
     control,
     /const\s*\{\s*data:\s*visited[\s\S]{0,200}useHasVisited\(/,
-    'VACUITY: BeenHereControl no longer reads useHasVisited into `visited`, so the assertion '
-    + 'below is about a name that means something else now.',
+    'VACUITY: BeenHereControl no longer reads useHasVisited into `visited`, so the assertions '
+    + 'below are about a name that means something else now.',
   );
   assert.match(
     control,
-    /placeReviewRequestFromCard\(\s*card\s*,\s*visited\s*\)/,
-    'S-9: the tap no longer carries what useHasVisited said. That value is the ONLY evidence '
-    + 'the app has about whether a half-landed visit is its own to undo — record-visit\'s isNew '
-    + 'is computed from user_interactions and disagrees with user_visits in both directions '
-    + '(#1694). Without it the write falls back to that flag and B-11a\'s orphan comes back.',
+    /if\s*\(isVisited\)\s*\{\s*removeVisit\.mutate\(card\.id\);\s*return;\s*\}/,
+    'S-9: a settled pill no longer un-toggles the visit. That tap is the ONLY way a user can '
+    + 'retract a visit whose review failed, and "they can undo it themselves" is the entire '
+    + 'reason a leftover is preferred to a delete. Without it the leftover is stranded and this '
+    + 'design is wrong.',
   );
-
-  // 2 — the modal. One mount for the whole app, no useHasVisited of its own, and
-  //     by submit time the answer would already have been changed by the write it
-  //     is asking about. So it forwards; it must not re-derive.
-  const modal = stripComments(read('modal'));
-  assert.match(
-    modal,
-    /hadVisitBeforeTap:\s*voluntaryVisit\.hadVisitBeforeTap/,
-    'S-9: the modal stopped forwarding the pre-tap answer into the write, so the request carries '
-    + 'it and nothing reads it.',
-  );
-
-  // 3 — the write. The client's stated answer must OUTRANK the server flag, and
-  //     the flag must be reachable only when nothing was stated.
-  const service = stripComments(read('placeReviewService'));
-  const fn = service.slice(service.indexOf('function visitIsOursToUndo'));
-  assert.ok(fn.length > 80, 'S-9: visitIsOursToUndo is gone — the derivation moved or was inlined');
-  const statedFalseAt = fn.indexOf('hadVisitBeforeTap === false');
-  const statedTrueAt = fn.indexOf('hadVisitBeforeTap === true');
-  // Anchored on the RETURN, not on the name: `serverIsNew` also appears in the
-  // signature, which is above both branches by construction.
-  const serverAt = fn.indexOf('return serverIsNew');
-  assert.ok(statedFalseAt > 0, 'S-9: a stated "the user had no visit" is no longer honoured');
-  assert.ok(statedTrueAt > 0, 'S-9: a stated "the user already had one" is no longer honoured');
+  const removeAt = control.indexOf('removeVisit.mutate(card.id)');
+  const openAt = control.indexOf('openPlaceReviewRequest(');
   assert.ok(
-    serverAt > statedFalseAt && serverAt > statedTrueAt,
-    'S-9: record-visit\'s isNew is consulted BEFORE the client\'s own answer. It is the '
-    + '[TRANSITIONAL] last resort for a caller that stated nothing, not the rule — reversing the '
-    + 'order restores the P1 exactly.',
-  );
-  assert.ok(
-    !/visitCreated\s*=\s*recorded\.isNew\s*===\s*true/.test(service),
-    'S-9: the rollback guard is derived straight from record-visit\'s isNew again. Proven on '
-    + 'device: a tap created user_visits 44c459c9 at 00:53:12.679 while the interaction row still '
-    + 'read 18:31:05, and the function reported isNew:false for the row it had just created.',
+    removeAt > 0 && openAt > removeAt,
+    'S-9: the prompt is now reachable BEFORE the settled un-toggle. The order is what makes a '
+    + 'settled card un-toggle rather than re-rate, and it is why no rollback guard could ever '
+    + 'observe "the user already had a visit" at this call site.',
   );
 
-  // 4 — the model this whole file is built on. If #1694 ever makes isNew describe
-  //     the user_visits upsert, the harness above is no longer faithful and the
-  //     [TRANSITIONAL] fallback stops being a hazard — both need revisiting, and
-  //     this is what will say so.
+  // 4 — the model check. `isNew` must still BE there for "the write ignores it"
+  //     to mean anything, and #1694 landing changes what this file should say.
   const fnSrc = fs.readFileSync(RECORD_VISIT_FN, 'utf8');
   const isNewAt = fnSrc.indexOf('let isNew');
-  assert.ok(isNewAt > 0, 'S-9: record-visit no longer computes isNew the way this harness models');
+  assert.ok(
+    isNewAt > 0,
+    'S-9 (model check): record-visit no longer computes isNew at all, so "the write must not read '
+    + 'it" is now vacuous. Re-read this suite against whatever replaced it.',
+  );
   const derivation = fnSrc.slice(fnSrc.indexOf('user_interactions'), isNewAt);
   assert.match(
     derivation,
     /interaction_type"?,?\s*,?\s*"visit"/,
-    'S-9 (model check): record-visit no longer derives isNew from a user_interactions lookup. '
-    + 'If #1694 landed and it now reports the user_visits upsert itself, this suite\'s stub is '
-    + 'modelling a function that no longer exists — fix the stub, then re-read '
-    + 'visitIsOursToUndo\'s [TRANSITIONAL] fallback, which exists only because of this.',
+    'S-9 (model check): record-visit no longer derives isNew from a user_interactions lookup. If '
+    + '#1694 landed and it now reports the user_visits upsert itself, a rollback becomes arguable '
+    + 'again on a FRESH signal — but it still needs the argument made explicitly, not inherited.',
   );
-  assert.ok(
-    !/xmax/.test(fnSrc),
-    'S-9 (model check): record-visit appears to report the upsert itself now (#1694). Same '
-    + 'action as above — the stub and the fallback both assume it does not.',
+
+  // 5 — the belief that made a client answer look trustworthy is still there, so
+  //     nobody re-reads this and concludes the cache was tightened.
+  const visits = stripComments(fs.readFileSync(path.join(appMobile, 'src/hooks/useVisits.ts'), 'utf8'));
+  const hasVisitedAt = visits.indexOf('export function useHasVisited');
+  assert.ok(hasVisitedAt > 0, 'VACUITY: useHasVisited moved');
+  assert.match(
+    visits.slice(hasVisitedAt, hasVisitedAt + 400),
+    /staleTime:\s*10\s*\*\s*60\s*\*\s*1000/,
+    'S-9 (model check): useHasVisited\'s ten-minute staleTime changed. That window is why the '
+    + 'client cannot answer "does this user have a visit for this card" — if it is gone, re-read '
+    + 'the argument in placeReviewService\'s header before acting on it.',
   );
 });
