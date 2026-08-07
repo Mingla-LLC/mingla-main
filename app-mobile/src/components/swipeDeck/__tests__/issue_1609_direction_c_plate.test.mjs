@@ -19,6 +19,18 @@
  * prose — that is the #1607 defect class, and it is the reason this file exists at
  * all rather than a grep.
  */
+
+/**
+ * MODIFIED under #1700 — [TEST-MOD-APPROVED #1700].
+ *
+ * T-2 pinned `surfaceScrimHeight('s1Single') === 316` one line after forbidding typed-in scrim
+ * values, so it turned red for a scrim that had just been made CORRECT. Replaced by the
+ * derivation. T-9 matched `plateWithMeta:` / `plateNoMeta:` BY NAME — a shape assertion that
+ * pinned the design to exactly two silhouettes and rejected any correct third.
+ *
+ * Recorded here, in the file, so the next reader finds the reason beside the
+ * assertion rather than in a commit message they will not go looking for.
+ */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

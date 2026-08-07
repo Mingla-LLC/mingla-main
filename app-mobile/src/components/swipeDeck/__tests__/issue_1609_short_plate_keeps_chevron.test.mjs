@@ -34,6 +34,17 @@
  * a guard), and every scan is preceded by a vacuity assertion, so a moved file or
  * a mistyped needle fails loudly instead of passing silently.
  */
+
+/**
+ * MODIFIED under #1700 — [TEST-MOD-APPROVED #1700].
+ *
+ * C-5 matched `plateWithMeta:` / `plateNoMeta:` by name, which is a shape assertion. Replaced
+ * with the property it protected: the control row is IDENTICAL across every silhouette, so
+ * the pill and the share glyph cannot move as a card's facts line wraps.
+ *
+ * Recorded here, in the file, so the next reader finds the reason beside the
+ * assertion rather than in a commit message they will not go looking for.
+ */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

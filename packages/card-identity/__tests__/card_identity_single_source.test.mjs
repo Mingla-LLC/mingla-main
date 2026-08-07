@@ -35,6 +35,20 @@
  *   - change PLATE.lift by 0.02                                 -> G2 fires on L*
  *   - add an eighth surface without a verdict                   -> G3 fires
  */
+
+/**
+ * MODIFIED under #1700 — [TEST-MOD-APPROVED #1700].
+ *
+ * T-1 evaluated its two contrast clauses at the CANONICAL plate only, so it would have passed
+ * while the two-line silhouette rendered its title at 2.96:1 against a white photograph —
+ * under the 3.0 large-text floor. It now sweeps every silhouette on every surface.
+ * G1c banned `flexWrap` outright. The ban approximated a real guarantee; the guarantee is
+ * asserted directly now (one wrapping row, bounded by META_LINES_MAX, height from the derived
+ * table), so an unbounded row still fails — on the property it actually breaks.
+ *
+ * Recorded here, in the file, so the next reader finds the reason beside the
+ * assertion rather than in a commit message they will not go looking for.
+ */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

@@ -40,6 +40,15 @@
  * here greps for a name it expects to be absent, and every rule carries an
  * anti-vacuity check so it fails rather than passing on an empty set.
  */
+
+/**
+ * MODIFIED under #1700 — [TEST-MOD-APPROVED #1700].
+ *
+ * A-2b — identical to S-1 above, and changed for the same reason and in the same way.
+ *
+ * Recorded here, in the file, so the next reader finds the reason beside the
+ * assertion rather than in a commit message they will not go looking for.
+ */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

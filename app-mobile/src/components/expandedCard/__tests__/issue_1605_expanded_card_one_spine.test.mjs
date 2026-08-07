@@ -20,6 +20,18 @@
  * Each rule also carries an anti-vacuity check: if the anchor it slices on has
  * moved, it FAILS rather than passing on an empty string.
  */
+
+/**
+ * MODIFIED under #1700 — [TEST-MOD-APPROVED #1700].
+ *
+ * S-1 compared the sheet's scrim against the deck's using the CANONICAL plate depths. The scrim
+ * is now solved from the tallest silhouette, so the comparison read 316 !== 346 and failed a
+ * correct change. The property — both surfaces resolve the SAME height at every hero height —
+ * is unchanged; only which silhouette defines it moved.
+ *
+ * Recorded here, in the file, so the next reader finds the reason beside the
+ * assertion rather than in a commit message they will not go looking for.
+ */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
