@@ -119,6 +119,14 @@ export const STOP_ROW = {
   nameSize: 15,
   metaSize: 13,
   chevronSize: 16,
+  /**
+   * #1705 — the "what this stop is for" line. The row's `height` became a
+   * `minHeight` for it: a fixed 72 clipped the line outright, and a stop only
+   * grows when it actually HAS a purpose, so a plan of unclassifiable stops is
+   * pixel-identical to before.
+   */
+  purposeIconSize: 13,
+  purposeLineHeight: 18,
   /** The travel connector between rows. Rendered ONLY with real travel data. */
   connectorHeight: 28,
   badgeSize: 11,

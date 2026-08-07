@@ -108,5 +108,22 @@
   "expanded.calendar_date_parse_error": "Ba mu iya karanta lokacin taron ba.",
   "expanded.calendar_added": "An ƙara zuwa kalanda",
   "expanded.calendar_error": "Ba a iya ƙarawa zuwa kalanda. Sake gwadawa.",
-  "swipeable.details": "Details"
+  "swipeable.details": "Details",
+  "expanded.purpose_groceries": "Pick up supplies here",
+  "expanded.purpose_flowers": "Get flowers here",
+  "expanded.purpose_bakery": "Grab something fresh here",
+  "expanded.purpose_drinks_togo": "Pick up drinks here",
+  "expanded.purpose_nature": "Settle in here",
+  "expanded.purpose_coffee": "Coffee here",
+  "expanded.purpose_eat": "Eat here",
+  "expanded.purpose_drinks": "Drinks here",
+  "expanded.purpose_dance": "Dance here",
+  "expanded.purpose_dessert": "Dessert here",
+  "expanded.occasion_picnic": "your picnic",
+  "expanded.occasion_stroll": "your walk",
+  "expanded.occasion_beach": "the beach",
+  "expanded.occasion_camping": "your camping trip",
+  "expanded.occasion_roadtrip": "the drive",
+  "expanded.supplies_for": "Get these for {{occasion}}",
+  "expanded.supplies_for_at_stop": "Get these for {{occasion}} — stop {{n}} sells them"
 }

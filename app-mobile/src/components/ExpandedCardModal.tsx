@@ -49,6 +49,7 @@ import ConditionsSection from "./expandedCard/ConditionsSection";
 import PracticalDetailsSection from "./expandedCard/PracticalDetailsSection";
 import { ExpandedCardHero } from "./expandedCard/ExpandedCardHero";
 import StopList, { type StopListStop } from "./expandedCard/StopList";
+import { occasionFromCategory, stopPurpose } from "./expandedCard/stopPurpose";
 // #1605 P1-3 — the picnic Shopping List, re-homed onto the spine. It rendered on
 // `main` at :990-992 via the deleted PicnicShoppingList and was not in the
 // spec's deletion list; five producers still carry `shoppingList`.
@@ -1002,6 +1003,10 @@ export default function ExpandedCardModal({
     travelMinutes: stop.travelTimeFromPreviousStopMin ?? null,
     travelMode: stop.travelModeFromPreviousStop ?? null,
     canReplace: !isOptional,
+    // #1705 — from the slot's OWN comboCategory (the real picnic plan carries
+    // 'groceries' on stop 1 and 'nature' on stop 2). Null for anything we cannot
+    // state without guessing; the row then renders exactly as it did before.
+    purpose: stopPurpose(stop),
     optional: isOptional,
     };
   });
@@ -1027,6 +1032,45 @@ export default function ExpandedCardModal({
       .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
       .map((item) => item.trim());
   })();
+
+  /**
+   * #1705 — the supplies list's occasion line, composed from the plan's OWN
+   * data and NOTHING ELSE.
+   *
+   * Two facts, both already on the card: the plan's category ("Picnic Dates" ->
+   * "your picnic") and which stop, if any, is the one that sells them (the first
+   * stop whose purpose is the groceries one). Either may be missing, and the
+   * line degrades rather than inventing: no shop -> just the occasion; no
+   * recognised occasion -> no line at all, and `SuppliesList` renders exactly as
+   * it did before.
+   */
+  const suppliesPurposeLine = useMemo((): string | null => {
+    if (!Array.isArray(supplies) || supplies.length === 0) return null;
+    // `CuratedExperienceCard` names it `categoryLabel`; the single-place shape
+    // uses `category`. Read both rather than asserting one — a wrong field here
+    // would silently disable the line on every plan.
+    const occasionKey =
+      (planCard as { categoryLabel?: string | null } | null)?.categoryLabel
+      ?? (card as { category?: string | null } | null)?.category
+      ?? null;
+    const occasion = occasionFromCategory(occasionKey);
+    if (occasion === null) return null;
+    const shopIndex = planStops.findIndex(
+      (st) => stopPurpose(st)?.key === 'expanded.purpose_groceries',
+    );
+    if (shopIndex >= 0) {
+      return t('cards:expanded.supplies_for_at_stop', {
+        defaultValue: 'Get these for {{occasion}} — stop {{n}} sells them',
+        occasion: t(`cards:${occasion.key}`, { defaultValue: occasion.defaultValue }),
+        n: shopIndex + 1,
+      });
+    }
+    return t('cards:expanded.supplies_for', {
+      defaultValue: 'Get these for {{occasion}}',
+      occasion: t(`cards:${occasion.key}`, { defaultValue: occasion.defaultValue }),
+    });
+  }, [supplies, planCard, card, planStops, t]);
+
 
   /**
    * The companion stops of a single place — a stroll's, a picnic's, and the
@@ -1075,6 +1119,8 @@ export default function ExpandedCardModal({
         travelMinutes: null,
         travelMode: null,
         canReplace: false,
+        // #1705 — no comboCategory on this producer, so no purpose. Never guessed.
+        purpose: null,
         optional: false,
       });
     }
@@ -1105,6 +1151,8 @@ export default function ExpandedCardModal({
         travelMinutes: null,
         travelMode: null,
         canReplace: false,
+        // #1705 — no comboCategory on this producer, so no purpose. Never guessed.
+        purpose: null,
         optional: false,
       });
     });
@@ -1572,6 +1620,18 @@ export default function ExpandedCardModal({
               </Section>
             ) : null}
 
+            {/*
+              Slot 5c — SUPPLIES, ABOVE THE PLAN. #1705.
+
+              It sat BELOW the stops ("directly under the stops it is shopped
+              for"). Seth, after using it: "The supplies section should come just
+              before the plan and indicate what it's for." He is right about the
+              order for the same reason the list exists — you buy before you go,
+              so the list is the first thing the plan asks of you, not a footnote
+              to it.
+            */}
+            <SuppliesList items={supplies} purposeLine={suppliesPurposeLine} />
+
             {/* Slot 6 — THE PLAN (a plan has stops) … */}
             <View onLayout={(e) => setPlanSectionY(e.nativeEvent.layout.y)}>
               <StopList
@@ -1708,15 +1768,6 @@ export default function ExpandedCardModal({
                 </TouchableOpacity>
               </View>
             ) : null}
-
-            {/*
-              Slot 6c — SUPPLIES. The picnic shopping checklist, directly under
-              the stops it is shopped for. It rendered on `main` inside the
-              curated branch and was deleted with `PicnicShoppingList` without
-              being in the spec's deletion list, while five producers kept
-              carrying the field (#1605 P1-3).
-            */}
-            <SuppliesList items={supplies} />
 
             {/* Slot 7 — experiences at this venue (claimed brands only, single place). */}
             {!isCuratedCard ? (

@@ -106,6 +106,12 @@ export interface StopListStop {
   readonly travelMode: string | null;
   readonly canReplace: boolean;
   /**
+   * #1705 — what this stop is FOR, resolved by `stopPurpose` from the slot's own
+   * `comboCategory`. `null` for any stop whose role we cannot state without
+   * guessing, and the row then renders exactly as it did before.
+   */
+  readonly purpose: { key: string; defaultValue: string; icon: string } | null;
+  /**
    * This stop is NOT one of the ones the plate counts. #1605 rework.
    *
    * `curatedPlanSpans` counts `planVisibleStops` (non-optional), and so do the
@@ -377,6 +383,26 @@ function StopRow({
               </View>
             ) : null}
           </View>
+
+          {/*
+            #1705 — WHAT THIS STOP IS FOR. Seth: "a plan that shows where to get
+            flowers first... should indicate get 'flowers here'."
+
+            A plan's rows are a name, a rating and a photo, so a supermarket and
+            a park read identically and the user is left to infer why the
+            supermarket is stop 1. `stopPurpose` reads the slot's own
+            `comboCategory` — data the plan has always carried — and returns
+            NULL for anything it cannot state without guessing, because "Pick up
+            supplies here" on a cocktail bar is a plan that reads as broken.
+          */}
+          {stop.purpose ? (
+            <View style={styles.purpose}>
+              <Icon name={stop.purpose.icon} size={STOP_ROW.purposeIconSize} color={SPINE.link} />
+              <Text style={styles.purposeText} numberOfLines={1}>
+                {t(`cards:${stop.purpose.key}`, { defaultValue: stop.purpose.defaultValue })}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         <Icon
@@ -385,6 +411,62 @@ function StopRow({
           color={SPINE.factLabel}
         />
       </Pressable>
+
+      {/*
+        #1705 — THE CONTROLS ARE NOT BEHIND THE EXPAND ANY MORE. Seth: "Users
+        should not have to expand the stops to see the replace button."
+
+        They were inside `{expanded ? ...}`, so Directions, Call, Website and
+        Replace all required discovering that the row opens at all. Replace is
+        the one that matters: it is the only way to change a plan you did not
+        like, and it was two taps behind a chevron.
+
+        Still SIBLINGS of the row's press target and never children of it — a
+        Pressable inside a Pressable flattens the accessibility subtree and the
+        inner control stops being reachable.
+      */}
+      <View style={styles.controls}>
+        <Pressable
+          onPress={() => onDirections(stop)}
+          style={({ pressed }) => [styles.control, pressed ? styles.controlPressed : null]}
+          accessibilityRole="button"
+          accessibilityLabel={t("cards:expanded.get_directions")}
+        >
+          <Text style={styles.controlText}>{t("cards:expanded.get_directions")}</Text>
+        </Pressable>
+        {/*
+          THE STOP'S OWN BOOKING PAGE. `CuratedStop.website` rendered on
+          `main` as a per-stop "Policies & Reservations" row and nothing in
+          the new tree read it, so a stop's booking link was unreachable.
+          Gated on the NORMALIZED url by the caller, exactly like the
+          single-place Website row — no url, no control, no dead tap.
+        */}
+        {present(stop.website) && onOpenWebsite ? (
+          <Pressable
+            onPress={() => onOpenWebsite(stop)}
+            style={({ pressed }) => [styles.control, pressed ? styles.controlPressed : null]}
+            accessibilityRole="button"
+            accessibilityLabel={t("expanded_details:action_buttons.website", {
+              defaultValue: "Website",
+            })}
+          >
+            <Text style={styles.controlText}>
+              {t("expanded_details:action_buttons.website", { defaultValue: "Website" })}
+            </Text>
+          </Pressable>
+        ) : null}
+        {stop.canReplace && onReplace ? (
+          <Pressable
+            onPress={() => onReplace(stop)}
+            style={({ pressed }) => [styles.control, pressed ? styles.controlPressed : null]}
+            accessibilityRole="button"
+            accessibilityLabel={t("cards:expanded.replace")}
+          >
+            <Text style={styles.controlText}>{t("cards:expanded.replace")}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
 
       {expanded ? (
         <View style={styles.expanded}>
@@ -450,49 +532,6 @@ function StopRow({
             </Text>
           ) : null}
 
-          {/* SIBLINGS of the row's press target — never children of it. */}
-          <View style={styles.controls}>
-            <Pressable
-              onPress={() => onDirections(stop)}
-              style={({ pressed }) => [styles.control, pressed ? styles.controlPressed : null]}
-              accessibilityRole="button"
-              accessibilityLabel={t("cards:expanded.get_directions")}
-            >
-              <Text style={styles.controlText}>{t("cards:expanded.get_directions")}</Text>
-            </Pressable>
-            {/*
-              THE STOP'S OWN BOOKING PAGE. `CuratedStop.website` rendered on
-              `main` as a per-stop "Policies & Reservations" row and nothing in
-              the new tree read it, so a stop's booking link was unreachable.
-              Gated on the NORMALIZED url by the caller, exactly like the
-              single-place Website row — no url, no control, no dead tap.
-            */}
-            {present(stop.website) && onOpenWebsite ? (
-              <Pressable
-                onPress={() => onOpenWebsite(stop)}
-                style={({ pressed }) => [styles.control, pressed ? styles.controlPressed : null]}
-                accessibilityRole="button"
-                accessibilityLabel={t("expanded_details:action_buttons.website", {
-                  defaultValue: "Website",
-                })}
-              >
-                <Text style={styles.controlText}>
-                  {t("expanded_details:action_buttons.website", { defaultValue: "Website" })}
-                </Text>
-              </Pressable>
-            ) : null}
-            {stop.canReplace && onReplace ? (
-              <Pressable
-                onPress={() => onReplace(stop)}
-                style={({ pressed }) => [styles.control, pressed ? styles.controlPressed : null]}
-                accessibilityRole="button"
-                accessibilityLabel={t("cards:expanded.replace")}
-              >
-                <Text style={styles.controlText}>{t("cards:expanded.replace")}</Text>
-              </Pressable>
-            ) : null}
-          </View>
-
           {replacePanel ? replacePanel(stop) : null}
         </View>
       ) : null}
@@ -510,7 +549,9 @@ function travelIcon(mode: string | null): string {
 
 const styles = StyleSheet.create({
   row: {
-    height: STOP_ROW.height,
+    // #1705 — minHeight, not height. The purpose line lives inside this row and
+    // a fixed 72 clipped it. A stop with no purpose is unchanged.
+    minHeight: STOP_ROW.height,
     flexDirection: "row",
     alignItems: "center",
     gap: STOP_ROW.gap,
@@ -579,7 +620,28 @@ const styles = StyleSheet.create({
   hoursLine: { fontSize: 13, lineHeight: 20, color: SPINE.prose, flex: 1 },
   hoursLineToday: { fontWeight: "600", color: SPINE.link },
   address: { fontSize: 14, lineHeight: 20, color: SPINE.muted },
-  controls: { flexDirection: "row", gap: 20 },
+  /**
+   * #1705 — the purpose line. `SPINE.link` (#C2410C, 5.18:1 on paper) is the ONE
+   * accent this design allows as TEXT; `accentFill` measures 2.90:1 and is a
+   * fill-only token.
+   */
+  purpose: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 3 },
+  purposeText: {
+    fontSize: 12.5,
+    fontWeight: "600",
+    color: SPINE.link,
+    lineHeight: STOP_ROW.purposeLineHeight,
+    flexShrink: 1,
+  },
+  // #1705 — the controls are a SIBLING of the row now, not a child of the
+  // expanded block, so they need their own inset and breathing room.
+  controls: {
+    flexDirection: "row",
+    gap: 20,
+    flexWrap: "wrap",
+    paddingHorizontal: SPINE.gutter,
+    paddingBottom: 6,
+  },
   control: { minHeight: SPINE.factRowMinHeight, justifyContent: "center" },
   controlPressed: { opacity: 0.6 },
   controlText: { fontSize: 14, fontWeight: "600", color: SPINE.link },
