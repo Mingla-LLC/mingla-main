@@ -214,7 +214,7 @@ export {
   experiencePriceLabel,
   experienceAvailabilityBanner,
 } from "./ExperienceOfferingBody";
-export type { ExperienceOfferingBodyProps } from "./ExperienceOfferingBody";
+export type { ExperienceOfferingBodyProps, RightNowFacts } from "./ExperienceOfferingBody";
 export { StopSpine, stopLabelForIndex } from "./StopSpine";
 export type { StopSpineProps } from "./StopSpine";
 export type {
