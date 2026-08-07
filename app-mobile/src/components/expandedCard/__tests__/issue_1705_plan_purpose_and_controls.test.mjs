@@ -201,3 +201,39 @@ test('S-9 the busyness value is never the thing that shrinks', () => {
     'S-9: the busyness body is a row again, which is what made the value shrink',
   );
 });
+
+test('S-10 a fact row grows to hold its value rather than clipping it', () => {
+  // Seth, on the device: "the details section on an expanded card sometimes gets
+  // squished up. It does not expand vertically to contain the elements so there
+  // is fine padding."
+  //
+  // `FactRow`'s value carried `numberOfLines={2}`, so a three-line address was
+  // cut AND the text filled the box exactly, which made the row's 10pt padding
+  // read as none. #1700's law — nothing on a card may be cut off — was never
+  // applied to these rows; it only bound the deck plate's facts line.
+  const spine = read('app-mobile/src/components/expandedCard/SpineParts.tsx');
+  const row = /^  factRow: \{([\s\S]*?)\n  \},/m.exec(spine);
+  assert.ok(row, 'S-10: the factRow style is gone');
+  assert.match(row[1], /minHeight: SPINE\.factRowMinHeight/, 'S-10: the row lost its floor');
+  assert.equal(/^\s*height:/m.test(row[1]), false, 'S-10: the row gained a fixed height and will clip');
+  assert.match(
+    row[1], /alignItems: 'flex-start'/,
+    "S-10: the row centres its children, so a three-line value floats its one-line label into the middle",
+  );
+
+  // The value must not be clamped in either file that renders one.
+  for (const rel of [
+    'app-mobile/src/components/expandedCard/SpineParts.tsx',
+    'app-mobile/src/components/expandedCard/PracticalDetailsSection.tsx',
+  ]) {
+    const src = read(rel);
+    const rendered = [...src.matchAll(/<Text style=\{styles\.factValue\}[^>]*>/g)].map((m) => m[0]);
+    assert.ok(rendered.length > 0, `S-10 (vacuity): ${rel} renders no fact value`);
+    for (const tag of rendered) {
+      assert.equal(
+        /numberOfLines/.test(tag), false,
+        `S-10: ${rel} clamps a fact value (${tag.trim()}) — an address longer than the clamp is cut`,
+      );
+    }
+  }
+});

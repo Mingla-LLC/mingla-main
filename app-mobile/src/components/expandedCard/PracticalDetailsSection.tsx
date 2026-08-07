@@ -192,7 +192,8 @@ export default function PracticalDetailsSection({
               {t("expanded_details:action_buttons.opening_hours")}
             </Text>
             <View style={styles.hoursBody}>
-              <Text style={styles.factValue} numberOfLines={2}>
+              {/* #1700 — no clamp; see SpineParts.FactRow. */}
+              <Text style={styles.factValue}>
                 {todayLine ?? weekdayLines[0]}
               </Text>
               {/*
@@ -342,7 +343,8 @@ const styles = StyleSheet.create({
   hoursHeader: {
     minHeight: SPINE.factRowMinHeight,
     flexDirection: "row",
-    alignItems: "center",
+    // #1700 — see SpineParts.factRow.
+    alignItems: "flex-start",
     gap: 12,
     paddingHorizontal: SPINE.gutter,
     paddingVertical: 10,

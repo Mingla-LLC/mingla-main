@@ -2099,6 +2099,23 @@ async function handleDeterministicV2(args: {
       }
     }
 
+    /*
+      #1703 rework — ENRICH AT THE POINT OF SERVING, not only at generation.
+
+      A curated card served from `session_curated_cache` never touches
+      `fetchCuratedBatchInternal`, so enriching only there left every CACHE HIT
+      without stop phone numbers — which is most of them, and is why Seth still
+      saw no Call button on a plan after the first deploy. Every cached card
+      written before this shipped is also missing them permanently.
+
+      Doing it here covers both paths: the freshly generated card (already
+      enriched, so this is a cheap no-op on ids it will find unchanged) and the
+      cached one. Non-fatal, like its siblings.
+    */
+    if (pickedCard) {
+      await enrichCuratedStopsWithPhone(supabaseAdmin, [pickedCard]);
+    }
+
     if (!pickedCard) {
       return deadEnd({
         position: params.position,
