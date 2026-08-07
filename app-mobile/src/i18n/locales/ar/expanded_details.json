@@ -47,14 +47,7 @@
     "error_past_date_message": "لقد مر هذا الوقت بالفعل. يرجى اختيار وقت في المستقبل."
   },
   "busyness": {
-    "traffic": "حركة المرور",
-    "busy_level": "مستوى الازدحام",
-    "busy": "مزدحم",
-    "clear_roads": "طرق خالية",
-    "clear": "خالٍ",
-    "moderate": "متوسط",
-    "heavy": "مزدحم جداً",
-    "estimated": "Est."
+    "busy_level": "مستوى الازدحام"
   },
   "match_factors": {
     "title": "تفصيل التطابق",

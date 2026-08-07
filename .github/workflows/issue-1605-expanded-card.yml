@@ -30,6 +30,17 @@ name: Issue 1605 Expanded Card One Spine
 # guard's extraction anchors, those steps fail here rather than silently
 # reducing the guard to an expensive no-op.
 #
+# ---------------------------------------------------------------------------
+# THE PATH FILTERS MUST COVER EVERY FILE THE GUARDS READ
+#
+# A gate that reads a file its workflow does not watch is a gate that goes
+# stale in silence: the file changes, the job does not run, and the assertion
+# is only re-checked the next time somebody happens to touch a watched path.
+# The rework added four such readers — S-6b parses `busynessService.ts` and
+# `expandedCardTypes.ts`, S-8 sweeps the 29 `expanded_details.json` locale
+# files and S-9 executes an expression out of `messagingService.ts` — so all of
+# them are watched here. If you add a `read()` to either suite, add its path.
+#
 # NOTE: no `npm ci` step, and that is deliberate — the same rule the #1609
 # workflow follows. Both suites import `@mingla/card-identity` and the app's own
 # `.ts` modules by RELATIVE path, and Node 22 strips TypeScript types natively,
@@ -48,10 +59,15 @@ on:
       - "app-mobile/src/components/SwipeableCards.tsx"
       - "app-mobile/src/components/deckCardPlate.tsx"
       - "app-mobile/src/components/expandedCard/**"
+      - "app-mobile/src/components/ImageLightbox.tsx"
       - "app-mobile/src/hooks/useVisits.ts"
+      - "app-mobile/src/services/busynessService.ts"
+      - "app-mobile/src/services/messagingService.ts"
       - "app-mobile/src/services/visitService.ts"
       - "app-mobile/src/store/placeReviewRequestStore.ts"
+      - "app-mobile/src/types/expandedCardTypes.ts"
       - "app-mobile/src/utils/openingHoursUtils.ts"
+      - "app-mobile/src/i18n/locales/*/expanded_details.json"
       - "packages/card-identity/**"
       - ".github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs"
       - ".github/workflows/issue-1605-expanded-card.yml"
@@ -62,10 +78,15 @@ on:
       - "app-mobile/src/components/SwipeableCards.tsx"
       - "app-mobile/src/components/deckCardPlate.tsx"
       - "app-mobile/src/components/expandedCard/**"
+      - "app-mobile/src/components/ImageLightbox.tsx"
       - "app-mobile/src/hooks/useVisits.ts"
+      - "app-mobile/src/services/busynessService.ts"
+      - "app-mobile/src/services/messagingService.ts"
       - "app-mobile/src/services/visitService.ts"
       - "app-mobile/src/store/placeReviewRequestStore.ts"
+      - "app-mobile/src/types/expandedCardTypes.ts"
       - "app-mobile/src/utils/openingHoursUtils.ts"
+      - "app-mobile/src/i18n/locales/*/expanded_details.json"
       - "packages/card-identity/**"
       - ".github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs"
       - ".github/workflows/issue-1605-expanded-card.yml"

@@ -42,12 +42,26 @@ export function present(value: string | null | undefined): value is string {
  */
 export function Section({
   title,
+  subtitle,
   hidden,
   trailing,
   children,
   style,
 }: {
   title: string;
+  /**
+   * ONE line under the heading, and only where the heading alone would mislead.
+   *
+   * #1605 rework. Every other section on this sheet is title-only on purpose —
+   * a section that needs explaining is usually a section that is composed
+   * wrong. The exception this exists for is the stroll's companion list: it
+   * renders through `StopList`, which NUMBERS its rows, but its rows are
+   * ALTERNATIVES to begin at rather than a sequence to walk. The deleted
+   * `CompanionStopsSection` said so ("Begin at one of these nearby spots before
+   * your walk") and nothing else does. Absent renders nothing — no empty line,
+   * no reserved height.
+   */
+  subtitle?: string;
   hidden?: boolean;
   /** e.g. the `Customized` chip on the Plan section's heading row. */
   trailing?: React.ReactNode;
@@ -64,6 +78,7 @@ export function Section({
         </Text>
         {trailing}
       </View>
+      {present(subtitle) ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       {children}
     </View>
   );
@@ -315,6 +330,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: SPINE.heading,
     letterSpacing: SPINE.headingLetterSpacing,
+  },
+  /*
+    The section subtitle. 14/400 #4B5563 = 7.56:1 — the SAME secondary-prose
+    token the body's fact rows and the busyness disclosure use, not a new one.
+    The heading row already carries its own 12pt bottom margin; this sits in
+    that gap and re-states it below itself so a subtitled section has the same
+    12pt to its first row as an unsubtitled one.
+  */
+  subtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '400',
+    color: SPINE.muted,
+    paddingHorizontal: SPINE.gutter,
+    marginTop: -4,
+    marginBottom: 12,
   },
   chip: {
     backgroundColor: SPINE.chipFill,

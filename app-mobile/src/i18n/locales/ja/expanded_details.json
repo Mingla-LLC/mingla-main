@@ -47,14 +47,7 @@
     "error_past_date_message": "その時刻は過ぎています。未来の時刻を選んでください。"
   },
   "busyness": {
-    "traffic": "交通状況",
-    "busy_level": "混雑度",
-    "busy": "混雑",
-    "clear_roads": "道路空き",
-    "clear": "空いている",
-    "moderate": "普通",
-    "heavy": "混雑",
-    "estimated": "Est."
+    "busy_level": "混雑度"
   },
   "match_factors": {
     "title": "マッチ内訳",

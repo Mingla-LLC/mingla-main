@@ -47,14 +47,7 @@
     "error_past_date_message": "সেই সময় ইতিমধ্যে পেরিয়ে গেছে। অনুগ্রহ করে ভবিষ্যতের একটি সময় বেছে নিন।"
   },
   "busyness": {
-    "traffic": "ট্রাফিক",
-    "busy_level": "ব্যস্ততার মাত্রা",
-    "busy": "ব্যস্ত",
-    "clear_roads": "ফাঁকা রাস্তা",
-    "clear": "ফাঁকা",
-    "moderate": "মাঝামাঝি",
-    "heavy": "ভারী",
-    "estimated": "Est."
+    "busy_level": "ব্যস্ততার মাত্রা"
   },
   "match_factors": {
     "title": "মিলের বিশ্লেষণ",

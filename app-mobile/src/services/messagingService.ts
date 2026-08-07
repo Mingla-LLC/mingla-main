@@ -119,7 +119,23 @@ export interface TrimmedCuratedStop {
   priceLevelLabel: string;
   priceTier: string;
   rating: number;
-  estimatedDurationMinutes: number;
+  /**
+   * OPTIONAL, and only ever the stop's REAL value — #1605 P2-4.
+   *
+   * This was `estimatedDurationMinutes: number` and the trimmer wrote
+   * `Number(s.estimatedDurationMinutes) || 45`, so every chat-shared curated
+   * stop whose real duration was absent or 0 arrived at the recipient carrying
+   * an invented 45 — which `stopMetaText` then renders as "45 min here", a
+   * fact about how long to spend somewhere that nobody ever estimated
+   * (Constitution 9). It was ALSO the reason the expanded card's own guard
+   * could not be honest: `minutes > 0` cannot distinguish an invented 45 from a
+   * real one, so the guard's comment claimed a protection the data made
+   * impossible. Removing the invention is what makes `> 0` sufficient.
+   *
+   * Absent stays absent: the key is omitted, the row renders no duration, and
+   * the 5KB payload gets marginally smaller.
+   */
+  estimatedDurationMinutes?: number;
   // Soft fields kept if size budget allows; dropped in order per trimCardPayload.
   stopLabel?: 'Start Here' | 'Then' | 'End With' | 'Explore' | 'Optional';
   placeType?: string;
@@ -268,7 +284,14 @@ export function trimCardPayload(card: any): CardPayload {
         priceLevelLabel: String(s.priceLevelLabel ?? '').slice(0, 32),
         priceTier: String(s.priceTier ?? ''),
         rating: Number(s.rating) || 0,
-        estimatedDurationMinutes: Number(s.estimatedDurationMinutes) || 45,
+        // #1605 P2-4 — the REAL value or nothing. Never `|| 45`; see the field's
+        // doc comment on TrimmedCuratedStop.
+        estimatedDurationMinutes:
+          typeof s.estimatedDurationMinutes === 'number' &&
+          Number.isFinite(s.estimatedDurationMinutes) &&
+          s.estimatedDurationMinutes > 0
+            ? s.estimatedDurationMinutes
+            : undefined,
         stopLabel: typeof s.stopLabel === 'string' ? s.stopLabel : undefined,
         placeType: typeof s.placeType === 'string' ? s.placeType.slice(0, 80) : undefined,
         aiDescription: typeof s.aiDescription === 'string' ? s.aiDescription.slice(0, 300) : undefined,

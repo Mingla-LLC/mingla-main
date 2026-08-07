@@ -105,10 +105,29 @@ export interface StopListStop {
   readonly travelMinutes: number | null;
   readonly travelMode: string | null;
   readonly canReplace: boolean;
+  /**
+   * This stop is NOT one of the ones the plate counts. #1605 rework.
+   *
+   * `curatedPlanSpans` counts `planVisibleStops` (non-optional), and so do the
+   * card's own title, total price and duration. `StopList` renders EVERY stop.
+   * Before this flag existed the plate said "2 stops" above a list of three
+   * identical-looking rows with nothing to tell them apart — two numbers about
+   * the same plan, both right, disagreeing on one screen. An optional row is
+   * now labelled in the index-chip slot and named in its accessibility label.
+   */
+  readonly optional: boolean;
 }
 
 interface StopListProps {
   readonly heading: string;
+  /**
+   * One line under the heading. #1605 rework — the deleted
+   * `CompanionStopsSection` carried "Begin at one of these nearby spots before
+   * your walk", which is the only thing that told the user its rows were
+   * ALTERNATIVES rather than a sequence. `StopList` numbers its rows, so
+   * without it a stroll's companions read as a three-stop itinerary.
+   */
+  readonly subtitle?: string;
   readonly stops: readonly StopListStop[];
   readonly customized?: boolean;
   readonly onDirections: (stop: StopListStop) => void;
@@ -124,6 +143,7 @@ interface StopListProps {
 
 export default function StopList({
   heading,
+  subtitle,
   stops,
   customized,
   onDirections,
@@ -150,6 +170,7 @@ export default function StopList({
   return (
     <Section
       title={heading}
+      subtitle={subtitle}
       trailing={customized ? <Chip label={t("cards:expanded.customized")} /> : undefined}
     >
       {stops.map((stop, i) => (
@@ -264,12 +285,40 @@ function StopRow({
         style={({ pressed }) => [styles.row, pressed ? styles.rowPressed : null]}
         accessibilityRole="button"
         accessibilityState={{ expanded }}
-        accessibilityLabel={t("cards:expanded.stop_a11y", {
-          defaultValue: "Stop {{n}}, {{name}}{{meta}}",
-          n: stop.index,
-          name: stop.name,
-          meta: present(stop.meta) ? `, ${stop.meta}` : "",
-        })}
+        /*
+          THE LABEL ANNOUNCES WHAT THE CHIP SHOWS, because the chip itself is
+          `accessibilityElementsHidden`. Three cases, and two of them were wrong
+          before (#1605 rework):
+
+            optional   announced "Stop 3" while the plate said "2 stops", with
+                       nothing to reconcile them. Now it says the word.
+            SHOP       the picnic grocery row carries `index: 0`, so it
+                       announced "Stop 0" — an ordinal that does not exist.
+                       Now it is announced by name and facts, like the visual
+                       row, whose chip is a word rather than a number.
+            numbered   unchanged, but reads `indexLabel` so it can never drift
+                       from the digit on screen.
+        */
+        accessibilityLabel={
+          stop.optional
+            ? t("cards:expanded.stop_optional_a11y", {
+                defaultValue: "Optional stop, {{name}}{{meta}}",
+                name: stop.name,
+                meta: present(stop.meta) ? `, ${stop.meta}` : "",
+              })
+            : /^\d+$/.test(stop.indexLabel)
+              ? t("cards:expanded.stop_a11y", {
+                  defaultValue: "Stop {{n}}, {{name}}{{meta}}",
+                  n: stop.indexLabel,
+                  name: stop.name,
+                  meta: present(stop.meta) ? `, ${stop.meta}` : "",
+                })
+              : t("cards:expanded.stop_unnumbered_a11y", {
+                  defaultValue: "{{name}}{{meta}}",
+                  name: stop.name,
+                  meta: present(stop.meta) ? `, ${stop.meta}` : "",
+                })
+        }
       >
         <View style={styles.thumbWrap}>
           {present(stop.imageUrl) ? (
@@ -278,15 +327,22 @@ function StopRow({
             // A neutral tile, NOT an icon placeholder pretending to be a photo.
             <View style={styles.thumb} />
           )}
-          <View
-            style={styles.indexChip}
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-          >
-            <Text style={styles.indexText} numberOfLines={1}>
-              {stop.indexLabel}
-            </Text>
-          </View>
+          {/*
+            No label, no chip. An OPTIONAL stop carries no ordinal — it is not
+            one of the stops the plate counts — and an empty accent pill would
+            be a mark that means nothing (#1605 rework).
+          */}
+          {present(stop.indexLabel) ? (
+            <View
+              style={styles.indexChip}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              <Text style={styles.indexText} numberOfLines={1}>
+                {stop.indexLabel}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.rowBody}>
@@ -294,6 +350,16 @@ function StopRow({
             {stop.name}
           </Text>
           <View style={styles.metaRow}>
+            {/*
+              THE OPTIONAL MARKER. The plate counts `planVisibleStops`; this
+              list renders all of them. Without this the two disagree in plain
+              sight — "2 stops" over three identical rows. The neutral Chip is
+              the same one the Plan heading's `Customized` uses; it is a fact
+              about the row, not an accent.
+            */}
+            {stop.optional ? (
+              <Chip label={t("cards:expanded.optional", { defaultValue: "Optional" })} />
+            ) : null}
             {present(stop.meta) ? (
               <Text style={styles.meta} numberOfLines={1}>
                 {stop.meta}

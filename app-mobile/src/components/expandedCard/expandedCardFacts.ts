@@ -341,10 +341,130 @@ export function stopMetaText(
   }
 
   const minutes = stop.estimatedDurationMinutes;
-  // A synthesised duration is NOT a fact. `cardConverters.ts` invents 60 minutes
-  // per stop for a curated card, so only a positive, real value renders — and
-  // the connector between rows is gated the same way.
+  /*
+    A SYNTHESISED DURATION IS NOT A FACT — and this guard is only honest because
+    the synthesis was removed. #1605 P2-4.
+
+    The previous comment here said "`cardConverters` invents 60 minutes a stop",
+    and the tester's complaint was exactly right: `> 0` cannot tell an invented
+    60 from a real 60, so the guard did not do what its comment claimed. Both
+    halves of that were wrong, and the enumeration is worth writing down because
+    the guard is only as good as this list:
+
+      cardConverters.ts:132   `duration: 60` — the strollData TIMELINE step, a
+                              different field on a different object. It has never
+                              reached a stop's `estimatedDurationMinutes`, so the
+                              comment named the wrong producer.
+      curatedToTimeline.ts    `|| 45` — timeline again, same story.
+      curatedStopsAvailability `?? DEFAULT_STOP_DURATION_MIN` — a LOCAL cumulative
+                              used to decide whether a stop is open when you get
+                              there. Never written back onto the stop.
+      mutateCuratedCard.ts    `|| 45` in the CARD total; the stop it writes
+                              carries the alternative's own real value.
+      deckService.ts:388      `0` for a brand-experience stop — which this guard
+                              correctly renders as nothing.
+      messagingService.ts     `Number(s.…) || 45` — THE ONE REAL INVENTION, and
+                              the only one that landed on the field this function
+                              reads. A chat-shared plan's stops arrived carrying a
+                              45 nobody estimated. It is deleted (see that file);
+                              the key is now omitted when there is no real value.
+
+    With that gone, every producer of `stop.estimatedDurationMinutes` writes
+    either a real estimate or nothing, so `> 0` IS the complete test — not a
+    proxy for one. `S-9` pins the removal so the invention cannot come back and
+    quietly re-open the gap.
+
+    The connector between rows is gated the same way.
+  */
   if (typeof minutes === 'number' && minutes > 0) parts.push(minutesLabel(minutes));
+
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/**
+ * A COMPANION STOP'S OWN LINE — `Coffee Shop · ★ 4.4 (128 reviews)`.
+ *
+ * #1605 wave 4 rework. A stroll's companion stops and a picnic's grocery store
+ * render through `StopList` like a plan's stops do, and the first cut gave them
+ * a meta of `★ 4.4` and nothing else. Three field-level things went with the
+ * deleted `CompanionStopsSection` and two of them are restored here:
+ *
+ *   type LABEL   the row's only subtitle, backed by the 20-entry map below,
+ *                which is reproduced from that component verbatim. `type` is
+ *                still written by `cardConverters.ts:116` (`s.placeType`) and
+ *                `stopReplacementService`, so it was a live field with no
+ *                reader — the exact shape of the bug this rework exists for.
+ *   reviewCount  a rating with no sample size is the weakest number on the
+ *                sheet. Restored through the SAME i18n key the deleted
+ *                component used (`companion_stops.reviews_count`), which is
+ *                translated in all 29 locales.
+ *
+ * The type ICON is NOT restored, and that is a decision rather than an
+ * oversight: it was a 40pt circle with a 2pt #EB7825 border carrying a
+ * category glyph that said the same thing as the label beside it. The wave
+ * removed exactly that ornament everywhere else — the 26pt icon badges in
+ * `ConditionsSection`, the `conditionBadge` chips, the `iconBadge` in the
+ * details rows — and re-adding one here for a secondary list would make the
+ * companion row the loudest thing in the body. The information is the word.
+ *
+ * The map is English-only, exactly as `CompanionStopsSection` shipped it. That
+ * is a pre-existing i18n gap carried forward, not a new one; it is registered
+ * rather than silently widened by inventing 20 untranslated keys.
+ */
+const COMPANION_TYPE_LABEL: Readonly<Record<string, string>> = {
+  cafe: 'Café',
+  coffee_shop: 'Coffee Shop',
+  bakery: 'Bakery',
+  ice_cream_shop: 'Ice Cream',
+  gelato_shop: 'Gelato',
+  food_truck: 'Food Truck',
+  restaurant: 'Restaurant',
+  bistro: 'Bistro',
+  bar: 'Bar',
+  wine_bar: 'Wine Bar',
+  juice_bar: 'Juice Bar',
+  smoothie_shop: 'Smoothie',
+  tea_house: 'Tea House',
+  donut_shop: 'Donuts',
+  pastry_shop: 'Pastry',
+  deli: 'Deli',
+  sandwich_shop: 'Sandwich',
+  pizza_restaurant: 'Pizza',
+  fast_food_restaurant: 'Fast Food',
+  meal_takeaway: 'Takeaway',
+};
+
+/** The fallback the deleted component used. A type we cannot name is still food. */
+export const COMPANION_TYPE_FALLBACK = 'Food & Drink';
+
+/** `'coffee_shop'` → `'Coffee Shop'`; anything unmapped → `'Food & Drink'`. */
+export function companionTypeLabel(type: unknown): string {
+  const key = trimmed(type);
+  if (key === null) return COMPANION_TYPE_FALLBACK;
+  return COMPANION_TYPE_LABEL[key] ?? COMPANION_TYPE_FALLBACK;
+}
+
+export function companionStopMeta(
+  stop: {
+    type?: unknown;
+    rating?: unknown;
+    reviewCount?: unknown;
+  },
+  reviewsLabel: (count: number) => string,
+): string | null {
+  const parts: string[] = [companionTypeLabel(stop.type)];
+
+  // Same guard as everywhere else on this sheet: a rating of 0 or null yields
+  // NO star, never `★ 0.0` (Constitution 9, #1669).
+  const rating = stop.rating;
+  if (typeof rating === 'number' && Number.isFinite(rating) && rating > 0) {
+    const count = stop.reviewCount;
+    const reviews =
+      typeof count === 'number' && Number.isFinite(count) && count > 0
+        ? trimmed(reviewsLabel(Math.round(count)))
+        : null;
+    parts.push(reviews === null ? `★ ${rating.toFixed(1)}` : `★ ${rating.toFixed(1)} ${reviews}`);
+  }
 
   return parts.length > 0 ? parts.join(' · ') : null;
 }

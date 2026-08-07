@@ -47,14 +47,7 @@
     "error_past_date_message": "เวลานั้นผ่านไปแล้ว โปรดเลือกเวลาในอนาคต"
   },
   "busyness": {
-    "traffic": "การจราจร",
-    "busy_level": "ระดับความหนาแน่น",
-    "busy": "หนาแน่น",
-    "clear_roads": "ถนนโล่ง",
-    "clear": "โล่ง",
-    "moderate": "ปานกลาง",
-    "heavy": "หนาแน่นมาก",
-    "estimated": "Est."
+    "busy_level": "ระดับความหนาแน่น"
   },
   "match_factors": {
     "title": "รายละเอียดการจับคู่",

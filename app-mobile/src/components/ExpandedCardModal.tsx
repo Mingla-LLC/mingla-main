@@ -56,7 +56,13 @@ import StopList, { type StopListStop } from "./expandedCard/StopList";
 import SuppliesList from "./expandedCard/SuppliesList";
 import { Section, SectionError } from "./expandedCard/SpineParts";
 import { SPINE, GALLERY } from "./expandedCard/spineTokens";
-import { curatedPlanSpans, singlePlaceSpans, stopMetaText } from "./expandedCard/expandedCardFacts";
+import {
+  companionStopMeta,
+  curatedPlanSpans,
+  planVisibleStops,
+  singlePlaceSpans,
+  stopMetaText,
+} from "./expandedCard/expandedCardFacts";
 // The ONE Been-here state machine in the app. Declared in SwipeableCards.tsx (the
 // #1687 gate delimits it there); imported here so the sheet mounts the SAME
 // component rather than a second one in a different shape. The import edge is a
@@ -544,8 +550,7 @@ export default function ExpandedCardModal({
         try {
           weather = await weatherService.getWeatherForecast(
             firstStop.lat,
-            firstStop.lng,
-            new Date()
+            firstStop.lng
           );
           setWeatherData(weather);
         } catch (error) {
@@ -585,8 +590,7 @@ export default function ExpandedCardModal({
       try {
         weather = await weatherService.getWeatherForecast(
           card.location.lat,
-          card.location.lng,
-          new Date()
+          card.location.lng
         );
         setWeatherData(weather);
       } catch (error) {
@@ -790,6 +794,45 @@ export default function ExpandedCardModal({
   const planStops: CuratedStop[] = Array.isArray(planCard?.stops) ? planCard!.stops : [];
 
   /**
+   * IS THIS PLAN A BRAND EXPERIENCE? — #1605 rework, the P1-6 class again.
+   *
+   * The deck passes `isBrandExperience` into `curatedPlanSpans`; this call site
+   * did not, which meant the ONE producer could still be asked two different
+   * questions. It matters for exactly one span: ORCH-1065 BUG-1 — a brand
+   * experience carries its all-in price as the ENVELOPE total and every stop
+   * carries `price_cents: 0`, so summing the stops prints "Free" over a paid
+   * experience. The plate on the deck says the price; the plate on the sheet
+   * said Free. One tap apart, on the money span.
+   *
+   * IT IS REACHABLE, and it is not the deck that reaches it. `handleCardExpand`
+   * routes `cardType === 'experience'` to the business-event sheet before the
+   * curated branch, so the deck NEVER opens this modal for one. Likes does:
+   * a right-swiped experience is persisted by `savedCardsService.saveCard`
+   * (which spreads the whole card, `cardType`, `stops`, envelope totals and all,
+   * because the swipe handler's `if (!isCuratedType)` includes experiences), and
+   * `savedCardToExpandedCardData` then stamps `cardType: "curated"` over the
+   * `'experience'` discriminator on its `Array.isArray(stops)` branch. So the
+   * sheet receives a brand experience wearing a curated tag.
+   *
+   * The tag being overwritten is why this reads the BRAND ATTRIBUTION instead —
+   * the same structural recovery `deckService.isExperiencePayload` performs for
+   * the same reason (ORCH-1072 tag-loss hardening): a non-empty `brandId` AND a
+   * non-empty `eventId` beside a stops array is a brand-authored envelope, and
+   * an AI-curated plan has neither. Explicit tag first, structure second.
+   */
+  const isBrandExperiencePlan: boolean = (() => {
+    const c = card as { cardType?: unknown; brandId?: unknown; eventId?: unknown };
+    if (c.cardType === 'experience') return true;
+    return (
+      typeof c.brandId === 'string' &&
+      c.brandId.length > 0 &&
+      typeof c.eventId === 'string' &&
+      c.eventId.length > 0 &&
+      planStops.length > 0
+    );
+  })();
+
+  /**
    * THE COVER. `images[0] ?? stops[0].imageUrl ?? null` — ONE decode, never N.
    *
    * This is the resolution `MessageBubble` already uses for the in-chat card
@@ -837,6 +880,7 @@ export default function ExpandedCardModal({
         stopCountLabel: (count) =>
           t('cards:expanded.stop_count', { defaultValue: '{{count}} stops', count }),
         intentLabel: (slug) => t(`common:intent_${slug}`),
+        isBrandExperience: isBrandExperiencePlan,
       })
     : singlePlaceSpans(card, {
         measurementSystem: accountPreferences?.measurementSystem,
@@ -870,7 +914,30 @@ export default function ExpandedCardModal({
     .filter((uri): uri is string => typeof uri === 'string' && uri.trim().length > 0)
     .filter((uri) => uri !== heroCover && !isVideoUrl(uri));
 
+  /*
+    THE PLATE SAYS "2 stops" AND THE PLAN SECTION LISTS THREE ROWS — #1605 rework.
+
+    Both numbers are correct and they were never wrong TOGETHER before, because
+    they had never been on one screen: the plate's count is over the plan's
+    NON-OPTIONAL stops (`planVisibleStops` — the same set `mutateCuratedCard`
+    computes the title, the total price and the duration over), while `StopList`
+    renders every `planStops` entry. `generate-curated-experiences` really does
+    emit `optional: true` stops (the romantic combos' Flowers stop, :501/:529/:575),
+    so a live 3-row / "2 stops" card is not a hypothetical.
+
+    Fixing the COUNT would be wrong — it would disagree with the card's own title,
+    which is the main stops joined by " → ". Dropping the row would be worse: an
+    optional stop is a real suggestion the user can act on. So the LIST says which
+    it is. An optional stop takes the `OPTIONAL` word in the index-chip slot
+    instead of an ordinal — the same mechanism the picnic grocery row's `SHOP`
+    chip already uses — and the main stops keep the contiguous 1…N numbering the
+    count is about. Two numbers that disagree become one number and one label.
+  */
+  const planMainStopCount = planVisibleStops(planStops).length;
+  let planOrdinal = 0;
   const planListStops: StopListStop[] = planStops.map((stop, i) => {
+    const isOptional = stop.optional === true && planMainStopCount > 0;
+    if (!isOptional) planOrdinal += 1;
     // Cover first, then the rest, de-duplicated and photos only. `imageUrls`
     // carries up to five per stop and only the first was reachable after the
     // per-stop pager was deleted (#1605 P2-3).
@@ -887,7 +954,11 @@ export default function ExpandedCardModal({
     return {
     key: `${stop.placeId ?? 'stop'}_${i}`,
     index: i + 1,
-    indexLabel: String(i + 1),
+    // The ordinal counts only the stops the PLATE counts, so "2 stops" and the
+    // rows numbered 1 and 2 are exactly the same claim. An optional stop is not
+    // in that sequence and so gets no number at all — it is marked in the row
+    // instead (`optional` below).
+    indexLabel: isOptional ? '' : String(planOrdinal),
     name: stop.placeName,
     imageUrl: stopPhotos[0] ?? null,
     imageUrls: stopPhotos,
@@ -907,7 +978,8 @@ export default function ExpandedCardModal({
     utcOffsetMinutes: (stop as { utcOffsetMinutes?: number | null }).utcOffsetMinutes ?? null,
     travelMinutes: stop.travelTimeFromPreviousStopMin ?? null,
     travelMode: stop.travelModeFromPreviousStop ?? null,
-    canReplace: !stop.optional,
+    canReplace: !isOptional,
+    optional: isOptional,
     };
   });
 
@@ -944,6 +1016,13 @@ export default function ExpandedCardModal({
    */
   const companionStops: StopListStop[] = (() => {
     const rows: StopListStop[] = [];
+    // The i18n resolver for the reviews suffix, bound once. It is the SAME key
+    // `CompanionStopsSection` used, translated in all 29 locales (#1605 rework).
+    const reviewsLabel = (count: number): string =>
+      t('expanded_details:companion_stops.reviews_count', {
+        defaultValue: '({{count}} reviews)',
+        count,
+      });
     const grocery = picnicData?.groceryStore;
     if (grocery) {
       rows.push({
@@ -956,8 +1035,16 @@ export default function ExpandedCardModal({
           ? [grocery.imageUrl]
           : [],
         website: null,
-        meta:
-          grocery.rating != null && grocery.rating > 0 ? `★ ${grocery.rating.toFixed(1)}` : null,
+        /*
+          The grocery row takes rating + REVIEW COUNT but NOT the type label:
+          its `type` is `groceries`, which the companion map does not carry and
+          would render as the wrong words ("Food & Drink" over a supermarket),
+          and the `SHOP` index chip already names what it is. #1605 rework.
+        */
+        meta: companionStopMeta(
+          { rating: grocery.rating, reviewCount: grocery.reviewCount },
+          reviewsLabel,
+        ),
         address: grocery.address ?? null,
         description: null,
         openingHours: undefined,
@@ -965,6 +1052,7 @@ export default function ExpandedCardModal({
         travelMinutes: null,
         travelMode: null,
         canReplace: false,
+        optional: false,
       });
     }
     const companions = strollData?.companionStops ?? [];
@@ -979,10 +1067,14 @@ export default function ExpandedCardModal({
           ? [companion.imageUrl]
           : [],
         website: null,
-        meta:
-          companion?.rating != null && companion.rating > 0
-            ? `★ ${Number(companion.rating).toFixed(1)}`
-            : null,
+        /*
+          THE ROW'S SUBTITLE IS BACK. `type` and `reviewCount` are written by
+          `get-companion-stops` on every row and were read by nothing after the
+          first cut — the type label was the companion row's ONLY subtitle and
+          it was backed by a 20-entry map. Both come through the shared producer
+          now, so the rule is stated once (#1605 rework).
+        */
+        meta: companionStopMeta(companion ?? {}, reviewsLabel),
         address: companion?.address ?? null,
         description: companion?.description ?? null,
         openingHours: undefined,
@@ -990,6 +1082,7 @@ export default function ExpandedCardModal({
         travelMinutes: null,
         travelMode: null,
         canReplace: false,
+        optional: false,
       });
     });
     return rows.filter((row) => row.name.trim().length > 0);
@@ -1528,6 +1621,20 @@ export default function ExpandedCardModal({
                     ? t('cards:expanded.your_picnic', { defaultValue: 'Your picnic' })
                     : t('cards:expanded.your_stroll', { defaultValue: 'Your stroll' })
                 }
+                /*
+                  #1605 rework — the deleted `CompanionStopsSection`'s subtitle,
+                  restored through the SAME key (translated in all 29 locales).
+                  It is not decoration: `StopList` numbers its rows, and these
+                  rows are places to BEGIN at, not a sequence to walk. Without
+                  the line a stroll's companions read as a three-stop itinerary.
+                  A picnic's rows are a shop plus a spot, which the SHOP chip and
+                  the heading already explain, so it stays stroll-only.
+                */
+                subtitle={
+                  isPicnicCard
+                    ? undefined
+                    : t('expanded_details:companion_stops.subtitle')
+                }
                 stops={companionStops}
                 onDirections={(stop) => openDirectionsForAddress(stop.address)}
               />
@@ -1581,12 +1688,16 @@ export default function ExpandedCardModal({
             {/*
               Slot 8 — RIGHT NOW. ONE call site, ONE prop shape, both branches.
 
-              Before this wave the curated call passed `selectedDateTime={undefined}`
-              — so a SCHEDULED plan never got time-of-day-aware weather — and took
-              its coordinates from `stops[0]` while the single branch used
-              `card.location`. A plan's coordinate IS `stops[0]`, because that is
-              where the plan starts; it is now stated once, at the fetch, rather
-              than discovered twice.
+              A plan's coordinate IS `stops[0]`, because that is where the plan
+              starts; it is stated once, at the fetch, rather than discovered
+              twice.
+
+              This comment used to also claim the wave had fixed time-of-day-aware
+              weather for scheduled plans. It had not, and the claim is retracted:
+              both fetch branches pass the venue's coordinates and nothing else,
+              because `weatherService` only ever returns CURRENT conditions. The
+              full retraction, with the two independent reasons the feature has
+              never existed, is in `ConditionsSection.tsx`'s header.
             */}
             <ConditionsSection
               weather={weatherData}

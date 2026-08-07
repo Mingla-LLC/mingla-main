@@ -55,6 +55,13 @@ const SRC = {
   swipeable: 'app-mobile/src/components/SwipeableCards.tsx',
   // The collapsed deck card — the OTHER caller of the one span producer (S-5).
   swipecurated: 'app-mobile/src/components/CuratedExperienceSwipeCard.tsx',
+  // The two derived-data shapes S-6b classifies exhaustively.
+  busyness: 'app-mobile/src/services/busynessService.ts',
+  cardtypes: 'app-mobile/src/types/expandedCardTypes.ts',
+  // The chat trimmer that used to invent a per-stop duration (S-9).
+  messaging: 'app-mobile/src/services/messagingService.ts',
+  // The only surface a curated stop's photos still render on (S-6b).
+  lightbox: 'app-mobile/src/components/ImageLightbox.tsx',
 };
 
 const read = (key) => fs.readFileSync(path.join(REPO, SRC[key]), 'utf8');
@@ -974,6 +981,11 @@ test('S-4d the body carries no rejected colour', () => {
  * Every row here is a field the pipeline still PRODUCES and the sheet must
  * still SHOW. #1605 P1-3 and the enumeration that followed it.
  *
+ * THIS RULE IS A LIST, AND A LIST CANNOT FIND WHAT NOBODY LISTED. Its exact
+ * boundary — what it covers, what it does not, and the second rule (`S-6b`)
+ * that closes the discovery half for two specific shapes — is written out in
+ * full above `S-6b` below. Read it before trusting either.
+ *
  * `producer` is a probe that must match at least one module OTHER than the
  * consumer — that is the vacuity guard, and it is the important half: if a
  * field is genuinely retired from every producer, this rule tells you to delete
@@ -1021,6 +1033,48 @@ const S6_CARRIED = [
     why:
       'A stop carries up to five photos. The deleted StopImageGallery was ImageLightbox\'s only '
       + 'entry point in the whole app, so losing it made every photo past the cover undisplayable.',
+  },
+  {
+    what: "a companion stop's TYPE label — the row's only subtitle",
+    producer: /\btype:\s*s\.placeType\b|\btype:\s*string;/,
+    consumer: 'app-mobile/src/components/expandedCard/expandedCardFacts.ts',
+    renders: /companionTypeLabel\(stop\.type\)/,
+    why:
+      '`get-companion-stops` writes `type: row.primary_type || "casual_food"` on every row and '
+      + '`cardConverters.ts:116` writes `type: s.placeType`. `CompanionStopsSection` turned it into '
+      + "the row's ONLY subtitle through a 20-entry label map. After that component was deleted the "
+      + 'field had producers and no reader, and a companion row carried a bare star and nothing else.',
+  },
+  {
+    what: "a companion stop's reviewCount",
+    producer: /\breviewCount\s*[:?]/,
+    consumer: 'app-mobile/src/components/expandedCard/expandedCardFacts.ts',
+    renders: /stop\.reviewCount/,
+    why:
+      'A rating with no sample size is the weakest number on the sheet, and `companion_stops.'
+      + 'reviews_count` is translated in all 29 locales — the copy was already paid for and the '
+      + 'render site was the only missing part.',
+  },
+  {
+    what: 'the companion rows going through the shared meta producer at all',
+    producer: /\bcompanionStops:\s*(?:Array<|card\.stops|strollData)/,
+    consumer: 'app-mobile/src/components/ExpandedCardModal.tsx',
+    renders: /companionStopMeta\(companion/,
+    why:
+      'The type label and the review count are only restored if the COMPANION rows call the shared '
+      + 'producer — the grocery row calls it too, and a probe that only saw the grocery call would '
+      + 'pass with the companion rows back on a bare star.',
+  },
+  {
+    what: "a curated stop's OPTIONAL flag",
+    producer: /\boptional:\s*(?:true|original\.optional|stopDef\.optional)\b/,
+    consumer: 'app-mobile/src/components/expandedCard/StopList.tsx',
+    renders: /stop\.optional\s*\?/,
+    why:
+      '`generate-curated-experiences` emits `optional: true` stops (:501/:529/:575) and the plate '
+      + 'counts `planVisibleStops`, which excludes them. The list rendered every stop identically, so '
+      + 'a live card showed "2 stops" above three indistinguishable rows — two numbers about the same '
+      + 'plan, both right, disagreeing on one screen.',
   },
   {
     what: "the viewer's own distance on a chat-mounted card",
@@ -1074,6 +1128,403 @@ test('S-6 every field the pipeline still produces has somewhere to render', () =
       + 'is the one option that is never right.',
     );
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S-6b · EVERY FIELD OF TWO SHAPES IS CLASSIFIED — RENDERED, OR NOT AND WHY
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * WHAT S-6 DOES AND DOES NOT COVER — the honest boundary, because a false
+ * guarantee is worse than a stated gap.
+ *
+ * S-6 above is a LIST. It pins a render site for each field this programme has
+ * already lost once, which makes re-deleting one a red test. What it cannot do
+ * is DISCOVER the next one: a field nobody has thought about is a field with no
+ * row, and no row means no assertion. Three features vanished this way — the
+ * cover-video unmute control, the picnic Shopping List, and the Traffic row —
+ * and the third was found by enumeration, not by a gate.
+ *
+ * S-6b closes that for two shapes, and only two. It PARSES the field list out
+ * of the type declaration and requires every field to appear in exactly one of
+ * two ledgers: RENDERED (with a probe naming the file and the expression that
+ * renders it) or NOT_RENDERED (with a written reason). A field added to either
+ * type without a decision fails this rule; a ledger row for a field that no
+ * longer exists fails it too, so the ledger cannot rot.
+ *
+ * IT DOES NOT COVER:
+ *   * `ExpandedCardData` as a whole — ~90 fields across nine card shapes, many
+ *     consumed outside this sheet. Classifying it here would either be a wall
+ *     of NOT_RENDERED rows nobody maintains, or a false claim about surfaces
+ *     this suite does not read;
+ *   * any field of `CuratedStop`, `WeatherData`, `PicnicData` or `StrollData`
+ *     other than the companion-stop element below;
+ *   * a field consumed only through a spread (`{...stop}`) — the probes are
+ *     literal, so a render site that never names the field reads as absent;
+ *   * anything outside `app-mobile` — `mingla-business` and the edge functions
+ *     are swept by neither S-6 nor S-6b.
+ *
+ * The two shapes it does cover are the two where this wave actually lost
+ * fields: `BusynessData` (the Traffic row) and the companion-stop element (the
+ * type label and the review count).
+ */
+
+/** Top-level `name:` / `name?:` keys of a brace-delimited type body. */
+function typeFields(body, label) {
+  const fields = [];
+  let depth = 0;
+  let i = 0;
+  let atStatementStart = true;
+  while (i < body.length) {
+    const ch = body[i];
+    if (ch === '{' || ch === '(' || ch === '[' || ch === '<') { depth += 1; i += 1; continue; }
+    if (ch === '}' || ch === ')' || ch === ']' || ch === '>') { depth -= 1; i += 1; atStatementStart = true; continue; }
+    if (ch === ';' || ch === ',' || ch === '\n') { i += 1; atStatementStart = true; continue; }
+    if (/\s/.test(ch)) { i += 1; continue; }
+    if (depth === 0 && atStatementStart) {
+      const m = /^([A-Za-z_$][\w$]*)\??\s*:/.exec(body.slice(i));
+      if (m) {
+        fields.push(m[1]);
+        i += m[0].length;
+        atStatementStart = false;
+        continue;
+      }
+    }
+    atStatementStart = false;
+    i += 1;
+  }
+  assert.ok(
+    fields.length > 0,
+    `S-6b (vacuity): parsed ZERO fields out of ${label}. The extractor is pointed at the wrong text, `
+    + 'so every classification below is asserting nothing.',
+  );
+  return fields;
+}
+
+/** The body between `openerRe`'s match and its balancing brace. */
+function typeBody(source, openerRe, label) {
+  const m = openerRe.exec(source);
+  assert.ok(m, `S-6b (vacuity): ${label} could not be located — re-point this rule, do not delete it.`);
+  const open = source.indexOf('{', m.index);
+  assert.notEqual(open, -1, `S-6b (vacuity): ${label} has no body.`);
+  let depth = 0;
+  for (let i = open; i < source.length; i += 1) {
+    if (source[i] === '{') depth += 1;
+    else if (source[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(open + 1, i);
+    }
+  }
+  assert.fail(`S-6b (vacuity): ${label}'s body is unbalanced.`);
+  return '';
+}
+
+const S6B_SHAPES = [
+  {
+    label: 'BusynessData (busynessService.ts)',
+    src: 'busyness',
+    opener: /export interface BusynessData\s*\{/,
+    rendered: {
+      busynessLevel: ['conditions', /busyness\.busynessLevel/],
+      currentPopularity: ['conditions', /clampPercent\(busyness\.currentPopularity\)/],
+      isEstimated: ['conditions', /busyness\.isEstimated/],
+    },
+    notRendered: {
+      isBusy:
+        'A boolean derived from `currentPopularity > 50` by the same compile-time curve the band '
+        + 'word already states. Rendering both would be the same estimate twice, once as a word and '
+        + 'once as a flag. Kept because the producer is shared; read by nothing on this sheet.',
+      popularTimes:
+        'The 24-hour curve behind the sparkline. §6.6 replaced the popular-times chart with a 48x5 '
+        + 'track precisely because a chart of a COMPILE-TIME curve is a chart of a constant. The '
+        + 'array stays on the type for the day a measured provider returns one.',
+      message:
+        'S-7 forbids it: "Not busy (3%) — great time to visit!" is a synthesised percentage plus '
+        + 'advice, and the row renders the qualitative band instead. This is the ONE field on this '
+        + 'sheet whose non-rendering is itself gated.',
+    },
+  },
+  {
+    label: 'the companion-stop element (expandedCardTypes.ts)',
+    src: 'cardtypes',
+    opener: /companionStops:\s*Array<\s*\{/,
+    rendered: {
+      // The modal builds a StopListStop from each companion; these are the
+      // expressions that read the field by name.
+      name: ['modal', /name:\s*companion\?\.name/],
+      imageUrl: ['modal', /imageUrl:\s*companion\?\.imageUrl/],
+      address: ['modal', /address:\s*companion\?\.address/],
+      id: ['modal', /companion\?\.id/],
+      rating: ['facts', /stop\.rating/],
+      reviewCount: ['facts', /stop\.reviewCount/],
+      type: ['facts', /companionTypeLabel\(stop\.type\)/],
+    },
+    notRendered: {
+      location:
+        'The lat/lng pair. Directions open from the ADDRESS string (`openDirectionsForAddress`), '
+        + 'which is what the row already renders, so the coordinate has no second use here. It is '
+        + 'read by the map surfaces, not by the sheet.',
+      placeId:
+        'The Google place id. It is an identity key, not a fact about the place — the row keys on '
+        + '`companion.id` and nothing on this sheet resolves a place by placeId.',
+    },
+  },
+];
+
+test('S-6b every field of the two shapes this wave lost fields from is classified', () => {
+  for (const shape of S6B_SHAPES) {
+    const source = stripComments(read(shape.src));
+    const fields = typeFields(typeBody(source, shape.opener, shape.label), shape.label);
+
+    const classified = [
+      ...Object.keys(shape.rendered),
+      ...Object.keys(shape.notRendered),
+    ].sort();
+
+    assert.deepEqual(
+      [...fields].sort(),
+      classified,
+      `S-6b: ${shape.label}'s fields and its classification ledger disagree.\n`
+      + `    declared in the type : ${[...fields].sort().join(', ')}\n`
+      + `    classified here      : ${classified.join(', ')}\n\n`
+      + 'A field in the type and NOT in the ledger is the bug this rule exists for: it has producers '
+      + 'and nobody has decided whether the sheet shows it. Add it to `rendered` with the expression '
+      + 'that renders it, or to `notRendered` with the reason it does not. A field in the ledger and '
+      + 'NOT in the type means the field was deleted and its row went stale — delete the row too.',
+    );
+
+    for (const [field, [key, probe]] of Object.entries(shape.rendered)) {
+      const consumer = stripComments(read(key));
+      assert.match(
+        consumer,
+        probe,
+        `S-6b: ${shape.label}.${field} is classified RENDERED, but ${SRC[key]} no longer matches `
+        + `${probe}. Either the render site moved (re-point the probe) or it was deleted — in which `
+        + 'case this is the third feature to vanish by having its render site removed while every '
+        + 'producer kept writing the field, and the field must be reclassified or removed at source.',
+      );
+    }
+
+    for (const [field, why] of Object.entries(shape.notRendered)) {
+      assert.ok(
+        typeof why === 'string' && why.trim().length >= 80,
+        `S-6b: ${shape.label}.${field} is classified NOT RENDERED with no real reason. "Not rendered" `
+        + 'is a decision and it has to be written down, or the ledger is a list of shrugs.',
+      );
+    }
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S-8 · THE TRAFFIC ROW IS DELETED AT BOTH ENDS — DATA AND COPY
+// ─────────────────────────────────────────────────────────────────────────────
+
+const S8_DEAD_BUSYNESS_KEYS = ['traffic', 'clear_roads', 'clear', 'moderate', 'heavy', 'busy', 'estimated'];
+
+test('S-8 nothing produces, types, fetches or translates traffic any more', () => {
+  // WHY THIS RULE IS A DELETION AND NOT A RESTORATION.
+  //
+  // `main` rendered a Traffic row — car icon, condition chip, travel time, its
+  // own loading state. Wave 4 deleted the ROW and left the PRODUCER, so a
+  // Mapbox Directions round-trip fired on every expanded-card open for a row
+  // nobody saw, and the field sat in two type files with zero consumers.
+  //
+  // Restoring it would have restored a fabrication: the fallback arm returned
+  // `${10 + extraMin} min` from the clock alone, and it fired whenever the
+  // Mapbox token was unset, location permission was denied or the request
+  // failed. The real arm restated the distance span the plate already carries
+  // (D-2: "14 min" beside "6.7 mi" is the same fact twice). So the producer
+  // went with the row, and this rule keeps both ends deleted together.
+  const service = stripComments(read('busyness'));
+
+  for (const dead of ['TrafficInfo', 'trafficInfo', 'trafficCondition', 'currentTravelTime',
+    'fetchMapboxTraffic', 'getTrafficHeuristic', 'MAPBOX_DIRECTIONS_URL', 'routeCache']) {
+    assert.equal(
+      service.includes(dead),
+      false,
+      `S-8: \`${dead}\` is back in busynessService.ts. If traffic is genuinely wanted again it needs a `
+      + 'RENDER SITE and an honest fallback in the same change — the state this rule forbids is the '
+      + 'one that existed: paying for the data and dropping it on the floor.',
+    );
+  }
+  assert.equal(
+    /api\.mapbox\.com\/directions/.test(service),
+    false,
+    'S-8: busyness fetches a Mapbox Directions route again. That was one third-party round-trip per '
+    + 'expanded-card open, for a row that does not exist.',
+  );
+  // The reason must be written down where the next person will look.
+  assert.match(
+    fs.readFileSync(path.join(REPO, SRC.busyness), 'utf8'),
+    /TRAFFIC IS DELETED, DELIBERATELY/,
+    'S-8: the deletion rationale left the service header. A silent deletion is what produced three of '
+    + "this programme's regressions; the whole point of deleting rather than restoring was to say why.",
+  );
+
+  // …and nowhere else in the app either.
+  const holdouts = [...TREE]
+    .filter(([, src]) => /\btrafficInfo\b|\btrafficCondition\b|\bcurrentTravelTime\b/.test(src))
+    .map(([file]) => file);
+  assert.deepEqual(
+    holdouts,
+    [],
+    `S-8: ${holdouts.length} module(s) still name a traffic field: ${holdouts.join(', ')}.`,
+  );
+
+  // THE COPY GOES WITH THE CODE. Five keys were left orphaned in 29 locale
+  // files; two more (`busy`, `estimated`) belonged to the deleted
+  // BusynessSection's own rows.
+  const localeDir = path.join(REPO, 'app-mobile/src/i18n/locales');
+  const locales = fs.readdirSync(localeDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+  assert.ok(
+    locales.length >= 29,
+    `S-8 (vacuity): found ${locales.length} locales. The sweep is meant to cover all of them.`,
+  );
+  for (const locale of locales) {
+    const file = path.join(localeDir, locale, 'expanded_details.json');
+    if (!fs.existsSync(file)) continue;
+    const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const busyness = json.busyness ?? {};
+    for (const dead of S8_DEAD_BUSYNESS_KEYS) {
+      assert.equal(
+        Object.prototype.hasOwnProperty.call(busyness, dead),
+        false,
+        `S-8: ${locale}/expanded_details.json still carries \`busyness.${dead}\`, which nothing reads. `
+        + 'Orphaned copy is how a deleted feature looks half-alive to the next person to open the file.',
+      );
+    }
+    // Vacuity: the file really was parsed and the surviving key is still there.
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(busyness, 'busy_level'),
+      `S-8 (vacuity): ${locale}/expanded_details.json has no \`busyness.busy_level\`, so either the `
+      + 'sweep deleted a live key or this rule is reading the wrong file.',
+    );
+    // The companion subtitle is the opposite case — copy that was orphaned and
+    // is now CONSUMED again. It must survive in every locale.
+    assert.ok(
+      typeof json.companion_stops?.subtitle === 'string'
+      && json.companion_stops.subtitle.trim().length > 0,
+      `S-8: ${locale}/expanded_details.json lost \`companion_stops.subtitle\`, which the stroll's `
+      + 'companion list renders. It is the only thing that tells the user those numbered rows are '
+      + 'alternatives to begin at rather than a sequence to walk.',
+    );
+    assert.ok(
+      typeof json.companion_stops?.reviews_count === 'string',
+      `S-8: ${locale}/expanded_details.json lost \`companion_stops.reviews_count\`.`,
+    );
+  }
+  const modal = stripComments(read('modal'));
+  assert.match(
+    modal,
+    /companion_stops\.subtitle/,
+    'S-8 (vacuity): the sheet no longer reads companion_stops.subtitle, so the locale assertion above '
+    + 'is protecting copy nobody renders.',
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S-9 · NO PRODUCER INVENTS A PER-STOP DURATION, SO `> 0` IS A REAL TEST
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('S-9 a rendered "N min here" is a value a producer really carried', () => {
+  // #1605 P2-4, twice reported. `stopMetaText`'s guard is
+  // `typeof minutes === 'number' && minutes > 0`, and its comment claimed that
+  // protected the row from `cardConverters`' invented 60. It did not, and could
+  // not: `> 0` cannot distinguish an invented 60 from a real one.
+  //
+  // The comment also named the wrong file. `cardConverters.ts:132`'s `duration:
+  // 60` is a strollData TIMELINE step — a different field on a different object,
+  // which has never reached a stop's `estimatedDurationMinutes`. The ONE
+  // producer that ever wrote a fabricated value onto the field this guard reads
+  // was the chat trimmer: `Number(s.estimatedDurationMinutes) || 45`.
+  //
+  // So the fix is subtraction, not a better guard: with no producer inventing,
+  // `> 0` IS the complete test rather than a proxy for one. This rule pins the
+  // subtraction, because the guard silently stops being sufficient the moment
+  // any producer starts filling the field in.
+  const messaging = stripComments(read('messaging'));
+
+  const trimmed = evaluable(
+    messaging,
+    /estimatedDurationMinutes:\s*([\s\S]{0,240}?),\s*\n\s*stopLabel:/,
+    'S-9 chat trimmer',
+    ['s'],
+  );
+  assert.equal(
+    trimmed.fn({}),
+    undefined,
+    `S-9: a chat-shared stop with NO duration still arrives carrying one, via \`${trimmed.expr}\`. `
+    + 'That invented number renders as "N min here" — an estimate of how long to spend somewhere that '
+    + 'nobody ever made (Constitution 9), and the reason the expanded card\'s own guard could not be '
+    + 'honest about what it protects.',
+  );
+  assert.equal(
+    trimmed.fn({ estimatedDurationMinutes: 0 }),
+    undefined,
+    'S-9: a ZERO duration is still being replaced with an invented one — `|| 45` in a new shape.',
+  );
+  assert.equal(
+    trimmed.fn({ estimatedDurationMinutes: 45 }),
+    45,
+    'S-9 (vacuity): a REAL 45-minute stop no longer survives the trimmer, so the assertions above are '
+    + 'passing because the field is always dropped rather than because it is never invented.',
+  );
+  assert.equal(
+    trimmed.fn({ estimatedDurationMinutes: 60 }),
+    60,
+    'S-9 (vacuity): a real 60 does not survive the trimmer.',
+  );
+
+  // …and the field must be OPTIONAL on the wire, or the trimmer cannot express
+  // "absent" and would be forced back into inventing something.
+  assert.match(
+    messaging,
+    /estimatedDurationMinutes\?:\s*number;/,
+    'S-9: TrimmedCuratedStop.estimatedDurationMinutes is required again. A required numeric field has '
+    + 'no way to say "unknown", which is exactly how the `|| 45` got there.',
+  );
+
+  // The guard itself, executed, at the values that matter.
+  const facts = stripComments(read('facts'));
+  const dur = executable(
+    facts,
+    /const minutes = stop\.estimatedDurationMinutes;\s*if \(([^)]+)\) parts\.push/,
+    'S-9 stop duration guard',
+    ['minutes'],
+  );
+  for (const v of [undefined, null, 0, -1, NaN, '45']) {
+    assert.equal(
+      dur.fn(v),
+      false,
+      `S-9: duration ${String(v)} still renders via \`${dur.expr}\`.`,
+    );
+  }
+  assert.equal(dur.fn(45), true, 'S-9 (vacuity): a real 45-minute stop renders nothing.');
+
+  // And the guard must be documented against the producer that ACTUALLY writes
+  // this field. The first version of this comment named `cardConverters`, whose
+  // 60 goes onto a strollData TIMELINE step and has never reached a stop — so
+  // the guard's stated purpose could not be checked against anything. The
+  // enumeration is the documentation, and `messagingService` is its subject.
+  const factsRaw = fs.readFileSync(path.join(REPO, SRC.facts), 'utf8');
+  const guardAt = factsRaw.indexOf('const minutes = stop.estimatedDurationMinutes;');
+  assert.ok(guardAt > 0, 'S-9 (vacuity): the stop-duration guard could not be located in the source.');
+  const rationale = factsRaw.slice(guardAt, factsRaw.indexOf('parts.push(minutesLabel', guardAt));
+  assert.ok(
+    rationale.length > 400,
+    'S-9 (vacuity): the guard carries no rationale at all between the read and the push.',
+  );
+  assert.match(
+    rationale,
+    /messagingService/,
+    'S-9: the stop-duration guard no longer names `messagingService` as the producer whose invention '
+    + 'it depends on being gone. That is the only file that ever wrote a fabricated value onto this '
+    + 'field, and a guard that is sufficient ONLY because a specific producer stopped inventing has to '
+    + 'say which one, or nobody can tell when it stops being sufficient.',
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1203,23 +1654,50 @@ function optionsLiteral(source, callee, label) {
 }
 
 /**
- * The stubs BOTH call sites are evaluated against. Identical for both, on
- * purpose — any surviving difference in the resulting spans is a difference the
- * CALLERS introduced, which is exactly the class of defect this rule exists for.
+ * The stubs BOTH call sites are evaluated against.
+ *
+ * IDENTICAL FOR BOTH, ON PURPOSE — any surviving difference in the resulting
+ * spans is a difference the CALLERS introduced, which is exactly the class of
+ * defect this rule exists for. The two surfaces read viewer state through
+ * different local names (`accountPreferences?.measurementSystem` on the sheet,
+ * a `measurementSystem` prop on the deck), so every name either one can bind is
+ * supplied here with the SAME underlying value.
+ *
+ * TWO PARAMETERS, AND BOTH ARE LESSONS:
+ *
+ *   system            the rule used to run at `Imperial` only, and
+ *                     `parseAndFormatDistance` DEFAULTS to Imperial. So deleting
+ *                     `measurementSystem` from a call site left the suite green
+ *                     — the fixture and the default agreed. At Metric the same
+ *                     omission is `9.3 km` against `5.8 mi`, which is the whole
+ *                     of the divergence made visible. Both are run.
+ *   brandExperience   the deck passed `isBrandExperience` into the producer and
+ *                     the sheet did not, so the ONE producer could still be
+ *                     asked two different questions. It decides ONE span and it
+ *                     is the money one (ORCH-1065 BUG-1): an experience's all-in
+ *                     price is the ENVELOPE total while every stop carries 0, so
+ *                     a caller that omits the flag prints "Free" over a paid
+ *                     experience. Executed rather than grepped — a call site
+ *                     that drops the option simply produces a different array.
  */
-const S5_DEPS = {
-  accountPreferences: { currency: 'USD', measurementSystem: 'Imperial' },
-  measurementSystem: 'Imperial',
-  currencyCode: 'USD',
-  isBrandExperience: false,
-  formatCurrency: (amount, code) => `${code} ${amount}`,
-  t: (key, opts) => {
-    if (key === 'cards:swipeable.free') return 'Free';
-    if (key === 'cards:expanded.stop_count') return `${opts?.count ?? 0} stops`;
-    if (key === 'common:intent_picnic_dates') return 'Picnic Dates';
-    return opts?.defaultValue ?? key;
-  },
-};
+function s5Deps(system, brandExperience) {
+  return {
+    accountPreferences: { currency: 'USD', measurementSystem: system },
+    measurementSystem: system,
+    currencyCode: 'USD',
+    // Both surfaces' local names for the same fact.
+    isBrandExperience: brandExperience,
+    isBrandExperiencePlan: brandExperience,
+    formatCurrency: (amount, code) => `${code} ${amount}`,
+    t: (key, opts) => {
+      if (key === 'cards:swipeable.free') return 'Free';
+      if (key === 'cards:expanded.stop_count') return `${opts?.count ?? 0} stops`;
+      if (key === 'common:intent_picnic_dates') return 'Picnic Dates';
+      if (key === 'common:intent_adventurous') return 'Adventurous';
+      return opts?.defaultValue ?? key;
+    },
+  };
+}
 
 /** A plan with an OPTIONAL third stop — the exact shape that diverged. */
 const S5_FIXTURE = {
@@ -1231,6 +1709,23 @@ const S5_FIXTURE = {
     { optional: false, priceMin: 0, priceMax: 0, distanceFromUserKm: 9.33 },
     { optional: false, priceMin: 0, priceMax: 0, distanceFromUserKm: 11.0 },
     { optional: true, priceMin: 12, priceMax: 20, distanceFromUserKm: 12.0 },
+  ],
+};
+
+/**
+ * A BRAND EXPERIENCE, in the shape `deckService.experienceCardToRecommendation`
+ * actually produces: the price is the envelope total and every stop carries 0.
+ * Summing the stops yields `Free`; reading the envelope yields `USD 4500`. The
+ * two answers are as far apart as a meta line can get.
+ */
+const S5_EXPERIENCE = {
+  experienceType: 'adventurous',
+  estimatedDurationMinutes: 150,
+  totalPriceMin: 4500,
+  totalPriceMax: 4500,
+  stops: [
+    { optional: false, priceMin: 0, priceMax: 0, distanceFromUserKm: 9.33 },
+    { optional: false, priceMin: 0, priceMax: 0, distanceFromUserKm: 11.0 },
   ],
 };
 
@@ -1310,8 +1805,8 @@ test('S-5 the curated meta line is produced ONCE and both surfaces render the sa
     );
   }
 
-  const names = Object.keys(S5_DEPS);
-  const build = (literal, label) => {
+  const build = (literal, label, deps) => {
+    const names = Object.keys(deps);
     let fn;
     try {
       // eslint-disable-next-line no-new-func
@@ -1319,38 +1814,75 @@ test('S-5 the curated meta line is produced ONCE and both surfaces render the sa
     } catch (e) {
       assert.fail(`S-5: the ${label} options literal is not evaluable: ${e.message}`);
     }
-    return fn(...names.map((n) => S5_DEPS[n]));
+    return fn(...names.map((n) => deps[n]));
   };
 
-  const fromSheet = curatedPlanSpans(S5_FIXTURE, build(modalOpts, 'sheet'));
-  const fromDeck = curatedPlanSpans(S5_FIXTURE, build(deckOpts, 'deck'));
+  /*
+    THE PARITY SWEEP. Four cells: {Imperial, Metric} x {curated plan, brand
+    experience}. Each runs the REAL producer twice — once with the sheet's own
+    options object and once with the deck's — over one card, and requires the
+    two arrays to be identical.
 
-  assert.ok(
-    fromSheet.length >= 4,
-    `S-5 (vacuity): the producer returned ${fromSheet.length} spans for a full fixture — it is not `
-    + 'producing anything, so the equality below would be trivially true.',
-  );
-  assert.deepEqual(
-    fromDeck,
-    fromSheet,
-    'S-5: the SAME plan resolves different meta spans on the deck and on the sheet:\n'
-    + `    deck   ${fromDeck.map((s) => s.text).join(' · ')}\n`
-    + `    sheet  ${fromSheet.map((s) => s.text).join(' · ')}\n`
-    + 'One tap apart, the plate must say the same thing. That is the whole claim.',
-  );
+    Running at ONE measurement system was the hole. `parseAndFormatDistance`
+    defaults its `system` parameter to Imperial, and the fixture pinned Imperial,
+    so a call site that stopped passing `measurementSystem` produced byte-identical
+    output and the gate stayed green. HEAD is correct today; the gate simply could
+    not see a caller diverging. At Metric it can: the same 9.33 km is `9.3 km`
+    when the option arrives and `5.8 mi` when it does not.
+  */
+  const EXPECTED = {
+    'Imperial|plan': ['2 stops', '5.8 mi', '1h 44m', 'Free', 'Picnic Dates'],
+    'Metric|plan': ['2 stops', '9.3 km', '1h 44m', 'Free', 'Picnic Dates'],
+    'Imperial|experience': ['2 stops', '5.8 mi', '2h 30m', 'USD 4500', 'Adventurous'],
+    'Metric|experience': ['2 stops', '9.3 km', '2h 30m', 'USD 4500', 'Adventurous'],
+  };
 
-  // (4) …and the array itself must be the one the design specifies: the count
-  // is over the plan's NON-OPTIONAL stops (the same set `mutateCuratedCard`
-  // computes every other aggregate over, and the same set the card's own title
-  // is built from), the distance is present, and nothing is fabricated.
+  let sheetPlanImperial = null;
+  for (const system of ['Imperial', 'Metric']) {
+    for (const [shape, card, brand] of [
+      ['plan', S5_FIXTURE, false],
+      ['experience', S5_EXPERIENCE, true],
+    ]) {
+      const deps = s5Deps(system, brand);
+      const fromSheet = curatedPlanSpans(card, build(modalOpts, 'sheet', deps));
+      const fromDeck = curatedPlanSpans(card, build(deckOpts, 'deck', deps));
+      if (system === 'Imperial' && shape === 'plan') sheetPlanImperial = fromSheet;
+
+      assert.ok(
+        fromSheet.length >= 4,
+        `S-5 (vacuity): the producer returned ${fromSheet.length} spans for the full ${shape} fixture `
+        + `at ${system} — it is not producing anything, so the equality below would be trivially true.`,
+      );
+      assert.deepEqual(
+        fromDeck,
+        fromSheet,
+        `S-5: at ${system}, the SAME ${shape} resolves different meta spans on the deck and on the sheet:\n`
+        + `    deck   ${fromDeck.map((s) => s.text).join(' · ')}\n`
+        + `    sheet  ${fromSheet.map((s) => s.text).join(' · ')}\n`
+        + 'One tap apart, the plate must say the same thing. That is the whole claim. A distance that '
+        + 'differs means one call site stopped passing `measurementSystem` (the producer then defaults '
+        + 'to Imperial, which is why this was invisible at Imperial alone). A PRICE that differs means '
+        + 'one call site stopped passing `isBrandExperience`, and "Free" over a paid experience is '
+        + 'ORCH-1065 BUG-1 reproduced on the sheet.',
+      );
+
+      // …and the array is the one the design specifies, on both surfaces. The
+      // count is over the plan's NON-OPTIONAL stops — the same set
+      // `mutateCuratedCard` computes every other aggregate over and the same set
+      // the card's own title is built from.
+      assert.deepEqual(
+        fromSheet.map((s) => s.text),
+        EXPECTED[`${system}|${shape}`],
+        `S-5: at ${system} the ${shape} does not produce the specified line. A 3 in the count means `
+        + "the optional stop is being counted against the card's own title; a missing distance means "
+        + 'the sheet lost it again; "Free" on the experience means the envelope price was replaced by '
+        + 'a sum over stops that all carry zero.',
+      );
+    }
+  }
+
   assert.deepEqual(
-    fromSheet.map((s) => s.text),
-    ['2 stops', '5.8 mi', '1h 44m', 'Free', 'Picnic Dates'],
-    'S-5: the produced spans are not the specified line. A 3 here means the optional stop is being '
-    + "counted against the card's own title; a missing distance means the sheet lost it again.",
-  );
-  assert.deepEqual(
-    fromSheet.map((s) => s.kind),
+    sheetPlanImperial.map((s) => s.kind),
     ['rating', 'fact', 'fact', 'fact', 'tail'],
     'S-5: the span WEIGHTS changed. The leading 700 slot belongs to the fact that characterises a '
     + 'plan, and the tail is the vibe.',
@@ -1358,12 +1890,16 @@ test('S-5 the curated meta line is produced ONCE and both surfaces render the sa
 
   // A single-stop plan has no count worth stating and falls back to distance;
   // a stopless one states neither rather than "0 stops" (Constitution 9).
+  const imperialPlanDeps = s5Deps('Imperial', false);
   const single = curatedPlanSpans(
     { ...S5_FIXTURE, stops: [S5_FIXTURE.stops[0]] },
-    build(modalOpts, 'sheet'),
+    build(modalOpts, 'sheet', imperialPlanDeps),
   );
   assert.equal(single[0].text, '5.8 mi', 'S-5: a single-stop plan still leads with a stop count.');
-  const none = curatedPlanSpans({ ...S5_FIXTURE, stops: [] }, build(modalOpts, 'sheet'));
+  const none = curatedPlanSpans(
+    { ...S5_FIXTURE, stops: [] },
+    build(modalOpts, 'sheet', imperialPlanDeps),
+  );
   assert.equal(
     none.some((s) => /stops?/.test(s.text)),
     false,

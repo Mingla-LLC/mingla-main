@@ -47,14 +47,7 @@
     "error_past_date_message": "Cette heure est déjà passée. Veuillez choisir une heure future."
   },
   "busyness": {
-    "traffic": "Trafic",
-    "busy_level": "Niveau d'affluence",
-    "busy": "Fréquenté",
-    "clear_roads": "Routes dégagées",
-    "clear": "Dégagé",
-    "moderate": "Modéré",
-    "heavy": "Dense",
-    "estimated": "Est."
+    "busy_level": "Niveau d'affluence"
   },
   "match_factors": {
     "title": "Détail de la correspondance",

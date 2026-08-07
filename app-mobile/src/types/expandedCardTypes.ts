@@ -231,10 +231,13 @@ export interface BusynessData {
     times: Array<{ hour: string; popularity: number }>;
   }>;
   message: string;
-  trafficInfo?: {
-    currentTravelTime: string;
-    trafficCondition: "Light" | "Moderate" | "Heavy";
-  };
+  // `trafficInfo` (currentTravelTime + trafficCondition) is DELETED — #1605
+  // wave 4 rework. Its render site (`BusynessSection`'s Traffic row) went in
+  // this wave; its heuristic arm fabricated `10 + n min` from the clock; and
+  // its Mapbox arm restated the distance span the plate already carries. The
+  // producer went with the row rather than paying a per-open Directions
+  // round-trip for a field nobody reads. Reason in `busynessService.ts`'s
+  // header; `S-8` in this wave's gate fails if it returns without one.
   isEstimated: boolean;
 }
 

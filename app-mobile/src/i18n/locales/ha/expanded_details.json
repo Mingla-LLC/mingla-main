@@ -47,14 +47,7 @@
     "error_past_date_message": "Wannan lokacin ya wuce. Da fatan zaɓi lokaci na nan gaba."
   },
   "busyness": {
-    "traffic": "Cunkoson Ababen Hanya",
-    "busy_level": "Matakin Cunkoso",
-    "busy": "Mai cunkoso",
-    "clear_roads": "Hanyoyi Masu Kyau",
-    "clear": "Kyau",
-    "moderate": "Matsakaici",
-    "heavy": "Mai yawa",
-    "estimated": "Est."
+    "busy_level": "Matakin Cunkoso"
   },
   "match_factors": {
     "title": "Bayani na Daidaitawa",

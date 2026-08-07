@@ -47,14 +47,7 @@
     "error_past_date_message": "该时间已过。请选择将来的时间。"
   },
   "busyness": {
-    "traffic": "交通",
-    "busy_level": "繁忙程度",
-    "busy": "繁忙",
-    "clear_roads": "道路畅通",
-    "clear": "畅通",
-    "moderate": "适中",
-    "heavy": "拥堵",
-    "estimated": "Est."
+    "busy_level": "繁忙程度"
   },
   "match_factors": {
     "title": "匹配分析",

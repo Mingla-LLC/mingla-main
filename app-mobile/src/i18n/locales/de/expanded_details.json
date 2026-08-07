@@ -47,14 +47,7 @@
     "error_past_date_message": "Diese Zeit ist bereits vergangen. Bitte wähle eine zukünftige Zeit."
   },
   "busyness": {
-    "traffic": "Verkehr",
-    "busy_level": "Auslastung",
-    "busy": "Voll",
-    "clear_roads": "Freie Straßen",
-    "clear": "Frei",
-    "moderate": "Mäßig",
-    "heavy": "Stark",
-    "estimated": "Est."
+    "busy_level": "Auslastung"
   },
   "match_factors": {
     "title": "Match-Aufschlüsselung",

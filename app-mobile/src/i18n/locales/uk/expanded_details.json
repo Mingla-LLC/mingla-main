@@ -47,14 +47,7 @@
     "error_past_date_message": "Цей час вже минув. Будь ласка, виберіть майбутній час."
   },
   "busyness": {
-    "traffic": "Traffic",
-    "busy_level": "Busy Level",
-    "busy": "Busy",
-    "clear_roads": "Clear Roads",
-    "clear": "Clear",
-    "moderate": "Moderate",
-    "heavy": "Heavy",
-    "estimated": "Est."
+    "busy_level": "Busy Level"
   },
   "match_factors": {
     "title": "Match Breakdown",

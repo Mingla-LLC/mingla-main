@@ -47,14 +47,7 @@
     "error_past_date_message": "Masa itu telah berlalu. Sila pilih masa akan datang."
   },
   "busyness": {
-    "traffic": "Trafik",
-    "busy_level": "Tahap Kesibukan",
-    "busy": "Sibuk",
-    "clear_roads": "Jalan Lancar",
-    "clear": "Lancar",
-    "moderate": "Sederhana",
-    "heavy": "Sesak",
-    "estimated": "Est."
+    "busy_level": "Tahap Kesibukan"
   },
   "match_factors": {
     "title": "Pecahan Padanan",

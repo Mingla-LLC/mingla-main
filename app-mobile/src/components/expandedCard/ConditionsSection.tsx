@@ -51,14 +51,39 @@
  * whether to leave the house.
  *
  * ---------------------------------------------------------------------------
- * BOTH BRANCHES PASS THE SAME PROPS, AND THAT IS THE POINT
+ * BOTH BRANCHES PASS THE SAME PROPS — AND WHAT THAT DOES *NOT* MEAN
  *
- * Before this wave the curated call passed `selectedDateTime={undefined}`, so a
- * SCHEDULED PLAN never got time-of-day-aware weather; and it took its
- * coordinates from `stops[0].lat/lng` while the single branch used
- * `card.location`. Under one spine there is one call site with one prop shape,
- * and a plan's coordinate is `stops[0]` because that is where the plan starts —
- * stated once, at the call site, rather than discovered twice.
+ * An earlier version of this header claimed the wave had fixed time-of-day-aware
+ * weather for scheduled plans, on the grounds that `main`'s curated branch
+ * passed `selectedDateTime={undefined}` while the single branch passed the
+ * card's own value. THAT CLAIM WAS FALSE and it is retracted here rather than
+ * softened, because a comment asserting a fix that does not exist is worse than
+ * no comment: the next person trusts it.
+ *
+ * TIME-OF-DAY-AWARE WEATHER HAS NEVER EXISTED, for two independent reasons, and
+ * neither is anything this wave changed:
+ *
+ *   1. `weatherService.getWeatherForecast` requested `current=…` from
+ *      Open-Meteo and returned `hourlyForecast: []`, with a cache key of
+ *      `lat_lng` and no date in it. Its third parameter was declared and never
+ *      read. It is now removed (nothing else called it), so the signature can no
+ *      longer suggest a capability the body does not have.
+ *   2. `main`'s `WeatherSection` declared `selectedDateTime?: Date` in its props
+ *      interface and referenced it NOWHERE in the component body. So the value
+ *      the single-place branch passed was dropped on the floor at the other end,
+ *      exactly like the curated branch's `undefined`.
+ *
+ * `ExpandedCardData.selectedDateTime` is therefore a field with five producers
+ * (SwipeableCards, SavedTab, CalendarTab x2, cardPayloadAdapter) and no reader.
+ * It is CLASSIFIED, not silently kept — see the DECLARED-NOT-RENDERED ledger in
+ * `S-6b`, which is where a field with no render site has to be listed or the
+ * gate goes red. Making the sheet genuinely time-aware means an hourly fetch, an
+ * hour-selection rule and a date-keyed cache; that is a feature, and it is
+ * registered as one rather than described as done.
+ *
+ * What this wave DID unify is real and smaller: one call site, one prop shape,
+ * and a plan's coordinate resolved once (`stops[0]`, because that is where the
+ * plan starts) instead of discovered twice.
  */
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";

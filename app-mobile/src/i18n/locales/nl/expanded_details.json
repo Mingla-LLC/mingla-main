@@ -47,14 +47,7 @@
     "error_past_date_message": "Die tijd is al voorbij. Kies een toekomstige tijd."
   },
   "busyness": {
-    "traffic": "Verkeer",
-    "busy_level": "Drukte",
-    "busy": "Druk",
-    "clear_roads": "Vrije wegen",
-    "clear": "Vrij",
-    "moderate": "Matig",
-    "heavy": "Druk",
-    "estimated": "Est."
+    "busy_level": "Drukte"
   },
   "match_factors": {
     "title": "Match-uitsplitsing",
