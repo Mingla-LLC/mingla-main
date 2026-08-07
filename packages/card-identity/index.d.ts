@@ -122,6 +122,7 @@ export interface SurfaceSliver {
   readonly alpha2?: number;
   readonly opaque: readonly string[];
   readonly forcedOpaque: boolean;
+  readonly insets?: readonly [number, number];
 }
 
 export interface SurfaceDescriptor {

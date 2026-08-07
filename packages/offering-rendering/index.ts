@@ -8,7 +8,7 @@
 // same primitives in later legs (the page-specific booking/ticket/summary panel
 // is passed in as `stickyPanel` / children).
 
-export { ParallaxCoverShell } from "./ParallaxCoverShell";
+export { DirectionCIdentityOverlay, ParallaxCoverShell } from "./ParallaxCoverShell";
 export type { ParallaxCoverShellProps } from "./ParallaxCoverShell";
 
 // issue #868 [cover-gallery] — the beneath-cover ordered card row over the full

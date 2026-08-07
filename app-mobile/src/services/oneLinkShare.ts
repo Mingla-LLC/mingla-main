@@ -25,14 +25,13 @@ export const ONELINK_BRAND_DOMAIN = 'go.usemingla.com';
 // mingla-business publicUrls.ts BUSINESS_PUBLIC_ORIGIN) — used only for the
 // static fallback URL when the native OneLink call is unavailable.
 const BUSINESS_PUBLIC_ORIGIN = 'https://business.usemingla.com';
+const EXPLORER_PUBLIC_ORIGIN = 'https://usemingla.com';
 // The share sheet must never hang on a slow native round-trip.
 const GENERATE_TIMEOUT_MS = 4000;
 
-export type ShareEntity = {
-  type: 'brand' | 'event' | 'trip' | 'experience';
-  brandSlug: string;
-  entitySlug?: string;
-};
+export type ShareEntity =
+  | { type: 'brand' | 'event' | 'trip' | 'experience'; brandSlug: string; entitySlug?: string }
+  | { type: 'place' | 'curated'; shareId: string };
 
 export interface BuildReferralLinkInput {
   /**
@@ -97,10 +96,15 @@ const enc = (s: string): string => encodeURIComponent(s.trim());
  */
 function effectiveEntity(entity?: ShareEntity): ShareEntity | null {
   if (!entity) return null;
-  const brandSlug = (entity.brandSlug ?? '').trim();
+  if (entity.type === 'place' || entity.type === 'curated') {
+    const shareId = (entity.shareId ?? '').trim();
+    return shareId ? { type: entity.type, shareId } : null;
+  }
+  const businessEntity = entity as Extract<ShareEntity, { brandSlug: string }>;
+  const brandSlug = (businessEntity.brandSlug ?? '').trim();
   if (!brandSlug) return null;
   if (entity.type === 'brand') return { type: 'brand', brandSlug };
-  const entitySlug = (entity.entitySlug ?? '').trim();
+  const entitySlug = (businessEntity.entitySlug ?? '').trim();
   if (!entitySlug) return { type: 'brand', brandSlug }; // degrade — never a half link
   return { type: entity.type, brandSlug, entitySlug };
 }
@@ -116,12 +120,21 @@ export function buildInviteUserParams(input: BuildReferralLinkInput): InviteUser
   const entity = effectiveEntity(input.entity);
 
   if (entity) {
+    if (entity.type === 'place' || entity.type === 'curated') {
+      const params: InviteUserParams = {
+        deep_link_value: entity.type,
+        deep_link_sub1: entity.shareId,
+      };
+      if (referralCode) params.af_sub1 = referralCode;
+      return params;
+    }
+    const businessEntity = entity as Extract<ShareEntity, { brandSlug: string }>;
     const params: InviteUserParams = {
       deep_link_value: entity.type,
-      deep_link_sub1: entity.brandSlug,
+      deep_link_sub1: businessEntity.brandSlug,
     };
-    if (entity.type !== 'brand' && entity.entitySlug) {
-      params.deep_link_sub2 = entity.entitySlug;
+    if (entity.type !== 'brand' && businessEntity.entitySlug) {
+      params.deep_link_sub2 = businessEntity.entitySlug;
     }
     if (referralCode) params.af_sub1 = referralCode;
     return params;
@@ -144,11 +157,15 @@ export function buildFallbackShareUrl(input: BuildReferralLinkInput): string {
   const referralCode = (input.referralCode ?? '').trim() || undefined;
   const entity = effectiveEntity(input.entity);
   if (entity) {
-    const b = enc(entity.brandSlug);
-    if (entity.type === 'brand' || !entity.entitySlug) {
+    if (entity.type === 'place' || entity.type === 'curated') {
+      return `${EXPLORER_PUBLIC_ORIGIN}/p/${enc(entity.shareId)}`;
+    }
+    const businessEntity = entity as Extract<ShareEntity, { brandSlug: string }>;
+    const b = enc(businessEntity.brandSlug);
+    if (entity.type === 'brand' || !businessEntity.entitySlug) {
       return `${BUSINESS_PUBLIC_ORIGIN}/b/${b}`;
     }
-    const e = enc(entity.entitySlug);
+    const e = enc(businessEntity.entitySlug);
     const seg =
       entity.type === 'event'
         ? `/e/${b}/${e}`

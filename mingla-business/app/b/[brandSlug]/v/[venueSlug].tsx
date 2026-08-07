@@ -381,6 +381,7 @@ export default function PublicVenueRoute(): React.ReactElement {
   return (
     <PublicVenueScreen
       venue={venueViewModel}
+      useDirectionCIdentity
       discoveryPrice={discoveryPriceQuery.data ?? null}
       menu={menusQuery.data ?? []}
       reservable={reservableQuery.data ?? null}

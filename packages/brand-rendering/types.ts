@@ -203,6 +203,8 @@ export interface PublicBrandPageProps {
   menu?: PublicMenuGroup[];
   theme?: ResolvedTheme;
   hideFloatingChrome?: boolean;
+  /** Business public-web #1615 identity overlay; absent preserves other hosts. */
+  useDirectionCIdentity?: boolean;
   chromeTopOffset?: number;
   /** Runtime/browser bottom inset plus the page's 24pt breathing room. */
   contentBottomInset?: number;

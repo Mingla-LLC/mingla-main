@@ -56,6 +56,7 @@ interface PublicBrandPageProps {
   /** ORCH-1186-C — DISPLAY-ONLY menu groups (shared shape; passed through). */
   menu?: PublicMenuGroup[];
   resolvedTheme?: ResolvedTheme;
+  useDirectionCIdentity?: boolean;
 }
 
 const canonicalUrl = (brand: Brand): string => brandPublicUrl(brand.slug);
@@ -175,6 +176,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   onRetryVenues,
   menu = [],
   resolvedTheme,
+  useDirectionCIdentity = false,
 }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -339,6 +341,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       ) : null}
       <SharedPublicBrandPage
         brand={sharedBrand}
+        useDirectionCIdentity={useDirectionCIdentity}
         events={sharedEvents}
         pastEvents={sharedPastEvents}
         trips={sharedTrips}

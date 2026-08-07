@@ -45,6 +45,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Text,
   View,
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -52,6 +53,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { PLATE, SURFACES, surfacePlateBoundary } from "@mingla/card-identity";
 
 import { EventCoverMedia } from "./EventCoverMedia";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
@@ -101,6 +103,7 @@ export interface ParallaxCoverShellProps {
   onShare: () => void;
   heroEyebrow?: React.ReactNode;
   heroTitle?: React.ReactNode;
+  directionCIdentity?: { title: string; meta?: string | null };
   stateBanner?: React.ReactNode | null;
   children: React.ReactNode;
   stickyPanel?: React.ReactNode | null;
@@ -172,7 +175,7 @@ export interface ParallaxCoverShellProps {
   testID?: string;
 }
 
-export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
+export const ParallaxCoverShell = ({
   palette,
   theme,
   coverMediaUrl,
@@ -186,6 +189,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   onShare,
   heroEyebrow,
   heroTitle,
+  directionCIdentity,
   stateBanner,
   children,
   stickyPanel,
@@ -200,7 +204,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   galleryImages,
   coverPlaceholderLabel = null,
   testID,
-}) => {
+}: ParallaxCoverShellProps): React.ReactElement => {
   const { isDesktop, isWeb } = useResponsiveLayout();
   const Scroll = ScrollComponent ?? ScrollView;
 
@@ -310,6 +314,12 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     </View>
   );
   const coverRender = sequenceActive ? coverPager : coverMedia;
+  const directionCOverlay = directionCIdentity ? (
+    <DirectionCIdentityOverlay
+      title={directionCIdentity.title}
+      meta={directionCIdentity.meta}
+    />
+  ) : null;
 
   // The beneath-cover card row (card 0 = the cover). Rendered as the body's FIRST
   // row inside the scrolling body so it scrolls away over the pinned pager. Returns
@@ -346,6 +356,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             <View style={styles.desktopHero}>
               {coverRender}
               <View style={styles.desktopHeroOverlay} pointerEvents="none" />
+              {directionCOverlay}
               {entrance}
               <View
                 style={webStyle({
@@ -418,6 +429,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
         >
           {coverRender}
           <View style={styles.coverScrim} pointerEvents="none" />
+          {directionCOverlay}
           {entrance}
         </View>
 
@@ -506,6 +518,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
       >
         {coverRender}
         <View style={styles.coverScrim} pointerEvents="none" />
+        {directionCOverlay}
         {entrance}
       </View>
 
@@ -555,6 +568,27 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     </View>
   );
 };
+
+const S6 = SURFACES.s6Phone;
+const S6_BOUNDARY = surfacePlateBoundary("s6Phone");
+
+export interface DirectionCIdentityOverlayProps {
+  title: string;
+  meta?: string | null;
+}
+
+export const DirectionCIdentityOverlay = ({
+  title,
+  meta = null,
+}: DirectionCIdentityOverlayProps): React.ReactElement => (
+  <View pointerEvents="none" style={styles.directionCOverlay}>
+    <Text numberOfLines={2} style={styles.directionCTitle}>{title}</Text>
+    <View style={styles.directionCPlate}>
+      {meta ? <Text numberOfLines={2} style={styles.directionCMeta}>{meta}</Text> : <View />}
+      <Text style={styles.directionCBrand}>mingla</Text>
+    </View>
+  </View>
+);
 
 const styles = StyleSheet.create({
   // ---- desktop ----
@@ -684,6 +718,44 @@ const styles = StyleSheet.create({
   coverScrim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  directionCOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 4,
+  },
+  directionCTitle: {
+    position: "absolute",
+    left: S6.sideInset + S6.titleInset,
+    right: S6.sideInset + S6.titleInset,
+    bottom: S6.bottomInset + S6.plateH + S6.gap,
+    color: "#fff",
+    fontSize: S6.titleSize,
+    lineHeight: S6.titleLH,
+    fontWeight: S6.titleWeight as any,
+  },
+  directionCPlate: {
+    position: "absolute",
+    left: S6.sideInset,
+    right: S6.sideInset,
+    bottom: S6.bottomInset,
+    minHeight: S6.plateH,
+    borderRadius: S6.plateR,
+    borderWidth: S6_BOUNDARY.width,
+    borderColor: S6_BOUNDARY.color,
+    backgroundColor: PLATE.fallbackSolid,
+    paddingHorizontal: S6.titleInset,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  directionCMeta: {
+    color: "#fff",
+    fontSize: S6.metaSize,
+    flex: 1,
+    marginRight: 12,
+  },
+  directionCBrand: {
+    color: "rgba(255,255,255,0.72)",
+    fontWeight: "800",
   },
   phoneBannerWrap: {
     marginBottom: 12,

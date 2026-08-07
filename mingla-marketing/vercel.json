@@ -1,4 +1,9 @@
 {
+  "rewrites": [
+    { "source": "/p/:shareId", "destination": "https://business.usemingla.com/api/shared-card?shareId=:shareId" },
+    { "source": "/share/:shareId.png", "destination": "https://business.usemingla.com/api/shared-card-image?shareId=:shareId&surface=s4" },
+    { "source": "/og/share/:shareId.png", "destination": "https://business.usemingla.com/api/shared-card-image?shareId=:shareId&surface=s5" }
+  ],
   "headers": [
     {
       "source": "/.well-known/apple-app-site-association",

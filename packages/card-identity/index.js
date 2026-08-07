@@ -826,7 +826,7 @@ const SURFACES = {
     curated: true,
     plateBoundary: 'standard',
     sliverBoundary: 'none',
-    sliver: { height: 4, radius: 2, alpha: 0.42, opaque: ['rgb(133,133,133)', 'rgb(135,135,135)'], forcedOpaque: false },
+    sliver: { height: 4, radius: 2, alpha: 0.42, opaque: ['rgb(133,133,133)', 'rgb(135,135,135)'], forcedOpaque: false, insets: [25, 35] },
   },
   s5Og: {
     label: 'S5 OG / link-preview image',
@@ -845,7 +845,7 @@ const SURFACES = {
     opaqueOnly: true,
     plateBoundary: 'ogOpaque',
     sliverBoundary: 'none',
-    sliver: { height: 12, radius: 6, alpha: 0.54, alpha2: 0.58, opaque: ['rgb(176,176,176)', 'rgb(187,187,187)'], forcedOpaque: true },
+    sliver: { height: 12, radius: 6, alpha: 0.54, alpha2: 0.58, opaque: ['rgb(176,176,176)', 'rgb(187,187,187)'], forcedOpaque: true, insets: [66, 76] },
   },
   s6Phone: {
     label: 'S6 public web page — phone breakpoint',
@@ -862,7 +862,7 @@ const SURFACES = {
     curated: true,
     plateBoundary: 'standard',
     sliverBoundary: 'none',
-    sliver: { height: 4, radius: 2, alpha: 0.44, opaque: ['rgb(143,143,143)', 'rgb(145,145,145)'], forcedOpaque: false },
+    sliver: { height: 4, radius: 2, alpha: 0.44, opaque: ['rgb(143,143,143)', 'rgb(145,145,145)'], forcedOpaque: false, insets: [24, 34] },
   },
   /**
    * S7 — the expanded sheet's hero (#1605 wave 4).

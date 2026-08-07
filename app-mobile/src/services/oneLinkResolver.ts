@@ -23,6 +23,7 @@
  */
 
 export type OneLinkDestination =
+  | { kind: 'share'; shareType: 'place' | 'curated'; shareId: string; referralCode?: string }
   | { kind: 'entity'; entity: 'brand'; brandSlug: string; referralCode?: string }
   | {
       kind: 'entity';
@@ -67,6 +68,12 @@ export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDes
     }
 
     switch (rawType) {
+      case 'place':
+      case 'curated':
+        if (!sub1) return null;
+        return referralCode
+          ? { kind: 'share', shareType: rawType, shareId: sub1, referralCode }
+          : { kind: 'share', shareType: rawType, shareId: sub1 };
       case 'brand':
         if (!sub1) return null;
         return referralCode

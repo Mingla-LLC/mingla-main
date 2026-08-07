@@ -187,6 +187,8 @@ export interface PublicEventPageProps {
   brand: PublicBrandProps | null;
   viewerRole: ViewerRole;
   callbacks: PublicEventCallbacks;
+  /** Business public-web #1615 identity overlay; absent keeps consumer/native parity unchanged. */
+  useDirectionCIdentity?: boolean;
   /**
    * When true, the shared renderer skips its built-in floating close/share
    * chrome so a host adapter (e.g. the buyer-web public event route) can own

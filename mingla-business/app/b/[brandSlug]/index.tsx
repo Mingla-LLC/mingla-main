@@ -95,6 +95,7 @@ export default function PublicBrandRoute(): React.ReactElement {
   return (
     <PublicBrandPage
       brand={publicBrandQuery.data.brand}
+      useDirectionCIdentity
       events={publicBrandQuery.data.events}
       pastEvents={publicBrandQuery.data.pastEvents}
       trips={publicBrandQuery.data.trips}

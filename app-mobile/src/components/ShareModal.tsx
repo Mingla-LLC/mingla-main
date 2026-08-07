@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Text, View, Image, StyleSheet, Alert, Clipboard, Share, Linking } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import * as WebBrowser from 'expo-web-browser';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { BaseBottomSheet } from './ui/BaseBottomSheet';
 import { Icon } from './ui/Icon';
@@ -13,6 +15,8 @@ import { colors } from '../constants/colors';
 import { mixpanelService } from '../services/mixpanelService';
 import { logAppsFlyerEvent } from '../services/appsFlyerService';
 import { buildReferralLink, type ShareEntity } from '../services/oneLinkShare';
+import { createSharedCard, type SharedCardCreateResult } from '../services/sharedCardService';
+import { externalSharedCardUrl } from '../services/sharedCardLinks';
 import { canonicalDiscoveryPriceDetail } from '../utils/priceTiers';
 // ISSUE-1001 — the real wordmark replaces the red-dot + "Mingla" text badge.
 import { MINGLA_WORDMARK } from '@mingla/brand-assets';
@@ -41,7 +45,17 @@ export default function ShareModal({
 }: ShareModalProps) {
   const [messageCopied, setMessageCopied] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [shareState, setShareState] = useState<'idle' | 'generating' | 'success' | 'error'>('idle');
+  const [sharedCard, setSharedCard] = useState<SharedCardCreateResult | null>(null);
+  const sharedCardPromiseRef = useRef<Promise<SharedCardCreateResult> | null>(null);
   const { t } = useTranslation(['share', 'common']);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setSharedCard(null);
+    sharedCardPromiseRef.current = null;
+    setShareState('idle');
+  }, [isOpen, experienceData?.id, experienceData?.placePoolId, experienceData?.place_pool_id, experienceData?.placeId, experienceData?.googlePlaceId, experienceData?.savedCardId, experienceData?.saved_card_id]);
   
   if (!isOpen) return null;
   
@@ -79,7 +93,7 @@ export default function ShareModal({
   const rawDistance = experienceData.distance || experienceData.travelTime;
   const distance = rawDistance
     ? parseAndFormatDistance(rawDistance, accountPreferences?.measurementSystem)
-    : t('share:card.nearby');
+    : '';
   const venuePrice = canonicalDiscoveryPriceDetail(experienceData);
   const isCuratedItinerary =
     experienceData.cardType === 'curated' || Array.isArray(experienceData.stops);
@@ -92,10 +106,10 @@ export default function ShareModal({
   const approximatePrice = venuePrice?.approximate
     ? `Approx. ${venuePrice.approximate}${venuePrice.ratesDate ? ` · rates from ${new Date(venuePrice.ratesDate).toLocaleDateString()}` : ''}`
     : '';
-  const rating = experienceData.rating || experienceData.ratingValue || '4.8';
+  const rating = experienceData.rating || experienceData.ratingValue || '';
   const address = experienceData.address || experienceData.location?.address || experienceData.location || '';
   const description = experienceData.description || experienceData.fullDescription || '';
-  const shortDescription = description.split('.')[0] || 'Amazing experience';
+  const shortDescription = description.split('.')[0] || '';
 
   // Debug logging
   console.log('[ShareModal] Received experienceData:', {
@@ -110,14 +124,13 @@ export default function ShareModal({
 
   // Generate personalized message
   const generatePersonalizedMessage = () => {
-    const timeOfDay = dateTimePreferences?.timeOfDay || 'Afternoon';
-    const dayOfWeek = dateTimePreferences?.dayOfWeek || 'Weekend';
-    const timeframe = dateTimePreferences?.planningTimeframe || 'This month';
+    const schedule = [dateTimePreferences?.timeOfDay, dateTimePreferences?.dayOfWeek, dateTimePreferences?.planningTimeframe]
+      .filter((v) => typeof v === 'string' && v.trim()).join(' on ');
     
     const priceSentence = priceRange
       ? ` and costs ${priceRange}${approximatePrice ? ` (${approximatePrice})` : ''}`
       : '';
-    return `What do you think about ${title}${address ? ` at ${address}` : ''}? It has a ${rating} star rating${priceSentence}. I'm thinking we could go ${timeOfDay} on ${dayOfWeek} (${timeframe}). ${shortDescription} Let me know if you're interested!`;
+    return `What do you think about ${title}${address ? ` at ${address}` : ''}?${rating ? ` It has a ${rating} star rating` : ''}${priceSentence}.${schedule ? ` I'm thinking ${schedule}.` : ''}${shortDescription ? ` ${shortDescription}.` : ''} Let me know if you're interested!`;
   };
 
   const personalizedMessage = generatePersonalizedMessage();
@@ -133,7 +146,7 @@ export default function ShareModal({
     const tripSlug = experienceData?.tripSlug;
     const experienceSlug = experienceData?.experienceSlug;
     const explicitType = experienceData?.entityType;
-    const type: ShareEntity['type'] =
+    const type: 'brand' | 'event' | 'trip' | 'experience' =
       explicitType === 'brand' ||
       explicitType === 'event' ||
       explicitType === 'trip' ||
@@ -157,17 +170,69 @@ export default function ShareModal({
     return { type, brandSlug, entitySlug };
   };
 
+  const ensureSharedCard = async (): Promise<SharedCardCreateResult | null> => {
+    const businessEntity = buildShareEntity();
+    if (businessEntity) return null;
+    if (sharedCard) return sharedCard;
+    if (sharedCardPromiseRef.current) return sharedCardPromiseRef.current;
+    setShareState('generating');
+    const createPromise = createSharedCard({
+        kind: isCuratedItinerary ? 'curated' : 'place',
+        sourceIds: Object.fromEntries([
+          ['placePoolId', experienceData.placePoolId || experienceData.place_pool_id],
+          ['googlePlaceId', experienceData.placeId || experienceData.googlePlaceId || experienceData.google_place_id],
+          ['savedCardId', experienceData.savedCardId || experienceData.saved_card_id],
+        ].filter(([, value]) => typeof value === 'string' && value.length > 0)),
+        attribution: {
+          channel: 'share_modal',
+          referralCode: typeof experienceData.referralCode === 'string' ? experienceData.referralCode : undefined,
+        },
+      });
+    sharedCardPromiseRef.current = createPromise;
+    try {
+      const created = await createPromise;
+      setSharedCard(created); setShareState('success'); return created;
+    } catch (error) {
+      sharedCardPromiseRef.current = null;
+      setShareState('error');
+      throw error;
+    }
+  };
+
   // ORCH-1318 (SPEC §E.3) — the tracked, install-surviving OneLink for this
   // share. referralCode source is the signed-in user's code, once a user-code
   // accessor exists (SPEC §REMAINS #6); until then it is undefined → an
   // entity-only / attribution-via-content link (never an empty clipboard).
-  const buildTrackedLink = (channel: string): Promise<string> =>
-    buildReferralLink({
+  const buildTrackedLink = async (channel: string): Promise<string> => {
+    const created = await ensureSharedCard();
+    // #1615: Explorer messages must expose the canonical S6 URL so messaging
+    // crawlers fetch S5 metadata. Attribution is stored on the snapshot; its
+    // S6 CTA owns the install-surviving OneLink. Business entities keep their
+    // established direct OneLink behavior.
+    if (created) return externalSharedCardUrl(created);
+    return buildReferralLink({
       channel,
       entity: buildShareEntity(),
       referralCode:
         typeof experienceData?.referralCode === 'string' ? experienceData.referralCode : undefined,
     });
+  };
+
+  const handleCopyLink = async () => {
+    if (isSharing) return;
+    setIsSharing(true);
+    try {
+      const link = await buildTrackedLink('copy_link');
+      await Clipboard.setString(link);
+      mixpanelService.trackExperienceShared({ experienceTitle: title, method: 'copy_link' });
+      logAppsFlyerEvent('af_share', { af_content_type: 'copy_link' });
+    } catch (e) {
+      console.error('[ShareModal] copy link build failed:', e);
+      setShareState('error');
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   const handleCopyMessage = async () => {
     try {
@@ -225,11 +290,19 @@ export default function ShareModal({
           break;
           
         case 'instagram':
-          // Instagram - use native share since direct sharing requires different approach
-          await Share.share({
-            message,
-            title: experienceData.title,
-          });
+          // S4 is available only with a real cover. If attachment/export fails,
+          // retain the canonical link and disclose the fallback instead of lying.
+          const instagramCard = sharedCard ?? await ensureSharedCard();
+          if (instagramCard?.s4Url) {
+            try {
+              const uri = `${FileSystem.cacheDirectory ?? ''}mingla-share-${Date.now()}.png`;
+              await FileSystem.downloadAsync(instagramCard.s4Url, uri);
+              if (!(await Sharing.isAvailableAsync())) throw new Error('sharing_unavailable');
+              await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: message, UTI: 'public.png' });
+              break;
+            } catch { Alert.alert('Image unavailable', 'Sharing the Mingla link instead.'); }
+          }
+          await Share.share({ message, title: experienceData.title });
           break;
           
         case 'twitter':
@@ -307,11 +380,10 @@ export default function ShareModal({
                         accessibilityLabel="Mingla"
                       />
                     </View>
-                    {/* Rating Badge */}
-                    <View style={styles.ratingBadge}>
+                    {rating ? <View style={styles.ratingBadge}>
                       <Icon name="star" size={12} color="#fbbf24" />
                       <Text style={styles.ratingText}>{rating}</Text>
-                    </View>
+                    </View> : null}
                   </View>
 
                   {/* Experience Details */}
@@ -319,10 +391,10 @@ export default function ShareModal({
                     <Text style={styles.experienceTitle}>{title}</Text>
                     
                     <View style={styles.experienceMeta}>
-                      <View style={styles.metaItem}>
+                      {distance ? <View style={styles.metaItem}>
                         <Icon name="location-outline" size={14} color="#6b7280" />
                         <Text style={styles.metaText}>{distance}</Text>
-                      </View>
+                      </View> : null}
                       {priceRange ? (
                         <View style={styles.metaItem}>
                           <Icon name="cash-outline" size={14} color="#6b7280" />
@@ -332,23 +404,23 @@ export default function ShareModal({
                     </View>
 
                     {/* Suggested Schedule */}
-                    <View style={styles.scheduleContainer}>
+                    {dateTimePreferences?.timeOfDay || dateTimePreferences?.dayOfWeek || dateTimePreferences?.planningTimeframe ? <View style={styles.scheduleContainer}>
                       <View style={styles.scheduleHeader}>
                         <Icon name="calendar-outline" size={14} color="#eb7825" />
                         <Text style={styles.scheduleTitle}>{t('share:card.suggested_schedule')}</Text>
                       </View>
                       <View style={styles.scheduleDetails}>
                         <Text style={styles.scheduleText}>
-                          {dateTimePreferences?.timeOfDay || 'Afternoon'}
+                          {dateTimePreferences?.timeOfDay || ''}
                         </Text>
                         <Text style={styles.scheduleText}>
-                          {dateTimePreferences?.dayOfWeek || 'Weekend'}
+                          {dateTimePreferences?.dayOfWeek || ''}
                         </Text>
                         <Text style={styles.scheduleText}>
-                          {dateTimePreferences?.planningTimeframe || 'This month'}
+                          {dateTimePreferences?.planningTimeframe || ''}
                         </Text>
                       </View>
-                    </View>
+                    </View> : null}
 
                     {/* Price */}
                     <View style={styles.priceContainer}>
@@ -365,7 +437,7 @@ export default function ShareModal({
                           Rates by ExchangeRate-API
                         </Text>
                       ) : null}
-                      <Text style={styles.priceSubtext}>{t('share:card.per_person')}</Text>
+                      {priceRange ? <Text style={styles.priceSubtext}>{t('share:card.per_person')}</Text> : null}
                     </View>
                   </View>
                 </View>
@@ -390,6 +462,8 @@ export default function ShareModal({
             {/* Share Options */}
             <View style={styles.shareOptions}>
               <Text style={styles.shareTitle}>{t('share:share_to')}</Text>
+              {shareState === 'generating' ? <Text style={styles.shareStatus}>Creating share link…</Text> : null}
+              {shareState === 'error' ? <Text style={styles.shareError}>Couldn’t create the link. Tap a share option to retry.</Text> : null}
               
               {/* Social Media Buttons */}
               <View style={styles.socialButtons}>
@@ -443,27 +517,14 @@ export default function ShareModal({
                   onPress={() => {
                     handleSocialShare('more');
                   }}
+                  disabled={isSharing}
                 >
                   <Icon name='share-2' size={24} color="black"/>
                   <Text>{t('share:actions.more_options')}</Text>
                 </TrackedTouchableOpacity>
                 <TrackedTouchableOpacity logComponent="ShareModal" style={[styles.bottomButtons]}
-                  onPress={async () => {
-                    // ORCH-1318 (SPEC §E.3) — copy the tracked, install-surviving
-                    // OneLink instead of plain marketing text. buildTrackedLink
-                    // never blocks / never returns empty (static fallback on any
-                    // SDK failure), so the clipboard is never dead (SPEC §E.4.2).
-                    let link: string;
-                    try {
-                      link = await buildTrackedLink('copy_link');
-                    } catch (e) {
-                      console.error('[ShareModal] copy link build failed:', e);
-                      link = `https://go.usemingla.com`;
-                    }
-                    Clipboard.setString(link);
-                    mixpanelService.trackExperienceShared({ experienceTitle: title, method: 'copy_link' });
-                    logAppsFlyerEvent('af_share', { af_content_type: 'copy_link' });
-                  }}
+                  onPress={handleCopyLink}
+                  disabled={isSharing}
                 >
                   <Icon name='copy' size={24} color="black"/>
                   <Text>{t('share:actions.copy_link')}</Text>
@@ -676,6 +737,8 @@ const styles = StyleSheet.create({
     color: '#111827',
     marginBottom: 16,
   },
+  shareStatus: { color: '#6b7280', marginBottom: 10 },
+  shareError: { color: '#b91c1c', marginBottom: 10 },
   socialButtons: {
     flexDirection: 'row',
     gap: 12,

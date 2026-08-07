@@ -1176,6 +1176,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           viewerRole={viewerRole}
           callbacks={callbacks}
           theme={resolvedTheme}
+          useDirectionCIdentity
         />
       ) : (
         <FoundationEventPreview

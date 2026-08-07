@@ -142,7 +142,9 @@ function plateOver(backdrop, under) {
  * not, goes through G2's oracle, because the point of the descriptor table is
  * that a value cannot enter the system without being measured.
  */
-const BUILT = new Set(['s1Single', 's1Curated', 's7Expanded']);
+// [TEST-MOD-APPROVED #1615] The prior verdict became wrong once #1615 added
+// real selector-owning S4/S5 renderers and an S6 page; move only those surfaces.
+const BUILT = new Set(['s1Single', 's1Curated', 's4Snippet', 's5Og', 's6Phone', 's7Expanded']);
 
 /**
  * Designed, measured, and CLEARING every floor — but no file renders them yet
@@ -150,7 +152,7 @@ const BUILT = new Set(['s1Single', 's1Curated', 's7Expanded']);
  * because the whole point of measuring the descriptor rather than the pixels is
  * that the verdict does not wait for the file.
  */
-const DESIGNED = new Set(['s2Grid', 's3Chat', 's4Snippet', 's5Og', 's6Phone']);
+const DESIGNED = new Set(['s2Grid', 's3Chat']);
 
 /** Held to the floors: everything that is not explicitly pinned as open. */
 function heldToFloors(key) {

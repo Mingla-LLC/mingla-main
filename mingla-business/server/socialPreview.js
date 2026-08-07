@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const React = require("react");
+const { s6CardCss } = require("./cardIdentityRenderer");
 
 const DEFAULT_SUPABASE_URL = "https://gqnoajqerqhnvulmnyvv.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY =
@@ -27,6 +28,7 @@ const SUPABASE_ANON_KEY =
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
   process.env.SUPABASE_ANON_KEY ||
   DEFAULT_SUPABASE_ANON_KEY;
+const EXPLORER_PUBLIC_ORIGIN = "https://usemingla.com";
 
 const LOGO_PUBLIC_PATH = "/brand/mingla-business-logo.png";
 const LOGO_FILE_PATH = path.join(
@@ -184,11 +186,13 @@ const tripPublicUrl = (row) => `${PUBLIC_ORIGIN}${tripPublicPath(row)}`;
 const tripOgFallbackUrl = (row) =>
   `${PUBLIC_ORIGIN}/og/trip/${encodeURIComponent(row.id)}.png`;
 
-const tripImageUrl = (row) => tripOgFallbackUrl(row);
+const tripImageUrl = (row) => tripCoverUrl(row) ? tripOgFallbackUrl(row) : "";
 
-const eventImageUrl = (row) => eventOgFallbackUrl(row);
+const eventImageUrl = (row) => eventCoverUrl(row) ? eventOgFallbackUrl(row) : "";
 
-const brandImageUrl = (row) => brandOgFallbackUrl(row);
+const brandImageUrl = (row) =>
+  (isAbsoluteHttpUrl(brandProfilePhotoUrl(row)) || isAbsoluteHttpUrl(row?.cover_media_url))
+    ? brandOgFallbackUrl(row) : "";
 
 const requestJson = async (pathname, searchParams) => {
   const url = new URL(`${SUPABASE_URL}/rest/v1/${pathname}`);
@@ -208,6 +212,17 @@ const requestJson = async (pathname, searchParams) => {
   }
 
   return response.json();
+};
+
+const fetchSharedCardSnapshot = async (shareId) => {
+  if (!/^[a-f0-9]{36}$/.test(asText(shareId))) return { status: 404, snapshot: null };
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/shared-card?shareId=${encodeURIComponent(shareId)}`, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+  });
+  if (response.status === 410) return { status: 410, snapshot: null };
+  if (!response.ok) return { status: response.status, snapshot: null };
+  const body = await response.json();
+  return { status: 200, snapshot: body?.snapshot ?? null, appUrl: body?.appUrl ?? null };
 };
 
 const fetchPublicEventBySlug = async (brandSlug, eventSlug) => {
@@ -264,6 +279,16 @@ const fetchPublicBrandBySlug = async (brandSlug) => {
     venue: null,
     events,
   };
+};
+
+const fetchPublicVenueBySlug = async (brandSlugValue, venueSlug) => {
+  const rows = await requestJson("venue_public_view", {
+    select: "*", brand_slug: `eq.${brandSlugValue}`, slug: `eq.${venueSlug}`, limit: "1",
+  });
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const venue = rows[0];
+  const events = await fetchPublicBrandEvents(brandSlugValue);
+  return { brand: { ...venue, description: venue.pitch, profile_photo_url: venue.cover_media_url }, venue, events, canonicalBrandSlug: brandSlugValue };
 };
 
 const isTripRow = (row) => {
@@ -590,7 +615,7 @@ const buildBrandOgCardProps = (input) => {
   };
 };
 
-const pageShell = ({ title, description, canonicalUrl, imageUrl, type, body }) => `<!doctype html>
+const pageShell = ({ title, description, canonicalUrl, imageUrl, type, body, siteName = "Mingla Business" }) => `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -598,18 +623,16 @@ const pageShell = ({ title, description, canonicalUrl, imageUrl, type, body }) =
   <title>${escapeHtml(title)}</title>
   <meta name="description" content="${escapeHtml(description)}" />
   <link rel="canonical" href="${escapeHtml(canonicalUrl)}" />
-  <meta property="og:site_name" content="Mingla Business" />
+  <meta property="og:site_name" content="${escapeHtml(siteName)}" />
   <meta property="og:title" content="${escapeHtml(title)}" />
   <meta property="og:description" content="${escapeHtml(description)}" />
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
   <meta property="og:type" content="${escapeHtml(type)}" />
-  <meta property="og:image" content="${escapeHtml(imageUrl)}" />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
+  ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />\n  <meta property="og:image:width" content="1200" />\n  <meta property="og:image:height" content="630" />` : ""}
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${escapeHtml(title)}" />
   <meta name="twitter:description" content="${escapeHtml(description)}" />
-  <meta name="twitter:image" content="${escapeHtml(imageUrl)}" />
+  ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />` : ""}
   <link rel="icon" href="${LOGO_PUBLIC_PATH}" />
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -751,11 +774,43 @@ const renderBrandHtml = (input) => {
   });
 };
 
+const renderVenueHtml = (input) => {
+  const { brand, venue, events, canonicalBrandSlug } = input;
+  const title = brandSeoTitle(brand, venue);
+  const description = brandDescription(brand, events.length);
+  const canonicalUrl = `${PUBLIC_ORIGIN}/b/${encodeURIComponent(canonicalBrandSlug)}/v/${encodeURIComponent(venue.slug)}`;
+  const imageUrl = brandImageUrl(venue)
+    ? `${PUBLIC_ORIGIN}/og/venue/${encodeURIComponent(canonicalBrandSlug)}/${encodeURIComponent(venue.slug)}.png`
+    : "";
+  return pageShell({ title, description, canonicalUrl, imageUrl, type: "profile", body: `<section class="hero"><div><h1>${escapeHtml(brandName(venue))}</h1><p>${escapeHtml(description)}</p><div class="meta">${venue.city ? `<span class="pill">${escapeHtml(venue.city)}</span>` : ""}<span class="pill">${events.length} event${events.length === 1 ? "" : "s"}</span></div></div></section>` });
+};
+
 const sendHtml = (res, html, statusCode = 200) => {
   res.statusCode = statusCode;
   res.setHeader("content-type", "text/html; charset=utf-8");
   res.setHeader("cache-control", "s-maxage=300, stale-while-revalidate=3600");
   res.end(html);
+};
+
+const renderSharedCardHtml = (snapshot, appUrl) => {
+  const canonicalUrl = `${EXPLORER_PUBLIC_ORIGIN}/p/${encodeURIComponent(snapshot.share_id)}`;
+  const imageUrl = snapshot.cover_url
+    ? `${EXPLORER_PUBLIC_ORIGIN}/og/share/${encodeURIComponent(snapshot.share_id)}.png`
+    : "";
+  const metadata = snapshot.metadata && typeof snapshot.metadata === "object" ? snapshot.metadata : {};
+  const facts = [metadata.category, metadata.location, metadata.price, metadata.duration]
+    .filter((v) => typeof v === "string" && v.trim()).slice(0, 2);
+  const description = facts.join(" · ") || `Open ${snapshot.title} on Mingla.`;
+  const slivers = snapshot.kind === "curated" ? '<i class="share-curated-sliver one"></i><i class="share-curated-sliver two"></i>' : "";
+  const hero = snapshot.cover_url
+    ? `<div class="share-cover"><img class="share-cover-image" src="${escapeHtml(snapshot.cover_url)}" alt="${escapeHtml(snapshot.title)}">${slivers}<div class="share-title">${escapeHtml(snapshot.title)}</div><div class="share-plate">${escapeHtml(facts.join(" · "))}<strong>mingla</strong></div></div>`
+    : `<div class="share-cover coverless">${slivers}<div class="share-title">${escapeHtml(snapshot.title)}</div><div class="share-plate">${escapeHtml(facts.join(" · "))}<strong>mingla</strong></div></div>`;
+  const stops = snapshot.kind === "curated" && Array.isArray(snapshot.stops)
+    ? `<ol>${snapshot.stops.map((s) => `<li>${escapeHtml(typeof s?.title === "string" ? s.title : "Stop")}</li>`).join("")}</ol>` : "";
+  const realDescription = asText(metadata.description);
+  const hours = metadata.hours && typeof metadata.hours === "object" ? `<details><summary>Hours</summary><pre>${escapeHtml(JSON.stringify(metadata.hours, null, 2))}</pre></details>` : "";
+  const actions = [[metadata.mapUrl, "Directions"], [metadata.website, "Website"], [metadata.phone ? `tel:${metadata.phone}` : "", "Call"]].filter(([href]) => typeof href === "string" && href).map(([href, label]) => `<a class="fact-action" href="${escapeHtml(href)}">${label}</a>`).join("");
+  return pageShell({ title: `${snapshot.title} on Mingla`, description, canonicalUrl, imageUrl, type: "article", siteName: "Mingla", body: `<main class="share-page">${hero}<section>${realDescription ? `<p>${escapeHtml(realDescription)}</p>` : ""}${stops}${hours}${actions ? `<nav class="fact-actions">${actions}</nav>` : ""}<a class="open-app" href="${escapeHtml(appUrl)}">Open in Mingla</a></section></main><style>.share-page{max-width:980px;margin:28px auto;padding:0 16px}${s6CardCss()}.share-page section{max-width:390px;margin:20px auto}.fact-actions{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}.fact-action{color:#fff7ef}.open-app{display:block;padding:14px 20px;border-radius:999px;background:#eb7825;color:#fff;text-align:center;text-decoration:none;font-weight:800}@media(min-width:760px){.share-page{display:grid;grid-template-columns:390px 1fr;gap:44px;align-items:center;min-height:80vh}.share-page section{margin:0;max-width:460px}}</style>` });
 };
 
 const renderNotFoundHtml = (title) =>
@@ -1056,10 +1111,14 @@ module.exports = {
   fetchPublicEventBySlug,
   fetchPublicTripById,
   fetchPublicTripBySlug,
+  fetchPublicVenueBySlug,
+  fetchSharedCardSnapshot,
   firstQueryValue,
   renderBrandHtml,
   renderEventHtml,
   renderTripHtml,
+  renderVenueHtml,
+  renderSharedCardHtml,
   renderNotFoundHtml,
   renderOgPng,
   sendHtml,

@@ -1935,6 +1935,21 @@ function AppContent() {
     if (!dest) return;
     try {
       switch (dest.kind) {
+        case 'share': {
+          if (dest.referralCode) {
+            AsyncStorage.setItem('@mingla_referral_code', dest.referralCode).catch((e) =>
+              console.warn('[OneLink] Failed to persist referral code:', e),
+            );
+          }
+          const path = `/p/${encodeURIComponent(dest.shareId)}`;
+          if (!userIdRef.current) {
+            AsyncStorage.setItem('mingla_deferred_deeplink', JSON.stringify({ url: path, ts: Date.now(), router: true }))
+              .catch((e) => console.warn('[OneLink] Failed to defer share link:', e));
+            return;
+          }
+          router.push(path as never);
+          return;
+        }
         case 'referral':
           AsyncStorage.setItem('@mingla_referral_code', dest.referralCode).catch((e) =>
             console.warn('[OneLink] Failed to persist referral code:', e),

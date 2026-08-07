@@ -7,9 +7,13 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
+    { "source": "/share/:shareId.png", "destination": "/api/shared-card-image?shareId=:shareId&surface=s4" },
+    { "source": "/og/share/:shareId.png", "destination": "/api/shared-card-image?shareId=:shareId&surface=s5" },
+    { "source": "/p/:shareId", "destination": "/api/shared-card?shareId=:shareId" },
     { "source": "/og/event/:eventId.png", "destination": "/api/og-event?eventId=:eventId" },
     { "source": "/og/brand/:brandSlug.png", "destination": "/api/og-brand?brandSlug=:brandSlug" },
     { "source": "/og/trip/:tripId.png", "destination": "/api/og-trip?tripId=:tripId" },
+    { "source": "/og/venue/:brandSlug/:venueSlug.png", "destination": "/api/og-venue?brandSlug=:brandSlug&venueSlug=:venueSlug" },
     {
       "source": "/e/:brandSlug/:eventSlug",
       "has": [
@@ -52,7 +56,7 @@
           "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
         }
       ],
-      "destination": "/api/public-brand?brandSlug=:brandSlug"
+      "destination": "/api/public-venue?brandSlug=:brandSlug&venueSlug=:venueSlug"
     },
     { "source": "/stripe-onboarding-return", "destination": "/stripe-onboarding-return.html" },
     { "source": "/auth/callback", "destination": "/auth/callback.html" },

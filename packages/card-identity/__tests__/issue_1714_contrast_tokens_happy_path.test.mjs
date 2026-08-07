@@ -170,7 +170,9 @@ test('H-5 S1 and S7 retain their standard boundary and measured continuity', () 
   assert.equal(CI.PLATE.fallbackSolid, 'rgb(53,56,63)');
 });
 
-test('H-6 verdicts are exact: corrected surfaces are designed, never falsely built', () => {
+test('H-6 verdicts are exact after #1615 builds S4/S5/S6', () => {
+  // [TEST-MOD-APPROVED #1615] The old exact arrays became false when real
+  // renderer/page files shipped; the reason and authorization live here.
   const oracle = readFileSync(new URL('./card_identity_single_source.test.mjs', import.meta.url), 'utf8');
   const declaration = (name) => {
     const match = new RegExp(`const ${name} = new Set\\(\\[([^\\]]*)\\]\\);`).exec(oracle);
@@ -178,7 +180,7 @@ test('H-6 verdicts are exact: corrected surfaces are designed, never falsely bui
     return [...match[1].matchAll(/'([^']+)'/g)].map((item) => item[1]);
   };
 
-  assert.deepEqual(declaration('BUILT'), ['s1Single', 's1Curated', 's7Expanded']);
-  assert.deepEqual(declaration('DESIGNED'), ['s2Grid', 's3Chat', 's4Snippet', 's5Og', 's6Phone']);
+  assert.deepEqual(declaration('BUILT'), ['s1Single', 's1Curated', 's4Snippet', 's5Og', 's6Phone', 's7Expanded']);
+  assert.deepEqual(declaration('DESIGNED'), ['s2Grid', 's3Chat']);
   assert.match(oracle, /const KNOWN_OPEN = \{\};/);
 });
