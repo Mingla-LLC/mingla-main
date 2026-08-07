@@ -196,6 +196,12 @@ function over(fg, alpha, bg) {
 // 3 · The plate — the one material
 // ─────────────────────────────────────────────────────────────────────────────
 
+const PLATE_BOUNDARIES = {
+  standard: { color: 'rgba(255,255,255,0.38)', rgb: [255, 255, 255], alpha: 0.38, width: 1 },
+  compact: { color: 'rgba(255,255,255,0.86)', rgb: [255, 255, 255], alpha: 0.86, width: 1 },
+  ogOpaque: { color: 'rgba(255,255,255,0.48)', rgb: [255, 255, 255], alpha: 0.48, width: 1 },
+};
+
 const PLATE = {
   /** The invariant. Every surface's composite lands here, whatever its scrim. */
   targetLstar: 23.5,
@@ -221,10 +227,11 @@ const PLATE = {
    * `bottomChip`'s 0.14 border measures 1.55:1 — a live failure.) 0.38 is a
    * value that had to be raised, not one that was inherited.
    */
-  border: 'rgba(255,255,255,0.38)',
-  borderRgb: [255, 255, 255],
-  borderAlpha: 0.38,
-  borderWidth: 1,
+  boundaries: PLATE_BOUNDARIES,
+  border: PLATE_BOUNDARIES.standard.color,
+  borderRgb: PLATE_BOUNDARIES.standard.rgb,
+  borderAlpha: PLATE_BOUNDARIES.standard.alpha,
+  borderWidth: PLATE_BOUNDARIES.standard.width,
   /** 1pt inset highlight at the top edge. Decorative. */
   topHighlight: 'rgba(255,255,255,0.50)',
   /**
@@ -632,7 +639,17 @@ const DETAILS = {
   color: '#FFFFFF',
 };
 
-const SLIVER = { height: 4, radius: 2, offsets: [0, 6], insets: [24, 34], alpha: 0.44 };
+const SLIVER = {
+  height: 4,
+  radius: 2,
+  offsets: [0, 6],
+  insets: [24, 34],
+  alpha: 0.44,
+  boundaries: {
+    none: { color: 'rgba(0,0,0,0)', rgb: [0, 0, 0], alpha: 0, width: 0 },
+    compact: { color: 'rgba(0,0,0,0.56)', rgb: [0, 0, 0], alpha: 0.56, width: 0.5 },
+  },
+};
 
 /**
  * The drag handle, for a surface that draws its own (S7 — the expanded sheet's
@@ -739,6 +756,8 @@ const SURFACES = {
     controls: true,
     topScrim: true,
     curated: false,
+    plateBoundary: 'standard',
+    sliverBoundary: 'none',
     sliver: { height: 4, radius: 2, alpha: 0.44, opaque: ['rgb(143,143,143)', 'rgb(145,145,145)'], forcedOpaque: false },
   },
   s1Curated: {
@@ -754,6 +773,8 @@ const SURFACES = {
     controls: true,
     topScrim: true,
     curated: true,
+    plateBoundary: 'standard',
+    sliverBoundary: 'none',
     sliver: { height: 4, radius: 2, alpha: 0.44, opaque: ['rgb(143,143,143)', 'rgb(145,145,145)'], forcedOpaque: false },
   },
   s2Grid: {
@@ -769,6 +790,8 @@ const SURFACES = {
     controls: false,
     topScrim: false,
     curated: true,
+    plateBoundary: 'compact',
+    sliverBoundary: 'compact',
     sliver: { height: 2, radius: 1, alpha: 0.96, opaque: ['rgb(255,255,255)', 'rgb(255,255,255)'], forcedOpaque: true },
   },
   s3Chat: {
@@ -784,6 +807,8 @@ const SURFACES = {
     controls: false,
     topScrim: false,
     curated: true,
+    plateBoundary: 'compact',
+    sliverBoundary: 'compact',
     sliver: { height: 2, radius: 1, alpha: 0.96, opaque: ['rgb(255,255,255)', 'rgb(255,255,255)'], forcedOpaque: true },
   },
   s4Snippet: {
@@ -799,6 +824,8 @@ const SURFACES = {
     controls: false,
     topScrim: false,
     curated: true,
+    plateBoundary: 'standard',
+    sliverBoundary: 'none',
     sliver: { height: 4, radius: 2, alpha: 0.42, opaque: ['rgb(133,133,133)', 'rgb(135,135,135)'], forcedOpaque: false },
   },
   s5Og: {
@@ -816,6 +843,8 @@ const SURFACES = {
     curated: true,
     /** satori has no backdrop-filter, so this surface is opaque by construction. */
     opaqueOnly: true,
+    plateBoundary: 'ogOpaque',
+    sliverBoundary: 'none',
     sliver: { height: 12, radius: 6, alpha: 0.54, alpha2: 0.58, opaque: ['rgb(176,176,176)', 'rgb(187,187,187)'], forcedOpaque: true },
   },
   s6Phone: {
@@ -831,6 +860,8 @@ const SURFACES = {
     controls: true,
     topScrim: false,
     curated: true,
+    plateBoundary: 'standard',
+    sliverBoundary: 'none',
     sliver: { height: 4, radius: 2, alpha: 0.44, opaque: ['rgb(143,143,143)', 'rgb(145,145,145)'], forcedOpaque: false },
   },
   /**
@@ -878,9 +909,25 @@ const SURFACES = {
     controls: true,
     topScrim: false,
     curated: true,
+    plateBoundary: 'standard',
+    sliverBoundary: 'none',
     sliver: { height: 4, radius: 2, alpha: 0.44, opaque: ['rgb(143,143,143)', 'rgb(145,145,145)'], forcedOpaque: false },
   },
 };
+
+/** The package-owned plate boundary selected by a surface descriptor. */
+function surfacePlateBoundary(surfaceKey) {
+  const s = SURFACES[surfaceKey];
+  if (!s) throw new Error(`@mingla/card-identity: unknown surface "${surfaceKey}"`);
+  return PLATE.boundaries[s.plateBoundary];
+}
+
+/** The package-owned curated-sliver boundary selected by a surface descriptor. */
+function surfaceSliverBoundary(surfaceKey) {
+  const s = SURFACES[surfaceKey];
+  if (!s) throw new Error(`@mingla/card-identity: unknown surface "${surfaceKey}"`);
+  return SLIVER.boundaries[s.sliverBoundary];
+}
 
 /**
  * S7's hero height, from the sheet's own resolved height. The ONE variable
@@ -1125,6 +1172,8 @@ module.exports = {
   titleTopDepth,
   titleTopDepthForLines,
   surfaceSilhouettes,
+  surfacePlateBoundary,
+  surfaceSliverBoundary,
   surfaceScrimHeight,
   surfacePlateUnder,
 };

@@ -102,6 +102,8 @@ jobs:
           test -f packages/card-identity/package.json
           test -f packages/card-identity/__tests__/card_identity_single_source.test.mjs
           test -f packages/card-identity/__tests__/card_identity_isolation.test.mjs
+          test -f packages/card-identity/__tests__/issue_1714_contrast_tokens_happy_path.test.mjs
+          test -f packages/card-identity/__tests__/issue_1714_contrast_tokens_adversarial.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_liquid_glass_and_scrim_presence.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_top_scrim_chrome_contrast.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs
@@ -143,6 +145,8 @@ jobs:
         run: >-
           node --test
           packages/card-identity/__tests__/card_identity_single_source.test.mjs
+          packages/card-identity/__tests__/issue_1714_contrast_tokens_happy_path.test.mjs
+          packages/card-identity/__tests__/issue_1714_contrast_tokens_adversarial.test.mjs
           app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs
           app-mobile/src/components/swipeDeck/__tests__/issue_1609_liquid_glass_and_scrim_presence.test.mjs
           app-mobile/src/components/swipeDeck/__tests__/issue_1609_top_scrim_chrome_contrast.test.mjs

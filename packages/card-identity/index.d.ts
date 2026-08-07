@@ -8,6 +8,16 @@
 
 export type Rgb = readonly [number, number, number];
 
+export interface BoundarySpec {
+  readonly color: string;
+  readonly rgb: Rgb;
+  readonly alpha: number;
+  readonly width: number;
+}
+
+export type PlateBoundaryKey = 'standard' | 'compact' | 'ogOpaque';
+export type SliverBoundaryKey = 'none' | 'compact';
+
 /**
  * Both ramps are FOUR-STOP by contract, and the tuple type is load-bearing:
  * `expo-linear-gradient` types `colors` as `readonly [string, string, ...string[]]`
@@ -37,6 +47,7 @@ export const PLATE: {
   readonly liftRgb: Rgb;
   readonly liftAlpha: number;
   readonly underRgb: Rgb;
+  readonly boundaries: Readonly<Record<PlateBoundaryKey, BoundarySpec>>;
   readonly border: string;
   readonly borderRgb: Rgb;
   readonly borderAlpha: number;
@@ -101,6 +112,7 @@ export const SLIVER: {
   readonly offsets: readonly number[];
   readonly insets: readonly number[];
   readonly alpha: number;
+  readonly boundaries: Readonly<Record<SliverBoundaryKey, BoundarySpec>>;
 };
 
 export interface SurfaceSliver {
@@ -140,6 +152,8 @@ export interface SurfaceDescriptor {
   readonly topScrim: boolean;
   readonly curated: boolean;
   readonly opaqueOnly?: boolean;
+  readonly plateBoundary: PlateBoundaryKey;
+  readonly sliverBoundary: SliverBoundaryKey;
   readonly sliver: SurfaceSliver;
 }
 
@@ -237,6 +251,12 @@ export function titleTopDepthForLines(surfaceKey: SurfaceKey, lines: number): nu
 
 /** Every silhouette a surface renders, shallowest first: [0, 1, ... metaLines]. */
 export function surfaceSilhouettes(surfaceKey: SurfaceKey): number[];
+
+/** The named, package-owned plate boundary selected by this surface. */
+export function surfacePlateBoundary(surfaceKey: SurfaceKey): BoundarySpec;
+
+/** The named, package-owned curated-sliver boundary selected by this surface. */
+export function surfaceSliverBoundary(surfaceKey: SurfaceKey): BoundarySpec;
 
 export function typeLadder(surfaceKey: SurfaceKey): {
   title: { size: number; lineHeight: number; lines: number; weight: string };
