@@ -49,6 +49,15 @@
  * Recorded here, in the file, so the next reader finds the reason beside the
  * assertion rather than in a commit message they will not go looking for.
  */
+
+/**
+ * MODIFIED under #1714 — [TEST-MOD-APPROVED #1714].
+ *
+ * The old KNOWN_OPEN values deliberately pinned a proven design defect, T-4 evaluated an
+ * opaque-only surface through the glass compositor, and T-6 described a hairline but measured
+ * only the white core at one photo luminance. #1714 supplies package-owned tokens that clear the
+ * unchanged floor, so the verdict and measurement model now reflect the rendered layers.
+ */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -141,7 +150,7 @@ const BUILT = new Set(['s1Single', 's1Curated', 's7Expanded']);
  * because the whole point of measuring the descriptor rather than the pixels is
  * that the verdict does not wait for the file.
  */
-const DESIGNED = new Set(['s4Snippet', 's6Phone']);
+const DESIGNED = new Set(['s2Grid', 's3Chat', 's4Snippet', 's5Og', 's6Phone']);
 
 /** Held to the floors: everything that is not explicitly pinned as open. */
 function heldToFloors(key) {
@@ -164,11 +173,7 @@ function heldToFloors(key) {
  *
  * Reported against #1609; the S2/S3/S5 fix belongs to waves 2 and 3.
  */
-const KNOWN_OPEN = {
-  s2Grid: { boundary: 2.2, slivers: [3.02, 2.44] },
-  s3Chat: { boundary: 2.2, slivers: [2.95, 2.23] },
-  s5Og: { boundary: 2.68, slivers: [8.02, 7.58] },
-};
+const KNOWN_OPEN = {};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // G1 — the forbidden literal set
@@ -563,12 +568,15 @@ test("T-4 the plate's boundary against the photograph, swept over the full lumin
     const H = CI.surfaceScrimHeight(key);
     const alpha = CI.rampAlphaAtDepth(CI.plateTopDepth(key), H);
     const under = CI.plateUnderAlpha(alpha);
+    const boundary = CI.surfacePlateBoundary(key);
 
     let worst = Infinity;
     for (const photo of PHOTO_SWEEP) {
       const backdrop = backdropAt(photo, alpha);
-      const plate = plateOver(backdrop, under);
-      const border = composite(CI.PLATE.borderRgb, CI.PLATE.borderAlpha, backdrop);
+      const plate = CI.SURFACES[key].opaqueOnly
+        ? CI.PLATE.fallbackSolidRgb
+        : plateOver(backdrop, under);
+      const border = composite(boundary.rgb, boundary.alpha, backdrop);
       worst = Math.min(worst, Math.max(ratio(plate, backdrop), ratio(border, backdrop)));
     }
 
@@ -623,13 +631,20 @@ test('T-6 both curated slivers clear 3:1 against their OWN backdrop, at every su
   for (const key of Object.keys(CI.SURFACES)) {
     const s = CI.SURFACES[key];
     const H = CI.surfaceScrimHeight(key);
-    const measured = [];
+    const boundary = CI.surfaceSliverBoundary(key);
+    const measured = CI.SLIVER.offsets.map(() => Infinity);
     for (let i = 0; i < CI.SLIVER.offsets.length; i += 1) {
       const depth = s.bottomInset + s.plateH + CI.SLIVER.offsets[i] + s.sliver.height / 2;
-      const backdrop = backdropAt(255, CI.rampAlphaAtDepth(depth, H));
       const alpha = i === 1 && s.sliver.alpha2 ? s.sliver.alpha2 : s.sliver.alpha;
-      const fill = s.sliver.forcedOpaque ? WHITE : composite(WHITE, alpha, backdrop);
-      measured.push(ratio(fill, backdrop));
+      for (const photo of PHOTO_SWEEP) {
+        const backdrop = backdropAt(photo, CI.rampAlphaAtDepth(depth, H));
+        const fill = s.sliver.forcedOpaque ? WHITE : composite(WHITE, alpha, backdrop);
+        const edge = composite(boundary.rgb, boundary.alpha, backdrop);
+        measured[i] = Math.min(
+          measured[i],
+          Math.max(ratio(fill, backdrop), ratio(edge, backdrop)),
+        );
+      }
     }
 
     if (heldToFloors(key)) {
