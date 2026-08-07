@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -21,6 +21,9 @@ import { colors } from "../constants/colors";
 import { PendingExperienceReview } from "../hooks/usePostExperienceCheck";
 import { useTranslation } from "react-i18next";
 import { mixpanelService } from "../services/mixpanelService";
+import { VoluntaryPlaceReviewRequest } from "../store/placeReviewRequestStore";
+import { useSubmitVoluntaryPlaceReview } from "../hooks/usePlaceReviews";
+import { PlaceReviewWriteError } from "../services/placeReviewService";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -30,8 +33,25 @@ interface PostExperienceModalProps {
   visible: boolean;
   review: PendingExperienceReview;
   onComplete: () => void;
+  /**
+   * #1687 — invoked when the user CLOSES without submitting. Distinct from
+   * `onComplete` because a cancelled voluntary review must leave nothing behind,
+   * including the "Thank you" flash on the deck control. Falls back to
+   * `onComplete` when not supplied, which is the scheduled path's behaviour today.
+   */
+  onCancel?: () => void;
   dismissible?: boolean;
   calendarEntryId?: string | null;
+  /**
+   * #1687 — the VOLUNTARY entry: the user tapped "Been here" on the collapsed
+   * deck card. When set, this modal:
+   *   - opens on the RATING step (the tap already answered "did you go?"),
+   *   - carries a close icon (`dismissible`), because the tap may be a mistake,
+   *   - offers no reschedule (there is no calendar entry to move), and
+   *   - RECORDS THE VISIT as part of submit — see `placeReviewService`.
+   * Null/absent on the scheduled path, which is unchanged.
+   */
+  voluntaryVisit?: VoluntaryPlaceReviewRequest | null;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -40,16 +60,35 @@ export default function PostExperienceModal({
   visible,
   review,
   onComplete,
+  onCancel,
   dismissible = false,
   calendarEntryId,
+  voluntaryVisit = null,
 }: PostExperienceModalProps) {
   const { user } = useAppStore();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const { t } = useTranslation(['modals', 'common']);
 
+  // #1687 — the voluntary entry. Everything that differs from the scheduled
+  // prompt keys off this one boolean.
+  const isVoluntary = voluntaryVisit !== null && voluntaryVisit !== undefined;
+  const initialStep: Step = isVoluntary ? "rate" : "prompt";
+
+  const submitVoluntary = useSubmitVoluntaryPlaceReview();
+  /**
+   * Set whenever the visit landed and the review insert did not. A retry then
+   * skips the re-record: `record-visit` upserts `visited_at` at execution time,
+   * so recording twice rewrites the recorded time of the user's own visit.
+   *
+   * #1687 rework 3 — nothing deletes that row any more, so this id is never
+   * pointing at something that has since been removed. That ambiguity is what
+   * the rollback introduced and it is gone with it.
+   */
+  const recordedVisitIdRef = useRef<string | null>(null);
+
   // Step state machine
-  const [step, setStep] = useState<Step>("prompt");
+  const [step, setStep] = useState<Step>(initialStep);
 
   // Rating
   const [rating, setRating] = useState(0);
@@ -68,9 +107,13 @@ export default function PostExperienceModal({
 
   // ── Reset on visibility change ─────────────────────────────────────────
 
+  // #1687 — also re-armed when the ENTRY or the target changes, not only on the
+  // visible edge. The single mount is shared by both entries, so a scheduled
+  // target replaced by a voluntary one (or one card by another) must not inherit
+  // the previous session's step, rating or recorded-visit id.
   useEffect(() => {
     if (visible) {
-      setStep("prompt");
+      setStep(initialStep);
       setRating(0);
       setIsSubmitting(false);
       setSubmitError(null);
@@ -80,16 +123,21 @@ export default function PostExperienceModal({
       setShowTimePicker(false);
       setSelectedDateOption(null);
       setIsRescheduling(false);
+      recordedVisitIdRef.current = null;
     }
-  }, [visible]);
+  }, [visible, initialStep, review.cardId]);
 
   // ── Submit handler ─────────────────────────────────────────────────────
 
-  // Resolve the calendar entry ID: prop override takes precedence
-  const resolvedCalendarEntryId =
-    calendarEntryId !== undefined ? calendarEntryId : review.calendarEntryId;
+  // Resolve the calendar entry ID: prop override takes precedence. The voluntary
+  // entry has no calendar entry at all and must never stamp one.
+  const resolvedCalendarEntryId = isVoluntary
+    ? null
+    : calendarEntryId !== undefined
+      ? calendarEntryId
+      : review.calendarEntryId ?? null;
 
-  const handleSubmit = useCallback(async () => {
+  const handleSubmitScheduled = useCallback(async () => {
     if (!user?.id || rating === 0) return;
     setIsSubmitting(true);
     setSubmitError(null);
@@ -141,6 +189,69 @@ export default function PostExperienceModal({
     }
   }, [user, review, rating, resolvedCalendarEntryId]);
 
+  /**
+   * #1687 — the voluntary submit. ONE mutation records the visit AND writes the
+   * review; nothing was written when the modal opened, so a close icon leaves the
+   * database exactly as it found it.
+   */
+  const handleSubmitVoluntary = useCallback(async () => {
+    if (!user?.id || rating === 0 || !voluntaryVisit) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      await submitVoluntary.mutateAsync({
+        input: {
+          userId: user.id,
+          cardId: voluntaryVisit.cardId,
+          placeName: voluntaryVisit.placeName,
+          placeCategory: voluntaryVisit.placeCategory,
+          placeAddress: voluntaryVisit.placeAddress,
+          placePoolId: voluntaryVisit.placePoolId,
+          googlePlaceId: voluntaryVisit.googlePlaceId,
+          placeImage: voluntaryVisit.placeImage,
+          priceTier: voluntaryVisit.priceTier,
+          rating,
+        },
+        recordedVisitId: recordedVisitIdRef.current,
+      });
+
+      mixpanelService.trackPlaceReviewed({
+        card_id: voluntaryVisit.cardId,
+        place_name: voluntaryVisit.placeName,
+        category: voluntaryVisit.placeCategory || undefined,
+        rating,
+      });
+
+      setStep("thank-you");
+    } catch (error) {
+      console.error("[PostExperienceModal] Voluntary submit failed:", error);
+      // #1687 rework 3 — the visit is never rolled back, so `visitId` names a row
+      // that is really there whenever it is set. Reuse it: `record-visit` upserts
+      // `visited_at` at execution time, so a retry that re-recorded would rewrite
+      // the recorded time of the user's own visit (#1661 X-3). It is null only
+      // when the record itself failed and there is nothing to reuse.
+      if (error instanceof PlaceReviewWriteError) {
+        recordedVisitIdRef.current = error.visitId;
+      }
+      setSubmitError(t('modals:post_experience.error_generic'));
+      setIsSubmitting(false);
+    }
+  }, [user, voluntaryVisit, rating, submitVoluntary, t]);
+
+  const handleSubmit = isVoluntary ? handleSubmitVoluntary : handleSubmitScheduled;
+
+  /**
+   * #1687 — the close icon. It exists ONLY on the voluntary entry, because that
+   * tap is the one that may be a mistake; the scheduled prompt stays locked.
+   */
+  const handleDismiss = useCallback(() => {
+    if (onCancel) {
+      onCancel();
+      return;
+    }
+    onComplete();
+  }, [onCancel, onComplete]);
+
   // ── Reschedule ─────────────────────────────────────────────────────────
 
   const computedRescheduleDateTime = useMemo(() => {
@@ -184,7 +295,11 @@ export default function PostExperienceModal({
   );
 
   const handleConfirmReschedule = useCallback(async () => {
-    if (!computedRescheduleDateTime || !user?.id) return;
+    // #1687 — reschedule is the ONE genuinely calendar-dependent path. It is
+    // unreachable from the voluntary entry (which opens on "rate" and offers no
+    // route to this step), and moving a date that does not exist is meaningless,
+    // so the absence of an entry is a guard rather than a fallback.
+    if (!computedRescheduleDateTime || !user?.id || !review.calendarEntryId) return;
 
     setIsRescheduling(true);
     try {
@@ -254,13 +369,25 @@ export default function PostExperienceModal({
   // ── Render: rate step ──────────────────────────────────────────────────
 
   const renderRateStep = () => (
-    <View style={styles.rateContainer}>
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => setStep("prompt")}
-      >
-        <Icon name="arrow-back" size={24} color={colors.gray800} />
-      </TouchableOpacity>
+    <View
+      style={[
+        styles.rateContainer,
+        // The voluntary entry has no step above this one, so its title would sit
+        // level with the close icon. Scoped to this path: the scheduled prompt's
+        // rate step arrives from "did you go?" and is unchanged.
+        isVoluntary && { paddingTop: insets.top + 64 },
+      ]}
+    >
+      {/* #1687 — no back arrow on the voluntary entry: there is no "did you go?"
+          step behind it to go back to. The close icon is the way out. */}
+      {!isVoluntary && (
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => setStep("prompt")}
+        >
+          <Icon name="arrow-back" size={24} color={colors.gray800} />
+        </TouchableOpacity>
+      )}
 
       <Text style={styles.rateTitle}>{t('modals:post_experience.how_was', { placeName: review.placeName })}</Text>
 
@@ -457,13 +584,22 @@ export default function PostExperienceModal({
       visible={visible}
       animationType="slide"
       transparent={false}
-      onRequestClose={() => {}}
+      // #1687 — Android hardware back closes the voluntary review (same contract
+      // as the close icon: nothing written). The scheduled prompt stays locked.
+      onRequestClose={dismissible ? handleDismiss : () => {}}
     >
       <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom }]} edges={['top', 'left', 'right']}>
-        {dismissible && (
+        {/* #1687 — hidden on "thank-you": by then the write has landed, so there is
+            nothing left to cancel and the step carries its own Done button. */}
+        {dismissible && step !== "thank-you" && (
           <TouchableOpacity
-            style={styles.dismissButton}
-            onPress={onComplete}
+            // The absolute inset is measured from the SCREEN, not from the
+            // SafeAreaView's padded box — verified on an iPhone 17 Pro Max, where
+            // a bare `top: 16` put this icon on top of the battery indicator. The
+            // inset is added here rather than left to `edges` because the button
+            // does not participate in that layout.
+            style={[styles.dismissButton, { top: insets.top + 8 }]}
+            onPress={handleDismiss}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityLabel={t('modals:post_experience.close_label')}
             accessibilityRole="button"

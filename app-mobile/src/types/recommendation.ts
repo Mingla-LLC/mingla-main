@@ -10,6 +10,14 @@
  * for consumer compatibility.
  */
 export interface Recommendation {
+  /**
+   * #1687 — the deck's card-type discriminator, previously read only through
+   * `as any` casts. `'curated'` and `'experience'` are set by `deckService`;
+   * a single pool place (and a claimed venue, which is also a `place_pool` row)
+   * carries none. Declared here because code that treats "no type" as "a place"
+   * silently mis-handles every type added later — see `placeReviewRequestStore`.
+   */
+  cardType?: string;
   id: string;
   title: string;
   category: string;
@@ -84,6 +92,14 @@ export interface Recommendation {
   website?: string | null;
   phone?: string | null;
   placeId?: string;
+  /**
+   * #1687 — `place_pool.id`, attached ONLY by the producer that knows the card
+   * is a single pool place (`deckService.unifiedCardToRecommendation`). Absent on
+   * curated plans and brand experiences, whose ids are not places. Consumers must
+   * read THIS rather than testing whether `id` looks like a uuid: an `events.id`
+   * is uuid-shaped too, and `place_reviews.place_pool_id` carries a live FK.
+   */
+  placePoolId?: string;
   priceTier?: string;
   socialStats: {
     views: number;

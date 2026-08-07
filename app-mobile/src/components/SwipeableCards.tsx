@@ -38,7 +38,15 @@ import { useTranslation } from 'react-i18next';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { Icon } from "./ui/Icon";
-import { useHasVisited, useRecordVisit, useRemoveVisit } from "../hooks/useVisits";
+import { useHasVisited, useRemoveVisit } from "../hooks/useVisits";
+// #1687 — the deck's half of the voluntary rating prompt. It WRITES a request
+// here; the single PostExperienceModal mount in app/index.tsx reads it. No second
+// modal instance, no prop threaded through two memo boundaries.
+import {
+  usePlaceReviewRequestStore,
+  openPlaceReviewRequest,
+  placeReviewRequestFromCard,
+} from "../store/placeReviewRequestStore";
 // #1609 Direction C — the plate. One piece of glass replaces five chips, the
 // action rail and the "Details" text. Lives in a leaf module so BOTH card trees
 // can read it without reopening the SwipeableCards <-> CuratedExperienceSwipeCard
@@ -487,6 +495,34 @@ function metaSpansForCard(
  * placement was engineered to prevent, triggered by CORRECT use. Fixed by
  * keeping the Pressable ENABLED and making `onPress` a no-op while in flight:
  * the touch is consumed, and nothing opens.
+ *
+ * ---------------------------------------------------------------------------
+ * #1687 — THE TAP NOW OPENS THE RATING PROMPT, AND WRITES NOTHING.
+ *
+ * This SUPERSEDES #1609 Amendment 1 ("it must not open a rating flow on the
+ * collapsed card"), on Seth's decision of 2026-08-06 (issue #1687, comment
+ * 5209318118). Amendment 1's destination — the rating strip in the expanded card,
+ * #1605 pillar 4 — was never built, so "not here" ended up meaning "nowhere":
+ * there was no way for any user to rate any place, ever, unless they had
+ * scheduled it and let the time pass.
+ *
+ * THE SAFETY PROPERTY IS PRESERVED BY A DIFFERENT MECHANISM. Amendment 1's
+ * argument was that an errant thumb mid-swipe must not cost more than a toggle.
+ * It still does not: the prompt opens with a CLOSE ICON and writes nothing until
+ * the user rates and submits, so a mis-tap costs one tap to dismiss and leaves
+ * the database untouched. Under the old design a mis-tap wrote a `user_visits`
+ * row and trained the recommender before the user could react.
+ *
+ * WHY THE WRITE MOVED. Recording on tap and deleting on cancel means two round
+ * trips against a write whose cold path measures 11.8 seconds — the delete would
+ * race an insert that has not landed. #1618, #1642 and #1661 are all that same
+ * control. The visit is now recorded on CONFIRM, in one write, by the modal
+ * (`services/placeReviewService.ts`), which is also the only actor that survives
+ * the card being swiped away.
+ *
+ * This control keeps the REMOVE side (a settled tap still un-records, still
+ * bounded, still surfaced) — it is the un-toggle, and #1686 is about making it
+ * visible, which is why the settled body now carries a remove glyph.
  */
 const BEEN_HERE_SPINNER_TICK_MS = 250;
 
@@ -495,18 +531,37 @@ const BeenHereControl = React.memo(function BeenHereControl({
   card,
 }: {
   userId: string | undefined;
-  card: { id: string; title: string; category: string; image: string; priceRange?: string | null };
+  card: {
+    id: string;
+    title: string;
+    category: string;
+    image: string;
+    priceRange?: string | null;
+    address?: string;
+    placeId?: string;
+    // #1687 rework — the card's PROVENANCE, carried through so the request
+    // builder never has to infer a place identity from the shape of an id. This
+    // control renders on all four deck trees, and one of them (cardType
+    // 'experience') carries an events.id.
+    cardType?: string;
+    placePoolId?: string;
+  };
 }) {
   const { t } = useTranslation();
   const { data: visited, isPending } = useHasVisited(userId, card.id);
-  const recordVisit = useRecordVisit();
   const removeVisit = useRemoveVisit();
+  // #1687 — the confirmed-review signal. `confirmToken` moves ONLY on a confirm,
+  // never on a cancel, so a cancelled tap produces no flash.
+  const confirmedCardId = usePlaceReviewRequestStore((s) => s.confirmedCardId);
+  const confirmToken = usePlaceReviewRequestStore((s) => s.confirmToken);
 
-  const inFlight = recordVisit.isPending || removeVisit.isPending;
+  const inFlight = removeVisit.isPending;
   // Constitution rule 3 — no silent failures. useVisits' own onError only
   // console.errors, so without this the user taps, nothing moves, and the control is a
-  // dead tap.
-  const failed = recordVisit.isError || removeVisit.isError;
+  // dead tap. The RECORD side's failure is surfaced by the modal that owns it
+  // (#1687) — it stays open on its rating step with the error, rather than
+  // dismissing onto a control the user would have to interpret.
+  const failed = removeVisit.isError;
 
   const [pressed, setPressed] = React.useState(false);
   // #1618 defect 1 — the write's elapsed time, so a slow write becomes VISIBLE.
@@ -541,6 +596,21 @@ const BeenHereControl = React.memo(function BeenHereControl({
     wasInFlight.current = inFlight;
   }, [inFlight, failed]);
 
+  // #1687 — the confirmed voluntary review flashes "Thank you" here too, so the
+  // control still settles THROUGH the flash rather than snapping to settled. The
+  // write happened in the modal, so there is no local in-flight edge to hang it
+  // on. Seeded with the CURRENT token so a re-mount of an already-confirmed card
+  // does not re-flash; only a token that MOVES fires.
+  const seenConfirmTokenRef = React.useRef(confirmToken);
+  React.useEffect(() => {
+    if (confirmToken === seenConfirmTokenRef.current) return;
+    seenConfirmTokenRef.current = confirmToken;
+    if (confirmedCardId !== card.id) return;
+    setFlashing(true);
+    const id = setTimeout(() => setFlashing(false), BEEN_HERE.flashHoldMs);
+    return () => clearTimeout(id);
+  }, [confirmToken, confirmedCardId, card.id]);
+
   // Signed out, or the visited state is not known yet: render nothing rather than a
   // control whose label would be a guess.
   if (!userId || isPending) return null;
@@ -573,22 +643,24 @@ const BeenHereControl = React.memo(function BeenHereControl({
     HapticFeedback.light();
     if (failed) {
       // Constitution rule 3 — the failure offers a retry rather than dead-ending.
-      recordVisit.reset();
       removeVisit.reset();
     }
     if (isVisited) {
       removeVisit.mutate(card.id);
       return;
     }
-    recordVisit.mutate({
-      experienceId: card.id,
-      cardData: {
-        category: card.category,
-        title: card.title,
-        imageUrl: card.image,
-        priceTier: card.priceRange ?? undefined,
-      },
-    });
+    // #1687 — NOT a write. This opens the rating prompt on the single
+    // PostExperienceModal instance in app/index.tsx; the visit is recorded there,
+    // on confirm, together with the review. A cancelled tap leaves nothing.
+    //
+    // #1687 rework 3 — `visited` deliberately does NOT ride along any more.
+    // Rework 2 sent it so a half-landed write could decide whether to delete the
+    // visit; `useHasVisited` is cached for ten minutes, so that answer destroyed a
+    // three-day-old visit on device. The confirm-time write no longer deletes
+    // anything, so there is nothing here to authorise. `visited` still does its
+    // real job two lines up: it is why an already-settled pill un-toggles instead
+    // of opening this prompt at all.
+    openPlaceReviewRequest(placeReviewRequestFromCard(card));
   };
 
   return (

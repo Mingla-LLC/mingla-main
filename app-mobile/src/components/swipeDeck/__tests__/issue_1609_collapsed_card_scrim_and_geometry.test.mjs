@@ -39,7 +39,7 @@
 //   CLAIM: both-trees-share-one-hero-style
 //   CLAIM: white-tray-is-gone
 //   CLAIM: measurement-plumbing-is-gone
-//   CLAIM: been-here-never-opens-a-rating-flow
+//   CLAIM: been-here-opens-the-prompt-and-writes-nothing
 //   CLAIM: been-here-failure-is-surfaced
 
 import assert from 'node:assert/strict';
@@ -478,60 +478,131 @@ test('T-5 the #1593 measurement plumbing is gone, not layered under the redesign
 });
 
 // ---------------------------------------------------------------------------
-// Amendment 1 — the been-here control's safety property.
+// The been-here control's safety property.
+//
+// #1687 SUPERSEDES #1609 Amendment 1 — Seth's decision of 2026-08-06 (issue
+// #1687, comment 5209318118). Amendment 1 said the control "must not open a
+// rating flow on the collapsed card"; the destination it named instead (#1605
+// pillar 4, the rating strip in the expanded card) was never built, so "not here"
+// meant "nowhere" and no user could rate any place at all.
+//
+// THE SAFETY PROPERTY IS UNCHANGED AND THIS TEST STILL ENFORCES IT — an errant
+// thumb mid-swipe must not cost the user anything. It is now satisfied by a
+// STRONGER mechanism than the old toggle: the tap WRITES NOTHING. It opens a
+// prompt carrying a close icon, and the visit is recorded only on confirm. Under
+// the old design a stray tap wrote a `user_visits` row and trained the
+// recommender before the user could react; under this one it costs one tap to
+// dismiss and leaves the database untouched.
+//
+// So the assertions invert deliberately: `recordVisit.mutate` is now FORBIDDEN
+// here (it moved to the modal, which is also the only actor that survives the
+// card being swiped away), and the tap MUST reach the prompt. The expand surfaces
+// stay forbidden — the control still owns nothing but its own press.
 // ---------------------------------------------------------------------------
 
-test('T-6 the collapsed been-here control toggles a visit and NEVER opens a rating flow', () => {
+test('T-6 the collapsed been-here control opens the rating prompt and writes NOTHING on tap', () => {
   const src = stripComments(source.swipeable);
 
   const start = src.indexOf('const BeenHereControl');
   assert.ok(
     start > 0,
-    'been-here-never-opens-a-rating-flow: BeenHereControl is gone from SwipeableCards — '
-    + "Seth's amendment 1 puts this control on the collapsed card, so its absence is a "
-    + 'silent removal of an approved feature',
+    'been-here-opens-the-prompt-and-writes-nothing: BeenHereControl is gone from '
+    + "SwipeableCards — Seth's amendment 1 puts this control on the collapsed card, so its "
+    + 'absence is a silent removal of an approved feature',
   );
   const end = src.indexOf('const CardHeroImage', start);
   assert.ok(end > start, 'VACUITY: could not delimit the BeenHereControl component body');
   const body = src.slice(start, end);
   assert.ok(body.length > 400, `VACUITY: extracted BeenHereControl body is implausibly short (${body.length})`);
 
-  // It records and removes — a toggle, so a mis-tap is undone by one more tap.
-  for (const required of ['recordVisit.mutate', 'removeVisit.mutate']) {
+  // The un-toggle still lives here: a settled tap removes the visit, so a
+  // confirmed mistake is undone by one more tap while the card is on screen.
+  assert.ok(
+    body.includes('removeVisit.mutate'),
+    'been-here-opens-the-prompt-and-writes-nothing: the control must call removeVisit.mutate '
+    + '— the settled state is the un-toggle, and #1686 is about making it VISIBLE, not about '
+    + 'deleting it',
+  );
+
+  // The tap must reach the prompt on the SINGLE PostExperienceModal instance.
+  assert.ok(
+    body.includes('openPlaceReviewRequest'),
+    'been-here-opens-the-prompt-and-writes-nothing: the control no longer opens the rating '
+    + 'prompt (#1687). Before this, rating was something that HAPPENED TO YOU if you had '
+    + 'scheduled a place and let the time pass — there was no user-initiated way to rate '
+    + 'anywhere in the app.',
+  );
+
+  // THE SAFETY PROPERTY, in its #1687 form: the tap writes nothing at all.
+  // Re-introducing the record here would (a) put a write behind an errant thumb
+  // again and (b) re-create the cancel-races-an-11.8s-insert shape that produced
+  // #1618, #1642 and #1661.
+  for (const forbidden of ['recordVisit.mutate', 'useRecordVisit']) {
     assert.ok(
-      body.includes(required),
-      `been-here-never-opens-a-rating-flow: the control must call ${required} — the safety `
-      + 'argument for putting it on a swipe surface is that a stray thumb costs a TOGGLE, '
-      + 'which requires both directions to exist',
+      !body.includes(forbidden),
+      `been-here-opens-the-prompt-and-writes-nothing: BeenHereControl reaches "${forbidden}". `
+      + 'The visit is recorded on CONFIRM, by the modal (services/placeReviewService.ts), so a '
+      + 'cancelled tap leaves nothing behind. Writing on tap and deleting on cancel races a '
+      + 'delete against an insert whose cold path measures 11.8 seconds.',
     );
   }
 
-  // It must NOT reach any rating/expand surface. That is what makes a mis-tap cheap.
+  // #1687 REWORK — RESTORED, and widened. The T-6 rewrite above inverted the
+  // record assertions (a genuine strengthening: a mis-tap now costs nothing at
+  // all) but it ALSO dropped 'Rating' and 'rating' from the forbidden list, and
+  // that drop was not required by the decision — neither substring is present in
+  // the control body, so the guard passed either way. Dropping them narrowed the
+  // guard to two named symbols, and a write re-introduced through ANY other one
+  // slipped past T-6, past #1687's S-1 and past the behavioural half, which
+  // drives the service directly and never sees this component.
+  //
+  // Both are back, together with the write surface itself. `rating`/`Rating`
+  // keeps rating STATE and rating UI out of a control that must only hand off to
+  // the modal; the rest keeps any direct database write out of it, whatever it
+  // is called. What the control may reach is exactly one thing:
+  // `openPlaceReviewRequest`, asserted above.
+  for (const forbidden of [
+    'Rating',
+    'rating',
+    'supabase',
+    'place_reviews',
+    'user_visits',
+    'submitVoluntaryPlaceReview',
+    'mutateAsync',
+  ]) {
+    assert.ok(
+      !body.includes(forbidden),
+      `been-here-opens-the-prompt-and-writes-nothing: BeenHereControl reaches "${forbidden}". `
+      + 'The tap must WRITE NOTHING and must hold no rating state of its own — it opens the '
+      + 'prompt (openPlaceReviewRequest) and the modal owns everything after that. Naming only '
+      + 'recordVisit.mutate/useRecordVisit would let the same write back in under a new symbol.',
+    );
+  }
+
+  // It must still reach NO expand surface. The control owns its own press and
+  // nothing else — that is what keeps it off the swipe path's gesture ledger.
   for (const forbidden of [
     'setSelectedCardForExpansion',
     'requestTapExpand',
     'handleCardExpand',
     'setIsExpandedModalVisible',
-    'Rating',
-    'rating',
   ]) {
     assert.ok(
       !body.includes(forbidden),
-      `been-here-never-opens-a-rating-flow: BeenHereControl reaches "${forbidden}". #1605 `
-      + 'pillar 1 §1.6 refused to put this on the collapsed card precisely because a rating '
-      + 'flow must never be reachable by an errant thumb mid-swipe; Seth overrode the '
-      + 'PLACEMENT, not the safety property. The rating strip stays in expanded',
+      `been-here-opens-the-prompt-and-writes-nothing: BeenHereControl reaches "${forbidden}". `
+      + 'The control must not open the expanded card — #1618 defect 2 was exactly that press '
+      + 'falling through, and the placement argument rests on it owning nothing else.',
     );
   }
 
   // 44pt target, per the amendment.
   const styleIdx = src.indexOf('beenHere: {');
-  assert.ok(styleIdx > 0, 'been-here-never-opens-a-rating-flow: styles.beenHere is gone');
+  assert.ok(styleIdx > 0, 'been-here-opens-the-prompt-and-writes-nothing: styles.beenHere is gone');
   const styleBody = src.slice(styleIdx, src.indexOf('},', styleIdx));
   assert.match(
     styleBody,
     /height:\s*44\b/,
-    'been-here-never-opens-a-rating-flow: the control must be a full 44pt target '
+    'been-here-opens-the-prompt-and-writes-nothing: the control must be a full 44pt target '
     + '(touchTargets.minimum) without relying on hitSlop to reach it',
   );
 

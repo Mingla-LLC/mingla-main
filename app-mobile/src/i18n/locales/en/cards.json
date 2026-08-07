@@ -125,7 +125,7 @@
   "swipeable.been_here_thanks": "Thank you",
   "swipeable.been_here_settled": "You've been here",
   "swipeable.been_here_on": "You've been to {{title}}. Double tap to remove.",
-  "swipeable.been_here_off": "Mark that you've been to {{title}}.",
+  "swipeable.been_here_off": "Say you've been to {{title}} and rate it.",
   "swipeable.card_hint": "Swipe up or double tap for details.",
   "swipeable.pass_action": "Pass",
   "swipeable.share_action": "Share",

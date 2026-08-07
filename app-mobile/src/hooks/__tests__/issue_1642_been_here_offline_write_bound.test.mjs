@@ -420,8 +420,16 @@ test('T-4 offline un-press (removeVisit) is bounded the same way', async () => {
 
 test('T-5 the failed mutation is what renders "Couldn\'t save"', () => {
   // The behavioural tests above end at `status: 'error'`. This closes the last
-  // link to the pixel the user sees: BeenHereControl must derive `failed` from
-  // the mutation's isError, and that state must carry the real copy.
+  // link to the pixel the user sees: a bounded rejection must reach a visible
+  // failure, and that state must carry the real copy.
+  //
+  // #1687 MOVED THE RECORD WRITE OUT OF THIS CONTROL, so this assertion follows
+  // it rather than pretending it is still here. The tap now opens the rating
+  // prompt and writes nothing; the visit is recorded on confirm by
+  // PostExperienceModal, which stays open on its rating step and renders the
+  // error itself. The REMOVE write is still owned here, and it is still the one
+  // whose failure this control has to show. Both halves are asserted below — the
+  // protection is intact, it now spans two files because the write does.
   const code = stripComments(fs.readFileSync(SWIPEABLE, 'utf8'));
 
   const at = code.indexOf('function BeenHereControl(');
@@ -430,9 +438,31 @@ test('T-5 the failed mutation is what renders "Couldn\'t save"', () => {
 
   assert.match(
     body,
-    /const\s+failed\s*=\s*recordVisit\.isError\s*\|\|\s*removeVisit\.isError/,
-    'T-5: `failed` no longer derives from the mutations\' isError, so a bounded rejection would '
-      + 'not reach the failed state (#1642).',
+    /const\s+failed\s*=\s*removeVisit\.isError/,
+    'T-5: `failed` no longer derives from the remove mutation\'s isError, so a bounded '
+      + 'rejection on the un-press would not reach the failed state (#1642).',
+  );
+
+  // The record write's failure must be surfaced by whoever now owns it. Without
+  // this the write simply left the file and took its Constitution-rule-3 handling
+  // with it — green here, silent on device.
+  const modal = stripComments(
+    fs.readFileSync(path.join(appMobile, 'src/components/PostExperienceModal.tsx'), 'utf8'),
+  );
+  const volAt = modal.indexOf('handleSubmitVoluntary');
+  assert.ok(volAt > 0, 'T-5: the voluntary submit that now owns the record write is gone (#1687)');
+  const volBody = modal.slice(volAt, volAt + 2500);
+  assert.match(
+    volBody,
+    /catch[\s\S]{0,600}setSubmitError\(/,
+    'T-5: the voluntary submit swallows its failure. The record write moved here (#1687), so '
+      + 'this is now the only place a bounded rejection of it can reach the user.',
+  );
+  assert.match(
+    volBody,
+    /setIsSubmitting\(false\)/,
+    'T-5: the voluntary submit leaves its spinner running after a failure — the #1618 shape, '
+      + 'one file further along.',
   );
   assert.match(
     body,

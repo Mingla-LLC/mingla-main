@@ -1,0 +1,155 @@
+name: Issue 1687 Been Here Rating Prompt
+
+# #1687 — tapping "Been here" on the collapsed deck card opens the rating prompt,
+# and a cancelled tap leaves NOTHING behind.
+#
+# The property this guards is a NEGATIVE one, which is exactly the kind a source
+# grep cannot check: after the tap, and after the cancel, `user_visits` and
+# `place_reviews` must both be empty. So the suite is behavioural — it loads the
+# REAL store, the REAL visitService (including its #1618 operation-level bound and
+# its supabase.functions.invoke('record-visit') call) and the REAL
+# placeReviewService over an in-memory database that records every write, then
+# drives them in the exact order the UI does. B-3 is the negative control for
+# B-1/B-2: the same fake server that stayed empty through the tap and the cancel
+# holds one visit and one review after the submit.
+#
+# The structural half (S-1..S-5) pins the seams the behavioural half cannot reach,
+# including ORCH-1063's single-modal-instance rule: the deck reaches the ONE
+# PostExperienceModal through the store, never by mounting its own — a second RN
+# <Modal> instance unmounted mid-presentation froze the entire app on device.
+#
+# Node 22 is REQUIRED: the suite loads the real TypeScript sources through
+# `module.stripTypeScriptTypes` (Node >= 22.13). node_modules is required too —
+# the store is driven through the real zustand the app ships.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/src/store/placeReviewRequestStore.ts"
+      - "app-mobile/src/services/placeReviewService.ts"
+      - "app-mobile/src/services/visitService.ts"
+      - "app-mobile/src/hooks/usePlaceReviews.ts"
+      - "app-mobile/src/hooks/useVisits.ts"
+      - "app-mobile/src/hooks/usePostExperienceCheck.ts"
+      - "app-mobile/src/components/PostExperienceModal.tsx"
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/components/deckCardPlate.tsx"
+      - "app-mobile/src/services/deckService.ts"
+      - "app-mobile/src/types/recommendation.ts"
+      - "supabase/migrations/20270223001687_issue_1687_one_voluntary_review_per_place.sql"
+      # #1687 rework 2 (P1-2) — S-9 reads this function to check that the
+      # harness above still models it faithfully. If #1694 changes how
+      # `isNew` is derived, this suite must re-run and say so.
+      - "supabase/functions/record-visit/index.ts"
+      - "app-mobile/src/components/swipeDeck/__tests__/issue_1609_collapsed_card_scrim_and_geometry.test.mjs"
+      - "app-mobile/src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs"
+      - "app-mobile/app/index.tsx"
+      - "app-mobile/src/i18n/locales/en/cards.json"
+      - "app-mobile/src/hooks/__tests__/issue_1687_been_here_opens_rating_prompt.test.mjs"
+      - "app-mobile/src/services/__tests__/issue_1687_tester_partial_write_and_stale_request.test.mjs"
+      - "app-mobile/src/services/__tests__/issue_1687_tester_retest_identity_provenance_and_rollback.test.mjs"
+      - "app-mobile/package-lock.json"
+      - ".github/workflows/issue-1687-been-here-rating-prompt.yml"
+  pull_request:
+    paths:
+      - "app-mobile/src/store/placeReviewRequestStore.ts"
+      - "app-mobile/src/services/placeReviewService.ts"
+      - "app-mobile/src/services/visitService.ts"
+      - "app-mobile/src/hooks/usePlaceReviews.ts"
+      - "app-mobile/src/hooks/useVisits.ts"
+      - "app-mobile/src/hooks/usePostExperienceCheck.ts"
+      - "app-mobile/src/components/PostExperienceModal.tsx"
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/components/deckCardPlate.tsx"
+      - "app-mobile/src/services/deckService.ts"
+      - "app-mobile/src/types/recommendation.ts"
+      - "supabase/migrations/20270223001687_issue_1687_one_voluntary_review_per_place.sql"
+      # #1687 rework 2 (P1-2) — S-9 reads this function to check that the
+      # harness above still models it faithfully. If #1694 changes how
+      # `isNew` is derived, this suite must re-run and say so.
+      - "supabase/functions/record-visit/index.ts"
+      - "app-mobile/src/components/swipeDeck/__tests__/issue_1609_collapsed_card_scrim_and_geometry.test.mjs"
+      - "app-mobile/src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs"
+      - "app-mobile/app/index.tsx"
+      - "app-mobile/src/i18n/locales/en/cards.json"
+      - "app-mobile/src/hooks/__tests__/issue_1687_been_here_opens_rating_prompt.test.mjs"
+      - "app-mobile/src/services/__tests__/issue_1687_tester_partial_write_and_stale_request.test.mjs"
+      - "app-mobile/src/services/__tests__/issue_1687_tester_retest_identity_provenance_and_rollback.test.mjs"
+      - "app-mobile/package-lock.json"
+      - ".github/workflows/issue-1687-been-here-rating-prompt.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  been-here-rating-prompt:
+    name: "Issue 1687: a cancelled Been-here tap writes nothing; a submit writes both"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app-mobile/package-lock.json
+
+      - name: The suites must exist
+        # Without this the job is green when the file is deleted — the exact
+        # "assertion that does not assert" shape #1687 was filed alongside.
+        run: |
+          test -f src/hooks/__tests__/issue_1687_been_here_opens_rating_prompt.test.mjs
+          test -f src/services/__tests__/issue_1687_tester_partial_write_and_stale_request.test.mjs
+          test -f src/services/__tests__/issue_1687_tester_retest_identity_provenance_and_rollback.test.mjs
+
+      - run: npm ci
+
+      - name: Tap writes nothing, cancel writes nothing, submit writes both
+        run: >
+          node --test --test-reporter=spec
+          src/hooks/__tests__/issue_1687_been_here_opens_rating_prompt.test.mjs
+
+      - name: "TESTER adversarial: partial writes, stale requests, colliding entries"
+        # The other half of the partial write (the VISIT failing), the orphaned
+        # visit a cancelled-after-failure tap leaves, the cross-session re-record
+        # drift, the place_pool_id derivation's FK blast radius, and the
+        # voluntary-vs-scheduled precedence on the single modal mount.
+        run: >
+          node --test --test-reporter=spec
+          src/services/__tests__/issue_1687_tester_partial_write_and_stale_request.test.mjs
+
+      - name: "TESTER adversarial 2: carried identity, the transitional residual, and the rollback"
+        # RETEST. The first tester suite calls the SERVICE directly, so it cannot
+        # see the rollback (which lives in useSubmitVoluntaryPlaceReview's
+        # mutationFn), and its EXPERIENCE_CARD fixture omits the `cardType` the
+        # real serving shape sets — so its X-4 no longer detects the derivation bug
+        # it named. This suite carries the faithful fixture, pins rule 1's boundary
+        # (declared types fail closed; an UNDECLARED one still falls through the
+        # [TRANSITIONAL] shape test), and attacks the rollback: the refused review,
+        # the rollback that itself fails, and the pre-existing visit that must never
+        # be deleted on the user's behalf.
+        run: >
+          node --test --test-reporter=spec
+          src/services/__tests__/issue_1687_tester_retest_identity_provenance_and_rollback.test.mjs
+
+      - name: Re-run the #1609 collapsed-control contract (superseded by #1687, still enforced)
+        # #1687 inverts the Amendment 1 assertion — `recordVisit.mutate` is now
+        # FORBIDDEN in the control and the prompt MUST open — so that suite is the
+        # other half of this contract and is re-run here rather than left to the
+        # #1593 workflow's path filter.
+        run: >
+          node --test
+          src/components/swipeDeck/__tests__/issue_1609_collapsed_card_scrim_and_geometry.test.mjs
+
+      - name: Re-run the #1642 bound contract (the record write moved files)
+        run: >
+          node --test
+          src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs
+
+      - name: Re-run ORCH-1063 single stable overlay mount
+        run: node src/components/__tests__/orch-1063-single-modal-instance.test.tsx

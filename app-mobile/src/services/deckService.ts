@@ -287,6 +287,12 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
     reviewCount: card.reviewCount ?? 0,
     website: card.website,
     placeId: card.placeId,
+    // #1687 — this branch is the SINGLE-PLACE branch: `discover-cards` builds
+    // these cards with `id: row.place_id`, a `place_pool.id`. Attaching it here
+    // is the only point in the pipeline that KNOWS that, so downstream never has
+    // to guess from the id's shape (an `events.id` is uuid-shaped too, and
+    // `place_reviews.place_pool_id` carries a live FK to `place_pool`).
+    placePoolId: typeof card.id === 'string' ? card.id : undefined,
     priceTier: undefined,
     ...discoveryPrice,
     socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },

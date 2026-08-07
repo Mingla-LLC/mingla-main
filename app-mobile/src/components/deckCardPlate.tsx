@@ -523,6 +523,29 @@ export function BeenHereBody({
       >
         {label}
       </Text>
+      {/*
+        #1686 — THE UNDO WAS ANNOUNCED TO VOICEOVER AND TO NOBODY ELSE.
+        The settled control genuinely un-records on a second press, and the only
+        string in the app that says so — `swipeable.been_here_on`, "Double tap to
+        remove" — is passed to `accessibilityLabel` only. What a sighted user SEES
+        is a green pill, a filled check and a past-tense sentence: the vocabulary
+        of a confirmation, not of a toggle, so the implemented undo is never
+        attempted.
+
+        This trailing glyph is the visible half of that same fact, borrowing the
+        removable-chip idiom every user already knows. It is deliberately small:
+        the pill is not redesigned, the copy is unchanged (`been_here_settled`
+        stays "You've been here"), no new state is introduced, and the row already
+        carries the gap and grows with its content — the share disc right-anchors
+        itself, so nothing collides.
+
+        It is NOT separately pressable. The whole 44pt pill is the target and it
+        already carries the button role and the removal label; a nested Pressable
+        here would flatten the a11y subtree and hide the control from VoiceOver.
+      */}
+      {state === 'settled' && (
+        <Icon name="close" size={BEEN_HERE.glyphSize.rest} color="#FFFFFF" />
+      )}
     </>
   );
 }
