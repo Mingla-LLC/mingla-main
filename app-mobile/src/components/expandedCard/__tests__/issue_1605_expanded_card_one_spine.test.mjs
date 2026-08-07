@@ -967,6 +967,217 @@ test('S-4d the body carries no rejected colour', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// S-6 · NO FIELD OUTLIVES ITS RENDER SITE
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Every row here is a field the pipeline still PRODUCES and the sheet must
+ * still SHOW. #1605 P1-3 and the enumeration that followed it.
+ *
+ * `producer` is a probe that must match at least one module OTHER than the
+ * consumer — that is the vacuity guard, and it is the important half: if a
+ * field is genuinely retired from every producer, this rule tells you to delete
+ * the row rather than passing silently on a field nobody writes.
+ *
+ * `consumer` + `renders` is the render site. Deleting it fails this rule.
+ */
+const S6_CARRIED = [
+  {
+    what: 'the picnic Shopping List',
+    producer: /\bshoppingList\s*[:,]/,
+    consumer: 'app-mobile/src/components/ExpandedCardModal.tsx',
+    renders: /<SuppliesList\b[\s\S]{0,80}items=\{/,
+    why:
+      'It rendered on `main` at :990-992 via PicnicShoppingList, is NOT in the spec\'s deletion list, '
+      + 'and five producers still carry the field — cardConverters, savedCardToExpandedCardData, '
+      + 'holidayCardToExpandedCardData, collabSaveCard and calendarService. Keeping the data, the '
+      + 'calendar column and the collab copy while rendering it nowhere is the worst of the three '
+      + 'available outcomes.',
+  },
+  {
+    what: "the busyness estimate's disclosure",
+    producer: /\bisEstimated\s*[:,]/,
+    consumer: 'app-mobile/src/components/expandedCard/ConditionsSection.tsx',
+    renders: /busyness\.isEstimated/,
+    why:
+      'busynessService sets `isEstimated: true` on EVERY busyness value the app produces — there is '
+      + 'no measured path. A compile-time VENUE_POPULARITY curve rendered with no disclosure is a '
+      + 'fabrication with a sparkline next to it (Constitution 9).',
+  },
+  {
+    what: "a curated stop's own booking page",
+    producer: /\bwebsite\s*:/,
+    consumer: 'app-mobile/src/components/expandedCard/StopList.tsx',
+    renders: /stop\.website/,
+    why:
+      'CuratedStop.website is populated by the generator and rendered on `main` as a per-stop '
+      + '"Policies & Reservations" row. With no reader it is a booking link the user cannot reach.',
+  },
+  {
+    what: "a curated stop's photos past the first",
+    producer: /\bimageUrls\s*[:?]/,
+    consumer: 'app-mobile/src/components/expandedCard/StopList.tsx',
+    renders: /stop\.imageUrls/,
+    why:
+      'A stop carries up to five photos. The deleted StopImageGallery was ImageLightbox\'s only '
+      + 'entry point in the whole app, so losing it made every photo past the cover undisplayable.',
+  },
+  {
+    what: "the viewer's own distance on a chat-mounted card",
+    producer: /setViewerDistance\s*\(/,
+    // The producer and the consumer are the SAME module here, and that is the
+    // point: the modal computes this value itself and then had no reader for
+    // it. Every other row's producer must be a different file.
+    producedInPlace: true,
+    consumer: 'app-mobile/src/components/ExpandedCardModal.tsx',
+    renders: /viewerDistanceKm:\s*viewerDistance/,
+    why:
+      'A chat-mounted card is BY DEFINITION one with no `card.distance` (`isChatMounted` is defined '
+      + 'as `!card.travelTime && !card.distance`), so those cards showed no distance at all while the '
+      + 'modal computed one and dropped it.',
+  },
+];
+
+test('S-6 every field the pipeline still produces has somewhere to render', () => {
+  // THE SECOND SILENT DELETION IS WHY THIS RULE EXISTS.
+  //
+  // Wave 4 deleted six components. Two features went with them and neither was
+  // in the spec's deletion list: the cover-video unmute control (CI caught it,
+  // not review) and the picnic Shopping List (the tester caught it). The shape
+  // is always the same — the DATA survives, every producer keeps writing it,
+  // and the render site quietly disappears — and it is invisible in review
+  // because the diff that removes it looks like a component deletion.
+  //
+  // A field with producers and no consumers is that bug. This rule states the
+  // pairing for every field this wave restored, so re-deleting one is a red
+  // test rather than a discovery three weeks later.
+  for (const row of S6_CARRIED) {
+    const producers = [...TREE]
+      .filter(([file, src]) =>
+        (row.producedInPlace === true || file !== row.consumer) && row.producer.test(src))
+      .map(([file]) => file);
+    assert.ok(
+      producers.length > 0,
+      `S-6 (vacuity): nothing in the tree produces ${row.what} any more (${row.producer}). If the `
+      + 'field is genuinely retired, DELETE this row and the render site together — a rule guarding a '
+      + 'field nobody writes is a rule that passes for the wrong reason.',
+    );
+
+    const consumer = TREE.get(row.consumer);
+    assert.ok(consumer, `S-6 (vacuity): ${row.consumer} was not swept`);
+    assert.match(
+      consumer,
+      row.renders,
+      `S-6: ${producers.length} module(s) still produce ${row.what} and ${row.consumer} no longer `
+      + `renders it.\n\n${row.why}\n\nRestore the render site, or remove the field from all `
+      + `${producers.length} producers in the same change. Keeping the data and dropping the render `
+      + 'is the one option that is never right.',
+    );
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S-7 · BUSYNESS IS AN ESTIMATE AND THE ROW SAYS SO
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('S-7 no synthesised busyness percentage renders as a measurement', () => {
+  // Constitution 9, and the FIFTH fabricated value this week: the 4.5 rating,
+  // the 0.0 rating, the "15 min" travel time, the longitude-derived timezone —
+  // and then a compile-time popularity curve rendered at 17.74:1 with a
+  // sparkline and no indication it was estimated. Two unrelated venues read
+  // "Not busy (3%) — great time to visit!" forty minutes apart on both
+  // platforms, because `weekday[1]` is a constant.
+  const conditions = stripComments(read('conditions'));
+  const service = stripComments(
+    fs.readFileSync(path.join(REPO, 'app-mobile/src/services/busynessService.ts'), 'utf8'),
+  );
+
+  // (1) The producer really does synthesise, and really does flag it. If it
+  // ever stops, this rule must be re-pointed rather than deleted.
+  assert.match(
+    service,
+    /VENUE_POPULARITY\s*\[/,
+    'S-7 (vacuity): busyness no longer comes from a compile-time popularity curve, so the premise of '
+    + 'this rule has changed.',
+  );
+  assert.match(
+    service,
+    /isEstimated:\s*true/,
+    'S-7 (vacuity): the service no longer marks its heuristic output as estimated.',
+  );
+
+  // (2) `busyness.message` embeds the percentage AND an exhortation
+  // ("Not busy (3%) — great time to visit!"). It must not be rendered.
+  assert.equal(
+    /\{\s*busyness\.message\s*\}/.test(conditions),
+    false,
+    'S-7: the busyness row renders `busyness.message` again. That string is a synthesised percentage '
+    + 'plus advice, and §6.6\'s design is a qualitative WORD — the number is what makes the '
+    + 'fabrication concrete.',
+  );
+  // `currentPopularity` may survive in exactly ONE place: the sparkline's
+  // WIDTH. A bar is not a number — it carries no digits and it is hidden from
+  // the accessibility tree — but the moment the value reaches a <Text> it is a
+  // measurement again.
+  const popUses = [...conditions.matchAll(/currentPopularity/g)];
+  assert.equal(
+    popUses.length,
+    1,
+    `S-7: currentPopularity is referenced ${popUses.length} times. Exactly one is sanctioned — the `
+    + 'sparkline width.',
+  );
+  const around = conditions.slice(
+    Math.max(0, popUses[0].index - 120),
+    popUses[0].index + 40,
+  );
+  assert.match(
+    around,
+    /width:/,
+    `S-7: the popularity value is used outside the sparkline width: ...${around.trim()}...`,
+  );
+  const texts = [...conditions.matchAll(/<Text\b[\s\S]{0,400}?<\/Text>/g)].map((m) => m[0]);
+  assert.equal(
+    texts.some((t) => /currentPopularity|busyness\.message/.test(t)),
+    false,
+    'S-7: a <Text> renders the synthesised percentage or the advice string.',
+  );
+
+  // (3) The band word is what renders, and it is chosen BY `isEstimated`.
+  assert.match(
+    conditions,
+    /bandLabel\(busyness,\s*t\)/,
+    'S-7: the row no longer renders the qualitative band.',
+  );
+  const band = conditions.slice(conditions.indexOf('function bandLabel'));
+  assert.ok(band.length > 200, 'S-7 (vacuity): bandLabel could not be delimited');
+  assert.match(
+    band,
+    /busyness\.isEstimated/,
+    'S-7: the band word no longer depends on whether the value is estimated, so an ESTIMATE and a '
+    + 'MEASUREMENT would read identically.',
+  );
+  for (const level of ['Very Busy', 'Busy', 'Moderate', 'Not Busy']) {
+    assert.ok(
+      band.includes(`"${level}"`),
+      `S-7: the band "${level}" has no word, so it would fall through to something else.`,
+    );
+  }
+  assert.equal(
+    /\d+\s*%/.test(band),
+    false,
+    'S-7: a percentage crept back into the band vocabulary.',
+  );
+
+  // (4) …and the disclosure renders, gated on the same flag.
+  assert.match(
+    conditions,
+    /busyness\.isEstimated\s*\?[\s\S]{0,400}estimated_disclosure/,
+    'S-7: the "Estimated" disclosure is gone again. The shipped one failed AA (9pt, 2.20:1) and '
+    + 'deleting it was defensible; deleting it AND keeping the number was not.',
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // S-5 · THE META LINE IS CONTINUOUS — one producer, called from both surfaces
 // ─────────────────────────────────────────────────────────────────────────────
 
