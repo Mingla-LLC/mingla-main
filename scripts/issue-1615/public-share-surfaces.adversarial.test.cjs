@@ -245,3 +245,32 @@ test("A18 anonymous missing-ID spend and known-link availability are not protect
   assert.doesNotMatch(getBlock, /actorHash\(serviceKey,\s*`share:\$\{shareId\}`\)/,
     "a share-wide bucket lets one caller exhaust the link for every legitimate crawler and user");
 });
+
+test("A19 marketing owns no-store/status/content-type even when upstream fetch or body read rejects", async () => {
+  const { proxySharedCard } = await import(path.join(ROOT, "mingla-marketing/lib/shared-card-proxy.ts"));
+  const previous = process.env.SHARED_CARD_PROXY_SECRET;
+  process.env.SHARED_CARD_PROXY_SECRET = "tester-proxy-secret";
+  const shareId = "a".repeat(36);
+  const marked = new Request(`https://usemingla.com/api/shared-card/${shareId}`, {
+    headers: { "x-mingla-internal-share-route": "tester-proxy-secret" },
+  });
+  const assertOwnedFailure = async (fetchImpl) => {
+    const response = await proxySharedCard(marked, shareId, "data", fetchImpl);
+    assert.equal(response.status, 502);
+    assert.match(response.headers.get("content-type"), /^application\/json/);
+    assert.match(response.headers.get("cache-control"), /private[\s\S]*no-store/);
+    assert.equal(response.headers.get("cdn-cache-control"), "no-store");
+    assert.equal(response.headers.get("vercel-cdn-cache-control"), "no-store");
+  };
+  try {
+    await assertOwnedFailure(async () => { throw new Error("network rejected"); });
+    await assertOwnedFailure(async () => ({
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      arrayBuffer: async () => { throw new Error("body rejected"); },
+    }));
+  } finally {
+    if (previous === undefined) delete process.env.SHARED_CARD_PROXY_SECRET;
+    else process.env.SHARED_CARD_PROXY_SECRET = previous;
+  }
+});
