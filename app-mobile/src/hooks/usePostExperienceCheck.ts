@@ -53,7 +53,9 @@ export function usePostExperienceCheck() {
    * single mount for a signal it does not use.
    */
   const pendingReviewRef = useRef<PendingExperienceReview | null>(null);
-  pendingReviewRef.current = pendingReview;
+  useEffect(() => {
+    pendingReviewRef.current = pendingReview;
+  }, [pendingReview]);
 
   // ── Core check function ─────────────────────────────────────────────────
   const checkForPendingReviews = useCallback(async () => {

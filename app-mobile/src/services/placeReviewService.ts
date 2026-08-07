@@ -86,7 +86,8 @@ export interface VoluntaryPlaceReviewResult {
  * the user already had, which must never be deleted on our behalf:
  * `record-visit` upserts on (user_id, experience_id), so a place the user had
  * already marked returns `isNew: false` and its row predates this submit
- * entirely. The caller compensates — see `PostExperienceModal.handleSubmitVoluntary`.
+ * entirely. `rollBackHalfLandedVisit` below is what reads it, and
+ * `useSubmitVoluntaryPlaceReview`'s `mutationFn` is what calls that.
  */
 export class PlaceReviewWriteError extends Error {
   readonly visitId: string | null;
