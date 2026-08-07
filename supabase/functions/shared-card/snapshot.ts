@@ -36,10 +36,11 @@ export function mapCuratedSnapshot(saved: Record<string, any>) {
   ]);
   if (card.openingHours && typeof card.openingHours === "object") metadata.hours = card.openingHours;
   const sourceStopIds: string[] = [];
-  const stops = (Array.isArray(card.stops) ? card.stops : []).slice(0, 12).map((raw: unknown) => {
+  const stops = (Array.isArray(card.stops) ? card.stops : []).slice(0, 12).flatMap((raw: unknown) => {
     const stop = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
     const sourceId = shareText(stop.placeId || stop.place_id, 256); if (sourceId) sourceStopIds.push(sourceId);
-    return entries([["title", shareText(stop.title || stop.name, 160)], ["category", shareText(stop.category, 80)]]);
+    const title = shareText(stop.title || stop.name, 160);
+    return title ? [entries([["title", title], ["category", shareText(stop.category, 80)]])] : [];
   });
   return {
     title: shareText(saved.title || card.title || card.name, 160),
@@ -55,9 +56,10 @@ export function sharedCardOneLink(kind: string, shareId: string, referral = ""):
 
 export function publicSnapshotResponse(row: Record<string, any>) {
   const { attribution, revoked_at: _revoked, source_ids: _sourceIds, owner_profile_id: _owner, ...snapshot } = row;
-  snapshot.stops = (Array.isArray(snapshot.stops) ? snapshot.stops : []).map((raw: unknown) => {
+  snapshot.stops = (Array.isArray(snapshot.stops) ? snapshot.stops : []).flatMap((raw: unknown) => {
     const stop = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
-    return entries([["title", shareText(stop.title || stop.name, 160)], ["category", shareText(stop.category, 80)]]);
+    const title = shareText(stop.title || stop.name, 160);
+    return title ? [entries([["title", title], ["category", shareText(stop.category, 80)]])] : [];
   });
   return {
     snapshot,

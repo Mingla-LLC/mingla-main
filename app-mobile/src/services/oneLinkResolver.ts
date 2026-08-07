@@ -47,6 +47,10 @@ export type OneLinkDestination =
   | { kind: 'referral'; referralCode: string }
   | null;
 
+const OPAQUE_SHARE_ID_RE = /^[a-f0-9]{36}$/;
+export const isOpaqueShareId = (value: unknown): value is string =>
+  typeof value === 'string' && OPAQUE_SHARE_ID_RE.test(value);
+
 export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDestination {
   try {
     if (!data || typeof data !== 'object') return null;
@@ -60,17 +64,17 @@ export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDes
     // in one link — SPEC §B.1 af_sub1).
     const referralCode = str(data.af_sub1) || undefined;
 
-    // Missing type OR explicit `internal` → route the sub1 `mingla://` path
-    // through the existing deepLinkService state machine. A blank sub1 → null
-    // (never a dead tap; the caller no-ops).
+    // Missing type OR explicit `internal` may only route an actual `mingla://`
+    // path through the existing deepLinkService state machine. Never reinterpret
+    // an opaque share id or malformed payload as an internal destination.
     if (rawType === '' || rawType === 'internal') {
-      return sub1 ? { kind: 'internal', url: sub1 } : null;
+      return sub1.startsWith('mingla://') ? { kind: 'internal', url: sub1 } : null;
     }
 
     switch (rawType) {
       case 'place':
       case 'curated':
-        if (!sub1) return null;
+        if (!isOpaqueShareId(sub1)) return null;
         return referralCode
           ? { kind: 'share', shareType: rawType, shareId: sub1, referralCode }
           : { kind: 'share', shareType: rawType, shareId: sub1 };

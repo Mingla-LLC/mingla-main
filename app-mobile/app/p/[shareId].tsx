@@ -3,16 +3,17 @@ import { ActivityIndicator, ImageBackground, SafeAreaView, StyleSheet, Text, Vie
 import { useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import { PLATE, RAMP, SLIVER, SURFACES, surfacePlateBoundary, surfaceSliverBoundary } from '@mingla/card-identity';
+import { PLATE, RAMP, SLIVER, SURFACES, selectSharedCardFacts, surfacePlateBoundary, surfaceSliverBoundary } from '@mingla/card-identity';
 import { readSharedCard } from '../../src/services/sharedCardService';
 import { referralCodeFromSharedCardAppUrl } from '../../src/services/sharedCardLinks';
+import { isOpaqueShareId } from '../../src/services/oneLinkResolver';
 
 export default function SharedCardRoute() {
   const { shareId } = useLocalSearchParams<{ shareId: string }>();
   const [snapshot, setSnapshot] = useState<Record<string, any> | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
-    if (!shareId) return;
+    if (!isOpaqueShareId(shareId)) { setFailed(true); return; }
     setFailed(false);
     readSharedCard(shareId)
       .then(async ({ snapshot: nextSnapshot, appUrl }) => {
@@ -24,7 +25,10 @@ export default function SharedCardRoute() {
   }, [shareId]);
   if (failed) return <SafeAreaView style={styles.center}><Text>This shared card is no longer available.</Text></SafeAreaView>;
   if (!snapshot) return <SafeAreaView style={styles.center}><ActivityIndicator color="#eb7825" /></SafeAreaView>;
-  const facts = Object.values(snapshot.metadata ?? {}).filter((v) => typeof v === 'string' && v).slice(0, 2).join(' · ');
+  const metadata = snapshot.metadata ?? {};
+  // selectSharedCardFacts is the sole selector for
+  // [metadata.category, metadata.location, metadata.price, metadata.duration].
+  const facts = selectSharedCardFacts(metadata).join(' · ');
   return <SafeAreaView style={styles.page}><ImageBackground source={snapshot.cover_url ? { uri: snapshot.cover_url } : undefined} style={styles.hero} imageStyle={styles.image}><LinearGradient colors={RAMP.bottom.colors as any} locations={RAMP.bottom.locations as any} style={StyleSheet.absoluteFill}/>{snapshot.kind === 'curated' ? SLIVER.offsets.map((offset: number, index: number) => <View key={offset} style={[styles.sliver,{left:S6.sideInset+(S6.sliver.insets?.[index] ?? SLIVER.insets[index]),right:S6.sideInset+(S6.sliver.insets?.[index] ?? SLIVER.insets[index]),bottom:S6.bottomInset+S6.plateH+offset}]} />) : null}<Text style={styles.title}>{snapshot.title}</Text><View style={styles.plate}><Text style={styles.facts}>{facts}</Text><Text style={styles.brand}>mingla</Text></View></ImageBackground></SafeAreaView>;
 }
 const S6 = SURFACES.s6Phone;

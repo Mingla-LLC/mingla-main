@@ -148,9 +148,14 @@ test("H17 image handler seam returns 404 without cover and image/png with real b
 test("H18 real OneLink producer/resolver carry place and curated shareId", async () => {
   const share = await import(path.join(ROOT, "app-mobile/src/services/oneLinkShare.ts"));
   const resolver = await import(path.join(ROOT, "app-mobile/src/services/oneLinkResolver.ts"));
-  assert.deepEqual(share.buildInviteUserParams({ channel:"copy", entity:{ type:"place", shareId:"share-1" }, referralCode:"REF" }), { deep_link_value:"place", deep_link_sub1:"share-1", af_sub1:"REF" });
-  assert.equal(share.buildFallbackShareUrl({ channel:"copy", entity:{ type:"curated", shareId:"share-2" } }), "https://usemingla.com/p/share-2");
-  assert.deepEqual(resolver.resolveOneLinkDestination({ deep_link_value:"curated", deep_link_sub1:"share-2", af_sub1:"REF" }), { kind:"share", shareType:"curated", shareId:"share-2", referralCode:"REF" });
+  // [TEST-MOD-APPROVED #1615] Written reason: the old fixture used `share-2`,
+  // which is not the endpoint's exact lowercase 36-hex opaque-ID contract and
+  // incorrectly required the resolver to accept an impossible production ID.
+  const placeId = "a".repeat(36);
+  const curatedId = "b".repeat(36);
+  assert.deepEqual(share.buildInviteUserParams({ channel:"copy", entity:{ type:"place", shareId:placeId }, referralCode:"REF" }), { deep_link_value:"place", deep_link_sub1:placeId, af_sub1:"REF" });
+  assert.equal(share.buildFallbackShareUrl({ channel:"copy", entity:{ type:"curated", shareId:curatedId } }), `https://usemingla.com/p/${curatedId}`);
+  assert.deepEqual(resolver.resolveOneLinkDestination({ deep_link_value:"curated", deep_link_sub1:curatedId, af_sub1:"REF" }), { kind:"share", shareType:"curated", shareId:curatedId, referralCode:"REF" });
 });
 
 test("H19 Explorer payload is canonical S5/S6 URL while CTA remains attributed w36m OneLink", async () => {
@@ -190,4 +195,58 @@ test("H20 existing business human pages and bot S5 share Direction C identity", 
     assert.match(read(file), /renderCardIdentityPng/);
   }
   assert.match(read("mingla-business/server/socialPreview.js"), /\/og\/venue\/\$\{encodeURIComponent\(canonicalBrandSlug\)\}/);
+});
+
+test("H21 limiter retains one atomic current bucket and has indexed stale cleanup", () => {
+  const sql = read("supabase/migrations/20270225001615_issue_1615_public_share_snapshots.sql");
+  assert.match(sql, /primary key \(actor_hash, action\)/i);
+  assert.match(sql, /create index if not exists shared_card_rate_limits_window_start_idx[\s\S]*on public\.shared_card_rate_limits \(window_start\)/i);
+  assert.match(sql, /delete from public\.shared_card_rate_limits[\s\S]*window_start < now\(\) - interval '2 days'/i);
+  assert.match(sql, /on conflict \(actor_hash, action\) do update[\s\S]*window_start = excluded\.window_start[\s\S]*else 1/i);
+  assert.doesNotMatch(sql, /primary key \(actor_hash, action, window_start\)/i);
+});
+
+test("H22 curated snapshot and public response omit untitled stops", async () => {
+  const { mapCuratedSnapshot, publicSnapshotResponse } = await import(path.join(ROOT, "supabase/functions/shared-card/snapshot.ts"));
+  const mapped = mapCuratedSnapshot({ id:"saved", title:"Plan", card_data:{ stops:[{ title:"  ", placeId:"missing-title" }, { title:"Museum", placeId:"real" }] } });
+  assert.deepEqual(mapped.stops.map((stop) => stop.title), ["Museum"]);
+  assert.deepEqual(mapped.sourceIds.stopPlaceIds, ["missing-title", "real"]);
+  const output = publicSnapshotResponse({ share_id:"a".repeat(36), kind:"curated", title:"Plan", metadata:{}, stops:[{ title:"" }, { title:"Museum", category:"Art" }], source_ids:{}, owner_profile_id:"owner", attribution:{}, revoked_at:null });
+  assert.deepEqual(output.snapshot.stops, [{ title:"Museum", category:"Art" }]);
+});
+
+test("H23 S4, S5 and S6 responses are private no-store on success and failure", async () => {
+  const pageHandler = require(path.join(ROOT, "mingla-business/api/shared-card.js"));
+  const { createSharedCardImageHandler } = require(path.join(ROOT, "mingla-business/api/shared-card-image.js"));
+  const response = () => ({ statusCode:200, headers:{}, setHeader(k,v){this.headers[k.toLowerCase()]=v;}, end(body){this.body=body;} });
+  const page = response(); await pageHandler({ query:{ shareId:"invalid" } }, page);
+  assert.equal(page.statusCode, 404);
+  for (const key of ["cache-control", "cdn-cache-control", "vercel-cdn-cache-control"]) assert.match(page.headers[key], /no-store/);
+  const image = response(); await createSharedCardImageHandler(async()=>({ status:410, snapshot:null }))({ query:{ shareId:"a".repeat(36), surface:"s5" } }, image);
+  assert.equal(image.statusCode, 410);
+  for (const key of ["cache-control", "cdn-cache-control", "vercel-cdn-cache-control"]) assert.match(image.headers[key], /no-store/);
+});
+
+test("H24 native and OneLink resolution enforce exact lowercase opaque share IDs", async () => {
+  const resolver = await import(path.join(ROOT, "app-mobile/src/services/oneLinkResolver.ts"));
+  const valid = "c".repeat(36);
+  assert.equal(resolver.isOpaqueShareId(valid), true);
+  for (const invalid of ["c".repeat(35), "C".repeat(36), `${valid}-x`, "share-2", ""]) {
+    assert.equal(resolver.isOpaqueShareId(invalid), false);
+    assert.equal(resolver.resolveOneLinkDestination({ deep_link_value:"place", deep_link_sub1:invalid }), null);
+  }
+  assert.equal(resolver.resolveOneLinkDestination({ deep_link_value:"", deep_link_sub1:valid }), null);
+  assert.deepEqual(resolver.resolveOneLinkDestination({ deep_link_value:"internal", deep_link_sub1:"mingla://saved" }), { kind:"internal", url:"mingla://saved" });
+  assert.match(read("app-mobile/app/p/[shareId].tsx"), /if \(!isOpaqueShareId\(shareId\)\)/);
+});
+
+test("H25 one ordered selector owns facts across server renderers and native", () => {
+  const ci = require(path.join(ROOT, "packages/card-identity"));
+  const metadata = { duration:"2 hours", price:"$20", ignored:"wrong", location:"Durham", category:"Cafe" };
+  assert.deepEqual(ci.selectSharedCardFacts(metadata), ["Cafe", "Durham"]);
+  assert.deepEqual(ci.selectSharedCardFacts(metadata, 4), ["Cafe", "Durham", "$20", "2 hours"]);
+  for (const file of ["mingla-business/server/cardIdentityRenderer.js", "mingla-business/server/socialPreview.js", "app-mobile/app/p/[shareId].tsx"]) {
+    assert.match(read(file), /selectSharedCardFacts\((?:metadata|m)\)/, file);
+    assert.doesNotMatch(read(file), /Object\.values\(metadata\)/, file);
+  }
 });

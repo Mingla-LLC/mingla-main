@@ -34,12 +34,18 @@ create table if not exists public.shared_card_rate_limits (
   action text not null check (action in ('create', 'read')),
   window_start timestamptz not null,
   request_count integer not null default 1 check (request_count > 0),
-  primary key (actor_hash, action, window_start)
+  primary key (actor_hash, action)
 );
 alter table public.shared_card_rate_limits enable row level security;
 alter table public.shared_card_rate_limits force row level security;
 revoke all on public.shared_card_rate_limits from anon, authenticated;
 grant all on public.shared_card_rate_limits to service_role;
+
+-- The primary key retains only one current bucket per actor/action. This index
+-- is the explicit retention path used inside consume_shared_card_rate_limit,
+-- so abandoned actors remain cheap to reap even when current traffic is high.
+create index if not exists shared_card_rate_limits_window_start_idx
+  on public.shared_card_rate_limits (window_start);
 
 create or replace function public.consume_shared_card_rate_limit(
   p_actor_hash text,
@@ -58,11 +64,21 @@ begin
      or p_limit < 1 or p_window_seconds < 1 then
     return false;
   end if;
+  -- Keep only the recent enforcement horizon. Cleanup runs through the indexed
+  -- window_start path on every consume; normally it is a no-row indexed scan,
+  -- while abandoned actors cannot leave immortal rows behind.
+  delete from public.shared_card_rate_limits
+  where window_start < now() - interval '2 days';
   v_window := to_timestamp(floor(extract(epoch from now()) / p_window_seconds) * p_window_seconds);
   insert into public.shared_card_rate_limits(actor_hash, action, window_start, request_count)
   values (p_actor_hash, p_action, v_window, 1)
-  on conflict (actor_hash, action, window_start) do update
-    set request_count = public.shared_card_rate_limits.request_count + 1
+  on conflict (actor_hash, action) do update
+    set window_start = excluded.window_start,
+        request_count = case
+          when public.shared_card_rate_limits.window_start = excluded.window_start
+            then public.shared_card_rate_limits.request_count + 1
+          else 1
+        end
   returning request_count into v_count;
   return v_count <= p_limit;
 end;

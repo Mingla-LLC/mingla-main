@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const React = require("react");
 const { s6CardCss } = require("./cardIdentityRenderer");
+const { selectSharedCardFacts } = require("@mingla/card-identity");
 
 const DEFAULT_SUPABASE_URL = "https://gqnoajqerqhnvulmnyvv.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY =
@@ -792,21 +793,48 @@ const sendHtml = (res, html, statusCode = 200) => {
   res.end(html);
 };
 
+const setSharedNoStore = (res) => {
+  res.setHeader("cache-control", "private, no-store, max-age=0, must-revalidate");
+  res.setHeader("cdn-cache-control", "no-store");
+  res.setHeader("vercel-cdn-cache-control", "no-store");
+  res.setHeader("pragma", "no-cache");
+  res.setHeader("expires", "0");
+};
+
+const sendSharedHtml = (res, html, statusCode = 200) => {
+  res.statusCode = statusCode;
+  res.setHeader("content-type", "text/html; charset=utf-8");
+  setSharedNoStore(res);
+  res.end(html);
+};
+
+const sendSharedPng = (res, buffer) => {
+  res.statusCode = 200;
+  res.setHeader("content-type", "image/png");
+  setSharedNoStore(res);
+  res.end(buffer);
+};
+
 const renderSharedCardHtml = (snapshot, appUrl) => {
   const canonicalUrl = `${EXPLORER_PUBLIC_ORIGIN}/p/${encodeURIComponent(snapshot.share_id)}`;
   const imageUrl = snapshot.cover_url
     ? `${EXPLORER_PUBLIC_ORIGIN}/og/share/${encodeURIComponent(snapshot.share_id)}.png`
     : "";
   const metadata = snapshot.metadata && typeof snapshot.metadata === "object" ? snapshot.metadata : {};
-  const facts = [metadata.category, metadata.location, metadata.price, metadata.duration]
-    .filter((v) => typeof v === "string" && v.trim()).slice(0, 2);
+  // selectSharedCardFacts is the sole selector for
+  // [metadata.category, metadata.location, metadata.price, metadata.duration].
+  const facts = selectSharedCardFacts(metadata);
   const description = facts.join(" · ") || `Open ${snapshot.title} on Mingla.`;
   const slivers = snapshot.kind === "curated" ? '<i class="share-curated-sliver one"></i><i class="share-curated-sliver two"></i>' : "";
   const hero = snapshot.cover_url
     ? `<div class="share-cover"><img class="share-cover-image" src="${escapeHtml(snapshot.cover_url)}" alt="${escapeHtml(snapshot.title)}">${slivers}<div class="share-title">${escapeHtml(snapshot.title)}</div><div class="share-plate">${escapeHtml(facts.join(" · "))}<strong>mingla</strong></div></div>`
     : `<div class="share-cover coverless">${slivers}<div class="share-title">${escapeHtml(snapshot.title)}</div><div class="share-plate">${escapeHtml(facts.join(" · "))}<strong>mingla</strong></div></div>`;
-  const stops = snapshot.kind === "curated" && Array.isArray(snapshot.stops)
-    ? `<ol>${snapshot.stops.map((s) => `<li>${escapeHtml(typeof s?.title === "string" ? s.title : "Stop")}</li>`).join("")}</ol>` : "";
+  const stopTitles = snapshot.kind === "curated" && Array.isArray(snapshot.stops)
+    ? snapshot.stops.map((s) => asText(s?.title)).filter(Boolean)
+    : [];
+  const stops = stopTitles.length > 0
+    ? `<ol>${stopTitles.map((title) => `<li>${escapeHtml(title)}</li>`).join("")}</ol>`
+    : "";
   const realDescription = asText(metadata.description);
   const hours = metadata.hours && typeof metadata.hours === "object" ? `<details><summary>Hours</summary><pre>${escapeHtml(JSON.stringify(metadata.hours, null, 2))}</pre></details>` : "";
   const actions = [[metadata.mapUrl, "Directions"], [metadata.website, "Website"], [metadata.phone ? `tel:${metadata.phone}` : "", "Call"]].filter(([href]) => typeof href === "string" && href).map(([href, label]) => `<a class="fact-action" href="${escapeHtml(href)}">${label}</a>`).join("");
@@ -1122,6 +1150,9 @@ module.exports = {
   renderNotFoundHtml,
   renderOgPng,
   sendHtml,
+  sendSharedHtml,
+  sendSharedPng,
+  setSharedNoStore,
   sendPng,
   tripDescription,
   tripImageUrl,

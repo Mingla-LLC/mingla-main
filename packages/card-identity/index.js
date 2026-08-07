@@ -147,6 +147,21 @@ const K_PLATE = 1.4286;
 const K_TITLE = 1.5464;
 
 /**
+ * Shared-card facts are ordered domain presentation, not JSON object order.
+ * S4/S5/S6 server and S6 native all consume this selector.
+ */
+const SHARED_CARD_FACT_KEYS = Object.freeze(['category', 'location', 'price', 'duration']);
+
+function selectSharedCardFacts(metadata, limit = 2) {
+  const source = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+  const safeLimit = Number.isInteger(limit) && limit >= 0 ? limit : 2;
+  return SHARED_CARD_FACT_KEYS
+    .map((key) => (typeof source[key] === 'string' ? source[key].trim() : ''))
+    .filter(Boolean)
+    .slice(0, safeLimit);
+}
+
+/**
  * THE scrim formula. Every surface calls this. Nothing hard-codes a scrim
  * height, and nothing uses a percentage — a percentage makes the whole contrast
  * table valid only on the device it was computed on, which is why
@@ -1151,11 +1166,13 @@ module.exports = {
   TITLE_ALPHA_FLOOR,
   K_PLATE,
   K_TITLE,
+  SHARED_CARD_FACT_KEYS,
   S7_HERO_MIN,
   S7_HERO_MAX,
   S7_FOLD_RESERVE,
   expandedHeroHeight,
   expandedCoverlessHeroHeight,
+  selectSharedCardFacts,
   scrimHeight,
   rampAlphaAtDepth,
   plateUnderAlpha,

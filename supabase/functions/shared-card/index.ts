@@ -12,7 +12,6 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 });
 const SHARE_RE = /^[a-f0-9]{36}$/;
 const clean = shareText;
-const firstIp = (req: Request) => (req.headers.get("x-forwarded-for") || "unknown").split(",")[0].trim();
 async function actorHash(secret: string, actor: string) {
   const bytes = new TextEncoder().encode(`${secret}:${actor}`);
   return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
@@ -28,13 +27,17 @@ serve(async (req) => {
     if (req.method === "GET") {
       const shareId = new URL(req.url).searchParams.get("shareId") || "";
       if (!SHARE_RE.test(shareId)) return json({ error: "not_found" }, 404);
-      const hash = await actorHash(serviceKey, firstIp(req));
-      const { data: allowed } = await db.rpc("consume_shared_card_rate_limit", {
-        p_actor_hash: hash, p_action: "read", p_limit: 120, p_window_seconds: 60,
-      });
-      if (!allowed) return json({ error: "rate_limited" }, 429);
       const { data, error } = await db.from("shared_card_snapshots").select("share_id,snapshot_version,kind,title,cover_url,metadata,stops,attribution,created_at,expires_at,revoked_at").eq("share_id", shareId).maybeSingle();
       if (error || !data) return json({ error: "not_found" }, 404);
+      // No gateway address is trusted: the anonymous read rate-limit actor is
+      // the validated, existing opaque shareId. Shape-valid guesses that do not
+      // exist return before allocating a limiter row, bounding storage growth.
+      const hash = await actorHash(serviceKey, `share:${shareId}`);
+      const { data: allowed, error: limitError } = await db.rpc("consume_shared_card_rate_limit", {
+        p_actor_hash: hash, p_action: "read", p_limit: 120, p_window_seconds: 60,
+      });
+      if (limitError) throw limitError;
+      if (!allowed) return json({ error: "rate_limited" }, 429);
       if (data.revoked_at || new Date(data.expires_at).getTime() <= Date.now()) return json({ error: "gone" }, 410);
       return json(publicSnapshotResponse(data));
     }
@@ -45,9 +48,10 @@ serve(async (req) => {
     const user = userData.user;
     if (!user) return json({ error: "unauthorized" }, 401);
     const hash = await actorHash(serviceKey, user.id);
-    const { data: allowed } = await db.rpc("consume_shared_card_rate_limit", {
+    const { data: allowed, error: limitError } = await db.rpc("consume_shared_card_rate_limit", {
       p_actor_hash: hash, p_action: "create", p_limit: 20, p_window_seconds: 3600,
     });
+    if (limitError) throw limitError;
     if (!allowed) return json({ error: "rate_limited" }, 429);
     const raw = await req.json().catch(() => null) as Record<string, unknown> | null;
     const kind = raw?.kind === "curated" ? "curated" : raw?.kind === "place" ? "place" : null;

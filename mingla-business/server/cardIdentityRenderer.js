@@ -8,6 +8,7 @@ const {
   surfacePlateUnder,
   surfacePlateBoundary,
   surfaceSliverBoundary,
+  selectSharedCardFacts,
 } = require("@mingla/card-identity");
 
 const cssGradient = (ramp) => `linear-gradient(180deg,${ramp.colors.map((color, index) => `${color} ${Math.round(ramp.locations[index] * 100)}%`).join(",")})`;
@@ -15,7 +16,7 @@ const cssGradient = (ramp) => `linear-gradient(180deg,${ramp.colors.map((color, 
 const safeText = (value) => typeof value === "string" ? value.trim() : "";
 const factsFor = (snapshot) => {
   const m = snapshot && snapshot.metadata && typeof snapshot.metadata === "object" ? snapshot.metadata : {};
-  return [m.category, m.location, m.price, m.duration].map(safeText).filter(Boolean).slice(0, 2);
+  return selectSharedCardFacts(m);
 };
 
 /** The sole S4/S5 visual substrate. Geometry and boundaries come from the
