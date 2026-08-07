@@ -1162,10 +1162,28 @@ test('S-6 every field the pipeline still produces has somewhere to render', () =
  * S-6b closes that for two shapes, and only two. It PARSES the field list out
  * of the type declaration and requires every field to appear in exactly one of
  * two ledgers: RENDERED (with a probe naming the file and the expression that
- * renders it) or NOT_RENDERED (with a written reason). A field added to either
- * type without a decision fails this rule; a ledger row for a field that no
- * longer exists fails it too, so the ledger cannot rot.
+ * renders it) or NOT_RENDERED (with a written reason). A ledger row for a field
+ * that no longer exists fails it too, so the ledger cannot rot.
  *
+ * WHAT "A FIELD ADDED WITHOUT A DECISION FAILS" MEANS, EXACTLY — the first cut
+ * of this rule claimed it and did not deliver it (#1605 retest P1-A). It now
+ * holds for every declaration form this codebase writes, and the self-check at
+ * the top of the test proves the matcher still sees each of them:
+ *
+ *     …?: string;                 ✓  bare identifier, optional
+ *     readonly …: string;         ✓  THE HOUSE STYLE in the files this wave wrote
+ *     "…": string;                ✓  quoted key, either quote
+ *     readonly …?: { … };         ✓  modifier + optional + object type
+ *     …(): void;                  ✓  method members
+ *     […: string]: unknown;       LOUD FAIL — see `typeFields`
+ *
+ * NOTE FOR ANYONE EDITING THIS FILE: the tester's `A-5` cross-checks that every
+ * field it parses out of these two shapes is NAMED SOMEWHERE IN THIS FILE. So do
+ * NOT write a plausible field identifier into a comment or a fixture here — it
+ * would satisfy `A-5` for a field that has no ledger row and blunt the tripwire.
+ * That is why the forms above use `…` and the self-check below uses Greek.
+ *
+
  * IT DOES NOT COVER:
  *   * `ExpandedCardData` as a whole — ~90 fields across nine card shapes, many
  *     consumed outside this sheet. Classifying it here would either be a wall
@@ -1183,7 +1201,42 @@ test('S-6 every field the pipeline still produces has somewhere to render', () =
  * type label and the review count).
  */
 
-/** Top-level `name:` / `name?:` keys of a brace-delimited type body. */
+/*
+  THE MATCHER WAS DEFEATABLE BY THIS CODEBASE'S OWN HOUSE STYLE — #1605 retest P1-A.
+
+  The first cut of this extractor matched `/^([A-Za-z_$][\w$]*)\??\s*:/` at a
+  statement start. A field with a LEADING MODIFIER or a QUOTED KEY never matched,
+  and the walk then ran on to the next `;` with `atStatementStart = false`, so the
+  field was not merely mis-parsed — it was INVISIBLE. Measured on a throwaway
+  copy, one added field at a time, nothing else changed:
+
+      …?: string;             on BusynessData          22 pass / 1 fail  ← caught
+      readonly …: string;     on BusynessData          23 pass / 0 fail  ← INVISIBLE
+      "…": string;            on BusynessData          23 pass / 0 fail  ← INVISIBLE
+      readonly …: string;     on the companion element 23 pass / 0 fail  ← INVISIBLE
+
+  `readonly` is not an exotic form here. It is the house style in the files this
+  wave WROTE: every field of `FactsOptions` and `CuratedFactsOptions` in
+  `expandedCardFacts.ts`, of `StopListStop` in `StopList.tsx`, and of
+  `MetaSpanInput` in `deckCardPlate.tsx`. So the rule written to stop "a live
+  field with producers and no decision" was green for the most likely way the
+  next one would arrive — the exact bug class, arriving through the guard.
+
+  Widened below to the four declaration forms, plus method signatures, plus a
+  LOUD REFUSAL on an index signature: `[key: string]: unknown` makes exhaustive
+  classification impossible, and a rule that claims exhaustiveness must say so
+  rather than quietly classify the one member it can see. The widening is
+  self-checked inside `S-6b` itself, so it cannot be narrowed back in silence.
+*/
+
+/** A member key, tolerating modifiers, quoted keys, `?`, and method syntax. */
+const S6B_NAMED = new RegExp(
+  '^(?:(?:readonly|public|protected|private|declare|abstract|static|override)\\s+)*'
+  + '(?:(["\'])([A-Za-z_$][\\w$]*)\\1|([A-Za-z_$][\\w$]*))'
+  + '\\s*\\??\\s*(?::|(?:<[^<>]*>)?\\s*\\()',
+);
+
+/** Top-level member keys of a brace-delimited type body. */
 function typeFields(body, label) {
   const fields = [];
   let depth = 0;
@@ -1191,15 +1244,27 @@ function typeFields(body, label) {
   let atStatementStart = true;
   while (i < body.length) {
     const ch = body[i];
+    // Checked BEFORE the depth walk swallows the `[`, or an index signature is
+    // as invisible as a `readonly` field used to be.
+    if (depth === 0 && atStatementStart && ch === '[') {
+      assert.fail(
+        `S-6b: ${label} declares an INDEX SIGNATURE or a computed key. This rule claims that every `
+        + 'field of the shape is classified; with an index signature the shape has no enumerable '
+        + 'field list at all, so that claim cannot be true and must not be made. Either give the '
+        + 'shape named fields, or delete this shape from S6B_SHAPES and say in the header that it is '
+        + 'no longer exhaustively classified.',
+      );
+    }
     if (ch === '{' || ch === '(' || ch === '[' || ch === '<') { depth += 1; i += 1; continue; }
     if (ch === '}' || ch === ')' || ch === ']' || ch === '>') { depth -= 1; i += 1; atStatementStart = true; continue; }
     if (ch === ';' || ch === ',' || ch === '\n') { i += 1; atStatementStart = true; continue; }
     if (/\s/.test(ch)) { i += 1; continue; }
     if (depth === 0 && atStatementStart) {
-      const m = /^([A-Za-z_$][\w$]*)\??\s*:/.exec(body.slice(i));
+      const m = S6B_NAMED.exec(body.slice(i));
       if (m) {
-        fields.push(m[1]);
-        i += m[0].length;
+        fields.push(m[2] ?? m[3]);
+        // Stop BEFORE the trailing `:` / `(` so the depth walk still sees it.
+        i += m[0].length - 1;
         atStatementStart = false;
         continue;
       }
@@ -1286,6 +1351,39 @@ const S6B_SHAPES = [
 ];
 
 test('S-6b every field of the two shapes this wave lost fields from is classified', () => {
+  /*
+    THE MATCHER'S OWN SELF-CHECK — first, because everything below it is only
+    worth what the extractor can see. The previous matcher passed this file's
+    23 rules with a `readonly` URL field sitting unclassified on `BusynessData`;
+    the forms below are the ones that were measured, and the index-signature
+    refusal is asserted to actually throw. Greek names, deliberately — see the
+    A-5 note in the header.
+  */
+  const probe = typeFields(
+    'readonly alpha: string;\n'
+    + '"beta": number;\n'
+    + "'gamma'?: boolean;\n"
+    + 'delta?: string;\n'
+    + 'epsilon: number;\n'
+    + 'readonly zeta?: { theta: string };\n'
+    + 'eta(): void;\n',
+    'S-6b self-check',
+  );
+  assert.deepEqual(
+    [...probe].sort(),
+    ['alpha', 'beta', 'delta', 'epsilon', 'eta', 'gamma', 'zeta'],
+    'S-6b (vacuity): the field matcher no longer sees every declaration form this codebase writes, so '
+    + `"a field added without a decision fails" is false again. Saw: ${JSON.stringify(probe)}. A `
+    + '`readonly` field is the house style in `expandedCardFacts.ts`, `StopList.tsx` and '
+    + '`deckCardPlate.tsx` — a matcher blind to it is blind to the most likely next field.',
+  );
+  assert.throws(
+    () => typeFields('[ix: string]: unknown;\n', 'S-6b index-signature self-check'),
+    /INDEX SIGNATURE/,
+    'S-6b (vacuity): an index signature no longer fails the extractor, so a shape with no enumerable '
+    + 'field list would be reported as fully classified.',
+  );
+
   for (const shape of S6B_SHAPES) {
     const source = stripComments(read(shape.src));
     const fields = typeFields(typeBody(source, shape.opener, shape.label), shape.label);
@@ -1974,6 +2072,326 @@ test('S-5 the curated meta line is produced ONCE and both surfaces render the sa
   for (const needle of ['planVisibleStops', 'formatPlanDuration', 'curatedPriceLabel', 'distanceFromUserKm']) {
     assert.ok(facts.includes(needle), `S-5 (vacuity): the producer no longer contains ${needle}`);
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S-11 · THE ORDINAL MACHINE, EXECUTED — every statement of it, from source
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * THE ORDINAL COUNTER WAS UNGATED — corrected here.
+ *
+ * S-6 pins the optional stop's two RENDER SITES (the visible chip and the a11y
+ * branch), which is what makes deleting the marker a red test. Nothing gated the
+ * NUMBERING, so the pre-fix hole could be restored in one character:
+ *
+ *     - indexLabel: isOptional ? '' : String(planOrdinal),
+ *     + indexLabel: isOptional ? '' : String(i + 1),
+ *
+ * and the suite stayed at 23 pass / 0 fail. That revert is the original defect:
+ * rows read 1, (Optional), 3 while the plate says "2 stops" — the same plan,
+ * two numbers, one screen.
+ *
+ * So this rule lifts ALL FOUR statements of the machine out of the modal — the
+ * main-stop count, the `isOptional` predicate, the counter bump and the
+ * `indexLabel` expression — assembles them into the real loop and runs it over a
+ * swept domain, with the plate's number coming from the REAL `planVisibleStops`.
+ * Re-implementing any one of them here is how a rule ends up agreeing with
+ * itself, so none of them is re-implemented.
+ *
+ * THE ALL-OPTIONAL SHAPE IS IN THE DOMAIN, and it is the shape the dead
+ * `planMainStopCount > 0` conjunct used to leave broken (#1605 retest P2-C):
+ * counted from `planVisibleStops`, whose fallback returns the full set, the
+ * conjunct could never be false, so an all-optional plan said "3 stops" over
+ * three unnumbered `Optional` rows. The modal now counts the non-optional stops
+ * directly, which makes the guard live; restoring the fallback makes this rule
+ * red rather than making the divergence latent again.
+ */
+test('S-11 the rows the list numbers are exactly the stops the plate counts', async () => {
+  const { planVisibleStops } = await import(pathToFileURL(path.join(REPO, SRC.facts)).href);
+  const modal = stripComments(read('modal'));
+
+  const mCount = /const\s+planMainStopCount\s*=\s*([^;]+);/.exec(modal);
+  assert.ok(
+    mCount,
+    'S-11 (vacuity): the sheet no longer computes a main-stop count for the plan list. Re-point this '
+    + 'rule; do not delete it.',
+  );
+  const mOptional = /const\s+isOptional\s*=\s*([^;]+);/.exec(modal);
+  assert.ok(
+    mOptional,
+    'S-11 (vacuity): the sheet no longer decides which plan rows are optional, so either the marker '
+    + 'was deleted (the plate and the list disagree again) or it moved.',
+  );
+  assert.match(
+    mOptional[1],
+    /optional/,
+    'S-11 (vacuity): the lifted `isOptional` expression does not mention `optional`.',
+  );
+  const mBump = /if\s*\(!isOptional\)\s*([A-Za-z_$][\w$]*)\s*\+=\s*1;/.exec(modal);
+  assert.ok(
+    mBump,
+    'S-11 (vacuity): the ordinal counter no longer advances only on non-optional rows.',
+  );
+  const counter = mBump[1];
+  // The FIRST `indexLabel:` in the modal is the plan row's; the grocery `SHOP`
+  // chip and the companion rows set theirs later. Asserted rather than assumed —
+  // if they ever reorder, this rule must go red, not slice the wrong row.
+  const mLabel = /indexLabel:\s*([^,\n]+),/.exec(modal);
+  assert.ok(mLabel, 'S-11 (vacuity): the plan row no longer sets an index label.');
+  assert.match(
+    mLabel[1],
+    /isOptional/,
+    'S-11 (vacuity): the first index label in the sheet is no longer the PLAN row\'s (it does not read '
+    + `\`isOptional\`; got \`${mLabel[1]}\`). Re-point this rule at the plan row — slicing the grocery `
+    + 'or companion row instead would make every assertion below about the wrong list.',
+  );
+  assert.match(
+    mLabel[1],
+    new RegExp(`\\b${counter}\\b`),
+    `S-11: the row's index chip does not read the ordinal counter (\`${counter}\`). Numbering from the `
+    + 'ARRAY INDEX instead leaves a hole where the optional row is — the rows read 1, (Optional), 3 '
+    + 'while the plate says "2 stops". That is the pre-fix numbering and it is the whole defect.',
+  );
+
+  const detype = (expr) => expr
+    .replace(/\s+as\s+\{[^{}]*\}/g, '')
+    .replace(/\s+as\s+[A-Za-z_$][\w$.]*/g, '');
+
+  // The machine, assembled from source. `planVisibleStops` is supplied so that a
+  // count expression which goes back through the fallback still RUNS — and then
+  // fails on its answer rather than on a ReferenceError.
+  let run;
+  try {
+    // eslint-disable-next-line no-new-func
+    run = new Function(
+      'planStops', 'planVisibleStops',
+      `const planMainStopCount = ${detype(mCount[1])};\n`
+      + `let ${counter} = 0;\n`
+      + 'return planStops.map((stop, i) => {\n'
+      + `  const isOptional = ${detype(mOptional[1])};\n`
+      + `  if (!isOptional) ${counter} += 1;\n`
+      + `  return { indexLabel: ${detype(mLabel[1])}, optional: isOptional };\n`
+      + '});',
+    );
+  } catch (e) {
+    assert.fail(`S-11: the lifted ordinal machine is not evaluable: ${e.message}`);
+  }
+
+  const DOMAIN = [
+    [],
+    [false],
+    [true],
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true],
+    [false, true, false],
+    [true, false, true],
+    [true, true, true],
+    [false, false, true, false, true],
+  ];
+
+  let sawOptionalRow = false;
+  let sawAllOptionalPlan = false;
+
+  for (const flags of DOMAIN) {
+    const stops = flags.map((optional, i) => ({ placeId: `p${i}`, optional, priceMin: 0, priceMax: 0 }));
+    const plateCount = planVisibleStops(stops).length;
+    const rows = run(stops, planVisibleStops);
+    const numbered = rows.filter((r) => r.indexLabel !== '').map((r) => r.indexLabel);
+    if (rows.some((r) => r.optional === true)) sawOptionalRow = true;
+    if (flags.length > 0 && flags.every((optional) => optional === true)) sawAllOptionalPlan = true;
+
+    assert.equal(
+      numbered.length,
+      plateCount,
+      `S-11: [${flags.join(',')}] — the plate says ${plateCount} and the list numbers ${numbered.length} `
+      + `rows (${JSON.stringify(rows.map((r) => r.indexLabel))}). Two numbers about one plan, on one `
+      + 'screen, that cannot both be read as true. An ALL-OPTIONAL plan failing here means the '
+      + "main-stop count went back through `planVisibleStops`'s all-optional fallback, which makes the "
+      + '`planMainStopCount > 0` guard dead again.',
+    );
+    assert.deepEqual(
+      numbered,
+      Array.from({ length: plateCount }, (_, i) => String(i + 1)),
+      `S-11: [${flags.join(',')}] — the numbered rows are not the contiguous 1..${plateCount} the `
+      + `plate's count is about. Got ${JSON.stringify(rows.map((r) => r.indexLabel))}. A gap means the `
+      + 'label is coming from the array index instead of the ordinal counter.',
+    );
+    // An optional row is never numbered, whatever else is true.
+    for (const row of rows) {
+      if (row.optional === true) {
+        assert.equal(
+          row.indexLabel,
+          '',
+          `S-11: [${flags.join(',')}] — a row marked optional still carries the ordinal `
+          + `"${row.indexLabel}". The plate's count does not include it, so a number on it is a `
+          + 'position in a sequence it is not in.',
+        );
+      }
+    }
+  }
+
+  assert.ok(sawOptionalRow, 'S-11 (vacuity): no row in the swept domain was ever optional.');
+  assert.ok(
+    sawAllOptionalPlan,
+    'S-11 (vacuity): the domain no longer contains an all-optional plan, which is the one shape the '
+    + 'dead conjunct used to break.',
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S-5b · THE BRAND-EXPERIENCE FLAG IS DERIVED, NOT ASSUMED
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * S-5 ABOVE GATES THE PASS-THROUGH AND NOT THE DERIVATION — corrected here.
+ *
+ * S-5 hands `curatedPlanSpans` an options object built from the call site's real
+ * literal, but the VALUE of `isBrandExperience` comes from this file's `s5Deps`
+ * stub. So deleting `isBrandExperience: isBrandExperiencePlan` from the call site
+ * turns `USD 4500` into `Free` and S-5 goes red — correctly — while neutering the
+ * DERIVATION itself:
+ *
+ *     - const isBrandExperiencePlan: boolean = (() => { … recovery … })();
+ *     + const isBrandExperiencePlan: boolean = false;
+ *
+ * left the suite at 23 pass / 0 fail. That is the exact shape of ORCH-1065 BUG-1
+ * — the sheet prints "Free" over a paid experience — and it was the one input
+ * whose derivation IS the defect.
+ *
+ * This rule closes it from the other end: it LIFTS the real recovery expression
+ * out of the modal, EXECUTES it over the truth table the recovery is supposed to
+ * implement, and then feeds the DERIVED answer — never a literal — through the
+ * real producer with the real call-site options literal. A derivation pinned to
+ * `false` fails the first row; one pinned to `true` fails the negative rows; a
+ * derivation that stops reading the brand attribution fails the structural row.
+ */
+test('S-5b the sheet DERIVES the brand-experience flag, and the money span follows it', async () => {
+  const modal = stripComments(read('modal'));
+
+  const at = modal.indexOf('isBrandExperiencePlan');
+  assert.notEqual(
+    at,
+    -1,
+    'S-5b (vacuity): `isBrandExperiencePlan` is gone from the sheet. Either the structural recovery was '
+    + 'deleted — in which case a paid experience opened from Likes prints "Free" again, because the '
+    + 'Likes mapper stamps `cardType: "curated"` over the `experience` tag — or it was renamed. '
+    + 'Re-point this rule; do not delete it.',
+  );
+  const open = modal.indexOf('{', at);
+  assert.notEqual(open, -1, 'S-5b (vacuity): the derivation has no body.');
+  let depth = 0;
+  let body = null;
+  for (let i = open; i < modal.length; i += 1) {
+    if (modal[i] === '{') depth += 1;
+    else if (modal[i] === '}') {
+      depth -= 1;
+      if (depth === 0) { body = modal.slice(open + 1, i); break; }
+    }
+  }
+  assert.ok(body, 'S-5b (vacuity): the derivation body is unbalanced.');
+  assert.match(
+    body,
+    /return/,
+    'S-5b (vacuity): the sliced derivation has no `return`, so executing it would assert nothing.',
+  );
+
+  // Enough TypeScript removed for `new Function` to accept the lifted block.
+  // Deliberately narrow — a general stripper here would be a second compiler.
+  const runnable = body
+    .replace(/\s+as\s+\{[^{}]*\}/g, '')
+    .replace(/\s+as\s+[A-Za-z_$][\w$.]*/g, '');
+  let derive;
+  try {
+    // eslint-disable-next-line no-new-func
+    derive = new Function('card', 'planStops', runnable);
+  } catch (e) {
+    assert.fail(`S-5b: the lifted derivation is not evaluable: ${e.message}`);
+  }
+
+  /*
+    THE TRUTH TABLE THE RECOVERY IS SUPPOSED TO IMPLEMENT. Explicit tag first,
+    brand attribution beside a stops array second, nothing else. Every row is
+    a shape the pipeline really produces — the first is a card that reached the
+    sheet with its tag intact, the second is the same card AFTER
+    `savedCardToExpandedCardData` overwrote the tag, and the rest are the AI
+    plans that must never be read as brand-authored.
+  */
+  const TWO_STOPS = [{ optional: false }, { optional: false }];
+  const TRUTH = [
+    ['explicit experience tag', { cardType: 'experience' }, [], true],
+    ['tag destroyed, attribution intact', { cardType: 'curated', brandId: 'b1', eventId: 'e1' }, TWO_STOPS, true],
+    ['attribution with NO stops', { cardType: 'curated', brandId: 'b1', eventId: 'e1' }, [], false],
+    ['empty brandId', { cardType: 'curated', brandId: '', eventId: 'e1' }, TWO_STOPS, false],
+    ['no eventId at all', { cardType: 'curated', brandId: 'b1' }, TWO_STOPS, false],
+    ['a plain AI plan', { cardType: 'curated' }, TWO_STOPS, false],
+  ];
+  for (const [label, card, stops, expected] of TRUTH) {
+    assert.equal(
+      derive(card, stops),
+      expected,
+      `S-5b: the sheet's recovery answers ${!expected} for "${label}" and it must answer ${expected}.\n\n`
+      + 'Answering FALSE for a brand experience is ORCH-1065 BUG-1: `curatedPriceLabel` then sums stops '
+      + 'that all carry 0 and the plate prints "Free" over a paid experience. Answering TRUE for an AI '
+      + "plan reads the plan's envelope totals as an all-in price nobody charges.",
+    );
+  }
+  assert.equal(
+    new Set(TRUTH.map(([, , , expected]) => expected)).size,
+    2,
+    'S-5b (vacuity): the truth table has only one answer in it, so a constant derivation would pass.',
+  );
+
+  // ── the DERIVED answer, through the real producer, at the real call site ────
+  const { curatedPlanSpans } = await import(pathToFileURL(path.join(REPO, SRC.facts)).href);
+  const literal = optionsLiteral(modal, 'curatedPlanSpans', 'S-5b sheet call site');
+  assert.match(
+    literal,
+    /isBrandExperience\s*:\s*isBrandExperiencePlan/,
+    'S-5b: the sheet derives the flag and then does not hand it to the producer. Deriving it is half '
+    + 'the fix — the span is built from what the CALL SITE passes.',
+  );
+
+  // The SAME object is the derivation's input and the producer's input, so the
+  // two halves cannot be tested against two different cards.
+  const experience = { ...S5_EXPERIENCE, cardType: 'curated', brandId: 'b1', eventId: 'e1' };
+  const derived = derive(experience, experience.stops);
+  assert.equal(
+    derived,
+    true,
+    'S-5b: the sheet cannot tell that a saved brand experience IS one. The Likes mapper overwrites '
+    + '`cardType`, so `brandId` + `eventId` beside a stops array is the only recovery left.',
+  );
+
+  const deps = s5Deps('Imperial', derived);
+  const names = Object.keys(deps);
+  // eslint-disable-next-line no-new-func
+  const options = new Function(...names, `return (${literal});`)(...names.map((n) => deps[n]));
+  const spans = curatedPlanSpans(experience, options).map((s) => s.text);
+  assert.ok(
+    spans.includes('USD 4500'),
+    `S-5b: the plate does not carry the experience's envelope price. spans = ${JSON.stringify(spans)}`,
+  );
+  assert.equal(
+    spans.includes('Free'),
+    false,
+    `S-5b: the plate says FREE over a 4500-unit experience. spans = ${JSON.stringify(spans)}`,
+  );
+
+  // …and the fixture really can tell the two answers apart.
+  const wrongDeps = s5Deps('Imperial', false);
+  const wrongNames = Object.keys(wrongDeps);
+  // eslint-disable-next-line no-new-func
+  const wrongOptions = new Function(...wrongNames, `return (${literal});`)(
+    ...wrongNames.map((n) => wrongDeps[n]),
+  );
+  assert.ok(
+    curatedPlanSpans(experience, wrongOptions).map((s) => s.text).includes('Free'),
+    'S-5b (vacuity): with the flag forced false the plate STILL does not say Free, so this fixture '
+    + 'cannot distinguish the two answers and every assertion above proves nothing.',
+  );
 });
 
 test('S-4e a plan gets Starts at / Ends near, and never a borrowed phone', () => {

@@ -56,10 +56,13 @@ import StopList, { type StopListStop } from "./expandedCard/StopList";
 import SuppliesList from "./expandedCard/SuppliesList";
 import { Section, SectionError } from "./expandedCard/SpineParts";
 import { SPINE, GALLERY } from "./expandedCard/spineTokens";
+// `planVisibleStops` is deliberately NOT imported here any more: the sheet's
+// plate takes its count from `curatedPlanSpans`, which calls it internally, and
+// the plan list's main-stop count must NOT go through its all-optional fallback
+// (see `planMainStopCount` below). One reader, one meaning.
 import {
   companionStopMeta,
   curatedPlanSpans,
-  planVisibleStops,
   singlePlaceSpans,
   stopMetaText,
 } from "./expandedCard/expandedCardFacts";
@@ -933,7 +936,28 @@ export default function ExpandedCardModal({
     chip already uses — and the main stops keep the contiguous 1…N numbering the
     count is about. Two numbers that disagree become one number and one label.
   */
-  const planMainStopCount = planVisibleStops(planStops).length;
+  /*
+    WHY THIS COUNTS THE STOPS DIRECTLY INSTEAD OF ASKING `planVisibleStops`.
+
+    The guard below reads "do not mark rows optional when there are no MAIN
+    stops", and until this line was fixed it could never fire: it took its count
+    from `planVisibleStops`, which ends in `main.length > 0 ? main : all` — the
+    deliberate fallback that gives an all-optional plan an identity (a title, a
+    price, a duration) instead of an empty one. Through that fallback the count
+    is positive for ANY non-empty plan, so the conjunct was dead and an
+    all-optional plan rendered "3 stops" on the plate above three rows that were
+    all chipped `Optional` and none of which was numbered — the same
+    two-numbers-one-screen defect the chip exists to close, inverted.
+
+    Counting the genuinely non-optional stops makes the guard live and leaves
+    every reachable plan byte-identical (with at least one main stop the two
+    quantities are the same number). On an all-optional plan there is no
+    main/optional distinction left to draw, so no row is marked and the rows
+    number 1..N against the same N the plate states. Latent when found — every
+    generator type definition pairs the optional Flowers stop with two required
+    ones — and now closed rather than left as a guard that reads live and is not.
+  */
+  const planMainStopCount = planStops.filter((stop) => stop.optional !== true).length;
   let planOrdinal = 0;
   const planListStops: StopListStop[] = planStops.map((stop, i) => {
     const isOptional = stop.optional === true && planMainStopCount > 0;
