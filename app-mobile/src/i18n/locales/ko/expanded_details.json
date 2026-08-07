@@ -90,5 +90,7 @@
   },
   "card_info": {
     "nearby": "근처"
-  }
+  },
+  "action_buttons.call": "Call",
+  "action_buttons.call_place": "Call {{name}}"
 }

@@ -91,6 +91,12 @@ export interface Recommendation {
   reviewCount: number;
   website?: string | null;
   phone?: string | null;
+  /**
+   * #1703 — ISO-3166-1 alpha-2 from `place_pool.country_code`. What turns the
+   * stored LOCAL number into one that dials from another country. Null when
+   * unknown; the number is then dialled exactly as it is today.
+   */
+  countryCode?: string | null;
   placeId?: string;
   /**
    * #1687 — `place_pool.id`, attached ONLY by the producer that knows the card

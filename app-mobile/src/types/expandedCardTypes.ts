@@ -60,6 +60,12 @@ export interface ExpandedCardData extends Partial<CanonicalDiscoveryPrice> {
   utcOffsetMinutes?: number | null;
   utc_offset_minutes?: number | null;
   phone?: string;
+  /**
+   * #1703 — ISO-3166-1 alpha-2 from `place_pool.country_code`. What turns the
+   * stored LOCAL number into one that dials from another country. Optional and
+   * honestly absent; without it the number is dialled exactly as it is today.
+   */
+  countryCode?: string | null;
   website?: string;
   highlights: string[];
   tags: string[];

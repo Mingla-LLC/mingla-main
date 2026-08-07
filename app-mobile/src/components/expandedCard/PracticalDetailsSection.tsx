@@ -42,6 +42,9 @@ import { extractWeekdayText } from "../../utils/openingHoursUtils";
 import { normalizeWebsiteUrl } from "../../utils/normalizeWebsiteUrl";
 import { getUserLocale } from "../../utils/localeUtils";
 import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
+// #1703 — relative, like every other card-identity import in this tree: the CI
+// guards import it under plain `node --test` with no `npm install`.
+import { dialablePhone } from "../../../../packages/card-identity/phone.js";
 import { FactRow, LinkRow, Section, present } from "./SpineParts";
 import { SPINE } from "./spineTokens";
 
@@ -64,6 +67,12 @@ interface PracticalDetailsSectionProps {
   address?: string;
   openingHours?: PracticalOpeningHours;
   phone?: string;
+  /**
+   * #1703 — ISO-3166-1 alpha-2, from `place_pool.country_code`. Optional and
+   * honestly absent: without it the number is dialled exactly as it is today,
+   * which is correct inside its own country and no worse anywhere else.
+   */
+  countryCode?: string | null;
   website?: string;
   /**
    * The venue's UTC offset. WITHOUT IT THE OPEN/CLOSED BADGE DOES NOT RENDER.
@@ -85,6 +94,7 @@ export default function PracticalDetailsSection({
   address,
   openingHours,
   phone,
+  countryCode,
   website,
   utcOffsetMinutes,
   plan,
@@ -121,6 +131,12 @@ export default function PracticalDetailsSection({
   );
 
   const normalizedWebsite = normalizeWebsiteUrl(website);
+  // #1703 — resolved once and read by both the row and the presence guard, so
+  // the row cannot render for a number the link cannot be built from.
+  const dialable = React.useMemo(
+    () => (present(phone) ? dialablePhone(phone, countryCode ?? null) : null),
+    [phone, countryCode],
+  );
   const heading = t("expanded_details:action_buttons.details_heading", {
     defaultValue: "Details",
   });
@@ -156,7 +172,7 @@ export default function PracticalDetailsSection({
 
   // ── A SINGLE PLACE ────────────────────────────────────────────────────────
   const hasAnything =
-    present(address) || present(phone) || weekdayLines.length > 0 || normalizedWebsite !== null;
+    present(address) || dialable !== null || weekdayLines.length > 0 || normalizedWebsite !== null;
   if (!hasAnything) return null;
 
   return (
@@ -240,10 +256,25 @@ export default function PracticalDetailsSection({
         </View>
       ) : null}
 
+      {/*
+        #1703 — THE NUMBER NOW DIALS FROM OUTSIDE ITS OWN COUNTRY.
+
+        This row used to build `tel:${phone.replace(/[^0-9+]/g, "")}` — the local
+        digits, with the punctuation stripped. Every one of the 32,332 numbers we
+        store is in LOCAL format and not one is international, so that url only
+        connected while the caller stood in that country. Tapping a London pub
+        from the United States dialled a US number that does not exist.
+
+        `dialablePhone` composes the country code and drops the trunk prefix, and
+        REFUSES rather than guesses: given a country it has no plan for, or digits
+        that do not fit that country's plan, it returns the number unchanged and
+        the row behaves exactly as it did before. A fabricated prefix would dial
+        a stranger.
+      */}
       <LinkRow
         label={t("expanded_details:action_buttons.phone", { defaultValue: "Phone" })}
-        value={present(phone) ? phone : null}
-        url={present(phone) ? `tel:${phone.replace(/[^0-9+]/g, "")}` : null}
+        value={dialable === null ? null : dialable.display}
+        url={dialable === null ? null : `tel:${dialable.tel}`}
         trailingIcon="call-outline"
         onUnavailable={() =>
           onLinkUnavailable(t("expanded_details:action_buttons.phone", { defaultValue: "Phone" }))

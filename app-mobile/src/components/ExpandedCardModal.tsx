@@ -1754,6 +1754,7 @@ export default function ExpandedCardModal({
               address={isCuratedCard ? undefined : card.address}
               openingHours={isCuratedCard ? undefined : card.openingHours}
               phone={isCuratedCard ? undefined : card.phone}
+              countryCode={isCuratedCard ? undefined : card.countryCode}
               website={isCuratedCard ? undefined : card.website}
               utcOffsetMinutes={isCuratedCard ? null : cardUtcOffsetMinutes}
               plan={

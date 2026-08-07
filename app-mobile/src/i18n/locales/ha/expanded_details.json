@@ -90,5 +90,7 @@
   },
   "card_info": {
     "nearby": "Kusa"
-  }
+  },
+  "action_buttons.call": "Call",
+  "action_buttons.call_place": "Call {{name}}"
 }

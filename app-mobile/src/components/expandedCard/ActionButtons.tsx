@@ -18,6 +18,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { savedCardKeys } from "../../hooks/queryKeys";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
+// #1703 — relative, like the other card-identity imports in this tree: the CI
+// guards import it under plain `node --test` with no `npm install`.
+import { dialablePhone } from "../../../../packages/card-identity/phone.js";
 import { savedCardsService } from "../../services/savedCardsService";
 import { CalendarService } from "../../services/calendarService";
 import { useAppStore } from "../../store/appStore";
@@ -206,6 +209,17 @@ export default function ActionButtons({
    *
    * Constitution 8: subtract before adding.
    */
+
+  /**
+   * #1703 — resolved once, and the ONLY thing that decides whether a Call button
+   * exists. A separate `present(card.phone)` test would let the button render
+   * for a number the link could not be built from.
+   */
+  const dialable = React.useMemo(
+    () => dialablePhone((card as { phone?: string | null }).phone ?? null,
+      (card as { countryCode?: string | null }).countryCode ?? null),
+    [card],
+  );
 
   const handleSave = async () => {
     if (isSaving) {
@@ -788,6 +802,48 @@ export default function ActionButtons({
             </>
           )}
         </TrackedTouchableOpacity>
+
+        {/*
+          #1703 — CALL. Seth: "If there is number, show the button, if not dont
+          show the button at all."
+
+          ABSENT, NOT DISABLED. A greyed button is still a dead tap and still
+          costs a slot in a band whose width is shared three or four ways. 63% of
+          the pool has no number (32,332 of 88,367), so this is the common case,
+          not the edge case — Yonder Coffee, the card Seth reviewed on, is one of
+          them.
+
+          `dialablePhone` composes the country code and refuses to guess one, so
+          a number this button offers is a number that connects.
+        */}
+        {dialable !== null ? (
+          <TrackedTouchableOpacity
+            logComponent="ActionButtons"
+            logId="call"
+            style={styles.bandButton}
+            onPress={() => {
+              Linking.openURL(`tel:${dialable.tel}`).catch(() => {
+                // A device with no dialler (a tablet, an emulator) rejects the
+                // url. Say so rather than failing silently — Constitution rule 3.
+                Alert.alert(
+                  t('expanded_details:action_buttons.call', { defaultValue: 'Call' }),
+                  dialable.display,
+                );
+              });
+            }}
+            activeOpacity={0.55}
+            accessibilityRole="button"
+            accessibilityLabel={t('expanded_details:action_buttons.call_place', {
+              defaultValue: 'Call {{name}}',
+              name: card.title,
+            })}
+          >
+            <Icon name="call-outline" size={ACTION_BAND.iconSize} color={SPINE.prose} />
+            <Text style={styles.bandLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+              {t('expanded_details:action_buttons.call', { defaultValue: 'Call' })}
+            </Text>
+          </TrackedTouchableOpacity>
+        ) : null}
 
         {reserve}
       </View>
