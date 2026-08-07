@@ -1,3 +1,4 @@
+/** Dependency-free browser subset of the measured S6 descriptor. */
 export const S6_PLATE_BOUNDARY: {
   readonly color: string;
   readonly rgb: readonly number[];
