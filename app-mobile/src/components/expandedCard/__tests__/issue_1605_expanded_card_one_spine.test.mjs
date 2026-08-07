@@ -1069,7 +1069,16 @@ const S6_CARRIED = [
     what: "a curated stop's OPTIONAL flag",
     producer: /\boptional:\s*(?:true|original\.optional|stopDef\.optional)\b/,
     consumer: 'app-mobile/src/components/expandedCard/StopList.tsx',
-    renders: /stop\.optional\s*\?/,
+    /*
+      BOTH render sites, and the pair is the point. The visible Chip is what a
+      sighted user reconciles "2 stops" against; the accessibility branch is
+      what a VoiceOver user reconciles it against, since the index chip is
+      `accessibilityElementsHidden` and an optional stop has no ordinal to
+      announce. A probe that accepted either would go green with one of them
+      deleted — which is exactly what happened the first time this row was
+      written, and the revert harness caught it.
+    */
+    renders: [/stop\.optional[\s\S]{0,60}<Chip/, /stop\.optional\s*\?[\s\S]{0,80}stop_optional_a11y/],
     why:
       '`generate-curated-experiences` emits `optional: true` stops (:501/:529/:575) and the plate '
       + 'counts `planVisibleStops`, which excludes them. The list rendered every stop identically, so '
@@ -1119,14 +1128,19 @@ test('S-6 every field the pipeline still produces has somewhere to render', () =
 
     const consumer = TREE.get(row.consumer);
     assert.ok(consumer, `S-6 (vacuity): ${row.consumer} was not swept`);
+    // A row may name MORE THAN ONE render site, and then ALL of them are
+    // required — a field rendered visually and announced separately has two
+    // places to lose it from.
+    for (const probe of Array.isArray(row.renders) ? row.renders : [row.renders]) {
     assert.match(
       consumer,
-      row.renders,
+      probe,
       `S-6: ${producers.length} module(s) still produce ${row.what} and ${row.consumer} no longer `
-      + `renders it.\n\n${row.why}\n\nRestore the render site, or remove the field from all `
-      + `${producers.length} producers in the same change. Keeping the data and dropping the render `
-      + 'is the one option that is never right.',
+      + `renders it (${probe}).\n\n${row.why}\n\nRestore the render site, or remove the field from `
+      + `all ${producers.length} producers in the same change. Keeping the data and dropping the `
+      + 'render is the one option that is never right.',
     );
+    }
   }
 });
 
@@ -1422,6 +1436,54 @@ test('S-8 nothing produces, types, fetches or translates traffic any more', () =
     /companion_stops\.subtitle/,
     'S-8 (vacuity): the sheet no longer reads companion_stops.subtitle, so the locale assertion above '
     + 'is protecting copy nobody renders.',
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S-10 · A STOP'S PHOTOS DECODE IN A WINDOW, NOT ALL AT ONCE
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('S-10 the lightbox mounts a window around the current page, not every page', () => {
+  // `StopImageGallery` — deleted this wave — mounted an `<Image>` for the
+  // current page and its immediate neighbours only, so a five-photo stop
+  // decoded at most three. Its photos now open in `ImageLightbox` instead,
+  // which mounted EVERY page at once: five full-screen `resizeMode="contain"`
+  // decodes the moment it becomes visible, on a phone, inside a sheet.
+  //
+  // That per-slide lazy load is the one capability of the deleted component
+  // that its replacement did not carry, and it is the kind of loss that never
+  // shows up in a screenshot — it shows up as a dropped frame on a mid-range
+  // Android. So it is carried here, and executed here.
+  const lightbox = stripComments(read('lightbox'));
+
+  const window_ = executable(
+    lightbox,
+    /\{\s*(Math\.abs\(\s*index\s*-\s*currentIndex\s*\)\s*<=\s*\d+)\s*\?/,
+    'S-10 lightbox mount window',
+    ['index', 'currentIndex'],
+  );
+  // Five photos, sitting on the first: the neighbour is warm, the rest are not.
+  assert.equal(window_.fn(0, 0), true, 'S-10: the CURRENT page is not mounted.');
+  assert.equal(window_.fn(1, 0), true, 'S-10: the next page is not mounted, so a paging swipe reveals '
+    + 'an empty frame before the decode starts — worse than the eager mount this replaced.');
+  for (const far of [2, 3, 4]) {
+    assert.equal(
+      window_.fn(far, 0),
+      false,
+      `S-10: page ${far} of a five-photo stop is still mounted while page 0 is showing, via `
+      + `\`${window_.expr}\`. That is the eager mount back: every full-screen image decoded at once.`,
+    );
+  }
+  // Symmetric — paging backwards must be warm too.
+  assert.equal(window_.fn(3, 4), true, 'S-10: the PREVIOUS page is not mounted; the window is one-sided.');
+
+  // Vacuity: the pages must still be full-width, or the window would silently
+  // break the paging offsets rather than the decode count.
+  assert.match(
+    lightbox,
+    /imageContainer:\s*\{\s*width:\s*SCREEN_WIDTH/,
+    'S-10 (vacuity): the page container is no longer a fixed SCREEN_WIDTH, so an unmounted page would '
+    + 'collapse and every scroll offset — including `initialIndex` — would land on the wrong photo.',
   );
 });
 
