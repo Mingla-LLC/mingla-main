@@ -36,9 +36,67 @@
  *    rollback path, the rollback that ITSELF fails, and the pre-existing visit that
  *    must never be deleted on the user's behalf.
  *
+ *    ─────────────────────────────────────────────────────────────────────────
+ *    [TEST-MOD-APPROVED #1687] — REWORK 3 RETIRED PARAGRAPH 2. READ THIS FIRST.
+ *    ─────────────────────────────────────────────────────────────────────────
+ *
+ *    Everything above this line about a rollback is now HISTORY, kept verbatim so
+ *    the reversal is legible rather than quietly overwritten. THERE IS NO
+ *    ROLLBACK. A failed review KEEPS the visit.
+ *
+ *    This suite's own FAIL is what forced it. Rework 2's rollback deleted
+ *    `99081740` — a visit the demo account had made THREE DAYS earlier — because
+ *    it trusted `useHasVisited`'s pre-tap answer, and that query is cached for ten
+ *    minutes. Rework 1's rollback had failed in the opposite direction, trusting
+ *    `record-visit`'s `isNew`, which is computed from `user_interactions` and says
+ *    nothing about the `user_visits` row in front of it. Two guards, two defects,
+ *    opposite directions, one cause: "is this visit mine to delete?" CANNOT be
+ *    answered from the client, so on Seth's instruction the write stopped asking
+ *    and stopped deleting.
+ *
+ *    The risks are not symmetric, and that is the whole argument. A visit with no
+ *    review is TRUE, VISIBLE (the pill settles green — "You've been to X. Double
+ *    tap to remove.") and USER-REVERSIBLE. A deleted visit is SILENT, WRONG and
+ *    UNRECOVERABLE: `user_visits` has no history table and `place_reviews` grants
+ *    users no DELETE. Given that choice, leave the recoverable thing alone.
+ *
+ *    FOUR OF MY OWN ASSERTIONS ENCODED THE DELETE AS THE CONTRACT and are replaced
+ *    below, in place, under `[TEST-MOD-APPROVED #1687]`:
+ *
+ *      T-7  → T-7R. Asserted `{visits: 0}` and `deletes.length === 1`. It now
+ *             asserts the inverse, and does it through a composition that
+ *             re-composes EVERY export the service grows back, discovered by
+ *             enumeration rather than by name.
+ *      T-8  → T-8R. Called `placeReviewService.rollBackHalfLandedVisit`, which no
+ *             longer exists, so it threw a TypeError before asserting anything.
+ *             Its substance splits: the visitId-is-intact and the retry-reuses-it
+ *             halves are covered by the implementor's B-9 and are NOT duplicated
+ *             here. The halves nothing covers — the ORIGINAL error message, and
+ *             the full `onError` recovery that replaces the delete — are what T-8R
+ *             now asserts.
+ *      T-9  → T-9R. Same TypeError. Its claim ("a pre-existing visit is never
+ *             deleted") is now unconditionally true and IS proven, on a fixture
+ *             that can actually fail, by the implementor's B-10 — so it is not
+ *             re-asserted here. T-9's own fixture could not have proven it: it
+ *             modelled `isNew` off its own `user_visits` array, which is the
+ *             implementation's assumption rather than a test of it, and it
+ *             survived four true reverts. That flaw is NOT carried forward. T-9R
+ *             takes the job B-10 cannot do instead — it closes the hole a delete
+ *             would actually come back through.
+ *      T-11 → T-11R. Required the source to match
+ *             `/mutationFn:[\s\S]{0,400}?rollBackHalfLandedVisit/` — the rollback
+ *             composed in the mutation. That residual is GONE: the guarantee is
+ *             now a property of the SERVICE, so T-11R asserts the inversion and
+ *             censuses every call site in the repo.
+ *
+ *    T-1..T-6, T-10 and T-12 are untouched — identity provenance, the pass-through
+ *    failure and the migration are unaffected by the reversal.
+ *
  * Harness: the REAL `visitService`, the REAL `placeReviewService` and the REAL
  * store over an in-memory transport this file owns. `removeVisit` is reachable and
- * independently failable, which the first suite's stub could not do.
+ * independently failable, which the first suite's stub could not do — and since
+ * rework 3 that reachability is what lets T-7R drive the user's own un-toggle as
+ * the negative control for "nothing here deleted anything".
  */
 
 import assert from 'node:assert/strict';
@@ -69,6 +127,47 @@ const FILES = {
 };
 
 const USER_ID = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
+
+/**
+ * [TEST-MOD-APPROVED #1687] rework 3 — comments OUT, string literals IN. Every
+ * banned identifier T-9R and T-11R look for is discussed at length in
+ * `placeReviewService`'s own header, so a raw `includes()` would fire on the
+ * documentation that explains why the identifier is gone.
+ */
+function stripSourceComments(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    const d = src[i + 1];
+    if (c === '/' && d === '/') {
+      while (i < n && src[i] !== '\n') i += 1;
+      continue;
+    }
+    if (c === '/' && d === '*') {
+      i += 2;
+      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i += 1;
+      i += 2;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      const quote = c;
+      out += c;
+      i += 1;
+      while (i < n) {
+        if (src[i] === '\\') { out += src[i] + (src[i + 1] ?? ''); i += 2; continue; }
+        out += src[i];
+        if (src[i] === quote) { i += 1; break; }
+        i += 1;
+      }
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
 
 /**
  * The REAL serving shape of a brand experience: `discover-cards` builds it with
@@ -114,6 +213,14 @@ let tmpDir;
 let store;
 let placeReviewService;
 let stub;
+/**
+ * [TEST-MOD-APPROVED #1687] rework 3 — the REAL `visitService`, so the ONE delete
+ * that is still legitimate can be DRIVEN rather than described: the user's own
+ * un-toggle of a settled pill. "Leave the visit, the user can undo it" is the
+ * entire argument for not deleting, so T-7R runs that undo on the same transport
+ * its zeros are read from.
+ */
+let visitService;
 
 before(async () => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'issue1687-retest-'));
@@ -264,6 +371,7 @@ export const supabase = {
   stub = await import(pathToFileURL(supabasePath).href);
   placeReviewService = await import(pathToFileURL(prsPath).href);
   store = await import(pathToFileURL(storePath).href);
+  visitService = await import(pathToFileURL(visitPath).href);
 });
 
 after(() => {
@@ -275,15 +383,58 @@ function rows() {
 }
 
 /**
- * EXACTLY what `useSubmitVoluntaryPlaceReview`'s `mutationFn` does — the write,
- * and the compensating rollback on the way out. The first tester suite calls the
- * service directly and therefore never reaches the rollback at all.
+ * [TEST-MOD-APPROVED #1687] rework 3 — the shipped `mutationFn` is now the bare
+ * write, so a helper written as the bare write would be correct AND useless: a
+ * rollback reintroduced tomorrow would stop being EXERCISED rather than start
+ * failing. Green suite, deleted visits. That is the unfalsifiable shape this
+ * file's own T-9 fell into.
+ *
+ * So this helper deliberately re-composes any compensating entry point the
+ * service grows back — and, unlike the implementor's equivalent, it finds one by
+ * ENUMERATION rather than by name. `rollBackHalfLandedVisit` was one name; a
+ * revert is free to pick another. Every export that is not on the known list
+ * below is treated as a candidate compensator and CALLED with the two arguments
+ * a compensator takes, so it runs against the same transport the assertions
+ * read. A renamed rollback is therefore driven, not missed.
+ *
+ * Exceptions that are not compensators, and why: `submitVoluntaryPlaceReview` is
+ * the write itself, and `PlaceReviewWriteError` is a class (calling it without
+ * `new` throws before it can do anything). Both are asserted present, or the
+ * sweep is skipping the module rather than sweeping it.
  */
+const NOT_A_COMPENSATOR = new Set(['submitVoluntaryPlaceReview', 'PlaceReviewWriteError']);
+
+function compensatorCandidates() {
+  const names = Object.keys(placeReviewService);
+  for (const known of NOT_A_COMPENSATOR) {
+    assert.ok(
+      names.includes(known),
+      `VACUITY: placeReviewService no longer exports \`${known}\`, so this sweep is enumerating `
+      + 'something other than the module under test and "no compensator found" means nothing.',
+    );
+  }
+  return names.filter(
+    (n) => !NOT_A_COMPENSATOR.has(n) && typeof placeReviewService[n] === 'function',
+  );
+}
+
 async function mutationFn(input, recordedVisitId = null) {
   try {
     return await placeReviewService.submitVoluntaryPlaceReview(input, recordedVisitId);
   } catch (error) {
-    throw await placeReviewService.rollBackHalfLandedVisit(error, input.cardId);
+    let outgoing = error;
+    for (const name of compensatorCandidates()) {
+      // Whatever it is, RUN it. If it deletes, the assertions below see the
+      // delete; if it throws or returns something useless, that is fine — the
+      // point is that it was exercised rather than silently absent.
+      try {
+        const replacement = await placeReviewService[name](outgoing, input.cardId);
+        if (replacement instanceof Error) outgoing = replacement;
+      } catch (thrown) {
+        if (thrown instanceof Error) outgoing = thrown;
+      }
+    }
+    throw outgoing;
   }
 }
 
@@ -445,15 +596,38 @@ test('T-6 the declared-place constant is honoured in both directions', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2 — the rollback. Both rows, or neither.
+// 2 — [TEST-MOD-APPROVED #1687] rework 3: THE VISIT STAYS. No rollback exists.
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('T-7 a refused review leaves NO visit behind — the tap records both rows or neither', async () => {
+test('T-7R a refused review KEEPS the visit — and a compensator under ANY name is run, not missed', async () => {
+  // THE INVERSION OF MY OWN T-7, which asserted `{visits: 0}` and
+  // `deletes.length === 1`. T-7 stated the compensating delete as the contract;
+  // the contract changed, on Seth's instruction, after this suite's previous FAIL
+  // proved that same delete destroyed a three-day-old visit (`99081740`).
+  //
+  // The single-path version of this claim is the implementor's B-9 and is not
+  // re-litigated here. What this test adds is the thing B-9's helper cannot do:
+  // it composes the write with EVERY export the service carries, found by
+  // enumeration, so the guarantee is name-independent. B-9's helper re-composes
+  // exactly one literal name (`rollBackHalfLandedVisit`); a revert that calls the
+  // same delete `undoStrandedVisit` is not run by it at all — verified by
+  // injection, and the reason this helper enumerates.
   stub.reset();
   stub.fail.reviewInsert =
     'insert or update on table "place_reviews" violates foreign key constraint '
     + '"place_reviews_place_pool_id_fkey"';
 
+  const swept = compensatorCandidates();
+  assert.deepEqual(
+    swept,
+    [],
+    'T-7R: placeReviewService exports something beyond the write and its error — '
+    + `[${swept.join(', ')}]. The sweep above CALLED it, so if it deletes the assertions below `
+    + 'have already caught it. This assertion is the second half: a compensating entry point is '
+    + 'not supposed to exist at all. If one is genuinely needed it must read `user_visits` fresh '
+    + 'at write time (#1694), not guess from a client signal, and this is where to argue it.',
+  );
+
   let caught = null;
   try {
     await submitThroughMutation(PLACE_CARD_CARRIED, 5);
@@ -461,132 +635,280 @@ test('T-7 a refused review leaves NO visit behind — the tap records both rows 
     caught = error;
   }
 
-  assert.equal(caught?.name, 'PlaceReviewWriteError', 'T-7: the refusal did not surface');
+  assert.equal(caught?.name, 'PlaceReviewWriteError', 'T-7R: the refusal did not surface');
   assert.deepEqual(
     rows(),
-    { visits: 0, reviews: 0 },
-    'T-7: the visit survived a refused review. This is the state that made the FK failure '
-    + 'unrecoverable: a `user_visits` row the deck does not show, and `place_reviews` grants '
-    + 'the user no DELETE.',
+    { visits: 1, reviews: 0 },
+    'T-7R: THE VISIT WAS DELETED. Nothing on this path may remove a `user_visits` row. The client '
+    + 'cannot tell whose row it is looking at — `record-visit`\'s `isNew` describes '
+    + '`user_interactions` and `useHasVisited` is cached for ten minutes — and a wrong answer in '
+    + 'the delete direction is silent, permanent and invisible to the user. A leftover visit is '
+    + 'none of those things.',
   );
-  assert.equal(stub.db.deletes.length, 1, 'T-7: the compensating delete was never issued');
-  assert.deepEqual(stub.db.deletes[0].filters, {
-    user_id: USER_ID,
-    experience_id: PLACE_CARD_CARRIED.id,
-  });
   assert.equal(
-    caught.visitId,
-    null,
-    'T-7: a rolled-back visit must hand back a NULL id, or the retry reuses a row that no longer '
-    + 'exists and skips recording the visit entirely.',
+    stub.db.deletes.length,
+    0,
+    'T-7R: A DELETE WAS ISSUED against user_visits by a failed review. Whatever issued it '
+    + '— the service, the composition, or an export added since — is the defect.',
   );
-  assert.equal(caught.visitCreated, false, 'T-7: visitCreated must not survive the rollback');
-});
-
-test('T-8 when the ROLLBACK ITSELF fails, the screen stops disagreeing with the database', async () => {
-  // The one case where a row genuinely survives. The contract then is: surface the
-  // ORIGINAL error, keep the visit id so the retry does not re-stamp `visited_at`,
-  // and let the caller settle the pill to the truth.
-  stub.reset();
-  stub.fail.reviewInsert = 'place_reviews insert refused';
-  stub.fail.removeVisit = 'delete refused too';
-
-  let caught = null;
-  try {
-    await submitThroughMutation(PLACE_CARD_CARRIED, 5);
-  } catch (error) {
-    caught = error;
-  }
-
-  assert.equal(caught?.name, 'PlaceReviewWriteError', 'T-8: the rollback failure masked the original error');
-  assert.equal(
-    caught.message,
-    'place_reviews insert refused',
-    'T-8: the user must be shown why the REVIEW failed, not why the cleanup failed — the cleanup '
-    + 'is not an action they took.',
-  );
-  assert.deepEqual(rows(), { visits: 1, reviews: 0 }, 'T-8: expected the visit to survive');
   assert.equal(
     caught.visitId,
     stub.db.user_visits[0].id,
-    'T-8: the surviving row must be named on the error. It is the ONLY signal the mutation has '
-    + 'that a real row exists, and it is what both drives the invalidation that settles the pill '
-    + 'AND stops the retry re-stamping visited_at.',
+    'T-7R: the error does not name the row that survived. That id is the only signal the mutation '
+    + 'has that a real row exists, and it is what licenses the invalidation that settles the pill.',
   );
-
-  // The retry must reuse it rather than record again.
-  stub.fail.reviewInsert = null;
-  stub.fail.removeVisit = null;
-  const before = stub.db.invokes.length;
-  await submitThroughMutation(PLACE_CARD_CARRIED, 5, caught.visitId);
   assert.equal(
-    stub.db.invokes.length,
-    before,
-    'T-8: the retry called record-visit again and re-stamped visited_at on the user\'s own visit '
-    + '— the #1661 X-3 drift.',
+    caught.visitCreated,
+    undefined,
+    'T-7R: `visitCreated` is back on the error. It existed only to answer "is this row mine to '
+    + 'delete", which is the question rework 3 removed; its return is a rollback growing back.',
   );
-  assert.deepEqual(rows(), { visits: 1, reviews: 1 }, 'T-8: the retry did not complete cleanly');
 
-  // And the hook must actually react to that field, or the pill stays wrong.
-  const hook = fs.readFileSync(FILES.reviewsHook, 'utf8');
-  const onErrorAt = hook.indexOf('onError');
-  assert.ok(onErrorAt > 0, 'T-8: usePlaceReviews has no onError');
-  const onErrorBody = hook.slice(onErrorAt);
-  assert.match(
-    onErrorBody,
-    /error instanceof PlaceReviewWriteError && error\.visitId/,
-    'T-8: onError does not branch on a SURVIVING visit id, so a real leftover row leaves '
-    + '`useHasVisited` stale and the pill at REST while the database says the user has been there.',
+  // NEGATIVE CONTROL — the zeros above must be zeros-because-nothing-deleted, and
+  // the leftover must really be retractable, because "the user can undo it" is
+  // the entire justification for leaving it. Both, on the same transport.
+  await visitService.removeVisit(PLACE_CARD_CARRIED.id);
+  assert.deepEqual(
+    rows(),
+    { visits: 0, reviews: 0 },
+    'T-7R: the user\'s own un-toggle no longer clears the visit. If removeVisit stops working the '
+    + 'leftover really is stranded and this whole design needs revisiting.',
   );
-  assert.match(
-    onErrorBody,
-    /confirmOnlineFromCompletedWrite\(\)[\s\S]{0,400}?invalidateQueries/,
-    'T-8: #1661 — the connectivity belief must be confirmed BEFORE the invalidation or the '
-    + 'refetch parks and the disagreement survives.',
+  assert.equal(
+    stub.db.deletes.length,
+    1,
+    'VACUITY: a real delete does not register on this transport, so `deletes.length === 0` above '
+    + 'proves nothing at all.',
   );
-  assert.match(onErrorBody, /queryKey:\s*\['visits'\]/, "T-8: ['visits'] is not invalidated on the surviving-row branch");
-  assert.match(onErrorBody, /savedCardKeys\.all/, 'T-8: the saved-card list is not invalidated');
 });
 
-test('T-9 a visit the user ALREADY had is never deleted on their behalf', async () => {
-  // `record-visit` upserts on (user_id, experience_id) and `removeVisit` deletes by
-  // the same pair, so the delete cannot tell "the row I just created" from "the row
-  // that was already there". Only `visitCreated` can. Get this wrong and a failed
-  // rating silently erases a visit the user marked weeks ago.
+test('T-8R the user is told why THEIR action failed, and the recovery that replaced the delete is whole', async () => {
+  // T-8 asked what happens when the ROLLBACK itself fails. There is no rollback,
+  // so the question is retired — but two of its four claims survive the reversal
+  // and one of those is covered by nobody.
+  //
+  // WHAT IS ALREADY COVERED, AND DELIBERATELY NOT REPEATED HERE:
+  //   * the surviving row is named on the error  → implementor B-9 (and T-7R
+  //     above asserts it as the anchor of its own error path).
+  //   * the retry reuses that id instead of calling record-visit again, so
+  //     `visited_at` is not re-stamped (#1661 X-3) → implementor B-9, which
+  //     counts `db.invokes` across the retry exactly as T-8 did.
+  //
+  // WHAT NOTHING COVERS, which is why this test still exists — I checked the
+  // implementor's suite rather than taking the claim:
+  //   * `caught.message`. No assertion anywhere pins that the error carries the
+  //     REVIEW's message. Constitution 3: the failure reported must be the one
+  //     that happened, or the console and Sentry describe the wrong event.
+  //   * `savedCardKeys` appears NOWHERE in the implementor's file. S-6 checks the
+  //     error branch invalidates *something*; it does not check it invalidates
+  //     BOTH keys, and the saved-card list carries the same visited state.
+  //   * the #1661 ordering ON THE ERROR BRANCH. S-4 pins
+  //     confirmOnline-before-invalidate for `onSuccess` only. The error branch is
+  //     where it is hardest to justify and most load-bearing: it is the whole
+  //     reason the leftover becomes visible instead of stranded.
   stub.reset();
-  await submitThroughMutation(PLACE_CARD_CARRIED, 4);
-  assert.deepEqual(rows(), { visits: 1, reviews: 1 }, 'VACUITY: the pre-existing visit was not created');
-  const originalVisitId = stub.db.user_visits[0].id;
-  const deletesBefore = stub.db.deletes.length;
-
-  // Now the user rates it again and the review is refused.
   stub.fail.reviewInsert = 'place_reviews insert refused';
+
   let caught = null;
   try {
-    await submitThroughMutation(PLACE_CARD_CARRIED, 2);
+    await submitThroughMutation(PLACE_CARD_CARRIED, 5);
   } catch (error) {
     caught = error;
   }
 
-  assert.equal(caught?.name, 'PlaceReviewWriteError', 'T-9: the refusal did not surface');
+  assert.equal(caught?.name, 'PlaceReviewWriteError', 'T-8R: the refusal did not surface');
   assert.equal(
-    stub.db.user_visits.length,
-    1,
-    'T-9: the pre-existing visit was DELETED by a failed second rating. `record-visit` returned '
-    + 'isNew:false, so that row predates this submit entirely and is not ours to undo.',
+    caught.message,
+    'place_reviews insert refused',
+    'T-8R: the error no longer carries the reason the REVIEW was refused. The user took one '
+    + 'action; the failure they are shown, and the one written to the console and Sentry, must be '
+    + 'the failure of that action — not of something the app decided to do afterwards.',
   );
-  assert.equal(stub.db.user_visits[0].id, originalVisitId, 'T-9: the surviving row is not the original');
-  assert.equal(
-    stub.db.deletes.length,
-    deletesBefore,
-    'T-9: a compensating delete was issued against a row this attempt did not create.',
+
+  // The recovery, in full. A leftover visit is acceptable ONLY because the deck
+  // settles to it; that settling is these four lines and nothing else.
+  //
+  // DELIMITED PROPERLY, AND THIS MATTERS: the retired T-8 sliced the RAW file at
+  // `indexOf('onError')`, and the mutationFn's own comment says "`onError` below
+  // makes the screen agree with it" — three lines ABOVE `onSuccess`. So T-8's
+  // "onError body" was the whole `onSuccess` block, which invalidates the same
+  // two keys after the same `confirmOnlineFromCompletedWrite()`. All four of its
+  // assertions passed off onSuccess and could not see the error branch at all.
+  // Verified: deleting `savedCardKeys.all` from onError, and inverting the #1661
+  // ordering there, both left the old slice green. Comments out first, anchor on
+  // the property key, and prove the slice excludes onSuccess.
+  const hook = stripSourceComments(fs.readFileSync(FILES.reviewsHook, 'utf8'));
+  const onErrorAt = hook.indexOf('onError:');
+  assert.ok(onErrorAt > 0, 'T-8R: usePlaceReviews has no onError');
+  const onErrorBody = hook.slice(onErrorAt);
+  assert.ok(
+    !onErrorBody.includes('onSuccess'),
+    'VACUITY: the extracted onError body still contains onSuccess, which invalidates the same two '
+    + 'keys in the same order — every assertion below would pass off the SUCCESS path while the '
+    + 'error path was broken. This is exactly how the retired T-8 was vacuous.',
   );
-  assert.equal(
-    caught.visitId,
-    originalVisitId,
-    'T-9: the un-rolled-back visit must still be named so the retry does not re-stamp it.',
+  assert.ok(
+    onErrorBody.includes('PlaceReviewWriteError'),
+    'VACUITY: the extracted onError body does not mention PlaceReviewWriteError, so the slice is '
+    + 'not the error handler.',
   );
-  assert.equal(caught.visitCreated, false, 'T-9: visitCreated must be false for an upserted row');
+  assert.match(
+    onErrorBody,
+    /error instanceof PlaceReviewWriteError && error\.visitId/,
+    'T-8R: onError does not branch on a SURVIVING visit id. Without that branch the leftover row '
+    + 'exists, `useHasVisited` still says it does not, and the pill sits at REST while the '
+    + 'database disagrees — the leftover becomes exactly the silent orphan the delete existed to '
+    + 'prevent, which would make the whole rework-3 argument false.',
+  );
+  const confirmAt = onErrorBody.indexOf('confirmOnlineFromCompletedWrite()');
+  const invalidateAt = onErrorBody.indexOf('invalidateQueries');
+  assert.ok(confirmAt > 0, 'T-8R: the error branch never confirms connectivity');
+  assert.ok(
+    confirmAt < invalidateAt,
+    'T-8R: #1661 — on the ERROR branch the connectivity belief must be confirmed BEFORE the '
+    + 'invalidations. Invalidating first parks the refetch behind a false offline belief and the '
+    + 'pill never settles, so the user is left with a visit they cannot see and cannot retract. '
+    + 'S-4 pins this ordering for onSuccess only.',
+  );
+  assert.match(
+    onErrorBody,
+    /queryKey:\s*\['visits'\]/,
+    "T-8R: ['visits'] is not invalidated on the surviving-row branch — that prefix is what "
+    + 'useHasVisited sits under, and it is what flips the pill to settled.',
+  );
+  assert.match(
+    onErrorBody,
+    /savedCardKeys\.all/,
+    'T-8R: the saved-card list is not invalidated on the surviving-row branch, so the same visit '
+    + 'reads as un-visited everywhere except the deck. `savedCardKeys` is asserted in no other '
+    + 'test in this work item.',
+  );
+});
+
+test('T-9R the delete cannot come back under another name, in another file — the write path is closed', () => {
+  // T-9 asserted "a visit the user ALREADY had is never deleted on their behalf".
+  // That claim SURVIVES the contract change — it is now unconditionally true —
+  // and it is proven by the implementor's B-10 on a three-day-old fixture where
+  // BOTH client signals lie at once (`useHasVisited` stale false, `record-visit`
+  // isNew:true), with vacuity guards that fail if the isNew:true branch was not
+  // taken. B-11's second case walks it again in the sweep. So it is covered, and
+  // this test does not re-assert it.
+  //
+  // T-9's OWN fixture could never have proven it, which I named against myself in
+  // the last report: it derived `isNew` from its own `user_visits` array, so it
+  // agreed with the implementation's assumption instead of testing it, and it
+  // passed against four true reverts. That flaw is not carried forward — B-10's
+  // harness derives `isNew` from `user_interactions`, which is where
+  // `record-visit` actually computes it (record-visit/index.ts:113-148).
+  //
+  // WHAT T-9R DOES INSTEAD is the job nothing else does. The behavioural tests —
+  // mine and the implementor's — can only see deletes reachable from
+  // `submitVoluntaryPlaceReview`. S-6 bans the machinery, but in exactly TWO
+  // named files. I injected the gap and confirmed it: a module
+  // `services/placeVisitRecovery.ts` exporting `clearStrandedVisit`, imported by
+  // `usePlaceReviews.ts` and called inside `onError`, deletes the user's visit on
+  // every failed review — and the implementor's 21 tests and tester suite 1 stay
+  // GREEN, all 29 of them, because neither of S-6's two files mentions
+  // `removeVisit` and the mutationFn is still the bare write.
+  //
+  // So the unit that must be pinned is the WRITE PATH, not two filenames: the
+  // transitive relative-import closure of the mutation and the service. It is
+  // eight modules. A ninth is where a delete comes back.
+  const APP_MOBILE = appMobile;
+  const ENTRY_POINTS = ['src/hooks/usePlaceReviews.ts', 'src/services/placeReviewService.ts'];
+
+  /**
+   * The two modules on this path that legitimately OWN a `user_visits` delete.
+   * `visitService.removeVisit` is the delete; `useVisits.useRemoveVisit` is the
+   * deck pill's un-toggle, which is the user-facing retraction the whole design
+   * depends on. They are reachable because the write path imports OTHER things
+   * from them — pinned exactly, below.
+   */
+  const DELETE_OWNERS = new Set(['src/services/visitService.ts', 'src/hooks/useVisits.ts']);
+
+  const EXPECTED_CLOSURE = [
+    'src/hooks/queryKeys.ts',
+    'src/hooks/usePlaceReviews.ts',
+    'src/hooks/useVisits.ts',
+    'src/services/placeReviewService.ts',
+    'src/services/supabase.ts',
+    'src/services/visitService.ts',
+    'src/utils/breadcrumbs.ts',
+    'src/utils/logger.ts',
+  ];
+
+  const resolveSpec = (fromRel, spec) => {
+    if (!spec.startsWith('.')) return null;
+    const base = path.normalize(path.join(path.dirname(fromRel), spec));
+    for (const ext of ['.ts', '.tsx', '/index.ts', '/index.tsx']) {
+      if (fs.existsSync(path.join(APP_MOBILE, base + ext))) return base + ext;
+    }
+    return null;
+  };
+
+  const closure = new Set();
+  const queue = [...ENTRY_POINTS];
+  while (queue.length) {
+    const rel = queue.pop();
+    if (closure.has(rel)) continue;
+    closure.add(rel);
+    const src = fs.readFileSync(path.join(APP_MOBILE, rel), 'utf8');
+    for (const m of src.matchAll(/from\s+['"]([^'"]+)['"]/g)) {
+      const next = resolveSpec(rel, m[1]);
+      if (next) queue.push(next);
+    }
+  }
+
+  assert.ok(
+    closure.has('src/services/visitService.ts') && closure.has('src/hooks/useVisits.ts'),
+    'VACUITY: the walker did not even reach the two modules it is meant to be reasoning about, so '
+    + 'the closure below is not the write path and every assertion here is empty.',
+  );
+  assert.deepEqual(
+    [...closure].sort(),
+    EXPECTED_CLOSURE,
+    'T-9R: A MODULE JOINED OR LEFT THE VOLUNTARY REVIEW WRITE PATH. This is the exact shape a '
+    + 'reintroduced delete takes once S-6\'s two-file ban is in place: not `removeVisit` in '
+    + '`placeReviewService`, but a new `placeVisitRecovery`-style module wired into `onError` '
+    + 'under a name nobody banned. Injected and confirmed: that change passes all 29 other tests '
+    + 'in this work item. If the new module genuinely belongs here, add it AND satisfy the delete '
+    + 'ban below.',
+  );
+
+  for (const rel of EXPECTED_CLOSURE) {
+    if (DELETE_OWNERS.has(rel)) continue;
+    const src = stripSourceComments(fs.readFileSync(path.join(APP_MOBILE, rel), 'utf8'));
+    assert.ok(
+      !/\bremoveVisit\b/.test(src),
+      `T-9R: \`removeVisit\` is reachable from ${rel}, which is on the voluntary review write `
+      + 'path. Two attempts to decide "is this visit mine to delete" shipped defects in opposite '
+      + 'directions; a wrong answer is silent and unrecoverable. A rollback that genuinely belongs '
+      + 'needs a fresh read of user_visits at write time (#1694), not another client-side guess.',
+    );
+    assert.ok(
+      !/from\(\s*['"]user_visits['"]\s*\)[\s\S]{0,200}?\.delete\(/.test(src),
+      `T-9R: ${rel} deletes from user_visits directly. Same rule, one layer down — routing around `
+      + '`removeVisit` is not a way to satisfy the assertion above.',
+    );
+  }
+
+  // The two owners are on the path only because the write path imports something
+  // ELSE from them. Pin exactly what, or "owner" becomes a blanket exemption.
+  const service = stripSourceComments(fs.readFileSync(FILES.placeReviewService, 'utf8'));
+  assert.match(
+    service,
+    /import\s*\{\s*recordVisit\s*\}\s*from\s*'\.\/visitService'/,
+    'T-9R: placeReviewService no longer imports EXACTLY `recordVisit` from visitService. The '
+    + 'narrow import is what stops the delete being one identifier away.',
+  );
+  const hook = stripSourceComments(fs.readFileSync(FILES.reviewsHook, 'utf8'));
+  assert.match(
+    hook,
+    /import\s*\{\s*confirmOnlineFromCompletedWrite\s*\}\s*from\s*'\.\/useVisits'/,
+    'T-9R: usePlaceReviews no longer imports EXACTLY `confirmOnlineFromCompletedWrite` from '
+    + 'useVisits. `useRemoveVisit` lives in that module; a widened import is how the mutation '
+    + 'reaches a delete without any banned identifier appearing in either file.',
+  );
 });
 
 test('T-10 a failure that is NOT a half-landed write is passed through untouched', async () => {
@@ -614,32 +936,101 @@ test('T-10 a failure that is NOT a half-landed write is passed through untouched
   assert.equal(stub.db.deletes.length, 0, 'T-10: a delete was issued against a row that never existed');
 });
 
-test('T-11 the rollback lives in the MUTATION, not the service — the residual, stated', async () => {
-  // `rollBackHalfLandedVisit` is a separate entry point called by
-  // `useSubmitVoluntaryPlaceReview`'s mutationFn. That is a deliberate design
-  // choice (the write reports exactly what landed), but it means the guarantee is
-  // NOT a property of `submitVoluntaryPlaceReview`. A second caller added later
-  // inherits the orphan unless it composes the rollback too.
+test('T-11R the guarantee is a property of the SERVICE now, so every caller inherits it', async () => {
+  // T-11 recorded a RESIDUAL: the rollback lived in the mutation, so
+  // `submitVoluntaryPlaceReview`'s own behaviour was to orphan the visit, and a
+  // second caller added later would inherit the orphan unless it remembered to
+  // compose the rollback too. It required the source to match
+  // `/mutationFn:[\s\S]{0,400}?rollBackHalfLandedVisit/`.
+  //
+  // The residual is GONE, and this is the one place the reversal is strictly
+  // better rather than merely different: the correct behaviour is no longer
+  // composed by the caller, it IS the service. A second caller now inherits it by
+  // doing nothing. So T-11R asserts the inversion — and, because "inherits by
+  // doing nothing" is only a guarantee while nobody wraps it, censuses the call
+  // sites instead of pinning one file's mutationFn (which S-6 already does).
   stub.reset();
   stub.fail.reviewInsert = 'place_reviews insert refused';
   const request = store.placeReviewRequestFromCard(PLACE_CARD_CARRIED);
+
+  let direct = null;
   await placeReviewService
     .submitVoluntaryPlaceReview({ userId: USER_ID, ...request, rating: 5 }, null)
-    .catch(() => {});
+    .catch((error) => { direct = error; });
+
+  assert.equal(direct?.name, 'PlaceReviewWriteError', 'T-11R: the direct call did not surface the refusal');
   assert.deepEqual(
     rows(),
     { visits: 1, reviews: 0 },
-    'T-11: this asserts the CURRENT behaviour so a change to it is visible. Calling the SERVICE '
-    + 'directly still orphans a visit; only the mutation composes the rollback. If a second '
-    + 'caller of `submitVoluntaryPlaceReview` is ever added, it must compose '
-    + '`rollBackHalfLandedVisit` or move the composition into the service.',
+    'T-11R: the SERVICE deleted the visit. Nothing composed a rollback here — this is the bare '
+    + 'service — so a delete at this level is the service itself deciding a row is disposable.',
+  );
+  assert.equal(
+    stub.db.deletes.length,
+    0,
+    'T-11R: the bare service issued a delete against user_visits.',
+  );
+  assert.equal(
+    direct.visitId,
+    stub.db.user_visits[0].id,
+    'T-11R: the bare service does not name the surviving row, so a caller that is not the hook '
+    + 'has no way to retry without re-stamping visited_at.',
   );
 
-  const hook = fs.readFileSync(FILES.reviewsHook, 'utf8');
-  assert.match(
-    hook,
-    /mutationFn:[\s\S]{0,400}?rollBackHalfLandedVisit/,
-    'T-11: the mutation no longer composes the rollback, so nothing in the product does.',
+  // T-7R drove the SAME failure through the full composition. Both must land in
+  // the same state, or "the guarantee is a property of the service" is false and
+  // the caller is still the thing that decides.
+  const throughComposition = { visits: stub.db.user_visits.length, deletes: stub.db.deletes.length };
+  stub.reset();
+  stub.fail.reviewInsert = 'place_reviews insert refused';
+  await submitThroughMutation(PLACE_CARD_CARRIED, 5).catch(() => {});
+  assert.deepEqual(
+    { visits: stub.db.user_visits.length, deletes: stub.db.deletes.length },
+    throughComposition,
+    'T-11R: the composed path and the bare service now disagree about a refused review. Whichever '
+    + 'one deletes is the defect; the point of moving the guarantee into the service was that a '
+    + 'caller can no longer change the answer.',
+  );
+
+  // THE CENSUS. `submitVoluntaryPlaceReview` must have exactly one product call
+  // site, and it must be the bare mutationFn — a second caller wrapping it in its
+  // own try/catch is precisely how the composed rollback would return, and it
+  // would live in a file S-6 does not read.
+  const callers = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === '__tests__') continue;
+        walk(full);
+        continue;
+      }
+      if (!/\.tsx?$/.test(entry.name)) continue;
+      const src = stripSourceComments(fs.readFileSync(full, 'utf8'));
+      // A CALL, not the declaration — `placeReviewService` obviously contains its
+      // own name, and counting that would make this assertion about nothing.
+      if (/(?<!function\s)\bsubmitVoluntaryPlaceReview\s*\(/.test(src)) {
+        callers.push(path.relative(appMobile, full));
+      }
+    }
+  };
+  walk(path.join(appMobile, 'src'));
+  walk(path.join(appMobile, 'app'));
+
+  assert.deepEqual(
+    callers.sort(),
+    ['src/hooks/usePlaceReviews.ts'],
+    'T-11R: `submitVoluntaryPlaceReview` gained or lost a product call site. Exactly one caller is '
+    + 'what makes the no-delete guarantee checkable at all; a second one is where a compensating '
+    + 'try/catch comes back, in a file S-6\'s two-file ban does not read. If a second caller is '
+    + 'genuinely needed, it inherits the guarantee for free — but say so here.',
+  );
+  const hook = stripSourceComments(fs.readFileSync(FILES.reviewsHook, 'utf8'));
+  assert.ok(
+    !/try\s*\{[\s\S]{0,300}?submitVoluntaryPlaceReview/.test(hook),
+    'T-11R: the one call site wraps the write in a try/catch again. That wrapper is where both '
+    + 'deleted-visit defects lived; the mutation reports what landed and `onError` (T-8R) is the '
+    + 'entire recovery.',
   );
 });
 
