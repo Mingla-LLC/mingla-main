@@ -274,3 +274,22 @@ test("A19 marketing owns no-store/status/content-type even when upstream fetch o
     else process.env.SHARED_CARD_PROXY_SECRET = previous;
   }
 });
+
+test("A20 unsupported image formats cannot mint public S4/S5 URLs that only return 404", async () => {
+  const { mapPlaceSnapshot, mapCuratedSnapshot } = await import(path.join(ROOT, "supabase/functions/shared-card/snapshot.ts"));
+  const unsupportedPlace = mapPlaceSnapshot({
+    id: "pool-only-webp",
+    google_place_id: "google-only-webp",
+    name: "No renderable cover",
+    photo_collage_url: "https://cdn.test/collage.webp?version=real",
+    stored_photo_urls: ["https://cdn.test/photo.avif", "http://cdn.test/photo.jpg"],
+  });
+  const unsupportedCurated = mapCuratedSnapshot({
+    id: "saved-only-webp",
+    title: "No renderable cover",
+    image_url: "https://cdn.test/card.webp",
+    card_data: { images: ["https://cdn.test/card.avif"] },
+  });
+  assert.equal(unsupportedPlace.coverUrl, null);
+  assert.equal(unsupportedCurated.coverUrl, null);
+});

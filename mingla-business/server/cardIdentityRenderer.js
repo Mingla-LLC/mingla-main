@@ -14,6 +14,36 @@ const {
 const cssGradient = (ramp) => `linear-gradient(180deg,${ramp.colors.map((color, index) => `${color} ${Math.round(ramp.locations[index] * 100)}%`).join(",")})`;
 
 const safeText = (value) => typeof value === "string" ? value.trim() : "";
+const MINGLA_STORAGE_HOST = "gqnoajqerqhnvulmnyvv.supabase.co";
+const MAX_COVER_BYTES = 8 * 1024 * 1024;
+const isMinglaStorageWebp = (value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === MINGLA_STORAGE_HOST
+      && url.pathname.startsWith("/storage/v1/object/public/") && /\.webp$/i.test(url.pathname);
+  } catch { return false; }
+};
+async function prepareCoverForOg(cover, fetchImpl = fetch, sharpImpl) {
+  const source = safeText(cover);
+  if (!isMinglaStorageWebp(source)) return source;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetchImpl(source, { redirect: "error", signal: controller.signal });
+    const declaredSize = Number(response.headers.get("content-length") || "0");
+    if (!response.ok || !/^image\/webp(?:;|$)/i.test(response.headers.get("content-type") || "")
+      || declaredSize > MAX_COVER_BYTES) throw new Error("cover_unavailable");
+    const input = Buffer.from(await response.arrayBuffer());
+    if (input.length === 0 || input.length > MAX_COVER_BYTES) throw new Error("cover_unavailable");
+    const sharp = sharpImpl || require("sharp");
+    const png = await sharp(input, { limitInputPixels: 20_000_000 })
+      .rotate().resize({ width: 1200, height: 1350, fit: "inside", withoutEnlargement: true })
+      .png({ compressionLevel: 9 }).toBuffer();
+    return `data:image/png;base64,${png.toString("base64")}`;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 const factsFor = (snapshot) => {
   const m = snapshot && snapshot.metadata && typeof snapshot.metadata === "object" ? snapshot.metadata : {};
   return selectSharedCardFacts(m);
@@ -49,7 +79,7 @@ async function renderCardIdentityPng(snapshot, surfaceKey) {
   const { ImageResponse } = await import("@vercel/og");
   const s = SURFACES[surfaceKey];
   const scale = surfaceKey === "s4Snippet" ? 3 : 1;
-  const card = cardIdentityElement(snapshot, surfaceKey);
+  const card = cardIdentityElement({ ...snapshot, cover_url: await prepareCoverForOg(snapshot.cover_url) }, surfaceKey);
   const element = scale === 1 ? card : React.createElement("div", { style: { width: s.w * scale, height: s.h * scale, display: "flex" } }, React.createElement("div", { style: { display: "flex", width: s.w, height: s.h, transform: `scale(${scale})`, transformOrigin: "top left" } }, card));
   const response = new ImageResponse(element, { width: s.w * scale, height: s.h * scale });
   return Buffer.from(await response.arrayBuffer());
@@ -83,4 +113,4 @@ function s6CardCss() {
   return `.share-cover{height:${s.h}px;max-width:${s.w}px;margin:auto;border-radius:${s.cardR}px;position:relative;overflow:hidden}.share-cover-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.coverless{background:${PLATE.fallbackSolid}}.share-cover:after{content:"";position:absolute;left:0;right:0;bottom:0;height:${surfaceScrimHeight("s6Phone")}px;background:${cssGradient(RAMP.bottom)}}.share-title{z-index:2;position:absolute;left:${s.sideInset + s.titleInset}px;right:${s.sideInset + s.titleInset}px;bottom:${s.bottomInset + s.plateH + s.gap}px;font-size:${s.titleSize}px;line-height:${s.titleLH}px;font-weight:${s.titleWeight}}.share-plate{z-index:2;position:absolute;left:${s.sideInset}px;right:${s.sideInset}px;bottom:${s.bottomInset}px;height:${s.plateH}px;border:${boundary.width}px solid ${boundary.color};border-radius:${s.plateR}px;background:linear-gradient(${PLATE.lift},${PLATE.lift}),linear-gradient(${underColor},${underColor});backdrop-filter:blur(${PLATE.blurIntensity}px);-webkit-backdrop-filter:blur(${PLATE.blurIntensity}px);box-shadow:inset 0 1px 0 ${PLATE.topHighlight};display:flex;align-items:center;padding:0 ${s.titleInset}px;font-size:${s.metaSize}px}.share-plate strong{margin-left:auto;color:rgba(255,255,255,.72)}@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.share-plate{background:${PLATE.fallbackSolid}}}.share-curated-sliver{z-index:1;position:absolute;height:${s.sliver.height}px;border-radius:${s.sliver.radius}px;border:${sliverBoundary.width}px solid ${sliverBoundary.color};background:linear-gradient(90deg,${s.sliver.opaque[0]},${s.sliver.opaque[1]})}.share-curated-sliver.one{left:${s.sideInset + s.sliver.insets[0]}px;right:${s.sideInset + s.sliver.insets[0]}px;bottom:${s.bottomInset + s.plateH + SLIVER.offsets[0]}px}.share-curated-sliver.two{left:${s.sideInset + s.sliver.insets[1]}px;right:${s.sideInset + s.sliver.insets[1]}px;bottom:${s.bottomInset + s.plateH + SLIVER.offsets[1]}px}`;
 }
 
-module.exports = { businessRowSnapshot, cardIdentityElement, factsFor, renderCardIdentityPng, s6CardCss, useDirectionC };
+module.exports = { businessRowSnapshot, cardIdentityElement, factsFor, prepareCoverForOg, renderCardIdentityPng, s6CardCss, useDirectionC };

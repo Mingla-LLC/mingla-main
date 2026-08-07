@@ -4,6 +4,20 @@ export const shareHttpsUrl = (value: unknown): string | null => {
   const text = shareText(value, 2048); if (!text) return null;
   try { const url = new URL(text); return url.protocol === "https:" ? url.toString() : null; } catch { return null; }
 };
+const shareRenderableImageUrl = (value: unknown): string | null => {
+  const url = shareHttpsUrl(value);
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (/\.(?:jpe?g|png)$/i.test(parsed.pathname)) return url;
+    const isMinglaStorageWebp = parsed.hostname === "gqnoajqerqhnvulmnyvv.supabase.co"
+      && parsed.pathname.startsWith("/storage/v1/object/public/")
+      && /\.webp$/i.test(parsed.pathname);
+    return isMinglaStorageWebp ? url : null;
+  } catch {
+    return null;
+  }
+};
 const entries = (pairs: Array<[string, unknown]>): Record<string, unknown> =>
   Object.fromEntries(pairs.filter(([, value]) => value !== "" && value !== null && value !== undefined));
 
@@ -20,7 +34,11 @@ export function mapPlaceSnapshot(place: Record<string, any>) {
   if (place.opening_hours && typeof place.opening_hours === "object") metadata.hours = place.opening_hours;
   return {
     title: shareText(place.name, 160),
-    coverUrl: shareHttpsUrl(place.photo_collage_url) || (Array.isArray(place.stored_photo_urls) ? place.stored_photo_urls.map(shareHttpsUrl).find(Boolean) ?? null : null),
+    // @vercel/og rejects WebP input. The collage corpus is WebP, while the
+    // authoritative stored photo gallery is JPEG/PNG, so select a renderable
+    // real photo first and never publish an image URL whose S4/S5 bytes 404.
+    coverUrl: (Array.isArray(place.stored_photo_urls) ? place.stored_photo_urls.map(shareRenderableImageUrl).find(Boolean) ?? null : null)
+      || shareRenderableImageUrl(place.photo_collage_url),
     metadata, stops: [],
     sourceIds: { placePoolId: String(place.id), googlePlaceId: String(place.google_place_id) },
   };
@@ -44,7 +62,8 @@ export function mapCuratedSnapshot(saved: Record<string, any>) {
   });
   return {
     title: shareText(saved.title || card.title || card.name, 160),
-    coverUrl: shareHttpsUrl(saved.image_url) || shareHttpsUrl(card.image) || (Array.isArray(card.images) ? card.images.map(shareHttpsUrl).find(Boolean) ?? null : null),
+    coverUrl: shareRenderableImageUrl(saved.image_url) || shareRenderableImageUrl(card.image)
+      || (Array.isArray(card.images) ? card.images.map(shareRenderableImageUrl).find(Boolean) ?? null : null),
     metadata, stops,
     sourceIds: { savedCardId: String(saved.id), experienceId: String(saved.experience_id), stopPlaceIds: sourceStopIds },
   };

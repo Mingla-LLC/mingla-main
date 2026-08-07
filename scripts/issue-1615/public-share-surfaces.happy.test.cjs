@@ -401,3 +401,25 @@ test("H33 proxy credential is standalone governed authority and excluded from ru
   const runtime = manifest.secrets.find((entry) => entry.name === "MINGLA_RUNTIME_CONFIG_JSON");
   assert.equal(runtime.bundle_fields.some((entry) => /secret/i.test(entry.name)), false);
 });
+
+test("H34 production WebP collages yield to the authoritative renderable gallery photo", async () => {
+  const { mapPlaceSnapshot } = await import(path.join(ROOT, "supabase/functions/shared-card/snapshot.ts"));
+  const { prepareCoverForOg } = require(path.join(ROOT, "mingla-business/server/cardIdentityRenderer.js"));
+  assert.match(read("mingla-business/server/cardIdentityRenderer.js"), /cardIdentityElement\(\{ \.\.\.snapshot, cover_url: await prepareCoverForOg\(snapshot\.cover_url\) \}/);
+  const mapped = mapPlaceSnapshot({
+    id: "pool-webp",
+    google_place_id: "google-webp",
+    name: "Real Garden",
+    photo_collage_url: "https://cdn.test/real-collage.webp",
+    stored_photo_urls: ["https://cdn.test/real-photo.jpg"],
+  });
+  assert.equal(mapped.coverUrl, "https://cdn.test/real-photo.jpg");
+  const sharp = require(path.join(ROOT, "mingla-business/node_modules/sharp"));
+  const webp = await sharp({ create: { width: 2, height: 2, channels: 4, background: "#eb7825" } }).webp().toBuffer();
+  const converted = await prepareCoverForOg(
+    "https://gqnoajqerqhnvulmnyvv.supabase.co/storage/v1/object/public/place-collages/real.webp",
+    async () => new Response(webp, { status: 200, headers: { "content-type": "image/webp", "content-length": String(webp.length) } }),
+  );
+  assert.match(converted, /^data:image\/png;base64,/);
+  assert.equal(Buffer.from(converted.split(",")[1], "base64").subarray(1, 4).toString(), "PNG");
+});
