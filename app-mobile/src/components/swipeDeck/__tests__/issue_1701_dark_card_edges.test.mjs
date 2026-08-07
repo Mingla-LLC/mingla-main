@@ -60,11 +60,24 @@ test('X-1 the shadow-casting view has NO border radius', () => {
   );
 });
 
-test('X-2 the shadow itself survives — the behind card needs it', () => {
-  // The fix must not be "delete the shadow". The behind card scales to 0.965
-  // mid-swipe and the shadow is what separates the two cards.
-  assert.match(cardStyle[1], /elevation:\s*\d/, 'X-2: the card lost its elevation');
-  assert.match(cardStyle[1], /shadowRadius:\s*\d/, 'X-2: the card lost its iOS shadow');
+test('X-2 the card is transparent, and carries no shadow it cannot draw', () => {
+  // Removing the radius exposed the SECOND half of the same mistake: a white
+  // background on a square view behind a photo clipped to a 40pt radius shows
+  // white wedges in all four corners. Seth saw them within a minute.
+  assert.match(
+    cardStyle[1], /backgroundColor:\s*["']transparent["']/,
+    'X-2: the card has an opaque background again, which shows as wedges in the corners the '
+    + 'photo is rounded away from',
+  );
+  // An elevation shadow cannot render over a transparent background on either
+  // platform. Keeping the keys would leave dead style looking load-bearing —
+  // the next person would "preserve the lift" and reintroduce the radius.
+  for (const dead of ['elevation', 'shadowRadius', 'shadowOpacity', 'shadowColor']) {
+    assert.equal(
+      new RegExp(`${dead}:`).test(cardStyle[1]), false,
+      `X-2: styles.card declares ${dead}, which cannot draw over a transparent background`,
+    );
+  }
 });
 
 test('X-3 the rounded corners still exist — on the view that CLIPS', () => {

@@ -3933,12 +3933,24 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: "white",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8,
+    // #1701 item 8 — TRANSPARENT, AND NO SHADOW. Both follow from the same
+    // finding and neither is a preference.
+    //
+    // The dark side bands were this view's own elevation shadow: Android builds
+    // it from the view's OUTLINE, the outline comes from background + radius, and
+    // a rounded outline on a screen-filling card paints the shadow INBOARD down
+    // both edges for the radius's width (40dp, measured).
+    //
+    // Removing the radius fixed that and exposed the next layer of the same
+    // mistake: `backgroundColor: "white"` on a SQUARE view behind a photo that
+    // `cardInner` clips to a 40pt radius, which showed white wedges in all four
+    // corners. Seth saw them immediately.
+    //
+    // Transparent fixes the wedges — and an elevation shadow cannot render over
+    // a transparent background on either platform, so the shadow keys are
+    // DELETED rather than left in place looking load-bearing. `cardInner` owns
+    // the radius and the clip; this view owns position and stacking only.
+    backgroundColor: "transparent",
     zIndex: 2,
   },
   cardOverlay: {
