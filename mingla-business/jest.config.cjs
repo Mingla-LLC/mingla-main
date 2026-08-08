@@ -194,6 +194,11 @@ module.exports = {
     // only Business dependencies. Resolve the bare package to this checkout so
     // the eight route tests execute real sharing logic, never the anchor symlink.
     "^@mingla/sharing$": "<rootDir>/../packages/sharing/index.js",
+    // #1615 — resolution repair, NOT a mock. The real consumer venue route now
+    // reaches the content-share adapter and its Supabase client. This default
+    // suite installs Business dependencies only, so resolve the bare package to
+    // the identical real version Business already owns.
+    "^@supabase/supabase-js$": "<rootDir>/node_modules/@supabase/supabase-js",
     // #1560 — resolution repair, NOT a mock, and the IDENTITY for every file in
     // this app. `consumerVenueAdoption.issue1560.happy.test.tsx` mounts the REAL
     // consumer venue route (`app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx`) to

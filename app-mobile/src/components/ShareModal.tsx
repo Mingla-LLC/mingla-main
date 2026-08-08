@@ -190,11 +190,9 @@ export default function ShareModal({
     return null;
   };
 
-  // ORCH-1318 (SPEC §E.3) — the tracked, install-surviving OneLink for this
-  // share. referralCode source is the signed-in user's code, once a user-code
-  // accessor exists (SPEC §REMAINS #6); until then it is undefined → an
-  // entity-only / attribution-via-content link (never an empty clipboard).
-  const buildTrackedLink = async (channel: string): Promise<string> => {
+  // #1615 — the short stable recipient link. Its receiver owns installed and
+  // deferred routing; the long provider URL never enters the shared message.
+  const buildStableLink = async (channel: string): Promise<string> => {
     return (await ensureSharedCard(channel)).canonicalUrl;
   };
 
@@ -210,7 +208,7 @@ export default function ShareModal({
   const performCopyLink = async (): Promise<void> => {
     setIsSharing(true);
     try {
-      const link = await buildTrackedLink('copy_link');
+      const link = await buildStableLink('copy_link');
       await Clipboard.setString(link);
     } catch (e) {
       console.error('[ShareModal] copy link build failed:', e);
@@ -641,10 +639,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-  },
-  minglaWordmark: {
-    width: 34,
-    height: 12,
   },
   ratingBadge: {
     position: 'absolute',
