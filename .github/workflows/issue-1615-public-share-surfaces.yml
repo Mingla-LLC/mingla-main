@@ -44,6 +44,8 @@ jobs:
       - run: npm ci --ignore-scripts
         working-directory: mingla-business
       - run: npm ci --ignore-scripts
+        working-directory: mingla-marketing
+      - run: npm ci --ignore-scripts
         working-directory: app-mobile
       - run: node --experimental-strip-types --test scripts/issue-1615/public-share-surfaces.happy.test.cjs
       - run: node --experimental-strip-types --test scripts/issue-1615/public-share-surfaces.adversarial.test.cjs
