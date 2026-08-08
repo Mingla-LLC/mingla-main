@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { mapCuratedSnapshot, mapPlaceSnapshot, publicSnapshotResponse, sharedCardOneLink, shareText } from "./snapshot.ts";
+import { createContentShareV1 } from "../_shared/contentShareService.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -76,6 +77,15 @@ serve(async (req) => {
     if (limitError) throw limitError;
     if (!allowed) return json({ error: "rate_limited" }, 429);
     const raw = await req.json().catch(() => null) as Record<string, unknown> | null;
+    if (raw?.contract === "content_share_v1") {
+      // Stages 1–3 build the authoritative creation dependency while receivers
+      // remain intentionally unbuilt. Fail closed until stage 4 deploys /s.
+      if (Deno.env.get("CONTENT_SHARE_V1_CREATE_ENABLED") !== "true") {
+        return json({ error: "not_available" }, 503);
+      }
+      const created = await createContentShareV1(db, user.id, raw);
+      return json(created.body, created.status);
+    }
     const kind = raw?.kind === "curated" ? "curated" : raw?.kind === "place" ? "place" : null;
     const ids = raw?.sourceIds && typeof raw.sourceIds === "object" && !Array.isArray(raw.sourceIds)
       ? raw.sourceIds as Record<string, unknown> : {};
