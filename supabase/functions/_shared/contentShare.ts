@@ -218,6 +218,55 @@ function sourceId(input: RecordLike, ...keys: string[]): string {
   return "";
 }
 
+const exactIdentityKeys = (identity: RecordLike, expected: string[]): boolean =>
+  Object.keys(identity).sort().join("|") === [...expected].sort().join("|");
+
+const curatedCompositionIds = (identity: RecordLike): string[] | null => {
+  if (!exactIdentityKeys(identity, ["stopPlaceIds"]) || !Array.isArray(identity.stopPlaceIds)
+    || identity.stopPlaceIds.length < 2 || identity.stopPlaceIds.length > 24) return null;
+  const ids = identity.stopPlaceIds.map((value: unknown) => clean(value, 256));
+  if (ids.some((value: string, index: number) => !value || value !== identity.stopPlaceIds[index])
+    || new Set(ids).size !== ids.length
+    || new TextEncoder().encode(JSON.stringify(ids)).byteLength > 8192) return null;
+  return ids;
+};
+
+const sha256Hex = async (value: string): Promise<string> => {
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+};
+
+const mapCuratedComposition = (rows: RecordLike[]) => {
+  const names = rows.map((row) => clean(row.name, 160));
+  if (names.some((name) => !name)) throw new Error("not_public");
+  const mediaByStop = rows.map(mapServedMediaIdentity);
+  const stops = rows.map((row, index) => publicStop({
+    ...row,
+    description: row.editorial_summary || row.generative_summary,
+    imageUrl: mediaByStop[index]?.posterUrl,
+  }));
+  if (stops.some((stop) => stop === null)) throw new Error("not_public");
+  const stopCities = rows.map((row) => clean(row.city, 120));
+  const area = stopCities.every((city) => city.length > 0 && city === stopCities[0]) ? stopCities[0] : undefined;
+  const mediaIdentity = mediaByStop.find((candidate) => candidate !== null) || null;
+  const facts = compact({
+    schemaVersion: 1,
+    kind: "curated",
+    title: clean(names.join(" → "), 160),
+    stopCount: rows.length,
+    area,
+    route: {},
+  });
+  if (mediaIdentity) facts.media = mediaIdentity;
+  const publicDetails = { kind: "curated", stops };
+  return {
+    facts,
+    mediaIdentity,
+    publicDetails,
+    destinationManifest: { kind: "curated", publicDetails },
+  };
+};
+
 export function mapAuthoritativeShareFacts(kind: ContentShareKind, assembled: RecordLike) {
   const row = assembled.row || {};
   const brand = Array.isArray(row.brands) ? row.brands[0] : row.brands || assembled.brand || {};
@@ -365,8 +414,32 @@ export async function loadAuthoritativeContentShare(
   }
 
   if (kind === "curated") {
+    const stopPlaceIds = curatedCompositionIds(identity);
+    if (stopPlaceIds) {
+      const { data, error } = await db.from("place_pool").select(PLACE_POOL_SHARE_SELECT).in("google_place_id", stopPlaceIds);
+      if (error) throw new Error("db_error");
+      const rows = Array.isArray(data) ? data : [];
+      const rowsByGoogleId = new Map<string, RecordLike>();
+      for (const row of rows) {
+        const googlePlaceId = clean(row?.google_place_id, 256);
+        if (!googlePlaceId || rowsByGoogleId.has(googlePlaceId)) throw new Error("gone");
+        rowsByGoogleId.set(googlePlaceId, row);
+      }
+      const orderedRows = stopPlaceIds.map((googlePlaceId) => rowsByGoogleId.get(googlePlaceId));
+      if (orderedRows.some((row) => !row)) throw new Error("gone");
+      if (orderedRows.some((row) => row?.is_active !== true || row?.is_servable !== true)) throw new Error("not_public");
+      const canonicalIds = JSON.stringify(stopPlaceIds);
+      return {
+        ...mapCuratedComposition(orderedRows as RecordLike[]),
+        sourceKey: `curated-composition:${await sha256Hex(canonicalIds)}`,
+        sourceReference: { stopPlaceIds },
+      };
+    }
+
     const id = sourceId(identity, "savedCardId");
-    if (!id) throw new Error("validation");
+    const legacyKeys = Object.keys(identity);
+    const legacyKeysAreReadCompatible = legacyKeys.every((key) => ["savedCardId", "placePoolId", "googlePlaceId"].includes(key));
+    if (!legacyKeysAreReadCompatible || !id || identity.savedCardId !== id) throw new Error("validation");
     const { data: row, error } = await db.from("saved_card").select("id,profile_id,title,category,image_url,card_data").eq("id", id).eq("profile_id", userId).maybeSingle();
     if (error) throw new Error("db_error");
     if (!row) throw new Error("gone");

@@ -4,7 +4,7 @@ import { buildShareMessage, buildSharePortraitUrl, buildShortShareUrl, createCon
 import { supabase } from './supabase';
 
 export type ContentShareIdentity = {
-  placePoolId?: string; googlePlaceId?: string; savedCardId?: string;
+  placePoolId?: string; googlePlaceId?: string; savedCardId?: string; stopPlaceIds?: string[];
   eventId?: string; eventSlug?: string; brandSlug?: string; venueSlug?: string;
 };
 export type PublicShareDetails =

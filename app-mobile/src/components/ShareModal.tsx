@@ -11,6 +11,7 @@ import { mixpanelService } from '../services/mixpanelService';
 import { logAppsFlyerEvent } from '../services/appsFlyerService';
 import { buildFallbackShareUrl, type ShareEntity } from '../services/oneLinkShare';
 import { messageForPreparedContentShare, prepareContentShare, shareCanonicalFallback, sharePreparedContent, type PreparedContentShare } from '../services/contentShareAdapter';
+import { curatedCompositionIdentity, sharePreviewTerminalState } from '../services/contentShareIdentity';
 
 
 interface ShareModalProps {
@@ -51,12 +52,15 @@ export default function ShareModal({
   const sharedCardPromiseRef = useRef<Promise<PreparedContentShare> | null>(null);
   const shareActionPromiseRef = useRef<Promise<void> | null>(null);
   const { t } = useTranslation(['share', 'common']);
+  const curatedIdentity = curatedCompositionIdentity(experienceData);
+  const curatedIdentityKey = curatedIdentity?.stopPlaceIds.join('\u001f') ?? '';
+  const portraitState = sharePreviewTerminalState(sharedCard, shareState);
 
   useEffect(() => {
     setSharedCard(null);
     sharedCardPromiseRef.current = null;
     setShareState('idle');
-  }, [experienceData?.id, experienceData?.placePoolId, experienceData?.place_pool_id, experienceData?.placeId, experienceData?.googlePlaceId, experienceData?.savedCardId, experienceData?.saved_card_id]);
+  }, [experienceData?.id, experienceData?.placePoolId, experienceData?.place_pool_id, experienceData?.placeId, experienceData?.googlePlaceId, experienceData?.savedCardId, experienceData?.saved_card_id, curatedIdentityKey]);
 
   useEffect(() => {
     if (!isOpen || !experienceData) return;
@@ -159,10 +163,9 @@ export default function ShareModal({
     const identity = isBusinessEntity ? {
       brandSlug: businessEntity.brandSlug,
       eventSlug: businessEntity.entitySlug,
-    } : Object.fromEntries([
+    } : kind === 'curated' ? (curatedIdentity ?? { stopPlaceIds: [] }) : Object.fromEntries([
           ['placePoolId', experienceData.placePoolId || experienceData.place_pool_id],
           ['googlePlaceId', experienceData.placeId || experienceData.googlePlaceId || experienceData.google_place_id],
-          ['savedCardId', experienceData.savedCardId || experienceData.saved_card_id],
         ].filter(([, value]) => typeof value === 'string' && value.length > 0));
     const createPromise = prepareContentShare(kind, identity, channel, { planningPreference: dateTimePreferences });
     sharedCardPromiseRef.current = createPromise;
@@ -201,6 +204,13 @@ export default function ShareModal({
     });
     shareActionPromiseRef.current = action;
     return action;
+  };
+
+  const retrySharePreview = (): void => {
+    sharedCardPromiseRef.current = null;
+    void ensureSharedCard('generic').catch((error: unknown) => {
+      console.warn('[ShareModal] share preview retry failed:', error);
+    });
   };
 
   const performCopyLink = async (): Promise<void> => {
@@ -381,18 +391,25 @@ export default function ShareModal({
             {/* Exact recipient-facing version preview. Never attach this image
                 unless a target-specific adapter later proves image + link. */}
             <View style={styles.cardPreview}>
-              {sharedCard?.s4Url ? (
+              {portraitState === 'covered' && sharedCard?.s4Url ? (
                 <Image
                   source={{ uri: sharedCard.s4Url }}
                   style={styles.portraitPreview}
                   resizeMode="cover"
                   accessibilityLabel={`${sharedCard.kind.replace('_', ' ')}: ${sharedCard.title}`}
                 />
-              ) : sharedCard ? (
+              ) : portraitState === 'coverless' && sharedCard ? (
                 <View style={styles.coverlessPreview} accessibilityLabel="No image preview available">
                   <Text style={styles.coverlessKind}>{sharedCard.kind.replace('_', ' ')}</Text>
                   <Text style={styles.coverlessTitle}>{sharedCard.title}</Text>
                   <Text style={styles.coverlessCopy}>No image preview is available. The link still opens the full details.</Text>
+                </View>
+              ) : portraitState === 'error' ? (
+                <View style={styles.portraitError} accessibilityLiveRegion="polite">
+                  <Text style={styles.shareError}>We couldn’t create the share preview. Check your connection and retry.</Text>
+                  <TrackedTouchableOpacity logComponent="ShareModal" accessibilityRole="button" accessibilityLabel="Retry share preview" onPress={retrySharePreview} style={styles.retryButton}>
+                    <Text style={styles.retryText}>Retry preview</Text>
+                  </TrackedTouchableOpacity>
                 </View>
               ) : (
                 <View style={styles.portraitLoading} accessibilityLiveRegion="polite">
@@ -401,42 +418,31 @@ export default function ShareModal({
                 </View>
               )}
 
-              {/* Personalized Message Box */}
-              <View style={styles.messageBox}>
-                {sharedCard ? (
+              {/* Personalized Message Box appears only after the one terminal
+                  portrait state has reached success. */}
+              {sharedCard ? (
+                <View style={styles.messageBox}>
                   <Text style={styles.messageText}>{sharedCard.message}</Text>
-                ) : shareState === 'error' ? (
-                  <View style={styles.messageState}>
-                    <Text style={styles.shareError}>We couldn’t create the share preview. Check your connection and retry.</Text>
-                    <TrackedTouchableOpacity logComponent="ShareModal" accessibilityRole="button" accessibilityLabel="Retry share preview" onPress={() => { sharedCardPromiseRef.current = null; void ensureSharedCard('generic').catch(() => undefined); }} style={styles.retryButton}>
-                      <Text style={styles.retryText}>Retry preview</Text>
-                    </TrackedTouchableOpacity>
-                  </View>
-                ) : (
-                  <View style={styles.messageState}>
-                    <ActivityIndicator color="#EB7825" />
-                    <Text style={styles.shareStatus}>{shareState === 'reusing' ? 'Reusing your Mingla link…' : 'Creating the exact share message…'}</Text>
-                  </View>
-                )}
-                <TrackedTouchableOpacity logComponent="ShareModal" 
-                  onPress={handleCopyMessage}
-                  style={styles.copyMessageButton}
-                  disabled={!sharedCard || isSharing}
-                >
-                  <Icon 
-                    name={messageCopied ? "checkmark" : "copy-outline"} 
-                    size={18} 
-                    color={messageCopied ? "#eb7825" : "#6b7280"} 
-                  />
-                </TrackedTouchableOpacity>
-              </View>
+                  <TrackedTouchableOpacity logComponent="ShareModal"
+                    onPress={handleCopyMessage}
+                    style={styles.copyMessageButton}
+                    disabled={isSharing}
+                  >
+                    <Icon
+                      name={messageCopied ? "checkmark" : "copy-outline"}
+                      size={18}
+                      color={messageCopied ? "#eb7825" : "#6b7280"}
+                    />
+                  </TrackedTouchableOpacity>
+                </View>
+              ) : null}
             </View>
 
             {/* Share Options */}
             <View style={styles.shareOptions}>
               <Text style={styles.shareTitle}>{t('share:share_to')}</Text>
-              {['validating', 'creating', 'reusing', 'opening'].includes(shareState) ? <Text style={styles.shareStatus}>{shareState === 'opening' ? 'Opening share destination…' : 'Preparing your share…'}</Text> : null}
-              {shareState === 'error' ? <Text style={styles.shareError}>The Mingla preview is unavailable. Retry it, or use the original public link where offered.</Text> : null}
+              {shareState === 'opening' ? <Text style={styles.shareStatus}>Opening share destination…</Text> : null}
+              {shareState === 'error' && portraitState !== 'error' ? <Text style={styles.shareError}>We couldn’t open that share destination. Try another option.</Text> : null}
               
               {/* Social Media Buttons */}
               <View style={styles.socialButtons}>
@@ -569,6 +575,16 @@ const styles = StyleSheet.create({
     aspectRatio: 4 / 5,
     borderRadius: 16,
     backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    marginBottom: 16,
+  },
+  portraitError: {
+    width: '100%',
+    aspectRatio: 4 / 5,
+    borderRadius: 16,
+    backgroundColor: '#fef2f2',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
@@ -732,12 +748,6 @@ const styles = StyleSheet.create({
     color: 'white',
     lineHeight: 20,
     paddingRight: 40,
-  },
-  messageState: {
-    minHeight: 56,
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-    paddingRight: 36,
   },
   retryButton: {
     backgroundColor: 'white',
