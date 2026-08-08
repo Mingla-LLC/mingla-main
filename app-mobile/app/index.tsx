@@ -71,14 +71,13 @@ import {
   resumeInAppMessages,
 } from "../src/services/oneSignalService";
 import { initializeAppsFlyer, startAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent, subscribeOneLinkDeepLink, triggerAndroidDeferredResolution } from "../src/services/appsFlyerService";
-import type { OneLinkDestination } from "../src/services/oneLinkResolver";
+import { sanitizeReferralCode, type OneLinkDestination } from "../src/services/oneLinkResolver";
 import { router } from "expo-router";
 import { ensureAttRequested, requestPostTourPermissions, whenAttResolved } from "../src/services/permissionOrchestrator";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import { useTrialExpiryTracking } from "../src/hooks/useSubscription";
 import * as SplashScreen from 'expo-splash-screen';
 import AppLoadingScreen from '../src/components/AppLoadingScreen';
-
 
 // ORCH-1125: PersistQueryClientProvider + AnimatedSplashScreen + asyncStoragePersister
 // + shouldDehydrateMinglaQuery imports were removed here when the provider/gate/splash
@@ -167,6 +166,13 @@ function GlassBottomNavWithCoach(
 // maxBreadcrumbs, enabled:!__DEV__) are merged into _layout.tsx.
 // CI gate: scripts/ci/check-single-sentry-init.sh.
 // ─────────────────────────────────────────────────────────────────────────────
+
+const persistValidatedReferralCode = async (value: unknown): Promise<boolean> => {
+  const referralCode = sanitizeReferralCode(value);
+  if (referralCode === null) return false;
+  await AsyncStorage.setItem('@mingla_referral_code', referralCode);
+  return true;
+};
 
 function AppContent() {
   const state = useAppState();
@@ -1805,10 +1811,7 @@ function AppContent() {
       try {
         const parts = url.split('/invite/')
         const referralCode = parts[parts.length - 1]?.split('?')[0]
-        if (referralCode) {
-          await AsyncStorage.setItem('@mingla_referral_code', referralCode)
-          console.log('Stored referral code:', referralCode)
-        }
+        await persistValidatedReferralCode(referralCode)
       } catch (err) {
         console.error('Error handling invite deep link:', err)
       }
@@ -1947,7 +1950,7 @@ function AppContent() {
         }
         case 'share': {
           if (dest.referralCode) {
-            AsyncStorage.setItem('@mingla_referral_code', dest.referralCode).catch((e) =>
+            persistValidatedReferralCode(dest.referralCode).catch((e) =>
               console.warn('[OneLink] Failed to persist referral code:', e),
             );
           }
@@ -1961,7 +1964,7 @@ function AppContent() {
           return;
         }
         case 'referral':
-          AsyncStorage.setItem('@mingla_referral_code', dest.referralCode).catch((e) =>
+          persistValidatedReferralCode(dest.referralCode).catch((e) =>
             console.warn('[OneLink] Failed to persist referral code:', e),
           );
           return;
@@ -1973,7 +1976,7 @@ function AppContent() {
         case 'entity': {
           // Any entity may piggyback a referral code — capture it before nav.
           if (dest.referralCode) {
-            AsyncStorage.setItem('@mingla_referral_code', dest.referralCode).catch((e) =>
+            persistValidatedReferralCode(dest.referralCode).catch((e) =>
               console.warn('[OneLink] Failed to persist referral code:', e),
             );
           }

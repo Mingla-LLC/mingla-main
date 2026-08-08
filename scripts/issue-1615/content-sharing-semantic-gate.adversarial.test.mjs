@@ -36,20 +36,27 @@ test('A3 strict facts reject unexpected/private RSVP fields and malformed moving
   ]) assert.equal(sharing.validateShareFactsV1({ ...base, media }).ok, false);
 });
 
-test('A4 comment text is ignored and an untagged content call fails below the retired aggregate ceiling', () => {
+// [TEST-MOD-APPROVED #1615] RETURN proved aggregate ceilings and file-level
+// role exemptions nonbinding. These assertions now require exact findings and
+// per-call classification; this is the approved correction to a wrong guard.
+test('A4 comment text is ignored and one untagged content call fails exactly', () => {
   const commentOnly = '// Share.share({message: "not executable"});';
   assert.deepEqual(findUnauthorizedConstructs(commentOnly, 'NewComposer.tsx'), []);
   const oneRealCall = findUnauthorizedConstructs('Share.share({message: contentUrl});', 'NewComposer.tsx');
   assert.equal(oneRealCall.length, 1);
-  assert.throws(() => assertSemanticInventory(oneRealCall), /react_native_share=1 \(ceiling 0\)/);
+  assert.throws(() => assertSemanticInventory(oneRealCall), /react_native_share@NewComposer\.tsx:1/);
 });
 
-test('A5 only explicit semantic roles or nearby non-content classifications authorize direct native sharing', () => {
+test('A5 semantic roles require an exact per-call classification', () => {
   const adapter = `// SHARE-SEMANTIC-ROLE:content-adapter
     import {buildShareMessage,buildShortShareUrl} from '@mingla/sharing';
-    const url=buildShortShareUrl(code);const message=buildShareMessage(facts,{shortCode:code});Share.share({message,url});`;
+    const url=buildShortShareUrl(code);const message=buildShareMessage(facts,{shortCode:code});
+    // SHARE-CONTENT-CALL:adapter
+    Share.share({message,url});`;
   const transport = `// SHARE-SEMANTIC-ROLE:content-transport
-    export function send({title,url,message}){return Share.share({title,url,message})}`;
+    export function send({title,url,message}){
+    // SHARE-CONTENT-CALL:transport
+    return Share.share({title,url,message})}`;
   const invite = '// SHARE-NON-CONTENT:invite\nawait Share.share({message: invite});';
   const exportCall = '// SHARE-NON-CONTENT:file-export\nawait Share.share({message: csv});';
   assert.deepEqual(findUnauthorizedConstructs(adapter, 'arbitrary/NewAdapter.ts'), []);

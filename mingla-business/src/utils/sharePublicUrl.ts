@@ -100,6 +100,7 @@ export const sharePublicUrl = async ({
   }
 
   if (Platform.OS === "android") {
+    // SHARE-CONTENT-CALL:transport
     await Share.share({
       title,
       message: buildAndroidPublicShareMessage({ title, url, description }),
@@ -108,6 +109,7 @@ export const sharePublicUrl = async ({
   }
 
   const message = shareBody.length > 0 ? shareBody : trimmedOrNull(title);
+  // SHARE-CONTENT-CALL:transport
   await Share.share({
     title,
     ...(message !== null ? { message } : {}),

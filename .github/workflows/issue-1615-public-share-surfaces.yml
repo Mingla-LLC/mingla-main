@@ -24,6 +24,7 @@ on:
       - "mingla-marketing/middleware.ts"
       - "mingla-marketing/lib/shared-card-proxy.ts"
       - "mingla-marketing/app/api/internal-share-proxy/**"
+      - "mingla-marketing/app/api/content-share-analytics/**"
       - "packages/brand-rendering/**"
       - "packages/card-identity/**"
       - "packages/sharing/**"
@@ -51,7 +52,9 @@ jobs:
       - run: node --experimental-strip-types --test scripts/issue-1615/content-share-receiver.happy.test.mjs scripts/issue-1615/content-share-receiver.adversarial.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1615/content-share-portrait.happy.test.mjs scripts/issue-1615/content-share-portrait.adversarial.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1615/content-share-producers.happy.test.mjs scripts/issue-1615/content-share-producers.adversarial.test.mjs
+      - run: node --test scripts/issue-1615/content-share-client-return.implementor.happy.test.mjs scripts/issue-1615/content-sharing-semantic-gate.implementor.happy.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1615/content-share-public-create.happy.test.mjs scripts/issue-1615/content-share-public-create.adversarial.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1615/content-share-media.adversarial.test.mjs
+      - run: node --experimental-strip-types --test scripts/issue-1615/content-share-server-truth.implementor.happy.test.mjs
       - run: node scripts/issue-1615/content-sharing-semantic-gate.mjs
       - run: node --test packages/card-identity/__tests__/card_identity_single_source.test.mjs packages/card-identity/__tests__/issue_1714_contrast_tokens_happy_path.test.mjs packages/card-identity/__tests__/issue_1714_contrast_tokens_adversarial.test.mjs

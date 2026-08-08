@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { mapCuratedSnapshot, mapPlaceSnapshot, publicSnapshotResponse, sharedCardOneLink, shareText } from "./snapshot.ts";
-import { createContentShareV1 } from "../_shared/contentShareService.ts";
+import { createContentShareV1, refreshContentShareV1, validatePublicContentShareEnvelope } from "../_shared/contentShareService.ts";
 import { constantTimeEqualSecret, contentShareCreateRateLimitArgs } from "../_shared/contentShareProxyAuth.ts";
 
 const cors = {
@@ -36,7 +36,9 @@ serve(async (req) => {
       const requestUrl = new URL(req.url);
       const shareId = requestUrl.searchParams.get("shareId") || "";
       const shortCode = requestUrl.searchParams.get("code") || "";
-      if (!SHARE_RE.test(shareId) && !CONTENT_SHARE_RE.test(shortCode)) return json({ error: "not_found" }, 404);
+      const requestedVersion = requestUrl.searchParams.get("version");
+      const validVersion = requestedVersion === null || /^[1-9][0-9]*$/.test(requestedVersion);
+      if ((!SHARE_RE.test(shareId) && !CONTENT_SHARE_RE.test(shortCode)) || !validVersion) return json({ error: "not_found" }, 404);
       // Vercel WAF is the gateway-backed rate limit and owns caller fairness.
       // This single aggregate bucket is only a
       // defense-in-depth circuit breaker, so no public share can exhaust a
@@ -48,10 +50,42 @@ serve(async (req) => {
       if (limitError) throw limitError;
       if (!allowed) return json({ error: "rate_limited" }, 429);
       if (shortCode) {
-        const { data, error } = await db.rpc("resolve_content_share_code", { p_code: shortCode });
+        const exactVersion = requestedVersion === null ? null : Number(requestedVersion);
+        if (exactVersion === null) {
+          const refreshed = await refreshContentShareV1(db, shortCode);
+          return json(refreshed.body, refreshed.status);
+        }
+        const { data, error } = await db.rpc("resolve_content_share_version", { p_code: shortCode, p_version: exactVersion });
         if (error || !data) return json({ error: "not_found" }, 404);
         if (data.gone === true) return json({ error: "gone" }, 410);
-        return json({ contentShare: data });
+        const envelope=validatePublicContentShareEnvelope(data);
+        return envelope ? json({ contentShare:envelope }) : json({ error:"unavailable" },503);
+      }
+      const { data: alias, error: aliasError } = await db.rpc("resolve_content_share_alias", { p_share_id: shareId });
+      if (aliasError) return json({ error: "unavailable" }, 503);
+      if (alias) {
+        if (alias.gone === true) return json({ error: "gone" }, 410);
+        const envelope=validatePublicContentShareEnvelope(alias);
+        if(!envelope) return json({ error:"unavailable" },503);
+        const facts = envelope.facts;
+        const details = envelope.publicDetails;
+        const media = envelope.media || {};
+        return json({
+          snapshot: {
+            share_id: shareId, snapshot_version: 1, kind: facts.kind, title: facts.title,
+            cover_url: media.posterUrl || media.url || null,
+            metadata: {
+              category: facts.category, location: facts.area || details.address,
+              price: facts.priceLevel, duration: facts.duration,
+              description: facts.description || details.description,
+              phone: details.phone, website: details.website,
+            },
+            stops: Array.isArray(details.stops) ? details.stops : [],
+          },
+          appUrl: sharedCardOneLink(facts.kind, shareId),
+          // SHARE-CANONICAL-URL-BUILDER
+          canonicalUrl: `https://usemingla.com/s/${envelope.shortCode}`,
+        });
       }
       const { data, error } = await db.from("shared_card_snapshots").select("share_id,snapshot_version,kind,title,cover_url,metadata,stops,attribution,created_at,expires_at,revoked_at").eq("share_id", shareId).maybeSingle();
       if (error || !data) return json({ error: "not_found" }, 404);
@@ -72,7 +106,7 @@ serve(async (req) => {
     const { data: userData } = serverCreated ? { data: { user: null } } : await db.auth.getUser(jwt);
     const user = userData.user;
     if (!serverCreated && !user) return json({ error: "unauthorized" }, 401);
-    const hash = await actorHash(serviceKey, serverCreated ? `trusted-business-public-create-proxy:${publicActor}` : user.id);
+    const hash = await actorHash(serviceKey, serverCreated ? `trusted-business-public-create-proxy:${publicActor}` : user!.id);
     const { data: allowed, error: limitError } = await db.rpc(
       "consume_shared_card_rate_limit", contentShareCreateRateLimitArgs(hash, serverCreated),
     );
@@ -88,6 +122,9 @@ serve(async (req) => {
       const created = await createContentShareV1(db, user?.id || null, raw, { serverCreated });
       return json(created.body, created.status);
     }
+    // The trusted public proxy is authorized only for content_share_v1. Legacy
+    // place/curated snapshots remain owner-authenticated and cannot inherit it.
+    if (!user) return json({ error: "unauthorized" }, 401);
     const kind = raw?.kind === "curated" ? "curated" : raw?.kind === "place" ? "place" : null;
     const ids = raw?.sourceIds && typeof raw.sourceIds === "object" && !Array.isArray(raw.sourceIds)
       ? raw.sourceIds as Record<string, unknown> : {};

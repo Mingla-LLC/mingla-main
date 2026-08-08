@@ -80,7 +80,7 @@
             {
               "scheme": "https",
               "host": "usemingla.com",
-              "pathPrefix": "/s"
+              "pathPrefix": "/s/"
             },
             {
               "scheme": "https",

@@ -38,7 +38,9 @@ test('H1 anonymous same-origin API forwards all six public kinds with only the s
 class Query {
   constructor(db,table){this.db=db;this.table=table;this.filters={};this.head=false;}
   select(_fields,options){this.head=options?.head===true;return this;} eq(key,value){this.filters[key]=value;return this;}
-  in(){return this;} not(){return this;} is(){return this;} limit(){return this;} order(){return this;}
+  // [TEST-MOD-APPROVED #1615] The authoritative served-truth query now filters
+  // future occurrences with `gte`; the old fake lacked that real query method.
+  in(){return this;} not(){return this;} is(){return this;} limit(){return this;} order(){return this;} gte(){return this;}
   async maybeSingle(){
     if(this.table==='events')return{data:{id:'event-id',title:this.db.title,description:'Public',slug:this.filters.slug||'event',location_text:'Durham',status:'scheduled',visibility:'public',published_at:'2026-01-01',deleted_at:null,timezone:'America/New_York',event_type:this.filters.event_type,brands:[{name:'Brand',slug:this.filters['brands.slug']||'brand',deleted_at:null}]}};
     if(this.table==='venue_public_view')return{data:{id:'venue-id',brand_slug:'brand',slug:'venue',name:this.db.title,city:'Durham',venue_category:'Bar'}};
@@ -56,6 +58,13 @@ class FakeDb {
   constructor(){this.title='Public truth';this.links=new Map();this.rpcCalls=[];}
   from(table){return new Query(this,table);}
   async rpc(name,args){
+    // [TEST-MOD-APPROVED #1615] The authoritative mapper now reads the existing
+    // remaining-inventory RPC before minting. Model that served contract; the
+    // old upsert-only fake incorrectly treated a real read as a test failure.
+    if(name==='pg_public_ticket_types_remaining')return{data:[],error:null};
+    // [TEST-MOD-APPROVED #1615] The served mapper now requires the canonical
+    // all-in RPC even when a fixture has no tiers; model its empty success.
+    if(name==='pg_public_event_tier_allin')return{data:[],error:null};
     assert.equal(name,'upsert_content_share_version');this.rpcCalls.push(args);const key=args.p_source_key;const fingerprint=JSON.stringify([args.p_facts,args.p_media_identity,args.p_destination_manifest]);
     const prior=this.links.get(key);const next=prior?{...prior,version:prior.fingerprint===fingerprint?prior.version:prior.version+1,fingerprint}:{shortCode:'Aa0Bb1Cc2Dd3Ee4F',version:1,fingerprint};this.links.set(key,next);
     return{data:{shortCode:next.shortCode,version:next.version,versionCreated:!prior||prior.fingerprint!==fingerprint},error:null};

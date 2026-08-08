@@ -4,11 +4,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const React = require("react");
-const { s6CardCss, wordmarkSource } = require("./cardIdentityRenderer");
+const { isAllowedPublicPoster, s6CardCss, wordmarkSource } = require("./cardIdentityRenderer");
 const { selectSharedCardFacts } = require("@mingla/card-identity");
 const { SHARED_CARD_PROXY_HEADER } = require("./sharedCardProxyAuth");
 const { contentShareOneLink } = require("./contentShareService");
-const { selectPreviewFacts, statusLabel } = require("../../packages/sharing");
+const { selectPreviewFacts, statusLabel, weekdayForShareTimezone, openStateForHours } = require("../../packages/sharing");
 
 const DEFAULT_SUPABASE_URL = "https://gqnoajqerqhnvulmnyvv.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY =
@@ -73,6 +73,8 @@ const asText = (value, fallback = "") => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : fallback;
 };
+
+const todayForShareTimezone=weekdayForShareTimezone;
 
 const truncate = (value, max) => {
   const text = asText(value);
@@ -235,7 +237,7 @@ const fetchSharedCardSnapshot = async (shareId) => {
   if (response.status === 410) return { status: 410, snapshot: null };
   if (!response.ok) return { status: response.status, snapshot: null };
   const body = await response.json();
-  return { status: 200, snapshot: body?.snapshot ?? null, appUrl: body?.appUrl ?? null };
+  return { status: 200, snapshot: body?.snapshot ?? null, appUrl: body?.appUrl ?? null, canonicalUrl: body?.canonicalUrl ?? null };
 };
 
 const fetchContentShare = async (code) => {
@@ -249,36 +251,102 @@ const fetchContentShare = async (code) => {
   if (response.status === 410) return { status: 410, contentShare: null };
   if (!response.ok) return { status: response.status, contentShare: null };
   const body = await response.json();
+  const referralCode=typeof body?.privateInstallAttribution?.referralCode==="string"&&/^[0-9A-Za-z][0-9A-Za-z-]{0,63}$/.test(body.privateInstallAttribution.referralCode)
+    ? body.privateInstallAttribution.referralCode:"";
+  return { status:200,contentShare:body?.contentShare??null,installAttribution:referralCode?{referralCode}:null };
+};
+
+const fetchContentShareVersion = async (code, version) => {
+  if (!/^[0-9A-Za-z]{16}$/.test(asText(code)) || !Number.isSafeInteger(version) || version < 1) {
+    return { status: 404, contentShare: null };
+  }
+  const proxySecret = process.env.SHARED_CARD_PROXY_SECRET;
+  if (typeof proxySecret !== "string" || proxySecret.length === 0) return { status: 503, contentShare: null };
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/shared-card?code=${encodeURIComponent(code)}&version=${version}`, {
+    redirect: "manual",
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, [SHARED_CARD_PROXY_HEADER]: proxySecret },
+  });
+  if (response.status === 410) return { status: 410, contentShare: null };
+  if (!response.ok) return { status: response.status, contentShare: null };
+  const body = await response.json();
   return { status: 200, contentShare: body?.contentShare ?? null };
 };
 
-const renderContentShareHtml = (contentShare) => {
+const contentSharePosterUrl = (contentShare) => {
+  const media = contentShare?.media;
+  if (!media || typeof media !== "object") return "";
+  const candidate = media.kind === "photo" ? (media.posterUrl || media.url) : media.posterUrl;
+  return isAbsoluteHttpUrl(candidate) && isAllowedPublicPoster(candidate) ? candidate : "";
+};
+
+const renderContentShareDetails = (contentShare) => {
+  const details = contentShare?.publicDetails && typeof contentShare.publicDetails === "object" ? contentShare.publicDetails : {};
+  const facts = contentShare?.facts || {};
+  if (facts.kind === "curated" && Array.isArray(details.stops) && details.stops.length) {
+    return `<section aria-labelledby="stops-heading"><h2 id="stops-heading">Stops</h2><ol class="detail-list">${details.stops.map((stop) => `<li><strong>${escapeHtml(stop?.title)}</strong>${asText(stop?.category || stop?.area) ? `<span>${escapeHtml(stop.category || stop.area)}</span>` : ""}</li>`).join("")}</ol></section>`;
+  }
+  if (facts.kind === "place") {
+    const links = [
+      isAbsoluteHttpUrl(details.directionsUrl) ? `<a class="detail-link" data-share-destination="directions" href="${escapeHtml(details.directionsUrl)}" rel="nofollow noopener">Directions</a>` : "",
+      isAbsoluteHttpUrl(details.website) ? `<a class="detail-link" data-share-destination="website" href="${escapeHtml(details.website)}" rel="nofollow noopener">Website</a>` : "",
+      asText(details.phone) ? `<a class="detail-link" data-share-destination="call" href="tel:${escapeHtml(details.phone.replace(/[^+0-9]/g, ""))}">Call</a>` : "",
+    ].filter(Boolean).join("");
+    return `${asText(details.address) ? `<section><h2>Address</h2><p>${escapeHtml(details.address)}</p></section>` : ""}${links ? `<div class="detail-actions">${links}</div>` : ""}`;
+  }
+  if (Array.isArray(details.occurrences) && details.occurrences.length) {
+    return `<section aria-labelledby="dates-heading"><h2 id="dates-heading">Dates</h2><ul class="detail-list">${details.occurrences.map((item) => `<li><time datetime="${escapeHtml(item.startAt)}">${escapeHtml(item.startAt)}</time></li>`).join("")}</ul></section>`;
+  }
+  if (facts.kind === "brand" && Array.isArray(details.offerings) && details.offerings.length) {
+    return `<section aria-labelledby="offerings-heading"><h2 id="offerings-heading">Upcoming</h2><ul class="detail-list">${details.offerings.map((item) => `<li><a data-share-destination="view_offering" href="${PUBLIC_ORIGIN}/${item.kind === "trip" ? "t" : item.kind === "experience" ? "exp" : "e"}/${encodeURIComponent(item.brandSlug)}/${encodeURIComponent(item.eventSlug)}">${escapeHtml(item.title)}</a></li>`).join("")}</ul></section>`;
+  }
+  return "";
+};
+
+const renderContentShareHtml = (contentShare, installAttribution = null) => {
   const facts = contentShare?.facts && typeof contentShare.facts === "object" ? contentShare.facts : {};
   const code = asText(contentShare?.shortCode);
+  const installReferralCode=typeof installAttribution?.referralCode==="string"&&/^[0-9A-Za-z][0-9A-Za-z-]{0,63}$/.test(installAttribution.referralCode)
+    ? installAttribution.referralCode:"";
   const canonicalUrl = `${EXPLORER_PUBLIC_ORIGIN}/s/${encodeURIComponent(code)}`;
   const title = asText(facts.title) || "Mingla";
-  const previewFacts = selectPreviewFacts(facts, 8);
+  const currentOpenState=openStateForHours(facts.hours,facts.timezone);
+  const previewFacts = selectPreviewFacts(currentOpenState?{...facts,openState:currentOpenState}:facts, 8);
   const description = asText(facts.description) || previewFacts.join(" · ") || `Open ${title} on Mingla.`;
-  const imageUrl = `${EXPLORER_PUBLIC_ORIGIN}/og/s/${encodeURIComponent(code)}/v${Number(contentShare.version)}.png`;
+  const posterUrl = contentSharePosterUrl(contentShare);
+  const imageUrl = posterUrl ? `${EXPLORER_PUBLIC_ORIGIN}/og/s/${encodeURIComponent(code)}/v${Number(contentShare.version)}.png` : "";
   const alt = `${({place:"Place",curated:"Curated plan",event:"Event",rsvp_event:"RSVP event",trip:"Trip",experience:"Experience",venue:"Venue",brand:"Brand"})[facts.kind] || "Mingla"}: ${title}. ${previewFacts.slice(0, 3).join(". ")}`.trim();
   const status = statusLabel(facts.status);
-  const terminal = ["sold_out", "ended", "cancelled", "rsvp_closed"].includes(facts.status);
+  const terminal = ["sold_out", "ended", "cancelled", "rsvp_closed", "date_tbd", "dates_tbd"].includes(facts.status);
+  const publicDetails = contentShare?.publicDetails && typeof contentShare.publicDetails === "object" ? contentShare.publicDetails : {};
+  const analyticsKind=["place","curated","event","rsvp_event","trip","experience","venue","brand"].includes(facts.kind)?facts.kind:"place";
+  const offeringActionEligible = !["event", "rsvp_event", "trip", "experience"].includes(facts.kind) || publicDetails.actionEligible === true;
   const d = contentShare?.destination || {};
   const enc = (value) => encodeURIComponent(asText(value));
-  const action = !terminal && facts.kind === "event" && d.brandSlug && d.eventSlug ? {label:"Buy tickets",href:`${PUBLIC_ORIGIN}/e/${enc(d.brandSlug)}/${enc(d.eventSlug)}`}
-    : !terminal && facts.kind === "rsvp_event" && d.brandSlug && d.eventSlug ? {label:"RSVP",href:`${PUBLIC_ORIGIN}/e/${enc(d.brandSlug)}/${enc(d.eventSlug)}`}
-    : !terminal && facts.kind === "trip" && d.brandSlug && d.eventSlug ? {label:"View trip",href:`${PUBLIC_ORIGIN}/t/${enc(d.brandSlug)}/${enc(d.eventSlug)}`}
-    : !terminal && facts.kind === "experience" && d.brandSlug && d.eventSlug ? {label:"View experience",href:`${PUBLIC_ORIGIN}/exp/${enc(d.brandSlug)}/${enc(d.eventSlug)}`}
+  const offeringHref=d.brandSlug&&d.eventSlug
+    ? facts.kind==="trip"?`${PUBLIC_ORIGIN}/t/${enc(d.brandSlug)}/${enc(d.eventSlug)}`
+      : facts.kind==="experience"?`${PUBLIC_ORIGIN}/exp/${enc(d.brandSlug)}/${enc(d.eventSlug)}`
+      : ["event","rsvp_event"].includes(facts.kind)?`${PUBLIC_ORIGIN}/e/${enc(d.brandSlug)}/${enc(d.eventSlug)}`:""
+    : "";
+  const transactionLabels={event:"Buy tickets",rsvp_event:"RSVP",trip:"Book trip",experience:"Book experience"};
+  const viewLabels={event:"View event",rsvp_event:"View RSVP event",trip:"View trip",experience:"View experience"};
+  const actionCodes={"Buy tickets":"buy_tickets",RSVP:"rsvp","Book trip":"book_trip","Book experience":"book_experience","View event":"view_event","View RSVP event":"view_rsvp_event","View trip":"view_trip","View experience":"view_experience","View venue":"view_venue","View brand":"view_brand"};
+  const action = offeringHref ? {label:!terminal&&offeringActionEligible?transactionLabels[facts.kind]:viewLabels[facts.kind],href:offeringHref}
     : facts.kind === "venue" && d.brandSlug && d.venueSlug ? {label:"View venue",href:`${PUBLIC_ORIGIN}/b/${enc(d.brandSlug)}/v/${enc(d.venueSlug)}`}
     : facts.kind === "brand" && d.brandSlug ? {label:"View brand",href:`${PUBLIC_ORIGIN}/b/${enc(d.brandSlug)}`}: null;
   const hours = Array.isArray(facts.hours) ? facts.hours.filter((row) => row && typeof row.day === "string" && typeof row.label === "string") : [];
-  const hoursHtml = hours.length ? `<section aria-labelledby="hours-heading"><h2 id="hours-heading">Hours</h2><ul class="hours">${hours.map((row)=>`<li${row.isToday ? ' class="today"' : ""}><strong>${escapeHtml(row.day)}</strong><span>${escapeHtml(row.label)}</span>${row.special ? `<em>${escapeHtml(row.special)}</em>`:""}</li>`).join("")}</ul></section>` : "";
+  const today=todayForShareTimezone(facts.timezone);
+  const hoursHtml = hours.length ? `<section aria-labelledby="hours-heading"><h2 id="hours-heading">Hours</h2><ul class="hours">${hours.map((row)=>{const isToday=row.day===today;return `<li${isToday ? ' class="today"' : ""}><strong>${escapeHtml(row.day)}</strong><span>${escapeHtml(row.label)}</span>${isToday?'<em>Today</em>':row.special ? `<em>${escapeHtml(row.special)}</em>`:""}</li>`}).join("")}</ul></section>` : "";
   const media = contentShare?.media || {};
-  const moving = media.kind === "video" ? `<video class="share-motion" muted playsinline loop preload="none" poster="${escapeHtml(imageUrl)}" data-source="${escapeHtml(media.url)}"></video><button class="media-control" type="button" aria-label="Play video">▶</button>` : "";
+  const motionOverlay = `<div class="motion-composition" aria-hidden="true"><span class="motion-wordmark"><img src="${wordmarkSource()}" alt="" /></span><span class="motion-title">${escapeHtml(title)}</span><span class="motion-plate">${escapeHtml(previewFacts.slice(0, 3).join(" · "))}</span></div>`;
+  const videoMoving = media.kind === "video" && posterUrl && isAllowedPublicPoster(media.url) ? `<video class="share-motion" muted playsinline loop preload="none" poster="${escapeHtml(imageUrl)}" data-source="${escapeHtml(media.url)}"></video>${motionOverlay}<button class="media-control play-control" type="button" aria-label="Play video">▶</button><button class="media-control sound-control" type="button" aria-label="Unmute video">Muted</button>` : "";
+  const gifMoving = media.kind === "gif" && posterUrl && isAllowedPublicPoster(media.url) ? `<img class="share-motion gif-motion" alt="" data-source="${escapeHtml(media.url)}" />${motionOverlay}<button class="media-control play-control" type="button" aria-label="Play animation">▶</button>` : "";
+  const moving=videoMoving||gifMoving;
   const portrait = imageUrl ? `<div class="portrait"><img class="portrait-poster" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(alt)}" />${moving}</div>` : "";
-  const script = media.kind === "video" ? `<script>(()=>{const v=document.querySelector('.share-motion'),b=document.querySelector('.media-control');if(!v||!b)return;const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches,save=!!navigator.connection?.saveData;const load=()=>{if(!v.src)v.src=v.dataset.source};b.addEventListener('click',()=>{load();if(v.paused){v.play().then(()=>{b.textContent='Ⅱ';b.setAttribute('aria-label','Pause video')}).catch(()=>{})}else{v.pause();b.textContent='▶';b.setAttribute('aria-label','Play video')}});new IntersectionObserver(([e])=>{if(!e.isIntersecting)v.pause()}).observe(v);document.addEventListener('visibilitychange',()=>{if(document.hidden)v.pause()});v.addEventListener('error',()=>{v.removeAttribute('src');v.load()});if(!reduced&&!save){load();v.play().catch(()=>{})}})()</script>` : "";
+  const script = videoMoving ? `<script>(()=>{const v=document.querySelector('.share-motion'),p=document.querySelector('.play-control'),m=document.querySelector('.sound-control');if(!v||!p||!m)return;v.muted=true;const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches,save=!!navigator.connection?.saveData;const load=()=>{v.hidden=false;if(!v.src)v.src=v.dataset.source};const reset=()=>{v.pause();v.hidden=true;v.removeAttribute('src');v.load();p.textContent='▶';p.setAttribute('aria-label','Play video')};p.addEventListener('click',()=>{load();if(v.paused){v.play().then(()=>{p.textContent='Ⅱ';p.setAttribute('aria-label','Pause video')}).catch(reset)}else reset()});m.addEventListener('click',()=>{load();v.muted=!v.muted;m.textContent=v.muted?'Muted':'Sound';m.setAttribute('aria-label',v.muted?'Unmute video':'Mute video')});new IntersectionObserver(([e])=>{if(!e.isIntersecting)reset()}).observe(v);document.addEventListener('visibilitychange',()=>{if(document.hidden)reset()});v.addEventListener('error',reset);if(!reduced&&!save){load();v.play().catch(reset)}})()</script>`
+    : gifMoving ? `<script>(()=>{const g=document.querySelector('.gif-motion'),p=document.querySelector('.play-control');if(!g||!p)return;const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches,save=!!navigator.connection?.saveData;let playing=false;const stop=()=>{playing=false;g.hidden=true;g.removeAttribute('src');p.textContent='▶';p.setAttribute('aria-label','Play animation')};const play=()=>{g.hidden=false;g.src=g.dataset.source;playing=true;p.textContent='Ⅱ';p.setAttribute('aria-label','Pause animation')};p.addEventListener('click',()=>playing?stop():play());new IntersectionObserver(([e])=>{if(!e.isIntersecting)stop();else if(!reduced&&!save)play()}).observe(g);document.addEventListener('visibilitychange',()=>{if(document.hidden)stop()});g.addEventListener('error',stop);if(!reduced&&!save)play()})()</script>` : "";
+  const analyticsScript=`<script>(()=>{const record=(event,action)=>{try{const consent=JSON.parse(localStorage.getItem('mingla_consent_v1')||'null');if(consent?.choice!=='granted'&&consent?.value!=='granted')return;const payload={event,code:${JSON.stringify(code)},version:${Number(contentShare.version)},kind:${JSON.stringify(analyticsKind)}};if(action)payload.action=action;navigator.sendBeacon('/api/content-share-analytics',JSON.stringify(payload))}catch{}};record('share_public_page_viewed');document.querySelector('[data-share-install]')?.addEventListener('click',()=>record('share_install_cta_opened'));document.querySelectorAll('[data-share-destination]').forEach((node)=>node.addEventListener('click',()=>record('share_destination_action',node.dataset.shareDestination)))})()</script>`;
   return pageShell({ title: `${title} on Mingla`, description, canonicalUrl, imageUrl, imageWidth:1080, imageHeight:1350, imageAlt:alt, type: "article", siteName: "Mingla", headerVariant: "mingla",
-    body: `<style>.page{max-width:1120px;padding:32px}.content-share{display:grid;grid-template-columns:min(432px,40vw) minmax(0,560px);gap:48px;align-items:start}.portrait{position:relative;width:100%;aspect-ratio:4/5;border-radius:32px;overflow:hidden;background:#0C0E12}.portrait-poster,.share-motion{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.media-control{position:absolute;right:24px;bottom:24px;width:44px;height:44px;border:2px solid #FFF7EF;border-radius:22px;background:#0C0E12;color:#FFF7EF;font-size:18px}.eyebrow{font-size:14px;text-transform:none;color:#FFF7EF}.status{display:inline-block;margin-left:8px;padding:4px 9px;border-radius:99px;background:#FFF7EF;color:#0C0E12;font-weight:700}.facts{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px}.facts li{padding:7px 10px;border:1px solid rgba(255,255,255,.42);border-radius:99px}.actions{display:flex;flex-wrap:wrap;gap:12px}.secondary{background:transparent;color:#FFF7EF;border:2px solid #FFF7EF}.hours{list-style:none;padding:0}.hours li{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:8px 0}.hours .today{font-weight:800}.hours em{grid-column:2;font-size:14px}.content-share h1{font-size:clamp(36px,6vw,64px);line-height:1}.content-share h2{margin-top:32px}@media(max-width:759px){.page{padding:16px}.content-share{grid-template-columns:1fr;gap:24px}.portrait{max-width:432px;margin:auto}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}</style><section class="content-share">${portrait}<div><p class="eyebrow">${escapeHtml(({place:"Place",curated:"Curated plan",event:"Event",rsvp_event:"RSVP event",trip:"Trip",experience:"Experience",venue:"Venue",brand:"Brand"})[facts.kind] || "Mingla")}${status ? `<span class="status">● ${escapeHtml(status)}</span>`:""}</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p><ul class="facts">${previewFacts.map((fact)=>`<li>${escapeHtml(fact)}</li>`).join("")}</ul><div class="actions">${action ? `<a class="cta" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>`:""}<a class="cta secondary" href="${escapeHtml(contentShareOneLink(code))}">Open or get Mingla</a></div>${hoursHtml}</div></section>${script}` });
+    body: `<style>.page{max-width:1120px;padding:32px}.content-share{display:grid;grid-template-columns:${portrait ? "min(432px,40vw) minmax(0,560px)" : "minmax(0,720px)"};gap:48px;align-items:start}.portrait{position:relative;width:100%;aspect-ratio:4/5;border-radius:32px;overflow:hidden;background:#0C0E12}.portrait-poster,.share-motion{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.share-motion{z-index:1}.motion-composition{position:absolute;z-index:2;inset:0;pointer-events:none;background:linear-gradient(transparent 42%,rgba(12,14,18,.92))}.motion-wordmark{position:absolute;left:24px;top:24px;padding:7px 12px;border-radius:20px;background:#FFF7EF}.motion-wordmark img{display:block;width:91px;height:25px}.motion-title{position:absolute;left:24px;right:24px;bottom:142px;font-size:27px;line-height:33px;font-weight:700}.motion-plate{position:absolute;left:24px;right:24px;bottom:48px;height:78px;padding:14px 12px;border:1px solid rgba(255,255,255,.42);border-radius:17px;background:rgba(12,14,18,.78);box-sizing:border-box}.media-control{position:absolute;z-index:3;top:24px;min-width:44px;height:44px;border:2px solid #FFF7EF;border-radius:22px;background:#0C0E12;color:#FFF7EF;font-size:14px}.play-control{right:24px;width:44px;font-size:18px}.sound-control{right:76px;padding:0 12px}.eyebrow{font-size:14px;text-transform:none;color:#FFF7EF}.status{display:inline-block;margin-left:8px;padding:4px 9px;border-radius:99px;background:#FFF7EF;color:#0C0E12;font-weight:700}.facts{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px}.facts li{padding:7px 10px;border:1px solid rgba(255,255,255,.42);border-radius:99px}.actions,.detail-actions{display:flex;flex-wrap:wrap;gap:12px}.detail-link{display:inline-flex;min-height:44px;align-items:center;color:#FFF7EF}.detail-list li{margin:10px 0}.detail-list li span{display:block;color:rgba(255,255,255,.72)}.secondary{background:transparent;color:#FFF7EF;border:2px solid #FFF7EF}.hours{list-style:none;padding:0}.hours li{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:8px 0}.hours .today{font-weight:800}.hours em{grid-column:2;font-size:14px}.content-share h1{font-size:clamp(36px,6vw,64px);line-height:1}.content-share h2{margin-top:32px}@media(max-width:759px){.page{padding:16px}.content-share{grid-template-columns:1fr;gap:24px}.portrait{max-width:432px;margin:auto}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}</style><section class="content-share">${portrait}<div><p class="eyebrow">${escapeHtml(({place:"Place",curated:"Curated plan",event:"Event",rsvp_event:"RSVP event",trip:"Trip",experience:"Experience",venue:"Venue",brand:"Brand"})[facts.kind] || "Mingla")}${status ? `<span class="status">● ${escapeHtml(status)}</span>`:""}</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p><ul class="facts">${previewFacts.map((fact)=>`<li>${escapeHtml(fact)}</li>`).join("")}</ul><div class="actions">${action ? `<a class="cta" data-share-destination="${actionCodes[action.label]}" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>`:""}<a class="cta secondary" data-share-install href="${escapeHtml(contentShareOneLink(code,installReferralCode))}">Open or get Mingla</a></div>${renderContentShareDetails(contentShare)}${hoursHtml}</div></section>${script}${analyticsScript}` });
 };
 
 const fetchPublicEventBySlug = async (brandSlug, eventSlug) => {
@@ -872,8 +940,8 @@ const sendSharedPng = (res, buffer) => {
   res.end(buffer);
 };
 
-const renderSharedCardHtml = (snapshot, appUrl) => {
-  const canonicalUrl = `${EXPLORER_PUBLIC_ORIGIN}/p/${encodeURIComponent(snapshot.share_id)}`;
+const renderSharedCardHtml = (snapshot, appUrl, preferredCanonicalUrl = null) => {
+  const canonicalUrl = isAbsoluteHttpUrl(preferredCanonicalUrl) ? preferredCanonicalUrl : `${EXPLORER_PUBLIC_ORIGIN}/p/${encodeURIComponent(snapshot.share_id)}`;
   const imageUrl = snapshot.cover_url
     ? `${EXPLORER_PUBLIC_ORIGIN}/og/share/${encodeURIComponent(snapshot.share_id)}.png`
     : "";
@@ -1199,6 +1267,8 @@ module.exports = {
   fetchPublicVenueBySlug,
   fetchSharedCardSnapshot,
   fetchContentShare,
+  fetchContentShareVersion,
+  contentSharePosterUrl,
   firstQueryValue,
   renderBrandHtml,
   renderEventHtml,
@@ -1216,4 +1286,5 @@ module.exports = {
   tripDescription,
   tripImageUrl,
   tripPublicUrl,
+  todayForShareTimezone,
 };

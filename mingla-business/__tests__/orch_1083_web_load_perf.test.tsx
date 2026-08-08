@@ -88,6 +88,16 @@ describe("ORCH-1083 T-04 — ShareModal defers the QR renderer", () => {
   });
 });
 
+describe("ORCH-1083 #1615 — content-share construction stays out of eager common", () => {
+  const shareModal = read("src/components/ui/ShareModal.tsx");
+
+  it("loads the content adapter only on demand and carries no static value import", () => {
+    expect(shareModal).not.toMatch(/^\s*import\s+\{[^}]*prepareBusinessContentShare[^}]*\}\s+from/m);
+    expect(shareModal).toMatch(/await import\("\.\.\/\.\.\/services\/contentShareAdapter"\)/);
+    expect(shareModal).toMatch(/prepareContentShareOnDemand\(url,channel,contentKind\)/);
+  });
+});
+
 describe("ORCH-1083 C-2 — theme fonts are no longer eager at the app root", () => {
   it("_layout.tsx no longer imports useFonts or MINGLA_THEME_FONTS (no eager root font load)", () => {
     const layout = read("app/_layout.tsx");

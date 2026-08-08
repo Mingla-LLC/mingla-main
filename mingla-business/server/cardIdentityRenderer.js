@@ -17,28 +17,36 @@ const cssGradient = (ramp) => `linear-gradient(180deg,${ramp.colors.map((color, 
 
 const safeText = (value) => typeof value === "string" ? value.trim() : "";
 const MINGLA_STORAGE_HOST = "gqnoajqerqhnvulmnyvv.supabase.co";
+const MINGLA_BUNNY_DELIVERY_HOST = "vz-a16fce08-6c6.b-cdn.net";
 const MAX_COVER_BYTES = 8 * 1024 * 1024;
-const isMinglaStorageWebp = (value) => {
+const PUBLIC_IMAGE_MIME = /^image\/(?:avif|jpeg|png|webp)(?:;|$)/i;
+const isAllowedPublicPoster = (value) => {
   try {
     const url = new URL(value);
-    return url.protocol === "https:" && url.hostname === MINGLA_STORAGE_HOST
-      && url.pathname.startsWith("/storage/v1/object/public/") && /\.webp$/i.test(url.pathname);
+    if (url.protocol !== "https:" || url.username || url.password) return false;
+    const host = url.hostname.toLowerCase();
+    const bunnyHost = safeText(process.env.BUNNY_STREAM_CDN_HOSTNAME).toLowerCase();
+    return ["usemingla.com", "www.usemingla.com", "business.usemingla.com"].includes(host)
+      || host === "images.pexels.com" || host === "i.giphy.com" || host === "media.giphy.com"
+      || host === MINGLA_BUNNY_DELIVERY_HOST || (bunnyHost && host === bunnyHost)
+      || (host === MINGLA_STORAGE_HOST && url.pathname.startsWith("/storage/v1/object/public/"));
   } catch { return false; }
 };
 async function prepareCoverForOg(cover, fetchImpl = fetch, sharpImpl) {
   const source = safeText(cover);
-  if (!isMinglaStorageWebp(source)) return source;
+  if (/^data:image\/(?:png|jpeg);base64,/i.test(source)) return source;
+  if (!isAllowedPublicPoster(source)) throw new Error("cover_unavailable");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
     const response = await fetchImpl(source, { redirect: "error", signal: controller.signal });
     const declaredSize = Number(response.headers.get("content-length") || "0");
-    if (!response.ok || !/^image\/webp(?:;|$)/i.test(response.headers.get("content-type") || "")
+    if (!response.ok || !PUBLIC_IMAGE_MIME.test(response.headers.get("content-type") || "")
       || declaredSize > MAX_COVER_BYTES) throw new Error("cover_unavailable");
     const input = Buffer.from(await response.arrayBuffer());
     if (input.length === 0 || input.length > MAX_COVER_BYTES) throw new Error("cover_unavailable");
     const sharp = sharpImpl || require("sharp");
-    const png = await sharp(input, { limitInputPixels: 20_000_000 })
+    const png = await sharp(input, { limitInputPixels: 20_000_000, failOn: "error" })
       .rotate().resize({ width: 1200, height: 1350, fit: "inside", withoutEnlargement: true })
       .png({ compressionLevel: 9 }).toBuffer();
     return `data:image/png;base64,${png.toString("base64")}`;
@@ -128,7 +136,10 @@ function contentSharePortraitElement(contentShare) {
 
 async function renderContentSharePortraitPng(contentShare) {
   const { ImageResponse } = await import("@vercel/og");
-  const element = contentSharePortraitElement(contentShare);
+  const media = contentShare?.media || contentShare?.facts?.media;
+  if (!media?.posterUrl) throw new Error("cover_required");
+  const posterUrl = await prepareCoverForOg(media.posterUrl);
+  const element = contentSharePortraitElement({ ...contentShare, media: { ...media, posterUrl } });
   const response = new ImageResponse(element, { width:1080, height:1350 });
   return Buffer.from(await response.arrayBuffer());
 }
@@ -161,4 +172,4 @@ function s6CardCss() {
   return `.share-cover{height:${s.h}px;max-width:${s.w}px;margin:auto;border-radius:${s.cardR}px;position:relative;overflow:hidden}.share-cover-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.coverless{background:${PLATE.fallbackSolid}}.share-cover:after{content:"";position:absolute;left:0;right:0;bottom:0;height:${surfaceScrimHeight("s6Phone")}px;background:${cssGradient(RAMP.bottom)}}.share-title{z-index:2;position:absolute;left:${s.sideInset + s.titleInset}px;right:${s.sideInset + s.titleInset}px;bottom:${s.bottomInset + s.plateH + s.gap}px;font-size:${s.titleSize}px;line-height:${s.titleLH}px;font-weight:${s.titleWeight}}.share-plate{z-index:2;position:absolute;left:${s.sideInset}px;right:${s.sideInset}px;bottom:${s.bottomInset}px;height:${s.plateH}px;border:${boundary.width}px solid ${boundary.color};border-radius:${s.plateR}px;background:linear-gradient(${PLATE.lift},${PLATE.lift}),linear-gradient(${underColor},${underColor});backdrop-filter:blur(${PLATE.blurIntensity}px);-webkit-backdrop-filter:blur(${PLATE.blurIntensity}px);box-shadow:inset 0 1px 0 ${PLATE.topHighlight};display:flex;align-items:center;padding:0 ${s.titleInset}px;font-size:${s.metaSize}px}.share-plate strong{margin-left:auto;color:rgba(255,255,255,.72)}@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.share-plate{background:${PLATE.fallbackSolid}}}.share-curated-sliver{z-index:1;position:absolute;height:${s.sliver.height}px;border-radius:${s.sliver.radius}px;border:${sliverBoundary.width}px solid ${sliverBoundary.color};background:linear-gradient(90deg,${s.sliver.opaque[0]},${s.sliver.opaque[1]})}.share-curated-sliver.one{left:${s.sideInset + s.sliver.insets[0]}px;right:${s.sideInset + s.sliver.insets[0]}px;bottom:${s.bottomInset + s.plateH + SLIVER.offsets[0]}px}.share-curated-sliver.two{left:${s.sideInset + s.sliver.insets[1]}px;right:${s.sideInset + s.sliver.insets[1]}px;bottom:${s.bottomInset + s.plateH + SLIVER.offsets[1]}px}`;
 }
 
-module.exports = { businessRowSnapshot, cardIdentityElement, contentSharePortraitElement, factsFor, prepareCoverForOg, renderCardIdentityPng, renderContentSharePortraitPng, s6CardCss, useDirectionC, wordmarkSource };
+module.exports = { businessRowSnapshot, cardIdentityElement, contentSharePortraitElement, factsFor, isAllowedPublicPoster, prepareCoverForOg, renderCardIdentityPng, renderContentSharePortraitPng, s6CardCss, useDirectionC, wordmarkSource };

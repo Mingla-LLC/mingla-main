@@ -211,7 +211,11 @@ describe("sharePublicUrl helpers", () => {
     expect(source).toContain("setIsSharing(false);");
     expect(source).toContain("loading={isCopying}");
     expect(source).toContain("loading={isSharing}");
-    expect(source).toContain("await copyPublicUrl(url);");
+    // [TEST-MOD-APPROVED #1615] The modal now prepares the stable short URL
+    // before copying. Pin that sequencing plus the existing pending/toast proof;
+    // the obsolete direct `url` copy would bypass the new public-share contract.
+    expect(source).toContain("const prepared=await ensurePrepared('copy_link');");
+    expect(source).toContain("await copyPublicUrl(prepared.url);");
     expect(source).toContain('showToast("Link copied")');
     expect(source).toContain("Copy failed");
     expect(source).not.toContain("Tap Share via to copy on iOS / Android.");

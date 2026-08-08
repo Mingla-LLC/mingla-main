@@ -87,8 +87,11 @@ test("H10 native, OneLink, AASA and App Links all recognize opaque /p", () => {
 test("H11 ShareModal exposes create states and removes fabricated facts", () => {
   const source = read("app-mobile/src/components/ShareModal.tsx");
   for (const fake of ["'4.8'", "'Amazing experience'", "share:card.nearby", "|| 'Afternoon'", "|| 'Weekend'", "|| 'This month'"]) assert.doesNotMatch(source, new RegExp(fake.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.match(source, /'idle' \| 'generating' \| 'success' \| 'error'/);
-  assert.match(source, /Sharing the Mingla link instead/);
+  // [TEST-MOD-APPROVED #1615] RETURN replaced the under-specified four-state
+  // source pin with the binding lifecycle and forbids the old silent fallback.
+  for (const state of ['idle', 'validating', 'creating', 'reusing', 'ready', 'opening', 'returned', 'error']) assert.ok(source.includes(`'${state}'`), state);
+  assert.match(source, /sharedCard\.message/);
+  assert.match(source, /original public link/);
 });
 
 test("H12 S4/S5/S6 verdicts are BUILT only after their files exist", () => {
@@ -163,11 +166,14 @@ test("H18 real OneLink producer/resolver carry place and curated shareId", async
 });
 
 test("H19 Explorer payload is canonical S5/S6 URL while CTA remains attributed w36m OneLink", async () => {
+  // [TEST-MOD-APPROVED #1615] Written reason: referral codes follow the
+  // bounded `[A-Za-z0-9-]` contract; the old space-bearing `REF 3` fixture
+  // required arbitrary query text to survive into AsyncStorage.
   const links = await import(path.join(ROOT, "app-mobile/src/services/sharedCardLinks.ts"));
   const created = {
     snapshot: { share_id: "share-3" },
     canonicalUrl: "https://usemingla.com/p/share-3",
-    appUrl: "https://go.usemingla.com/w36m?pid=shared_card&deep_link_value=place&deep_link_sub1=share-3&af_sub1=REF%203",
+    appUrl: "https://go.usemingla.com/w36m?pid=shared_card&deep_link_value=place&deep_link_sub1=share-3&af_sub1=REF-3",
     s4Url: null,
     s5Url: null,
   };
@@ -176,12 +182,14 @@ test("H19 Explorer payload is canonical S5/S6 URL while CTA remains attributed w
   assert.doesNotMatch(externalUrl, /^https:\/\/go\.usemingla\.com/);
   assert.match(created.appUrl, /^https:\/\/go\.usemingla\.com\/w36m\?/);
   assert.match(created.appUrl, /deep_link_sub1=share-3/);
-  assert.match(created.appUrl, /af_sub1=REF%203/);
-  assert.equal(links.referralCodeFromSharedCardAppUrl(created.appUrl), "REF 3");
+  assert.match(created.appUrl, /af_sub1=REF-3/);
+  assert.equal(links.referralCodeFromSharedCardAppUrl(created.appUrl), "REF-3");
   const modal = read("app-mobile/src/components/ShareModal.tsx");
   // [TEST-MOD-APPROVED #1615] Stage 6 replaces the legacy /p producer with the
   // typed /s adapter; the old externalSharedCardUrl assertion is now obsolete.
-  assert.match(modal, /prepareContentShare\(kind, identity, channel\)/);
+  // The binding also requires the sanitized planning preference to reach the
+  // adapter, so the old two-argument source pin was incomplete.
+  assert.match(modal, /prepareContentShare\(kind, identity, channel, \{ planningPreference: dateTimePreferences \}\)/);
   assert.match(modal, /return \(await ensureSharedCard\(channel\)\)\.canonicalUrl/);
   assert.doesNotMatch(modal, /externalSharedCardUrl/);
   assert.doesNotMatch(modal, /created\s*\?\s*\{\s*type:.*shareId/s);

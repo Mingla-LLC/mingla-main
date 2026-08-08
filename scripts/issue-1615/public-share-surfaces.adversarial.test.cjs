@@ -140,9 +140,13 @@ test("A13 duplicate share taps share one in-flight creation and all controls dis
   const modal = read("app-mobile/src/components/ShareModal.tsx");
   // [TEST-MOD-APPROVED #1615] Stage 6 keeps one in-flight creation while re-deriving the
   // channel-specific message for every waiter so concurrent taps cannot reuse stale copy.
-  assert.match(modal, /if \(sharedCardPromiseRef\.current\) return messageForPreparedContentShare\(await sharedCardPromiseRef\.current, channel\)/);
+  // [TEST-MOD-APPROVED #1615] RETURN added an observable `reusing` state; the
+  // old one-line source pin rejected the stronger equivalent behavior.
+  assert.match(modal, /if \(sharedCardPromiseRef\.current\)[\s\S]{0,220}setShareState\('reusing'\)[\s\S]{0,220}await sharedCardPromiseRef\.current/);
   assert.match(modal, /if \(isSharing\) return/);
-  assert.ok((modal.match(/disabled=\{isSharing\}/g) || []).length >= 6);
+  // [TEST-MOD-APPROVED #1615] Controls now disable for sharing plus bounded
+  // content-readiness conditions; the old exact brace pin rejected that safer superset.
+  assert.ok((modal.match(/disabled=\{isSharing/g) || []).length >= 6);
 });
 
 test("A14 business entity routes and event checkout remain mounted beside share routes", () => {

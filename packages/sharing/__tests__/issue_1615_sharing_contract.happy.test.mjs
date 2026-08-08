@@ -54,6 +54,8 @@ test('H3 typed fact priority, omission, disclosures and statuses execute', () =>
 
 test('H4 strict URL, route, media and private-field rejection contracts execute', () => {
   assert.equal(sharing.buildShortShareUrl(CODE), `https://usemingla.com/s/${CODE}`);
+  assert.equal(sharing.buildSharePortraitUrl(CODE, 3), `https://usemingla.com/og/s/${CODE}/v3.png`);
+  assert.throws(() => sharing.buildSharePortraitUrl(CODE, 0));
   for (const bad of ['short', '123456789012345-', '12345678901234567', '１２３４５６７８９０１２３４５６']) {
     assert.equal(sharing.isShortShareCode(bad), false);
   }

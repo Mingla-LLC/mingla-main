@@ -6,7 +6,7 @@ const BUSINESS_ORIGIN = process.env.NODE_ENV === 'development' && process.env.SH
 const SHARE_ID = /^[a-f0-9]{36}$/
 const SHARE_CODE = /^[0-9A-Za-z]{16}$/
 const SHARE_VERSION = /^[1-9][0-9]*$/
-const ALLOWED_STATUSES = new Set([200, 404, 410, 429, 500, 503])
+const ALLOWED_STATUSES = new Set([200, 304, 404, 410, 429, 500, 503])
 
 async function constantTimeEqual(provided: string, expected: string) {
   const encoder = new TextEncoder()
@@ -40,13 +40,14 @@ const upstreamPath = (surface: SharedCardProxySurface, shareId: string, version?
   return `/api/shared-card-image?shareId=${encoded}&surface=${surface === 'snippet' ? 's4' : 's5'}`
 }
 
-const privateResponse = (body: BodyInit | null, status: number, contentType: string) => new Response(body, {
+const privateResponse = (body: BodyInit | null, status: number, contentType: string, etag = '', revalidate = false) => new Response(body, {
   status,
   headers: {
-    'content-type': contentType,
-    'cache-control': 'private, no-store, max-age=0',
+    ...(status === 304 ? {} : { 'content-type': contentType }),
+    'cache-control': revalidate ? 'private, max-age=0, must-revalidate' : 'private, no-store, max-age=0',
     'cdn-cache-control': 'no-store',
     'vercel-cdn-cache-control': 'no-store',
+    ...(etag ? { etag } : {}),
   },
 })
 
@@ -71,24 +72,29 @@ export async function proxySharedCard(
   }
 
   let upstream: Response
+  const expectedEtag = surface === 'content-image' ? `"content-share-${shareId}-v${version}"` : ''
+  const requestEtag = request.headers.get('if-none-match') === expectedEtag ? expectedEtag : ''
   try {
     upstream = await fetchImpl(`${BUSINESS_ORIGIN}${upstreamPath(surface, shareId, version)}`, {
       method: 'GET',
       cache: 'no-store',
       redirect: 'manual',
-      headers: { [DOWNSTREAM_PROXY_HEADER]: secret },
+      headers: { [DOWNSTREAM_PROXY_HEADER]: secret, ...(requestEtag ? { 'if-none-match': requestEtag } : {}) },
     })
   } catch {
     return privateResponse(null, 502, contentType)
   }
   const status = ALLOWED_STATUSES.has(upstream.status) ? upstream.status : 502
+  const upstreamEtag = upstream.headers.get('etag') === expectedEtag ? expectedEtag : ''
+  if (status === 304) return surface === 'content-image' && upstreamEtag ? privateResponse(null,304,contentType,upstreamEtag,true) : privateResponse(null,502,contentType)
   if (status !== 200) return privateResponse(null, status, contentType)
 
   const receivedType = upstream.headers.get('content-type')?.toLowerCase() || ''
   const requiredType = contentType.split(';')[0]
   if (!receivedType.startsWith(requiredType)) return privateResponse(null, 502, contentType)
   try {
-    return privateResponse(await upstream.arrayBuffer(), 200, contentType)
+    if(surface==='content-image'&&!upstreamEtag)return privateResponse(null,502,contentType)
+    return privateResponse(await upstream.arrayBuffer(), 200, contentType, upstreamEtag, surface==='content-image')
   } catch {
     return privateResponse(null, 502, contentType)
   }

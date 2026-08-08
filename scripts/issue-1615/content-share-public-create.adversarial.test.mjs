@@ -32,7 +32,13 @@ test('A2 direct bypass, empty secret, and spoofed secret fail constant-time trus
 
 test('A4 public event-family reads pin published visibility, exact type, and a non-deleted parent brand',()=>{
   const loader=fs.readFileSync(new URL('../../supabase/functions/_shared/contentShare.ts',import.meta.url),'utf8');
-  assert.match(loader,/\.eq\("event_type", expectedType\)\.in\("visibility", \["public", "discover"\]\)\.not\("published_at", "is", null\)\.is\("deleted_at", null\)[\s\S]*?\.is\("brands\.deleted_at", null\)/);
+  // [TEST-MOD-APPROVED #1615] Current `/s` must distinguish withdrawal (404)
+  // from deletion (410), so the source row is read privately then checked
+  // explicitly. The old query-filter assertion erased that distinction.
+  assert.match(loader,/\.eq\("event_type", expectedType\)\.limit\(1\)/);
+  assert.match(loader,/if \(rowError\) throw new Error\("db_error"\)/);
+  assert.match(loader,/if \(!row \|\| row\.deleted_at[\s\S]*?throw new Error\("gone"\)/);
+  assert.match(loader,/!\["public", "discover"\]\.includes\(row\.visibility\)[\s\S]*?!row\.published_at[\s\S]*?throw new Error\("not_public"\)/);
 });
 
 test('A3 server marker cannot authorize curated or a malformed public identity before any database read',async()=>{

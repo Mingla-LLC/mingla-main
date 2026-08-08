@@ -18,6 +18,7 @@
 import React, { Suspense, useCallback } from "react";
 import {
   ActivityIndicator,
+  Image,
   Linking,
   type LayoutChangeEvent,
   Platform,
@@ -43,16 +44,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import {
-  emailIntent,
-  smsIntent,
-  twitterIntent,
-  whatsappIntent,
-} from "../../utils/shareIntents";
-import { copyPublicUrl, sharePublicUrl } from "../../utils/sharePublicUrl";
-import { prepareBusinessContentShare, type PreparedBusinessShare } from "../../services/contentShareAdapter";
-import type { ShareEntityKind } from "@mingla/sharing";
-
+import type { ShareEntityKind, ShareFactsV1 } from "@mingla/sharing";
 import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
 import { Sheet } from "./Sheet";
@@ -71,34 +63,49 @@ interface PlatformButton {
   id: "twitter" | "whatsapp" | "email" | "sms";
   label: string;
   icon: IconName;
-  buildUrl: (url: string, title: string, description?: string) => string;
 }
+
+type PreparedBusinessShare = { shortCode: string; version: number; facts: ShareFactsV1; url: string; message: string; title: string; s4Url: string | null };
+type ShareFlowState = "idle" | "validating" | "creating" | "reusing" | "ready" | "opening" | "returned" | "error";
+const prepareContentShareOnDemand = async (
+  url: string,
+  channel: string,
+  contentKind?: ShareEntityKind,
+): Promise<PreparedBusinessShare> => {
+  const { prepareBusinessContentShare } = await import("../../services/contentShareAdapter");
+  return prepareBusinessContentShare(url, channel, contentKind);
+};
+const messageForContentShareOnDemand = async (
+  prepared: PreparedBusinessShare,
+  channel: string,
+): Promise<PreparedBusinessShare> => {
+  const { messageForPreparedBusinessShare } = await import("../../services/contentShareAdapter");
+  return messageForPreparedBusinessShare(prepared, channel);
+};
+const trackShareEvent=(event:"share_sheet_opened"|"share_link_ready"|"share_sheet_returned"|"share_link_opened"|"share_failure",properties:Record<string,string|number|boolean>):void=>{
+  void import("../../services/contentShareAdapter").then(({trackBusinessShareEvent})=>trackBusinessShareEvent(event,properties)).catch(()=>undefined);
+};
 
 const PLATFORM_BUTTONS: readonly PlatformButton[] = [
   {
     id: "twitter",
     label: "Twitter",
     icon: "share",
-    buildUrl: (url, title, message): string => twitterIntent(url, title, message),
   },
   {
     id: "whatsapp",
     label: "WhatsApp",
     icon: "share",
-    buildUrl: (url, title, message): string => whatsappIntent(url, title, message),
   },
   {
     id: "email",
     label: "Email",
     icon: "share",
-    buildUrl: (url, title, description): string =>
-      emailIntent(url, title, description),
   },
   {
     id: "sms",
     label: "SMS",
     icon: "share",
-    buildUrl: (url, title, message): string => smsIntent(url, title, message),
   },
 ];
 
@@ -116,13 +123,49 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   }>({ visible: false, message: "" });
   const [isCopying, setIsCopying] = React.useState<boolean>(false);
   const [isSharing, setIsSharing] = React.useState<boolean>(false);
+  const [shareState, setShareState] = React.useState<ShareFlowState>("idle");
   const [resolvedUrl,setResolvedUrl]=React.useState(url);
-  const preparedRef=React.useRef(new Map<string,Promise<PreparedBusinessShare>>());
+  const [preparedPreview,setPreparedPreview]=React.useState<PreparedBusinessShare|null>(null);
+  const preparedValueRef=React.useRef<PreparedBusinessShare|null>(null);
+  const preparedPromiseRef=React.useRef<Promise<PreparedBusinessShare>|null>(null);
+  const actionPromiseRef=React.useRef<Promise<void>|null>(null);
   const ensurePrepared=useCallback(async(channel='generic')=>{
-    let promise=preparedRef.current.get(channel);if(!promise){promise=prepareBusinessContentShare(url,channel,contentKind);preparedRef.current.set(channel,promise);void promise.catch(()=>preparedRef.current.delete(channel))}
-    const prepared=await promise;setResolvedUrl(prepared.url);return prepared;
+    setShareState("validating");
+    if(preparedValueRef.current){
+      const prepared=await messageForContentShareOnDemand(preparedValueRef.current,channel);
+      setShareState("ready");
+      return prepared;
+    }
+    let promise=preparedPromiseRef.current;
+    if(promise){setShareState("reusing");}
+    else{
+      setShareState("creating");
+      promise=prepareContentShareOnDemand(url,channel,contentKind);
+      preparedPromiseRef.current=promise;
+      void promise.catch(()=>{preparedPromiseRef.current=null;});
+    }
+    try {
+      const basePrepared=await promise;
+      preparedValueRef.current=basePrepared;
+      const prepared=await messageForContentShareOnDemand(basePrepared,channel);
+      setResolvedUrl(prepared.url);
+      setPreparedPreview(basePrepared);
+      setShareState("ready");
+      trackShareEvent("share_link_ready", { kind: basePrepared.facts.kind, version: basePrepared.version, short_code: basePrepared.shortCode, channel, producer_app: "business", producer_surface: "public_share_sheet" });
+      return prepared;
+    } catch (error) {
+      setShareState("error");
+      trackShareEvent("share_failure", { failure_type: "creation", reason: "create_failed", kind: contentKind ?? "inferred", channel, producer_app: "business", producer_surface: "public_share_sheet" });
+      throw error;
+    }
   },[url,contentKind]);
-  React.useEffect(()=>{preparedRef.current.clear();setResolvedUrl(url);if(visible)void ensurePrepared().catch(()=>undefined)},[visible,url,contentKind,ensurePrepared]);
+  React.useEffect(()=>{
+    preparedValueRef.current=null;preparedPromiseRef.current=null;setPreparedPreview(null);setResolvedUrl(url);setShareState("idle");
+  },[url,contentKind]);
+  React.useEffect(()=>{
+    if(!visible)return;
+    void ensurePrepared("generic").catch(()=>undefined);
+  },[visible,ensurePrepared]);
 
   // ORCH-0964: size the sheet to its actual content so the QR + platform row
   // are never clipped. The fixed "half" snap was shorter than this content on
@@ -140,6 +183,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     contentHeight !== null
       ? contentHeight + SHEET_HANDLE_AND_PADDING + insets.bottom
       : "half";
+  const flowBusy = ["validating","creating","reusing","opening"].includes(shareState);
 
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -149,48 +193,96 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
+  const runExclusiveShareAction = useCallback((work: () => Promise<void>): Promise<void> => {
+    if (actionPromiseRef.current) return actionPromiseRef.current;
+    const action = work().finally(() => {
+      if (actionPromiseRef.current === action) actionPromiseRef.current = null;
+    });
+    actionPromiseRef.current = action;
+    return action;
+  }, []);
+
   const handleCopyLink = useCallback(async (): Promise<void> => {
     if (isCopying) return;
-    setIsCopying(true);
-    try {
-      const prepared=await ensurePrepared('copy_link');
-      await copyPublicUrl(prepared.url);
-      showToast("Link copied");
-    } catch {
-      showToast("Copy failed. Try Share via instead.");
-    } finally {
-      setIsCopying(false);
-    }
-  }, [isCopying, ensurePrepared, showToast]);
+    await runExclusiveShareAction(async () => {
+      setIsCopying(true);
+      try {
+        const {copyPublicUrl}=await import("../../utils/sharePublicUrl");
+        const prepared=await ensurePrepared('copy_link');
+        await copyPublicUrl(prepared.url);
+        showToast("Link copied");
+      } catch {
+        try {
+          const {copyPublicUrl}=await import("../../utils/sharePublicUrl");
+          await copyPublicUrl(url);
+          showToast("Original link copied");
+        } catch {
+          showToast("Copy failed. Check your connection and retry.");
+        }
+      } finally {
+        setIsCopying(false);
+      }
+    });
+  }, [ensurePrepared, isCopying, runExclusiveShareAction, showToast, url]);
 
   const handleNativeShare = useCallback(async (): Promise<void> => {
     if (isSharing) return;
-    setIsSharing(true);
-    try {
-      const prepared=await ensurePrepared('generic');
-      await sharePublicUrl({title:prepared.title,url:prepared.url,description:prepared.message});
-    } catch {
-      if (Platform.OS === "web") {
-        showToast("Native share not supported on this browser.");
+    await runExclusiveShareAction(async () => {
+      setIsSharing(true);
+      let reachedOpening=false;
+      try {
+        const {sharePublicUrl}=await import("../../utils/sharePublicUrl");
+        const prepared=await ensurePrepared('generic');
+        const properties={kind:prepared.facts.kind,version:prepared.version,short_code:prepared.shortCode,channel:"generic",producer_app:"business",producer_surface:"public_share_sheet"};
+        setShareState("opening");
+        reachedOpening=true;
+        trackShareEvent("share_sheet_opened", properties);
+        await sharePublicUrl({title:prepared.title,url:prepared.url,description:prepared.message});
+        setShareState("returned");
+        trackShareEvent("share_sheet_returned", {...properties,outcome:"returned"});
+      } catch {
+        if(reachedOpening)trackShareEvent("share_failure", {failure_type:"share_open",reason:"open_failed",kind:contentKind??"inferred",channel:"generic",producer_app:"business",producer_surface:"public_share_sheet"});
+        try {
+          const {sharePublicUrl}=await import("../../utils/sharePublicUrl");
+          trackShareEvent("share_sheet_opened", {kind:contentKind??"inferred",channel:"generic",producer_app:"business",producer_surface:"public_share_sheet",outcome:"canonical_fallback"});
+          await sharePublicUrl({ title, url, description: description ?? title });
+          trackShareEvent("share_sheet_returned", {kind:contentKind??"inferred",channel:"generic",producer_app:"business",producer_surface:"public_share_sheet",outcome:"returned_from_canonical_fallback"});
+          showToast("Short link unavailable — original link shared");
+        } catch {
+          setShareState("error");
+          trackShareEvent("share_failure", {failure_type:reachedOpening?"share_open":"fallback_open",reason:"open_failed",kind:contentKind??"inferred",channel:"generic",producer_app:"business",producer_surface:"public_share_sheet"});
+          showToast(Platform.OS === "web" ? "Sharing is unavailable here. Copy the original link instead." : "Share failed. Copy the original link or retry.");
+        }
+      } finally {
+        setIsSharing(false);
       }
-    } finally {
-      setIsSharing(false);
-    }
-  }, [isSharing, ensurePrepared, showToast]);
+    });
+  }, [contentKind, description, ensurePrepared, isSharing, runExclusiveShareAction, showToast, title, url]);
 
-  const handleOpenLink = useCallback(async (): Promise<void> => {
-    try {
-      await Linking.openURL(resolvedUrl);
-    } catch {
-      showToast("Couldn't open link.");
-    }
-  }, [resolvedUrl, showToast]);
+  const handleOpenLink = useCallback((): Promise<void> => runExclusiveShareAction(async () => {
+      try {
+        const parsed=new URL(resolvedUrl);
+        if(parsed.protocol!=="https:"||parsed.username||parsed.password)throw new Error("unsafe_share_url");
+        await Linking.openURL(parsed.toString());
+      } catch {
+        setShareState("error");
+        trackShareEvent("share_failure", { failure_type: "link_open", kind: contentKind ?? "inferred", channel: "open_link", reason: "open_failed", producer_app:"business",producer_surface:"public_share_sheet" });
+        showToast("Couldn't open link.");
+      }
+    }), [resolvedUrl, runExclusiveShareAction, showToast, contentKind]);
 
   const handlePlatformPress = useCallback(
-    async (btn: PlatformButton): Promise<void> => {
-      let prepared:PreparedBusinessShare;try{prepared=await ensurePrepared(btn.id)}catch{showToast("Share link unavailable. Try again.");return}
-      const intent = btn.buildUrl(prepared.url, prepared.title, prepared.message);
+    (btn: PlatformButton): Promise<void> => runExclusiveShareAction(async () => {
+      let prepared:PreparedBusinessShare|null=null;
+      try{prepared=await ensurePrepared(btn.id)}catch{showToast("Preview unavailable — opening the original link.")}
+      const shareUrl=prepared?.url??url;
+      const shareTitle=prepared?.title??title;
+      const shareMessage=prepared?.message??description??title;
+      const {buildBusinessShareIntent,isAllowedBusinessShareIntent}=await import("../../services/contentShareAdapter");
+      const intent = buildBusinessShareIntent(btn.id,shareUrl,shareTitle,shareMessage);
       try {
+        if(!isAllowedBusinessShareIntent(intent))throw new Error("unsafe_share_intent");
+        setShareState("opening");
         if (Platform.OS === "web") {
           const win = (
             globalThis as unknown as {
@@ -205,11 +297,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         } else {
           await Linking.openURL(intent);
         }
+        setShareState("returned");
       } catch {
+        setShareState("error");
+        trackShareEvent("share_failure", { failure_type:"share_open",kind:contentKind??"inferred",channel:btn.id,reason:"open_failed",producer_app:"business",producer_surface:"public_share_sheet" });
         showToast(`Couldn't open ${btn.label}.`);
       }
-    },
-    [ensurePrepared, showToast],
+    }),
+    [ensurePrepared, showToast, url, title, description, contentKind, runExclusiveShareAction],
   );
 
   return (
@@ -229,6 +324,23 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           </Pressable>
         </View>
 
+        <View style={styles.previewWrap}>
+          {preparedPreview?.s4Url ? (
+            <Image source={{uri:preparedPreview.s4Url}} style={styles.portraitPreview} resizeMode="cover" accessibilityLabel={`${preparedPreview.facts.kind.replace("_"," ")}: ${preparedPreview.title}`} />
+          ) : preparedPreview ? (
+            <View style={styles.coverlessPreview} accessibilityLabel="No image preview available">
+              <Text style={styles.coverlessKind}>{preparedPreview.facts.kind.replace("_"," ")}</Text>
+              <Text style={styles.coverlessTitle}>{preparedPreview.title}</Text>
+              <Text style={styles.coverlessCopy}>No image preview is available. The public link still opens the full details.</Text>
+            </View>
+          ) : (
+            <View style={styles.portraitLoading} accessibilityLiveRegion="polite">
+              <ActivityIndicator size="small" color={accent.warm} />
+              <Text style={styles.statusText}>Preparing the exact 4:5 preview…</Text>
+            </View>
+          )}
+        </View>
+
         {/* Action buttons */}
         <View style={styles.actionsRow}>
           <Button
@@ -239,7 +351,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             fullWidth
             leadingIcon="link"
             loading={isCopying}
-            disabled={isSharing}
+            disabled={isSharing || flowBusy}
           />
         </View>
         <View style={styles.actionsRow}>
@@ -251,9 +363,24 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             fullWidth
             leadingIcon="share"
             loading={isSharing}
-            disabled={isCopying}
+            disabled={isCopying || flowBusy}
           />
         </View>
+
+        {flowBusy ? (
+          <View style={styles.statusRow} accessibilityLiveRegion="polite">
+            <ActivityIndicator size="small" color={accent.warm} />
+            <Text style={styles.statusText}>Preparing your Mingla link…</Text>
+          </View>
+        ) : null}
+        {shareState === "error" ? (
+          <View style={styles.errorRow} accessibilityLiveRegion="polite">
+            <Text style={styles.errorText}>The Mingla preview is unavailable. The original public link remains available.</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Retry Mingla preview" onPress={() => { preparedPromiseRef.current=null; void ensurePrepared("generic").catch((error: unknown) => console.warn("[ShareModal] preview retry failed:", error)); }} style={styles.retryBtn}>
+              <Text style={styles.retryText}>Retry preview</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         <Pressable
           onPress={handleOpenLink}
@@ -297,10 +424,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({
             <Pressable
               key={btn.id}
               onPress={() => handlePlatformPress(btn)}
+              disabled={flowBusy}
+              accessibilityState={{ disabled: flowBusy }}
               accessibilityRole="button"
               accessibilityLabel={`Share via ${btn.label}`}
               style={({ pressed }) => [
                 styles.platformBtn,
+                flowBusy && styles.platformBtnDisabled,
                 pressed && styles.platformBtnPressed,
               ]}
             >
@@ -354,6 +484,51 @@ const styles = StyleSheet.create({
   actionsRow: {
     marginBottom: spacing.sm,
   },
+  previewWrap: {
+    marginBottom: spacing.md,
+  },
+  portraitPreview: {
+    width: "100%",
+    aspectRatio: 4 / 5,
+    borderRadius: radiusTokens.lg,
+    backgroundColor: "#111318",
+  },
+  portraitLoading: {
+    width: "100%",
+    aspectRatio: 4 / 5,
+    borderRadius: radiusTokens.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    padding: spacing.lg,
+    backgroundColor: glass.tint.profileBase,
+  },
+  coverlessPreview: {
+    width: "100%",
+    aspectRatio: 4 / 5,
+    borderRadius: radiusTokens.lg,
+    justifyContent: "flex-end",
+    padding: spacing.lg,
+    backgroundColor: "#0C0E12",
+  },
+  coverlessKind: {
+    color: accent.warm,
+    textTransform: "capitalize",
+    fontWeight: "700",
+    marginBottom: spacing.xs,
+  },
+  coverlessTitle: {
+    color: "#FFFFFF",
+    fontSize: typography.h3.fontSize,
+    lineHeight: typography.h3.lineHeight,
+    fontWeight: "700",
+  },
+  coverlessCopy: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    marginTop: spacing.sm,
+  },
   urlBox: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
@@ -362,6 +537,40 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     backgroundColor: glass.tint.profileBase,
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  statusText: {
+    flex: 1,
+    fontSize: typography.bodySm.fontSize,
+    color: textTokens.secondary,
+  },
+  errorRow: {
+    marginBottom: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radiusTokens.md,
+    backgroundColor: glass.tint.profileBase,
+  },
+  errorText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+  },
+  retryBtn: {
+    alignSelf: "flex-start",
+    marginTop: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radiusTokens.full,
+    backgroundColor: accent.warm,
+  },
+  retryText: {
+    color: "#111318",
+    fontWeight: "700",
   },
   urlBoxPressed: {
     opacity: 0.7,
@@ -408,6 +617,9 @@ const styles = StyleSheet.create({
   },
   platformBtnPressed: {
     opacity: 0.6,
+  },
+  platformBtnDisabled: {
+    opacity: 0.45,
   },
   platformIconWrap: {
     width: 40,

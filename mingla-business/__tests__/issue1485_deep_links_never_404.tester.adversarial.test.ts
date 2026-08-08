@@ -92,9 +92,12 @@ const catchAll = vercel.rewrites[vercel.rewrites.length - 1];
  * A.0 asserts this map covers every rewrite, so it cannot silently rot.
  */
 const COMPILED_SRC: Record<string, string> = {
-  // [TEST-MOD-APPROVED #1615] These four public-share/venue rewrites did not
-  // exist when #1485 froze this exhaustive transcription. Adding their real
-  // compiled forms preserves the test's fail-loud coverage of every rewrite.
+  // [TEST-MOD-APPROVED #1615] The stable content page and immutable portrait
+  // rewrites did not exist when #1485 froze this exhaustive transcription.
+  // Their real compiled forms keep every rewrite covered without weakening the
+  // last catch-all or the /_expo/static/ exclusion.
+  "/s/:code": "^/s(?:/([^/]+?))$",
+  "/og/s/:code/v:version.png": "^/og/s(?:/([^/]+?))/v([^/]+?)\\.png$",
   "/share/:shareId.png": "^/share(?:/([^/]+?))\\.png$",
   "/og/share/:shareId.png": "^/og/share(?:/([^/]+?))\\.png$",
   "/p/:shareId": "^/p(?:/([^/]+?))$",
@@ -231,6 +234,17 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
     expect(ROUTE_FILES.length).toBeGreaterThanOrEqual(100);
     expect(DERIVED_URLS.length).toBeGreaterThanOrEqual(100);
     expect(DERIVED_URLS).toContain("/");
+  });
+
+  it("A.0b — stable share routes resolve before the unchanged SPA catch-all", () => {
+    expect(resolveForBrowser("/s/Aa0Bb1Cc2Dd3Ee4F")).toEqual({
+      source: "/s/:code", destination: "/api/content-share?code=:code",
+    });
+    expect(resolveForBrowser("/og/s/Aa0Bb1Cc2Dd3Ee4F/v7.png")).toEqual({
+      source: "/og/s/:code/v:version.png",
+      destination: "/api/content-share-image?code=:code&version=:version",
+    });
+    expect(catchAll.source).toBe("/((?!_expo/static/).*)");
   });
 
   it("A.2 — the four production incident routes are inside the derived set", () => {

@@ -1,24 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Text, View, Image, StyleSheet, Alert, Clipboard, Linking } from 'react-native';
+import { ActivityIndicator, Text, View, Image, StyleSheet, Alert, Clipboard, Linking } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import * as WebBrowser from 'expo-web-browser';
-import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
 import { BaseBottomSheet } from './ui/BaseBottomSheet';
 import { Icon } from './ui/Icon';
 import { WhatsAppLogo, InstagramLogo, TwitterLogo } from './ui/BrandIcons';
-import { ImageWithFallback } from './figma/ImageWithFallback';
-import { useAppState } from './AppStateManager';
-import { parseAndFormatDistance } from './utils/formatters';
 import { colors } from '../constants/colors';
 import { mixpanelService } from '../services/mixpanelService';
 import { logAppsFlyerEvent } from '../services/appsFlyerService';
-import { type ShareEntity } from '../services/oneLinkShare';
-import { messageForPreparedContentShare, prepareContentShare, sharePreparedContent, type PreparedContentShare } from '../services/contentShareAdapter';
-import { canonicalDiscoveryPriceDetail } from '../utils/priceTiers';
-// ISSUE-1001 — the real wordmark replaces the red-dot + "Mingla" text badge.
-import { MINGLA_WORDMARK } from '@mingla/brand-assets';
+import { buildFallbackShareUrl, type ShareEntity } from '../services/oneLinkShare';
+import { messageForPreparedContentShare, prepareContentShare, shareCanonicalFallback, sharePreparedContent, type PreparedContentShare } from '../services/contentShareAdapter';
 
 
 interface ShareModalProps {
@@ -30,9 +22,22 @@ interface ShareModalProps {
   accountPreferences?: any;
 }
 
+type ShareFlowState = 'idle' | 'validating' | 'creating' | 'reusing' | 'ready' | 'opening' | 'returned' | 'error';
+
 // META-ORCH-0991 Wave B Batch 3: was a centered card capped at maxHeight 90% →
 // a swipe-down sheet at the same height. Module-level const per playbook §2.
 const SHARE_SHEET_SNAP_POINTS = ['90%'];
+const ENABLE_LEGACY_PRIVATE_SHARE_FALLBACK =
+  process.env.EXPO_PUBLIC_ENABLE_LEGACY_SHARE_FALLBACK === 'true';
+
+type ShareAnalyticsEvent = 'share_sheet_opened' | 'share_link_ready' | 'share_sheet_returned' | 'share_failure';
+const trackShareAnalytics = (
+  event: ShareAnalyticsEvent,
+  properties: Record<string, string | number | boolean>,
+): void => {
+  mixpanelService.track(event, properties);
+  logAppsFlyerEvent(event, properties);
+};
 
 export default function ShareModal({ 
   isOpen, 
@@ -44,17 +49,28 @@ export default function ShareModal({
 }: ShareModalProps) {
   const [messageCopied, setMessageCopied] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
-  const [shareState, setShareState] = useState<'idle' | 'generating' | 'success' | 'error'>('idle');
+  const [shareState, setShareState] = useState<ShareFlowState>('idle');
   const [sharedCard, setSharedCard] = useState<PreparedContentShare | null>(null);
   const sharedCardPromiseRef = useRef<Promise<PreparedContentShare> | null>(null);
+  const shareActionPromiseRef = useRef<Promise<void> | null>(null);
   const { t } = useTranslation(['share', 'common']);
 
   useEffect(() => {
-    if (!isOpen) return;
     setSharedCard(null);
     sharedCardPromiseRef.current = null;
     setShareState('idle');
-  }, [isOpen, experienceData?.id, experienceData?.placePoolId, experienceData?.place_pool_id, experienceData?.placeId, experienceData?.googlePlaceId, experienceData?.savedCardId, experienceData?.saved_card_id]);
+  }, [experienceData?.id, experienceData?.placePoolId, experienceData?.place_pool_id, experienceData?.placeId, experienceData?.googlePlaceId, experienceData?.savedCardId, experienceData?.saved_card_id]);
+
+  useEffect(() => {
+    if (!isOpen || !experienceData) return;
+    void ensureSharedCard('generic').catch((error: unknown) => {
+      console.warn('[ShareModal] share link preflight failed:', error);
+      trackShareAnalytics('share_failure', { failure_type: 'creation', reason: 'create_failed', producer_app: 'consumer', producer_surface: 'explorer_share_sheet' });
+    });
+  // The reset effect above keys the authoritative identities; this preflight
+  // intentionally runs only when the sheet opens for that reset generation.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
   
   if (!isOpen) return null;
   
@@ -86,53 +102,11 @@ export default function ShareModal({
     );
   }
 
-  // Extract data with fallbacks
+  // Extract only the producer identity. The visible preview below is always the
+  // exact versioned recipient portrait returned by the sharing contract.
   const title = experienceData.title || experienceData.name || t('common:experience');
-  const image = experienceData.image || experienceData.images?.[0] || '';
-  const rawDistance = experienceData.distance || experienceData.travelTime;
-  const distance = rawDistance
-    ? parseAndFormatDistance(rawDistance, accountPreferences?.measurementSystem)
-    : '';
-  const venuePrice = canonicalDiscoveryPriceDetail(experienceData);
   const isCuratedItinerary =
     experienceData.cardType === 'curated' || Array.isArray(experienceData.stops);
-  // Venue shares always lead with exact source money. Curated itinerary
-  // estimates remain a separate domain and may use their existing summary.
-  const priceRange = venuePrice?.source ??
-    (isCuratedItinerary && typeof experienceData.priceRange === 'string'
-      ? experienceData.priceRange
-      : '');
-  const approximatePrice = venuePrice?.approximate
-    ? `Approx. ${venuePrice.approximate}${venuePrice.ratesDate ? ` · rates from ${new Date(venuePrice.ratesDate).toLocaleDateString()}` : ''}`
-    : '';
-  const rating = experienceData.rating || experienceData.ratingValue || '';
-  const address = experienceData.address || experienceData.location?.address || experienceData.location || '';
-  const description = experienceData.description || experienceData.fullDescription || '';
-  const shortDescription = description.split('.')[0] || '';
-
-  // Debug logging
-  console.log('[ShareModal] Received experienceData:', {
-    hasTitle: !!experienceData.title,
-    hasImage: !!image,
-    title,
-    image,
-    distance,
-    priceRange,
-    rating,
-  });
-
-  // Generate personalized message
-  const generatePersonalizedMessage = () => {
-    const schedule = [dateTimePreferences?.timeOfDay, dateTimePreferences?.dayOfWeek, dateTimePreferences?.planningTimeframe]
-      .filter((v) => typeof v === 'string' && v.trim()).join(' on ');
-    
-    const priceSentence = priceRange
-      ? ` and costs ${priceRange}${approximatePrice ? ` (${approximatePrice})` : ''}`
-      : '';
-    return `What do you think about ${title}${address ? ` at ${address}` : ''}?${rating ? ` It has a ${rating} star rating` : ''}${priceSentence}.${schedule ? ` I'm thinking ${schedule}.` : ''}${shortDescription ? ` ${shortDescription}.` : ''} Let me know if you're interested!`;
-  };
-
-  const personalizedMessage = generatePersonalizedMessage();
 
   // ORCH-1318 (SPEC §E.3) — derive the shared entity from experienceData when it
   // carries slugs. Curated/AI cards without a brand entity → undefined → a bare
@@ -169,11 +143,20 @@ export default function ShareModal({
     return { type, brandSlug, entitySlug };
   };
 
-  const ensureSharedCard = async (channel = 'generic'): Promise<PreparedContentShare> => {
+  async function ensureSharedCard(channel = 'generic'): Promise<PreparedContentShare> {
     const businessEntity = buildShareEntity();
-    if (sharedCard) return messageForPreparedContentShare(sharedCard, channel);
-    if (sharedCardPromiseRef.current) return messageForPreparedContentShare(await sharedCardPromiseRef.current, channel);
-    setShareState('generating');
+    setShareState('validating');
+    if (sharedCard) {
+      setShareState('ready');
+      return messageForPreparedContentShare(sharedCard, channel, { planningPreference: dateTimePreferences });
+    }
+    if (sharedCardPromiseRef.current) {
+      setShareState('reusing');
+      const reused = messageForPreparedContentShare(await sharedCardPromiseRef.current, channel, { planningPreference: dateTimePreferences });
+      setShareState('ready');
+      return reused;
+    }
+    setShareState('creating');
     const isBusinessEntity=businessEntity !== undefined && 'brandSlug' in businessEntity;
     const kind = isBusinessEntity ? businessEntity.type : (isCuratedItinerary ? 'curated' : 'place');
     const identity = isBusinessEntity ? {
@@ -184,16 +167,34 @@ export default function ShareModal({
           ['googlePlaceId', experienceData.placeId || experienceData.googlePlaceId || experienceData.google_place_id],
           ['savedCardId', experienceData.savedCardId || experienceData.saved_card_id],
         ].filter(([, value]) => typeof value === 'string' && value.length > 0));
-    const createPromise = prepareContentShare(kind, identity, channel);
+    const createPromise = prepareContentShare(kind, identity, channel, { planningPreference: dateTimePreferences });
     sharedCardPromiseRef.current = createPromise;
     try {
       const created = await createPromise;
-      setSharedCard(created); setShareState('success'); return created;
+      setSharedCard(created);
+      setShareState('ready');
+      trackShareAnalytics('share_link_ready', { kind, version: created.version, short_code: created.shortCode, channel, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' });
+      return created;
     } catch (error) {
       sharedCardPromiseRef.current = null;
       setShareState('error');
       throw error;
     }
+  }
+
+  const fallbackShare = (): { url: string; message: string } | null => {
+    const entity = buildShareEntity();
+    if (entity) {
+      const url = buildFallbackShareUrl({ entity, channel: 'fallback' });
+      return { url, message: `${title}\n\n${url}` };
+    }
+    const legacyShareId = experienceData.shareId || experienceData.share_id;
+    if (ENABLE_LEGACY_PRIVATE_SHARE_FALLBACK && typeof legacyShareId === 'string' && /^[a-f0-9]{36}$/.test(legacyShareId)) {
+      const entityKind: ShareEntity = { type: isCuratedItinerary ? 'curated' : 'place', shareId: legacyShareId };
+      const url = buildFallbackShareUrl({ entity: entityKind, channel: 'fallback' });
+      return { url, message: `${title}\n\n${url}` };
+    }
+    return null;
   };
 
   // ORCH-1318 (SPEC §E.3) — the tracked, install-surviving OneLink for this
@@ -204,37 +205,65 @@ export default function ShareModal({
     return (await ensureSharedCard(channel)).canonicalUrl;
   };
 
-  const handleCopyLink = async () => {
-    if (isSharing) return;
+  const runExclusiveShareAction = (work: () => Promise<void>): Promise<void> => {
+    if (shareActionPromiseRef.current) return shareActionPromiseRef.current;
+    const action = work().finally(() => {
+      if (shareActionPromiseRef.current === action) shareActionPromiseRef.current = null;
+    });
+    shareActionPromiseRef.current = action;
+    return action;
+  };
+
+  const performCopyLink = async (): Promise<void> => {
     setIsSharing(true);
     try {
       const link = await buildTrackedLink('copy_link');
       await Clipboard.setString(link);
-      mixpanelService.trackExperienceShared({ experienceTitle: title, method: 'copy_link' });
-      logAppsFlyerEvent('af_share', { af_content_type: 'copy_link' });
     } catch (e) {
       console.error('[ShareModal] copy link build failed:', e);
       setShareState('error');
+      trackShareAnalytics('share_failure', { failure_type: 'creation', reason: 'copy_link_create_failed', producer_app: 'consumer', producer_surface: 'explorer_share_sheet', channel: 'copy_link' });
+      const fallback = fallbackShare();
+      if (fallback) {
+        await Clipboard.setString(fallback.url);
+        Alert.alert('Original link copied', 'The new Mingla preview is unavailable, so we copied the original public link. You can retry here later.');
+      } else {
+        Alert.alert(t('share:alerts.error_title'), 'We couldn’t create this link. Check your connection and try again.');
+      }
     } finally {
       setIsSharing(false);
     }
   };
+  const handleCopyLink = (): Promise<void> => runExclusiveShareAction(performCopyLink);
 
-  const handleCopyMessage = async () => {
+  const performCopyMessage = async (): Promise<void> => {
+    setIsSharing(true);
     try {
       const prepared=await ensureSharedCard('copy_message');
       await Clipboard.setString(prepared.message);
       setMessageCopied(true);
       setTimeout(() => setMessageCopied(false), 2000);
-      mixpanelService.trackExperienceShared({ experienceTitle: title, method: 'copy_message' });
-      logAppsFlyerEvent('af_share', { af_content_type: 'copy_message' });
     } catch (err) {
       console.error('Failed to copy message:', err);
-      Alert.alert(t('share:alerts.error_title'), t('share:alerts.copy_error'));
+      setShareState('error');
+      trackShareAnalytics('share_failure', { failure_type: 'creation', reason: 'copy_message_create_failed', producer_app: 'consumer', producer_surface: 'explorer_share_sheet', channel: 'copy_message' });
+      const fallback = fallbackShare();
+      if (fallback) {
+        await Clipboard.setString(fallback.message);
+        Alert.alert('Original link copied', 'The new Mingla preview is unavailable, so we copied a simple message with the original public link.');
+      } else {
+        Alert.alert(t('share:alerts.error_title'), 'We couldn’t create this message. Check your connection and try again.');
+      }
+    } finally {
+      setIsSharing(false);
     }
   };
+  const handleCopyMessage = (): Promise<void> => runExclusiveShareAction(performCopyMessage);
 
-  const handleSocialShare = async (platform: string) => {
+  const performSocialShare = async (platform: string): Promise<void> => {
+    if (platform === 'instagram') return;
+    let opened = false;
+    let reachedOpening = false;
     setIsSharing(true);
     try {
       // ORCH-1318 (SPEC §E.3) — APPEND the tracked, install-surviving OneLink to
@@ -243,8 +272,15 @@ export default function ShareModal({
       // returns empty (static fallback on any SDK failure).
       const prepared = await ensureSharedCard(platform);
       const message = prepared.message;
-      mixpanelService.trackExperienceShared({ experienceTitle: title, method: platform });
-      logAppsFlyerEvent('af_share', { af_content_type: platform });
+      setShareState('opening');
+      reachedOpening = true;
+
+      const openNativeShareSheet = async (): Promise<void> => {
+        const properties = { kind: prepared.facts.kind, version: prepared.version, short_code: prepared.shortCode, channel: platform, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' };
+        trackShareAnalytics('share_sheet_opened', properties);
+        await sharePreparedContent(prepared);
+        trackShareAnalytics('share_sheet_returned', { ...properties, outcome: 'returned' });
+      };
       
       switch (platform) {
         case 'messages':
@@ -255,7 +291,7 @@ export default function ShareModal({
             await Linking.openURL(messagesUrl);
           } else {
             // Fallback to native share
-            await sharePreparedContent(prepared);
+            await openNativeShareSheet();
           }
           break;
           
@@ -268,28 +304,12 @@ export default function ShareModal({
               await Linking.openURL(whatsappUrl);
             } else {
               // Fallback to native share (works on web / emulators / devices without WhatsApp)
-              await sharePreparedContent(prepared);
+              await openNativeShareSheet();
             }
           } catch {
             // Final fallback
-            await sharePreparedContent(prepared);
+            await openNativeShareSheet();
           }
-          break;
-          
-        case 'instagram':
-          // S4 is available only with a real cover. If attachment/export fails,
-          // retain the canonical link and disclose the fallback instead of lying.
-          const instagramCard = sharedCard ?? await ensureSharedCard();
-          if (instagramCard?.s4Url) {
-            try {
-              const uri = `${FileSystem.cacheDirectory ?? ''}mingla-share-${Date.now()}.png`;
-              await FileSystem.downloadAsync(instagramCard.s4Url, uri);
-              if (!(await Sharing.isAvailableAsync())) throw new Error('sharing_unavailable');
-              await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: message, UTI: 'public.png' });
-              break;
-            } catch { Alert.alert('Image unavailable', 'Sharing the Mingla link instead.'); }
-          }
-          await sharePreparedContent(prepared);
           break;
           
         case 'twitter':
@@ -308,14 +328,38 @@ export default function ShareModal({
           break;
           
         default:
-          await sharePreparedContent(prepared);
+          await openNativeShareSheet();
       }
+      opened = true;
     } catch (error) {
       console.error('Error sharing:', error);
-      Alert.alert(t('share:alerts.error_title'), t('share:alerts.share_error'));
+      setShareState('error');
+      trackShareAnalytics('share_failure', { failure_type: reachedOpening ? 'share_open' : 'creation', reason: reachedOpening ? 'open_failed' : 'create_failed', channel: platform, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' });
+      const fallback = fallbackShare();
+      if (fallback) {
+        try {
+          trackShareAnalytics('share_sheet_opened', { channel: platform, producer_app: 'consumer', producer_surface: 'explorer_share_sheet', outcome: 'canonical_fallback' });
+          await shareCanonicalFallback({ title, ...fallback });
+          trackShareAnalytics('share_sheet_returned', { channel: platform, producer_app: 'consumer', producer_surface: 'explorer_share_sheet', outcome: 'returned_from_canonical_fallback' });
+          opened = true;
+          Alert.alert('Shared the original link', 'The new Mingla preview is unavailable. We used the original public link instead; you can retry the preview later.');
+        } catch (fallbackError) {
+          console.error('[ShareModal] original-link fallback failed:', fallbackError);
+          Alert.alert(t('share:alerts.error_title'), 'Neither share option opened. Copy the original link or try again.');
+        }
+      } else {
+        Alert.alert(t('share:alerts.error_title'), 'We couldn’t open this share option. Check your connection and try again.');
+      }
     } finally {
+      if (opened) setShareState('returned');
       setIsSharing(false);
     }
+  };
+
+  const handleSocialShare = async (platform: string): Promise<void> => {
+    if (platform === 'instagram') return;
+    if (isSharing) return;
+    await runExclusiveShareAction(() => performSocialShare(platform));
   };
 
   return (
@@ -345,97 +389,50 @@ export default function ShareModal({
         </View>
       }
     >
-            {/* Experience Card with Orange Border */}
+            {/* Exact recipient-facing version preview. Never attach this image
+                unless a target-specific adapter later proves image + link. */}
             <View style={styles.cardPreview}>
-              <View style={styles.cardWrapper}>
-                <View style={styles.card}>
-                  {/* Experience Image */}
-                  <View style={styles.imageContainer}>
-                    <ImageWithFallback
-                      src={image}
-                      alt={title}
-                      style={styles.experienceImage}
-                    />
-                    {/* Mingla Badge — ISSUE-1001: the real orange wordmark
-                        on the fixed white pill (contrast holds over any cover
-                        image; identical in dark mode). */}
-                    <View style={styles.minglaBadge}>
-                      <Image
-                        source={MINGLA_WORDMARK}
-                        style={styles.minglaWordmark}
-                        resizeMode="contain"
-                        accessibilityLabel="Mingla"
-                      />
-                    </View>
-                    {rating ? <View style={styles.ratingBadge}>
-                      <Icon name="star" size={12} color="#fbbf24" />
-                      <Text style={styles.ratingText}>{rating}</Text>
-                    </View> : null}
-                  </View>
-
-                  {/* Experience Details */}
-                  <View style={styles.experienceDetails}>
-                    <Text style={styles.experienceTitle}>{title}</Text>
-                    
-                    <View style={styles.experienceMeta}>
-                      {distance ? <View style={styles.metaItem}>
-                        <Icon name="location-outline" size={14} color="#6b7280" />
-                        <Text style={styles.metaText}>{distance}</Text>
-                      </View> : null}
-                      {priceRange ? (
-                        <View style={styles.metaItem}>
-                          <Icon name="cash-outline" size={14} color="#6b7280" />
-                          <Text style={styles.metaText}>{priceRange}</Text>
-                        </View>
-                      ) : null}
-                    </View>
-
-                    {/* Suggested Schedule */}
-                    {dateTimePreferences?.timeOfDay || dateTimePreferences?.dayOfWeek || dateTimePreferences?.planningTimeframe ? <View style={styles.scheduleContainer}>
-                      <View style={styles.scheduleHeader}>
-                        <Icon name="calendar-outline" size={14} color="#eb7825" />
-                        <Text style={styles.scheduleTitle}>{t('share:card.suggested_schedule')}</Text>
-                      </View>
-                      <View style={styles.scheduleDetails}>
-                        <Text style={styles.scheduleText}>
-                          {dateTimePreferences?.timeOfDay || ''}
-                        </Text>
-                        <Text style={styles.scheduleText}>
-                          {dateTimePreferences?.dayOfWeek || ''}
-                        </Text>
-                        <Text style={styles.scheduleText}>
-                          {dateTimePreferences?.planningTimeframe || ''}
-                        </Text>
-                      </View>
-                    </View> : null}
-
-                    {/* Price */}
-                    <View style={styles.priceContainer}>
-                      {priceRange ? <Text style={styles.priceText}>{priceRange}</Text> : null}
-                      {approximatePrice ? (
-                        <Text style={styles.priceSubtext}>{approximatePrice}</Text>
-                      ) : null}
-                      {venuePrice?.attributionUrl ? (
-                        <Text
-                          accessibilityRole="link"
-                          style={styles.priceAttribution}
-                          onPress={() => Linking.openURL(venuePrice.attributionUrl as string)}
-                        >
-                          Rates by ExchangeRate-API
-                        </Text>
-                      ) : null}
-                      {priceRange ? <Text style={styles.priceSubtext}>{t('share:card.per_person')}</Text> : null}
-                    </View>
-                  </View>
+              {sharedCard?.s4Url ? (
+                <Image
+                  source={{ uri: sharedCard.s4Url }}
+                  style={styles.portraitPreview}
+                  resizeMode="cover"
+                  accessibilityLabel={`${sharedCard.facts.kind.replace('_', ' ')}: ${sharedCard.facts.title}`}
+                />
+              ) : sharedCard ? (
+                <View style={styles.coverlessPreview} accessibilityLabel="No image preview available">
+                  <Text style={styles.coverlessKind}>{sharedCard.facts.kind.replace('_', ' ')}</Text>
+                  <Text style={styles.coverlessTitle}>{sharedCard.facts.title}</Text>
+                  <Text style={styles.coverlessCopy}>No image preview is available. The link still opens the full details.</Text>
                 </View>
-              </View>
+              ) : (
+                <View style={styles.portraitLoading} accessibilityLiveRegion="polite">
+                  <ActivityIndicator color="#EB7825" />
+                  <Text style={styles.shareStatus}>Preparing the exact 4:5 preview…</Text>
+                </View>
+              )}
 
               {/* Personalized Message Box */}
               <View style={styles.messageBox}>
-                <Text style={styles.messageText}>{personalizedMessage}</Text>
+                {sharedCard ? (
+                  <Text style={styles.messageText}>{sharedCard.message}</Text>
+                ) : shareState === 'error' ? (
+                  <View style={styles.messageState}>
+                    <Text style={styles.shareError}>The share preview is unavailable. Your original public link is still available where possible.</Text>
+                    <TrackedTouchableOpacity logComponent="ShareModal" accessibilityRole="button" accessibilityLabel="Retry share preview" onPress={() => { sharedCardPromiseRef.current = null; void ensureSharedCard('generic').catch(() => undefined); }} style={styles.retryButton}>
+                      <Text style={styles.retryText}>Retry preview</Text>
+                    </TrackedTouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.messageState}>
+                    <ActivityIndicator color="#EB7825" />
+                    <Text style={styles.shareStatus}>{shareState === 'reusing' ? 'Reusing your Mingla link…' : 'Creating the exact share message…'}</Text>
+                  </View>
+                )}
                 <TrackedTouchableOpacity logComponent="ShareModal" 
                   onPress={handleCopyMessage}
                   style={styles.copyMessageButton}
+                  disabled={!sharedCard || isSharing}
                 >
                   <Icon 
                     name={messageCopied ? "checkmark" : "copy-outline"} 
@@ -449,8 +446,8 @@ export default function ShareModal({
             {/* Share Options */}
             <View style={styles.shareOptions}>
               <Text style={styles.shareTitle}>{t('share:share_to')}</Text>
-              {shareState === 'generating' ? <Text style={styles.shareStatus}>Creating share link…</Text> : null}
-              {shareState === 'error' ? <Text style={styles.shareError}>Couldn’t create the link. Tap a share option to retry.</Text> : null}
+              {['validating', 'creating', 'reusing', 'opening'].includes(shareState) ? <Text style={styles.shareStatus}>{shareState === 'opening' ? 'Opening share destination…' : 'Preparing your share…'}</Text> : null}
+              {shareState === 'error' ? <Text style={styles.shareError}>The Mingla preview is unavailable. Retry it, or use the original public link where offered.</Text> : null}
               
               {/* Social Media Buttons */}
               <View style={styles.socialButtons}>
@@ -477,14 +474,17 @@ export default function ShareModal({
                 </TrackedTouchableOpacity>
 
                 <TrackedTouchableOpacity logComponent="ShareModal"
-                  onPress={() => handleSocialShare('instagram')}
-                  style={[styles.socialButton, {backgroundColor: '#fcd5ce'}]}
-                  disabled={isSharing}
+                  onPress={() => undefined}
+                  style={[styles.socialButton, styles.instagramDisabled]}
+                  disabled
+                  accessibilityState={{ disabled: true }}
+                  accessibilityHint="Instagram image sharing is unavailable until attachment behavior is verified on a physical device"
                 >
                   <View style={[styles.socialButtonIconWrapper, styles.instagramButton]}>
                     <InstagramLogo size={20} color="white" />
                   </View>
                   <Text style={styles.socialText}>{t('share:platform.instagram')}</Text>
+                  <Text style={styles.comingSoon}>Coming soon</Text>
                 </TrackedTouchableOpacity>
 
                 <TrackedTouchableOpacity logComponent="ShareModal"
@@ -518,7 +518,8 @@ export default function ShareModal({
                 </TrackedTouchableOpacity>
                 <TrackedTouchableOpacity logComponent="ShareModal"
                 onPress={handleCopyMessage}
-                style={[styles.bottomButtons]}>
+                style={[styles.bottomButtons]}
+                disabled={isSharing}>
                   <Icon name='copy' size={24} color="black"/>
                   <Text>{t('share:actions.copy_message')}</Text>
                 </TrackedTouchableOpacity>
@@ -566,6 +567,50 @@ const styles = StyleSheet.create({
   },
   cardPreview: {
     padding: 16,
+  },
+  portraitPreview: {
+    width: '100%',
+    aspectRatio: 4 / 5,
+    borderRadius: 16,
+    backgroundColor: '#111318',
+    marginBottom: 16,
+  },
+  portraitLoading: {
+    width: '100%',
+    aspectRatio: 4 / 5,
+    borderRadius: 16,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    marginBottom: 16,
+  },
+  coverlessPreview: {
+    width: '100%',
+    aspectRatio: 4 / 5,
+    borderRadius: 16,
+    backgroundColor: '#0C0E12',
+    justifyContent: 'flex-end',
+    padding: 24,
+    marginBottom: 16,
+  },
+  coverlessKind: {
+    color: '#EB7825',
+    textTransform: 'capitalize',
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  coverlessTitle: {
+    color: 'white',
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: '700',
+  },
+  coverlessCopy: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 12,
   },
   cardWrapper: {
     borderRadius: 12,
@@ -703,6 +748,22 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     paddingRight: 40,
   },
+  messageState: {
+    minHeight: 56,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    paddingRight: 36,
+  },
+  retryButton: {
+    backgroundColor: 'white',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  retryText: {
+    color: '#9f3210',
+    fontWeight: '700',
+  },
   copyMessageButton: {
     position: 'absolute',
     top: 12,
@@ -754,6 +815,15 @@ const styles = StyleSheet.create({
   },
   instagramButton: {
     backgroundColor: '#E4405F', // Instagram pink/purple
+  },
+  instagramDisabled: {
+    backgroundColor: '#e5e7eb',
+    opacity: 0.62,
+  },
+  comingSoon: {
+    color: '#4b5563',
+    fontSize: 9,
+    fontWeight: '600',
   },
   twitterButton: {
     backgroundColor: '#1DA1F2', // Twitter blue

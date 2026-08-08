@@ -50,10 +50,16 @@ export type OneLinkDestination =
 
 const OPAQUE_SHARE_ID_RE = /^[a-f0-9]{36}$/;
 const CONTENT_SHARE_CODE_RE = /^[0-9A-Za-z]{16}$/;
+const REFERRAL_CODE_RE = /^[0-9A-Za-z][0-9A-Za-z-]{0,63}$/;
 export const isOpaqueShareId = (value: unknown): value is string =>
   typeof value === 'string' && OPAQUE_SHARE_ID_RE.test(value);
 export const isContentShareCode = (value: unknown): value is string =>
   typeof value === 'string' && CONTENT_SHARE_CODE_RE.test(value);
+export const sanitizeReferralCode = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return REFERRAL_CODE_RE.test(normalized) ? normalized : null;
+};
 
 export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDestination {
   try {
@@ -66,7 +72,7 @@ export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDes
     const sub2 = str(data.deep_link_sub2);
     // Any entity link may carry a referral code alongside it (referral + content
     // in one link — SPEC §B.1 af_sub1).
-    const referralCode = str(data.af_sub1) || undefined;
+    const referralCode = sanitizeReferralCode(data.af_sub1) || undefined;
 
     // Missing type OR explicit `internal` may only route an actual `mingla://`
     // path through the existing deepLinkService state machine. Never reinterpret
@@ -77,7 +83,11 @@ export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDes
 
     switch (rawType) {
       case 'content_share':
-        return isContentShareCode(sub1) ? { kind: 'content_share', code: sub1 } : null;
+        if (!isContentShareCode(sub1)) return null;
+        // Content-share install attribution is resolved privately by the web /
+        // server handoff. Native receives only the opaque route code and must
+        // never persist or apply raw af_sub1 referral data from this payload.
+        return { kind: 'content_share', code: sub1 };
       case 'place':
       case 'curated':
         if (!isOpaqueShareId(sub1)) return null;
@@ -117,8 +127,9 @@ export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDes
       case 'referral':
         // Attribution-only capture target (SPEC §E.1(b)); credit-apply is out of
         // scope for this build.
-        if (!sub1) return null;
-        return { kind: 'referral', referralCode: sub1 };
+        const directReferralCode = sanitizeReferralCode(sub1);
+        if (!directReferralCode) return null;
+        return { kind: 'referral', referralCode: directReferralCode };
 
       default:
         // Unknown discriminator — log, never guess (SPEC §B.2).

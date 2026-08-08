@@ -15,6 +15,7 @@ const SHARE_CHANNEL_BUDGETS = Object.freeze({
   email: Object.freeze({ beforeUrl: 420, total: 480 }),
 });
 const SHORT_CODE_RE = /^[0-9A-Za-z]{16}$/;
+const REFERRAL_CODE_RE = /^[0-9A-Za-z][0-9A-Za-z-]{0,63}$/;
 const HTTPS_RE = /^https:\/\//i;
 const BIDI_CONTROL_RE = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
 const CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu;
@@ -47,8 +48,8 @@ const ROUTE_MANIFEST = Object.freeze({
 });
 
 const KIND_FIELDS = Object.freeze({
-  place: ['category', 'area', 'rating', 'priceLevel', 'openState', 'hours', 'planningPreference', 'description'],
-  curated: ['stopCount', 'area', 'duration', 'estimate', 'planningPreference', 'description'],
+  place: ['category', 'area', 'rating', 'priceLevel', 'openState', 'hours', 'description'],
+  curated: ['stopCount', 'area', 'duration', 'estimate', 'description'],
   event: ['localDate', 'localTime', 'venue', 'area', 'price', 'availability', 'description'],
   rsvp_event: ['localDate', 'localTime', 'venue', 'rsvpDeadline', 'availability', 'description'],
   trip: ['destination', 'dateRange', 'duration', 'startingPrice', 'description'],
@@ -81,9 +82,23 @@ function isShortShareCode(value) {
   return typeof value === 'string' && SHORT_CODE_RE.test(value);
 }
 
+function sanitizeReferralCode(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return REFERRAL_CODE_RE.test(normalized) ? normalized : null;
+}
+
 function buildShortShareUrl(code) {
   if (!isShortShareCode(code)) throw new TypeError('invalid_share_code');
+  // SHARE-CANONICAL-URL-BUILDER
   return `https://usemingla.com/s/${code}`;
+}
+
+function buildSharePortraitUrl(code, version) {
+  if (!isShortShareCode(code) || !Number.isSafeInteger(version) || version < 1) {
+    throw new TypeError('invalid_share_portrait_identity');
+  }
+  return `https://usemingla.com/og/s/${code}/v${version}.png`;
 }
 
 function contentShareRequestFromPublicUrl(value, overrideKind) {
@@ -110,6 +125,7 @@ function cleanMoney(value) {
 function formatMoney(value) {
   const money = cleanMoney(value);
   if (!money) return '';
+  if (money.minorUnits === 0 && money.disclosure === 'Free') return 'Free';
   try {
     const rendered = new Intl.NumberFormat('en-US', {
       style: 'currency', currency: money.currency,
@@ -120,6 +136,20 @@ function formatMoney(value) {
   } catch {
     return '';
   }
+}
+
+function formatEstimate(value) {
+  const money = cleanMoney(value);
+  const raw = money ? formatMoney(money) : cleanText(value, 80);
+  if (!raw) return '';
+  const range = raw.match(/(?:[$£€]\s*)?(\d[\d,]*(?:\.\d+)?)\s*(?:-|–|—|to)\s*(?:[$£€]\s*)?(\d[\d,]*(?:\.\d+)?)/iu);
+  if (range) {
+    const lower = Number(range[1].replace(/,/g, ''));
+    const upper = Number(range[2].replace(/,/g, ''));
+    if (!Number.isFinite(lower) || !Number.isFinite(upper) || lower > upper) return '';
+  }
+  return /^(?:estimated|estimate|approx(?:\.|imately)?|about|from|up to)(?=\s|$)/iu.test(raw)
+    ? raw : `Estimated ${raw}`;
 }
 
 function cleanMedia(value) {
@@ -140,23 +170,27 @@ function cleanMedia(value) {
   };
 }
 
-function isPublicShareMediaUrl(value) {
+function isPublicShareMediaUrl(value, allowedBunnyHosts = []) {
   const url = cleanHttpsUrl(value);
   if (!url) return false;
   const parsed = new URL(url);
   const host = parsed.hostname.toLowerCase();
-  if (host === 'usemingla.com' || host.endsWith('.usemingla.com')) return true;
+  if (['usemingla.com', 'www.usemingla.com', 'business.usemingla.com'].includes(host)) return true;
   if (host === 'images.pexels.com' || host === 'videos.pexels.com') return true;
-  if (host.endsWith('.giphy.com') || host.endsWith('.b-cdn.net') || host.endsWith('.bunnycdn.com')) return true;
-  return host.endsWith('.supabase.co') && parsed.pathname.startsWith('/storage/v1/object/public/');
+  if (['i.giphy.com', 'media.giphy.com'].includes(host)) return true;
+  if (host === 'vz-a16fce08-6c6.b-cdn.net') return true;
+  if (Array.isArray(allowedBunnyHosts) && allowedBunnyHosts.includes(host)) return true;
+  return host === 'gqnoajqerqhnvulmnyvv.supabase.co'
+    && parsed.pathname.startsWith('/storage/v1/object/public/');
 }
 
-function selectPublicMediaIdentity(candidates) {
+function selectPublicMediaIdentity(candidates, options = {}) {
+  const allowedBunnyHosts = Array.isArray(options.allowedBunnyHosts) ? options.allowedBunnyHosts : [];
   const source = candidates && typeof candidates === 'object' && !Array.isArray(candidates) ? candidates : {};
   const eligible = (candidate) => candidate && candidate.publicSafe === true
-    && isPublicShareMediaUrl(candidate.url);
+    && isPublicShareMediaUrl(candidate.url, allowedBunnyHosts);
   const poster = (candidate) => candidate && candidate.publicSafe === true
-    && isPublicShareMediaUrl(candidate.posterUrl) ? candidate.posterUrl : null;
+    && isPublicShareMediaUrl(candidate.posterUrl, allowedBunnyHosts) ? candidate.posterUrl : null;
   for (const key of ['video', 'animated', 'photo']) {
     const candidate = source[key];
     if (!eligible(candidate)) continue;
@@ -194,8 +228,9 @@ function cleanScalar(key, value) {
     return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
   }
   if (key === 'rating') return Number.isFinite(value) && value >= 0 && value <= 5 ? value : undefined;
-  if (['price', 'startingPrice', 'estimate'].includes(key)) return cleanMoney(value) || undefined;
-  const limits = { description: 600, planningPreference: 100, timezone: 80 };
+  if (key === 'estimate') return formatEstimate(value) || undefined;
+  if (['price', 'startingPrice'].includes(key)) return cleanMoney(value) || undefined;
+  const limits = { description: 600, timezone: 80 };
   const text = cleanText(value, limits[key] || 160);
   return text || undefined;
 }
@@ -250,6 +285,29 @@ function statusLabel(status) {
   return ({ sold_out: 'Sold out', ended: 'Ended', cancelled: 'Cancelled', rsvp_closed: 'RSVP closed', date_tbd: 'Date TBD', dates_tbd: 'Dates TBD' })[status] || '';
 }
 
+const WEEKDAYS = Object.freeze(['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']);
+function shareClock(timezone, now = new Date()) {
+  const zone=cleanText(timezone,80);const fixed=/^UTC_OFFSET:([+-]?\d{1,4})$/.exec(zone);
+  if(fixed){const offset=Number(fixed[1]);if(!Number.isInteger(offset)||offset < -840||offset > 840)return null;const local=new Date(now.getTime()+offset*60000);return{day:WEEKDAYS[local.getUTCDay()],minutes:local.getUTCHours()*60+local.getUTCMinutes()};}
+  try{const parts=new Intl.DateTimeFormat('en-US',{timeZone:zone,weekday:'long',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now);const day=parts.find((part)=>part.type==='weekday')?.value;const hour=Number(parts.find((part)=>part.type==='hour')?.value);const minute=Number(parts.find((part)=>part.type==='minute')?.value);return WEEKDAYS.includes(day)&&Number.isInteger(hour)&&Number.isInteger(minute)?{day,minutes:hour*60+minute}:null;}catch{return null;}
+}
+function weekdayForShareTimezone(timezone, now = new Date()) { return shareClock(timezone,now)?.day || ''; }
+function parseHoursIntervals(label) {
+  const text=cleanText(label,80);if(/^open 24 hours$/i.test(text))return[[0,1440]];if(/^closed$/i.test(text))return[];
+  const matches=[...text.matchAll(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/gi)];if(matches.length===0||matches.length%2!==0)return null;
+  const value=(match)=>{const hour=Number(match[1]),minute=Number(match[2]||0);if(hour<1||hour>12||minute>59)return null;return (hour%12+(match[3].toUpperCase()==='PM'?12:0))*60+minute;};
+  const intervals=[];for(let index=0;index<matches.length;index+=2){const start=value(matches[index]),end=value(matches[index+1]);if(start===null||end===null)return null;intervals.push([start,end]);}return intervals;
+}
+function openStateForHours(hours, timezone, now = new Date()) {
+  if(!Array.isArray(hours)||hours.length!==7)return '';
+  const clock=shareClock(timezone,now);if(!clock)return '';
+  const todayIndex=WEEKDAYS.indexOf(clock.day),today=hours.find((row)=>row&&row.day===clock.day),previous=hours.find((row)=>row&&row.day===WEEKDAYS[(todayIndex+6)%7]);
+  const current=parseHoursIntervals(today?.label),prior=parseHoursIntervals(previous?.label);if(current===null||prior===null)return '';
+  if(current.some(([start,end])=>start===0&&end===1440||(end>start?clock.minutes>=start&&clock.minutes<end:clock.minutes>=start)))return 'Open now';
+  if(prior.some(([start,end])=>end<=start&&clock.minutes<end))return 'Open now';
+  return 'Closed';
+}
+
 function selectRecipientFacts(input, context = {}) {
   const facts = parseShareFactsV1(input);
   const add = (items, value) => { const text = cleanText(value, 120); if (text) items.push(text); };
@@ -257,12 +315,10 @@ function selectRecipientFacts(input, context = {}) {
   switch (facts.kind) {
     case 'place':
       add(items, facts.category); add(items, facts.area); add(items, formatRating(facts.rating)); add(items, facts.priceLevel); add(items, facts.openState);
-      if (context.includePlanningPreference !== false) add(items, facts.planningPreference);
       break;
     case 'curated':
       add(items, Number.isInteger(facts.stopCount) ? `${facts.stopCount} stop${facts.stopCount === 1 ? '' : 's'}` : '');
-      add(items, facts.area); add(items, facts.duration); add(items, formatMoney(facts.estimate));
-      if (context.includePlanningPreference !== false) add(items, facts.planningPreference);
+      add(items, facts.area); add(items, facts.duration); add(items, formatEstimate(facts.estimate));
       break;
     case 'event':
       add(items, [facts.localDate, facts.localTime].filter(Boolean).join(' at ')); add(items, facts.venue || facts.area); add(items, formatMoney(facts.price)); add(items, facts.availability); break;
@@ -288,15 +344,61 @@ function leadFor(facts) {
   switch (facts.kind) {
     case 'place': return area ? `How about ${facts.title} in ${area}?` : `How about ${facts.title}?`;
     case 'curated': return facts.stopCount != null
-      ? `${facts.title}: ${facts.stopCount} stop${facts.stopCount === 1 ? '' : 's'}${area ? ` around ${area}` : ''}.`
-      : `${facts.title}${area ? ` around ${area}` : ''}.`;
-    case 'event': return `${facts.title} is ${[facts.localDate, facts.localTime].filter(Boolean).join(' at ') || 'coming up'}${facts.venue ? ` at ${facts.venue}` : ''}.`;
+      ? `${facts.title} is a ${facts.stopCount}-stop plan${area ? ` around ${area}` : ''}.`
+      : `${facts.title} is a plan${area ? ` around ${area}` : ''}.`;
+    case 'event': {
+      const when = [facts.localDate, facts.localTime].filter(Boolean).join(' at ');
+      return `${facts.title}${when ? ` is ${when}` : ''}${facts.venue ? `${when ? ' at' : ' at'} ${facts.venue}` : ''}.`;
+    }
     case 'rsvp_event': return `Want to join ${facts.title}?${facts.localDate || facts.localTime || facts.venue ? ` ${[facts.localDate, facts.localTime].filter(Boolean).join(' at ')}${facts.venue ? ` at ${facts.venue}` : ''}.` : ''}`;
-    case 'trip': return `${facts.title}${facts.destination ? ` in ${facts.destination}` : ''}${facts.dateRange ? `, ${facts.dateRange}` : ''}.`;
-    case 'experience': return `${facts.title}${area ? ` in ${area}` : ''}.`;
+    case 'trip': return `${facts.title}${facts.dateRange ? ` runs ${facts.dateRange}` : ''}${facts.destination ? ` in ${facts.destination}` : ''}.`;
+    case 'experience': return `How about ${facts.title}${area ? ` in ${area}` : ''}?`;
     case 'venue': return `Check out ${facts.title}${area ? ` in ${area}` : ''}.`;
     case 'brand': return `See what ${facts.title} has coming up${area ? ` in ${area}` : ''}.`;
   }
+}
+
+function formatPlanningPreference(value) {
+  if (typeof value === 'string') return cleanText(value, 80);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  const day = cleanText(value.dayOfWeek, 24).toLowerCase();
+  const time = cleanText(value.timeOfDay, 24).toLowerCase();
+  const timeframe = cleanText(value.planningTimeframe, 40).toLowerCase();
+  const prefix = day === 'weekend' ? 'one ' : '';
+  return cleanText(`${prefix}${[day, time, timeframe].filter(Boolean).join(' ')}`, 80);
+}
+
+function messageDetailCandidates(facts, planningPreference) {
+  const add = (items, value) => { const text = cleanText(value, 120); if (text) items.push(text); };
+  const items = [];
+  switch (facts.kind) {
+    case 'place':
+      add(items, facts.category);
+      add(items, formatRating(facts.rating) ? `Rated ${formatRating(facts.rating)}` : '');
+      add(items, facts.priceLevel);
+      if (planningPreference) add(items, `Maybe ${planningPreference}`);
+      break;
+    case 'curated':
+      add(items, facts.duration);
+      add(items, formatEstimate(facts.estimate));
+      if (planningPreference) add(items, `Maybe ${planningPreference}`);
+      break;
+    case 'event':
+      add(items, formatMoney(facts.price)); add(items, facts.availability); break;
+    case 'rsvp_event':
+      add(items, facts.availability); add(items, facts.rsvpDeadline); break;
+    case 'trip':
+      add(items, facts.duration); add(items, formatMoney(facts.startingPrice)); break;
+    case 'experience':
+      add(items, facts.nextDate); add(items, facts.duration); add(items, formatMoney(facts.price)); add(items, facts.availability); break;
+    case 'venue':
+      add(items, facts.category); add(items, facts.nextPublicOffering); add(items, facts.openState); break;
+    case 'brand':
+      if (facts.upcomingPublicOfferingCount > 0) add(items, `${facts.upcomingPublicOfferingCount} upcoming`);
+      add(items, facts.category); break;
+  }
+  if (!items.length) add(items, facts.description);
+  return items;
 }
 
 function trimAtWord(value, max) {
@@ -313,14 +415,16 @@ function buildShareMessage(input, context) {
   const budget = SHARE_CHANNEL_BUDGETS[channel];
   const shortUrl = buildShortShareUrl(context?.shortCode);
   const note = cleanText(context?.senderNote, 120);
+  const planningPreference = facts.kind === 'place' || facts.kind === 'curated'
+    ? formatPlanningPreference(context?.planningPreference) : '';
   const status = statusLabel(facts.status);
-  const candidates = selectRecipientFacts(facts).filter((fact) => !leadFor(facts).includes(fact));
+  const candidates = messageDetailCandidates(facts, planningPreference);
   const detail = status || candidates[0] || '';
   const authored = note ? `From the sender: ${note}` : '';
-  const sentences = [leadFor(facts), detail ? `${detail}${/[.!?]$/u.test(detail) ? '' : '.'}` : '', authored].filter(Boolean);
-  let body = sentences.join(' ');
+  const deterministic = [leadFor(facts), detail ? `${detail}${/[.!?]$/u.test(detail) ? '' : '.'}` : ''].filter(Boolean).join(' ');
+  let body = [authored, deterministic].filter(Boolean).join('\n');
   if (Array.from(body).length > budget.beforeUrl) {
-    body = trimAtWord([leadFor(facts), status].filter(Boolean).join(' '), budget.beforeUrl);
+    body = trimAtWord([authored, leadFor(facts), status].filter(Boolean).join('\n'), budget.beforeUrl);
   }
   const maxBodyForTotal = budget.total - Array.from(shortUrl).length - 2;
   if (Array.from(body).length > maxBodyForTotal) body = trimAtWord(body, maxBodyForTotal);
@@ -330,7 +434,7 @@ function buildShareMessage(input, context) {
 function selectPreviewFacts(input, limit = 4) {
   const facts = parseShareFactsV1(input);
   const safeLimit = Number.isInteger(limit) && limit >= 0 ? limit : 4;
-  return selectRecipientFacts(facts, { includePlanningPreference: false }).slice(0, safeLimit);
+  return selectRecipientFacts(facts).slice(0, safeLimit);
 }
 
 function routeContractFor(kind) {
@@ -342,7 +446,7 @@ module.exports = {
   SHARE_FACTS_VERSION, SHARE_ENTITY_KINDS, SHARE_STATUSES, SHARE_CHANNEL_BUDGETS,
   ROUTE_MANIFEST, cleanText, cleanHttpsUrl, cleanMoney, cleanMedia, cleanDestination,
   isPublicShareMediaUrl, selectPublicMediaIdentity,
-  isShortShareCode, buildShortShareUrl, contentShareRequestFromPublicUrl, validateShareFactsV1, parseShareFactsV1,
-  formatMoney, formatRating, statusLabel, selectRecipientFacts, selectPreviewFacts,
-  buildShareMessage, routeContractFor, createContentShareSingleFlight,
+  isShortShareCode, sanitizeReferralCode, buildShortShareUrl, buildSharePortraitUrl, contentShareRequestFromPublicUrl, validateShareFactsV1, parseShareFactsV1,
+  formatMoney, formatEstimate, formatRating, statusLabel, formatPlanningPreference, selectRecipientFacts, selectPreviewFacts,
+  buildShareMessage, routeContractFor, createContentShareSingleFlight, weekdayForShareTimezone, openStateForHours,
 };
