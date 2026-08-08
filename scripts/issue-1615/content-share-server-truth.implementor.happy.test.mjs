@@ -12,7 +12,10 @@ import { mapAuthoritativeShareFacts, ticketTruthAt } from '../../supabase/functi
 import { refreshContentShareV1, validatePublicContentShareEnvelope } from '../../supabase/functions/_shared/contentShareService.ts';
 import { openStateForHours } from '../../packages/sharing/index.js';
 import { proxySharedCard, INTERNAL_PROXY_HEADER } from '../../mingla-marketing/lib/shared-card-proxy.ts';
-import { POST as proxyContentShareAnalytics } from '../../mingla-marketing/app/api/content-share-analytics/route.ts';
+// [TEST-MOD-APPROVED #1615] Next.js route handlers may expose only the framework
+// request/context signature. Inject fetch through the exported helper so this
+// runtime proof cannot force an invalid production POST signature again.
+import { proxyContentShareAnalytics } from '../../mingla-marketing/lib/content-share-analytics-proxy.ts';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const read=(file)=>fs.readFileSync(path.join(ROOT,file),'utf8');
@@ -131,6 +134,9 @@ test('ST11 S6 analytics honors both existing exact consent shapes and fails clos
 });
 
 test('ST12 same-origin analytics delivery, endpoint schema and privacy are fail closed',async()=>{
+  const analyticsRoute=fs.readFileSync(path.join(ROOT,'mingla-marketing/app/api/content-share-analytics/route.ts'),'utf8');
+  assert.match(analyticsRoute,/export async function POST\(request: Request\)/);
+  assert.doesNotMatch(analyticsRoute,/export async function POST\([^)]*,/);
   let forwarded;
   const proxied=await proxyContentShareAnalytics(new Request('https://usemingla.com/api/content-share-analytics',{method:'POST',headers:{'content-type':'text/plain;charset=UTF-8'},body:JSON.stringify({event:'share_public_page_viewed',code:'Aa0Bb1Cc2Dd3Ee4F',version:2,kind:'event'})}),async(url,init)=>{forwarded={url,init};return new Response(null,{status:204})});
   assert.equal(proxied.status,204);assert.equal(forwarded.url,'https://business.usemingla.com/api/content-share-analytics');assert.equal(forwarded.init.headers.origin,'https://usemingla.com');
