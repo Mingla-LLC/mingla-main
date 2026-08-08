@@ -31,13 +31,13 @@ const ROUTE_MANIFEST = Object.freeze({
 });
 
 const KIND_FIELDS = Object.freeze({
-  place: ['category', 'area', 'rating', 'priceLevel', 'openState', 'planningPreference', 'description'],
+  place: ['category', 'area', 'rating', 'priceLevel', 'openState', 'hours', 'planningPreference', 'description'],
   curated: ['stopCount', 'area', 'duration', 'estimate', 'planningPreference', 'description'],
   event: ['localDate', 'localTime', 'venue', 'area', 'price', 'availability', 'description'],
   rsvp_event: ['localDate', 'localTime', 'venue', 'rsvpDeadline', 'availability', 'description'],
   trip: ['destination', 'dateRange', 'duration', 'startingPrice', 'description'],
   experience: ['area', 'nextDate', 'duration', 'price', 'availability', 'description'],
-  venue: ['category', 'area', 'nextPublicOffering', 'openState', 'description'],
+  venue: ['category', 'area', 'nextPublicOffering', 'openState', 'hours', 'description'],
   brand: ['category', 'area', 'upcomingPublicOfferingCount', 'description'],
 });
 
@@ -153,6 +153,15 @@ function cleanDestination(kind, value) {
 }
 
 function cleanScalar(key, value) {
+  if (key === 'hours') {
+    if (!Array.isArray(value) || value.length !== 7) return undefined;
+    const rows = value.map((row) => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+      const day = cleanText(row.day, 12); const label = cleanText(row.label, 80); const special = cleanText(row.special, 120);
+      return day && label ? { day, label, ...(row.isToday === true ? { isToday: true } : {}), ...(special ? { special } : {}) } : null;
+    });
+    return rows.every(Boolean) ? rows : undefined;
+  }
   if (['stopCount', 'upcomingPublicOfferingCount'].includes(key)) {
     return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
   }

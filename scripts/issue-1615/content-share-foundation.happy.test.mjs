@@ -83,8 +83,10 @@ test('H6 edge creation takes identity only, loads served truth and calls the sol
   assert.match(edge, /CONTENT_SHARE_V1_CREATE_ENABLED/);
 });
 
-test('H7 no new receiver, renderer or producer was built in dependency stage 2', () => {
-  assert.equal(fs.existsSync(path.join(ROOT, 'app-mobile/app/s/[code].tsx')), false);
-  assert.doesNotMatch(read('mingla-business/vercel.json'), /"source": "\/s\/:code"/);
-  assert.doesNotMatch(read('mingla-marketing/vercel.json'), /"source": "\/s\/:code"/);
+test('H7 later stages add receivers without mutating the stage-2 migration contract', () => {
+  // [TEST-MOD-APPROVED #1615] The branch has intentionally advanced beyond
+  // dependency stage 2; pinning absence now rejects the required receiver stage.
+  assert.equal(fs.existsSync(path.join(ROOT, 'app-mobile/app/s/[code].tsx')), true);
+  assert.match(read('mingla-business/vercel.json'), /"source": "\/s\/:code"/);
+  assert.match(read('mingla-marketing/vercel.json'), /"source": "\/s\/:code"/);
 });

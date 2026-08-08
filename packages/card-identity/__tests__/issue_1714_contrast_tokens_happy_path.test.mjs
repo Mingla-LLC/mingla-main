@@ -90,13 +90,15 @@ function measuredSurface(surfaceKey) {
 }
 
 test('H-1 every descriptor selects the approved named boundary classes', () => {
+  // [TEST-MOD-APPROVED #1615] The approved portrait amendment adds a dedicated
+  // boundary and makes both share outputs consume it; prior selectors are obsolete.
   const expected = {
     s1Single: ['standard', 'none'],
     s1Curated: ['standard', 'none'],
     s2Grid: ['compact', 'compact'],
     s3Chat: ['compact', 'compact'],
-    s4Snippet: ['standard', 'none'],
-    s5Og: ['ogOpaque', 'none'],
+    s4Snippet: ['portrait', 'none'],
+    s5Og: ['portrait', 'none'],
     s6Phone: ['standard', 'none'],
     s7Expanded: ['standard', 'none'],
   };
@@ -114,10 +116,13 @@ test('H-1 every descriptor selects the approved named boundary classes', () => {
 });
 
 test('H-2 the approved boundary tokens and compatibility aliases are exact', () => {
+  // [TEST-MOD-APPROVED #1615] The new portrait class is additive and must not
+  // mutate the standard/compact/legacy opaque compatibility tokens.
   assert.deepEqual(CI.PLATE.boundaries, {
     standard: { color: 'rgba(255,255,255,0.38)', rgb: [255, 255, 255], alpha: 0.38, width: 1 },
     compact: { color: 'rgba(255,255,255,0.86)', rgb: [255, 255, 255], alpha: 0.86, width: 1 },
     ogOpaque: { color: 'rgba(255,255,255,0.48)', rgb: [255, 255, 255], alpha: 0.48, width: 1 },
+    portrait: { color: 'rgba(255,255,255,0.42)', rgb: [255, 255, 255], alpha: 0.42, width: 1 },
   });
   assert.deepEqual(CI.SLIVER.boundaries, {
     none: { color: 'rgba(0,0,0,0)', rgb: [0, 0, 0], alpha: 0, width: 0 },
@@ -130,13 +135,15 @@ test('H-2 the approved boundary tokens and compatibility aliases are exact', () 
 });
 
 test('H-3 every descriptor reproduces the approved 41-point measurements', () => {
+  // [TEST-MOD-APPROVED #1615] S4/S5 were re-derived as the one approved 4:5
+  // portrait; these are its published boundary/sliver measurements.
   const expected = {
     s1Single: [3.240777, 3.803902, 3.751396],
     s1Curated: [3.240777, 3.803902, 3.751396],
     s2Grid: [3.239219, 3.295325, 3.300602],
     s3Chat: [3.217715, 3.254745, 3.263288],
-    s4Snippet: [3.381696, 3.778904, 3.709258],
-    s5Og: [3.337622, 8.022529, 7.581822],
+    s4Snippet: [3.380046, 3.503273, 3.348354],
+    s5Og: [3.380046, 3.503273, 3.348354],
     s6Phone: [3.240777, 3.803902, 3.751396],
     s7Expanded: [3.240777, 3.803902, 3.751396],
   };
@@ -149,15 +156,15 @@ test('H-3 every descriptor reproduces the approved 41-point measurements', () =>
   }
 });
 
-test('H-4 S5 is measured through its real opaque fallback path', () => {
+test('H-4 S5 is measured through the same portrait glass path as S4', () => {
+  // [TEST-MOD-APPROVED #1615] The landscape opaque-only S5 was superseded by
+  // byte/geometry parity with the portrait S4; opaque fallback remains available.
   const s5 = CI.SURFACES.s5Og;
-  assert.equal(s5.opaqueOnly, true);
+  assert.notEqual(s5.opaqueOnly, true);
   assert.deepEqual(CI.PLATE.fallbackSolidRgb, [53, 56, 63]);
   const measured = measuredSurface('s5Og');
-  assert.equal(Number(measured.plate.toFixed(6)), 3.337622);
-  measured.plateFills.forEach((fill) => {
-    assert.equal(fill, CI.PLATE.fallbackSolidRgb, 'H-4: opaque-only S5 silently used glass');
-  });
+  assert.equal(Number(measured.plate.toFixed(6)), 3.380046);
+  assert.ok(measured.plateFills.some((fill) => fill !== CI.PLATE.fallbackSolidRgb));
 });
 
 test('H-5 S1 and S7 retain their standard boundary and measured continuity', () => {

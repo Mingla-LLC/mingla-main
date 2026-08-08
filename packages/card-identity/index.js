@@ -217,6 +217,7 @@ const PLATE_BOUNDARIES = {
   standard: S6_PLATE_BOUNDARY,
   compact: { color: 'rgba(255,255,255,0.86)', rgb: [255, 255, 255], alpha: 0.86, width: 1 },
   ogOpaque: { color: 'rgba(255,255,255,0.48)', rgb: [255, 255, 255], alpha: 0.48, width: 1 },
+  portrait: { color: 'rgba(255,255,255,0.42)', rgb: [255, 255, 255], alpha: 0.42, width: 1 },
 };
 
 const PLATE = {
@@ -448,6 +449,9 @@ function plateHeightForMetaLines(surfaceKey, lines) {
   const s = SURFACES[surfaceKey];
   if (!s) throw new Error(`@mingla/card-identity: unknown surface "${surfaceKey}"`);
   if (!lines || lines < 1) return plateHeightNoMeta(surfaceKey);
+  // Static share surfaces reserve their complete two-line fact box up front;
+  // only control plates grow because their facts replace control-row slack.
+  if (!s.controls) return s.plateH;
   return s.plateH + (Math.min(lines, s.metaLines) - 1) * metaLineHeight(surfaceKey);
 }
 
@@ -831,38 +835,36 @@ const SURFACES = {
   s4Snippet: {
     label: 'S4 4:5 share snippet',
     w: 360, h: 450, cardR: 32,
-    sideInset: 13, bottomInset: 14,
-    plateW: 334, plateH: 40, plateR: 22,
-    titleSize: 27, titleLH: 33, titleLines: 2, titleWeight: '700', titleInset: 18,
+    sideInset: 24, bottomInset: 48,
+    plateW: 312, plateH: 78, plateR: 18,
+    titleSize: 27, titleLH: 33, titleLines: 2, titleWeight: '700', titleInset: 0,
     metaSize: 13,
-    metaLines: 1,
-    gap: 18,
+    metaLines: 2,
+    gap: 16,
     titleOnPlate: false,
     controls: false,
     topScrim: false,
     curated: true,
-    plateBoundary: 'standard',
+    plateBoundary: 'portrait',
     sliverBoundary: 'none',
-    sliver: { height: 4, radius: 2, alpha: 0.42, opaque: ['rgb(133,133,133)', 'rgb(135,135,135)'], forcedOpaque: false, insets: [25, 35] },
+    sliver: { height: 4, radius: 2, alpha: 0.44, opaque: ['rgba(255,255,255,0.44)', 'rgba(255,255,255,0.44)'], forcedOpaque: false, insets: [12, 22] },
   },
   s5Og: {
     label: 'S5 OG / link-preview image',
-    w: 1200, h: 630, cardR: 0,
-    sideInset: 56, bottomInset: 48,
-    plateW: 1088, plateH: 168, plateR: 28,
-    titleSize: 56, titleLH: 64, titleLines: 1, titleWeight: '800', titleInset: 56,
-    metaSize: 30,
-    metaLines: 1,
-    gap: 28,
+    w: 360, h: 450, cardR: 32,
+    sideInset: 24, bottomInset: 48,
+    plateW: 312, plateH: 78, plateR: 18,
+    titleSize: 27, titleLH: 33, titleLines: 2, titleWeight: '700', titleInset: 0,
+    metaSize: 13,
+    metaLines: 2,
+    gap: 16,
     titleOnPlate: false,
     controls: false,
     topScrim: false,
     curated: true,
-    /** satori has no backdrop-filter, so this surface is opaque by construction. */
-    opaqueOnly: true,
-    plateBoundary: 'ogOpaque',
+    plateBoundary: 'portrait',
     sliverBoundary: 'none',
-    sliver: { height: 12, radius: 6, alpha: 0.54, alpha2: 0.58, opaque: ['rgb(176,176,176)', 'rgb(187,187,187)'], forcedOpaque: true, insets: [66, 76] },
+    sliver: { height: 4, radius: 2, alpha: 0.44, opaque: ['rgba(255,255,255,0.44)', 'rgba(255,255,255,0.44)'], forcedOpaque: false, insets: [12, 22] },
   },
   s6Phone: S6_PHONE,
   /**

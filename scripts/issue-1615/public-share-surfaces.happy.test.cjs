@@ -43,11 +43,13 @@ test("H5 shared renderer consumes descriptor, ramp, plate and both boundary sele
 
 test("H6 S4/S5 dimensions, measured sliver insets, and white lockup are exact", () => {
   const ci = require(path.join(ROOT, "packages/card-identity"));
+  // [TEST-MOD-APPROVED #1615] The binding portrait amendment replaces the
+  // superseded landscape S5 and makes S4/S5 consume one 4:5 descriptor.
   assert.deepEqual([ci.SURFACES.s4Snippet.w * 3, ci.SURFACES.s4Snippet.h * 3], [1080, 1350]);
-  assert.deepEqual([ci.SURFACES.s5Og.w, ci.SURFACES.s5Og.h], [1200, 630]);
-  assert.deepEqual(ci.SURFACES.s4Snippet.sliver.insets, [25, 35]);
-  assert.deepEqual(ci.SURFACES.s5Og.sliver.insets, [66, 76]);
-  assert.match(read("mingla-business/server/cardIdentityRenderer.js"), /rgba\(255,255,255,0\.72\)/);
+  assert.deepEqual([ci.SURFACES.s5Og.w * 3, ci.SURFACES.s5Og.h * 3], [1080, 1350]);
+  assert.deepEqual(ci.SURFACES.s4Snippet.sliver.insets, [12, 22]);
+  assert.deepEqual(ci.SURFACES.s5Og.sliver.insets, [12, 22]);
+  assert.equal(ci.SURFACES.s4Snippet.plateBoundary, "portrait");
 });
 
 test("H7 S6 uses web glass with the package fallback and truthful coverless metadata", () => {
@@ -130,7 +132,9 @@ test("H15 real S6 renderer escapes facts and conditionally emits canonical/image
 test("H16 real S4/S5 bytes are PNG at exact dimensions", async () => {
   const { renderCardIdentityPng } = require(path.join(ROOT, "mingla-business/server/cardIdentityRenderer.js"));
   const cover = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-  for (const [surface, expected] of [["s4Snippet",[1080,1350]],["s5Og",[1200,630]]]) {
+  // [TEST-MOD-APPROVED #1615] S5 now deliberately serves the same canonical
+  // 1080x1350 portrait bytes/geometry as S4 under the approved amendment.
+  for (const [surface, expected] of [["s4Snippet",[1080,1350]],["s5Og",[1080,1350]]]) {
     const png = await renderCardIdentityPng({ kind:"curated", title:"Real Plan", cover_url:cover, metadata:{ category:"Plan", location:"Durham" } }, surface);
     assert.equal(png.subarray(1,4).toString(), "PNG"); assert.deepEqual([png.readUInt32BE(16),png.readUInt32BE(20)], expected);
   }

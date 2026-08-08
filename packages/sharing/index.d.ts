@@ -7,14 +7,15 @@ export type ShareMediaIdentity = {
 };
 export type ShareDestination = { kind: ShareEntityKind; placeId?: string; eventSlug?: string; brandSlug?: string; venueSlug?: string };
 type Common = { schemaVersion: 1; title: string; status?: ShareStatus; timezone?: string; media?: ShareMediaIdentity; route?: ShareDestination };
+export type ShareHoursRow = { day: string; label: string; isToday?: boolean; special?: string };
 export type ShareFactsV1 =
-  | (Common & { kind: 'place'; category?: string; area?: string; rating?: number; priceLevel?: string; openState?: string; planningPreference?: string; description?: string })
+  | (Common & { kind: 'place'; category?: string; area?: string; rating?: number; priceLevel?: string; openState?: string; hours?: ShareHoursRow[]; planningPreference?: string; description?: string })
   | (Common & { kind: 'curated'; stopCount?: number; area?: string; duration?: string; estimate?: ShareMoney; planningPreference?: string; description?: string })
   | (Common & { kind: 'event'; localDate?: string; localTime?: string; venue?: string; area?: string; price?: ShareMoney; availability?: string; description?: string })
   | (Common & { kind: 'rsvp_event'; localDate?: string; localTime?: string; venue?: string; rsvpDeadline?: string; availability?: string; description?: string })
   | (Common & { kind: 'trip'; destination?: string; dateRange?: string; duration?: string; startingPrice?: ShareMoney; description?: string })
   | (Common & { kind: 'experience'; area?: string; nextDate?: string; duration?: string; price?: ShareMoney; availability?: string; description?: string })
-  | (Common & { kind: 'venue'; category?: string; area?: string; nextPublicOffering?: string; openState?: string; description?: string })
+  | (Common & { kind: 'venue'; category?: string; area?: string; nextPublicOffering?: string; openState?: string; hours?: ShareHoursRow[]; description?: string })
   | (Common & { kind: 'brand'; category?: string; area?: string; upcomingPublicOfferingCount?: number; description?: string });
 export const SHARE_FACTS_VERSION: 1;
 export const SHARE_ENTITY_KINDS: readonly ShareEntityKind[];

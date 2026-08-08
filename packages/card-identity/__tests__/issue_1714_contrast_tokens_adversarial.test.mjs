@@ -207,10 +207,13 @@ test('A-2 rejected single-layer controls still fail independently', () => {
     );
   }
 
-  const oldOg = densePlateBoundary('s5Og', 0.38);
+  // [TEST-MOD-APPROVED #1615] S5 is no longer the old opaque landscape; its
+  // portrait geometry makes .38 narrowly pass, so the rejected .30 control is
+  // the falsifier while the exact .42 token is pinned by the portrait suite.
+  const oldOg = densePlateBoundary('s5Og', 0.30);
   assert.ok(
     oldOg.ratio < FLOOR,
-    `A-2 s5Og opaque boundary control 0.38 unexpectedly passed at ${oldOg.ratio}:1`,
+    `A-2 s5Og portrait boundary control 0.30 unexpectedly passed at ${oldOg.ratio}:1`,
   );
 });
 

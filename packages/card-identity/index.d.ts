@@ -15,7 +15,7 @@ export interface BoundarySpec {
   readonly width: number;
 }
 
-export type PlateBoundaryKey = 'standard' | 'compact' | 'ogOpaque';
+export type PlateBoundaryKey = 'standard' | 'compact' | 'ogOpaque' | 'portrait';
 export type SliverBoundaryKey = 'none' | 'compact';
 
 /**

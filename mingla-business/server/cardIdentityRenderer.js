@@ -1,4 +1,5 @@
 const React = require("react");
+const fs = require("node:fs");
 const {
   RAMP,
   PLATE,
@@ -10,6 +11,7 @@ const {
   surfaceSliverBoundary,
   selectSharedCardFacts,
 } = require("@mingla/card-identity");
+const { selectPreviewFacts, statusLabel } = require("../../packages/sharing");
 
 const cssGradient = (ramp) => `linear-gradient(180deg,${ramp.colors.map((color, index) => `${color} ${Math.round(ramp.locations[index] * 100)}%`).join(",")})`;
 
@@ -79,9 +81,55 @@ function cardIdentityElement(snapshot, surfaceKey, scale = 1) {
 async function renderCardIdentityPng(snapshot, surfaceKey) {
   const { ImageResponse } = await import("@vercel/og");
   const s = SURFACES[surfaceKey];
-  const scale = surfaceKey === "s4Snippet" ? 3 : 1;
+  const scale = ["s4Snippet", "s5Og"].includes(surfaceKey) ? 3 : 1;
   const card = cardIdentityElement({ ...snapshot, cover_url: await prepareCoverForOg(snapshot.cover_url) }, surfaceKey, scale);
   const response = new ImageResponse(card, { width: s.w * scale, height: s.h * scale });
+  return Buffer.from(await response.arrayBuffer());
+}
+
+// Static require.resolve is intentionally traceable by Vercel's serverless
+// bundler; the workspace dependency guarantees the exact canonical SVG ships.
+const WORDMARK_FILE = require.resolve("@mingla/brand-assets/mingla-wordmark.svg");
+const wordmarkSource = () => `data:image/svg+xml;base64,${fs.readFileSync(WORDMARK_FILE).toString("base64")}`;
+const kindLabel = (kind) => ({ place:"Place", curated:"Curated plan", event:"Event", rsvp_event:"RSVP event", trip:"Trip", experience:"Experience", venue:"Venue", brand:"Brand" })[kind] || "";
+const portraitTitleSize = (title) => {
+  const count = Array.from(safeText(title)).length;
+  return count > 70 ? 23 : count > 48 ? 25 : 27;
+};
+
+/** Canonical #1615 portrait. S4 and S5 call this same function and therefore
+ * receive byte-identical 1080x1350 PNGs for one immutable share version. */
+function contentSharePortraitElement(contentShare) {
+  const s = SURFACES.s4Snippet;
+  const scale = 3;
+  const px = (value) => value * scale;
+  const facts = contentShare?.facts || {};
+  const media = contentShare?.media || facts.media;
+  const poster = safeText(media?.posterUrl);
+  const boundary = surfacePlateBoundary("s4Snippet");
+  const titleSize = portraitTitleSize(facts.title);
+  const status = statusLabel(facts.status);
+  const tokens = selectPreviewFacts(facts, 8);
+  const titleBottom = px(s.bottomInset + s.plateH + s.gap);
+  const plateUnder = surfacePlateUnder("s4Snippet");
+  return React.createElement("div", { style:{ width:px(s.w),height:px(s.h),position:"relative",display:"flex",overflow:"hidden",borderRadius:px(s.cardR),color:"white",fontFamily:"Inter, Arial, sans-serif",background:"#0C0E12" } },
+    poster ? React.createElement("img", { src:poster, style:{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:`${Number(media?.focalPoint?.x ?? .5)*100}% ${Number(media?.focalPoint?.y ?? .5)*100}%`} }) : null,
+    poster ? React.createElement("div", { style:{position:"absolute",left:0,right:0,bottom:0,height:px(surfaceScrimHeight("s4Snippet")),background:cssGradient(RAMP.bottom)} }) : null,
+    React.createElement("div", { style:{position:"absolute",left:px(24),top:px(24),height:px(38),padding:`0 ${px(12)}px`,display:"flex",alignItems:"center",borderRadius:px(19),background:"#FFF7EF",border:`${px(1)}px solid rgba(12,14,18,.56)`,boxShadow:`0 ${px(4)}px ${px(12)}px rgba(12,14,18,.18)`} },
+      React.createElement("img", { src:wordmarkSource(), style:{width:px(91),height:px(25),objectFit:"contain"} })),
+    React.createElement("div", { style:{position:"absolute",display:"flex",left:px(24),right:px(24),bottom:titleBottom,fontSize:px(titleSize),lineHeight:`${px(Math.max(30,titleSize+6))}px`,fontWeight:700,maxHeight:px(66),overflow:"hidden",wordBreak:"break-word"} }, safeText(facts.title)),
+    facts.kind === "curated" ? SLIVER.offsets.map((offset,index)=>React.createElement("div", {key:index,style:{position:"absolute",left:px(s.sideInset+s.sliver.insets[index]),right:px(s.sideInset+s.sliver.insets[index]),bottom:px(s.bottomInset+s.plateH+offset),height:px(4),borderRadius:px(2),background:"rgba(255,255,255,.44)"}})) : null,
+    React.createElement("div", {style:{position:"absolute",left:px(s.sideInset),bottom:px(s.bottomInset),width:px(s.plateW),height:px(s.plateH),borderRadius:px(s.plateR),border:`${px(boundary.width)}px solid ${boundary.color}`,background:`linear-gradient(${PLATE.lift},${PLATE.lift}),linear-gradient(rgba(${PLATE.underRgb.join(",")},${plateUnder}),rgba(${PLATE.underRgb.join(",")},${plateUnder}))`,display:"flex",flexDirection:"column",padding:`${px(9)}px ${px(12)}px ${px(7)}px`,boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}},
+      React.createElement("div", {style:{height:px(20),display:"flex",alignItems:"center",fontSize:px(12),lineHeight:`${px(16)}px`,fontWeight:600}},
+        React.createElement("span", null, kindLabel(facts.kind)),
+        status ? React.createElement("span", {style:{marginLeft:"auto",height:px(20),padding:`0 ${px(8)}px`,display:"flex",alignItems:"center",borderRadius:px(10),background:"#FFF7EF",color:"#0C0E12",fontWeight:700}}, `● ${status}`) : null),
+      React.createElement("div", {style:{display:"flex",marginTop:px(3),fontSize:px(13),lineHeight:`${px(16)}px`,fontWeight:500,maxHeight:px(32),overflow:"hidden",wordBreak:"break-word"}}, tokens.join(" · "))));
+}
+
+async function renderContentSharePortraitPng(contentShare) {
+  const { ImageResponse } = await import("@vercel/og");
+  const element = contentSharePortraitElement(contentShare);
+  const response = new ImageResponse(element, { width:1080, height:1350 });
   return Buffer.from(await response.arrayBuffer());
 }
 
@@ -113,4 +161,4 @@ function s6CardCss() {
   return `.share-cover{height:${s.h}px;max-width:${s.w}px;margin:auto;border-radius:${s.cardR}px;position:relative;overflow:hidden}.share-cover-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.coverless{background:${PLATE.fallbackSolid}}.share-cover:after{content:"";position:absolute;left:0;right:0;bottom:0;height:${surfaceScrimHeight("s6Phone")}px;background:${cssGradient(RAMP.bottom)}}.share-title{z-index:2;position:absolute;left:${s.sideInset + s.titleInset}px;right:${s.sideInset + s.titleInset}px;bottom:${s.bottomInset + s.plateH + s.gap}px;font-size:${s.titleSize}px;line-height:${s.titleLH}px;font-weight:${s.titleWeight}}.share-plate{z-index:2;position:absolute;left:${s.sideInset}px;right:${s.sideInset}px;bottom:${s.bottomInset}px;height:${s.plateH}px;border:${boundary.width}px solid ${boundary.color};border-radius:${s.plateR}px;background:linear-gradient(${PLATE.lift},${PLATE.lift}),linear-gradient(${underColor},${underColor});backdrop-filter:blur(${PLATE.blurIntensity}px);-webkit-backdrop-filter:blur(${PLATE.blurIntensity}px);box-shadow:inset 0 1px 0 ${PLATE.topHighlight};display:flex;align-items:center;padding:0 ${s.titleInset}px;font-size:${s.metaSize}px}.share-plate strong{margin-left:auto;color:rgba(255,255,255,.72)}@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.share-plate{background:${PLATE.fallbackSolid}}}.share-curated-sliver{z-index:1;position:absolute;height:${s.sliver.height}px;border-radius:${s.sliver.radius}px;border:${sliverBoundary.width}px solid ${sliverBoundary.color};background:linear-gradient(90deg,${s.sliver.opaque[0]},${s.sliver.opaque[1]})}.share-curated-sliver.one{left:${s.sideInset + s.sliver.insets[0]}px;right:${s.sideInset + s.sliver.insets[0]}px;bottom:${s.bottomInset + s.plateH + SLIVER.offsets[0]}px}.share-curated-sliver.two{left:${s.sideInset + s.sliver.insets[1]}px;right:${s.sideInset + s.sliver.insets[1]}px;bottom:${s.bottomInset + s.plateH + SLIVER.offsets[1]}px}`;
 }
 
-module.exports = { businessRowSnapshot, cardIdentityElement, factsFor, prepareCoverForOg, renderCardIdentityPng, s6CardCss, useDirectionC };
+module.exports = { businessRowSnapshot, cardIdentityElement, contentSharePortraitElement, factsFor, prepareCoverForOg, renderCardIdentityPng, renderContentSharePortraitPng, s6CardCss, useDirectionC, wordmarkSource };
