@@ -202,7 +202,9 @@ test('ST16 immutable image proxy preserves exact 200/304 identity and lets revoc
   // PNG/private-revalidation transport; revision 2 is immutable bounded JPEG.
   const previous=process.env.SHARED_CARD_PROXY_SECRET;process.env.SHARED_CARD_PROXY_SECRET='secret';const code='Aa0Bb1Cc2Dd3Ee4F',etag=`"content-share-${code}-v3-r2-jpeg"`;
   const request=(ifNone='')=>new Request(`https://usemingla.com/og/s/${code}/v3-r2.jpg`,{headers:{[INTERNAL_PROXY_HEADER]:'secret',...(ifNone?{'if-none-match':ifNone}:{})}});
-  const jpeg=new Uint8Array([0xff,0xd8,0xff,0xd9]);
+  // [TEST-MOD-APPROVED #1615] Tester proved SOI/EOI marker bytes alone were
+  // not a valid image; exercise the immutable path with a decoded 1080x1350 JPEG.
+  const sharp=require(path.join(ROOT,'mingla-business/node_modules/sharp'));const jpeg=await sharp({create:{width:1080,height:1350,channels:3,background:'#0C0E12'}}).jpeg({quality:66,progressive:true}).toBuffer();
   const ok=await proxySharedCard(request(),code,'content-image',async()=>new Response(jpeg,{status:200,headers:{'content-type':'image/jpeg',etag,'content-length':String(jpeg.length)}}),'3');
   assert.equal(ok.status,200);assert.equal(ok.headers.get('content-type'),'image/jpeg');assert.equal(ok.headers.get('etag'),etag);for(const key of ['cache-control','cdn-cache-control','vercel-cdn-cache-control'])assert.equal(ok.headers.get(key),'public, max-age=31536000, immutable');
   const unchanged=await proxySharedCard(request(etag),code,'content-image',async(_url,init)=>{assert.equal(init.headers['if-none-match'],etag);return new Response(null,{status:304,headers:{etag}})},'3');

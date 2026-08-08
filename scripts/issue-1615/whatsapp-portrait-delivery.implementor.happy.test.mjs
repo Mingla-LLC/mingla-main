@@ -19,7 +19,13 @@ const CODE = 'Aa0Bb1Cc2Dd3Ee4F';
 const VERSION = 7;
 const ETAG = `"content-share-${CODE}-v${VERSION}-r2-jpeg"`;
 const IMMUTABLE = 'public, max-age=31536000, immutable';
-const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+// [TEST-MOD-APPROVED #1615] Tester proved marker-only bytes could be cached as
+// JPEG. Happy paths now use a decoder-valid 1080x1350 portrait and reserve
+// marker-only/wrong-dimension bytes for the fail-closed assertions.
+const sharp = require(path.join(ROOT, 'mingla-business/node_modules/sharp'));
+const JPEG = await sharp({ create: { width: 1080, height: 1350, channels: 3, background: '#0C0E12' } }).jpeg({ quality: 66, progressive: true }).toBuffer();
+const WRONG_DIMENSION_JPEG = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#0C0E12' } }).jpeg().toBuffer();
+const MARKER_ONLY_JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
 const share = {
   shortCode: CODE,
   version: VERSION,
@@ -60,11 +66,11 @@ test('W2 Business serves exact bounded JPEG bytes with immutable 200 and 304 hea
   if (previous === undefined) delete process.env.SHARED_CARD_PROXY_SECRET; else process.env.SHARED_CARD_PROXY_SECRET = previous;
 });
 
-test('W3 Business rejects malformed or over-budget portrait bytes with no-store', async () => {
+test('W3 Business decodes output and rejects malformed, wrong-dimension or over-budget bytes with no-store', async () => {
   const previous = process.env.SHARED_CARD_PROXY_SECRET;
   process.env.SHARED_CARD_PROXY_SECRET = 'variant-a-secret';
   const { createContentShareImageHandler } = require(path.join(ROOT, 'mingla-business/api/content-share-image.js'));
-  for (const bytes of [Buffer.from('not-jpeg'), Buffer.alloc(200_001, 0xff)]) {
+  for (const bytes of [Buffer.from('not-jpeg'), MARKER_ONLY_JPEG, WRONG_DIMENSION_JPEG, Buffer.alloc(200_001, 0xff)]) {
     const handler = createContentShareImageHandler(async () => ({ status: 200, contentShare: share }), async () => bytes);
     const rejected = response(); await handler({ query: { code: CODE, version: String(VERSION) }, headers: { 'x-mingla-shared-card-proxy': 'variant-a-secret' } }, rejected);
     assert.equal(rejected.statusCode, 502);
@@ -87,6 +93,18 @@ test('W4 Marketing preserves only the exact immutable JPEG contract and fails cl
   assert.equal(wrongType.status, 502); assert.match(wrongType.headers.get('cache-control'), /no-store/);
   const wrongEtag = await proxySharedCard(request, CODE, 'content-image', async () => new Response(JPEG, { status: 200, headers: { 'content-type': 'image/jpeg', etag: '"wrong"' } }), String(VERSION));
   assert.equal(wrongEtag.status, 502); assert.match(wrongEtag.headers.get('cache-control'), /no-store/);
+  for (const bytes of [MARKER_ONLY_JPEG, WRONG_DIMENSION_JPEG]) {
+    const invalidJpeg = await proxySharedCard(request, CODE, 'content-image', async () => new Response(bytes, { status: 200, headers: { 'content-type': 'image/jpeg', etag: ETAG } }), String(VERSION));
+    assert.equal(invalidJpeg.status, 502); assert.match(invalidJpeg.headers.get('cache-control'), /no-store/);
+  }
+  const unsolicited304 = await proxySharedCard(request, CODE, 'content-image', async () => new Response(null, { status: 304, headers: { etag: ETAG } }), String(VERSION));
+  assert.equal(unsolicited304.status, 502); assert.match(unsolicited304.headers.get('cache-control'), /no-store/);
+  const conditionalRequest = new Request(request.url, { headers: { [INTERNAL_PROXY_HEADER]: 'variant-a-secret', 'if-none-match': ETAG } });
+  const exact304 = await proxySharedCard(conditionalRequest, CODE, 'content-image', async (_url, init) => {
+    assert.equal(new Headers(init.headers).get('if-none-match'), ETAG);
+    return new Response(null, { status: 304, headers: { etag: ETAG } });
+  }, String(VERSION));
+  assert.equal(exact304.status, 304); assert.equal(exact304.headers.get('cache-control'), IMMUTABLE);
   if (previous === undefined) delete process.env.SHARED_CARD_PROXY_SECRET; else process.env.SHARED_CARD_PROXY_SECRET = previous;
 });
 

@@ -1,3 +1,5 @@
+import sharp from 'sharp'
+
 const INTERNAL_PROXY_HEADER = 'x-mingla-internal-share-route'
 const DOWNSTREAM_PROXY_HEADER = 'x-mingla-shared-card-proxy'
 const BUSINESS_ORIGIN = process.env.NODE_ENV === 'development' && process.env.SHARED_CARD_BUSINESS_ORIGIN
@@ -64,10 +66,18 @@ const immutableJpegResponse = (body: BodyInit | null, status: 200 | 304, etag: s
   },
 })
 
-const isBoundedJpeg = (bytes: Uint8Array) => bytes.length > 3
-  && bytes.length <= MAX_CONTENT_SHARE_JPEG_BYTES
-  && bytes[0] === 0xff && bytes[1] === 0xd8
-  && bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9
+const isValidContentShareJpeg = async (bytes: Uint8Array) => {
+  if (bytes.length === 0 || bytes.length > MAX_CONTENT_SHARE_JPEG_BYTES) return false
+  try {
+    const options = { limitInputPixels: 20_000_000, failOn: 'error' as const, sequentialRead: true }
+    const metadata = await sharp(bytes, options).metadata()
+    if (metadata.format !== 'jpeg' || metadata.width !== 1080 || metadata.height !== 1350) return false
+    const decoded = await sharp(bytes, options).raw().toBuffer({ resolveWithObject: true })
+    return decoded.data.length > 0 && decoded.info.width === 1080 && decoded.info.height === 1350
+  } catch {
+    return false
+  }
+}
 
 export async function proxySharedCard(
   request: Request,
@@ -105,7 +115,8 @@ export async function proxySharedCard(
   }
   const status = ALLOWED_STATUSES.has(upstream.status) ? upstream.status : 502
   const upstreamEtag = upstream.headers.get('etag') === expectedEtag ? expectedEtag : ''
-  if (status === 304) return surface === 'content-image' && upstreamEtag ? immutableJpegResponse(null, 304, upstreamEtag) : privateResponse(null,502,contentType)
+  if (status === 304) return surface === 'content-image' && requestEtag && upstreamEtag
+    ? immutableJpegResponse(null, 304, upstreamEtag) : privateResponse(null,502,contentType)
   if (status !== 200) return privateResponse(null, status, contentType)
 
   const receivedType = upstream.headers.get('content-type')?.toLowerCase() || ''
@@ -117,7 +128,7 @@ export async function proxySharedCard(
       const declaredSize = Number(upstream.headers.get('content-length') || '0')
       if (declaredSize > MAX_CONTENT_SHARE_JPEG_BYTES) return privateResponse(null,502,contentType)
       const bytes = new Uint8Array(await upstream.arrayBuffer())
-      return isBoundedJpeg(bytes) ? immutableJpegResponse(bytes, 200, upstreamEtag) : privateResponse(null,502,contentType)
+      return await isValidContentShareJpeg(bytes) ? immutableJpegResponse(bytes, 200, upstreamEtag) : privateResponse(null, 502, contentType)
     }
     return privateResponse(await upstream.arrayBuffer(), 200, contentType)
   } catch {

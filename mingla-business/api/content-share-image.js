@@ -1,5 +1,5 @@
 const { fetchContentShareVersion, firstQueryValue, setSharedNoStore, contentSharePosterUrl } = require("../server/socialPreview");
-const { MAX_CONTENT_SHARE_JPEG_BYTES, renderContentSharePortraitJpeg } = require("../server/cardIdentityRenderer");
+const { isValidContentSharePortraitJpeg, renderContentSharePortraitJpeg } = require("../server/cardIdentityRenderer");
 const { hasValidSharedCardProxySecret } = require("../server/sharedCardProxyAuth");
 const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
 const setImmutableJpegHeaders = (res, etag) => {
@@ -14,10 +14,6 @@ const failClosed = (res, statusCode) => {
   res.statusCode = statusCode;
   return res.end();
 };
-const isBoundedJpeg = (value) => Buffer.isBuffer(value) && value.length > 3
-  && value.length <= MAX_CONTENT_SHARE_JPEG_BYTES
-  && value[0] === 0xff && value[1] === 0xd8
-  && value[value.length - 2] === 0xff && value[value.length - 1] === 0xd9;
 const createContentShareImageHandler = (fetchShare = fetchContentShareVersion, renderJpeg = renderContentSharePortraitJpeg) => async function contentShareImage(req, res) {
   const code = firstQueryValue(req.query.code);
   const version = firstQueryValue(req.query.version);
@@ -35,7 +31,7 @@ const createContentShareImageHandler = (fetchShare = fetchContentShareVersion, r
       return res.end();
     }
     const jpeg = await renderJpeg(share);
-    if (!isBoundedJpeg(jpeg)) return failClosed(res, 502);
+    if (!(await isValidContentSharePortraitJpeg(jpeg))) return failClosed(res, 502);
     res.statusCode = 200;
     setImmutableJpegHeaders(res, etag);
     return res.end(jpeg);
