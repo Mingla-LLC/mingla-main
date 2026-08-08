@@ -97,7 +97,11 @@ const COMPILED_SRC: Record<string, string> = {
   // Their real compiled forms keep every rewrite covered without weakening the
   // last catch-all or the /_expo/static/ exclusion.
   "/s/:code": "^/s(?:/([^/]+?))$",
-  "/og/s/:code/v:version.png": "^/og/s(?:/([^/]+?))/v([^/]+?)\\.png$",
+  // [TEST-MOD-APPROVED #1615] Variant A retired the current PNG producer after
+  // physical WhatsApp rejected it; this keeps #1485's exhaustive route oracle
+  // exact for the revisioned r2 JPEG without changing its catch-all behavior.
+  "/og/s/:code/v:version-r2.jpg":
+    "^/og/s(?:/([^/]+?))/v([^/]+?)-r2\\.jpg$",
   "/share/:shareId.png": "^/share(?:/([^/]+?))\\.png$",
   "/og/share/:shareId.png": "^/og/share(?:/([^/]+?))\\.png$",
   "/p/:shareId": "^/p(?:/([^/]+?))$",
@@ -240,8 +244,10 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
     expect(resolveForBrowser("/s/Aa0Bb1Cc2Dd3Ee4F")).toEqual({
       source: "/s/:code", destination: "/api/content-share?code=:code",
     });
-    expect(resolveForBrowser("/og/s/Aa0Bb1Cc2Dd3Ee4F/v7.png")).toEqual({
-      source: "/og/s/:code/v:version.png",
+    // [TEST-MOD-APPROVED #1615] The route assertion must exercise the same
+    // exact immutable r2 JPEG path represented in COMPILED_SRC above.
+    expect(resolveForBrowser("/og/s/Aa0Bb1Cc2Dd3Ee4F/v7-r2.jpg")).toEqual({
+      source: "/og/s/:code/v:version-r2.jpg",
       destination: "/api/content-share-image?code=:code&version=:version",
     });
     expect(catchAll.source).toBe("/((?!_expo/static/).*)");

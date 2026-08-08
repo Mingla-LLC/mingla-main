@@ -59,6 +59,7 @@ jobs:
       - run: node --experimental-strip-types --test scripts/issue-1615/content-share-media.adversarial.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1615/content-share-server-truth.implementor.happy.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1615/whatsapp-portrait-delivery.implementor.happy.test.mjs
+      - run: node --experimental-strip-types --test scripts/issue-1615/whatsapp-portrait-delivery.tester.adversarial.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1615/device-acceptance-rework.implementor.happy.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1615/device-acceptance-rework.tester.adversarial.test.mjs
       - run: node scripts/issue-1615/content-sharing-semantic-gate.mjs
