@@ -44,7 +44,9 @@ jobs:
       - run: node --experimental-strip-types --test scripts/issue-1615/public-share-surfaces.happy.test.cjs
       - run: node --experimental-strip-types --test scripts/issue-1615/public-share-surfaces.adversarial.test.cjs
       - run: node --test packages/sharing/__tests__/issue_1615_sharing_contract.happy.test.mjs
+      - run: node --test packages/sharing/__tests__/issue_1615_media_identity.happy.test.mjs
       - run: node --test scripts/issue-1615/content-sharing-semantic-gate.adversarial.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1615/content-share-foundation.happy.test.mjs scripts/issue-1615/content-share-foundation.adversarial.test.mjs
+      - run: node --experimental-strip-types --test scripts/issue-1615/content-share-media.adversarial.test.mjs
       - run: node scripts/issue-1615/content-sharing-semantic-gate.mjs
       - run: node --test packages/card-identity/__tests__/card_identity_single_source.test.mjs packages/card-identity/__tests__/issue_1714_contrast_tokens_happy_path.test.mjs packages/card-identity/__tests__/issue_1714_contrast_tokens_adversarial.test.mjs

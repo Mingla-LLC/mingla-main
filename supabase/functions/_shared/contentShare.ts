@@ -3,8 +3,8 @@
  *
  * Requests provide identity only. This module reads the served database truth,
  * derives ShareFactsV1, and returns the private stable-source key plus public
- * destination manifest. It deliberately has no renderer and does not inspect
- * event_cover_video_jobs or any provider payload.
+ * destination manifest. It deliberately has no renderer and never reads a
+ * private processing-job record or provider payload.
  */
 
 export type ContentShareKind =
@@ -22,6 +22,45 @@ const clean = (value: unknown, max = 160): string =>
 
 const compact = (value: RecordLike): RecordLike =>
   Object.fromEntries(Object.entries(value).filter(([, item]) => item !== "" && item !== null && item !== undefined));
+
+const publicMediaUrl = (value: unknown): string | null => {
+  const text = clean(value, 2048);
+  try {
+    const url = new URL(text);
+    if (url.protocol !== "https:") return null;
+    const host = url.hostname.toLowerCase();
+    const allowed = host === "usemingla.com" || host.endsWith(".usemingla.com")
+      || host === "images.pexels.com" || host === "videos.pexels.com"
+      || host.endsWith(".giphy.com") || host.endsWith(".b-cdn.net") || host.endsWith(".bunnycdn.com")
+      || (host.endsWith(".supabase.co") && url.pathname.startsWith("/storage/v1/object/public/"));
+    return allowed ? url.toString() : null;
+  } catch { return null; }
+};
+
+const imageFallback = (row: RecordLike): string | null => {
+  const gallery = Array.isArray(row.cover_media_gallery) ? row.cover_media_gallery : [];
+  const galleryUrl = gallery.map((item: any) => publicMediaUrl(item?.url)).find(Boolean);
+  const poolUrl = (Array.isArray(row.pool_photo_urls) ? row.pool_photo_urls : [])
+    .map(publicMediaUrl).find(Boolean);
+  const storedUrl = (Array.isArray(row.stored_photo_urls) ? row.stored_photo_urls : [])
+    .map(publicMediaUrl).find(Boolean);
+  const card = row.card_data && typeof row.card_data === "object" ? row.card_data : {};
+  const cardUrl = [row.image_url, card.image, ...(Array.isArray(card.images) ? card.images : [])]
+    .map(publicMediaUrl).find(Boolean);
+  return galleryUrl || poolUrl || storedUrl || cardUrl || publicMediaUrl(row.profile_photo_url);
+};
+
+export function mapServedMediaIdentity(row: RecordLike): RecordLike | null {
+  const primary = publicMediaUrl(row.cover_media_url);
+  const type = clean(row.cover_media_type, 12);
+  const fallback = imageFallback(row);
+  const alt = clean(row.cover_media_alt || row.name || row.title, 240);
+  if (primary && type === "video" && fallback) return compact({ kind: "video", url: primary, posterUrl: fallback, alt });
+  if (primary && type === "gif" && fallback) return compact({ kind: "gif", url: primary, posterUrl: fallback, alt });
+  if (primary && (type === "image" || !type)) return compact({ kind: "photo", url: primary, posterUrl: primary, alt });
+  if (fallback) return compact({ kind: "photo", url: fallback, posterUrl: fallback, alt });
+  return null;
+}
 
 const money = (minorUnits: unknown, currency: unknown, disclosure?: string): RecordLike | undefined => {
   const code = clean(currency, 3).toUpperCase();
@@ -136,7 +175,9 @@ export function mapAuthoritativeShareFacts(kind: ContentShareKind, assembled: Re
   }
 
   if (!facts.title) throw new Error("not_found");
-  return { facts, destinationManifest: destination };
+  const mediaIdentity = mapServedMediaIdentity(row);
+  if (mediaIdentity) facts.media = mediaIdentity;
+  return { facts, destinationManifest: destination, mediaIdentity };
 }
 
 const eventTypeFor = (kind: ContentShareKind): string | null => ({
@@ -150,7 +191,7 @@ export async function loadAuthoritativeContentShare(
     const poolId = sourceId(identity, "placePoolId");
     const googleId = sourceId(identity, "googlePlaceId");
     if (!poolId && !googleId) throw new Error("validation");
-    let query = db.from("place_pool").select("id,google_place_id,name,city,primary_type_display_name,primary_type,rating,price_level,utc_offset_minutes,editorial_summary,generative_summary,is_active,is_servable").limit(1);
+    let query = db.from("place_pool").select("id,google_place_id,name,city,primary_type_display_name,primary_type,rating,price_level,utc_offset_minutes,editorial_summary,generative_summary,stored_photo_urls,is_active,is_servable").limit(1);
     query = poolId ? query.eq("id", poolId) : query.eq("google_place_id", googleId);
     const { data: row } = await query.maybeSingle();
     if (!row || row.is_active !== true || row.is_servable === false) throw new Error("not_found");
@@ -160,7 +201,7 @@ export async function loadAuthoritativeContentShare(
   if (kind === "curated") {
     const id = sourceId(identity, "savedCardId");
     if (!id) throw new Error("validation");
-    const { data: row } = await db.from("saved_card").select("id,profile_id,title,category,card_data").eq("id", id).eq("profile_id", userId).maybeSingle();
+    const { data: row } = await db.from("saved_card").select("id,profile_id,title,category,image_url,card_data").eq("id", id).eq("profile_id", userId).maybeSingle();
     if (!row) throw new Error("not_found");
     return { ...mapAuthoritativeShareFacts(kind, { row }), sourceKey: `curated:${row.id}`, sourceReference: { savedCardId: row.id } };
   }
@@ -171,7 +212,7 @@ export async function loadAuthoritativeContentShare(
     const eventSlug = sourceId(identity, "eventSlug");
     const brandSlug = sourceId(identity, "brandSlug");
     if (!id && (!eventSlug || !brandSlug)) throw new Error("validation");
-    let query = db.from("events").select("id,title,description,slug,location_text,status,visibility,published_at,deleted_at,timezone,event_type,destination_text,brands!inner(name,slug,deleted_at)")
+    let query = db.from("events").select("id,title,description,slug,location_text,status,visibility,published_at,deleted_at,timezone,event_type,destination_text,cover_media_url,cover_media_type,cover_media_alt,cover_media_gallery,brands!inner(name,slug,deleted_at)")
       .eq("event_type", expectedType).in("visibility", ["public", "discover"]).not("published_at", "is", null).is("deleted_at", null)
       .in("status", ["scheduled", "live", "ended", "cancelled"]).limit(1);
     query = id ? query.eq("id", id) : query.eq("slug", eventSlug).eq("brands.slug", brandSlug);
@@ -189,16 +230,17 @@ export async function loadAuthoritativeContentShare(
     const brandSlug = sourceId(identity, "brandSlug");
     const venueSlug = sourceId(identity, "venueSlug");
     if (!brandSlug || !venueSlug) throw new Error("validation");
-    const { data: row } = await db.from("venue_public_view").select("id,brand_slug,slug,name,city,venue_category,pitch").eq("brand_slug", brandSlug).eq("slug", venueSlug).maybeSingle();
+    const { data: row } = await db.from("venue_public_view").select("id,brand_slug,slug,name,city,venue_category,pitch,cover_media_url,cover_media_type,pool_photo_urls").eq("brand_slug", brandSlug).eq("slug", venueSlug).maybeSingle();
     if (!row) throw new Error("not_found");
     return { ...mapAuthoritativeShareFacts(kind, { row }), sourceKey: `venue:${row.id}`, sourceReference: { venueId: row.id } };
   }
 
   const brandSlug = sourceId(identity, "brandSlug");
   if (!brandSlug) throw new Error("validation");
-  const { data: row } = await db.from("brands_public_view").select("id,name,slug,description").eq("slug", brandSlug).maybeSingle();
+  const { data: row } = await db.from("brands").select("id,name,slug,description,cover_media_url,cover_media_type,profile_photo_url").eq("slug", brandSlug).is("deleted_at", null).maybeSingle();
   if (!row) throw new Error("not_found");
   const { count } = await db.from("events").select("id", { count: "exact", head: true }).eq("brand_id", row.id)
     .in("visibility", ["public", "discover"]).not("published_at", "is", null).is("deleted_at", null).in("status", ["scheduled", "live"]);
-  return { ...mapAuthoritativeShareFacts("brand", { row, upcomingCount: count || 0 }), sourceKey: `brand:${row.id}`, sourceReference: { brandId: row.id } };
+  if (!count) throw new Error("not_found");
+  return { ...mapAuthoritativeShareFacts("brand", { row, upcomingCount: count }), sourceKey: `brand:${row.id}`, sourceReference: { brandId: row.id } };
 }

@@ -112,6 +112,34 @@ function cleanMedia(value) {
   };
 }
 
+function isPublicShareMediaUrl(value) {
+  const url = cleanHttpsUrl(value);
+  if (!url) return false;
+  const parsed = new URL(url);
+  const host = parsed.hostname.toLowerCase();
+  if (host === 'usemingla.com' || host.endsWith('.usemingla.com')) return true;
+  if (host === 'images.pexels.com' || host === 'videos.pexels.com') return true;
+  if (host.endsWith('.giphy.com') || host.endsWith('.b-cdn.net') || host.endsWith('.bunnycdn.com')) return true;
+  return host.endsWith('.supabase.co') && parsed.pathname.startsWith('/storage/v1/object/public/');
+}
+
+function selectPublicMediaIdentity(candidates) {
+  const source = candidates && typeof candidates === 'object' && !Array.isArray(candidates) ? candidates : {};
+  const eligible = (candidate) => candidate && candidate.publicSafe === true
+    && isPublicShareMediaUrl(candidate.url);
+  const poster = (candidate) => candidate && candidate.publicSafe === true
+    && isPublicShareMediaUrl(candidate.posterUrl) ? candidate.posterUrl : null;
+  for (const key of ['video', 'animated', 'photo']) {
+    const candidate = source[key];
+    if (!eligible(candidate)) continue;
+    const kind = key === 'animated' ? 'gif' : key;
+    const posterUrl = kind === 'photo' ? candidate.url : poster(candidate);
+    if (!posterUrl || (kind === 'video' && candidate.authored !== true)) continue;
+    return cleanMedia({ kind, url: candidate.url, posterUrl, focalPoint: candidate.focalPoint, alt: candidate.alt });
+  }
+  return null;
+}
+
 function cleanDestination(kind, value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const route = ROUTE_MANIFEST[kind];
@@ -276,6 +304,7 @@ function routeContractFor(kind) {
 module.exports = {
   SHARE_FACTS_VERSION, SHARE_ENTITY_KINDS, SHARE_STATUSES, SHARE_CHANNEL_BUDGETS,
   ROUTE_MANIFEST, cleanText, cleanHttpsUrl, cleanMoney, cleanMedia, cleanDestination,
+  isPublicShareMediaUrl, selectPublicMediaIdentity,
   isShortShareCode, buildShortShareUrl, validateShareFactsV1, parseShareFactsV1,
   formatMoney, formatRating, statusLabel, selectRecipientFacts, selectPreviewFacts,
   buildShareMessage, routeContractFor,

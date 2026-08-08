@@ -25,6 +25,12 @@ export function cleanText(value: unknown, max?: number): string;
 export function cleanHttpsUrl(value: unknown): string | null;
 export function cleanMoney(value: unknown): ShareMoney | null;
 export function cleanMedia(value: unknown): ShareMediaIdentity | null;
+export function isPublicShareMediaUrl(value: unknown): boolean;
+export function selectPublicMediaIdentity(value: {
+  video?: { url: string; posterUrl?: string; publicSafe: boolean; authored?: boolean; focalPoint?: { x: number; y: number }; alt?: string };
+  animated?: { url: string; posterUrl?: string; publicSafe: boolean; focalPoint?: { x: number; y: number }; alt?: string };
+  photo?: { url: string; publicSafe: boolean; focalPoint?: { x: number; y: number }; alt?: string };
+}): ShareMediaIdentity | null;
 export function isShortShareCode(value: unknown): value is string;
 export function buildShortShareUrl(code: string): string;
 export function validateShareFactsV1(value: unknown): { ok: true; value: ShareFactsV1 } | { ok: false; errors: string[] };
