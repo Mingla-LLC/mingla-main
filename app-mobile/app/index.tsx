@@ -1935,6 +1935,16 @@ function AppContent() {
     if (!dest) return;
     try {
       switch (dest.kind) {
+        case 'content_share': {
+          const path = `/s/${encodeURIComponent(dest.code)}`;
+          if (!userIdRef.current) {
+            AsyncStorage.setItem('mingla_deferred_deeplink', JSON.stringify({ url: path, ts: Date.now(), router: true }))
+              .catch((e) => console.warn('[OneLink] Failed to defer content share:', e));
+            return;
+          }
+          router.push(path as never);
+          return;
+        }
         case 'share': {
           if (dest.referralCode) {
             AsyncStorage.setItem('@mingla_referral_code', dest.referralCode).catch((e) =>

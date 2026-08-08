@@ -23,6 +23,7 @@
  */
 
 export type OneLinkDestination =
+  | { kind: 'content_share'; code: string }
   | { kind: 'share'; shareType: 'place' | 'curated'; shareId: string; referralCode?: string }
   | { kind: 'entity'; entity: 'brand'; brandSlug: string; referralCode?: string }
   | {
@@ -48,8 +49,11 @@ export type OneLinkDestination =
   | null;
 
 const OPAQUE_SHARE_ID_RE = /^[a-f0-9]{36}$/;
+const CONTENT_SHARE_CODE_RE = /^[0-9A-Za-z]{16}$/;
 export const isOpaqueShareId = (value: unknown): value is string =>
   typeof value === 'string' && OPAQUE_SHARE_ID_RE.test(value);
+export const isContentShareCode = (value: unknown): value is string =>
+  typeof value === 'string' && CONTENT_SHARE_CODE_RE.test(value);
 
 export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDestination {
   try {
@@ -72,6 +76,8 @@ export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDes
     }
 
     switch (rawType) {
+      case 'content_share':
+        return isContentShareCode(sub1) ? { kind: 'content_share', code: sub1 } : null;
       case 'place':
       case 'curated':
         if (!isOpaqueShareId(sub1)) return null;

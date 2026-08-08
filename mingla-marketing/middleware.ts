@@ -14,9 +14,15 @@ import type { NextRequest } from 'next/server'
 
 const CAREERS_PREFIX = '/careers'
 const INTERNAL_PROXY_HEADER = 'x-mingla-internal-share-route'
-const PUBLIC_SHARE_PATH = /^(?:\/p\/[a-f0-9]{36}|\/share\/[a-f0-9]{36}\.png|\/og\/share\/[a-f0-9]{36}\.png|\/api\/shared-card\/[a-f0-9]{36})$/
+const PUBLIC_SHARE_PATH = /^(?:\/p\/[a-f0-9]{36}|\/share\/[a-f0-9]{36}\.png|\/og\/share\/[a-f0-9]{36}\.png|\/api\/shared-card\/[a-f0-9]{36}|\/s\/[0-9A-Za-z]{16}|\/og\/s\/[0-9A-Za-z]{16}\/v[1-9][0-9]*\.png|\/api\/content-share\/[0-9A-Za-z]{16})$/
 
 function internalSharePath(pathname: string): string | null {
+  let content = pathname.match(/^\/s\/([0-9A-Za-z]{16})$/)
+  if (content) return `/api/internal-share-proxy/content-page/${content[1]}`
+  content = pathname.match(/^\/og\/s\/([0-9A-Za-z]{16})\/v([1-9][0-9]*)\.png$/)
+  if (content) return `/api/internal-share-proxy/content-image/${content[1]}/${content[2]}`
+  content = pathname.match(/^\/api\/content-share\/([0-9A-Za-z]{16})$/)
+  if (content) return `/api/internal-share-proxy/content-data/${content[1]}`
   let match = pathname.match(/^\/p\/([a-f0-9]{36})$/)
   if (match) return `/api/internal-share-proxy/page/${match[1]}`
   match = pathname.match(/^\/share\/([a-f0-9]{36})\.png$/)
@@ -75,6 +81,9 @@ export function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     '/p/:path*',
+    '/s/:path*',
+    '/og/s/:path*',
+    '/api/content-share/:path*',
     '/share/:path*',
     '/og/share/:path*',
     '/api/shared-card/:path*',

@@ -4,6 +4,8 @@ const BUSINESS_ORIGIN = process.env.NODE_ENV === 'development' && process.env.SH
   ? process.env.SHARED_CARD_BUSINESS_ORIGIN.replace(/\/+$/, '')
   : 'https://business.usemingla.com'
 const SHARE_ID = /^[a-f0-9]{36}$/
+const SHARE_CODE = /^[0-9A-Za-z]{16}$/
+const SHARE_VERSION = /^[1-9][0-9]*$/
 const ALLOWED_STATUSES = new Set([200, 404, 410, 429, 500, 503])
 
 async function constantTimeEqual(provided: string, expected: string) {
@@ -19,17 +21,20 @@ async function constantTimeEqual(provided: string, expected: string) {
   return difference === 0
 }
 
-export type SharedCardProxySurface = 'page' | 'snippet' | 'og' | 'data'
+export type SharedCardProxySurface = 'page' | 'snippet' | 'og' | 'data' | 'content-page' | 'content-data' | 'content-image'
 
 const expectedContentType = (surface: SharedCardProxySurface) =>
-  surface === 'page'
+  surface === 'page' || surface === 'content-page'
     ? 'text/html; charset=utf-8'
-    : surface === 'data'
+    : surface === 'data' || surface === 'content-data'
       ? 'application/json; charset=utf-8'
       : 'image/png'
 
-const upstreamPath = (surface: SharedCardProxySurface, shareId: string) => {
+const upstreamPath = (surface: SharedCardProxySurface, shareId: string, version?: string) => {
   const encoded = encodeURIComponent(shareId)
+  if (surface === 'content-page') return `/api/content-share?code=${encoded}`
+  if (surface === 'content-data') return `/api/content-share-data?code=${encoded}`
+  if (surface === 'content-image') return `/api/content-share-image?code=${encoded}&version=${encodeURIComponent(version || '')}`
   if (surface === 'page') return `/api/shared-card?shareId=${encoded}`
   if (surface === 'data') return `/api/shared-card-data?shareId=${encoded}`
   return `/api/shared-card-image?shareId=${encoded}&surface=${surface === 'snippet' ? 's4' : 's5'}`
@@ -50,6 +55,7 @@ export async function proxySharedCard(
   shareId: string,
   surface: SharedCardProxySurface,
   fetchImpl: typeof fetch = fetch,
+  version?: string,
 ) {
   const contentType = expectedContentType(surface)
   const secret = process.env.SHARED_CARD_PROXY_SECRET
@@ -57,13 +63,16 @@ export async function proxySharedCard(
     return privateResponse(null, 503, contentType)
   }
   const internalMarker = request.headers.get(INTERNAL_PROXY_HEADER) || ''
-  if (!internalMarker || !(await constantTimeEqual(internalMarker, secret)) || !SHARE_ID.test(shareId)) {
+  const isContent = surface.startsWith('content-')
+  const validIdentifier = isContent ? SHARE_CODE.test(shareId) : SHARE_ID.test(shareId)
+  const validVersion = surface !== 'content-image' || (typeof version === 'string' && SHARE_VERSION.test(version))
+  if (!internalMarker || !(await constantTimeEqual(internalMarker, secret)) || !validIdentifier || !validVersion) {
     return privateResponse(null, 404, contentType)
   }
 
   let upstream: Response
   try {
-    upstream = await fetchImpl(`${BUSINESS_ORIGIN}${upstreamPath(surface, shareId)}`, {
+    upstream = await fetchImpl(`${BUSINESS_ORIGIN}${upstreamPath(surface, shareId, version)}`, {
       method: 'GET',
       cache: 'no-store',
       redirect: 'manual',

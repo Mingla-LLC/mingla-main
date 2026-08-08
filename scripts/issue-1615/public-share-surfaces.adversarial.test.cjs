@@ -113,8 +113,10 @@ test("A10 canonical web, native App Link, OneLink, AASA and proxy routes agree o
   const business = JSON.parse(read("mingla-business/vercel.json"));
   assert.match(mobile, /"pathPrefix"\s*:\s*"\/p"/);
   assert.match(aasa, /"\/p\/\*"/);
-  assert.equal(marketing.rewrites[0].source, "/p/:shareId");
-  assert.equal(business.rewrites[2].source, "/p/:shareId");
+  // [TEST-MOD-APPROVED #1615] The binding amendment adds stable /s receivers ahead of legacy /p;
+  // route presence is the invariant, while an array index incorrectly forbids additive receivers.
+  assert.ok(marketing.rewrites.some((entry) => entry.source === "/p/:shareId"));
+  assert.ok(business.rewrites.some((entry) => entry.source === "/p/:shareId"));
   assert.ok(fs.existsSync(path.join(ROOT, "app-mobile/app/p/[shareId].tsx")));
   assert.match(read("app-mobile/src/services/oneLinkShare.ts"), /go\.usemingla\.com/);
 });

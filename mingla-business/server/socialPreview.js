@@ -7,6 +7,7 @@ const React = require("react");
 const { s6CardCss } = require("./cardIdentityRenderer");
 const { selectSharedCardFacts } = require("@mingla/card-identity");
 const { SHARED_CARD_PROXY_HEADER } = require("./sharedCardProxyAuth");
+const { contentShareOneLink } = require("./contentShareService");
 
 const DEFAULT_SUPABASE_URL = "https://gqnoajqerqhnvulmnyvv.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY =
@@ -234,6 +235,32 @@ const fetchSharedCardSnapshot = async (shareId) => {
   if (!response.ok) return { status: response.status, snapshot: null };
   const body = await response.json();
   return { status: 200, snapshot: body?.snapshot ?? null, appUrl: body?.appUrl ?? null };
+};
+
+const fetchContentShare = async (code) => {
+  if (!/^[0-9A-Za-z]{16}$/.test(asText(code))) return { status: 404, contentShare: null };
+  const proxySecret = process.env.SHARED_CARD_PROXY_SECRET;
+  if (typeof proxySecret !== "string" || proxySecret.length === 0) return { status: 503, contentShare: null };
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/shared-card?code=${encodeURIComponent(code)}`, {
+    redirect: "manual",
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, [SHARED_CARD_PROXY_HEADER]: proxySecret },
+  });
+  if (response.status === 410) return { status: 410, contentShare: null };
+  if (!response.ok) return { status: response.status, contentShare: null };
+  const body = await response.json();
+  return { status: 200, contentShare: body?.contentShare ?? null };
+};
+
+const renderContentShareHtml = (contentShare) => {
+  const facts = contentShare?.facts && typeof contentShare.facts === "object" ? contentShare.facts : {};
+  const code = asText(contentShare?.shortCode);
+  const canonicalUrl = `${EXPLORER_PUBLIC_ORIGIN}/s/${encodeURIComponent(code)}`;
+  const title = asText(facts.title) || "Mingla";
+  const description = [asText(facts.category), asText(facts.area), asText(facts.destination)].filter(Boolean).join(" · ") || `Open ${title} on Mingla.`;
+  const imageUrl = contentShare?.media?.posterUrl
+    ? `${EXPLORER_PUBLIC_ORIGIN}/og/s/${encodeURIComponent(code)}/v${Number(contentShare.version)}.png` : "";
+  return pageShell({ title: `${title} on Mingla`, description, canonicalUrl, imageUrl, type: "article", siteName: "Mingla",
+    body: `<main><section class="hero"><div><p>${escapeHtml(asText(facts.kind))}</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p><a class="cta" href="${escapeHtml(contentShareOneLink(code))}">Open or get Mingla</a></div></section></main>` });
 };
 
 const fetchPublicEventBySlug = async (brandSlug, eventSlug) => {
@@ -1151,12 +1178,14 @@ module.exports = {
   fetchPublicTripBySlug,
   fetchPublicVenueBySlug,
   fetchSharedCardSnapshot,
+  fetchContentShare,
   firstQueryValue,
   renderBrandHtml,
   renderEventHtml,
   renderTripHtml,
   renderVenueHtml,
   renderSharedCardHtml,
+  renderContentShareHtml,
   renderNotFoundHtml,
   renderOgPng,
   sendHtml,

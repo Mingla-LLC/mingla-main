@@ -253,9 +253,14 @@ test("H25 one ordered selector owns facts across server renderers and native", (
   }
 });
 
-test("H26 usemingla owns four local proxy routes and no external rewrite", () => {
+test("H26 usemingla owns stable content and legacy local proxy routes with no external rewrite", () => {
   const config = JSON.parse(read("mingla-marketing/vercel.json"));
+  // [TEST-MOD-APPROVED #1615] The receiver-first amendment expands this exact manifest with /s;
+  // retaining the former four-entry assertion would reject the required additive content routes.
   assert.deepEqual(config.rewrites.map((entry) => entry.source), [
+    "/s/:code",
+    "/og/s/:code/v:version.png",
+    "/api/content-share/:code",
     "/p/:shareId",
     "/share/:shareId.png",
     "/og/share/:shareId.png",

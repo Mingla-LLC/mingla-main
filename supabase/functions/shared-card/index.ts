@@ -12,6 +12,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
   status, headers: { ...cors, "content-type": "application/json", "cache-control": "no-store" },
 });
 const SHARE_RE = /^[a-f0-9]{36}$/;
+const CONTENT_SHARE_RE = /^[0-9A-Za-z]{16}$/;
 const clean = shareText;
 async function actorHash(secret: string, actor: string) {
   const bytes = new TextEncoder().encode(`${secret}:${actor}`);
@@ -44,8 +45,10 @@ serve(async (req) => {
       const url = Deno.env.get("SUPABASE_URL")!;
       const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
       const db = createClient(url, serviceKey, { auth: { persistSession: false } });
-      const shareId = new URL(req.url).searchParams.get("shareId") || "";
-      if (!SHARE_RE.test(shareId)) return json({ error: "not_found" }, 404);
+      const requestUrl = new URL(req.url);
+      const shareId = requestUrl.searchParams.get("shareId") || "";
+      const shortCode = requestUrl.searchParams.get("code") || "";
+      if (!SHARE_RE.test(shareId) && !CONTENT_SHARE_RE.test(shortCode)) return json({ error: "not_found" }, 404);
       // Vercel WAF is the gateway-backed rate limit and owns caller fairness.
       // This single aggregate bucket is only a
       // defense-in-depth circuit breaker, so no public share can exhaust a
@@ -56,6 +59,12 @@ serve(async (req) => {
       });
       if (limitError) throw limitError;
       if (!allowed) return json({ error: "rate_limited" }, 429);
+      if (shortCode) {
+        const { data, error } = await db.rpc("resolve_content_share_code", { p_code: shortCode });
+        if (error || !data) return json({ error: "not_found" }, 404);
+        if (data.gone === true) return json({ error: "gone" }, 410);
+        return json({ contentShare: data });
+      }
       const { data, error } = await db.from("shared_card_snapshots").select("share_id,snapshot_version,kind,title,cover_url,metadata,stops,attribution,created_at,expires_at,revoked_at").eq("share_id", shareId).maybeSingle();
       if (error || !data) return json({ error: "not_found" }, 404);
       if (data.revoked_at || new Date(data.expires_at).getTime() <= Date.now()) return json({ error: "gone" }, 410);

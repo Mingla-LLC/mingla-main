@@ -6,6 +6,7 @@
         "appID": "782KVMY869.com.mingla.app.v2",
         "paths": [
           "/invite/*",
+          "/s/*",
           "/p/*",
           "/board/*",
           "/orders/*",
