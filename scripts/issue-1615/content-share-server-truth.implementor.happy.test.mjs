@@ -8,9 +8,9 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
-import { mapAuthoritativeShareFacts, ticketTruthAt } from '../../supabase/functions/_shared/contentShare.ts';
+import { mapAuthoritativeShareFacts, mapServedMediaIdentity, ticketTruthAt } from '../../supabase/functions/_shared/contentShare.ts';
 import { refreshContentShareV1, validatePublicContentShareEnvelope } from '../../supabase/functions/_shared/contentShareService.ts';
-import { openStateForHours } from '../../packages/sharing/index.js';
+import { isPublicShareMediaUrl, openStateForHours } from '../../packages/sharing/index.js';
 import { proxySharedCard, INTERNAL_PROXY_HEADER } from '../../mingla-marketing/lib/shared-card-proxy.ts';
 // [TEST-MOD-APPROVED #1615] Next.js route handlers may expose only the framework
 // request/context signature. Inject fetch through the exported helper so this
@@ -61,7 +61,11 @@ test('ST4 coverless S6 omits all image claims while covered video has separate s
   assert.doesNotMatch(coverless,/og:image|twitter:image|class="portrait"|>Buy tickets</);
   const host='gqnoajqerqhnvulmnyvv.supabase.co/storage/v1/object/public/share';
   const video=renderContentShareHtml({...base,media:{kind:'video',url:`https://${host}/a.mp4`,posterUrl:`https://${host}/a.jpg`}});
-  for(const token of ['play-control','sound-control','Unmute video','v.muted=true','motion-composition'])assert.ok(video.includes(token),token);
+  // [TEST-MOD-APPROVED #1615] The hand-built motion composition was an
+  // unmeasured second identity mount. The corrected path clips the immutable
+  // canonical portrait above motion while retaining independent safe controls.
+  for(const token of ['play-control','sound-control','Unmute video','v.muted=true','portrait-identity-overlay'])assert.ok(video.includes(token),token);
+  assert.doesNotMatch(video,/motion-(?:composition|wordmark|title|plate)/);
 });
 
 test('ST5 public details are exact, bounded and contain neither provider hours nor nested identity',()=>{
@@ -217,6 +221,33 @@ test('ST17 the strict public envelope accepts all eight exact kind contracts and
     base('brand',{route:{brandSlug:'brand'}},{brandSlug:'brand',webPath:'/b/brand'},{offerings:[]}),
   ];
   for(const envelope of envelopes){assert.ok(validatePublicContentShareEnvelope(envelope),envelope.facts.kind);assert.equal(validatePublicContentShareEnvelope({...envelope,privateId:'no'}),null);}
+});
+
+test('ST18 governed media origins require HTTPS, no credentials, and the default port at every served boundary',()=>{
+  const renderer=require(path.join(ROOT,'mingla-business/server/cardIdentityRenderer.js'));
+  const valid='https://vz-a16fce08-6c6.b-cdn.net/poster.jpg';
+  const wrongPort='https://vz-a16fce08-6c6.b-cdn.net:8443/poster.jpg';
+  const credentials='https://user:pass@vz-a16fce08-6c6.b-cdn.net/poster.jpg';
+  assert.equal(isPublicShareMediaUrl(valid),true);
+  assert.equal(renderer.isAllowedPublicPoster(valid),true);
+  for(const rejected of [wrongPort,credentials]){
+    assert.equal(isPublicShareMediaUrl(rejected),false);
+    assert.equal(renderer.isAllowedPublicPoster(rejected),false);
+    assert.equal(mapServedMediaIdentity({cover_media_url:rejected,cover_media_type:'image'}),null);
+    const envelope={state:'active',gone:false,shortCode:'Aa0Bb1Cc2Dd3Ee4F',version:1,facts:{schemaVersion:1,kind:'brand',title:'Boundary',media:{kind:'photo',url:rejected,posterUrl:rejected}},media:{kind:'photo',url:rejected,posterUrl:rejected},destination:{kind:'brand',brandSlug:'boundary',webPath:'/b/boundary'},publicDetails:{kind:'brand',offerings:[]}};
+    assert.equal(validatePublicContentShareEnvelope(envelope),null);
+  }
+});
+
+test('ST19 moving media preserves the exact immutable portrait identity instead of mounting a second plate',()=>{
+  const {renderContentShareHtml}=require(path.join(ROOT,'mingla-business/server/socialPreview.js'));
+  const code='Aa0Bb1Cc2Dd3Ee4F';
+  const html=renderContentShareHtml({shortCode:code,version:4,facts:{schemaVersion:1,kind:'event',title:'Measured motion'},media:{kind:'video',url:'https://vz-a16fce08-6c6.b-cdn.net/video.mp4',posterUrl:'https://vz-a16fce08-6c6.b-cdn.net/poster.jpg'},destination:{kind:'event'},publicDetails:{kind:'event',actionEligible:false,occurrences:[]}});
+  const exact=`https://usemingla.com/og/s/${code}/v4.png`;
+  assert.equal((html.match(new RegExp(exact.replaceAll('/','\\/'),'g'))||[]).length>=3,true);
+  assert.match(html,/portrait-identity-overlay identity-wordmark/);
+  assert.match(html,/portrait-identity-overlay identity-bottom/);
+  assert.doesNotMatch(html,/motion-(?:composition|wordmark|title|plate)/);
 });
 
 test('ST9 browser legacy alias renders the matching canonical S6 identity, never the legacy card',async()=>{

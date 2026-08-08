@@ -23,7 +23,8 @@ const PUBLIC_IMAGE_MIME = /^image\/(?:avif|jpeg|png|webp)(?:;|$)/i;
 const isAllowedPublicPoster = (value) => {
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password) return false;
+    const hasUserInfo = !url.href.startsWith(`${url.protocol}//${url.host}`);
+    if (url.protocol !== "https:" || hasUserInfo || url.port) return false;
     const host = url.hostname.toLowerCase();
     const bunnyHost = safeText(process.env.BUNNY_STREAM_CDN_HOSTNAME).toLowerCase();
     return ["usemingla.com", "www.usemingla.com", "business.usemingla.com"].includes(host)

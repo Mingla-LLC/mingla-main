@@ -86,7 +86,8 @@ const publicMediaUrl = (value: unknown): string | null => {
   const text = clean(value, 2048);
   try {
     const url = new URL(text);
-    if (url.protocol !== "https:") return null;
+    const hasUserInfo = !url.href.startsWith(`${url.protocol}//${url.host}`);
+    if (url.protocol !== "https:" || hasUserInfo || url.port) return null;
     const host = url.hostname.toLowerCase();
     const bunnyHost = clean((globalThis as any).Deno?.env?.get?.("BUNNY_STREAM_CDN_HOSTNAME"), 255).toLowerCase();
     const allowed = ["usemingla.com","www.usemingla.com","business.usemingla.com"].includes(host)

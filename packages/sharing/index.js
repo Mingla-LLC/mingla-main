@@ -103,7 +103,7 @@ function buildSharePortraitUrl(code, version) {
 
 function contentShareRequestFromPublicUrl(value, overrideKind) {
   let parsed; try { parsed = new URL(value); } catch { return null; }
-  if (!['business.usemingla.com', 'usemingla.com'].includes(parsed.hostname)) return null;
+  if (parsed.protocol !== 'https:' || parsed.port || !['business.usemingla.com', 'usemingla.com'].includes(parsed.hostname)) return null;
   let parts; try { parts = parsed.pathname.split('/').filter(Boolean).map(decodeURIComponent); } catch { return null; }
   if (parts[0] === 'e' && parts[1] && parts[2]) return { kind: overrideKind === 'rsvp_event' ? 'rsvp_event' : 'event', identity:{brandSlug:parts[1],eventSlug:parts[2]} };
   if (parts[0] === 't' && parts[1] && parts[2]) return { kind:'trip', identity:{brandSlug:parts[1],eventSlug:parts[2]} };
@@ -174,6 +174,7 @@ function isPublicShareMediaUrl(value, allowedBunnyHosts = []) {
   const url = cleanHttpsUrl(value);
   if (!url) return false;
   const parsed = new URL(url);
+  if (parsed.port) return false;
   const host = parsed.hostname.toLowerCase();
   if (['usemingla.com', 'www.usemingla.com', 'business.usemingla.com'].includes(host)) return true;
   if (host === 'images.pexels.com' || host === 'videos.pexels.com') return true;
