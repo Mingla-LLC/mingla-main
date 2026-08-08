@@ -101,6 +101,7 @@ import { postHogService } from "../src/services/postHogService";
 import { useTranslation } from 'react-i18next';
 import i18n from '../src/i18n';
 import { persistLanguage } from '../src/i18n';
+import { consumeContentShareAttributionAfterIdentity, subscribeContentShareAttributionWrites } from '../src/services/contentShareAttribution';
 import { useForegroundRefresh } from "../src/hooks/useForegroundRefresh";
 import { useOtaUpdates } from "../src/hooks/useOtaUpdates";
 import { OtaUpdateBanner } from "../src/components/ui/OtaUpdateBanner";
@@ -1138,6 +1139,23 @@ function AppContent() {
       }
     }
   }, [isAuthenticated, user?.id, profile?.has_completed_onboarding]);
+
+  // Consume the opaque installed-direct activation only after Mixpanel,
+  // PostHog and AppsFlyer have been bound to the authenticated identity. The
+  // subscription also covers an /s route that resolves after this effect ran.
+  useEffect(() => {
+    if (!isAuthenticated || isLoadingAuth || !user?.id) return;
+    const consume = (): void => {
+      void consumeContentShareAttributionAfterIdentity(AsyncStorage, (event, properties) => {
+        mixpanelService.track(event, properties);
+        logAppsFlyerEvent(event, properties);
+      }).catch((error: unknown) => {
+        console.warn('[ContentShare] Failed to consume identified activation:', error);
+      });
+    };
+    consume();
+    return subscribeContentShareAttributionWrites(consume);
+  }, [isAuthenticated, isLoadingAuth, user?.id]);
 
   // Transform friends to Friend format for session creation
   // dbFriends from useFriends has: id, friend_user_id, username, display_name, first_name, last_name, avatar_url

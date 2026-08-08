@@ -20,6 +20,7 @@ import {
 } from '../../src/services/contentShareService';
 import { mixpanelService } from '../../src/services/mixpanelService';
 import { logAppsFlyerEvent } from '../../src/services/appsFlyerService';
+import { persistContentShareAttribution } from '../../src/services/contentShareAttribution';
 
 type RouteFailure = 'not_found' | 'gone' | 'temporarily_unavailable';
 
@@ -78,7 +79,7 @@ export default function ContentShareRoute() {
       // Installed-direct attribution stays opaque on-device. The server can
       // resolve this validated link/version to its privately derived creator
       // referral; the public envelope never exposes the referral code.
-      await AsyncStorage.setItem('@mingla_content_share_attribution', JSON.stringify({ shortCode: next.shortCode, version: next.version }));
+      await persistContentShareAttribution(AsyncStorage, { shortCode: next.shortCode, version: next.version });
       capture('share_native_opened', { kind: next.facts.kind, version: next.version, short_code: next.shortCode, recipient_app: 'consumer', recipient_surface: 'native_content_share', outcome: 'resolved' });
       const path = destinationPath(next);
       if (path !== null) {

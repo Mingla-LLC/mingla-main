@@ -27,9 +27,6 @@ type ShareFlowState = 'idle' | 'validating' | 'creating' | 'reusing' | 'ready' |
 // META-ORCH-0991 Wave B Batch 3: was a centered card capped at maxHeight 90% →
 // a swipe-down sheet at the same height. Module-level const per playbook §2.
 const SHARE_SHEET_SNAP_POINTS = ['90%'];
-const ENABLE_LEGACY_PRIVATE_SHARE_FALLBACK =
-  process.env.EXPO_PUBLIC_ENABLE_LEGACY_SHARE_FALLBACK === 'true';
-
 type ShareAnalyticsEvent = 'share_sheet_opened' | 'share_link_ready' | 'share_sheet_returned' | 'share_failure';
 const trackShareAnalytics = (
   event: ShareAnalyticsEvent,
@@ -173,7 +170,9 @@ export default function ShareModal({
       const created = await createPromise;
       setSharedCard(created);
       setShareState('ready');
-      trackShareAnalytics('share_link_ready', { kind, version: created.version, short_code: created.shortCode, channel, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' });
+      trackShareAnalytics('share_link_ready', created.contract === 'content_share_v1'
+        ? { kind, version: created.version, short_code: created.shortCode, channel, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' }
+        : { kind, contract: 'legacy_shared_card', channel, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' });
       return created;
     } catch (error) {
       sharedCardPromiseRef.current = null;
@@ -186,12 +185,6 @@ export default function ShareModal({
     const entity = buildShareEntity();
     if (entity) {
       const url = buildFallbackShareUrl({ entity, channel: 'fallback' });
-      return { url, message: `${title}\n\n${url}` };
-    }
-    const legacyShareId = experienceData.shareId || experienceData.share_id;
-    if (ENABLE_LEGACY_PRIVATE_SHARE_FALLBACK && typeof legacyShareId === 'string' && /^[a-f0-9]{36}$/.test(legacyShareId)) {
-      const entityKind: ShareEntity = { type: isCuratedItinerary ? 'curated' : 'place', shareId: legacyShareId };
-      const url = buildFallbackShareUrl({ entity: entityKind, channel: 'fallback' });
       return { url, message: `${title}\n\n${url}` };
     }
     return null;
@@ -276,7 +269,9 @@ export default function ShareModal({
       reachedOpening = true;
 
       const openNativeShareSheet = async (): Promise<void> => {
-        const properties = { kind: prepared.facts.kind, version: prepared.version, short_code: prepared.shortCode, channel: platform, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' };
+        const properties: Record<string, string | number | boolean> = prepared.contract === 'content_share_v1'
+          ? { kind: prepared.kind, version: prepared.version, short_code: prepared.shortCode, channel: platform, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' }
+          : { kind: prepared.kind, contract: 'legacy_shared_card', channel: platform, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' };
         trackShareAnalytics('share_sheet_opened', properties);
         await sharePreparedContent(prepared);
         trackShareAnalytics('share_sheet_returned', { ...properties, outcome: 'returned' });
@@ -397,12 +392,12 @@ export default function ShareModal({
                   source={{ uri: sharedCard.s4Url }}
                   style={styles.portraitPreview}
                   resizeMode="cover"
-                  accessibilityLabel={`${sharedCard.facts.kind.replace('_', ' ')}: ${sharedCard.facts.title}`}
+                  accessibilityLabel={`${sharedCard.kind.replace('_', ' ')}: ${sharedCard.title}`}
                 />
               ) : sharedCard ? (
                 <View style={styles.coverlessPreview} accessibilityLabel="No image preview available">
-                  <Text style={styles.coverlessKind}>{sharedCard.facts.kind.replace('_', ' ')}</Text>
-                  <Text style={styles.coverlessTitle}>{sharedCard.facts.title}</Text>
+                  <Text style={styles.coverlessKind}>{sharedCard.kind.replace('_', ' ')}</Text>
+                  <Text style={styles.coverlessTitle}>{sharedCard.title}</Text>
                   <Text style={styles.coverlessCopy}>No image preview is available. The link still opens the full details.</Text>
                 </View>
               ) : (
@@ -415,7 +410,10 @@ export default function ShareModal({
               {/* Personalized Message Box */}
               <View style={styles.messageBox}>
                 {sharedCard ? (
-                  <Text style={styles.messageText}>{sharedCard.message}</Text>
+                  <>
+                    {sharedCard.contract === 'legacy_shared_card' ? <Text style={styles.shareStatus}>Compatibility share link ready</Text> : null}
+                    <Text style={styles.messageText}>{sharedCard.message}</Text>
+                  </>
                 ) : shareState === 'error' ? (
                   <View style={styles.messageState}>
                     <Text style={styles.shareError}>The share preview is unavailable. Your original public link is still available where possible.</Text>

@@ -45,7 +45,11 @@ test('C3 consumer preview renders only the canonical prepared message lifecycle'
   }
   assert.match(source, /<Text style=\{styles\.messageText\}>\{sharedCard\.message\}<\/Text>/);
   assert.doesNotMatch(source, /generatePersonalizedMessage|personalizedMessage|star rating|Let me know if you're interested/);
-  assert.match(source, /ENABLE_LEGACY_PRIVATE_SHARE_FALLBACK[\s\S]*=== 'true'/);
+  // [TEST-MOD-APPROVED #1615] The prior assertion pinned the unsafe
+  // default-off rollback blocker. The adapter now performs a default-on,
+  // response-classified authenticated legacy create for place/curated only.
+  assert.doesNotMatch(source, /ENABLE_LEGACY_PRIVATE_SHARE_FALLBACK|EXPO_PUBLIC_ENABLE_LEGACY_SHARE_FALLBACK/);
+  assert.match(read('app-mobile/src/services/contentShareAdapter.ts'), /isLegacyRollbackEligible[\s\S]*createSharedCard/);
   assert.match(source, /accessibilityState=\{\{ disabled: true \}\}[\s\S]{0,600}Coming soon/);
   assert.match(source, /sharedCard\?\.s4Url[\s\S]*aspectRatio:\s*4\s*\/\s*5/);
   assert.match(source, /No image preview is available/);
@@ -92,7 +96,10 @@ test('C5 content-share ignores raw referral while retaining exact code navigatio
     { kind: 'content_share', code },
   );
   const route = read('app-mobile/app/s/[code].tsx');
-  assert.match(route, /@mingla_content_share_attribution[\s\S]*shortCode:\s*next\.shortCode[\s\S]*version:\s*next\.version/);
+  // [TEST-MOD-APPROVED #1615] The route and authenticated root now share one
+  // exact opaque-state helper; the old assertion pinned a write-only literal.
+  assert.match(route, /persistContentShareAttribution\(AsyncStorage, \{ shortCode: next\.shortCode, version: next\.version \}\)/);
+  assert.match(read('app-mobile/src/services/contentShareAttribution.ts'), /@mingla_content_share_attribution/);
   assert.doesNotMatch(route, /\bref\b|@mingla_referral_code/);
   assert.doesNotMatch(dispatch, /const referralQuery|\?ref=/);
   const contentShareBranch = dispatch.match(/case 'content_share': \{([\s\S]*?)case 'share':/);
@@ -176,4 +183,104 @@ test('C10 Android adapters put the canonical URL in message exactly once', () =>
   assert.match(businessTransport, /stripUrlFromBody[\s\S]*buildAndroidPublicShareMessage[\s\S]*body\.includes\(url\)\s*\?\s*body\s*:\s*`\$\{body\}\\n\$\{url\}`/);
   const message = sharing.buildShareMessage({ schemaVersion: 1, kind: 'place', title: 'Namu' }, { shortCode: 'Aa0Bb1Cc2Dd3Ee4F' });
   assert.equal((message.match(/https:\/\/usemingla\.com\/s\/Aa0Bb1Cc2Dd3Ee4F/g) ?? []).length, 1);
+});
+
+test('C11 flag-off 503 rolls place/curated back to truthful returned /p data', async () => {
+  const rollback = await import(pathToFileURL(path.join(ROOT, 'app-mobile/src/services/legacyContentShareRollback.ts')));
+  assert.equal(rollback.isLegacyRollbackEligible({ context: { status: 503 } }), true);
+  const shareId = 'a'.repeat(36);
+  const fields = rollback.prepareLegacyPublicFields({
+    kind: 'curated',
+    title: 'Durham afternoon',
+    metadata: { category: 'Food', location: 'Durham', price: 'Estimated $20–$40', description: 'Three real stops.' },
+    stops: [
+      { title: 'Namu', placeId: 'private-google-id' },
+      { title: 'Museum', source_reference: 'private-source' },
+      { title: 'Park' },
+    ],
+    source_ids: { savedCardId: 'private-card' },
+    owner_profile_id: 'private-owner',
+    attribution: { referralCode: 'private-referral' },
+  }, `https://usemingla.com/p/${shareId}`, `https://usemingla.com/share/${shareId}.png`, 'curated', {
+    planningPreference: { dayOfWeek: 'weekend', timeOfDay: 'afternoon', planningTimeframe: 'this month' },
+  });
+  assert.equal(fields.snapshot.title, 'Durham afternoon');
+  assert.equal(fields.snapshot.stops.length, 3);
+  assert.equal(fields.message, `Durham afternoon is a 3-stop plan.\nFood · Durham\nThree real stops.\nEstimated $20–$40\nStops: Namu; Museum; Park\nI was thinking one weekend afternoon this month.\n\nhttps://usemingla.com/p/${shareId}`);
+  assert.equal(fields.s4Url, `https://usemingla.com/share/${shareId}.png`);
+  assert.equal(fields.message.split(`https://usemingla.com/p/${shareId}`).length - 1, 1);
+  const serialized = JSON.stringify(fields);
+  for (const secret of ['private-google-id', 'private-source', 'private-card', 'private-owner', 'private-referral']) assert.doesNotMatch(serialized, new RegExp(secret));
+  const reversed = rollback.prepareLegacyPublicFields({ kind:'curated', title:'Truth', metadata:{ price:'$100.00-$0.00' }, stops:[] }, `https://usemingla.com/p/${shareId}`, null, 'curated');
+  assert.doesNotMatch(reversed.message,/\$100\.00|\$0\.00/);
+  assert.throws(() => rollback.prepareLegacyPublicFields({ kind:'place', title:'Wrong port', metadata:{}, stops:[] }, `https://usemingla.com:8443/p/${shareId}`, null, 'place'), /legacy_share_invalid/);
+  const adapter = read('app-mobile/src/services/contentShareAdapter.ts');
+  assert.match(adapter, /kind !== 'place' && kind !== 'curated'/);
+  assert.match(adapter, /createSharedCard\(\{[\s\S]*sourceIds:[\s\S]*attribution: \{ channel \}/);
+  assert.match(adapter, /contract: 'legacy_shared_card'[\s\S]*legacySnapshot/);
+  assert.doesNotMatch(adapter.match(/PreparedLegacyContentShare = \{([\s\S]*?)\n\};/)?.[1] ?? '', /shortCode|version|facts|media|destination|publicDetails/);
+});
+
+test('C12 fatal v1 failures cannot downgrade to legacy creation', async () => {
+  const rollback = await import(pathToFileURL(path.join(ROOT, 'app-mobile/src/services/legacyContentShareRollback.ts')));
+  for (const status of [400, 401, 403, 404, 409, 410, 422]) {
+    assert.equal(rollback.isLegacyRollbackEligible({ context: { status } }), false, String(status));
+  }
+  assert.equal(rollback.isLegacyRollbackEligible(new Error('share_create_failed')), false);
+  assert.equal(rollback.isLegacyRollbackEligible({ name: 'FunctionsFetchError', message: 'Failed to send a request to the Edge Function' }), true);
+  assert.equal(rollback.isLegacyRollbackEligible({ name: 'FunctionsRelayError', message: 'Relay Error invoking the Edge Function' }), true);
+  const adapter = read('app-mobile/src/services/contentShareAdapter.ts');
+  assert.match(adapter, /!isLegacyRollbackEligible\(error, response\?\.status\)[\s\S]*throw new Error/);
+  assert.match(read('app-mobile/src/components/ShareModal.tsx'), /setShareState\('error'\)[\s\S]*Retry preview/);
+});
+
+test('C13 opaque installed-direct state activates once after identity and malformed state fails closed', async () => {
+  const attribution = await import(pathToFileURL(path.join(ROOT, 'app-mobile/src/services/contentShareAttribution.ts')));
+  const values = new Map();
+  const storage = {
+    async getItem(key) { return values.get(key) ?? null; },
+    async setItem(key, value) { values.set(key, value); },
+    async removeItem(key) { values.delete(key); },
+  };
+  const events = [];
+  const capture = (event, properties) => events.push({ event, properties });
+  const state = { shortCode: 'Aa0Bb1Cc2Dd3Ee4F', version: 7 };
+
+  // Signed-out open writes only opaque state; later authenticated consumption
+  // emits the approved event and deletes before a second attempt can fire.
+  assert.equal(await attribution.persistContentShareAttribution(storage, state), true);
+  assert.equal(events.length, 0);
+  assert.equal(await attribution.consumeContentShareAttributionAfterIdentity(storage, capture), 'consumed');
+  assert.equal(values.has(attribution.CONTENT_SHARE_ATTRIBUTION_KEY), false);
+  assert.deepEqual(events, [{ event: 'share_native_opened', properties: {
+    short_code: state.shortCode,
+    version: 7,
+    recipient_app: 'consumer',
+    recipient_surface: 'native_content_share',
+    outcome: 'identified_activation',
+  } }]);
+  assert.equal(await attribution.consumeContentShareAttributionAfterIdentity(storage, capture), 'empty');
+  assert.equal(events.length, 1);
+
+  // Already-identified roots subscribe for a later /s write. Its existing
+  // resolved event remains separate and valid; this adds no new event name.
+  let identifiedConsume;
+  const unsubscribe = attribution.subscribeContentShareAttributionWrites(() => {
+    identifiedConsume = attribution.consumeContentShareAttributionAfterIdentity(storage, capture);
+  });
+  await attribution.persistContentShareAttribution(storage, { ...state, version: 8 });
+  assert.ok(identifiedConsume);
+  assert.equal(await identifiedConsume, 'consumed');
+  unsubscribe();
+  assert.equal(events.length, 2);
+  const route = read('app-mobile/app/s/[code].tsx');
+  assert.match(route, /share_native_opened[\s\S]*outcome: 'resolved'/);
+
+  values.set(attribution.CONTENT_SHARE_ATTRIBUTION_KEY, JSON.stringify({ ...state, version: 9, referralCode: 'RAW-REF' }));
+  assert.equal(await attribution.consumeContentShareAttributionAfterIdentity(storage, capture), 'malformed');
+  assert.equal(values.has(attribution.CONTENT_SHARE_ATTRIBUTION_KEY), false);
+  assert.equal(events.length, 2);
+  const root = read('app-mobile/app/index.tsx');
+  assert.match(root, /mixpanelService\.trackLogin[\s\S]*consumeContentShareAttributionAfterIdentity\(AsyncStorage/);
+  assert.doesNotMatch(read('app-mobile/src/services/contentShareAttribution.ts'), /referral|reward|claim/i);
 });
