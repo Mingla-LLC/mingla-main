@@ -6,7 +6,9 @@ const BUSINESS_ORIGIN = process.env.NODE_ENV === 'development' && process.env.SH
 const SHARE_ID = /^[a-f0-9]{36}$/
 const SHARE_CODE = /^[0-9A-Za-z]{16}$/
 const SHARE_VERSION = /^[1-9][0-9]*$/
-const ALLOWED_STATUSES = new Set([200, 304, 404, 410, 429, 500, 503])
+const MAX_CONTENT_SHARE_JPEG_BYTES = 200_000
+const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable'
+const ALLOWED_STATUSES = new Set([200, 304, 404, 410, 429, 500, 502, 503])
 
 async function constantTimeEqual(provided: string, expected: string) {
   const encoder = new TextEncoder()
@@ -28,7 +30,7 @@ const expectedContentType = (surface: SharedCardProxySurface) =>
     ? 'text/html; charset=utf-8'
     : surface === 'data' || surface === 'content-data'
       ? 'application/json; charset=utf-8'
-      : 'image/png'
+      : surface === 'content-image' ? 'image/jpeg' : 'image/png'
 
 const upstreamPath = (surface: SharedCardProxySurface, shareId: string, version?: string) => {
   const encoded = encodeURIComponent(shareId)
@@ -51,6 +53,22 @@ const privateResponse = (body: BodyInit | null, status: number, contentType: str
   },
 })
 
+const immutableJpegResponse = (body: BodyInit | null, status: 200 | 304, etag: string) => new Response(body, {
+  status,
+  headers: {
+    'content-type': 'image/jpeg',
+    etag,
+    'cache-control': IMMUTABLE_CACHE,
+    'cdn-cache-control': IMMUTABLE_CACHE,
+    'vercel-cdn-cache-control': IMMUTABLE_CACHE,
+  },
+})
+
+const isBoundedJpeg = (bytes: Uint8Array) => bytes.length > 3
+  && bytes.length <= MAX_CONTENT_SHARE_JPEG_BYTES
+  && bytes[0] === 0xff && bytes[1] === 0xd8
+  && bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9
+
 export async function proxySharedCard(
   request: Request,
   shareId: string,
@@ -72,29 +90,36 @@ export async function proxySharedCard(
   }
 
   let upstream: Response
-  const expectedEtag = surface === 'content-image' ? `"content-share-${shareId}-v${version}"` : ''
+  const expectedEtag = surface === 'content-image' ? `"content-share-${shareId}-v${version}-r2-jpeg"` : ''
   const requestEtag = request.headers.get('if-none-match') === expectedEtag ? expectedEtag : ''
   try {
-    upstream = await fetchImpl(`${BUSINESS_ORIGIN}${upstreamPath(surface, shareId, version)}`, {
+    const fetchOptions: RequestInit = {
       method: 'GET',
-      cache: 'no-store',
       redirect: 'manual',
       headers: { [DOWNSTREAM_PROXY_HEADER]: secret, ...(requestEtag ? { 'if-none-match': requestEtag } : {}) },
-    })
+    }
+    if (surface !== 'content-image') fetchOptions.cache = 'no-store'
+    upstream = await fetchImpl(`${BUSINESS_ORIGIN}${upstreamPath(surface, shareId, version)}`, fetchOptions)
   } catch {
     return privateResponse(null, 502, contentType)
   }
   const status = ALLOWED_STATUSES.has(upstream.status) ? upstream.status : 502
   const upstreamEtag = upstream.headers.get('etag') === expectedEtag ? expectedEtag : ''
-  if (status === 304) return surface === 'content-image' && upstreamEtag ? privateResponse(null,304,contentType,upstreamEtag,true) : privateResponse(null,502,contentType)
+  if (status === 304) return surface === 'content-image' && upstreamEtag ? immutableJpegResponse(null, 304, upstreamEtag) : privateResponse(null,502,contentType)
   if (status !== 200) return privateResponse(null, status, contentType)
 
   const receivedType = upstream.headers.get('content-type')?.toLowerCase() || ''
   const requiredType = contentType.split(';')[0]
-  if (!receivedType.startsWith(requiredType)) return privateResponse(null, 502, contentType)
+  if (surface === 'content-image' ? receivedType !== requiredType : !receivedType.startsWith(requiredType)) return privateResponse(null, 502, contentType)
   try {
-    if(surface==='content-image'&&!upstreamEtag)return privateResponse(null,502,contentType)
-    return privateResponse(await upstream.arrayBuffer(), 200, contentType, upstreamEtag, surface==='content-image')
+    if (surface === 'content-image') {
+      if (!upstreamEtag) return privateResponse(null,502,contentType)
+      const declaredSize = Number(upstream.headers.get('content-length') || '0')
+      if (declaredSize > MAX_CONTENT_SHARE_JPEG_BYTES) return privateResponse(null,502,contentType)
+      const bytes = new Uint8Array(await upstream.arrayBuffer())
+      return isBoundedJpeg(bytes) ? immutableJpegResponse(bytes, 200, upstreamEtag) : privateResponse(null,502,contentType)
+    }
+    return privateResponse(await upstream.arrayBuffer(), 200, contentType)
   } catch {
     return privateResponse(null, 502, contentType)
   }

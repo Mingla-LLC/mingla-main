@@ -20,6 +20,8 @@ const MINGLA_STORAGE_HOST = "gqnoajqerqhnvulmnyvv.supabase.co";
 const MINGLA_BUNNY_DELIVERY_HOST = "vz-a16fce08-6c6.b-cdn.net";
 const MAX_COVER_BYTES = 8 * 1024 * 1024;
 const MAX_RENDERED_PNG_BYTES = 5 * 1024 * 1024;
+const MAX_CONTENT_SHARE_JPEG_BYTES = 200_000;
+const CONTENT_SHARE_JPEG_QUALITIES = Object.freeze([82, 78, 74, 70, 66]);
 const PUBLIC_IMAGE_MIME = /^image\/(?:avif|jpeg|png|webp)(?:;|$)/i;
 const isAllowedPublicPoster = (value) => {
   try {
@@ -111,8 +113,9 @@ const portraitTitleSize = (title) => {
   return count > 70 ? 23 : count > 48 ? 25 : 27;
 };
 
-/** Canonical #1615 portrait. S4 and S5 call this same function and therefore
- * receive byte-identical 1080x1350 PNGs for one immutable share version. */
+/** Canonical #1615 portrait composition. S4 and S5 call this same function and
+ * therefore receive byte-identical 1080x1350 artwork for one immutable share
+ * version; transport encoding is selected after this composition renders. */
 function contentSharePortraitElement(contentShare) {
   const s = SURFACES.s4Snippet;
   const scale = 3;
@@ -152,6 +155,25 @@ async function renderContentSharePortraitPng(contentShare) {
   return png;
 }
 
+async function renderContentSharePortraitJpeg(contentShare) {
+  const png = await renderContentSharePortraitPng(contentShare);
+  const sharp = require("sharp");
+  for (const quality of CONTENT_SHARE_JPEG_QUALITIES) {
+    const jpeg = await sharp(png, { limitInputPixels: 20_000_000, failOn: "error" })
+      .flatten({ background: "#0C0E12" })
+      .jpeg({ quality, progressive: true, mozjpeg: true, chromaSubsampling: "4:4:4" })
+      .toBuffer();
+    if (jpeg.length === 0 || jpeg.length > MAX_CONTENT_SHARE_JPEG_BYTES) continue;
+    const metadata = await sharp(jpeg, { limitInputPixels: 20_000_000, failOn: "error" }).metadata();
+    if (metadata.format !== "jpeg" || metadata.width !== 1080 || metadata.height !== 1350
+      || jpeg[0] !== 0xff || jpeg[1] !== 0xd8 || jpeg[jpeg.length - 2] !== 0xff || jpeg[jpeg.length - 1] !== 0xd9) {
+      throw new Error("invalid_rendered_share_portrait");
+    }
+    return jpeg;
+  }
+  throw new Error("rendered_share_portrait_too_large");
+}
+
 function businessRowSnapshot(props) {
   return {
     kind: "place",
@@ -180,4 +202,4 @@ function s6CardCss() {
   return `.share-cover{height:${s.h}px;max-width:${s.w}px;margin:auto;border-radius:${s.cardR}px;position:relative;overflow:hidden}.share-cover-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.share-cover:after{content:"";position:absolute;left:0;right:0;bottom:0;height:${surfaceScrimHeight("s6Phone")}px;background:${cssGradient(RAMP.bottom)}}.share-identity-pill{z-index:2;position:absolute;left:24px;top:24px;width:124px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:18px;background:#FFF7EF;border:1px solid rgba(12,14,18,.56);box-shadow:0 4px 12px rgba(12,14,18,.18);box-sizing:border-box}.share-identity-pill img{width:96px;height:34px;object-fit:contain}.share-title{z-index:2;position:absolute;left:${s.sideInset + s.titleInset}px;right:${s.sideInset + s.titleInset}px;bottom:${s.bottomInset + s.plateH + s.gap}px;font-size:${s.titleSize}px;line-height:${s.titleLH}px;font-weight:${s.titleWeight}}.share-plate{z-index:2;position:absolute;left:${s.sideInset}px;right:${s.sideInset}px;bottom:${s.bottomInset}px;height:${s.plateH}px;border:${boundary.width}px solid ${boundary.color};border-radius:${s.plateR}px;background:linear-gradient(${PLATE.lift},${PLATE.lift}),linear-gradient(${underColor},${underColor});backdrop-filter:blur(${PLATE.blurIntensity}px);-webkit-backdrop-filter:blur(${PLATE.blurIntensity}px);box-shadow:inset 0 1px 0 ${PLATE.topHighlight};display:flex;flex-direction:column;justify-content:center;padding:7px 12px;box-sizing:border-box}.share-plate-kind{font-size:12px;line-height:16px;font-weight:600}.share-plate-facts{font-size:${s.metaSize}px;line-height:16px;font-weight:500}@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.share-plate{background:${PLATE.fallbackSolid}}}.share-curated-sliver{z-index:1;position:absolute;height:${s.sliver.height}px;border-radius:${s.sliver.radius}px;border:${sliverBoundary.width}px solid ${sliverBoundary.color};background:linear-gradient(90deg,${s.sliver.opaque[0]},${s.sliver.opaque[1]})}.share-curated-sliver.one{left:${s.sideInset + s.sliver.insets[0]}px;right:${s.sideInset + s.sliver.insets[0]}px;bottom:${s.bottomInset + s.plateH + SLIVER.offsets[0]}px}.share-curated-sliver.two{left:${s.sideInset + s.sliver.insets[1]}px;right:${s.sideInset + s.sliver.insets[1]}px;bottom:${s.bottomInset + s.plateH + SLIVER.offsets[1]}px}`;
 }
 
-module.exports = { MAX_RENDERED_PNG_BYTES, businessRowSnapshot, cardIdentityElement, contentSharePortraitElement, factsFor, isAllowedPublicPoster, prepareCoverForOg, renderCardIdentityPng, renderContentSharePortraitPng, s6CardCss, useDirectionC, wordmarkSource };
+module.exports = { MAX_CONTENT_SHARE_JPEG_BYTES, MAX_RENDERED_PNG_BYTES, businessRowSnapshot, cardIdentityElement, contentSharePortraitElement, factsFor, isAllowedPublicPoster, prepareCoverForOg, renderCardIdentityPng, renderContentSharePortraitJpeg, renderContentSharePortraitPng, s6CardCss, useDirectionC, wordmarkSource };

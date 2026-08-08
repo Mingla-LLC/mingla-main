@@ -1,6 +1,7 @@
 'use strict';
 
 const SHARE_FACTS_VERSION = 1;
+const SHARE_PORTRAIT_REVISION = 2;
 const SHARE_ENTITY_KINDS = Object.freeze([
   'place', 'curated', 'event', 'rsvp_event', 'trip', 'experience', 'venue', 'brand',
 ]);
@@ -98,7 +99,7 @@ function buildSharePortraitUrl(code, version) {
   if (!isShortShareCode(code) || !Number.isSafeInteger(version) || version < 1) {
     throw new TypeError('invalid_share_portrait_identity');
   }
-  return `https://usemingla.com/og/s/${code}/v${version}.png`;
+  return `https://usemingla.com/og/s/${code}/v${version}-r${SHARE_PORTRAIT_REVISION}.jpg`;
 }
 
 function contentShareRequestFromPublicUrl(value, overrideKind) {
@@ -444,7 +445,7 @@ function routeContractFor(kind) {
 }
 
 module.exports = {
-  SHARE_FACTS_VERSION, SHARE_ENTITY_KINDS, SHARE_STATUSES, SHARE_CHANNEL_BUDGETS,
+  SHARE_FACTS_VERSION, SHARE_PORTRAIT_REVISION, SHARE_ENTITY_KINDS, SHARE_STATUSES, SHARE_CHANNEL_BUDGETS,
   ROUTE_MANIFEST, cleanText, cleanHttpsUrl, cleanMoney, cleanMedia, cleanDestination,
   isPublicShareMediaUrl, selectPublicMediaIdentity,
   isShortShareCode, sanitizeReferralCode, buildShortShareUrl, buildSharePortraitUrl, contentShareRequestFromPublicUrl, validateShareFactsV1, parseShareFactsV1,

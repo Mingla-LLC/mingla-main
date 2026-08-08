@@ -18,6 +18,7 @@ export type ShareFactsV1 =
   | (Common & { kind: 'venue'; category?: string; area?: string; nextPublicOffering?: string; openState?: string; hours?: ShareHoursRow[]; description?: string })
   | (Common & { kind: 'brand'; category?: string; area?: string; upcomingPublicOfferingCount?: number; description?: string });
 export const SHARE_FACTS_VERSION: 1;
+export const SHARE_PORTRAIT_REVISION: 2;
 export const SHARE_ENTITY_KINDS: readonly ShareEntityKind[];
 export const SHARE_STATUSES: readonly ShareStatus[];
 export const SHARE_CHANNEL_BUDGETS: Readonly<Record<'generic' | 'sms' | 'whatsapp' | 'x' | 'email', { beforeUrl: number; total: number }>>;

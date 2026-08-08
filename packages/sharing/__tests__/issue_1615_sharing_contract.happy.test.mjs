@@ -54,7 +54,10 @@ test('H3 typed fact priority, omission, disclosures and statuses execute', () =>
 
 test('H4 strict URL, route, media and private-field rejection contracts execute', () => {
   assert.equal(sharing.buildShortShareUrl(CODE), `https://usemingla.com/s/${CODE}`);
-  assert.equal(sharing.buildSharePortraitUrl(CODE, 3), `https://usemingla.com/og/s/${CODE}/v3.png`);
+  // [TEST-MOD-APPROVED #1615] Physical WhatsApp did not render the former
+  // oversized no-store PNG; revision 2 is the immutable bounded JPEG contract.
+  assert.equal(sharing.SHARE_PORTRAIT_REVISION, 2);
+  assert.equal(sharing.buildSharePortraitUrl(CODE, 3), `https://usemingla.com/og/s/${CODE}/v3-r2.jpg`);
   assert.throws(() => sharing.buildSharePortraitUrl(CODE, 0));
   for (const bad of ['short', '123456789012345-', '12345678901234567', '１２３４５６７８９０１２３４５６']) {
     assert.equal(sharing.isShortShareCode(bad), false);

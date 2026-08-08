@@ -11,9 +11,13 @@ test('P2 runtime resolves and reads the canonical package SVG from the deployabl
 // [TEST-MOD-APPROVED #1615] Coverless portrait generation was an incorrect
 // assertion: S4/S5 require real eligible media and must never synthesize art.
 // The covered path still proves the canonical wordmark and exact dimensions.
-test('P3 covered runtime renders use the actual wordmark and exact PNG dimensions',async()=>{const png=await renderer.renderContentSharePortraitPng(share('place',{kind:'photo',url:cover,posterUrl:cover}));assert.equal(png.subarray(1,4).toString(),'PNG');assert.deepEqual([png.readUInt32BE(16),png.readUInt32BE(20)],[1080,1350])});
+// [TEST-MOD-APPROVED #1615] Physical WhatsApp disproved the former PNG
+// transport assertion; preserve the exact 4:5 design in a bounded JPEG.
+test('P3 covered runtime renders the actual wordmark in an exact bounded JPEG portrait',async()=>{const jpeg=await renderer.renderContentSharePortraitJpeg(share('place',{kind:'photo',url:cover,posterUrl:cover}));const sharp=require(path.join(ROOT,'mingla-business/node_modules/sharp'));const metadata=await sharp(jpeg).metadata();assert.deepEqual([metadata.format,metadata.width,metadata.height],['jpeg',1080,1350]);assert.ok(jpeg.length<=renderer.MAX_CONTENT_SHARE_JPEG_BYTES);assert.deepEqual(Array.from(jpeg.subarray(0,2)),[0xff,0xd8]);assert.deepEqual(Array.from(jpeg.subarray(-2)),[0xff,0xd9])});
 test('P4 all eight kinds build the same fixed portrait composition without fabricated copy',()=>{for(const kind of ['place','curated','event','rsvp_event','trip','experience','venue','brand'])assert.doesNotThrow(()=>renderer.contentSharePortraitElement(share(kind)));const source=fs.readFileSync(path.join(ROOT,'mingla-business/server/cardIdentityRenderer.js'),'utf8');assert.doesNotMatch(source,/Amazing experience|Date(?:s)? to be announced/)});
-test('P6 S6 uses the exact canonical wordmark inside the warm-white pill, never Business branding or typeset logo text',()=>{const html=preview.renderContentShareHtml(share('brand'));assert.match(html,/class="brand mingla-wordmark-pill"/);assert.match(html,/background: #fff7ef/);assert.ok(html.includes(renderer.wordmarkSource()));assert.doesNotMatch(html,/mingla-business-logo/);assert.doesNotMatch(html,/>Mingla Business</)});
+// [TEST-MOD-APPROVED #1615] The public content page previously duplicated an
+// outer logo above the portrait; the portrait's measured logo pill is enough.
+test('P6 S6 removes the redundant outer brand header without changing portrait identity',()=>{const html=preview.renderContentShareHtml(share('brand',{kind:'photo',url:cover,posterUrl:cover}));assert.doesNotMatch(html,/class="brand(?:\s|\")/);assert.doesNotMatch(html,/mingla-business-logo/);assert.doesNotMatch(html,/>Mingla Business</);assert.ok(renderer.wordmarkSource().startsWith('data:image/svg+xml;base64,'))});
 // [TEST-MOD-APPROVED #1615] The old fixture used an arbitrary CDN host that
 // the approved public-media policy must reject. Use the governed storage host
 // and pin the independent play/sound controls added by the binding correction.

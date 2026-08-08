@@ -281,7 +281,9 @@ test("H26 usemingla owns stable content and legacy local proxy routes with no ex
   // retaining the former four-entry assertion would reject the required additive content routes.
   assert.deepEqual(config.rewrites.map((entry) => entry.source), [
     "/s/:code",
-    "/og/s/:code/v:version.png",
+    // [TEST-MOD-APPROVED #1615] Physical WhatsApp did not render the former
+    // oversized no-store PNG; the manifest now owns revision 2 JPEG delivery.
+    "/og/s/:code/v:version-r2.jpg",
     "/api/content-share/:code",
     "/p/:shareId",
     "/share/:shareId.png",

@@ -35,8 +35,10 @@ test('R2 buyer web page, data and immutable image routes traverse the protected 
   for (const surface of ['content-page', 'content-data', 'content-image']) assert.ok(proxy.includes(surface), surface);
   assert.match(proxy, /SHARE_CODE = \/\^\[0-9A-Za-z\]\{16\}\$\//);
   assert.match(proxy, /SHARE_VERSION = \/\^\[1-9\]\[0-9\]\*\$\//);
-  assert.match(marketing, /\/og\/s\/:code\/v:version\.png/);
-  assert.match(business, /\/og\/s\/:code\/v:version\.png/);
+  // [TEST-MOD-APPROVED #1615] Physical WhatsApp did not render the old PNG;
+  // both route manifests now expose only revisioned immutable JPEG portraits.
+  assert.match(marketing, /\/og\/s\/:code\/v:version-r2\.jpg/);
+  assert.match(business, /\/og\/s\/:code\/v:version-r2\.jpg/);
 });
 
 test('R3 native route resolves exact typed destinations and keeps place/curated local', () => {
@@ -88,7 +90,9 @@ test('R5 AASA, Android app config and physical native route claims are atomic', 
 
 test('R6 public metadata is version-addressed and the deferred-install CTA is not canonical', () => {
   const preview = read('mingla-business/server/socialPreview.js');
-  assert.match(preview, /\/og\/s\/\$\{encodeURIComponent\(code\)\}\/v\$\{Number\(contentShare\.version\)\}\.png/);
+  // [TEST-MOD-APPROVED #1615] The URL owner now adds the render revision and
+  // JPEG suffix, so HTML must delegate instead of reconstructing the old PNG.
+  assert.match(preview, /buildSharePortraitUrl\(code, Number\(contentShare\.version\)\)/);
   assert.match(preview, /canonicalUrl = `\$\{EXPLORER_PUBLIC_ORIGIN\}\/s\//);
   // [TEST-MOD-APPROVED #1615] Written reason: deferred web attribution now
   // builds URLSearchParams so optional server-derived af_sub1 is encoded safely;

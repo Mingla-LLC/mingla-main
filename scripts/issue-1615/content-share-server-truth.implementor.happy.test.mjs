@@ -198,10 +198,13 @@ test('ST15 deferred web referral is server-derived and private while installed-d
 });
 
 test('ST16 immutable image proxy preserves exact 200/304 identity and lets revocation 410 win',async()=>{
-  const previous=process.env.SHARED_CARD_PROXY_SECRET;process.env.SHARED_CARD_PROXY_SECRET='secret';const code='Aa0Bb1Cc2Dd3Ee4F',etag=`"content-share-${code}-v3"`;
-  const request=(ifNone='')=>new Request(`https://usemingla.com/og/s/${code}/v3.png`,{headers:{[INTERNAL_PROXY_HEADER]:'secret',...(ifNone?{'if-none-match':ifNone}:{})}});
-  const ok=await proxySharedCard(request(),code,'content-image',async()=>new Response(new Uint8Array([1]),{status:200,headers:{'content-type':'image/png',etag}}),'3');
-  assert.equal(ok.status,200);assert.equal(ok.headers.get('etag'),etag);assert.equal(ok.headers.get('cache-control'),'private, max-age=0, must-revalidate');assert.equal(ok.headers.get('vercel-cdn-cache-control'),'no-store');
+  // [TEST-MOD-APPROVED #1615] Physical WhatsApp disproved the former
+  // PNG/private-revalidation transport; revision 2 is immutable bounded JPEG.
+  const previous=process.env.SHARED_CARD_PROXY_SECRET;process.env.SHARED_CARD_PROXY_SECRET='secret';const code='Aa0Bb1Cc2Dd3Ee4F',etag=`"content-share-${code}-v3-r2-jpeg"`;
+  const request=(ifNone='')=>new Request(`https://usemingla.com/og/s/${code}/v3-r2.jpg`,{headers:{[INTERNAL_PROXY_HEADER]:'secret',...(ifNone?{'if-none-match':ifNone}:{})}});
+  const jpeg=new Uint8Array([0xff,0xd8,0xff,0xd9]);
+  const ok=await proxySharedCard(request(),code,'content-image',async()=>new Response(jpeg,{status:200,headers:{'content-type':'image/jpeg',etag,'content-length':String(jpeg.length)}}),'3');
+  assert.equal(ok.status,200);assert.equal(ok.headers.get('content-type'),'image/jpeg');assert.equal(ok.headers.get('etag'),etag);for(const key of ['cache-control','cdn-cache-control','vercel-cdn-cache-control'])assert.equal(ok.headers.get(key),'public, max-age=31536000, immutable');
   const unchanged=await proxySharedCard(request(etag),code,'content-image',async(_url,init)=>{assert.equal(init.headers['if-none-match'],etag);return new Response(null,{status:304,headers:{etag}})},'3');
   assert.equal(unchanged.status,304);assert.equal(unchanged.headers.get('etag'),etag);
   const gone=await proxySharedCard(request(etag),code,'content-image',async()=>new Response(null,{status:410}),'3');assert.equal(gone.status,410);assert.equal(gone.headers.get('cache-control'),'private, no-store, max-age=0');
@@ -249,7 +252,9 @@ test('ST19 moving media preserves the exact immutable portrait identity instead 
   const {renderContentShareHtml}=require(path.join(ROOT,'mingla-business/server/socialPreview.js'));
   const code='Aa0Bb1Cc2Dd3Ee4F';
   const html=renderContentShareHtml({shortCode:code,version:4,facts:{schemaVersion:1,kind:'event',title:'Measured motion'},media:{kind:'video',url:'https://vz-a16fce08-6c6.b-cdn.net/video.mp4',posterUrl:'https://vz-a16fce08-6c6.b-cdn.net/poster.jpg'},destination:{kind:'event'},publicDetails:{kind:'event',actionEligible:false,occurrences:[]}});
-  const exact=`https://usemingla.com/og/s/${code}/v4.png`;
+  // [TEST-MOD-APPROVED #1615] Motion overlays follow the same revisioned JPEG
+  // portrait identity that chat crawlers receive.
+  const exact=`https://usemingla.com/og/s/${code}/v4-r2.jpg`;
   assert.equal((html.match(new RegExp(exact.replaceAll('/','\\/'),'g'))||[]).length>=3,true);
   assert.match(html,/portrait-identity-overlay identity-wordmark/);
   assert.match(html,/portrait-identity-overlay identity-bottom/);
@@ -264,7 +269,9 @@ test('ST9 browser legacy alias renders the matching canonical S6 identity, never
   const res={headers:{},setHeader(k,v){this.headers[k]=v},end(body){this.body=String(body||'')}};
   await handler({headers:{'x-mingla-shared-card-proxy':'test-secret'},query:{shareId:'a'.repeat(36)}},res);
   if(previous===undefined)delete process.env.SHARED_CARD_PROXY_SECRET;else process.env.SHARED_CARD_PROXY_SECRET=previous;
-  assert.equal(res.statusCode,200);assert.match(res.body,new RegExp(`/og/s/${code}/v7\\.png|/s/${code}`));
+  // [TEST-MOD-APPROVED #1615] Legacy aliases now render the revisioned JPEG
+  // portrait URL when media exists, while coverless aliases stay canonical.
+  assert.equal(res.statusCode,200);assert.match(res.body,new RegExp(`/og/s/${code}/v7-r2\\.jpg|/s/${code}`));
   assert.doesNotMatch(res.body,/mingla-business-logo|provider:'raw'|>mingla</i);
   const place={state:'active',gone:false,shortCode:code,version:8,facts:{schemaVersion:1,kind:'place',title:'Cafe',route:{placeId:'google-1'}},media:null,destination:{kind:'place',placeId:'google-1'},publicDetails:{kind:'place',address:'1 Main St'}};
   const curated={state:'active',gone:false,shortCode:code,version:7,facts:{schemaVersion:1,kind:'curated',title:'Plan',route:{}},media:null,destination:{kind:'curated'},publicDetails:{kind:'curated',stops:[{title:'One'}]}};

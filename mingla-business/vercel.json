@@ -8,7 +8,7 @@
   "trailingSlash": false,
   "rewrites": [
     { "source": "/s/:code", "destination": "/api/content-share?code=:code" },
-    { "source": "/og/s/:code/v:version.png", "destination": "/api/content-share-image?code=:code&version=:version" },
+    { "source": "/og/s/:code/v:version-r2.jpg", "destination": "/api/content-share-image?code=:code&version=:version" },
     { "source": "/share/:shareId.png", "destination": "/api/shared-card-image?shareId=:shareId&surface=s4" },
     { "source": "/og/share/:shareId.png", "destination": "/api/shared-card-image?shareId=:shareId&surface=s5" },
     { "source": "/p/:shareId", "destination": "/api/shared-card?shareId=:shareId" },
