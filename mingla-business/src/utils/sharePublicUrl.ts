@@ -1,3 +1,4 @@
+// SHARE-SEMANTIC-ROLE:content-transport
 import { Platform, Share } from "react-native";
 import * as Clipboard from "expo-clipboard";
 

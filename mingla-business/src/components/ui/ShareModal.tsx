@@ -50,6 +50,8 @@ import {
   whatsappIntent,
 } from "../../utils/shareIntents";
 import { copyPublicUrl, sharePublicUrl } from "../../utils/sharePublicUrl";
+import { prepareBusinessContentShare, type PreparedBusinessShare } from "../../services/contentShareAdapter";
+import type { ShareEntityKind } from "@mingla/sharing";
 
 import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
@@ -62,6 +64,7 @@ export interface ShareModalProps {
   url: string;
   title: string;
   description?: string;
+  contentKind?: ShareEntityKind;
 }
 
 interface PlatformButton {
@@ -76,13 +79,13 @@ const PLATFORM_BUTTONS: readonly PlatformButton[] = [
     id: "twitter",
     label: "Twitter",
     icon: "share",
-    buildUrl: (url, title): string => twitterIntent(url, title),
+    buildUrl: (url, title, message): string => twitterIntent(url, title, message),
   },
   {
     id: "whatsapp",
     label: "WhatsApp",
     icon: "share",
-    buildUrl: (url, title): string => whatsappIntent(url, title),
+    buildUrl: (url, title, message): string => whatsappIntent(url, title, message),
   },
   {
     id: "email",
@@ -95,7 +98,7 @@ const PLATFORM_BUTTONS: readonly PlatformButton[] = [
     id: "sms",
     label: "SMS",
     icon: "share",
-    buildUrl: (url, title): string => smsIntent(url, title),
+    buildUrl: (url, title, message): string => smsIntent(url, title, message),
   },
 ];
 
@@ -105,6 +108,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   url,
   title,
   description,
+  contentKind,
 }) => {
   const [toast, setToast] = React.useState<{
     visible: boolean;
@@ -112,6 +116,13 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   }>({ visible: false, message: "" });
   const [isCopying, setIsCopying] = React.useState<boolean>(false);
   const [isSharing, setIsSharing] = React.useState<boolean>(false);
+  const [resolvedUrl,setResolvedUrl]=React.useState(url);
+  const preparedRef=React.useRef(new Map<string,Promise<PreparedBusinessShare>>());
+  const ensurePrepared=useCallback(async(channel='generic')=>{
+    let promise=preparedRef.current.get(channel);if(!promise){promise=prepareBusinessContentShare(url,channel,contentKind);preparedRef.current.set(channel,promise);void promise.catch(()=>preparedRef.current.delete(channel))}
+    const prepared=await promise;setResolvedUrl(prepared.url);return prepared;
+  },[url,contentKind]);
+  React.useEffect(()=>{preparedRef.current.clear();setResolvedUrl(url);if(visible)void ensurePrepared().catch(()=>undefined)},[visible,url,contentKind,ensurePrepared]);
 
   // ORCH-0964: size the sheet to its actual content so the QR + platform row
   // are never clipped. The fixed "half" snap was shorter than this content on
@@ -142,24 +153,22 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     if (isCopying) return;
     setIsCopying(true);
     try {
-      await copyPublicUrl(url);
+      const prepared=await ensurePrepared('copy_link');
+      await copyPublicUrl(prepared.url);
       showToast("Link copied");
     } catch {
       showToast("Copy failed. Try Share via instead.");
     } finally {
       setIsCopying(false);
     }
-  }, [isCopying, url, showToast]);
+  }, [isCopying, ensurePrepared, showToast]);
 
   const handleNativeShare = useCallback(async (): Promise<void> => {
     if (isSharing) return;
     setIsSharing(true);
     try {
-      await sharePublicUrl({
-        title,
-        url,
-        description,
-      });
+      const prepared=await ensurePrepared('generic');
+      await sharePublicUrl({title:prepared.title,url:prepared.url,description:prepared.message});
     } catch {
       if (Platform.OS === "web") {
         showToast("Native share not supported on this browser.");
@@ -167,19 +176,20 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     } finally {
       setIsSharing(false);
     }
-  }, [isSharing, url, title, description, showToast]);
+  }, [isSharing, ensurePrepared, showToast]);
 
   const handleOpenLink = useCallback(async (): Promise<void> => {
     try {
-      await Linking.openURL(url);
+      await Linking.openURL(resolvedUrl);
     } catch {
       showToast("Couldn't open link.");
     }
-  }, [url, showToast]);
+  }, [resolvedUrl, showToast]);
 
   const handlePlatformPress = useCallback(
     async (btn: PlatformButton): Promise<void> => {
-      const intent = btn.buildUrl(url, title, description);
+      let prepared:PreparedBusinessShare;try{prepared=await ensurePrepared(btn.id)}catch{showToast("Share link unavailable. Try again.");return}
+      const intent = btn.buildUrl(prepared.url, prepared.title, prepared.message);
       try {
         if (Platform.OS === "web") {
           const win = (
@@ -199,7 +209,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
         showToast(`Couldn't open ${btn.label}.`);
       }
     },
-    [url, title, description, showToast],
+    [ensurePrepared, showToast],
   );
 
   return (
@@ -255,7 +265,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           ]}
         >
           <Text style={styles.urlText} numberOfLines={2}>
-            {url}
+            {resolvedUrl}
           </Text>
         </Pressable>
 
@@ -271,7 +281,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
               }
             >
               <QRCode
-                value={url}
+                value={resolvedUrl}
                 size={QR_SIZE}
                 backgroundColor="#FFFFFF"
                 color="#000000"

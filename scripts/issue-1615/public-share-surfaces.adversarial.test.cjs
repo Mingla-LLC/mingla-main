@@ -138,7 +138,9 @@ test("A12 D8 stays default-off and only explicit override activates Direction C"
 
 test("A13 duplicate share taps share one in-flight creation and all controls disable", () => {
   const modal = read("app-mobile/src/components/ShareModal.tsx");
-  assert.match(modal, /if \(sharedCardPromiseRef\.current\) return sharedCardPromiseRef\.current/);
+  // [TEST-MOD-APPROVED #1615] Stage 6 keeps one in-flight creation while re-deriving the
+  // channel-specific message for every waiter so concurrent taps cannot reuse stale copy.
+  assert.match(modal, /if \(sharedCardPromiseRef\.current\) return messageForPreparedContentShare\(await sharedCardPromiseRef\.current, channel\)/);
   assert.match(modal, /if \(isSharing\) return/);
   assert.ok((modal.match(/disabled=\{isSharing\}/g) || []).length >= 6);
 });

@@ -34,6 +34,7 @@ export function selectPublicMediaIdentity(value: {
 }): ShareMediaIdentity | null;
 export function isShortShareCode(value: unknown): value is string;
 export function buildShortShareUrl(code: string): string;
+export function contentShareRequestFromPublicUrl(value: string, overrideKind?: ShareEntityKind): { kind: ShareEntityKind; identity: Record<string,string> } | null;
 export function validateShareFactsV1(value: unknown): { ok: true; value: ShareFactsV1 } | { ok: false; errors: string[] };
 export function parseShareFactsV1(value: unknown): ShareFactsV1;
 export function formatMoney(value: unknown): string;
@@ -43,3 +44,4 @@ export function selectRecipientFacts(value: ShareFactsV1, context?: { includePla
 export function selectPreviewFacts(value: ShareFactsV1, limit?: number): string[];
 export function buildShareMessage(value: ShareFactsV1, context: { shortCode: string; channel?: 'generic' | 'sms' | 'whatsapp' | 'x' | 'email'; senderNote?: string }): string;
 export function routeContractFor(kind: ShareEntityKind): { web: string; native: string; required: readonly string[] };
+export function createContentShareSingleFlight(): <T>(key: string, load: () => Promise<T>) => Promise<T>;

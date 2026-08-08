@@ -179,7 +179,11 @@ test("H19 Explorer payload is canonical S5/S6 URL while CTA remains attributed w
   assert.match(created.appUrl, /af_sub1=REF%203/);
   assert.equal(links.referralCodeFromSharedCardAppUrl(created.appUrl), "REF 3");
   const modal = read("app-mobile/src/components/ShareModal.tsx");
-  assert.match(modal, /if \(created\) return externalSharedCardUrl\(created\)/);
+  // [TEST-MOD-APPROVED #1615] Stage 6 replaces the legacy /p producer with the
+  // typed /s adapter; the old externalSharedCardUrl assertion is now obsolete.
+  assert.match(modal, /prepareContentShare\(kind, identity, channel\)/);
+  assert.match(modal, /return \(await ensureSharedCard\(channel\)\)\.canonicalUrl/);
+  assert.doesNotMatch(modal, /externalSharedCardUrl/);
   assert.doesNotMatch(modal, /created\s*\?\s*\{\s*type:.*shareId/s);
   const reader = read("app-mobile/src/services/sharedCardService.ts");
   assert.match(reader, /return \{ snapshot: body\.snapshot, appUrl: body\.appUrl \}/);
@@ -381,7 +385,9 @@ test("H30 business forwards the proxy secret to Edge without following redirects
   if (previousSecret === undefined) delete process.env.SHARED_CARD_PROXY_SECRET; else process.env.SHARED_CARD_PROXY_SECRET = previousSecret;
 });
 
-test("H31 Edge authenticates GET before any RPC or table read while POST stays bearer-only", () => {
+// [TEST-MOD-APPROVED #1615] Stage 6 intentionally adds the reviewed anonymous-public
+// POST lane; H31 now pins its constant-time proxy proof while retaining bearer fallback.
+test("H31 Edge authenticates GET and permits only proved server-created or bearer POST", () => {
   const source = read("supabase/functions/shared-card/index.ts");
   const getBlock = source.split('if (req.method !== "POST")')[0].split('if (req.method === "GET")')[1];
   const auth = getBlock.indexOf("constantTimeEqualSecret");
@@ -390,8 +396,10 @@ test("H31 Edge authenticates GET before any RPC or table read while POST stays b
   assert.ok(auth < getBlock.indexOf('rpc("consume_shared_card_rate_limit"'));
   assert.ok(auth < getBlock.indexOf('from("shared_card_snapshots")'));
   const postBlock = source.split('if (req.method !== "POST")')[1];
-  assert.doesNotMatch(postBlock, /SHARED_CARD_PROXY_SECRET|x-mingla-shared-card-proxy/);
+  assert.match(postBlock, /constantTimeEqualSecret\(providedProxySecret, expectedProxySecret\)/);
+  assert.match(postBlock, /\^\[a-f0-9\]\{64\}\$\/\.test\(publicActor\)/);
   assert.match(postBlock, /db\.auth\.getUser\(jwt\)/);
+  assert.match(postBlock, /if \(!serverCreated && !user\) return json\(\{ error: "unauthorized" \}, 401\)/);
 });
 
 test("H32 native anonymous read enters through usemingla.com and never direct Supabase", () => {

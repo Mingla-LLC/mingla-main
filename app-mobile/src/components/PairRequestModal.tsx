@@ -220,6 +220,7 @@ export default function PairRequestModal({
 
         // Share in its own try/catch — dismissal is not an error
         try {
+          // SHARE-NON-CONTENT:invite
           await Share.share({
             message: t('social:shareInviteMessage'),
           });

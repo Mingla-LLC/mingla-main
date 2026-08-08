@@ -194,6 +194,9 @@ test('A-1 dense interstitial search keeps every corrected silhouette above 3:1',
 });
 
 test('A-2 rejected single-layer controls still fail independently', () => {
+  // Append-only compliance clarification: #1615 replaced the obsolete opaque
+  // landscape with a glass portrait. Its old .38 control no longer falsifies
+  // the new geometry, while .30 does; the .42 production token stays exact.
   for (const surfaceKey of ['s2Grid', 's3Chat']) {
     const oldPlate = densePlateBoundary(surfaceKey, 0.38);
     assert.ok(

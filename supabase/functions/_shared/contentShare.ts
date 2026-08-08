@@ -68,6 +68,43 @@ const money = (minorUnits: unknown, currency: unknown, disclosure?: string): Rec
     ? compact({ minorUnits, currency: code, disclosure }) : undefined;
 };
 
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const clockLabel = (value: unknown): string => {
+  const match = /^(\d{2}):(\d{2})$/.exec(clean(value, 5)); if (!match) return "";
+  const hour = Number(match[1]); const minute = Number(match[2]); if (hour > 23 || minute > 59) return "";
+  return `${hour % 12 || 12}${minute ? `:${String(minute).padStart(2, "0")}` : ""} ${hour < 12 ? "AM" : "PM"}`;
+};
+export function normalizeServedHours(value: unknown): RecordLike[] | undefined {
+  const byDay = new Map<string, string>();
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const source = value as RecordLike;
+    const lines = Array.isArray(source.weekdayDescriptions) ? source.weekdayDescriptions
+      : Array.isArray(source.weekday_text) ? source.weekday_text : null;
+    if (lines) for (const item of lines) {
+      if (typeof item !== "string") return undefined;
+      const match = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday):\s*(.+)$/i.exec(item.trim());
+      if (!match) return undefined;
+      const day = DAYS.find((candidate) => candidate.toLowerCase() === match[1].toLowerCase());
+      const label = clean(match[2], 80); if (!day || !label || /\[object Object\]|OpenNow:|Periods:/i.test(label)) return undefined;
+      byDay.set(day, label);
+    }
+  } else if (Array.isArray(value)) {
+    for (const row of value) {
+      if (!row || typeof row !== "object" || Array.isArray(row) || !Number.isInteger(row.weekday) || row.weekday < 0 || row.weekday > 6) return undefined;
+      const label = row.is_closed === true ? "Closed" : `${clockLabel(row.open_time)}–${clockLabel(row.close_time)}`;
+      if (!label || label.startsWith("–") || label.endsWith("–")) return undefined;
+      byDay.set(DAYS[row.weekday], label);
+    }
+  }
+  return byDay.size === 7 ? DAYS.map((day) => ({ day, label: byDay.get(day)! })) : undefined;
+}
+
+const durationLabel = (start: unknown, end: unknown): string | undefined => {
+  if (typeof start !== "string" || typeof end !== "string") return undefined;
+  const milliseconds = Date.parse(end) - Date.parse(start); if (!(milliseconds > 0)) return undefined;
+  const minutes = Math.round(milliseconds / 60000); return minutes % 60 === 0 ? `${minutes / 60} hour${minutes === 60 ? "" : "s"}` : `${minutes} minutes`;
+};
+
 const status = (row: RecordLike): string | undefined => {
   if (row.status === "cancelled") return "cancelled";
   if (row.status === "ended") return "ended";
@@ -115,6 +152,7 @@ export function mapAuthoritativeShareFacts(kind: ContentShareKind, assembled: Re
         area: clean(row.neighborhood || row.city, 120),
         rating: Number.isFinite(row.rating) && row.rating >= 0 && row.rating <= 5 ? row.rating : undefined,
         priceLevel: clean(row.price_level, 40), description: clean(row.editorial_summary || row.generative_summary, 600),
+        hours: normalizeServedHours(row.opening_hours),
         timezone: clean(row.timezone || (Number.isInteger(row.utc_offset_minutes) ? `UTC_OFFSET:${row.utc_offset_minutes}` : ""), 80),
         route: { placeId: clean(row.google_place_id, 256) },
       });
@@ -134,14 +172,14 @@ export function mapAuthoritativeShareFacts(kind: ContentShareKind, assembled: Re
     }
     case "event":
       facts = compact({ schemaVersion: 1, kind, title: clean(row.title), ...schedule,
-        venue: clean(row.location_text, 160), area: clean(row.city, 120), price,
+        venue: clean(row.location_text, 160), price,
         status: status(row), timezone: clean(row.timezone, 80), description: clean(row.description, 600),
         route: { eventSlug: clean(row.slug, 160) } });
       destination = { ...routeBase, webPath: `/e/${clean(brand.slug, 160)}/${clean(row.slug, 160)}` };
       break;
     case "rsvp_event":
       facts = compact({ schemaVersion: 1, kind, title: clean(row.title), ...schedule,
-        venue: clean(row.location_text, 160), rsvpDeadline: clean(row.rsvp_deadline, 120),
+        venue: clean(row.location_text, 160),
         status: status(row), timezone: clean(row.timezone, 80), description: clean(row.description, 600),
         route: { eventSlug: clean(row.slug, 160) } });
       destination = { ...routeBase, webPath: `/e/${clean(brand.slug, 160)}/${clean(row.slug, 160)}` };
@@ -162,7 +200,7 @@ export function mapAuthoritativeShareFacts(kind: ContentShareKind, assembled: Re
       break;
     case "venue":
       facts = compact({ schemaVersion: 1, kind, title: clean(row.name), category: clean(row.venue_category, 80),
-        area: clean(row.city, 120), timezone: clean(row.timezone, 80), description: clean(row.pitch, 600),
+        area: clean(row.city, 120), timezone: clean(row.iana_timezone, 80), hours: normalizeServedHours(row.hours), description: clean(row.pitch, 600),
         route: { brandSlug: clean(row.brand_slug, 160), venueSlug: clean(row.slug, 160) } });
       destination = { kind, brandSlug: clean(row.brand_slug, 160), venueSlug: clean(row.slug, 160), webPath: `/b/${clean(row.brand_slug, 160)}/v/${clean(row.slug, 160)}` };
       break;
@@ -191,7 +229,7 @@ export async function loadAuthoritativeContentShare(
     const poolId = sourceId(identity, "placePoolId");
     const googleId = sourceId(identity, "googlePlaceId");
     if (!poolId && !googleId) throw new Error("validation");
-    let query = db.from("place_pool").select("id,google_place_id,name,city,primary_type_display_name,primary_type,rating,price_level,utc_offset_minutes,editorial_summary,generative_summary,stored_photo_urls,is_active,is_servable").limit(1);
+    let query = db.from("place_pool").select("id,google_place_id,name,city,primary_type_display_name,primary_type,rating,price_level,utc_offset_minutes,editorial_summary,generative_summary,opening_hours,stored_photo_urls,is_active,is_servable").limit(1);
     query = poolId ? query.eq("id", poolId) : query.eq("google_place_id", googleId);
     const { data: row } = await query.maybeSingle();
     if (!row || row.is_active !== true || row.is_servable === false) throw new Error("not_found");
@@ -214,6 +252,7 @@ export async function loadAuthoritativeContentShare(
     if (!id && (!eventSlug || !brandSlug)) throw new Error("validation");
     let query = db.from("events").select("id,title,description,slug,location_text,status,visibility,published_at,deleted_at,timezone,event_type,destination_text,cover_media_url,cover_media_type,cover_media_alt,cover_media_gallery,brands!inner(name,slug,deleted_at)")
       .eq("event_type", expectedType).in("visibility", ["public", "discover"]).not("published_at", "is", null).is("deleted_at", null)
+      .is("brands.deleted_at", null)
       .in("status", ["scheduled", "live", "ended", "cancelled"]).limit(1);
     query = id ? query.eq("id", id) : query.eq("slug", eventSlug).eq("brands.slug", brandSlug);
     const { data: row } = await query.maybeSingle();
@@ -222,7 +261,12 @@ export async function loadAuthoritativeContentShare(
       db.from("event_dates").select("start_at,end_at,timezone,is_master").eq("event_id", row.id).order("start_at", { ascending: true }).limit(2),
       db.from("ticket_types").select("price_cents,currency,is_free,is_hidden,is_disabled,display_order").eq("event_id", row.id).is("deleted_at", null).order("display_order", { ascending: true }),
     ]);
-    const assembled = { row, date: dates?.[0], tickets: tickets || [] };
+    const firstDate = dates?.[0]; const lastDate = dates?.[dates.length - 1];
+    const firstSchedule = localSchedule(firstDate?.start_at, row.timezone || firstDate?.timezone);
+    const lastSchedule = localSchedule(lastDate?.start_at, row.timezone || lastDate?.timezone);
+    const assembled = { row, date: firstDate, tickets: tickets || [],
+      dateRange: [firstSchedule.localDate, lastSchedule.localDate !== firstSchedule.localDate ? lastSchedule.localDate : ""].filter(Boolean).join(" – "),
+      duration: durationLabel(firstDate?.start_at, firstDate?.end_at) };
     return { ...mapAuthoritativeShareFacts(kind, assembled), sourceKey: `${kind}:${row.id}`, sourceReference: { eventId: row.id } };
   }
 
@@ -230,7 +274,7 @@ export async function loadAuthoritativeContentShare(
     const brandSlug = sourceId(identity, "brandSlug");
     const venueSlug = sourceId(identity, "venueSlug");
     if (!brandSlug || !venueSlug) throw new Error("validation");
-    const { data: row } = await db.from("venue_public_view").select("id,brand_slug,slug,name,city,venue_category,pitch,cover_media_url,cover_media_type,pool_photo_urls").eq("brand_slug", brandSlug).eq("slug", venueSlug).maybeSingle();
+    const { data: row } = await db.from("venue_public_view").select("id,brand_slug,slug,name,city,venue_category,pitch,cover_media_url,cover_media_type,pool_photo_urls,hours,iana_timezone").eq("brand_slug", brandSlug).eq("slug", venueSlug).maybeSingle();
     if (!row) throw new Error("not_found");
     return { ...mapAuthoritativeShareFacts(kind, { row }), sourceKey: `venue:${row.id}`, sourceReference: { venueId: row.id } };
   }
@@ -239,8 +283,8 @@ export async function loadAuthoritativeContentShare(
   if (!brandSlug) throw new Error("validation");
   const { data: row } = await db.from("brands").select("id,name,slug,description,cover_media_url,cover_media_type,profile_photo_url").eq("slug", brandSlug).is("deleted_at", null).maybeSingle();
   if (!row) throw new Error("not_found");
-  const { count } = await db.from("events").select("id", { count: "exact", head: true }).eq("brand_id", row.id)
+  const { count, error: countError } = await db.from("events").select("id", { count: "exact", head: true }).eq("brand_id", row.id)
     .in("visibility", ["public", "discover"]).not("published_at", "is", null).is("deleted_at", null).in("status", ["scheduled", "live"]);
-  if (!count) throw new Error("not_found");
-  return { ...mapAuthoritativeShareFacts("brand", { row, upcomingCount: count }), sourceKey: `brand:${row.id}`, sourceReference: { brandId: row.id } };
+  if (countError) throw new Error("not_found");
+  return { ...mapAuthoritativeShareFacts("brand", { row, upcomingCount: count || 0 }), sourceKey: `brand:${row.id}`, sourceReference: { brandId: row.id } };
 }

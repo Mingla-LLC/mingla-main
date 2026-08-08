@@ -19,6 +19,22 @@ const HTTPS_RE = /^https:\/\//i;
 const BIDI_CONTROL_RE = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
 const CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu;
 
+function createContentShareSingleFlight() {
+  const pending = new Map();
+  return async (key, load) => {
+    let promise = pending.get(key);
+    if (!promise) {
+      promise = Promise.resolve().then(load);
+      pending.set(key, promise);
+    }
+    try {
+      return await promise;
+    } finally {
+      if (pending.get(key) === promise) pending.delete(key);
+    }
+  };
+}
+
 const ROUTE_MANIFEST = Object.freeze({
   place: Object.freeze({ web: 'share', native: 'place', required: Object.freeze(['placeId']) }),
   curated: Object.freeze({ web: 'share', native: 'curated', required: Object.freeze([]) }),
@@ -68,6 +84,18 @@ function isShortShareCode(value) {
 function buildShortShareUrl(code) {
   if (!isShortShareCode(code)) throw new TypeError('invalid_share_code');
   return `https://usemingla.com/s/${code}`;
+}
+
+function contentShareRequestFromPublicUrl(value, overrideKind) {
+  let parsed; try { parsed = new URL(value); } catch { return null; }
+  if (!['business.usemingla.com', 'usemingla.com'].includes(parsed.hostname)) return null;
+  let parts; try { parts = parsed.pathname.split('/').filter(Boolean).map(decodeURIComponent); } catch { return null; }
+  if (parts[0] === 'e' && parts[1] && parts[2]) return { kind: overrideKind === 'rsvp_event' ? 'rsvp_event' : 'event', identity:{brandSlug:parts[1],eventSlug:parts[2]} };
+  if (parts[0] === 't' && parts[1] && parts[2]) return { kind:'trip', identity:{brandSlug:parts[1],eventSlug:parts[2]} };
+  if (parts[0] === 'exp' && parts[1] && parts[2]) return { kind:'experience', identity:{brandSlug:parts[1],eventSlug:parts[2]} };
+  if (parts[0] === 'b' && parts[1] && parts[2] === 'v' && parts[3]) return { kind:'venue', identity:{brandSlug:parts[1],venueSlug:parts[3]} };
+  if (parts[0] === 'b' && parts[1] && parts.length === 2) return { kind:'brand', identity:{brandSlug:parts[1]} };
+  return null;
 }
 
 function cleanMoney(value) {
@@ -314,7 +342,7 @@ module.exports = {
   SHARE_FACTS_VERSION, SHARE_ENTITY_KINDS, SHARE_STATUSES, SHARE_CHANNEL_BUDGETS,
   ROUTE_MANIFEST, cleanText, cleanHttpsUrl, cleanMoney, cleanMedia, cleanDestination,
   isPublicShareMediaUrl, selectPublicMediaIdentity,
-  isShortShareCode, buildShortShareUrl, validateShareFactsV1, parseShareFactsV1,
+  isShortShareCode, buildShortShareUrl, contentShareRequestFromPublicUrl, validateShareFactsV1, parseShareFactsV1,
   formatMoney, formatRating, statusLabel, selectRecipientFacts, selectPreviewFacts,
-  buildShareMessage, routeContractFor,
+  buildShareMessage, routeContractFor, createContentShareSingleFlight,
 };

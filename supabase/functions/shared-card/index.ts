@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { mapCuratedSnapshot, mapPlaceSnapshot, publicSnapshotResponse, sharedCardOneLink, shareText } from "./snapshot.ts";
 import { createContentShareV1 } from "../_shared/contentShareService.ts";
+import { constantTimeEqualSecret, contentShareCreateRateLimitArgs } from "../_shared/contentShareProxyAuth.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -19,19 +20,6 @@ async function actorHash(secret: string, actor: string) {
   return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)))
     .map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-async function constantTimeEqualSecret(provided: string, expected: string) {
-  const encoder = new TextEncoder();
-  const [providedHash, expectedHash] = await Promise.all([
-    crypto.subtle.digest("SHA-256", encoder.encode(provided)),
-    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
-  ]);
-  const left = new Uint8Array(providedHash);
-  const right = new Uint8Array(expectedHash);
-  let difference = 0;
-  for (let index = 0; index < left.length; index += 1) difference |= left[index] ^ right[index];
-  return difference === 0;
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   try {
@@ -74,15 +62,20 @@ serve(async (req) => {
     const url = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const db = createClient(url, serviceKey, { auth: { persistSession: false } });
+    const expectedProxySecret = Deno.env.get("SHARED_CARD_PROXY_SECRET") || "";
+    const providedProxySecret = req.headers.get("x-mingla-shared-card-proxy") || "";
+    const publicActor = req.headers.get("x-mingla-public-share-actor") || "";
+    const serverCreated = Boolean(expectedProxySecret && providedProxySecret && /^[a-f0-9]{64}$/.test(publicActor) &&
+      await constantTimeEqualSecret(providedProxySecret, expectedProxySecret));
     const auth = req.headers.get("authorization") || "";
     const jwt = auth.replace(/^Bearer\s+/i, "");
-    const { data: userData } = await db.auth.getUser(jwt);
+    const { data: userData } = serverCreated ? { data: { user: null } } : await db.auth.getUser(jwt);
     const user = userData.user;
-    if (!user) return json({ error: "unauthorized" }, 401);
-    const hash = await actorHash(serviceKey, user.id);
-    const { data: allowed, error: limitError } = await db.rpc("consume_shared_card_rate_limit", {
-      p_actor_hash: hash, p_action: "create", p_limit: 20, p_window_seconds: 3600,
-    });
+    if (!serverCreated && !user) return json({ error: "unauthorized" }, 401);
+    const hash = await actorHash(serviceKey, serverCreated ? `trusted-business-public-create-proxy:${publicActor}` : user.id);
+    const { data: allowed, error: limitError } = await db.rpc(
+      "consume_shared_card_rate_limit", contentShareCreateRateLimitArgs(hash, serverCreated),
+    );
     if (limitError) throw limitError;
     if (!allowed) return json({ error: "rate_limited" }, 429);
     const raw = await req.json().catch(() => null) as Record<string, unknown> | null;
@@ -92,7 +85,7 @@ serve(async (req) => {
       if (Deno.env.get("CONTENT_SHARE_V1_CREATE_ENABLED") !== "true") {
         return json({ error: "not_available" }, 503);
       }
-      const created = await createContentShareV1(db, user.id, raw);
+      const created = await createContentShareV1(db, user?.id || null, raw, { serverCreated });
       return json(created.body, created.status);
     }
     const kind = raw?.kind === "curated" ? "curated" : raw?.kind === "place" ? "place" : null;

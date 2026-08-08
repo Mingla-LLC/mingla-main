@@ -60,7 +60,6 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
-  Share,
   StyleSheet,
   Text,
   UIManager,
@@ -167,6 +166,7 @@ import {
   type ConsumerTripTierEnrichment,
 } from "../../hooks/useConsumerTripOfferingData";
 import type { DiscoverTripRow } from "../../services/tripsDiscoveryService";
+import { shareContent } from "../../services/contentShareAdapter";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 
 interface ConsumerTripDetailScreenProps {
@@ -386,9 +386,7 @@ export default function ConsumerTripDetailScreen({
   const renderSheetGroup = (sheetGroup: ReactElement): ReactElement => sheetGroup;
 
   const handleShare = (): void => {
-    void Share.share({
-      url: `https://business.usemingla.com/t/${brandSlug}/${tripSlug}`,
-    });
+    void shareContent("trip", { brandSlug, eventSlug:tripSlug });
   };
 
   // ORCH-1138 [trip-page-redesign] — minimal theme `card`. useEventTheme reads

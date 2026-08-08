@@ -14,16 +14,18 @@ const enc = (s: string): string => encodeURIComponent(s);
  * Twitter / X compose intent.
  * Opens the compose dialog with the provided text + URL prefilled.
  */
-export const twitterIntent = (url: string, title: string): string =>
-  `https://twitter.com/intent/tweet?text=${enc(title)}&url=${enc(url)}`;
+export const twitterIntent = (url: string, title: string, message?: string): string => {
+  const base = "https://twitter.com/intent/tweet?text=";
+  return message ? `${base}${enc(message)}` : `${base}${enc(title)}&url=${enc(url)}`;
+};
 
 /**
  * WhatsApp share intent. Universal `wa.me` link works on both web (opens
  * WhatsApp Web / Desktop) and native (opens WhatsApp app). Title and URL
  * are concatenated into the body since WhatsApp has no separate URL slot.
  */
-export const whatsappIntent = (url: string, title: string): string =>
-  `https://wa.me/?text=${enc(`${title} ${url}`)}`;
+export const whatsappIntent = (url: string, title: string, message?: string): string =>
+  `https://wa.me/?text=${enc(message || `${title} ${url}`)}`;
 
 /**
  * Email mailto: intent. Body includes optional description on its own
@@ -34,10 +36,7 @@ export const emailIntent = (
   title: string,
   description?: string,
 ): string => {
-  const body =
-    description !== undefined && description.trim().length > 0
-      ? `${description}\n\n${url}`
-      : url;
+  const body = description !== undefined && description.trim().length > 0 ? description : url;
   return `mailto:?subject=${enc(title)}&body=${enc(body)}`;
 };
 
@@ -48,5 +47,5 @@ export const emailIntent = (
  * with a question mark. Most platforms accept both shapes; using `?body=`
  * for consistency with the other intents.
  */
-export const smsIntent = (url: string, title: string): string =>
-  `sms:?body=${enc(`${title} ${url}`)}`;
+export const smsIntent = (url: string, title: string, message?: string): string =>
+  `sms:?body=${enc(message || `${title} ${url}`)}`;

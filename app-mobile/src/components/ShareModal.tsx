@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Text, View, Image, StyleSheet, Alert, Clipboard, Share, Linking } from 'react-native';
+import { Text, View, Image, StyleSheet, Alert, Clipboard, Linking } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import * as WebBrowser from 'expo-web-browser';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -14,9 +14,8 @@ import { parseAndFormatDistance } from './utils/formatters';
 import { colors } from '../constants/colors';
 import { mixpanelService } from '../services/mixpanelService';
 import { logAppsFlyerEvent } from '../services/appsFlyerService';
-import { buildReferralLink, type ShareEntity } from '../services/oneLinkShare';
-import { createSharedCard, type SharedCardCreateResult } from '../services/sharedCardService';
-import { externalSharedCardUrl } from '../services/sharedCardLinks';
+import { type ShareEntity } from '../services/oneLinkShare';
+import { messageForPreparedContentShare, prepareContentShare, sharePreparedContent, type PreparedContentShare } from '../services/contentShareAdapter';
 import { canonicalDiscoveryPriceDetail } from '../utils/priceTiers';
 // ISSUE-1001 — the real wordmark replaces the red-dot + "Mingla" text badge.
 import { MINGLA_WORDMARK } from '@mingla/brand-assets';
@@ -46,8 +45,8 @@ export default function ShareModal({
   const [messageCopied, setMessageCopied] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [shareState, setShareState] = useState<'idle' | 'generating' | 'success' | 'error'>('idle');
-  const [sharedCard, setSharedCard] = useState<SharedCardCreateResult | null>(null);
-  const sharedCardPromiseRef = useRef<Promise<SharedCardCreateResult> | null>(null);
+  const [sharedCard, setSharedCard] = useState<PreparedContentShare | null>(null);
+  const sharedCardPromiseRef = useRef<Promise<PreparedContentShare> | null>(null);
   const { t } = useTranslation(['share', 'common']);
 
   useEffect(() => {
@@ -170,24 +169,22 @@ export default function ShareModal({
     return { type, brandSlug, entitySlug };
   };
 
-  const ensureSharedCard = async (): Promise<SharedCardCreateResult | null> => {
+  const ensureSharedCard = async (channel = 'generic'): Promise<PreparedContentShare> => {
     const businessEntity = buildShareEntity();
-    if (businessEntity) return null;
-    if (sharedCard) return sharedCard;
-    if (sharedCardPromiseRef.current) return sharedCardPromiseRef.current;
+    if (sharedCard) return messageForPreparedContentShare(sharedCard, channel);
+    if (sharedCardPromiseRef.current) return messageForPreparedContentShare(await sharedCardPromiseRef.current, channel);
     setShareState('generating');
-    const createPromise = createSharedCard({
-        kind: isCuratedItinerary ? 'curated' : 'place',
-        sourceIds: Object.fromEntries([
+    const isBusinessEntity=businessEntity !== undefined && 'brandSlug' in businessEntity;
+    const kind = isBusinessEntity ? businessEntity.type : (isCuratedItinerary ? 'curated' : 'place');
+    const identity = isBusinessEntity ? {
+      brandSlug: businessEntity.brandSlug,
+      eventSlug: businessEntity.entitySlug,
+    } : Object.fromEntries([
           ['placePoolId', experienceData.placePoolId || experienceData.place_pool_id],
           ['googlePlaceId', experienceData.placeId || experienceData.googlePlaceId || experienceData.google_place_id],
           ['savedCardId', experienceData.savedCardId || experienceData.saved_card_id],
-        ].filter(([, value]) => typeof value === 'string' && value.length > 0)),
-        attribution: {
-          channel: 'share_modal',
-          referralCode: typeof experienceData.referralCode === 'string' ? experienceData.referralCode : undefined,
-        },
-      });
+        ].filter(([, value]) => typeof value === 'string' && value.length > 0));
+    const createPromise = prepareContentShare(kind, identity, channel);
     sharedCardPromiseRef.current = createPromise;
     try {
       const created = await createPromise;
@@ -204,18 +201,7 @@ export default function ShareModal({
   // accessor exists (SPEC §REMAINS #6); until then it is undefined → an
   // entity-only / attribution-via-content link (never an empty clipboard).
   const buildTrackedLink = async (channel: string): Promise<string> => {
-    const created = await ensureSharedCard();
-    // #1615: Explorer messages must expose the canonical S6 URL so messaging
-    // crawlers fetch S5 metadata. Attribution is stored on the snapshot; its
-    // S6 CTA owns the install-surviving OneLink. Business entities keep their
-    // established direct OneLink behavior.
-    if (created) return externalSharedCardUrl(created);
-    return buildReferralLink({
-      channel,
-      entity: buildShareEntity(),
-      referralCode:
-        typeof experienceData?.referralCode === 'string' ? experienceData.referralCode : undefined,
-    });
+    return (await ensureSharedCard(channel)).canonicalUrl;
   };
 
   const handleCopyLink = async () => {
@@ -236,7 +222,8 @@ export default function ShareModal({
 
   const handleCopyMessage = async () => {
     try {
-      await Clipboard.setString(personalizedMessage);
+      const prepared=await ensureSharedCard('copy_message');
+      await Clipboard.setString(prepared.message);
       setMessageCopied(true);
       setTimeout(() => setMessageCopied(false), 2000);
       mixpanelService.trackExperienceShared({ experienceTitle: title, method: 'copy_message' });
@@ -254,8 +241,8 @@ export default function ShareModal({
       // the human message so a share both reads well AND is attributable + lands
       // the shared experience after install. buildReferralLink never blocks / never
       // returns empty (static fallback on any SDK failure).
-      const trackedLink = await buildTrackedLink(platform);
-      const message = `${personalizedMessage}\n\n${trackedLink}`;
+      const prepared = await ensureSharedCard(platform);
+      const message = prepared.message;
       mixpanelService.trackExperienceShared({ experienceTitle: title, method: platform });
       logAppsFlyerEvent('af_share', { af_content_type: platform });
       
@@ -268,7 +255,7 @@ export default function ShareModal({
             await Linking.openURL(messagesUrl);
           } else {
             // Fallback to native share
-            await Share.share({ message });
+            await sharePreparedContent(prepared);
           }
           break;
           
@@ -281,11 +268,11 @@ export default function ShareModal({
               await Linking.openURL(whatsappUrl);
             } else {
               // Fallback to native share (works on web / emulators / devices without WhatsApp)
-              await Share.share({ message });
+              await sharePreparedContent(prepared);
             }
           } catch {
             // Final fallback
-            await Share.share({ message });
+            await sharePreparedContent(prepared);
           }
           break;
           
@@ -302,7 +289,7 @@ export default function ShareModal({
               break;
             } catch { Alert.alert('Image unavailable', 'Sharing the Mingla link instead.'); }
           }
-          await Share.share({ message, title: experienceData.title });
+          await sharePreparedContent(prepared);
           break;
           
         case 'twitter':
@@ -321,7 +308,7 @@ export default function ShareModal({
           break;
           
         default:
-          await Share.share({ message });
+          await sharePreparedContent(prepared);
       }
     } catch (error) {
       console.error('Error sharing:', error);

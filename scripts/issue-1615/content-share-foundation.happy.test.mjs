@@ -71,12 +71,14 @@ test('H5 authoritative mapper emits valid ShareFactsV1 for all eight kinds', asy
   }
 });
 
+// [TEST-MOD-APPROVED #1615] Stage 6 adds the sanctioned null-principal public lane;
+// H6 still pins identity-only authoritative mapping and the single mint RPC.
 test('H6 edge creation takes identity only, loads served truth and calls the sole mint RPC', () => {
   const edge = read('supabase/functions/shared-card/index.ts');
   const service = read('supabase/functions/_shared/contentShareService.ts');
   assert.match(edge, /raw\?\.contract === "content_share_v1"/);
-  assert.match(edge, /createContentShareV1\(db, user\.id, raw\)/);
-  assert.match(service, /loadAuthoritativeContentShare\(db, userId, requestedKind/);
+  assert.match(edge, /createContentShareV1\(db, user\?\.id \|\| null, raw, \{ serverCreated \}\)/);
+  assert.match(service, /loadAuthoritativeContentShare\(db, userId \|\| "", requestedKind/);
   assert.match(service, /rpc\("upsert_content_share_version"/);
   const block = service;
   for (const untrusted of ['raw.title', 'raw.cover', 'raw.price', 'raw.hours', 'raw.destination']) assert.doesNotMatch(block, new RegExp(untrusted.replace('.', '\\.')));

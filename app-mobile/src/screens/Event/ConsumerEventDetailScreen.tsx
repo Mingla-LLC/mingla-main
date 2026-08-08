@@ -49,7 +49,6 @@ import {
   Linking,
   Platform,
   Pressable,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -148,6 +147,7 @@ import { useAppStore } from "../../store/appStore";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion capture (PostHog
 // runs alongside the existing analytics; no Mixpanel call exists at this site).
 import { postHogService } from "../../services/postHogService";
+import { shareContent } from "../../services/contentShareAdapter";
 import { glass } from "../../constants/designSystem";
 // ORCH-1162 Bug 2 — shared static-Mapbox builder (re-exported from
 // @mingla/offering-rendering) for the consumer EVENT "Where you'll be" map.
@@ -427,11 +427,9 @@ export default function ConsumerEventDetailScreen({
     const slug = seed?.brandSlug ?? brandSlug;
     const evSlug = seed?.eventSlug ?? eventSlug;
     if (slug !== undefined && evSlug !== undefined) {
-      void Share.share({
-        url: `https://business.usemingla.com/e/${slug}/${evSlug}`,
-      });
+      void shareContent(isRsvp ? "rsvp_event" : "event", { brandSlug:slug, eventSlug:evSlug });
     }
-  }, [seed?.brandSlug, seed?.eventSlug, brandSlug, eventSlug]);
+  }, [seed?.brandSlug, seed?.eventSlug, brandSlug, eventSlug, isRsvp]);
 
   const tickets = ticketsQuery.data ?? [];
 

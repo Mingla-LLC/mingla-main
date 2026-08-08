@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const React = require("react");
-const { s6CardCss } = require("./cardIdentityRenderer");
+const { s6CardCss, wordmarkSource } = require("./cardIdentityRenderer");
 const { selectSharedCardFacts } = require("@mingla/card-identity");
 const { SHARED_CARD_PROXY_HEADER } = require("./sharedCardProxyAuth");
 const { contentShareOneLink } = require("./contentShareService");
@@ -277,7 +277,7 @@ const renderContentShareHtml = (contentShare) => {
   const moving = media.kind === "video" ? `<video class="share-motion" muted playsinline loop preload="none" poster="${escapeHtml(imageUrl)}" data-source="${escapeHtml(media.url)}"></video><button class="media-control" type="button" aria-label="Play video">▶</button>` : "";
   const portrait = imageUrl ? `<div class="portrait"><img class="portrait-poster" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(alt)}" />${moving}</div>` : "";
   const script = media.kind === "video" ? `<script>(()=>{const v=document.querySelector('.share-motion'),b=document.querySelector('.media-control');if(!v||!b)return;const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches,save=!!navigator.connection?.saveData;const load=()=>{if(!v.src)v.src=v.dataset.source};b.addEventListener('click',()=>{load();if(v.paused){v.play().then(()=>{b.textContent='Ⅱ';b.setAttribute('aria-label','Pause video')}).catch(()=>{})}else{v.pause();b.textContent='▶';b.setAttribute('aria-label','Play video')}});new IntersectionObserver(([e])=>{if(!e.isIntersecting)v.pause()}).observe(v);document.addEventListener('visibilitychange',()=>{if(document.hidden)v.pause()});v.addEventListener('error',()=>{v.removeAttribute('src');v.load()});if(!reduced&&!save){load();v.play().catch(()=>{})}})()</script>` : "";
-  return pageShell({ title: `${title} on Mingla`, description, canonicalUrl, imageUrl, imageWidth:1080, imageHeight:1350, imageAlt:alt, type: "article", siteName: "Mingla",
+  return pageShell({ title: `${title} on Mingla`, description, canonicalUrl, imageUrl, imageWidth:1080, imageHeight:1350, imageAlt:alt, type: "article", siteName: "Mingla", headerVariant: "mingla",
     body: `<style>.page{max-width:1120px;padding:32px}.content-share{display:grid;grid-template-columns:min(432px,40vw) minmax(0,560px);gap:48px;align-items:start}.portrait{position:relative;width:100%;aspect-ratio:4/5;border-radius:32px;overflow:hidden;background:#0C0E12}.portrait-poster,.share-motion{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.media-control{position:absolute;right:24px;bottom:24px;width:44px;height:44px;border:2px solid #FFF7EF;border-radius:22px;background:#0C0E12;color:#FFF7EF;font-size:18px}.eyebrow{font-size:14px;text-transform:none;color:#FFF7EF}.status{display:inline-block;margin-left:8px;padding:4px 9px;border-radius:99px;background:#FFF7EF;color:#0C0E12;font-weight:700}.facts{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px}.facts li{padding:7px 10px;border:1px solid rgba(255,255,255,.42);border-radius:99px}.actions{display:flex;flex-wrap:wrap;gap:12px}.secondary{background:transparent;color:#FFF7EF;border:2px solid #FFF7EF}.hours{list-style:none;padding:0}.hours li{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:8px 0}.hours .today{font-weight:800}.hours em{grid-column:2;font-size:14px}.content-share h1{font-size:clamp(36px,6vw,64px);line-height:1}.content-share h2{margin-top:32px}@media(max-width:759px){.page{padding:16px}.content-share{grid-template-columns:1fr;gap:24px}.portrait{max-width:432px;margin:auto}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}</style><section class="content-share">${portrait}<div><p class="eyebrow">${escapeHtml(({place:"Place",curated:"Curated plan",event:"Event",rsvp_event:"RSVP event",trip:"Trip",experience:"Experience",venue:"Venue",brand:"Brand"})[facts.kind] || "Mingla")}${status ? `<span class="status">● ${escapeHtml(status)}</span>`:""}</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p><ul class="facts">${previewFacts.map((fact)=>`<li>${escapeHtml(fact)}</li>`).join("")}</ul><div class="actions">${action ? `<a class="cta" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>`:""}<a class="cta secondary" href="${escapeHtml(contentShareOneLink(code))}">Open or get Mingla</a></div>${hoursHtml}</div></section>${script}` });
 };
 
@@ -671,7 +671,7 @@ const buildBrandOgCardProps = (input) => {
   };
 };
 
-const pageShell = ({ title, description, canonicalUrl, imageUrl, imageWidth = 1200, imageHeight = 630, imageAlt = "", type, body, siteName = "Mingla Business" }) => `<!doctype html>
+const pageShell = ({ title, description, canonicalUrl, imageUrl, imageWidth = 1200, imageHeight = 630, imageAlt = "", type, body, siteName = "Mingla Business", headerVariant = "business" }) => `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -689,13 +689,15 @@ const pageShell = ({ title, description, canonicalUrl, imageUrl, imageWidth = 12
   <meta name="twitter:title" content="${escapeHtml(title)}" />
   <meta name="twitter:description" content="${escapeHtml(description)}" />
   ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />\n  <meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}" />` : ""}
-  <link rel="icon" href="${LOGO_PUBLIC_PATH}" />
+  <link rel="icon" href="${headerVariant === "mingla" ? wordmarkSource() : LOGO_PUBLIC_PATH}" />
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     body { margin: 0; min-height: 100vh; background: #050505; color: #fff7ef; }
     .page { max-width: 1040px; margin: 0 auto; padding: 34px 20px 52px; }
     .brand { display: flex; align-items: center; gap: 14px; color: #f47c20; font-weight: 800; letter-spacing: .02em; text-decoration: none; }
     .brand img { width: 72px; height: 72px; object-fit: contain; }
+    .brand.mingla-wordmark-pill { display: inline-flex; width: fit-content; padding: 10px 18px; border-radius: 999px; background: #fff7ef; }
+    .brand.mingla-wordmark-pill img { width: 91px; height: 32px; object-fit: contain; }
     .hero { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; margin-top: 28px; }
     .media { width: 100%; aspect-ratio: 16 / 9; border-radius: 24px; object-fit: cover; background: linear-gradient(135deg, #1a1410, #f47c20); border: 1px solid rgba(244, 124, 32, .22); }
     h1 { margin: 0; font-size: clamp(42px, 8vw, 82px); line-height: .92; letter-spacing: 0; }
@@ -711,10 +713,10 @@ const pageShell = ({ title, description, canonicalUrl, imageUrl, imageWidth = 12
 </head>
 <body>
   <main class="page">
-    <a class="brand" href="${PUBLIC_ORIGIN}" aria-label="Mingla Business">
+    ${headerVariant === "mingla" ? `<a class="brand mingla-wordmark-pill" href="${EXPLORER_PUBLIC_ORIGIN}" aria-label="Mingla"><img src="${wordmarkSource()}" alt="Mingla" /></a>` : `<a class="brand" href="${PUBLIC_ORIGIN}" aria-label="Mingla Business">
       <img src="${LOGO_PUBLIC_PATH}" alt="" />
       <span>Mingla Business</span>
-    </a>
+    </a>`}
     ${body}
   </main>
 </body>

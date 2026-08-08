@@ -100,6 +100,7 @@
     "@mingla/offering-rendering": "file:../packages/offering-rendering",
     "@mingla/payments-native": "file:../packages/payments-native",
     "@mingla/phone-input": "file:../packages/phone-input",
+    "@mingla/sharing": "file:../packages/sharing",
     "@mingla/theme-animations": "file:../packages/theme-animations",
     "@radix-ui/react-dialog": "^1.1.15",
     "@react-native-async-storage/async-storage": "^2.2.0",

@@ -37,7 +37,6 @@ import React, {
 import {
   ActivityIndicator,
   Pressable,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -132,6 +131,7 @@ import { useAppStore } from "../../store/appStore";
 // #1708 — the same two pieces the place sheet uses. Open-Meteo needs no key and
 // no login; the travel figure is haversine and is labelled as an estimate.
 import { weatherService } from "../../services/weatherService";
+import { shareContent } from "../../services/contentShareAdapter";
 import { estimateTravelMinutes, haversineKm } from "../../utils/mutateCuratedCard";
 import { useRecommendations } from "../../contexts/RecommendationsContext";
 import { glass } from "../../constants/designSystem";
@@ -409,9 +409,7 @@ export default function ConsumerExperienceDetailScreen({
     const slug = seed?.brandSlug;
     const evSlug = seed?.eventSlug;
     if (slug !== undefined && evSlug !== undefined) {
-      void Share.share({
-        url: `https://business.usemingla.com/exp/${slug}/${evSlug}`,
-      });
+      void shareContent("experience", { brandSlug:slug, eventSlug:evSlug });
     }
   }, [seed?.brandSlug, seed?.eventSlug]);
 
