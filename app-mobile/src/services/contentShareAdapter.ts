@@ -2,8 +2,6 @@
 import { Platform, Share } from 'react-native';
 import { buildShareMessage, buildSharePortraitUrl, buildShortShareUrl, createContentShareSingleFlight, type ShareDestination, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
 import { supabase } from './supabase';
-import { createSharedCard } from './sharedCardService';
-import { isLegacyRollbackEligible, prepareLegacyPublicFields, type LegacyPublicSnapshot } from './legacyContentShareRollback';
 
 export type ContentShareIdentity = {
   placePoolId?: string; googlePlaceId?: string; savedCardId?: string;
@@ -20,12 +18,7 @@ export type PreparedContentShareV1 = {
   s4Url: string | null; facts: ShareFactsV1; media: ShareMediaIdentity | null;
   destination: ShareDestination; publicDetails: PublicShareDetails | null;
 };
-export type PreparedLegacyContentShare = {
-  contract: 'legacy_shared_card'; kind: 'place' | 'curated'; title: string;
-  canonicalUrl: string; message: string; s4Url: string | null;
-  legacySnapshot: LegacyPublicSnapshot;
-};
-export type PreparedContentShare = PreparedContentShareV1 | PreparedLegacyContentShare;
+export type PreparedContentShare = PreparedContentShareV1;
 type CreatedShare = {
   shortCode: string; version: number; facts: ShareFactsV1;
   media?: ShareMediaIdentity | null; destination?: ShareDestination;
@@ -41,28 +34,12 @@ export type ShareMessageContext = {
 export async function prepareContentShare(kind: ShareEntityKind, identity: ContentShareIdentity, channel = 'generic', messageContext: ShareMessageContext = {}): Promise<PreparedContentShare> {
   const key = JSON.stringify([kind, identity]);
   const prepared=await singleFlight(key,async () => {
-    const { data, error, response } = await supabase.functions.invoke<CreatedShare>('shared-card', {
+    const { data, error } = await supabase.functions.invoke<CreatedShare>('shared-card', {
       body: { contract:'content_share_v1', kind, identity, attribution:{ channel } },
     });
     if (!error && data?.shortCode && data?.facts) return { contract: 'content_share_v1' as const, data };
-    if (!error || (kind !== 'place' && kind !== 'curated') || !isLegacyRollbackEligible(error, response?.status)) {
-      throw new Error(error?.message || 'share_create_failed');
-    }
-    const legacy = await createSharedCard({
-      kind,
-      sourceIds: {
-        ...(identity.placePoolId ? { placePoolId: identity.placePoolId } : {}),
-        ...(identity.googlePlaceId ? { googlePlaceId: identity.googlePlaceId } : {}),
-        ...(identity.savedCardId ? { savedCardId: identity.savedCardId } : {}),
-      },
-      attribution: { channel },
-    });
-    return { contract: 'legacy_shared_card' as const, data: legacy };
+    throw new Error(error?.message || 'share_create_failed');
   });
-  if (prepared.contract === 'legacy_shared_card') {
-    const legacy = prepareLegacyPublicFields(prepared.data.snapshot, prepared.data.canonicalUrl, prepared.data.s4Url, kind as 'place' | 'curated', messageContext);
-    return { contract: 'legacy_shared_card', kind: legacy.snapshot.kind, title: legacy.snapshot.title, canonicalUrl: legacy.canonicalUrl, message: legacy.message, s4Url: legacy.s4Url, legacySnapshot: legacy.snapshot };
-  }
   const data=prepared.data;
   const canonicalUrl=buildShortShareUrl(data.shortCode);
   const media = data.media ?? null;
@@ -82,9 +59,8 @@ export async function prepareContentShare(kind: ShareEntityKind, identity: Conte
   };
 }
 
-export const messageForPreparedContentShare=(prepared:PreparedContentShare,channel='generic',messageContext:ShareMessageContext={}):PreparedContentShare=>prepared.contract === 'content_share_v1'
-  ? {...prepared,message:buildShareMessage(prepared.facts,{shortCode:prepared.shortCode,channel:channel as never,...messageContext})}
-  : {...prepared,message:prepareLegacyPublicFields(prepared.legacySnapshot,prepared.canonicalUrl,prepared.s4Url,prepared.kind,messageContext).message};
+export const messageForPreparedContentShare=(prepared:PreparedContentShare,channel='generic',messageContext:ShareMessageContext={}):PreparedContentShare=>
+  ({...prepared,message:buildShareMessage(prepared.facts,{shortCode:prepared.shortCode,channel:channel as never,...messageContext})});
 
 export async function sharePreparedContent(prepared:PreparedContentShare):Promise<void>{
   const title=prepared.title;

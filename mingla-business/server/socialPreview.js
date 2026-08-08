@@ -756,7 +756,7 @@ const pageShell = ({ title, description, canonicalUrl, imageUrl, imageWidth = 12
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
   <meta property="og:type" content="${escapeHtml(type)}" />
   ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />\n  <meta property="og:image:type" content="image/png" />\n  <meta property="og:image:width" content="${Number(imageWidth)}" />\n  <meta property="og:image:height" content="${Number(imageHeight)}" />\n  <meta property="og:image:alt" content="${escapeHtml(imageAlt)}" />` : ""}
-  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:card" content="${imageUrl ? "summary_large_image" : "summary"}" />
   <meta name="twitter:title" content="${escapeHtml(title)}" />
   <meta name="twitter:description" content="${escapeHtml(description)}" />
   ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />\n  <meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}" />` : ""}
@@ -943,6 +943,56 @@ const sendSharedPng = (res, buffer) => {
   res.end(buffer);
 };
 
+const LEGACY_HOUR_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const legacyClockLabel = (hour, minute) => {
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23 || !Number.isInteger(minute) || minute < 0 || minute > 59) return "";
+  return `${hour % 12 || 12}${minute ? `:${String(minute).padStart(2, "0")}` : ""} ${hour < 12 ? "AM" : "PM"}`;
+};
+const normalizeLegacyHours = (value) => {
+  if (!value || typeof value !== "object") return [];
+  if (Array.isArray(value)) {
+    const semantic = value.flatMap((row) => row && typeof row.day === "string" && typeof row.label === "string"
+      ? [{ day: asText(row.day), label: asText(row.label) }] : []);
+    return semantic.length === 7 ? semantic : [];
+  }
+  const descriptions = Array.isArray(value.weekdayDescriptions) ? value.weekdayDescriptions
+    : Array.isArray(value.weekday_text) ? value.weekday_text : null;
+  if (descriptions) {
+    const rows = descriptions.flatMap((line) => {
+      if (typeof line !== "string") return [];
+      const match = /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday):\s*(.+)$/i.exec(line.trim());
+      if (!match) return [];
+      const day = LEGACY_HOUR_DAYS.find((candidate) => candidate.toLowerCase() === match[1].toLowerCase());
+      const label = asText(match[2]);
+      return day && label && !/\[object Object\]|OpenNow:|Periods:/i.test(label) ? [{ day, label }] : [];
+    });
+    return rows.length === 7 ? rows : [];
+  }
+  if (!Array.isArray(value.periods)) return [];
+  const byDay = new Map(LEGACY_HOUR_DAYS.map((day) => [day, []]));
+  for (const period of value.periods) {
+    const open = period && typeof period.open === "object" ? period.open : null;
+    const close = period && typeof period.close === "object" ? period.close : null;
+    if (!open || !Number.isInteger(open.day) || open.day < 0 || open.day > 6) return [];
+    const day = LEGACY_HOUR_DAYS[open.day];
+    const openLabel = legacyClockLabel(open.hour, open.minute);
+    if (!openLabel) return [];
+    const closeLabel = close ? legacyClockLabel(close.hour, close.minute) : "";
+    const label = closeLabel ? `${openLabel}–${closeLabel}` : "Open 24 hours";
+    byDay.get(day).push(label);
+  }
+  return LEGACY_HOUR_DAYS.map((day) => ({ day, label: byDay.get(day).length ? byDay.get(day).join(", ") : "Closed" }));
+};
+const renderLegacyHours = (value, timezone) => {
+  const rows = normalizeLegacyHours(value);
+  if (rows.length !== 7) return "";
+  const today = asText(timezone) ? todayForShareTimezone(timezone) : "";
+  return `<details><summary>Hours</summary><ul class="legacy-hours">${rows.map((row) => {
+    const isToday = row.day === today;
+    return `<li${isToday ? ' class="today"' : ""}><strong>${escapeHtml(row.day)}</strong><span>${escapeHtml(row.label)}</span>${isToday ? "<em>Today</em>" : ""}</li>`;
+  }).join("")}</ul></details>`;
+};
+
 const renderSharedCardHtml = (snapshot, appUrl, preferredCanonicalUrl = null) => {
   const canonicalUrl = isAbsoluteHttpUrl(preferredCanonicalUrl) ? preferredCanonicalUrl : `${EXPLORER_PUBLIC_ORIGIN}/p/${encodeURIComponent(snapshot.share_id)}`;
   const imageUrl = snapshot.cover_url
@@ -954,9 +1004,10 @@ const renderSharedCardHtml = (snapshot, appUrl, preferredCanonicalUrl = null) =>
   const facts = selectSharedCardFacts(metadata);
   const description = facts.join(" · ") || `Open ${snapshot.title} on Mingla.`;
   const slivers = snapshot.kind === "curated" ? '<i class="share-curated-sliver one"></i><i class="share-curated-sliver two"></i>' : "";
+  const legacyKind = snapshot.kind === "curated" ? "Curated plan" : "Place";
   const hero = snapshot.cover_url
-    ? `<div class="share-cover"><img class="share-cover-image" src="${escapeHtml(snapshot.cover_url)}" alt="${escapeHtml(snapshot.title)}">${slivers}<div class="share-title">${escapeHtml(snapshot.title)}</div><div class="share-plate">${escapeHtml(facts.join(" · "))}<strong>mingla</strong></div></div>`
-    : `<div class="share-cover coverless">${slivers}<div class="share-title">${escapeHtml(snapshot.title)}</div><div class="share-plate">${escapeHtml(facts.join(" · "))}<strong>mingla</strong></div></div>`;
+    ? `<div class="share-cover"><img class="share-cover-image" src="${escapeHtml(snapshot.cover_url)}" alt="${escapeHtml(`${legacyKind}: ${snapshot.title}`)}"><span class="share-identity-pill" aria-hidden="true"><img src="${wordmarkSource()}" alt=""></span>${slivers}<div class="share-title">${escapeHtml(snapshot.title)}</div><div class="share-plate"><span class="share-plate-kind">${legacyKind}</span><span class="share-plate-facts">${escapeHtml(facts.join(" · "))}</span></div></div>`
+    : `<section class="coverless-information" aria-labelledby="shared-title"><p>${legacyKind}</p><h1 id="shared-title">${escapeHtml(snapshot.title)}</h1>${facts.length ? `<p class="coverless-facts">${escapeHtml(facts.join(" · "))}</p>` : ""}</section>`;
   const stopTitles = snapshot.kind === "curated" && Array.isArray(snapshot.stops)
     ? snapshot.stops.map((s) => asText(s?.title)).filter(Boolean)
     : [];
@@ -964,9 +1015,10 @@ const renderSharedCardHtml = (snapshot, appUrl, preferredCanonicalUrl = null) =>
     ? `<ol>${stopTitles.map((title) => `<li>${escapeHtml(title)}</li>`).join("")}</ol>`
     : "";
   const realDescription = asText(metadata.description);
-  const hours = metadata.hours && typeof metadata.hours === "object" ? `<details><summary>Hours</summary><pre>${escapeHtml(JSON.stringify(metadata.hours, null, 2))}</pre></details>` : "";
+  const hours = renderLegacyHours(metadata.hours, metadata.timezone);
   const actions = [[metadata.mapUrl, "Directions"], [metadata.website, "Website"], [metadata.phone ? `tel:${metadata.phone}` : "", "Call"]].filter(([href]) => typeof href === "string" && href).map(([href, label]) => `<a class="fact-action" href="${escapeHtml(href)}">${label}</a>`).join("");
-  return pageShell({ title: `${snapshot.title} on Mingla`, description, canonicalUrl, imageUrl, type: "article", siteName: "Mingla", body: `<main class="share-page">${hero}<section>${realDescription ? `<p>${escapeHtml(realDescription)}</p>` : ""}${stops}${hours}${actions ? `<nav class="fact-actions">${actions}</nav>` : ""}<a class="open-app" href="${escapeHtml(appUrl)}">Open in Mingla</a></section></main><style>.share-page{max-width:980px;margin:28px auto;padding:0 16px}${s6CardCss()}.share-page section{max-width:390px;margin:20px auto}.fact-actions{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}.fact-action{color:#fff7ef}.open-app{display:block;padding:14px 20px;border-radius:999px;background:#eb7825;color:#fff;text-align:center;text-decoration:none;font-weight:800}@media(min-width:760px){.share-page{display:grid;grid-template-columns:390px 1fr;gap:44px;align-items:center;min-height:80vh}.share-page section{margin:0;max-width:460px}}</style>` });
+  const imageAlt = imageUrl ? `${legacyKind}: ${snapshot.title}. ${facts.slice(0, 3).join(". ")}`.trim() : "";
+  return pageShell({ title: `${snapshot.title} on Mingla`, description, canonicalUrl, imageUrl, imageWidth:1080, imageHeight:1350, imageAlt, type: "article", siteName: "Mingla", headerVariant:"mingla", body: `<main class="share-page">${hero}<section class="share-details">${realDescription ? `<p>${escapeHtml(realDescription)}</p>` : ""}${stops}${hours}${actions ? `<nav class="fact-actions">${actions}</nav>` : ""}<a class="open-app" href="${escapeHtml(appUrl)}">Open in Mingla</a></section></main><style>.share-page{max-width:980px;margin:28px auto;padding:0 16px}${s6CardCss()}.share-page .share-details{max-width:390px;margin:20px auto}.coverless-information{max-width:560px;padding:28px;border:1px solid rgba(255,247,239,.28);border-radius:24px;background:#0C0E12}.coverless-information p{margin:0 0 10px;font-size:14px}.coverless-information h1{font-size:clamp(36px,7vw,64px);line-height:1}.coverless-information ul,.legacy-hours{list-style:none;padding:0}.coverless-information li{display:inline-flex;margin:4px;padding:7px 10px;border:1px solid rgba(255,247,239,.32);border-radius:999px}.legacy-hours li{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:8px 0}.legacy-hours .today{font-weight:800}.legacy-hours em{grid-column:2;font-size:14px}.fact-actions{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}.fact-action{color:#fff7ef}.open-app{display:block;padding:14px 20px;border-radius:999px;background:#eb7825;color:#fff;text-align:center;text-decoration:none;font-weight:800}@media(min-width:760px){.share-page{display:grid;grid-template-columns:${snapshot.cover_url ? "390px 1fr" : "minmax(0,560px) minmax(0,390px)"};gap:44px;align-items:center;min-height:80vh}.share-page .share-details{margin:0;max-width:460px}}</style>` });
 };
 
 const renderNotFoundHtml = (title) =>
@@ -1278,6 +1330,7 @@ module.exports = {
   renderTripHtml,
   renderVenueHtml,
   renderSharedCardHtml,
+  normalizeLegacyHours,
   renderContentShareHtml,
   renderNotFoundHtml,
   renderOgPng,

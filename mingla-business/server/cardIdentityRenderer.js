@@ -19,6 +19,7 @@ const safeText = (value) => typeof value === "string" ? value.trim() : "";
 const MINGLA_STORAGE_HOST = "gqnoajqerqhnvulmnyvv.supabase.co";
 const MINGLA_BUNNY_DELIVERY_HOST = "vz-a16fce08-6c6.b-cdn.net";
 const MAX_COVER_BYTES = 8 * 1024 * 1024;
+const MAX_RENDERED_PNG_BYTES = 5 * 1024 * 1024;
 const PUBLIC_IMAGE_MIME = /^image\/(?:avif|jpeg|png|webp)(?:;|$)/i;
 const isAllowedPublicPoster = (value) => {
   try {
@@ -79,11 +80,13 @@ function cardIdentityElement(snapshot, surfaceKey, scale = 1) {
   } },
   React.createElement("img", { src: cover, style: { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" } }),
   React.createElement("div", { style: { position: "absolute", left: 0, right: 0, bottom: 0, height: scrimH, background: cssGradient(RAMP.bottom) } }),
+  React.createElement("div", { style:{position:"absolute",left:px(24),top:px(24),width:px(124),height:px(44),display:"flex",alignItems:"center",justifyContent:"center",borderRadius:px(18),background:"#FFF7EF",border:`${px(1)}px solid rgba(12,14,18,.56)`,boxShadow:`0 ${px(4)}px ${px(12)}px rgba(12,14,18,.18)`,boxSizing:"border-box"} },
+    React.createElement("img", { src:wordmarkSource(), style:{width:px(96),height:px(34),objectFit:"contain"} })),
   React.createElement("div", { style: { display: "flex", position: "absolute", left: px(s.sideInset + s.titleInset), right: px(s.sideInset + s.titleInset), bottom: titleBottom, fontSize: px(s.titleSize), lineHeight: `${px(s.titleLH)}px`, fontWeight: Number(s.titleWeight), maxHeight: px(s.titleLH * s.titleLines), overflow: "hidden" } }, safeText(snapshot.title)),
   snapshot.kind === "curated" ? SLIVER.offsets.map((offset, index) => React.createElement("div", { key: `sliver-${index}`, style: { position: "absolute", left: px(s.sideInset + s.sliver.insets[index]), right: px(s.sideInset + s.sliver.insets[index]), bottom: px(s.bottomInset + s.plateH + offset), height: px(s.sliver.height), borderRadius: px(s.sliver.radius), border: `${px(sliverBoundary.width)}px solid ${sliverBoundary.color}`, background: `linear-gradient(90deg,${s.sliver.opaque[0]},${s.sliver.opaque[1]})` } })) : null,
-  React.createElement("div", { style: { position: "absolute", left: px(s.sideInset), bottom: px(s.bottomInset), width: px(s.plateW), height: px(s.plateH), borderRadius: px(s.plateR), border: `${px(boundary.width)}px solid ${boundary.color}`, background: PLATE.fallbackSolid, boxShadow: `inset 0 ${px(1)}px 0 ${PLATE.topHighlight}`, display: "flex", alignItems: "center", paddingLeft: px(s.titleInset), paddingRight: px(s.titleInset) } },
-    React.createElement("div", { style: { display: "flex", fontSize: px(s.metaSize), fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, facts.join(" · ")),
-    React.createElement("div", { style: { display: "flex", marginLeft: "auto", color: "rgba(255,255,255,0.72)", fontSize: px(Math.max(13, Math.round(s.metaSize * .72))), fontWeight: 800 } }, "mingla"),
+  React.createElement("div", { style: { position: "absolute", left: px(s.sideInset), bottom: px(s.bottomInset), width: px(s.plateW), height: px(s.plateH), borderRadius: px(s.plateR), border: `${px(boundary.width)}px solid ${boundary.color}`, background: PLATE.fallbackSolid, boxShadow: `inset 0 ${px(1)}px 0 ${PLATE.topHighlight}`, display: "flex", flexDirection:"column", padding:`${px(9)}px ${px(12)}px ${px(7)}px`, boxSizing:"border-box", fontVariantNumeric:"tabular-nums" } },
+    React.createElement("div", { style:{height:px(20),display:"flex",alignItems:"center",fontSize:px(12),lineHeight:`${px(16)}px`,fontWeight:600} }, kindLabel(snapshot.kind)),
+    React.createElement("div", { style: { display: "flex", marginTop:px(3), fontSize: px(s.metaSize), lineHeight:`${px(16)}px`, fontWeight: 500, maxHeight:px(32), overflow:"hidden", wordBreak:"break-word" } }, facts.join(" · ")),
   ));
 }
 
@@ -93,7 +96,9 @@ async function renderCardIdentityPng(snapshot, surfaceKey) {
   const scale = ["s4Snippet", "s5Og"].includes(surfaceKey) ? 3 : 1;
   const card = cardIdentityElement({ ...snapshot, cover_url: await prepareCoverForOg(snapshot.cover_url) }, surfaceKey, scale);
   const response = new ImageResponse(card, { width: s.w * scale, height: s.h * scale });
-  return Buffer.from(await response.arrayBuffer());
+  const png = Buffer.from(await response.arrayBuffer());
+  if (png.length === 0 || png.length > MAX_RENDERED_PNG_BYTES) throw new Error("rendered_image_too_large");
+  return png;
 }
 
 // Static require.resolve is intentionally traceable by Vercel's serverless
@@ -124,8 +129,8 @@ function contentSharePortraitElement(contentShare) {
   return React.createElement("div", { style:{ width:px(s.w),height:px(s.h),position:"relative",display:"flex",overflow:"hidden",borderRadius:px(s.cardR),color:"white",fontFamily:"Inter, Arial, sans-serif",background:"#0C0E12" } },
     poster ? React.createElement("img", { src:poster, style:{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:`${Number(media?.focalPoint?.x ?? .5)*100}% ${Number(media?.focalPoint?.y ?? .5)*100}%`} }) : null,
     poster ? React.createElement("div", { style:{position:"absolute",left:0,right:0,bottom:0,height:px(surfaceScrimHeight("s4Snippet")),background:cssGradient(RAMP.bottom)} }) : null,
-    React.createElement("div", { style:{position:"absolute",left:px(24),top:px(24),height:px(38),padding:`0 ${px(12)}px`,display:"flex",alignItems:"center",borderRadius:px(19),background:"#FFF7EF",border:`${px(1)}px solid rgba(12,14,18,.56)`,boxShadow:`0 ${px(4)}px ${px(12)}px rgba(12,14,18,.18)`} },
-      React.createElement("img", { src:wordmarkSource(), style:{width:px(91),height:px(25),objectFit:"contain"} })),
+    React.createElement("div", { style:{position:"absolute",left:px(24),top:px(24),width:px(124),height:px(44),display:"flex",alignItems:"center",justifyContent:"center",borderRadius:px(18),background:"#FFF7EF",border:`${px(1)}px solid rgba(12,14,18,.56)`,boxShadow:`0 ${px(4)}px ${px(12)}px rgba(12,14,18,.18)`,boxSizing:"border-box"} },
+      React.createElement("img", { src:wordmarkSource(), style:{width:px(96),height:px(34),objectFit:"contain"} })),
     React.createElement("div", { style:{position:"absolute",display:"flex",left:px(24),right:px(24),bottom:titleBottom,fontSize:px(titleSize),lineHeight:`${px(Math.max(30,titleSize+6))}px`,fontWeight:700,maxHeight:px(66),overflow:"hidden",wordBreak:"break-word"} }, safeText(facts.title)),
     facts.kind === "curated" ? SLIVER.offsets.map((offset,index)=>React.createElement("div", {key:index,style:{position:"absolute",left:px(s.sideInset+s.sliver.insets[index]),right:px(s.sideInset+s.sliver.insets[index]),bottom:px(s.bottomInset+s.plateH+offset),height:px(4),borderRadius:px(2),background:"rgba(255,255,255,.44)"}})) : null,
     React.createElement("div", {style:{position:"absolute",left:px(s.sideInset),bottom:px(s.bottomInset),width:px(s.plateW),height:px(s.plateH),borderRadius:px(s.plateR),border:`${px(boundary.width)}px solid ${boundary.color}`,background:`linear-gradient(${PLATE.lift},${PLATE.lift}),linear-gradient(rgba(${PLATE.underRgb.join(",")},${plateUnder}),rgba(${PLATE.underRgb.join(",")},${plateUnder}))`,display:"flex",flexDirection:"column",padding:`${px(9)}px ${px(12)}px ${px(7)}px`,boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}},
@@ -142,7 +147,9 @@ async function renderContentSharePortraitPng(contentShare) {
   const posterUrl = await prepareCoverForOg(media.posterUrl);
   const element = contentSharePortraitElement({ ...contentShare, media: { ...media, posterUrl } });
   const response = new ImageResponse(element, { width:1080, height:1350 });
-  return Buffer.from(await response.arrayBuffer());
+  const png = Buffer.from(await response.arrayBuffer());
+  if (png.length === 0 || png.length > MAX_RENDERED_PNG_BYTES) throw new Error("rendered_image_too_large");
+  return png;
 }
 
 function businessRowSnapshot(props) {
@@ -170,7 +177,7 @@ function s6CardCss() {
   // even when a particular row does not need the sliver stack.
   const sliverBoundary = surfaceSliverBoundary("s6Phone");
   const underColor = `rgba(${PLATE.underRgb.join(",")},${surfacePlateUnder("s6Phone")})`;
-  return `.share-cover{height:${s.h}px;max-width:${s.w}px;margin:auto;border-radius:${s.cardR}px;position:relative;overflow:hidden}.share-cover-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.coverless{background:${PLATE.fallbackSolid}}.share-cover:after{content:"";position:absolute;left:0;right:0;bottom:0;height:${surfaceScrimHeight("s6Phone")}px;background:${cssGradient(RAMP.bottom)}}.share-title{z-index:2;position:absolute;left:${s.sideInset + s.titleInset}px;right:${s.sideInset + s.titleInset}px;bottom:${s.bottomInset + s.plateH + s.gap}px;font-size:${s.titleSize}px;line-height:${s.titleLH}px;font-weight:${s.titleWeight}}.share-plate{z-index:2;position:absolute;left:${s.sideInset}px;right:${s.sideInset}px;bottom:${s.bottomInset}px;height:${s.plateH}px;border:${boundary.width}px solid ${boundary.color};border-radius:${s.plateR}px;background:linear-gradient(${PLATE.lift},${PLATE.lift}),linear-gradient(${underColor},${underColor});backdrop-filter:blur(${PLATE.blurIntensity}px);-webkit-backdrop-filter:blur(${PLATE.blurIntensity}px);box-shadow:inset 0 1px 0 ${PLATE.topHighlight};display:flex;align-items:center;padding:0 ${s.titleInset}px;font-size:${s.metaSize}px}.share-plate strong{margin-left:auto;color:rgba(255,255,255,.72)}@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.share-plate{background:${PLATE.fallbackSolid}}}.share-curated-sliver{z-index:1;position:absolute;height:${s.sliver.height}px;border-radius:${s.sliver.radius}px;border:${sliverBoundary.width}px solid ${sliverBoundary.color};background:linear-gradient(90deg,${s.sliver.opaque[0]},${s.sliver.opaque[1]})}.share-curated-sliver.one{left:${s.sideInset + s.sliver.insets[0]}px;right:${s.sideInset + s.sliver.insets[0]}px;bottom:${s.bottomInset + s.plateH + SLIVER.offsets[0]}px}.share-curated-sliver.two{left:${s.sideInset + s.sliver.insets[1]}px;right:${s.sideInset + s.sliver.insets[1]}px;bottom:${s.bottomInset + s.plateH + SLIVER.offsets[1]}px}`;
+  return `.share-cover{height:${s.h}px;max-width:${s.w}px;margin:auto;border-radius:${s.cardR}px;position:relative;overflow:hidden}.share-cover-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.share-cover:after{content:"";position:absolute;left:0;right:0;bottom:0;height:${surfaceScrimHeight("s6Phone")}px;background:${cssGradient(RAMP.bottom)}}.share-identity-pill{z-index:2;position:absolute;left:24px;top:24px;width:124px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:18px;background:#FFF7EF;border:1px solid rgba(12,14,18,.56);box-shadow:0 4px 12px rgba(12,14,18,.18);box-sizing:border-box}.share-identity-pill img{width:96px;height:34px;object-fit:contain}.share-title{z-index:2;position:absolute;left:${s.sideInset + s.titleInset}px;right:${s.sideInset + s.titleInset}px;bottom:${s.bottomInset + s.plateH + s.gap}px;font-size:${s.titleSize}px;line-height:${s.titleLH}px;font-weight:${s.titleWeight}}.share-plate{z-index:2;position:absolute;left:${s.sideInset}px;right:${s.sideInset}px;bottom:${s.bottomInset}px;height:${s.plateH}px;border:${boundary.width}px solid ${boundary.color};border-radius:${s.plateR}px;background:linear-gradient(${PLATE.lift},${PLATE.lift}),linear-gradient(${underColor},${underColor});backdrop-filter:blur(${PLATE.blurIntensity}px);-webkit-backdrop-filter:blur(${PLATE.blurIntensity}px);box-shadow:inset 0 1px 0 ${PLATE.topHighlight};display:flex;flex-direction:column;justify-content:center;padding:7px 12px;box-sizing:border-box}.share-plate-kind{font-size:12px;line-height:16px;font-weight:600}.share-plate-facts{font-size:${s.metaSize}px;line-height:16px;font-weight:500}@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.share-plate{background:${PLATE.fallbackSolid}}}.share-curated-sliver{z-index:1;position:absolute;height:${s.sliver.height}px;border-radius:${s.sliver.radius}px;border:${sliverBoundary.width}px solid ${sliverBoundary.color};background:linear-gradient(90deg,${s.sliver.opaque[0]},${s.sliver.opaque[1]})}.share-curated-sliver.one{left:${s.sideInset + s.sliver.insets[0]}px;right:${s.sideInset + s.sliver.insets[0]}px;bottom:${s.bottomInset + s.plateH + SLIVER.offsets[0]}px}.share-curated-sliver.two{left:${s.sideInset + s.sliver.insets[1]}px;right:${s.sideInset + s.sliver.insets[1]}px;bottom:${s.bottomInset + s.plateH + SLIVER.offsets[1]}px}`;
 }
 
-module.exports = { businessRowSnapshot, cardIdentityElement, contentSharePortraitElement, factsFor, isAllowedPublicPoster, prepareCoverForOg, renderCardIdentityPng, renderContentSharePortraitPng, s6CardCss, useDirectionC, wordmarkSource };
+module.exports = { MAX_RENDERED_PNG_BYTES, businessRowSnapshot, cardIdentityElement, contentSharePortraitElement, factsFor, isAllowedPublicPoster, prepareCoverForOg, renderCardIdentityPng, renderContentSharePortraitPng, s6CardCss, useDirectionC, wordmarkSource };

@@ -58,7 +58,11 @@ test("H7 S6 uses web glass with the package fallback and truthful coverless meta
   assert.match(renderer, /backdrop-filter:blur/);
   assert.match(renderer, /@supports not/);
   assert.match(preview, /imageUrl \? `<meta property="og:image"/);
-  assert.match(preview, /class="share-cover coverless"/);
+  // [TEST-MOD-APPROVED #1615] Physical Samsung reason: the former coverless
+  // card was placeholder artwork. The amended contract requires a truthful
+  // information state with no visual-card or image metadata.
+  assert.match(preview, /class="coverless-information"/);
+  assert.doesNotMatch(preview, /class="share-cover coverless"/);
 });
 
 test("H8 one snapshot feeds S4, S5, and S6 without duplicated data reads", () => {
@@ -126,7 +130,9 @@ test("H15 real S6 renderer escapes facts and conditionally emits canonical/image
   // requiring one asserted URL normalization that this renderer does not own.
   assert.match(html, /og:image/); assert.match(html, /https:\/\/cafe\.test/); assert.match(html, /w36m\?pid=shared_card/);
   const coverless = renderSharedCardHtml({ share_id:"def", kind:"place", title:"Plain", cover_url:null, metadata:{}, stops:[] }, "https://go.usemingla.com/w36m?pid=shared_card&deep_link_value=place&deep_link_sub1=def");
-  assert.doesNotMatch(coverless, /property="og:image"/); assert.match(coverless, /share-cover coverless/);
+  // [TEST-MOD-APPROVED #1615] Physical Samsung reason: coverless legacy S6
+  // must be honest information, not a generated dark card that implies art.
+  assert.doesNotMatch(coverless, /property="og:image"|twitter:image|class="share-cover/); assert.match(coverless, /coverless-information/);
   const hostileCover = renderSharedCardHtml({ share_id:"ghi", kind:"place", title:"Safe", cover_url:"https://img.test/a'\"x.png", metadata:{}, stops:[] }, "https://go.usemingla.com/w36m?deep_link_sub1=ghi");
   assert.match(hostileCover, /<img class="share-cover-image" src="https:\/\/img\.test\/a&#39;&quot;x\.png"/);
   assert.doesNotMatch(hostileCover, /background-image:url/);

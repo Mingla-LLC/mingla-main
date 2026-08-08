@@ -14,6 +14,9 @@ export type ContentShareKind =
 type RecordLike = Record<string, any>;
 type QueryClient = { from(table: string): any; rpc(name: string, args?: Record<string, unknown>): any };
 
+/** Exact deployed public.place_pool columns consumed by the V1 share mapper. */
+export const PLACE_POOL_SHARE_SELECT = "id,google_place_id,name,address,city,primary_type_display_name,primary_type,rating,price_level,utc_offset_minutes,editorial_summary,generative_summary,opening_hours,stored_photo_urls,google_maps_uri,national_phone_number,website,is_active,is_servable";
+
 const clean = (value: unknown, max = 160): string =>
   typeof value === "string"
     ? Array.from(value.normalize("NFC").replace(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, "")
@@ -236,7 +239,7 @@ export function mapAuthoritativeShareFacts(kind: ContentShareKind, assembled: Re
       facts = compact({
         schemaVersion: 1, kind, title: clean(row.name),
         category: clean(row.primary_type_display_name || row.primary_type, 80),
-        area: clean(row.neighborhood || row.city, 120),
+        area: clean(row.city, 120),
         rating: Number.isFinite(row.rating) && row.rating >= 0 && row.rating <= 5 ? row.rating : undefined,
         priceLevel: cleanPriceLevel(row.price_level), description: clean(row.editorial_summary || row.generative_summary, 600),
         hours: normalizeServedHours(row.opening_hours),
@@ -352,7 +355,7 @@ export async function loadAuthoritativeContentShare(
     const poolId = sourceId(identity, "placePoolId");
     const googleId = sourceId(identity, "googlePlaceId");
     if (!poolId && !googleId) throw new Error("validation");
-    let query = db.from("place_pool").select("id,google_place_id,name,address,city,neighborhood,primary_type_display_name,primary_type,rating,price_level,utc_offset_minutes,editorial_summary,generative_summary,opening_hours,stored_photo_urls,google_maps_uri,national_phone_number,website,is_active,is_servable").limit(1);
+    let query = db.from("place_pool").select(PLACE_POOL_SHARE_SELECT).limit(1);
     query = poolId ? query.eq("id", poolId) : query.eq("google_place_id", googleId);
     const { data: row, error } = await query.maybeSingle();
     if (error) throw new Error("db_error");

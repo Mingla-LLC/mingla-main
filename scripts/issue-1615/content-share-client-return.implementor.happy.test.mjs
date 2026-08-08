@@ -45,11 +45,11 @@ test('C3 consumer preview renders only the canonical prepared message lifecycle'
   }
   assert.match(source, /<Text style=\{styles\.messageText\}>\{sharedCard\.message\}<\/Text>/);
   assert.doesNotMatch(source, /generatePersonalizedMessage|personalizedMessage|star rating|Let me know if you're interested/);
-  // [TEST-MOD-APPROVED #1615] The prior assertion pinned the unsafe
-  // default-off rollback blocker. The adapter now performs a default-on,
-  // response-classified authenticated legacy create for place/curated only.
+  // [TEST-MOD-APPROVED #1615] Physical Samsung reason: the response-classified
+  // downgrade minted a fresh long `/p` URL after V1 failed, producing false
+  // success with no WhatsApp cover. New creation must remain V1-only.
   assert.doesNotMatch(source, /ENABLE_LEGACY_PRIVATE_SHARE_FALLBACK|EXPO_PUBLIC_ENABLE_LEGACY_SHARE_FALLBACK/);
-  assert.match(read('app-mobile/src/services/contentShareAdapter.ts'), /isLegacyRollbackEligible[\s\S]*createSharedCard/);
+  assert.doesNotMatch(read('app-mobile/src/services/contentShareAdapter.ts'), /isLegacyRollbackEligible|createSharedCard|legacy_shared_card/);
   assert.match(source, /accessibilityState=\{\{ disabled: true \}\}[\s\S]{0,600}Coming soon/);
   assert.match(source, /sharedCard\?\.s4Url[\s\S]*aspectRatio:\s*4\s*\/\s*5/);
   assert.match(source, /No image preview is available/);
@@ -185,52 +185,22 @@ test('C10 Android adapters put the canonical URL in message exactly once', () =>
   assert.equal((message.match(/https:\/\/usemingla\.com\/s\/Aa0Bb1Cc2Dd3Ee4F/g) ?? []).length, 1);
 });
 
-test('C11 flag-off 503 rolls place/curated back to truthful returned /p data', async () => {
-  const rollback = await import(pathToFileURL(path.join(ROOT, 'app-mobile/src/services/legacyContentShareRollback.ts')));
-  assert.equal(rollback.isLegacyRollbackEligible({ context: { status: 503 } }), true);
-  const shareId = 'a'.repeat(36);
-  const fields = rollback.prepareLegacyPublicFields({
-    kind: 'curated',
-    title: 'Durham afternoon',
-    metadata: { category: 'Food', location: 'Durham', price: 'Estimated $20–$40', description: 'Three real stops.' },
-    stops: [
-      { title: 'Namu', placeId: 'private-google-id' },
-      { title: 'Museum', source_reference: 'private-source' },
-      { title: 'Park' },
-    ],
-    source_ids: { savedCardId: 'private-card' },
-    owner_profile_id: 'private-owner',
-    attribution: { referralCode: 'private-referral' },
-  }, `https://usemingla.com/p/${shareId}`, `https://usemingla.com/share/${shareId}.png`, 'curated', {
-    planningPreference: { dayOfWeek: 'weekend', timeOfDay: 'afternoon', planningTimeframe: 'this month' },
-  });
-  assert.equal(fields.snapshot.title, 'Durham afternoon');
-  assert.equal(fields.snapshot.stops.length, 3);
-  assert.equal(fields.message, `Durham afternoon is a 3-stop plan.\nFood · Durham\nThree real stops.\nEstimated $20–$40\nStops: Namu; Museum; Park\nI was thinking one weekend afternoon this month.\n\nhttps://usemingla.com/p/${shareId}`);
-  assert.equal(fields.s4Url, `https://usemingla.com/share/${shareId}.png`);
-  assert.equal(fields.message.split(`https://usemingla.com/p/${shareId}`).length - 1, 1);
-  const serialized = JSON.stringify(fields);
-  for (const secret of ['private-google-id', 'private-source', 'private-card', 'private-owner', 'private-referral']) assert.doesNotMatch(serialized, new RegExp(secret));
-  const reversed = rollback.prepareLegacyPublicFields({ kind:'curated', title:'Truth', metadata:{ price:'$100.00-$0.00' }, stops:[] }, `https://usemingla.com/p/${shareId}`, null, 'curated');
-  assert.doesNotMatch(reversed.message,/\$100\.00|\$0\.00/);
-  assert.throws(() => rollback.prepareLegacyPublicFields({ kind:'place', title:'Wrong port', metadata:{}, stops:[] }, `https://usemingla.com:8443/p/${shareId}`, null, 'place'), /legacy_share_invalid/);
+test('C11 enabled V1 failures never mint a fresh legacy /p share', () => {
+  // [TEST-MOD-APPROVED #1615] Physical Samsung reason: C11 formerly blessed
+  // the exact 503 → new `/p` downgrade that surfaced stale artwork and no chat
+  // preview. Historical `/p` reads remain; new producer fallback is forbidden.
   const adapter = read('app-mobile/src/services/contentShareAdapter.ts');
-  assert.match(adapter, /kind !== 'place' && kind !== 'curated'/);
-  assert.match(adapter, /createSharedCard\(\{[\s\S]*sourceIds:[\s\S]*attribution: \{ channel \}/);
-  assert.match(adapter, /contract: 'legacy_shared_card'[\s\S]*legacySnapshot/);
-  assert.doesNotMatch(adapter.match(/PreparedLegacyContentShare = \{([\s\S]*?)\n\};/)?.[1] ?? '', /shortCode|version|facts|media|destination|publicDetails/);
+  assert.match(adapter, /if \(!error && data\?\.shortCode && data\?\.facts\)[\s\S]*throw new Error\(error\?\.message \|\| 'share_create_failed'\)/);
+  assert.doesNotMatch(adapter, /createSharedCard|prepareLegacyPublicFields|legacy_shared_card|usemingla\.com\/p\//);
 });
 
-test('C12 fatal v1 failures cannot downgrade to legacy creation', async () => {
-  const rollback = await import(pathToFileURL(path.join(ROOT, 'app-mobile/src/services/legacyContentShareRollback.ts')));
-  for (const status of [400, 401, 403, 404, 409, 410, 422]) {
-    assert.equal(rollback.isLegacyRollbackEligible({ context: { status } }), false, String(status));
-  }
-  assert.equal(rollback.isLegacyRollbackEligible(new Error('share_create_failed')), false);
-  assert.equal(rollback.isLegacyRollbackEligible({ name: 'FunctionsFetchError', message: 'Failed to send a request to the Edge Function' }), true);
-  assert.equal(rollback.isLegacyRollbackEligible({ name: 'FunctionsRelayError', message: 'Relay Error invoking the Edge Function' }), true);
+test('C12 every v1 failure, including retryable and transport failures, stays visible for retry', () => {
+  // [TEST-MOD-APPROVED #1615] Physical Samsung reason: transport, 408/425/429,
+  // and 5xx were incorrectly classified as permission to mint `/p`; the
+  // amended contract makes all of them fail visibly in the same V1 path.
   const adapter = read('app-mobile/src/services/contentShareAdapter.ts');
-  assert.match(adapter, /!isLegacyRollbackEligible\(error, response\?\.status\)[\s\S]*throw new Error/);
+  assert.doesNotMatch(adapter, /response\?\.status|FunctionsFetchError|FunctionsRelayError|RETRYABLE_STATUS/);
+  assert.match(adapter, /throw new Error\(error\?\.message \|\| 'share_create_failed'\)/);
   assert.match(read('app-mobile/src/components/ShareModal.tsx'), /setShareState\('error'\)[\s\S]*Retry preview/);
 });
 

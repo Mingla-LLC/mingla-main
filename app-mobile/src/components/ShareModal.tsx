@@ -170,9 +170,7 @@ export default function ShareModal({
       const created = await createPromise;
       setSharedCard(created);
       setShareState('ready');
-      trackShareAnalytics('share_link_ready', created.contract === 'content_share_v1'
-        ? { kind, version: created.version, short_code: created.shortCode, channel, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' }
-        : { kind, contract: 'legacy_shared_card', channel, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' });
+      trackShareAnalytics('share_link_ready', { kind, version: created.version, short_code: created.shortCode, channel, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' });
       return created;
     } catch (error) {
       sharedCardPromiseRef.current = null;
@@ -267,9 +265,7 @@ export default function ShareModal({
       reachedOpening = true;
 
       const openNativeShareSheet = async (): Promise<void> => {
-        const properties: Record<string, string | number | boolean> = prepared.contract === 'content_share_v1'
-          ? { kind: prepared.kind, version: prepared.version, short_code: prepared.shortCode, channel: platform, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' }
-          : { kind: prepared.kind, contract: 'legacy_shared_card', channel: platform, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' };
+        const properties: Record<string, string | number | boolean> = { kind: prepared.kind, version: prepared.version, short_code: prepared.shortCode, channel: platform, producer_app: 'consumer', producer_surface: 'explorer_share_sheet' };
         trackShareAnalytics('share_sheet_opened', properties);
         await sharePreparedContent(prepared);
         trackShareAnalytics('share_sheet_returned', { ...properties, outcome: 'returned' });
@@ -408,13 +404,10 @@ export default function ShareModal({
               {/* Personalized Message Box */}
               <View style={styles.messageBox}>
                 {sharedCard ? (
-                  <>
-                    {sharedCard.contract === 'legacy_shared_card' ? <Text style={styles.shareStatus}>Compatibility share link ready</Text> : null}
-                    <Text style={styles.messageText}>{sharedCard.message}</Text>
-                  </>
+                  <Text style={styles.messageText}>{sharedCard.message}</Text>
                 ) : shareState === 'error' ? (
                   <View style={styles.messageState}>
-                    <Text style={styles.shareError}>The share preview is unavailable. Your original public link is still available where possible.</Text>
+                    <Text style={styles.shareError}>We couldn’t create the share preview. Check your connection and retry.</Text>
                     <TrackedTouchableOpacity logComponent="ShareModal" accessibilityRole="button" accessibilityLabel="Retry share preview" onPress={() => { sharedCardPromiseRef.current = null; void ensureSharedCard('generic').catch(() => undefined); }} style={styles.retryButton}>
                       <Text style={styles.retryText}>Retry preview</Text>
                     </TrackedTouchableOpacity>
