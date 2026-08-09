@@ -83,6 +83,7 @@ import { colors } from "../constants/colors";
 import { useAppLayout } from "../hooks/useAppLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
+import { validateNativeContentCardDescriptorV1 } from '@mingla/sharing';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -1694,17 +1695,18 @@ export default function MessageInterface({
                   }}
                   onCardBubbleTap={async (payload, messageId) => {
                     if (isContentShareCardPayload(payload)) {
-                      if (payload.nativeCard) {
+                      const nativeCard = validateNativeContentCardDescriptorV1(payload.nativeCard);
+                      if (nativeCard) {
                         const openSnapshot = (card: LegacyCardPayload) => {
                           setExpandedCardFromChat(cardPayloadToExpandedCardData(card));
                           setShowExpandedCardFromChat(true);
                         };
-                        const cached = await nativeContentCardSnapshotService.cached(messageId, payload.nativeCard.snapshotFingerprint);
-                        if (cached) { openSnapshot(cached); return; }
                         const resolveAndOpen = async (): Promise<void> => {
                           setResolvingNativeCardId(messageId);
                           try {
-                            const resolved = await nativeContentCardSnapshotService.resolve([messageId], { [messageId]: payload.nativeCard!.snapshotFingerprint });
+                            const cached = await nativeContentCardSnapshotService.cached(messageId, nativeCard.snapshotFingerprint);
+                            if (cached) { openSnapshot(cached); return; }
+                            const resolved = await nativeContentCardSnapshotService.resolve([messageId], { [messageId]: nativeCard.snapshotFingerprint });
                             const snapshot = resolved.get(messageId);
                             if (!snapshot) throw new Error('native_snapshot_unavailable');
                             openSnapshot(snapshot);

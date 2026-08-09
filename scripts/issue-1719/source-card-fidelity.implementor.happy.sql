@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 SET ROLE service_role;
-DO $$DECLARE a jsonb; b jsonb; l uuid; kind text; BEGIN
+DO $$DECLARE a jsonb; b jsonb; l uuid; kind text; expected_facts jsonb; expected_destination jsonb; expected_media jsonb; actual jsonb; BEGIN
   a:=public.upsert_content_share_version_with_native_snapshot(
     'place','00000000-0000-0000-0000-000000000201','issue1719:native:place',
     '{"placePoolId":"fixture"}','{}','{"schemaVersion":1,"kind":"place","title":"Snapshot Cafe"}',NULL,
@@ -30,16 +30,28 @@ DO $$DECLARE a jsonb; b jsonb; l uuid; kind text; BEGIN
     AND octet_length(convert_to(card_payload::text,'UTF8'))<=5120 AND NOT card_payload?'publicDetails') THEN
     RAISE EXCEPTION 'bounded native descriptor not attached'; END IF;
   FOR kind IN SELECT unnest(ARRAY['place','curated','event','rsvp_event','trip','experience','venue','brand']) LOOP
+    expected_facts:=jsonb_build_object('schemaVersion',1,'kind',kind,'title','Compatibility','description','kept')||CASE kind
+      WHEN 'event' THEN '{"localDate":"Aug 12","localTime":"7 PM","venue":"Hall","price":{"minorUnits":1200,"currency":"USD"},"availability":"4 left"}'::jsonb
+      WHEN 'rsvp_event' THEN '{"localDate":"Aug 13","localTime":"8 PM","venue":"Room","rsvpDeadline":"Aug 10","availability":"Open"}'::jsonb
+      WHEN 'trip' THEN '{"destination":"Paris","dateRange":"Aug 1–5","duration":"5 days","startingPrice":{"minorUnits":50000,"currency":"USD"}}'::jsonb
+      WHEN 'experience' THEN '{"nextDate":"Aug 20","duration":"2 hours","price":{"minorUnits":3000,"currency":"USD"},"availability":"Available"}'::jsonb
+      WHEN 'venue' THEN '{"category":"Cafe","nextPublicOffering":"Jazz","openState":"Open now"}'::jsonb
+      WHEN 'brand' THEN '{"category":"Travel","upcomingPublicOfferingCount":3}'::jsonb
+      WHEN 'curated' THEN '{"stopCount":3,"duration":"3 hours","estimate":"$40–$60"}'::jsonb
+      ELSE '{"category":"Cafe","area":"Durham","rating":4.6,"openState":"Open now"}'::jsonb END;
+    expected_destination:=jsonb_build_object('kind',kind,'brandSlug','brand','eventSlug','event','venueSlug','venue','webPath','/typed/path');
+    expected_media:='{"kind":"gif","url":"https://usemingla.com/cover.gif","posterUrl":"https://usemingla.com/poster.jpg","alt":"Animated cover"}'::jsonb;
     INSERT INTO public.messages(conversation_id,sender_id,content,message_type,card_payload) VALUES(
       '10000000-0000-0000-0000-000000000202','00000000-0000-0000-0000-000000000201','eight-'||kind,'card',
       jsonb_build_object('contract','content_share_card_v1','id','compat-'||kind,'title','Compatibility','category','Kind','image','https://usemingla.com/og.jpg',
         'shareCode','Aa0Bb1Cc2Dd3Ee4F','shareVersion',1,'kind',kind,'senderNote',repeat('🙂',120),
-        'facts',jsonb_build_object('schemaVersion',1,'kind',kind,'title','Compatibility','description',repeat('界',6000)),
-        'destination',jsonb_build_object('kind',kind,'poison',repeat('x',6000)),'publicDetails',jsonb_build_object('kind',kind,'poison',repeat('x',6000)),
-        'media',jsonb_build_object('kind','photo','url','https://usemingla.com/'||repeat('x',4000))));
+        'facts',expected_facts,'destination',expected_destination,'publicDetails',jsonb_build_object('kind',kind,'poison',repeat('界',6000)),
+        'media',expected_media)) RETURNING card_payload INTO actual;
+    IF actual->'facts'<>expected_facts OR actual->'destination'<>expected_destination OR actual->'media'<>expected_media OR actual?'publicDetails'
+      OR octet_length(convert_to(actual::text,'UTF8'))>5120 THEN RAISE EXCEPTION 'typed envelope drift for %',kind; END IF;
   END LOOP;
   IF (SELECT count(*) FROM public.messages WHERE content LIKE 'eight-%' AND octet_length(convert_to(card_payload::text,'UTF8'))<=5120
-      AND NOT card_payload?'publicDetails' AND card_payload->'destination' = jsonb_build_object('kind',card_payload->'kind'))<>8 THEN
+      AND NOT card_payload?'publicDetails')<>8 THEN
     RAISE EXCEPTION 'all-eight minimal compatibility envelope failed'; END IF;
 END$$;
 RESET ROLE;

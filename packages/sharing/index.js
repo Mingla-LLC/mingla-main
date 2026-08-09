@@ -513,6 +513,14 @@ function nativeContentCardCacheKey(userId, messageId) {
   if (typeof userId !== 'string' || !userId || typeof messageId !== 'string' || !messageId) throw new TypeError('invalid_native_cache_identity');
   return JSON.stringify([userId, messageId]);
 }
+function createNativeContentCardSessionCache() {
+  const entries=new Map();
+  return {
+    clear(){entries.clear();},
+    set(userId,messageId,fingerprint,card){entries.set(nativeContentCardCacheKey(userId,messageId),{fingerprint,card});},
+    get(userId,messageId,fingerprint){const entry=entries.get(nativeContentCardCacheKey(userId,messageId));return entry?.fingerprint===fingerprint?entry.card:null;},
+  };
+}
 
 module.exports = {
   SHARE_FACTS_VERSION, SHARE_PORTRAIT_REVISION, SHARE_ENTITY_KINDS, SHARE_STATUSES, SHARE_CHANNEL_BUDGETS,
@@ -521,5 +529,5 @@ module.exports = {
   isPublicShareMediaUrl, selectPublicMediaIdentity,
   isShortShareCode, sanitizeReferralCode, buildShortShareUrl, buildSharePortraitUrl, contentShareRequestFromPublicUrl, validateShareFactsV1, parseShareFactsV1,
   formatMoney, formatEstimate, formatRating, statusLabel, shareKindLabel, formatPlanningPreference, selectRecipientFacts, selectPreviewFacts, selectCompactPreviewFacts,
-  buildShareMessage, routeContractFor, validateNativeContentCardDescriptorV1, nativeContentCardCacheKey, createContentShareSingleFlight, checkContentShareReadiness, weekdayForShareTimezone, openStateForHours,
+  buildShareMessage, routeContractFor, validateNativeContentCardDescriptorV1, nativeContentCardCacheKey, createNativeContentCardSessionCache, createContentShareSingleFlight, checkContentShareReadiness, weekdayForShareTimezone, openStateForHours,
 };

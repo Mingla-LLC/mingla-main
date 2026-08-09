@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildNativeContentCardSnapshot, assertNativeSourceIdentity } from '../../supabase/functions/_shared/contentShare.ts';
-import { nativeContentCardCacheKey, validateNativeContentCardDescriptorV1 } from '../../packages/sharing/index.js';
+import { buildNativeContentCardSnapshot, assertNativeSourceIdentity, assertSavedCuratedStopsServable, nativeCuratedStopFromPlaceRow } from '../../supabase/functions/_shared/contentShare.ts';
+import { createNativeContentCardSessionCache, nativeContentCardCacheKey, validateNativeContentCardDescriptorV1 } from '../../packages/sharing/index.js';
 
 const read=(path)=>readFileSync(new URL(`../../${path}`,import.meta.url),'utf8');
 const migration=read('supabase/migrations/20270301001719_issue_1719_native_content_card_snapshots.sql');
@@ -54,7 +54,11 @@ test('saved source kind and requested place identity fail closed for solo and co
 
 test('private cache identity changes across accounts and auth transitions clear storage',()=>{
   assert.notEqual(nativeContentCardCacheKey('user-a','message-1'),nativeContentCardCacheKey('user-b','message-1'));
+  const local=createNativeContentCardSessionCache();local.set('user-a','message-1','a'.repeat(64),{title:'offline'});
+  assert.deepEqual(local.get('user-a','message-1','a'.repeat(64)),{title:'offline'});assert.equal(local.get('user-b','message-1','a'.repeat(64)),null);
+  local.clear();assert.equal(local.get('user-a','message-1','a'.repeat(64)),null);
   assert.match(cache,/onAuthStateChange[\s\S]+cache\.clear\(\)/);
+  assert.match(cache,/getSession\(\)/);assert.doesNotMatch(cache,/getUser\(\)/);
   assert.match(cache,/expectedFingerprints[\s\S]+native_snapshot_fingerprint_mismatch/);
 });
 
@@ -62,7 +66,7 @@ test('descriptor requires immutable fingerprint and migration enforces current-r
   const valid={contract:'native_content_card_v1',version:1,kind:'place',snapshotRef:'Aa0Bb1Cc2Dd3Ee4F:v1',snapshotFingerprint:'a'.repeat(64),preview:{title:'Cafe'}};
   assert.deepEqual(validateNativeContentCardDescriptorV1(valid),valid);assert.equal(validateNativeContentCardDescriptorV1({...valid,snapshotFingerprint:'bad'}),null);
   assert.match(migration,/m\.deleted_at IS NULL/);assert.match(migration,/c\.is_enabled IS TRUE/);assert.match(migration,/conversation_participants cp[\s\S]+blocked_users/);
-  assert.match(migration,/jsonb_strip_nulls\(jsonb_build_object[\s\S]+'facts'[\s\S]+content_share_message_envelope_too_large/);
+  assert.match(migration,/NEW\.card_payload := NEW\.card_payload - 'publicDetails'/);assert.match(migration,/content_share_message_envelope_too_large/);
 });
 
 test('Chat More converges, reports failure, and clears only confirmed successful operation',()=>{
@@ -80,4 +84,35 @@ test('new and legacy cards use an exact extracted legacy visual contract',()=>{
 test('provenance stays separate from card identity',()=>{
   assert.match(saved,/sourceScope: "solo"[\s\S]+sourceRecordId: record\.id/);
   assert.match(saved,/sourceScope: "collaboration"[\s\S]+sourceRecordId: record\.id/);
+});
+
+test('unsaved curated composition maps authoritative rows into exact canonical stop keys',()=>{
+  const row={google_place_id:'g-1',name:'Cafe',primary_type_display_name:'Coffee shop',address:'1 Main',rating:4.6,review_count:22,
+    stored_photo_urls:['https://usemingla.com/a.jpg','https://usemingla.com/b.jpg'],price_level:'PRICE_LEVEL_MODERATE',price_min:10,price_max:30,
+    opening_hours:{openNow:true,periods:[],weekdayDescriptions:['Monday: 9 AM–5 PM']},utc_offset_minutes:-240,website:'https://usemingla.com/',lat:35,lng:-78,
+    editorial_summary:'Authored',national_phone_number:'+1',country_code:'US'};
+  const mapped=nativeCuratedStopFromPlaceRow(row,0,1);const out=buildNativeContentCardSnapshot('curated',{card_data:{id:'p',cardType:'curated',title:'Plan',stops:[mapped]}});
+  for(const key of ['stopNumber','stopLabel','placeId','placeName','placeType','address','rating','reviewCount','imageUrl','imageUrls','priceLevelLabel','priceMin','priceMax','openingHours','utcOffsetMinutes','isOpenNow','website','lat','lng','aiDescription','phone','countryCode'])assert.deepEqual(out.stops[0][key],mapped[key],key);
+});
+
+test('saved curated stop authority rejects duplicate missing inactive and unservable identities without rewriting order',()=>{
+  const saved=[{placeId:'a'},{placeId:'b'}];const rows=[{google_place_id:'b',is_active:true,is_servable:true},{google_place_id:'a',is_active:true,is_servable:true}];
+  assert.doesNotThrow(()=>assertSavedCuratedStopsServable(saved,rows));
+  assert.throws(()=>assertSavedCuratedStopsServable([{placeId:'a'},{placeId:'a'}],rows),/validation/);
+  assert.throws(()=>assertSavedCuratedStopsServable(saved,rows.slice(0,1)),/validation/);
+  assert.throws(()=>assertSavedCuratedStopsServable(saved,[rows[0],{...rows[1],is_active:false}]),/validation/);
+  assert.throws(()=>assertSavedCuratedStopsServable(saved,[rows[0],{...rows[1],is_servable:false}]),/validation/);
+});
+
+test('hours and social stats accept only explicit public schemas',()=>{
+  const base={id:'x',title:'Cafe',openingHours:{openNow:true,periods:[{open:{day:1,hour:9,minute:0},close:{day:1,hour:17,minute:0}}],weekdayDescriptions:['Monday: 9 AM–5 PM']},socialStats:{views:1,likes:2,saves:3,shares:4}};
+  assert.deepEqual(buildNativeContentCardSnapshot('place',base).socialStats,base.socialStats);
+  assert.throws(()=>buildNativeContentCardSnapshot('place',{...base,openingHours:{openNow:true,privateProviderKey:'secret'}}),/invalid_native_snapshot/);
+  assert.throws(()=>buildNativeContentCardSnapshot('place',{...base,socialStats:{views:1,privateViewerIds:['x']}}),/invalid_native_snapshot/);
+});
+
+test('malformed additive descriptor degrades through top-level public contract',()=>{
+  const messaging=read('app-mobile/src/services/messagingService.ts');
+  assert.match(messaging,/return payload\.contract === 'content_share_card_v1'/);
+  assert.match(bubble,/validateNativeContentCardDescriptorV1\(payload\.nativeCard\)/);
 });

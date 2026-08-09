@@ -94,18 +94,12 @@ GRANT EXECUTE ON FUNCTION public.upsert_content_share_version_with_native_snapsh
 
 CREATE OR REPLACE FUNCTION public.attach_native_content_card_descriptor() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE v_native public.content_share_native_snapshots%ROWTYPE; v_kind text;
+DECLARE v_native public.content_share_native_snapshots%ROWTYPE;
 BEGIN
   IF NEW.message_type<>'card' OR NEW.card_payload->>'contract'<>'content_share_card_v1' THEN RETURN NEW; END IF;
   SELECT n.* INTO v_native FROM public.content_share_links l JOIN public.content_share_native_snapshots n ON n.link_id=l.id
    WHERE l.short_code=NEW.card_payload->>'shareCode' AND n.version=(NEW.card_payload->>'shareVersion')::integer;
-  v_kind:=NEW.card_payload->>'kind';
-  NEW.card_payload := jsonb_strip_nulls(jsonb_build_object(
-    'contract','content_share_card_v1','id',NEW.card_payload->>'id','title',NEW.card_payload->>'title','category',NEW.card_payload->>'category',
-    'image',NEW.card_payload->>'image','shareCode',NEW.card_payload->>'shareCode','shareVersion',(NEW.card_payload->>'shareVersion')::integer,'kind',v_kind,
-    'facts',jsonb_strip_nulls(jsonb_build_object('schemaVersion',1,'kind',v_kind,'title',NEW.card_payload #>> '{facts,title}',
-      'status',NEW.card_payload #>> '{facts,status}','category',NEW.card_payload #>> '{facts,category}','area',NEW.card_payload #>> '{facts,area}')),
-    'destination',jsonb_build_object('kind',v_kind),'senderNote',NEW.card_payload->>'senderNote'));
+  NEW.card_payload := NEW.card_payload - 'publicDetails';
   IF FOUND THEN
     NEW.card_payload := NEW.card_payload || jsonb_build_object('nativeCard',jsonb_build_object(
       'contract','native_content_card_v1','version',1,'kind',v_native.kind,'preview',v_native.preview,

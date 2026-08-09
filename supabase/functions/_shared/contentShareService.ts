@@ -144,6 +144,22 @@ function publicEnvelope(shortCode: string, version: number, mapped: any) {
   return { state:"active", gone:false, shortCode, version, facts:mapped.facts, media:mapped.mediaIdentity || null, destination, publicDetails };
 }
 
+function contentShareMessageEnvelopeFits(kind: string, mapped: any): boolean {
+  const destination = mapped.destinationManifest && typeof mapped.destinationManifest === "object"
+    ? Object.fromEntries(Object.entries(mapped.destinationManifest).filter(([key]) => key !== "publicDetails")) : {};
+  const payload: Record<string, unknown> = {
+    contract:"content_share_card_v1",id:"content-share:Aa0Bb1Cc2Dd3Ee4F:v999999",title:mapped.facts?.title,
+    category:kind,image:mapped.mediaIdentity ? "https://usemingla.com/og/s/Aa0Bb1Cc2Dd3Ee4F/v999999-r2.jpg" : null,
+    shareCode:"Aa0Bb1Cc2Dd3Ee4F",shareVersion:999999,kind,facts:mapped.facts,destination,media:mapped.mediaIdentity,
+    // 120 accepted multi-codepoint graphemes, reserving realistic worst-case
+    // room before an internal recipient adds an authored note.
+    senderNote:"👩🏽‍💻".repeat(120),
+  };
+  if (mapped.nativePreview) payload.nativeCard={contract:"native_content_card_v1",version:1,kind,
+    preview:mapped.nativePreview,snapshotRef:"Aa0Bb1Cc2Dd3Ee4F:v999999",snapshotFingerprint:"a".repeat(64)};
+  return new TextEncoder().encode(JSON.stringify(payload)).byteLength<=5120;
+}
+
 async function privateInstallAttributionForCreator(db: any, creatorPrincipal: unknown) {
   if (typeof creatorPrincipal !== "string" || creatorPrincipal.length === 0) return undefined;
   const { data, error } = await db.from("profiles").select("referral_code").eq("id", creatorPrincipal).maybeSingle();
@@ -184,6 +200,7 @@ export async function createContentShareV1(
   if (!validatePublicContentShareEnvelope(publicEnvelope("Aa0Bb1Cc2Dd3Ee4F", 1, mapped))) {
     return { status: 503, body: { error: "unavailable" } };
   }
+  if (!contentShareMessageEnvelopeFits(requestedKind, mapped)) return { status: 503, body: { error: "unavailable" } };
   const native = requestedKind === "place" || requestedKind === "curated";
   const nativeSnapshot = native && "nativeSnapshot" in mapped ? mapped.nativeSnapshot : undefined;
   const nativePreview = native && "nativePreview" in mapped ? mapped.nativePreview : undefined;
@@ -265,6 +282,7 @@ export async function refreshContentShareV1(db: any, shortCode: string) {
     return { status: 404, body: { error: "not_found" } };
   }
   const native = link.entity_kind === "place" || link.entity_kind === "curated";
+  if (!contentShareMessageEnvelopeFits(link.entity_kind, mapped)) return { status:503,body:{error:"unavailable"} };
   const nativeSnapshot = native && "nativeSnapshot" in mapped ? mapped.nativeSnapshot : undefined;
   const nativePreview = native && "nativePreview" in mapped ? mapped.nativePreview : undefined;
   const { data: created, error: upsertError } = await db.rpc(native ? "upsert_content_share_version_with_native_snapshot" : "upsert_content_share_version", {

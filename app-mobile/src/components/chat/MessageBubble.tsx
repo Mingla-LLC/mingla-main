@@ -10,7 +10,7 @@ import { ChatCardChip } from './ChatCardChip';
 import { CollabLocationChips } from '../collab/CollabLocationChips';
 import { isContentShareCardPayload, type CardPayload, type CardTagEntry, type LegacyCardPayload, type MentionEntry } from '../../services/messagingService';
 import type { CollabDeadEndBannerPayload } from '../../services/collabDeadEndBannerService';
-import { selectCompactPreviewFacts, shareKindLabel, statusLabel } from '@mingla/sharing';
+import { selectCompactPreviewFacts, shareKindLabel, statusLabel, validateNativeContentCardDescriptorV1 } from '@mingla/sharing';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -391,8 +391,9 @@ export function MessageBubble({
           {message.type === 'card' && message.cardPayload && (() => {
             const payload = message.cardPayload;
             if (isContentShareCardPayload(payload)) {
-              if (payload.nativeCard) {
-                const preview = payload.nativeCard.preview;
+              const nativeCard = validateNativeContentCardDescriptorV1(payload.nativeCard);
+              if (nativeCard) {
+                const preview = nativeCard.preview;
                 return <PlaceCuratedChatCard title={preview.title} category={preview.category} image={preview.image ?? payload.image}
                   stopCount={preview.stopCount} senderNote={payload.senderNote} isMe={isMe} hint={t('chat:cardBubbleTapHint')}
                   onPress={() => onCardBubbleTap?.(payload, message.id)} />;

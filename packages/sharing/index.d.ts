@@ -62,6 +62,7 @@ export function buildShareMessage(value: ShareFactsV1, context: { shortCode: str
 export function routeContractFor(kind: ShareEntityKind): { web: string; native: string; required: readonly string[] };
 export function validateNativeContentCardDescriptorV1(value: unknown): NativeContentCardDescriptorV1 | null;
 export function nativeContentCardCacheKey(userId: string, messageId: string): string;
+export function createNativeContentCardSessionCache<T>(): { clear(): void; set(userId: string, messageId: string, fingerprint: string, card: T): void; get(userId: string, messageId: string, fingerprint: string): T | null };
 export function createContentShareSingleFlight(): <T>(key: string, load: () => Promise<T>) => Promise<T>;
 export function checkContentShareReadiness(code: string, version: number, fetchImpl?: typeof fetch): Promise<'ready' | 'waiting' | 'transient' | 'terminal'>;
 export function weekdayForShareTimezone(timezone: string, now?: Date): string;
