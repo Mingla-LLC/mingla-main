@@ -271,3 +271,21 @@ test('H17 one shared compact-fact selector gives status precedence for all eight
     assert.doesNotMatch(source, /selectPreviewFacts/);
   }
 });
+
+test('H18 headings are truly centered, Business owns its panel theme, and visible actions expose button roles', () => {
+  const consumer = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
+  const business = read('mingla-business/src/components/ui/ShareModal.tsx');
+  for (const source of [consumer, business]) {
+    assert.match(source, /header:\{minHeight:60,alignItems:'center',justifyContent:'center',paddingHorizontal:60/);
+    assert.match(source, /heading:\{width:'100%'[^}]*textAlign:'center'/);
+    assert.match(source, /closeTarget:\{position:'absolute',right:8,width:44,height:44/);
+  }
+  assert.match(business, /const panelBackground = dark \? '#0C0E12' : '#FFFFFF'/);
+  assert.match(business, /<Sheet[\s\S]*?panelBackground=\{panelBackground\}/);
+  assert.match(business, /canWebShare\(\) \? <Pressable accessibilityRole="button"/);
+  assert.match(business, /<Pressable accessibilityRole="button" accessibilityLabel=\{copied/);
+  assert.match(business, /Platform\.OS === 'web' \? <Pressable accessibilityRole="button" accessibilityLabel=\{showQr/);
+  assert.match(business, /<Pressable accessibilityRole="button" onPress=\{prepare\}>/);
+  assert.match(consumer, /<Pressable accessibilityRole="button" onPress=\{\(\) => loadRecipients/);
+  assert.match(consumer, /<Pressable accessibilityRole="button" onPress=\{\(\) => setSearch\(''\)\}>/);
+});
