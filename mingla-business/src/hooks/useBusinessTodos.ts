@@ -25,15 +25,15 @@ import {
 } from "../store/currentBrandStore";
 import { useDraftsForBrand } from "../store/draftEventStore";
 import {
-  draftVenueForBrand,
   draftVenueInProgress,
-  useDraftVenueStore,
+  useVenueDraftEntriesForBrand,
 } from "../store/draftVenueStore";
 import { deriveBrandProfileTodoInput } from "../utils/brandProfileCompleteness";
 import {
   buildBusinessTodos,
   type BusinessTodo,
   type VenueTodoClaim,
+  type VenueTodoDraft,
   type VenueTodoPipeline,
 } from "../utils/businessTodos";
 import {
@@ -64,9 +64,21 @@ export function useBusinessTodos(): BusinessTodo[] {
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const upcoming = useUpcomingForBrand(currentBrand?.id ?? null);
   const currentBrandIdForDraft = currentBrand?.id ?? null;
-  // Per-brand multi-draft store v2 — check the CURRENT brand's draft only.
-  const venueDraftInProgress = useDraftVenueStore((s) =>
-    draftVenueInProgress(draftVenueForBrand(s, currentBrandIdForDraft)),
+  // Issue #1685 — EVERY unfinished venue draft of the CURRENT brand becomes its
+  // own "Finish adding <venue>" row. `/venue/create` no longer resumes, so this
+  // row (which carries the draft id) is the only door back into a draft.
+  const venueDraftEntries = useVenueDraftEntriesForBrand(currentBrandIdForDraft);
+  const venueDrafts = useMemo<VenueTodoDraft[]>(
+    () =>
+      venueDraftEntries
+        .filter((e) => draftVenueInProgress(e.state))
+        .map((e) => ({
+          draftId: e.id,
+          // Mirrors the ORCH-1263 claim resume card (create.tsx:401).
+          venueName: e.state.displayName.trim() || e.state.workingName.trim(),
+          route: `/venue/create?draft=${e.id}`,
+        })),
+    [venueDraftEntries],
   );
 
   const isBrandResolving =
@@ -186,7 +198,8 @@ export function useBusinessTodos(): BusinessTodo[] {
         pipelineRoute: "",
         venuePipelines,
         venueClaims,
-        venueDraftInProgress,
+        venueDrafts,
+        venueDraftInProgress: venueDrafts.length > 0,
         counts: {
           total: upcoming.counts.total,
           live: upcoming.counts.live,
@@ -217,7 +230,7 @@ export function useBusinessTodos(): BusinessTodo[] {
       pipelineStates.isFetched,
       venuePipelines,
       venueClaims,
-      venueDraftInProgress,
+      venueDrafts,
       upcoming.counts,
       drafts,
     ],

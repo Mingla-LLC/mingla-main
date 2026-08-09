@@ -1,0 +1,78 @@
+name: "Issue #1685 venue draft multi (create door never resumes)"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-business/app/venue/create.tsx"
+      - "mingla-business/src/store/draftVenueStore.ts"
+      - "mingla-business/src/utils/draftVenueId.ts"
+      - "mingla-business/src/components/venue/VenueCreatorWizard.tsx"
+      - "mingla-business/src/utils/businessTodos.ts"
+      - "mingla-business/src/hooks/useBusinessTodos.ts"
+      - "mingla-business/src/store/__tests__/draftVenueMultiDraft.issue1685.test.ts"
+      - "mingla-business/app/venue/__tests__/venueCreateDoorFreshEntry.issue1685.test.tsx"
+      - "mingla-business/src/utils/__tests__/businessTodosVenueDrafts.issue1685.test.ts"
+      - ".github/workflows/issue-1685-venue-draft-multi-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-business/app/venue/create.tsx"
+      - "mingla-business/src/store/draftVenueStore.ts"
+      - "mingla-business/src/utils/draftVenueId.ts"
+      - "mingla-business/src/components/venue/VenueCreatorWizard.tsx"
+      - "mingla-business/src/utils/businessTodos.ts"
+      - "mingla-business/src/hooks/useBusinessTodos.ts"
+      - "mingla-business/src/store/__tests__/draftVenueMultiDraft.issue1685.test.ts"
+      - "mingla-business/app/venue/__tests__/venueCreateDoorFreshEntry.issue1685.test.tsx"
+      - "mingla-business/src/utils/__tests__/businessTodosVenueDrafts.issue1685.test.ts"
+      - ".github/workflows/issue-1685-venue-draft-multi-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  venue-draft-multi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Prove the create door mints and never resumes
+        run: >
+          npx jest
+          app/venue/__tests__/venueCreateDoorFreshEntry.issue1685.test.tsx
+          src/store/__tests__/draftVenueMultiDraft.issue1685.test.ts
+          src/utils/__tests__/businessTodosVenueDrafts.issue1685.test.ts
+          --runInBand
+      - name: Prove the suites this reshape puts most at risk stay green
+        run: >
+          npx jest
+          src/components/venue/__tests__/venueCreateBrandLifecycle.issue1461.test.ts
+          src/components/venue/__tests__/venueSubmissionCompletion.issue1467.test.ts
+          __tests__/metaOrch1255LegB.happy.test.ts
+          __tests__/metaOrch1255.tester.adversarial.test.ts
+          --runInBand
+      - name: Lint changed boundaries
+        run: >
+          npx eslint
+          app/venue/create.tsx
+          src/store/draftVenueStore.ts
+          src/utils/draftVenueId.ts
+          src/components/venue/VenueCreatorWizard.tsx
+          src/utils/businessTodos.ts
+          src/hooks/useBusinessTodos.ts
+          app/venue/__tests__/venueCreateDoorFreshEntry.issue1685.test.tsx
+          src/store/__tests__/draftVenueMultiDraft.issue1685.test.ts
+          src/utils/__tests__/businessTodosVenueDrafts.issue1685.test.ts

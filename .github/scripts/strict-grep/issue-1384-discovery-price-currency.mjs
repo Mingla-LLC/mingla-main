@@ -477,8 +477,13 @@ export function violations(files) {
     "if (tier1.place_pool_id.length === 0)",
   );
   const venueCheckIndex = wizardSubmit.indexOf("if (venueId === null)");
+  // Issue #1685 — the submit path clears ONE draft (`deleteActiveDraft`), not
+  // the brand's whole parking lot (`reset(brandId)`), which under the
+  // draft-id-keyed store would destroy the operator's sibling venues. The
+  // ORDER assertion below is this gate's actual purpose and is unchanged:
+  // the discovery-range commit must still land BEFORE the draft is cleared.
   const resetAfterIndex = wizardSubmit.indexOf(
-    "useDraftVenueStore.getState().reset(",
+    "useDraftVenueStore.getState().deleteActiveDraft(",
     commitIndex,
   );
   const doneAfterIndex = wizardSubmit.indexOf("onDone(", commitIndex);
@@ -554,7 +559,7 @@ function selfTest() {
     "if (tier1.place_pool_id.length === 0) {}\n" +
     "if (venueId === null) {}\n" +
     "await commitNewVenueDiscoveryRange({});\n" +
-    "useDraftVenueStore.getState().reset();\nonDone();\n});\n" +
+    "useDraftVenueStore.getState().deleteActiveDraft();\nonDone();\n});\n" +
     "const body = () => {};";
   valid.venueReadiness =
     "const handleSaveChanges = useCallback(async (): Promise<void> => {\n" +
@@ -667,8 +672,8 @@ function selfTest() {
     {
       key: "venueWizard",
       value: valid.venueWizard.replace(
-        "await commitNewVenueDiscoveryRange({});\nuseDraftVenueStore.getState().reset();\nonDone();",
-        "useDraftVenueStore.getState().reset();\nonDone();\nawait commitNewVenueDiscoveryRange({});",
+        "await commitNewVenueDiscoveryRange({});\nuseDraftVenueStore.getState().deleteActiveDraft();\nonDone();",
+        "useDraftVenueStore.getState().deleteActiveDraft();\nonDone();\nawait commitNewVenueDiscoveryRange({});",
       ),
       expected: "canonical new-range commit order/await cardinality drifted",
     },

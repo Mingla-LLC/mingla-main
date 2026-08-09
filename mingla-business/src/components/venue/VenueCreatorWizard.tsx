@@ -315,7 +315,11 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           // Claim already fully submitted — route to the venue, not a
           // duplicate submit.
           onDone(null, plan.venueId, st.displayName.trim(), true);
-          useDraftVenueStore.getState().reset(currentBrand.id);
+          // Issue #1685 — clear ONLY the draft that was just submitted.
+          // `reset(currentBrand.id)` wipes EVERY draft of this brand, so under
+          // multi-draft it would silently destroy the operator's other
+          // half-built venues.
+          useDraftVenueStore.getState().deleteActiveDraft();
           return;
         }
         if (plan.kind === "resume") {
@@ -464,7 +468,9 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         // ORCH-1263 — claim success: the standard pending card state (DESIGN
         // §8.1); NO inline deck-readiness leg (resume route serves it later).
         onDone(null, venueId, st.displayName.trim(), true);
-        useDraftVenueStore.getState().reset(currentBrand.id);
+        // Issue #1685 — clear ONLY the submitted draft; `reset(currentBrand.id)`
+        // would destroy this brand's sibling drafts.
+        useDraftVenueStore.getState().deleteActiveDraft();
         return;
       }
 
@@ -490,7 +496,9 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         }
       }
       onDone(null, venueId, st.displayName.trim(), false);
-      useDraftVenueStore.getState().reset(currentBrand.id);
+      // Issue #1685 — clear ONLY the submitted draft; `reset(currentBrand.id)`
+      // would destroy this brand's sibling drafts.
+      useDraftVenueStore.getState().deleteActiveDraft();
       return;
     } catch (e) {
       if (e instanceof SlugCollisionError) {

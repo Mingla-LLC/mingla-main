@@ -264,7 +264,10 @@ describe("A3 — per-brand draft store reset scoping", () => {
     useDraftVenueStore.setState({ displayName: "Beta again" });
     useDraftVenueStore.getState().reset();
     expect(useDraftVenueStore.getState().displayName).toBe("");
-    expect(useDraftVenueStore.getState().drafts).toEqual({});
+    // [TEST-MOD-APPROVED #1685] `drafts` is a draft-id-keyed LIST now, not a
+    // per-brand record. The assertion's INTENT — logout wipes EVERYTHING
+    // (Constitution #6) — is preserved exactly.
+    expect(useDraftVenueStore.getState().drafts).toEqual([]);
   });
 
   test("activateBrand round-trip preserves parked field data", () => {
