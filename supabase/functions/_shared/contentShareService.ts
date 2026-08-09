@@ -178,7 +178,8 @@ export async function createContentShareV1(
   } catch (mappingError) {
     const reason = mappingError instanceof Error ? mappingError.message : "not_found";
     if (reason === "db_error") return { status: 503, body: { error: "unavailable" } };
-    return { status: reason === "validation" ? 400 : 404, body: { error: reason === "validation" ? "validation" : "not_found" } };
+    const invalid = ["validation", "invalid_native_snapshot", "native_snapshot_too_large"].includes(reason);
+    return { status: invalid ? 400 : 404, body: { error: invalid ? "validation" : "not_found" } };
   }
   if (!validatePublicContentShareEnvelope(publicEnvelope("Aa0Bb1Cc2Dd3Ee4F", 1, mapped))) {
     return { status: 503, body: { error: "unavailable" } };
@@ -255,6 +256,7 @@ export async function refreshContentShareV1(db: any, shortCode: string) {
   } catch (error) {
     const reason = error instanceof Error ? error.message : "db_error";
     if (reason === "db_error") return { status: 503, body: { error: "unavailable" } };
+    if (reason === "invalid_native_snapshot" || reason === "native_snapshot_too_large") return { status: 503, body: { error: "unavailable" } };
     if (reason === "not_public") return { status: 404, body: { error: "not_found" } };
     if (reason === "gone") {
       const { error: stateError } = await db.from("content_share_links").update({ state: "deleted", deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", link.id);

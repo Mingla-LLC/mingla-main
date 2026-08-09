@@ -3,6 +3,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { blockService } from './blockService';
 import { getDisplayName } from '../utils/getDisplayName';
 import type { NativeContentCardDescriptorV1, PublicShareDetails, ShareDestination, ShareEntityKind, ShareFactsV1, ShareMediaIdentity } from '@mingla/sharing';
+import { validateNativeContentCardDescriptorV1 } from '@mingla/sharing';
 
 /**
  * ORCH-0667 + ORCH-0685: snapshot payload for shared-card chat messages.
@@ -128,7 +129,8 @@ export interface ContentShareCardPayloadV1 {
 export type CardPayload = LegacyCardPayload | ContentShareCardPayloadV1;
 
 export function isContentShareCardPayload(payload: CardPayload): payload is ContentShareCardPayloadV1 {
-  return payload.contract === 'content_share_card_v1';
+  return payload.contract === 'content_share_card_v1'
+    && (payload.nativeCard === undefined || validateNativeContentCardDescriptorV1(payload.nativeCard) !== null);
 }
 
 /**

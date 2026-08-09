@@ -8,7 +8,7 @@ CREATE TABLE public.content_share_native_snapshots (
   preview jsonb NOT NULL CHECK (jsonb_typeof(preview) = 'object'),
   snapshot_fingerprint text NOT NULL CHECK (snapshot_fingerprint ~ '^[0-9a-f]{64}$'),
   snapshot_bytes integer NOT NULL CHECK (snapshot_bytes BETWEEN 2 AND 262144),
-  preview_bytes integer NOT NULL CHECK (preview_bytes BETWEEN 2 AND 5120),
+  preview_bytes integer NOT NULL CHECK (preview_bytes BETWEEN 2 AND 2600),
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (link_id, version),
   FOREIGN KEY (link_id, version) REFERENCES public.content_share_versions(link_id, version) ON DELETE CASCADE
@@ -46,7 +46,7 @@ BEGIN
     OR p_native_snapshot->>'contract'<>'native_content_card_snapshot_v1' OR p_native_snapshot->>'version'<>'1'
     OR p_native_snapshot->>'kind' IS DISTINCT FROM p_entity_kind OR jsonb_typeof(p_native_preview)<>'object'
     OR jsonb_typeof(p_native_preview->'title')<>'string' OR char_length(btrim(p_native_preview->>'title')) NOT BETWEEN 1 AND 160
-    OR v_snapshot_bytes>262144 OR v_preview_bytes>5120 THEN
+    OR v_snapshot_bytes>262144 OR v_preview_bytes>2600 THEN
     RAISE EXCEPTION 'invalid_native_content_share_contract';
   END IF;
   IF p_creator_principal IS NULL AND NOT (p_source_reference @> '{"serverCreated":true}'::jsonb) THEN
@@ -88,39 +88,50 @@ BEGIN
     UPDATE public.content_share_links SET attribution=COALESCE(p_attribution,'{}'::jsonb),updated_at=now() WHERE id=v_link.id;
   END IF;
   RETURN jsonb_build_object('linkId',v_link.id,'shortCode',v_link.short_code,'version',v_version,'versionCreated',v_created);
-END $$;
+END; $$;
 REVOKE ALL ON FUNCTION public.upsert_content_share_version_with_native_snapshot(text,uuid,text,jsonb,jsonb,jsonb,jsonb,jsonb,jsonb,jsonb) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.upsert_content_share_version_with_native_snapshot(text,uuid,text,jsonb,jsonb,jsonb,jsonb,jsonb,jsonb,jsonb) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.attach_native_content_card_descriptor() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE v_native public.content_share_native_snapshots%ROWTYPE;
+DECLARE v_native public.content_share_native_snapshots%ROWTYPE; v_kind text;
 BEGIN
   IF NEW.message_type<>'card' OR NEW.card_payload->>'contract'<>'content_share_card_v1' THEN RETURN NEW; END IF;
   SELECT n.* INTO v_native FROM public.content_share_links l JOIN public.content_share_native_snapshots n ON n.link_id=l.id
    WHERE l.short_code=NEW.card_payload->>'shareCode' AND n.version=(NEW.card_payload->>'shareVersion')::integer;
+  v_kind:=NEW.card_payload->>'kind';
+  NEW.card_payload := jsonb_strip_nulls(jsonb_build_object(
+    'contract','content_share_card_v1','id',NEW.card_payload->>'id','title',NEW.card_payload->>'title','category',NEW.card_payload->>'category',
+    'image',NEW.card_payload->>'image','shareCode',NEW.card_payload->>'shareCode','shareVersion',(NEW.card_payload->>'shareVersion')::integer,'kind',v_kind,
+    'facts',jsonb_strip_nulls(jsonb_build_object('schemaVersion',1,'kind',v_kind,'title',NEW.card_payload #>> '{facts,title}',
+      'status',NEW.card_payload #>> '{facts,status}','category',NEW.card_payload #>> '{facts,category}','area',NEW.card_payload #>> '{facts,area}')),
+    'destination',jsonb_build_object('kind',v_kind),'senderNote',NEW.card_payload->>'senderNote'));
   IF FOUND THEN
-    NEW.card_payload := (NEW.card_payload - 'publicDetails') || jsonb_build_object('nativeCard',jsonb_build_object(
+    NEW.card_payload := NEW.card_payload || jsonb_build_object('nativeCard',jsonb_build_object(
       'contract','native_content_card_v1','version',1,'kind',v_native.kind,'preview',v_native.preview,
-      'snapshotRef',(NEW.card_payload->>'shareCode')||':v'||(NEW.card_payload->>'shareVersion')));
+      'snapshotRef',(NEW.card_payload->>'shareCode')||':v'||(NEW.card_payload->>'shareVersion'),'snapshotFingerprint',v_native.snapshot_fingerprint));
   END IF;
   IF octet_length(convert_to(NEW.card_payload::text,'UTF8'))>5120 THEN RAISE EXCEPTION 'content_share_message_envelope_too_large'; END IF;
   RETURN NEW;
-END $$;
+END; $$;
 CREATE TRIGGER messages_attach_native_content_card_descriptor
 BEFORE INSERT ON public.messages FOR EACH ROW EXECUTE FUNCTION public.attach_native_content_card_descriptor();
 
 CREATE OR REPLACE FUNCTION public.resolve_native_content_card_snapshots(p_message_ids uuid[])
-RETURNS TABLE(message_id uuid,snapshot jsonb) LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+RETURNS TABLE(message_id uuid,snapshot jsonb,snapshot_fingerprint text) LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE v_user uuid:=auth.uid();
 BEGIN
   IF v_user IS NULL THEN RAISE EXCEPTION 'authentication_required' USING ERRCODE='42501'; END IF;
   IF p_message_ids IS NULL OR cardinality(p_message_ids) NOT BETWEEN 1 AND 50 THEN RAISE EXCEPTION 'invalid_message_batch' USING ERRCODE='22023'; END IF;
-  RETURN QUERY SELECT m.id,n.snapshot FROM public.messages m
+  RETURN QUERY SELECT m.id,n.snapshot,n.snapshot_fingerprint FROM public.messages m
    JOIN public.conversation_participants cp ON cp.conversation_id=m.conversation_id AND cp.user_id=v_user
+   JOIN public.conversations c ON c.id=m.conversation_id AND c.is_enabled IS TRUE
    JOIN public.content_share_links l ON l.short_code=m.card_payload->>'shareCode'
    JOIN public.content_share_native_snapshots n ON n.link_id=l.id AND n.version=(m.card_payload->>'shareVersion')::integer
-   WHERE m.id=ANY(p_message_ids) AND m.message_type='card' AND m.card_payload->>'contract'='content_share_card_v1';
-END $$;
+   WHERE m.id=ANY(p_message_ids) AND m.deleted_at IS NULL AND m.message_type='card' AND m.card_payload->>'contract'='content_share_card_v1'
+    AND (c.type<>'direct' OR NOT EXISTS(SELECT 1 FROM public.conversation_participants other
+      JOIN public.blocked_users b ON (b.blocker_id=v_user AND b.blocked_id=other.user_id) OR (b.blocker_id=other.user_id AND b.blocked_id=v_user)
+      WHERE other.conversation_id=c.id AND other.user_id<>v_user));
+END; $$;
 REVOKE ALL ON FUNCTION public.resolve_native_content_card_snapshots(uuid[]) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.resolve_native_content_card_snapshots(uuid[]) TO authenticated,service_role;

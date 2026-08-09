@@ -506,7 +506,12 @@ function validateNativeContentCardDescriptorV1(value) {
   if (!value.preview || typeof value.preview !== 'object' || Array.isArray(value.preview)) return null;
   if (typeof value.preview.title !== 'string' || !cleanText(value.preview.title, 160)) return null;
   if (typeof value.snapshotRef !== 'string' || !/^[0-9A-Za-z]{16}:v[1-9][0-9]*$/.test(value.snapshotRef)) return null;
+  if (typeof value.snapshotFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(value.snapshotFingerprint)) return null;
   return value;
+}
+function nativeContentCardCacheKey(userId, messageId) {
+  if (typeof userId !== 'string' || !userId || typeof messageId !== 'string' || !messageId) throw new TypeError('invalid_native_cache_identity');
+  return JSON.stringify([userId, messageId]);
 }
 
 module.exports = {
@@ -516,5 +521,5 @@ module.exports = {
   isPublicShareMediaUrl, selectPublicMediaIdentity,
   isShortShareCode, sanitizeReferralCode, buildShortShareUrl, buildSharePortraitUrl, contentShareRequestFromPublicUrl, validateShareFactsV1, parseShareFactsV1,
   formatMoney, formatEstimate, formatRating, statusLabel, shareKindLabel, formatPlanningPreference, selectRecipientFacts, selectPreviewFacts, selectCompactPreviewFacts,
-  buildShareMessage, routeContractFor, validateNativeContentCardDescriptorV1, createContentShareSingleFlight, checkContentShareReadiness, weekdayForShareTimezone, openStateForHours,
+  buildShareMessage, routeContractFor, validateNativeContentCardDescriptorV1, nativeContentCardCacheKey, createContentShareSingleFlight, checkContentShareReadiness, weekdayForShareTimezone, openStateForHours,
 };

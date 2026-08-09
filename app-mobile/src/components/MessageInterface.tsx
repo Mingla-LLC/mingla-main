@@ -55,7 +55,7 @@ import { requestGalleryPermission } from "../utils/mediaLibraryPermission";
 import { DirectMessage, messagingService, CardPayload, MentionEntry, CardTagEntry, isContentShareCardPayload, type LegacyCardPayload } from "../services/messagingService";
 import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
 import { prepareContentShare } from "../services/contentShareAdapter";
-import { sendContentShareToRecipients } from "../services/contentShareDeliveryService";
+import { clearContentShareOperationId, sendContentShareToRecipients } from "../services/contentShareDeliveryService";
 import { nativeContentCardSnapshotService } from "../services/nativeContentCardSnapshotService";
 import { savedCardsService } from "../services/savedCardsService";  // ORCH-0685
 import { useSavedCards } from "../hooks/useSavedCards";
@@ -1052,12 +1052,15 @@ export default function MessageInterface({
         );
         return;
       }
+      await clearContentShareOperationId(prepared.shortCode, prepared.version);
 
       showNotification(
         t('chat:cardSentTitle'),
         t('chat:cardSentToast', { name: friend.name }),
       );
       setShowSavedCardPicker(false);
+    } catch {
+      showNotification(t('chat:cardShareFailedTitle'), t('chat:cardShareFailedToast'), 'error');
     } finally {
       pickerSubmittingRef.current = false;
       setPickerSubmittingCardId(null);
@@ -1696,12 +1699,12 @@ export default function MessageInterface({
                           setExpandedCardFromChat(cardPayloadToExpandedCardData(card));
                           setShowExpandedCardFromChat(true);
                         };
-                        const cached = nativeContentCardSnapshotService.cached(messageId);
+                        const cached = await nativeContentCardSnapshotService.cached(messageId, payload.nativeCard.snapshotFingerprint);
                         if (cached) { openSnapshot(cached); return; }
                         const resolveAndOpen = async (): Promise<void> => {
                           setResolvingNativeCardId(messageId);
                           try {
-                            const resolved = await nativeContentCardSnapshotService.resolve([messageId]);
+                            const resolved = await nativeContentCardSnapshotService.resolve([messageId], { [messageId]: payload.nativeCard!.snapshotFingerprint });
                             const snapshot = resolved.get(messageId);
                             if (!snapshot) throw new Error('native_snapshot_unavailable');
                             openSnapshot(snapshot);

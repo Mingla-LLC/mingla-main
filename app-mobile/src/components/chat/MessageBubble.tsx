@@ -394,7 +394,8 @@ export function MessageBubble({
               if (payload.nativeCard) {
                 const preview = payload.nativeCard.preview;
                 return <PlaceCuratedChatCard title={preview.title} category={preview.category} image={preview.image ?? payload.image}
-                  stopCount={preview.stopCount} senderNote={payload.senderNote} onPress={() => onCardBubbleTap?.(payload, message.id)} />;
+                  stopCount={preview.stopCount} senderNote={payload.senderNote} isMe={isMe} hint={t('chat:cardBubbleTapHint')}
+                  onPress={() => onCardBubbleTap?.(payload, message.id)} />;
               }
               const facts = payload.facts;
               const mediaKind = payload.media?.kind;
@@ -449,7 +450,7 @@ export function MessageBubble({
             const effectiveImage = isIntentCard ? intentHeroImage : cp.image;
             return <PlaceCuratedChatCard title={cp.title} category={cp.category} image={effectiveImage}
               stopCount={intentStopCount || undefined} lockedAt={cp.lockInEvent === 'card_locked_and_scheduled' ? cp.scheduledAt : undefined}
-              onPress={() => onCardBubbleTap?.(payload, message.id)} />;
+              isMe={isMe} hint={t('chat:cardBubbleTapHint')} onPress={() => onCardBubbleTap?.(payload, message.id)} />;
           })()}
 
           {/* ORCH-0667: defense-in-depth — card-type message with missing payload */}
