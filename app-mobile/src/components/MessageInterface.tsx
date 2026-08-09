@@ -52,8 +52,11 @@ import { CardTagPopover } from "./board/CardTagPopover";
 import type { Participant } from "./board/ParticipantAvatars";
 import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
 import { requestGalleryPermission } from "../utils/mediaLibraryPermission";
-import { DirectMessage, messagingService, CardPayload, MentionEntry, CardTagEntry, isContentShareCardPayload } from "../services/messagingService";
+import { DirectMessage, messagingService, CardPayload, MentionEntry, CardTagEntry, isContentShareCardPayload, type LegacyCardPayload } from "../services/messagingService";
 import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
+import { prepareContentShare } from "../services/contentShareAdapter";
+import { sendContentShareToRecipients } from "../services/contentShareDeliveryService";
+import { nativeContentCardSnapshotService } from "../services/nativeContentCardSnapshotService";
 import { savedCardsService } from "../services/savedCardsService";  // ORCH-0685
 import { useSavedCards } from "../hooks/useSavedCards";
 import { useSessionScheduledCards } from "../hooks/useSessionScheduledCards";
@@ -322,6 +325,8 @@ export default function MessageInterface({
   // ORCH-0667: shared-card picker state
   const [showSavedCardPicker, setShowSavedCardPicker] = useState(false);
   const [pickerSubmittingCardId, setPickerSubmittingCardId] = useState<string | null>(null);
+  const [resolvingNativeCardId, setResolvingNativeCardId] = useState<string | null>(null);
+  const pickerSubmittingRef = useRef(false);
   // ORCH-0685: typed state — replaces unsafe `any` typing (Constitution #12 fix).
   // Populated via cardPayloadToExpandedCardData helper (cardPayloadAdapter.ts).
   const [expandedCardFromChat, setExpandedCardFromChat] = useState<ExpandedCardData | null>(null);
@@ -1009,7 +1014,7 @@ export default function MessageInterface({
 
   // ORCH-0667: tap a card in the picker → send for real, then close + toast.
   const handleSelectCardToShare = async (card: any) => {
-    if (pickerSubmittingCardId) return;  // double-tap guard
+    if (pickerSubmittingRef.current) return;  // same-turn double-tap guard
     if (!conversationId || !currentUserId) {
       showNotification(
         t('chat:cardShareFailedTitle'),
@@ -1019,15 +1024,27 @@ export default function MessageInterface({
       return;
     }
 
+    pickerSubmittingRef.current = true;
     setPickerSubmittingCardId(card.id);
     try {
-      const { message, error } = await messagingService.sendCardMessage(
-        conversationId,
-        currentUserId,
-        card,
-      );
-
-      if (error || !message) {
+      const curated = card.cardType === 'curated' || (Array.isArray(card.stops) && card.stops.length > 0);
+      const identity = {
+        sourceScope: card.sourceScope ?? card.source,
+        sourceRecordId: card.sourceRecordId,
+        ...(curated ? {} : {
+          placePoolId: card.placePoolId ?? card.place_pool_id,
+          googlePlaceId: card.placeId ?? card.googlePlaceId ?? card.google_place_id ?? card.id,
+        }),
+      };
+      const prepared = await prepareContentShare(curated ? 'curated' : 'place', identity, 'mingla_chat');
+      const result = await sendContentShareToRecipients({
+        recipients: [{ key: `${isGroupChat ? 'group' : 'direct'}:${conversationId}`, targetKind: isGroupChat ? 'group' : 'direct',
+          targetId: conversationId, personUserId: isGroupChat ? null : friend.id, displayName: friend.name,
+          username: null, avatarUrl: null, conversationId, participantCount: null, recipientTier: 1,
+          meaningfulActivityAt: new Date().toISOString(), conversationCreatedAt: null }],
+        shortCode: prepared.shortCode, shareVersion: prepared.version, senderNote: '', title: prepared.title,
+      });
+      if (result.sent !== 1) {
         showNotification(
           t('chat:cardShareFailedTitle'),
           t('chat:cardShareFailedToast'),
@@ -1042,6 +1059,7 @@ export default function MessageInterface({
       );
       setShowSavedCardPicker(false);
     } finally {
+      pickerSubmittingRef.current = false;
       setPickerSubmittingCardId(null);
     }
   };
@@ -1671,8 +1689,32 @@ export default function MessageInterface({
                     isSystem: item.message.isSystem,
                     systemPayload: item.message.systemPayload,
                   }}
-                  onCardBubbleTap={(payload) => {
+                  onCardBubbleTap={async (payload, messageId) => {
                     if (isContentShareCardPayload(payload)) {
+                      if (payload.nativeCard) {
+                        const openSnapshot = (card: LegacyCardPayload) => {
+                          setExpandedCardFromChat(cardPayloadToExpandedCardData(card));
+                          setShowExpandedCardFromChat(true);
+                        };
+                        const cached = nativeContentCardSnapshotService.cached(messageId);
+                        if (cached) { openSnapshot(cached); return; }
+                        const resolveAndOpen = async (): Promise<void> => {
+                          setResolvingNativeCardId(messageId);
+                          try {
+                            const resolved = await nativeContentCardSnapshotService.resolve([messageId]);
+                            const snapshot = resolved.get(messageId);
+                            if (!snapshot) throw new Error('native_snapshot_unavailable');
+                            openSnapshot(snapshot);
+                          } catch {
+                            Alert.alert("Couldn't open the full card", 'Connect and try again, or open the shared web link.', [
+                              { text: 'Open shared link', onPress: () => router.push(`/s/${payload.shareCode}` as never) },
+                              { text: 'Retry', onPress: () => { void resolveAndOpen(); } },
+                            ]);
+                          } finally { setResolvingNativeCardId(null); }
+                        };
+                        await resolveAndOpen();
+                        return;
+                      }
                       router.push(`/s/${payload.shareCode}` as never);
                       return;
                     }
@@ -2089,6 +2131,10 @@ export default function MessageInterface({
           required onOpenAddToBoardModal prop. */}
 
       {/* ORCH-0667: shared-card picker modal */}
+      {resolvingNativeCardId ? <View accessibilityRole="progressbar" accessibilityLabel="Loading shared card"
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,.28)', zIndex: 50 }}>
+        <ActivityIndicator size="large" color="#fff" />
+      </View> : null}
       {showSavedCardPicker && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>

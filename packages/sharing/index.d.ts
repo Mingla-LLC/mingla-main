@@ -11,6 +11,7 @@ export type PublicShareDetails =
   | { kind: 'event' | 'rsvp_event' | 'trip' | 'experience'; actionEligible: boolean; occurrences: { startAt: string; endAt?: string; timezone?: string }[] }
   | { kind: 'venue' | 'brand'; offerings: { title: string; kind: 'event' | 'rsvp' | 'trip' | 'experience'; brandSlug: string; eventSlug: string; startAt: string }[] };
 export type ShareDestination = { kind: ShareEntityKind; placeId?: string; eventSlug?: string; brandSlug?: string; venueSlug?: string };
+export type NativeContentCardDescriptorV1 = { contract: 'native_content_card_v1'; version: 1; kind: 'place' | 'curated'; snapshotRef: string; preview: { title: string; category?: string; image?: string; cardType?: 'single' | 'curated'; stopCount?: number } };
 type Common = { schemaVersion: 1; title: string; status?: ShareStatus; timezone?: string; media?: ShareMediaIdentity; route?: ShareDestination };
 export type ShareHoursRow = { day: string; label: string; isToday?: boolean; special?: string };
 export type ShareFactsV1 =
@@ -59,6 +60,7 @@ export function selectPreviewFacts(value: ShareFactsV1, limit?: number): string[
 export function selectCompactPreviewFacts(value: ShareFactsV1, limit?: number): string[];
 export function buildShareMessage(value: ShareFactsV1, context: { shortCode: string; channel?: 'generic' | 'sms' | 'whatsapp' | 'x' | 'email'; senderNote?: string; planningPreference?: string | { dayOfWeek?: string; timeOfDay?: string; planningTimeframe?: string } }): string;
 export function routeContractFor(kind: ShareEntityKind): { web: string; native: string; required: readonly string[] };
+export function validateNativeContentCardDescriptorV1(value: unknown): NativeContentCardDescriptorV1 | null;
 export function createContentShareSingleFlight(): <T>(key: string, load: () => Promise<T>) => Promise<T>;
 export function checkContentShareReadiness(code: string, version: number, fetchImpl?: typeof fetch): Promise<'ready' | 'waiting' | 'transient' | 'terminal'>;
 export function weekdayForShareTimezone(timezone: string, now?: Date): string;

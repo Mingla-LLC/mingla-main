@@ -15,7 +15,7 @@ type RecordLike = Record<string, any>;
 type QueryClient = { from(table: string): any; rpc(name: string, args?: Record<string, unknown>): any };
 
 /** Exact deployed public.place_pool columns consumed by the V1 share mapper. */
-export const PLACE_POOL_SHARE_SELECT = "id,google_place_id,name,address,city,primary_type_display_name,primary_type,rating,price_level,utc_offset_minutes,editorial_summary,generative_summary,opening_hours,stored_photo_urls,google_maps_uri,national_phone_number,website,is_active,is_servable";
+export const PLACE_POOL_SHARE_SELECT = "id,google_place_id,name,address,city,primary_type_display_name,primary_type,rating,review_count,price_level,price_min,price_max,utc_offset_minutes,editorial_summary,generative_summary,opening_hours,stored_photo_urls,google_maps_uri,national_phone_number,website,lat,lng,is_active,is_servable";
 
 const clean = (value: unknown, max = 160): string =>
   typeof value === "string"
@@ -184,6 +184,56 @@ export function normalizeServedHours(value: unknown): RecordLike[] | undefined {
   }
   return byDay.size === 7 ? DAYS.map((day) => ({ day, label: byDay.get(day)!.join(", ") })) : undefined;
 }
+
+const nativeText = (value: unknown, max: number): string | undefined => clean(value, max) || undefined;
+const nativeNumber = (value: unknown): number | undefined => typeof value === "number" && Number.isFinite(value) ? value : undefined;
+const nativeImages = (values: unknown): string[] => (Array.isArray(values) ? values : [values])
+  .map(publicMediaUrl).filter((url): url is string => Boolean(url)).slice(0, 12);
+
+/** Explicit recipient-safe allowlist. Private ownership, provider payloads,
+ * processing metadata and internal notes cannot enter a native chat card. */
+export function buildNativeContentCardSnapshot(kind: "place" | "curated", row: RecordLike): RecordLike {
+  const card = row.card_data && typeof row.card_data === "object" && !Array.isArray(row.card_data) ? row.card_data : {};
+  const source = kind === "curated" ? card : row;
+  const images = nativeImages(kind === "curated"
+    ? [card.image, ...(Array.isArray(card.images) ? card.images : [])]
+    : [source.image, ...(Array.isArray(source.images) ? source.images : []), ...(Array.isArray(row.stored_photo_urls) ? row.stored_photo_urls : [])]);
+  const stops = kind === "curated" && Array.isArray(card.stops) ? card.stops.slice(0, 24).map((raw: unknown, index: number) => {
+    const stop = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as RecordLike : {};
+    const stopImages = nativeImages([stop.imageUrl, stop.image, ...(Array.isArray(stop.images) ? stop.images : [])]);
+    return compact({ stopNumber: index + 1,
+      placeName: nativeText(stop.placeName || stop.title || stop.name, 160), placeId: nativeText(stop.placeId || stop.googlePlaceId, 256),
+      category: nativeText(stop.category || stop.primaryTypeDisplayName, 80), address: nativeText(stop.address, 180),
+      description: nativeText(stop.description || stop.editorialSummary, 600), imageUrl: stopImages[0], images: stopImages,
+      rating: nativeNumber(stop.rating), reviewCount: nativeNumber(stop.reviewCount), priceRange: nativeText(stop.priceRange || stop.priceLevelLabel, 80),
+      lat: nativeNumber(stop.lat), lng: nativeNumber(stop.lng), openingHours: normalizeServedHours(stop.openingHours || stop.opening_hours),
+      phone: nativeText(stop.phone || stop.nationalPhoneNumber, 40), website: publicExternalUrl(stop.website),
+    });
+  }).filter((stop: RecordLike) => stop.placeName) : undefined;
+  const snapshot = compact({ contract: "native_content_card_snapshot_v1", version: 1, kind,
+    id: nativeText(source.id || source.placeId || row.google_place_id || row.id, 256),
+    title: nativeText(source.title || source.name || row.name || row.title, 160),
+    category: nativeText(source.category || row.primary_type_display_name || row.primary_type || row.category, 80),
+    image: images[0], images,
+    description: nativeText(source.description || source.fullDescription || row.editorial_summary || row.generative_summary, 1200),
+    fullDescription: nativeText(source.fullDescription || source.description || row.editorial_summary || row.generative_summary, 4000),
+    address: nativeText(source.address || row.address, 180), rating: nativeNumber(source.rating ?? row.rating),
+    reviewCount: nativeNumber(source.reviewCount ?? row.review_count), priceRange: nativeText(source.priceRange || cleanPriceLevel(row.price_level), 80),
+    matchScore: nativeNumber(source.matchScore), lat: nativeNumber(source.lat ?? row.lat), lng: nativeNumber(source.lng ?? row.lng),
+    placeId: nativeText(source.placeId || source.googlePlaceId || row.google_place_id, 256),
+    openingHours: normalizeServedHours(source.openingHours || row.opening_hours), phone: nativeText(source.phone || row.national_phone_number, 40),
+    website: publicExternalUrl(source.website || row.website), cardType: kind === "curated" ? "curated" : "single", stops,
+    tagline: nativeText(source.tagline, 240), totalPriceMin: nativeNumber(source.totalPriceMin), totalPriceMax: nativeNumber(source.totalPriceMax),
+    estimatedDurationMinutes: nativeNumber(source.estimatedDurationMinutes),
+  });
+  if (!snapshot.title || new TextEncoder().encode(JSON.stringify(snapshot)).byteLength > 262144) throw new Error("native_snapshot_too_large");
+  return snapshot;
+}
+
+const nativePreview = (snapshot: RecordLike): RecordLike => compact({
+  title: snapshot.title, category: snapshot.category, image: snapshot.image, cardType: snapshot.cardType,
+  stopCount: Array.isArray(snapshot.stops) ? snapshot.stops.length : undefined,
+});
 
 const durationLabel = (start: unknown, end: unknown): string | undefined => {
   if (typeof start !== "string" || typeof end !== "string") return undefined;
@@ -404,6 +454,24 @@ export const ticketTruthAt = (tickets: RecordLike[], remainingRows: RecordLike[]
 export async function loadAuthoritativeContentShare(
   db: QueryClient, userId: string, kind: ContentShareKind, identity: RecordLike,
 ) {
+  const sourceScope = clean(identity.sourceScope, 20);
+  const sourceRecordId = sourceId(identity, "sourceRecordId");
+  let sourceCardRow: RecordLike | null = null;
+  if (sourceRecordId && sourceScope === "solo") {
+    const result = await db.from("saved_card").select("id,profile_id,title,category,image_url,card_data").eq("id", sourceRecordId).eq("profile_id", userId).maybeSingle();
+    if (result.error) throw new Error("db_error");
+    if (!result.data) throw new Error("gone");
+    sourceCardRow = result.data;
+  } else if (sourceRecordId && sourceScope === "collaboration") {
+    const result = await db.from("board_saved_cards").select("id,session_id,card_data").eq("id", sourceRecordId).maybeSingle();
+    if (result.error) throw new Error("db_error");
+    if (!result.data) throw new Error("gone");
+    const membership = await db.from("session_participants").select("id").eq("session_id", result.data.session_id).eq("user_id", userId).eq("has_accepted", true).maybeSingle();
+    if (membership.error) throw new Error("db_error");
+    if (!membership.data) throw new Error("gone");
+    sourceCardRow = result.data;
+  } else if (sourceRecordId || sourceScope) throw new Error("validation");
+
   if (kind === "place") {
     const poolId = sourceId(identity, "placePoolId");
     const googleId = sourceId(identity, "googlePlaceId");
@@ -414,7 +482,12 @@ export async function loadAuthoritativeContentShare(
     if (error) throw new Error("db_error");
     if (!row) throw new Error("gone");
     if (row.is_active !== true || row.is_servable === false) throw new Error("not_public");
-    return { ...mapAuthoritativeShareFacts(kind, { row }), sourceKey: `place:${row.id}`, sourceReference: { placePoolId: row.id } };
+    const nativeSnapshot = buildNativeContentCardSnapshot("place", sourceCardRow
+      ? { ...row, ...(sourceCardRow.card_data || {}), id: sourceCardRow.card_data?.id || row.id }
+      : row);
+    return { ...mapAuthoritativeShareFacts(kind, { row }), nativeSnapshot, nativePreview: nativePreview(nativeSnapshot),
+      sourceKey: sourceCardRow ? `place:${sourceScope}:${sourceRecordId}` : `place:${row.id}`,
+      sourceReference: sourceCardRow ? { sourceScope, sourceRecordId, placePoolId: row.id } : { placePoolId: row.id } };
   }
 
   if (kind === "curated") {
@@ -433,13 +506,29 @@ export async function loadAuthoritativeContentShare(
       if (orderedRows.some((row) => !row)) throw new Error("gone");
       if (orderedRows.some((row) => row?.is_active !== true || row?.is_servable !== true)) throw new Error("not_public");
       const canonicalIds = JSON.stringify(stopPlaceIds);
+      const mapped = mapCuratedComposition(orderedRows as RecordLike[]);
+      const nativeSnapshot = buildNativeContentCardSnapshot("curated", { card_data: {
+        title: mapped.facts.title, category: "Curated plan", image: mapped.mediaIdentity?.posterUrl,
+        stops: (orderedRows as RecordLike[]).map((stop) => ({
+          placeName: stop.name, placeId: stop.google_place_id, category: stop.primary_type_display_name || stop.primary_type,
+          address: stop.address, description: stop.editorial_summary || stop.generative_summary,
+          image: Array.isArray(stop.stored_photo_urls) ? stop.stored_photo_urls[0] : null,
+          rating: stop.rating, reviewCount: stop.review_count, priceRange: cleanPriceLevel(stop.price_level),
+          lat: stop.lat, lng: stop.lng, openingHours: stop.opening_hours, phone: stop.national_phone_number, website: stop.website,
+        })),
+      } });
       return {
-        ...mapCuratedComposition(orderedRows as RecordLike[]),
+        ...mapped, nativeSnapshot, nativePreview: nativePreview(nativeSnapshot),
         sourceKey: `curated-composition:${await sha256Hex(canonicalIds)}`,
         sourceReference: { stopPlaceIds },
       };
     }
 
+    if (sourceCardRow) {
+      const nativeSnapshot = buildNativeContentCardSnapshot("curated", sourceCardRow);
+      return { ...mapAuthoritativeShareFacts(kind, { row: sourceCardRow }), nativeSnapshot, nativePreview: nativePreview(nativeSnapshot),
+        sourceKey: `curated:${sourceScope}:${sourceRecordId}`, sourceReference: { sourceScope, sourceRecordId } };
+    }
     const id = sourceId(identity, "savedCardId");
     const legacyKeys = Object.keys(identity);
     const legacyKeysAreReadCompatible = legacyKeys.every((key) => ["savedCardId", "placePoolId", "googlePlaceId"].includes(key));
@@ -447,7 +536,9 @@ export async function loadAuthoritativeContentShare(
     const { data: row, error } = await db.from("saved_card").select("id,profile_id,title,category,image_url,card_data").eq("id", id).eq("profile_id", userId).maybeSingle();
     if (error) throw new Error("db_error");
     if (!row) throw new Error("gone");
-    return { ...mapAuthoritativeShareFacts(kind, { row }), sourceKey: `curated:${row.id}`, sourceReference: { savedCardId: row.id } };
+    const nativeSnapshot = buildNativeContentCardSnapshot("curated", row);
+    return { ...mapAuthoritativeShareFacts(kind, { row }), nativeSnapshot, nativePreview: nativePreview(nativeSnapshot),
+      sourceKey: `curated:${row.id}`, sourceReference: { savedCardId: row.id } };
   }
 
   const expectedType = eventTypeFor(kind);

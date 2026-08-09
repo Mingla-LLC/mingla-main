@@ -37,6 +37,9 @@ export interface SavedCardModel {
   };
   dateAdded: string;
   source?: "solo" | "collaboration";
+  /** Stable database provenance; deliberately separate from the place/card id. */
+  sourceScope?: "solo" | "collaboration";
+  sourceRecordId?: string;
   [key: string]: any;
 }
 
@@ -60,6 +63,8 @@ const normalizeRecord = (record: SavedCardRecord): SavedCardModel => {
     matchScore: cardData.matchScore ?? record.match_score ?? null,
     dateAdded: cardData.dateAdded || record.created_at,
     source: cardData.source || "solo",
+    sourceScope: "solo",
+    sourceRecordId: record.id,
   };
 };
 
@@ -262,6 +267,8 @@ export const savedCardsService = {
         return {
           ...normalized,
           source: "solo" as const,
+          sourceScope: "solo" as const,
+          sourceRecordId: record.id,
         };
       }
     );
@@ -288,6 +295,8 @@ export const savedCardsService = {
         matchScore: cardData.matchScore ?? null,
         dateAdded: cardData.dateAdded || record.saved_at,
         source: "collaboration" as const,
+        sourceScope: "collaboration" as const,
+        sourceRecordId: record.id,
         sessionName: sessionName,
         sessionId: record.session_id,
       };

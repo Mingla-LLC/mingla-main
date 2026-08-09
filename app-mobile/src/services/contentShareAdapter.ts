@@ -8,6 +8,7 @@ import { logAppsFlyerEvent } from './appsFlyerService';
 
 export type ContentShareIdentity = {
   placePoolId?: string; googlePlaceId?: string; savedCardId?: string; stopPlaceIds?: string[];
+  sourceScope?: 'solo' | 'collaboration'; sourceRecordId?: string;
   eventId?: string; eventSlug?: string; brandSlug?: string; venueSlug?: string;
 };
 export type { PublicShareDetails } from '@mingla/sharing';

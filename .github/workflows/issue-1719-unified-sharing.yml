@@ -30,6 +30,7 @@ jobs:
         working-directory: app-mobile
       - run: node --test scripts/issue-1719/unified-sharing.implementor.happy.test.mjs
       - run: node --test scripts/issue-1719/unified-sharing.amendment.implementor.happy.test.mjs
+      - run: node --test scripts/issue-1719/source-card-fidelity.implementor.happy.test.mjs
       - run: npx jest src/components/ui/__tests__/issue_1719_share_same_turn.happy.test.tsx --runInBand
         working-directory: mingla-business
       - run: node --experimental-strip-types --test scripts/issue-1719/unified-sharing.tester.adversarial.test.mjs
@@ -66,3 +67,5 @@ jobs:
           done
       - name: Run issue 1719 lifecycle and recipient adversarial suite
         run: psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres -d postgres -f scripts/issue-1719/unified-sharing.amendment.tester.adversarial.sql
+      - name: Run issue 1719 native source-card fidelity suite
+        run: psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres -d postgres -f scripts/issue-1719/source-card-fidelity.implementor.happy.sql

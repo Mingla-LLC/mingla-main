@@ -37,9 +37,13 @@ export default function ShareModal({
           ? 'curated'
           : 'place';
     const identity: ContentShareIdentity = kind === 'curated'
-      ? (curated ?? { stopPlaceIds: [] })
+      ? (experienceData.sourceRecordId
+          ? { sourceScope: experienceData.sourceScope ?? experienceData.source, sourceRecordId: experienceData.sourceRecordId }
+          : (curated ?? { stopPlaceIds: [] }))
       : kind === 'place'
         ? {
+            sourceScope: experienceData.sourceScope ?? experienceData.source,
+            sourceRecordId: experienceData.sourceRecordId,
             placePoolId: experienceData.placePoolId ?? experienceData.place_pool_id,
             googlePlaceId: experienceData.placeId ?? experienceData.googlePlaceId ?? experienceData.google_place_id,
             savedCardId: experienceData.savedCardId ?? experienceData.saved_card_id,

@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
+import { PlaceCuratedChatCard } from './PlaceCuratedChatCard';
 import { colors, typography, fontWeights, radius, spacing } from '../../constants/designSystem';
 import { MentionChip } from './MentionChip';
 import { ReplyQuoteBlock } from './ReplyQuoteBlock';
@@ -56,7 +57,7 @@ interface MessageBubbleProps {
   isRead: boolean;
   replyTo?: ReplyToData;
   onScrollToMessage?: (messageId: string) => void;
-  onCardBubbleTap?: (payload: CardPayload) => void;  // ORCH-0667
+  onCardBubbleTap?: (payload: CardPayload, messageId: string) => void;  // ORCH-0667
   onMentionTap?: (userId: string) => void;
   onCardTagTap?: (cardTag: CardTagEntry) => void;
   onSystemTokenPress?: (token: CollabSystemToken) => void;
@@ -336,7 +337,7 @@ export function MessageBubble({
                     if (onCardTagTap) {
                       onCardTagTap(tag);
                     } else {
-                      onCardBubbleTap?.(tag.cardPayload);
+                      onCardBubbleTap?.(tag.cardPayload, message.id);
                     }
                   }}
                 />
@@ -390,6 +391,11 @@ export function MessageBubble({
           {message.type === 'card' && message.cardPayload && (() => {
             const payload = message.cardPayload;
             if (isContentShareCardPayload(payload)) {
+              if (payload.nativeCard) {
+                const preview = payload.nativeCard.preview;
+                return <PlaceCuratedChatCard title={preview.title} category={preview.category} image={preview.image ?? payload.image}
+                  stopCount={preview.stopCount} senderNote={payload.senderNote} onPress={() => onCardBubbleTap?.(payload, message.id)} />;
+              }
               const facts = payload.facts;
               const mediaKind = payload.media?.kind;
               const factLine = selectCompactPreviewFacts(facts, 3).join(' · ');
@@ -398,7 +404,7 @@ export function MessageBubble({
                 <TouchableOpacity
                   accessibilityRole="link"
                   accessibilityLabel={`Open ${facts.title}`}
-                  onPress={() => onCardBubbleTap?.(payload)}
+                  onPress={() => onCardBubbleTap?.(payload, message.id)}
                   activeOpacity={0.85}
                   style={styles.contentShareCard}
                 >
@@ -441,64 +447,9 @@ export function MessageBubble({
             const intentStopCount = isIntentCard ? (cp.stops?.length ?? 0) : 0;
             const intentHeroImage = isIntentCard ? (cp.stops?.[0]?.imageUrl ?? cp.image) : cp.image;
             const effectiveImage = isIntentCard ? intentHeroImage : cp.image;
-            return (
-            <TouchableOpacity
-              onPress={() => onCardBubbleTap?.(payload)}
-              activeOpacity={0.85}
-              style={styles.cardBubbleContainer}
-            >
-              {/* ORCH-0908: locked-in banner — only when card was shared via lock-and-schedule */}
-              {cp.lockInEvent === 'card_locked_and_scheduled' && cp.scheduledAt && (
-                <View style={styles.cardBubbleLockedBanner}>
-                  <Icon name="lock-closed" size={12} color="#fff" />
-                  <Text style={styles.cardBubbleLockedBannerText} numberOfLines={1}>
-                    {`Locked in · ${new Date(cp.scheduledAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}
-                  </Text>
-                </View>
-              )}
-              <View style={styles.cardBubbleImageWrap}>
-                {effectiveImage ? (
-                  <Image
-                    source={{ uri: effectiveImage }}
-                    style={styles.cardBubbleImage}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={[styles.cardBubbleImage, styles.cardBubblePlaceholder]}>
-                    <Icon name="bookmark" size={24} color={isMe ? 'rgba(255,255,255,0.7)' : colors.text.tertiary} />
-                  </View>
-                )}
-                {isIntentCard && intentStopCount > 0 && (
-                  <View style={styles.cardBubbleIntentChip}>
-                    <Icon name="arrow-forward" size={10} color="#fff" />
-                    <Text style={styles.cardBubbleIntentChipText} numberOfLines={1}>
-                      {`${intentStopCount} stops`}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.cardBubbleBody}>
-                <Text
-                  style={[styles.cardBubbleTitle, isMe ? styles.textSent : styles.textReceived]}
-                  numberOfLines={2}
-                >
-                  {cp.title}
-                </Text>
-                {cp.category ? (
-                  <View style={styles.cardBubbleChip}>
-                    <Text style={styles.cardBubbleChipText} numberOfLines={1}>
-                      {cp.category}
-                    </Text>
-                  </View>
-                ) : null}
-                <Text
-                  style={[styles.cardBubbleHint, isMe ? styles.textSent : styles.textReceived]}
-                >
-                  {t('chat:cardBubbleTapHint')}
-                </Text>
-              </View>
-            </TouchableOpacity>
-            );
+            return <PlaceCuratedChatCard title={cp.title} category={cp.category} image={effectiveImage}
+              stopCount={intentStopCount || undefined} lockedAt={cp.lockInEvent === 'card_locked_and_scheduled' ? cp.scheduledAt : undefined}
+              onPress={() => onCardBubbleTap?.(payload, message.id)} />;
           })()}
 
           {/* ORCH-0667: defense-in-depth — card-type message with missing payload */}

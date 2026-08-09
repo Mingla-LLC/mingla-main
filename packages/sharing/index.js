@@ -500,6 +500,15 @@ function routeContractFor(kind) {
   return ROUTE_MANIFEST[kind];
 }
 
+function validateNativeContentCardDescriptorV1(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (value.contract !== 'native_content_card_v1' || value.version !== 1 || !['place', 'curated'].includes(value.kind)) return null;
+  if (!value.preview || typeof value.preview !== 'object' || Array.isArray(value.preview)) return null;
+  if (typeof value.preview.title !== 'string' || !cleanText(value.preview.title, 160)) return null;
+  if (typeof value.snapshotRef !== 'string' || !/^[0-9A-Za-z]{16}:v[1-9][0-9]*$/.test(value.snapshotRef)) return null;
+  return value;
+}
+
 module.exports = {
   SHARE_FACTS_VERSION, SHARE_PORTRAIT_REVISION, SHARE_ENTITY_KINDS, SHARE_STATUSES, SHARE_CHANNEL_BUDGETS,
   CONTENT_SHARE_NOTE_MAX_GRAPHEMES, segmentGraphemes, normalizeContentShareNote,
@@ -507,5 +516,5 @@ module.exports = {
   isPublicShareMediaUrl, selectPublicMediaIdentity,
   isShortShareCode, sanitizeReferralCode, buildShortShareUrl, buildSharePortraitUrl, contentShareRequestFromPublicUrl, validateShareFactsV1, parseShareFactsV1,
   formatMoney, formatEstimate, formatRating, statusLabel, shareKindLabel, formatPlanningPreference, selectRecipientFacts, selectPreviewFacts, selectCompactPreviewFacts,
-  buildShareMessage, routeContractFor, createContentShareSingleFlight, checkContentShareReadiness, weekdayForShareTimezone, openStateForHours,
+  buildShareMessage, routeContractFor, validateNativeContentCardDescriptorV1, createContentShareSingleFlight, checkContentShareReadiness, weekdayForShareTimezone, openStateForHours,
 };
