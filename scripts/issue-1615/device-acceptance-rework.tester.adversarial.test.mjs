@@ -16,12 +16,18 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const require = createRequire(import.meta.url);
+// [TEST-MOD-APPROVED #1719] Written reason: TA1's deployed-schema fixture
+// predated the already-live #1704 country code and the authoritative #1719
+// recipient-fidelity projection. Add only those real place_pool columns to the
+// closed allowlist; the PostgREST mock must continue rejecting neighborhood and
+// every other unknown projection with 42703.
 const deployedColumns = new Set([
   'id', 'google_place_id', 'name', 'address', 'city',
-  'primary_type_display_name', 'primary_type', 'rating', 'price_level',
+  'country_code', 'primary_type_display_name', 'primary_type', 'rating',
+  'review_count', 'price_level', 'price_min', 'price_max',
   'utc_offset_minutes', 'editorial_summary', 'generative_summary',
   'opening_hours', 'stored_photo_urls', 'google_maps_uri',
-  'national_phone_number', 'website', 'is_active', 'is_servable',
+  'national_phone_number', 'website', 'lat', 'lng', 'is_active', 'is_servable',
 ]);
 
 const makePostgrestClient = (row) => {
@@ -80,6 +86,9 @@ test('TA1 a real PostgREST 42703-shaped denial rejects unknown columns while the
   const denied = await postgrest.denyUnknownProjection('id,name,neighborhood');
   assert.equal(denied.error.code, '42703');
   assert.match(denied.error.message, /neighborhood does not exist/);
+  const arbitraryDenied = await postgrest.denyUnknownProjection('id,name,imaginary_share_field');
+  assert.equal(arbitraryDenied.error.code, '42703');
+  assert.match(arbitraryDenied.error.message, /imaginary_share_field does not exist/);
 
   const mapped = await mapper.loadAuthoritativeContentShare(
     postgrest.db,
