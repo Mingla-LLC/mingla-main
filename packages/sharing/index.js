@@ -21,6 +21,23 @@ const HTTPS_RE = /^https:\/\//i;
 const BIDI_CONTROL_RE = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
 const CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu;
 const CONTENT_SHARE_NOTE_MAX_GRAPHEMES = 120;
+const readinessFlight = createContentShareSingleFlight();
+
+async function checkContentShareReadiness(code, version, fetchImpl = fetch) {
+  if (!isShortShareCode(code) || !Number.isSafeInteger(version) || version < 1) throw new TypeError('invalid_share_readiness_identity');
+  return readinessFlight(`${code}:${version}`, async () => {
+    try {
+      const response = await fetchImpl(`https://usemingla.com/api/content-share-readiness/${code}/${version}`, {
+        method: 'GET', redirect: 'manual', cache: 'no-store',
+      });
+      if (response.status === 200) return 'ready';
+      if (response.status === 410) return 'terminal';
+      if (response.status === 404) return 'terminal';
+      if (response.status === 503) return 'waiting';
+      return 'transient';
+    } catch { return 'transient'; }
+  });
+}
 
 function segmentGraphemes(value) {
   const normalized = typeof value === 'string' ? value.normalize('NFC') : '';
@@ -490,5 +507,5 @@ module.exports = {
   isPublicShareMediaUrl, selectPublicMediaIdentity,
   isShortShareCode, sanitizeReferralCode, buildShortShareUrl, buildSharePortraitUrl, contentShareRequestFromPublicUrl, validateShareFactsV1, parseShareFactsV1,
   formatMoney, formatEstimate, formatRating, statusLabel, shareKindLabel, formatPlanningPreference, selectRecipientFacts, selectPreviewFacts, selectCompactPreviewFacts,
-  buildShareMessage, routeContractFor, createContentShareSingleFlight, weekdayForShareTimezone, openStateForHours,
+  buildShareMessage, routeContractFor, createContentShareSingleFlight, checkContentShareReadiness, weekdayForShareTimezone, openStateForHours,
 };

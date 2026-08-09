@@ -12,12 +12,16 @@ export type ContentShareRecipient = {
   avatarUrl: string | null;
   conversationId: string | null;
   participantCount: number | null;
+  recipientTier: 1 | 2 | 3;
+  meaningfulActivityAt: string | null;
+  conversationCreatedAt: string | null;
 };
 
 type RecipientRow = {
   key: string; target_kind: ContentShareRecipient['targetKind']; target_id: string;
   person_user_id: string | null; display_name: string; username: string | null;
   avatar_url: string | null; conversation_id: string | null; participant_count: number | null;
+  recipient_tier: number; meaningful_activity_at: string | null; conversation_created_at: string | null;
 };
 
 type DeliveryResult = { deliveryId: string; conversationId: string; messageId: string; inserted: boolean };
@@ -29,7 +33,7 @@ type ContentShareSendInput = {
   onSettled?: ContentShareSettledListener;
 };
 type ContentShareSendResult = {
-  sent: number; failed: number; sentKeys: string[]; failedKeys: string[];
+  sent: number; failed: number; sentKeys: string[]; failedKeys: string[]; unavailableKeys: string[];
 };
 export type PersistedContentShareOperation = {
   schemaVersion: 1;
@@ -47,6 +51,16 @@ const operationStorageKey = (shareCode: string, version: number): string =>
 const operationLockTails = new Map<string, Promise<void>>();
 const deliveryFlights = new Map<string, Promise<ContentShareSendResult>>();
 const deliveryFlightListeners = new Map<string, Set<ContentShareSettledListener>>();
+const recipientInvalidationListeners = new Set<() => void>();
+
+export function subscribeContentShareRecipientInvalidation(listener: () => void): () => void {
+  recipientInvalidationListeners.add(listener);
+  return () => recipientInvalidationListeners.delete(listener);
+}
+
+export function invalidateContentShareRecipients(): void {
+  for (const listener of recipientInvalidationListeners) listener();
+}
 
 async function withContentShareOperationLock<T>(key: string, task: () => Promise<T>): Promise<T> {
   const previous = operationLockTails.get(key) ?? Promise.resolve();
@@ -151,11 +165,48 @@ export async function clearContentShareOperationId(shareCode: string, version: n
 export async function listContentShareRecipients(): Promise<ContentShareRecipient[]> {
   const { data, error } = await supabase.rpc('list_content_share_recipients');
   if (error) throw error;
-  return ((data ?? []) as RecipientRow[]).map((row) => ({
+  const rows = (data ?? []) as RecipientRow[];
+  const parseTime = (value: string | null): number | null => {
+    if (value === null) return null;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (![1, 2, 3].includes(row.recipient_tier)
+      || !row.key || !row.target_id || !row.display_name
+      || (row.recipient_tier === 1 && parseTime(row.meaningful_activity_at) === null)
+      || (row.recipient_tier === 2 && (row.meaningful_activity_at !== null || parseTime(row.conversation_created_at) === null))
+      || (row.recipient_tier === 3 && (row.meaningful_activity_at !== null || row.conversation_created_at !== null))) {
+      throw new Error('malformed_recipient_order');
+    }
+    if (index === 0) continue;
+    const previous = rows[index - 1];
+    if (previous.recipient_tier > row.recipient_tier) throw new Error('nonmonotonic_recipient_order');
+    if (previous.recipient_tier !== row.recipient_tier) continue;
+    const previousTime = previous.recipient_tier === 1
+      ? parseTime(previous.meaningful_activity_at)
+      : previous.recipient_tier === 2 ? parseTime(previous.conversation_created_at) : null;
+    const currentTime = row.recipient_tier === 1
+      ? parseTime(row.meaningful_activity_at)
+      : row.recipient_tier === 2 ? parseTime(row.conversation_created_at) : null;
+    if (previousTime !== null && currentTime !== null && previousTime < currentTime) {
+      throw new Error('nonmonotonic_recipient_order');
+    }
+    if (previousTime === currentTime) {
+      const left = [previous.display_name.normalize('NFKC').toLocaleLowerCase(), previous.target_kind, previous.key];
+      const right = [row.display_name.normalize('NFKC').toLocaleLowerCase(), row.target_kind, row.key];
+      if (JSON.stringify(left).localeCompare(JSON.stringify(right)) > 0) throw new Error('nonmonotonic_recipient_order');
+    }
+  }
+  return rows.map((row) => ({
     key: row.key, targetKind: row.target_kind, targetId: row.target_id,
     personUserId: row.person_user_id, displayName: row.display_name,
     username: row.username, avatarUrl: row.avatar_url,
     conversationId: row.conversation_id, participantCount: row.participant_count,
+    recipientTier: row.recipient_tier as 1 | 2 | 3,
+    meaningfulActivityAt: row.meaningful_activity_at,
+    conversationCreatedAt: row.conversation_created_at,
   }));
 }
 
@@ -195,6 +246,7 @@ async function executeContentShareDelivery(
   let failed = 0;
   const sentKeys: string[] = [];
   const failedKeys: string[] = [];
+  const unavailableKeys: string[] = [];
   const worker = async (): Promise<void> => {
     while (cursor < input.recipients.length) {
       const recipient = input.recipients[cursor++];
@@ -217,6 +269,9 @@ async function executeContentShareDelivery(
       } catch (error) {
         failed += 1;
         failedKeys.push(recipient.key);
+        const message = typeof (error as { message?: unknown })?.message === 'string'
+          ? (error as { message: string }).message : '';
+        if (message.includes('target_unavailable')) unavailableKeys.push(recipient.key);
         await persistState(recipient.key, 'failed');
         console.warn('[content-share] delivery failed', error instanceof Error ? error.name : 'unknown');
         notifySettled(recipient.key, 'failed');
@@ -224,7 +279,7 @@ async function executeContentShareDelivery(
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, input.recipients.length) }, worker));
-  return { sent, failed, sentKeys, failedKeys };
+  return { sent, failed, sentKeys, failedKeys, unavailableKeys };
 }
 
 export async function sendContentShareToRecipients(input: ContentShareSendInput): Promise<ContentShareSendResult> {

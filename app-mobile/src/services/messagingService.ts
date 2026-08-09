@@ -770,6 +770,7 @@ export class MessagingService {
 
       // #668: support threads live in the shared chat system but belong on the
       // business support inbox only — mirror useNotifications' business.% exclusion.
+      const accessPromise = supabase.rpc('list_connection_conversation_access');
       const conversationsPromise = supabase
         .from('conversations')
         .select(`
@@ -794,13 +795,20 @@ export class MessagingService {
         .or(`sender_id.neq.${userId},sender_id.is.null`)
         .is('deleted_at', null);
 
-      const [conversationsResult, unreadResult] = await Promise.all([
+      const [accessResult, conversationsResult, unreadResult] = await Promise.all([
+        accessPromise,
         conversationsPromise,
         unreadPromise,
       ]);
 
+      if (accessResult.error) throw accessResult.error;
       if (conversationsResult.error) throw conversationsResult.error;
       if (unreadResult.error) throw unreadResult.error;
+
+      const accessByConversation = new Map(
+        ((accessResult.data ?? []) as Array<{ conversation_id: string; archived_at: string | null }>)
+          .map((row) => [row.conversation_id, row.archived_at]),
+      );
 
       const unreadByConv = new Map<string, number>();
       for (const msg of unreadResult.data || []) {
@@ -816,6 +824,7 @@ export class MessagingService {
 
       const senderIds = new Set<string>();
       for (const conv of conversationsResult.data || []) {
+        if (!accessByConversation.has(conv.id)) continue;
         const raw = Array.isArray((conv as any).last_message)
           ? (conv as any).last_message[0]
           : (conv as any).last_message;
@@ -834,6 +843,7 @@ export class MessagingService {
 
       const conversations: Conversation[] = [];
       for (const conv of conversationsResult.data || []) {
+        if (!accessByConversation.has(conv.id)) continue;
         const lastMessageRaw = Array.isArray((conv as any).last_message)
           ? (conv as any).last_message[0]
           : (conv as any).last_message;
@@ -868,7 +878,8 @@ export class MessagingService {
           participants: (conv as any).participants || [],
           last_message: lastMessage,
           unread_count: unreadByConv.get(conv.id) || 0,
-        });
+          archived_at: accessByConversation.get(conv.id) ?? null,
+        } as Conversation & { archived_at: string | null });
       }
 
       return { conversations, error: null };
@@ -1210,19 +1221,34 @@ export class MessagingService {
    */
   async leaveGroupConversation(
     conversationId: string,
-    userId: string,
+    _userId: string,
   ): Promise<{ error: string | null }> {
     try {
-      const { error } = await supabase
-        .from('conversation_participants')
-        .delete()
-        .eq('conversation_id', conversationId)
-        .eq('user_id', userId);
+      const { error } = await supabase.rpc('leave_group_conversation', {
+        p_conversation_id: conversationId,
+      });
 
       if (error) throw error;
       return { error: null };
     } catch (error: any) {
       console.error('Error leaving group conversation:', error);
+      return { error: error.message };
+    }
+  }
+
+  async setConversationLifecycle(
+    conversationId: string,
+    action: 'archive' | 'unarchive' | 'hide',
+  ): Promise<{ error: string | null }> {
+    try {
+      const { error } = await supabase.rpc('set_conversation_lifecycle', {
+        p_conversation_id: conversationId,
+        p_action: action,
+      });
+      if (error) throw error;
+      return { error: null };
+    } catch (error: any) {
+      console.error('Error updating conversation lifecycle:', error);
       return { error: error.message };
     }
   }

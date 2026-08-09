@@ -17,6 +17,7 @@ import {
   RefreshControl,
   InteractionManager,
   Image,
+  AccessibilityInfo,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
@@ -26,6 +27,7 @@ import { Icon } from "./ui/Icon";
 import { useFriends, Friend as UseFriend } from "../hooks/useFriends";
 import { useAppStore } from "../store/appStore";
 import { messagingService, DirectMessage, MentionEntry, CardTagEntry } from "../services/messagingService";
+import { invalidateContentShareRecipients } from "../services/contentShareDeliveryService";
 import type { CollabDeadEndBannerPayload } from "../services/collabDeadEndBannerService";
 import { blockService, BlockReason } from "../services/blockService";
 import { muteService } from "../services/muteService";
@@ -361,9 +363,6 @@ interface ConnectionsPageProps {
 
 const CONNECTIONS_CACHE_VERSION = "v2-orch-0898-group-metadata";
 
-const getConversationsCacheKey = (userId: string) =>
-  `mingla:connections:conversations:${CONNECTIONS_CACHE_VERSION}:${userId}`;
-
 const getMessagesCacheKey = (conversationId: string) =>
   `mingla:connections:messages:${CONNECTIONS_CACHE_VERSION}:${conversationId}`;
 
@@ -676,48 +675,62 @@ function ConnectionsPageRefactored({
   // ── Archive state (ORCH-0435) ───────────────────────────
   const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
   const [showArchived, setShowArchived] = useState(false);
+  const [lifecycleBusyIds, setLifecycleBusyIds] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (!user?.id) return;
-    AsyncStorage.getItem(`mingla:archived_chats:${user.id}`).then(raw => {
-      if (raw) {
-        try { setArchivedIds(new Set(JSON.parse(raw))); } catch { /* ignore */ }
-      }
-    }).catch(() => {});
-  }, [user?.id]);
+  const runLifecycle = useCallback(async (conversationId: string, action: 'archive' | 'unarchive' | 'hide'): Promise<boolean> => {
+    setLifecycleBusyIds((current) => new Set(current).add(conversationId));
+    const result = await messagingService.setConversationLifecycle(conversationId, action);
+    setLifecycleBusyIds((current) => { const next = new Set(current); next.delete(conversationId); return next; });
+    if (result.error) {
+      const copy = action === 'archive' ? "Couldn't archive chat. Try again."
+        : action === 'unarchive' ? "Couldn't unarchive chat. Try again."
+        : "Couldn't remove chat. Try again.";
+      AccessibilityInfo.announceForAccessibility(copy);
+      Alert.alert(copy);
+      return false;
+    }
+    invalidateContentShareRecipients();
+    return true;
+  }, []);
 
-  const handleArchiveChat = useCallback((conversationId: string) => {
-    setArchivedIds(prev => {
-      const next = new Set(prev);
-      next.add(conversationId);
-      if (user?.id) {
-        AsyncStorage.setItem(`mingla:archived_chats:${user.id}`, JSON.stringify([...next])).catch(() => {});
-      }
-      return next;
-    });
-  }, [user?.id]);
+  const handleArchiveChat = useCallback(async (conversationId: string) => {
+    if (await runLifecycle(conversationId, 'archive')) setArchivedIds((current) => new Set(current).add(conversationId));
+  }, [runLifecycle]);
 
-  const handleUnarchiveChat = useCallback((conversationId: string) => {
-    setArchivedIds(prev => {
-      const next = new Set(prev);
-      next.delete(conversationId);
-      if (user?.id) {
-        AsyncStorage.setItem(`mingla:archived_chats:${user.id}`, JSON.stringify([...next])).catch(() => {});
-      }
-      return next;
-    });
-  }, [user?.id]);
+  const handleUnarchiveChat = useCallback(async (conversationId: string) => {
+    if (await runLifecycle(conversationId, 'unarchive')) setArchivedIds((current) => { const next = new Set(current); next.delete(conversationId); return next; });
+  }, [runLifecycle]);
 
   const handleDeleteChat = useCallback((conversationId: string) => {
-    Alert.alert('Delete Chat', 'Are you sure you want to delete this chat?', [
+    const isGroup = conversations.find((conversation) => conversation.id === conversationId)?.type === 'group';
+    if (isGroup) {
+      Alert.alert('Leave group?', "You'll stop receiving messages, and this group won't appear when you share in Mingla.", [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Leave', style: 'destructive', onPress: () => void (async () => {
+          setLifecycleBusyIds((current) => new Set(current).add(conversationId));
+          const result = await messagingService.leaveGroupConversation(conversationId, user?.id ?? '');
+          setLifecycleBusyIds((current) => { const next = new Set(current); next.delete(conversationId); return next; });
+          if (result.error) {
+            const copy = "Couldn't leave the group. Try again.";
+            AccessibilityInfo.announceForAccessibility(copy); Alert.alert(copy); return;
+          }
+          setConversations((current) => current.filter((conversation) => conversation.id !== conversationId));
+          invalidateContentShareRecipients();
+        })() },
+      ]);
+      return;
+    }
+    Alert.alert('Remove chat?', 'This chat will disappear from your lists on every device. If another person sends a new message, it will reappear.', [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Delete', style: 'destructive', onPress: () => {
+        text: 'Remove', style: 'destructive', onPress: () => void (async () => {
+          if (!await runLifecycle(conversationId, 'hide')) return;
           setConversations(prev => prev.filter(c => c.id !== conversationId));
-        }
+          AccessibilityInfo.announceForAccessibility('Chat removed.');
+        })()
       },
     ]);
-  }, []);
+  }, [conversations, runLifecycle, user?.id]);
 
   // ── Messaging state ──────────────────────────────────────
   const [activeChat, setActiveChat] = useState<Friend | null>(null);
@@ -1346,6 +1359,7 @@ function ConnectionsPageRefactored({
           eventCoverMediaUrl: eventMeta?.coverMediaUrl ?? null,
           eventPublicUrl,
           eventPublicCard,
+          archived_at: (conv as any).archived_at ?? null,
         };
       });
 
@@ -1370,12 +1384,7 @@ function ConnectionsPageRefactored({
       const nextConversations = [...pendingInviteRows, ...transformed];
 
       setConversations(nextConversations);
-
-      // Persist to cache
-      AsyncStorage.setItem(
-        getConversationsCacheKey(userId),
-        JSON.stringify(nextConversations)
-      ).catch((e) => console.warn("[ConnectionsPage] Cache persist failed:", e));
+      setArchivedIds(new Set(transformed.filter((conversation) => Boolean((conversation as any).archived_at)).map((conversation) => conversation.id)));
     } catch (err: any) {
       if (err.name === 'TimeoutError') {
         // Graceful degradation — network hung after background. User already sees cached
@@ -1395,28 +1404,32 @@ function ConnectionsPageRefactored({
   // ── Fetch conversations on mount ─────────────────────────
   useEffect(() => {
     if (!user?.id) return;
-
-    // Hydrate from cache first
-    (async () => {
+    let cancelled = false;
+    void (async () => {
+      const migrationKey = `mingla:archived_chats_server_migrated:${user.id}`;
+      const legacyKey = `mingla:archived_chats:${user.id}`;
       try {
-        const cached = await AsyncStorage.getItem(getConversationsCacheKey(user.id));
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed)) {
-            // Empty array [] is a valid cached state: user has no conversations yet.
-            // Previously this guard excluded zero-conversation users, forcing them to
-            // always wait for the network fetch — causing infinite spinner on hang.
-            setConversations(parsed);
-            setConversationsLoading(false);
+        const [migrated, raw] = await Promise.all([
+          AsyncStorage.getItem(migrationKey), AsyncStorage.getItem(legacyKey),
+        ]);
+        if (!migrated && raw) {
+          const ids = JSON.parse(raw) as unknown;
+          if (Array.isArray(ids)) {
+            for (const conversationId of ids.filter((id): id is string => typeof id === 'string')) {
+              const result = await messagingService.setConversationLifecycle(conversationId, 'archive');
+              if (result.error) throw new Error(result.error);
+            }
           }
+          await AsyncStorage.multiSet([[migrationKey, '1'], [legacyKey, '[]']]);
+        } else if (!migrated) {
+          await AsyncStorage.setItem(migrationKey, '1');
         }
-      } catch (e) {
-        console.warn("[ConnectionsPage] Cache hydration failed:", e);
+      } catch (migrationError) {
+        console.warn('[ConnectionsPage] archive migration deferred', migrationError instanceof Error ? migrationError.name : 'unknown');
       }
+      if (!cancelled) await fetchConversations(user.id);
     })();
-
-    // Then fetch fresh data
-    fetchConversations(user.id);
+    return () => { cancelled = true; };
   }, [user?.id, fetchConversations]);
 
   // ── Friends & requests freshness — issue #1638 ───────────
@@ -3555,11 +3568,13 @@ function ConnectionsPageRefactored({
                 </View>
                 <Text style={styles.archivedName} numberOfLines={1}>{cleanName}</Text>
                 <TouchableOpacity
-                  onPress={() => handleUnarchiveChat(conv.id)}
+                  onPress={() => void handleUnarchiveChat(conv.id)}
+                  disabled={lifecycleBusyIds.has(conv.id)}
+                  accessibilityState={{ disabled: lifecycleBusyIds.has(conv.id), busy: lifecycleBusyIds.has(conv.id) }}
                   style={styles.unarchiveBtn}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.unarchiveBtnText}>Unarchive</Text>
+                  {lifecycleBusyIds.has(conv.id) ? <ActivityIndicator size="small" /> : <Text style={styles.unarchiveBtnText}>Unarchive</Text>}
                 </TouchableOpacity>
               </View>
             );
@@ -3661,6 +3676,7 @@ function ConnectionsPageRefactored({
                     }}
                     onArchive={handleArchiveChat}
                     onDelete={handleDeleteChat}
+                    lifecycleBusy={lifecycleBusyIds.has(item.id)}
                   />
                 );
                 if (index === 0) {

@@ -22,6 +22,7 @@ const createContentShareImageHandler = (fetchShare = fetchContentShareVersion, r
   try {
     const result = await fetchShare(code, Number(version));
     if (result.status === 410) return failClosed(res, 410);
+    if ([429, 500, 502, 503].includes(result.status)) return failClosed(res, result.status === 429 ? 503 : result.status);
     const share = result.contentShare;
     if (!share || Number(share.version) !== Number(version) || !contentSharePosterUrl(share)) return failClosed(res, 404);
     const etag = `"content-share-${code}-v${version}-r2-jpeg"`;
@@ -35,7 +36,7 @@ const createContentShareImageHandler = (fetchShare = fetchContentShareVersion, r
     res.statusCode = 200;
     setImmutableJpegHeaders(res, etag);
     return res.end(jpeg);
-  } catch { return failClosed(res, 404); }
+  } catch { return failClosed(res, 502); }
 };
 module.exports = createContentShareImageHandler();
 module.exports.createContentShareImageHandler = createContentShareImageHandler;

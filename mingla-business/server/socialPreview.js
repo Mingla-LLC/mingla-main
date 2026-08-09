@@ -755,7 +755,7 @@ const pageShell = ({ title, description, canonicalUrl, imageUrl, imageType = "im
   <meta property="og:description" content="${escapeHtml(description)}" />
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
   <meta property="og:type" content="${escapeHtml(type)}" />
-  ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />\n  <meta property="og:image:type" content="${escapeHtml(imageType)}" />\n  <meta property="og:image:width" content="${Number(imageWidth)}" />\n  <meta property="og:image:height" content="${Number(imageHeight)}" />\n  <meta property="og:image:alt" content="${escapeHtml(imageAlt)}" />` : ""}
+  ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}" />\n  <meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}" />\n  <meta property="og:image:type" content="${escapeHtml(imageType)}" />\n  <meta property="og:image:width" content="${Number(imageWidth)}" />\n  <meta property="og:image:height" content="${Number(imageHeight)}" />\n  <meta property="og:image:alt" content="${escapeHtml(imageAlt)}" />` : ""}
   <meta name="twitter:card" content="${imageUrl ? "summary_large_image" : "summary"}" />
   <meta name="twitter:title" content="${escapeHtml(title)}" />
   <meta name="twitter:description" content="${escapeHtml(description)}" />

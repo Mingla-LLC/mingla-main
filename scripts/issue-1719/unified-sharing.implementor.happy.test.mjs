@@ -160,14 +160,21 @@ test('H11 restored operations reconcile exact live targets and zero-target sends
   assert.ok(send.indexOf("setOutcome({ kind: 'success'") > send.indexOf('sendContentShareToRecipients'));
 });
 
-test('H12 offline mode preserves prepared external actions and disables only internal send', () => {
+// [TEST-MOD-APPROVED #1719] Written reason: approved physical-device amendment
+// 5230185417 makes external preview readiness an honest independent state. The
+// prior assertion that the external section never reads offline state is now
+// wrong: native Share must disable while offline, while Copy and in-Mingla work
+// remain independent once the canonical link exists.
+test('H12 offline mode keeps Copy/internal independent while fail-closing unready native Share', () => {
   const provider = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
   assert.match(provider, /useNetInfo\(\)/);
   assert.match(provider, /isConnected === false \|\| netInfo\.isInternetReachable === false/);
   assert.match(provider, /You're offline\. Reconnect to send in Mingla\./);
   assert.match(provider, /disabled=\{!prepared \|\| selected\.size === 0 \|\| sending \|\| isOffline\}/);
   const external = provider.slice(provider.indexOf('<Text style={styles.sectionTitle}>Share elsewhere'), provider.indexOf('{externalError ?'));
-  assert.doesNotMatch(external, /isOffline/);
+  assert.match(provider, /readiness === 'offline'/);
+  assert.match(external, /disabled=\{!shareReady \|\| sending\}/);
+  assert.match(external, /disabled=\{!prepared \|\| sending\}[\s\S]*copyLink/);
   assert.doesNotMatch(provider, /cached.*(?:shortCode|canonicalUrl)|fabricat/i);
 });
 
