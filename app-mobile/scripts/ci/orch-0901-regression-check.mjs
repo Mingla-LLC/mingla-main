@@ -198,15 +198,23 @@ check(
     " surface the error via `if (convError) throw new Error(convError)`. Constitution #3.",
 );
 
-// ─── T-09 (SC-02): Promise.all is used to run Q1+Q2 in parallel (not sequential) ─
+// ─── T-09 (SC-02): all first-level reads run in parallel (not sequential) ─────
+
+// [TEST-MOD-APPROVED #1719] Written reason: #1719 added the independently
+// authorized accessPromise to the existing conversations/unread first-level
+// fetch. The former two-promise regex was stale and rejected the correct
+// three-promise Promise.all. This replacement still fails if access is awaited
+// before the shared Promise.all, preserving the original parallelism invariant.
 
 check(
-  "T-09 Q1+Q2 run in parallel via Promise.all — not sequential",
+  "T-09 access, conversations, and unread reads run in one Promise.all — not sequential",
   body !== null &&
-    /Promise\.all\s*\(\s*\[\s*conversationsPromise\s*,\s*unreadPromise\s*,?\s*\]\s*\)/.test(body),
-  "Q1 (conversations + last_message + participants) and Q2 (unread helper) MUST run in parallel" +
-    " via Promise.all([conversationsPromise, unreadPromise]) — not awaited sequentially. Without this," +
-    " round-trip 1 + round-trip 2 = 2 sequential round-trips instead of 1.",
+    /Promise\.all\s*\(\s*\[\s*accessPromise\s*,\s*conversationsPromise\s*,\s*unreadPromise\s*,?\s*\]\s*\)/.test(body) &&
+    !/const\s+accessPromise\s*=\s*await\b/.test(body) &&
+    !/await\s+accessPromise\b/.test(body),
+  "Access eligibility, conversations + last_message + participants, and the unread helper MUST run" +
+    " in one Promise.all([accessPromise, conversationsPromise, unreadPromise]). Access must not be" +
+    " awaited before that shared join; doing so restores a sequential network round-trip.",
 );
 
 // ─── Q1 shape: nested JOIN includes participants + last_message + read_status ─
