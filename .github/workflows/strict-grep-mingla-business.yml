@@ -15,6 +15,15 @@ on:
       - "AGENTS.md"
       - ".github/scripts/strict-grep/**"
       - ".github/workflows/strict-grep-mingla-business.yml"
+      # #994 — the 2026-08-06 landmine was a DOCUMENT. A bypass-prevention gate
+      # that cannot run on the file class the bug lives in is theatre, so
+      # docs-only PRs (including CLOSE docs PRs) now run this suite. That cost
+      # is accepted deliberately. `scripts/ota/**` is narrow on purpose: the
+      # post-publish verifier lives there and is swept by manifest-parity P11,
+      # so a PR touching only it must still run the suite. Do NOT widen this to
+      # all of `scripts/**`.
+      - "docs/**"
+      - "scripts/ota/**"
   push:
     branches: [main, Seth]
     paths:
@@ -29,6 +38,15 @@ on:
       - "AGENTS.md"
       - ".github/scripts/strict-grep/**"
       - ".github/workflows/strict-grep-mingla-business.yml"
+      # #994 — the 2026-08-06 landmine was a DOCUMENT. A bypass-prevention gate
+      # that cannot run on the file class the bug lives in is theatre, so
+      # docs-only PRs (including CLOSE docs PRs) now run this suite. That cost
+      # is accepted deliberately. `scripts/ota/**` is narrow on purpose: the
+      # post-publish verifier lives there and is swept by manifest-parity P11,
+      # so a PR touching only it must still run the suite. Do NOT widen this to
+      # all of `scripts/**`.
+      - "docs/**"
+      - "scripts/ota/**"
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}

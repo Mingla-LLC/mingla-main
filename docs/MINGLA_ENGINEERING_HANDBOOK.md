@@ -358,30 +358,63 @@ shipped five production incidents and fails two different ways:
   funnel. Same silent-default shape for `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` / `EXPO_PUBLIC_POSTHOG_KEY` /
   `EXPO_PUBLIC_MIXPANEL_TOKEN`.
 
-Business — via the canonical script ONLY (never bare `eas update`):
+**BOTH apps publish through their canonical wrapper script — never a bare `eas update`.** Each wrapper
+always passes the flag, pre-flights every key that app silently defaults on (presence FIRST, then
+prefix), and — after publishing — downloads the manifest the CDN will actually serve and fails loudly
+if a key is missing. #994 added the consumer wrapper and the post-publish check; a strict-grep gate
+keeps this page, both wrappers and both `app.config.ts` tripwires honest.
 
 ```bash
 mingla-business/scripts/ota/publish-production-ota.sh ios     "<summary>"
 mingla-business/scripts/ota/publish-production-ota.sh android "<summary>"
+
+app-mobile/scripts/ota/publish-production-ota.sh ios     "<summary>"
+app-mobile/scripts/ota/publish-production-ota.sh android "<summary>"
 ```
 
-Consumer (`app-mobile`) — via `npx -y eas-cli@latest` (the global eas-cli crashes app-mobile's config
-spawn). `app-mobile` has no wrapper script yet (#994), so the flag is your responsibility here:
+Two separate commands per app — `--platform ios,android` is invalid; the combined-platform form fails
+on the web bundle.
+
+Reference only — what the consumer wrapper runs underneath. `app-mobile` must use `npx -y
+eas-cli@latest` (the globally-installed eas-cli crashes app-mobile's config spawn). **Do not run these
+by hand**: they publish with no pre-flight and no post-publish verification, which is exactly how the
+five incidents happened.
 
 ```bash
 cd app-mobile && npx -y eas-cli@latest update --branch production --environment production --platform ios     --message "<summary>"
 cd app-mobile && npx -y eas-cli@latest update --branch production --environment production --platform android  --message "<summary>"
 ```
 
-Two separate commands — `--platform ios,android` is invalid; `--platform all` fails on web bundle.
-
 **Verify the SERVED MANIFEST after every publish — the CLI exit code is green on a broken publish.**
-Fetch what users will actually receive and confirm the expected `EXPO_PUBLIC_*` keys carry real values.
-An unset var serializes as `{}` (not `null`, not absent), which is easy to skim past:
+The wrapper now does this for you (`scripts/ota/verify-published-manifest.mjs`, run automatically after
+the publish): it fetches what users will actually receive and confirms the expected `EXPO_PUBLIC_*` keys
+carry real values. Read its output before you walk away. An unset var serializes as `{}` (not `null`,
+not absent), which is easy to skim past:
 
 ```
 "EXPO_PUBLIC_POSTHOG_KEY":{}     <- unset. The publish was blind. Republish with --environment production.
 ```
+
+If that check fails, roll back first (`eas update:roll-back-to-embedded --branch production --platform
+<ios|android>`), then re-run the wrapper from the same commit. Devices that already fetched the bad
+update need TWO cold starts to escape it (#990).
+
+**Release-mode boot smoke — run this BEFORE a production OTA that touches boot-path code.**
+
+This is a HUMAN step, deliberately not a CI gate, and here is why: doing it in CI needs a macOS runner,
+an EAS-built dev-client `.app` that is not a repo artifact (~30–60 min to build), production Stripe and
+Supabase secrets available to CI, and live outbound network to the production backend — on every PR.
+That produces either a check everyone skips or a check that is green because it silently failed to
+launch, which is the same defect class this whole section exists to prevent (#994 SPEC §6.1).
+
+1. At the exact commit you are about to publish: `npx expo start --no-dev --minify` in the app dir.
+2. Launch the EAS dev client on a booted simulator **with network to the production backend**, and cold
+   start it (terminate first — a hot-reloaded app is not evidence).
+3. The app must reach Home.
+4. The simulator syslog must contain zero `StripeModeMismatchError`, `Render Error` or `FATAL`.
+
+Dev mode does NOT substitute. In dev, the same boot-path throw renders as a dismissible LogBox overlay
+while the app keeps running; in release it is the stuck splash screen (#990 §3).
 
 ### 7.7 Pull requests
 

@@ -15,13 +15,14 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 479,
-  "selfTestWiredFloor": 291,
+  "expectedStrictGrepMjsFiles": 481,
+  "selfTestWiredFloor": 294,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
   "externalGateDirs": [
-    "app-mobile/scripts/ci"
+    "app-mobile/scripts/ci",
+    "scripts/ota"
   ],
   "gates": [
     {
@@ -7451,6 +7452,41 @@
       "modes": [
         "self-test",
         "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-994-ota-publish-guardrails.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-994-ota-env-resolution.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": "scripts/ota/verify-published-manifest.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test"
       ],
       "selfTest": "wired",
       "jobKeys": []
