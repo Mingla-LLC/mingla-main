@@ -147,9 +147,15 @@ jest.mock("../../../src/components/ui/Input", () => ({
   },
 }));
 
+// Buttons record their testID so the ORCH-1263 §8.4 claim resume card can be
+// asserted by the same testIDs the design pins.
+const buttonTestIds: string[] = [];
 jest.mock("../../../src/components/ui/Button", () => ({
   __esModule: true,
-  Button: (): null => null,
+  Button: (props: { testID?: string }): null => {
+    if (props.testID !== undefined) buttonTestIds.push(props.testID);
+    return null;
+  },
 }));
 jest.mock("../../../src/components/ui/EventCoverMedia", () => ({
   __esModule: true,
@@ -253,6 +259,7 @@ beforeEach(async () => {
   setParamsCalls.length = 0;
   replaceCalls.length = 0;
   inputValues.length = 0;
+  buttonTestIds.length = 0;
   mounted.categoryPicker = 0;
   mounted.wizard = 0;
 });
@@ -370,6 +377,65 @@ describe("#1685 — the create door mints; it never resumes", () => {
     expect(foreign?.brandId).toBe("brand-other");
 
     unmountTree(tree);
+  });
+
+  // T-18 (SPEC §7) — the ORCH-1263 §8.4 claim resume card is NOT deleted; it
+  // simply moved behind the deliberate door. "+" must not show it (that would
+  // make "+" a resume button again), and `?draft=<claim id>` must.
+  test("T-18 — the claim resume card renders on the resume door and NOT on '+'", () => {
+    const claimId = store.getState().createDraft(BRAND_ID);
+    store.getState().patch({
+      workingName: "Lumen Wine Bar",
+      displayName: "Lumen Wine Bar",
+      venueCategory: "restaurant",
+      step: 4,
+      claim: {
+        adopted: {
+          name: "Lumen Wine Bar",
+          address: "12 Ossington Ave",
+          hours: [],
+          phone: null,
+          website: null,
+          priceTiers: [],
+          facets: {},
+          summary: null,
+          summarySource: null,
+          galleryUrls: [],
+          category: "restaurant",
+          categoryConfident: true,
+          reservableHint: false,
+        },
+        keptGalleryUrls: [],
+        addedGalleryUrls: [],
+        coverChoice: null,
+        detailFetched: true,
+        adoptedAt: "2026-08-09T00:00:00.000Z",
+      },
+    });
+    // Park it, exactly as backing out of the claim wizard would.
+    store.getState().createDraft(BRAND_ID);
+
+    // The CREATE door: fresh blank draft, so no claim, so no card.
+    const createTree = mountRoute({});
+    expect(buttonTestIds).not.toContain("claim-resume-card");
+    expect(buttonTestIds).not.toContain("claim-resume-resume");
+    expect(store.getState().claim).toBeNull();
+    unmountTree(createTree);
+
+    buttonTestIds.length = 0;
+    mounted.wizard = 0;
+
+    // The RESUME door: the §8.4 card, at the gate, with both buttons.
+    const resumeTree = mountRoute({ draft: claimId });
+    const texts = collectText(resumeTree.toJSON(), []);
+    expect(texts).toContain("What’s your venue called?");
+    expect(mounted.wizard).toBe(0);
+    expect(buttonTestIds).toContain("claim-resume-resume");
+    expect(buttonTestIds).toContain("claim-resume-startover");
+    expect(store.getState().activeDraftId).toBe(claimId);
+    expect(store.getState().claim).not.toBeNull();
+    expect(store.getState().step).toBe(4);
+    unmountTree(resumeTree);
   });
 
   test("H-6 — the route no longer reaches for activateBrand or a mount-time phase", () => {
