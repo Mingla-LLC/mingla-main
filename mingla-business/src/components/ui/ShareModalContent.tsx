@@ -56,7 +56,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
     void import('../../services/contentShareAdapter')
       .then(({ prepareBusinessContentShare }) => prepareBusinessContentShare(url, 'generic', contentKind))
       .then(async (value) => {
-        const { selectCompactPreviewFacts, shareKindLabel, statusLabel } = await import('@mingla/sharing');
+        const { selectCompactPreviewFacts, shareKindLabel, statusLabel } = await import('../../services/contentShareAdapter');
         if (generation.current === token) {
           setPrepared(value);
           setPreviewCopy({
@@ -91,7 +91,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
     if (!onlineRef.current) { setReadiness('offline'); return; }
     const token = generation.current;
     setReadiness(retrying ? 'retrying' : 'pending');
-    void import('@mingla/sharing').then(({ checkContentShareReadiness }) => checkContentShareReadiness(prepared.shortCode, prepared.version)).then((result) => {
+    void import('../../services/contentShareAdapter').then(({ checkContentShareReadiness }) => checkContentShareReadiness(prepared.shortCode, prepared.version)).then((result) => {
       if (generation.current === token && (Platform.OS === 'web' || AppState.currentState === 'active')) setReadiness(result);
     }).catch(() => { if (generation.current === token) setReadiness('transient'); });
   }, [prepared]);

@@ -229,23 +229,31 @@ check(
 
 // ─── TA-04: Promise.all ordering — no shadow await before the batch ─
 
+// [TEST-MOD-APPROVED #1719] Written reason: #1719 added the independently
+// authorized accessPromise to the existing conversations/unread first-level
+// fetch. The old two-promise assertion became false while production correctly
+// ran all three reads in one batch. This replacement preserves the adversarial
+// intent: every promise must be created without await and joined exactly once.
+
 check(
-  "TA-04 [FAILS-ON-REVERT KEY] Q1 + Q2 are NOT awaited individually before the Promise.all." +
-    " The two Promise variables are created without await, then awaited together via Promise.all.",
+  "TA-04 [FAILS-ON-REVERT KEY] access, Q1 and Q2 are NOT awaited individually before Promise.all." +
+    " The three Promise variables are created without await, then awaited together via Promise.all.",
   body !== null && (() => {
     const code = stripComments(body);
+    const accessNotAwaited = /const\s+accessPromise\s*=\s*supabase\s*\.\s*rpc\(/.test(code) &&
+                             !/const\s+accessPromise\s*=\s*await\s+supabase/.test(code);
     // Verify: `const conversationsPromise = supabase.from(...)` — NOT `const ... = await supabase.from(...)`
     const q1NotAwaited = /const\s+conversationsPromise\s*=\s*supabase\s*\.\s*from\(/.test(code) &&
                          !/const\s+conversationsPromise\s*=\s*await\s+supabase/.test(code);
     const q2NotAwaited = /const\s+unreadPromise\s*=\s*supabase\s*\.\s*from\(/.test(code) &&
                          !/const\s+unreadPromise\s*=\s*await\s+supabase/.test(code);
     const promiseAllPresent =
-      /Promise\.all\s*\(\s*\[\s*conversationsPromise\s*,\s*unreadPromise\s*,?\s*\]\s*\)/.test(code);
-    return q1NotAwaited && q2NotAwaited && promiseAllPresent;
+      /Promise\.all\s*\(\s*\[\s*accessPromise\s*,\s*conversationsPromise\s*,\s*unreadPromise\s*,?\s*\]\s*\)/.test(code);
+    return accessNotAwaited && q1NotAwaited && q2NotAwaited && promiseAllPresent;
   })(),
-  "The happy-path test verifies Promise.all([conversationsPromise, unreadPromise]) exists — but a future" +
-    " implementor could ALSO add `const a = await conversationsPromise` BEFORE the Promise.all, which" +
-    " serializes them. This adversarial verifies neither Promise is awaited individually before the batch.",
+  "The happy-path test verifies the three-way Promise.all exists — but a future implementor could ALSO" +
+    " await one promise before the batch, serializing it. This adversarial verifies access, conversations," +
+    " and unread are never awaited individually before their one shared batch.",
 );
 
 // ─── TA-05: N=200 stress — function body has no per-N cost beyond constant Map operations ─

@@ -204,7 +204,7 @@ export async function createContentShareV1(
   const native = requestedKind === "place" || requestedKind === "curated";
   const nativeSnapshot = native && "nativeSnapshot" in mapped ? mapped.nativeSnapshot : undefined;
   const nativePreview = native && "nativePreview" in mapped ? mapped.nativePreview : undefined;
-  const { data: created, error } = await db.rpc(native ? "upsert_content_share_version_with_native_snapshot" : "upsert_content_share_version", {
+  const versionArgs = {
     p_entity_kind: requestedKind,
     p_creator_principal: serverCreated ? null : userId,
     p_source_key: mapped.sourceKey,
@@ -213,8 +213,14 @@ export async function createContentShareV1(
     p_facts: mapped.facts,
     p_media_identity: mapped.mediaIdentity || null,
     p_destination_manifest: mapped.destinationManifest,
-    ...(native ? { p_native_snapshot: nativeSnapshot, p_native_preview: nativePreview } : {}),
-  });
+  };
+  const { data: created, error } = native
+    ? await db.rpc("upsert_content_share_version_with_native_snapshot", {
+      ...versionArgs,
+      p_native_snapshot: nativeSnapshot,
+      p_native_preview: nativePreview,
+    })
+    : await db.rpc("upsert_content_share_version", versionArgs);
   if (error || !created?.shortCode) throw error || new Error("share_create_failed");
   const rawMessageContext = raw.messageContext && typeof raw.messageContext === "object" && !Array.isArray(raw.messageContext)
     ? raw.messageContext as Record<string, unknown> : {};
@@ -285,7 +291,7 @@ export async function refreshContentShareV1(db: any, shortCode: string) {
   if (!contentShareMessageEnvelopeFits(link.entity_kind, mapped)) return { status:503,body:{error:"unavailable"} };
   const nativeSnapshot = native && "nativeSnapshot" in mapped ? mapped.nativeSnapshot : undefined;
   const nativePreview = native && "nativePreview" in mapped ? mapped.nativePreview : undefined;
-  const { data: created, error: upsertError } = await db.rpc(native ? "upsert_content_share_version_with_native_snapshot" : "upsert_content_share_version", {
+  const versionArgs = {
     p_entity_kind: link.entity_kind,
     p_creator_principal: link.creator_principal,
     p_source_key: mapped.sourceKey,
@@ -294,8 +300,14 @@ export async function refreshContentShareV1(db: any, shortCode: string) {
     p_facts: mapped.facts,
     p_media_identity: mapped.mediaIdentity || null,
     p_destination_manifest: mapped.destinationManifest,
-    ...(native ? { p_native_snapshot: nativeSnapshot, p_native_preview: nativePreview } : {}),
-  });
+  };
+  const { data: created, error: upsertError } = native
+    ? await db.rpc("upsert_content_share_version_with_native_snapshot", {
+      ...versionArgs,
+      p_native_snapshot: nativeSnapshot,
+      p_native_preview: nativePreview,
+    })
+    : await db.rpc("upsert_content_share_version", versionArgs);
   if (upsertError || !created?.shortCode || created.shortCode !== shortCode) return { status: 503, body: { error: "unavailable" } };
   const envelope=validatePublicContentShareEnvelope(publicEnvelope(shortCode,created.version,mapped));
   if (!envelope) return { status:503, body:{ error:"unavailable" } };

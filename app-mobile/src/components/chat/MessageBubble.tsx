@@ -434,6 +434,8 @@ export function MessageBubble({
               scheduled_at?: string;
             };
             const legacy = raw.card_data && typeof raw.card_data === 'object' ? raw.card_data : null;
+            const effectiveStops = raw.stops ?? legacy?.stops;
+            const sourceCardType = raw.cardType ?? legacy?.cardType;
             const cp = {
               ...payload,
               image: raw.image ?? legacy?.image ?? null,
@@ -442,13 +444,22 @@ export function MessageBubble({
               lockInEvent: raw.lockInEvent
                 ?? (raw.event === 'card_locked_and_scheduled' ? 'card_locked_and_scheduled' : undefined),
               scheduledAt: raw.scheduledAt ?? raw.scheduled_at ?? undefined,
-              cardType: raw.cardType ?? legacy?.cardType,
-              stops: raw.stops ?? legacy?.stops,
+              // Legacy curated payloads predate cardType but do contain stops.
+              // Normalize that old shape once so the renderer can keep one
+              // explicit curated-card boundary below.
+              cardType: sourceCardType === 'curated'
+                || (Array.isArray(effectiveStops) && effectiveStops.length > 0)
+                ? 'curated'
+                : sourceCardType,
+              stops: effectiveStops,
             };
-            const isIntentCard = cp.cardType === 'curated' || (Array.isArray(cp.stops) && cp.stops.length > 0);
+            const isIntentCard = cp.cardType === 'curated';
             const intentStopCount = isIntentCard ? (cp.stops?.length ?? 0) : 0;
             const intentHeroImage = isIntentCard ? (cp.stops?.[0]?.imageUrl ?? cp.image) : cp.image;
             const effectiveImage = isIntentCard ? intentHeroImage : cp.image;
+            // PlaceCuratedChatCard owns the legacy cardBubbleIntentChip and its
+            // arrow-forward affordance; this boundary supplies its effective
+            // first-stop image and stop count without duplicating the design.
             return <PlaceCuratedChatCard title={cp.title} category={cp.category} image={effectiveImage}
               stopCount={intentStopCount || undefined} lockedAt={cp.lockInEvent === 'card_locked_and_scheduled' ? cp.scheduledAt : undefined}
               isMe={isMe} hint={t('chat:cardBubbleTapHint')} onPress={() => onCardBubbleTap?.(payload, message.id)} />;

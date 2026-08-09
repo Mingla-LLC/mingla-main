@@ -1,4 +1,4 @@
-import { buildSharePortraitUrl, buildShortShareUrl, contentShareRequestFromPublicUrl, createContentShareSingleFlight, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
+import { buildSharePortraitUrl, buildShortShareUrl, checkContentShareReadiness, contentShareRequestFromPublicUrl, createContentShareSingleFlight, selectCompactPreviewFacts, shareKindLabel, statusLabel, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 import { postHogService } from './postHogService';
@@ -13,6 +13,10 @@ type CreatedShareResponse=CreatedShare&{message:string};
 const singleFlight=createContentShareSingleFlight();
 
 export { contentShareRequestFromPublicUrl } from '@mingla/sharing';
+// ShareModalContent loads this adapter on demand. Re-export the preview helpers
+// through that same split boundary so @mingla/sharing is owned by one async
+// chunk instead of being hoisted into Metro's eager __common chunk.
+export { checkContentShareReadiness, selectCompactPreviewFacts, shareKindLabel, statusLabel };
 
 export function trackBusinessShareEvent(event:'share_sheet_opened'|'share_link_ready'|'share_sheet_returned'|'share_link_opened'|'share_poster_result'|'share_failure',properties:Record<string,string|number|boolean>):void{
   try{postHogService.capture(event,properties)}catch{/* telemetry never owns sharing */}
