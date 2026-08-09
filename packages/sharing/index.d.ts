@@ -56,6 +56,7 @@ export function normalizeContentShareNote(value: unknown): { note: string | null
 export function formatPlanningPreference(value: unknown): string;
 export function selectRecipientFacts(value: ShareFactsV1, context?: { includePlanningPreference?: boolean }): string[];
 export function selectPreviewFacts(value: ShareFactsV1, limit?: number): string[];
+export function selectCompactPreviewFacts(value: ShareFactsV1, limit?: number): string[];
 export function buildShareMessage(value: ShareFactsV1, context: { shortCode: string; channel?: 'generic' | 'sms' | 'whatsapp' | 'x' | 'email'; senderNote?: string; planningPreference?: string | { dayOfWeek?: string; timeOfDay?: string; planningTimeframe?: string } }): string;
 export function routeContractFor(kind: ShareEntityKind): { web: string; native: string; required: readonly string[] };
 export function createContentShareSingleFlight(): <T>(key: string, load: () => Promise<T>) => Promise<T>;

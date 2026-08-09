@@ -9,7 +9,7 @@ import { ChatCardChip } from './ChatCardChip';
 import { CollabLocationChips } from '../collab/CollabLocationChips';
 import { isContentShareCardPayload, type CardPayload, type CardTagEntry, type LegacyCardPayload, type MentionEntry } from '../../services/messagingService';
 import type { CollabDeadEndBannerPayload } from '../../services/collabDeadEndBannerService';
-import { selectPreviewFacts, shareKindLabel, statusLabel } from '@mingla/sharing';
+import { selectCompactPreviewFacts, shareKindLabel, statusLabel } from '@mingla/sharing';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -392,7 +392,7 @@ export function MessageBubble({
             if (isContentShareCardPayload(payload)) {
               const facts = payload.facts;
               const mediaKind = payload.media?.kind;
-              const factLine = selectPreviewFacts(facts, 3).join(' · ');
+              const factLine = selectCompactPreviewFacts(facts, 3).join(' · ');
               const status = statusLabel(facts.status);
               return (
                 <TouchableOpacity

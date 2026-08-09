@@ -168,6 +168,8 @@ test('H12 offline mode preserves prepared external actions and disables only int
 
 test('H13 Business web traps focus, closes on idle Escape, returns focus, and preserves exact actions', () => {
   const modal = read('mingla-business/src/components/ui/ShareModal.tsx');
+  const dialogStart = modal.indexOf('<View ref={dialogRef}');
+  const dialogOpenTag = modal.slice(dialogStart, modal.indexOf('>', dialogStart) + 1);
   assert.match(modal, /const invokingControl = documentValue\.activeElement/);
   assert.match(modal, /event\.key === 'Escape' && !busyRef\.current/);
   assert.match(modal, /event\.key !== 'Tab'/);
@@ -177,6 +179,9 @@ test('H13 Business web traps focus, closes on idle Escape, returns focus, and pr
   assert.match(modal, /copyPublicUrl\(prepared\.url\)/);
   assert.match(modal, /QRCode value=\{prepared\.url\}/);
   assert.match(modal, /accessibilityViewIsModal/);
+  assert.match(dialogOpenTag, /role=\{Platform\.OS === 'web' \? 'dialog' : undefined\}/);
+  assert.match(dialogOpenTag, /aria-modal=\{Platform\.OS === 'web' \? true : undefined\}/);
+  assert.doesNotMatch(dialogOpenTag, /\saccessible(?:\s|=)/);
 });
 
 test('H14 summaries honor status-first hierarchy and Consumer search has an icon', () => {
@@ -216,11 +221,53 @@ test('H16 safe-area, accessibility-size, and recipient-state contracts are expli
   const businessSheet = read('mingla-business/src/components/ui/SheetMobile.tsx');
   assert.match(consumer, /paddingBottom: Math\.max\(insets\.bottom, 12\)/);
   assert.match(businessSheet, /paddingBottom: spacing\.lg \+ bottomInset/);
-  assert.match(consumer, /<Text style=\{styles\.heading\}>Share<\/Text>/);
-  assert.match(business, /<Text style=\{styles\.heading\}>Share<\/Text>/);
-  assert.match(consumer, /fontScale < 1\.4/);
-  assert.match(business, /fontScale < 1\.4/);
+  // [TEST-MOD-APPROVED #1719] Written reason: the second orchestrator review restored the binding
+  // 92px/64×72 compact geometry and responsive `Share {title}` header, so the prior plain-Share
+  // assertions were wrong at standard text sizes and must now pin both standard and accessibility modes.
+  for (const source of [consumer, business]) {
+    assert.match(source, /const shareHeading = prepared && fontScale < 1\.4 \? `Share \$\{prepared\.title\}` : 'Share'/);
+    assert.match(source, /<Text numberOfLines=\{1\} ellipsizeMode="tail" style=\{styles\.heading\}>\{shareHeading\}<\/Text>/);
+    assert.match(source, /summary:\{minHeight:92/);
+    assert.match(source, /posterWrap:\{width:64,height:72/);
+    assert.match(source, /poster:\{width:64,height:72/);
+    assert.match(source, /posterSkeleton:\{width:64,height:72/);
+    assert.doesNotMatch(source, /summary:\{minHeight:104|poster(?:Wrap|Skeleton)?:\{width:64,height:80/);
+  }
+  assert.match(consumer, /posterFallback:\{width:64,height:72/);
+  assert.match(business, /noCover:\{width:64,height:72/);
+  assert.match(business, /useColorScheme\(\) === 'dark'/);
+  assert.match(business, /createStyles\(dark\)/);
+  assert.match(business, /const surface = dark \? '#17191F' : '#F9FAFB'/);
+  assert.match(business, /const primary = dark \? 'rgba\(255,255,255,\.96\)' : '#111827'/);
+  assert.match(business, /const error = dark \? '#FCA5A5' : '#B91C1C'/);
   assert.match(consumer, /accessibilityLabel=\{`\$\{recipient\.displayName\}\. \$\{stateLabel\}`\}/);
   assert.match(consumer, /accessibilityState=\{\{ checked: active, disabled: sent \|\| sending \}\}/);
   assert.match(consumer, /disabled=\{sent \|\| sending\}/);
+});
+
+test('H17 one shared compact-fact selector gives status precedence for all eight kinds', () => {
+  const duplicateFieldByKind = {
+    place: { category:'Sold out' },
+    curated: { duration:'Sold out' },
+    event: { availability:'Sold out' },
+    rsvp_event: { availability:'Sold out' },
+    trip: { duration:'Sold out' },
+    experience: { availability:'Sold out' },
+    venue: { category:'Sold out' },
+    brand: { category:'Sold out' },
+  };
+  for (const [kind, facts] of Object.entries(factsByKind)) {
+    const statusFacts = { ...facts, status:'sold_out', ...duplicateFieldByKind[kind] };
+    assert.equal(sharing.statusLabel(statusFacts.status), 'Sold out', kind);
+    assert.equal(sharing.selectCompactPreviewFacts(statusFacts, 4).includes('Sold out'), false, kind);
+  }
+  for (const relative of [
+    'app-mobile/src/components/share/UnifiedShareProvider.tsx',
+    'app-mobile/src/components/chat/MessageBubble.tsx',
+    'mingla-business/src/components/ui/ShareModal.tsx',
+  ]) {
+    const source = read(relative);
+    assert.match(source, /selectCompactPreviewFacts/);
+    assert.doesNotMatch(source, /selectPreviewFacts/);
+  }
 });

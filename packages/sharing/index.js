@@ -469,6 +469,15 @@ function selectPreviewFacts(input, limit = 4) {
   return selectRecipientFacts(facts).slice(0, safeLimit);
 }
 
+function selectCompactPreviewFacts(input, limit = 4) {
+  const facts = parseShareFactsV1(input);
+  const safeLimit = Number.isInteger(limit) && limit >= 0 ? limit : 4;
+  const normalizedStatus = cleanText(statusLabel(facts.status), 120).toLocaleLowerCase();
+  return selectRecipientFacts(facts)
+    .filter((item) => !normalizedStatus || cleanText(item, 120).toLocaleLowerCase() !== normalizedStatus)
+    .slice(0, safeLimit);
+}
+
 function routeContractFor(kind) {
   if (!SHARE_ENTITY_KINDS.includes(kind)) throw new TypeError('invalid_share_kind');
   return ROUTE_MANIFEST[kind];
@@ -480,6 +489,6 @@ module.exports = {
   ROUTE_MANIFEST, cleanText, cleanHttpsUrl, cleanMoney, cleanMedia, cleanDestination,
   isPublicShareMediaUrl, selectPublicMediaIdentity,
   isShortShareCode, sanitizeReferralCode, buildShortShareUrl, buildSharePortraitUrl, contentShareRequestFromPublicUrl, validateShareFactsV1, parseShareFactsV1,
-  formatMoney, formatEstimate, formatRating, statusLabel, shareKindLabel, formatPlanningPreference, selectRecipientFacts, selectPreviewFacts,
+  formatMoney, formatEstimate, formatRating, statusLabel, shareKindLabel, formatPlanningPreference, selectRecipientFacts, selectPreviewFacts, selectCompactPreviewFacts,
   buildShareMessage, routeContractFor, createContentShareSingleFlight, weekdayForShareTimezone, openStateForHours,
 };
