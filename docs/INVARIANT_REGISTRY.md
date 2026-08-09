@@ -32,6 +32,40 @@
 
 ---
 
+## DRAFT — issue #994 (a production over-the-air update shipped with its live keys missing, and every check said it was fine)
+
+> Registered DRAFT at issue #994 [ota-publish-guardrails] SPEC. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS.
+>
+> **Five production incidents, one mechanism.** `eas update` WITHOUT `--environment production` resolves `EXPO_PUBLIC_*` from the operator's LOCAL `.env`, which does not carry the EAS-only production values. The CLI exits 0. The published update is broken.
+>
+> It fails two different ways, and the second is worse:
+>
+> - **Wrong key (loud) — #990, 2026-07-20.** `mingla-business/app.config.ts:190-247` falls back to a COMMITTED `pk_test_` sandbox literal when the env is absent, so the manifest `extra` carried `pk_test_` against a live backend. `verifyStripeModeAlignment()` threw at boot, the outer ErrorBoundary unmounted the component holding the pending `SplashScreen.hideAsync()`, and the app stuck on the splash forever. Someone notices in minutes.
+> - **Missing key (silent) — 2026-08-06, consumer, ~40 minutes live.** `app-mobile/app.config.ts` emits NO Stripe key into `extra` at all, so there is no wrong key to mismatch on. `resolvePublishableKey()` (`packages/payments-native/StripeNativeProvider.tsx:57-61`) ends in `?? ""`, producing `<StripeProvider publishableKey="">` — checkout dead, boot normal. `verifyStripeModeAlignment()` sees no bundled key and DELIBERATELY skips the handshake (`app-mobile/src/services/stripeModeHandshake.ts:110`), so the one mechanism that would have shouted is bypassed precisely BECAUSE the key is missing rather than wrong. Nothing in Sentry, nothing in the funnel. A silently unpayable app is worse than a visibly broken one.
+>
+> **A `pk_live_`-prefix preflight does not close this.** A prefix test passes trivially when the field is ABSENT. Presence is asserted first, prefix second — in that order, always.
+>
+> **The unset signature is `{}`.** Verified 2026-08-06 by running the config both ways: `env -u EXPO_PUBLIC_POSTHOG_KEY npx expo config --json --type public` resolves the key to `{}`, while `EXPO_PUBLIC_POSTHOG_KEY=phc_SENTINEL123 …` resolves it to the literal string. `{}` is neither the value nor an obviously-absent one, which is exactly why it survives a skim. It costs one `curl` to detect and it is the first check.
+>
+> **The CLI exit code is not evidence.** Both incidents exited 0. The only evidence a publish was correct is the SERVED manifest, fetched per platform after the fact.
+>
+> Cross-ref: the INVESTIGATION on issue #990, the 2026-08-06 incident comment and the SPEC on issue #994.
+
+### I-PROPOSED-994-PRODUCTION-OTA-ENV-BOUND (DRAFT)
+- **Rule:** A production OTA for either mobile app is published ONLY by that app's canonical `scripts/ota/publish-production-ota.sh`. That script MUST (a) pass `--environment production` on the `eas update` invocation, (b) PRE-FLIGHT every key that app silently defaults on — asserting **PRESENCE first, THEN prefix**, per key, and printing the resolved prefix (never the secret) to the publish log — and (c) POST-PUBLISH fetch the SERVED manifest for the update it just created, per platform, and fail loudly if any expected `extra` key carries the unset signature `{}`, `null`, absence, an empty string, or a wrong prefix.
+- **Corollary 1 (the ordering is load-bearing):** presence before prefix. #990 was a WRONG key; 2026-08-06 was a MISSING one. A prefix-only preflight would not have caught the more recent and more dangerous incident.
+- **Corollary 2 (the exit code proves nothing):** a green `eas update` is not evidence of a correct publish. Only the served manifest is.
+- **Corollary 3 (the two apps are NOT symmetric):** the required-key set is per-app and derived from code, never copied. `EXPO_PUBLIC_SENTRY_DSN` is required for `mingla-business` (`mingla-business/app/_layout.tsx:122` reads it from env) and is IRRELEVANT for `app-mobile` (`app-mobile/app/_layout.tsx:57` hardcodes the DSN literal). `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` is consumed by `mingla-business` only — `app-mobile`'s consumer was deleted with the Traffic row and survives solely as a comment. A check copied from one app to the other is a false gate in one direction and a false abort in the other.
+- **Corollary 4 (tripwire integrity — the anti-vacuity clause):** the post-publish check can only see keys that reach the manifest `extra`, and only those with NO literal fallback change value between a correct and a blind publish. Those are the tripwires: `EXPO_PUBLIC_POSTHOG_KEY` for `app-mobile` (the ONLY one it has), and `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` (by prefix), `EXPO_PUBLIC_GIPHY_API_KEY`, `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` for `mingla-business`. Giving any tripwire a literal fallback silently converts the guardrail into an always-green check — the `feedback_unfalsifiable_test_bug_class.md` failure mode, in the exact place this issue exists to prevent it. Tripwires may not acquire literal fallbacks.
+- **Corollary 5 (no unrun check may report as run):** where an EAS variable's visibility makes its value unreadable, the script asserts PRESENCE and prints an explicit "prefix NOT verified" line. It never reports a prefix check it did not perform.
+- **Rule (documentation half):** no tracked file — doc, runbook, workflow, script or skill — may contain a command that publishes to `--branch production` or `--channel production` without `--environment production` on the same logical command. `eas update:<subcommand>` forms (`update:list`, `update:republish`, `update:roll-back-to-embedded`, …) are not publishes and are unaffected; prose that names `eas update` without targeting production is unaffected. Indirection (`$FLAGS`, a variable holding the flag) does not satisfy the rule — the flag must be literal and visible at the call site.
+- **Enforcement:** `.github/scripts/strict-grep/issue-994-ota-publish-guardrails.mjs` (batch:A) — rules 1-5 above, over a pruned repo-wide walk with vacuity guards; `.github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs` (external:`issue-994-ota-env-resolution.yml`) — executes `npx expo config --json --type public` for both apps under a blind env and a sentinel env and asserts the tripwires actually flip; `scripts/ota/verify-published-manifest.mjs` (batch:A, `--self-test`) — the shared assertion engine both publish scripts call.
+- **Regression:** the three gates' `--self-test` suites, whose fails-on-revert cases are: removing `--environment production` from the handbook's consumer commands (a literal revert of `d942a9281`), deleting `app-mobile/scripts/ota/publish-production-ota.sh`, removing either script's post-publish verification call, and giving `app-mobile/app.config.ts`'s `EXPO_PUBLIC_POSTHOG_KEY` a literal fallback. The tester's adversarial angles are reserved and different: scanner evasion (line continuations, `--branch=production`, `npx eas-cli@19`, flag indirection), live-fire assertion against a REAL served manifest, and hostile-input drive of both wrappers under `set -euo pipefail` on bash 3.2 via the `MINGLA_EAS_BIN` test seam.
+- **Explicitly NOT claimed.** This invariant does not prove the app BOOTS. A true release-mode boot smoke (Metro `--no-dev --minify` + an EAS-built dev client + live backend, the #990 harness) is not achievable per-PR in CI at reasonable cost and is documented as a pre-publish OPERATOR step, not a gate. It also does not prove bundle-INLINED values (`EXPO_PUBLIC_SENTRY_DSN`, `EXPO_PUBLIC_MIXPANEL_TOKEN`) are literally present in the Hermes bytecode — those never reach `extra`; they are covered transitively, by the preflight proving the environment holds them plus a live tripwire proving the environment was applied.
+- **Established:** DRAFT at issue #994 SPEC 2026-08-09.
+
+---
+
 ## DRAFT — issue #1540 (a friend's liked-cards sheet could not be scrolled past the first four cards)
 
 > Registered DRAFT at issue #1540 [paired-liked-cards] IMPLEMENT. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS.
