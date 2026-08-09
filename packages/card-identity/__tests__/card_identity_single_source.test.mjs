@@ -51,6 +51,15 @@
  */
 
 /**
+ * MODIFIED under #1615 — [TEST-MOD-APPROVED #1615].
+ *
+ * G1b used to assume every owned literal lived in `index.js`. S6 now has a
+ * deliberately tiny browser entry so the full seven-surface oracle does not
+ * inflate the eager web bundle. The ownership rule is unchanged: the guard
+ * reads both package runtime entries and still fails if a value lives nowhere.
+ */
+
+/**
  * MODIFIED under #1714 — [TEST-MOD-APPROVED #1714].
  *
  * The old KNOWN_OPEN values deliberately pinned a proven design defect, T-4 evaluated an
@@ -59,6 +68,7 @@
  * unchanged floor, so the verdict and measurement model now reflect the rendered layers.
  */
 import test from 'node:test';
+// Append-only attribution: #1615 made the real S4/S5/S6 renderers BUILT.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -142,7 +152,9 @@ function plateOver(backdrop, under) {
  * not, goes through G2's oracle, because the point of the descriptor table is
  * that a value cannot enter the system without being measured.
  */
-const BUILT = new Set(['s1Single', 's1Curated', 's7Expanded']);
+// [TEST-MOD-APPROVED #1615] The prior verdict became wrong once #1615 added
+// real selector-owning S4/S5 renderers and an S6 page; move only those surfaces.
+const BUILT = new Set(['s1Single', 's1Curated', 's4Snippet', 's5Og', 's6Phone', 's7Expanded']);
 
 /**
  * Designed, measured, and CLEARING every floor — but no file renders them yet
@@ -150,7 +162,7 @@ const BUILT = new Set(['s1Single', 's1Curated', 's7Expanded']);
  * because the whole point of measuring the descriptor rather than the pixels is
  * that the verdict does not wait for the file.
  */
-const DESIGNED = new Set(['s2Grid', 's3Chat', 's4Snippet', 's5Og', 's6Phone']);
+const DESIGNED = new Set(['s2Grid', 's3Chat']);
 
 /** Held to the floors: everything that is not explicitly pinned as open. */
 function heldToFloors(key) {
@@ -285,7 +297,10 @@ test('G1 no card surface carries a literal the package owns', () => {
 });
 
 test('G1b the package itself DOES own the literals — the allowlist is not empty', () => {
-  const pkg = readFileSync(fileURLToPath(new URL('../index.js', import.meta.url)), 'utf8');
+  const pkg = [
+    readFileSync(fileURLToPath(new URL('../index.js', import.meta.url)), 'utf8'),
+    readFileSync(fileURLToPath(new URL('../s6.js', import.meta.url)), 'utf8'),
+  ].join('\n');
   // If the values did not live here, G1 would pass vacuously by them living nowhere.
   for (const needle of ['rgba(0,0,0,0.42)', 'rgb(53,56,63)', 'rgba(255,255,255,0.38)', 'rgba(34,197,94,0.42)']) {
     assert.ok(pkg.includes(needle), `G1b: @mingla/card-identity no longer declares ${needle}`);

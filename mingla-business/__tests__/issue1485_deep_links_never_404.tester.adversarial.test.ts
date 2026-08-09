@@ -92,9 +92,24 @@ const catchAll = vercel.rewrites[vercel.rewrites.length - 1];
  * A.0 asserts this map covers every rewrite, so it cannot silently rot.
  */
 const COMPILED_SRC: Record<string, string> = {
+  // [TEST-MOD-APPROVED #1615] The stable content page and immutable portrait
+  // rewrites did not exist when #1485 froze this exhaustive transcription.
+  // Their real compiled forms keep every rewrite covered without weakening the
+  // last catch-all or the /_expo/static/ exclusion.
+  "/s/:code": "^/s(?:/([^/]+?))$",
+  // [TEST-MOD-APPROVED #1615] Variant A retired the current PNG producer after
+  // physical WhatsApp rejected it; this keeps #1485's exhaustive route oracle
+  // exact for the revisioned r2 JPEG without changing its catch-all behavior.
+  "/og/s/:code/v:version-r2.jpg":
+    "^/og/s(?:/([^/]+?))/v([^/]+?)-r2\\.jpg$",
+  "/share/:shareId.png": "^/share(?:/([^/]+?))\\.png$",
+  "/og/share/:shareId.png": "^/og/share(?:/([^/]+?))\\.png$",
+  "/p/:shareId": "^/p(?:/([^/]+?))$",
   "/og/event/:eventId.png": "^/og/event(?:/([^/]+?))\\.png$",
   "/og/brand/:brandSlug.png": "^/og/brand(?:/([^/]+?))\\.png$",
   "/og/trip/:tripId.png": "^/og/trip(?:/([^/]+?))\\.png$",
+  "/og/venue/:brandSlug/:venueSlug.png":
+    "^/og/venue(?:/([^/]+?))(?:/([^/]+?))\\.png$",
   "/e/:brandSlug/:eventSlug": "^/e(?:/([^/]+?))(?:/([^/]+?))$",
   "/t/:brandSlug/:tripSlug": "^/t(?:/([^/]+?))(?:/([^/]+?))$",
   "/b/:brandSlug": "^/b(?:/([^/]+?))$",
@@ -225,6 +240,19 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
     expect(DERIVED_URLS).toContain("/");
   });
 
+  it("A.0b — stable share routes resolve before the unchanged SPA catch-all", () => {
+    expect(resolveForBrowser("/s/Aa0Bb1Cc2Dd3Ee4F")).toEqual({
+      source: "/s/:code", destination: "/api/content-share?code=:code",
+    });
+    // [TEST-MOD-APPROVED #1615] The route assertion must exercise the same
+    // exact immutable r2 JPEG path represented in COMPILED_SRC above.
+    expect(resolveForBrowser("/og/s/Aa0Bb1Cc2Dd3Ee4F/v7-r2.jpg")).toEqual({
+      source: "/og/s/:code/v:version-r2.jpg",
+      destination: "/api/content-share-image?code=:code&version=:version",
+    });
+    expect(catchAll.source).toBe("/((?!_expo/static/).*)");
+  });
+
   it("A.2 — the four production incident routes are inside the derived set", () => {
     // Sentry MINGLA-BUSINESS-A/B/E/G. If a refactor moves these files the
     // derivation must follow them, otherwise this suite stops proving anything
@@ -287,7 +315,9 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
     // because resolveForBrowser() deliberately skips them.
     for (const [pathname, expected] of [
       ["/e/acme/summer-party", "/api/public-event?brandSlug=:brandSlug&eventSlug=:eventSlug"],
-      ["/b/acme/v/rooftop", "/api/public-brand?brandSlug=:brandSlug"],
+      // [TEST-MOD-APPROVED #1615] Venue crawlers now receive the venue's own
+      // canonical metadata rather than the parent brand's generic metadata.
+      ["/b/acme/v/rooftop", "/api/public-venue?brandSlug=:brandSlug&venueSlug=:venueSlug"],
     ] as [string, string][]) {
       const hit = vercel.rewrites.find(
         (r) =>

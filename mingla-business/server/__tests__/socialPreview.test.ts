@@ -77,20 +77,21 @@ const brand = {
 };
 
 describe("social preview metadata renderers", () => {
+  // Append-only attribution: #1615 removed fabricated coverless OG expectations.
   test("renders crawler-visible event metadata on the canonical business domain", () => {
     const html = renderEventHtml(row);
 
     expect(eventPublicUrl(row)).toBe(
       "https://business.usemingla.com/e/test-stripe/great-free-event",
     );
-    expect(eventImageUrl(row)).toBe(
-      "https://business.usemingla.com/og/event/event-1.png",
-    );
+    // [TEST-MOD-APPROVED #1615] The former fallback fabricated cover art for a
+    // coverless event; Direction C requires image metadata to disappear.
+    expect(eventImageUrl(row)).toBe("");
     expect(html).toContain("<title>Great Free Event by Test Stripe | Mingla</title>");
     expect(html).toContain('property="og:title" content="Great Free Event by Test Stripe | Mingla"');
     expect(html).toContain('property="og:url" content="https://business.usemingla.com/e/test-stripe/great-free-event"');
-    expect(html).toContain('property="og:image" content="https://business.usemingla.com/og/event/event-1.png"');
-    expect(html).toContain('name="twitter:image" content="https://business.usemingla.com/og/event/event-1.png"');
+    expect(html).not.toContain('property="og:image"');
+    expect(html).not.toContain('name="twitter:image"');
     expect(html).toContain("<span class=\"pill\">May 8, 2026</span>");
     expect(html).not.toContain("business.mingla.com");
     expect(html).not.toContain("https://mingla.com/e");
@@ -132,14 +133,12 @@ describe("social preview metadata renderers", () => {
     expect(brandPublicUrl({ slug: "test-stripe" })).toBe(
       "https://business.usemingla.com/b/test-stripe",
     );
-    expect(brandImageUrl({ slug: "test-stripe" })).toBe(
-      "https://business.usemingla.com/og/brand/test-stripe.png",
-    );
+    // [TEST-MOD-APPROVED #1615] The former fallback fabricated a brand image;
+    // the approved coverless state emits no OG image metadata.
+    expect(brandImageUrl({ slug: "test-stripe" })).toBe("");
     expect(html).toContain("<title>Test Stripe on Mingla</title>");
     expect(html).toContain('property="og:type" content="profile"');
-    expect(html).toContain(
-      'property="og:image" content="https://business.usemingla.com/og/brand/test-stripe.png"',
-    );
+    expect(html).not.toContain('property="og:image"');
     expect(html).not.toContain("business.mingla.com");
     expect(html).not.toContain("https://mingla.com");
     expect(html).not.toContain("localhost");

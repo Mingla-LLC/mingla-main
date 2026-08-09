@@ -203,7 +203,7 @@ export function validateManifest(
   if (!exactKeys(manifest.policy, REQUIRED_POLICY_KEYS)) {
     failures.push("manifest:policy_invalid");
   } else {
-    if (manifest.policy.normal_ceiling !== 85) failures.push("manifest:normal_ceiling");
+    if (manifest.policy.normal_ceiling !== 86) failures.push("manifest:normal_ceiling");
     if (manifest.policy.absolute_ceiling !== 90) failures.push("manifest:absolute_ceiling");
     if (manifest.policy.platform_managed_prefix !== "SUPABASE_") {
       failures.push("manifest:platform_prefix");
@@ -386,7 +386,7 @@ export function auditSecretBudget({
         `secret_budget_transition_count:expected=${manifest.rollout.expected_user_managed_count}:actual=${count}`,
       );
     }
-  } else if (count <= 85) {
+  } else if (count <= manifest.policy.normal_ceiling) {
     // normal state
   } else if (count <= 90 && exception) {
     warnings.push(

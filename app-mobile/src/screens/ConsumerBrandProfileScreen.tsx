@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { ActivityIndicator, Share, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
@@ -14,6 +14,7 @@ import {
 
 import { useBrandBySlug, usePublicBrandVenues } from "../hooks/useBrandBySlug";
 import { postHogService } from "../services/postHogService";
+import { shareContent } from "../services/contentShareAdapter";
 
 export default function ConsumerBrandProfileScreen(): React.ReactElement {
   const router = useRouter();
@@ -26,7 +27,7 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
 
   const handleShare = useCallback((): void => {
     if (typeof slug !== "string") return;
-    void Share.share({ url: `https://business.usemingla.com/b/${slug}` });
+    void shareContent("brand", { brandSlug:slug });
   }, [slug]);
 
   if (query.isLoading || query.isFetching) {

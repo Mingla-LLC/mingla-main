@@ -246,6 +246,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   // always renders chrome (X · Share). An embedded chrome-less use would be a
   // a later ORCH. (Spec D-2.)
   hideFloatingChrome = false,
+  useDirectionCIdentity = false,
   chromeTopOffset,
   contentBottomInset = 24,
   callbacks,
@@ -659,6 +660,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       hideCloseOnWeb
       heroEyebrow={heroEyebrow}
       heroTitle={heroTitle}
+      directionCIdentity={useDirectionCIdentity ? { title: brand.displayName, meta: address } : undefined}
       stickyPanel={stickyPanel}
       safeAreaTop={chromeTopOffset ?? 0}
       contentBottomInset={contentBottomInset}

@@ -55,7 +55,6 @@ import {
   ActivityIndicator,
   Linking,
   Pressable,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -81,6 +80,7 @@ import { usePublicStayDetail } from "../../../../src/hooks/useStayGuest";
 import { postHogService } from "../../../../src/services/postHogService";
 import { captureVenueOrganicEvent } from "../../../../src/services/venueOrganicCaptureService";
 import { captureNativeStayRouteAttribution } from "../../../../src/services/nativeAdAttributionService";
+import { shareContent } from "../../../../src/services/contentShareAdapter";
 import { useConsumerThemeFont } from "../../../../src/theme/useConsumerThemeFont";
 import type { ConsumerPublicVenue } from "../../../../src/services/publicVenueService";
 
@@ -277,8 +277,8 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       : `${BUYER_WEB_ORIGIN}/b/${venue.brandSlug}/v/${venue.slug}`;
   const handleShare = useCallback((): void => {
     if (shareUrl === null) return;
-    void Share.share({ url: shareUrl, message: shareUrl });
-  }, [shareUrl]);
+    if (venue !== null) void shareContent("venue", { brandSlug:venue.brandSlug, venueSlug:venue.slug });
+  }, [shareUrl, venue]);
 
   const venueName = venue?.name ?? "";
 

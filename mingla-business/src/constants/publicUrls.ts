@@ -31,6 +31,19 @@ export const BUSINESS_PUBLIC_ORIGIN: string = trimTrailingSlash(
   MINGLA_BUSINESS_WEB_URL,
 );
 
+/** Explorer's public share origin. This is intentionally independent of the
+ * organiser origin: opaque `/p` links are consumer universal links. */
+export const EXPLORER_PUBLIC_ORIGIN = "https://usemingla.com";
+
+export const sharedCardPublicPath = (shareId: string): string =>
+  `/p/${requireSegment(shareId, "shareId")}`;
+export const sharedCardPublicUrl = (shareId: string): string =>
+  `${EXPLORER_PUBLIC_ORIGIN}${sharedCardPublicPath(shareId)}`;
+export const sharedCardSnippetUrl = (shareId: string): string =>
+  `${EXPLORER_PUBLIC_ORIGIN}/share/${requireSegment(shareId, "shareId")}.png`;
+export const sharedCardOgImageUrl = (shareId: string): string =>
+  `${EXPLORER_PUBLIC_ORIGIN}/og/share/${requireSegment(shareId, "shareId")}.png`;
+
 export const eventPublicPath = (input: {
   brandSlug: string;
   eventSlug: string;
@@ -172,7 +185,7 @@ export const eventOgImageUrl = (input: {
   eventId: string;
   coverMediaUrl?: string | null;
 }): string => {
-  if (isAbsoluteHttpUrl(input.coverMediaUrl)) return input.coverMediaUrl;
+  if (!isAbsoluteHttpUrl(input.coverMediaUrl)) return "";
   return `${BUSINESS_PUBLIC_ORIGIN}/og/event/${requireSegment(
     input.eventId,
     "eventId",
@@ -183,9 +196,21 @@ export const brandOgImageUrl = (input: {
   brandSlug: string;
   profilePhotoUrl?: string | null;
 }): string => {
-  if (isAbsoluteHttpUrl(input.profilePhotoUrl)) return input.profilePhotoUrl;
+  if (!isAbsoluteHttpUrl(input.profilePhotoUrl)) return "";
   return `${BUSINESS_PUBLIC_ORIGIN}/og/brand/${requireSegment(
     input.brandSlug,
     "brandSlug",
   )}.png`;
+};
+
+export const venueOgImageUrl = (input: {
+  brandSlug: string;
+  venueSlug: string;
+  coverMediaUrl?: string | null;
+}): string => {
+  if (!isAbsoluteHttpUrl(input.coverMediaUrl)) return "";
+  return `${BUSINESS_PUBLIC_ORIGIN}/og/venue/${requireSegment(
+    input.brandSlug,
+    "brandSlug",
+  )}/${requireSegment(input.venueSlug, "venueSlug")}.png`;
 };

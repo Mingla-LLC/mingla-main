@@ -75,6 +75,16 @@
             {
               "scheme": "https",
               "host": "usemingla.com",
+              "pathPrefix": "/p"
+            },
+            {
+              "scheme": "https",
+              "host": "usemingla.com",
+              "pathPrefix": "/s/"
+            },
+            {
+              "scheme": "https",
+              "host": "usemingla.com",
               "pathPrefix": "/invite"
             },
             {

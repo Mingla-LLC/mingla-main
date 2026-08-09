@@ -132,11 +132,11 @@
 
 ---
 
-## ACTIVE — issue #1436 (temporary secret-capacity exception retired at 85 names)
+## ACTIVE — issue #1436 (temporary exception retired; #1615 amended authority to 86 names)
 
 ### I-PROPOSED-1436-SECRET-CAPACITY-EXIT (ACTIVE)
-- **Rule:** Production has exactly 85 user-managed Supabase secret names under the enforced manifest and no #1430 capacity exception. `MINGLA_DELIVERY_FLAGS_JSON` schema v2 owns three independent strict payment-operation booleans; missing or invalid financial authority fails safe (no onboarding flip, no payout execution, source-refund provider POSTs disabled). `AD_CONVERSION_TOKENS.NOTIFICATION_RECIPIENT_HMAC_SECRET` owns the exact untransformed current notification-recipient HMAC material and missing/invalid material fails before provider HTTP. Historical fingerprint material must be preserved whenever dependent deliveries or pending intents exist; replacement without a previous key is allowed only after a value-blind production gate proves zero dependent deliveries and zero pending intents, followed by one operator-only send and identical retries proving one provider acceptance before and after direct-name removal. The retired direct names `SOURCE_REFUNDS_POST_DISABLED`, `PAYOUT_RELEASE_EXECUTE`, `PAYOUT_HOLD_ONBOARD_FLIP`, and `NOTIFICATION_RECIPIENT_HMAC_SECRET` remain absent unless a new approved bounded migration issue explicitly restores one.
-- **Enforcement:** `supabase/secrets.manifest.json` pins exact 85-name authority and zero exceptions; `.github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs`, the strengthened #1203 capacity gate, and the strengthened #1430 refund-replay gate pin bundle ownership, safe defaults, retired-name absence, and provider replay safety. The scheduled/manual names-only audit requires exact manifest parity without raw CLI output.
+- **Rule:** Production has exactly 86 user-managed Supabase secret names under the enforced manifest and no #1430 capacity exception. Issue #1615 authorizes `SHARED_CARD_PROXY_SECRET` as one standalone authentication credential; it must never enter noncredential `MINGLA_RUNTIME_CONFIG_JSON`. `MINGLA_DELIVERY_FLAGS_JSON` schema v2 owns three independent strict payment-operation booleans; missing or invalid financial authority fails safe (no onboarding flip, no payout execution, source-refund provider POSTs disabled). `AD_CONVERSION_TOKENS.NOTIFICATION_RECIPIENT_HMAC_SECRET` owns the exact untransformed current notification-recipient HMAC material and missing/invalid material fails before provider HTTP. Historical fingerprint material must be preserved whenever dependent deliveries or pending intents exist; replacement without a previous key is allowed only after a value-blind production gate proves zero dependent deliveries and zero pending intents, followed by one operator-only send and identical retries proving one provider acceptance before and after direct-name removal. The retired direct names `SOURCE_REFUNDS_POST_DISABLED`, `PAYOUT_RELEASE_EXECUTE`, `PAYOUT_HOLD_ONBOARD_FLIP`, and `NOTIFICATION_RECIPIENT_HMAC_SECRET` remain absent unless a new approved bounded migration issue explicitly restores one.
+- **Enforcement:** `supabase/secrets.manifest.json` pins exact 86-name authority and zero exceptions; `.github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs`, the strengthened #1203 capacity gate, and the strengthened #1430 refund-replay gate pin bundle ownership, safe defaults, retired-name absence, and provider replay safety. The scheduled/manual names-only audit requires exact manifest parity without raw CLI output.
 - **Regression:** `scripts/secrets/issue_1436_secret_capacity_exit.test.mjs` proves exact set parity, both bundle owners, and fail-closed return of any retired name. The #1437 happy/adversarial runtime suite continues to prove all 64 payment combinations, strict schema handling, raw HMAC preservation, redacted diagnostics, and safe defaults. Every structural gate has controlled true-source reversions.
 - **Established:** ACTIVE at issue #1436 CLOSE after #1437 independent PASS and exact merged deployment, private bundle migration, four individually verified unsets, exact 85-name live audit, and independent #1436 tester PASS.
 
@@ -6614,7 +6614,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ### I-PROPOSED-1203-SECRET-CAPACITY (ACTIVE)
 
-- **Rule:** Production operates at no more than 85 user-managed Supabase secret names normally
+- **Rule:** Production operates at no more than 86 user-managed Supabase secret names normally
   and never above 90 under an approved, unexpired exception. Every user-managed name has
   names-only manifest ownership, backup ownership, readers, secure source type, and review
   metadata. Values, digests, credential prefixes, and raw CLI metadata never enter the repository,
@@ -6628,13 +6628,13 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   `supabase/functions/_shared/secretBundle.ts` and `_shared/runtimeConfig.ts`; batch-A guard
   `.github/scripts/strict-grep/issue-1203-secret-capacity.mjs` prevents runtime-bundle field growth,
   client exposure, raw CLI output, manifest shrink/drift, and payment-operation mapping drift;
-  `.github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs` pins the exact 85-name final
+  `.github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs` pins the exact 86-name final
   state and retired-direct-name absence.
 - **Regression:** Additive Deno happy-path/legacy-fallback tests and Node capacity tests, with
   strict-grep synthetic self-tests and implementor fail-on-revert/pass-on-restore proof. The
   independent tester adds malformed/smuggling/order/parity adversarial coverage before activation.
-- **Status:** ACTIVE. Production is enforced at exactly 85 user-managed names with 15 free slots
-  and no capacity exception; any future 86–90 state requires a new approved bounded issue.
+- **Status:** ACTIVE. Production is enforced at exactly 86 user-managed names with 14 free slots
+  and no capacity exception; any future 87–90 state requires a new approved bounded issue.
 - **Established:** DRAFT 2026-07-24 at issue #1203 implementation; ACTIVE at issue #1436 CLOSE
   after the temporary #1430 names were consolidated into existing authorities, removed one by
   one, live-audited, and independently verified.

@@ -68,17 +68,35 @@ describe.each([
 ])("ISSUE-1001 adversarial — %s", (name, file) => {
   const source = read(file);
 
+  // [TEST-MOD-APPROVED #1615] ShareModal now previews the exact server-rendered
+  // 4:5 recipient portrait, whose canonical wordmark is tested pixel-for-pixel
+  // by #1615. The other two local UI mounts retain the original #1001 contract.
+
   test("B1: no sole-content Text wordmark survives under the broad regex", () => {
     expect(source).not.toMatch(TEXT_WORDMARK_RESURRECTION);
   });
 
-  test("B5: the @mingla/brand-assets wordmark import survives", () => {
+  test("B5: the canonical wordmark owner survives", () => {
+    if (name === "ShareModal") {
+      expect(source).not.toMatch(/@mingla\/brand-assets/);
+      expect(source).toContain("source={{ uri: sharedCard.s4Url }}");
+      return;
+    }
     expect(source).toMatch(
       /import\s*\{\s*MINGLA_WORDMARK\s*\}\s*from\s*["']@mingla\/brand-assets["']/,
     );
   });
 
-  test("B3: the swapped wordmark Image exists and carries accessibilityLabel=\"Mingla\"", () => {
+  test("B3: the canonical wordmark image contract survives", () => {
+    if (name === "ShareModal") {
+      const portrait = imageBlocks(source).find((b) =>
+        b.includes("source={{ uri: sharedCard.s4Url }}"),
+      );
+      expect(portrait).toBeDefined();
+      expect(portrait as string).toContain("accessibilityLabel={`${sharedCard.kind.replace('_', ' ')}: ${sharedCard.title}`}");
+      expect(portrait as string).toContain('resizeMode="cover"');
+      return;
+    }
     const img = wordmarkImage(source);
     expect(img).not.toBeNull();
     expect(img as string).toContain('accessibilityLabel="Mingla"');
@@ -110,11 +128,12 @@ describe("ISSUE-1001 adversarial — GATE tint contract (B2)", () => {
 });
 
 describe("ISSUE-1001 adversarial — orphaned-style resurrection (B4)", () => {
-  test("ShareModal: minglaDot/minglaText stay deleted; minglaWordmark exists", () => {
+  test("ShareModal: deleted text/logo furniture stays gone; portraitPreview exists", () => {
     const source = read(FILES.share);
     expect(source).not.toMatch(/\bminglaDot\s*:/);
     expect(source).not.toMatch(/\bminglaText\s*:/);
-    expect(source).toMatch(/\bminglaWordmark\s*:\s*\{/);
+    expect(source).not.toMatch(/\bminglaWordmark\s*:\s*\{/);
+    expect(source).toMatch(/\bportraitPreview\s*:\s*\{/);
   });
 
   test("EmailPreviewPane: miniglaLogo (text style) stays deleted; miniglaLogoImg exists", () => {

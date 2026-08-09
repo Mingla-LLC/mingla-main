@@ -335,6 +335,7 @@ const downloadCsvNative = async (
   // Cycle 13 v2 (D-CYCLE13-IMPL-6): capture result.action so callers can
   // toast honestly. RN's Share.share() returns
   // { action: "sharedAction" | "dismissedAction"; activityType?: string }.
+  // SHARE-NON-CONTENT:file-export
   const result = await Share.share(
     {
       message: csv,

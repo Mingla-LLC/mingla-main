@@ -1,0 +1,10 @@
+{
+  "name": "@mingla/sharing",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.js",
+  "types": "index.d.ts",
+  "react-native": "index.js",
+  "license": "UNLICENSED",
+  "description": "Neutral, dependency-free sharing facts, messages, URLs, media identity, and route contracts for Mingla public content."
+}

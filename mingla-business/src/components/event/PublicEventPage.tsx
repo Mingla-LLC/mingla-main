@@ -1031,6 +1031,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           visible={shareModalVisible}
           onClose={() => setShareModalVisible(false)}
           url={canonicalUrl(event)}
+          contentKind={isRsvp ? "rsvp_event" : "event"}
           title={event.name}
           description={event.description.slice(0, 200)}
         />
@@ -1176,6 +1177,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           viewerRole={viewerRole}
           callbacks={callbacks}
           theme={resolvedTheme}
+          useDirectionCIdentity
         />
       ) : (
         <FoundationEventPreview
@@ -1244,6 +1246,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         visible={shareModalVisible}
         onClose={() => setShareModalVisible(false)}
         url={canonicalUrl(event)}
+        contentKind={isRsvp ? "rsvp_event" : "event"}
         title={event.name}
         description={event.description.slice(0, 200)}
       />

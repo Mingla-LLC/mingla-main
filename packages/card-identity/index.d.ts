@@ -15,7 +15,7 @@ export interface BoundarySpec {
   readonly width: number;
 }
 
-export type PlateBoundaryKey = 'standard' | 'compact' | 'ogOpaque';
+export type PlateBoundaryKey = 'standard' | 'compact' | 'ogOpaque' | 'portrait';
 export type SliverBoundaryKey = 'none' | 'compact';
 
 /**
@@ -122,6 +122,7 @@ export interface SurfaceSliver {
   readonly alpha2?: number;
   readonly opaque: readonly string[];
   readonly forcedOpaque: boolean;
+  readonly insets?: readonly [number, number];
 }
 
 export interface SurfaceDescriptor {
@@ -197,6 +198,13 @@ export const PLATE_ALPHA_FLOOR: number;
 export const TITLE_ALPHA_FLOOR: number;
 export const K_PLATE: number;
 export const K_TITLE: number;
+
+/** Ordered snapshot metadata keys shared by S4/S5/S6 server and S6 native. */
+export const SHARED_CARD_FACT_KEYS: readonly ['category', 'location', 'price', 'duration'];
+export function selectSharedCardFacts(
+  metadata: Record<string, unknown> | null | undefined,
+  limit?: number,
+): string[];
 
 /** H = ceil2(max(K_PLATE * dPlateTop, K_TITLE * dTitleTop)), clamped to the card. */
 export function scrimHeight(dPlateTop: number, dTitleTop: number, cardH: number): number;

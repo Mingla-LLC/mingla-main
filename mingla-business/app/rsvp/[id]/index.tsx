@@ -419,6 +419,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
         })}
         title={`${event.name} on Mingla`}
         description={event.description.slice(0, 200) || event.name}
+        contentKind="rsvp_event"
       />
 
       {/* Toast wrap — top-anchored per memory rule */}

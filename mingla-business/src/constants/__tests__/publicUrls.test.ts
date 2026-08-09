@@ -25,6 +25,7 @@ import {
   experiencePublicPath,
   experiencePublicUrl,
   tripPublicUrl,
+  venueOgImageUrl,
 } from "../publicUrls";
 
 describe("public business URL builders", () => {
@@ -79,18 +80,24 @@ describe("public business URL builders", () => {
     ).toThrow(PublicUrlError);
   });
 
-  test("uses public absolute media when present and canonical fallbacks otherwise", () => {
+  test("uses canonical rendered media when source imagery exists", () => {
+    // [TEST-MOD-APPROVED #1615] Direction C makes the measured S5 renderer the
+    // canonical preview; the old assertion expected the raw uploaded cover and
+    // therefore bypassed the plate, title, and contrast contract entirely.
     expect(
       eventOgImageUrl({
         eventId: "event-1",
         coverMediaUrl: "https://cdn.usemingla.com/cover.png",
       }),
-    ).toBe("https://cdn.usemingla.com/cover.png");
-    expect(eventOgImageUrl({ eventId: "event-1" })).toBe(
-      "https://business.usemingla.com/og/event/event-1.png",
-    );
-    expect(brandOgImageUrl({ brandSlug: "acme" })).toBe(
-      "https://business.usemingla.com/og/brand/acme.png",
-    );
+    ).toBe("https://business.usemingla.com/og/event/event-1.png");
+    expect(eventOgImageUrl({ eventId: "event-1" })).toBe("");
+    expect(brandOgImageUrl({ brandSlug: "acme" })).toBe("");
+    expect(
+      venueOgImageUrl({
+        brandSlug: "acme",
+        venueSlug: "rooftop",
+        coverMediaUrl: "https://cdn.usemingla.com/venue.jpg",
+      }),
+    ).toBe("https://business.usemingla.com/og/venue/acme/rooftop.png");
   });
 });

@@ -75,6 +75,15 @@
  * `restaurant-phone-menu-tab`, and NOTHING removed. The four Stay cases are
  * byte-identical. No case, anchor, size floor or `expect.assertions` pin
  * changed — this file's guard is not re-aimed here, only re-recorded.
+ *
+ * ---------------------------------------------------------------------------
+ * [TEST-MOD-APPROVED #1615] — WHAT THIS FILE MEANS AFTER #1615
+ * ---------------------------------------------------------------------------
+ * #1615 deliberately adds the measured Direction C identity overlay and the
+ * venue-specific canonical OG image to the buyer-web venue page. The previous
+ * baseline therefore described the old UI rather than a valid invariant. It is
+ * regenerated with the same seven cases, size floor, anchors, and exact-tree
+ * comparison; only the approved overlay and metadata URL change.
  */
 import React from "react";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

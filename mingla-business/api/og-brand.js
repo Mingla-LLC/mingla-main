@@ -5,6 +5,7 @@ const {
   renderOgPng,
   sendPng,
 } = require("../server/socialPreview");
+const { businessRowSnapshot, renderCardIdentityPng, useDirectionC } = require("../server/cardIdentityRenderer");
 
 module.exports = async function brandOgHandler(req, res) {
   const brandSlug = firstQueryValue(req.query.brandSlug);
@@ -12,18 +13,9 @@ module.exports = async function brandOgHandler(req, res) {
   try {
     const publicBrand =
       typeof brandSlug === "string" ? await fetchPublicBrandBySlug(brandSlug) : null;
-    const buffer = await renderOgPng(buildBrandOgCardProps(publicBrand));
+    const props = buildBrandOgCardProps(publicBrand);
+    if (!props.coverUrl) { res.statusCode = 404; return res.end(); }
+    const buffer = useDirectionC(req) ? await renderCardIdentityPng(businessRowSnapshot(props), "s5Og") : await renderOgPng(props);
     sendPng(res, buffer);
-  } catch {
-    const buffer = await renderOgPng({
-      cardKind: "brand",
-      title: "Mingla Business",
-      subtitle: "Create and share events on Mingla.",
-      kicker: "Mingla Business",
-      coverUrl: null,
-      eventCountLabel: "0 events",
-      nextEventLabel: "",
-    });
-    sendPng(res, buffer);
-  }
+  } catch { res.statusCode = 500; res.end(); }
 };

@@ -91,6 +91,7 @@
     "@mingla/brand-assets": "file:../packages/brand-assets",
     "@mingla/brand-rendering": "file:../packages/brand-rendering",
     "@mingla/card-identity": "file:../packages/card-identity",
+    "@mingla/sharing": "file:../packages/sharing",
     "@mingla/location-input": "file:../packages/location-input",
     "@mingla/offering-rendering": "file:../packages/offering-rendering",
     "@mingla/payments-native": "file:../packages/payments-native",

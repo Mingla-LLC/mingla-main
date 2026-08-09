@@ -9,6 +9,8 @@ import {
 
 const manifest = JSON.parse(readFileSync(DEFAULT_MANIFEST, "utf8"));
 const exceptionWindowNow = Date.parse("2026-08-01T00:00:00Z");
+// [TEST-MOD-APPROVED #1615] Written reason: Seth authorized one standalone
+// proxy credential, moving exact final-state fixtures from 85 to 86 names.
 
 function clone(value) {
   return structuredClone(value);
@@ -46,7 +48,7 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
   transition.rollout.transition_stage = "pre_rollout";
   const target = transition.secrets.map((record) => record.name);
   const pending = new Set(transition.rollout.pending_bundle_names);
-  assert.equal(target.length, 85);
+  assert.equal(target.length, 86);
   assert.equal(pending.size, 6);
   assert.equal(transition.rollout.legacy_names.length, 20);
   const preRolloutNames = [
@@ -59,9 +61,9 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
       1,
     );
   }
-  assert.equal(preRolloutNames.length, 99);
+  assert.equal(preRolloutNames.length, 100);
   assert.ok(preRolloutNames.length <= 100);
-  transition.rollout.expected_user_managed_count = 99;
+  transition.rollout.expected_user_managed_count = 100;
   const expected = auditSecretBudget({
     manifest: transition,
     liveNames: preRolloutNames,
@@ -83,12 +85,12 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
   assert.match(drifted.failures.join("\n"), /transition_count/);
 });
 
-test("issue #1203: enforced live audit uses only the final 85-name target", () => {
+test("issue #1203: enforced live audit uses only the final 86-name target", () => {
   const enforced = clone(manifest);
   enforced.rollout.live_audit_mode = "enforced";
-  enforced.rollout.expected_user_managed_count = 85;
+  enforced.rollout.expected_user_managed_count = 86;
   const target = enforced.secrets.map((record) => record.name);
-  assert.equal(target.length, 85);
+  assert.equal(target.length, 86);
   assert.equal(
     auditSecretBudget({
       manifest: enforced,

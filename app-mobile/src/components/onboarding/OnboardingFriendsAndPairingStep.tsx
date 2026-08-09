@@ -234,6 +234,7 @@ export const OnboardingFriendsAndPairingStep: React.FC<OnboardingFriendsAndPairi
           friendshipStatus: 'none',
         })
 
+        // SHARE-NON-CONTENT:invite
         await Share.share({
           message: t('onboarding:friends.share_message'),
         })

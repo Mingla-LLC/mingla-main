@@ -1,4 +1,13 @@
 {
+  "rewrites": [
+    { "source": "/s/:code", "has": [{ "type": "host", "value": "route-manifest.invalid" }], "destination": "/api/internal-share-proxy/content-page/:code" },
+    { "source": "/og/s/:code/v:version-r2.jpg", "has": [{ "type": "host", "value": "route-manifest.invalid" }], "destination": "/api/internal-share-proxy/content-image/:code/:version" },
+    { "source": "/api/content-share/:code", "has": [{ "type": "host", "value": "route-manifest.invalid" }], "destination": "/api/internal-share-proxy/content-data/:code" },
+    { "source": "/p/:shareId", "has": [{ "type": "host", "value": "route-manifest.invalid" }], "destination": "/api/internal-share-proxy/page/:shareId" },
+    { "source": "/share/:shareId.png", "has": [{ "type": "host", "value": "route-manifest.invalid" }], "destination": "/api/internal-share-proxy/snippet/:shareId" },
+    { "source": "/og/share/:shareId.png", "has": [{ "type": "host", "value": "route-manifest.invalid" }], "destination": "/api/internal-share-proxy/og/:shareId" },
+    { "source": "/api/shared-card/:shareId", "has": [{ "type": "host", "value": "route-manifest.invalid" }], "destination": "/api/internal-share-proxy/data/:shareId" }
+  ],
   "headers": [
     {
       "source": "/.well-known/apple-app-site-association",

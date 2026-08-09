@@ -287,6 +287,8 @@ export type PublicVenueAnalyticsEvent =
 
 export interface PublicVenueScreenProps {
   venue: PublicVenueViewModel;
+  /** Business public-web #1615 identity overlay; absent preserves consumer/native hosts. */
+  useDirectionCIdentity?: boolean;
   discoveryPrice: PublicVenueDiscoveryPriceView | null;
   /** ORCH-1186-C shared shape — the BRAND's menu ([TRANSITIONAL-3]). */
   menu: PublicMenuGroup[];
@@ -836,6 +838,7 @@ const RESERVATION_READY: Record<
 
 export const PublicVenueScreen = ({
   venue,
+  useDirectionCIdentity = false,
   discoveryPrice,
   menu,
   reservable,
@@ -1581,6 +1584,10 @@ export const PublicVenueScreen = ({
         onClose={onClose}
         onShare={onShare}
         hideCloseOnWeb
+        directionCIdentity={useDirectionCIdentity ? {
+          title: venue.name,
+          meta: [profile.noun, venue.city].filter(Boolean).join(" · "),
+        } : undefined}
         // #1561 — the venue's actual photographs, as the shell's first-class
         // cover pager. Empty ⇒ single cover, byte-identical to the old mount.
         galleryImages={heroCover.additional}

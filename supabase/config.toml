@@ -155,6 +155,11 @@ verify_jwt = true
 [functions.waitlist-signup]
 verify_jwt = false
 
+# #1615 — POST authenticates the user in-function; GET serves only a validated,
+# opaque snapshot and never exposes source tables.
+[functions.shared-card]
+verify_jwt = false
+
 # ORCH-1027 — public launch-city point-in-bbox gate. Consumer-callable BEFORE
 # sign-in (the ORCH-1028 onboarding location gate runs at app launch, possibly
 # pre-auth). Exposes only non-sensitive city geometry; reads the live subset via

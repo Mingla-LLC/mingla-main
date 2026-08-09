@@ -146,9 +146,13 @@ const rules = {
     venueOnly: true,
   },
   share: {
+    // [TEST-MOD-APPROVED #1615] Recipient-facing share facts now come from the
+    // served, versioned server envelope instead of recomputing viewer FX inside
+    // ShareModal. Preserve #1384's authority law by pinning that server-facts
+    // handoff and continuing to reject local FX/fallback money in this adapter.
     required: [
-      "canonicalDiscoveryPriceDetail(experienceData)",
-      "Rates by ExchangeRate-API",
+      "facts: data.facts",
+      "message: buildShareMessage(data.facts",
     ],
     venueOnly: true,
   },
@@ -720,7 +724,7 @@ const paths = {
   deckHook: "app-mobile/src/hooks/useDeckCards.ts",
   context: "app-mobile/src/contexts/RecommendationsContext.tsx",
   cardInfo: "app-mobile/src/components/expandedCard/CardInfoSection.tsx",
-  share: "app-mobile/src/components/ShareModal.tsx",
+  share: "app-mobile/src/services/contentShareAdapter.ts",
   expandedModal: "app-mobile/src/components/ExpandedCardModal.tsx",
   deviceCalendar: "app-mobile/src/services/deviceCalendarService.ts",
   personGrid: "app-mobile/src/components/PersonGridCard.tsx",

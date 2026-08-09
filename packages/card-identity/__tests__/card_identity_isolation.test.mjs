@@ -55,6 +55,16 @@
  *   I-5  the documented exports exist and are callable.
  */
 
+/**
+ * MODIFIED under #1615 — [TEST-MOD-APPROVED #1615].
+ *
+ * I-3 previously treated any child file as an external dependency, which was
+ * only equivalent while this package had one runtime file. S6 now has a tiny
+ * internal browser entry to protect the fixed eager-bundle ceiling. The guard
+ * scans both new files, still requires zero external modules, and permits the
+ * executed entry to load exactly that one package-local child—nothing else.
+ */
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -66,11 +76,15 @@ const require_ = createRequire(import.meta.url);
 const PKG_DIR = fileURLToPath(new URL('..', import.meta.url));
 const PKG_ENTRY = fileURLToPath(new URL('../index.js', import.meta.url));
 const PKG_TYPES = fileURLToPath(new URL('../index.d.ts', import.meta.url));
+const PKG_S6 = fileURLToPath(new URL('../s6.js', import.meta.url));
+const PKG_S6_TYPES = fileURLToPath(new URL('../s6.d.ts', import.meta.url));
 const PKG_JSON = fileURLToPath(new URL('../package.json', import.meta.url));
 
 const SCANNED = {
   'index.js': PKG_ENTRY,
   'index.d.ts': PKG_TYPES,
+  's6.js': PKG_S6,
+  's6.d.ts': PKG_S6_TYPES,
 };
 
 // ---------------------------------------------------------------------------
@@ -393,9 +407,9 @@ test('I-3 requiring the package under a bare Node pulls in zero external modules
   const loaded = require_.cache[PKG_ENTRY];
   assert.ok(loaded, 'I-3: the package is not in the require cache after being required.');
   assert.deepEqual(
-    loaded.children.map((c) => c.filename),
-    [],
-    'I-3: the package module has children — it is no longer self-contained.',
+    loaded.children.map((c) => c.filename).sort(),
+    [PKG_S6],
+    'I-3: the package may load only its audited S6 runtime child.',
   );
   assert.ok(
     loaded.filename.startsWith(PKG_DIR),

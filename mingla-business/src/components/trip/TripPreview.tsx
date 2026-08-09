@@ -123,6 +123,8 @@ export interface TripPreviewProps {
   /** Fired when buyer taps the legacy CTA. Required when showCta=true. */
   onReserveTap?: () => void;
   testID?: string;
+  /** Business public-web #1615 identity overlay; absent preserves preview/consumer hosts. */
+  useDirectionCIdentity?: boolean;
 
   // ===================== ORCH-1138 FOUNDATION mode (all OPTIONAL) =====================
   /**
@@ -237,6 +239,7 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
   contentPadding = spacing.lg,
   onReserveTap,
   testID,
+  useDirectionCIdentity = false,
   palette,
   theme,
   muted = true,
@@ -281,6 +284,7 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
       <FoundationTripPreview
         trip={trip}
         brand={brand}
+        useDirectionCIdentity={useDirectionCIdentity}
         data={offeringData}
         offeringBrand={offeringBrand}
         palette={palette}
@@ -333,6 +337,7 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
 const FoundationTripPreview: React.FC<{
   trip: Trip;
   brand: TripPreviewBrand;
+  useDirectionCIdentity: boolean;
   data: TripOfferingData;
   offeringBrand: TripOfferingBrand;
   palette: ThemePalette;
@@ -365,6 +370,7 @@ const FoundationTripPreview: React.FC<{
 }> = ({
   trip,
   brand,
+  useDirectionCIdentity,
   data,
   offeringBrand,
   palette,
@@ -495,6 +501,10 @@ const FoundationTripPreview: React.FC<{
           {trip.title}
         </Text>
       }
+      directionCIdentity={useDirectionCIdentity ? {
+        title: trip.title,
+        meta: [duration, destinationCityCountry].filter(Boolean).join(" · "),
+      } : undefined}
       stateBanner={stateBanner}
       stickyPanel={stickyPanel}
       contentBottomInset={contentBottomInset}

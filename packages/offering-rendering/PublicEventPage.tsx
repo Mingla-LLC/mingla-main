@@ -36,6 +36,7 @@ import {
   UIManager,
   View,
 } from "react-native";
+import { DirectionCIdentityOverlay } from "./ParallaxCoverShell";
 import { GlassBlur } from "./GlassBlur";
 
 import {
@@ -194,6 +195,7 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
   brand,
   viewerRole,
   callbacks,
+  useDirectionCIdentity = false,
   hideFloatingChrome = false,
   theme,
   // META-ORCH-0991 (sheet rework — Bug 2): default to the raw RN ScrollView so
@@ -242,6 +244,7 @@ export const PublicEventPage: React.FC<PublicEventPageProps> = ({
           variant={variant}
           callbacks={callbacks}
           theme={resolvedTheme}
+          useDirectionCIdentity={useDirectionCIdentity}
           ScrollComponent={ScrollComponent}
           contentBottomInset={contentBottomInset}
         />
@@ -306,6 +309,7 @@ interface PublishedBodyProps {
   variant: "published" | "pre-sale" | "sold-out" | "past";
   callbacks: PublicEventPageProps["callbacks"];
   theme: ResolvedTheme;
+  useDirectionCIdentity: boolean;
   // META-ORCH-0991 (sheet rework — Bug 2): the scroll host (RN ScrollView by
   // default; gorhom BottomSheetScrollView when sheet-hosted). Always defined —
   // PublicEventPage supplies its default before passing down.
@@ -314,15 +318,16 @@ interface PublishedBodyProps {
   contentBottomInset: number;
 }
 
-const PublishedBody: React.FC<PublishedBodyProps> = ({
+const PublishedBody = ({
   event,
   brand,
   variant,
   callbacks,
   theme,
+  useDirectionCIdentity,
   ScrollComponent,
   contentBottomInset,
-}) => {
+}: PublishedBodyProps): React.ReactElement => {
   const [showAllDates, setShowAllDates] = useState<boolean>(false);
   const [showOverflowDates, setShowOverflowDates] = useState<boolean>(false);
   // ORCH-1117 — collapsible About (collapsed by default for copy over the
@@ -445,6 +450,12 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
               />
             )}
             <View style={styles.heroOverlay} pointerEvents="none" />
+            {useDirectionCIdentity ? (
+              <DirectionCIdentityOverlay
+                title={event.name}
+                meta={[event.dateLine, event.venueName].filter(Boolean).join(" · ")}
+              />
+            ) : null}
             <ThemeEntranceAnimation
               theme={theme}
               sessionKey={`event:${event.id}`}

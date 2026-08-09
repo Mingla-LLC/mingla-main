@@ -72,8 +72,8 @@ import { GuestVenueReservation } from "../../../../src/components/venue/GuestVen
 import { ShareModal } from "../../../../src/components/ui/ShareModal";
 import { useThemeFont } from "../../../../src/theme/useThemeFont";
 import {
-  brandOgImageUrl,
   brandPublicPath,
+  venueOgImageUrl,
   venuePublicUrl,
 } from "../../../../src/constants/publicUrls";
 import type { PublicVenue } from "../../../../src/services/publicEventsService";
@@ -381,6 +381,7 @@ export default function PublicVenueRoute(): React.ReactElement {
   return (
     <PublicVenueScreen
       venue={venueViewModel}
+      useDirectionCIdentity
       discoveryPrice={discoveryPriceQuery.data ?? null}
       menu={menusQuery.data ?? []}
       reservable={reservableQuery.data ?? null}
@@ -421,9 +422,12 @@ export default function PublicVenueRoute(): React.ReactElement {
             <meta
               property="og:image"
               content={
-                venue.coverMediaUrl !== null && venue.coverMediaType !== "video"
-                  ? venue.coverMediaUrl
-                  : brandOgImageUrl({ brandSlug: venue.brandSlug })
+                venueOgImageUrl({
+                  brandSlug: venue.brandSlug,
+                  venueSlug: venue.slug,
+                  coverMediaUrl:
+                    venue.coverMediaType !== "video" ? venue.coverMediaUrl : null,
+                })
               }
             />
             <meta property="og:type" content="place" />

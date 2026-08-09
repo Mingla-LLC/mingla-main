@@ -66,6 +66,8 @@
 
 'use strict';
 
+const { S6_PHONE, S6_PLATE, S6_PLATE_BOUNDARY } = require('./s6');
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 1 · The scrims
 // ─────────────────────────────────────────────────────────────────────────────
@@ -147,6 +149,21 @@ const K_PLATE = 1.4286;
 const K_TITLE = 1.5464;
 
 /**
+ * Shared-card facts are ordered domain presentation, not JSON object order.
+ * S4/S5/S6 server and S6 native all consume this selector.
+ */
+const SHARED_CARD_FACT_KEYS = Object.freeze(['category', 'location', 'price', 'duration']);
+
+function selectSharedCardFacts(metadata, limit = 2) {
+  const source = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+  const safeLimit = Number.isInteger(limit) && limit >= 0 ? limit : 2;
+  return SHARED_CARD_FACT_KEYS
+    .map((key) => (typeof source[key] === 'string' ? source[key].trim() : ''))
+    .filter(Boolean)
+    .slice(0, safeLimit);
+}
+
+/**
  * THE scrim formula. Every surface calls this. Nothing hard-codes a scrim
  * height, and nothing uses a percentage — a percentage makes the whole contrast
  * table valid only on the device it was computed on, which is why
@@ -197,9 +214,10 @@ function over(fg, alpha, bg) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PLATE_BOUNDARIES = {
-  standard: { color: 'rgba(255,255,255,0.38)', rgb: [255, 255, 255], alpha: 0.38, width: 1 },
+  standard: S6_PLATE_BOUNDARY,
   compact: { color: 'rgba(255,255,255,0.86)', rgb: [255, 255, 255], alpha: 0.86, width: 1 },
   ogOpaque: { color: 'rgba(255,255,255,0.48)', rgb: [255, 255, 255], alpha: 0.48, width: 1 },
+  portrait: { color: 'rgba(255,255,255,0.42)', rgb: [255, 255, 255], alpha: 0.42, width: 1 },
 };
 
 const PLATE = {
@@ -238,8 +256,8 @@ const PLATE = {
    * Android + satori + the CSS `@supports not (backdrop-filter)` fallback.
    * L* 23.47 — matched to the glass composite, not to a badge composite.
    */
-  fallbackSolid: 'rgb(53,56,63)',
-  fallbackSolidRgb: [53, 56, 63],
+  fallbackSolid: S6_PLATE.fallbackSolid,
+  fallbackSolidRgb: S6_PLATE.fallbackSolidRgb,
   blurIntensity: 18,
   /**
    * 'light', NOT 'dark', and this is load-bearing.
@@ -431,6 +449,9 @@ function plateHeightForMetaLines(surfaceKey, lines) {
   const s = SURFACES[surfaceKey];
   if (!s) throw new Error(`@mingla/card-identity: unknown surface "${surfaceKey}"`);
   if (!lines || lines < 1) return plateHeightNoMeta(surfaceKey);
+  // Static share surfaces reserve their complete two-line fact box up front;
+  // only control plates grow because their facts replace control-row slack.
+  if (!s.controls) return s.plateH;
   return s.plateH + (Math.min(lines, s.metaLines) - 1) * metaLineHeight(surfaceKey);
 }
 
@@ -814,56 +835,38 @@ const SURFACES = {
   s4Snippet: {
     label: 'S4 4:5 share snippet',
     w: 360, h: 450, cardR: 32,
-    sideInset: 13, bottomInset: 14,
-    plateW: 334, plateH: 40, plateR: 22,
-    titleSize: 27, titleLH: 33, titleLines: 2, titleWeight: '700', titleInset: 18,
+    sideInset: 24, bottomInset: 48,
+    plateW: 312, plateH: 78, plateR: 18,
+    titleSize: 27, titleLH: 33, titleLines: 2, titleWeight: '700', titleInset: 0,
     metaSize: 13,
-    metaLines: 1,
-    gap: 18,
+    metaLines: 2,
+    gap: 16,
     titleOnPlate: false,
     controls: false,
     topScrim: false,
     curated: true,
-    plateBoundary: 'standard',
+    plateBoundary: 'portrait',
     sliverBoundary: 'none',
-    sliver: { height: 4, radius: 2, alpha: 0.42, opaque: ['rgb(133,133,133)', 'rgb(135,135,135)'], forcedOpaque: false },
+    sliver: { height: 4, radius: 2, alpha: 0.44, opaque: ['rgba(255,255,255,0.44)', 'rgba(255,255,255,0.44)'], forcedOpaque: false, insets: [12, 22] },
   },
   s5Og: {
     label: 'S5 OG / link-preview image',
-    w: 1200, h: 630, cardR: 0,
-    sideInset: 56, bottomInset: 48,
-    plateW: 1088, plateH: 168, plateR: 28,
-    titleSize: 56, titleLH: 64, titleLines: 1, titleWeight: '800', titleInset: 56,
-    metaSize: 30,
-    metaLines: 1,
-    gap: 28,
+    w: 360, h: 450, cardR: 32,
+    sideInset: 24, bottomInset: 48,
+    plateW: 312, plateH: 78, plateR: 18,
+    titleSize: 27, titleLH: 33, titleLines: 2, titleWeight: '700', titleInset: 0,
+    metaSize: 13,
+    metaLines: 2,
+    gap: 16,
     titleOnPlate: false,
     controls: false,
     topScrim: false,
     curated: true,
-    /** satori has no backdrop-filter, so this surface is opaque by construction. */
-    opaqueOnly: true,
-    plateBoundary: 'ogOpaque',
+    plateBoundary: 'portrait',
     sliverBoundary: 'none',
-    sliver: { height: 12, radius: 6, alpha: 0.54, alpha2: 0.58, opaque: ['rgb(176,176,176)', 'rgb(187,187,187)'], forcedOpaque: true },
+    sliver: { height: 4, radius: 2, alpha: 0.44, opaque: ['rgba(255,255,255,0.44)', 'rgba(255,255,255,0.44)'], forcedOpaque: false, insets: [12, 22] },
   },
-  s6Phone: {
-    label: 'S6 public web page — phone breakpoint',
-    w: 390, h: 480, cardR: 24,
-    sideInset: 16, bottomInset: 16,
-    plateW: 358, plateH: 96, plateR: 22,
-    titleSize: 30, titleLH: 36, titleLines: 2, titleWeight: '700', titleInset: 16,
-    metaSize: 14,
-    metaLines: 2,
-    gap: 20,
-    titleOnPlate: false,
-    controls: true,
-    topScrim: false,
-    curated: true,
-    plateBoundary: 'standard',
-    sliverBoundary: 'none',
-    sliver: { height: 4, radius: 2, alpha: 0.44, opaque: ['rgb(143,143,143)', 'rgb(145,145,145)'], forcedOpaque: false },
-  },
+  s6Phone: S6_PHONE,
   /**
    * S7 — the expanded sheet's hero (#1605 wave 4).
    *
@@ -1151,11 +1154,13 @@ module.exports = {
   TITLE_ALPHA_FLOOR,
   K_PLATE,
   K_TITLE,
+  SHARED_CARD_FACT_KEYS,
   S7_HERO_MIN,
   S7_HERO_MAX,
   S7_FOLD_RESERVE,
   expandedHeroHeight,
   expandedCoverlessHeroHeight,
+  selectSharedCardFacts,
   scrimHeight,
   rampAlphaAtDepth,
   plateUnderAlpha,

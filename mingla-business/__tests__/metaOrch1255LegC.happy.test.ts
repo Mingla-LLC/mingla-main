@@ -233,7 +233,7 @@ describe("T-C1 route half — /b/[brandSlug]/v/[venueSlug] anon route", () => {
 // ---- SC-11 SEO/bot half: vercel rewrite ------------------------------------
 
 describe("vercel bot rewrite for the venue page", () => {
-  test("/b/:brandSlug/v/:venueSlug UA-matched rewrite → brand OG handler", () => {
+  test("/b/:brandSlug/v/:venueSlug UA-matched rewrite → venue OG handler", () => {
     const vercel = JSON.parse(read("mingla-business/vercel.json")) as {
       rewrites: Array<{ source: string; destination: string; has?: unknown }>;
     };
@@ -241,7 +241,12 @@ describe("vercel bot rewrite for the venue page", () => {
       (r) => r.source === "/b/:brandSlug/v/:venueSlug",
     );
     expect(rule).toBeDefined();
-    expect(rule?.destination).toBe("/api/public-brand?brandSlug=:brandSlug");
+    // [TEST-MOD-APPROVED #1615] The old parent-brand destination was correct
+    // before venue-specific S5 existed. The approved surface now has its own
+    // handler and must keep both slugs.
+    expect(rule?.destination).toBe(
+      "/api/public-venue?brandSlug=:brandSlug&venueSlug=:venueSlug",
+    );
     expect(rule?.has).toBeDefined();
   });
 });

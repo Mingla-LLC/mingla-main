@@ -71,14 +71,13 @@ import {
   resumeInAppMessages,
 } from "../src/services/oneSignalService";
 import { initializeAppsFlyer, startAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent, subscribeOneLinkDeepLink, triggerAndroidDeferredResolution } from "../src/services/appsFlyerService";
-import type { OneLinkDestination } from "../src/services/oneLinkResolver";
+import { sanitizeReferralCode, type OneLinkDestination } from "../src/services/oneLinkResolver";
 import { router } from "expo-router";
 import { ensureAttRequested, requestPostTourPermissions, whenAttResolved } from "../src/services/permissionOrchestrator";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import { useTrialExpiryTracking } from "../src/hooks/useSubscription";
 import * as SplashScreen from 'expo-splash-screen';
 import AppLoadingScreen from '../src/components/AppLoadingScreen';
-
 
 // ORCH-1125: PersistQueryClientProvider + AnimatedSplashScreen + asyncStoragePersister
 // + shouldDehydrateMinglaQuery imports were removed here when the provider/gate/splash
@@ -102,6 +101,7 @@ import { postHogService } from "../src/services/postHogService";
 import { useTranslation } from 'react-i18next';
 import i18n from '../src/i18n';
 import { persistLanguage } from '../src/i18n';
+import { consumeContentShareAttributionAfterIdentity, subscribeContentShareAttributionWrites } from '../src/services/contentShareAttribution';
 import { useForegroundRefresh } from "../src/hooks/useForegroundRefresh";
 import { useOtaUpdates } from "../src/hooks/useOtaUpdates";
 import { OtaUpdateBanner } from "../src/components/ui/OtaUpdateBanner";
@@ -167,6 +167,13 @@ function GlassBottomNavWithCoach(
 // maxBreadcrumbs, enabled:!__DEV__) are merged into _layout.tsx.
 // CI gate: scripts/ci/check-single-sentry-init.sh.
 // ─────────────────────────────────────────────────────────────────────────────
+
+const persistValidatedReferralCode = async (value: unknown): Promise<boolean> => {
+  const referralCode = sanitizeReferralCode(value);
+  if (referralCode === null) return false;
+  await AsyncStorage.setItem('@mingla_referral_code', referralCode);
+  return true;
+};
 
 function AppContent() {
   const state = useAppState();
@@ -1133,6 +1140,23 @@ function AppContent() {
     }
   }, [isAuthenticated, user?.id, profile?.has_completed_onboarding]);
 
+  // Consume the opaque installed-direct activation only after Mixpanel,
+  // PostHog and AppsFlyer have been bound to the authenticated identity. The
+  // subscription also covers an /s route that resolves after this effect ran.
+  useEffect(() => {
+    if (!isAuthenticated || isLoadingAuth || !user?.id) return;
+    const consume = (): void => {
+      void consumeContentShareAttributionAfterIdentity(AsyncStorage, (event, properties) => {
+        mixpanelService.track(event, properties);
+        logAppsFlyerEvent(event, properties);
+      }).catch((error: unknown) => {
+        console.warn('[ContentShare] Failed to consume identified activation:', error);
+      });
+    };
+    consume();
+    return subscribeContentShareAttributionWrites(consume);
+  }, [isAuthenticated, isLoadingAuth, user?.id]);
+
   // Transform friends to Friend format for session creation
   // dbFriends from useFriends has: id, friend_user_id, username, display_name, first_name, last_name, avatar_url
   // ORCH-0679 Wave 2.7 RC-2: useMemo wrap — without it, the .map() rebuilt a fresh
@@ -1805,10 +1829,7 @@ function AppContent() {
       try {
         const parts = url.split('/invite/')
         const referralCode = parts[parts.length - 1]?.split('?')[0]
-        if (referralCode) {
-          await AsyncStorage.setItem('@mingla_referral_code', referralCode)
-          console.log('Stored referral code:', referralCode)
-        }
+        await persistValidatedReferralCode(referralCode)
       } catch (err) {
         console.error('Error handling invite deep link:', err)
       }
@@ -1935,8 +1956,33 @@ function AppContent() {
     if (!dest) return;
     try {
       switch (dest.kind) {
+        case 'content_share': {
+          const path = `/s/${encodeURIComponent(dest.code)}`;
+          if (!userIdRef.current) {
+            AsyncStorage.setItem('mingla_deferred_deeplink', JSON.stringify({ url: path, ts: Date.now(), router: true }))
+              .catch((e) => console.warn('[OneLink] Failed to defer content share:', e));
+            return;
+          }
+          router.push(path as never);
+          return;
+        }
+        case 'share': {
+          if (dest.referralCode) {
+            persistValidatedReferralCode(dest.referralCode).catch((e) =>
+              console.warn('[OneLink] Failed to persist referral code:', e),
+            );
+          }
+          const path = `/p/${encodeURIComponent(dest.shareId)}`;
+          if (!userIdRef.current) {
+            AsyncStorage.setItem('mingla_deferred_deeplink', JSON.stringify({ url: path, ts: Date.now(), router: true }))
+              .catch((e) => console.warn('[OneLink] Failed to defer share link:', e));
+            return;
+          }
+          router.push(path as never);
+          return;
+        }
         case 'referral':
-          AsyncStorage.setItem('@mingla_referral_code', dest.referralCode).catch((e) =>
+          persistValidatedReferralCode(dest.referralCode).catch((e) =>
             console.warn('[OneLink] Failed to persist referral code:', e),
           );
           return;
@@ -1948,7 +1994,7 @@ function AppContent() {
         case 'entity': {
           // Any entity may piggyback a referral code — capture it before nav.
           if (dest.referralCode) {
-            AsyncStorage.setItem('@mingla_referral_code', dest.referralCode).catch((e) =>
+            persistValidatedReferralCode(dest.referralCode).catch((e) =>
               console.warn('[OneLink] Failed to persist referral code:', e),
             );
           }

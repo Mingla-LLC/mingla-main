@@ -52,18 +52,18 @@ export function violations(files) {
   if (
     manifest.rollout?.live_audit_mode !== "enforced" ||
     manifest.rollout?.transition_stage !== "complete" ||
-    manifest.rollout?.expected_user_managed_count !== 85
+    manifest.rollout?.expected_user_managed_count !== 86
   ) {
-    failures.push("manifest: final enforced 85-name rollout missing");
+    failures.push("manifest: final enforced 86-name rollout missing");
   }
   if (
-    manifest.policy?.normal_ceiling !== 85 ||
+    manifest.policy?.normal_ceiling !== 86 ||
     manifest.policy?.absolute_ceiling !== 90
   ) {
-    failures.push("manifest: 85/90 policy changed");
+    failures.push("manifest: 86/90 policy changed");
   }
-  if (records.size !== 85 || manifest.secrets?.length !== 85) {
-    failures.push("manifest: exactly 85 unique records required");
+  if (records.size !== 86 || manifest.secrets?.length !== 86) {
+    failures.push("manifest: exactly 86 unique records required");
   }
   if (!Array.isArray(manifest.exceptions) || manifest.exceptions.length !== 0) {
     failures.push("manifest: capacity exceptions must be empty");
@@ -118,7 +118,7 @@ export function violations(files) {
   }
 
   for (const [token, label] of [
-    ["target_must_be_85_unique_names", "capacity gate"],
+    ["target_must_be_86_unique_names", "capacity gate"],
     ['["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]', "capacity gate"],
     ['["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]', "capacity gate"],
     ['["source_refunds_post_disabled", "SOURCE_REFUNDS_POST_DISABLED"]', "capacity gate"],
@@ -129,7 +129,7 @@ export function violations(files) {
     "retired direct compatibility name present",
     "bundled payment authority missing",
     "bundled notification HMAC authority missing",
-    "exact 85-name manifest",
+    "exact 86-name manifest",
   ]) {
     requireToken(files.refund ?? "", token, "refund guard", failures);
   }
@@ -139,7 +139,7 @@ export function violations(files) {
     "SOURCE_REFUNDS_POST_DISABLED",
     "PAYOUT_RELEASE_EXECUTE",
     "PAYOUT_HOLD_ONBOARD_FLIP",
-    "exactly 85",
+    "exactly 86",
   ]) {
     requireToken(files.runbook ?? "", token, "capacity runbook", failures);
   }
@@ -238,17 +238,17 @@ function readFiles() {
 }
 
 function fixtureManifest() {
-  const filler = Array.from({ length: 83 }, (_, index) => ({
+  const filler = Array.from({ length: 84 }, (_, index) => ({
     name: `SAFE_${String(index).padStart(2, "0")}`,
     readers: [],
     bundle_fields: [],
   }));
   return {
-    policy: { normal_ceiling: 85, absolute_ceiling: 90 },
+    policy: { normal_ceiling: 86, absolute_ceiling: 90 },
     rollout: {
       live_audit_mode: "enforced",
       transition_stage: "complete",
-      expected_user_managed_count: 85,
+      expected_user_managed_count: 86,
     },
     exceptions: [],
     secrets: [
@@ -283,11 +283,11 @@ function selfTest() {
   const clean = {
     manifest: JSON.stringify(fixtureManifest()),
     capacity:
-      'target_must_be_85_unique_names; ["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]; ["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]; ["source_refunds_post_disabled", "SOURCE_REFUNDS_POST_DISABLED"]',
+      'target_must_be_86_unique_names; ["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]; ["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]; ["source_refunds_post_disabled", "SOURCE_REFUNDS_POST_DISABLED"]',
     refund:
-      "retired direct compatibility name present; bundled payment authority missing; bundled notification HMAC authority missing; exact 85-name manifest",
+      "retired direct compatibility name present; bundled payment authority missing; bundled notification HMAC authority missing; exact 86-name manifest",
     runbook:
-      "schema v2 NOTIFICATION_RECIPIENT_HMAC_SECRET SOURCE_REFUNDS_POST_DISABLED PAYOUT_RELEASE_EXECUTE PAYOUT_HOLD_ONBOARD_FLIP exactly 85",
+      "schema v2 NOTIFICATION_RECIPIENT_HMAC_SECRET SOURCE_REFUNDS_POST_DISABLED PAYOUT_RELEASE_EXECUTE PAYOUT_HOLD_ONBOARD_FLIP exactly 86",
     invariant: "I-PROPOSED-1436-SECRET-CAPACITY-EXIT (ACTIVE)",
     test: "any retired direct-name return fails closed",
     adversarialTest:
@@ -319,7 +319,7 @@ function selfTest() {
           expected_user_managed_count: 89,
         },
       }),
-      expected: "final enforced 85-name rollout missing",
+      expected: "final enforced 86-name rollout missing",
     },
     {
       key: "manifest",
@@ -407,6 +407,6 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "issue-1436 secret-capacity exit gate PASS (85 names, bundled authority, no exception)",
+    "issue-1436 secret-capacity exit gate PASS (86 names, bundled authority, no exception)",
   );
 }
