@@ -183,15 +183,28 @@ export const setEventCover = async (
   mediaUrl: string,
   mediaType: EventCoverMediaType,
   metadata: EventCoverProviderMetadata,
+  posterUrl: string | null = mediaType === "image" ? mediaUrl : null,
 ): Promise<{
   id: string;
   cover_media_url: string;
+  cover_media_poster_url: string;
   cover_media_type: EventCoverMediaType;
 }> => {
   if (serverEventId.trim().length === 0) {
     throw new EventCoverMediaError(
       "missing_server_event_id",
       "Save failed because this event is missing its server id.",
+    );
+  }
+  const stablePosterUrl = posterUrl?.trim() || null;
+  if (
+    stablePosterUrl === null ||
+    (mediaType === "image" && stablePosterUrl !== mediaUrl) ||
+    (mediaType !== "image" && stablePosterUrl === mediaUrl)
+  ) {
+    throw new EventCoverMediaError(
+      "upload_failed",
+      "Cover save failed because its fallback image is missing or invalid.",
     );
   }
   // ORCH-0859 REWORK 3 (events-type-filter audit): event-wizard cover
@@ -201,6 +214,7 @@ export const setEventCover = async (
     .from("events")
     .update({
       cover_media_url: mediaUrl,
+      cover_media_poster_url: stablePosterUrl,
       cover_media_type: mediaType,
       cover_media_provider: metadata.provider ?? null,
       cover_media_source_url: metadata.sourceUrl ?? null,
@@ -212,7 +226,7 @@ export const setEventCover = async (
     .eq("id", serverEventId)
     .eq("event_type", "event")
     .is("deleted_at", null)
-    .select("id, cover_media_url, cover_media_type")
+    .select("id, cover_media_url, cover_media_type, cover_media_poster_url")
     .maybeSingle();
 
   if (error !== null) {
@@ -224,7 +238,10 @@ export const setEventCover = async (
       "Save failed because this event could not be found.",
     );
   }
-  if (data.cover_media_url !== mediaUrl) {
+  if (
+    data.cover_media_url !== mediaUrl ||
+    data.cover_media_poster_url !== stablePosterUrl
+  ) {
     throw new EventCoverMediaError(
       "persist_mismatch",
       "Save succeeded but the cover did not persist. Refresh and try again.",
@@ -233,6 +250,7 @@ export const setEventCover = async (
   return data as {
     id: string;
     cover_media_url: string;
+    cover_media_poster_url: string;
     cover_media_type: EventCoverMediaType;
   };
 };
@@ -294,6 +312,7 @@ export const clearEventCover = async (serverEventId: string): Promise<void> => {
     .from("events")
     .update({
       cover_media_url: null,
+      cover_media_poster_url: null,
       cover_media_type: null,
       cover_media_provider: null,
       cover_media_source_url: null,

@@ -299,6 +299,7 @@ export type Brand = {
    * to coverHue gradient when null/undefined. Picker UI ships in 17e-B Tier 2.
    */
   coverMediaUrl?: string;
+  coverMediaPosterUrl?: string | null;
   /**
    * Cover media type. NEW in Cycle 17e-A schema (column pre-load).
    * 17e-B Tier 2 picker writes this.

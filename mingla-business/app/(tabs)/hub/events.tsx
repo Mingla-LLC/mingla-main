@@ -888,6 +888,7 @@ export default function EventsTab(): React.ReactElement {
         <Suspense fallback={null}>
           <LazyShareModal
             visible
+            contentKind="event"
             onClose={() => setShareEvent(null)}
             url={eventPublicUrl({
               brandSlug: shareEvent.brandSlug,

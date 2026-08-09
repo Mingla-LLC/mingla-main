@@ -877,6 +877,7 @@ export default function EventDetailScreen(): React.ReactElement {
           brandSlug: event.brandSlug,
           eventSlug: event.eventSlug,
         })}
+        contentKind="event"
         title={`${event.name} on Mingla`}
         description={event.description.slice(0, 200) || event.name}
       />

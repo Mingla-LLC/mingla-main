@@ -31,10 +31,13 @@ test('a raw call in a marketing component is rejected', () => {
 });
 
 test('a valid adapter role does not pardon an unclassified second call', () => {
+  // [TEST-MOD-APPROVED #1719] Written reason: canonical adapters now consume
+  // immutable server `data.message`; client buildShareMessage is forbidden.
   const source = `// SHARE-SEMANTIC-ROLE:content-adapter
-import {buildShareMessage,buildShortShareUrl} from '@mingla/sharing';
+import {buildShortShareUrl} from '@mingla/sharing';
+const prepared={message: data.message,url: buildShortShareUrl(code)};
 // SHARE-CONTENT-CALL:adapter
-Share.share({message: buildShareMessage(facts,{shortCode:code})});
+Share.share(prepared);
 Share.share({message: 'raw ' + buildShortShareUrl(code)});`;
   const findings = findUnauthorizedConstructs(source, 'packages/share-adapter/index.ts');
   assert.equal(findings.filter(({ signature }) => signature === 'react_native_share').length, 1);

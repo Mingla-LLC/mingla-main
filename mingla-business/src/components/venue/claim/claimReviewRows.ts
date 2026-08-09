@@ -132,7 +132,7 @@ export function buildClaimReviewRows(
           : "Photo cover",
         group: "added",
         stepId: "c4",
-        thumbUrl: claim.coverChoice.url,
+        thumbUrl: claim.coverChoice.posterUrl ?? claim.coverChoice.url,
         thumbType: claim.coverChoice.type,
       });
     }

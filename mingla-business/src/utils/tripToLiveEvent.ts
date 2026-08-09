@@ -119,6 +119,7 @@ export function tripToLiveEvent(trip: Trip | null): LiveEvent | null {
     hideAddressUntilTicket: false,
     coverHue: hueFromId(trip.id),
     coverMediaUrl: trip.coverMediaUrl,
+    coverMediaPosterUrl: trip.coverMediaPosterUrl ?? null,
     coverMediaType: normalizeCoverType(trip.coverMediaType),
     currency: trip.pricingTiers[0]?.currency ?? trip.revenueCurrency ?? "USD",
     pricingSwitches: trip.pricingSwitches,

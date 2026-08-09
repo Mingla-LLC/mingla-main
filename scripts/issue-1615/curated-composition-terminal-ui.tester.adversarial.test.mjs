@@ -71,6 +71,12 @@ function createDb(result) {
     },
     async rpc(name, args) {
       calls.push({ operation: 'rpc', name, args });
+      // [TEST-MOD-APPROVED #1719] The immutable server message is now a second
+      // authoritative RPC read after minting; model it without weakening the
+      // hostile identity/database assertions in this independent suite.
+      if (name === 'resolve_content_share_message') {
+        return { data: `Curated plan\n\nhttps://usemingla.com/s/${args.p_code}`, error: null };
+      }
       if (name !== 'upsert_content_share_version') throw new Error(`forbidden rpc ${name}`);
       return { data: { shortCode: 'Aa0Bb1Cc2Dd3Ee4F', version: 4, versionCreated: true }, error: null };
     },
@@ -310,16 +316,17 @@ test('TA7 loading, covered, coverless, and error are exclusive; retry clears onl
   assert.equal(sharePreviewTerminalState(card, 'error'), 'covered', 'destination error must not erase a valid portrait');
   assert.equal(sharePreviewTerminalState({ s4Url: null }, 'error'), 'coverless');
 
-  const modal = read('app-mobile/src/components/ShareModal.tsx');
-  const retry = /const retrySharePreview = \(\): void => \{([\s\S]*?)\n  \};/.exec(modal)?.[1] || '';
-  assert.match(retry, /sharedCardPromiseRef\.current = null/);
-  assert.match(retry, /ensureSharedCard\('generic'\)/);
-  assert.doesNotMatch(retry, /setSharedCard\(null\)|setExperience|onClose|saveCard|saved_card|board|calendar|like/i);
-  assert.equal((modal.match(/portraitState === 'error'/g) || []).length, 1);
-  assert.equal((modal.match(/portraitState !== 'error'/g) || []).length, 1);
-  assert.equal((modal.match(/onPress=\{retrySharePreview\}/g) || []).length, 1);
-  assert.match(modal, /portraitState === 'error' \? \([\s\S]*?\) : \(\s*<View style=\{styles\.portraitLoading\}/);
-  assert.doesNotMatch(modal, /shareState === 'error'[\s\S]{0,180}<ActivityIndicator/);
+  // [TEST-MOD-APPROVED #1719] The unified sheet removed its mounted S4
+  // portrait. Attack the new retry owner: it may restart link preparation but
+  // must not clear recipients, note, selection, or any content persistence.
+  const modal = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
+  const retry = /const loadShare = useCallback\(\(nextInput[\s\S]*?\n  \}, \[\]\);/.exec(modal)?.[0] || '';
+  assert.match(retry, /setPrepError\(false\)/);
+  assert.match(retry, /prepareContentShare\(/);
+  assert.doesNotMatch(retry, /setSelected|setNote|setRecipients|onClose|saveCard|saved_card|board|calendar|like/i);
+  assert.equal((modal.match(/Retry share/g) || []).length, 1);
+  assert.match(modal, /prepError \? [\s\S]*Retry share/);
+  assert.doesNotMatch(modal, /prepError[\s\S]{0,180}<ActivityIndicator/);
 
   const identitySource = read('app-mobile/src/services/contentShareIdentity.ts');
   for (const forbidden of ['title', 'category', 'address', 'description', 'rating', 'price', 'hours', 'media', 'duration', 'estimate', 'savedCardId']) {

@@ -216,7 +216,9 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
       idx,
       nextExport === -1 ? TRIPS.length : nextExport,
     );
-    expect(fnSource).toMatch(/supabase\.rpc\(["']biz_update_live_trip["']/);
+    // [TEST-MOD-APPROVED #1719] Live edits now enter the atomic poster wrapper;
+    // the wrapper delegates to the existing refund-gated trip function.
+    expect(fnSource).toMatch(/supabase\.rpc\(["']biz_update_live_trip_v1719["']/);
   });
 
   test("ORCH-0876 migration body enforces event_type='trip' + raises event_not_a_trip", () => {

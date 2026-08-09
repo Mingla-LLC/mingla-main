@@ -587,6 +587,7 @@ const ResolvedExperiencePage: React.FC<{
           visible={shareModalVisible}
           onClose={onCloseShareModal}
           url={experiencePublicUrl({ brandSlug, experienceSlug })}
+          contentKind="experience"
           title={experience.title}
           description={experience.description?.slice(0, 200) ?? undefined}
         />

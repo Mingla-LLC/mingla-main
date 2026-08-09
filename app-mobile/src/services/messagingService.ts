@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { blockService } from './blockService';
 import { getDisplayName } from '../utils/getDisplayName';
+import type { PublicShareDetails, ShareDestination, ShareEntityKind, ShareFactsV1, ShareMediaIdentity } from '@mingla/sharing';
 
 /**
  * ORCH-0667 + ORCH-0685: snapshot payload for shared-card chat messages.
@@ -20,12 +21,14 @@ import { getDisplayName } from '../utils/getDisplayName';
  * defined in trimCardPayload below: drop optional rich fields first,
  * essentials never dropped.
  */
-export interface CardPayload {
+export interface LegacyCardPayload {
   // ── REQUIRED ESSENTIALS (never dropped under size pressure) ─────────────
   id: string;                    // place_pool.id — analytics dedup; NOT for refetch
   title: string;                 // hero / bubble title
   category: string | null;       // canonical slug (e.g., 'casual_food'); rendered via getReadableCategoryName at consumer site
   image: string | null;          // primary image URL
+
+  contract?: never;
 
   // ── ORCH-0685 DEC-1 ADDITIONS — modal-render-relevant ──────────────────
   /** lat/lng pair. Required by ExpandedCardModal weather + busyness + booking fetch gates. */
@@ -104,6 +107,29 @@ export interface CardPayload {
   estimatedDurationMinutes?: number;
 }
 
+/** #1719 immutable eight-kind Mingla-chat share. All fields are server-built. */
+export interface ContentShareCardPayloadV1 {
+  contract: 'content_share_card_v1';
+  id: string;
+  title: string;
+  category: string;
+  image: string | null;
+  shareCode: string;
+  shareVersion: number;
+  kind: ShareEntityKind;
+  facts: ShareFactsV1;
+  destination: ShareDestination;
+  publicDetails: PublicShareDetails | null;
+  media: ShareMediaIdentity | null;
+  senderNote?: string;
+}
+
+export type CardPayload = LegacyCardPayload | ContentShareCardPayloadV1;
+
+export function isContentShareCardPayload(payload: CardPayload): payload is ContentShareCardPayloadV1 {
+  return payload.contract === 'content_share_card_v1';
+}
+
 /**
  * ORCH-0910: minimum viable per-stop fields for an intent card in the 5KB chat payload budget.
  * Stricter subset of CuratedStop — drops imageUrls[1..N] and openingHours to fit.
@@ -176,7 +202,7 @@ export interface MentionEntry {
 
 export interface CardTagEntry {
   savedCardId: string;
-  cardPayload: CardPayload;
+  cardPayload: LegacyCardPayload;
 }
 
 const COLLAB_TOKEN_USER_ID = '[a-zA-Z0-9_-]+';
@@ -241,9 +267,9 @@ export function isCollabDeadEndBannerMessage(content: unknown): boolean {
  *   - Cross-ref: ORCH-0659/0660. Enforced by:
  *     I-CHAT-CARDPAYLOAD-NO-RECIPIENT-RELATIVE-FIELDS (CI-gated).
  */
-export function trimCardPayload(card: any): CardPayload {
+export function trimCardPayload(card: any): LegacyCardPayload {
   // [ORCH-0685 RC-2 FIX] Required essentials — never dropped, never absent.
-  const trimmed: CardPayload = {
+  const trimmed: LegacyCardPayload = {
     id: card.id,
     title: card.title || 'Saved experience',
     category: card.category ?? null,
@@ -359,7 +385,7 @@ export function trimCardPayload(card: any): CardPayload {
   // ORCH-0685 §6.3 + ORCH-0910 — drop optional fields in reverse priority if over budget.
   // 'location', 'placeId', 'categoryIcon', 'image', 'cardType' are NOT in dropOrder.
   // For curated cards: drop stop-soft-fields BEFORE dropping whole stops.
-  const dropOrder: (keyof CardPayload)[] = [
+  const dropOrder: (keyof LegacyCardPayload)[] = [
     'matchFactors',
     'socialStats',
     'tags',

@@ -6,6 +6,9 @@
 -- signature string it looks the function up by. The grant expectations below
 -- (anon has NO execute, authenticated does) are asserted exactly as before, now
 -- against the real signature.
+-- [TEST-MOD-APPROVED #1719] — SIGNATURE PIN ONLY. The binding all-writers
+-- amendment adds one appended/defaulted poster URL; grant expectations and all
+-- event_manager/staff behavior below are unchanged.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -183,14 +186,14 @@ DO $grants$
 BEGIN
   IF has_function_privilege(
     'anon',
-    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text,text,text,text)',
+    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text,text,text,text,text)',
     'EXECUTE'
   ) THEN
     RAISE EXCEPTION 'issue_1463_anon_execute_was_granted';
   END IF;
   IF NOT has_function_privilege(
     'authenticated',
-    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text,text,text,text)',
+    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text,text,text,text,text)',
     'EXECUTE'
   ) THEN
     RAISE EXCEPTION 'issue_1463_authenticated_execute_missing';

@@ -93,6 +93,7 @@ export default function VenueDeckReadinessRoute(): React.ReactElement {
     if (context === undefined) return null;
     return {
       coverMediaUrl: context.cover_media_url,
+      coverMediaPosterUrl: context.cover_media_poster_url ?? null,
       coverMediaType: context.cover_media_type,
       coverMediaProvider: null,
       coverMediaSourceUrl: null,

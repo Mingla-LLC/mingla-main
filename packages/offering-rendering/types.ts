@@ -25,6 +25,8 @@ export type EventFormat = "in-person" | "online" | "hybrid";
  */
 export interface OfferingGalleryImage {
   url: string;
+  /** Static share/render fallback when `type` is GIF. */
+  posterUrl?: string | null;
   type?: "image" | "gif"; // never "video"; default "image"
   alt?: string | null;
   credit?: string | null;

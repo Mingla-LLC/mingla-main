@@ -239,6 +239,9 @@ export default function ExperienceEditRoute(): React.ReactElement {
     if (experience === null) return undefined;
     return {
       coverMediaUrl: experience.coverMediaUrl,
+      coverMediaPosterUrl:
+        experience.coverMediaPosterUrl ??
+        (experience.coverMediaType === "image" ? experience.coverMediaUrl : null),
       coverMediaType: experience.coverMediaType,
       coverMediaProvider: null,
       coverMediaSourceUrl: null,

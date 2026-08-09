@@ -25,11 +25,11 @@
  *   - socialStats.shares is forced to 0 (the payload does not carry it).
  *   - lock-in metadata (ORCH-0908) and curated stops (ORCH-0910) pass through.
  */
-import type { CardPayload } from './messagingService';
+import type { LegacyCardPayload } from './messagingService';
 import type { ExpandedCardData } from '../types/expandedCardTypes';
 import { savedCardToExpandedCardData } from '../components/utils/savedCardToExpandedCardData';
 
-export function cardPayloadToExpandedCardData(p: CardPayload): ExpandedCardData {
+export function cardPayloadToExpandedCardData(p: LegacyCardPayload): ExpandedCardData {
   // ORCH-0908: defensive legacy-payload normalizer. The first cut of the
   // combined lock-and-schedule RPC nested the card under card_payload.card_data;
   // migration 20260630000000 flattens it + backfills existing rows, but if any

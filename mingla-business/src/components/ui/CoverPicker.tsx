@@ -106,6 +106,7 @@ import {
 import type { EventCoverMediaProvider } from "../../types/eventCoverProvider";
 import type { EventCoverMediaType } from "../../store/draftEventStore";
 import { useBrandCoverUpload } from "../../hooks/useBrandCoverUpload";
+import { extractCoverGifPoster } from "../../services/coverGifPoster";
 // META-ORCH-1255(C) D-C: the VENUE target uses the storage-only upload +
 // provider URL validation directly — never useBrandCoverUpload, whose
 // updateBrand mutation patches brands.cover_media_url (the venue row is the
@@ -149,10 +150,11 @@ export const reportProviderError = (
   reportNonFatal("coverPicker.provider", error, { provider: kind, code });
 };
 
-/** Full 7-field cover patch emitted on every change. Mirror of the events
+/** Full cover patch emitted on every change. Mirror of the events
  *  table cover_media_* column family. UNCHANGED from prior CoverPicker. */
 export interface CoverPatch {
   coverMediaUrl: string | null;
+  coverMediaPosterUrl: string | null;
   coverMediaType: EventCoverMediaType | null;
   coverMediaProvider: EventCoverMediaProvider | null;
   coverMediaSourceUrl: string | null;
@@ -175,6 +177,7 @@ export interface CoverPickerProps {
   /** Cover hue fallback for empty preview (0..360). */
   initialCoverHue?: number;
   initialMediaUrl: string | null;
+  initialMediaPosterUrl?: string | null;
   initialMediaType: EventCoverMediaType | null;
   initialProvider: EventCoverMediaProvider | null;
   initialSourceUrl: string | null;
@@ -263,6 +266,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   target,
   initialCoverHue = 0,
   initialMediaUrl,
+  initialMediaPosterUrl = null,
   initialMediaType,
   initialProvider,
   initialSourceUrl,
@@ -339,6 +343,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   // Local mirror of current cover for preview render + credit label.
   const [localCover, setLocalCover] = useState<CoverPatch>({
     coverMediaUrl: initialMediaUrl,
+    coverMediaPosterUrl: initialMediaPosterUrl,
     coverMediaType: initialMediaType,
     coverMediaProvider: initialProvider,
     coverMediaSourceUrl: initialSourceUrl,
@@ -350,6 +355,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   useEffect(() => {
     setLocalCover({
       coverMediaUrl: initialMediaUrl,
+      coverMediaPosterUrl: initialMediaPosterUrl,
       coverMediaType: initialMediaType,
       coverMediaProvider: initialProvider,
       coverMediaSourceUrl: initialSourceUrl,
@@ -359,6 +365,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     });
   }, [
     initialMediaUrl,
+    initialMediaPosterUrl,
     initialMediaType,
     initialProvider,
     initialSourceUrl,
@@ -467,6 +474,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     setMediaDisplayError(null);
     emitChange({
       coverMediaUrl: videoUpload.processedUrl,
+      coverMediaPosterUrl: videoUpload.processedPosterUrl,
       coverMediaType: "video",
       coverMediaProvider: UPLOAD_EVENT_COVER_PROVIDER_METADATA.provider,
       coverMediaSourceUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.sourceUrl,
@@ -476,7 +484,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     });
     // issue #1338 — success feedback renders in-sheet, never via the root Toast.
     setVideoPickNotice({ tone: "info", text: "Video cover added." });
-  }, [emitChange, videoUpload.processedUrl, videoUpload.stage.phase]);
+  }, [emitChange, videoUpload.processedPosterUrl, videoUpload.processedUrl, videoUpload.stage.phase]);
 
   // ----- Device image/GIF + video pickers --------------------------------
 
@@ -615,8 +623,32 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         publicUrl = uploaded.publicUrl;
         mediaType = uploaded.mediaType === "gif" ? "gif" : "image";
       }
+      let posterUrl = publicUrl;
+      if (mediaType === "gif") {
+        const extracted = await extractCoverGifPoster(asset);
+        try {
+          if (target.kind === "brand" || target.kind === "venue") {
+            const poster = await uploadBrandCover(target.brandId, extracted.asset, {
+              previousPublicUrl: null,
+            });
+            posterUrl = poster.publicUrl;
+          } else {
+            const poster = await uploadEventCoverMedia({
+              ...extracted.asset,
+              brandId: target.brandId,
+              eventId: target.eventRowId,
+              durationMs: null,
+              pickerType: "image",
+            });
+            posterUrl = poster.publicUrl;
+          }
+        } finally {
+          await extracted.cleanup();
+        }
+      }
       const item: OfferingGalleryImage = {
         url: publicUrl,
+        posterUrl,
         type: mediaType,
         alt: null,
         credit: null,
@@ -695,6 +727,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       galleryRef.current = nextGallery;
       const patch: CoverPatch = {
         coverMediaUrl: item.url,
+        coverMediaPosterUrl: item.type === "gif" ? item.posterUrl ?? null : item.url,
         coverMediaType: item.type === "gif" ? "gif" : "image",
         coverMediaProvider: null,
         coverMediaSourceUrl: null,
@@ -757,9 +790,22 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           },
           { previousPublicUrl: localCover.coverMediaUrl },
         );
+        let posterUrl = uploaded.publicUrl;
+        if (uploaded.mediaType === "gif") {
+          const extracted = await extractCoverGifPoster(asset);
+          try {
+            const poster = await uploadBrandCover(target.brandId, extracted.asset, {
+              previousPublicUrl: null,
+            });
+            posterUrl = poster.publicUrl;
+          } finally {
+            await extracted.cleanup();
+          }
+        }
         setMediaDisplayError(null);
         emitChange({
           coverMediaUrl: uploaded.publicUrl,
+          coverMediaPosterUrl: posterUrl,
           coverMediaType: uploaded.mediaType === "gif" ? "gif" : "image",
           coverMediaProvider: UPLOAD_EVENT_COVER_PROVIDER_METADATA.provider,
           coverMediaSourceUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.sourceUrl,
@@ -776,24 +822,35 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
       if (target.kind === "brand") {
         // Brand device upload → brand_covers bucket + brands.cover_media_url.
-        const uploaded = await brandCover.uploadCover({
-          brandId: target.brandId,
-          accountId: target.accountId,
-          existingDescription: target.existingDescription,
-          previousMediaUrl: localCover.coverMediaUrl,
-          source: {
-            kind: "upload",
-            asset: {
-              uri: asset.uri,
-              mimeType: asset.mimeType,
-              fileName: asset.fileName,
-              fileSize: asset.fileSize,
-            },
-          },
-        });
+        const isGif = asset.mimeType?.toLowerCase() === "image/gif"
+          || /\.gif(?:$|[?#])/i.test(asset.fileName ?? asset.uri);
+        const extracted = isGif ? await extractCoverGifPoster(asset) : null;
+        const uploaded = await (async () => {
+          try {
+            return await brandCover.uploadCover({
+              brandId: target.brandId,
+              accountId: target.accountId,
+              existingDescription: target.existingDescription,
+              previousMediaUrl: localCover.coverMediaUrl,
+              source: {
+                kind: "upload",
+                asset: {
+                  uri: asset.uri,
+                  mimeType: asset.mimeType,
+                  fileName: asset.fileName,
+                  fileSize: asset.fileSize,
+                },
+                ...(extracted === null ? {} : { posterAsset: extracted.asset }),
+              },
+            });
+          } finally {
+            await extracted?.cleanup();
+          }
+        })();
         setMediaDisplayError(null);
         emitChange({
           coverMediaUrl: uploaded.publicUrl,
+          coverMediaPosterUrl: uploaded.posterUrl,
           coverMediaType: uploaded.mediaType === "gif" ? "gif" : "image",
           coverMediaProvider: UPLOAD_EVENT_COVER_PROVIDER_METADATA.provider,
           coverMediaSourceUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.sourceUrl,
@@ -819,9 +876,26 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         durationMs: null,
         pickerType: asset.type,
       });
+      let posterUrl = upload.publicUrl;
+      if (upload.mediaType === "gif") {
+        const extracted = await extractCoverGifPoster(asset);
+        try {
+          const poster = await uploadEventCoverMedia({
+            ...extracted.asset,
+            brandId: target.brandId,
+            eventId: target.eventRowId,
+            durationMs: null,
+            pickerType: "image",
+          });
+          posterUrl = poster.publicUrl;
+        } finally {
+          await extracted.cleanup();
+        }
+      }
       setMediaDisplayError(null);
       emitChange({
         coverMediaUrl: upload.publicUrl,
+        coverMediaPosterUrl: posterUrl,
         coverMediaType: upload.mediaType,
         coverMediaProvider: UPLOAD_EVENT_COVER_PROVIDER_METADATA.provider,
         coverMediaSourceUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.sourceUrl,
@@ -1115,6 +1189,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const selectGiphy = useCallback(
     async (result: GiphyCoverSearchResult): Promise<void> => {
       if (disabled) return;
+      if (!result.posterUrl) {
+        showUploadError(new BrandCoverError(
+          "upload_failed",
+          "Couldn't prepare this GIF for sharing. Try another GIF.",
+        ));
+        return;
+      }
       lightHaptic();
       setMediaDisplayError(null);
       if (target.kind === "brand") {
@@ -1135,6 +1216,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
                     ? { name: result.credit, url: result.creditUrl }
                     : null,
               },
+              posterUrl: result.posterUrl,
             },
           });
         } catch (error) {
@@ -1160,6 +1242,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       }
       emitChange({
         coverMediaUrl: result.mediaUrl,
+        coverMediaPosterUrl: result.posterUrl,
         coverMediaType: "gif",
         coverMediaProvider: "giphy",
         coverMediaSourceUrl: result.sourceUrl,
@@ -1191,6 +1274,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
                 publicUrl: result.mediaUrl,
                 attribution: { name: result.credit, url: result.creditUrl },
               },
+              posterUrl: result.mediaUrl,
             },
           });
         } catch (error) {
@@ -1212,6 +1296,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       }
       emitChange({
         coverMediaUrl: result.mediaUrl,
+        coverMediaPosterUrl: result.mediaUrl,
         coverMediaType: "image",
         coverMediaProvider: "pexels",
         coverMediaSourceUrl: result.sourceUrl,
@@ -1238,6 +1323,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     // For event/trip the parent persists through its existing cover patch.
     emitChange({
       coverMediaUrl: null,
+      coverMediaPosterUrl: null,
       coverMediaType: null,
       coverMediaProvider: null,
       coverMediaSourceUrl: null,
@@ -1440,6 +1526,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
             if (providerAddTarget === "gallery") {
               appendGalleryItem({
                 url: r.mediaUrl,
+                posterUrl: r.posterUrl ?? null,
                 type: "gif",
                 alt: r.alt,
                 credit: r.credit,
@@ -1474,6 +1561,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
             if (providerAddTarget === "gallery") {
               appendGalleryItem({
                 url: r.mediaUrl,
+                posterUrl: r.mediaUrl,
                 type: "image",
                 alt: r.alt,
                 credit: r.credit,

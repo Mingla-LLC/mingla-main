@@ -5,6 +5,11 @@ export type ShareMediaIdentity = {
   kind: 'photo' | 'gif' | 'video'; url: string; posterUrl: string;
   focalPoint?: { x: number; y: number }; alt?: string;
 };
+export type PublicShareDetails =
+  | { kind: 'place'; description?: string; address?: string; directionsUrl?: string; phone?: string; website?: string; utcOffsetMinutes?: number }
+  | { kind: 'curated'; estimate?: unknown; stops: { title: string; category?: string; area?: string; address?: string; description?: string; imageUrl?: string }[] }
+  | { kind: 'event' | 'rsvp_event' | 'trip' | 'experience'; actionEligible: boolean; occurrences: { startAt: string; endAt?: string; timezone?: string }[] }
+  | { kind: 'venue' | 'brand'; offerings: { title: string; kind: 'event' | 'rsvp' | 'trip' | 'experience'; brandSlug: string; eventSlug: string; startAt: string }[] };
 export type ShareDestination = { kind: ShareEntityKind; placeId?: string; eventSlug?: string; brandSlug?: string; venueSlug?: string };
 type Common = { schemaVersion: 1; title: string; status?: ShareStatus; timezone?: string; media?: ShareMediaIdentity; route?: ShareDestination };
 export type ShareHoursRow = { day: string; label: string; isToday?: boolean; special?: string };
@@ -21,6 +26,7 @@ export const SHARE_FACTS_VERSION: 1;
 export const SHARE_PORTRAIT_REVISION: 2;
 export const SHARE_ENTITY_KINDS: readonly ShareEntityKind[];
 export const SHARE_STATUSES: readonly ShareStatus[];
+export const CONTENT_SHARE_NOTE_MAX_GRAPHEMES: 120;
 export const SHARE_CHANNEL_BUDGETS: Readonly<Record<'generic' | 'sms' | 'whatsapp' | 'x' | 'email', { beforeUrl: number; total: number }>>;
 export const ROUTE_MANIFEST: Readonly<Record<ShareEntityKind, { web: string; native: string; required: readonly string[] }>>;
 export function cleanText(value: unknown, max?: number): string;
@@ -44,6 +50,9 @@ export function formatMoney(value: unknown): string;
 export function formatEstimate(value: unknown): string;
 export function formatRating(value: unknown): string;
 export function statusLabel(value: unknown): string;
+export function shareKindLabel(value: unknown): string;
+export function segmentGraphemes(value: unknown): string[];
+export function normalizeContentShareNote(value: unknown): { note: string | null; graphemeCount: number };
 export function formatPlanningPreference(value: unknown): string;
 export function selectRecipientFacts(value: ShareFactsV1, context?: { includePlanningPreference?: boolean }): string[];
 export function selectPreviewFacts(value: ShareFactsV1, limit?: number): string[];

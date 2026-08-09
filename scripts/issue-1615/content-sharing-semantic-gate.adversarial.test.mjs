@@ -48,11 +48,13 @@ test('A4 comment text is ignored and one untagged content call fails exactly', (
 });
 
 test('A5 semantic roles require an exact per-call classification', () => {
+  // [TEST-MOD-APPROVED #1719] Written reason: the canonical adapter no longer
+  // calls buildShareMessage; it must prove consumption of server `data.message`.
   const adapter = `// SHARE-SEMANTIC-ROLE:content-adapter
-    import {buildShareMessage,buildShortShareUrl} from '@mingla/sharing';
-    const url=buildShortShareUrl(code);const message=buildShareMessage(facts,{shortCode:code});
+    import {buildShortShareUrl} from '@mingla/sharing';
+    const url=buildShortShareUrl(code);const prepared={message: data.message,url};
     // SHARE-CONTENT-CALL:adapter
-    Share.share({message,url});`;
+    Share.share(prepared);`;
   const transport = `// SHARE-SEMANTIC-ROLE:content-transport
     export function send({title,url,message}){
     // SHARE-CONTENT-CALL:transport

@@ -95,6 +95,7 @@ export interface Step1Draft {
    * via the biz_update_live_trip RPC).
    */
   coverMediaUrl: string | null;
+  coverMediaPosterUrl?: string | null;
   coverMediaType: EventCoverMediaType | null;
   /** issue #868 [cover-gallery] — ADDITIONAL image/GIF items (default []). */
   coverGallery?: OfferingGalleryImage[];
@@ -364,6 +365,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
     (patch: CoverPatch): void => {
       onChange({
         coverMediaUrl: patch.coverMediaUrl,
+        coverMediaPosterUrl: patch.coverMediaPosterUrl,
         coverMediaType: patch.coverMediaType,
         // issue #868 [cover-gallery] — carry the ADDITIONAL photos into the draft.
         coverGallery: patch.coverGallery ?? [],
@@ -830,6 +832,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         }}
         initial={{
           coverMediaUrl: draft.coverMediaUrl,
+          coverMediaPosterUrl: draft.coverMediaPosterUrl ?? null,
           coverMediaType: draft.coverMediaType,
           coverMediaProvider: null,
           coverMediaSourceUrl: null,

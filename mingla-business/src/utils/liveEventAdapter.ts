@@ -78,6 +78,7 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   hideAddressUntilTicket: e.hideAddressUntilTicket,
   coverHue: e.coverHue,
   coverMediaUrl: e.coverMediaUrl,
+  coverMediaPosterUrl: e.coverMediaPosterUrl ?? null,
   coverMediaType: e.coverMediaType,
   coverMediaProvider: e.coverMediaProvider ?? null,
   coverMediaSourceUrl: e.coverMediaSourceUrl ?? null,
@@ -152,6 +153,7 @@ export const FIELD_LABELS: Record<keyof EditableLiveEventFields, string> = {
   hideAddressUntilTicket: "Hide address until ticket",
   coverHue: "Cover hue",
   coverMediaUrl: "Cover media",
+  coverMediaPosterUrl: "Cover poster",
   coverMediaType: "Cover media type",
   coverMediaProvider: "Cover media provider",
   coverMediaSourceUrl: "Cover media source",
@@ -219,6 +221,7 @@ export const SAFE_KEYS: ReadonlyArray<keyof EditableLiveEventFields> = [
   "category",
   "coverHue",
   "coverMediaUrl",
+  "coverMediaPosterUrl",
   "coverMediaType",
   "coverMediaProvider",
   "coverMediaSourceUrl",
@@ -317,6 +320,9 @@ export const editableDraftToPatch = (
   if (original.coverHue !== edited.coverHue) patch.coverHue = edited.coverHue;
   if (original.coverMediaUrl !== edited.coverMediaUrl) {
     patch.coverMediaUrl = edited.coverMediaUrl;
+  }
+  if (original.coverMediaPosterUrl !== edited.coverMediaPosterUrl) {
+    patch.coverMediaPosterUrl = edited.coverMediaPosterUrl ?? null;
   }
   if (original.coverMediaType !== edited.coverMediaType) {
     patch.coverMediaType = edited.coverMediaType;

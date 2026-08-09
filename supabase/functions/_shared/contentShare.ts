@@ -134,10 +134,14 @@ const imageFallback = (row: RecordLike): string | null => {
 export function mapServedMediaIdentity(row: RecordLike): RecordLike | null {
   const primary = publicMediaUrl(row.cover_media_url);
   const type = clean(row.cover_media_type, 12);
+  const authoritativePoster = publicMediaUrl(row.cover_media_poster_url);
   const fallback = imageFallback(row);
   const alt = clean(row.cover_media_alt || row.name || row.title, 240);
-  if (primary && type === "video" && fallback) return compact({ kind: "video", url: primary, posterUrl: fallback, alt });
-  if (primary && type === "gif" && fallback) return compact({ kind: "gif", url: primary, posterUrl: fallback, alt });
+  // #1719: animated covers are shareable only when the same cover identity has
+  // an explicitly persisted poster. A gallery/logo fallback can be unrelated
+  // and must never masquerade as the video's/GIF's still.
+  if (primary && type === "video" && authoritativePoster) return compact({ kind: "video", url: primary, posterUrl: authoritativePoster, alt });
+  if (primary && type === "gif" && authoritativePoster) return compact({ kind: "gif", url: primary, posterUrl: authoritativePoster, alt });
   if (primary && (type === "image" || !type)) return compact({ kind: "photo", url: primary, posterUrl: primary, alt });
   if (fallback) return compact({ kind: "photo", url: fallback, posterUrl: fallback, alt });
   return null;
@@ -452,7 +456,7 @@ export async function loadAuthoritativeContentShare(
     const eventSlug = sourceId(identity, "eventSlug");
     const brandSlug = sourceId(identity, "brandSlug");
     if (!id && (!eventSlug || !brandSlug)) throw new Error("validation");
-    let query = db.from("events").select("id,title,description,slug,location_text,status,visibility,published_at,deleted_at,timezone,event_type,destination_text,cover_media_url,cover_media_type,cover_media_alt,cover_media_gallery,is_multi_date,rsvp_capacity,rsvp_waitlist_enabled,rsvp_approval_mode,bookings_closed,booking_deadline,brands!inner(name,slug,deleted_at)")
+    let query = db.from("events").select("id,title,description,slug,location_text,status,visibility,published_at,deleted_at,timezone,event_type,destination_text,cover_media_url,cover_media_type,cover_media_poster_url,cover_media_alt,cover_media_gallery,is_multi_date,rsvp_capacity,rsvp_waitlist_enabled,rsvp_approval_mode,bookings_closed,booking_deadline,brands!inner(name,slug,deleted_at)")
       .eq("event_type", expectedType).limit(1);
     query = id ? query.eq("id", id) : query.eq("slug", eventSlug).eq("brands.slug", brandSlug);
     const { data: row, error: rowError } = await query.maybeSingle();
@@ -499,7 +503,7 @@ export async function loadAuthoritativeContentShare(
   if (kind === "venue") {
     const venueId = sourceId(identity, "venueId"); const brandSlug = sourceId(identity, "brandSlug"); const venueSlug = sourceId(identity, "venueSlug");
     if (!venueId && (!brandSlug || !venueSlug)) throw new Error("validation");
-    let query = db.from("venue_public_view").select("id,brand_slug,slug,name,city,venue_category,pitch,cover_media_url,cover_media_type,pool_photo_urls,hours,iana_timezone");
+    let query = db.from("venue_public_view").select("id,brand_slug,slug,name,city,venue_category,pitch,cover_media_url,cover_media_type,cover_media_poster_url,pool_photo_urls,hours,iana_timezone");
     query = venueId ? query.eq("id", venueId) : query.eq("brand_slug", brandSlug).eq("slug", venueSlug);
     const { data: row, error } = await query.maybeSingle();
     if (error) throw new Error("db_error");
@@ -509,7 +513,7 @@ export async function loadAuthoritativeContentShare(
 
   const brandId = sourceId(identity, "brandId"); const brandSlug = sourceId(identity, "brandSlug");
   if (!brandId && !brandSlug) throw new Error("validation");
-  let brandQuery = db.from("brands").select("id,name,slug,description,cover_media_url,cover_media_type,profile_photo_url,venue_category,city,deleted_at");
+  let brandQuery = db.from("brands").select("id,name,slug,description,cover_media_url,cover_media_type,cover_media_poster_url,profile_photo_url,venue_category,city,deleted_at");
   brandQuery = brandId ? brandQuery.eq("id", brandId) : brandQuery.eq("slug", brandSlug);
   const { data: row, error: rowError } = await brandQuery.maybeSingle();
   if (rowError) throw new Error("db_error");

@@ -407,6 +407,7 @@ export type EventCoverVideoReadyUpdateInput = {
     url: string;
   };
   providerPayload: Record<string, unknown>;
+  posterUrl: string;
 };
 
 export function eventCoverVideoReadyUpdate(input: EventCoverVideoReadyUpdateInput): Record<string, unknown> {
@@ -415,6 +416,7 @@ export function eventCoverVideoReadyUpdate(input: EventCoverVideoReadyUpdateInpu
     processed_duration_ms: input.derivative.durationMs,
     processed_mime_type: "video/mp4",
     processed_url: input.derivative.url,
+    processed_poster_url: input.posterUrl,
     provider_payload: input.providerPayload,
     completed_at: input.applyMode === "published_manual"
       ? new Date().toISOString()
@@ -432,6 +434,7 @@ type EventCoverVideoJobRow = {
   status: string | null;
   apply_mode: string | null;
   processed_url?: string | null;
+  processed_poster_url?: string | null;
   processed_mime_type?: string | null;
   processed_bytes?: number | null;
   processed_duration_ms?: number | null;
@@ -528,6 +531,7 @@ export function mapEventCoverVideoStatus(
     processedDurationMs:
       typeof job.processed_duration_ms === "number" ? job.processed_duration_ms : null,
     processedMimeType: job.processed_mime_type ?? null,
+    processedPosterUrl: job.processed_poster_url ?? null,
     processedUrl: job.processed_url ?? null,
     progressKind: stage.progressKind,
     progressPercent: stage.progressPercent,

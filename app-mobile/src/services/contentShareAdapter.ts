@@ -1,17 +1,16 @@
 // SHARE-SEMANTIC-ROLE:content-adapter
 import { Platform, Share } from 'react-native';
-import { buildShareMessage, buildSharePortraitUrl, buildShortShareUrl, createContentShareSingleFlight, type ShareDestination, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
+import { buildSharePortraitUrl, buildShortShareUrl, createContentShareSingleFlight, type PublicShareDetails, type ShareDestination, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
 import { supabase } from './supabase';
+import { openUnifiedContentShare } from './contentShareController';
+import { mixpanelService } from './mixpanelService';
+import { logAppsFlyerEvent } from './appsFlyerService';
 
 export type ContentShareIdentity = {
   placePoolId?: string; googlePlaceId?: string; savedCardId?: string; stopPlaceIds?: string[];
   eventId?: string; eventSlug?: string; brandSlug?: string; venueSlug?: string;
 };
-export type PublicShareDetails =
-  | { kind: 'place'; description?: string; address?: string; directionsUrl?: string; phone?: string; website?: string; utcOffsetMinutes?: number }
-  | { kind: 'curated'; estimate?: unknown; stops: { title: string; category?: string; area?: string; address?: string; description?: string; imageUrl?: string }[] }
-  | { kind: 'event' | 'rsvp_event' | 'trip' | 'experience'; actionEligible: boolean; occurrences: { startAt: string; endAt?: string; timezone?: string }[] }
-  | { kind: 'venue' | 'brand'; offerings: { title: string; kind: 'event' | 'rsvp' | 'trip' | 'experience'; brandSlug: string; eventSlug: string; startAt: string }[] };
+export type { PublicShareDetails } from '@mingla/sharing';
 export type PreparedContentShareV1 = {
   contract: 'content_share_v1'; kind: ShareEntityKind; title: string;
   shortCode: string; version: number; canonicalUrl: string; message: string;
@@ -20,11 +19,22 @@ export type PreparedContentShareV1 = {
 };
 export type PreparedContentShare = PreparedContentShareV1;
 type CreatedShare = {
-  shortCode: string; version: number; facts: ShareFactsV1;
+  shortCode: string; version: number; message: string; facts: ShareFactsV1;
   media?: ShareMediaIdentity | null; destination?: ShareDestination;
   publicDetails?: PublicShareDetails | null;
 };
 const singleFlight=createContentShareSingleFlight();
+
+export type ContentShareTelemetryEvent =
+  | 'share_sheet_opened' | 'share_link_ready' | 'share_sheet_returned' | 'share_failure';
+
+export function trackContentShareEvent(
+  event: ContentShareTelemetryEvent,
+  properties: Record<string, string | number | boolean>,
+): void {
+  mixpanelService.track(event, properties);
+  logAppsFlyerEvent(event, properties);
+}
 
 export type ShareMessageContext = {
   planningPreference?: string | { dayOfWeek?: string; timeOfDay?: string; planningTimeframe?: string };
@@ -32,10 +42,10 @@ export type ShareMessageContext = {
 };
 
 export async function prepareContentShare(kind: ShareEntityKind, identity: ContentShareIdentity, channel = 'generic', messageContext: ShareMessageContext = {}): Promise<PreparedContentShare> {
-  const key = JSON.stringify([kind, identity]);
+  const key = JSON.stringify([kind, identity, messageContext]);
   const prepared=await singleFlight(key,async () => {
     const { data, error } = await supabase.functions.invoke<CreatedShare>('shared-card', {
-      body: { contract:'content_share_v1', kind, identity, attribution:{ channel } },
+      body: { contract:'content_share_v1', kind, identity, attribution:{ channel }, messageContext },
     });
     if (!error && data?.shortCode && data?.facts) return { contract: 'content_share_v1' as const, data };
     throw new Error(error?.message || 'share_create_failed');
@@ -50,7 +60,7 @@ export async function prepareContentShare(kind: ShareEntityKind, identity: Conte
     shortCode: data.shortCode,
     version: data.version,
     canonicalUrl,
-    message: buildShareMessage(data.facts, { shortCode: data.shortCode, channel: channel as never, ...messageContext }),
+    message: data.message,
     s4Url: media === null ? null : buildSharePortraitUrl(data.shortCode, data.version),
     facts: data.facts,
     media,
@@ -58,9 +68,6 @@ export async function prepareContentShare(kind: ShareEntityKind, identity: Conte
     publicDetails: data.publicDetails ?? null,
   };
 }
-
-export const messageForPreparedContentShare=(prepared:PreparedContentShare,channel='generic',messageContext:ShareMessageContext={}):PreparedContentShare=>
-  ({...prepared,message:buildShareMessage(prepared.facts,{shortCode:prepared.shortCode,channel:channel as never,...messageContext})});
 
 export async function sharePreparedContent(prepared:PreparedContentShare):Promise<void>{
   const title=prepared.title;
@@ -80,6 +87,7 @@ export async function shareCanonicalFallback(input: { title: string; url: string
 }
 
 export async function shareContent(kind: ShareEntityKind, identity: ContentShareIdentity, channel = 'generic'): Promise<void> {
-  const prepared=await prepareContentShare(kind,identity,channel);
-  await sharePreparedContent(prepared);
+  // The provider opens synchronously; link and recipient preparation begin only
+  // after the sheet is visible. Keep Promise<void> for source compatibility.
+  openUnifiedContentShare({ kind, identity });
 }

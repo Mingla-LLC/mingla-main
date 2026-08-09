@@ -60,6 +60,7 @@ const BUTTON_FONT = 13;
 
 const EMPTY_COVER_PATCH: CoverPatch = {
   coverMediaUrl: null,
+  coverMediaPosterUrl: null,
   coverMediaType: null,
   coverMediaProvider: null,
   coverMediaSourceUrl: null,
@@ -345,12 +346,14 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
 
   // ----- cover threading -----------------------------------------------------
   const coverUrl = (liveArgs.cover_media_url as string | undefined) ?? null;
+  const coverPosterUrl = (liveArgs.cover_media_poster_url as string | undefined) ?? null;
   const coverType = liveArgs.cover_media_type;
 
   const handleCoverChange = (patch: CoverPatch): void => {
     setEditedArgs((prev) => ({
       ...prev,
       cover_media_url: patch.coverMediaUrl ?? undefined,
+      cover_media_poster_url: patch.coverMediaPosterUrl ?? undefined,
       cover_media_type: patch.coverMediaType ?? undefined,
     }));
     if (patch.coverMediaUrl) setCoverUploadState("idle");
@@ -360,6 +363,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     setEditedArgs((prev) => {
       const next = { ...prev };
       delete next.cover_media_url;
+      delete next.cover_media_poster_url;
       delete next.cover_media_type;
       return next;
     });
@@ -456,7 +460,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   };
 
   const initialPatch: CoverPatch = coverUrl
-    ? { ...EMPTY_COVER_PATCH, coverMediaUrl: coverUrl, coverMediaType: (coverType as CoverPatch["coverMediaType"]) ?? null }
+    ? { ...EMPTY_COVER_PATCH, coverMediaUrl: coverUrl, coverMediaPosterUrl: coverPosterUrl ?? (coverType === "image" ? coverUrl : null), coverMediaType: (coverType as CoverPatch["coverMediaType"]) ?? null }
     : EMPTY_COVER_PATCH;
 
   // ORCH-1103 REWORK 3 — once the brand has been minted via "Create & attach"

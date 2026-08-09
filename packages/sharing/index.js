@@ -20,6 +20,31 @@ const REFERRAL_CODE_RE = /^[0-9A-Za-z][0-9A-Za-z-]{0,63}$/;
 const HTTPS_RE = /^https:\/\//i;
 const BIDI_CONTROL_RE = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
 const CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu;
+const CONTENT_SHARE_NOTE_MAX_GRAPHEMES = 120;
+
+function segmentGraphemes(value) {
+  const normalized = typeof value === 'string' ? value.normalize('NFC') : '';
+  if (typeof Intl?.Segmenter === 'function') {
+    return Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(normalized), (part) => part.segment);
+  }
+  // There is no honest code-point fallback for Unicode extended grapheme
+  // clusters: Array.from() still splits flags, modifiers, ZWJ families, and
+  // combining sequences. Refuse the operation on an unsupported engine so a
+  // note is never silently counted or truncated at the wrong boundary.
+  throw new TypeError('grapheme_segmenter_unavailable');
+}
+
+function normalizeContentShareNote(value) {
+  if (typeof value !== 'string') return { note: null, graphemeCount: 0 };
+  const normalized = value.normalize('NFC').replace(BIDI_CONTROL_RE, '').replace(CONTROL_RE, ' ')
+    .replace(/[\t\r\n ]+/gu, ' ').trim();
+  if (!normalized) return { note: null, graphemeCount: 0 };
+  const graphemes = segmentGraphemes(normalized);
+  if (graphemes.length > CONTENT_SHARE_NOTE_MAX_GRAPHEMES) {
+    return { note: graphemes.slice(0, CONTENT_SHARE_NOTE_MAX_GRAPHEMES).join(''), graphemeCount: CONTENT_SHARE_NOTE_MAX_GRAPHEMES };
+  }
+  return { note: normalized, graphemeCount: graphemes.length };
+}
 
 function createContentShareSingleFlight() {
   const pending = new Map();
@@ -287,6 +312,10 @@ function statusLabel(status) {
   return ({ sold_out: 'Sold out', ended: 'Ended', cancelled: 'Cancelled', rsvp_closed: 'RSVP closed', date_tbd: 'Date TBD', dates_tbd: 'Dates TBD' })[status] || '';
 }
 
+function shareKindLabel(kind) {
+  return ({ place: 'Place', curated: 'Curated plan', event: 'Event', rsvp_event: 'RSVP event', trip: 'Trip', experience: 'Experience', venue: 'Venue', brand: 'Brand' })[kind] || '';
+}
+
 const WEEKDAYS = Object.freeze(['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']);
 function shareClock(timezone, now = new Date()) {
   const zone=cleanText(timezone,80);const fixed=/^UTC_OFFSET:([+-]?\d{1,4})$/.exec(zone);
@@ -416,13 +445,14 @@ function buildShareMessage(input, context) {
   const channel = SHARE_CHANNEL_BUDGETS[context?.channel] ? context.channel : 'generic';
   const budget = SHARE_CHANNEL_BUDGETS[channel];
   const shortUrl = buildShortShareUrl(context?.shortCode);
-  const note = cleanText(context?.senderNote, 120);
+  const note = normalizeContentShareNote(context?.senderNote).note || '';
   const planningPreference = facts.kind === 'place' || facts.kind === 'curated'
     ? formatPlanningPreference(context?.planningPreference) : '';
   const status = statusLabel(facts.status);
   const candidates = messageDetailCandidates(facts, planningPreference);
-  const detail = status || candidates[0] || '';
+  const details = status ? [status] : candidates.slice(0, 1);
   const authored = note ? `From the sender: ${note}` : '';
+  const detail = details.join(' · ');
   const deterministic = [leadFor(facts), detail ? `${detail}${/[.!?]$/u.test(detail) ? '' : '.'}` : ''].filter(Boolean).join(' ');
   let body = [authored, deterministic].filter(Boolean).join('\n');
   if (Array.from(body).length > budget.beforeUrl) {
@@ -446,9 +476,10 @@ function routeContractFor(kind) {
 
 module.exports = {
   SHARE_FACTS_VERSION, SHARE_PORTRAIT_REVISION, SHARE_ENTITY_KINDS, SHARE_STATUSES, SHARE_CHANNEL_BUDGETS,
+  CONTENT_SHARE_NOTE_MAX_GRAPHEMES, segmentGraphemes, normalizeContentShareNote,
   ROUTE_MANIFEST, cleanText, cleanHttpsUrl, cleanMoney, cleanMedia, cleanDestination,
   isPublicShareMediaUrl, selectPublicMediaIdentity,
   isShortShareCode, sanitizeReferralCode, buildShortShareUrl, buildSharePortraitUrl, contentShareRequestFromPublicUrl, validateShareFactsV1, parseShareFactsV1,
-  formatMoney, formatEstimate, formatRating, statusLabel, formatPlanningPreference, selectRecipientFacts, selectPreviewFacts,
+  formatMoney, formatEstimate, formatRating, statusLabel, shareKindLabel, formatPlanningPreference, selectRecipientFacts, selectPreviewFacts,
   buildShareMessage, routeContractFor, createContentShareSingleFlight, weekdayForShareTimezone, openStateForHours,
 };

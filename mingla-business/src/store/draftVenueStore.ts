@@ -83,6 +83,8 @@ export interface DraftVenueClaim {
   /** c4 — THE mandatory decision. null until chosen; dock blocks on it. */
   coverChoice: {
     url: string;
+    /** #1719 — stable still used for GIF/video shares; image falls back to url. */
+    posterUrl?: string | null;
     type: "image" | "video" | "gif";
     isNew: boolean;
   } | null;
@@ -154,6 +156,8 @@ export interface DraftVenueState {
   galleryUrls?: string[];
   coverChoice?: {
     url: string;
+    /** #1719 — optional only for backwards-compatible v3 draft hydration. */
+    posterUrl?: string | null;
     type: "image" | "video" | "gif";
     isNew: boolean;
   } | null;

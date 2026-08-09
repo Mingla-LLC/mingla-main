@@ -59,6 +59,9 @@ export function computeDirtyFieldsPatch(
   if (draft.coverMediaType !== original.coverMediaType) {
     patch.coverMediaType = draft.coverMediaType;
   }
+  if (draft.coverMediaPosterUrl !== original.coverMediaPosterUrl) {
+    patch.coverMediaPosterUrl = draft.coverMediaPosterUrl;
+  }
   if (draft.profilePhotoType !== original.profilePhotoType) {
     patch.profilePhotoType = draft.profilePhotoType;
   }

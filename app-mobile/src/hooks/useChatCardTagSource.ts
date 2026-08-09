@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "../services/supabase";
 import { useSavedCards } from "./useSavedCards";
-import type { CardPayload } from "../services/messagingService";
+import type { LegacyCardPayload } from "../services/messagingService";
 
 export interface ChatCardTagCandidate {
   savedCardId: string;
@@ -10,18 +10,18 @@ export interface ChatCardTagCandidate {
   category: string | null;
   categoryIcon?: string;
   image: string | null;
-  cardPayload: CardPayload;
+  cardPayload: LegacyCardPayload;
 }
 
 interface BoardSavedCardRow {
   id: string;
-  card_data: Partial<CardPayload> | null;
+  card_data: Partial<LegacyCardPayload> | null;
   saved_at?: string | null;
 }
 
 const toCandidate = (
   savedCardId: string,
-  source: Partial<CardPayload> & { name?: string; images?: string[] },
+  source: Partial<LegacyCardPayload> & { name?: string; images?: string[] },
 ): ChatCardTagCandidate => {
   const image = source.image ?? source.images?.[0] ?? null;
   const title = source.title ?? source.name ?? "Saved experience";

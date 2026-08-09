@@ -35,6 +35,7 @@ import { useVenueThemeControl } from "./useVenueThemeControl";
 
 const EMPTY_COVER: CoverPatch = {
   coverMediaUrl: null,
+  coverMediaPosterUrl: null,
   coverMediaType: null,
   coverMediaProvider: null,
   coverMediaSourceUrl: null,
@@ -76,7 +77,7 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
 
   const select = useCallback(
     (url: string): void => {
-      patch({ coverChoice: { url, type: "image", isNew: false } });
+      patch({ coverChoice: { url, posterUrl: url, type: "image", isNew: false } });
     },
     [patch],
   );
@@ -100,7 +101,12 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
           : cur;
       patch({
         galleryUrls: nextGallery,
-        coverChoice: { url: p.coverMediaUrl, type, isNew: true },
+        coverChoice: {
+          url: p.coverMediaUrl,
+          posterUrl: p.coverMediaPosterUrl,
+          type,
+          isNew: true,
+        },
       });
       setActiveSheet("none");
     },

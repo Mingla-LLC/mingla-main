@@ -28,8 +28,18 @@ import {
 import { useUpdateBrand } from "./useBrands";
 
 export type BrandCoverUploadSource =
-  | { kind: "upload"; asset: BrandCoverAssetInput }
-  | { kind: "provider"; ref: BrandCoverProviderRef };
+  | {
+      kind: "upload";
+      asset: BrandCoverAssetInput;
+      /** Required for GIFs; already-decoded JPEG/PNG first frame. */
+      posterAsset?: BrandCoverAssetInput;
+    }
+  | {
+      kind: "provider";
+      ref: BrandCoverProviderRef;
+      /** Required for GIPHY; provider-authored non-animated rendition. */
+      posterUrl?: string;
+    };
 
 export interface BrandCoverUploadInput {
   brandId: string;
@@ -42,6 +52,7 @@ export interface BrandCoverUploadInput {
 export interface BrandCoverUploadResult {
   publicUrl: string;
   mediaType: BrandCoverMediaType;
+  posterUrl: string;
 }
 
 export interface UseBrandCoverUploadResult {
@@ -75,6 +86,7 @@ export const useBrandCoverUpload = (): UseBrandCoverUploadResult => {
       try {
         let publicUrl: string;
         let mediaType: BrandCoverMediaType;
+        let posterUrl: string;
 
         if (input.source.kind === "upload") {
           const result = await uploadBrandCover(
@@ -84,10 +96,43 @@ export const useBrandCoverUpload = (): UseBrandCoverUploadResult => {
           );
           publicUrl = result.publicUrl;
           mediaType = result.mediaType;
+          if (mediaType === "gif") {
+            if (input.source.posterAsset === undefined) {
+              throw new BrandCoverError(
+                "upload_failed",
+                "Couldn't prepare this GIF for sharing. Try another GIF.",
+              );
+            }
+            const poster = await uploadBrandCover(
+              input.brandId,
+              input.source.posterAsset,
+              { previousPublicUrl: null },
+            );
+            if (poster.mediaType !== "image") {
+              throw new BrandCoverError("upload_failed", "GIF poster must be a still image.");
+            }
+            posterUrl = poster.publicUrl;
+          } else {
+            posterUrl = publicUrl;
+          }
         } else if (input.source.kind === "provider") {
           const result = coverFromProviderRef(input.source.ref);
           publicUrl = result.publicUrl;
           mediaType = result.mediaType;
+          if (mediaType === "gif") {
+            if (!input.source.posterUrl) {
+              throw new BrandCoverError(
+                "upload_failed",
+                "Couldn't prepare this GIF for sharing. Try another GIF.",
+              );
+            }
+            posterUrl = coverFromProviderRef({
+              ...input.source.ref,
+              publicUrl: input.source.posterUrl,
+            }).publicUrl;
+          } else {
+            posterUrl = publicUrl;
+          }
         } else {
           // Exhaustive guard
           const _exhaustive: never = input.source;
@@ -104,11 +149,12 @@ export const useBrandCoverUpload = (): UseBrandCoverUploadResult => {
           existingDescription: input.existingDescription,
           patch: {
             coverMediaUrl: publicUrl,
+            coverMediaPosterUrl: posterUrl,
             coverMediaType: mediaType === "image" ? "image" : "gif",
           },
         });
 
-        return { publicUrl, mediaType };
+        return { publicUrl, mediaType, posterUrl };
       } catch (err) {
         const wrapped = toBrandCoverError(err);
         setError(wrapped);

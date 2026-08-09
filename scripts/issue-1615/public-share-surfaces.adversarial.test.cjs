@@ -137,16 +137,22 @@ test("A12 D8 stays default-off and only explicit override activates Direction C"
 });
 
 test("A13 duplicate share taps share one in-flight creation and all controls disable", () => {
-  const modal = read("app-mobile/src/components/ShareModal.tsx");
+  // [TEST-MOD-APPROVED #1719] Duplicate creation is now coalesced in the
+  // canonical adapter while the provider uses a generation token to discard
+  // stale completion. The deleted modal's local promise ref no longer exists.
+  const modal = read("app-mobile/src/components/share/UnifiedShareProvider.tsx");
+  const adapter = read("app-mobile/src/services/contentShareAdapter.ts");
   // [TEST-MOD-APPROVED #1615] Stage 6 keeps one in-flight creation while re-deriving the
   // channel-specific message for every waiter so concurrent taps cannot reuse stale copy.
   // [TEST-MOD-APPROVED #1615] RETURN added an observable `reusing` state; the
   // old one-line source pin rejected the stronger equivalent behavior.
-  assert.match(modal, /if \(sharedCardPromiseRef\.current\)[\s\S]{0,220}setShareState\('reusing'\)[\s\S]{0,220}await sharedCardPromiseRef\.current/);
-  assert.match(modal, /if \(isSharing\) return/);
+  assert.match(adapter, /createContentShareSingleFlight\(\)/);
+  assert.match(adapter, /singleFlight\(key/);
+  assert.match(modal, /generation\.current === token/);
+  assert.match(modal, /if \(!prepared \|\| sending\) return/);
   // [TEST-MOD-APPROVED #1615] Controls now disable for sharing plus bounded
   // content-readiness conditions; the old exact brace pin rejected that safer superset.
-  assert.ok((modal.match(/disabled=\{isSharing/g) || []).length >= 6);
+  assert.ok((modal.match(/disabled=\{[^}]*sending/g) || []).length >= 3);
 });
 
 test("A14 business entity routes and event checkout remain mounted beside share routes", () => {

@@ -52,7 +52,7 @@ import { CardTagPopover } from "./board/CardTagPopover";
 import type { Participant } from "./board/ParticipantAvatars";
 import { groupMessages, GroupedMessage } from "../utils/messageGrouping";
 import { requestGalleryPermission } from "../utils/mediaLibraryPermission";
-import { DirectMessage, messagingService, CardPayload, MentionEntry, CardTagEntry } from "../services/messagingService";
+import { DirectMessage, messagingService, CardPayload, MentionEntry, CardTagEntry, isContentShareCardPayload } from "../services/messagingService";
 import { cardPayloadToExpandedCardData } from "../services/cardPayloadAdapter";  // ORCH-0685
 import { savedCardsService } from "../services/savedCardsService";  // ORCH-0685
 import { useSavedCards } from "../hooks/useSavedCards";
@@ -73,6 +73,7 @@ import ConsumerEventDetailScreen from "../screens/Event/ConsumerEventDetailScree
 import type { ExpandedCardData } from "../types/expandedCardTypes";  // ORCH-0685
 import type { BusinessEventCard } from "../types/mergedDiscover";
 import { useTranslation } from 'react-i18next';
+import { useRouter } from 'expo-router';
 import { HapticFeedback } from "../utils/hapticFeedback";
 import { colors as dsColors, spacing as dsSpacing, glass, ANDROID_GLASS_USES_OPAQUE_FALLBACK } from "../constants/designSystem";
 import { colors } from "../constants/colors";
@@ -249,6 +250,7 @@ export default function MessageInterface({
   onGroupSessionDeleted,
   onGroupParticipantsChange,
 }: MessageInterfaceProps) {
+  const router = useRouter();
   const { t } = useTranslation(['chat', 'common', 'social']);
   // Helper function to clean email-like names
   const cleanName = (name: string): string => {
@@ -1670,6 +1672,10 @@ export default function MessageInterface({
                     systemPayload: item.message.systemPayload,
                   }}
                   onCardBubbleTap={(payload) => {
+                    if (isContentShareCardPayload(payload)) {
+                      router.push(`/s/${payload.shareCode}` as never);
+                      return;
+                    }
                     // ORCH-0685: typed conversion replaces unsafe `any` cast (Constitution #12 fix).
                     setExpandedCardFromChat(cardPayloadToExpandedCardData(payload));
                     setShowExpandedCardFromChat(true);

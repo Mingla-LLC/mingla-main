@@ -186,6 +186,7 @@ const FACET_QUESTIONS_BY_CATEGORY: Record<
 
 const EMPTY_COVER: CoverPatch = {
   coverMediaUrl: null,
+  coverMediaPosterUrl: null,
   coverMediaType: null,
   coverMediaProvider: null,
   coverMediaSourceUrl: null,
@@ -233,6 +234,7 @@ export function VenueDeckReadinessSetup({
   const [cover, setCover] = useState<CoverPatch>({
     ...EMPTY_COVER,
     coverMediaUrl: initialCover?.coverMediaUrl ?? null,
+    coverMediaPosterUrl: initialCover?.coverMediaPosterUrl ?? null,
     coverMediaType: initialCover?.coverMediaType ?? null,
   });
   const [website, setWebsite] = useState(
@@ -310,6 +312,7 @@ export function VenueDeckReadinessSetup({
         venueId,
         placePoolId,
         coverMediaUrl: patch.coverMediaUrl,
+        coverMediaPosterUrl: patch.coverMediaPosterUrl,
         coverMediaType: patch.coverMediaType,
       }).catch((error) => {
         setMessage(

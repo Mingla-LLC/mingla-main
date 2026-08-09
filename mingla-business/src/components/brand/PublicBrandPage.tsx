@@ -386,6 +386,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         visible={shareModalVisible}
         onClose={() => setShareModalVisible(false)}
         url={canonicalUrl(brand)}
+        contentKind="brand"
         title={`${brand.displayName} on Mingla`}
         description={brand.bio?.slice(0, 200) ?? brand.tagline}
       />

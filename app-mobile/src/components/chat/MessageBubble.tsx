@@ -7,8 +7,9 @@ import { MentionChip } from './MentionChip';
 import { ReplyQuoteBlock } from './ReplyQuoteBlock';
 import { ChatCardChip } from './ChatCardChip';
 import { CollabLocationChips } from '../collab/CollabLocationChips';
-import type { CardPayload, CardTagEntry, MentionEntry } from '../../services/messagingService';
+import { isContentShareCardPayload, type CardPayload, type CardTagEntry, type LegacyCardPayload, type MentionEntry } from '../../services/messagingService';
 import type { CollabDeadEndBannerPayload } from '../../services/collabDeadEndBannerService';
+import { selectPreviewFacts, shareKindLabel, statusLabel } from '@mingla/sharing';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -387,15 +388,46 @@ export function MessageBubble({
 
           {/* ORCH-0667: shared saved-card bubble */}
           {message.type === 'card' && message.cardPayload && (() => {
+            const payload = message.cardPayload;
+            if (isContentShareCardPayload(payload)) {
+              const facts = payload.facts;
+              const mediaKind = payload.media?.kind;
+              const factLine = selectPreviewFacts(facts, 3).join(' · ');
+              const status = statusLabel(facts.status);
+              return (
+                <TouchableOpacity
+                  accessibilityRole="link"
+                  accessibilityLabel={`Open ${facts.title}`}
+                  onPress={() => onCardBubbleTap?.(payload)}
+                  activeOpacity={0.85}
+                  style={styles.contentShareCard}
+                >
+                  {payload.senderNote ? <View style={styles.contentShareNote}><Text style={styles.contentShareNoteText}>{payload.senderNote}</Text></View> : null}
+                  <View style={styles.cardBubbleImageWrap}>
+                    {payload.image ? <Image source={{ uri: payload.image }} style={styles.contentSharePoster} resizeMode="cover" /> : <View style={[styles.contentSharePoster, styles.cardBubblePlaceholder]}><Icon name="bookmark" size={24} color="#6B7280" /></View>}
+                    {mediaKind === 'gif' || mediaKind === 'video' ? <View style={styles.contentShareMediaTag}><Text style={styles.contentShareMediaTagText}>{mediaKind === 'gif' ? 'GIF' : 'Video'}</Text></View> : null}
+                  </View>
+                  <View style={styles.contentShareBody}>
+                    <Text style={styles.contentShareKind}>{shareKindLabel(facts.kind)}{status ? ` · ${status}` : ''}</Text>
+                    <Text numberOfLines={2} style={styles.contentShareTitle}>{facts.title}</Text>
+                    {factLine ? <Text numberOfLines={2} style={styles.contentShareFacts}>{factLine}</Text> : null}
+                  </View>
+                </TouchableOpacity>
+              );
+            }
             // ORCH-0908: defensive legacy-payload normalizer. The first cut of
             // the combined lock-and-schedule RPC nested the card under
             // card_payload.card_data; migration 20260630000000 flattens it +
             // backfills existing rows, but if any nested row slips through we
             // still render correctly by reading from .card_data as a fallback.
-            const raw = message.cardPayload as any;
+            const raw = payload as LegacyCardPayload & {
+              card_data?: Partial<LegacyCardPayload>;
+              event?: string;
+              scheduled_at?: string;
+            };
             const legacy = raw.card_data && typeof raw.card_data === 'object' ? raw.card_data : null;
             const cp = {
-              ...message.cardPayload,
+              ...payload,
               image: raw.image ?? legacy?.image ?? null,
               title: raw.title ?? legacy?.title ?? 'Saved experience',
               category: raw.category ?? legacy?.category ?? null,
@@ -405,13 +437,13 @@ export function MessageBubble({
               cardType: raw.cardType ?? legacy?.cardType,
               stops: raw.stops ?? legacy?.stops,
             };
-            const isIntentCard = cp.cardType === 'curated' || (Array.isArray((cp as any).stops) && (cp as any).stops.length > 0);
-            const intentStopCount = isIntentCard ? ((cp as any).stops?.length ?? 0) : 0;
-            const intentHeroImage = isIntentCard ? ((cp as any).stops?.[0]?.imageUrl ?? cp.image) : cp.image;
+            const isIntentCard = cp.cardType === 'curated' || (Array.isArray(cp.stops) && cp.stops.length > 0);
+            const intentStopCount = isIntentCard ? (cp.stops?.length ?? 0) : 0;
+            const intentHeroImage = isIntentCard ? (cp.stops?.[0]?.imageUrl ?? cp.image) : cp.image;
             const effectiveImage = isIntentCard ? intentHeroImage : cp.image;
             return (
             <TouchableOpacity
-              onPress={() => onCardBubbleTap?.(message.cardPayload!)}
+              onPress={() => onCardBubbleTap?.(payload)}
               activeOpacity={0.85}
               style={styles.cardBubbleContainer}
             >
@@ -756,6 +788,24 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
+  contentShareCard: {
+    width: SCREEN_WIDTH * 0.68,
+    maxWidth: 320,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  contentShareNote: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB' },
+  contentShareNoteText: { fontSize: 14, lineHeight: 20, color: '#111827' },
+  contentSharePoster: { width: '100%', aspectRatio: 4 / 3, backgroundColor: '#F3F4F6' },
+  contentShareMediaTag: { position:'absolute',right:8,bottom:8,borderRadius:8,paddingHorizontal:7,paddingVertical:3,backgroundColor:'#0C0E12' },
+  contentShareMediaTagText: { fontSize:11,fontWeight:'700',color:'#FFFFFF' },
+  contentShareBody: { padding: 12, gap: 4 },
+  contentShareKind: { fontSize: 12, lineHeight: 16, fontWeight: '600', color: '#9A470A' },
+  contentShareTitle: { fontSize: 16, lineHeight: 21, fontWeight: '700', color: '#111827' },
+  contentShareFacts: { fontSize: 13, lineHeight: 18, color: '#4B5563' },
   cardBubbleImage: {
     width: '100%',
     aspectRatio: 16 / 10,

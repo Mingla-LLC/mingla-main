@@ -179,6 +179,9 @@ describe("AMENDMENT 7 published cover persistence", () => {
           provider: "upload",
           sourceUrl: "file:///expected.mov",
         },
+        // [TEST-MOD-APPROVED #1719] Motion-cover writes now require the stable
+        // poster that recipient previews use when video cannot autoplay.
+        "https://cdn.example.com/expected-poster.jpg",
       ),
     ).rejects.toMatchObject({
       code: "persist_mismatch",

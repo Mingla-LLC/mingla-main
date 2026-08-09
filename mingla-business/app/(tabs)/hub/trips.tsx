@@ -422,6 +422,7 @@ export default function HubTripsRoute(): React.ReactElement {
         <Suspense fallback={null}>
           <LazyShareModal
             visible
+            contentKind="trip"
             onClose={() => setShareTrip(null)}
             url={`https://business.usemingla.com/t/${shareTrip.brandSlug}/${shareTrip.slug}`}
             title={`${shareTrip.title} on Mingla`}

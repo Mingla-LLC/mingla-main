@@ -228,12 +228,15 @@ describe("business event publish RPC adapter", () => {
       }),
     );
 
-    expect(rpcMock).toHaveBeenCalledWith("business_publish_event_draft", {
+    // [TEST-MOD-APPROVED #1719] The production client now calls the atomic
+    // poster-triplet wrapper; retaining the retired RPC name would test stale wiring.
+    expect(rpcMock).toHaveBeenCalledWith("business_publish_event_draft_v1719", {
       p_event_id: "00000000-0000-4000-8000-000000000001",
       p_draft_payload: expect.objectContaining({
         cover_media_alt: "Guests at a supper club",
         cover_media_credit: "Jane Photographer",
         cover_media_credit_url: "https://www.pexels.com/@jane",
+        cover_media_poster_url: "https://images.pexels.com/photos/1/landscape.jpeg",
         cover_media_provider: "pexels",
         cover_media_source_url: "https://www.pexels.com/photo/1/",
         title: "Visa",

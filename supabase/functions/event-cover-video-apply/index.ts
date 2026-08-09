@@ -86,7 +86,7 @@ serve(async (req) => {
     ? await requireBrandCoverManager(supabase, job.brand_id, userId)
     : await requireEventManager(supabase, job.event_id, job.brand_id, userId);
   if (allowed instanceof Response) return allowed;
-  if (job.status !== "ready" || !job.processed_url) {
+  if (job.status !== "ready" || !job.processed_url || !job.processed_poster_url) {
     return jsonResponse({
       error: "job_not_ready",
       status: mapEventCoverVideoStatus(job),
@@ -105,6 +105,7 @@ serve(async (req) => {
       .update({
         cover_media_type: "video",
         cover_media_url: job.processed_url,
+        cover_media_poster_url: job.processed_poster_url,
         updated_at: new Date().toISOString(),
       })
       .eq("id", job.brand_id)
@@ -119,6 +120,7 @@ serve(async (req) => {
       .update({
         cover_media_type: "video",
         cover_media_url: job.processed_url,
+        cover_media_poster_url: job.processed_poster_url,
         updated_at: new Date().toISOString(),
       })
       .eq("id", job.event_id)
@@ -137,5 +139,5 @@ serve(async (req) => {
     })
     .eq("id", job.id);
 
-  return jsonResponse({ ok: true, processedUrl: job.processed_url });
+  return jsonResponse({ ok: true, processedUrl: job.processed_url, posterUrl: job.processed_poster_url });
 });

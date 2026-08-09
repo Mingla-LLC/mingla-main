@@ -869,7 +869,7 @@ export const publishBusinessEventDraft = async (
   clientRevision: number | null = draft.clientRevision ?? null,
 ): Promise<PublishedBusinessEvent> => {
   const payload = draftToServerUpdate(draft, {});
-  const { data, error } = await supabase.rpc("business_publish_event_draft", {
+  const { data, error } = await supabase.rpc("business_publish_event_draft_v1719", {
     p_event_id: draft.id,
     p_draft_payload: {
       ...payload,

@@ -126,6 +126,7 @@ export interface EventCoverVideoStatus {
   canCancel: boolean;
   processedUrl: string | null;
   processedMimeType: string | null;
+  processedPosterUrl: string | null;
   processedBytes: number | null;
   processedDurationMs: number | null;
   failureCode: string | null;
@@ -995,6 +996,7 @@ const mapStatusResponse = (
     processedDurationMs:
       typeof payload.processedDurationMs === "number" ? payload.processedDurationMs : null,
     processedMimeType: payload.processedMimeType ?? null,
+    processedPosterUrl: payload.processedPosterUrl ?? null,
     processedUrl: payload.processedUrl ?? null,
     progressKind: payload.progressKind ?? "indeterminate",
     progressPercent:

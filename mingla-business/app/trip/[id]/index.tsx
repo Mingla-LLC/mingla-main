@@ -645,6 +645,7 @@ export default function TripDashboardRoute(): React.ReactElement {
           visible={shareModalVisible}
           onClose={() => setShareModalVisible(false)}
           url={`https://business.usemingla.com/t/${trip.brandSlug}/${trip.slug}`}
+          contentKind="trip"
           title={`${trip.title} on Mingla`}
           description={
             trip.description !== null && trip.description.length > 0

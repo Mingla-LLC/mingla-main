@@ -85,6 +85,8 @@ export interface ExperienceDetail {
   currency: string;
   timezone: string;
   coverMediaUrl: string | null;
+  /** #1719 — optional only so historical fixtures remain source-compatible. */
+  coverMediaPosterUrl?: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
   locationMode: "single" | "per_stop" | null;
   pricingMode: "whole" | "per_stop" | null;
@@ -138,6 +140,7 @@ interface RawEventRow {
   currency: string | null;
   timezone: string | null;
   cover_media_url: string | null;
+  cover_media_poster_url: string | null;
   cover_media_type: string | null;
   location_mode: string | null;
   pricing_mode: string | null;
@@ -252,7 +255,7 @@ export async function getExperienceDetail(
     .select(
       // #1022 — this select is EXPLICIT (not a star), so the three theme override
       // columns must be named here or the wizard cannot display what is set.
-      "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_type, location_mode, pricing_mode, experience_intent, experience_intents, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, theme_color_override, theme_font_override, theme_animation_override, brands(slug)",
+      "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_poster_url, cover_media_type, location_mode, pricing_mode, experience_intent, experience_intents, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, theme_color_override, theme_font_override, theme_animation_override, brands(slug)",
     )
     .eq("id", eventId)
     .eq("event_type", "experience")
@@ -313,6 +316,7 @@ export async function getExperienceDetail(
     currency: raw.currency ?? "USD",
     timezone: raw.timezone ?? "UTC",
     coverMediaUrl: raw.cover_media_url,
+    coverMediaPosterUrl: raw.cover_media_poster_url,
     coverMediaType: normalizeCoverType(raw.cover_media_type),
     // #1022 — read the theme back off the columns so the wizard can display it.
     themeOverrides: themeOverridesFromColumns(raw),

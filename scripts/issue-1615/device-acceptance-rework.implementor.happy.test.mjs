@@ -56,11 +56,13 @@ test('D1 authoritative place select executes against the production-shaped schem
 
 test('D2 a V1 failure has one honest exit and cannot call the legacy producer', () => {
   const adapter = read('app-mobile/src/services/contentShareAdapter.ts');
-  const modal = read('app-mobile/src/components/ShareModal.tsx');
+  // [TEST-MOD-APPROVED #1719] The visible V1 error moved into the single
+  // app-wide provider when the old share modal became an identity-only bridge.
+  const modal = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
   assert.match(adapter, /if \(!error && data\?\.shortCode && data\?\.facts\)[\s\S]*throw new Error\(error\?\.message \|\| 'share_create_failed'\)/);
   assert.doesNotMatch(adapter, /createSharedCard|legacy_shared_card|isLegacyRollbackEligible|usemingla\.com\/p\//);
-  assert.match(modal, /setShareState\('error'\)/);
-  assert.match(modal, /Check your connection and retry/);
+  assert.match(modal, /setPrepError\(true\)/);
+  assert.match(modal, /Couldn't prepare this share[\s\S]*Retry share/);
 });
 
 const walk = (node, visit) => {

@@ -16,6 +16,17 @@ function isExactPublicIdentity(kind: string, identity: Record<string, unknown>):
   return expected.every((key) => clean(identity[key], 256).length > 0 && clean(identity[key], 256) === identity[key]);
 }
 
+function planningPreference(value: unknown): string | null {
+  if (typeof value === "string") return clean(value, 80) || null;
+  const row = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown> : {};
+  const day = clean(row.dayOfWeek, 24).toLowerCase();
+  const time = clean(row.timeOfDay, 24).toLowerCase();
+  const timeframe = clean(row.planningTimeframe, 40).toLowerCase();
+  const text = `${day === "weekend" ? "one " : ""}${[day, time, timeframe].filter(Boolean).join(" ")}`;
+  return clean(text, 80) || null;
+}
+
 const SHARE_KINDS = ["place", "curated", "event", "rsvp_event", "trip", "experience", "venue", "brand"] as const;
 const SHARE_STATUSES = new Set(["sold_out", "ended", "cancelled", "rsvp_closed", "date_tbd", "dates_tbd"]);
 const WEEKDAYS = new Set(["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]);
@@ -183,6 +194,16 @@ export async function createContentShareV1(
     p_destination_manifest: mapped.destinationManifest,
   });
   if (error || !created?.shortCode) throw error || new Error("share_create_failed");
+  const rawMessageContext = raw.messageContext && typeof raw.messageContext === "object" && !Array.isArray(raw.messageContext)
+    ? raw.messageContext as Record<string, unknown> : {};
+  const { data: message, error: messageError } = await db.rpc("resolve_content_share_message", {
+    p_code: created.shortCode,
+    p_version: created.version,
+    p_planning_preference: planningPreference(rawMessageContext.planningPreference),
+  });
+  if (messageError || typeof message !== "string" || message.length === 0) {
+    throw messageError || new Error("share_message_unavailable");
+  }
   const envelope=validatePublicContentShareEnvelope(publicEnvelope(created.shortCode,created.version,mapped));
   if(!envelope) return { status:503, body:{ error:"unavailable" } };
   return {
@@ -190,6 +211,7 @@ export async function createContentShareV1(
     body: {
       shortCode: created.shortCode, version: created.version,
       versionCreated: created.versionCreated,
+      message,
       facts: envelope.facts, media: envelope.media,
       destination: envelope.destination, publicDetails: envelope.publicDetails,
     },

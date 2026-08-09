@@ -15,6 +15,7 @@ export interface Tier1PlaceDraft {
   countryCode: string | null;
   venueCategory: VenueCategory;
   coverMediaUrl: string | null;
+  coverMediaPosterUrl: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
   tagline: string;
   description: string;
@@ -108,6 +109,7 @@ export interface BrandPlaceAuthoringContext {
   } | null;
   confirmed_ai_outputs: Record<string, unknown> | null;
   cover_media_url: string | null;
+  cover_media_poster_url: string | null;
   cover_media_type: "image" | "video" | "gif" | null;
   website: string | null;
   // META-ORCH-1009 Sub-E: required venue photo gallery (5–20, hero excluded).
@@ -486,6 +488,7 @@ export async function syncHeroMedia(input: {
   venueId: string;
   placePoolId: string;
   coverMediaUrl: string | null;
+  coverMediaPosterUrl: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
 }): Promise<void> {
   const { data, error } = await supabase.functions.invoke(
@@ -497,6 +500,7 @@ export async function syncHeroMedia(input: {
         venue_id: input.venueId,
         place_pool_id: input.placePoolId,
         cover_media_url: input.coverMediaUrl,
+        cover_media_poster_url: input.coverMediaPosterUrl,
         cover_media_type: input.coverMediaType,
       },
     },

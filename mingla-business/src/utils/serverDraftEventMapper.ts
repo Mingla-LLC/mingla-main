@@ -36,6 +36,7 @@ export interface ServerDraftEventRow {
   location_text: string | null;
   online_url: string | null;
   cover_media_url: string | null;
+  cover_media_poster_url?: string | null;
   cover_media_type: EventCoverMediaType | null;
   cover_media_provider?: EventCoverMediaProvider | null;
   cover_media_source_url?: string | null;
@@ -87,6 +88,7 @@ export interface ServerDraftEventInsert {
   location_text: string | null;
   online_url: string | null;
   cover_media_url: string | null;
+  cover_media_poster_url: string | null;
   cover_media_type: EventCoverMediaType | null;
   cover_media_provider: EventCoverMediaProvider | null;
   cover_media_source_url: string | null;
@@ -120,6 +122,7 @@ export interface ServerDraftEventUpdate {
   location_text: string | null;
   online_url: string | null;
   cover_media_url: string | null;
+  cover_media_poster_url: string | null;
   cover_media_type: EventCoverMediaType | null;
   cover_media_provider: EventCoverMediaProvider | null;
   cover_media_source_url: string | null;
@@ -436,6 +439,7 @@ export interface RsvpUpdatePayload {
   location_text: string | null;
   online_url: string | null;
   cover_media_url: string | null;
+  cover_media_poster_url: string | null;
   cover_media_type: EventCoverMediaType | null;
   requestedVisibility: DraftEventVisibility;
   timezone: string;
@@ -489,6 +493,9 @@ export const buildRsvpUpdatePayload = (
   location_text: locationTextForDraft(draft),
   online_url: draft.onlineUrl,
   cover_media_url: draft.coverMediaUrl,
+  cover_media_poster_url:
+    draft.coverMediaPosterUrl ??
+    (draft.coverMediaType === "image" ? draft.coverMediaUrl : null),
   cover_media_type: draft.coverMediaUrl === null ? null : draft.coverMediaType,
   requestedVisibility: draft.visibility,
   timezone: draft.timezone,
@@ -543,6 +550,9 @@ export const buildRsvpUpdatePayloadDiff = (
     location_text: locationTextForDraft(edited),
     online_url: edited.onlineUrl,
     cover_media_url: edited.coverMediaUrl,
+    cover_media_poster_url:
+      edited.coverMediaPosterUrl ??
+      (edited.coverMediaType === "image" ? edited.coverMediaUrl : null),
     cover_media_type:
       edited.coverMediaUrl === null ? null : edited.coverMediaType,
     requestedVisibility: edited.visibility,
@@ -629,6 +639,9 @@ export const draftToServerInsert = (
   location_text: locationTextForDraft(draft),
   online_url: draft.onlineUrl,
   cover_media_url: draft.coverMediaUrl,
+  cover_media_poster_url:
+    draft.coverMediaPosterUrl ??
+    (draft.coverMediaType === "image" ? draft.coverMediaUrl : null),
   cover_media_type:
     draft.coverMediaUrl === null ? null : draft.coverMediaType,
   cover_media_provider:
@@ -673,6 +686,9 @@ export const draftToServerUpdate = (
   location_text: locationTextForDraft(draft),
   online_url: draft.onlineUrl,
   cover_media_url: draft.coverMediaUrl,
+  cover_media_poster_url:
+    draft.coverMediaPosterUrl ??
+    (draft.coverMediaType === "image" ? draft.coverMediaUrl : null),
   cover_media_type:
     draft.coverMediaUrl === null ? null : draft.coverMediaType,
   cover_media_provider:
@@ -810,6 +826,9 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     ),
     coverHue: asNumber(businessDraft.coverHue ?? theme.coverHue, 25),
     coverMediaUrl: row.cover_media_url,
+    coverMediaPosterUrl:
+      row.cover_media_poster_url ??
+      (row.cover_media_type === "image" ? row.cover_media_url : null),
     coverMediaType:
       row.cover_media_url === null ? null : asCoverMediaType(row.cover_media_type),
     coverMediaProvider:

@@ -89,6 +89,7 @@ export type EditableLiveEventFields = Pick<
   | "hideAddressUntilTicket"
   | "coverHue"
   | "coverMediaUrl"
+  | "coverMediaPosterUrl"
   | "coverMediaType"
   | "coverMediaProvider"
   | "coverMediaSourceUrl"
@@ -283,6 +284,7 @@ export interface LiveEvent {
   hideAddressUntilTicket: boolean;
   coverHue: number;
   coverMediaUrl: string | null;
+  coverMediaPosterUrl?: string | null;
   coverMediaType: EventCoverMediaType | null;
   coverMediaProvider?: EventCoverMediaProvider | null;
   coverMediaSourceUrl?: string | null;
@@ -454,6 +456,7 @@ const upgradeLiveEventToV3 = (e: V2LiveEvent): LiveEvent => ({
   ...e,
   serverEventId: null,
   coverMediaUrl: null,
+  coverMediaPosterUrl: null,
   coverMediaType: null,
   coverMediaProvider: null,
   coverMediaSourceUrl: null,
@@ -464,6 +467,7 @@ const upgradeLiveEventToV3 = (e: V2LiveEvent): LiveEvent => ({
 
 const withProviderMetadataDefaults = (event: LiveEvent): LiveEvent => ({
   ...event,
+  coverMediaPosterUrl: event.coverMediaPosterUrl ?? null,
   coverMediaProvider: event.coverMediaProvider ?? null,
   coverMediaSourceUrl: event.coverMediaSourceUrl ?? null,
   coverMediaCredit: event.coverMediaCredit ?? null,

@@ -366,6 +366,7 @@ export default function VenueManagementPage(): React.ReactElement {
           visible={shareVisible}
           onClose={() => setShareVisible(false)}
           url={venuePublicUrl({ brandSlug, venueSlug })}
+          contentKind="venue"
           title={venue.name}
         />
       ) : null}

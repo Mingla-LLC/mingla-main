@@ -39,34 +39,33 @@ test('C2 both adapters expose nullable S4 only when media exists', () => {
 });
 
 test('C3 consumer preview renders only the canonical prepared message lifecycle', () => {
-  const source = read('app-mobile/src/components/ShareModal.tsx');
-  for (const state of ['validating', 'creating', 'reusing', 'ready', 'opening', 'returned']) {
-    assert.ok(source.includes(`'${state}'`), state);
-  }
-  assert.match(source, /<Text style=\{styles\.messageText\}>\{sharedCard\.message\}<\/Text>/);
+  // [TEST-MOD-APPROVED #1719] The old test pinned the removed provider-grid
+  // modal and its S4 preview. The app-wide share sheet now opens first, then
+  // loads its compact summary and independently prepares external sharing.
+  const source = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
+  assert.match(source, /setVisible\(true\)[\s\S]*loadShare\(nextInput, token\)[\s\S]*loadRecipients\(token\)/);
+  assert.match(source, /prepared\?\.media\?\.posterUrl/);
   assert.doesNotMatch(source, /generatePersonalizedMessage|personalizedMessage|star rating|Let me know if you're interested/);
   // [TEST-MOD-APPROVED #1615] Physical Samsung reason: the response-classified
   // downgrade minted a fresh long `/p` URL after V1 failed, producing false
   // success with no WhatsApp cover. New creation must remain V1-only.
   assert.doesNotMatch(source, /ENABLE_LEGACY_PRIVATE_SHARE_FALLBACK|EXPO_PUBLIC_ENABLE_LEGACY_SHARE_FALLBACK/);
   assert.doesNotMatch(read('app-mobile/src/services/contentShareAdapter.ts'), /isLegacyRollbackEligible|createSharedCard|legacy_shared_card/);
-  assert.match(source, /accessibilityState=\{\{ disabled: true \}\}[\s\S]{0,600}Coming soon/);
-  assert.match(source, /sharedCard\?\.s4Url[\s\S]*aspectRatio:\s*4\s*\/\s*5/);
-  assert.match(source, /No image preview is available/);
-  assert.doesNotMatch(source, /shareAsync\(|s4Url[\s\S]{0,160}sharePreparedContent/);
-  assert.match(source, /shareActionPromiseRef[\s\S]*runExclusiveShareAction/);
+  assert.match(source, /Retry share/);
+  assert.doesNotMatch(source, /WhatsApp|Instagram|Twitter|s4Url/);
+  assert.match(source, /sharePreparedContent\(prepared\)/);
 });
 
 test('C4 receiver consumes exact sanitized place and curated discriminants', () => {
   // [TEST-MOD-APPROVED #1615] The prior assertion required `placeId` inside
   // public curated details, contradicting the binding no-private-ID response.
-  const service = read('app-mobile/src/services/contentShareAdapter.ts');
+  const service = read('packages/sharing/index.d.ts');
   const route = read('app-mobile/app/s/[code].tsx');
   for (const field of ['directionsUrl', 'utcOffsetMinutes', 'stops', 'imageUrl']) {
     assert.ok(service.includes(field), field);
   }
   assert.doesNotMatch(service, /stops:\s*Array<\{[^}]*placeId/s);
-  assert.match(service, /publicDetails:\s*data\.publicDetails\s*\?\?\s*null/);
+  assert.match(read('app-mobile/src/services/contentShareAdapter.ts'), /publicDetails:\s*data\.publicDetails\s*\?\?\s*null/);
   assert.match(route, /details\?\.kind === 'place'/);
   assert.match(route, /details\?\.kind === 'curated'/);
   assert.match(route, /details\.stops\.map/);
@@ -113,7 +112,8 @@ test('C6 analytics use only observed success vocabulary plus typed failure', () 
   // [TEST-MOD-APPROVED #1615] The prior assertion blessed invented
   // `share_link_destination` success after a promise resolution.
   const sources = [
-    read('app-mobile/src/components/ShareModal.tsx'),
+    read('app-mobile/src/components/share/UnifiedShareProvider.tsx'),
+    read('app-mobile/src/services/contentShareAdapter.ts'),
     read('app-mobile/app/s/[code].tsx'),
     read('mingla-business/src/components/ui/ShareModal.tsx'),
   ].join('\n');
@@ -168,11 +168,14 @@ test('C8 native receiver is 4:5 and validates every external action', () => {
 });
 
 test('C9 Business retains the full binding state machine and exact portrait preview', () => {
+  // [TEST-MOD-APPROVED #1719] The old test required the superseded S4/provider
+  // preview state machine. Business now has a compact summary plus native
+  // Share/Copy and web Share/Copy/QR with explicit loading and retry states.
   const source = read('mingla-business/src/components/ui/ShareModal.tsx');
-  for (const state of ['idle', 'validating', 'creating', 'reusing', 'ready', 'opening', 'returned', 'error']) assert.ok(source.includes(`"${state}"`), state);
-  assert.match(source, /preparedValueRef[\s\S]*preparedPromiseRef[\s\S]*actionPromiseRef/);
-  assert.match(source, /preparedPreview\?\.s4Url[\s\S]*aspectRatio:\s*4\s*\/\s*5/);
-  assert.match(source, /No image preview is available/);
+  for (const state of ['prepared', 'failed', 'busy', 'copied', 'showQr', 'posterFailed']) assert.ok(source.includes(state), state);
+  assert.match(source, /prepared\?\.media\?\.posterUrl/);
+  assert.match(source, /QRCode value=\{prepared\.url\}/);
+  assert.match(source, /Couldn't prepare this share/);
   assert.doesNotMatch(source, /shareAsync\(/);
 });
 
@@ -201,7 +204,9 @@ test('C12 every v1 failure, including retryable and transport failures, stays vi
   const adapter = read('app-mobile/src/services/contentShareAdapter.ts');
   assert.doesNotMatch(adapter, /response\?\.status|FunctionsFetchError|FunctionsRelayError|RETRYABLE_STATUS/);
   assert.match(adapter, /throw new Error\(error\?\.message \|\| 'share_create_failed'\)/);
-  assert.match(read('app-mobile/src/components/ShareModal.tsx'), /setShareState\('error'\)[\s\S]*Retry preview/);
+  // [TEST-MOD-APPROVED #1719] The retry owner moved from the deleted legacy
+  // modal to the single app-wide provider; the visible failure guarantee stays.
+  assert.match(read('app-mobile/src/components/share/UnifiedShareProvider.tsx'), /setPrepError\(true\)[\s\S]*Retry share/);
 });
 
 test('C13 opaque installed-direct state activates once after identity and malformed state fails closed', async () => {
