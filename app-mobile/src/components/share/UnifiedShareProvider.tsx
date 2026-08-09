@@ -37,6 +37,7 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
   const styles = useMemo(() => createStyles(dark), [dark]);
   const generation = useRef(0);
   const posterStartedAt = useRef(0);
+  const actionInFlight = useRef(false);
   const [visible, setVisible] = useState(false);
   const [input, setInput] = useState<OpenContentShareInput | null>(null);
   const [prepared, setPrepared] = useState<PreparedContentShare | null>(null);
@@ -179,7 +180,9 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
   }, [deliveryState, sending]);
 
   const nativeShare = useCallback(async () => {
-    if (!prepared || sending || (prepared.media !== null && readiness !== 'ready')) return;
+    if (!prepared || sending) return;
+    if (actionInFlight.current || (prepared.media !== null && readiness !== 'ready')) return;
+    actionInFlight.current = true;
     setExternalError(null); setSending(true);
     try {
       await sharePreparedContent(prepared);
@@ -189,7 +192,7 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
       setExternalError('Couldn’t open sharing. Please try again.');
       trackContentShareEvent('share_failure', { kind: prepared.kind, failure_type: 'native_share' });
     }
-    finally { setSending(false); }
+    finally { actionInFlight.current = false; setSending(false); }
   }, [prepared, readiness, sending]);
 
   const copyLink = useCallback(async () => {
@@ -205,12 +208,14 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
 
   const send = useCallback(async () => {
     if (!prepared || sending || selected.size === 0 || isOffline) return;
+    if (actionInFlight.current) return;
     const targets = recipients.filter((recipient) => selected.has(recipient.key));
     if (targets.length === 0) {
       setSelected(new Set());
       AccessibilityInfo.announceForAccessibility('Those chats are no longer available. Choose someone else.');
       return;
     }
+    actionInFlight.current = true;
     setSending(true); setOutcome({ kind: 'idle' });
     try {
       const result = await sendContentShareToRecipients({
@@ -236,7 +241,7 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
       }
     } catch {
       setOutcome({ kind: 'failed', failed: selected.size });
-    } finally { setSending(false); }
+    } finally { actionInFlight.current = false; setSending(false); }
   }, [isOffline, note, prepared, recipients, selected, sending]);
 
   const finishSuccess = useCallback(() => {
