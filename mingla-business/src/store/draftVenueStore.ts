@@ -179,6 +179,19 @@ export interface DraftVenueState {
    * persist-version bump is needed and no operator loses an in-progress draft.
    */
   themeOverrides?: ThemeInput | null;
+  /**
+   * Issue #1648 — place_pool ids this brand has already waved away on the s0
+   * address match ("No, different business" / "Skip"). Held in the DRAFT, not
+   * in component state, because s0 unmounts the moment they press Continue:
+   * a ref would forget the answer and re-prompt on every visit back to the
+   * address step.
+   *
+   * Optional at the type level so a persisted v3 blob written before this
+   * change rehydrates through `pickDraft`'s `?? []` — additive, exactly like
+   * #1363's `coordinatePrecision`, so no persist-version bump is needed and no
+   * operator loses an in-progress draft.
+   */
+  dismissedPoolMatchIds?: string[];
   /** ORCH-1263 — non-null ⇔ claim mode (10-step wizard variant). */
   claim: DraftVenueClaim | null;
   /**
@@ -218,6 +231,7 @@ const initial: DraftVenueState = {
   submissionVenueId: null,
   // issue #1564 — NOT SET is the default path: inherit the brand.
   themeOverrides: null,
+  dismissedPoolMatchIds: [],
   claim: null,
   step: 0,
 };
@@ -261,6 +275,11 @@ const pickDraft = (s: DraftVenueState): DraftVenueState => ({
   // absent), and carries the venue's theme through the per-brand stash/restore
   // so switching brands mid-draft cannot silently drop a chosen colour.
   themeOverrides: s.themeOverrides ?? null,
+  // Issue #1648 — `?? []` tolerates a persisted v3 blob written before the
+  // field existed, and carries the s0 dismissals through the per-brand
+  // stash/restore so switching brands mid-draft cannot resurrect a card the
+  // operator already answered.
+  dismissedPoolMatchIds: s.dismissedPoolMatchIds ?? [],
   // ORCH-1263 — the claim block must survive activateBrand stash/restore.
   claim: s.claim,
   step: s.step,

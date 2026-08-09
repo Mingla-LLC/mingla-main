@@ -19,6 +19,10 @@ import {
 } from "../../utils/resolveApproxLocation";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
+// Issue #1648 — the recognition moment for a PICKED address. Kept in its own
+// component on purpose: accepting a match writes `googlePlaceId`, which the
+// ORCH-1079 guard forbids any `patch({...})` in THIS file from doing.
+import { VenueAddressMatchPrompt } from "./VenueAddressMatchPrompt";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
 import type { LocationSelectionState } from "@mingla/location-input";
 
@@ -190,6 +194,7 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
         error={error}
         placeholder="Search address"
       />
+      <VenueAddressMatchPrompt />
     </View>
   );
 };

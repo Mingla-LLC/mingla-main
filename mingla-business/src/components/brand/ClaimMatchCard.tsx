@@ -76,6 +76,13 @@ export interface ClaimMatchCardProps {
   onSkip: () => void;
   /** Blocked variants — routes to /support/inbox (the live-chat surface). */
   onMessageSupport: () => void;
+  /**
+   * Issue #1648 — the line above the place. Defaults to the name-gate wording;
+   * the s0 address match overrides it because the brand got here by picking an
+   * ADDRESS, not by searching a name, and the card should say which of their
+   * own actions we recognised.
+   */
+  eyebrow?: string;
   testID?: string;
 }
 
@@ -137,6 +144,7 @@ export const ClaimMatchCard: React.FC<ClaimMatchCardProps> = ({
   onNo,
   onSkip,
   onMessageSupport,
+  eyebrow = "We found your place in our directory",
   testID = "claim-match-card",
 }) => {
   const addressLine = [match.address, match.city].filter(Boolean).join(", ");
@@ -217,9 +225,7 @@ export const ClaimMatchCard: React.FC<ClaimMatchCardProps> = ({
         accessibilityLabel={`${match.name}${addressLine.length > 0 ? `, ${addressLine}` : ""}.${a11yFacts} Is this your place?`}
         style={loading ? styles.dimmed : undefined}
       >
-        <Text style={styles.eyebrow}>
-          We found your place in our directory
-        </Text>
+        <Text style={styles.eyebrow}>{eyebrow}</Text>
         <View style={styles.row}>
           <PhotoStrip match={match} />
           <View style={styles.textCol}>
