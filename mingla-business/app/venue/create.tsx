@@ -9,9 +9,18 @@
  * (I-PROPOSED-1263-CLAIMED-STATE-FRONT-LOADED); a persisted claim draft
  * renders the resume card (DESIGN §8.4); claim submit success shows the
  * §8.1 pending copy.
+ *
+ * Issue #1685 [venue-draft-multi] — TWO DOORS, ONE FILE:
+ *   - `/venue/create` (no `draft` param) is the CREATE door. It mints a fresh
+ *     `dv_*` draft and opens the name gate, ALWAYS. It never reads an existing
+ *     draft, so "+" -> "Create venue listing" can no longer drop the operator
+ *     into the middle of the wizard on the Address step.
+ *   - `/venue/create?draft=<id>` is the ONLY resume door, reached from the Home
+ *     "Finish adding <venue name>" to-do row.
+ * I-PROPOSED-1685-CREATE-DOOR-NEVER-RESUMES.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper (KAS native /
 // passthrough web). KeyboardAvoidingView removed. Per SPEC §7.F.
@@ -43,10 +52,6 @@ import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useFeatureFlag } from "../../src/hooks/useFeatureFlag";
 import { useDraftVenueStore } from "../../src/store/draftVenueStore";
 import {
-  venueDraftBrandToActivate,
-  venueDraftBrandToReset,
-} from "../../src/components/venue/venueCreateBrandLifecycle";
-import {
   fetchPlaceAdoptionDetail,
   PlaceNotAvailableError,
 } from "../../src/services/poolSearchService";
@@ -60,6 +65,13 @@ import type { VenueCategory } from "../../src/types/brand";
 
 type Phase = "gate" | "category" | "wizard" | "success";
 
+/**
+ * Issue #1685 — called ONLY on the RESUME branch, and only after
+ * `activateDraft(...)` has returned true. That is the fix for the second latent
+ * defect: the phase can no longer be computed at mount from a possibly
+ * unhydrated store, and it is no longer gated behind a brand-activation effect
+ * that no-ops when the brand already matches.
+ */
 function resolveInitialPhase(fromPoolParam: boolean): Phase {
   const st = useDraftVenueStore.getState();
   // ?pool=1 continues to mean wizard-resume for pool-linked drafts (claim or
@@ -86,15 +98,20 @@ function resolveInitialPhase(fromPoolParam: boolean): Phase {
 
 export default function VenueCreateRoute(): React.ReactElement {
   const router = useRouter();
-  const params = useLocalSearchParams<{ pool?: string }>();
+  const params = useLocalSearchParams<{ pool?: string; draft?: string }>();
   const fromPoolParam = params.pool === "1";
+  // Issue #1685 — the resume door's only input. Absent/empty = the create door.
+  const requestedDraftId =
+    typeof params.draft === "string" && params.draft.length > 0
+      ? params.draft
+      : null;
   const insets = useSafeAreaInsets();
   const { user, isAuthReady } = useAuth();
   // META-ORCH-1255 — the wizard drafts + creates under the CURRENT brand.
   const currentBrand = useCurrentBrand();
-  const activateBrand = useDraftVenueStore((s) => s.activateBrand);
-  const activeDraftBrandId = useDraftVenueStore((s) => s.activeBrandId);
-  const reset = useDraftVenueStore((s) => s.reset);
+  const createDraft = useDraftVenueStore((s) => s.createDraft);
+  const activateDraft = useDraftVenueStore((s) => s.activateDraft);
+  const deleteActiveDraft = useDraftVenueStore((s) => s.deleteActiveDraft);
   const patch = useDraftVenueStore((s) => s.patch);
   const workingName = useDraftVenueStore((s) => s.workingName);
   const placePoolId = useDraftVenueStore((s) => s.placePoolId);
@@ -105,9 +122,13 @@ export default function VenueCreateRoute(): React.ReactElement {
   const stayAuthoringFlag = useFeatureFlag("STAY_VENUE_AUTHORING");
   const stayAuthoringEnabled = stayAuthoringFlag.data === true;
 
-  const [phase, setPhase] = useState<Phase>(() =>
-    resolveInitialPhase(fromPoolParam),
-  );
+  // Issue #1685 — NO mount-time initialiser. The phase is decided by the entry
+  // effect below, against hydrated, brand-correct state.
+  const [phase, setPhase] = useState<Phase>("gate");
+  // Issue #1685 — nothing renders until the entry effect has decided which door
+  // this is. Without this the gate would paint one frame with the PREVIOUS
+  // draft's name still in the input before the fresh draft blanks it.
+  const [entryResolved, setEntryResolved] = useState<boolean>(false);
   const [poolNote, setPoolNote] = useState<string | null>(null);
   const [coverWarning, setCoverWarning] = useState<string | null>(null);
   // META-ORCH-1255 — the created venue id, so Done lands on ITS management page.
@@ -141,57 +162,87 @@ export default function VenueCreateRoute(): React.ReactElement {
     return unsub;
   }, [hydrated]);
 
-  // #1461 — a current brand can resolve after hydration. Never mark resume as
-  // complete while it is null: activate the arriving (or newly switched) brand
-  // first, then derive the phase from that brand's now-active draft.
+  // Issue #1685 — THE ENTRY DECISION, made exactly once per mount, and only
+  // against hydrated state with a resolved brand (#1461: a null brand is a
+  // loading state, never a completed entry).
+  //
+  // WHY THE CREATE BRANCH MINTS UNCONDITIONALLY: "+" -> "Create venue listing"
+  // is a CREATE button, not a resume button. It must open "What's your venue
+  // called?" with an empty field EVERY time, no matter what is already stored.
+  // Resuming is a deliberate act that happens only through the Home
+  // "Finish adding <venue>" row, i.e. only through `?draft=<id>`.
+  // `createDraft` parks the outgoing draft under its own id first, so nothing
+  // is lost by pressing "+" (META-ORCH-1009 Sub-E).
+  //
+  // `setPhase("gate")` on the create branch is UNCONDITIONAL and MUST NOT be
+  // replaced by `resolveInitialPhase(...)`. A blank draft happens to resolve to
+  // "gate" today; that is a coincidence a future field could break, and the
+  // unconditional form is the contract.
+  // See I-PROPOSED-1685-CREATE-DOOR-NEVER-RESUMES.
+  const entryResolvedRef = useRef<boolean>(false);
+  const resolvedBrandRef = useRef<string | null>(null);
   useEffect(() => {
-    const brandId = venueDraftBrandToActivate({
-      hydrated,
-      currentBrandId: currentBrand?.id ?? null,
-      activeDraftBrandId,
-    });
-    if (brandId === null) return;
-    activateBrand(brandId);
-    setPhase(resolveInitialPhase(fromPoolParam));
+    if (entryResolvedRef.current) return;
+    if (!hydrated || !isAuthReady || user === null || currentBrand === null) {
+      return;
+    }
+    entryResolvedRef.current = true;
+    resolvedBrandRef.current = currentBrand.id;
+    if (
+      requestedDraftId !== null &&
+      activateDraft(requestedDraftId, currentBrand.id)
+    ) {
+      // RESUME door — the phase is derived from the now-active, hydrated draft.
+      setPhase(resolveInitialPhase(fromPoolParam));
+      setEntryResolved(true);
+      return;
+    }
+    // CREATE door. An unknown or cross-brand `?draft=` id lands here too: a
+    // stale link behaves exactly like pressing "+", never a blank screen and
+    // never a silent wrong-draft resume (Constitution #3).
+    const mintedId = createDraft(currentBrand.id);
+    setPhase("gate");
+    setEntryResolved(true);
+    // `setParams` (not replace/push) — same-route param update, no history
+    // entry. On web it puts the id in the address bar so a refresh resumes this
+    // draft instead of minting a second one.
+    router.setParams({ draft: mintedId });
   }, [
-    activateBrand,
-    activeDraftBrandId,
-    currentBrand?.id,
+    activateDraft,
+    createDraft,
+    currentBrand,
     fromPoolParam,
     hydrated,
+    isAuthReady,
+    requestedDraftId,
+    router,
+    user,
   ]);
+
+  // Issue #1685 — in-route brand switch. The outgoing brand's draft is parked
+  // under its own id by `createDraft`, so nothing is lost; the incoming brand
+  // gets a FRESH create, consistent with the create-door rule above.
+  //
+  // The guard is a resolution ref rather than the subscribed `activeBrandId`
+  // because both effects run in the same commit: the subscribed value is still
+  // the pre-entry one when this body executes, which would double-mint on the
+  // very first mount of a device holding another brand's draft.
+  useEffect(() => {
+    const resolvedBrandId = resolvedBrandRef.current;
+    if (!hydrated || currentBrand === null) return;
+    if (resolvedBrandId === null || resolvedBrandId === currentBrand.id) return;
+    resolvedBrandRef.current = currentBrand.id;
+    const mintedId = createDraft(currentBrand.id);
+    setPhase("gate");
+    setPoolNote(null);
+    router.setParams({ draft: mintedId });
+  }, [createDraft, currentBrand, hydrated, router]);
 
   const {
     matches: poolMatches,
     loading: poolSearchLoading,
     error: poolSearchError,
   } = usePoolMatchSearch(phase === "gate" ? workingName : "");
-
-  useEffect(() => {
-    const brandId = venueDraftBrandToReset({
-      hydrated,
-      currentBrandId: currentBrand?.id ?? null,
-      activeDraftBrandId,
-      hasPoolContext: fromPoolParam || placePoolId !== null,
-      workingName,
-      submissionCompleted: phase === "success",
-    });
-    if (brandId === null) return;
-    // Scoped reset only. The no-argument reset remains reserved for logout;
-    // routine venue entry must never erase another brand's parked draft.
-    reset(brandId);
-    setPhase("gate");
-    setPoolNote(null);
-  }, [
-    activeDraftBrandId,
-    currentBrand?.id,
-    fromPoolParam,
-    hydrated,
-    placePoolId,
-    phase,
-    reset,
-    workingName,
-  ]);
 
   useEffect(() => {
     if (!isAuthReady) return;
@@ -278,17 +329,25 @@ export default function VenueCreateRoute(): React.ReactElement {
   }, [venueCategory]);
 
   const handleStartOver = useCallback((): void => {
+    // Issue #1685 — throw away THIS claim draft only. `reset(currentBrand.id)`
+    // would destroy every other half-built venue the brand holds, which is the
+    // exact data loss this work item exists to prevent. The no-argument reset
+    // stays reserved for logout.
+    deleteActiveDraft();
+    // Starting over immediately mints the replacement draft, so the gate the
+    // operator lands on is a real, addressable, parkable draft. Without this the
+    // top-level fields would have no id: anything typed next could not be parked
+    // and would never surface as a "Finish adding …" row (Sub-E regression).
     if (currentBrand !== null) {
-      reset(currentBrand.id);
+      const mintedId = createDraft(currentBrand.id);
+      router.setParams({ draft: mintedId });
     }
-    // A missing current brand is a loading/no-brand state. Never turn this
-    // route-local action into the global draft wipe reserved for logout.
     setConfirmStartOver(false);
     setPhase("gate");
     setPoolNote(null);
-  }, [currentBrand, reset]);
+  }, [createDraft, currentBrand, deleteActiveDraft, router]);
 
-  if (!isAuthReady || user === null || !hydrated) {
+  if (!isAuthReady || user === null || !hydrated || !entryResolved) {
     return <View style={[styles.root, { paddingTop: insets.top }]} />;
   }
 

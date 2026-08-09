@@ -35,7 +35,29 @@
  *     read it downstream of the wizard).
  * Persist name bumped v2 → v3 (house precedent v1→v2); the v2 blob is
  * abandoned (prod-safe: pre-submit drafts only).
+ *
+ * Issue #1685 [venue-draft-multi] — DRAFT-ID-KEYED LIST (persist `version: 4`):
+ *   - `drafts` was `Record<brandId, DraftVenueState>` — ONE parking slot per
+ *     brand — which made `/venue/create` simultaneously the create door and the
+ *     resume door, so pressing "+" silently resumed an abandoned draft in the
+ *     middle of the wizard. It is now `DraftVenueEntry[]`, keyed by a client
+ *     `dv_<ts36><rand6>` id, exactly like `draftEventStore`'s `DraftEvent[]`.
+ *   - `activeDraftId` names which draft the top-level (active) fields hold.
+ *   - `createDraft(brandId)` ALWAYS mints; it never reads an existing draft.
+ *     `activateDraft(id, brandId)` is the ONLY resume path and refuses a
+ *     cross-brand id (META-ORCH-1255 isolation).
+ *   - `deleteActiveDraft()` replaces `reset(brandId)` on the submit path: under
+ *     multi-draft, `reset(brandId)` destroys the brand's OTHER half-built venues.
+ *   - The HOISTED-ACTIVE-DRAFT model is unchanged: the top-level fields stay the
+ *     working draft and `drafts` holds only the PARKED ones, which is what keeps
+ *     all 10 create steps and 11 claim steps byte-identical
+ *     (`useDraftVenueStore((s) => s.field)` is the ABI this design preserves).
+ *   - `DraftVenueState` itself is NOT modified — not one field.
+ *   Invariants: I-PROPOSED-1685-CREATE-DOOR-NEVER-RESUMES,
+ *   I-PROPOSED-1685-VENUE-DRAFTS-ARE-ID-KEYED-AND-BRAND-SCOPED.
  */
+
+import { useMemo } from "react";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
@@ -44,6 +66,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import type { ThemeInput } from "@mingla/offering-rendering";
 
 import type { BrandHourEntry, VenueCategory } from "../types/brand";
+import { generateVenueDraftId } from "../utils/draftVenueId";
 import { defaultBrandHoursWeek } from "../utils/venueBrandHours";
 
 /**
@@ -400,23 +423,71 @@ export const provenanceFor = (
   }
 };
 
+/**
+ * Issue #1685 — ONE unfinished venue draft, addressable by its own client id.
+ * Mirrors draftEventStore's DraftEvent list model. CLIENT-ONLY: a venue draft
+ * NEVER has a server row before submit (I-PROPOSED-1263-CLAIM-ADOPTION-COPY-ON-START).
+ */
+export interface DraftVenueEntry {
+  /** Client-minted `dv_<ts36><rand6>` (src/utils/draftVenueId.ts). Never a server id. */
+  id: string;
+  /**
+   * META-ORCH-1255 — the brand that owns this draft. `null` ONLY for a draft
+   * carried forward by the v3 -> v4 migrator out of a legacy blob that had no
+   * `activeBrandId` (the #1461 unscoped-draft case); the first brand to activate
+   * it stamps its id, and it is never null again.
+   */
+  brandId: string | null;
+  /** ISO-8601. Set at mint; refreshed every time the entry is parked. Orders resume rows. */
+  updatedAt: string;
+  /** The draft payload — exactly the existing DraftVenueState, unchanged. */
+  state: DraftVenueState;
+}
+
 interface DraftVenuePersisted extends DraftVenueState {
-  /** META-ORCH-1255 — which brand owns the ACTIVE (top-level) draft fields. */
+  /** META-ORCH-1255 — which brand owns the ACTIVE (top-level) draft fields. UNCHANGED. */
   activeBrandId: string | null;
-  /** META-ORCH-1255 — parked drafts of the NON-active brands. */
-  drafts: Record<string, DraftVenueState>;
+  /** Issue #1685 — which draft id the top-level fields hold. null = no active draft. NEW. */
+  activeDraftId: string | null;
+  /** Issue #1685 — parked drafts. WAS `Record<string, DraftVenueState>`. */
+  drafts: DraftVenueEntry[];
 }
 
 interface DraftVenueStore extends DraftVenuePersisted {
   /**
+   * Issue #1685 — mint a FRESH draft for `brandId`, make it active, return its
+   * id. NEVER reads or resumes an existing draft. This is the ONLY mint path,
+   * and it is what makes the create door structurally incapable of resuming
+   * (I-PROPOSED-1685-CREATE-DOOR-NEVER-RESUMES).
+   */
+  createDraft: (brandId: string) => string;
+  /**
+   * Issue #1685 — load an existing draft into the active fields. Returns false
+   * (and changes nothing) when the id is unknown or owned by another brand.
+   */
+  activateDraft: (draftId: string, brandId: string) => boolean;
+  /** Issue #1685 — read one draft (active or parked) without activating it. */
+  getDraftEntry: (draftId: string) => DraftVenueEntry | null;
+  /** Issue #1685 — delete ONE draft by id (active or parked). */
+  deleteDraft: (draftId: string) => void;
+  /** Issue #1685 — delete whatever draft is currently active. Submit-success path. */
+  deleteActiveDraft: () => void;
+  /**
    * META-ORCH-1255 — make `brandId`'s draft the active one: stash the current
-   * fields under the previous brand, load (or blank) the new brand's draft.
-   * No-op when already active.
+   * fields under their own draft id, load (or blank) the brand's most recent
+   * draft. No-op when already active. UNCHANGED observable semantics.
+   *
+   * Issue #1685 D-3 — this KEEPS its auto-resume behaviour and simply loses its
+   * production caller: `app/venue/create.tsx` no longer calls it. The ambush
+   * lived at the ROUTE, not in this primitive.
    */
   activateBrand: (brandId: string) => void;
   /**
-   * Clear a draft. With `brandId`: only that brand's draft (active or parked).
+   * Clear a draft. With `brandId`: EVERY draft of that brand (active or parked).
    * Without: EVERYTHING (logout — Constitution #6).
+   *
+   * Issue #1685 — the venue SUBMIT path must NOT use this: it would destroy the
+   * operator's other half-built venues. Use `deleteActiveDraft()`.
    */
   reset: (brandId?: string) => void;
   patch: (p: Partial<DraftVenueState>) => void;
@@ -426,39 +497,275 @@ interface DraftVenueStore extends DraftVenuePersisted {
   setHoursRows: (weekdays: number[], part: Partial<BrandHourEntry>) => void;
 }
 
+/**
+ * Issue #1685 — park the ACTIVE top-level fields into the list under their own
+ * id (replace by id when already present, else append). A no-op when there is
+ * no active draft id: an id-less top-level blob is not addressable, so parking
+ * it would mint an orphan nobody can resume.
+ */
+const parkActive = (
+  s: DraftVenuePersisted,
+  list: DraftVenueEntry[],
+): DraftVenueEntry[] => {
+  if (s.activeDraftId === null) return list;
+  const entry: DraftVenueEntry = {
+    id: s.activeDraftId,
+    brandId: s.activeBrandId,
+    updatedAt: new Date().toISOString(),
+    state: pickDraft(s),
+  };
+  const index = list.findIndex((e) => e.id === entry.id);
+  if (index === -1) return [...list, entry];
+  const next = [...list];
+  next[index] = entry;
+  return next;
+};
+
+/** Issue #1685 — newest-first by `updatedAt`; tie-break = later array position. */
+const newestEntryForBrand = (
+  list: DraftVenueEntry[],
+  brandId: string,
+): DraftVenueEntry | null => {
+  let chosen: DraftVenueEntry | null = null;
+  for (const entry of list) {
+    if (entry.brandId !== brandId) continue;
+    if (chosen === null || entry.updatedAt >= chosen.updatedAt) chosen = entry;
+  }
+  return chosen;
+};
+
+/**
+ * Issue #1685 — the legacy (pre-v4) persisted shape: per-brand parking lot.
+ */
+type V3Persisted = DraftVenueState & {
+  activeBrandId: string | null;
+  drafts: Record<string, DraftVenueState>;
+};
+
+/**
+ * Issue #1685 — v3 -> v4 migrator. Carries EVERY legacy draft forward with ZERO
+ * field loss: each per-brand record entry becomes one list entry with a minted
+ * id and its owning brand stamped, and the legacy top-level (active) draft stays
+ * at top level and gains an id.
+ *
+ * MUST NEVER THROW — a throw out of `migrate` makes zustand discard the blob,
+ * which is precisely the data loss this work item exists to prevent. Every
+ * branch is defensive and the whole body is wrapped.
+ */
+function migrateDraftVenuePersisted(
+  persistedState: unknown,
+  version: number,
+): DraftVenuePersisted {
+  try {
+    if (version >= 4) {
+      // Terminal pattern (draftEventStore.ts:938): already current shape.
+      return persistedState as DraftVenuePersisted;
+    }
+    const legacy = (persistedState ?? {}) as Partial<V3Persisted>;
+    const now = new Date().toISOString();
+    const carried: DraftVenueEntry[] = [];
+    const legacyDrafts: unknown = legacy.drafts;
+    if (Array.isArray(legacyDrafts)) {
+      // Defensive: an already-list-shaped blob written by a newer build that
+      // was rolled back. Carry every well-formed entry rather than dropping it.
+      for (const raw of legacyDrafts) {
+        const entry = raw as Partial<DraftVenueEntry> | null;
+        if (
+          entry === null ||
+          typeof entry !== "object" ||
+          typeof entry.id !== "string" ||
+          entry.state === null ||
+          typeof entry.state !== "object"
+        ) {
+          continue;
+        }
+        carried.push({
+          id: entry.id,
+          brandId: typeof entry.brandId === "string" ? entry.brandId : null,
+          updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : now,
+          state: pickDraft({ ...blankDraft(), ...entry.state }),
+        });
+      }
+    } else if (typeof legacyDrafts === "object" && legacyDrafts !== null) {
+      // The real v3 shape: Record<brandId, DraftVenueState>. Iteration order is
+      // the record's own key order; `updatedAt` is identical across entries
+      // because ordering among legacy drafts is not knowable and must not be
+      // fabricated (Constitution #9).
+      for (const [brandId, state] of Object.entries(
+        legacyDrafts as Record<string, DraftVenueState>,
+      )) {
+        if (state === null || typeof state !== "object") continue;
+        carried.push({
+          id: generateVenueDraftId(),
+          brandId,
+          updatedAt: now,
+          state: pickDraft({ ...blankDraft(), ...state }),
+        });
+      }
+    }
+    // `pickDraft` over a blank base materialises the additive-optional defaults
+    // exactly as hydration does today, so no legacy field is dropped and no
+    // absent field arrives as `undefined`.
+    return {
+      ...pickDraft({ ...blankDraft(), ...(legacy as DraftVenueState) }),
+      activeBrandId: legacy.activeBrandId ?? null,
+      activeDraftId: generateVenueDraftId(),
+      drafts: carried,
+    };
+  } catch {
+    // Never throw: a corrupt blob degrades to an empty, VALID shape rather than
+    // taking the whole persisted store down with it.
+    return {
+      ...blankDraft(),
+      activeBrandId: null,
+      activeDraftId: null,
+      drafts: [],
+    };
+  }
+}
+
 export const useDraftVenueStore = create<DraftVenueStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ...initial,
       activeBrandId: null,
-      drafts: {},
+      activeDraftId: null,
+      drafts: [],
+      createDraft: (brandId) => {
+        // Minted BEFORE the set() only so the id can be returned synchronously;
+        // it is not in `drafts`, so the prune below cannot see it.
+        const id = generateVenueDraftId();
+        set((s) => {
+          // 1 — park whatever is currently active under its OWN id (nothing is
+          //     lost by pressing "+", META-ORCH-1009 Sub-E).
+          const parked = parkActive(s, s.drafts);
+          // 2 — prune litter: this brand's parked-but-EMPTY drafts. Replaces the
+          //     old on-entry `venueDraftBrandToReset` garbage collection and is
+          //     strictly better (id-precise and brand-scoped), so ten "+" presses
+          //     with no typing leave at most the one active blank draft.
+          const pruned = parked.filter(
+            (e) => !(e.brandId === brandId && !draftVenueInProgress(e.state)),
+          );
+          // 3/4 — the fresh draft lives at TOP LEVEL until parked; it is never
+          //       appended to `drafts` (this is the existing hoisted model).
+          return {
+            ...blankDraft(),
+            activeBrandId: brandId,
+            activeDraftId: id,
+            drafts: pruned,
+          };
+        });
+        return id;
+      },
+      activateDraft: (draftId, brandId) => {
+        const s = get();
+        if (s.activeDraftId === draftId) {
+          // Already active — stamp a legacy unscoped draft with the arriving
+          // brand (#1461 adoption) and report success.
+          if (s.activeBrandId === null) set({ activeBrandId: brandId });
+          return true;
+        }
+        const entry = s.drafts.find((e) => e.id === draftId);
+        if (entry === undefined) return false;
+        // META-ORCH-1255 isolation boundary: brand B may never open brand A's
+        // draft. A `null` brandId is a legacy migrated draft, adoptable once.
+        if (entry.brandId !== null && entry.brandId !== brandId) return false;
+        set((cur) => {
+          const parked = parkActive(cur, cur.drafts);
+          return {
+            ...entry.state,
+            activeBrandId: brandId,
+            activeDraftId: draftId,
+            drafts: parked.filter((e) => e.id !== draftId),
+          };
+        });
+        return true;
+      },
+      getDraftEntry: (draftId) => {
+        const s = get();
+        if (s.activeDraftId === draftId) {
+          return {
+            id: draftId,
+            brandId: s.activeBrandId,
+            updatedAt: new Date().toISOString(),
+            state: pickDraft(s),
+          };
+        }
+        return s.drafts.find((e) => e.id === draftId) ?? null;
+      },
+      deleteDraft: (draftId) =>
+        set((s) => {
+          const drafts = s.drafts.filter((e) => e.id !== draftId);
+          if (s.activeDraftId !== draftId) return { drafts };
+          // `activeBrandId` is deliberately KEPT — this matches the existing
+          // `reset(brandId)` behaviour for the active brand.
+          return {
+            ...blankDraft(),
+            activeBrandId: s.activeBrandId,
+            activeDraftId: null,
+            drafts,
+          };
+        }),
+      deleteActiveDraft: () => {
+        const id = get().activeDraftId;
+        if (id === null) return;
+        get().deleteDraft(id);
+      },
       activateBrand: (brandId) =>
         set((s) => {
           if (s.activeBrandId === brandId) return {};
-          const drafts = { ...s.drafts };
-          if (s.activeBrandId !== null) {
-            drafts[s.activeBrandId] = pickDraft(s);
-          }
+          const chosen = newestEntryForBrand(s.drafts, brandId);
           // #1461 — current-brand resolution can legitimately happen after a
           // persisted, formerly-unscoped draft has hydrated. Adopt those live
           // top-level fields into the first arriving brand instead of replacing
-          // the operator's in-progress venue with a blank draft.
-          const next =
-            drafts[brandId] ??
-            (s.activeBrandId === null ? pickDraft(s) : blankDraft());
-          delete drafts[brandId];
-          return { ...next, activeBrandId: brandId, drafts };
+          // the operator's in-progress venue with a blank draft. Deliberately
+          // NOT parked first — that would duplicate the very draft being adopted.
+          if (chosen === null && s.activeBrandId === null) {
+            return {
+              ...pickDraft(s),
+              activeBrandId: brandId,
+              activeDraftId: s.activeDraftId ?? generateVenueDraftId(),
+              drafts: s.drafts,
+            };
+          }
+          const parked = parkActive(s, s.drafts);
+          if (chosen !== null) {
+            return {
+              ...chosen.state,
+              activeBrandId: brandId,
+              activeDraftId: chosen.id,
+              drafts: parked.filter((e) => e.id !== chosen.id),
+            };
+          }
+          // A blank active draft still gets an id: an id-less top-level blob
+          // cannot be parked, so anything typed into it would be lost on the
+          // next brand switch.
+          return {
+            ...blankDraft(),
+            activeBrandId: brandId,
+            activeDraftId: generateVenueDraftId(),
+            drafts: parked,
+          };
         }),
       reset: (brandId) =>
         set((s) => {
           if (brandId === undefined) {
             // Full wipe (logout / legacy no-arg callers).
-            return { ...blankDraft(), activeBrandId: null, drafts: {} };
+            return {
+              ...blankDraft(),
+              activeBrandId: null,
+              activeDraftId: null,
+              drafts: [],
+            };
           }
-          const drafts = { ...s.drafts };
-          delete drafts[brandId];
+          const drafts = s.drafts.filter((e) => e.brandId !== brandId);
           if (s.activeBrandId === brandId || s.activeBrandId === null) {
-            return { ...blankDraft(), activeBrandId: s.activeBrandId, drafts };
+            return {
+              ...blankDraft(),
+              activeBrandId: s.activeBrandId,
+              activeDraftId: null,
+              drafts,
+            };
           }
           return { drafts };
         }),
@@ -483,13 +790,26 @@ export const useDraftVenueStore = create<DraftVenueStore>()(
     {
       // ORCH-1263 — v3: claim-adoption block + website/price/reservations;
       // photoUris dropped. v2 blob abandoned (pre-submit drafts, prod-safe).
+      //
+      // Issue #1685 — THE KEY IS DELIBERATELY UNCHANGED. Renaming it to
+      // "-v4" would orphan every operator's in-progress draft on update, which
+      // is exactly the loss this reshape exists to prevent. Shape changes are
+      // carried by `version` + `migrate`, per the house precedent recorded at
+      // draftEventStore.ts:790-791 ("renaming the storage key would orphan
+      // existing user drafts"). "v4" in the operator ruling is the VERSION
+      // NUMBER, not a new name.
       name: "mingla-business-draft-venue-v3",
       storage: createJSONStorage(() => AsyncStorage),
+      // Issue #1685 — the store declared no `version` before, so every existing
+      // blob carries `version: 0` in its envelope and routes through migrate().
+      version: 4,
+      migrate: migrateDraftVenuePersisted,
       // Only the data fields are persisted; the action functions are recreated on
       // each store init, so we partialize them out.
       partialize: (s): DraftVenuePersisted => ({
         ...pickDraft(s),
         activeBrandId: s.activeBrandId,
+        activeDraftId: s.activeDraftId,
         drafts: s.drafts,
       }),
     },
@@ -498,13 +818,111 @@ export const useDraftVenueStore = create<DraftVenueStore>()(
 
 /**
  * META-ORCH-1255 — read a brand's draft regardless of active status (pure;
- * for `getState()` call sites and the to-do gate).
+ * for `getState()` call sites and the to-do gate). UNCHANGED SIGNATURE.
+ *
+ * Issue #1685 — now returns the brand's MOST RECENT draft: the active one when
+ * the brand owns it, else the newest parked entry, else a blank. The
+ * `activeDraftId !== null` guard means an emptied active slot never hides a
+ * real parked draft.
  */
 export const draftVenueForBrand = (
   s: DraftVenuePersisted,
   brandId: string | null,
 ): DraftVenueState => {
   if (brandId === null) return blankDraft();
-  if (s.activeBrandId === brandId) return pickDraft(s);
-  return s.drafts[brandId] ?? blankDraft();
+  if (s.activeBrandId === brandId && s.activeDraftId !== null) {
+    return pickDraft(s);
+  }
+  const newest = newestEntryForBrand(s.drafts, brandId);
+  return newest !== null ? newest.state : blankDraft();
+};
+
+/**
+ * Issue #1685 — EVERY draft for a brand, newest first, active one included.
+ * Returns them UNFILTERED; the caller applies `draftVenueInProgress`.
+ */
+export const draftVenuesForBrand = (
+  s: DraftVenuePersisted,
+  brandId: string | null,
+): DraftVenueEntry[] => {
+  if (brandId === null) return [];
+  const parked = s.drafts
+    .filter((e) => e.brandId === brandId)
+    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+  if (s.activeBrandId !== brandId || s.activeDraftId === null) return parked;
+  // The active draft is by definition the most recently touched, so it sorts
+  // FIRST by construction rather than by a fabricated timestamp comparison.
+  return [
+    {
+      id: s.activeDraftId,
+      brandId: s.activeBrandId,
+      updatedAt: new Date().toISOString(),
+      state: pickDraft(s),
+    },
+    ...parked,
+  ];
+};
+
+/**
+ * Issue #1685 — resume rows for one brand.
+ *
+ * HARD requirement: this selects the RAW `drafts` array (stable reference) plus
+ * SCALARS, and filters/derives in `useMemo`. Inlining
+ * `s => draftVenuesForBrand(s, id)` returns a NEW array every render and
+ * produces an infinite useSyncExternalStore loop — the identical hazard
+ * documented on `useDraftsForBrand` (draftEventStore.ts:1180-1194).
+ *
+ * The scalars are exactly the fields that decide a resume row's existence
+ * (`draftVenueInProgress`) and its label, so the memo recomputes precisely when
+ * a row could change. The ACTIVE entry's `state` is read fresh via `getState()`
+ * inside the memo — a REAL, complete `DraftVenueState`, never a synthesised or
+ * partially-defaulted one (Constitution #9).
+ */
+export const useVenueDraftEntriesForBrand = (
+  brandId: string | null,
+): DraftVenueEntry[] => {
+  const drafts = useDraftVenueStore((s) => s.drafts);
+  const activeDraftId = useDraftVenueStore((s) => s.activeDraftId);
+  const activeBrandId = useDraftVenueStore((s) => s.activeBrandId);
+  const displayName = useDraftVenueStore((s) => s.displayName);
+  const workingName = useDraftVenueStore((s) => s.workingName);
+  const step = useDraftVenueStore((s) => s.step);
+  const submissionVenueId = useDraftVenueStore((s) => s.submissionVenueId);
+  return useMemo((): DraftVenueEntry[] => {
+    if (brandId === null) return [];
+    const parked = drafts
+      .filter((e) => e.brandId === brandId)
+      .sort((a, b) =>
+        a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0,
+      );
+    if (activeBrandId !== brandId || activeDraftId === null) return parked;
+    return [
+      {
+        id: activeDraftId,
+        brandId: activeBrandId,
+        updatedAt: new Date().toISOString(),
+        // The complete, REAL draft (never a synthesised or partially-defaulted
+        // one), with the four subscribed scalars threaded through explicitly so
+        // the row's existence and label are provably derived from what this
+        // hook is subscribed to.
+        state: {
+          ...pickDraft(useDraftVenueStore.getState()),
+          displayName,
+          workingName,
+          step,
+          submissionVenueId: submissionVenueId ?? null,
+        },
+      },
+      ...parked,
+    ];
+  }, [
+    activeBrandId,
+    activeDraftId,
+    brandId,
+    displayName,
+    drafts,
+    step,
+    submissionVenueId,
+    workingName,
+  ]);
 };

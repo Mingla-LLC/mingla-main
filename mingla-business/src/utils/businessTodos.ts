@@ -32,6 +32,20 @@ export interface VenueTodoPipeline {
   route: string;
 }
 
+/**
+ * Issue #1685 [venue-draft-multi] — one unfinished venue draft, as a resume row
+ * input. Each half-built venue gets its OWN row, because `/venue/create` no
+ * longer resumes anything: the row's `route` (which carries the draft id) is the
+ * only door back into that draft.
+ */
+export interface VenueTodoDraft {
+  draftId: string;
+  /** displayName || workingName, trimmed. Empty when the operator has not named it yet. */
+  venueName: string;
+  /** Precomputed by the caller — `/venue/create?draft=<draftId>`. */
+  route: string;
+}
+
 /** META-ORCH-1255 — one per-venue claim row for the `venue_claim_review` band. */
 export interface VenueTodoClaim {
   venueId: string;
@@ -91,6 +105,14 @@ export interface BusinessTodoInput {
   pipelineRoute: string;
   /** A persisted, in-progress venue wizard draft exists (→ "Finish" vs "Add"). */
   venueDraftInProgress: boolean;
+  /**
+   * Issue #1685 — EVERY unfinished venue draft for the current brand, newest
+   * first (the live hook always passes it). WHEN PRESENT the single
+   * `finish_venue` row is REPLACED by one `finish_venue:<draftId>` row per
+   * draft, named when there is more than one — the `get_venue_live` naming
+   * precedent below. Absent → legacy singular behaviour (pinned fixtures).
+   */
+  venueDrafts?: VenueTodoDraft[];
   /**
    * ORCH-1040 — the brand has a physical location (opt-in toggle).
    * [TRANSITIONAL] META-ORCH-1255: OPTIONAL + production-dormant. The toggle
@@ -231,7 +253,26 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
   // stays, gated ONLY on the CURRENT brand's in-progress draft.
   const multiVenue = input.venuePipelines !== undefined;
   if (multiVenue) {
-    if (input.venueDraftInProgress) {
+    // Issue #1685 — one resume row PER unfinished draft. This row's route is
+    // the ONLY way back into a draft: "+" -> "Create venue listing" always
+    // starts fresh now.
+    const venueDrafts = input.venueDrafts;
+    if (venueDrafts !== undefined) {
+      // Named only when there is more than one, exactly like `get_venue_live`
+      // below — so the single-draft experience stays byte-identical to today.
+      const namedDrafts = venueDrafts.length > 1;
+      for (const d of venueDrafts) {
+        todos.push({
+          id: `finish_venue:${d.draftId}`,
+          label:
+            namedDrafts && d.venueName.length > 0
+              ? `Finish adding ${d.venueName}`
+              : "Finish adding your venue",
+          sublabel: "Pick up where you left off",
+          action: { kind: "route", route: d.route },
+        });
+      }
+    } else if (input.venueDraftInProgress) {
       todos.push({
         id: "finish_venue",
         label: "Finish adding your venue",
