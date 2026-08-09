@@ -17,7 +17,7 @@ CREATE INDEX IF NOT EXISTS conversation_participants_user_lifecycle_idx
   INCLUDE (hidden_at, archived_at);
 CREATE INDEX IF NOT EXISTS messages_meaningful_activity_idx
   ON public.messages(conversation_id, created_at DESC)
-  WHERE deleted_at IS NULL AND sender_id IS NOT NULL;
+  WHERE deleted_at IS NULL AND sender_id IS NOT NULL AND message_type<>'system';
 
 -- This is the sole eligibility and ordering owner. It is internal-only: public
 -- callers reach it through the zero-argument list/Connections RPCs, while the
@@ -60,6 +60,7 @@ AS $function$
       SELECT max(m.created_at) AS meaningful_activity_at
       FROM public.messages m
       WHERE m.conversation_id=c.id AND m.deleted_at IS NULL AND m.sender_id IS NOT NULL
+        AND m.message_type<>'system'
     ) activity ON true
     WHERE mine.user_id=p_user_id
       AND (p_include_hidden OR mine.hidden_at IS NULL)
@@ -105,7 +106,8 @@ AS $function$
     SELECT ('person:'||p.id)::text AS key,'direct'::text AS target_kind,
       d.conversation_id AS target_id,p.id AS person_user_id,
       COALESCE(NULLIF(btrim(p.display_name),''),NULLIF(btrim(p.username),'')) AS display_name,
-      p.username,p.avatar_url,d.conversation_id,d.meaningful_activity_at,d.created_at,
+      p.username,p.avatar_url,d.conversation_id,d.meaningful_activity_at,
+      d.created_at AS conversation_created_at,
       2::integer AS participant_count,
       CASE WHEN d.meaningful_activity_at IS NULL THEN 2 ELSE 1 END::integer AS recipient_tier
     FROM direct_candidates d
@@ -241,6 +243,9 @@ BEGIN
     SELECT 1 FROM public.conversation_participants
     WHERE conversation_id=p_conversation_id AND user_id=v_user
   ) THEN RAISE EXCEPTION 'conversation_unavailable' USING ERRCODE='42501';END IF;
+  IF v_conversation.linked_entity_type NOT IN ('direct','session','trip','event') THEN
+    RAISE EXCEPTION 'conversation_unavailable' USING ERRCODE='42501';
+  END IF;
   IF v_conversation.linked_entity_type='session' THEN
     DELETE FROM public.session_participants WHERE session_id=v_conversation.session_id AND user_id=v_user;
   END IF;
@@ -258,7 +263,7 @@ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path=public,pg_temp
 AS $function$
 BEGIN
-  IF NEW.sender_id IS NULL OR NEW.deleted_at IS NOT NULL THEN RETURN NEW;END IF;
+  IF NEW.sender_id IS NULL OR NEW.deleted_at IS NOT NULL OR NEW.message_type='system' THEN RETURN NEW;END IF;
   UPDATE public.conversation_participants cp
   SET hidden_at=NULL
   WHERE cp.conversation_id=NEW.conversation_id AND cp.user_id<>NEW.sender_id

@@ -121,23 +121,6 @@ type GroupEventMeta = {
   publicCard: BusinessEventCard | null;
 };
 
-async function fetchAttendableEventIdsForUser(
-  eventIds: string[],
-  userId: string,
-): Promise<Set<string>> {
-  if (eventIds.length === 0) return new Set();
-
-  const { data, error } = await supabase
-    .from('orders')
-    .select('event_id')
-    .eq('buyer_user_id', userId)
-    .in('event_id', eventIds)
-    .in('payment_status', ['paid', 'partial_refund']);
-
-  if (error) throw error;
-  return new Set((data || []).map((order: any) => order.event_id).filter(Boolean));
-}
-
 function getThemeObject(value: unknown): Record<string, any> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, any>
@@ -1122,7 +1105,7 @@ function ConnectionsPageRefactored({
         }
       });
 
-      const [sessionsResult, pendingPhoneInvitesResult, eventMetaMap, attendingEventIds] = await Promise.all([
+      const [sessionsResult, pendingPhoneInvitesResult, eventMetaMap] = await Promise.all([
         groupSessionIds.size > 0
           ? supabase
               .from("collaboration_sessions")
@@ -1146,10 +1129,6 @@ function ConnectionsPageRefactored({
         fetchGroupEventMetaByIds(Array.from(groupEventIds)).catch((error) => {
           console.warn('[ConnectionsPage] Failed to batch-resolve group chat event metadata:', error);
           return new Map<string, GroupEventMeta>();
-        }),
-        fetchAttendableEventIdsForUser(Array.from(groupEventIds), userId).catch((error) => {
-          console.error('[ConnectionsPage] Failed to verify event/trip chat attendance:', error);
-          return new Set<string>();
         }),
       ]);
 
@@ -1210,19 +1189,7 @@ function ConnectionsPageRefactored({
       // optional extra fields. ChatListItem's ChatListItemConversation type intersection
       // picks them up for the group-vs-direct render branch. The base useMessages
       // Conversation type stays unchanged (locked for ORCH-0900 scope).
-      const visibleConversations = (rawConversations || []).filter((conv) => {
-        const eventId = (conv as { event_id?: string | null }).event_id ?? null;
-        const linkedEntityType = (conv as { linked_entity_type?: string | null }).linked_entity_type;
-        const isEventOrTripChat =
-          conv.type === 'group' &&
-          !!eventId &&
-          (linkedEntityType === 'trip' || linkedEntityType === 'event');
-
-        if (!isEventOrTripChat) return true;
-        return attendingEventIds.has(eventId);
-      });
-
-      const transformed: Conversation[] = visibleConversations.map((conv) => {
+      const transformed: Conversation[] = (rawConversations || []).map((conv) => {
         const participants = conv.participants.map((p) => {
           const profile = profilesMap.get(p.user_id);
           return {

@@ -3,6 +3,7 @@ import { AccessibilityInfo, ActivityIndicator, AppState, Dimensions, Image, Plat
 import type { ShareEntityKind } from '@mingla/sharing';
 import type { PreparedBusinessShare } from '../../services/contentShareAdapter';
 import { Sheet } from './Sheet';
+import { useShareNetworkState } from './useShareNetworkState';
 
 const QRCode = React.lazy(() => import('react-native-qrcode-svg'));
 
@@ -28,6 +29,7 @@ function canWebShare(): boolean {
 export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, title, contentKind }) => {
   const dark = useColorScheme() === 'dark';
   const { fontScale } = useWindowDimensions();
+  const isOnline = useShareNetworkState();
   const styles = useMemo(() => createStyles(dark), [dark]);
   const generation = useRef(0);
   const posterStartedAt = useRef(0);
@@ -43,8 +45,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
   const [posterFailed, setPosterFailed] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [contentHeight, setContentHeight] = useState(0);
-  const [online, setOnline] = useState(() => (globalThis as { navigator?: { onLine?: boolean } }).navigator?.onLine !== false);
-  const onlineRef = useRef(online);
+  const onlineRef = useRef(isOnline);
   const [readiness, setReadiness] = useState<'idle' | 'pending' | 'retrying' | 'ready' | 'waiting' | 'transient' | 'terminal' | 'offline'>('idle');
 
   const prepare = useCallback(() => {
@@ -100,24 +101,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
     return () => subscription.remove();
   }, [prepared?.media, verifyReadiness]);
   useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const target = globalThis as typeof globalThis & {
-      addEventListener?: (type: string, listener: () => void) => void;
-      removeEventListener?: (type: string, listener: () => void) => void;
-    };
-    const handleOnline = (): void => { onlineRef.current = true; setOnline(true); };
-    const handleOffline = (): void => { onlineRef.current = false; setOnline(false); };
-    target.addEventListener?.('online', handleOnline);
-    target.addEventListener?.('offline', handleOffline);
-    return () => {
-      target.removeEventListener?.('online', handleOnline);
-      target.removeEventListener?.('offline', handleOffline);
-    };
-  }, []);
-  useEffect(() => {
-    onlineRef.current = online;
-    if (!online && prepared?.media && readiness !== 'ready') setReadiness('offline');
-  }, [online, prepared?.media, readiness]);
+    onlineRef.current = isOnline;
+    if (!isOnline && prepared?.media && readiness !== 'ready') setReadiness('offline');
+  }, [isOnline, prepared?.media, readiness]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || !visible) return;
@@ -206,7 +192,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
         <Pressable accessibilityRole="button" accessibilityLabel={copied ? 'Link copied' : 'Copy link'} disabled={!prepared || busy} onPress={() => void copy()} style={[styles.iconButton, (!prepared || busy) && styles.disabled]}><Text style={styles.buttonText}>{copied ? '✓' : '⧉'}</Text></Pressable>
         {Platform.OS === 'web' ? <Pressable accessibilityRole="button" accessibilityLabel={showQr ? 'Hide QR' : 'Show QR'} disabled={!prepared} onPress={() => setShowQr((value) => !value)} style={[styles.iconButton, !prepared && styles.disabled]}><Text style={styles.buttonText}>QR</Text></Pressable> : null}
       </View>
-      {prepared?.media && readiness !== 'ready' && readiness !== 'idle' ? <View style={styles.readinessRow} accessibilityLiveRegion="polite"><View style={styles.readinessStatus}>{readiness === 'pending' || readiness === 'retrying' ? <ActivityIndicator size="small" color="#EB7825" /> : null}<Text style={[styles.readinessText, (readiness === 'terminal' || readiness === 'transient') && styles.readinessError]}>{readinessCopy}</Text></View>{readiness === 'offline' || readiness === 'waiting' || readiness === 'terminal' || readiness === 'transient' ? <Pressable accessibilityRole="button" accessibilityLabel={readiness === 'terminal' ? 'Prepare again' : 'Retry preview'} disabled={readiness === 'offline' && !online} onPress={() => { if (readiness === 'terminal') { setPrepared(null); prepare(); } else verifyReadiness(true); }} style={styles.readinessRetry}><Text style={styles.retry}>{readiness === 'terminal' ? 'Prepare again' : 'Retry'}</Text></Pressable> : null}</View> : null}
+      {prepared?.media && readiness !== 'ready' && readiness !== 'idle' ? <View style={styles.readinessRow} accessibilityLiveRegion="polite"><View style={styles.readinessStatus}>{readiness === 'pending' || readiness === 'retrying' ? <ActivityIndicator size="small" color="#EB7825" /> : null}<Text style={[styles.readinessText, (readiness === 'terminal' || readiness === 'transient') && styles.readinessError]}>{readinessCopy}</Text></View>{readiness === 'offline' || readiness === 'waiting' || readiness === 'terminal' || readiness === 'transient' ? <Pressable accessibilityRole="button" accessibilityLabel={readiness === 'terminal' ? 'Prepare again' : 'Retry preview'} disabled={readiness === 'offline' && !isOnline} onPress={() => { if (readiness === 'terminal') { setPrepared(null); prepare(); } else verifyReadiness(true); }} style={styles.readinessRetry}><Text style={styles.retry}>{readiness === 'terminal' ? 'Prepare again' : 'Retry'}</Text></Pressable> : null}</View> : null}
       {actionError ? <Text accessibilityLiveRegion="polite" style={styles.error}>{actionError}</Text> : null}
       {Platform.OS === 'web' && showQr && prepared ? <View style={styles.qr}><Suspense fallback={<ActivityIndicator />}><QRCode value={prepared.url} size={160} /></Suspense><Text style={styles.qrLabel}>Scan to open</Text></View> : null}
     </View>

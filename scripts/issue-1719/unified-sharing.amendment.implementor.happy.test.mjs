@@ -21,6 +21,8 @@ const delivery = read('app-mobile/src/services/contentShareDeliveryService.ts');
 const connections = read('app-mobile/src/components/ConnectionsPage.tsx');
 const consumer = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
 const business = read('mingla-business/src/components/ui/ShareModalContent.tsx');
+const businessNetworkNative = read('mingla-business/src/components/ui/useShareNetworkState.native.ts');
+const businessNetworkWeb = read('mingla-business/src/components/ui/useShareNetworkState.web.ts');
 const readiness = read('mingla-marketing/lib/content-share-readiness.ts');
 
 test('A-H1 lifecycle is server-owned, private to authenticated callers, and migrated once without invented deletes', () => {
@@ -29,6 +31,8 @@ test('A-H1 lifecycle is server-owned, private to authenticated callers, and migr
   assert.match(migration, /set_conversation_lifecycle[\s\S]*WHERE conversation_id=p_conversation_id AND user_id=v_user/);
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.set_conversation_lifecycle\(uuid,text\) FROM PUBLIC,anon/);
   assert.match(migration, /leave_group_conversation[\s\S]*WHERE conversation_id=p_conversation_id AND user_id=v_user/);
+  assert.match(migration, /v_conversation\.linked_entity_type NOT IN \('direct','session','trip','event'\)/);
+  assert.match(migration, /linked_entity_type NOT IN[\s\S]*RAISE EXCEPTION 'conversation_unavailable'/);
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.leave_group_conversation\(uuid\) FROM PUBLIC,anon/);
   assert.match(connections, /archived_chats_server_migrated/);
   assert.match(connections, /messagingService\.setConversationLifecycle\(conversationId, 'archive'\)/);
@@ -51,11 +55,14 @@ test('A-H2 list, Connections and send consume one complete eligibility owner', (
   assert.match(migration, /list_connection_conversation_access[\s\S]*content_share_recipient_candidates\(auth\.uid\(\),true,false\)/);
   assert.match(migration, /guard_content_share_delivery_target[\s\S]*content_share_recipient_candidates\(NEW\.sender_id,false,false\)/);
   assert.match(read('app-mobile/src/services/messagingService.ts'), /rpc\('list_connection_conversation_access'\)/);
+  assert.doesNotMatch(connections, /fetchAttendableEventIdsForUser|attendingEventIds|\.from\(['"]orders['"]\)/);
+  assert.match(connections, /fetchGroupEventMetaByIds\(Array\.from\(groupEventIds\)\)/);
+  assert.match(connections, /const eventMeta = eventId \? eventMetaMap\.get\(eventId\) : null/);
 });
 
 test('A-H3 hidden reopens only for another human, never archive, and only while canonically eligible', () => {
   const trigger = migration.slice(migration.indexOf('tg_reopen_hidden_conversation_on_human_message'), migration.indexOf('guard_content_share_delivery_target'));
-  assert.match(trigger, /NEW\.sender_id IS NULL OR NEW\.deleted_at IS NOT NULL/);
+  assert.match(trigger, /NEW\.sender_id IS NULL OR NEW\.deleted_at IS NOT NULL OR NEW\.message_type='system'/);
   assert.match(trigger, /cp\.user_id<>NEW\.sender_id/);
   assert.match(trigger, /cp\.hidden_at IS NOT NULL AND cp\.archived_at IS NULL/);
   assert.match(trigger, /content_share_recipient_candidates\(cp\.user_id,false,true\)/);
@@ -64,8 +71,10 @@ test('A-H3 hidden reopens only for another human, never archive, and only while 
 });
 
 test('A-H4 activity tiers are server ordered and the client validates without sorting', () => {
-  assert.match(migration, /max\(m\.created_at\)[\s\S]*m\.deleted_at IS NULL AND m\.sender_id IS NOT NULL/);
+  assert.match(migration, /max\(m\.created_at\)[\s\S]*m\.deleted_at IS NULL AND m\.sender_id IS NOT NULL[\s\S]*m\.message_type<>'system'/);
+  assert.match(migration, /messages_meaningful_activity_idx[\s\S]*message_type<>'system'/);
   assert.match(migration, /CASE WHEN d\.meaningful_activity_at IS NULL THEN 2 ELSE 1 END/);
+  assert.match(migration, /d\.created_at AS conversation_created_at/);
   assert.match(migration, /3::integer/);
   assert.match(migration, /ORDER BY recipient_tier,[\s\S]*meaningful_activity_at END DESC[\s\S]*conversation_created_at END DESC[\s\S]*lower\(display_name\),target_kind,key/);
   assert.match(delivery, /malformed_recipient_order/);
@@ -134,6 +143,11 @@ test('A-H8 lifecycle invalidation refreshes an open sheet and transactional inva
   assert.match(consumer, /Some chats are no longer available\. Choose another\./);
   assert.match(consumer, /That selected chat is no longer available\./);
   assert.match(consumer, /selected chats are no longer available\./);
-  assert.match(business, /addEventListener\?\.\('online'/);
-  assert.match(business, /disabled=\{readiness === 'offline' && !online\}/);
+  assert.match(business, /useShareNetworkState\(\)/);
+  assert.match(businessNetworkNative, /useNetInfo\(\)/);
+  assert.match(businessNetworkNative, /isConnected === true && state\.isInternetReachable !== false/);
+  assert.match(businessNetworkWeb, /addEventListener\?\.\('online'/);
+  assert.match(businessNetworkWeb, /addEventListener\?\.\('offline'/);
+  assert.doesNotMatch(businessNetworkWeb, /@react-native-community\/netinfo/);
+  assert.match(business, /disabled=\{readiness === 'offline' && !isOnline\}/);
 });
