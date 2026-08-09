@@ -270,11 +270,13 @@ describe("#1685 — the create door mints; it never resumes", () => {
     expect(preFixPhase(seeded)).toBe("wizard");
   });
 
-  test("H-1/H-2/H-3 — '+' opens an EMPTY name gate, parks the old draft, and stamps the URL", () => {
-    const seededId = seedFatDraft();
+  // H-1, H-2 and H-3 are SEPARATE tests on purpose: bundled, the first failing
+  // assertion aborts the rest, so a revert record could not say which of the
+  // three actually fired.
+  test("H-1 — '+' renders the name gate with an EMPTY field, not the wizard", () => {
+    seedFatDraft();
     const tree = mountRoute({});
 
-    // H-1 — the gate is what rendered.
     const texts = collectText(tree.toJSON(), []);
     expect(texts).toContain("What’s your venue called?");
     expect(mounted.wizard).toBe(0);
@@ -283,7 +285,13 @@ describe("#1685 — the create door mints; it never resumes", () => {
     expect(inputValues.length).toBeGreaterThan(0);
     expect(inputValues.every((v) => v === "")).toBe(true);
 
-    // H-2 — a NEW draft is active and the seeded one survived, intact.
+    unmountTree(tree);
+  });
+
+  test("H-2 — the seeded draft is PARKED intact and a NEW draft is active", () => {
+    const seededId = seedFatDraft();
+    const tree = mountRoute({});
+
     const after = store.getState();
     expect(after.activeDraftId).not.toBeNull();
     expect(after.activeDraftId).not.toBe(seededId);
@@ -295,8 +303,16 @@ describe("#1685 — the create door mints; it never resumes", () => {
     expect(parked?.state.workingName).toBe("Lumen Wine Bar");
     expect(parked?.state.formattedAddress).toBe("12 Ossington Ave");
 
-    // H-3 — the minted id went into the address bar.
-    expect(setParamsCalls).toContainEqual({ draft: after.activeDraftId });
+    unmountTree(tree);
+  });
+
+  test("H-3 — the minted id is written to the URL via router.setParams", () => {
+    seedFatDraft();
+    const tree = mountRoute({});
+
+    const activeId = store.getState().activeDraftId;
+    expect(activeId).not.toBeNull();
+    expect(setParamsCalls).toContainEqual({ draft: activeId });
 
     unmountTree(tree);
   });
@@ -359,7 +375,17 @@ describe("#1685 — the create door mints; it never resumes", () => {
   test("H-6 — the route no longer reaches for activateBrand or a mount-time phase", () => {
     const source = readFileSync(join(__dirname, "..", "create.tsx"), "utf8");
     expect(source).not.toContain("activateBrand(");
-    expect(source).not.toContain("useState<Phase>(() => resolveInitialPhase");
+    // Whitespace-tolerant on purpose: prettier wraps the restored initialiser
+    // across two lines, and a line-wrapped revert must still fail this gate.
+    expect(source).not.toMatch(
+      /useState<Phase>\(\s*\(\)\s*=>\s*resolveInitialPhase/,
+    );
+    // `resolveInitialPhase` drives the phase from EXACTLY ONE place — the
+    // resume branch. (Comments mentioning it are ignored; this counts the
+    // statement that actually sets state.)
+    expect(source.match(/setPhase\(resolveInitialPhase\(/g) ?? []).toHaveLength(
+      1,
+    );
     // The two doors, spelled out.
     expect(source).toContain("createDraft(currentBrand.id)");
     expect(source).toContain("activateDraft(requestedDraftId, currentBrand.id)");
