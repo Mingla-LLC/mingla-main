@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 481,
+  "expectedStrictGrepMjsFiles": 482,
   "selfTestWiredFloor": 294,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -7489,6 +7489,17 @@
         "self-test"
       ],
       "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-994-ota-publish-guardrails.tester.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
       "jobKeys": []
     }
   ]
