@@ -343,6 +343,7 @@ BEGIN
   SELECT * INTO v_link FROM public.content_share_links
    WHERE short_code=p_short_code FOR SHARE;
   IF NOT FOUND OR v_link.state<>'active' OR v_link.current_version<>p_share_version
+     OR v_link.revoked_at IS NOT NULL OR v_link.deleted_at IS NOT NULL
      OR (v_link.expires_at IS NOT NULL AND v_link.expires_at<=now()) THEN
     RAISE EXCEPTION 'share_unavailable' USING ERRCODE='22023';
   END IF;

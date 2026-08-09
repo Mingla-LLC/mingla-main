@@ -11,7 +11,9 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { assertCoverWriterInventory, scanCoverWriters } from './cover-poster-writer-gate.mjs';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const ROOT = process.env.ISSUE_1719_ROOT
+  ? path.resolve(process.env.ISSUE_1719_ROOT)
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 const require = createRequire(import.meta.url);
 const sharing = require(path.join(ROOT, 'packages/sharing'));
@@ -126,4 +128,99 @@ test('H9 Consumer and Business ship the same new runtime version', () => {
   const business = JSON.parse(read('mingla-business/app.json')).expo.version;
   assert.equal(consumer, '1.1.3');
   assert.equal(business, consumer);
+});
+
+test('H10 delivery rejects revoked and deleted links at the mutation boundary', () => {
+  const migration = read('supabase/migrations/20270227001719_issue_1719_unified_content_sharing.sql');
+  const send = migration.slice(
+    migration.indexOf('CREATE OR REPLACE FUNCTION public.send_content_share_message'),
+    migration.indexOf('REVOKE ALL ON FUNCTION public.send_content_share_message'),
+  );
+  assert.match(send, /v_link\.revoked_at IS NOT NULL/);
+  assert.match(send, /v_link\.deleted_at IS NOT NULL/);
+  assert.match(send, /RAISE EXCEPTION 'share_unavailable'/);
+});
+
+test('H11 restored operations reconcile exact live targets and zero-target sends cannot succeed', () => {
+  const service = read('app-mobile/src/services/contentShareDeliveryService.ts');
+  const provider = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
+  assert.match(service, /reconcileContentShareOperation/);
+  assert.match(service, /recipient\?\.targetKind === target\.targetKind && recipient\.targetId === target\.targetId/);
+  assert.match(service, /if \(input\.recipients\.length === 0\) throw new Error\('no_available_recipients'\)/);
+  assert.match(provider, /if \(!prepared \|\| !recipientsReady\) return/);
+  assert.match(provider, /reconcileContentShareOperation\(operation, recipients\)/);
+  assert.match(provider, /reconciled\.targets\.filter\(\(target\) => target\.state !== 'sent'\)/);
+  const send = provider.slice(provider.indexOf('const send = useCallback'), provider.indexOf('const finishSuccess'));
+  assert.ok(send.indexOf('if (targets.length === 0)') < send.indexOf('sendContentShareToRecipients'));
+  assert.ok(send.indexOf("setOutcome({ kind: 'success'") > send.indexOf('sendContentShareToRecipients'));
+});
+
+test('H12 offline mode preserves prepared external actions and disables only internal send', () => {
+  const provider = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
+  assert.match(provider, /useNetInfo\(\)/);
+  assert.match(provider, /isConnected === false \|\| netInfo\.isInternetReachable === false/);
+  assert.match(provider, /You're offline\. Reconnect to send in Mingla\./);
+  assert.match(provider, /disabled=\{!prepared \|\| selected\.size === 0 \|\| sending \|\| isOffline\}/);
+  const external = provider.slice(provider.indexOf('<Text style={styles.sectionTitle}>Share elsewhere'), provider.indexOf('{externalError ?'));
+  assert.doesNotMatch(external, /isOffline/);
+  assert.doesNotMatch(provider, /cached.*(?:shortCode|canonicalUrl)|fabricat/i);
+});
+
+test('H13 Business web traps focus, closes on idle Escape, returns focus, and preserves exact actions', () => {
+  const modal = read('mingla-business/src/components/ui/ShareModal.tsx');
+  assert.match(modal, /const invokingControl = documentValue\.activeElement/);
+  assert.match(modal, /event\.key === 'Escape' && !busyRef\.current/);
+  assert.match(modal, /event\.key !== 'Tab'/);
+  assert.match(modal, /last\.focus\?\.\(\)/);
+  assert.match(modal, /invokingControl\?\.focus\?\.\(\)/);
+  assert.match(modal, /canWebShare\(\) \? <Pressable/);
+  assert.match(modal, /copyPublicUrl\(prepared\.url\)/);
+  assert.match(modal, /QRCode value=\{prepared\.url\}/);
+  assert.match(modal, /accessibilityViewIsModal/);
+});
+
+test('H14 summaries honor status-first hierarchy and Consumer search has an icon', () => {
+  const consumer = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
+  const business = read('mingla-business/src/components/ui/ShareModal.tsx');
+  for (const source of [consumer, business]) {
+    const summary = source.slice(source.indexOf('<View style={styles.summary}>'), source.indexOf('</View>\n      {prep', source.indexOf('<View style={styles.summary}>')));
+    assert.ok(summary.indexOf('status') < summary.indexOf('prepared?.title'));
+    assert.ok(summary.indexOf('prepared?.title') < summary.lastIndexOf('facts'));
+    assert.match(summary, /numberOfLines=\{2\}/);
+  }
+  assert.match(consumer, /<Icon name="search-outline"/);
+  assert.match(consumer, /accessibilityLabel="Search people and chats"/);
+});
+
+test('H15 telemetry failures are isolated and preparation/poster timings are complete', () => {
+  const consumerAdapter = read('app-mobile/src/services/contentShareAdapter.ts');
+  const businessAdapter = read('mingla-business/src/services/contentShareAdapter.ts');
+  const consumer = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
+  const business = read('mingla-business/src/components/ui/ShareModal.tsx');
+  assert.match(consumerAdapter, /try \{ mixpanelService\.track/);
+  assert.match(consumerAdapter, /try \{ logAppsFlyerEvent/);
+  assert.match(businessAdapter, /try\{postHogService\.capture/);
+  assert.match(businessAdapter, /try\{captureWeb/);
+  assert.match(businessAdapter, /try\{logAppsFlyerEvent/);
+  assert.match(business, /share_link_ready'[\s\S]*result_class: 'ready'[\s\S]*duration_ms/);
+  assert.match(business, /failure_type: 'prepare'[\s\S]*result_class: 'failed'[\s\S]*duration_ms/);
+  for (const source of [consumer, business]) {
+    assert.match(source, /share_poster_result'[\s\S]*result_class: 'ready'[\s\S]*duration_ms/);
+    assert.match(source, /share_poster_result'[\s\S]*result_class: 'failed'[\s\S]*duration_ms/);
+  }
+});
+
+test('H16 safe-area, accessibility-size, and recipient-state contracts are explicit', () => {
+  const consumer = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
+  const business = read('mingla-business/src/components/ui/ShareModal.tsx');
+  const businessSheet = read('mingla-business/src/components/ui/SheetMobile.tsx');
+  assert.match(consumer, /paddingBottom: Math\.max\(insets\.bottom, 12\)/);
+  assert.match(businessSheet, /paddingBottom: spacing\.lg \+ bottomInset/);
+  assert.match(consumer, /<Text style=\{styles\.heading\}>Share<\/Text>/);
+  assert.match(business, /<Text style=\{styles\.heading\}>Share<\/Text>/);
+  assert.match(consumer, /fontScale < 1\.4/);
+  assert.match(business, /fontScale < 1\.4/);
+  assert.match(consumer, /accessibilityLabel=\{`\$\{recipient\.displayName\}\. \$\{stateLabel\}`\}/);
+  assert.match(consumer, /accessibilityState=\{\{ checked: active, disabled: sent \|\| sending \}\}/);
+  assert.match(consumer, /disabled=\{sent \|\| sending\}/);
 });

@@ -14,8 +14,10 @@ const singleFlight=createContentShareSingleFlight();
 
 export { contentShareRequestFromPublicUrl } from '@mingla/sharing';
 
-export function trackBusinessShareEvent(event:'share_sheet_opened'|'share_link_ready'|'share_sheet_returned'|'share_link_opened'|'share_failure',properties:Record<string,string|number|boolean>):void{
-  postHogService.capture(event,properties);captureWeb(event,properties);logAppsFlyerEvent(event,properties)
+export function trackBusinessShareEvent(event:'share_sheet_opened'|'share_link_ready'|'share_sheet_returned'|'share_link_opened'|'share_poster_result'|'share_failure',properties:Record<string,string|number|boolean>):void{
+  try{postHogService.capture(event,properties)}catch{/* telemetry never owns sharing */}
+  try{captureWeb(event,properties)}catch{/* telemetry never owns sharing */}
+  try{logAppsFlyerEvent(event,properties)}catch{/* telemetry never owns sharing */}
 }
 
 export function buildBusinessShareIntent(channel:'twitter'|'whatsapp'|'email'|'sms',url:string,title:string,message?:string):string{

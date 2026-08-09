@@ -1,14 +1,17 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Clipboard, Image, Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
-import { normalizeContentShareNote, selectPreviewFacts, shareKindLabel } from '@mingla/sharing';
+import { AccessibilityInfo, Clipboard, Image, Pressable, StyleSheet, Text, View, useColorScheme, useWindowDimensions } from 'react-native';
+import { useNetInfo } from '@react-native-community/netinfo';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { normalizeContentShareNote, selectPreviewFacts, shareKindLabel, statusLabel } from '@mingla/sharing';
 import { BaseBottomSheet, BottomSheetTextInput } from '../ui/BaseBottomSheet';
+import { Icon } from '../ui/Icon';
 import { colors } from '../../constants/colors';
 import {
   prepareContentShare, sharePreparedContent, type PreparedContentShare,
   trackContentShareEvent,
 } from '../../services/contentShareAdapter';
 import {
-  clearContentShareOperationId, listContentShareRecipients, loadContentShareOperation,
+  clearContentShareOperationId, listContentShareRecipients, loadContentShareOperation, reconcileContentShareOperation,
   sendContentShareToRecipients, type ContentShareRecipient,
 } from '../../services/contentShareDeliveryService';
 import { registerContentShareHandler, type OpenContentShareInput } from '../../services/contentShareController';
@@ -27,14 +30,20 @@ const initials = (name: string): string => name.split(/\s+/u).map((part) => part
 
 export function UnifiedShareProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const dark = useColorScheme() === 'dark';
+  const { fontScale } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const netInfo = useNetInfo();
+  const isOffline = netInfo.isConnected === false || netInfo.isInternetReachable === false;
   const styles = useMemo(() => createStyles(dark), [dark]);
   const generation = useRef(0);
+  const posterStartedAt = useRef(0);
   const [visible, setVisible] = useState(false);
   const [input, setInput] = useState<OpenContentShareInput | null>(null);
   const [prepared, setPrepared] = useState<PreparedContentShare | null>(null);
   const [prepError, setPrepError] = useState(false);
   const [recipients, setRecipients] = useState<ContentShareRecipient[]>([]);
   const [recipientsLoading, setRecipientsLoading] = useState(false);
+  const [recipientsReady, setRecipientsReady] = useState(false);
   const [recipientError, setRecipientError] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [note, setNote] = useState('');
@@ -73,9 +82,10 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
   const loadRecipients = useCallback((token: number): void => {
     const startedAt = Date.now();
     setRecipientError(false); setRecipientsLoading(true);
+    setRecipientsReady(false);
     void listContentShareRecipients()
       .then((value) => {
-        if (generation.current === token) setRecipients(value);
+        if (generation.current === token) { setRecipients(value); setRecipientsReady(true); }
         console.info('[content-share] recipients', { result: 'ready', durationMs: Date.now() - startedAt, count: value.length });
       })
       .catch(() => {
@@ -90,7 +100,7 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
     const token = generation.current + 1;
     generation.current = token;
     setInput(nextInput); setPrepared(null); setPrepError(false); setRecipients([]);
-    setRecipientError(false); setSelected(new Set()); setNote(''); setNoteExpanded(false);
+    setRecipientError(false); setRecipientsReady(false); setSelected(new Set()); setNote(''); setNoteExpanded(false);
     setSearch(''); setCopied(false); setSending(false);
     setDeliveryState({}); setPosterFailed(false); setExternalError(null);
     setOutcome({ kind: 'idle' }); setVisible(true); // synchronous: never wait before opening.
@@ -102,16 +112,23 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => { registerContentShareHandler(openContentShare); return () => registerContentShareHandler(null); }, [openContentShare]);
   useEffect(() => {
-    if (!prepared) return;
+    if (!prepared || !recipientsReady) return;
     const token = generation.current;
     void loadContentShareOperation(prepared.shortCode, prepared.version).then((operation) => {
       if (!operation || generation.current !== token) return;
-      setNote(operation.senderNote ?? '');
-      setNoteExpanded(operation.senderNote !== null);
-      setDeliveryState(Object.fromEntries(operation.targets.filter((target) => target.state !== 'pending').map((target) => [target.key, target.state as 'sent' | 'failed'])));
-      setSelected(new Set(operation.targets.filter((target) => target.state !== 'sent').map((target) => target.key)));
+      void reconcileContentShareOperation(operation, recipients).then((reconciled) => {
+        if (generation.current !== token) return;
+        setNote(reconciled.senderNote ?? '');
+        setNoteExpanded(reconciled.senderNote !== null);
+        setDeliveryState(Object.fromEntries(reconciled.targets.filter((target) => target.state !== 'pending').map((target) => [target.key, target.state as 'sent' | 'failed'])));
+        setSelected(new Set(reconciled.targets.filter((target) => target.state !== 'sent').map((target) => target.key)));
+      });
     });
-  }, [prepared]);
+  }, [prepared, recipients, recipientsReady]);
+
+  useEffect(() => {
+    posterStartedAt.current = prepared?.media?.posterUrl ? Date.now() : 0;
+  }, [prepared?.media?.posterUrl]);
 
   const value = useMemo(() => ({ openContentShare }), [openContentShare]);
   const close = useCallback(() => { if (sending) return; generation.current += 1; setVisible(false); }, [sending]);
@@ -149,8 +166,13 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
   }, [prepared]);
 
   const send = useCallback(async () => {
-    if (!prepared || sending || selected.size === 0) return;
+    if (!prepared || sending || selected.size === 0 || isOffline) return;
     const targets = recipients.filter((recipient) => selected.has(recipient.key));
+    if (targets.length === 0) {
+      setSelected(new Set());
+      AccessibilityInfo.announceForAccessibility('Those chats are no longer available. Choose someone else.');
+      return;
+    }
     setSending(true); setOutcome({ kind: 'idle' });
     try {
       const result = await sendContentShareToRecipients({
@@ -171,7 +193,7 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
     } catch {
       setOutcome({ kind: 'failed', failed: selected.size });
     } finally { setSending(false); }
-  }, [note, prepared, recipients, selected, sending]);
+  }, [isOffline, note, prepared, recipients, selected, sending]);
 
   const finishSuccess = useCallback(() => {
     generation.current += 1;
@@ -185,18 +207,18 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
   }, [note]);
   const failedCount = Object.values(deliveryState).filter((state) => state === 'failed').length;
   const sendLabel = sending ? `Sending to ${selected.size}…` : failedCount > 0 ? `Retry ${selected.size}` : selected.size === 0 ? 'Select someone in Mingla' : `Send to ${selected.size} ${selected.size === 1 ? 'chat' : 'chats'}`;
-  const header = <View style={styles.header}><Text numberOfLines={1} style={styles.heading}>Share{prepared ? ` ${prepared.title}` : ''}</Text><Pressable style={styles.closeTarget} accessibilityRole="button" accessibilityLabel="Close share" disabled={sending} onPress={outcome.kind === 'success' ? finishSuccess : close}><Text style={styles.close}>×</Text></Pressable></View>;
+  const header = <View style={styles.header}><Text style={styles.heading}>Share</Text><Pressable style={styles.closeTarget} accessibilityRole="button" accessibilityLabel="Close share" disabled={sending} onPress={outcome.kind === 'success' ? finishSuccess : close}><Text style={styles.close}>×</Text></Pressable></View>;
   const footer = outcome.kind === 'success'
-    ? <View style={styles.footer}><Pressable accessibilityRole="button" onPress={finishSuccess} style={styles.sendButton}><Text style={styles.sendText}>Done</Text></Pressable></View>
-    : <View style={styles.footer}><Pressable accessibilityRole="button" disabled={!prepared || selected.size === 0 || sending} onPress={() => void send()} style={[styles.sendButton, (!prepared || selected.size === 0 || sending) && styles.disabled]}><Text style={styles.sendText}>{sendLabel}</Text></Pressable></View>;
+    ? <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}><Pressable accessibilityRole="button" onPress={finishSuccess} style={styles.sendButton}><Text style={styles.sendText}>Done</Text></Pressable></View>
+    : <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>{prepared && isOffline ? <Text accessibilityLiveRegion="polite" style={styles.offlineCopy}>You're offline. Reconnect to send in Mingla.</Text> : null}<Pressable accessibilityRole="button" disabled={!prepared || selected.size === 0 || sending || isOffline} onPress={() => void send()} style={[styles.sendButton, (!prepared || selected.size === 0 || sending || isOffline) && styles.disabled]}><Text style={styles.sendText}>{sendLabel}</Text></Pressable></View>;
 
   return <UnifiedShareContext.Provider value={value}>
     {children}
     <BaseBottomSheet accessibilityLabel={`Share ${prepared?.title ?? input?.kind ?? ''}`} visible={visible} onClose={close} theme={dark ? 'dark' : 'light'} snapPoints={['90%']} enablePanDownToClose={!sending} scrollMode="scroll" wrapInRNModal keyboardBehavior="interactive" keyboardBlurBehavior="restore" android_keyboardInputMode="adjustResize" header={header} stickyFooter={footer} scrollProps={{ keyboardShouldPersistTaps: 'handled', contentContainerStyle: styles.body }}>
       {outcome.kind === 'success' ? <View style={styles.successState} accessibilityLiveRegion="polite"><View style={styles.successCheck}><Text style={styles.successCheckText}>✓</Text></View><Text style={styles.successTitle}>Sent to {outcome.sent} {outcome.sent === 1 ? 'chat' : 'chats'}</Text></View> : <>
       <View style={styles.summary}>
-        {!prepared && !prepError ? <View accessibilityLabel="Preparing cover" style={styles.posterSkeleton} /> : prepared?.media?.posterUrl && !posterFailed ? <View style={styles.posterWrap}><Image source={{ uri: prepared.media.posterUrl }} style={styles.poster} onLoad={() => console.info('[content-share] poster', { result: 'ready' })} onError={() => { setPosterFailed(true); console.info('[content-share] poster', { result: 'failed' }); }} />{prepared.media.kind === 'gif' || prepared.media.kind === 'video' ? <View style={styles.mediaTag}><Text style={styles.mediaTagText}>{prepared.media.kind === 'gif' ? 'GIF' : 'Video'}</Text></View> : null}</View> : <View accessibilityLabel="No cover" style={styles.posterFallback}><Text style={styles.posterFallbackText}>{prepared ? shareKindLabel(prepared.kind).slice(0, 1) : 'M'}</Text></View>}
-        <View style={styles.summaryCopy}><Text numberOfLines={1} style={styles.title}>{prepared?.title ?? 'Preparing share…'}</Text><Text numberOfLines={1} style={styles.subtitle}>{prepared ? `${shareKindLabel(prepared.kind)}${selectPreviewFacts(prepared.facts, 2).length ? ` · ${selectPreviewFacts(prepared.facts, 2).join(' · ')}` : ''}` : input ? shareKindLabel(input.kind) : 'Mingla'}</Text></View>
+        {!prepared && !prepError ? <View accessibilityLabel="Preparing cover" style={styles.posterSkeleton} /> : prepared?.media?.posterUrl && !posterFailed ? <View style={styles.posterWrap}><Image source={{ uri: prepared.media.posterUrl }} style={styles.poster} onLoad={() => trackContentShareEvent('share_poster_result', { kind: prepared.kind, result_class: 'ready', duration_ms: Math.max(0, Date.now() - posterStartedAt.current) })} onError={() => { setPosterFailed(true); trackContentShareEvent('share_poster_result', { kind: prepared.kind, result_class: 'failed', duration_ms: Math.max(0, Date.now() - posterStartedAt.current) }); }} />{prepared.media.kind === 'gif' || prepared.media.kind === 'video' ? <View style={styles.mediaTag}><Text style={styles.mediaTagText}>{prepared.media.kind === 'gif' ? 'GIF' : 'Video'}</Text></View> : null}</View> : <View accessibilityLabel="No cover" style={styles.posterFallback}><Text style={styles.posterFallbackText}>{prepared ? shareKindLabel(prepared.kind).slice(0, 1) : 'M'}</Text></View>}
+        <View style={styles.summaryCopy}><Text numberOfLines={1} style={styles.summaryMeta}>{prepared ? `${shareKindLabel(prepared.kind)}${statusLabel(prepared.facts.status) ? ` · ${statusLabel(prepared.facts.status)}` : ''}` : input ? shareKindLabel(input.kind) : 'Mingla'}</Text><Text numberOfLines={2} style={styles.title}>{prepared?.title ?? 'Preparing share…'}</Text>{prepared && selectPreviewFacts(prepared.facts, 2).length ? <Text numberOfLines={2} style={styles.subtitle}>{selectPreviewFacts(prepared.facts, 2).join(' · ')}</Text> : null}</View>
       </View>
       {prepError ? <View style={styles.errorRow}><Text style={styles.errorText}>Couldn't prepare this share</Text><Pressable accessibilityRole="button" onPress={() => input && loadShare(input, generation.current)}><Text style={styles.retry}>Retry share</Text></Pressable></View> : null}
       <Text style={styles.sectionTitle}>Share elsewhere</Text>
@@ -205,8 +227,8 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
         <Pressable accessibilityRole="button" accessibilityLabel={copied ? 'Link copied' : 'Copy link'} disabled={!prepared || sending} onPress={() => void copyLink()} style={[styles.copyAction, (!prepared || sending) && styles.disabled]}><Text style={styles.actionText}>{copied ? '✓' : '⧉'}</Text></Pressable>
       </View>
       {externalError ? <Text accessibilityLiveRegion="polite" style={styles.errorText}>{externalError}</Text> : null}
-      <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Send in Mingla</Text><Text style={styles.helper}>People and chats</Text></View>
-      <BottomSheetTextInput value={search} onChangeText={setSearch} placeholder="Search people and chats" placeholderTextColor="#6B7280" style={styles.search} />
+      <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>Send in Mingla</Text>{fontScale < 1.4 ? <Text style={styles.helper}>People and chats</Text> : null}</View>
+      <View style={styles.searchWrap}><View accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><Icon name="search-outline" size={19} color="#6B7280" /></View><BottomSheetTextInput accessibilityLabel="Search people and chats" value={search} onChangeText={setSearch} placeholder="Search people and chats" placeholderTextColor="#6B7280" style={styles.search} /></View>
       {recipientError ? <View style={styles.errorRow}><Text style={styles.errorText}>Couldn't load people and chats</Text><Pressable onPress={() => loadRecipients(generation.current)}><Text style={styles.retry}>Retry list</Text></Pressable></View> : null}
       {recipientsLoading ? [0,1,2].map((item) => <View key={item} style={styles.recipientSkeleton} />) : null}
       {!recipientsLoading && !recipientError && recipients.length === 0 ? <Text style={styles.empty}>No Mingla chats or friends yet. You can still share elsewhere.</Text> : null}
@@ -215,10 +237,12 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
       {outcome.kind === 'failed' ? <Text accessibilityLiveRegion="polite" style={styles.errorBanner}>Couldn't send yet. Nothing was duplicated.</Text> : null}
       {visibleRecipients.map((recipient) => {
         const active = selected.has(recipient.key);
-        return <Pressable key={recipient.key} onPress={() => toggleRecipient(recipient.key)} accessibilityRole="checkbox" accessibilityState={{ checked: active }} style={[styles.recipient, active && styles.recipientSelected]}>
+        const sent = deliveryState[recipient.key] === 'sent';
+        const stateLabel = sent ? 'Sent' : active ? 'Selected' : 'Not selected';
+        return <Pressable key={recipient.key} onPress={() => toggleRecipient(recipient.key)} disabled={sent || sending} accessibilityRole="checkbox" accessibilityLabel={`${recipient.displayName}. ${stateLabel}`} accessibilityState={{ checked: active, disabled: sent || sending }} style={[styles.recipient, active && styles.recipientSelected]}>
           {recipient.avatarUrl ? <Image source={{ uri: recipient.avatarUrl }} style={styles.avatar} /> : <View style={styles.avatarFallback}><Text style={styles.avatarText}>{initials(recipient.displayName)}</Text></View>}
           <View style={styles.recipientCopy}><Text numberOfLines={1} style={styles.recipientName}>{recipient.displayName}</Text><Text numberOfLines={1} style={styles.recipientMeta}>{recipient.targetKind === 'group' ? `Group chat · ${recipient.participantCount ?? 0}` : recipient.targetKind === 'friend' ? 'Friend · chat starts when sent' : recipient.conversationId ? 'Recent chat' : 'Direct chat'}</Text></View>
-          {deliveryState[recipient.key] === 'sent' ? <Text style={styles.sentLabel}>Sent</Text> : <View style={[styles.check, active && styles.checkActive]}><Text style={styles.checkText}>{active ? '✓' : ''}</Text></View>}
+          {sent ? <Text style={styles.sentLabel}>Sent</Text> : <View style={[styles.check, active && styles.checkActive]}><Text style={styles.checkText}>{active ? '✓' : ''}</Text></View>}
         </Pressable>;
       })}
       {!noteExpanded ? <Pressable accessibilityRole="button" onPress={() => setNoteExpanded(true)} style={styles.noteCollapsed}><Text style={styles.noteLabel}>Add a note (optional)</Text></Pressable> : <View><BottomSheetTextInput editable={!sending && Object.keys(deliveryState).length === 0} value={note} onChangeText={(value) => { try { setNote(normalizeContentShareNote(value).note ?? ''); } catch { /* unsupported engine: preserve prior note */ } }} multiline maxLength={480} placeholder="Add a note for the people you chose" placeholderTextColor="#6B7280" style={styles.note} />{noteState.graphemeCount >= 100 ? <Text accessibilityLiveRegion="polite" style={styles.counter}>{noteState.graphemeCount}/120</Text> : null}</View>}
@@ -238,10 +262,10 @@ const createStyles = (dark: boolean) => {
   const success = dark ? '#86EFAC' : '#166534';
   return StyleSheet.create({
     header:{minHeight:60,flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingHorizontal:16,paddingVertical:8}, heading:{flex:1,fontSize:18,lineHeight:28,fontWeight:'700',color:primary},closeTarget:{width:44,height:44,alignItems:'center',justifyContent:'center'},close:{fontSize:30,lineHeight:32,color:primary}, body:{paddingHorizontal:16,paddingBottom:28,gap:20},
-    summary:{minHeight:92,borderRadius:16,backgroundColor:surface,borderWidth:1,borderColor:border,padding:10,flexDirection:'row',alignItems:'center',gap:12},posterWrap:{width:64,height:72,position:'relative'},poster:{width:64,height:72,borderRadius:12},posterSkeleton:{width:64,height:72,borderRadius:12,backgroundColor:dark?'#24272E':'#F3F4F6'},mediaTag:{position:'absolute',right:4,bottom:4,borderRadius:6,backgroundColor:'#0C0E12',paddingHorizontal:5,paddingVertical:2},mediaTagText:{fontSize:9,fontWeight:'700',color:'#fff'},posterFallback:{width:64,height:72,borderRadius:12,backgroundColor:'#0C0E12',alignItems:'center',justifyContent:'center'},posterFallbackText:{fontSize:28,fontWeight:'800',color:'#fff'},summaryCopy:{flex:1},title:{fontSize:17,lineHeight:22,fontWeight:'700',color:primary},subtitle:{fontSize:13,lineHeight:18,fontWeight:'500',color:secondary,marginTop:4},
-    actionRow:{height:52,flexDirection:'row',gap:8},action:{flex:1,minHeight:52,borderRadius:16,backgroundColor:surface,borderWidth:1,borderColor:border,alignItems:'center',justifyContent:'center'},copyAction:{width:52,height:52,borderRadius:16,backgroundColor:surface,borderWidth:1,borderColor:border,alignItems:'center',justifyContent:'center'},actionText:{fontSize:16,fontWeight:'700',color:primary},disabled:{opacity:.45},sectionHeading:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},sectionTitle:{fontSize:16,lineHeight:24,fontWeight:'600',color:primary},helper:{fontSize:12,lineHeight:16,fontWeight:'500',color:secondary},search:{minHeight:48,borderWidth:1,borderColor:border,borderRadius:12,paddingHorizontal:14,color:primary,backgroundColor:surface},
+    summary:{minHeight:104,borderRadius:16,backgroundColor:surface,borderWidth:1,borderColor:border,padding:10,flexDirection:'row',alignItems:'center',gap:12},posterWrap:{width:64,height:80,position:'relative'},poster:{width:64,height:80,borderRadius:12},posterSkeleton:{width:64,height:80,borderRadius:12,backgroundColor:dark?'#24272E':'#F3F4F6'},mediaTag:{position:'absolute',right:4,bottom:4,borderRadius:6,backgroundColor:'#0C0E12',paddingHorizontal:5,paddingVertical:2},mediaTagText:{fontSize:9,fontWeight:'700',color:'#fff'},posterFallback:{width:64,height:80,borderRadius:12,backgroundColor:'#0C0E12',alignItems:'center',justifyContent:'center'},posterFallbackText:{fontSize:28,fontWeight:'800',color:'#fff'},summaryCopy:{flex:1},summaryMeta:{fontSize:12,lineHeight:16,fontWeight:'700',color:secondary},title:{fontSize:17,lineHeight:22,fontWeight:'700',color:primary,marginTop:2},subtitle:{fontSize:13,lineHeight:18,fontWeight:'500',color:secondary,marginTop:3},
+    actionRow:{height:52,flexDirection:'row',gap:8},action:{flex:1,minHeight:52,borderRadius:16,backgroundColor:surface,borderWidth:1,borderColor:border,alignItems:'center',justifyContent:'center'},copyAction:{width:52,height:52,borderRadius:16,backgroundColor:surface,borderWidth:1,borderColor:border,alignItems:'center',justifyContent:'center'},actionText:{fontSize:16,fontWeight:'700',color:primary},disabled:{opacity:.45},sectionHeading:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},sectionTitle:{fontSize:16,lineHeight:24,fontWeight:'600',color:primary},helper:{fontSize:12,lineHeight:16,fontWeight:'500',color:secondary},searchWrap:{minHeight:48,borderWidth:1,borderColor:border,borderRadius:12,paddingHorizontal:12,backgroundColor:surface,flexDirection:'row',alignItems:'center',gap:8},search:{flex:1,minHeight:46,paddingHorizontal:0,color:primary,backgroundColor:'transparent'},
     recipient:{minHeight:60,flexDirection:'row',alignItems:'center',gap:12,paddingHorizontal:8,paddingVertical:8,borderRadius:12,borderWidth:1,borderColor:'transparent'},recipientSelected:{backgroundColor:selected,borderColor:colors.primary},recipientSkeleton:{height:60,borderRadius:12,backgroundColor:dark?'#24272E':'#F3F4F6'},avatar:{width:44,height:44,borderRadius:22},avatarFallback:{width:44,height:44,borderRadius:22,backgroundColor:dark?'#342A24':'#ece4dc',alignItems:'center',justifyContent:'center'},avatarText:{fontWeight:'700',color:dark?'#F7C49D':'#5f4939'},recipientCopy:{flex:1},recipientName:{fontSize:15,lineHeight:20,fontWeight:'600',color:primary},recipientMeta:{fontSize:12,lineHeight:16,fontWeight:'500',color:secondary,marginTop:2},check:{width:24,height:24,borderRadius:12,borderWidth:1.5,borderColor:dark?'rgba(255,255,255,.5)':'#9CA3AF',alignItems:'center',justifyContent:'center'},checkActive:{backgroundColor:colors.primary,borderColor:colors.primary},checkText:{fontSize:15,fontWeight:'800',color:'#0C0E12'},sentLabel:{fontSize:12,fontWeight:'700',color:success},
     noteCollapsed:{minHeight:48,borderRadius:12,borderWidth:1,borderColor:border,justifyContent:'center',paddingHorizontal:14},noteLabel:{fontSize:15,color:primary},note:{minHeight:64,maxHeight:96,borderWidth:1,borderColor:border,borderRadius:12,paddingHorizontal:14,paddingVertical:10,color:primary,backgroundColor:surface},counter:{alignSelf:'flex-end',fontSize:12,color:secondary,marginTop:4},
-    footer:{paddingTop:12,paddingHorizontal:16,paddingBottom:12,backgroundColor:sheet,borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:border},sendButton:{height:52,borderRadius:16,backgroundColor:colors.primary,alignItems:'center',justifyContent:'center'},sendText:{fontSize:17,fontWeight:'800',color:'#0C0E12'},errorRow:{minHeight:44,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},errorText:{color:error},retry:{fontWeight:'700',color:dark?'#F7A15F':'#9A470A'},empty:{color:secondary,paddingVertical:8},noResults:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},resultBanner:{color:success,backgroundColor:dark?'#12321F':'#F0FDF4',padding:12,borderRadius:12},errorBanner:{color:error,backgroundColor:dark?'#351719':'#FEF2F2',padding:12,borderRadius:12},successState:{minHeight:260,alignItems:'center',justifyContent:'center',gap:16},successCheck:{width:64,height:64,borderRadius:32,backgroundColor:colors.primary,alignItems:'center',justifyContent:'center'},successCheckText:{fontSize:32,fontWeight:'800',color:'#0C0E12'},successTitle:{fontSize:20,lineHeight:28,fontWeight:'700',color:primary},
+    footer:{paddingTop:12,paddingHorizontal:16,paddingBottom:12,backgroundColor:sheet,borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:border,gap:8},offlineCopy:{fontSize:13,lineHeight:18,textAlign:'center',color:secondary},sendButton:{height:52,borderRadius:16,backgroundColor:colors.primary,alignItems:'center',justifyContent:'center'},sendText:{fontSize:17,fontWeight:'800',color:'#0C0E12'},errorRow:{minHeight:44,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},errorText:{color:error},retry:{fontWeight:'700',color:dark?'#F7A15F':'#9A470A'},empty:{color:secondary,paddingVertical:8},noResults:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},resultBanner:{color:success,backgroundColor:dark?'#12321F':'#F0FDF4',padding:12,borderRadius:12},errorBanner:{color:error,backgroundColor:dark?'#351719':'#FEF2F2',padding:12,borderRadius:12},successState:{minHeight:260,alignItems:'center',justifyContent:'center',gap:16},successCheck:{width:64,height:64,borderRadius:32,backgroundColor:colors.primary,alignItems:'center',justifyContent:'center'},successCheckText:{fontSize:32,fontWeight:'800',color:'#0C0E12'},successTitle:{fontSize:20,lineHeight:28,fontWeight:'700',color:primary},
   });
 };

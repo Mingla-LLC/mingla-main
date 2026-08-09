@@ -57,6 +57,26 @@ export async function loadContentShareOperation(shareCode: string, version: numb
   } catch { return null; }
 }
 
+export async function reconcileContentShareOperation(
+  operation: PersistedContentShareOperation,
+  recipients: ContentShareRecipient[],
+): Promise<PersistedContentShareOperation> {
+  const available = new Map(recipients.map((recipient) => [recipient.key, recipient]));
+  const targets = operation.targets.filter((target) => {
+    const recipient = available.get(target.key);
+    return recipient?.targetKind === target.targetKind && recipient.targetId === target.targetId;
+  });
+  if (targets.length === operation.targets.length) return operation;
+  const reconciled = { ...operation, targets };
+  await AsyncStorage.setItem(
+    operationStorageKey(operation.shortCode, operation.shareVersion),
+    JSON.stringify(reconciled),
+  ).catch((error: unknown) => {
+    console.warn('[content-share] operation reconciliation persistence failed', error instanceof Error ? error.name : 'unknown');
+  });
+  return reconciled;
+}
+
 async function beginContentShareOperation(input: {
   shareCode: string; version: number; recipients: ContentShareRecipient[]; senderNote: string;
 }): Promise<PersistedContentShareOperation> {
@@ -119,6 +139,7 @@ export async function sendContentShareToRecipients(input: {
   shareVersion: number; senderNote: string; title: string;
   onSettled?: (key: string, state: 'sent' | 'failed') => void;
 }): Promise<{ sent: number; failed: number; sentKeys: string[]; failedKeys: string[] }> {
+  if (input.recipients.length === 0) throw new Error('no_available_recipients');
   const note = normalizeContentShareNote(input.senderNote);
   const operation = await beginContentShareOperation({ shareCode: input.shortCode, version: input.shareVersion, recipients: input.recipients, senderNote: input.senderNote });
   let persistQueue = Promise.resolve();

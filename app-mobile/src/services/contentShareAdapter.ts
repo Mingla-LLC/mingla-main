@@ -26,14 +26,14 @@ type CreatedShare = {
 const singleFlight=createContentShareSingleFlight();
 
 export type ContentShareTelemetryEvent =
-  | 'share_sheet_opened' | 'share_link_ready' | 'share_sheet_returned' | 'share_failure';
+  | 'share_sheet_opened' | 'share_link_ready' | 'share_sheet_returned' | 'share_poster_result' | 'share_failure';
 
 export function trackContentShareEvent(
   event: ContentShareTelemetryEvent,
   properties: Record<string, string | number | boolean>,
 ): void {
-  mixpanelService.track(event, properties);
-  logAppsFlyerEvent(event, properties);
+  try { mixpanelService.track(event, properties); } catch { /* telemetry never owns sharing */ }
+  try { logAppsFlyerEvent(event, properties); } catch { /* telemetry never owns sharing */ }
 }
 
 export type ShareMessageContext = {
