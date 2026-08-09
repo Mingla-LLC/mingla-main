@@ -57,7 +57,10 @@ function contentShareDb() {
       if (name === 'resolve_content_share_message') {
         return { data: `Curated plan\n\nhttps://usemingla.com/s/${args.p_code}`, error: null };
       }
-      assert.equal(name, 'upsert_content_share_version');
+      // [TEST-MOD-APPROVED #1719] Curated shares now persist their bounded
+      // native snapshot through the additive RPC; the old RPC expectation was
+      // stale and prevented this suite from reaching its source-key assertions.
+      assert.equal(name, 'upsert_content_share_version_with_native_snapshot');
       upserts += 1;
       return {
         data: {
@@ -117,7 +120,7 @@ function refreshDb() {
     },
     async rpc(name, args) {
       calls.push({ operation: 'rpc', name, args });
-      assert.equal(name, 'upsert_content_share_version');
+      assert.equal(name, 'upsert_content_share_version_with_native_snapshot');
       return { data: { shortCode: 'Aa0Bb1Cc2Dd3Ee4F', version: 2, versionCreated: true }, error: null };
     },
   };
@@ -154,6 +157,12 @@ test('C2 never-saved composition batch-rehydrates exact served truth in requeste
   assert.deepEqual(mapped.publicDetails.stops.map((stop) => stop.title), ['Williamson Preserve', 'Sopranos Grill']);
   assert.deepEqual(mapped.sourceReference, { stopPlaceIds: IDS });
   assert.match(mapped.sourceKey, /^curated-composition:[a-f0-9]{64}$/);
+  // [TEST-MOD-APPROVED #1719] The native snapshot now uses the immutable
+  // composition fingerprint as its required id; optional absent/null place
+  // fields remain omitted rather than invalidating historical compositions.
+  assert.equal(mapped.nativeSnapshot.id, mapped.sourceKey);
+  assert.equal('phone' in mapped.nativeSnapshot.stops[0], false);
+  assert.equal('countryCode' in mapped.nativeSnapshot.stops[0], false);
 
   const batch = db.calls.find((call) => call.operation === 'in');
   assert.deepEqual(batch, { operation: 'in', table: 'place_pool', column: 'google_place_id', values: IDS });
@@ -175,9 +184,10 @@ test('C3 exact authenticated identity creates and reuses only content-share reco
 
   // [TEST-MOD-APPROVED #1719] Count mint calls separately from the immutable
   // message reads added after each mint/reuse.
-  const rpcCalls = db.calls.filter((call) => call.operation === 'rpc' && call.name === 'upsert_content_share_version');
+  const rpcCalls = db.calls.filter((call) => call.operation === 'rpc' && call.name === 'upsert_content_share_version_with_native_snapshot');
   assert.equal(rpcCalls.length, 2);
   assert.equal(rpcCalls[0].args.p_source_key, rpcCalls[1].args.p_source_key);
+  assert.equal(rpcCalls[0].args.p_native_snapshot.id, rpcCalls[0].args.p_source_key);
   assert.deepEqual(rpcCalls[0].args.p_source_reference, { stopPlaceIds: IDS });
   assert.deepEqual(rpcCalls[1].args.p_source_reference, { stopPlaceIds: IDS });
   assert.deepEqual([...new Set(db.calls.filter((call) => call.operation === 'from').map((call) => call.table))], ['place_pool']);

@@ -77,7 +77,9 @@ function createDb(result) {
       if (name === 'resolve_content_share_message') {
         return { data: `Curated plan\n\nhttps://usemingla.com/s/${args.p_code}`, error: null };
       }
-      if (name !== 'upsert_content_share_version') throw new Error(`forbidden rpc ${name}`);
+      // [TEST-MOD-APPROVED #1719] Curated shares use the additive native
+      // snapshot RPC. Keep every other persistence path forbidden.
+      if (name !== 'upsert_content_share_version_with_native_snapshot') throw new Error(`forbidden rpc ${name}`);
       return { data: { shortCode: 'Aa0Bb1Cc2Dd3Ee4F', version: 4, versionCreated: true }, error: null };
     },
   };
@@ -137,7 +139,7 @@ function refreshDb(rows) {
     },
     async rpc(name, args) {
       calls.push({ operation: 'rpc', name, args });
-      if (name !== 'upsert_content_share_version') throw new Error(`forbidden rpc ${name}`);
+      if (name !== 'upsert_content_share_version_with_native_snapshot') throw new Error(`forbidden rpc ${name}`);
       return { data: { shortCode: 'Aa0Bb1Cc2Dd3Ee4F', version: 9, versionCreated: true }, error: null };
     },
   };
@@ -218,6 +220,32 @@ test('TA3 shuffled rows restore caller order while database errors and malformed
   );
 });
 
+test('TA3b historical null optionals remain shareable while malformed non-null fidelity fails closed', async () => {
+  const historical = IDS.slice(0, 2).map((id) => served(id, {
+    rating: null, review_count: null, price_min: null, price_max: null,
+    opening_hours: null, utc_offset_minutes: null, national_phone_number: null,
+    website: null, country_code: null, lat: null, lng: null,
+  }));
+  const mapped = await loadAuthoritativeContentShare(
+    createDb({ data: historical, error: null }),
+    'private-profile-id',
+    'curated',
+    { stopPlaceIds: IDS.slice(0, 2) },
+  );
+  assert.equal(mapped.nativeSnapshot.id, mapped.sourceKey);
+  for (const stop of mapped.nativeSnapshot.stops) {
+    for (const key of ['rating', 'reviewCount', 'priceMin', 'priceMax', 'utcOffsetMinutes', 'phone', 'countryCode', 'lat', 'lng']) {
+      assert.equal(key in stop, false, key);
+    }
+  }
+
+  const malformed = [served(IDS[0], { rating: '4.9' }), served(IDS[1])];
+  await assert.rejects(
+    loadAuthoritativeContentShare(createDb({ data: malformed, error: null }), 'private-profile-id', 'curated', { stopPlaceIds: IDS.slice(0, 2) }),
+    /invalid_native_snapshot/,
+  );
+});
+
 test('TA4 forged client facts/media are ignored, order owns the source hash, and unsupported area is omitted', async () => {
   const rows = [
     served(IDS[0], { city: 'Durham', stored_photo_urls: [] }),
@@ -269,7 +297,10 @@ test('TA5 refresh rehydrates current served truth without leaking private identi
     assert.equal(tables.includes(forbidden), false, forbidden);
   }
   const upsert = db.calls.find((call) => call.operation === 'rpc');
-  assert.equal(upsert.name, 'upsert_content_share_version');
+  // [TEST-MOD-APPROVED #1719] Refresh must carry the same immutable native
+  // snapshot as creation, through the additive snapshot RPC.
+  assert.equal(upsert.name, 'upsert_content_share_version_with_native_snapshot');
+  assert.equal(upsert.args.p_native_snapshot.id, upsert.args.p_source_key);
   assert.deepEqual(upsert.args.p_source_reference, { stopPlaceIds: IDS.slice(0, 2) });
 });
 
@@ -342,7 +373,10 @@ test('TA8 production scope contains no hidden persistence route or private-ID pu
     assert.doesNotMatch(source, /from\(["'](?:saved_card|board_saved_cards|calendar|chat|likes|user_likes)["']\).*?(?:insert|upsert|update)/s);
   }
   assert.match(mapping, /sourceReference: \{ stopPlaceIds \}/);
-  assert.match(mapping, /sourceKey: `curated-composition:\$\{await sha256Hex\(canonicalIds\)\}`/);
+  // [TEST-MOD-APPROVED #1719] Calculate the fingerprint once and reuse it as
+  // both the required native snapshot id and the private source key.
+  assert.match(mapping, /const compositionId = `curated-composition:\$\{await sha256Hex\(canonicalIds\)\}`/);
+  assert.match(mapping, /id: compositionId[\s\S]*sourceKey: compositionId/);
   assert.doesNotMatch(mapping, /facts:\s*\{[^}]*stopPlaceIds|publicDetails:\s*\{[^}]*stopPlaceIds/s);
   const workflow = read('.github/workflows/issue-1615-public-share-surfaces.yml');
   assert.match(workflow, /curated-composition-terminal-ui\.tester\.adversarial\.test\.mjs/);

@@ -76,6 +76,7 @@ const withProxySecret = async (work) => {
 
 test('TA1 a real PostgREST 42703-shaped denial rejects unknown columns while the production mapper succeeds', async () => {
   const mapper = await import(pathToFileURL(path.join(ROOT, 'supabase/functions/_shared/contentShare.ts')));
+  assert.equal(deployedColumns.has('neighborhood'), false, 'the closed production fixture must never admit the removed column');
   const row = {
     id: 'pool-1', google_place_id: 'google-1', name: 'Yonder Coffee',
     address: '108 E Main St Suite 101, Durham, NC 27701, USA', city: 'Durham',

@@ -676,14 +676,15 @@ export async function loadAuthoritativeContentShare(
       if (orderedRows.some((row) => !row)) throw new Error("gone");
       if (orderedRows.some((row) => row?.is_active !== true || row?.is_servable !== true)) throw new Error("not_public");
       const canonicalIds = JSON.stringify(stopPlaceIds);
+      const compositionId = `curated-composition:${await sha256Hex(canonicalIds)}`;
       const mapped = mapCuratedComposition(orderedRows as RecordLike[]);
       const nativeSnapshot = buildNativeContentCardSnapshot("curated", { card_data: {
-        title: mapped.facts.title, category: "Curated plan", image: mapped.mediaIdentity?.posterUrl,
+        id: compositionId, title: mapped.facts.title, category: "Curated plan", image: mapped.mediaIdentity?.posterUrl,
         stops: (orderedRows as RecordLike[]).map((stop,index) => nativeCuratedStopFromPlaceRow(stop,index,orderedRows.length)),
       } });
       return {
         ...mapped, nativeSnapshot, nativePreview: nativePreview(nativeSnapshot),
-        sourceKey: `curated-composition:${await sha256Hex(canonicalIds)}`,
+        sourceKey: compositionId,
         sourceReference: { stopPlaceIds },
       };
     }
