@@ -110,3 +110,12 @@ jobs:
             }
             console.log("\nmingla-business jest suite is GREEN.");
           '
+
+      - name: "#1487 deterministic venue-first worker restoration"
+        if: always()
+        run: |
+          ISSUE_1487_ORDER=venue-first npx jest --ci --runInBand --runTestsByPath \
+            src/services/__tests__/venueGalleryWebPicker.orch1300.test.ts \
+            src/services/__tests__/urlCreateObjectURLPreserved.issue1487.implementor.test.ts \
+            src/utils/__tests__/browserFilePicker.test.ts \
+            --testSequencer=./scripts/ci/issue-1487-sequencer.cjs

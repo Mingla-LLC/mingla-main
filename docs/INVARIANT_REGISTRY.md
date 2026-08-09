@@ -7,6 +7,18 @@
 
 ---
 
+## ACTIVE — issue #1487 (Business Jest worker poisoning through Node's native URL global)
+
+> Activated at issue #1487 CLOSE after the independent tester PASS and fail-on-revert proof.
+
+### I-1487-JEST-NATIVE-URL-RESTORED (ACTIVE)
+- **Rule:** A Business Jest test may mock Node's native `URL.createObjectURL` only through a restoration-safe Jest spy. No Business test may delete, directly assign, `Object.assign`, or `Object.defineProperty` that native. A forced venue-first worker run must leave the native callable and unmocked for later suites.
+- **Enforcement:** `urlCreateObjectURLPreserved.issue1487.implementor.test.ts` plus `issue-1487-sequencer.cjs` run venue → sentinel → browser in the required `mingla-business jest (full suite)` workflow; `.github/scripts/strict-grep/issue-1487-jest-native-url-restore.mjs` runs in manifest batch A in both plain and self-test modes.
+- **Regression:** The behavioral proof fails on a true restoration revert with the sentinel plus all five downstream browser spy sites red. Independently, the structural gate rejects delete, direct assignment, `Object.assign`, and `Object.defineProperty` mutation families; its embedded GOOD/BAD/path/fail-closed oracles prevent a vacuous or weakened detector.
+- **Established:** ACTIVE at issue #1487 CLOSE 2026-08-09; no product runtime or deploy surface changes.
+
+---
+
 ## DRAFT — issue #1540 (a friend's liked-cards sheet could not be scrolled past the first four cards)
 
 > Registered DRAFT at issue #1540 [paired-liked-cards] IMPLEMENT. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS.
