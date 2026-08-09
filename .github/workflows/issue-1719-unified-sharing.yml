@@ -31,6 +31,7 @@ jobs:
       - run: node --test scripts/issue-1719/unified-sharing.implementor.happy.test.mjs
       - run: node --test scripts/issue-1719/unified-sharing.amendment.implementor.happy.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1719/source-card-fidelity.implementor.happy.test.mjs
+      - run: node --experimental-strip-types --test scripts/issue-1719/historical-saved-curated-rehydration.implementor.happy.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1719/source-card-fidelity.tester.adversarial.test.mjs
       - run: npx jest src/components/ui/__tests__/issue_1719_share_same_turn.happy.test.tsx --runInBand
         working-directory: mingla-business

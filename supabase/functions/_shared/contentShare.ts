@@ -401,6 +401,58 @@ export function assertSavedCuratedStopsServable(stops:unknown,rows:RecordLike[])
   if(byId.size!==ids.length||ids.some((id)=>{const row=byId.get(id);return !row||row.is_active!==true||row.is_servable!==true;}))throw new Error("validation");
 }
 
+const SAVED_CURATED_AUTHORED_STOP_KEYS = [
+  "stopNumber","stopLabel","aiDescription","estimatedDurationMinutes","optional","dismissible","role","comboCategory","rankSignal","priceTier",
+];
+
+/** The sole historical URL exception: an optional, credential-free HTTP
+ * website is omitted. Every other malformed/non-HTTPS value still rejects. */
+const savedCuratedWebsite = (value: unknown): string | undefined => {
+  if (value === undefined || value === null || value === "") return undefined;
+  const candidate = nativeText(value, 2048, true)!;
+  let url: URL;
+  try { url = new URL(candidate); } catch { throw new Error("invalid_native_snapshot"); }
+  if (url.username || url.password) throw new Error("invalid_native_snapshot");
+  if (url.protocol === "http:") return undefined;
+  if (url.protocol !== "https:") throw new Error("invalid_native_snapshot");
+  return url.toString();
+};
+
+/** Rebuild current public place facts without rewriting the saved plan's
+ * identity, order, labels, slot semantics, or authored copy. */
+export function rehydrateSavedCuratedCardRow(sourceRow:RecordLike,rows:RecordLike[]):RecordLike{
+  const card=sourceRow.card_data&&typeof sourceRow.card_data==="object"&&!Array.isArray(sourceRow.card_data)?sourceRow.card_data:{};
+  const savedStops=card.stops;
+  assertSavedCuratedStopsServable(savedStops,rows);
+  const byId=new Map(rows.map((row)=>[clean(row.google_place_id,256),row]));
+  const rehydrated=(savedStops as RecordLike[]).map((saved,index)=>{
+    // A hostile historical URL is not allowed to hide behind rehydration. Only
+    // the proven credential-free HTTP legacy case may be dropped.
+    savedCuratedWebsite(saved.website);
+    const id=clean(saved.placeId,256);
+    const current=nativeCuratedStopFromPlaceRow(byId.get(id)!,index,savedStops.length);
+    const authored=Object.fromEntries(SAVED_CURATED_AUTHORED_STOP_KEYS
+      .filter((key)=>Object.prototype.hasOwnProperty.call(saved,key))
+      .map((key)=>[key,saved[key]]));
+    return compact({
+      ...current,
+      website:savedCuratedWebsite(current.website),
+      ...authored,
+      placeId:saved.placeId,
+    });
+  });
+  return {...sourceRow,card_data:{...card,stops:rehydrated}};
+}
+
+const loadRehydratedSavedCuratedCard = async (db:QueryClient,sourceRow:RecordLike):Promise<RecordLike> => {
+  const savedStops=sourceRow.card_data?.stops;
+  const savedIds=Array.isArray(savedStops)?savedStops.map((stop:RecordLike)=>clean(stop?.placeId,256)):[];
+  if(savedIds.length===0||savedIds.some((id:string)=>!id)||new Set(savedIds).size!==savedIds.length)throw new Error("validation");
+  const served=await db.from("place_pool").select(PLACE_POOL_SHARE_SELECT).in("google_place_id",savedIds);
+  if(served.error)throw new Error("db_error");
+  return rehydrateSavedCuratedCardRow(sourceRow,Array.isArray(served.data)?served.data:[]);
+};
+
 const durationLabel = (start: unknown, end: unknown): string | undefined => {
   if (typeof start !== "string" || typeof end !== "string") return undefined;
   const milliseconds = Date.parse(end) - Date.parse(start); if (!(milliseconds > 0)) return undefined;
@@ -690,13 +742,8 @@ export async function loadAuthoritativeContentShare(
     }
 
     if (sourceCardRow) {
-      const savedStops=sourceCardRow.card_data?.stops;
-      const savedIds=Array.isArray(savedStops)?savedStops.map((stop:RecordLike)=>clean(stop?.placeId,256)):[];
-      if(savedIds.length===0||savedIds.some((id:string)=>!id)||new Set(savedIds).size!==savedIds.length)throw new Error("validation");
-      const served=await db.from("place_pool").select("google_place_id,is_active,is_servable").in("google_place_id",savedIds);
-      if(served.error)throw new Error("db_error");
-      assertSavedCuratedStopsServable(savedStops,Array.isArray(served.data)?served.data:[]);
-      const nativeSnapshot = buildNativeContentCardSnapshot("curated", sourceCardRow);
+      const rehydratedSourceCardRow=await loadRehydratedSavedCuratedCard(db,sourceCardRow);
+      const nativeSnapshot = buildNativeContentCardSnapshot("curated", rehydratedSourceCardRow);
       return { ...mapAuthoritativeShareFacts(kind, { row: sourceCardRow }), nativeSnapshot, nativePreview: nativePreview(nativeSnapshot),
         sourceKey: `curated:${sourceScope}:${sourceRecordId}`, sourceReference: { sourceScope, sourceRecordId } };
     }
@@ -709,12 +756,8 @@ export async function loadAuthoritativeContentShare(
     if (!row) throw new Error("gone");
     const legacyCard = row.card_data && typeof row.card_data === "object" && !Array.isArray(row.card_data) ? row.card_data : {};
     if (!(legacyCard.cardType === "curated" || (Array.isArray(legacyCard.stops) && legacyCard.stops.length > 0))) throw new Error("validation");
-    const legacyIds=legacyCard.stops.map((stop:RecordLike)=>clean(stop?.placeId,256));
-    if(legacyIds.length===0||legacyIds.some((placeId:string)=>!placeId)||new Set(legacyIds).size!==legacyIds.length)throw new Error("validation");
-    const legacyServed=await db.from("place_pool").select("google_place_id,is_active,is_servable").in("google_place_id",legacyIds);
-    if(legacyServed.error)throw new Error("db_error");
-    assertSavedCuratedStopsServable(legacyCard.stops,Array.isArray(legacyServed.data)?legacyServed.data:[]);
-    const nativeSnapshot = buildNativeContentCardSnapshot("curated", row);
+    const rehydratedLegacyRow=await loadRehydratedSavedCuratedCard(db,row);
+    const nativeSnapshot = buildNativeContentCardSnapshot("curated", rehydratedLegacyRow);
     return { ...mapAuthoritativeShareFacts(kind, { row }), nativeSnapshot, nativePreview: nativePreview(nativeSnapshot),
       sourceKey: `curated:${row.id}`, sourceReference: { savedCardId: row.id } };
   }
