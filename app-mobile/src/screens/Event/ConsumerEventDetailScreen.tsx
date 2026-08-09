@@ -45,7 +45,9 @@ import React, {
   useState,
 } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
+  InteractionManager,
   Linking,
   Platform,
   Pressable,
@@ -304,7 +306,12 @@ export default function ConsumerEventDetailScreen({
     null,
   );
   const handleSeeWhosGoing = useCallback(
-    (): void => setGuestSheetVisible(true),
+    (): void => {
+      postHogService.capture("guest_list_gate_opened", {
+        surface: "event_detail",
+      });
+      setGuestSheetVisible(true);
+    },
     [],
   );
   const handleGuestSheetClose = useCallback(
@@ -330,8 +337,11 @@ export default function ConsumerEventDetailScreen({
   // scrolls UNDER the bar. We now MEASURE the nativeFloatWrap height (event branch
   // still ignores it — its clearance is the constant 177 path).
   const [rsvpFloatBarHeight, setRsvpFloatBarHeight] = useState<number>(0);
+  const [ticketBoxY, setTicketBoxY] = useState<number>(0);
+  const detailScrollRef = useRef<React.ElementRef<typeof BottomSheetScrollView>>(null);
   const handleDockLayout = useCallback((e: LayoutChangeEvent): void => {
     const h = e.nativeEvent.layout.height;
+    setTicketBoxY(e.nativeEvent.layout.y);
     setRsvpFloatBarHeight((prev) => (Math.abs(prev - h) > 1 ? h : prev));
   }, []);
   const handleScroll = useCallback(
@@ -374,6 +384,16 @@ export default function ConsumerEventDetailScreen({
     staleTime: 60 * 1000,
     queryFn: () => fetchSocialProof(eventId as string),
   });
+  const socialProofImpressionRef = useRef<boolean>(false);
+  useEffect(() => {
+    const proof = socialProofQuery.data;
+    if (socialProofImpressionRef.current || !proof ||
+      proof.privateGuestList || proof.goingCount <= 0) return;
+    socialProofImpressionRef.current = true;
+    postHogService.capture("social_proof_teaser_impression", {
+      surface: "event_detail",
+    });
+  }, [socialProofQuery.data]);
 
   // ORCH-1342 (SPEC §4.8) — landing auto-open: `?landing=guest-list` opens the
   // ORCH-1341 sheet ONCE after the page settles, via the SAME handler the
@@ -460,6 +480,21 @@ export default function ConsumerEventDetailScreen({
     setInitialTicketTypeId(firstSelected ?? null);
     setCartVisible(true);
   }, [ticketQuantities]);
+  const handleGuestSignIn = useCallback((): void => {
+    setGuestSheetVisible(false);
+    router.replace("/");
+  }, [router]);
+  const handleGuestAttendanceAction = useCallback((): void => {
+    setGuestSheetVisible(false);
+    InteractionManager.runAfterInteractions(() => {
+      if (isRsvp) {
+        AccessibilityInfo.announceForAccessibility("RSVP options are ready.");
+      } else {
+        detailScrollRef.current?.scrollTo({ y: Math.max(ticketBoxY - 24, 0), animated: true });
+        AccessibilityInfo.announceForAccessibility("Ticket options are ready.");
+      }
+    });
+  }, [isRsvp, ticketBoxY]);
 
   // ORCH-1163 [rsvp-shared-body] — the onSubmit wrapper handed to
   // useRsvpOfferingState. The shared body/dock own all the submit/dialog/contact
@@ -1122,6 +1157,7 @@ export default function ConsumerEventDetailScreen({
 
         {/* (2) the gorhom scroll host — DIRECT child of <BaseBottomSheet>. */}
         <BottomSheetScrollView
+          ref={detailScrollRef}
           style={styles.nativeScroll}
           contentContainerStyle={[
             styles.nativeScrollContent,
@@ -1313,6 +1349,10 @@ export default function ConsumerEventDetailScreen({
             : (socialProofQuery.data?.goingCount ?? 0)
         }
         onOpenProfile={setGuestProfileUserId}
+        gateKind={isRsvp ? "rsvp" : "ticket"}
+        onSignIn={handleGuestSignIn}
+        onAttendanceAction={handleGuestAttendanceAction}
+        attendanceActionAvailable
       />
 
       {/* ORCH-1359 (d) — detail-local peer-profile overlay (D-B). The sheet

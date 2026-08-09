@@ -144,6 +144,7 @@ import { useTripIntakeSchemas } from "../../hooks/useTripIntakeSchemas";
 import { circleKeys, socialProofKeys } from "../../hooks/queryKeys";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338).
 import { fetchSocialProof } from "../../services/socialProofService";
+import { postHogService } from "../../services/postHogService";
 import { useAppStore } from "../../store/appStore";
 import {
   type NativeCheckoutOutcome,
@@ -317,6 +318,16 @@ export default function ConsumerTripDetailScreen({
     staleTime: 60 * 1000,
     queryFn: () => fetchSocialProof(tripId as string),
   });
+  const socialProofImpressionRef = useRef<boolean>(false);
+  useEffect(() => {
+    const proof = socialProofQuery.data;
+    if (socialProofImpressionRef.current || !proof ||
+      proof.privateGuestList || proof.goingCount <= 0) return;
+    socialProofImpressionRef.current = true;
+    postHogService.capture("social_proof_teaser_impression", {
+      surface: "trip_detail",
+    });
+  }, [socialProofQuery.data]);
   const runNativeCheckout = useNativeCheckoutFlow();
   const queryClient = useQueryClient();
   const user = useAppStore((s) => s.user);
@@ -431,7 +442,12 @@ export default function ConsumerTripDetailScreen({
     null,
   );
   const handleSeeWhosGoing = useCallback(
-    (): void => setGuestSheetVisible(true),
+    (): void => {
+      postHogService.capture("guest_list_gate_opened", {
+        surface: "trip_detail",
+      });
+      setGuestSheetVisible(true);
+    },
     [],
   );
   const handleGuestSheetClose = useCallback(
@@ -478,6 +494,7 @@ export default function ConsumerTripDetailScreen({
   // (onScroll) + the viewport height (onLayout). The derived `floatingPillVisible`
   // (computed below, after the early returns) consumes these.
   const [dockTopY, setDockTopY] = useState<number | null>(null);
+  const detailScrollRef = useRef<React.ElementRef<typeof BottomSheetScrollView>>(null);
   const [scrollY, setScrollY] = useState<number>(0);
   const [viewportH, setViewportH] = useState<number>(0);
   const handleDockLayout = useCallback((e: LayoutChangeEvent): void => {
@@ -518,6 +535,20 @@ export default function ConsumerTripDetailScreen({
     setInitialTicketTypeId(sellable.ticketTypeId);
     setCartVisible(true);
   }, [detail]);
+  const handleGuestSignIn = useCallback((): void => {
+    setGuestSheetVisible(false);
+    router.replace("/");
+  }, [router]);
+  const handleGuestAttendanceAction = useCallback((): void => {
+    setGuestSheetVisible(false);
+    requestAnimationFrame(() => {
+      detailScrollRef.current?.scrollTo({
+        y: Math.max((dockTopY ?? 360) - 360, 0),
+        animated: true,
+      });
+      AccessibilityInfo.announceForAccessibility("Trip package options are ready.");
+    });
+  }, [dockTopY]);
 
   // ORCH-1138 (Seth, 2026-06-15) — SPLIT BUTTONS fast path. "Pay in full" /
   // "Pay over time" open the cart with that choice ALREADY selected, skipping the
@@ -1028,6 +1059,7 @@ export default function ConsumerTripDetailScreen({
             over the pinned cover via the opaque rounded seam + a cover-height
             spacer. zIndex above the cover, below chrome + reserve. */}
         <BottomSheetScrollView
+          ref={detailScrollRef}
           style={styles.nativeScroll}
           contentContainerStyle={[
             styles.nativeScrollContent,
@@ -1175,6 +1207,10 @@ export default function ConsumerTripDetailScreen({
         eventId={detail.tripId}
         goingCount={socialProofQuery.data?.goingCount ?? 0}
         onOpenProfile={setGuestProfileUserId}
+        gateKind="ticket"
+        onSignIn={handleGuestSignIn}
+        onAttendanceAction={handleGuestAttendanceAction}
+        attendanceActionAvailable
       />
 
       {/* ORCH-1359 (d) — detail-local peer-profile overlay (D-B). The sheet

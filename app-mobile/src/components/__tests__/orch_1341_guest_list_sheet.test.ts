@@ -97,20 +97,15 @@ Deno.test("T-02 no @gorhom import; the sheet consumes BaseBottomSheet", () => {
 
 // ── T-03 — the EventAudienceSheet posture (SPEC §4.3 config lines) ──────────
 
-Deno.test("T-03 wrapInRNModal + dark theme + fixed ['70%'] snap + PINNED header over scroll body", () => {
+Deno.test("T-03 wrapInRNModal + dark theme + fixed ['70%'] snap + post-1540 pinned-header FlatList", () => {
   assertStringIncludes(SHEET, 'const GUEST_LIST_SNAP = ["70%"];');
   assertStringIncludes(SHEET, "snapPoints={GUEST_LIST_SNAP}");
   assertStringIncludes(SHEET, "wrapInRNModal");
   assertStringIncludes(SHEET, 'theme="dark"');
-  // REVIEW ruling (ORCH-1341 amendment): the header is the PINNED
-  // intrinsic-height sibling slot — scroll mode's `<>{header}{scroll}</>`
-  // branch (the EventAudienceSheet exemplar's mechanics). flatlist mode folds
-  // the header into ListHeaderComponent so the title scrolls away — banned.
-  assertStringIncludes(SHEET, 'scrollMode="scroll"');
-  assert(
-    !/scrollMode="flatlist"/.test(SHEET),
-    "flatlist folds the header into ListHeaderComponent (title scrolls away) — pinned-header ruling",
-  );
+  // [TEST-MOD-APPROVED #871] BaseBottomSheet #1540 now pins header as a
+  // sibling in flatlist mode; #871 requires virtualization + pagination.
+  assertStringIncludes(SHEET, 'scrollMode="flatlist"');
+  assert(!/scrollMode="scroll"/.test(SHEET), "retired mapped scroll body stays absent");
   assertStringIncludes(SHEET, "header={header}");
   assertStringIncludes(SHEET, 'accessibilityLabel="Who\'s going"');
   // #111418 canvas — exemplar parity (design §2.2).
@@ -201,6 +196,7 @@ Deno.test("T-10 every <Pressable> is one of the sanctioned action controls", () 
         window,
       ) ||
         /testID="orch-1341-guest-sheet-error-retry"/.test(window) ||
+        /testID="issue-871-guest-sheet-(sign-in|attendance-action|pagination-retry)"/.test(window) ||
         // [TEST-MOD-APPROVED ORCH-1359] — ORCH-1359 (d): the guest NAME is now a
         // sanctioned profile-open target (I-PROPOSED-1359-GUEST-NAME-OPENS-PROFILE
         // supersedes I-PROPOSED-1341-GUEST-SHEET-ACTIONS-ONLY). The row CONTAINER
@@ -276,18 +272,22 @@ Deno.test("T-13 all five states render the design's copy", () => {
   // skeleton
   assertStringIncludes(SHEET, "orch-1341-guest-sheet-skeleton");
   // gated (an EMPTY state, not an error)
-  assertStringIncludes(SHEET, "This guest list is private");
-  assertStringIncludes(SHEET, "The host keeps it just for the guests.");
+  // [TEST-MOD-APPROVED #871] exact approved lock/private/unavailable copy.
+  assertStringIncludes(SHEET, "Guest list private");
+  assertStringIncludes(SHEET, "The organizer has made this guest list private.");
+  assertStringIncludes(SHEET, "Sign in to see who’s going.");
+  assertStringIncludes(SHEET, "RSVP to see the guest list.");
+  assertStringIncludes(SHEET, "Get a ticket to see the guest list.");
   // zero-empty
-  assertStringIncludes(SHEET, "No one yet");
-  assertStringIncludes(SHEET, "Someone has to be first.");
+  assertStringIncludes(SHEET, "No guests are visible yet.");
   // error + retry
-  assertStringIncludes(SHEET, "Couldn't load the guest list");
-  assertStringIncludes(SHEET, "Give it another go.");
+  assertStringIncludes(SHEET, "Couldn’t load guest list");
+  assertStringIncludes(SHEET, "We couldn’t load the guest list.");
   assertStringIncludes(SHEET, "orch-1341-guest-sheet-error-retry");
-  // capped tail
+  // [TEST-MOD-APPROVED #871] paginated footer replaces the retired capped tail.
   assertStringIncludes(SHEET, "orch-1341-guest-sheet-footer-more");
-  assertStringIncludes(SHEET, "and ${moreCount} more");
+  assertStringIncludes(SHEET, "Couldn’t load more guests.");
+  assert(!SHEET.includes("and ${moreCount} more"));
   // row variants — ORCH-1359 [TEST-MOD-APPROVED ORCH-1359] superseded the
   // named-row `@username` / "On Mingla" line2 with the public city (item b/c);
   // unlinked rows now carry "Not on Mingla" (item e). "Someone" / "Keeping it

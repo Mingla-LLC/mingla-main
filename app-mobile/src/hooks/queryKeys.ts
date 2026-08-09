@@ -61,7 +61,7 @@ export const socialProofKeys = {
 // staleTime 0 + gcTime 0 (fresh fetch on every sheet open — DESIGN §2.6).
 export const guestListKeys = {
   all: ['eventGuestList'] as const,
-  list: (eventId: string) => [...guestListKeys.all, eventId] as const,
+  list: (eventId: string) => [...guestListKeys.all, eventId, 'infinite'] as const,
 };
 
 export const personCardKeys = {

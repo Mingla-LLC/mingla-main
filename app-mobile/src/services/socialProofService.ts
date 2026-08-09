@@ -57,12 +57,18 @@ export class GuestListUnavailableError extends Error {
   readonly code = "event_not_available";
 }
 
+export class GuestListAttendanceRequiredError extends Error {
+  readonly code = "attendance_required";
+}
+
 export const fetchPeerGuestList = async (
   eventId: string,
+  offset = 0,
 ): Promise<PeerGuestListPage> => {
   const { data, error } = await supabase.rpc("peer_list_event_guests", {
     p_event_id: eventId,
     p_limit: 100,
+    p_offset: offset,
   });
   if (error !== null) {
     const message = error.message ?? "peer_guest_list_failed";
@@ -71,6 +77,9 @@ export const fetchPeerGuestList = async (
     }
     if (message.includes("event_not_available")) {
       throw new GuestListUnavailableError(message);
+    }
+    if (message.includes("attendance_required") || message.includes("authentication_required")) {
+      throw new GuestListAttendanceRequiredError(message);
     }
     throw new Error(message);
   }

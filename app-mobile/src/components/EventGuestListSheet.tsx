@@ -70,6 +70,7 @@ import { Icon } from "./ui/Icon";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { colors } from "../constants/designSystem";
 import { HapticFeedback } from "../utils/hapticFeedback";
+import { postHogService } from "../services/postHogService";
 import { useAppStore } from "../store/appStore";
 import { useFriends } from "../hooks/useFriends";
 import { useEventGuestList } from "../hooks/useEventGuestList";
@@ -77,7 +78,11 @@ import {
   hasOpenDirectMessageSink,
   openDirectMessageInApp,
 } from "../services/deepLinkService";
-import { GuestListGatedError } from "../services/socialProofService";
+import {
+  GuestListAttendanceRequiredError,
+  GuestListGatedError,
+  GuestListUnavailableError,
+} from "../services/socialProofService";
 import { messagingService } from "../services/messagingService";
 
 // Fixed single detent — EventAudienceSheet precedent (MessageInterface.tsx:96).
@@ -115,6 +120,10 @@ export interface EventGuestListSheetProps {
    * profileId (D8) and are never pressable regardless of this seam.
    */
   onOpenProfile?: (userId: string) => void;
+  gateKind: "rsvp" | "ticket";
+  onSignIn: () => void;
+  onAttendanceAction?: () => void;
+  attendanceActionAvailable: boolean;
 }
 
 type GuestDisplayRow = {
@@ -124,7 +133,8 @@ type GuestDisplayRow = {
   isYou: boolean;
 };
 
-type SheetPhase = "skeleton" | "content" | "empty" | "gated" | "error";
+type SheetPhase = "signedOut" | "skeleton" | "content" | "empty" | "gated" |
+  "attendance" | "revoked" | "unavailable" | "error";
 
 /** First letters of the first + last words, uppercased (exemplar initials idiom). */
 const initialsFor = (name: string): string => {
@@ -156,11 +166,19 @@ export function EventGuestListSheet({
   goingCount,
   onOpenConversation,
   onOpenProfile,
+  gateKind,
+  onSignIn,
+  onAttendanceAction,
+  attendanceActionAvailable,
 }: EventGuestListSheetProps): React.ReactElement {
   const viewerId = useAppStore((s) => s.user?.id);
-  const { page, isLoading, isError, error, refetch } = useEventGuestList(
+  const {
+    pages, isLoading, isError, error, refetch, fetchNextPage, hasNextPage,
+    isFetchingNextPage, isFetchNextPageError,
+    authorizationRevoked,
+  } = useEventGuestList(
     eventId,
-    visible,
+    visible && viewerId !== undefined,
   );
   // Cross-refs for the action state machines. addFriend THROWS on failure
   // (useFriends.ts) and already invalidates friendsKeys.requests on success —
@@ -263,54 +281,123 @@ export function EventGuestListSheet({
     }
   }, [visible, hintOpacity]);
 
-  // ── display rows (pure display sort — never privacy; SPEC §4.3 bands) ──────
+  // Server order is global across pages. Never re-sort a page on the client.
   const rows = useMemo<GuestDisplayRow[]>(() => {
-    const guests = page?.guests ?? [];
-    const decorated = guests.map((guest, index) => {
-      // Named ⇔ profileId present (D8) and not anonymous (belt-and-braces).
+    const guests = pages.flatMap((item) => item.guests);
+    return guests.map((guest, index) => {
       const isNamed = guest.profileId !== null && !guest.isAnonymous;
       const isYou = isNamed && guest.profileId === viewerId;
-      const hasPhoto = (guest.avatarUrl ?? "").length > 0;
-      const band = isYou
-        ? 0
-        : isNamed && hasPhoto
-          ? 1
-          : isNamed
-            ? 2
-            : !guest.isMinglaUser
-              ? 3
-              : 4;
       return {
         key: guest.profileId ?? `anon-${index}`,
         guest,
         isNamed,
         isYou,
-        band,
-        index,
       };
     });
-    // Stable within a band (payload order = server recency).
-    decorated.sort((a, b) =>
-      a.band !== b.band ? a.band - b.band : a.index - b.index,
-    );
-    return decorated.map(({ key, guest, isNamed, isYou }) => ({
-      key,
-      guest,
-      isNamed,
-      isYou,
-    }));
-  }, [page, viewerId]);
+  }, [pages, viewerId]);
 
   // ── phase (all five DESIGN §2.7 states) ────────────────────────────────────
-  const phase: SheetPhase = isLoading
+  const phase: SheetPhase = viewerId === undefined
+    ? "signedOut"
+    : isLoading
     ? "skeleton"
+    : authorizationRevoked
+      ? "revoked"
     : isError
       ? error instanceof GuestListGatedError
         ? "gated"
-        : "error"
+        : error instanceof GuestListAttendanceRequiredError
+          ? "attendance"
+          : error instanceof GuestListUnavailableError
+            ? "unavailable"
+        : rows.length > 0
+          ? "content"
+          : "error"
       : rows.length === 0
         ? "empty"
         : "content";
+
+  useEffect(() => {
+    if (phase === "revoked") {
+      AccessibilityInfo.announceForAccessibility(
+        "Guest list locked. Loaded guest information was removed.",
+      );
+    } else if (phase === "gated") {
+      AccessibilityInfo.announceForAccessibility("Guest list private.");
+    }
+  }, [phase]);
+  const authorizationResultRef = useRef<string | null>(null);
+  const openedRef = useRef<boolean>(false);
+  const loadedPageCountRef = useRef<number>(0);
+  const revokedRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (!visible) {
+      authorizationResultRef.current = null;
+      openedRef.current = false;
+      loadedPageCountRef.current = 0;
+      revokedRef.current = false;
+      return;
+    }
+    const authorizationState = phase === "content" || phase === "empty"
+      ? "authorized"
+      : phase === "attendance" || phase === "revoked"
+      ? "attendance_required"
+      : phase === "gated"
+      ? "private"
+      : phase === "unavailable"
+      ? "unavailable"
+      : null;
+    if (authorizationState !== null &&
+      authorizationResultRef.current !== authorizationState) {
+      authorizationResultRef.current = authorizationState;
+      postHogService.capture("guest_list_authorization_result", {
+        surface: "consumer_app",
+        authenticated: viewerId !== undefined,
+        guest_list_state: authorizationState,
+      });
+    }
+    if ((phase === "content" || phase === "empty") && !openedRef.current) {
+      openedRef.current = true;
+      postHogService.capture("guest_list_opened", {
+        surface: "consumer_app",
+        guest_list_state: "authorized",
+      });
+    }
+    while (loadedPageCountRef.current < pages.length) {
+      const pageIndex = loadedPageCountRef.current;
+      const loadedPage = pages[pageIndex];
+      loadedPageCountRef.current += 1;
+      postHogService.capture("guest_list_page_loaded", {
+        surface: "consumer_app",
+        page_number: pageIndex + 1,
+        requested_page_size: 100,
+        returned_page_size: loadedPage?.returned ?? 0,
+      });
+    }
+    if (authorizationRevoked && !revokedRef.current) {
+      revokedRef.current = true;
+      postHogService.capture("guest_list_access_revoked", {
+        surface: "consumer_app",
+        guest_list_state: authorizationState ?? "unavailable",
+      });
+    }
+  }, [authorizationRevoked, pages, phase, viewerId, visible]);
+
+  const handleSignIn = useCallback((): void => {
+    postHogService.capture("guest_list_unlock_cta_tapped", {
+      surface: "consumer_app",
+      authenticated: false,
+    });
+    onSignIn();
+  }, [onSignIn]);
+  const handleAttendanceAction = useCallback((): void => {
+    postHogService.capture("guest_list_unlock_cta_tapped", {
+      surface: "consumer_app",
+      authenticated: true,
+      guest_list_state: "attendance_required",
+    });
+    onAttendanceAction?.();
+  }, [onAttendanceAction]);
 
   // ── skeleton pulse — ONE shared opacity loop, isInteraction:false ──────────
   const pulse = useRef(new Animated.Value(0.5)).current;
@@ -813,6 +900,17 @@ export function EventGuestListSheet({
 
   // ── empty-slot states (skeleton / gated / zero / error — DESIGN §2.7) ──────
   const renderEmptyState = (): React.ReactElement => {
+    if (phase === "signedOut") {
+      return (
+        <View style={styles.stateBlock}>
+          <Text style={styles.stateTitle}>Who’s going</Text>
+          <Text style={styles.stateBody}>Sign in to see who’s going.</Text>
+          <Pressable onPress={handleSignIn} style={styles.retryPill} testID="issue-871-guest-sheet-sign-in">
+            <Text style={styles.retryText}>Sign in</Text>
+          </Pressable>
+        </View>
+      );
+    }
     if (phase === "skeleton") {
       return (
         <View testID="orch-1341-guest-sheet-skeleton">
@@ -840,11 +938,47 @@ export function EventGuestListSheet({
             size={28}
             color="rgba(255, 255, 255, 0.35)"
           />
-          <Text style={styles.stateTitle}>This guest list is private</Text>
-          <Text style={styles.stateBody}>
-            The host keeps it just for the guests.
-          </Text>
+          <Text style={styles.stateTitle}>Guest list private</Text>
+          <Text style={styles.stateBody}>The organizer has made this guest list private.</Text>
         </Animated.View>
+      );
+    }
+    if (phase === "attendance") {
+      const action = gateKind === "rsvp" ? "RSVP" : "Get tickets";
+      return (
+        <View style={styles.stateBlock}>
+          <Text style={styles.stateTitle}>Who’s going</Text>
+          <Text style={styles.stateBody}>
+            {gateKind === "rsvp" ? "RSVP to see the guest list." : "Get a ticket to see the guest list."}
+          </Text>
+          {attendanceActionAvailable && onAttendanceAction ? (
+            <Pressable onPress={handleAttendanceAction} style={styles.retryPill} testID="issue-871-guest-sheet-attendance-action">
+              <Text style={styles.retryText}>{action}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      );
+    }
+    if (phase === "revoked") {
+      const action = gateKind === "rsvp" ? "RSVP" : "Get tickets";
+      return (
+        <View style={styles.stateBlock}>
+          <Text style={styles.stateTitle}>Guest list locked</Text>
+          <Text style={styles.stateBody}>Your RSVP or ticket no longer includes guest-list access.</Text>
+          {attendanceActionAvailable && onAttendanceAction ? (
+            <Pressable onPress={handleAttendanceAction} style={styles.retryPill}>
+              <Text style={styles.retryText}>{action}</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      );
+    }
+    if (phase === "unavailable") {
+      return (
+        <View style={styles.stateBlock}>
+          <Text style={styles.stateTitle}>Guest list unavailable</Text>
+          <Text style={styles.stateBody}>This guest list isn’t available anymore.</Text>
+        </View>
       );
     }
     if (phase === "error") {
@@ -853,8 +987,8 @@ export function EventGuestListSheet({
           style={[styles.stateBlock, { opacity: bodyOpacity }]}
           testID="orch-1341-guest-sheet-error"
         >
-          <Text style={styles.stateTitle}>Couldn't load the guest list</Text>
-          <Text style={styles.stateBody}>Give it another go.</Text>
+          <Text style={styles.stateTitle}>Couldn’t load guest list</Text>
+          <Text style={styles.stateBody}>We couldn’t load the guest list.</Text>
           <Pressable
             onPress={refetch}
             style={({ pressed }) => [
@@ -876,8 +1010,8 @@ export function EventGuestListSheet({
         style={[styles.stateBlock, { opacity: bodyOpacity }]}
         testID="orch-1341-guest-sheet-empty"
       >
-        <Text style={styles.stateTitle}>No one yet</Text>
-        <Text style={styles.stateBody}>Someone has to be first.</Text>
+        <Text style={styles.stateTitle}>Who’s going</Text>
+        <Text style={styles.stateBody}>No guests are visible yet.</Text>
       </Animated.View>
     );
   };
@@ -885,14 +1019,22 @@ export function EventGuestListSheet({
   // Cap tail (DESIGN §2.6): honest reconciliation between the header count and
   // the row-capped list; no "load more" (the cap is a scrape guard, not a
   // pagination seam — F-8; no offset-walking in v1).
-  const moreCount = goingCount - rows.length;
   const listFooter =
-    phase === "content" && moreCount > 0 ? (
+    phase === "content" && (isFetchingNextPage || isFetchNextPageError) ? (
       <Animated.View
         style={[styles.footerMore, { opacity: bodyOpacity }]}
         testID="orch-1341-guest-sheet-footer-more"
       >
-        <Text style={styles.footerMoreText}>{`and ${moreCount} more`}</Text>
+        {isFetchingNextPage ? (
+          <ActivityIndicator color="#ffffff" />
+        ) : (
+          <>
+            <Text style={styles.footerMoreText}>Couldn’t load more guests.</Text>
+            <Pressable onPress={fetchNextPage} style={styles.retryPill} testID="issue-871-guest-sheet-pagination-retry">
+              <Text style={styles.retryText}>Retry</Text>
+            </Pressable>
+          </>
+        )}
       </Animated.View>
     ) : null;
 
@@ -922,24 +1064,24 @@ export function EventGuestListSheet({
       snapPoints={GUEST_LIST_SNAP}
       wrapInRNModal
       theme="dark"
-      scrollMode="scroll"
+      scrollMode="flatlist"
       backgroundStyle={styles.guestSheetBackground}
       accessibilityLabel="Who's going"
       header={header}
       scrollProps={{
+        data: phase === "content" ? rows : [],
+        renderItem: renderGuestRow,
+        keyExtractor: (item: GuestDisplayRow) => item.key,
+        ListEmptyComponent: phase === "content" ? null : renderEmptyState(),
+        ListFooterComponent: listFooter,
+        onEndReached: () => {
+          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+        },
+        onEndReachedThreshold: 0.4,
         contentContainerStyle: styles.listContent,
         showsVerticalScrollIndicator: false,
       }}
-    >
-      {phase === "content" ? (
-        <>
-          {rows.map((item) => renderGuestRow({ item }))}
-          {listFooter}
-        </>
-      ) : (
-        renderEmptyState()
-      )}
-    </BaseBottomSheet>
+    />
   );
 }
 

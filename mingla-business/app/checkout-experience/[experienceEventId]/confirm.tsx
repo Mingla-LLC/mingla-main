@@ -19,7 +19,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Linking, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion (native; no-op on
@@ -45,7 +45,12 @@ import {
   readCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
-import { confirmTicketCheckout } from "../../../src/services/ticketCheckoutService";
+import {
+  AttendanceClaimLinkError,
+  confirmTicketCheckout,
+  createAttendanceClaimLink,
+  type AttendanceClaimLinkResult,
+} from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
 import {
@@ -94,6 +99,24 @@ function CheckoutExperienceConfirmScreenInner({
     checkoutSessionId: string;
     buyerStatusToken: string;
   } | null>(null);
+  const [attendanceClaim, setAttendanceClaim] = useState<{
+    phase: "idle" | "loading" | "ready" | "error" | "terminal" | "rate";
+    link: AttendanceClaimLinkResult | null;
+    authority: { sessionId: string; token: string } | null;
+  }>({ phase: "idle", link: null, authority: null });
+  const prepareAttendanceClaim = useCallback((sessionId: string, token: string): void => {
+    setAttendanceClaim({ phase: "loading", link: null, authority: { sessionId, token } });
+    void createAttendanceClaimLink(sessionId, token).then((link) => {
+      setAttendanceClaim({ phase: "ready", link, authority: { sessionId, token } });
+    }).catch((error: unknown) => {
+      const phase = error instanceof AttendanceClaimLinkError && error.code === "rate_limited"
+        ? "rate"
+        : error instanceof AttendanceClaimLinkError && (error.code === "invalid" || error.code === "ineligible")
+        ? "terminal"
+        : "error";
+      setAttendanceClaim({ phase, link: null, authority: { sessionId, token } });
+    });
+  }, []);
   const exitingViaCtaRef = useRef<boolean>(false);
 
   // ----- Native back guard -----
@@ -231,6 +254,7 @@ function CheckoutExperienceConfirmScreenInner({
             offering_type: "experience",
             surface: "business_app",
           });
+          prepareAttendanceClaim(payload.checkoutSessionId, payload.buyerStatusToken);
           clearCheckoutResumePayload(win.sessionStorage, experienceEventId);
           return;
         }
@@ -286,6 +310,9 @@ function CheckoutExperienceConfirmScreenInner({
       if (Platform.OS === "web" && experienceEventId !== null) {
         const win = globalThis as unknown as { sessionStorage?: Storage };
         clearCheckoutResumePayload(win.sessionStorage, experienceEventId);
+      }
+      if (pendingSession !== null) {
+        prepareAttendanceClaim(pendingSession.checkoutSessionId, pendingSession.buyerStatusToken);
       }
       setRealtimePending(false);
       setPendingSession(null);
@@ -406,6 +433,15 @@ function CheckoutExperienceConfirmScreenInner({
         })
       : "";
 
+  const openAttendanceClaimLink = (): void => {
+    const link = attendanceClaim.link;
+    if (link) void Linking.openURL(link.webClaimUrl);
+  };
+  const retryAttendanceClaim = (): void => {
+    const authority = attendanceClaim.authority;
+    if (authority) prepareAttendanceClaim(authority.sessionId, authority.token);
+  };
+
   return (
     <View style={styles.host}>
       <ScrollView
@@ -502,6 +538,19 @@ function CheckoutExperienceConfirmScreenInner({
               tickets={carouselTickets}
             />
           ) : null}
+        </GlassCard>
+        <GlassCard variant="base" radius="lg" padding={spacing.md} style={styles.qrCard}>
+          <Text style={styles.summaryEventName}>See who’s going in Mingla</Text>
+          <Text style={styles.heroEmail}>Connect this ticket to your Mingla account to unlock the guest list.</Text>
+          {attendanceClaim.phase === "ready" && attendanceClaim.link ? (
+            <Button label="Open Mingla" onPress={openAttendanceClaimLink} fullWidth />
+          ) : attendanceClaim.phase === "error" && attendanceClaim.authority ? (
+            <Button label="Try again" onPress={retryAttendanceClaim} fullWidth />
+          ) : attendanceClaim.phase === "terminal" ? (
+            <Text style={styles.heroEmail}>Your experience is confirmed. An attendance link isn’t available for this order.</Text>
+          ) : attendanceClaim.phase === "rate" ? (
+            <Text style={styles.heroEmail}>Too many attempts. Try again in a few minutes.</Text>
+          ) : <Text style={styles.heroEmail}>Preparing your Mingla link…</Text>}
         </GlassCard>
       </ScrollView>
 

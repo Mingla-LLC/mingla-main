@@ -90,5 +90,6 @@ export type PeerGuestListPage = {
   entityType: SocialProofEntityType;
   returned: number;
   hasMore: boolean;
+  nextOffset: number | null;
   guests: PeerGuestRow[];
 };

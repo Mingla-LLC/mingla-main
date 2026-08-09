@@ -266,3 +266,28 @@ export function renderTicketBody(input: TicketBodyInput): {
     preheader: copy.preheader,
   };
 }
+
+/** Issue #871 dedicated attendance-link email. This is intentionally separate
+ * from ticket confirmation so a delivery retry cannot resend tickets/receipts. */
+export function renderAttendanceClaimAvailableEmail(input: {
+  eventTitle: string;
+  claimUrl: string;
+  rsvpPassUrl?: string;
+}): { subject: string; html: string; text: string } {
+  const title = escapeHtml(input.eventTitle);
+  const claimUrl = escapeHtml(input.claimUrl);
+  const passBlock = input.rsvpPassUrl
+    ? `<p style="margin:16px 0 0"><a href="${escapeHtml(input.rsvpPassUrl)}">Open your RSVP pass</a></p>`
+    : "";
+  const passText = input.rsvpPassUrl ? `\n\nOpen your RSVP pass: ${input.rsvpPassUrl}` : "";
+  return {
+    subject: `Connect your attendance for ${input.eventTitle}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#111827">
+      <h1 style="font-size:24px">Connect your attendance</h1>
+      <p>Your place at <strong>${title}</strong> is confirmed. Connect it to your Mingla account to see who’s going.</p>
+      <p style="margin:24px 0"><a href="${claimUrl}" style="display:inline-block;padding:14px 20px;background:#eb7825;color:#111827;border-radius:12px;text-decoration:none;font-weight:700">Connect attendance</a></p>
+      ${passBlock}
+    </div>`,
+    text: `Your place at ${input.eventTitle} is confirmed. Connect it to your Mingla account to see who’s going: ${input.claimUrl}${passText}`,
+  };
+}

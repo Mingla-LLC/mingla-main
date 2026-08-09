@@ -44,6 +44,7 @@ import { buildTicketPdf } from "../_shared/ticketPdf.ts";
 import { renderTripConfirmationEmail } from "../_shared/email/tripConfirmationEmail.ts";
 // ORCH-1195 FIX 4 — experience-shaped confirmation (includes the itinerary/stops).
 import { renderExperienceConfirmationEmail } from "../_shared/email/experienceConfirmationEmail.ts";
+import { renderAttendanceClaimAvailableEmail } from "../_shared/email/ticketBody.ts";
 import { buildCalendarLinks } from "../_shared/email/calendar.ts";
 // ORCH-0869 (Tr3) Stage 1b: installment-kind renderers. Routed via body.kind
 // from installmentWebhookHandlers.ts and process-scheduled-installments.
@@ -75,6 +76,12 @@ import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
 // adapter and to it alone; this import exists so the `provider` column stops
 // lying.
 import { countryFromE164 } from "../_shared/e164Country.ts";
+import {
+  attendanceClaimUrls,
+  bytesToPostgresHex,
+  hmacOrderClaimDigest,
+  mintOrderClaimToken,
+} from "../_shared/attendanceClaim.ts";
 
 const MINGLA_LOGO_URL = minglaLogoUrl();
 
@@ -167,6 +174,7 @@ interface OrderJoin {
   event_id: string;
   buyer_name: string | null;
   buyer_email: string | null;
+  buyer_user_id: string | null;
   total_cents: number;
   tax_amount_cents: number | null;
   tax_breakdown: unknown[] | null;
@@ -729,6 +737,7 @@ async function fetchInstallmentEmailContext(
       id,
       buyer_name,
       buyer_email,
+      buyer_user_id,
       total_cents,
       tax_amount_cents,
       tax_breakdown,
@@ -1028,6 +1037,7 @@ export const handler = async (req: Request): Promise<Response> => {
   let renderedEmail: ReturnType<typeof renderTransactionalEmail> | null = null;
   let renderedPdf: Awaited<ReturnType<typeof buildTicketPdf>> | null = null;
   let renderError: { code: string; message: string } | null = null;
+  let attendanceWebClaimUrl: string | null = null;
 
   try {
     // ORCH-0859 (Tr2): branch by event_type. Trip orders use trip-shaped
@@ -1173,6 +1183,33 @@ export const handler = async (req: Request): Promise<Response> => {
         : `email_render_input_incomplete:${message}`,
       message,
     };
+  }
+
+  // Issue #871: the first qualifying confirmation delivery may issue a proof.
+  // Ordinary dispatcher replay is idempotent: the service-only issuance RPC
+  // refuses to rotate an existing unconsumed proof.
+  if (order.buyer_user_id === null && ["paid", "partial_refund"].includes(order.payment_status ?? "")) {
+    const pepper = Deno.env.get("ATTENDANCE_CLAIM_PEPPER");
+    if (pepper) {
+      const minted = mintOrderClaimToken();
+      const digest = await hmacOrderClaimDigest(minted.raw, pepper);
+      const { data: issuance } = await supabase.rpc(
+        "issue_order_attendance_claim_proof",
+        {
+          p_order_id: order.id,
+          p_event_id: order.event_id,
+          p_digest: bytesToPostgresHex(digest),
+          p_allow_retry_rotation: false,
+        },
+      );
+      const issuanceResult = typeof issuance === "object" && issuance !== null &&
+          "result" in issuance && issuance.result === "issued";
+      if (issuanceResult) {
+        attendanceWebClaimUrl = attendanceClaimUrls({
+          kind: "order", eventId: order.event_id, sourceId: order.id, token: minted.token,
+        }).webClaimUrl;
+      }
+    }
   }
 
   // ORCH-0842: persist the rendered PDF to the private `ticket-pdfs` bucket
@@ -1328,8 +1365,18 @@ export const handler = async (req: Request): Promise<Response> => {
             from: formatSenderHeader(renderedEmail.from),
             to: notification.recipient,
             subject: renderedEmail.subject,
-            html: renderedEmail.html,
-            text: renderedEmail.text,
+            html: attendanceWebClaimUrl
+              ? `${renderedEmail.html}${renderAttendanceClaimAvailableEmail({
+                eventTitle: context.bodyInput.event.title,
+                claimUrl: attendanceWebClaimUrl,
+              }).html}`
+              : renderedEmail.html,
+            text: attendanceWebClaimUrl
+              ? `${renderedEmail.text}\n\n${renderAttendanceClaimAvailableEmail({
+                eventTitle: context.bodyInput.event.title,
+                claimUrl: attendanceWebClaimUrl,
+              }).text}`
+              : renderedEmail.text,
             attachments,
           });
           await supabase.from("ticket_order_notifications").update({

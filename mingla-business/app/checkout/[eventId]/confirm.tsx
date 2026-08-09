@@ -22,6 +22,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -56,7 +57,12 @@ import {
 } from "../../../src/components/checkout/checkoutPersistence";
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
 import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
-import { confirmTicketCheckout } from "../../../src/services/ticketCheckoutService";
+import {
+  AttendanceClaimLinkError,
+  confirmTicketCheckout,
+  createAttendanceClaimLink,
+  type AttendanceClaimLinkResult,
+} from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
 import {
@@ -119,6 +125,24 @@ function CheckoutConfirmScreenInner({
     checkoutSessionId: string;
     buyerStatusToken: string;
   } | null>(null);
+  const [attendanceClaim, setAttendanceClaim] = useState<{
+    phase: "idle" | "loading" | "ready" | "error" | "terminal" | "rate";
+    link: AttendanceClaimLinkResult | null;
+    authority: { sessionId: string; token: string } | null;
+  }>({ phase: "idle", link: null, authority: null });
+  const prepareAttendanceClaim = useCallback((sessionId: string, token: string): void => {
+    setAttendanceClaim({ phase: "loading", link: null, authority: { sessionId, token } });
+    void createAttendanceClaimLink(sessionId, token).then((link) => {
+      setAttendanceClaim({ phase: "ready", link, authority: { sessionId, token } });
+    }).catch((error: unknown) => {
+      const phase = error instanceof AttendanceClaimLinkError && error.code === "rate_limited"
+        ? "rate"
+        : error instanceof AttendanceClaimLinkError && (error.code === "invalid" || error.code === "ineligible")
+        ? "terminal"
+        : "error";
+      setAttendanceClaim({ phase, link: null, authority: { sessionId, token } });
+    });
+  }, []);
   // Ref flag — flipped to true when buyer taps "Back to event." The
   // beforeRemove listener checks this and lets the navigation through
   // when set, so the explicit CTA exit isn't blocked by the same guard
@@ -283,6 +307,7 @@ function CheckoutConfirmScreenInner({
             offering_type: "event",
             surface: "business_app",
           });
+          prepareAttendanceClaim(payload.checkoutSessionId, payload.buyerStatusToken);
           clearCheckoutResumePayload(win.sessionStorage, eventId);
           return;
         }
@@ -347,6 +372,9 @@ function CheckoutConfirmScreenInner({
       if (Platform.OS === "web" && eventId !== null) {
         const win = (globalThis as unknown as { sessionStorage?: Storage });
         clearCheckoutResumePayload(win.sessionStorage, eventId);
+      }
+      if (pendingSession !== null) {
+        prepareAttendanceClaim(pendingSession.checkoutSessionId, pendingSession.buyerStatusToken);
       }
       setRealtimePending(false);
       setPendingSession(null);
@@ -496,6 +524,15 @@ function CheckoutConfirmScreenInner({
     );
   }
 
+  const openAttendanceClaimLink = (): void => {
+    const link = attendanceClaim.link;
+    if (link) void Linking.openURL(link.webClaimUrl);
+  };
+  const retryAttendanceClaim = (): void => {
+    const authority = attendanceClaim.authority;
+    if (authority) prepareAttendanceClaim(authority.sessionId, authority.token);
+  };
+
   return (
     <View style={styles.host}>
       <ScrollView
@@ -589,6 +626,19 @@ function CheckoutConfirmScreenInner({
               tickets={carouselTickets}
             />
           ) : null}
+        </GlassCard>
+        <GlassCard variant="base" radius="lg" padding={spacing.md} style={styles.qrCard}>
+          <Text style={styles.summaryEventName}>See who’s going in Mingla</Text>
+          <Text style={styles.heroEmail}>Connect this ticket to your Mingla account to unlock the guest list.</Text>
+          {attendanceClaim.phase === "ready" && attendanceClaim.link ? (
+            <Button label="Open Mingla" onPress={openAttendanceClaimLink} fullWidth />
+          ) : attendanceClaim.phase === "error" && attendanceClaim.authority ? (
+            <Button label="Try again" onPress={retryAttendanceClaim} fullWidth />
+          ) : attendanceClaim.phase === "terminal" ? (
+            <Text style={styles.heroEmail}>Your ticket is confirmed. An attendance link isn’t available for this order.</Text>
+          ) : attendanceClaim.phase === "rate" ? (
+            <Text style={styles.heroEmail}>Too many attempts. Try again in a few minutes.</Text>
+          ) : <Text style={styles.heroEmail}>Preparing your Mingla link…</Text>}
         </GlassCard>
 
         <DownloadMinglaCta
