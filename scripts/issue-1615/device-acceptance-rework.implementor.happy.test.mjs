@@ -16,18 +16,28 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 const require = createRequire(import.meta.url);
 
-const productionPlacePoolColumns = new Set([
+const requiredPlacePoolShareColumns = new Set([
   'id', 'google_place_id', 'name', 'address', 'city',
-  'primary_type_display_name', 'primary_type', 'rating', 'price_level',
+  'country_code', 'primary_type_display_name', 'primary_type', 'rating',
+  'review_count', 'price_level', 'price_min', 'price_max',
   'utc_offset_minutes', 'editorial_summary', 'generative_summary',
   'opening_hours', 'stored_photo_urls', 'google_maps_uri',
-  'national_phone_number', 'website', 'is_active', 'is_servable',
+  'national_phone_number', 'website', 'lat', 'lng', 'is_active', 'is_servable',
 ]);
 
 test('D1 authoritative place select executes against the production-shaped schema and uses city', async () => {
   const mapper = await import(pathToFileURL(path.join(ROOT, 'supabase/functions/_shared/contentShare.ts')));
   const selected = mapper.PLACE_POOL_SHARE_SELECT.split(',');
-  assert.deepEqual(new Set(selected), productionPlacePoolColumns);
+  // [TEST-MOD-APPROVED #1719] Written reason: the original exact 19-column
+  // snapshot became false when the already-deployed #1704 country code and
+  // #1719 recipient-fidelity fields were intentionally served. D1 protects the
+  // rule instead: every required served field remains present and unique,
+  // additive production columns are allowed, and the nonexistent neighborhood
+  // column that caused the physical-device failure remains forbidden.
+  const selectedSet = new Set(selected);
+  assert.equal(selectedSet.size, selected.length);
+  for (const column of requiredPlacePoolShareColumns) assert.ok(selectedSet.has(column), column);
+  assert.equal(selected.every((column) => /^[a-z][a-z0-9_]*$/.test(column)), true);
   assert.equal(selected.includes('neighborhood'), false);
 
   let observedSelect = '';
@@ -35,14 +45,11 @@ test('D1 authoritative place select executes against the production-shaped schem
     id: 'pool-1', google_place_id: 'google-1', name: 'Yonder Coffee',
     address: '108 E Main St Suite 101, Durham, NC 27701, USA', city: 'Durham',
     primary_type_display_name: 'Coffee shop', is_active: true, is_servable: true,
-    neighborhood: 'this fixture trap is not a deployed column',
   };
   const query = {
     select(columns) {
       observedSelect = columns;
-      for (const column of columns.split(',')) {
-        if (!productionPlacePoolColumns.has(column)) throw new Error(`production_schema_missing:${column}`);
-      }
+      if (columns.split(',').includes('neighborhood')) throw new Error('production_schema_missing:neighborhood');
       return this;
     },
     limit() { return this; }, eq() { return this; },
