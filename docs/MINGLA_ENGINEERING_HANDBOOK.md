@@ -346,21 +346,42 @@ native-build-only / OTA bricks" freeze is RETIRED — the brick was a native-mod
 handshake, both solved: #990 + ORCH-1384 on-device GO). The orchestrator (or Seth) publishes on close;
 only a change that adds/bumps a native module or edits native config needs a full `eas build`.
 
-Business — via the canonical script ONLY (never bare `eas update`; it inlines `pk_test_` -> #990 splash brick):
+**`--environment production` is MANDATORY on EVERY production OTA, both apps.** Without it the CLI
+inlines `process.env` from the LOCAL `.env`, which lacks the EAS-only `EXPO_PUBLIC_*` values. This has
+shipped five production incidents and fails two different ways:
+
+- **Wrong key (loud).** `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` falls back to `pk_test_`; the live-mode
+  handshake throws at boot and the business app sticks on the splash screen (#990).
+- **Missing key (silent, worse).** The consumer app carries no Stripe key in `extra` at all, so there is
+  no mismatch to throw on — `resolvePublishableKey()` ends in `?? ""`, checkout is dead, and the app
+  boots and looks completely normal. Shipped 2026-08-06, live ~40 minutes, nothing in Sentry or the
+  funnel. Same silent-default shape for `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` / `EXPO_PUBLIC_POSTHOG_KEY` /
+  `EXPO_PUBLIC_MIXPANEL_TOKEN`.
+
+Business — via the canonical script ONLY (never bare `eas update`):
 
 ```bash
 mingla-business/scripts/ota/publish-production-ota.sh ios     "<summary>"
 mingla-business/scripts/ota/publish-production-ota.sh android "<summary>"
 ```
 
-Consumer (`app-mobile`) — via `npx -y eas-cli@latest` (the global eas-cli crashes app-mobile's config spawn):
+Consumer (`app-mobile`) — via `npx -y eas-cli@latest` (the global eas-cli crashes app-mobile's config
+spawn). `app-mobile` has no wrapper script yet (#994), so the flag is your responsibility here:
 
 ```bash
-cd app-mobile && npx -y eas-cli@latest update --branch production --platform ios     --message "<summary>"
-cd app-mobile && npx -y eas-cli@latest update --branch production --platform android  --message "<summary>"
+cd app-mobile && npx -y eas-cli@latest update --branch production --environment production --platform ios     --message "<summary>"
+cd app-mobile && npx -y eas-cli@latest update --branch production --environment production --platform android  --message "<summary>"
 ```
 
 Two separate commands — `--platform ios,android` is invalid; `--platform all` fails on web bundle.
+
+**Verify the SERVED MANIFEST after every publish — the CLI exit code is green on a broken publish.**
+Fetch what users will actually receive and confirm the expected `EXPO_PUBLIC_*` keys carry real values.
+An unset var serializes as `{}` (not `null`, not absent), which is easy to skim past:
+
+```
+"EXPO_PUBLIC_POSTHOG_KEY":{}     <- unset. The publish was blind. Republish with --environment production.
+```
 
 ### 7.7 Pull requests
 
