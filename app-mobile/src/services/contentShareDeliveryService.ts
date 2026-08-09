@@ -22,6 +22,15 @@ type RecipientRow = {
 
 type DeliveryResult = { deliveryId: string; conversationId: string; messageId: string; inserted: boolean };
 export type ContentShareDeliveryState = 'pending' | 'sent' | 'failed';
+type ContentShareSettledListener = (key: string, state: 'sent' | 'failed') => void;
+type ContentShareSendInput = {
+  recipients: ContentShareRecipient[]; shortCode: string;
+  shareVersion: number; senderNote: string; title: string;
+  onSettled?: ContentShareSettledListener;
+};
+type ContentShareSendResult = {
+  sent: number; failed: number; sentKeys: string[]; failedKeys: string[];
+};
 export type PersistedContentShareOperation = {
   schemaVersion: 1;
   operationId: string;
@@ -34,6 +43,37 @@ export type PersistedContentShareOperation = {
 
 const operationStorageKey = (shareCode: string, version: number): string =>
   `content-share-operation:${shareCode}:v${version}`;
+
+const operationLockTails = new Map<string, Promise<void>>();
+const deliveryFlights = new Map<string, Promise<ContentShareSendResult>>();
+const deliveryFlightListeners = new Map<string, Set<ContentShareSettledListener>>();
+
+async function withContentShareOperationLock<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const previous = operationLockTails.get(key) ?? Promise.resolve();
+  let release = (): void => undefined;
+  const turn = new Promise<void>((resolve) => { release = resolve; });
+  const tail = previous.catch(() => undefined).then(() => turn);
+  operationLockTails.set(key, tail);
+  await previous.catch(() => undefined);
+  try {
+    return await task();
+  } finally {
+    release();
+    if (operationLockTails.get(key) === tail) operationLockTails.delete(key);
+  }
+}
+
+function contentShareDeliveryFlightKey(
+  input: ContentShareSendInput,
+  note: { note: string | null; graphemeCount: number },
+): string {
+  const targets = input.recipients
+    .map((recipient) => [recipient.key, recipient.targetKind, recipient.targetId])
+    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  return JSON.stringify([
+    input.shortCode, input.shareVersion, note.note, note.graphemeCount, targets,
+  ]);
+}
 
 const createUuid = (): string => {
   const cryptoValue = (globalThis as { crypto?: Crypto }).crypto;
@@ -80,25 +120,28 @@ export async function reconcileContentShareOperation(
 async function beginContentShareOperation(input: {
   shareCode: string; version: number; recipients: ContentShareRecipient[]; senderNote: string;
 }): Promise<PersistedContentShareOperation> {
-  const normalized = normalizeContentShareNote(input.senderNote);
-  const existing = await loadContentShareOperation(input.shareCode, input.version);
-  if (existing) {
-    if ((existing.senderNote ?? '') !== (normalized.note ?? '') || existing.senderNoteGraphemeCount !== normalized.graphemeCount) {
-      throw new Error('operation_identity_mismatch');
+  const storageKey = operationStorageKey(input.shareCode, input.version);
+  return withContentShareOperationLock(storageKey, async () => {
+    const normalized = normalizeContentShareNote(input.senderNote);
+    const existing = await loadContentShareOperation(input.shareCode, input.version);
+    if (existing) {
+      if ((existing.senderNote ?? '') !== (normalized.note ?? '') || existing.senderNoteGraphemeCount !== normalized.graphemeCount) {
+        throw new Error('operation_identity_mismatch');
+      }
+      const byKey = new Map(existing.targets.map((target) => [target.key, target]));
+      for (const recipient of input.recipients) if (!byKey.has(recipient.key)) existing.targets.push({ key: recipient.key, targetKind: recipient.targetKind, targetId: recipient.targetId, state: 'pending' });
+      await AsyncStorage.setItem(storageKey, JSON.stringify(existing));
+      return existing;
     }
-    const byKey = new Map(existing.targets.map((target) => [target.key, target]));
-    for (const recipient of input.recipients) if (!byKey.has(recipient.key)) existing.targets.push({ key: recipient.key, targetKind: recipient.targetKind, targetId: recipient.targetId, state: 'pending' });
-    await AsyncStorage.setItem(operationStorageKey(input.shareCode, input.version), JSON.stringify(existing));
-    return existing;
-  }
-  const created: PersistedContentShareOperation = {
-    schemaVersion: 1, operationId: createUuid(), shortCode: input.shareCode,
-    shareVersion: input.version, senderNote: normalized.note,
-    senderNoteGraphemeCount: normalized.graphemeCount,
-    targets: input.recipients.map((recipient) => ({ key: recipient.key, targetKind: recipient.targetKind, targetId: recipient.targetId, state: 'pending' })),
-  };
-  await AsyncStorage.setItem(operationStorageKey(input.shareCode, input.version), JSON.stringify(created));
-  return created;
+    const created: PersistedContentShareOperation = {
+      schemaVersion: 1, operationId: createUuid(), shortCode: input.shareCode,
+      shareVersion: input.version, senderNote: normalized.note,
+      senderNoteGraphemeCount: normalized.graphemeCount,
+      targets: input.recipients.map((recipient) => ({ key: recipient.key, targetKind: recipient.targetKind, targetId: recipient.targetId, state: 'pending' })),
+    };
+    await AsyncStorage.setItem(storageKey, JSON.stringify(created));
+    return created;
+  });
 }
 
 export async function clearContentShareOperationId(shareCode: string, version: number): Promise<void> {
@@ -134,13 +177,11 @@ async function notifyInsertedDelivery(result: DeliveryResult, title: string): Pr
   if (settled.some((entry) => entry.status === 'rejected')) throw new Error('notification_fanout_failed');
 }
 
-export async function sendContentShareToRecipients(input: {
-  recipients: ContentShareRecipient[]; shortCode: string;
-  shareVersion: number; senderNote: string; title: string;
-  onSettled?: (key: string, state: 'sent' | 'failed') => void;
-}): Promise<{ sent: number; failed: number; sentKeys: string[]; failedKeys: string[] }> {
-  if (input.recipients.length === 0) throw new Error('no_available_recipients');
-  const note = normalizeContentShareNote(input.senderNote);
+async function executeContentShareDelivery(
+  input: ContentShareSendInput,
+  note: { note: string | null; graphemeCount: number },
+  notifySettled: ContentShareSettledListener,
+): Promise<ContentShareSendResult> {
   const operation = await beginContentShareOperation({ shareCode: input.shortCode, version: input.shareVersion, recipients: input.recipients, senderNote: input.senderNote });
   let persistQueue = Promise.resolve();
   const persistState = (key: string, state: ContentShareDeliveryState): Promise<void> => {
@@ -172,16 +213,49 @@ export async function sendContentShareToRecipients(input: {
         sent += 1;
         sentKeys.push(recipient.key);
         await persistState(recipient.key, 'sent');
-        input.onSettled?.(recipient.key, 'sent');
+        notifySettled(recipient.key, 'sent');
       } catch (error) {
         failed += 1;
         failedKeys.push(recipient.key);
         await persistState(recipient.key, 'failed');
         console.warn('[content-share] delivery failed', error instanceof Error ? error.name : 'unknown');
-        input.onSettled?.(recipient.key, 'failed');
+        notifySettled(recipient.key, 'failed');
       }
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, input.recipients.length) }, worker));
   return { sent, failed, sentKeys, failedKeys };
+}
+
+export async function sendContentShareToRecipients(input: ContentShareSendInput): Promise<ContentShareSendResult> {
+  if (input.recipients.length === 0) throw new Error('no_available_recipients');
+  const note = normalizeContentShareNote(input.senderNote);
+  const flightKey = contentShareDeliveryFlightKey(input, note);
+  const existingFlight = deliveryFlights.get(flightKey);
+  if (existingFlight) {
+    if (input.onSettled) deliveryFlightListeners.get(flightKey)?.add(input.onSettled);
+    return existingFlight;
+  }
+
+  const listeners = new Set<ContentShareSettledListener>();
+  if (input.onSettled) listeners.add(input.onSettled);
+  deliveryFlightListeners.set(flightKey, listeners);
+  const notifySettled: ContentShareSettledListener = (key, state) => {
+    for (const listener of deliveryFlightListeners.get(flightKey) ?? []) {
+      try { listener(key, state); }
+      catch (error) {
+        console.warn('[content-share] delivery listener failed', error instanceof Error ? error.name : 'unknown');
+      }
+    }
+  };
+  const corePromise = executeContentShareDelivery(input, note, notifySettled);
+  let trackedPromise: Promise<ContentShareSendResult>;
+  trackedPromise = corePromise.finally(() => {
+    if (deliveryFlights.get(flightKey) === trackedPromise) {
+      deliveryFlights.delete(flightKey);
+      deliveryFlightListeners.delete(flightKey);
+    }
+  });
+  deliveryFlights.set(flightKey, trackedPromise);
+  return trackedPromise;
 }

@@ -7,6 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { assertCoverWriterInventory, scanCoverWriters } from './cover-poster-writer-gate.mjs';
@@ -294,4 +295,137 @@ test('H18 headings are truly centered, Business owns its panel theme, and visibl
   assert.match(business, /<Pressable accessibilityRole="button" onPress=\{prepare\}>/);
   assert.match(consumer, /<Pressable accessibilityRole="button" onPress=\{\(\) => loadRecipients/);
   assert.match(consumer, /<Pressable accessibilityRole="button" onPress=\{\(\) => setSearch\(''\)\}>/);
+});
+
+// [TEST-MOD-APPROVED #1719] Written reason: independent tester P0-1 proved that the prior static
+// idempotency assertions did not execute the empty-storage concurrency race, so this additive
+// production-module harness now makes simultaneous callers and retry identity observable.
+test('H19 concurrent identical sends single-flight and conflicting notes serialize on one operation identity', async () => {
+  const loadDeliveryHarness = (rpcResponder = () => ({
+    data: { deliveryId:'delivery-1', conversationId:'conversation-1', messageId:'message-1', inserted:false },
+    error: null,
+  })) => {
+    const typescript = require(path.join(ROOT, 'app-mobile/node_modules/typescript'));
+    const source = read('app-mobile/src/services/contentShareDeliveryService.ts');
+    const output = typescript.transpileModule(source, {
+      compilerOptions: {
+        module: typescript.ModuleKind.CommonJS,
+        target: typescript.ScriptTarget.ES2020,
+        esModuleInterop: true,
+      },
+      fileName: 'contentShareDeliveryService.ts',
+    }).outputText;
+    const storage = new Map();
+    let getCalls = 0;
+    const asyncStorage = {
+      getItem: (key) => {
+        getCalls += 1;
+        const snapshot = storage.get(key) ?? null;
+        return new Promise((resolve) => setImmediate(() => resolve(snapshot)));
+      },
+      setItem: async (key, value) => { storage.set(key, value); },
+      removeItem: async (key) => { storage.delete(key); },
+    };
+    const rpcCalls = [];
+    const supabase = {
+      rpc: async (name, args) => {
+        assert.equal(name, 'send_content_share_message');
+        rpcCalls.push(args);
+        return rpcResponder(rpcCalls.length, args);
+      },
+    };
+    const moduleValue = { exports: {} };
+    const localRequire = (specifier) => {
+      if (specifier === '@react-native-async-storage/async-storage') return { __esModule:true, default:asyncStorage };
+      if (specifier === '@mingla/sharing') return sharing;
+      if (specifier === './supabase') return { supabase };
+      throw new Error(`unexpected test dependency: ${specifier}`);
+    };
+    vm.runInNewContext(output, {
+      module: moduleValue,
+      exports: moduleValue.exports,
+      require: localRequire,
+      console,
+      crypto: globalThis.crypto,
+      setImmediate,
+    }, { filename:'contentShareDeliveryService.js' });
+    return {
+      service: moduleValue.exports,
+      rpcCalls,
+      storage,
+      getCalls: () => getCalls,
+    };
+  };
+
+  const recipient = {
+    key:'friend:user-2', targetKind:'friend', targetId:'user-2', personUserId:'user-2',
+    displayName:'Alex', username:'alex', avatarUrl:null, conversationId:null, participantCount:null,
+  };
+  const baseInput = {
+    recipients:[recipient], shortCode:'Aa0Bb1Cc2Dd3Ee4F', shareVersion:1,
+    senderNote:'  See you there  ', title:'Jazz night',
+  };
+
+  const identical = loadDeliveryHarness();
+  const firstSettled = [];
+  const secondSettled = [];
+  const [firstResult, secondResult] = await Promise.all([
+    identical.service.sendContentShareToRecipients({ ...baseInput, onSettled:(key, state) => firstSettled.push(`${key}:${state}`) }),
+    identical.service.sendContentShareToRecipients({ ...baseInput, onSettled:(key, state) => secondSettled.push(`${key}:${state}`) }),
+  ]);
+  assert.deepEqual(firstResult, secondResult);
+  assert.equal(identical.getCalls(), 1);
+  assert.equal(identical.rpcCalls.length, 1);
+  assert.equal(new Set(identical.rpcCalls.map((call) => call.p_operation_id)).size, 1);
+  assert.deepEqual(firstSettled, ['friend:user-2:sent']);
+  assert.deepEqual(secondSettled, ['friend:user-2:sent']);
+
+  const conflicting = loadDeliveryHarness();
+  const conflictResults = await Promise.allSettled([
+    conflicting.service.sendContentShareToRecipients({ ...baseInput, senderNote:'First note' }),
+    conflicting.service.sendContentShareToRecipients({ ...baseInput, senderNote:'Different note' }),
+  ]);
+  assert.equal(conflictResults.filter((result) => result.status === 'fulfilled').length, 1);
+  const rejected = conflictResults.find((result) => result.status === 'rejected');
+  assert.equal(rejected?.reason?.message, 'operation_identity_mismatch');
+  assert.equal(conflicting.rpcCalls.length, 1);
+
+  const retry = loadDeliveryHarness((callNumber) => callNumber === 1
+    ? { data:null, error:new Error('lost_response') }
+    : { data:{ deliveryId:'delivery-1', conversationId:'conversation-1', messageId:'message-1', inserted:false }, error:null });
+  const lostResult = await retry.service.sendContentShareToRecipients(baseInput);
+  const retryResult = await retry.service.sendContentShareToRecipients(baseInput);
+  assert.deepEqual({ sent:lostResult.sent, failed:lostResult.failed }, { sent:0, failed:1 });
+  assert.deepEqual({ sent:retryResult.sent, failed:retryResult.failed }, { sent:1, failed:0 });
+  assert.equal(retry.rpcCalls.length, 2);
+  assert.equal(retry.rpcCalls[0].p_operation_id, retry.rpcCalls[1].p_operation_id);
+
+  const secondRecipient = {
+    ...recipient, key:'friend:user-3', targetId:'user-3', personUserId:'user-3',
+    displayName:'Sam', username:'sam',
+  };
+  let secondRecipientFailed = false;
+  const partial = loadDeliveryHarness((_callNumber, args) => {
+    if (args.p_target_id === 'user-3' && !secondRecipientFailed) {
+      secondRecipientFailed = true;
+      return { data:null, error:new Error('temporary_failure') };
+    }
+    return {
+      data:{ deliveryId:'delivery-1', conversationId:'conversation-1', messageId:'message-1', inserted:false },
+      error:null,
+    };
+  });
+  const partialResult = await partial.service.sendContentShareToRecipients({
+    ...baseInput, recipients:[recipient, secondRecipient],
+  });
+  const failedOnlyRetry = await partial.service.sendContentShareToRecipients({
+    ...baseInput, recipients:[secondRecipient],
+  });
+  assert.deepEqual({ sent:partialResult.sent, failed:partialResult.failed }, { sent:1, failed:1 });
+  assert.deepEqual([...partialResult.failedKeys], ['friend:user-3']);
+  assert.deepEqual({ sent:failedOnlyRetry.sent, failed:failedOnlyRetry.failed }, { sent:1, failed:0 });
+  assert.equal(partial.rpcCalls.length, 3);
+  assert.equal(partial.rpcCalls.filter((call) => call.p_target_id === 'user-2').length, 1);
+  assert.equal(partial.rpcCalls.filter((call) => call.p_target_id === 'user-3').length, 2);
+  assert.equal(new Set(partial.rpcCalls.map((call) => call.p_operation_id)).size, 1);
 });
