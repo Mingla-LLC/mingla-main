@@ -193,10 +193,23 @@ const nativeText = (value: unknown, max: number, required = false): string | und
   if (typeof value !== "string" || Array.from(value).length > max || /[\u0000-\u001f\u007f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u.test(value)) throw new Error("invalid_native_snapshot");
   return value.normalize("NFC");
 };
-const nativeNumber = (value: unknown): number | undefined => {
+const nativeNumberInRange = (value: unknown, min: number, max: number, integer = false): number | undefined => {
   if (value === undefined || value === null) return undefined;
-  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("invalid_native_snapshot");
+  if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) throw new Error("invalid_native_snapshot");
   return value;
+};
+const nativeLatitude = (value: unknown): number | undefined => nativeNumberInRange(value, -90, 90);
+const nativeLongitude = (value: unknown): number | undefined => nativeNumberInRange(value, -180, 180);
+const nativeRating = (value: unknown): number | undefined => nativeNumberInRange(value, 0, 5);
+const nativeCount = (value: unknown): number | undefined => nativeNumberInRange(value, 0, Number.MAX_SAFE_INTEGER, true);
+const nativeMoney = (value: unknown): number | undefined => nativeNumberInRange(value, 0, Number.MAX_SAFE_INTEGER);
+const nativeMinorMoney = (value: unknown): number | undefined => nativeNumberInRange(value, 0, Number.MAX_SAFE_INTEGER, true);
+const nativePositiveInteger = (value: unknown): number | undefined => nativeNumberInRange(value, 1, Number.MAX_SAFE_INTEGER, true);
+const nativeUtcOffsetMinutes = (value: unknown): number | undefined => nativeNumberInRange(value, -720, 840, true);
+const nativeCountryCode = (value: unknown): string | undefined => {
+  const code = nativeText(value, 2);
+  if (code !== undefined && !/^[A-Z]{2}$/.test(code)) throw new Error("invalid_native_snapshot");
+  return code;
 };
 const nativeBoolean = (value: unknown): boolean | undefined => {
   if (value === undefined || value === null) return undefined;
@@ -216,7 +229,7 @@ const nativeHours = (value: unknown): unknown => {
     let periods:RecordLike[]|undefined;
     if(row.periods!==undefined){if(!Array.isArray(row.periods)||row.periods.length>32)throw new Error("invalid_native_snapshot");periods=row.periods.map((raw:unknown)=>{
       if(!raw||typeof raw!=="object"||Array.isArray(raw)||!exactObjectKeys(raw as RecordLike,["open","close"]))throw new Error("invalid_native_snapshot");
-      const point=(candidate:unknown)=>{if(candidate===undefined)return undefined;if(!candidate||typeof candidate!=="object"||Array.isArray(candidate)||!exactObjectKeys(candidate as RecordLike,["day","hour","minute","date"]))throw new Error("invalid_native_snapshot");const p=candidate as RecordLike;return compact({day:nativeNumber(p.day),hour:nativeNumber(p.hour),minute:nativeNumber(p.minute),date:nativeText(p.date,40)});};
+      const point=(candidate:unknown)=>{if(candidate===undefined)return undefined;if(!candidate||typeof candidate!=="object"||Array.isArray(candidate)||!exactObjectKeys(candidate as RecordLike,["day","hour","minute","date"]))throw new Error("invalid_native_snapshot");const p=candidate as RecordLike;return compact({day:nativeNumberInRange(p.day,0,6,true),hour:nativeNumberInRange(p.hour,0,23,true),minute:nativeNumberInRange(p.minute,0,59,true),date:nativeText(p.date,40)});};
       return compact({open:point((raw as RecordLike).open),close:point((raw as RecordLike).close)});
     });}
     return compact({openNow:nativeBoolean(row.openNow),periods,nextOpenTime:nativeText(row.nextOpenTime,80),nextCloseTime:nativeText(row.nextCloseTime,80),weekdayDescriptions:nativeStrings(row.weekdayDescriptions,500)});
@@ -228,8 +241,7 @@ const nativeHours = (value: unknown): unknown => {
 const nativeSocialStats=(value:unknown):RecordLike|undefined=>{
   if(value===undefined||value===null)return undefined;if(typeof value!=="object"||Array.isArray(value))throw new Error("invalid_native_snapshot");
   const row=value as RecordLike;if(!exactObjectKeys(row,["views","likes","saves","shares"]))throw new Error("invalid_native_snapshot");
-  const output=compact({views:nativeNumber(row.views),likes:nativeNumber(row.likes),saves:nativeNumber(row.saves),shares:nativeNumber(row.shares)});
-  if(Object.values(output).some((item)=>typeof item!=="number"||item<0))throw new Error("invalid_native_snapshot");return output;
+  return compact({views:nativeCount(row.views),likes:nativeCount(row.likes),saves:nativeCount(row.saves),shares:nativeCount(row.shares)});
 };
 const nativeImages = (values: unknown): string[] => {
   if (values === undefined || values === null) return [];
@@ -250,11 +262,11 @@ const nativeStrings = (value: unknown, max: number): string[] | undefined => {
   return value.map((item) => nativeText(item, max, true)!);
 };
 const priceFields = (source: RecordLike): RecordLike => compact({
-  priceRangeStatus: nativeText(source.priceRangeStatus, 32), sourceMinMinor: nativeNumber(source.sourceMinMinor),
-  sourceMaxMinor: nativeNumber(source.sourceMaxMinor), sourceCurrencyCode: nativeText(source.sourceCurrencyCode, 3),
-  sourceMinorUnitExponent: nativeNumber(source.sourceMinorUnitExponent), displayMinMinor: nativeNumber(source.displayMinMinor),
-  displayMaxMinor: nativeNumber(source.displayMaxMinor), displayCurrencyCode: nativeText(source.displayCurrencyCode, 3),
-  displayMinorUnitExponent: nativeNumber(source.displayMinorUnitExponent), priceIsApproximate: nativeBoolean(source.priceIsApproximate),
+  priceRangeStatus: nativeText(source.priceRangeStatus, 32), sourceMinMinor: nativeMinorMoney(source.sourceMinMinor),
+  sourceMaxMinor: nativeMinorMoney(source.sourceMaxMinor), sourceCurrencyCode: nativeText(source.sourceCurrencyCode, 3),
+  sourceMinorUnitExponent: nativeNumberInRange(source.sourceMinorUnitExponent, 0, 6, true), displayMinMinor: nativeMinorMoney(source.displayMinMinor),
+  displayMaxMinor: nativeMinorMoney(source.displayMaxMinor), displayCurrencyCode: nativeText(source.displayCurrencyCode, 3),
+  displayMinorUnitExponent: nativeNumberInRange(source.displayMinorUnitExponent, 0, 6, true), priceIsApproximate: nativeBoolean(source.priceIsApproximate),
   fxSnapshotId: nativeText(source.fxSnapshotId, 128), fxProvider: nativeText(source.fxProvider, 80),
   fxProviderUpdatedAt: nativeText(source.fxProviderUpdatedAt, 80), fxFreshness: nativeText(source.fxFreshness, 32),
 });
@@ -277,17 +289,17 @@ export function buildNativeContentCardSnapshot(kind: "place" | "curated", row: R
       const imageUrl = stop.imageUrl ? nativeImages([stop.imageUrl])[0] : undefined;
       const imageUrls = stop.imageUrls === undefined ? undefined : nativeImages(stop.imageUrls);
       return compact({
-        stopNumber: nativeNumber(stop.stopNumber), stopLabel: nativeText(stop.stopLabel, 40),
+        stopNumber: nativePositiveInteger(stop.stopNumber), stopLabel: nativeText(stop.stopLabel, 40),
         placeId: nativeText(stop.placeId, 256, true), placeName: nativeText(stop.placeName, 160, true), placeType: nativeText(stop.placeType, 120),
-        address: nativeText(stop.address, 500), rating: nativeNumber(stop.rating), reviewCount: nativeNumber(stop.reviewCount),
+        address: nativeText(stop.address, 500), rating: nativeRating(stop.rating), reviewCount: nativeCount(stop.reviewCount),
         imageUrl, imageUrls, priceLevelLabel: nativeText(stop.priceLevelLabel, 80), priceTier: nativeText(stop.priceTier, 40),
-        priceMin: nativeNumber(stop.priceMin), priceMax: nativeNumber(stop.priceMax), openingHours: nativeHours(stop.openingHours),
-        utcOffsetMinutes: nativeNumber(stop.utcOffsetMinutes), isOpenNow: stop.isOpenNow === null ? null : nativeBoolean(stop.isOpenNow),
+        priceMin: nativeMoney(stop.priceMin), priceMax: nativeMoney(stop.priceMax), openingHours: nativeHours(stop.openingHours),
+        utcOffsetMinutes: nativeUtcOffsetMinutes(stop.utcOffsetMinutes), isOpenNow: stop.isOpenNow === null ? null : nativeBoolean(stop.isOpenNow),
         website: stop.website === null ? null : nativeExternalUrl(stop.website),
-        lat: nativeNumber(stop.lat), lng: nativeNumber(stop.lng), aiDescription: nativeText(stop.aiDescription, 4000),
-        estimatedDurationMinutes: nativeNumber(stop.estimatedDurationMinutes), optional: nativeBoolean(stop.optional), dismissible: nativeBoolean(stop.dismissible),
+        lat: nativeLatitude(stop.lat), lng: nativeLongitude(stop.lng), aiDescription: nativeText(stop.aiDescription, 4000),
+        estimatedDurationMinutes: nativePositiveInteger(stop.estimatedDurationMinutes), optional: nativeBoolean(stop.optional), dismissible: nativeBoolean(stop.dismissible),
         role: nativeText(stop.role, 80), phone: stop.phone === null ? null : nativeText(stop.phone, 80),
-        countryCode: stop.countryCode === null ? null : nativeText(stop.countryCode, 2), comboCategory: nativeText(stop.comboCategory, 80), rankSignal: nativeText(stop.rankSignal, 120),
+        countryCode: stop.countryCode === null ? null : nativeCountryCode(stop.countryCode), comboCategory: nativeText(stop.comboCategory, 80), rankSignal: nativeText(stop.rankSignal, 120),
       });
     });
   }
@@ -298,18 +310,18 @@ export function buildNativeContentCardSnapshot(kind: "place" | "curated", row: R
     categoryIcon: nativeText(source.categoryIcon, 120), image, images,
     description: nativeText(source.description || source.fullDescription || row.editorial_summary || row.generative_summary, 1200),
     fullDescription: nativeText(source.fullDescription || source.description || row.editorial_summary || row.generative_summary, 16000),
-    address: nativeText(source.address || row.address, 500), rating: nativeNumber(source.rating ?? row.rating),
-    reviewCount: nativeNumber(source.reviewCount ?? row.review_count), priceRange: nativeText(source.priceRange || cleanPriceLevel(row.price_level), 80),
-    ...priceFields(source), lat: nativeNumber(source.lat ?? row.lat), lng: nativeNumber(source.lng ?? row.lng),
+    address: nativeText(source.address || row.address, 500), rating: nativeRating(source.rating ?? row.rating),
+    reviewCount: nativeCount(source.reviewCount ?? row.review_count), priceRange: nativeText(source.priceRange || cleanPriceLevel(row.price_level), 80),
+    ...priceFields(source), lat: nativeLatitude(source.lat ?? row.lat), lng: nativeLongitude(source.lng ?? row.lng),
     placeId: nativeText(source.placeId || source.googlePlaceId || row.google_place_id, 256),
-    openingHours: nativeHours(source.openingHours ?? row.opening_hours), utcOffsetMinutes: nativeNumber(source.utcOffsetMinutes ?? row.utc_offset_minutes),
-    phone: nativeText(source.phone || row.national_phone_number, 80), countryCode: source.countryCode === null ? null : nativeText(source.countryCode || row.country_code, 2),
+    openingHours: nativeHours(source.openingHours ?? row.opening_hours), utcOffsetMinutes: nativeUtcOffsetMinutes(source.utcOffsetMinutes ?? row.utc_offset_minutes),
+    phone: nativeText(source.phone || row.national_phone_number, 80), countryCode: source.countryCode === null ? null : nativeCountryCode(source.countryCode || row.country_code),
     website: nativeExternalUrl(source.website || row.website),
     highlights: nativeStrings(source.highlights, 240), tags: nativeStrings(source.tags, 120), socialStats: nativeSocialStats(source.socialStats),
     cardType: kind === "curated" ? "curated" : "single", stops,
     tagline: nativeText(source.tagline, 500), categoryLabel: nativeText(source.categoryLabel, 160), pairingKey: nativeText(source.pairingKey, 160),
-    experienceType: nativeText(source.experienceType, 120), totalPriceMin: nativeNumber(source.totalPriceMin), totalPriceMax: nativeNumber(source.totalPriceMax),
-    estimatedDurationMinutes: nativeNumber(source.estimatedDurationMinutes), shoppingList: nativeStrings(source.shoppingList, 500), tip: source.tip === null ? null : nativeText(source.tip, 2000),
+    experienceType: nativeText(source.experienceType, 120), totalPriceMin: nativeMoney(source.totalPriceMin), totalPriceMax: nativeMoney(source.totalPriceMax),
+    estimatedDurationMinutes: nativePositiveInteger(source.estimatedDurationMinutes), shoppingList: nativeStrings(source.shoppingList, 500), tip: source.tip === null ? null : nativeText(source.tip, 2000),
   });
   if (new TextEncoder().encode(JSON.stringify(snapshot)).byteLength > 262144) throw new Error("native_snapshot_too_large");
   return snapshot;

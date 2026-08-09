@@ -119,7 +119,7 @@ export interface ContentShareCardPayloadV1 {
   kind: ShareEntityKind;
   facts: ShareFactsV1;
   destination: ShareDestination;
-  publicDetails: PublicShareDetails | null;
+  publicDetails?: PublicShareDetails | null;
   media: ShareMediaIdentity | null;
   senderNote?: string;
   nativeCard?: NativeContentCardDescriptorV1;

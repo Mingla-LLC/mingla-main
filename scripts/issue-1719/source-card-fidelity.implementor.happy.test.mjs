@@ -116,3 +116,42 @@ test('malformed additive descriptor degrades through top-level public contract',
   assert.match(messaging,/return payload\.contract === 'content_share_card_v1'/);
   assert.match(bubble,/validateNativeContentCardDescriptorV1\(payload\.nativeCard\)/);
 });
+
+test('place and curated snapshots accept exact numeric clock and country boundaries',()=>{
+  const place={id:'boundary-place',title:'Boundary Place',rating:0,reviewCount:0,lat:-90,lng:180,utcOffsetMinutes:840,countryCode:'US',
+    sourceMinMinor:0,sourceMaxMinor:0,sourceMinorUnitExponent:0,displayMinMinor:0,displayMaxMinor:0,displayMinorUnitExponent:6,
+    totalPriceMin:0,totalPriceMax:0,estimatedDurationMinutes:1,socialStats:{views:0,likes:0,saves:0,shares:0},
+    openingHours:{periods:[{open:{day:0,hour:0,minute:0},close:{day:6,hour:23,minute:59}}]}};
+  const placeOut=buildNativeContentCardSnapshot('place',place);
+  for(const key of ['rating','reviewCount','lat','lng','utcOffsetMinutes','countryCode','sourceMinMinor','sourceMinorUnitExponent','displayMinorUnitExponent','estimatedDurationMinutes'])assert.deepEqual(placeOut[key],place[key],key);
+  const curatedStop={...stop(1),rating:5,reviewCount:0,priceMin:0,priceMax:0,lat:90,lng:-180,utcOffsetMinutes:-720,countryCode:'GB',estimatedDurationMinutes:1,
+    openingHours:{periods:[{open:{day:6,hour:23,minute:59},close:{day:0,hour:0,minute:0}}]}};
+  const curatedOut=buildNativeContentCardSnapshot('curated',{card_data:{id:'boundary-plan',cardType:'curated',title:'Boundary Plan',stops:[curatedStop],totalPriceMin:0,totalPriceMax:0,estimatedDurationMinutes:1}});
+  for(const key of ['stopNumber','rating','reviewCount','priceMin','priceMax','lat','lng','utcOffsetMinutes','countryCode','estimatedDurationMinutes'])assert.deepEqual(curatedOut.stops[0][key],curatedStop[key],key);
+});
+
+test('client-originated place and curated snapshots reject impossible field-specific values',()=>{
+  const invalidPlaceFields=[
+    {lat:90.01},{lng:-180.01},{rating:5.01},{reviewCount:-1},{reviewCount:1.5},{sourceMinMinor:-1},{sourceMinMinor:1.5},
+    {sourceMinorUnitExponent:7},{totalPriceMin:-1},{estimatedDurationMinutes:0},{estimatedDurationMinutes:1.5},{utcOffsetMinutes:841},
+    {utcOffsetMinutes:1.5},{countryCode:'us'},{countryCode:'USA'},{socialStats:{views:1.5}},{socialStats:{likes:-1}},
+    {openingHours:{periods:[{open:{day:7,hour:0,minute:0}}]}},{openingHours:{periods:[{open:{day:0,hour:24,minute:0}}]}},
+    {openingHours:{periods:[{open:{day:0,hour:0,minute:60}}]}},
+  ];
+  for(const fields of invalidPlaceFields)assert.throws(()=>buildNativeContentCardSnapshot('place',{id:'bad-place',title:'Bad Place',...fields}),/invalid_native_snapshot/,JSON.stringify(fields));
+  const invalidStopFields=[
+    {stopNumber:0},{stopNumber:1.5},{lat:91},{lng:181},{rating:-0.1},{reviewCount:-1},{reviewCount:2.5},{priceMin:-1},
+    {estimatedDurationMinutes:0},{estimatedDurationMinutes:1.5},{utcOffsetMinutes:-721},{countryCode:'gb'},
+    {openingHours:{periods:[{open:{day:-1,hour:0,minute:0}}]}},{openingHours:{periods:[{open:{day:0,hour:-1,minute:0}}]}},
+    {openingHours:{periods:[{open:{day:0,hour:0,minute:-1}}]}},
+  ];
+  for(const fields of invalidStopFields)assert.throws(()=>buildNativeContentCardSnapshot('curated',{card_data:{id:'bad-plan',cardType:'curated',title:'Bad Plan',stops:[{...stop(1),...fields}]}}),/invalid_native_snapshot/,JSON.stringify(fields));
+});
+
+test('typed chat payloads accept both historical public details and new stripped rows',()=>{
+  const messaging=read('app-mobile/src/services/messagingService.ts');
+  assert.match(messaging,/publicDetails\?: PublicShareDetails \| null/);
+  assert.match(messaging,/return payload\.contract === 'content_share_card_v1'/);
+  assert.doesNotMatch(messaging,/isContentShareCardPayload[\s\S]{0,300}publicDetails/);
+  assert.match(migration,/NEW\.card_payload := NEW\.card_payload - 'publicDetails'/);
+});
