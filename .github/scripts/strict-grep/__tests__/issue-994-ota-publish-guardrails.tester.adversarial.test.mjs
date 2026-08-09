@@ -233,13 +233,19 @@ test("A-1 PROOF — the shapes the gate correctly ALLOWS (no false positives)", 
   }
 });
 
-test("A-1 PIN — evasions the gate does NOT catch today (tester finding T-994-RULE1-EVASION)", () => {
-  // Each entry is a command that a human could paste into a terminal and that
-  // WOULD publish a production OTA with the environment unresolved. The gate
-  // currently returns 0 for all of them. Pinned, not silently accepted.
+test("A-1 PROOF — the ten evasions of T-994-RULE1-EVASION, now CLOSED (was a PIN)", () => {
+  // FLIPPED FROM PIN TO PROOF at the #994 REWORK, under the rule this file
+  // states above: "IF A PIN STARTS FAILING, THE GATE GOT STRONGER: flip the pin
+  // to the caught behaviour." All ten started failing because the gate was
+  // rebuilt to tokenise the command instead of substring-matching it, to end a
+  // command at an unquoted separator, to require the continuation backslash to
+  // be the final character of the line, to follow shell-function aliases, and
+  // to treat `--auto` and an indirect branch value as production shapes.
   //
-  // IF ONE OF THESE STARTS FAILING, THE GATE GOT STRONGER — move it into the
-  // PROOF list above. Never relax the gate to keep this green.
+  // Not one case string below was changed — only the expected exit code, from
+  // 0 (evaded) to 1 (caught). Each entry is still a command a human could paste
+  // into a terminal that WOULD publish a production OTA with the environment
+  // unresolved; the gate now refuses every one of them.
   const evading = [
     // The value is quoted, so the literal `--branch production` substring never
     // appears and the command is not classified as a production publish at all.
@@ -273,16 +279,19 @@ test("A-1 PIN — evasions the gate does NOT catch today (tester finding T-994-R
     const r = gateExitFor(text);
     assert.equal(
       r.code,
-      0,
-      `PIN "${label}": the gate now returns ${r.code}. If it is 1 the gate got STRONGER — ` +
-        `move this case into the PROOF list. Do not weaken the gate.\n${r.out}`,
+      1,
+      `"${label}" is a runnable env-blind production publish and the gate returned ${r.code}. ` +
+        `This evasion was closed at the #994 REWORK and must stay closed.\n${r.out}`,
     );
   }
 });
 
-test("A-1 PIN — file classes the walker never opens (tester finding T-994-SCAN-SET-GAP)", () => {
-  // SCAN_EXTS is a fixed allowlist and extensionless files need a shell shebang.
-  // A runbook in any of these classes can instruct the unsafe publish invisibly.
+test("A-1 PROOF — the file classes of T-994-SCAN-SET-GAP are now walked (was a PIN)", () => {
+  // FLIPPED FROM PIN TO PROOF at the #994 REWORK. SCAN_EXTS was widened and an
+  // extensionless-basename allowlist added, so a runbook carrying the unsafe
+  // command in any of these classes is now opened and caught rather than
+  // skipped in silence. The file list is unchanged; only the expectation moved
+  // from 0 (invisible) to 1 (caught).
   const unscanned = ["Makefile", "runbook.mdx", "publish.py", "deploy.toml", "index.html", "notes.rst", "publish.mts"];
   const unsafe = `${EAS} ${BRANCH_PROD} --platform ios --message "x"`;
   for (const name of unscanned) {
@@ -292,8 +301,9 @@ test("A-1 PIN — file classes the walker never opens (tester finding T-994-SCAN
   for (const name of unscanned) fs.rmSync(path.join(A1_ROOT, name));
   assert.equal(
     r.code,
-    0,
-    `PIN: the walker now opens one of ${unscanned.join(", ")} — the gate got STRONGER, flip this pin.\n${r.out}`,
+    1,
+    `the walker must open ${unscanned.join(", ")} — the 2026-08-06 landmine was a document, ` +
+      `and these are exactly where the next runbook goes.\n${r.out}`,
   );
 });
 
@@ -717,16 +727,24 @@ test("A-3 PROOF — a symlinked invocation fails closed rather than publishing u
   }
 });
 
-test("A-3 PIN — a whitespace-only update message is accepted (tester finding T-994-BLANK-MESSAGE)", () => {
-  // SC-1 says the wrapper rejects an empty message. `-z` is satisfied by a
-  // single space, so a run labelled "   " publishes with a blank message and the
-  // update list loses its audit trail. Low severity, real.
+test("A-3 PROOF — a whitespace-only update message is rejected, T-994-BLANK-MESSAGE closed (was a PIN)", () => {
+  // FLIPPED FROM PIN TO PROOF at the #994 REWORK. SC-1 says the wrapper rejects
+  // an empty message; `-z` is satisfied by a single space, so a run labelled
+  // "   " used to reach pre-flight and would have published with a blank
+  // message, costing the update list its audit trail. Both wrappers now strip
+  // whitespace before the emptiness test, so the run is rejected up front and
+  // never reaches pre-flight at all.
   const r = drive("consumer", ["ios", "   "], { STUB_ENVLIST_EXIT: "1" });
+  assert.notEqual(r.code, 0, `a whitespace-only message must be rejected:\n${r.out}`);
   assert.match(
     r.out,
+    /non-empty update message is required/,
+    `the whitespace-only message must be rejected as a bad argument:\n${r.out}`,
+  );
+  assert.doesNotMatch(
+    r.out,
     /could not list the EAS 'production' environment/,
-    `PIN: the whitespace-only message is now rejected before pre-flight — the wrapper got ` +
-      `STRONGER, flip this pin.\n${r.out}`,
+    `rejection must happen BEFORE pre-flight, not as a side effect of it:\n${r.out}`,
   );
 });
 

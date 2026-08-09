@@ -82,24 +82,54 @@ if [ "${PLATFORM}" != "ios" ] && [ "${PLATFORM}" != "android" ]; then
   exit 1
 fi
 
-if [ -z "${MESSAGE}" ]; then
-  echo "ERROR: a non-empty update message is required." >&2
+# A WHITESPACE-ONLY MESSAGE IS NOT A MESSAGE. `[ -z "   " ]` is FALSE, so a run
+# labelled "   " used to sail through and publish with a blank message, costing
+# the update list its audit trail — the one record of what a given OTA contained
+# (#994 tester P3-994-9). Strip whitespace before the emptiness test.
+MESSAGE_STRIPPED="$(printf '%s' "${MESSAGE}" | tr -d '[:space:]')"
+if [ -z "${MESSAGE_STRIPPED}" ]; then
+  echo "ERROR: a non-empty update message is required (whitespace only is not a message)." >&2
+  echo "       The message is the update list's audit trail — it is how anyone later works out" >&2
+  echo "       what a given production OTA actually shipped." >&2
   usage
   exit 1
 fi
 
 # Run from the mingla-business root (where eas.json lives) regardless of CWD.
+#
+# BASH_SOURCE is DELIBERATELY NOT symlink-resolved. An invocation through a link
+# lands APP_ROOT in the link's directory and this script then refuses to run,
+# which is the correct outcome: the tracked path is the only reviewed path, and a
+# link can point at any checkout on the machine — including a work-in-progress
+# worktree whose bundle nobody has reviewed. Resolving the link would make that
+# invocation SUCCEED and publish that bundle to real users.
+#
+# What was wrong before was only the MESSAGE: it blamed "the verifier is missing"
+# and sent the reader hunting for a deleted file that is present (#994 tester
+# P4-994-11). The abort below names the actual cause instead.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 REPO_ROOT="$(cd "${APP_ROOT}/.." && pwd)"
 VERIFIER="${REPO_ROOT}/scripts/ota/verify-published-manifest.mjs"
-cd "${APP_ROOT}"
 
-if [ ! -f "${VERIFIER}" ]; then
-  echo "ABORT [#994] the post-publish verifier is missing: ${VERIFIER}" >&2
-  echo "       Publishing without it would repeat the failure this script exists to prevent." >&2
+if [ ! -f "${APP_ROOT}/app.config.ts" ] || [ ! -f "${VERIFIER}" ]; then
+  echo "ABORT [#994] this script must be run at its REAL tracked path inside the repo checkout." >&2
+  if [ -L "${BASH_SOURCE[0]}" ]; then
+    echo "       Confirmed cause: this invocation came through a SYMLINK (${BASH_SOURCE[0]})." >&2
+  else
+    echo "       Likely cause: the script was copied or moved out of the repo checkout." >&2
+  fi
+  echo "       Paths resolved relative to the invocation, NOT to the checkout:" >&2
+  echo "         APP_ROOT = ${APP_ROOT}   (expected a directory named ${APP_LABEL})" >&2
+  echo "         VERIFIER = ${VERIFIER}" >&2
+  echo "       This is NOT a missing-file bug, and the link is not followed on purpose: a link" >&2
+  echo "       can point at any checkout on this machine, so following it would publish an" >&2
+  echo "       unreviewed bundle to real users. Run the tracked path directly:" >&2
+  echo "         ${APP_LABEL}/scripts/ota/publish-production-ota.sh <ios|android> \"<summary>\"" >&2
   exit 1
 fi
+
+cd "${APP_ROOT}"
 
 TMPBASE="${TMPDIR:-/tmp}"
 ERRLOG="$(mktemp "${TMPBASE}/mingla-ota-err.XXXXXX")"

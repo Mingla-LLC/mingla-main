@@ -31,12 +31,31 @@
  *      (V-1, V-2). iOS may answer `application/expo+json` and Android
  *      `multipart/mixed`; both shapes are handled, and a multipart body whose
  *      `manifest` part is missing is exit 2, never "no violations found".
- *   3. THE EXPECTED KEYS CARRY REAL VALUES. `assertExtra` checks, per key and
+ *   3. THE APP CONFIG `extra` IS FOUND AT ITS REAL PATH. A served manifest does
+ *      NOT carry the app config's `extra` at the top level. The manifest's own
+ *      `extra` is a WRAPPER holding exactly `expoClient` / `eas` / `scopeKey`,
+ *      and the app config `extra` — the only node that holds EXPO_PUBLIC_*
+ *      values — is nested one level down at `extra.expoClient.extra`
+ *      (`resolveAppExtra`). Reading the wrapper instead makes every assertion
+ *      below unreachable; that shipped once and is now V-6, exit 2, never a pass.
+ *   4. THE EXPECTED KEYS CARRY REAL VALUES. `assertExtra` checks, per key and
  *      IN THIS ORDER: `{}` (UNSET SIGNATURE) -> absent/null -> non-string ->
  *      empty -> wrong prefix. A required key failing any of these is exit 1.
- *   4. THE CHECK CANNOT PASS VACUOUSLY. An `extra` with fewer than 5 keys, or
- *      an empty expectation table, is exit 2 (V-3, V-4). Both apps ship 15+
- *      extra keys today, so 5 is a real floor with headroom.
+ *   5. THE CHECK CANNOT PASS VACUOUSLY. A RESOLVED app `extra` with fewer than
+ *      5 keys, or an empty expectation table, is exit 2 (V-3, V-4). Measured on
+ *      six genuine production permalinks (2026-08-09/10): the resolved node
+ *      holds 15 keys on app-mobile and 16 on mingla-business, so 5 is a real
+ *      floor with headroom. The floor applies to the RESOLVED node — applying
+ *      it to the 3-key wrapper is what made this check unfalsifiable before.
+ *
+ * THE SHAPE IS MEASURED, NOT ASSUMED — AND THE FIXTURES MATCH THE WIRE.
+ *   The first version of this module was green on 25/25 self-test cases while
+ *   failing on 6/6 real manifests, because its fixtures used the FLAT shape
+ *   `expo config --json` emits rather than the nested shape u.expo.dev serves.
+ *   Fixtures that do not match reality are how that shipped. `realWireManifest`
+ *   below is built from a read-only capture of six genuine production
+ *   permalinks, and self-test case 31 FAILS if that fixture is ever flattened
+ *   back to the config shape.
  *
  * THE EXPECTATION TABLES ARE DELIBERATELY SHORT — DO NOT PAD THEM.
  *   Only a key that (a) reaches `extra` and (b) has NO committed literal
@@ -87,8 +106,99 @@ import { pathToFileURL } from "node:url";
 /** Fetch timeout. A timeout is V-1, i.e. exit 2, never a pass. */
 export const FETCH_TIMEOUT_MS = 20_000;
 
-/** V-3 — an `extra` this small means every assertion below would be vacuous. */
+/**
+ * V-3 — a RESOLVED app `extra` this small means every assertion below would be
+ * vacuous. Applied to the node `resolveAppExtra` returns, never to the served
+ * manifest's 3-key wrapper.
+ */
 export const MIN_EXTRA_KEYS = 5;
+
+/**
+ * The served manifest's own `extra` is a WRAPPER, not the app config's `extra`.
+ *
+ * Measured read-only on 2026-08-09/10 against six genuine production
+ * permalinks (app-mobile + mingla-business, iOS + Android, including the
+ * 2026-08-06 republishes). In ALL six the manifest's top-level `extra` held
+ * exactly these three keys and never an `EXPO_PUBLIC_*` value.
+ */
+export const MANIFEST_EXTRA_WRAPPER_KEYS = Object.freeze([
+  "expoClient",
+  "eas",
+  "scopeKey",
+]);
+
+/** Where the app config's `extra` actually lives in a served manifest. */
+export const APP_EXTRA_PATH = "extra.expoClient.extra";
+
+const isPlainObject = (v) =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * Resolve the APP CONFIG `extra` out of a served manifest's `extra`.
+ *
+ * WHY THIS FUNCTION EXISTS, IN ONE PARAGRAPH. The first shipped version of this
+ * module asserted against `manifest.extra` directly. On every real manifest that
+ * node holds three keys, so the V-3 vacuity floor fired and the module exited 2
+ * on all six production permalinks — both apps, both platforms. Worse, a healthy
+ * manifest and the 2026-08-06 incident manifest produced BYTE-IDENTICAL output:
+ * the check built to detect the `{}` unset signature could not detect it. That is
+ * `feedback_unfalsifiable_test_bug_class`, reproduced inside the guardrail built
+ * to prevent it. Resolution is therefore explicit, and every way it can go wrong
+ * is exit 2 — never a silent fall back onto the wrapper.
+ *
+ * @param {unknown} manifestExtra the served manifest's own `extra`
+ * @returns {{extra: Record<string, unknown>, path: string}}
+ * @throws {VerifyVacuityError} V-2 / V-6
+ */
+export function resolveAppExtra(manifestExtra) {
+  if (!isPlainObject(manifestExtra)) {
+    throw new VerifyVacuityError(
+      `V-2: the manifest's \`extra\` is ${
+        manifestExtra === null
+          ? "null"
+          : Array.isArray(manifestExtra)
+            ? "an array"
+            : typeof manifestExtra
+      }, not an object. The response is not an Expo manifest.`,
+    );
+  }
+
+  if (Object.prototype.hasOwnProperty.call(manifestExtra, "expoClient")) {
+    const client = manifestExtra.expoClient;
+    if (!isPlainObject(client)) {
+      throw new VerifyVacuityError(
+        "V-6: the served manifest's `extra.expoClient` is not an object, so the app " +
+          `config \`extra\` cannot be located at ${APP_EXTRA_PATH}. Nothing below was ` +
+          "verified — this is NOT a pass.",
+      );
+    }
+    if (!isPlainObject(client.extra)) {
+      throw new VerifyVacuityError(
+        `V-6: the served manifest carries \`extra.expoClient\` but no app config \`extra\` ` +
+          `at ${APP_EXTRA_PATH}. That node is the ONLY place EXPO_PUBLIC_* values appear, ` +
+          "so every assertion below would be unreachable. Refusing to report success.",
+      );
+    }
+    return { extra: client.extra, path: APP_EXTRA_PATH };
+  }
+
+  // No `expoClient`: either the FLAT `expo config --json --type public` shape
+  // (which the #994 env-resolution smoke legitimately feeds in), or a wrapper
+  // that lost its expoClient. The second must never be asserted against.
+  const keys = Object.keys(manifestExtra);
+  if (
+    keys.length > 0 &&
+    keys.every((k) => MANIFEST_EXTRA_WRAPPER_KEYS.includes(k))
+  ) {
+    throw new VerifyVacuityError(
+      `V-6: the node being asserted holds only served-manifest wrapper keys ` +
+        `(${keys.join(", ")}) and no app config \`extra\`. This is the exact defect that ` +
+        `shipped once: asserting the wrapper instead of ${APP_EXTRA_PATH} makes a healthy ` +
+        "manifest and a blind publish produce identical output.",
+    );
+  }
+  return { extra: manifestExtra, path: "extra" };
+}
 
 /**
  * Per-app expectation tables. Exported so the #994 strict-grep gate and the
@@ -285,8 +395,10 @@ export function assertExtra(extra, expectations) {
       code: 2,
       live: 0,
       messages: [
-        `V-3: \`extra\` holds ${keyCount} keys (floor ${MIN_EXTRA_KEYS}); every assertion ` +
-          "below would pass for the wrong reason. Both apps ship 15+ extra keys.",
+        `V-3: the resolved app config \`extra\` holds ${keyCount} keys (floor ${MIN_EXTRA_KEYS}); ` +
+          "every assertion below would pass for the wrong reason. Measured on six genuine " +
+          `production manifests, ${APP_EXTRA_PATH} holds 15 keys on app-mobile and 16 on ` +
+          "mingla-business. If this fires, the wrong node is being asserted (see V-6).",
       ],
     };
   }
@@ -342,7 +454,7 @@ export function assertExtra(extra, expectations) {
  * self-test can drive every vacuity case without a network.
  *
  * @param {{status:number, contentType:string, rawBody:string, expectations:any[]}} args
- * @returns {{code:number, messages:string[], live:number, extraKeys:number}}
+ * @returns {{code:number, messages:string[], live:number, extraKeys:number, extraPath:string|null}}
  */
 export function evaluateResponse({ status, contentType, rawBody, expectations }) {
   if (status !== 200) {
@@ -403,13 +515,29 @@ export function evaluateResponse({ status, contentType, rawBody, expectations })
     }
   }
 
-  const result = assertExtra(manifest.extra, expectations);
+  // The app config `extra` is NOT `manifest.extra` — see resolveAppExtra.
+  let appExtra;
+  let extraPath;
+  try {
+    ({ extra: appExtra, path: extraPath } = resolveAppExtra(manifest.extra));
+  } catch (err) {
+    if (err instanceof VerifyVacuityError) {
+      return {
+        code: 2,
+        live: 0,
+        extraKeys: 0,
+        extraPath: null,
+        messages: [err.message],
+      };
+    }
+    throw err;
+  }
+
+  const result = assertExtra(appExtra, expectations);
   return {
     ...result,
-    extraKeys:
-      manifest.extra && typeof manifest.extra === "object"
-        ? Object.keys(manifest.extra).length
-        : 0,
+    extraKeys: Object.keys(appExtra).length,
+    extraPath,
   };
 }
 
@@ -676,17 +804,221 @@ function selfTest() {
     }
   }
 
+  // ---- THE REAL WIRE SHAPE (cases 26-34) ----
+  //
+  // Every fixture below is built by `realWireManifest`, whose STRUCTURE was
+  // captured read-only on 2026-08-09/10 from six genuine production permalinks:
+  //   app-mobile      ios     019fe873-bf46-721f-9765-58683f10c6bf  rt 1.1.3
+  //   app-mobile      android 019fdd87-afc9-7238-bdaf-a516dc7f1975  rt 1.1.2
+  //   app-mobile      ios     019fd7e3-bcdb-7c96-91e9-e538331ca1e1  rt 1.1.2 (08-06 republish)
+  //   app-mobile      android 019fd7e4-7afd-7036-a1c6-9c29f214227d  rt 1.1.2 (08-06 republish)
+  //   mingla-business ios     019fd32a-5778-7bfc-976f-33b51b4bafd8  rt 1.1.2
+  //   mingla-business android 019fd32b-05e5-7342-94d8-cb3ece1dc85b  rt 1.1.2
+  // All six answered HTTP 200 `multipart/mixed`; all six nest the app config
+  // `extra` at extra.expoClient.extra. VALUES below are fakes — only the SHAPE
+  // is real, and case 31 fails if that shape ever drifts back to flat.
+
+  /** The real app config `extra`, key-for-key (values redacted). */
+  const realAppExtra = (posthog) => ({
+    eas: { build: {}, projectId: "01f9ff7c-0000-0000-0000-000000000000" },
+    router: {},
+    IOS_CLIENT_ID: "1691-i.apps.googleusercontent.com",
+    ANDROID_CLIENT_ID: "1691-a.apps.googleusercontent.com",
+    GOOGLE_PROJECT_ID: "example-pr",
+    googleWebClientId: "1691-w.apps.googleusercontent.com",
+    EXPO_PUBLIC_POSTHOG_KEY: posthog,
+    EXPO_PUBLIC_POSTHOG_HOST: "https://us.i.posthog.com",
+    GOOGLE_ANDROID_CLIENT_ID: "1691-a.apps.googleusercontent.com",
+    GOOGLE_IOS_CLIENT_SECRET: "",
+    GOOGLE_WEB_CLIENT_SECRET: "",
+    EXPO_PUBLIC_APPSFLYER_DEV_KEY: "FAKEDEVKEYFAKEDEVKEY00",
+    EXPO_PUBLIC_APPSFLYER_IOS_APP_ID: "6760000000",
+    EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: "1691-w.apps.googleusercontent.com",
+    EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID: "com.example.app",
+  });
+
+  /** The real served-manifest envelope: app config extra nested under expoClient. */
+  const realWireManifest = (appExtra) => ({
+    id: "019fe873-0000-0000-0000-000000000000",
+    createdAt: "2026-08-09T21:35:27.558Z",
+    runtimeVersion: "1.1.3",
+    launchAsset: {
+      hash: "h",
+      key: "k",
+      contentType: "application/javascript",
+      url: "https://assets.example/bundle",
+    },
+    assets: [],
+    metadata: {},
+    extra: {
+      expoClient: { name: "Mingla", slug: "mingla", extra: appExtra },
+      eas: { projectId: "01f9ff7c-0000-0000-0000-000000000000" },
+      scopeKey: "@example/mingla",
+    },
+  });
+
+  /** The real framing: `--` + a dash-prefixed boundary, CRLF headers. */
+  const REAL_BOUNDARY = "-----ExpoManifestBoundary-AZ_oc79Gch-XZVhoPxDGvw";
+  const REAL_CT = `multipart/mixed; boundary=${REAL_BOUNDARY}`;
+  const realWireBody = (manifest) =>
+    `--${REAL_BOUNDARY}\r\n` +
+    `Content-Disposition: form-data; name="manifest"\r\n` +
+    `Content-Type: application/json\r\n\r\n` +
+    `${JSON.stringify(manifest)}\r\n` +
+    `--${REAL_BOUNDARY}--\r\n`;
+
+  const evalWire = (appExtra, expectations) =>
+    evaluateResponse({
+      status: 200,
+      contentType: REAL_CT,
+      rawBody: realWireBody(realWireManifest(appExtra)),
+      expectations,
+    });
+
+  const GOOD_POSTHOG = "phc_fakebutwellformedvalue00000000000000";
+
+  {
+    // 26 — a CORRECT consumer manifest in the real wire shape must VERIFY.
+    const r = evalWire(realAppExtra(GOOD_POSTHOG), EXPECTATIONS.consumer);
+    expect("26 real wire shape, healthy consumer", r.code, 0);
+    expectMsg("26 real wire shape, healthy consumer", r.messages, "OK EXPO_PUBLIC_POSTHOG_KEY");
+    if (r.extraPath !== APP_EXTRA_PATH) {
+      problems.push(`26 read the wrong node: extraPath=${r.extraPath}, expected ${APP_EXTRA_PATH}`);
+    }
+  }
+  {
+    // 27 — the 2026-08-06 incident body: the tripwire serialised to `{}`.
+    const r = evalWire(realAppExtra({}), EXPECTATIONS.consumer);
+    expect("27 real wire shape, UNSET SIGNATURE", r.code, 1);
+    expectMsg("27 real wire shape, UNSET SIGNATURE", r.messages, "UNSET SIGNATURE");
+  }
+  {
+    // 28 — FALSIFIABILITY. Healthy and incident bodies MUST diverge. As first
+    //      shipped they were byte-identical (both V-3, exit 2), which is the
+    //      whole reason this issue exists.
+    const healthy = evalWire(realAppExtra(GOOD_POSTHOG), EXPECTATIONS.consumer);
+    const incident = evalWire(realAppExtra({}), EXPECTATIONS.consumer);
+    if (
+      healthy.code === incident.code &&
+      JSON.stringify(healthy.messages) === JSON.stringify(incident.messages)
+    ) {
+      problems.push(
+        "28 a healthy manifest and the 2026-08-06 incident manifest produced IDENTICAL " +
+          "verdicts — the post-publish check is unfalsifiable",
+      );
+    }
+  }
+  {
+    // 29 — the business tables against the real wire shape.
+    const extra = realAppExtra(GOOD_POSTHOG);
+    extra.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_live_fakebutwellformed";
+    extra.EXPO_PUBLIC_GIPHY_API_KEY = "fakegiphykeyfakegiphykey";
+    const r = evalWire(extra, EXPECTATIONS.business);
+    expect("29 real wire shape, healthy business", r.code, 0);
+  }
+  {
+    // 30 — a business publish that went blind: the Stripe key is `{}`.
+    const extra = realAppExtra(GOOD_POSTHOG);
+    extra.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY = {};
+    extra.EXPO_PUBLIC_GIPHY_API_KEY = "fakegiphykeyfakegiphykey";
+    const r = evalWire(extra, EXPECTATIONS.business);
+    expect("30 real wire shape, blind business", r.code, 1);
+    expectMsg("30 real wire shape, blind business", r.messages, "UNSET SIGNATURE");
+  }
+  {
+    // 31 — FIXTURE SHAPE DRIFT GUARD. This is the case that would have caught
+    //      the original P0. The self-test fixture must carry the SERVED wire
+    //      shape, not the flat `expo config --json` shape. If someone flattens
+    //      `realWireManifest`, every case above would silently start exercising
+    //      a shape production never serves — exactly how 25/25 green shipped a
+    //      module that failed on 6/6 real manifests.
+    const m = realWireManifest(realAppExtra(GOOD_POSTHOG));
+    const topKeys = Object.keys(m.extra);
+    const drifted =
+      topKeys.length !== MANIFEST_EXTRA_WRAPPER_KEYS.length ||
+      !MANIFEST_EXTRA_WRAPPER_KEYS.every((k) => topKeys.includes(k));
+    if (drifted) {
+      problems.push(
+        `31 FIXTURE SHAPE DRIFT: manifest.extra keys are [${topKeys.join(", ")}], expected exactly ` +
+          `[${MANIFEST_EXTRA_WRAPPER_KEYS.join(", ")}]. The fixture no longer matches what ` +
+          "u.expo.dev serves, so every case above is testing a shape production never returns.",
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(m.extra, "EXPO_PUBLIC_POSTHOG_KEY")) {
+      problems.push(
+        "31 FIXTURE SHAPE DRIFT: an EXPO_PUBLIC_* key appears on the manifest's OWN `extra`. " +
+          "No real manifest does that — the fixture has been flattened to the config shape.",
+      );
+    }
+    if (!Object.prototype.hasOwnProperty.call(m.extra.expoClient.extra, "EXPO_PUBLIC_POSTHOG_KEY")) {
+      problems.push(
+        `31 FIXTURE SHAPE DRIFT: the tripwire is not at ${APP_EXTRA_PATH}, which is the only ` +
+          "place a served manifest carries it.",
+      );
+    }
+  }
+  {
+    // 32 — V-6: asserting the WRAPPER is exit 2 with a named cause, never a
+    //      per-key verdict and never a pass. This is the shipped defect, pinned.
+    const wrapperOnly = {
+      id: "u-1",
+      launchAsset: { url: "https://x/y" },
+      extra: { expoClient: { name: "Mingla" }, eas: {}, scopeKey: "@e/m" },
+    };
+    const r = evaluateResponse({
+      status: 200,
+      contentType: "application/expo+json",
+      rawBody: JSON.stringify(wrapperOnly),
+      expectations: EXPECTATIONS.consumer,
+    });
+    expect("32 expoClient without an app config extra", r.code, 2);
+    expectMsg("32 expoClient without an app config extra", r.messages, "V-6");
+    let code = 0;
+    try {
+      resolveAppExtra({ eas: {}, scopeKey: "@e/m" });
+    } catch (err) {
+      code = err.exitCode ?? 1;
+    }
+    expect("32b wrapper keys only, no expoClient", code, 2);
+  }
+  {
+    // 33 — the FLAT shape stays supported. `expo config --json --type public`
+    //      emits it, the #994 env-resolution smoke reads it, and older manifests
+    //      may still carry it. Resolution must not break that.
+    const flat = resolveAppExtra(withK("phc_ok"));
+    if (flat.path !== "extra") problems.push(`33 flat shape resolved to ${flat.path}, expected "extra"`);
+    const r = evaluateResponse({
+      status: 200,
+      contentType: "application/expo+json",
+      rawBody: manifestObj(withK("phc_ok")),
+      expectations: EXP,
+    });
+    expect("33 flat legacy shape still verifies", r.code, 0);
+  }
+  {
+    // 34 — the V-3 floor is applied to the RESOLVED node, not the wrapper. A
+    //      thin app config extra is still vacuous even when nested correctly.
+    const r = evalWire({ a: 1, b: 2, EXPO_PUBLIC_POSTHOG_KEY: "phc_ok" }, EXPECTATIONS.consumer);
+    expect("34 thin resolved extra is still vacuous", r.code, 2);
+    expectMsg("34 thin resolved extra is still vacuous", r.messages, "V-3");
+  }
+
   if (problems.length) {
     console.error("#994 OTA-MANIFEST-VERIFY self-test FAIL:");
     problems.forEach((p) => console.error("  - " + p));
     process.exit(1);
   }
   console.log(
-    "#994 OTA-MANIFEST-VERIFY self-test PASS (25/25: 1-8 per-key verdicts incl. " +
+    "#994 OTA-MANIFEST-VERIFY self-test PASS (34/34: 1-8 per-key verdicts incl. " +
       "UNSET SIGNATURE first, 9-11 multipart/expo+json body extraction, 12-17 vacuity " +
       "(404, non-JSON, no launchAsset, thin extra, [] and wrong-platform update json), " +
       "18-23 empty table / unparseable / non-array / empty permalink / happy parse / null extra, " +
-      "24-25 the real expectation tables stay non-empty and un-padded).",
+      "24-25 the real expectation tables stay non-empty and un-padded, " +
+      "26-34 THE REAL SERVED WIRE SHAPE: healthy consumer/business verify, the `{}` unset " +
+      "signature is caught on both apps, healthy and incident verdicts diverge, the fixture " +
+      "shape-drift guard fails if the fixture is ever flattened back to the config shape, " +
+      "V-6 refuses to assert the 3-key wrapper, the flat legacy shape still verifies, and the " +
+      "V-3 floor applies to the RESOLVED node).",
   );
   process.exit(0);
 }
@@ -774,7 +1106,8 @@ async function liveRun() {
     console.log(
       `[verify] OK ${dir} ${platform} — update ${entry.id}… (group ${entry.group}…, ` +
         `runtime ${entry.runtimeVersion}): ${result.live}/${EXPECTATIONS[app].length} ` +
-        `expected extra key(s) live; ${result.extraKeys} extra keys present.`,
+        `expected extra key(s) live; ${result.extraKeys} app config extra keys present at ` +
+        `\`${result.extraPath ?? "<unresolved>"}\`.`,
     );
     result.messages.forEach((m) => console.log(m));
     console.log(
