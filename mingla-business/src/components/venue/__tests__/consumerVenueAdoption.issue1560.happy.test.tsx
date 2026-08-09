@@ -181,6 +181,15 @@ jest.mock("../../../../../app-mobile/src/theme/useConsumerThemeFont", () => ({
   loadConsumerThemeFont: async () => undefined,
 }));
 
+// [TEST-MOD-APPROVED #1719] The adopted route now delegates sharing to the
+// canonical consumer content-share adapter. This suite owns venue rendering,
+// not the native share side effect, so keep that platform boundary mocked just
+// like Linking and analytics while #1719 exercises the real adapter separately.
+jest.mock("../../../../../app-mobile/src/services/contentShareAdapter", () => ({
+  __esModule: true,
+  shareContent: jest.fn(async () => undefined),
+}));
+
 jest.mock("../../../../../app-mobile/src/services/postHogService", () => ({
   __esModule: true,
   postHogService: {

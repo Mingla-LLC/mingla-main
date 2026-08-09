@@ -9,7 +9,7 @@ import path from "node:path";
 //   B1  TEXT-WORDMARK RESURRECTION, broad-regex form: the happy-path suite
 //       pins exact strings; this one bans ANY sole-content Text wordmark in
 //       ALL THREE swapped components (mingla-business PANE + GATE, and the
-//       app-mobile ShareModal reached via the repo root) — case-insensitive,
+//       app-mobile unified share preview reached via the repo root) — case-insensitive,
 //       tolerant of letter-spacing tricks ("M I N G L A"), quoted-expression
 //       children ({"Mingla"} / {`MINGLA`}), and multiline JSX.
 //   B2  tintColor must be a PROP on the wordmark Image (react-native-web 0.21
@@ -36,7 +36,7 @@ const FILES = {
     "src/components/marketing/EmailPreviewPane.tsx",
   ),
   gate: path.join(bizRoot, "src/components/event/SeeWhosGoingGate.tsx"),
-  share: path.join(repoRoot, "app-mobile/src/components/ShareModal.tsx"),
+  share: path.join(repoRoot, "app-mobile/src/components/share/UnifiedShareProvider.tsx"),
 } as const;
 
 const read = (p: string): string => fs.readFileSync(p, "utf8");
@@ -68,9 +68,10 @@ describe.each([
 ])("ISSUE-1001 adversarial — %s", (name, file) => {
   const source = read(file);
 
-  // [TEST-MOD-APPROVED #1615] ShareModal now previews the exact server-rendered
-  // 4:5 recipient portrait, whose canonical wordmark is tested pixel-for-pixel
-  // by #1615. The other two local UI mounts retain the original #1001 contract.
+  // [TEST-MOD-APPROVED #1719] The approved compact share sheet deliberately
+  // replaced its full 4:5 portrait with the truthful media poster; recipient
+  // chat metadata still owns the branded portrait. The other two local UI
+  // mounts retain the original #1001 wordmark contract.
 
   test("B1: no sole-content Text wordmark survives under the broad regex", () => {
     expect(source).not.toMatch(TEXT_WORDMARK_RESURRECTION);
@@ -79,7 +80,7 @@ describe.each([
   test("B5: the canonical wordmark owner survives", () => {
     if (name === "ShareModal") {
       expect(source).not.toMatch(/@mingla\/brand-assets/);
-      expect(source).toContain("source={{ uri: sharedCard.s4Url }}");
+      expect(source).toContain("source={{ uri: prepared.media.posterUrl }}");
       return;
     }
     expect(source).toMatch(
@@ -89,12 +90,11 @@ describe.each([
 
   test("B3: the canonical wordmark image contract survives", () => {
     if (name === "ShareModal") {
-      const portrait = imageBlocks(source).find((b) =>
-        b.includes("source={{ uri: sharedCard.s4Url }}"),
+      const poster = imageBlocks(source).find((b) =>
+        b.includes("source={{ uri: prepared.media.posterUrl }}"),
       );
-      expect(portrait).toBeDefined();
-      expect(portrait as string).toContain("accessibilityLabel={`${sharedCard.kind.replace('_', ' ')}: ${sharedCard.title}`}");
-      expect(portrait as string).toContain('resizeMode="cover"');
+      expect(poster).toBeDefined();
+      expect(poster as string).toContain("style={styles.poster}");
       return;
     }
     const img = wordmarkImage(source);
@@ -128,12 +128,14 @@ describe("ISSUE-1001 adversarial — GATE tint contract (B2)", () => {
 });
 
 describe("ISSUE-1001 adversarial — orphaned-style resurrection (B4)", () => {
-  test("ShareModal: deleted text/logo furniture stays gone; portraitPreview exists", () => {
+  test("ShareModal: deleted text/logo furniture stays gone; compact poster exists", () => {
     const source = read(FILES.share);
     expect(source).not.toMatch(/\bminglaDot\s*:/);
     expect(source).not.toMatch(/\bminglaText\s*:/);
     expect(source).not.toMatch(/\bminglaWordmark\s*:\s*\{/);
-    expect(source).toMatch(/\bportraitPreview\s*:\s*\{/);
+    expect(source).not.toMatch(/\bportraitPreview\s*:\s*\{/);
+    expect(source).toMatch(/\bposterWrap\s*:\s*\{/);
+    expect(source).toMatch(/\bposter\s*:\s*\{/);
   });
 
   test("EmailPreviewPane: miniglaLogo (text style) stays deleted; miniglaLogoImg exists", () => {
