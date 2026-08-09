@@ -38,7 +38,7 @@ export type PersistedContentShareOperation = {
   shareVersion: number;
   senderNote: string | null;
   senderNoteGraphemeCount: number;
-  targets: Array<{ key: string; targetKind: ContentShareRecipient['targetKind']; targetId: string; state: ContentShareDeliveryState }>;
+  targets: { key: string; targetKind: ContentShareRecipient['targetKind']; targetId: string; state: ContentShareDeliveryState }[];
 };
 
 const operationStorageKey = (shareCode: string, version: number): string =>
