@@ -486,55 +486,51 @@ describe("event cover video processing service", () => {
   });
 
   test("waits with status callbacks and carries last status on timeout", async () => {
-    const snapshots = [
-      {
-        applyMode: "draft_auto",
-        brandId: "brand_1",
-        canCancel: true,
-        canCheckAgain: true,
-        canRetry: false,
-        eventId: "event_1",
-        isTerminal: false,
-        jobId: "job_1",
-        progressKind: "indeterminate",
-        progressPercent: 70,
-        stageLabel: "Processing browser-safe video...",
-        status: "processing",
-      },
-      {
-        applyMode: "draft_auto",
-        brandId: "brand_1",
-        canCancel: true,
-        canCheckAgain: true,
-        canRetry: false,
-        eventId: "event_1",
-        isTerminal: false,
-        jobId: "job_1",
-        progressKind: "indeterminate",
-        progressPercent: 70,
-        stageLabel: "Processing browser-safe video...",
-        status: "processing",
-      },
-    ];
-    invoke
-      .mockResolvedValueOnce({ data: snapshots[0], error: null })
-      .mockResolvedValueOnce({ data: snapshots[1], error: null });
+    // #1664 [event-cover-timing-flake] — real 1 ms/2 ms timing plus two
+    // one-shot replies previously admitted a third-poll TypeError.
+    jest.useFakeTimers({ now: 0 });
+    try {
+      invoke.mockResolvedValue({
+        data: {
+          applyMode: "draft_auto",
+          brandId: "brand_1",
+          canCancel: true,
+          canCheckAgain: true,
+          canRetry: false,
+          eventId: "event_1",
+          isTerminal: false,
+          jobId: "job_1",
+          progressKind: "indeterminate",
+          progressPercent: 70,
+          stageLabel: "Processing browser-safe video...",
+          status: "processing",
+        },
+        error: null,
+      });
 
-    const seen: string[] = [];
-    await expect(waitForEventCoverVideoReady("job_1", {
-      onStatus: (status) => seen.push(status.status),
-      pollIntervalMs: 1,
-      timeoutMs: 2,
-    })).rejects.toMatchObject({
-      code: "processing_timeout",
-      lastStatus: expect.objectContaining({
-        jobId: "job_1",
-        status: "processing",
-      }),
-      message: "Your video is still processing. You can check again in a moment.",
-    });
-    expect(seen.length).toBeGreaterThanOrEqual(1);
-    expect(seen[0]).toBe("processing");
+      const seen: string[] = [];
+      const waitPromise = waitForEventCoverVideoReady("job_1", {
+        onStatus: (status) => seen.push(status.status),
+        pollIntervalMs: 1,
+        timeoutMs: 2,
+      });
+      const rejection = expect(waitPromise).rejects.toMatchObject({
+        code: "processing_timeout",
+        lastStatus: expect.objectContaining({
+          jobId: "job_1",
+          status: "processing",
+        }),
+        message: "Your video is still processing. You can check again in a moment.",
+      });
+
+      await jest.advanceTimersByTimeAsync(2);
+      await rejection;
+      expect(seen.length).toBeGreaterThanOrEqual(1);
+      expect(seen).toEqual(["processing", "processing"]);
+      expect(invoke).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("wait resolves ready status and cancel returns enriched terminal status", async () => {

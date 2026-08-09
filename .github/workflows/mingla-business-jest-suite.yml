@@ -119,3 +119,17 @@ jobs:
             src/services/__tests__/urlCreateObjectURLPreserved.issue1487.implementor.test.ts \
             src/utils/__tests__/browserFilePicker.test.ts \
             --testSequencer=./scripts/ci/issue-1487-sequencer.cjs
+
+      - name: "#1664 event-cover timeout determinism contract"
+        if: always()
+        run: |
+          node scripts/ci/issue-1664-event-cover-timeout-determinism.mjs --self-test
+          node scripts/ci/issue-1664-event-cover-timeout-determinism.mjs
+
+      - name: "#1664 frozen-clock adversarial timeout proof"
+        if: always()
+        run: >-
+          npx jest --ci --runInBand --runTestsByPath
+          src/services/__tests__/eventCoverVideoProcessingService.test.ts
+          --testNamePattern="waits with status callbacks and carries last status on timeout"
+          --setupFilesAfterEnv=./scripts/ci/issue-1664-frozen-wall-clock.setup.cjs

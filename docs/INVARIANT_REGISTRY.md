@@ -7,6 +7,19 @@
 
 ---
 
+## ACTIVE — issue #1664 (Business Jest event-cover timeout determinism)
+
+> Activation approved at issue #1664 CLOSE after independent tester PASS; enforcement becomes active when PR #1740 merges and is verified on `main`.
+
+### I-1664-BIZ-JEST-TIMEOUT-DETERMINISM (ACTIVE — issue #1664)
+- **Rule:** A Jest test of millisecond timeout/poll behavior must own and explicitly advance its clock; this event-cover timeout regression may never depend on real 1 ms/2 ms wall-clock scheduling or a finite one-shot status mock. The required Business Jest job must execute both the bounded contract check and frozen-external-clock adversarial proof.
+- **Enforcement:** The named modified behavioral test; `issue-1664-event-cover-timeout-determinism.mjs` normal/self-test; `issue-1664-frozen-wall-clock.setup.cjs`; and both required-workflow steps.
+- **Regression:** Restore only the historical `f82855801` target test block while keeping the guards: the contract script exits nonzero, and hostile-clock Jest exits nonzero with the third-poll exhausted-mock failure. Restore the repaired block: both pass once.
+- **Scope:** CI/test only; the production poller is byte-identical.
+- **Established:** ACTIVE at issue #1664 CLOSE 2026-08-09; no product runtime or deployment surface changed.
+
+---
+
 ## ACTIVE — issue #1487 (Business Jest worker poisoning through Node's native URL global)
 
 > Activated at issue #1487 CLOSE after the independent tester PASS and fail-on-revert proof.
