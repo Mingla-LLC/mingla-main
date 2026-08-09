@@ -84,14 +84,18 @@ const withFakeFileInput = (
 
 beforeEach(() => {
   // pickBrowserFiles mints an object URL per picked file for the returned `uri`.
-  (URL as unknown as { createObjectURL: (f: TestFile) => string }).createObjectURL =
-    jest.fn((f: TestFile) => `blob:${f.name}`);
+  // Jest creates a fresh environment for each suite, but Node's URL constructor
+  // object is shared by suites in the worker. Borrow its native static through a
+  // spy so restoreAllMocks returns worker ownership instead of deleting it.
+  jest.spyOn(URL, "createObjectURL").mockImplementation((object: Blob | MediaSource) => {
+    const name = "name" in object && typeof object.name === "string" ? object.name : "file";
+    return `blob:${name}`;
+  });
 });
 
 afterEach(() => {
   jest.restoreAllMocks();
   delete (global as { document?: unknown }).document;
-  delete (URL as unknown as { createObjectURL?: unknown }).createObjectURL;
 });
 
 describe("ORCH-1300 venue gallery web picker", () => {
