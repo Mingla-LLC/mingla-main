@@ -79,8 +79,10 @@ describe("ORCH-1092 business web restoration wave", () => {
       }
     }
 
-    const shareModal = stripCommentLines(repoFile("src/components/ui/ShareModal.tsx"));
-    expect(shareModal).toContain('React.lazy(() => import("react-native-qrcode-svg"))');
+    // [TEST-MOD-APPROVED #1719] The sheet is now a budget-safe lazy wrapper plus
+    // deferred implementation; inspect the combined runtime surface.
+    const shareModal = stripCommentLines(repoFile("src/components/ui/ShareModal.tsx") + repoFile("src/components/ui/ShareModalContent.tsx"));
+    expect(shareModal).toMatch(/React\.lazy\(\(\) => import\(['"]react-native-qrcode-svg['"]\)\)/);
     expect(shareModal).not.toContain('import QRCode from "react-native-qrcode-svg"');
   });
 

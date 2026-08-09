@@ -116,6 +116,7 @@ test('C6 analytics use only observed success vocabulary plus typed failure', () 
     read('app-mobile/src/services/contentShareAdapter.ts'),
     read('app-mobile/app/s/[code].tsx'),
     read('mingla-business/src/components/ui/ShareModal.tsx'),
+    read('mingla-business/src/components/ui/ShareModalContent.tsx'),
   ].join('\n');
   for (const event of ['share_link_ready', 'share_sheet_opened', 'share_sheet_returned', 'share_native_opened', 'share_destination_action', 'share_failure', 'failure_type']) {
     assert.ok(sources.includes(event), event);
@@ -171,7 +172,10 @@ test('C9 Business retains the full binding state machine and exact portrait prev
   // [TEST-MOD-APPROVED #1719] The old test required the superseded S4/provider
   // preview state machine. Business now has a compact summary plus native
   // Share/Copy and web Share/Copy/QR with explicit loading and retry states.
-  const source = read('mingla-business/src/components/ui/ShareModal.tsx');
+  // [TEST-MOD-APPROVED #1719] The budget-safe wrapper and deferred sheet are
+  // one runtime surface; inspect both without weakening the state contract.
+  const source = read('mingla-business/src/components/ui/ShareModal.tsx') +
+    read('mingla-business/src/components/ui/ShareModalContent.tsx');
   for (const state of ['prepared', 'failed', 'busy', 'copied', 'showQr', 'posterFailed']) assert.ok(source.includes(state), state);
   assert.match(source, /prepared\?\.media\?\.posterUrl/);
   assert.match(source, /QRCode value=\{prepared\.url\}/);

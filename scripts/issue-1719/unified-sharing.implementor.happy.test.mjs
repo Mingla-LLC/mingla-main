@@ -15,6 +15,10 @@ const ROOT = process.env.ISSUE_1719_ROOT
   ? path.resolve(process.env.ISSUE_1719_ROOT)
   : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
+const readBusinessShareModal = () => [
+  read('mingla-business/src/components/ui/ShareModal.tsx'),
+  read('mingla-business/src/components/ui/ShareModalContent.tsx'),
+].join('\n');
 const require = createRequire(import.meta.url);
 const sharing = require(path.join(ROOT, 'packages/sharing'));
 
@@ -115,7 +119,7 @@ test('H7 Mingla chat uses a static rich card and opens the exact immutable share
 });
 
 test('H8 Business is native Share/Copy and web Share/Copy/QR without provider buttons', () => {
-  const modal = read('mingla-business/src/components/ui/ShareModal.tsx');
+  const modal = readBusinessShareModal();
   assert.match(modal, /canWebShare\(\)/);
   assert.match(modal, /Platform\.OS === 'web'/);
   assert.match(modal, /QRCode value=\{prepared\.url\}/);
@@ -167,7 +171,7 @@ test('H12 offline mode preserves prepared external actions and disables only int
 });
 
 test('H13 Business web traps focus, closes on idle Escape, returns focus, and preserves exact actions', () => {
-  const modal = read('mingla-business/src/components/ui/ShareModal.tsx');
+  const modal = readBusinessShareModal();
   const dialogStart = modal.indexOf('<View ref={dialogRef}');
   const dialogOpenTag = modal.slice(dialogStart, modal.indexOf('>', dialogStart) + 1);
   assert.match(modal, /const invokingControl = documentValue\.activeElement/);
@@ -186,7 +190,7 @@ test('H13 Business web traps focus, closes on idle Escape, returns focus, and pr
 
 test('H14 summaries honor status-first hierarchy and Consumer search has an icon', () => {
   const consumer = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
-  const business = read('mingla-business/src/components/ui/ShareModal.tsx');
+  const business = readBusinessShareModal();
   for (const source of [consumer, business]) {
     const summary = source.slice(source.indexOf('<View style={styles.summary}>'), source.indexOf('</View>\n      {prep', source.indexOf('<View style={styles.summary}>')));
     assert.ok(summary.indexOf('status') < summary.indexOf('prepared?.title'));
@@ -201,7 +205,7 @@ test('H15 telemetry failures are isolated and preparation/poster timings are com
   const consumerAdapter = read('app-mobile/src/services/contentShareAdapter.ts');
   const businessAdapter = read('mingla-business/src/services/contentShareAdapter.ts');
   const consumer = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
-  const business = read('mingla-business/src/components/ui/ShareModal.tsx');
+  const business = readBusinessShareModal();
   assert.match(consumerAdapter, /try \{ mixpanelService\.track/);
   assert.match(consumerAdapter, /try \{ logAppsFlyerEvent/);
   assert.match(businessAdapter, /try\{postHogService\.capture/);
@@ -217,7 +221,7 @@ test('H15 telemetry failures are isolated and preparation/poster timings are com
 
 test('H16 safe-area, accessibility-size, and recipient-state contracts are explicit', () => {
   const consumer = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
-  const business = read('mingla-business/src/components/ui/ShareModal.tsx');
+  const business = readBusinessShareModal();
   const businessSheet = read('mingla-business/src/components/ui/SheetMobile.tsx');
   assert.match(consumer, /paddingBottom: Math\.max\(insets\.bottom, 12\)/);
   assert.match(businessSheet, /paddingBottom: spacing\.lg \+ bottomInset/);
@@ -266,7 +270,9 @@ test('H17 one shared compact-fact selector gives status precedence for all eight
     'app-mobile/src/components/chat/MessageBubble.tsx',
     'mingla-business/src/components/ui/ShareModal.tsx',
   ]) {
-    const source = read(relative);
+    const source = relative.endsWith('mingla-business/src/components/ui/ShareModal.tsx')
+      ? readBusinessShareModal()
+      : read(relative);
     assert.match(source, /selectCompactPreviewFacts/);
     assert.doesNotMatch(source, /selectPreviewFacts/);
   }
@@ -274,7 +280,7 @@ test('H17 one shared compact-fact selector gives status precedence for all eight
 
 test('H18 headings are truly centered, Business owns its panel theme, and visible actions expose button roles', () => {
   const consumer = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
-  const business = read('mingla-business/src/components/ui/ShareModal.tsx');
+  const business = readBusinessShareModal();
   for (const source of [consumer, business]) {
     assert.match(source, /header:\{minHeight:60,alignItems:'center',justifyContent:'center',paddingHorizontal:60/);
     assert.match(source, /heading:\{width:'100%'[^}]*textAlign:'center'/);
