@@ -41,15 +41,25 @@
  *      publish shape MUST also carry `--environment production` (or the `=`
  *      form) in the SAME command text.
  *   2. BOTH CANONICAL WRAPPERS EXIST AND ARE SAFE. Both
- *      `<app>/scripts/ota/publish-production-ota.sh` must exist, and each must
- *      carry `--branch production`, `--environment production` and
- *      `--platform "${PLATFORM}"` — and must NOT carry the combined-platform
- *      form, which fails on the web bundle.
+ *      `<app>/scripts/ota/publish-production-ota.sh` must exist, and each
+ *      wrapper's PUBLISH INVOCATION — the `${MINGLA_EAS_BIN} update ...` command
+ *      itself, continuations joined — must carry `--branch production`,
+ *      `--environment production`, `--platform "${PLATFORM}"` and `--json`.
+ *      Neither wrapper may carry the combined-platform form, which fails on the
+ *      web bundle.
+ *
+ *      ANCHORING THIS RULE TO THE COMMAND IS NOT PEDANTRY. Both wrappers print a
+ *      remediation line containing `eas env:create --environment production ...`,
+ *      so a whole-file presence check is satisfied by an error message. Verified
+ *      by real revert at b62edc943: with a file-wide needle, deleting
+ *      `--environment production` from the business wrapper's publish command
+ *      left this gate GREEN. That is the mandatory fails-on-revert case R-3.
  *   3. THE GUARDRAILS CANNOT BE SILENTLY DELETED. Each wrapper must still name
- *      `preflight_key`, must still call `scripts/ota/verify-published-manifest.mjs`,
- *      and must still pass `--json`. Each must declare `MINGLA_EAS_BIN` with a
- *      default that is the REAL binary, so the tester's seam cannot be
- *      repurposed as a bypass, and neither may grow a rehearsal / no-op mode.
+ *      `preflight_key` and must still call
+ *      `scripts/ota/verify-published-manifest.mjs`. Each must declare
+ *      `MINGLA_EAS_BIN` with a default that is the REAL binary, so the tester's
+ *      seam cannot be repurposed as a bypass, and neither may grow a rehearsal /
+ *      no-op mode.
  *   4. TRIPWIRE INTEGRITY. `app-mobile/app.config.ts` must keep
  *      `EXPO_PUBLIC_POSTHOG_KEY: process.env.… ?? null` — with NO string
  *      literal fallback — and `mingla-business/app.config.ts` must keep
@@ -85,11 +95,11 @@
  *     invocations are NOT production publish shapes under Rule 1's literal
  *     regex. They are policed by Rules 2 and 3 instead, over comment-stripped
  *     dense source, which is strictly stricter for those two files.
- *   - Rules 2 and 3 are WHOLE-FILE presence checks, not per-invocation ones.
- *     Each wrapper passes `--platform "${PLATFORM}"` to BOTH the publish command
- *     and the verifier, so deleting it from the publish command alone would not
- *     fire Rule 2. The shape that actually breaks a publish — the
- *     combined-platform form — is a forbidden needle and does fire.
+ *   - Rule 3's needles (`preflight_key`, the verifier path) and the forbidden
+ *     needles are WHOLE-FILE checks over comment-stripped dense source. A
+ *     wrapper that still NAMES the verifier but skips it under some condition
+ *     would pass Rule 3; the wrappers are written so the call is unconditional,
+ *     and driving them for real is the tester's job, not this gate's.
  *   - It does NOT prove any published update is correct. That is the
  *     post-publish served-manifest check (scripts/ota/verify-published-manifest.mjs),
  *     and only that.
@@ -226,6 +236,46 @@ export function extractCommands(logicalLine) {
 /** Whitespace-collapsed, so `--branch   production` compares equal. */
 const collapse = (s) => s.replace(/\s+/g, " ");
 
+/**
+ * The wrapper's own publish invocation(s). The wrappers call the CLI through the
+ * `MINGLA_EAS_BIN` test seam, so Rule 1's literal `eas update` regex does not see
+ * them — this is how Rules 2/3 reach them instead.
+ *
+ * Shell comments are stripped first (a `#` inside quotes is NOT a comment),
+ * continuations are joined, and the command text runs from the match to the end
+ * of that logical line.
+ *
+ * @param {string} src raw wrapper source
+ * @returns {string[]} collapsed publish-command texts
+ */
+export function extractWrapperPublishCommands(src) {
+  const noComments = src
+    .split("\n")
+    .map((line) => {
+      let inS = false;
+      let inD = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === "'" && !inD) inS = !inS;
+        else if (c === '"' && !inS) inD = !inD;
+        else if (c === "#" && !inS && !inD && (i === 0 || /\s/.test(line[i - 1]))) {
+          return line.slice(0, i);
+        }
+      }
+      return line;
+    })
+    .join("\n");
+
+  const re = /(?:\$\{MINGLA_EAS_BIN\}|"\$MINGLA_EAS_BIN"|\$MINGLA_EAS_BIN)\s+update\b(?!:)/g;
+  const cmds = [];
+  for (const logical of assembleLogicalLines(noComments)) {
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(logical)) !== null) cmds.push(collapse(logical.slice(m.index)));
+  }
+  return cmds;
+}
+
 /** @param {string} cmd */
 export function isProductionPublishShape(cmd) {
   const c = collapse(cmd);
@@ -263,20 +313,34 @@ const WRAPPER_CONTRACT = {
   },
 };
 
-/** Rule 2 — present in every wrapper, dense. */
-const WRAPPER_REQUIRED = [
-  ["--branchproduction", "the production branch flag"],
-  ["--environmentproduction", "`--environment production`, the flag five incidents were missing"],
-  ['--platform"${PLATFORM}"', "the per-platform flag"],
+/**
+ * Rule 2 — required ON THE PUBLISH INVOCATION ITSELF, not merely somewhere in
+ * the file.
+ *
+ * This is deliberately stricter than a whole-file presence check, and it is
+ * stricter because a whole-file check DOES NOT WORK here. Both wrappers print a
+ * remediation line containing `eas env:create --environment production …`, which
+ * satisfies a file-wide `--environment production` needle. Verified by real
+ * revert at b62edc943: deleting the `--environment production` line from the
+ * business wrapper's publish command left a file-wide check GREEN. That is the
+ * mandatory fails-on-revert case R-3, so the rule is anchored to the command.
+ */
+const PUBLISH_CMD_REQUIRED = [
+  ["--branch production", "the production branch flag"],
+  [
+    "--environment production",
+    "`--environment production`, the flag five production incidents were missing",
+  ],
+  ['--platform "${PLATFORM}"', "the per-platform flag"],
+  ["--json", "`--json`, without which the update group is scraped from human text"],
 ];
-/** Rule 3 — present in every wrapper, dense. */
+/** Rule 3 — present anywhere in the wrapper, dense. */
 const GUARDRAIL_REQUIRED = [
   ["preflight_key", "the pre-flight key checker (SPEC §3.2)"],
   [
     "scripts/ota/verify-published-manifest.mjs",
     "the post-publish served-manifest verification (SPEC §4.3)",
   ],
-  ["--json", "`--json`, without which the update group is scraped from human text"],
 ];
 /** Rule 2/3 — forbidden in every wrapper, dense. */
 const WRAPPER_FORBIDDEN = [
@@ -422,13 +486,24 @@ export function runGate({ scanned, targets }) {
         ],
       };
     }
-    for (const [needle, why] of WRAPPER_REQUIRED) {
-      if (!d.includes(needle)) {
-        failures.push(
-          `${PATHS[key]}: the publish invocation no longer carries ${why} (\`${needle}\` absent ` +
-            "from comment-stripped source). The wrapper is the ONLY documented publish path, so " +
-            "this is the five-incident failure re-armed.",
-        );
+    const publishCmds = extractWrapperPublishCommands(src);
+    if (publishCmds.length === 0) {
+      failures.push(
+        `${PATHS[key]}: no publish invocation found. The wrapper must call the CLI through ` +
+          "`${MINGLA_EAS_BIN} update` — that is the only shape Rules 2/3 can police, and a " +
+          "wrapper that does not publish is not the canonical publish path.",
+      );
+    }
+    for (const cmd of publishCmds) {
+      for (const [needle, why] of PUBLISH_CMD_REQUIRED) {
+        if (!cmd.includes(needle)) {
+          failures.push(
+            `${PATHS[key]}: the publish invocation no longer carries ${why} (\`${needle}\` absent ` +
+              `from the command):\n        ${cmd.slice(0, 180)}\n` +
+              "        The wrapper is the ONLY documented publish path, so this is the " +
+              "five-incident failure re-armed.",
+          );
+        }
       }
     }
     for (const [needle, why] of GUARDRAIL_REQUIRED) {
@@ -812,19 +887,17 @@ if (process.argv.includes("--self-test")) {
     );
     expect("14 --json dropped", runGate(sync(f)).code, 1);
   }
-  // 15 — the per-platform flag is dropped from the wrapper entirely.
-  //      NOTE the deliberate limit recorded in the header: the needle is a
-  //      whole-file presence check, and the wrapper passes the same flag to the
-  //      verifier, so removing it from the publish invocation ALONE does not
-  //      fire this rule. Case 10 (combined-platform form) covers the shape that
-  //      actually breaks a publish.
+  // 15 — the per-platform flag is dropped from the PUBLISH INVOCATION ONLY.
+  //      The wrapper still passes the same flag to the verifier on another
+  //      line, so a whole-file needle would miss this. Rule 2 is anchored to the
+  //      command, so it fires. Same shape as R-3 (case 4).
   {
     const f = clean();
-    f.targets.bizScript = f.targets.bizScript
-      .split("\n")
-      .filter((l) => !l.includes('--platform "${PLATFORM}"'))
-      .join("\n");
-    expect("15 per-platform flag dropped", runGate(sync(f)).code, 1);
+    f.targets.bizScript = f.targets.bizScript.replace(
+      '  --platform "${PLATFORM}" \\\n',
+      "",
+    );
+    expect("15 per-platform flag dropped from the publish command", runGate(sync(f)).code, 1);
   }
 
   // ---- Rule 1 evasion shapes ----
@@ -921,14 +994,41 @@ if (process.argv.includes("--self-test")) {
   }
 
   // ---- matching robustness ----
-  // 26 — reformatting the wrapper must NOT disarm Rules 2/3 (dense matching).
+  // 26 — reformatting the wrapper must NOT disarm Rules 2/3. Extra whitespace
+  //      inside the continued command collapses away; the command is unchanged.
   {
     const f = clean();
     f.targets.bizScript = f.targets.bizScript.replace(
       '  --platform "${PLATFORM}" \\',
-      '  --platform\n  "${PLATFORM}" \\',
+      '      --platform     "${PLATFORM}"      \\',
     );
     expect("26 reformatted wrapper still passes", runGate(sync(f)).code, 0);
+  }
+  // 26b — collapsing the whole publish command onto ONE line must also pass:
+  //       joining continuations is a normalisation, not a requirement.
+  {
+    const f = clean();
+    f.targets.bizScript = f.targets.bizScript.replace(
+      [
+        "if ! ${MINGLA_EAS_BIN} update \\",
+        "  --branch production \\",
+        "  --environment production \\",
+        '  --platform "${PLATFORM}" \\',
+        '  --message "${MESSAGE}" \\',
+        '  --json --non-interactive >"${JSONLOG}"; then exit 1; fi',
+      ].join("\n"),
+      'if ! ${MINGLA_EAS_BIN} update --branch production --environment production --platform "${PLATFORM}" --message "${MESSAGE}" --json --non-interactive >"${JSONLOG}"; then exit 1; fi',
+    );
+    expect("26b single-line publish command passes", runGate(sync(f)).code, 0);
+  }
+  // 26c — the wrapper stops invoking the CLI through the seam at all.
+  {
+    const f = clean();
+    f.targets.bizScript = f.targets.bizScript.replace(
+      "if ! ${MINGLA_EAS_BIN} update \\",
+      "if ! echo skipping \\",
+    );
+    expect("26c wrapper no longer publishes", runGate(sync(f)).code, 1);
   }
   // 27 — a violating string inside a SHELL COMMENT must not fire Rules 2/3
   //      (comments are stripped for those files) — but Rule 1 reads raw text,
@@ -951,15 +1051,16 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "#994 OTA-PUBLISH-GUARDRAILS self-test PASS (28/28: 1 clean; " +
+    "#994 OTA-PUBLISH-GUARDRAILS self-test PASS (30/30: 1 clean; " +
       "2-6 the five fails-on-revert cases R-1..R-5 (+R-4 on both wrappers); " +
       "7-9 grandfathered shapes (line continuation, colon subcommand, prose); " +
       "10-15 wrapper integrity (combined platform, both seam defaults, rehearsal mode, " +
-      "preflight_key, --json, per-platform flag); 16-18 Rule 1 evasion shapes " +
-      "(--branch=, --channel, unrelated file); 19-21 tripwire + handbook rules; " +
-      "22-25b vacuity (under-scan, no shapes, missing rule-4/5 target, comment-only " +
-      "config and wrapper); 26-28 robustness (reformatting, comment-only needle, " +
-      "collapsed whitespace)).",
+      "preflight_key, --json, per-platform flag on the publish command); " +
+      "16-18 Rule 1 evasion shapes (--branch=, --channel, unrelated file); " +
+      "19-21 tripwire + handbook rules; 22-25b vacuity (under-scan, no shapes, " +
+      "missing rule-4/5 target, comment-only config and wrapper); " +
+      "26-28 robustness (extra whitespace, single-line command, seam removed, " +
+      "comment-only needle, collapsed whitespace in Rule 1)).",
   );
   process.exit(0);
 }
