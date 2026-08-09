@@ -98,7 +98,10 @@ test("H11 ShareModal exposes create states and removes fabricated facts", () => 
   // source pin with the binding lifecycle and forbids the old silent fallback.
   assert.match(source, /setVisible\(true\)[\s\S]*loadShare\(nextInput, token\)/);
   assert.match(source, /setPrepError\(true\)[\s\S]*Retry share/);
-  assert.match(source, /selectPreviewFacts\(prepared\.facts, 2\)/);
+  // [TEST-MOD-APPROVED #1719] Written reason: the redesigned 92px summary uses
+  // the shared compact selector by design; the old selector name incorrectly
+  // pinned the superseded large preview even though the truth/fact limit stays.
+  assert.match(source, /selectCompactPreviewFacts\(prepared\.facts, 2\)/);
 });
 
 test("H12 S4/S5/S6 verdicts are BUILT only after their files exist", () => {
