@@ -44,8 +44,15 @@ describe("Issue #1467 visible venue submission completion", () => {
       join(__dirname, "..", "VenueCreatorWizard.tsx"),
       "utf8",
     );
+    // [TEST-MOD-APPROVED #1685] #1467's contract is "hand the exact venue to
+    // onDone BEFORE clearing the completed draft" — that ordering is preserved
+    // verbatim. Only the clearing PRIMITIVE changed: `reset(currentBrand.id)`
+    // now destroys the brand's OTHER half-built venues under the draft-id-keyed
+    // store, so the submit path clears exactly the draft it just submitted.
+    // The gap tolerates ONLY whitespace and `//` comment lines, so no statement
+    // can ever slip between the handoff and the clear.
     expect(source).toMatch(
-      /onDone\(null, venueId, st\.displayName\.trim\(\), false\);\s+useDraftVenueStore\.getState\(\)\.reset\(currentBrand\.id\)/,
+      /onDone\(null, venueId, st\.displayName\.trim\(\), false\);\s*(?:\/\/[^\n]*\n\s*)*useDraftVenueStore\.getState\(\)\.deleteActiveDraft\(\)/,
     );
     expect(source).toContain("submissionVenueId: id");
     expect(source).toContain("placePoolId: authoringPlacePoolId");
