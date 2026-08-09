@@ -65,6 +65,10 @@ class FakeDb {
     // [TEST-MOD-APPROVED #1615] The served mapper now requires the canonical
     // all-in RPC even when a fixture has no tiers; model its empty success.
     if(name==='pg_public_event_tier_allin')return{data:[],error:null};
+    // [TEST-MOD-APPROVED #1719] Creation now returns the same immutable
+    // server-authored message stored with the version. The old fake knew only
+    // the mint RPC and therefore rejected the new authoritative read.
+    if(name==='resolve_content_share_message')return{data:`Public truth\n\nhttps://usemingla.com/s/${args.p_code}`,error:null};
     assert.equal(name,'upsert_content_share_version');this.rpcCalls.push(args);const key=args.p_source_key;const fingerprint=JSON.stringify([args.p_facts,args.p_media_identity,args.p_destination_manifest]);
     const prior=this.links.get(key);const next=prior?{...prior,version:prior.fingerprint===fingerprint?prior.version:prior.version+1,fingerprint}:{shortCode:'Aa0Bb1Cc2Dd3Ee4F',version:1,fingerprint};this.links.set(key,next);
     return{data:{shortCode:next.shortCode,version:next.version,versionCreated:!prior||prior.fingerprint!==fingerprint},error:null};

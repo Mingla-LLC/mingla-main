@@ -7,6 +7,8 @@ export interface GiphyCoverSearchResult {
   provider: "giphy";
   previewUrl: string;
   mediaUrl: string;
+  /** Provider-authored non-animated rendition for link/share posters. */
+  posterUrl?: string;
   sourceUrl: string | null;
   credit: string;
   creditUrl: string | null;
@@ -22,8 +24,10 @@ type GiphyResult = {
   source?: unknown;
   images?: {
     fixed_width?: GiphyImage;
+    fixed_width_still?: GiphyImage;
     downsized_medium?: GiphyImage;
     downsized?: GiphyImage;
+    downsized_still?: GiphyImage;
     original?: GiphyImage;
   };
 };
@@ -71,6 +75,9 @@ const normalizeResult = (result: GiphyResult): GiphyCoverSearchResult | null => 
     asUrl(result.images?.downsized_medium?.url) ??
     asUrl(result.images?.downsized?.url) ??
     asUrl(result.images?.original?.url);
+  const posterUrl =
+    asUrl(result.images?.fixed_width_still?.url) ??
+    asUrl(result.images?.downsized_still?.url);
   if (id === null || previewUrl === null || selectedUrl === null) return null;
   const sourceUrl =
     asUrl(result.url) ?? asUrl(result.source_post_url) ?? asUrl(result.source);
@@ -83,6 +90,7 @@ const normalizeResult = (result: GiphyResult): GiphyCoverSearchResult | null => 
     provider: "giphy",
     previewUrl,
     mediaUrl: selectedUrl,
+    ...(posterUrl === null ? {} : { posterUrl }),
     sourceUrl,
     credit: "GIPHY",
     creditUrl: sourceUrl,

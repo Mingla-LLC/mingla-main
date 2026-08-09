@@ -246,7 +246,11 @@ jest.mock("../../ui/ShareModal", () => {
   const ReactLocal = require("react") as typeof React;
   return {
     __esModule: true,
-    ShareModal: (props: Record<string, unknown>) =>
+    // [TEST-MOD-APPROVED #1719] `contentKind` is a new invisible discriminator
+    // for the unified share adapter. #1719 tests that behavior directly; omit
+    // it from this legacy visual-tree oracle so the public venue pixels remain
+    // the parity surface measured here.
+    ShareModal: ({ contentKind: _contentKind, ...props }: Record<string, unknown>) =>
       ReactLocal.createElement("ShareModalStub", props),
   };
 });

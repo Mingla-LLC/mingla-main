@@ -35,6 +35,7 @@ import type { CoverPatch } from "../../ui/CoverPicker";
 
 const EMPTY_COVER: CoverPatch = {
   coverMediaUrl: null,
+  coverMediaPosterUrl: null,
   coverMediaType: null,
   coverMediaProvider: null,
   coverMediaSourceUrl: null,
@@ -98,7 +99,7 @@ export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
       patch({
         claim: {
           ...cur,
-          coverChoice: { url, type: "image", isNew },
+          coverChoice: { url, posterUrl: url, type: "image", isNew },
         },
       });
     },
@@ -129,7 +130,12 @@ export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
           ...cur,
           keptGalleryUrls: nextKept,
           addedGalleryUrls: nextAdded,
-          coverChoice: { url: p.coverMediaUrl, type, isNew: true },
+          coverChoice: {
+            url: p.coverMediaUrl,
+            posterUrl: p.coverMediaPosterUrl,
+            type,
+            isNew: true,
+          },
         },
       });
       setActiveSheet("none");

@@ -617,6 +617,7 @@ const ResolvedTripPage: React.FC<{
           visible={shareModalVisible}
           onClose={onCloseShareModal}
           url={tripPublicUrl({ brandSlug, tripSlug })}
+          contentKind="trip"
           title={trip.title}
           description={trip.description?.slice(0, 200)}
         />

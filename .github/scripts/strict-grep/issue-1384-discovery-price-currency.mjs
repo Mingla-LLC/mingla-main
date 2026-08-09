@@ -146,13 +146,13 @@ const rules = {
     venueOnly: true,
   },
   share: {
-    // [TEST-MOD-APPROVED #1615] Recipient-facing share facts now come from the
-    // served, versioned server envelope instead of recomputing viewer FX inside
-    // ShareModal. Preserve #1384's authority law by pinning that server-facts
-    // handoff and continuing to reject local FX/fallback money in this adapter.
+    // [TEST-MOD-APPROVED #1719] The server now authors and snapshots the entire
+    // external/degraded-chat message. Preserve #1384's authority law by pinning
+    // both the served facts and served prose handoff; rebuilding prose on the
+    // client would re-open the local FX/fallback-money regression this guards.
     required: [
       "facts: data.facts",
-      "message: buildShareMessage(data.facts",
+      "message: data.message",
     ],
     venueOnly: true,
   },

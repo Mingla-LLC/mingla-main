@@ -325,6 +325,8 @@ export interface DraftEvent {
   coverHue: number;
   /** Canonical uploaded cover media URL. Null falls back to coverHue. */
   coverMediaUrl: string | null;
+  /** Static still paired atomically with GIF/video covers. */
+  coverMediaPosterUrl?: string | null;
   /** Type for coverMediaUrl. Null when no uploaded media is present. */
   coverMediaType: EventCoverMediaType | null;
   coverMediaProvider?: EventCoverMediaProvider | null;
@@ -474,6 +476,7 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   hideAddressUntilTicket: true,
   coverHue: 25,
   coverMediaUrl: null,
+  coverMediaPosterUrl: null,
   coverMediaType: null,
   coverMediaProvider: null,
   coverMediaSourceUrl: null,
@@ -739,6 +742,7 @@ const upgradeV6DraftToV7 = (d: V6DraftEvent): DraftEvent => ({
   ...d,
   serverSlug: null,
   coverMediaUrl: null,
+  coverMediaPosterUrl: null,
   coverMediaType: null,
   coverMediaProvider: null,
   coverMediaSourceUrl: null,

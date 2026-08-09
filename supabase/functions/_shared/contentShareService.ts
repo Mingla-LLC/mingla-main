@@ -16,6 +16,17 @@ function isExactPublicIdentity(kind: string, identity: Record<string, unknown>):
   return expected.every((key) => clean(identity[key], 256).length > 0 && clean(identity[key], 256) === identity[key]);
 }
 
+function planningPreference(value: unknown): string | null {
+  if (typeof value === "string") return clean(value, 80) || null;
+  const row = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown> : {};
+  const day = clean(row.dayOfWeek, 24).toLowerCase();
+  const time = clean(row.timeOfDay, 24).toLowerCase();
+  const timeframe = clean(row.planningTimeframe, 40).toLowerCase();
+  const text = `${day === "weekend" ? "one " : ""}${[day, time, timeframe].filter(Boolean).join(" ")}`;
+  return clean(text, 80) || null;
+}
+
 const SHARE_KINDS = ["place", "curated", "event", "rsvp_event", "trip", "experience", "venue", "brand"] as const;
 const SHARE_STATUSES = new Set(["sold_out", "ended", "cancelled", "rsvp_closed", "date_tbd", "dates_tbd"]);
 const WEEKDAYS = new Set(["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]);
@@ -133,6 +144,22 @@ function publicEnvelope(shortCode: string, version: number, mapped: any) {
   return { state:"active", gone:false, shortCode, version, facts:mapped.facts, media:mapped.mediaIdentity || null, destination, publicDetails };
 }
 
+function contentShareMessageEnvelopeFits(kind: string, mapped: any): boolean {
+  const destination = mapped.destinationManifest && typeof mapped.destinationManifest === "object"
+    ? Object.fromEntries(Object.entries(mapped.destinationManifest).filter(([key]) => key !== "publicDetails")) : {};
+  const payload: Record<string, unknown> = {
+    contract:"content_share_card_v1",id:"content-share:Aa0Bb1Cc2Dd3Ee4F:v999999",title:mapped.facts?.title,
+    category:kind,image:mapped.mediaIdentity ? "https://usemingla.com/og/s/Aa0Bb1Cc2Dd3Ee4F/v999999-r2.jpg" : null,
+    shareCode:"Aa0Bb1Cc2Dd3Ee4F",shareVersion:999999,kind,facts:mapped.facts,destination,media:mapped.mediaIdentity,
+    // 120 accepted multi-codepoint graphemes, reserving realistic worst-case
+    // room before an internal recipient adds an authored note.
+    senderNote:"👩🏽‍💻".repeat(120),
+  };
+  if (mapped.nativePreview) payload.nativeCard={contract:"native_content_card_v1",version:1,kind,
+    preview:mapped.nativePreview,snapshotRef:"Aa0Bb1Cc2Dd3Ee4F:v999999",snapshotFingerprint:"a".repeat(64)};
+  return new TextEncoder().encode(JSON.stringify(payload)).byteLength<=5120;
+}
+
 async function privateInstallAttributionForCreator(db: any, creatorPrincipal: unknown) {
   if (typeof creatorPrincipal !== "string" || creatorPrincipal.length === 0) return undefined;
   const { data, error } = await db.from("profiles").select("referral_code").eq("id", creatorPrincipal).maybeSingle();
@@ -167,12 +194,17 @@ export async function createContentShareV1(
   } catch (mappingError) {
     const reason = mappingError instanceof Error ? mappingError.message : "not_found";
     if (reason === "db_error") return { status: 503, body: { error: "unavailable" } };
-    return { status: reason === "validation" ? 400 : 404, body: { error: reason === "validation" ? "validation" : "not_found" } };
+    const invalid = ["validation", "invalid_native_snapshot", "native_snapshot_too_large"].includes(reason);
+    return { status: invalid ? 400 : 404, body: { error: invalid ? "validation" : "not_found" } };
   }
   if (!validatePublicContentShareEnvelope(publicEnvelope("Aa0Bb1Cc2Dd3Ee4F", 1, mapped))) {
     return { status: 503, body: { error: "unavailable" } };
   }
-  const { data: created, error } = await db.rpc("upsert_content_share_version", {
+  if (!contentShareMessageEnvelopeFits(requestedKind, mapped)) return { status: 503, body: { error: "unavailable" } };
+  const native = requestedKind === "place" || requestedKind === "curated";
+  const nativeSnapshot = native && "nativeSnapshot" in mapped ? mapped.nativeSnapshot : undefined;
+  const nativePreview = native && "nativePreview" in mapped ? mapped.nativePreview : undefined;
+  const versionArgs = {
     p_entity_kind: requestedKind,
     p_creator_principal: serverCreated ? null : userId,
     p_source_key: mapped.sourceKey,
@@ -181,8 +213,25 @@ export async function createContentShareV1(
     p_facts: mapped.facts,
     p_media_identity: mapped.mediaIdentity || null,
     p_destination_manifest: mapped.destinationManifest,
-  });
+  };
+  const { data: created, error } = native
+    ? await db.rpc("upsert_content_share_version_with_native_snapshot", {
+      ...versionArgs,
+      p_native_snapshot: nativeSnapshot,
+      p_native_preview: nativePreview,
+    })
+    : await db.rpc("upsert_content_share_version", versionArgs);
   if (error || !created?.shortCode) throw error || new Error("share_create_failed");
+  const rawMessageContext = raw.messageContext && typeof raw.messageContext === "object" && !Array.isArray(raw.messageContext)
+    ? raw.messageContext as Record<string, unknown> : {};
+  const { data: message, error: messageError } = await db.rpc("resolve_content_share_message", {
+    p_code: created.shortCode,
+    p_version: created.version,
+    p_planning_preference: planningPreference(rawMessageContext.planningPreference),
+  });
+  if (messageError || typeof message !== "string" || message.length === 0) {
+    throw messageError || new Error("share_message_unavailable");
+  }
   const envelope=validatePublicContentShareEnvelope(publicEnvelope(created.shortCode,created.version,mapped));
   if(!envelope) return { status:503, body:{ error:"unavailable" } };
   return {
@@ -190,6 +239,7 @@ export async function createContentShareV1(
     body: {
       shortCode: created.shortCode, version: created.version,
       versionCreated: created.versionCreated,
+      message,
       facts: envelope.facts, media: envelope.media,
       destination: envelope.destination, publicDetails: envelope.publicDetails,
     },
@@ -229,6 +279,7 @@ export async function refreshContentShareV1(db: any, shortCode: string) {
   } catch (error) {
     const reason = error instanceof Error ? error.message : "db_error";
     if (reason === "db_error") return { status: 503, body: { error: "unavailable" } };
+    if (reason === "invalid_native_snapshot" || reason === "native_snapshot_too_large") return { status: 503, body: { error: "unavailable" } };
     if (reason === "not_public") return { status: 404, body: { error: "not_found" } };
     if (reason === "gone") {
       const { error: stateError } = await db.from("content_share_links").update({ state: "deleted", deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", link.id);
@@ -236,7 +287,11 @@ export async function refreshContentShareV1(db: any, shortCode: string) {
     }
     return { status: 404, body: { error: "not_found" } };
   }
-  const { data: created, error: upsertError } = await db.rpc("upsert_content_share_version", {
+  const native = link.entity_kind === "place" || link.entity_kind === "curated";
+  if (!contentShareMessageEnvelopeFits(link.entity_kind, mapped)) return { status:503,body:{error:"unavailable"} };
+  const nativeSnapshot = native && "nativeSnapshot" in mapped ? mapped.nativeSnapshot : undefined;
+  const nativePreview = native && "nativePreview" in mapped ? mapped.nativePreview : undefined;
+  const versionArgs = {
     p_entity_kind: link.entity_kind,
     p_creator_principal: link.creator_principal,
     p_source_key: mapped.sourceKey,
@@ -245,7 +300,14 @@ export async function refreshContentShareV1(db: any, shortCode: string) {
     p_facts: mapped.facts,
     p_media_identity: mapped.mediaIdentity || null,
     p_destination_manifest: mapped.destinationManifest,
-  });
+  };
+  const { data: created, error: upsertError } = native
+    ? await db.rpc("upsert_content_share_version_with_native_snapshot", {
+      ...versionArgs,
+      p_native_snapshot: nativeSnapshot,
+      p_native_preview: nativePreview,
+    })
+    : await db.rpc("upsert_content_share_version", versionArgs);
   if (upsertError || !created?.shortCode || created.shortCode !== shortCode) return { status: 503, body: { error: "unavailable" } };
   const envelope=validatePublicContentShareEnvelope(publicEnvelope(shortCode,created.version,mapped));
   if (!envelope) return { status:503, body:{ error:"unavailable" } };

@@ -220,6 +220,7 @@ interface LocalTripEditState {
   pricing: Step4Draft;
   // Cover
   coverMediaUrl: string | null;
+  coverMediaPosterUrl: string | null;
   coverMediaType: EventCoverMediaType | null;
   // issue #868 [cover-gallery] — ADDITIONAL image/GIF items (default []).
   coverGallery: OfferingGalleryImage[];
@@ -307,6 +308,7 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
       },
     },
     coverMediaUrl: trip.coverMediaUrl,
+    coverMediaPosterUrl: trip.coverMediaPosterUrl ?? null,
     coverMediaType: coverType,
     // issue #868 [cover-gallery] — seed the ADDITIONAL photos from the trip row.
     coverGallery: trip.coverGallery ?? [],
@@ -561,9 +563,21 @@ function buildLiveTripPatch(
     .filter((d) => d.status === "modified" && d.oldPriceCents !== d.newPriceCents)
     .map((d) => d.ticketTypeId);
 
-  // Cover (7-field)
-  if (state.coverMediaUrl !== trip.coverMediaUrl) {
+  // #1719: cover URL/type/poster are one identity. Any change emits all three
+  // so the transactional RPC wrapper can reject split or stale writes.
+  const coverIdentityChanged =
+    state.coverMediaUrl !== trip.coverMediaUrl ||
+    state.coverMediaPosterUrl !== (trip.coverMediaPosterUrl ?? null) ||
+    state.coverMediaType !==
+      (trip.coverMediaType === "image" ||
+      trip.coverMediaType === "video" ||
+      trip.coverMediaType === "gif"
+        ? trip.coverMediaType
+        : null);
+  if (coverIdentityChanged) {
     patch.cover_media_url = state.coverMediaUrl;
+    patch.cover_media_poster_url = state.coverMediaPosterUrl;
+    patch.cover_media_type = state.coverMediaType;
   }
   // issue #868 [cover-gallery] — the ADDITIONAL photos, dirtied INDEPENDENTLY of
   // the cover fields, sent to biz_update_live_trip (§G.4) as cover_media_gallery.
@@ -572,16 +586,6 @@ function buildLiveTripPatch(
     JSON.stringify(trip.coverGallery ?? [])
   ) {
     patch.cover_media_gallery = state.coverGallery ?? [];
-  }
-  if (
-    state.coverMediaType !==
-    (trip.coverMediaType === "image" ||
-    trip.coverMediaType === "video" ||
-    trip.coverMediaType === "gif"
-      ? trip.coverMediaType
-      : null)
-  ) {
-    patch.cover_media_type = state.coverMediaType;
   }
   // Provider/source/credit/credit_url/alt are emitted whenever cover URL
   // changes — they're written together by CoverPicker on every selection.
@@ -1015,6 +1019,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     setEditState((prev) => ({
       ...prev,
       coverMediaUrl: patch.coverMediaUrl,
+      coverMediaPosterUrl: patch.coverMediaPosterUrl,
       coverMediaType: patch.coverMediaType,
       // issue #868 [cover-gallery] — carry the ADDITIONAL photos into edit state.
       coverGallery: patch.coverGallery ?? [],
@@ -1874,6 +1879,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                 }}
                 initial={{
                   coverMediaUrl: editState.coverMediaUrl,
+                  coverMediaPosterUrl: editState.coverMediaPosterUrl,
                   coverMediaType: editState.coverMediaType,
                   coverMediaProvider: editState.coverMediaProvider,
                   coverMediaSourceUrl: editState.coverMediaSourceUrl,

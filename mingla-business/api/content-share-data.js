@@ -8,9 +8,9 @@ const createContentShareDataHandler = (fetchShare = fetchContentShare) => async 
   try {
     const result = await fetchShare(code);
     if (result.status === 410) return send(res, { error: "gone" }, 410);
-    if (!result.contentShare) return send(res, { error: result.status === 404 ? "not_found" : "unavailable" }, [429,500,503].includes(result.status) ? result.status : 404);
+    if (!result.contentShare) return send(res, { error: result.status === 404 ? "not_found" : "unavailable" }, [429,500,502,503].includes(result.status) ? result.status : 404);
     return send(res, { contentShare: result.contentShare }, 200);
-  } catch { return send(res, { error: "not_found" }, 404); }
+  } catch { return send(res, { error: "unavailable" }, 503); }
 };
 module.exports = createContentShareDataHandler();
 module.exports.createContentShareDataHandler = createContentShareDataHandler;

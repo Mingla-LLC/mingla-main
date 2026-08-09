@@ -57,6 +57,7 @@ interface ChatListItemProps {
   onArchive?: (conversationId: string) => void;
   /** ORCH-0435: Delete chat */
   onDelete?: (conversationId: string) => void;
+  lifecycleBusy?: boolean;
 }
 
 /**
@@ -140,6 +141,7 @@ export function ChatListItem({
   onPendingPairPress,
   onArchive,
   onDelete,
+  lifecycleBusy = false,
 }: ChatListItemProps) {
   const { t } = useTranslation(['chat', 'common']);
 
@@ -261,6 +263,8 @@ export function ChatListItem({
           <Animated.View style={{ transform: [{ translateX: translateArchive }] }}>
             <TouchableOpacity
               style={styles.swipeArchive}
+              disabled={lifecycleBusy}
+              accessibilityState={{ disabled: lifecycleBusy, busy: lifecycleBusy }}
               onPress={() => {
                 swipeableRef.current?.close();
                 onArchive?.(conversation.id);
@@ -273,19 +277,21 @@ export function ChatListItem({
           <Animated.View style={{ transform: [{ translateX: translateDelete }] }}>
             <TouchableOpacity
               style={styles.swipeDelete}
+              disabled={lifecycleBusy}
+              accessibilityState={{ disabled: lifecycleBusy, busy: lifecycleBusy }}
               onPress={() => {
                 swipeableRef.current?.close();
                 onDelete?.(conversation.id);
               }}
             >
-              <Icon name="trash-outline" size={20} color="#ffffff" />
-              <Text style={styles.swipeActionText}>Delete</Text>
+              {lifecycleBusy ? <ActivityIndicator color="#ffffff" /> : <Icon name={isGroup ? "exit-outline" : "trash-outline"} size={20} color="#ffffff" />}
+              <Text style={styles.swipeActionText}>{isGroup ? 'Leave' : 'Remove'}</Text>
             </TouchableOpacity>
           </Animated.View>
         </View>
       );
     },
-    [conversation.id, onArchive, onDelete],
+    [conversation.id, isGroup, lifecycleBusy, onArchive, onDelete],
   );
 
   return (

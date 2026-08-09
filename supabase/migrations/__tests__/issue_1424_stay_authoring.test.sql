@@ -6,6 +6,9 @@
 -- signature string it looks the function up by. The grant expectations below
 -- (anon has NO execute, authenticated does) are asserted exactly as before, now
 -- against the real signature.
+-- [TEST-MOD-APPROVED #1719] — SIGNATURE PIN ONLY. The binding all-writers
+-- amendment adds one appended/defaulted poster URL; stay authorization,
+-- inventory, and feature-flag assertions below remain unchanged.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -253,7 +256,7 @@ BEGIN
     'public.biz_publish_stay(uuid,bigint,uuid)'::regprocedure
   ) INTO v_publish;
   SELECT pg_get_functiondef(
-    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text,text,text,text)'::regprocedure
+    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text,text,text,text,text)'::regprocedure
   ) INTO v_create;
   SELECT pg_get_functiondef(
     'public.issue_1387_stay_inventory_snapshot(uuid)'::regprocedure

@@ -171,6 +171,7 @@ export interface Trip {
   publishedAt: string | null;
   timezone: string;
   coverMediaUrl: string | null;
+  coverMediaPosterUrl?: string | null;
   coverMediaType: string | null;
   /**
    * issue #868 [cover-gallery] — ADDITIONAL image/GIF cover-gallery items,
@@ -255,6 +256,7 @@ export interface TripBasicsPatch {
   description?: string | null;
   businessTrip?: Partial<TripBusinessTrip>;
   coverMediaUrl?: string | null;
+  coverMediaPosterUrl?: string | null;
   coverMediaType?: "image" | "video" | "gif" | null;
   /**
    * issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items. Additive +
@@ -389,6 +391,7 @@ interface EventRow {
   published_at: string | null;
   timezone: string;
   cover_media_url: string | null;
+  cover_media_poster_url?: string | null;
   cover_media_type: string | null;
   // issue #868 [cover-gallery] — additive; absent on legacy rows → mapped to [].
   cover_media_gallery?: OfferingGalleryImage[] | null;
@@ -605,6 +608,9 @@ function mapTrip(
     publishedAt: event.published_at,
     timezone: event.timezone,
     coverMediaUrl: event.cover_media_url,
+    coverMediaPosterUrl:
+      event.cover_media_poster_url ??
+      (event.cover_media_type === "image" ? event.cover_media_url : null),
     coverMediaType: event.cover_media_type,
     // issue #868 [cover-gallery] — additive; [] on legacy rows (rule 9).
     coverGallery: Array.isArray(event.cover_media_gallery)
@@ -1020,6 +1026,7 @@ export async function updateTripBasics(
   if (patch.title !== undefined) update.title = patch.title;
   if (patch.description !== undefined) update.description = patch.description;
   if (patch.coverMediaUrl !== undefined) update.cover_media_url = patch.coverMediaUrl;
+  if (patch.coverMediaPosterUrl !== undefined) update.cover_media_poster_url = patch.coverMediaPosterUrl;
   if (patch.coverMediaType !== undefined) update.cover_media_type = patch.coverMediaType;
   // issue #868 [cover-gallery] — additive gallery write; the cover-field writes
   // above stay UNCHANGED (no sync/derive between the two).
@@ -1478,7 +1485,7 @@ export async function publishTrip(
   eventId: string,
   draftPayload: Record<string, unknown>,
 ): Promise<Trip> {
-  const { data, error } = await supabase.rpc("business_publish_trip_draft", {
+  const { data, error } = await supabase.rpc("issue_1719_publish_trip_with_poster", {
     p_event_id: eventId,
     p_draft_payload: draftPayload,
     p_client_revision: null,
@@ -1528,6 +1535,7 @@ export interface SoftDeleteResult {
 
 export interface TripCoverPatch {
   cover_media_url: string | null;
+  cover_media_poster_url: string | null;
   cover_media_type: "image" | "video" | "gif" | null;
   cover_media_provider: string | null;
   cover_media_source_url: string | null;
@@ -1559,6 +1567,7 @@ export interface LiveTripPatch {
   inclusions?: TripInclusionInput[];
   pricing_tiers?: TripPricingTierInput[];
   cover_media_url?: string | null;
+  cover_media_poster_url?: string | null;
   cover_media_type?: "image" | "video" | "gif" | null;
   // issue #868 [cover-gallery] — ADDITIONAL image/GIF items; biz_update_live_trip
   // §5a writes it (Pass 1 §G.4). Independent of the cover fields.
@@ -1643,8 +1652,9 @@ export async function updateLiveTripFields(
   patch: LiveTripPatch,
   reason: string,
 ): Promise<UpdateLiveTripResult> {
-  // ORCH-0876: route through biz_update_live_trip RPC (audit-test enforced).
-  const { data, error } = await supabase.rpc("biz_update_live_trip", {
+  // #1719 wraps the proven refund gate and appends the poster write in the
+  // SAME database transaction, so URL/type/poster can never split.
+  const { data, error } = await supabase.rpc("issue_1719_update_live_trip_with_poster", {
     p_event_id: eventId,
     p_patch: patch as Record<string, unknown>,
     p_reason: reason,

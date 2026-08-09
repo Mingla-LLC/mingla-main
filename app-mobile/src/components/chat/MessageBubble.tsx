@@ -2,13 +2,15 @@ import React from 'react';
 import { View, Text, StyleSheet, Dimensions, Image, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
+import { PlaceCuratedChatCard } from './PlaceCuratedChatCard';
 import { colors, typography, fontWeights, radius, spacing } from '../../constants/designSystem';
 import { MentionChip } from './MentionChip';
 import { ReplyQuoteBlock } from './ReplyQuoteBlock';
 import { ChatCardChip } from './ChatCardChip';
 import { CollabLocationChips } from '../collab/CollabLocationChips';
-import type { CardPayload, CardTagEntry, MentionEntry } from '../../services/messagingService';
+import { isContentShareCardPayload, type CardPayload, type CardTagEntry, type LegacyCardPayload, type MentionEntry } from '../../services/messagingService';
 import type { CollabDeadEndBannerPayload } from '../../services/collabDeadEndBannerService';
+import { selectCompactPreviewFacts, shareKindLabel, statusLabel, validateNativeContentCardDescriptorV1 } from '@mingla/sharing';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -55,7 +57,7 @@ interface MessageBubbleProps {
   isRead: boolean;
   replyTo?: ReplyToData;
   onScrollToMessage?: (messageId: string) => void;
-  onCardBubbleTap?: (payload: CardPayload) => void;  // ORCH-0667
+  onCardBubbleTap?: (payload: CardPayload, messageId: string) => void;  // ORCH-0667
   onMentionTap?: (userId: string) => void;
   onCardTagTap?: (cardTag: CardTagEntry) => void;
   onSystemTokenPress?: (token: CollabSystemToken) => void;
@@ -335,7 +337,7 @@ export function MessageBubble({
                     if (onCardTagTap) {
                       onCardTagTap(tag);
                     } else {
-                      onCardBubbleTap?.(tag.cardPayload);
+                      onCardBubbleTap?.(tag.cardPayload, message.id);
                     }
                   }}
                 />
@@ -387,86 +389,80 @@ export function MessageBubble({
 
           {/* ORCH-0667: shared saved-card bubble */}
           {message.type === 'card' && message.cardPayload && (() => {
+            const payload = message.cardPayload;
+            if (isContentShareCardPayload(payload)) {
+              const nativeCard = validateNativeContentCardDescriptorV1(payload.nativeCard);
+              if (nativeCard) {
+                const preview = nativeCard.preview;
+                return <PlaceCuratedChatCard title={preview.title} category={preview.category} image={preview.image ?? payload.image}
+                  stopCount={preview.stopCount} senderNote={payload.senderNote} isMe={isMe} hint={t('chat:cardBubbleTapHint')}
+                  onPress={() => onCardBubbleTap?.(payload, message.id)} />;
+              }
+              const facts = payload.facts;
+              const mediaKind = payload.media?.kind;
+              const factLine = selectCompactPreviewFacts(facts, 3).join(' · ');
+              const status = statusLabel(facts.status);
+              return (
+                <TouchableOpacity
+                  accessibilityRole="link"
+                  accessibilityLabel={`Open ${facts.title}`}
+                  onPress={() => onCardBubbleTap?.(payload, message.id)}
+                  activeOpacity={0.85}
+                  style={styles.contentShareCard}
+                >
+                  {payload.senderNote ? <View style={styles.contentShareNote}><Text style={styles.contentShareNoteText}>{payload.senderNote}</Text></View> : null}
+                  <View style={styles.cardBubbleImageWrap}>
+                    {payload.image ? <Image source={{ uri: payload.image }} style={styles.contentSharePoster} resizeMode="cover" /> : <View style={[styles.contentSharePoster, styles.cardBubblePlaceholder]}><Icon name="bookmark" size={24} color="#6B7280" /></View>}
+                    {mediaKind === 'gif' || mediaKind === 'video' ? <View style={styles.contentShareMediaTag}><Text style={styles.contentShareMediaTagText}>{mediaKind === 'gif' ? 'GIF' : 'Video'}</Text></View> : null}
+                  </View>
+                  <View style={styles.contentShareBody}>
+                    <Text style={styles.contentShareKind}>{shareKindLabel(facts.kind)}{status ? ` · ${status}` : ''}</Text>
+                    <Text numberOfLines={2} style={styles.contentShareTitle}>{facts.title}</Text>
+                    {factLine ? <Text numberOfLines={2} style={styles.contentShareFacts}>{factLine}</Text> : null}
+                  </View>
+                </TouchableOpacity>
+              );
+            }
             // ORCH-0908: defensive legacy-payload normalizer. The first cut of
             // the combined lock-and-schedule RPC nested the card under
             // card_payload.card_data; migration 20260630000000 flattens it +
             // backfills existing rows, but if any nested row slips through we
             // still render correctly by reading from .card_data as a fallback.
-            const raw = message.cardPayload as any;
+            const raw = payload as LegacyCardPayload & {
+              card_data?: Partial<LegacyCardPayload>;
+              event?: string;
+              scheduled_at?: string;
+            };
             const legacy = raw.card_data && typeof raw.card_data === 'object' ? raw.card_data : null;
+            const effectiveStops = raw.stops ?? legacy?.stops;
+            const sourceCardType = raw.cardType ?? legacy?.cardType;
             const cp = {
-              ...message.cardPayload,
+              ...payload,
               image: raw.image ?? legacy?.image ?? null,
               title: raw.title ?? legacy?.title ?? 'Saved experience',
               category: raw.category ?? legacy?.category ?? null,
               lockInEvent: raw.lockInEvent
                 ?? (raw.event === 'card_locked_and_scheduled' ? 'card_locked_and_scheduled' : undefined),
               scheduledAt: raw.scheduledAt ?? raw.scheduled_at ?? undefined,
-              cardType: raw.cardType ?? legacy?.cardType,
-              stops: raw.stops ?? legacy?.stops,
+              // Legacy curated payloads predate cardType but do contain stops.
+              // Normalize that old shape once so the renderer can keep one
+              // explicit curated-card boundary below.
+              cardType: sourceCardType === 'curated'
+                || (Array.isArray(effectiveStops) && effectiveStops.length > 0)
+                ? 'curated'
+                : sourceCardType,
+              stops: effectiveStops,
             };
-            const isIntentCard = cp.cardType === 'curated' || (Array.isArray((cp as any).stops) && (cp as any).stops.length > 0);
-            const intentStopCount = isIntentCard ? ((cp as any).stops?.length ?? 0) : 0;
-            const intentHeroImage = isIntentCard ? ((cp as any).stops?.[0]?.imageUrl ?? cp.image) : cp.image;
+            const isIntentCard = cp.cardType === 'curated';
+            const intentStopCount = isIntentCard ? (cp.stops?.length ?? 0) : 0;
+            const intentHeroImage = isIntentCard ? (cp.stops?.[0]?.imageUrl ?? cp.image) : cp.image;
             const effectiveImage = isIntentCard ? intentHeroImage : cp.image;
-            return (
-            <TouchableOpacity
-              onPress={() => onCardBubbleTap?.(message.cardPayload!)}
-              activeOpacity={0.85}
-              style={styles.cardBubbleContainer}
-            >
-              {/* ORCH-0908: locked-in banner — only when card was shared via lock-and-schedule */}
-              {cp.lockInEvent === 'card_locked_and_scheduled' && cp.scheduledAt && (
-                <View style={styles.cardBubbleLockedBanner}>
-                  <Icon name="lock-closed" size={12} color="#fff" />
-                  <Text style={styles.cardBubbleLockedBannerText} numberOfLines={1}>
-                    {`Locked in · ${new Date(cp.scheduledAt).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`}
-                  </Text>
-                </View>
-              )}
-              <View style={styles.cardBubbleImageWrap}>
-                {effectiveImage ? (
-                  <Image
-                    source={{ uri: effectiveImage }}
-                    style={styles.cardBubbleImage}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={[styles.cardBubbleImage, styles.cardBubblePlaceholder]}>
-                    <Icon name="bookmark" size={24} color={isMe ? 'rgba(255,255,255,0.7)' : colors.text.tertiary} />
-                  </View>
-                )}
-                {isIntentCard && intentStopCount > 0 && (
-                  <View style={styles.cardBubbleIntentChip}>
-                    <Icon name="arrow-forward" size={10} color="#fff" />
-                    <Text style={styles.cardBubbleIntentChipText} numberOfLines={1}>
-                      {`${intentStopCount} stops`}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <View style={styles.cardBubbleBody}>
-                <Text
-                  style={[styles.cardBubbleTitle, isMe ? styles.textSent : styles.textReceived]}
-                  numberOfLines={2}
-                >
-                  {cp.title}
-                </Text>
-                {cp.category ? (
-                  <View style={styles.cardBubbleChip}>
-                    <Text style={styles.cardBubbleChipText} numberOfLines={1}>
-                      {cp.category}
-                    </Text>
-                  </View>
-                ) : null}
-                <Text
-                  style={[styles.cardBubbleHint, isMe ? styles.textSent : styles.textReceived]}
-                >
-                  {t('chat:cardBubbleTapHint')}
-                </Text>
-              </View>
-            </TouchableOpacity>
-            );
+            // PlaceCuratedChatCard owns the legacy cardBubbleIntentChip and its
+            // arrow-forward affordance; this boundary supplies its effective
+            // first-stop image and stop count without duplicating the design.
+            return <PlaceCuratedChatCard title={cp.title} category={cp.category} image={effectiveImage}
+              stopCount={intentStopCount || undefined} lockedAt={cp.lockInEvent === 'card_locked_and_scheduled' ? cp.scheduledAt : undefined}
+              isMe={isMe} hint={t('chat:cardBubbleTapHint')} onPress={() => onCardBubbleTap?.(payload, message.id)} />;
           })()}
 
           {/* ORCH-0667: defense-in-depth — card-type message with missing payload */}
@@ -756,6 +752,24 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
+  contentShareCard: {
+    width: SCREEN_WIDTH * 0.68,
+    maxWidth: 320,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  contentShareNote: { paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB' },
+  contentShareNoteText: { fontSize: 14, lineHeight: 20, color: '#111827' },
+  contentSharePoster: { width: '100%', aspectRatio: 4 / 3, backgroundColor: '#F3F4F6' },
+  contentShareMediaTag: { position:'absolute',right:8,bottom:8,borderRadius:8,paddingHorizontal:7,paddingVertical:3,backgroundColor:'#0C0E12' },
+  contentShareMediaTagText: { fontSize:11,fontWeight:'700',color:'#FFFFFF' },
+  contentShareBody: { padding: 12, gap: 4 },
+  contentShareKind: { fontSize: 12, lineHeight: 16, fontWeight: '600', color: '#9A470A' },
+  contentShareTitle: { fontSize: 16, lineHeight: 21, fontWeight: '700', color: '#111827' },
+  contentShareFacts: { fontSize: 13, lineHeight: 18, color: '#4B5563' },
   cardBubbleImage: {
     width: '100%',
     aspectRatio: 16 / 10,

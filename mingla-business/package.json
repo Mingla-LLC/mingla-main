@@ -102,6 +102,7 @@
     "@mingla/phone-input": "file:../packages/phone-input",
     "@mingla/sharing": "file:../packages/sharing",
     "@mingla/theme-animations": "file:../packages/theme-animations",
+    "@react-native-community/netinfo": "11.4.1",
     "@radix-ui/react-dialog": "^1.1.15",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",

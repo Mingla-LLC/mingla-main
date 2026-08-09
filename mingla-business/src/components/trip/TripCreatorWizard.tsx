@@ -1194,6 +1194,12 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         brandId: trip.brandId,
         draftPayload: {
           title: step1Draft.title.trim(),
+          cover_media_url: step1Draft.coverMediaUrl,
+          cover_media_poster_url:
+            step1Draft.coverMediaPosterUrl ??
+            (step1Draft.coverMediaType === "image" ? step1Draft.coverMediaUrl : null),
+          cover_media_type: step1Draft.coverMediaType,
+          cover_media_gallery: step1Draft.coverGallery ?? [],
           theme: {
             business_trip: {
               startAt: step1Draft.startAt,

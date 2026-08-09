@@ -27,7 +27,7 @@
 --   T-6   A NEW venue's config row derives its zone on INSERT, unavoidably.
 --   T-7   Offsets, Etc/GMT+5 and the legacy aliases are REFUSED at write time.
 --   T-8   A bare UPDATE of the zone is recorded as an operator choice.
---   T-9   The view is still 29 columns with iana_timezone last.
+--   T-9   The view keeps iana_timezone at 29 and appends the poster at 30.
 --   T-10  pending_review stays invisible on the anon view.
 --   T-11  A grid of real cities derives the right zone, and the known-ambiguous
 --         regions abstain instead of guessing.
@@ -381,13 +381,16 @@ BEGIN
 END
 $t8$;
 
--- ── T-9 — the view is still 29 columns with iana_timezone last ─────────────
+-- [TEST-MOD-APPROVED #1719] The unified media contract deliberately appends
+-- cover_media_poster_url without moving #1586's timezone or #1564's theme
+-- axes. Ratchet both the old ordinals and the new final column.
+-- ── T-9 — timezone stays at 29; poster is appended at 30 ───────────────────
 DO $t9$
-DECLARE v_n integer; v_ord integer; v_type text;
+DECLARE v_n integer; v_ord integer; v_type text; v_poster_ord integer; v_poster_type text;
 BEGIN
   SELECT count(*) INTO v_n FROM information_schema.columns
   WHERE table_schema = 'public' AND table_name = 'venue_public_view';
-  IF v_n <> 29 THEN
+  IF v_n <> 30 THEN
     RAISE EXCEPTION 'issue_1586_T9_view_column_count_changed: %', v_n;
   END IF;
   SELECT ordinal_position, data_type INTO v_ord, v_type FROM information_schema.columns
@@ -395,6 +398,14 @@ BEGIN
     AND column_name = 'iana_timezone';
   IF v_ord IS DISTINCT FROM 29 OR v_type IS DISTINCT FROM 'text' THEN
     RAISE EXCEPTION 'issue_1586_T9_iana_timezone_moved: ordinal %, type %', coalesce(v_ord, -1), coalesce(v_type,'<null>');
+  END IF;
+  SELECT ordinal_position, data_type INTO v_poster_ord, v_poster_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public' AND table_name = 'venue_public_view'
+    AND column_name = 'cover_media_poster_url';
+  IF v_poster_ord IS DISTINCT FROM 30 OR v_poster_type IS DISTINCT FROM 'text' THEN
+    RAISE EXCEPTION 'issue_1719_T9_cover_poster_moved: ordinal %, type %',
+      coalesce(v_poster_ord, -1), coalesce(v_poster_type, '<null>');
   END IF;
   -- The theme axes #1564 pinned are still where it left them.
   IF (SELECT ordinal_position FROM information_schema.columns

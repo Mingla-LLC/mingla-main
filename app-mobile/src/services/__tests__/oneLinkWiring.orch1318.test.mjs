@@ -40,6 +40,7 @@ const stripComments = (s) =>
 const service = stripComments(read('src/services/appsFlyerService.ts'));
 const indexTsx = stripComments(read('app/index.tsx'));
 const shareModal = stripComments(read('src/components/ShareModal.tsx'));
+const unifiedShare = stripComments(read('src/components/share/UnifiedShareProvider.tsx'));
 const resolver = stripComments(read('src/services/oneLinkResolver.ts'));
 
 // ── A1: both deep-link listeners ENABLED in initSdk (SPEC §A.1.1) ─────────────
@@ -157,22 +158,21 @@ test('B4: resolveOneLinkDestination has exactly one definition (I-ONELINK-SINGLE
   assert.match(service, /from '\.\/oneLinkResolver'/, 'service imports the ONE resolver');
 });
 
-// [TEST-MOD-APPROVED #1615] The approved stable-share contract deliberately
-// replaced the visible AppsFlyer URL with a short /s URL. Attribution now lives
-// behind that receiver, so this assertion follows the prepared content adapter
-// without resurrecting the long recipient-facing OneLink.
-// ── E1: ShareModal emits the prepared stable link, not plain marketing text ──
+// [TEST-MOD-APPROVED #1719] ShareModal is now only the compatibility bridge into
+// the one app-wide provider. The provider owns link preparation, copy and native
+// share, so this assertion follows that ownership move while preserving #1318's
+// short-link and no-hardcoded-message laws.
+// ── E1: unified provider emits the prepared stable link, not plain marketing text ──
 test('E1: ShareModal copy-link + social share emit the prepared stable share', () => {
-  assert.match(shareModal, /from '\.\.\/services\/contentShareAdapter'/, 'must import the content-share adapter');
-  assert.match(shareModal, /buildStableLink\('copy_link'\)/, 'copy-link must build the stable short link');
+  assert.match(shareModal, /useUnifiedShare/, 'legacy modal must delegate to the unified provider');
+  assert.match(unifiedShare, /prepareContentShare\(/, 'provider must prepare the stable short link');
   // the plain-text copy string must be GONE
   assert.doesNotMatch(
-    shareModal,
+    shareModal + unifiedShare,
     /Clipboard\.setString\(`Check out \$\{title\} on Mingla!`\)/,
     'the plain "Check out … on Mingla!" copy string must be replaced',
   );
   // Social sharing must consume the one server-prepared message/link envelope.
-  assert.match(shareModal, /ensureSharedCard\(platform\)/, 'social share must prepare the stable link');
-  assert.match(shareModal, /const message = prepared\.message/, 'social share must use the prepared intelligent message');
-  assert.match(shareModal, /sharePreparedContent\(prepared\)/, 'native sharing must receive the prepared canonical URL');
+  assert.match(unifiedShare, /sharePreparedContent\(prepared\)/, 'native sharing must receive the prepared canonical URL');
+  assert.match(unifiedShare, /Clipboard\.setString\(prepared\.canonicalUrl\)/, 'copy must receive the prepared canonical URL');
 });

@@ -361,6 +361,7 @@ export interface CreateVenueBrandPendingInput {
   venueCategory: VenueCategory;
   contact: { email?: string; phone?: string };
   coverMediaUrl: string | null;
+  coverMediaPosterUrl?: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
   hours: BrandHourEntry[];
 }
@@ -457,6 +458,16 @@ export async function createVenueBrandPendingReview(
   input: CreateVenueBrandPendingInput,
   role: BrandRole,
 ): Promise<Brand> {
+  const posterUrl =
+    input.coverMediaPosterUrl ??
+    (input.coverMediaType === "image" ? input.coverMediaUrl : null);
+  if (
+    input.coverMediaUrl !== null &&
+    input.coverMediaType !== null &&
+    (posterUrl === null || posterUrl.trim().length === 0)
+  ) {
+    throw new Error("Choose a cover with a stable preview image before publishing.");
+  }
   const description = joinBrandDescription(input.tagline, input.bio);
   const { data, error } = await supabase.rpc(
     "biz_create_venue_brand_authoring",
@@ -474,6 +485,7 @@ export async function createVenueBrandPendingReview(
       p_contact_email: input.contact.email ?? "",
       p_contact_phone: input.contact.phone ?? "",
       p_cover_media_url: input.coverMediaUrl ?? "",
+      p_cover_media_poster_url: posterUrl ?? "",
       p_cover_media_type: input.coverMediaType ?? "",
       p_hours: brandHoursToRpcPayload(input.hours),
       p_place_pool_id: input.placePoolId ?? null,

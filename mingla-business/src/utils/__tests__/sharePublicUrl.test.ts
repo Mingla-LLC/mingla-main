@@ -199,25 +199,18 @@ describe("sharePublicUrl helpers", () => {
   });
 
   test("ShareModal guards copy/share with pending state and preserves copy toasts", () => {
-    const source = repoFile("src/components/ui/ShareModal.tsx");
-
-    expect(source).toContain("const [isCopying, setIsCopying]");
-    expect(source).toContain("const [isSharing, setIsSharing]");
-    expect(source).toContain("if (isCopying) return;");
-    expect(source).toContain("if (isSharing) return;");
-    expect(source).toContain("setIsCopying(true);");
-    expect(source).toContain("setIsSharing(true);");
-    expect(source).toContain("setIsCopying(false);");
-    expect(source).toContain("setIsSharing(false);");
-    expect(source).toContain("loading={isCopying}");
-    expect(source).toContain("loading={isSharing}");
-    // [TEST-MOD-APPROVED #1615] The modal now prepares the stable short URL
-    // before copying. Pin that sequencing plus the existing pending/toast proof;
-    // the obsolete direct `url` copy would bypass the new public-share contract.
-    expect(source).toContain("const prepared=await ensurePrepared('copy_link');");
+    // [TEST-MOD-APPROVED #1719] Share and Copy now intentionally share one busy
+    // lock in the redesigned two-action sheet. The old independent provider-grid
+    // states no longer exist; pin the common lock and prepared short URL instead.
+    const source = repoFile("src/components/ui/ShareModal.tsx") +
+      repoFile("src/components/ui/ShareModalContent.tsx");
+    expect(source).toContain("const [busy, setBusy]");
+    expect(source).toContain("if (!prepared || busy) return;");
+    expect(source).toContain("setBusy(true)");
+    expect(source).toContain("setBusy(false)");
+    expect(source).toContain("disabled={!prepared || busy}");
     expect(source).toContain("await copyPublicUrl(prepared.url);");
-    expect(source).toContain('showToast("Link copied")');
-    expect(source).toContain("Copy failed");
+    expect(source).toContain("Couldn't copy the link. Please try again.");
     expect(source).not.toContain("Tap Share via to copy on iOS / Android.");
   });
 });

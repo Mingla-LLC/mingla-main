@@ -445,6 +445,7 @@ export default function PublicVenueRoute(): React.ReactElement {
           visible={shareModalVisible}
           onClose={() => setShareModalVisible(false)}
           url={canonicalUrl}
+          contentKind="venue"
           title={pageTitle}
           description={metaDescription}
         />

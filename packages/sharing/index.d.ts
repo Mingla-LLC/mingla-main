@@ -5,7 +5,13 @@ export type ShareMediaIdentity = {
   kind: 'photo' | 'gif' | 'video'; url: string; posterUrl: string;
   focalPoint?: { x: number; y: number }; alt?: string;
 };
+export type PublicShareDetails =
+  | { kind: 'place'; description?: string; address?: string; directionsUrl?: string; phone?: string; website?: string; utcOffsetMinutes?: number }
+  | { kind: 'curated'; estimate?: unknown; stops: { title: string; category?: string; area?: string; address?: string; description?: string; imageUrl?: string }[] }
+  | { kind: 'event' | 'rsvp_event' | 'trip' | 'experience'; actionEligible: boolean; occurrences: { startAt: string; endAt?: string; timezone?: string }[] }
+  | { kind: 'venue' | 'brand'; offerings: { title: string; kind: 'event' | 'rsvp' | 'trip' | 'experience'; brandSlug: string; eventSlug: string; startAt: string }[] };
 export type ShareDestination = { kind: ShareEntityKind; placeId?: string; eventSlug?: string; brandSlug?: string; venueSlug?: string };
+export type NativeContentCardDescriptorV1 = { contract: 'native_content_card_v1'; version: 1; kind: 'place' | 'curated'; snapshotRef: string; snapshotFingerprint: string; preview: { title: string; category?: string; image?: string; cardType?: 'single' | 'curated'; stopCount?: number } };
 type Common = { schemaVersion: 1; title: string; status?: ShareStatus; timezone?: string; media?: ShareMediaIdentity; route?: ShareDestination };
 export type ShareHoursRow = { day: string; label: string; isToday?: boolean; special?: string };
 export type ShareFactsV1 =
@@ -21,6 +27,7 @@ export const SHARE_FACTS_VERSION: 1;
 export const SHARE_PORTRAIT_REVISION: 2;
 export const SHARE_ENTITY_KINDS: readonly ShareEntityKind[];
 export const SHARE_STATUSES: readonly ShareStatus[];
+export const CONTENT_SHARE_NOTE_MAX_GRAPHEMES: 120;
 export const SHARE_CHANNEL_BUDGETS: Readonly<Record<'generic' | 'sms' | 'whatsapp' | 'x' | 'email', { beforeUrl: number; total: number }>>;
 export const ROUTE_MANIFEST: Readonly<Record<ShareEntityKind, { web: string; native: string; required: readonly string[] }>>;
 export function cleanText(value: unknown, max?: number): string;
@@ -44,11 +51,19 @@ export function formatMoney(value: unknown): string;
 export function formatEstimate(value: unknown): string;
 export function formatRating(value: unknown): string;
 export function statusLabel(value: unknown): string;
+export function shareKindLabel(value: unknown): string;
+export function segmentGraphemes(value: unknown): string[];
+export function normalizeContentShareNote(value: unknown): { note: string | null; graphemeCount: number };
 export function formatPlanningPreference(value: unknown): string;
 export function selectRecipientFacts(value: ShareFactsV1, context?: { includePlanningPreference?: boolean }): string[];
 export function selectPreviewFacts(value: ShareFactsV1, limit?: number): string[];
+export function selectCompactPreviewFacts(value: ShareFactsV1, limit?: number): string[];
 export function buildShareMessage(value: ShareFactsV1, context: { shortCode: string; channel?: 'generic' | 'sms' | 'whatsapp' | 'x' | 'email'; senderNote?: string; planningPreference?: string | { dayOfWeek?: string; timeOfDay?: string; planningTimeframe?: string } }): string;
 export function routeContractFor(kind: ShareEntityKind): { web: string; native: string; required: readonly string[] };
+export function validateNativeContentCardDescriptorV1(value: unknown): NativeContentCardDescriptorV1 | null;
+export function nativeContentCardCacheKey(userId: string, messageId: string): string;
+export function createNativeContentCardSessionCache<T>(): { clear(): void; set(userId: string, messageId: string, fingerprint: string, card: T): void; get(userId: string, messageId: string, fingerprint: string): T | null };
 export function createContentShareSingleFlight(): <T>(key: string, load: () => Promise<T>) => Promise<T>;
+export function checkContentShareReadiness(code: string, version: number, fetchImpl?: typeof fetch): Promise<'ready' | 'waiting' | 'transient' | 'terminal'>;
 export function weekdayForShareTimezone(timezone: string, now?: Date): string;
 export function openStateForHours(hours: ShareHoursRow[], timezone: string, now?: Date): '' | 'Open now' | 'Closed';

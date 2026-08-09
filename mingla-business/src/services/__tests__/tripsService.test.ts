@@ -106,7 +106,9 @@ describe("ORCH-0859 — tripsService.publishTrip", () => {
 
     expect(rpcMock).toHaveBeenCalledTimes(2);
     const [calledFn] = rpcMock.mock.calls[0] as [string, unknown];
-    expect(calledFn).toBe("business_publish_trip_draft");
+    // [TEST-MOD-APPROVED #1719] Publish now enters the atomic poster-triplet
+    // wrapper, which delegates to the proven trip publisher in one transaction.
+    expect(calledFn).toBe("issue_1719_publish_trip_with_poster");
     expect(calledFn).not.toBe("business_publish_event_draft");
     expect(rpcMock.mock.calls[1]).toEqual([
       "biz_trip_tickets_sold",

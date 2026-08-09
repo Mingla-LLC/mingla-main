@@ -167,6 +167,7 @@ const TOAST_NAV_DELAY_MS = 600;
 const REJECT_DIALOG_HANDOFF_MS = 450;
 const COVER_MEDIA_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "coverMediaUrl",
+  "coverMediaPosterUrl",
   "coverMediaType",
   "coverMediaProvider",
   "coverMediaSourceUrl",
@@ -1034,7 +1035,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
                 patch.coverMediaAlt !== undefined
                   ? patch.coverMediaAlt
                   : liveEvent.coverMediaAlt ?? null,
-            });
+            }, patch.coverMediaPosterUrl ?? (mediaType === "image" ? mediaUrl : null));
           }
         } catch (error) {
           setSubmitting(false);

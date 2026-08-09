@@ -56,6 +56,7 @@ describe("eventCoverMediaService set/clear split", () => {
       id: "event-1",
       cover_media_type: "video",
       cover_media_url: "https://cdn.example.com/cover.mp4",
+      cover_media_poster_url: "https://cdn.example.com/cover-poster.jpg",
     });
   });
 
@@ -66,6 +67,7 @@ describe("eventCoverMediaService set/clear split", () => {
         "https://cdn.example.com/cover.mp4",
         "video",
         metadata,
+        "https://cdn.example.com/cover-poster.jpg",
       ),
     ).resolves.toMatchObject({
       cover_media_type: "video",
@@ -82,10 +84,15 @@ describe("eventCoverMediaService set/clear split", () => {
         cover_media_source_url: "https://source.example.com/source.mov",
         cover_media_type: "video",
         cover_media_url: "https://cdn.example.com/cover.mp4",
+        cover_media_poster_url: "https://cdn.example.com/cover-poster.jpg",
       }),
     );
     expect(update.mock.calls[0][0]).not.toHaveProperty("cover_media_url", null);
-    expect(select).toHaveBeenCalledWith("id, cover_media_url, cover_media_type");
+    // [TEST-MOD-APPROVED #1719] The persistence proof now includes the stable
+    // poster because URL/type without its still is an incomplete motion cover.
+    expect(select).toHaveBeenCalledWith(
+      "id, cover_media_url, cover_media_type, cover_media_poster_url",
+    );
   });
 
   test("T-AMEND7-02: clearEventCover nulls the full cover column set", async () => {
@@ -129,11 +136,27 @@ describe("eventCoverMediaService set/clear split", () => {
         "https://cdn.example.com/cover.mp4",
         "video",
         metadata,
+        "https://cdn.example.com/cover-poster.jpg",
       ),
     ).rejects.toMatchObject({
       code: "persist_mismatch",
       message: "Save succeeded but the cover did not persist. Refresh and try again.",
       name: "EventCoverMediaError",
     });
+  });
+
+  test("#1719 rejects a motion cover before writing when its stable poster is absent", async () => {
+    await expect(
+      setEventCover(
+        "event-1",
+        "https://cdn.example.com/cover.mp4",
+        "video",
+        metadata,
+      ),
+    ).rejects.toMatchObject({
+      code: "upload_failed",
+      message: "Cover save failed because its fallback image is missing or invalid.",
+    });
+    expect(update).not.toHaveBeenCalled();
   });
 });

@@ -81,6 +81,7 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
     (patch: CoverPatch): void => {
       updateDraft({
         coverMediaUrl: patch.coverMediaUrl,
+        coverMediaPosterUrl: patch.coverMediaPosterUrl,
         coverMediaType: patch.coverMediaType,
         coverMediaProvider: patch.coverMediaProvider,
         coverMediaSourceUrl: patch.coverMediaSourceUrl,
@@ -176,6 +177,7 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
         target={target}
         initial={{
           coverMediaUrl: draft.coverMediaUrl ?? null,
+          coverMediaPosterUrl: draft.coverMediaPosterUrl ?? null,
           coverMediaType: draft.coverMediaType ?? null,
           coverMediaProvider: draft.coverMediaProvider ?? null,
           coverMediaSourceUrl: draft.coverMediaSourceUrl ?? null,

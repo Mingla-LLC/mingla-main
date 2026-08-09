@@ -15,11 +15,14 @@ test('MA1 authoritative reads include public cover/gallery/poster sources and ex
   for (const forbidden of ['event_cover_video_jobs', 'provider_payload', 'provider_response', 'raw_google_data']) assert.doesNotMatch(source, new RegExp(forbidden));
 });
 
-test('MA2 served event video uses gallery photo as immutable public poster', async () => {
+// [TEST-MOD-APPROVED #1719] A gallery photo is not necessarily a frame from
+// the video. #1719 requires the poster persisted with that exact cover identity.
+test('MA2 served event video uses its authoritative immutable poster', async () => {
   const mapper = await import(pathToFileURL(sourcePath));
   const media = mapper.mapServedMediaIdentity({
     title: 'Video event', cover_media_type: 'video', cover_media_url: storage('cover.mp4'),
-    cover_media_gallery: [{ url: storage('poster.jpg'), type: 'image' }], cover_media_alt: 'Crowd dancing',
+    cover_media_poster_url: storage('poster.jpg'),
+    cover_media_gallery: [{ url: storage('unrelated.jpg'), type: 'image' }], cover_media_alt: 'Crowd dancing',
   });
   assert.deepEqual(media, { kind: 'video', url: storage('cover.mp4'), posterUrl: storage('poster.jpg'), alt: 'Crowd dancing' });
 });

@@ -351,6 +351,9 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
             phone: st.contactPhone.trim() || undefined,
           },
           coverMediaUrl: coverChoice?.url ?? null,
+          coverMediaPosterUrl:
+            coverChoice?.posterUrl ??
+            (coverChoice?.type === "image" ? coverChoice.url : null),
           coverMediaType: coverChoice?.type ?? null,
           hours: st.hours,
           // issue #1564 — the venue's own colours/font/motion, authored at
@@ -406,6 +409,9 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
             countryCode: st.countryCode,
             venueCategory,
             coverMediaUrl: coverChoice?.url ?? null,
+            coverMediaPosterUrl:
+              coverChoice?.posterUrl ??
+              (coverChoice?.type === "image" ? coverChoice.url : null),
             coverMediaType: coverChoice?.type ?? null,
             // META-ORCH-1290 D-4 — tagline collapsed into the single Pitch field;
             // the wizard no longer collects a tagline (vestigial empty string).

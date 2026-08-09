@@ -97,7 +97,8 @@ export class ToolError extends Error {
 
 // Cover-media helpers (ORCH-1103). Cover url+type arrive ONLY from the
 // Add-cover picker via edited_args — the MODEL is instructed never to invent
-// them. They are written as an ATOMIC PAIR (both present + valid) or ignored.
+// them. They are written as an ATOMIC TRIPLET (URL, type, stable poster) or
+// ignored. Photos use themselves as their poster; GIF/video require a still.
 const COVER_MEDIA_TYPES = new Set(["image", "gif", "video"]);
 
 function isHttpsUrl(v: unknown): v is string {
@@ -106,15 +107,22 @@ function isHttpsUrl(v: unknown): v is string {
 
 function resolveCoverPair(
   args: Record<string, unknown>,
-): { cover_media_url: string; cover_media_type: string } | null {
+): { cover_media_url: string; cover_media_type: string; cover_media_poster_url: string } | null {
   const url = args.cover_media_url;
   const type = args.cover_media_type;
+  const requestedPoster = args.cover_media_poster_url;
   if (
     isHttpsUrl(url) &&
     typeof type === "string" &&
     COVER_MEDIA_TYPES.has(type)
   ) {
-    return { cover_media_url: url.trim(), cover_media_type: type };
+    const poster = type === "image" ? url : requestedPoster;
+    if (!isHttpsUrl(poster)) return null;
+    return {
+      cover_media_url: url.trim(),
+      cover_media_type: type,
+      cover_media_poster_url: poster.trim(),
+    };
   }
   return null; // atomic — if only one is present, ignore both
 }
@@ -164,6 +172,7 @@ const createBrand: AgentTool = {
       default_currency: { type: "string", description: "3-letter ISO currency code (e.g. USD, GBP, NGN). If omitted, uses the user's preferred currency." },
       cover_media_url: { type: "string", description: "Cover media URL — set by the Add cover picker, NOT by you. Leave unset; the user attaches it via the card." },
       cover_media_type: { type: "string", enum: ["image", "gif", "video"], description: "Cover media type. Set by the picker alongside cover_media_url." },
+      cover_media_poster_url: { type: "string", description: "Stable cover still — set by the Add cover picker alongside GIF/video media." },
     },
   },
   executor: async (args, client, userId) => {
@@ -197,12 +206,13 @@ const createBrand: AgentTool = {
     if (cover !== null) {
       row.cover_media_url = cover.cover_media_url;
       row.cover_media_type = cover.cover_media_type;
+      row.cover_media_poster_url = cover.cover_media_poster_url;
     }
 
     const { data, error } = await client
       .from("brands")
       .insert(row)
-      .select("id, name, slug, default_currency, cover_media_url, cover_media_type, created_at")
+      .select("id, name, slug, default_currency, cover_media_url, cover_media_poster_url, cover_media_type, created_at")
       .single();
     if (error) {
       // 23505 = Postgres unique_violation. The manual create-brand UI
@@ -463,6 +473,7 @@ const updateBrand: AgentTool = {
       default_currency: { type: "string", description: "New 3-letter ISO currency code" },
       cover_media_url: { type: "string", description: "Cover media URL — set by the Add cover picker, NOT by you." },
       cover_media_type: { type: "string", enum: ["image", "gif", "video"], description: "Cover media type, set by the picker alongside cover_media_url." },
+      cover_media_poster_url: { type: "string", description: "Stable cover still — set by the Add cover picker alongside GIF/video media." },
     },
   },
   executor: async (args, client, userId) => {
@@ -509,6 +520,7 @@ const updateBrand: AgentTool = {
     if (cover !== null) {
       updates.cover_media_url = cover.cover_media_url;
       updates.cover_media_type = cover.cover_media_type;
+      updates.cover_media_poster_url = cover.cover_media_poster_url;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -521,7 +533,7 @@ const updateBrand: AgentTool = {
       .update(updates)
       .eq("id", args.brand_id)
       .is("deleted_at", null)
-      .select("id, name, slug, default_currency, cover_media_url, cover_media_type, updated_at")
+      .select("id, name, slug, default_currency, cover_media_url, cover_media_poster_url, cover_media_type, updated_at")
       .single();
     if (error) {
       if ((error as { code?: string }).code === "23505") {

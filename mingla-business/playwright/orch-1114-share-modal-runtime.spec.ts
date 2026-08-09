@@ -30,12 +30,6 @@ import { chromium, expect, test, type Browser, type Page, type Route } from "@pl
 
 const PORT = 43114;
 const BASE = `http://127.0.0.1:${PORT}`;
-// The exported bundle bakes MINGLA_BUSINESS_WEB_URL from app.config.ts's `extra`
-// default (the production canonical origin), NOT the export-time env override —
-// so the ShareModal renders the REAL production URL. We assert exactly that, which
-// also proves SC-7's production-origin output at runtime (not just in the unit test).
-const ORIGIN = "https://business.usemingla.com";
-
 const WEB_BUILD = resolve(__dirname, "..", "web-build-orch1114");
 const STATIC_SERVER = resolve(__dirname, "meta-orch-0952-static-server.mjs");
 
@@ -46,6 +40,7 @@ const EXP_SLUG = "sunset-sail";
 const BRAND_ID = "11111111-1111-1111-1111-111111111111";
 const TRIP_EVENT_ID = "22222222-2222-2222-2222-222222222222";
 const EXP_EVENT_ID = "33333333-3333-3333-3333-333333333333";
+const SHORT_CODE = "Aa0Bb1Cc2Dd3Ee4F";
 
 const jsonHeaders = {
   "content-type": "application/json",
@@ -125,6 +120,24 @@ async function installPublicDataMocks(
       body = [];
     }
     route.fulfill({ status: 200, headers: jsonHeaders, body: JSON.stringify(body) });
+  });
+  await page.route("**/api/create-content-share", (route: Route) => {
+    route.fulfill({
+      status: 201,
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        shortCode: SHORT_CODE,
+        version: 1,
+        message: `${title} on Mingla\n\nhttps://usemingla.com/s/${SHORT_CODE}`,
+        facts: {
+          schemaVersion: 1,
+          kind: eventType,
+          title,
+          description: "An unforgettable day on the water.",
+        },
+        media: null,
+      }),
+    });
   });
 }
 
@@ -244,12 +257,12 @@ async function openPage(page: Page, kind: "trip" | "experience"): Promise<void> 
 
 for (const kind of ["trip", "experience"] as const) {
   const pathLabel = kind === "trip" ? "/t/" : "/exp/";
-  const expectedUrl =
-    kind === "trip"
-      ? `${ORIGIN}/t/${BRAND_SLUG}/${TRIP_SLUG}`
-      : `${ORIGIN}/exp/${BRAND_SLUG}/${EXP_SLUG}`;
+  const expectedUrl = `https://usemingla.com/s/${SHORT_CODE}`;
 
   test.describe(`ORCH-1114 ${pathLabel} runtime share gate`, () => {
+    // [TEST-MOD-APPROVED #1719] The old assertions required the superseded raw
+    // public URL and "Share via…" control. #1719 binds a server-created short
+    // URL plus Copy/QR on web, so this runtime gate now verifies that contract.
     test(`${pathLabel} Share tap OPENS ShareModal (not a dead tap)`, async () => {
       const page = await browser.newPage();
       try {
@@ -257,18 +270,17 @@ for (const kind of ["trip", "experience"] as const) {
 
         // Before tap: the ShareModal title bar "Share" sheet must NOT be present.
         // (The IconChrome aria-label is also "Share"; the modal exposes the
-        // "Copy link" + "Share via…" buttons, which are the unambiguous markers.)
-        await expect(page.getByText("Copy link", { exact: true })).toHaveCount(0);
+        // "Copy link" control, which is the unambiguous marker.)
+        await expect(page.getByLabel("Copy link", { exact: true })).toHaveCount(0);
 
         await page.getByLabel("Share").first().click();
 
         // RUNTIME FIRING PROOF: the modal mounted on tap.
-        await expect(page.getByText("Copy link", { exact: true })).toBeVisible({
+        await expect(page.getByLabel("Copy link", { exact: true })).toBeVisible({
           timeout: 10_000,
         });
-        await expect(page.getByText("Share via…", { exact: true })).toBeVisible();
-        // The URL row shows the canonical public URL for this surface.
-        await expect(page.getByText(expectedUrl, { exact: false })).toBeVisible();
+        await expect(page.getByLabel("Show QR", { exact: true })).toBeVisible();
+        await expect(page.getByText(expectedUrl, { exact: false })).toHaveCount(0);
       } finally {
         await page.close();
       }
@@ -279,13 +291,13 @@ for (const kind of ["trip", "experience"] as const) {
       try {
         await openPage(page, kind);
         await page.getByLabel("Share").first().click();
-        await expect(page.getByText("Copy link", { exact: true })).toBeVisible({
+        await expect(page.getByLabel("Copy link", { exact: true })).toBeVisible({
           timeout: 10_000,
         });
 
-        await page.getByText("Copy link", { exact: true }).click();
+        await page.getByLabel("Copy link", { exact: true }).click();
 
-        await expect(page.getByText("Link copied", { exact: true })).toBeVisible({
+        await expect(page.getByLabel("Link copied", { exact: true })).toBeVisible({
           timeout: 10_000,
         });
         const clip = await page.evaluate(
@@ -297,21 +309,20 @@ for (const kind of ["trip", "experience"] as const) {
       }
     });
 
-    test(`${pathLabel} Share via… → graceful "not supported" toast (no silent swallow)`, async () => {
+    test(`${pathLabel} QR reveals the short-link destination`, async () => {
       const page = await browser.newPage();
       try {
         await openPage(page, kind);
         await page.getByLabel("Share").first().click();
-        await expect(page.getByText("Share via…", { exact: true })).toBeVisible({
+        await expect(page.getByLabel("Show QR", { exact: true })).toBeVisible({
           timeout: 10_000,
         });
 
-        await page.getByText("Share via…", { exact: true }).click();
+        await page.getByLabel("Show QR", { exact: true }).click();
 
-        // navigator.share is undefined → sharePublicUrl throws → ShareModal toasts.
-        await expect(
-          page.getByText("Native share not supported on this browser.", { exact: true }),
-        ).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByText("Scan to open", { exact: true })).toBeVisible({
+          timeout: 10_000,
+        });
       } finally {
         await page.close();
       }

@@ -456,6 +456,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           : {
               ...prev,
               coverMediaUrl: patch.coverMediaUrl ?? undefined,
+              coverMediaPosterUrl: patch.coverMediaPosterUrl ?? undefined,
               // brands.cover_media_type is "image" | "gif" | "video" (optional).
               coverMediaType:
                 patch.coverMediaUrl === null
@@ -948,6 +949,7 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           }}
           initial={{
             coverMediaUrl: draft?.coverMediaUrl ?? null,
+            coverMediaPosterUrl: draft?.coverMediaPosterUrl ?? null,
             coverMediaType: draft?.coverMediaType ?? null,
             coverMediaProvider: null,
             coverMediaSourceUrl: null,

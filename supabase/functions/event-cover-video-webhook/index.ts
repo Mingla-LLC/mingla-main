@@ -30,6 +30,7 @@ const autoApplyEventCover = async (
   supabase: ReturnType<typeof serviceRoleClient>,
   job: { id: string; event_id: string | null; target_kind: string | null; apply_mode: string | null },
   processedUrl: string,
+  posterUrl: string,
 ): Promise<{ ok: true } | { ok: false }> => {
   if (job.target_kind === "brand" || job.apply_mode !== "draft_auto") {
     return { ok: true };
@@ -39,6 +40,7 @@ const autoApplyEventCover = async (
     .update({
       cover_media_type: "video",
       cover_media_url: processedUrl,
+      cover_media_poster_url: posterUrl,
       updated_at: new Date().toISOString(),
     })
     .eq("id", job.event_id)
@@ -167,7 +169,7 @@ export const handleBunnyWebhook = async (
   const supabase = deps.serviceRoleClient();
   const { data: existingJob, error: existingJobError } = await supabase
     .from("event_cover_video_jobs")
-    .select("id,status,event_id,target_kind,apply_mode,trim_start_ms,trim_end_ms,provider,source_public_id,source_asset_id,provider_payload")
+    .select("id,status,event_id,target_kind,apply_mode,trim_start_ms,trim_end_ms,provider,source_public_id,source_asset_id,provider_payload,processed_poster_url")
     .eq("source_asset_id", videoGuid)
     .maybeSingle();
   if (existingJobError) {
@@ -263,9 +265,15 @@ export const handleBunnyWebhook = async (
     return jsonResponse({ ok: true });
   }
 
+  const posterUrl = bunnyThumbnailUrl(videoGuid);
+  const posterHead = await headWithRetry(posterUrl, 3, 2000);
+  if (posterHead === null) {
+    await failJob("processed_poster_unavailable", "Processed video poster was not reachable.");
+    return jsonResponse({ ok: true });
+  }
   const providerPayload = mergeBunnyPayload(existingJob.provider_payload, {
     bunny_webhook: payload,
-    bunny_thumbnail: bunnyThumbnailUrl(videoGuid),
+    bunny_thumbnail: posterUrl,
   });
   const { data: readyJob, error: readyError } = await supabase
     .from("event_cover_video_jobs")
@@ -273,6 +281,7 @@ export const handleBunnyWebhook = async (
       applyMode: existingJob.apply_mode,
       derivative,
       providerPayload,
+      posterUrl,
     }))
     .eq("id", existingJob.id)
     .select("id,event_id,target_kind,apply_mode")
@@ -282,7 +291,7 @@ export const handleBunnyWebhook = async (
     return jsonResponse({ error: "internal_error" }, 500);
   }
 
-  const applied = await autoApplyEventCover(supabase, readyJob, derivative.url);
+  const applied = await autoApplyEventCover(supabase, readyJob, derivative.url, posterUrl);
   if (!applied.ok) {
     return jsonResponse({ ok: true, status: "ready", applyFailed: true });
   }

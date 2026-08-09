@@ -1,4 +1,4 @@
-import { buildShareMessage, buildSharePortraitUrl, buildShortShareUrl, contentShareRequestFromPublicUrl, createContentShareSingleFlight, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
+import { buildSharePortraitUrl, buildShortShareUrl, checkContentShareReadiness, contentShareRequestFromPublicUrl, createContentShareSingleFlight, selectCompactPreviewFacts, shareKindLabel, statusLabel, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 import { postHogService } from './postHogService';
@@ -7,14 +7,21 @@ import { captureWeb } from '../analytics/webAnalytics';
 import { emailIntent, smsIntent, twitterIntent, whatsappIntent } from '../utils/shareIntents';
 
 export type ContentShareRequest = { kind: ShareEntityKind; identity: Record<string,string> };
-export type PreparedBusinessShare = { shortCode:string; version:number; facts:ShareFactsV1; url:string; message:string; title:string; s4Url:string|null };
+export type PreparedBusinessShare = { shortCode:string; version:number; facts:ShareFactsV1; media:ShareMediaIdentity|null; url:string; message:string; title:string; s4Url:string|null };
 type CreatedShare={shortCode:string;version:number;facts:ShareFactsV1;media?:ShareMediaIdentity|null};
+type CreatedShareResponse=CreatedShare&{message:string};
 const singleFlight=createContentShareSingleFlight();
 
 export { contentShareRequestFromPublicUrl } from '@mingla/sharing';
+// ShareModalContent loads this adapter on demand. Re-export the preview helpers
+// through that same split boundary so @mingla/sharing is owned by one async
+// chunk instead of being hoisted into Metro's eager __common chunk.
+export { checkContentShareReadiness, selectCompactPreviewFacts, shareKindLabel, statusLabel };
 
-export function trackBusinessShareEvent(event:'share_sheet_opened'|'share_link_ready'|'share_sheet_returned'|'share_link_opened'|'share_failure',properties:Record<string,string|number|boolean>):void{
-  postHogService.capture(event,properties);captureWeb(event,properties);logAppsFlyerEvent(event,properties)
+export function trackBusinessShareEvent(event:'share_sheet_opened'|'share_link_ready'|'share_sheet_returned'|'share_link_opened'|'share_poster_result'|'share_failure',properties:Record<string,string|number|boolean>):void{
+  try{postHogService.capture(event,properties)}catch{/* telemetry never owns sharing */}
+  try{captureWeb(event,properties)}catch{/* telemetry never owns sharing */}
+  try{logAppsFlyerEvent(event,properties)}catch{/* telemetry never owns sharing */}
 }
 
 export function buildBusinessShareIntent(channel:'twitter'|'whatsapp'|'email'|'sms',url:string,title:string,message?:string):string{
@@ -29,17 +36,14 @@ export function isAllowedBusinessShareIntent(value:string):boolean{
   } catch { return false }
 }
 
-export function messageForPreparedBusinessShare(prepared:PreparedBusinessShare,channel='generic'):PreparedBusinessShare{
-  return {...prepared,message:buildShareMessage(prepared.facts,{shortCode:prepared.shortCode,channel:channel as never})}
-}
 
 export async function prepareBusinessContentShare(publicUrl:string,channel='generic',overrideKind?:ShareEntityKind):Promise<PreparedBusinessShare>{
   const request=contentShareRequestFromPublicUrl(publicUrl,overrideKind);if(!request)throw new Error('not_content_share');
   const key=JSON.stringify(request);const data=await singleFlight(key,async()=>{
     if(Platform.OS==='web'){
       const response=await fetch('/api/create-content-share',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({contract:'content_share_v1',...request,attribution:{channel}})});
-      const body=await response.json().catch(()=>null) as CreatedShare|null;if(!response.ok||!body?.shortCode||!body?.facts)throw new Error('share_create_failed');return body;
+      const body=await response.json().catch(()=>null) as CreatedShareResponse|null;if(!response.ok||!body?.shortCode||!body?.facts||!body.message)throw new Error('share_create_failed');return body;
     }
-    const {data,error}=await supabase.functions.invoke<CreatedShare>('shared-card',{body:{contract:'content_share_v1',...request,attribution:{channel}}});if(error||!data?.shortCode||!data?.facts)throw new Error(error?.message||'share_create_failed');return data
-  });const url=buildShortShareUrl(data.shortCode);return{shortCode:data.shortCode,version:data.version,facts:data.facts,url,title:data.facts.title,message:buildShareMessage(data.facts,{shortCode:data.shortCode,channel:channel as never}),s4Url:data.media==null?null:buildSharePortraitUrl(data.shortCode,data.version)}
+    const {data,error}=await supabase.functions.invoke<CreatedShareResponse>('shared-card',{body:{contract:'content_share_v1',...request,attribution:{channel}}});if(error||!data?.shortCode||!data?.facts||!data.message)throw new Error(error?.message||'share_create_failed');return data
+  });const url=buildShortShareUrl(data.shortCode);return{shortCode:data.shortCode,version:data.version,facts:data.facts,media:data.media??null,url,title:data.facts.title,message:data.message,s4Url:data.media==null?null:buildSharePortraitUrl(data.shortCode,data.version)}
 }

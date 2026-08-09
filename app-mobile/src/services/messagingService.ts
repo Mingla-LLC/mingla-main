@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { blockService } from './blockService';
 import { getDisplayName } from '../utils/getDisplayName';
+import type { NativeContentCardDescriptorV1, PublicShareDetails, ShareDestination, ShareEntityKind, ShareFactsV1, ShareMediaIdentity } from '@mingla/sharing';
 
 /**
  * ORCH-0667 + ORCH-0685: snapshot payload for shared-card chat messages.
@@ -20,12 +21,14 @@ import { getDisplayName } from '../utils/getDisplayName';
  * defined in trimCardPayload below: drop optional rich fields first,
  * essentials never dropped.
  */
-export interface CardPayload {
+export interface LegacyCardPayload {
   // ── REQUIRED ESSENTIALS (never dropped under size pressure) ─────────────
   id: string;                    // place_pool.id — analytics dedup; NOT for refetch
   title: string;                 // hero / bubble title
   category: string | null;       // canonical slug (e.g., 'casual_food'); rendered via getReadableCategoryName at consumer site
   image: string | null;          // primary image URL
+
+  contract?: never;
 
   // ── ORCH-0685 DEC-1 ADDITIONS — modal-render-relevant ──────────────────
   /** lat/lng pair. Required by ExpandedCardModal weather + busyness + booking fetch gates. */
@@ -104,6 +107,30 @@ export interface CardPayload {
   estimatedDurationMinutes?: number;
 }
 
+/** #1719 immutable eight-kind Mingla-chat share. All fields are server-built. */
+export interface ContentShareCardPayloadV1 {
+  contract: 'content_share_card_v1';
+  id: string;
+  title: string;
+  category: string;
+  image: string | null;
+  shareCode: string;
+  shareVersion: number;
+  kind: ShareEntityKind;
+  facts: ShareFactsV1;
+  destination: ShareDestination;
+  publicDetails?: PublicShareDetails | null;
+  media: ShareMediaIdentity | null;
+  senderNote?: string;
+  nativeCard?: NativeContentCardDescriptorV1;
+}
+
+export type CardPayload = LegacyCardPayload | ContentShareCardPayloadV1;
+
+export function isContentShareCardPayload(payload: CardPayload): payload is ContentShareCardPayloadV1 {
+  return payload.contract === 'content_share_card_v1';
+}
+
 /**
  * ORCH-0910: minimum viable per-stop fields for an intent card in the 5KB chat payload budget.
  * Stricter subset of CuratedStop — drops imageUrls[1..N] and openingHours to fit.
@@ -176,7 +203,7 @@ export interface MentionEntry {
 
 export interface CardTagEntry {
   savedCardId: string;
-  cardPayload: CardPayload;
+  cardPayload: LegacyCardPayload;
 }
 
 const COLLAB_TOKEN_USER_ID = '[a-zA-Z0-9_-]+';
@@ -241,9 +268,9 @@ export function isCollabDeadEndBannerMessage(content: unknown): boolean {
  *   - Cross-ref: ORCH-0659/0660. Enforced by:
  *     I-CHAT-CARDPAYLOAD-NO-RECIPIENT-RELATIVE-FIELDS (CI-gated).
  */
-export function trimCardPayload(card: any): CardPayload {
+export function trimCardPayload(card: any): LegacyCardPayload {
   // [ORCH-0685 RC-2 FIX] Required essentials — never dropped, never absent.
-  const trimmed: CardPayload = {
+  const trimmed: LegacyCardPayload = {
     id: card.id,
     title: card.title || 'Saved experience',
     category: card.category ?? null,
@@ -359,7 +386,7 @@ export function trimCardPayload(card: any): CardPayload {
   // ORCH-0685 §6.3 + ORCH-0910 — drop optional fields in reverse priority if over budget.
   // 'location', 'placeId', 'categoryIcon', 'image', 'cardType' are NOT in dropOrder.
   // For curated cards: drop stop-soft-fields BEFORE dropping whole stops.
-  const dropOrder: (keyof CardPayload)[] = [
+  const dropOrder: (keyof LegacyCardPayload)[] = [
     'matchFactors',
     'socialStats',
     'tags',
@@ -744,6 +771,7 @@ export class MessagingService {
 
       // #668: support threads live in the shared chat system but belong on the
       // business support inbox only — mirror useNotifications' business.% exclusion.
+      const accessPromise = supabase.rpc('list_connection_conversation_access');
       const conversationsPromise = supabase
         .from('conversations')
         .select(`
@@ -768,13 +796,20 @@ export class MessagingService {
         .or(`sender_id.neq.${userId},sender_id.is.null`)
         .is('deleted_at', null);
 
-      const [conversationsResult, unreadResult] = await Promise.all([
+      const [accessResult, conversationsResult, unreadResult] = await Promise.all([
+        accessPromise,
         conversationsPromise,
         unreadPromise,
       ]);
 
+      if (accessResult.error) throw accessResult.error;
       if (conversationsResult.error) throw conversationsResult.error;
       if (unreadResult.error) throw unreadResult.error;
+
+      const accessByConversation = new Map(
+        ((accessResult.data ?? []) as Array<{ conversation_id: string; archived_at: string | null }>)
+          .map((row) => [row.conversation_id, row.archived_at]),
+      );
 
       const unreadByConv = new Map<string, number>();
       for (const msg of unreadResult.data || []) {
@@ -790,6 +825,7 @@ export class MessagingService {
 
       const senderIds = new Set<string>();
       for (const conv of conversationsResult.data || []) {
+        if (!accessByConversation.has(conv.id)) continue;
         const raw = Array.isArray((conv as any).last_message)
           ? (conv as any).last_message[0]
           : (conv as any).last_message;
@@ -808,6 +844,7 @@ export class MessagingService {
 
       const conversations: Conversation[] = [];
       for (const conv of conversationsResult.data || []) {
+        if (!accessByConversation.has(conv.id)) continue;
         const lastMessageRaw = Array.isArray((conv as any).last_message)
           ? (conv as any).last_message[0]
           : (conv as any).last_message;
@@ -842,7 +879,8 @@ export class MessagingService {
           participants: (conv as any).participants || [],
           last_message: lastMessage,
           unread_count: unreadByConv.get(conv.id) || 0,
-        });
+          archived_at: accessByConversation.get(conv.id) ?? null,
+        } as Conversation & { archived_at: string | null });
       }
 
       return { conversations, error: null };
@@ -1184,19 +1222,34 @@ export class MessagingService {
    */
   async leaveGroupConversation(
     conversationId: string,
-    userId: string,
+    _userId: string,
   ): Promise<{ error: string | null }> {
     try {
-      const { error } = await supabase
-        .from('conversation_participants')
-        .delete()
-        .eq('conversation_id', conversationId)
-        .eq('user_id', userId);
+      const { error } = await supabase.rpc('leave_group_conversation', {
+        p_conversation_id: conversationId,
+      });
 
       if (error) throw error;
       return { error: null };
     } catch (error: any) {
       console.error('Error leaving group conversation:', error);
+      return { error: error.message };
+    }
+  }
+
+  async setConversationLifecycle(
+    conversationId: string,
+    action: 'archive' | 'unarchive' | 'hide',
+  ): Promise<{ error: string | null }> {
+    try {
+      const { error } = await supabase.rpc('set_conversation_lifecycle', {
+        p_conversation_id: conversationId,
+        p_action: action,
+      });
+      if (error) throw error;
+      return { error: null };
+    } catch (error: any) {
+      console.error('Error updating conversation lifecycle:', error);
       return { error: error.message };
     }
   }

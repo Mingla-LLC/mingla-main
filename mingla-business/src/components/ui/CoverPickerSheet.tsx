@@ -197,6 +197,7 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
               target={target}
               initialCoverHue={initialCoverHue}
               initialMediaUrl={initial.coverMediaUrl}
+              initialMediaPosterUrl={initial.coverMediaPosterUrl}
               initialMediaType={initial.coverMediaType}
               initialProvider={initial.coverMediaProvider}
               initialSourceUrl={initial.coverMediaSourceUrl}

@@ -79,8 +79,14 @@ export function findUnauthorizedConstructs(source, relativePath = 'unknown.ts') 
 function isAuthorizedContentCall(source, signature) {
   if (signature === 'react_native_share' || signature === 'browser_share') {
     if (/^\s*\/\/\s*SHARE-SEMANTIC-ROLE:content-adapter\s*$/m.test(source)) {
+      // [TEST-MOD-APPROVED #1719] Written reason: #1719 removed client-side
+      // message construction. A canonical adapter must now consume the
+      // server-authored immutable `data.message`; requiring buildShareMessage
+      // would force the exact second formatter the binding spec forbids.
+      const serverAuthoredMessage = /\bmessage:\s*data\.message\b/.test(source)
+        && !/\bbuildShareMessage\s*\(/.test(source);
       return /from\s+['"]@mingla\/sharing['"]/.test(source)
-      && /\bbuildShareMessage\s*\(/.test(source)
+      && serverAuthoredMessage
       && /\bbuildShortShareUrl\s*\(/.test(source);
     }
     if (/^\s*\/\/\s*SHARE-SEMANTIC-ROLE:content-transport\s*$/m.test(source)) {

@@ -276,9 +276,11 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — TESTER adversari
       expect(SRC).toMatch(/setShareModalVisible\(true\)/);
       // ShareModal.handleNativeShare wraps the native share in a silent try/catch
       // (user-cancel swallowed; only a web-unsupported toast surfaces).
-      const modalSrc = read("components/ui/ShareModal.tsx");
+      // [TEST-MOD-APPROVED #1719] The redesigned share action and its lazy
+      // wrapper are one runtime surface; the handler is now named `share`.
+      const modalSrc = read("components/ui/ShareModal.tsx") + read("components/ui/ShareModalContent.tsx");
       expect(modalSrc).toMatch(
-        /const handleNativeShare[\s\S]*?try\s*\{[\s\S]*?await sharePublicUrl\([\s\S]*?\}\s*catch\s*\{/,
+        /const share[\s\S]*?try\s*\{[\s\S]*?await sharePublicUrl\([\s\S]*?\}\s*catch\s*\{/,
       );
       // the underlying native Share.share() lives in the shared util it delegates to.
       const shareUtil = read("utils/sharePublicUrl.ts");

@@ -57,6 +57,7 @@ export const FIELD_LABELS: Record<string, string> = {
   inclusions: "Inclusions",
   pricing_tiers: "Pricing tiers",
   cover_media_url: "Cover image",
+  cover_media_poster_url: "Cover poster",
   cover_media_type: "Cover media type",
   cover_media_provider: "Cover provider",
   cover_media_source_url: "Cover source",
@@ -98,6 +99,7 @@ export const SAFE_KEYS: ReadonlyArray<string> = [
   "title",
   "description",
   "cover_media_url",
+  "cover_media_poster_url",
   "cover_media_type",
   "cover_media_provider",
   "cover_media_source_url",
@@ -373,6 +375,7 @@ export const computeRichTripFieldDiffs = (
     inclusions?: TripInclusionInput[];
     pricing_tiers?: TripPricingTierInput[];
     cover_media_url?: string | null;
+    cover_media_poster_url?: string | null;
     cover_media_type?: "image" | "video" | "gif" | null;
     cover_media_provider?: string | null;
     cover_media_source_url?: string | null;
@@ -522,6 +525,7 @@ export const computeRichTripFieldDiffs = (
   // Cover changes
   const coverKeys: ReadonlyArray<keyof typeof patch> = [
     "cover_media_url",
+    "cover_media_poster_url",
     "cover_media_type",
     "cover_media_provider",
     "cover_media_source_url",

@@ -1116,6 +1116,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           }}
           initial={{
             coverMediaUrl: brand.coverMediaUrl ?? null,
+            coverMediaPosterUrl: brand.coverMediaPosterUrl ?? null,
             coverMediaType: brand.coverMediaType ?? null,
             coverMediaProvider: null,
             coverMediaSourceUrl: null,
@@ -1130,6 +1131,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                 : {
                     ...prev,
                     coverMediaUrl: patch.coverMediaUrl ?? undefined,
+                    coverMediaPosterUrl: patch.coverMediaPosterUrl ?? undefined,
                     coverMediaType:
                       patch.coverMediaUrl === null
                         ? undefined

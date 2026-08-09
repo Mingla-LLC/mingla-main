@@ -58,6 +58,7 @@ export function useEventCoverVideoUpload(
   stage: EventCoverVideoUploadStage;
   status: EventCoverVideoStatus | null;
   processedUrl: string | null;
+  processedPosterUrl: string | null;
   localPreviewUri: string | null;
   error: Error | null;
 } {
@@ -72,6 +73,7 @@ export function useEventCoverVideoUpload(
   const [stage, setStage] = useState<EventCoverVideoUploadStage>(idleStage);
   const [status, setStatus] = useState<EventCoverVideoStatus | null>(null);
   const [processedUrl, setProcessedUrl] = useState<string | null>(null);
+  const [processedPosterUrl, setProcessedPosterUrl] = useState<string | null>(null);
   const [localPreviewUri, setLocalPreviewUri] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
@@ -106,6 +108,7 @@ export function useEventCoverVideoUpload(
       setError(null);
       setStatus(null);
       setProcessedUrl(null);
+      setProcessedPosterUrl(null);
       setLocalPreviewUri(file.uri);
       setStage({ phase: "compressing", percent: 0 });
 
@@ -188,6 +191,7 @@ export function useEventCoverVideoUpload(
         }
         setStatus(ready);
         setProcessedUrl(ready.processedUrl);
+        setProcessedPosterUrl(ready.processedPosterUrl);
         setLocalPreviewUri(null);
         setStage({ phase: "ready", percent: 100 });
         invalidateEventCaches();
@@ -243,6 +247,7 @@ export function useEventCoverVideoUpload(
     error,
     localPreviewUri,
     processedUrl,
+    processedPosterUrl,
     stage,
     start,
     status,

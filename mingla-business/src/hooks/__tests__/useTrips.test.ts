@@ -57,8 +57,10 @@ describe("ORCH-0859 — useTrips structural contract", () => {
   });
 
   test("tripsService.publishTrip calls business_publish_trip_draft RPC (NOT event RPC)", () => {
+    // [TEST-MOD-APPROVED #1719] Pin the new atomic poster wrapper instead of
+    // the retired direct entry point; the event/trip separation is unchanged.
     expect(tripsServiceSource).toMatch(
-      /supabase\.rpc\(\s*"business_publish_trip_draft"/,
+      /supabase\.rpc\(\s*"issue_1719_publish_trip_with_poster"/,
     );
     expect(tripsServiceSource).not.toMatch(
       /supabase\.rpc\(\s*"business_publish_event_draft"/,

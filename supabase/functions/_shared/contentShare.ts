@@ -15,7 +15,7 @@ type RecordLike = Record<string, any>;
 type QueryClient = { from(table: string): any; rpc(name: string, args?: Record<string, unknown>): any };
 
 /** Exact deployed public.place_pool columns consumed by the V1 share mapper. */
-export const PLACE_POOL_SHARE_SELECT = "id,google_place_id,name,address,city,primary_type_display_name,primary_type,rating,price_level,utc_offset_minutes,editorial_summary,generative_summary,opening_hours,stored_photo_urls,google_maps_uri,national_phone_number,website,is_active,is_servable";
+export const PLACE_POOL_SHARE_SELECT = "id,google_place_id,name,address,city,country_code,primary_type_display_name,primary_type,rating,review_count,price_level,price_min,price_max,utc_offset_minutes,editorial_summary,generative_summary,opening_hours,stored_photo_urls,google_maps_uri,national_phone_number,website,lat,lng,is_active,is_servable";
 
 const clean = (value: unknown, max = 160): string =>
   typeof value === "string"
@@ -134,10 +134,14 @@ const imageFallback = (row: RecordLike): string | null => {
 export function mapServedMediaIdentity(row: RecordLike): RecordLike | null {
   const primary = publicMediaUrl(row.cover_media_url);
   const type = clean(row.cover_media_type, 12);
+  const authoritativePoster = publicMediaUrl(row.cover_media_poster_url);
   const fallback = imageFallback(row);
   const alt = clean(row.cover_media_alt || row.name || row.title, 240);
-  if (primary && type === "video" && fallback) return compact({ kind: "video", url: primary, posterUrl: fallback, alt });
-  if (primary && type === "gif" && fallback) return compact({ kind: "gif", url: primary, posterUrl: fallback, alt });
+  // #1719: animated covers are shareable only when the same cover identity has
+  // an explicitly persisted poster. A gallery/logo fallback can be unrelated
+  // and must never masquerade as the video's/GIF's still.
+  if (primary && type === "video" && authoritativePoster) return compact({ kind: "video", url: primary, posterUrl: authoritativePoster, alt });
+  if (primary && type === "gif" && authoritativePoster) return compact({ kind: "gif", url: primary, posterUrl: authoritativePoster, alt });
   if (primary && (type === "image" || !type)) return compact({ kind: "photo", url: primary, posterUrl: primary, alt });
   if (fallback) return compact({ kind: "photo", url: fallback, posterUrl: fallback, alt });
   return null;
@@ -180,6 +184,274 @@ export function normalizeServedHours(value: unknown): RecordLike[] | undefined {
   }
   return byDay.size === 7 ? DAYS.map((day) => ({ day, label: byDay.get(day)!.join(", ") })) : undefined;
 }
+
+const nativeText = (value: unknown, max: number, required = false): string | undefined => {
+  if (value === undefined || value === null || value === "") {
+    if (required) throw new Error("invalid_native_snapshot");
+    return undefined;
+  }
+  if (typeof value !== "string" || Array.from(value).length > max || /[\u0000-\u001f\u007f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u.test(value)) throw new Error("invalid_native_snapshot");
+  return value.normalize("NFC");
+};
+const nativeNumberInRange = (value: unknown, min: number, max: number, integer = false): number | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) throw new Error("invalid_native_snapshot");
+  return value;
+};
+const nativeLatitude = (value: unknown): number | undefined => nativeNumberInRange(value, -90, 90);
+const nativeLongitude = (value: unknown): number | undefined => nativeNumberInRange(value, -180, 180);
+const nativeRating = (value: unknown): number | undefined => nativeNumberInRange(value, 0, 5);
+const nativeCount = (value: unknown): number | undefined => nativeNumberInRange(value, 0, Number.MAX_SAFE_INTEGER, true);
+const nativeMoney = (value: unknown): number | undefined => nativeNumberInRange(value, 0, Number.MAX_SAFE_INTEGER);
+const nativeMinorMoney = (value: unknown): number | undefined => nativeNumberInRange(value, 0, Number.MAX_SAFE_INTEGER, true);
+const nativePositiveInteger = (value: unknown): number | undefined => nativeNumberInRange(value, 1, Number.MAX_SAFE_INTEGER, true);
+const nativeUtcOffsetMinutes = (value: unknown): number | undefined => nativeNumberInRange(value, -720, 840, true);
+const nativeCountryCode = (value: unknown): string | undefined => {
+  const code = nativeText(value, 2);
+  if (code !== undefined && !/^[A-Z]{2}$/.test(code)) throw new Error("invalid_native_snapshot");
+  return code;
+};
+const nativeBoolean = (value: unknown): boolean | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "boolean") throw new Error("invalid_native_snapshot");
+  return value;
+};
+const exactObjectKeys = (value: RecordLike, allowed: string[]): boolean => Object.keys(value).every((key) => allowed.includes(key));
+const nativeHours = (value: unknown): unknown => {
+  if (value === undefined) return undefined; if (value === null) return null;
+  if (typeof value === "string") return nativeText(value, 4000, true);
+  if (Array.isArray(value)) {
+    if (value.length > 7) throw new Error("invalid_native_snapshot");
+    return value.map((item) => nativeText(item, 500, true)!);
+  }
+  if (!value || typeof value !== "object") throw new Error("invalid_native_snapshot");
+  const row=value as RecordLike;
+  if (exactObjectKeys(row,["open_now","weekday_text"])) return compact({open_now:nativeBoolean(row.open_now),weekday_text:nativeStrings(row.weekday_text,500,7)});
+  if (exactObjectKeys(row,["lines"])) return {lines:nativeStrings(row.lines,500,7)};
+  if (exactObjectKeys(row,["openNow","periods","nextOpenTime","nextCloseTime","weekdayDescriptions"])) {
+    let periods:RecordLike[]|undefined;
+    if(row.periods!==undefined){if(!Array.isArray(row.periods)||row.periods.length>32)throw new Error("invalid_native_snapshot");periods=row.periods.map((raw:unknown)=>{
+      if(!raw||typeof raw!=="object"||Array.isArray(raw)||!exactObjectKeys(raw as RecordLike,["open","close"]))throw new Error("invalid_native_snapshot");
+      const point=(candidate:unknown)=>{if(candidate===undefined)return undefined;if(!candidate||typeof candidate!=="object"||Array.isArray(candidate)||!exactObjectKeys(candidate as RecordLike,["day","hour","minute","date"]))throw new Error("invalid_native_snapshot");const p=candidate as RecordLike;return compact({day:nativeNumberInRange(p.day,0,6,true),hour:nativeNumberInRange(p.hour,0,23,true),minute:nativeNumberInRange(p.minute,0,59,true),date:nativeText(p.date,40)});};
+      return compact({open:point((raw as RecordLike).open),close:point((raw as RecordLike).close)});
+    });}
+    return compact({openNow:nativeBoolean(row.openNow),periods,nextOpenTime:nativeText(row.nextOpenTime,80),nextCloseTime:nativeText(row.nextCloseTime,80),weekdayDescriptions:nativeStrings(row.weekdayDescriptions,500,7)});
+  }
+  const days=["monday","tuesday","wednesday","thursday","friday","saturday","sunday"];
+  if(Object.keys(row).length<=7&&Object.keys(row).every((key)=>days.includes(key))) return Object.fromEntries(Object.entries(row).map(([key,item])=>[key,nativeText(item,500,true)]));
+  throw new Error("invalid_native_snapshot");
+};
+const nativeSocialStats=(value:unknown):RecordLike|undefined=>{
+  if(value===undefined||value===null)return undefined;if(typeof value!=="object"||Array.isArray(value))throw new Error("invalid_native_snapshot");
+  const row=value as RecordLike;if(!exactObjectKeys(row,["views","likes","saves","shares"]))throw new Error("invalid_native_snapshot");
+  return compact({views:nativeCount(row.views),likes:nativeCount(row.likes),saves:nativeCount(row.saves),shares:nativeCount(row.shares)});
+};
+const nativeImages = (values: unknown, maxItems: number): string[] => {
+  if (values === undefined || values === null) return [];
+  if (!Array.isArray(values) || values.length > maxItems) throw new Error("invalid_native_snapshot");
+  return values.map((value) => {
+    const candidate = nativeText(value, 2048, true)!;
+    const url = publicMediaUrl(candidate); if (!url) throw new Error("invalid_native_snapshot"); return url;
+  });
+};
+const nativeExternalUrl = (value: unknown): string | undefined => {
+  if (value === undefined || value === null || value === "") return undefined;
+  const candidate=nativeText(value,2048,true)!; const url=publicExternalUrl(candidate);
+  if (!url) throw new Error("invalid_native_snapshot"); return url;
+};
+const nativeStrings = (value: unknown, max: number, maxItems: number): string[] | undefined => {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || value.length > maxItems) throw new Error("invalid_native_snapshot");
+  return value.map((item) => nativeText(item, max, true)!);
+};
+const priceFields = (source: RecordLike): RecordLike => compact({
+  priceRangeStatus: nativeText(source.priceRangeStatus, 32), sourceMinMinor: nativeMinorMoney(source.sourceMinMinor),
+  sourceMaxMinor: nativeMinorMoney(source.sourceMaxMinor), sourceCurrencyCode: nativeText(source.sourceCurrencyCode, 3),
+  sourceMinorUnitExponent: nativeNumberInRange(source.sourceMinorUnitExponent, 0, 6, true), displayMinMinor: nativeMinorMoney(source.displayMinMinor),
+  displayMaxMinor: nativeMinorMoney(source.displayMaxMinor), displayCurrencyCode: nativeText(source.displayCurrencyCode, 3),
+  displayMinorUnitExponent: nativeNumberInRange(source.displayMinorUnitExponent, 0, 6, true), priceIsApproximate: nativeBoolean(source.priceIsApproximate),
+  fxSnapshotId: nativeText(source.fxSnapshotId, 128), fxProvider: nativeText(source.fxProvider, 80),
+  fxProviderUpdatedAt: nativeText(source.fxProviderUpdatedAt, 80), fxFreshness: nativeText(source.fxFreshness, 32),
+});
+
+const NATIVE_PLACE_SOURCE_KEYS = [
+  "id","google_place_id","name","address","city","country_code","primary_type_display_name","primary_type","rating","review_count",
+  "price_level","price_min","price_max","utc_offset_minutes","editorial_summary","generative_summary","opening_hours","stored_photo_urls",
+  "google_maps_uri","national_phone_number","website","lat","lng","is_active","is_servable",
+  "placeId","googlePlaceId","placePoolId","place_pool_id","experience_id","title","category","categoryIcon","image","images","description","fullDescription",
+  "reviewCount","priceRange","priceRangeStatus","sourceMinMinor","sourceMaxMinor","sourceCurrencyCode","sourceMinorUnitExponent",
+  "displayMinMinor","displayMaxMinor","displayCurrencyCode","displayMinorUnitExponent","priceIsApproximate","fxSnapshotId","fxProvider",
+  "fxProviderUpdatedAt","fxFreshness","openingHours","utcOffsetMinutes","phone","countryCode","highlights","tags","socialStats","cardType",
+  "tagline","categoryLabel","pairingKey","experienceType","totalPriceMin","totalPriceMax","estimatedDurationMinutes","shoppingList","tip",
+  "priceTier","budget","oneLiner","websiteUri","googleMapsUri","location","selectedDateTime","strollData","picnicData","nightOutData","dateAdded","source","sourceScope",
+  "sourceRecordId","lockInEvent","scheduledAt","durationMinutes","lockerUserId","savedCardId","sessionId","teaserText","_locked",
+  "matchScore","matchFactors","recommendationReasons","distance","distanceKm","distanceFromUserKm","travelTime","travelMode",
+];
+const NATIVE_CURATED_SOURCE_KEYS = [
+  "id","experience_id","cardType","experienceType","pairingKey","title","tagline","categoryLabel","category","categoryIcon","image","images","description",
+  "fullDescription","stops","totalPriceMin","totalPriceMax","estimatedDurationMinutes","shoppingList","tip","priceTier","budget","oneLiner",
+  "rating","reviewCount","travelTime","priceRange","priceRangeStatus","sourceMinMinor","sourceMaxMinor","sourceCurrencyCode","sourceMinorUnitExponent",
+  "displayMinMinor","displayMaxMinor","displayCurrencyCode","displayMinorUnitExponent","priceIsApproximate","fxSnapshotId","fxProvider",
+  "fxProviderUpdatedAt","fxFreshness","address","openingHours","utcOffsetMinutes","highlights","tags","socialStats","lat","lng","website",
+  "websiteUri","phone","countryCode","placeId","googlePlaceId","placePoolId","googleMapsUri","location","selectedDateTime","strollData",
+  "picnicData","nightOutData","dateAdded","source",
+  "sourceScope","sourceRecordId","teaserText","_locked","lockInEvent","scheduledAt","durationMinutes","lockerUserId","savedCardId","sessionId",
+  "matchScore","matchFactors","recommendationReasons","distance","distanceKm","travelTime","travelMode",
+];
+const NATIVE_CURATED_STOP_KEYS = [
+  "stopNumber","stopLabel","placeId","placeName","placeType","address","rating","reviewCount","imageUrl","imageUrls","priceLevelLabel",
+  "priceTier","priceMin","priceMax","openingHours","utcOffsetMinutes","isOpenNow","website","lat","lng","aiDescription",
+  "estimatedDurationMinutes","optional","dismissible","role","phone","countryCode","comboCategory","rankSignal","distanceFromUserKm",
+  "travelTimeFromUserMin","travelTimeFromPreviousStopMin","travelModeFromPreviousStop",
+];
+
+/** Explicit recipient-safe allowlist. Private ownership, provider payloads,
+ * processing metadata and internal notes cannot enter a native chat card. */
+export function buildNativeContentCardSnapshot(kind: "place" | "curated", row: RecordLike): RecordLike {
+  const card = row.card_data && typeof row.card_data === "object" && !Array.isArray(row.card_data) ? row.card_data : {};
+  const source = kind === "curated" ? card : row;
+  if (!exactObjectKeys(source, kind === "curated" ? NATIVE_CURATED_SOURCE_KEYS : NATIVE_PLACE_SOURCE_KEYS)) throw new Error("invalid_native_snapshot");
+  if ((kind === "curated" && source.cardType !== undefined && source.cardType !== "curated")
+    || (kind === "place" && source.cardType !== undefined && source.cardType !== "single")) throw new Error("invalid_native_snapshot");
+  const sourceImages = source.images === undefined ? [] : nativeImages(source.images, 6);
+  const poolImages = source.image || sourceImages.length ? [] : nativeImages(row.stored_photo_urls ?? [], 6);
+  const image = source.image ? nativeImages([source.image], 1)[0] : sourceImages[0] || poolImages[0];
+  const images = sourceImages.length ? sourceImages : image ? [image, ...poolImages.filter((item) => item !== image)] : poolImages;
+  let stops: RecordLike[] | undefined;
+  if (kind === "curated") {
+    if (!Array.isArray(card.stops) || card.stops.length === 0 || card.stops.length > 24) throw new Error("invalid_native_snapshot");
+    stops = card.stops.map((raw: unknown) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid_native_snapshot");
+      const stop = raw as RecordLike;
+      if (!exactObjectKeys(stop, NATIVE_CURATED_STOP_KEYS)) throw new Error("invalid_native_snapshot");
+      const imageUrl = stop.imageUrl ? nativeImages([stop.imageUrl], 1)[0] : undefined;
+      const imageUrls = stop.imageUrls === undefined ? undefined : nativeImages(stop.imageUrls, 5);
+      return compact({
+        stopNumber: nativePositiveInteger(stop.stopNumber), stopLabel: nativeText(stop.stopLabel, 40),
+        placeId: nativeText(stop.placeId, 256, true), placeName: nativeText(stop.placeName, 160, true), placeType: nativeText(stop.placeType, 120),
+        address: nativeText(stop.address, 500), rating: nativeRating(stop.rating), reviewCount: nativeCount(stop.reviewCount),
+        imageUrl, imageUrls, priceLevelLabel: nativeText(stop.priceLevelLabel, 80), priceTier: nativeText(stop.priceTier, 40),
+        priceMin: nativeMoney(stop.priceMin), priceMax: nativeMoney(stop.priceMax), openingHours: nativeHours(stop.openingHours),
+        utcOffsetMinutes: nativeUtcOffsetMinutes(stop.utcOffsetMinutes), isOpenNow: stop.isOpenNow === null ? null : nativeBoolean(stop.isOpenNow),
+        website: stop.website === null ? null : nativeExternalUrl(stop.website),
+        lat: nativeLatitude(stop.lat), lng: nativeLongitude(stop.lng), aiDescription: nativeText(stop.aiDescription, 4000),
+        estimatedDurationMinutes: nativePositiveInteger(stop.estimatedDurationMinutes), optional: nativeBoolean(stop.optional), dismissible: nativeBoolean(stop.dismissible),
+        role: nativeText(stop.role, 80), phone: stop.phone === null ? null : nativeText(stop.phone, 80),
+        countryCode: stop.countryCode === null ? null : nativeCountryCode(stop.countryCode), comboCategory: nativeText(stop.comboCategory, 80), rankSignal: nativeText(stop.rankSignal, 120),
+      });
+    });
+  }
+  const snapshot = compact({ contract: "native_content_card_snapshot_v1", version: 1, kind,
+    id: nativeText(source.id || source.placeId || row.google_place_id || row.id, 256, true),
+    title: nativeText(source.title || source.name || row.name || row.title, 160, true),
+    category: nativeText(source.category || row.primary_type_display_name || row.primary_type || row.category, 80),
+    categoryIcon: nativeText(source.categoryIcon, 120), image, images,
+    description: nativeText(source.description || source.fullDescription || row.editorial_summary || row.generative_summary, 1200),
+    fullDescription: nativeText(source.fullDescription || source.description || row.editorial_summary || row.generative_summary, 16000),
+    address: nativeText(source.address || row.address, 500), rating: nativeRating(source.rating ?? row.rating),
+    reviewCount: nativeCount(source.reviewCount ?? row.review_count), priceRange: nativeText(source.priceRange || cleanPriceLevel(row.price_level), 80),
+    ...priceFields(source), lat: nativeLatitude(source.lat ?? row.lat), lng: nativeLongitude(source.lng ?? row.lng),
+    placeId: nativeText(source.placeId || source.googlePlaceId || row.google_place_id, 256),
+    openingHours: nativeHours(source.openingHours ?? row.opening_hours), utcOffsetMinutes: nativeUtcOffsetMinutes(source.utcOffsetMinutes ?? row.utc_offset_minutes),
+    phone: nativeText(source.phone || row.national_phone_number, 80), countryCode: source.countryCode === null ? null : nativeCountryCode(source.countryCode || row.country_code),
+    website: nativeExternalUrl(source.website || row.website),
+    highlights: nativeStrings(source.highlights, 240, 5), tags: nativeStrings(source.tags, 120, 10), socialStats: nativeSocialStats(source.socialStats),
+    cardType: kind === "curated" ? "curated" : "single", stops,
+    tagline: nativeText(source.tagline, 500), categoryLabel: nativeText(source.categoryLabel, 160), pairingKey: nativeText(source.pairingKey, 160),
+    experienceType: nativeText(source.experienceType, 120), totalPriceMin: nativeMoney(source.totalPriceMin), totalPriceMax: nativeMoney(source.totalPriceMax),
+    estimatedDurationMinutes: nativePositiveInteger(source.estimatedDurationMinutes), shoppingList: nativeStrings(source.shoppingList, 500, 12), tip: source.tip === null ? null : nativeText(source.tip, 2000),
+  });
+  if (new TextEncoder().encode(JSON.stringify(snapshot)).byteLength > 262144) throw new Error("native_snapshot_too_large");
+  return snapshot;
+}
+
+const nativePreview = (snapshot: RecordLike): RecordLike => compact({
+  title: snapshot.title, category: snapshot.category, image: snapshot.image, cardType: snapshot.cardType,
+  stopCount: Array.isArray(snapshot.stops) ? snapshot.stops.length : undefined,
+});
+
+export function assertNativeSourceIdentity(kind: "place" | "curated", sourceRow: RecordLike, requestedPlace?: RecordLike): void {
+  const card = sourceRow.card_data && typeof sourceRow.card_data === "object" && !Array.isArray(sourceRow.card_data) ? sourceRow.card_data : {};
+  const curated = card.cardType === "curated" || (Array.isArray(card.stops) && card.stops.length > 0);
+  if ((kind === "curated") !== curated) throw new Error("validation");
+  if (kind === "place" && requestedPlace) {
+    const candidates = [sourceRow.experience_id, sourceRow.saved_experience_id, card.placeId, card.googlePlaceId,
+      card.google_place_id, card.placePoolId, card.place_pool_id, card.id].map((value) => clean(value, 256)).filter(Boolean);
+    if (!candidates.includes(clean(requestedPlace.google_place_id, 256)) && !candidates.includes(clean(requestedPlace.id, 256))) throw new Error("validation");
+  }
+}
+
+export function nativeCuratedStopFromPlaceRow(row: RecordLike,index:number,total:number):RecordLike{
+  const photos=Array.isArray(row.stored_photo_urls)?row.stored_photo_urls:[];
+  const hours=row.opening_hours&&typeof row.opening_hours==="object"&&!Array.isArray(row.opening_hours)?row.opening_hours:{};
+  return compact({stopNumber:index+1,stopLabel:index===0?"Start Here":index===total-1?"End With":"Then",
+    placeId:row.google_place_id,placeName:row.name,placeType:row.primary_type_display_name||row.primary_type,address:row.address,
+    rating:row.rating,reviewCount:row.review_count,imageUrl:photos[0],imageUrls:photos,priceLevelLabel:cleanPriceLevel(row.price_level),
+    priceMin:row.price_min,priceMax:row.price_max,openingHours:row.opening_hours,utcOffsetMinutes:row.utc_offset_minutes,
+    isOpenNow:typeof hours.openNow==="boolean"?hours.openNow:typeof hours.open_now==="boolean"?hours.open_now:null,
+    website:row.website||null,lat:row.lat,lng:row.lng,aiDescription:row.editorial_summary||row.generative_summary,
+    phone:row.national_phone_number||null,countryCode:row.country_code||null});
+}
+
+export function assertSavedCuratedStopsServable(stops:unknown,rows:RecordLike[]):void{
+  if(!Array.isArray(stops)||stops.length===0)throw new Error("validation");
+  const ids=stops.map((raw)=>raw&&typeof raw==="object"&&!Array.isArray(raw)?clean((raw as RecordLike).placeId,256):"");
+  if(ids.some((id)=>!id)||new Set(ids).size!==ids.length)throw new Error("validation");
+  const byId=new Map<string,RecordLike>();for(const row of rows){const id=clean(row.google_place_id,256);if(!id||byId.has(id))throw new Error("validation");byId.set(id,row);}
+  if(byId.size!==ids.length||ids.some((id)=>{const row=byId.get(id);return !row||row.is_active!==true||row.is_servable!==true;}))throw new Error("validation");
+}
+
+const SAVED_CURATED_AUTHORED_STOP_KEYS = [
+  "stopNumber","stopLabel","aiDescription","estimatedDurationMinutes","optional","dismissible","role","comboCategory","rankSignal","priceTier",
+];
+
+/** The sole historical URL exception: an optional, credential-free HTTP
+ * website is omitted. Every other malformed/non-HTTPS value still rejects. */
+const savedCuratedWebsite = (value: unknown): string | undefined => {
+  if (value === undefined || value === null || value === "") return undefined;
+  const candidate = nativeText(value, 2048, true)!;
+  let url: URL;
+  try { url = new URL(candidate); } catch { throw new Error("invalid_native_snapshot"); }
+  if (url.username || url.password) throw new Error("invalid_native_snapshot");
+  if (url.protocol === "http:") return undefined;
+  if (url.protocol !== "https:") throw new Error("invalid_native_snapshot");
+  return url.toString();
+};
+
+/** Rebuild current public place facts without rewriting the saved plan's
+ * identity, order, labels, slot semantics, or authored copy. */
+export function rehydrateSavedCuratedCardRow(sourceRow:RecordLike,rows:RecordLike[]):RecordLike{
+  const card=sourceRow.card_data&&typeof sourceRow.card_data==="object"&&!Array.isArray(sourceRow.card_data)?sourceRow.card_data:{};
+  const savedStops=card.stops;
+  assertSavedCuratedStopsServable(savedStops,rows);
+  const byId=new Map(rows.map((row)=>[clean(row.google_place_id,256),row]));
+  const rehydrated=(savedStops as RecordLike[]).map((saved,index)=>{
+    // A hostile historical URL is not allowed to hide behind rehydration. Only
+    // the proven credential-free HTTP legacy case may be dropped.
+    savedCuratedWebsite(saved.website);
+    const id=clean(saved.placeId,256);
+    const current=nativeCuratedStopFromPlaceRow(byId.get(id)!,index,savedStops.length);
+    const authored=Object.fromEntries(SAVED_CURATED_AUTHORED_STOP_KEYS
+      .filter((key)=>Object.prototype.hasOwnProperty.call(saved,key))
+      .map((key)=>[key,saved[key]]));
+    return compact({
+      ...current,
+      website:savedCuratedWebsite(current.website),
+      ...authored,
+      placeId:saved.placeId,
+    });
+  });
+  return {...sourceRow,card_data:{...card,stops:rehydrated}};
+}
+
+const loadRehydratedSavedCuratedCard = async (db:QueryClient,sourceRow:RecordLike):Promise<RecordLike> => {
+  const savedStops=sourceRow.card_data?.stops;
+  const savedIds=Array.isArray(savedStops)?savedStops.map((stop:RecordLike)=>clean(stop?.placeId,256)):[];
+  if(savedIds.length===0||savedIds.some((id:string)=>!id)||new Set(savedIds).size!==savedIds.length)throw new Error("validation");
+  const served=await db.from("place_pool").select(PLACE_POOL_SHARE_SELECT).in("google_place_id",savedIds);
+  if(served.error)throw new Error("db_error");
+  return rehydrateSavedCuratedCardRow(sourceRow,Array.isArray(served.data)?served.data:[]);
+};
 
 const durationLabel = (start: unknown, end: unknown): string | undefined => {
   if (typeof start !== "string" || typeof end !== "string") return undefined;
@@ -400,6 +672,25 @@ export const ticketTruthAt = (tickets: RecordLike[], remainingRows: RecordLike[]
 export async function loadAuthoritativeContentShare(
   db: QueryClient, userId: string, kind: ContentShareKind, identity: RecordLike,
 ) {
+  const sourceScope = clean(identity.sourceScope, 20);
+  const sourceRecordId = sourceId(identity, "sourceRecordId");
+  let sourceCardRow: RecordLike | null = null;
+  if (sourceRecordId && sourceScope === "solo") {
+    const result = await db.from("saved_card").select("id,profile_id,experience_id,title,category,image_url,card_data").eq("id", sourceRecordId).eq("profile_id", userId).maybeSingle();
+    if (result.error) throw new Error("db_error");
+    if (!result.data) throw new Error("gone");
+    sourceCardRow = result.data;
+  } else if (sourceRecordId && sourceScope === "collaboration") {
+    const result = await db.from("board_saved_cards").select("id,session_id,experience_id,saved_experience_id,card_data").eq("id", sourceRecordId).maybeSingle();
+    if (result.error) throw new Error("db_error");
+    if (!result.data) throw new Error("gone");
+    const membership = await db.from("session_participants").select("id").eq("session_id", result.data.session_id).eq("user_id", userId).eq("has_accepted", true).maybeSingle();
+    if (membership.error) throw new Error("db_error");
+    if (!membership.data) throw new Error("gone");
+    sourceCardRow = result.data;
+  } else if (sourceRecordId || sourceScope) throw new Error("validation");
+  if (sourceCardRow && (kind === "place" || kind === "curated")) assertNativeSourceIdentity(kind, sourceCardRow);
+
   if (kind === "place") {
     const poolId = sourceId(identity, "placePoolId");
     const googleId = sourceId(identity, "googlePlaceId");
@@ -410,7 +701,15 @@ export async function loadAuthoritativeContentShare(
     if (error) throw new Error("db_error");
     if (!row) throw new Error("gone");
     if (row.is_active !== true || row.is_servable === false) throw new Error("not_public");
-    return { ...mapAuthoritativeShareFacts(kind, { row }), sourceKey: `place:${row.id}`, sourceReference: { placePoolId: row.id } };
+    if (sourceCardRow) {
+      assertNativeSourceIdentity("place", sourceCardRow, row);
+    }
+    const nativeSnapshot = buildNativeContentCardSnapshot("place", sourceCardRow
+      ? { ...row, ...(sourceCardRow.card_data || {}), id: sourceCardRow.card_data?.id || row.id }
+      : row);
+    return { ...mapAuthoritativeShareFacts(kind, { row }), nativeSnapshot, nativePreview: nativePreview(nativeSnapshot),
+      sourceKey: sourceCardRow ? `place:${sourceScope}:${sourceRecordId}` : `place:${row.id}`,
+      sourceReference: sourceCardRow ? { sourceScope, sourceRecordId, placePoolId: row.id } : { placePoolId: row.id } };
   }
 
   if (kind === "curated") {
@@ -429,21 +728,38 @@ export async function loadAuthoritativeContentShare(
       if (orderedRows.some((row) => !row)) throw new Error("gone");
       if (orderedRows.some((row) => row?.is_active !== true || row?.is_servable !== true)) throw new Error("not_public");
       const canonicalIds = JSON.stringify(stopPlaceIds);
+      const compositionId = `curated-composition:${await sha256Hex(canonicalIds)}`;
+      const mapped = mapCuratedComposition(orderedRows as RecordLike[]);
+      const nativeSnapshot = buildNativeContentCardSnapshot("curated", { card_data: {
+        id: compositionId, title: mapped.facts.title, category: "Curated plan", image: mapped.mediaIdentity?.posterUrl,
+        stops: (orderedRows as RecordLike[]).map((stop,index) => nativeCuratedStopFromPlaceRow(stop,index,orderedRows.length)),
+      } });
       return {
-        ...mapCuratedComposition(orderedRows as RecordLike[]),
-        sourceKey: `curated-composition:${await sha256Hex(canonicalIds)}`,
+        ...mapped, nativeSnapshot, nativePreview: nativePreview(nativeSnapshot),
+        sourceKey: compositionId,
         sourceReference: { stopPlaceIds },
       };
     }
 
+    if (sourceCardRow) {
+      const rehydratedSourceCardRow=await loadRehydratedSavedCuratedCard(db,sourceCardRow);
+      const nativeSnapshot = buildNativeContentCardSnapshot("curated", rehydratedSourceCardRow);
+      return { ...mapAuthoritativeShareFacts(kind, { row: sourceCardRow }), nativeSnapshot, nativePreview: nativePreview(nativeSnapshot),
+        sourceKey: `curated:${sourceScope}:${sourceRecordId}`, sourceReference: { sourceScope, sourceRecordId } };
+    }
     const id = sourceId(identity, "savedCardId");
     const legacyKeys = Object.keys(identity);
     const legacyKeysAreReadCompatible = legacyKeys.every((key) => ["savedCardId", "placePoolId", "googlePlaceId"].includes(key));
     if (!legacyKeysAreReadCompatible || !id || identity.savedCardId !== id) throw new Error("validation");
-    const { data: row, error } = await db.from("saved_card").select("id,profile_id,title,category,image_url,card_data").eq("id", id).eq("profile_id", userId).maybeSingle();
+    const { data: row, error } = await db.from("saved_card").select("id,profile_id,experience_id,title,category,image_url,card_data").eq("id", id).eq("profile_id", userId).maybeSingle();
     if (error) throw new Error("db_error");
     if (!row) throw new Error("gone");
-    return { ...mapAuthoritativeShareFacts(kind, { row }), sourceKey: `curated:${row.id}`, sourceReference: { savedCardId: row.id } };
+    const legacyCard = row.card_data && typeof row.card_data === "object" && !Array.isArray(row.card_data) ? row.card_data : {};
+    if (!(legacyCard.cardType === "curated" || (Array.isArray(legacyCard.stops) && legacyCard.stops.length > 0))) throw new Error("validation");
+    const rehydratedLegacyRow=await loadRehydratedSavedCuratedCard(db,row);
+    const nativeSnapshot = buildNativeContentCardSnapshot("curated", rehydratedLegacyRow);
+    return { ...mapAuthoritativeShareFacts(kind, { row }), nativeSnapshot, nativePreview: nativePreview(nativeSnapshot),
+      sourceKey: `curated:${row.id}`, sourceReference: { savedCardId: row.id } };
   }
 
   const expectedType = eventTypeFor(kind);
@@ -452,7 +768,7 @@ export async function loadAuthoritativeContentShare(
     const eventSlug = sourceId(identity, "eventSlug");
     const brandSlug = sourceId(identity, "brandSlug");
     if (!id && (!eventSlug || !brandSlug)) throw new Error("validation");
-    let query = db.from("events").select("id,title,description,slug,location_text,status,visibility,published_at,deleted_at,timezone,event_type,destination_text,cover_media_url,cover_media_type,cover_media_alt,cover_media_gallery,is_multi_date,rsvp_capacity,rsvp_waitlist_enabled,rsvp_approval_mode,bookings_closed,booking_deadline,brands!inner(name,slug,deleted_at)")
+    let query = db.from("events").select("id,title,description,slug,location_text,status,visibility,published_at,deleted_at,timezone,event_type,destination_text,cover_media_url,cover_media_type,cover_media_poster_url,cover_media_alt,cover_media_gallery,is_multi_date,rsvp_capacity,rsvp_waitlist_enabled,rsvp_approval_mode,bookings_closed,booking_deadline,brands!inner(name,slug,deleted_at)")
       .eq("event_type", expectedType).limit(1);
     query = id ? query.eq("id", id) : query.eq("slug", eventSlug).eq("brands.slug", brandSlug);
     const { data: row, error: rowError } = await query.maybeSingle();
@@ -499,7 +815,7 @@ export async function loadAuthoritativeContentShare(
   if (kind === "venue") {
     const venueId = sourceId(identity, "venueId"); const brandSlug = sourceId(identity, "brandSlug"); const venueSlug = sourceId(identity, "venueSlug");
     if (!venueId && (!brandSlug || !venueSlug)) throw new Error("validation");
-    let query = db.from("venue_public_view").select("id,brand_slug,slug,name,city,venue_category,pitch,cover_media_url,cover_media_type,pool_photo_urls,hours,iana_timezone");
+    let query = db.from("venue_public_view").select("id,brand_slug,slug,name,city,venue_category,pitch,cover_media_url,cover_media_type,cover_media_poster_url,pool_photo_urls,hours,iana_timezone");
     query = venueId ? query.eq("id", venueId) : query.eq("brand_slug", brandSlug).eq("slug", venueSlug);
     const { data: row, error } = await query.maybeSingle();
     if (error) throw new Error("db_error");
@@ -509,7 +825,7 @@ export async function loadAuthoritativeContentShare(
 
   const brandId = sourceId(identity, "brandId"); const brandSlug = sourceId(identity, "brandSlug");
   if (!brandId && !brandSlug) throw new Error("validation");
-  let brandQuery = db.from("brands").select("id,name,slug,description,cover_media_url,cover_media_type,profile_photo_url,venue_category,city,deleted_at");
+  let brandQuery = db.from("brands").select("id,name,slug,description,cover_media_url,cover_media_type,cover_media_poster_url,profile_photo_url,venue_category,city,deleted_at");
   brandQuery = brandId ? brandQuery.eq("id", brandId) : brandQuery.eq("slug", brandSlug);
   const { data: row, error: rowError } = await brandQuery.maybeSingle();
   if (rowError) throw new Error("db_error");

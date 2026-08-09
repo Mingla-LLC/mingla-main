@@ -142,6 +142,7 @@ interface Tier1Draft {
   countryCode?: string | null;
   venueCategory?: VenueCategory | null;
   coverMediaUrl?: string | null;
+  coverMediaPosterUrl?: string | null;
   coverMediaType?: "image" | "video" | "gif" | null;
   website?: string | null;
   openingHours?: unknown | null;
@@ -179,6 +180,7 @@ interface RequestBody {
   sales_bio?: string;
   facets?: Record<string, boolean | null>;
   cover_media_url?: string | null;
+  cover_media_poster_url?: string | null;
   cover_media_type?: "image" | "video" | "gif" | null;
   gallery_urls?: string[];
   // META-ORCH-1290 (B2 addendum): the owner-authored pitch for update_pitch.
@@ -195,6 +197,7 @@ interface OwnedBrand {
   google_place_id: string | null;
   venue_category: VenueCategory | null;
   cover_media_url: string | null;
+  cover_media_poster_url: string | null;
   cover_media_type: string | null;
 }
 
@@ -208,6 +211,7 @@ interface OwnedVenue {
   venue_category: VenueCategory | null;
   name: string | null;
   cover_media_url: string | null;
+  cover_media_poster_url: string | null;
   cover_media_type: string | null;
   // ORCH-1263 §A3 plumbing: claim_status feeds placeWriteMode (stage vs apply).
   claim_status: string | null;
@@ -614,7 +618,7 @@ export async function loadManagedBrand(
 ): Promise<OwnedBrand | Response> {
   const { data, error } = await client
     .from("brands")
-    .select("id, account_id, name, description, place_pool_id, google_place_id, venue_category, cover_media_url, cover_media_type")
+    .select("id, account_id, name, description, place_pool_id, google_place_id, venue_category, cover_media_url, cover_media_type, cover_media_poster_url")
     .eq("id", brandId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -660,7 +664,7 @@ export async function loadOwnedVenue(
   const { data, error } = await client
     .from("venue_listings")
     // ORCH-1263 §A3: + claim_status (placeWriteMode input).
-    .select("id, brand_id, place_pool_id, google_place_id, venue_category, name, cover_media_url, cover_media_type, claim_status")
+    .select("id, brand_id, place_pool_id, google_place_id, venue_category, name, cover_media_url, cover_media_type, cover_media_poster_url, claim_status")
     .eq("id", venueId)
     .maybeSingle();
 
@@ -1911,6 +1915,7 @@ async function handleGetAuthoringContext(
     // D-C). The pre-1263 `stored_photo_urls[0]` + video-flag inference
     // misreported a seeded gallery photo as "the cover" on claim resumes.
     cover_media_url: venue.cover_media_url ?? null,
+    cover_media_poster_url: venue.cover_media_poster_url ?? null,
     cover_media_type: venue.cover_media_type ?? null,
     website: (place as { website?: string | null }).website ?? null,
     gallery_urls: galleryUrls(place as Record<string, unknown>),
@@ -1942,6 +1947,7 @@ export async function handleSyncHeroMedia(
   }
   const mediaType = body.cover_media_type ?? null;
   const mediaUrl = asString(body.cover_media_url ?? "");
+  const posterUrl = asString(body.cover_media_poster_url ?? "");
   // ORCH-1263 §A3.2 (D-E) plumbing: one place read supplies the placeWriteMode
   // input plus the prior stored set + authored gallery apply mode needs.
   const { data: heroPlace, error: heroPlaceErr } = await client
@@ -1997,6 +2003,7 @@ export async function handleSyncHeroMedia(
     .update({
       cover_media_url: mediaUrl.length > 0 ? mediaUrl : null,
       cover_media_type: mediaUrl.length > 0 ? mediaType : null,
+      cover_media_poster_url: mediaUrl.length > 0 ? posterUrl || null : null,
     })
     .eq("id", venue.id);
   if (venueCoverErr) {

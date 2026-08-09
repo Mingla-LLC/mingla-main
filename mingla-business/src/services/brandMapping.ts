@@ -60,6 +60,7 @@ export interface BrandRow {
   address: string | null;
   cover_hue: number;
   cover_media_url: string | null;
+  cover_media_poster_url?: string | null;
   cover_media_type: "image" | "video" | "gif" | null;
   profile_photo_type: "image" | "video" | "gif" | null;
   theme_color?: string | null;
@@ -107,6 +108,7 @@ export type BrandTableInsert = {
   address?: string | null;
   cover_hue?: number;
   cover_media_url?: string | null;
+  cover_media_poster_url?: string | null;
   cover_media_type?: "image" | "video" | "gif" | null;
   profile_photo_type?: "image" | "video" | "gif" | null;
   theme_color?: string | null;
@@ -261,6 +263,9 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     address: row.address,
     coverHue: row.cover_hue,
     coverMediaUrl: row.cover_media_url ?? undefined,
+    coverMediaPosterUrl:
+      row.cover_media_poster_url ??
+      (row.cover_media_type === "image" ? row.cover_media_url ?? undefined : undefined),
     coverMediaType: row.cover_media_type ?? undefined,
     profilePhotoType: row.profile_photo_type ?? undefined,
     photo: row.profile_photo_url ?? undefined,
@@ -352,6 +357,7 @@ export function mapUiToBrandInsert(input: MapUiToBrandInsertInput): BrandTableIn
   if (brand.coverMediaUrl !== undefined) {
     row.cover_media_url = brand.coverMediaUrl ?? null;
   }
+  if (brand.coverMediaPosterUrl !== undefined) row.cover_media_poster_url = brand.coverMediaPosterUrl ?? null;
   if (brand.coverMediaType !== undefined) {
     row.cover_media_type = brand.coverMediaType ?? null;
   }
@@ -440,6 +446,7 @@ export function mapUiToBrandUpdatePatch(
   if (patch.coverMediaUrl !== undefined) {
     out.cover_media_url = patch.coverMediaUrl ?? null;
   }
+  if (patch.coverMediaPosterUrl !== undefined) out.cover_media_poster_url = patch.coverMediaPosterUrl ?? null;
   if (patch.coverMediaType !== undefined) {
     out.cover_media_type = patch.coverMediaType ?? null;
   }

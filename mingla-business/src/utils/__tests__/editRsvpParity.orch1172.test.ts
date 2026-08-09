@@ -66,6 +66,10 @@ const rsvpLiveEvent = (patch: Partial<LiveEvent> = {}): LiveEvent =>
     hideAddressUntilTicket: false,
     coverHue: 25,
     coverMediaUrl: null,
+    // [TEST-MOD-APPROVED #1719] The live RSVP shape now includes the persisted
+    // poster field. Keep this full-shape fixture explicit so null does not look
+    // like a user edit from an omitted property.
+    coverMediaPosterUrl: null,
     coverMediaType: null,
     coverMediaProvider: null,
     coverMediaSourceUrl: null,

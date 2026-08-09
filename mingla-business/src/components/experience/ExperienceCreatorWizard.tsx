@@ -184,6 +184,7 @@ const currencySymbolFor = (currency: string): string =>
 
 const EMPTY_COVER: CoverPatch = {
   coverMediaUrl: null,
+  coverMediaPosterUrl: null,
   coverMediaType: null,
   coverMediaProvider: null,
   coverMediaSourceUrl: null,
@@ -530,6 +531,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         // to wizard state; without this the RPC drops the cover entirely.
         cover: {
           coverMediaUrl: cover.coverMediaUrl,
+          coverMediaPosterUrl: cover.coverMediaPosterUrl,
           coverMediaType: cover.coverMediaType,
           coverMediaProvider: cover.coverMediaProvider,
           coverMediaSourceUrl: cover.coverMediaSourceUrl,
@@ -676,7 +678,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         if (targetId === null) {
           throw new Error("Couldn't save experience. Tap to retry.");
         }
-        const { data, error } = await supabase.rpc("biz_publish_experience", {
+        const { data, error } = await supabase.rpc("issue_1719_publish_experience_with_poster", {
           p_event_id: targetId,
           p_payload: buildPayload(publish),
           p_publish: publish,

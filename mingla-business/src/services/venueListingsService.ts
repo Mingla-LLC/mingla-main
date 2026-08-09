@@ -36,6 +36,7 @@ export interface VenueListing {
   countryCode: string | null;
   venueCategory: VenueCategory;
   coverMediaUrl: string | null;
+  coverMediaPosterUrl?: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
   claimStatus: BrandClaimStatus;
   claimFollowUpAt: string | null;
@@ -54,6 +55,7 @@ interface VenueListingRow {
   country_code: string | null;
   venue_category: string;
   cover_media_url: string | null;
+  cover_media_poster_url: string | null;
   cover_media_type: "image" | "video" | "gif" | null;
   claim_status: string;
   claim_follow_up_at: string | null;
@@ -76,7 +78,7 @@ export class PlaceClaimConflictError extends Error {
 }
 
 const VENUE_LISTING_COLUMNS =
-  "id, brand_id, place_pool_id, slug, name, address, city, country_code, venue_category, cover_media_url, cover_media_type, claim_status, claim_follow_up_at, rejection_reason, created_at";
+  "id, brand_id, place_pool_id, slug, name, address, city, country_code, venue_category, cover_media_url, cover_media_poster_url, cover_media_type, claim_status, claim_follow_up_at, rejection_reason, created_at";
 
 const mapRow = (row: VenueListingRow): VenueListing => ({
   id: row.id,
@@ -89,6 +91,9 @@ const mapRow = (row: VenueListingRow): VenueListing => ({
   countryCode: row.country_code,
   venueCategory: row.venue_category as VenueCategory,
   coverMediaUrl: row.cover_media_url,
+  coverMediaPosterUrl:
+    row.cover_media_poster_url ??
+    (row.cover_media_type === "image" ? row.cover_media_url : null),
   coverMediaType: row.cover_media_type,
   claimStatus: row.claim_status as BrandClaimStatus,
   claimFollowUpAt: row.claim_follow_up_at,
@@ -161,6 +166,7 @@ export interface CreateVenueListingInput {
   venueCategory: VenueCategory;
   contact: { email?: string; phone?: string };
   coverMediaUrl: string | null;
+  coverMediaPosterUrl?: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
   hours: BrandHourEntry[];
   /**
@@ -179,6 +185,16 @@ export interface CreateVenueListingInput {
 export async function createVenueListing(
   input: CreateVenueListingInput,
 ): Promise<string> {
+  const posterUrl =
+    input.coverMediaPosterUrl ??
+    (input.coverMediaType === "image" ? input.coverMediaUrl : null);
+  if (
+    input.coverMediaUrl !== null &&
+    input.coverMediaType !== null &&
+    (posterUrl === null || posterUrl.trim().length === 0)
+  ) {
+    throw new Error("Choose a cover with a stable preview image before publishing.");
+  }
   const description = [input.tagline, input.description]
     .map((s) => s?.trim())
     .filter((s): s is string => s !== undefined && s.length > 0)
@@ -204,6 +220,7 @@ export async function createVenueListing(
     p_contact_email: input.contact.email ?? "",
     p_contact_phone: input.contact.phone ?? "",
     p_cover_media_url: input.coverMediaUrl ?? "",
+    p_cover_media_poster_url: posterUrl ?? "",
     p_cover_media_type: input.coverMediaType ?? "",
     p_hours: brandHoursToRpcPayload(input.hours),
     p_place_pool_id: input.placePoolId ?? null,

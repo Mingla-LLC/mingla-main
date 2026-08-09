@@ -45,6 +45,7 @@ import { KeyboardToolbarRoot } from "../src/wrappers/KeyboardToolbarRoot";
 // replay over the SAME client the service exposes (so capture/identify/reset at
 // the call sites and autocapture share one instance).
 import { PostHogAnalyticsProvider } from "../src/services/PostHogAnalyticsProvider";
+import { UnifiedShareProvider } from "../src/components/share/UnifiedShareProvider";
 
 // ORCH-0679 Wave 2B-2: SINGLE source of truth for Sentry init.
 // I-SENTRY-SINGLE-INIT — duplicate Sentry.init in app/index.tsx was deleted as
@@ -195,7 +196,9 @@ export default Sentry.wrap(function RootLayout() {
                   work app-wide; renders children directly when the key is
                   absent / on web (no-op). */}
               <PostHogAnalyticsProvider>
-                <Stack screenOptions={{ headerShown: false }} />
+                <UnifiedShareProvider>
+                  <Stack screenOptions={{ headerShown: false }} />
+                </UnifiedShareProvider>
               </PostHogAnalyticsProvider>
             </PersistQueryClientProvider>
             {/* Sibling so the toolbar stays visually above the keyboard. */}

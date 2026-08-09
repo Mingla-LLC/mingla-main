@@ -71,30 +71,44 @@ describe("ORCH-1083 T-05 — Stripe Connect web SDK deferred out of route shells
 });
 
 describe("ORCH-1083 T-04 — ShareModal defers the QR renderer", () => {
-  const shareModal = read("src/components/ui/ShareModal.tsx");
+  // [TEST-MOD-APPROVED #1719] The visible shell is now deliberately tiny and
+  // lazy-loads the full unified share content. Inspect both halves so this
+  // legacy performance guard protects the stronger two-stage split.
+  const shareModalShell = read("src/components/ui/ShareModal.tsx");
+  const shareModalContent = read("src/components/ui/ShareModalContent.tsx");
 
   it("does NOT statically import react-native-qrcode-svg", () => {
-    expect(shareModal).not.toMatch(
+    expect(shareModalShell).not.toMatch(
+      /^\s*import\s+QRCode\s+from\s+["']react-native-qrcode-svg["']/m,
+    );
+    expect(shareModalContent).not.toMatch(
       /^\s*import\s+QRCode\s+from\s+["']react-native-qrcode-svg["']/m,
     );
   });
 
   it("lazy-loads the QR renderer and wraps it in a footprint-reserving Suspense fallback", () => {
-    expect(shareModal).toMatch(
+    expect(shareModalShell).toMatch(/React\.lazy\(async\s*\(\)\s*=>/);
+    expect(shareModalShell).toMatch(/import\(['"]\.\/ShareModalContent['"]\)/);
+    expect(shareModalShell).toMatch(/<Suspense\b[\s\S]*?fallback=/);
+    expect(shareModalContent).toMatch(
       /React\.lazy\(\s*\(\)\s*=>\s*import\(["']react-native-qrcode-svg["']\)\s*\)/,
     );
-    expect(shareModal).toMatch(/<Suspense\b[\s\S]*?fallback=/);
-    expect(shareModal).toMatch(/qrFallback/);
+    expect(shareModalContent).toMatch(/<Suspense\b[\s\S]*?fallback=\{<ActivityIndicator \/>\}/);
   });
 });
 
 describe("ORCH-1083 #1615 — content-share construction stays out of eager common", () => {
-  const shareModal = read("src/components/ui/ShareModal.tsx");
+  // [TEST-MOD-APPROVED #1719] Content preparation moved into the lazily loaded
+  // body; the eager shell must remain adapter-free and the body must preserve
+  // its on-demand value import.
+  const shareModalShell = read("src/components/ui/ShareModal.tsx");
+  const shareModalContent = read("src/components/ui/ShareModalContent.tsx");
 
   it("loads the content adapter only on demand and carries no static value import", () => {
-    expect(shareModal).not.toMatch(/^\s*import\s+\{[^}]*prepareBusinessContentShare[^}]*\}\s+from/m);
-    expect(shareModal).toMatch(/await import\("\.\.\/\.\.\/services\/contentShareAdapter"\)/);
-    expect(shareModal).toMatch(/prepareContentShareOnDemand\(url,channel,contentKind\)/);
+    expect(shareModalShell).not.toMatch(/^\s*import\s+\{[^}]*prepareBusinessContentShare[^}]*\}\s+from/m);
+    expect(shareModalContent).not.toMatch(/^\s*import\s+\{[^}]*prepareBusinessContentShare[^}]*\}\s+from/m);
+    expect(shareModalContent).toMatch(/import\(['"]\.\.\/\.\.\/services\/contentShareAdapter['"]\)/);
+    expect(shareModalContent).toContain("prepareBusinessContentShare(url, 'generic', contentKind)");
   });
 });
 

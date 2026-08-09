@@ -71,7 +71,15 @@ function createDb(result) {
     },
     async rpc(name, args) {
       calls.push({ operation: 'rpc', name, args });
-      if (name !== 'upsert_content_share_version') throw new Error(`forbidden rpc ${name}`);
+      // [TEST-MOD-APPROVED #1719] The immutable server message is now a second
+      // authoritative RPC read after minting; model it without weakening the
+      // hostile identity/database assertions in this independent suite.
+      if (name === 'resolve_content_share_message') {
+        return { data: `Curated plan\n\nhttps://usemingla.com/s/${args.p_code}`, error: null };
+      }
+      // [TEST-MOD-APPROVED #1719] Curated shares use the additive native
+      // snapshot RPC. Keep every other persistence path forbidden.
+      if (name !== 'upsert_content_share_version_with_native_snapshot') throw new Error(`forbidden rpc ${name}`);
       return { data: { shortCode: 'Aa0Bb1Cc2Dd3Ee4F', version: 4, versionCreated: true }, error: null };
     },
   };
@@ -131,7 +139,7 @@ function refreshDb(rows) {
     },
     async rpc(name, args) {
       calls.push({ operation: 'rpc', name, args });
-      if (name !== 'upsert_content_share_version') throw new Error(`forbidden rpc ${name}`);
+      if (name !== 'upsert_content_share_version_with_native_snapshot') throw new Error(`forbidden rpc ${name}`);
       return { data: { shortCode: 'Aa0Bb1Cc2Dd3Ee4F', version: 9, versionCreated: true }, error: null };
     },
   };
@@ -212,6 +220,32 @@ test('TA3 shuffled rows restore caller order while database errors and malformed
   );
 });
 
+test('TA3b historical null optionals remain shareable while malformed non-null fidelity fails closed', async () => {
+  const historical = IDS.slice(0, 2).map((id) => served(id, {
+    rating: null, review_count: null, price_min: null, price_max: null,
+    opening_hours: null, utc_offset_minutes: null, national_phone_number: null,
+    website: null, country_code: null, lat: null, lng: null,
+  }));
+  const mapped = await loadAuthoritativeContentShare(
+    createDb({ data: historical, error: null }),
+    'private-profile-id',
+    'curated',
+    { stopPlaceIds: IDS.slice(0, 2) },
+  );
+  assert.equal(mapped.nativeSnapshot.id, mapped.sourceKey);
+  for (const stop of mapped.nativeSnapshot.stops) {
+    for (const key of ['rating', 'reviewCount', 'priceMin', 'priceMax', 'utcOffsetMinutes', 'phone', 'countryCode', 'lat', 'lng']) {
+      assert.equal(key in stop, false, key);
+    }
+  }
+
+  const malformed = [served(IDS[0], { rating: '4.9' }), served(IDS[1])];
+  await assert.rejects(
+    loadAuthoritativeContentShare(createDb({ data: malformed, error: null }), 'private-profile-id', 'curated', { stopPlaceIds: IDS.slice(0, 2) }),
+    /invalid_native_snapshot/,
+  );
+});
+
 test('TA4 forged client facts/media are ignored, order owns the source hash, and unsupported area is omitted', async () => {
   const rows = [
     served(IDS[0], { city: 'Durham', stored_photo_urls: [] }),
@@ -263,7 +297,10 @@ test('TA5 refresh rehydrates current served truth without leaking private identi
     assert.equal(tables.includes(forbidden), false, forbidden);
   }
   const upsert = db.calls.find((call) => call.operation === 'rpc');
-  assert.equal(upsert.name, 'upsert_content_share_version');
+  // [TEST-MOD-APPROVED #1719] Refresh must carry the same immutable native
+  // snapshot as creation, through the additive snapshot RPC.
+  assert.equal(upsert.name, 'upsert_content_share_version_with_native_snapshot');
+  assert.equal(upsert.args.p_native_snapshot.id, upsert.args.p_source_key);
   assert.deepEqual(upsert.args.p_source_reference, { stopPlaceIds: IDS.slice(0, 2) });
 });
 
@@ -310,16 +347,17 @@ test('TA7 loading, covered, coverless, and error are exclusive; retry clears onl
   assert.equal(sharePreviewTerminalState(card, 'error'), 'covered', 'destination error must not erase a valid portrait');
   assert.equal(sharePreviewTerminalState({ s4Url: null }, 'error'), 'coverless');
 
-  const modal = read('app-mobile/src/components/ShareModal.tsx');
-  const retry = /const retrySharePreview = \(\): void => \{([\s\S]*?)\n  \};/.exec(modal)?.[1] || '';
-  assert.match(retry, /sharedCardPromiseRef\.current = null/);
-  assert.match(retry, /ensureSharedCard\('generic'\)/);
-  assert.doesNotMatch(retry, /setSharedCard\(null\)|setExperience|onClose|saveCard|saved_card|board|calendar|like/i);
-  assert.equal((modal.match(/portraitState === 'error'/g) || []).length, 1);
-  assert.equal((modal.match(/portraitState !== 'error'/g) || []).length, 1);
-  assert.equal((modal.match(/onPress=\{retrySharePreview\}/g) || []).length, 1);
-  assert.match(modal, /portraitState === 'error' \? \([\s\S]*?\) : \(\s*<View style=\{styles\.portraitLoading\}/);
-  assert.doesNotMatch(modal, /shareState === 'error'[\s\S]{0,180}<ActivityIndicator/);
+  // [TEST-MOD-APPROVED #1719] The unified sheet removed its mounted S4
+  // portrait. Attack the new retry owner: it may restart link preparation but
+  // must not clear recipients, note, selection, or any content persistence.
+  const modal = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
+  const retry = /const loadShare = useCallback\(\(nextInput[\s\S]*?\n  \}, \[\]\);/.exec(modal)?.[0] || '';
+  assert.match(retry, /setPrepError\(false\)/);
+  assert.match(retry, /prepareContentShare\(/);
+  assert.doesNotMatch(retry, /setSelected|setNote|setRecipients|onClose|saveCard|saved_card|board|calendar|like/i);
+  assert.equal((modal.match(/Retry share/g) || []).length, 1);
+  assert.match(modal, /prepError \? [\s\S]*Retry share/);
+  assert.doesNotMatch(modal, /prepError[\s\S]{0,180}<ActivityIndicator/);
 
   const identitySource = read('app-mobile/src/services/contentShareIdentity.ts');
   for (const forbidden of ['title', 'category', 'address', 'description', 'rating', 'price', 'hours', 'media', 'duration', 'estimate', 'savedCardId']) {
@@ -335,7 +373,10 @@ test('TA8 production scope contains no hidden persistence route or private-ID pu
     assert.doesNotMatch(source, /from\(["'](?:saved_card|board_saved_cards|calendar|chat|likes|user_likes)["']\).*?(?:insert|upsert|update)/s);
   }
   assert.match(mapping, /sourceReference: \{ stopPlaceIds \}/);
-  assert.match(mapping, /sourceKey: `curated-composition:\$\{await sha256Hex\(canonicalIds\)\}`/);
+  // [TEST-MOD-APPROVED #1719] Calculate the fingerprint once and reuse it as
+  // both the required native snapshot id and the private source key.
+  assert.match(mapping, /const compositionId = `curated-composition:\$\{await sha256Hex\(canonicalIds\)\}`/);
+  assert.match(mapping, /id: compositionId[\s\S]*sourceKey: compositionId/);
   assert.doesNotMatch(mapping, /facts:\s*\{[^}]*stopPlaceIds|publicDetails:\s*\{[^}]*stopPlaceIds/s);
   const workflow = read('.github/workflows/issue-1615-public-share-surfaces.yml');
   assert.match(workflow, /curated-composition-terminal-ui\.tester\.adversarial\.test\.mjs/);
