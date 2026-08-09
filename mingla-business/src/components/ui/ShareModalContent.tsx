@@ -159,7 +159,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
       {failed ? <View style={styles.errorRow}><Text style={styles.error}>Couldn't prepare this share</Text><Pressable accessibilityRole="button" onPress={prepare}><Text style={styles.retry}>Retry share</Text></Pressable></View> : null}
       {fontScale < 1.4 ? <Text style={styles.section}>Share elsewhere</Text> : null}
       <View style={styles.actions}>
-        {canWebShare() ? <Pressable accessibilityRole="button" disabled={!prepared || busy} onPress={() => void share()} style={[styles.shareButton, (!prepared || busy) && styles.disabled]}>{busy ? <ActivityIndicator color={dark ? '#F9FAFB' : '#111827'} /> : <Text style={styles.buttonText}>Share</Text>}</Pressable> : null}
+        {canWebShare() ? <Pressable accessibilityRole="button" accessibilityLabel="Share elsewhere" disabled={!prepared || busy} onPress={() => void share()} style={[styles.shareButton, (!prepared || busy) && styles.disabled]}>{busy ? <ActivityIndicator color={dark ? '#F9FAFB' : '#111827'} /> : <Text style={styles.buttonText}>Share</Text>}</Pressable> : null}
         <Pressable accessibilityRole="button" accessibilityLabel={copied ? 'Link copied' : 'Copy link'} disabled={!prepared || busy} onPress={() => void copy()} style={[styles.iconButton, (!prepared || busy) && styles.disabled]}><Text style={styles.buttonText}>{copied ? '✓' : '⧉'}</Text></Pressable>
         {Platform.OS === 'web' ? <Pressable accessibilityRole="button" accessibilityLabel={showQr ? 'Hide QR' : 'Show QR'} disabled={!prepared} onPress={() => setShowQr((value) => !value)} style={[styles.iconButton, !prepared && styles.disabled]}><Text style={styles.buttonText}>QR</Text></Pressable> : null}
       </View>
