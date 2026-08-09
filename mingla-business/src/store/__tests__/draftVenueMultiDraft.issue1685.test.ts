@@ -373,3 +373,165 @@ describe("#1685 T-17 — useVenueDraftEntriesForBrand is referentially stable", 
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// R-1 (rework, tester F-1) — the ACTIVE-draft cross-brand boundary.
+//
+// The original implementation applied the META-ORCH-1255 ownership check ONLY
+// on the `drafts.find(...)` (parked) branch, so `activateDraft` returned `true`
+// for ANY brand whenever the requested draft was the ACTIVE one. `create.tsx`
+// takes its RESUME branch on `true`, so brand B landed inside brand A's
+// half-built venue — and the wizard submits under `currentBrand`, filing brand
+// A's content under brand B. Reachable on Business web by ordinary browser Back
+// (`/venue/create?draft=dv_…` is in the address bar) because #1685 D-3 left
+// `activateBrand` with zero production callers, so `activeBrandId` keeps
+// pointing at the brand last authored under.
+//
+// These pin the fixed semantics from the OTHER side of the tester's A-1/A-2:
+// the owned and unowned cases must still succeed, so the leak cannot be
+// "fixed" by making the early return refuse everything.
+// ---------------------------------------------------------------------------
+describe("#1685 R-1 — activateDraft ownership on the ACTIVE branch (SC-7)", () => {
+  test("R-1a — a cross-brand id is refused even when that draft is ACTIVE", () => {
+    const a1 = store.getState().createDraft("brand-a");
+    store.getState().patch({ workingName: "Alpha Secret", step: 4 });
+
+    // Vacuity guard: the draft really is ACTIVE, not parked — this is the
+    // branch the parked-path guard never sees.
+    expect(store.getState().activeDraftId).toBe(a1);
+    expect(store.getState().drafts.some((e) => e.id === a1)).toBe(false);
+
+    expect(store.getState().activateDraft(a1, "brand-b")).toBe(false);
+
+    // Nothing moved: ownership, the open edit session, and brand B's empty
+    // resume list are all untouched.
+    const s = store.getState();
+    expect(s.activeBrandId).toBe("brand-a");
+    expect(s.activeDraftId).toBe(a1);
+    expect(s.workingName).toBe("Alpha Secret");
+    expect(s.step).toBe(4);
+    expect(draftVenuesForBrand(s, "brand-b")).toEqual([]);
+  });
+
+  test("R-1b — the OWNING brand still reopens its own active draft", () => {
+    const a1 = store.getState().createDraft("brand-a");
+    store.getState().patch({ workingName: "Alpha Secret", step: 4 });
+
+    // The guard must not refuse the legitimate case (a web refresh re-enters
+    // `?draft=<active id>` under the same brand on every reload — SC-12).
+    expect(store.getState().activateDraft(a1, "brand-a")).toBe(true);
+    expect(store.getState().workingName).toBe("Alpha Secret");
+    expect(store.getState().step).toBe(4);
+  });
+
+  test("R-1c — an UNOWNED active draft is still adopted by the arriving brand (#1461)", () => {
+    const a1 = store.getState().createDraft("brand-a");
+    store.getState().patch({ workingName: "Unscoped Orphan", step: 6 });
+    // Reproduce the migrated legacy shape: an in-progress active draft that no
+    // brand owns yet.
+    store.setState({ activeBrandId: null });
+
+    expect(store.getState().activateDraft(a1, "brand-b")).toBe(true);
+    expect(store.getState().activeBrandId).toBe("brand-b");
+    expect(store.getState().workingName).toBe("Unscoped Orphan");
+
+    // Adoption happens exactly ONCE: now that brand B owns it, brand C is
+    // refused by the same guard that made R-1a fail.
+    expect(store.getState().activateDraft(a1, "brand-c")).toBe(false);
+    expect(store.getState().activeBrandId).toBe("brand-b");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R-2 (rework, tester F-2) — a migrated unscoped draft must be REACHABLE.
+//
+// SPEC §7 T-9 promises the first arriving brand adopts a `brandId: null` draft.
+// After the reshape neither adoption path could fire in production: no to-do
+// row could emit the orphan's id (`draftVenuesForBrand` filters on `brandId`,
+// which `null` never matches) and `activateBrand` has zero production callers.
+// The half-built venue was stored but invisible to every surface until logout
+// wiped it — the exact silent loss this work item exists to prevent (#1461
+// regression).
+// ---------------------------------------------------------------------------
+describe("#1685 R-2 — a migrated unscoped draft stays reachable (T-9 / #1461)", () => {
+  test("R-2a — it appears as a resume row for the current brand BEFORE any '+' press", async () => {
+    await seedLegacyBlob(
+      {
+        workingName: "Unscoped Orphan",
+        displayName: "Unscoped Orphan",
+        venueCategory: "bar",
+        step: 6,
+        activeBrandId: null,
+        drafts: {},
+      },
+      0,
+    );
+
+    // Vacuity guard — the migrator really carried a resume-worthy draft that
+    // nobody owns.
+    expect(store.getState().activeBrandId).toBeNull();
+    expect(draftVenueInProgress(store.getState())).toBe(true);
+
+    // This is what Home reads. Zero rows here is the F-2 defect: the operator
+    // opens the app after the update and their venue is simply gone.
+    const rows = draftVenuesForBrand(store.getState(), "brand-a").filter((e) =>
+      draftVenueInProgress(e.state),
+    );
+    expect(rows.map((e) => e.state.workingName)).toContain("Unscoped Orphan");
+
+    // Ownership is reported as the store actually holds it — `null` is UNOWNED,
+    // not "owned by brand-a": a read accessor must not invent ownership
+    // (Constitution #9). The stamp happens when the operator acts.
+    expect(rows[0].brandId).toBeNull();
+
+    // Tapping that row is `/venue/create?draft=<id>` -> activateDraft, which
+    // stamps the owner and completes the #1461 adoption through the product's
+    // own resume path.
+    expect(store.getState().activateDraft(rows[0].id, "brand-a")).toBe(true);
+    expect(store.getState().activeBrandId).toBe("brand-a");
+    expect(store.getState().workingName).toBe("Unscoped Orphan");
+  });
+
+  test("R-2b — pressing '+' adopts it as it parks, instead of stranding it", async () => {
+    await seedLegacyBlob(
+      {
+        workingName: "Unscoped Orphan",
+        displayName: "Unscoped Orphan",
+        step: 6,
+        activeBrandId: null,
+        drafts: {},
+      },
+      0,
+    );
+    const orphanId = store.getState().activeDraftId;
+    expect(orphanId).not.toBeNull();
+
+    store.getState().createDraft("brand-a");
+
+    // Parked WITH an owner. Parking it as `brandId: null` matches no brand's
+    // resume rows, so the draft would be unreachable forever.
+    const parkedOrphan = store.getState().drafts.find((e) => e.id === orphanId);
+    expect(parkedOrphan?.brandId).toBe("brand-a");
+    expect(
+      draftVenuesForBrand(store.getState(), "brand-a")
+        .filter((e) => draftVenueInProgress(e.state))
+        .map((e) => e.state.workingName),
+    ).toContain("Unscoped Orphan");
+
+    // And adoption did not make it visible to everyone else.
+    expect(draftVenuesForBrand(store.getState(), "brand-b")).toEqual([]);
+  });
+
+  test("R-2c — an OWNED active draft is never offered to another brand", () => {
+    store.getState().createDraft("brand-a");
+    store.getState().patch({ workingName: "Alpha Secret", step: 4 });
+
+    // The unowned-draft allowance must not become a general cross-brand read.
+    expect(draftVenuesForBrand(store.getState(), "brand-b")).toEqual([]);
+    expect(
+      draftVenuesForBrand(store.getState(), "brand-a").map(
+        (e) => e.state.workingName,
+      ),
+    ).toEqual(["Alpha Secret"]);
+  });
+});

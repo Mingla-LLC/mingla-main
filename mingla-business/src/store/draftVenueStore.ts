@@ -502,15 +502,28 @@ interface DraftVenueStore extends DraftVenuePersisted {
  * id (replace by id when already present, else append). A no-op when there is
  * no active draft id: an id-less top-level blob is not addressable, so parking
  * it would mint an orphan nobody can resume.
+ *
+ * `adoptingBrandId` is the brand on whose behalf the park is happening, and it
+ * is used ONLY when the active draft is UNOWNED (`activeBrandId === null`, i.e.
+ * a migrated legacy unscoped draft — #1461). Parking such a draft as
+ * `brandId: null` would strand it forever: `draftVenuesForBrand` filters on
+ * `brandId`, so a null owner matches NO brand's resume rows and the half-built
+ * venue becomes invisible to every surface until logout wipes it (the exact
+ * silent loss this work item exists to prevent). Stamping the arriving brand at
+ * park time IS the #1461 adoption rule — "the first brand to arrive owns an
+ * unscoped draft" — applied at the moment ownership first becomes knowable.
+ * An already-owned draft is NEVER re-stamped: that would be the cross-brand
+ * leak META-ORCH-1255 Leg B forbids.
  */
 const parkActive = (
   s: DraftVenuePersisted,
   list: DraftVenueEntry[],
+  adoptingBrandId: string | null,
 ): DraftVenueEntry[] => {
   if (s.activeDraftId === null) return list;
   const entry: DraftVenueEntry = {
     id: s.activeDraftId,
-    brandId: s.activeBrandId,
+    brandId: s.activeBrandId ?? adoptingBrandId,
     updatedAt: new Date().toISOString(),
     state: pickDraft(s),
   };
@@ -637,8 +650,11 @@ export const useDraftVenueStore = create<DraftVenueStore>()(
         const id = generateVenueDraftId();
         set((s) => {
           // 1 — park whatever is currently active under its OWN id (nothing is
-          //     lost by pressing "+", META-ORCH-1009 Sub-E).
-          const parked = parkActive(s, s.drafts);
+          //     lost by pressing "+", META-ORCH-1009 Sub-E). An UNOWNED active
+          //     draft (a migrated legacy unscoped one) is adopted by this brand
+          //     as it parks, so it stays reachable instead of becoming a draft
+          //     no brand can see (#1461 adoption — see `parkActive`).
+          const parked = parkActive(s, s.drafts, brandId);
           // 2 — prune litter: this brand's parked-but-EMPTY drafts. Replaces the
           //     old on-entry `venueDraftBrandToReset` garbage collection and is
           //     strictly better (id-precise and brand-scoped), so ten "+" presses
@@ -660,8 +676,24 @@ export const useDraftVenueStore = create<DraftVenueStore>()(
       activateDraft: (draftId, brandId) => {
         const s = get();
         if (s.activeDraftId === draftId) {
-          // Already active — stamp a legacy unscoped draft with the arriving
-          // brand (#1461 adoption) and report success.
+          // META-ORCH-1255 isolation boundary — CHECKED HERE FIRST, BEFORE the
+          // "already active" success path. The requested draft being the ACTIVE
+          // one does not make it this brand's draft: nothing in production calls
+          // `activateBrand` any more, so `activeBrandId` keeps pointing at the
+          // brand the operator last authored under while they browse Home under
+          // another brand. Returning `true` on that state hands brand B the
+          // open edit session of brand A's half-built venue — and the wizard
+          // submits under `currentBrand`, so brand A's content would be filed
+          // under brand B. Reachable on Business web by ordinary browser Back:
+          // the draft id sits in the address bar (`/venue/create?draft=dv_…`).
+          // SC-7 + I-PROPOSED-1685-VENUE-DRAFTS-ARE-ID-KEYED-AND-BRAND-SCOPED.
+          if (s.activeBrandId !== null && s.activeBrandId !== brandId) {
+            return false;
+          }
+          // Owned by this brand, or UNOWNED — a legacy unscoped draft, which the
+          // arriving brand adopts exactly once (#1461). Do not weaken this to
+          // fix the leak above: it is the only in-product path that gives a
+          // migrated orphan an owner.
           if (s.activeBrandId === null) set({ activeBrandId: brandId });
           return true;
         }
@@ -671,7 +703,7 @@ export const useDraftVenueStore = create<DraftVenueStore>()(
         // draft. A `null` brandId is a legacy migrated draft, adoptable once.
         if (entry.brandId !== null && entry.brandId !== brandId) return false;
         set((cur) => {
-          const parked = parkActive(cur, cur.drafts);
+          const parked = parkActive(cur, cur.drafts, brandId);
           return {
             ...entry.state,
             activeBrandId: brandId,
@@ -728,7 +760,7 @@ export const useDraftVenueStore = create<DraftVenueStore>()(
               drafts: s.drafts,
             };
           }
-          const parked = parkActive(s, s.drafts);
+          const parked = parkActive(s, s.drafts, brandId);
           if (chosen !== null) {
             return {
               ...chosen.state,
@@ -849,9 +881,20 @@ export const draftVenuesForBrand = (
   const parked = s.drafts
     .filter((e) => e.brandId === brandId)
     .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
-  if (s.activeBrandId !== brandId || s.activeDraftId === null) return parked;
+  if (s.activeDraftId === null) return parked;
+  // Issue #1685 — an UNOWNED active draft (`activeBrandId === null`: a migrated
+  // legacy unscoped draft, #1461) is offered to WHICHEVER brand is asking, so it
+  // earns a "Finish adding …" row instead of sitting in storage where no surface
+  // can ever show it. Tapping that row routes to `?draft=<id>`, which calls
+  // `activateDraft(id, currentBrand)` and stamps the owner — the adoption
+  // completes through the product's own resume path. An owned draft is NEVER
+  // offered to another brand (META-ORCH-1255 Leg B).
+  if (s.activeBrandId !== null && s.activeBrandId !== brandId) return parked;
   // The active draft is by definition the most recently touched, so it sorts
   // FIRST by construction rather than by a fabricated timestamp comparison.
+  // `brandId` is reported exactly as the store holds it — `null` means UNOWNED,
+  // never "owned by the asking brand": a read accessor must not invent
+  // ownership the store has not stamped (Constitution #9).
   return [
     {
       id: s.activeDraftId,
@@ -895,7 +938,14 @@ export const useVenueDraftEntriesForBrand = (
       .sort((a, b) =>
         a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0,
       );
-    if (activeBrandId !== brandId || activeDraftId === null) return parked;
+    if (activeDraftId === null) return parked;
+    // Issue #1685 — mirrors `draftVenuesForBrand`: an UNOWNED active draft
+    // (`activeBrandId === null`, the migrated #1461 case) is offered to the
+    // asking brand so it gets a resume row and can be adopted; an OWNED draft is
+    // never offered to another brand (META-ORCH-1255 Leg B). `activeBrandId` is
+    // already a subscribed scalar, so the memo recomputes when ownership is
+    // stamped.
+    if (activeBrandId !== null && activeBrandId !== brandId) return parked;
     return [
       {
         id: activeDraftId,
@@ -905,6 +955,16 @@ export const useVenueDraftEntriesForBrand = (
         // one), with the four subscribed scalars threaded through explicitly so
         // the row's existence and label are provably derived from what this
         // hook is subscribed to.
+        //
+        // WARNING for future consumers (#1685 F-5): every OTHER field here comes
+        // from an UNSUBSCRIBED `getState()` read. The four threaded scalars are
+        // exactly what decides a row's existence (`draftVenueInProgress`) and its
+        // label, which is why this memo is correct today. If you start reading
+        // another field off this entry (`venueCategory`, `formattedAddress`, …),
+        // you MUST add its selector above and to the dep array, or you will
+        // silently render a stale value. Do NOT subscribe to the whole draft
+        // object: that returns a new reference every render and reintroduces the
+        // useSyncExternalStore loop this hook exists to avoid (T-17).
         state: {
           ...pickDraft(useDraftVenueStore.getState()),
           displayName,
