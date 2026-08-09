@@ -119,3 +119,9 @@ jobs:
             src/services/__tests__/urlCreateObjectURLPreserved.issue1487.implementor.test.ts \
             src/utils/__tests__/browserFilePicker.test.ts \
             --testSequencer=./scripts/ci/issue-1487-sequencer.cjs
+
+      - name: "#1664 event-cover timeout determinism contract"
+        if: always()
+        run: |
+          node scripts/ci/issue-1664-event-cover-timeout-determinism.mjs --self-test
+          node scripts/ci/issue-1664-event-cover-timeout-determinism.mjs
