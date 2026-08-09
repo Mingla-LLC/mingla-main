@@ -107,6 +107,54 @@ export async function searchPoolMatches(
 }
 
 /**
+ * Issue #1648 — resolve a PICKED address to a place we already hold.
+ *
+ * Same response shape as `searchPoolMatches` (the edge fn reuses
+ * `rowToPoolMatch`), so the gate's `ClaimMatchCard` renders it unchanged and the
+ * presence facts / claim state stay authoritative. Returns null when Google has
+ * no confident answer or the resolved place simply is not in our pool — both
+ * are ordinary outcomes for a genuinely new venue.
+ *
+ * NEVER swallows an upstream failure into `null`. The edge fn answers 502
+ * `resolve_unavailable` when Google is unreachable, and reporting that as "we
+ * don't know you" would push a venue we DO hold into create-from-scratch — the
+ * exact duplicate this whole path exists to prevent (#1620's lesson: a monitor
+ * that cannot report failure reports success).
+ */
+export async function matchPoolByAddress(input: {
+  formattedAddress: string;
+  lat: number;
+  lng: number;
+}): Promise<PoolMatch | null> {
+  const { data, error } = await supabase.functions.invoke(
+    "venue-address-pool-match",
+    {
+      body: {
+        formatted_address: input.formattedAddress,
+        lat: input.lat,
+        lng: input.lng,
+      },
+    },
+  );
+
+  if (error !== null) {
+    const code = await detailErrorCode(error);
+    throw new Error(code ?? error.message ?? "match_failed");
+  }
+
+  const body = data as { match?: unknown; error?: string } | null;
+  if (body !== null && typeof body === "object" && "error" in body) {
+    throw new Error(String((body as { error: string }).error));
+  }
+
+  const raw = body?.match;
+  if (raw === null || raw === undefined || typeof raw !== "object") {
+    return null;
+  }
+  return mapMatchRow(raw as Record<string, unknown>);
+}
+
+/**
  * ORCH-1263 §B1 — read the structured `{ error }` body off a non-2xx edge
  * response (supabase-js stashes the real Response on `.context` behind the
  * opaque FunctionsHttpError message — same posture as pipelineInvokeError).
