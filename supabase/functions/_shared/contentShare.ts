@@ -220,11 +220,14 @@ const exactObjectKeys = (value: RecordLike, allowed: string[]): boolean => Objec
 const nativeHours = (value: unknown): unknown => {
   if (value === undefined) return undefined; if (value === null) return null;
   if (typeof value === "string") return nativeText(value, 4000, true);
-  if (Array.isArray(value)) return value.map((item) => nativeText(item, 500, true)!);
+  if (Array.isArray(value)) {
+    if (value.length > 7) throw new Error("invalid_native_snapshot");
+    return value.map((item) => nativeText(item, 500, true)!);
+  }
   if (!value || typeof value !== "object") throw new Error("invalid_native_snapshot");
   const row=value as RecordLike;
-  if (exactObjectKeys(row,["open_now","weekday_text"])) return compact({open_now:nativeBoolean(row.open_now),weekday_text:nativeStrings(row.weekday_text,500)});
-  if (exactObjectKeys(row,["lines"])) return {lines:nativeStrings(row.lines,500)};
+  if (exactObjectKeys(row,["open_now","weekday_text"])) return compact({open_now:nativeBoolean(row.open_now),weekday_text:nativeStrings(row.weekday_text,500,7)});
+  if (exactObjectKeys(row,["lines"])) return {lines:nativeStrings(row.lines,500,7)};
   if (exactObjectKeys(row,["openNow","periods","nextOpenTime","nextCloseTime","weekdayDescriptions"])) {
     let periods:RecordLike[]|undefined;
     if(row.periods!==undefined){if(!Array.isArray(row.periods)||row.periods.length>32)throw new Error("invalid_native_snapshot");periods=row.periods.map((raw:unknown)=>{
@@ -232,7 +235,7 @@ const nativeHours = (value: unknown): unknown => {
       const point=(candidate:unknown)=>{if(candidate===undefined)return undefined;if(!candidate||typeof candidate!=="object"||Array.isArray(candidate)||!exactObjectKeys(candidate as RecordLike,["day","hour","minute","date"]))throw new Error("invalid_native_snapshot");const p=candidate as RecordLike;return compact({day:nativeNumberInRange(p.day,0,6,true),hour:nativeNumberInRange(p.hour,0,23,true),minute:nativeNumberInRange(p.minute,0,59,true),date:nativeText(p.date,40)});};
       return compact({open:point((raw as RecordLike).open),close:point((raw as RecordLike).close)});
     });}
-    return compact({openNow:nativeBoolean(row.openNow),periods,nextOpenTime:nativeText(row.nextOpenTime,80),nextCloseTime:nativeText(row.nextCloseTime,80),weekdayDescriptions:nativeStrings(row.weekdayDescriptions,500)});
+    return compact({openNow:nativeBoolean(row.openNow),periods,nextOpenTime:nativeText(row.nextOpenTime,80),nextCloseTime:nativeText(row.nextCloseTime,80),weekdayDescriptions:nativeStrings(row.weekdayDescriptions,500,7)});
   }
   const days=["monday","tuesday","wednesday","thursday","friday","saturday","sunday"];
   if(Object.keys(row).length<=7&&Object.keys(row).every((key)=>days.includes(key))) return Object.fromEntries(Object.entries(row).map(([key,item])=>[key,nativeText(item,500,true)]));
@@ -243,9 +246,9 @@ const nativeSocialStats=(value:unknown):RecordLike|undefined=>{
   const row=value as RecordLike;if(!exactObjectKeys(row,["views","likes","saves","shares"]))throw new Error("invalid_native_snapshot");
   return compact({views:nativeCount(row.views),likes:nativeCount(row.likes),saves:nativeCount(row.saves),shares:nativeCount(row.shares)});
 };
-const nativeImages = (values: unknown): string[] => {
+const nativeImages = (values: unknown, maxItems: number): string[] => {
   if (values === undefined || values === null) return [];
-  if (!Array.isArray(values)) throw new Error("invalid_native_snapshot");
+  if (!Array.isArray(values) || values.length > maxItems) throw new Error("invalid_native_snapshot");
   return values.map((value) => {
     const candidate = nativeText(value, 2048, true)!;
     const url = publicMediaUrl(candidate); if (!url) throw new Error("invalid_native_snapshot"); return url;
@@ -256,9 +259,9 @@ const nativeExternalUrl = (value: unknown): string | undefined => {
   const candidate=nativeText(value,2048,true)!; const url=publicExternalUrl(candidate);
   if (!url) throw new Error("invalid_native_snapshot"); return url;
 };
-const nativeStrings = (value: unknown, max: number): string[] | undefined => {
+const nativeStrings = (value: unknown, max: number, maxItems: number): string[] | undefined => {
   if (value === undefined || value === null) return undefined;
-  if (!Array.isArray(value)) throw new Error("invalid_native_snapshot");
+  if (!Array.isArray(value) || value.length > maxItems) throw new Error("invalid_native_snapshot");
   return value.map((item) => nativeText(item, max, true)!);
 };
 const priceFields = (source: RecordLike): RecordLike => compact({
@@ -271,23 +274,58 @@ const priceFields = (source: RecordLike): RecordLike => compact({
   fxProviderUpdatedAt: nativeText(source.fxProviderUpdatedAt, 80), fxFreshness: nativeText(source.fxFreshness, 32),
 });
 
+const NATIVE_PLACE_SOURCE_KEYS = [
+  "id","google_place_id","name","address","city","country_code","primary_type_display_name","primary_type","rating","review_count",
+  "price_level","price_min","price_max","utc_offset_minutes","editorial_summary","generative_summary","opening_hours","stored_photo_urls",
+  "google_maps_uri","national_phone_number","website","lat","lng","is_active","is_servable",
+  "placeId","googlePlaceId","placePoolId","place_pool_id","experience_id","title","category","categoryIcon","image","images","description","fullDescription",
+  "reviewCount","priceRange","priceRangeStatus","sourceMinMinor","sourceMaxMinor","sourceCurrencyCode","sourceMinorUnitExponent",
+  "displayMinMinor","displayMaxMinor","displayCurrencyCode","displayMinorUnitExponent","priceIsApproximate","fxSnapshotId","fxProvider",
+  "fxProviderUpdatedAt","fxFreshness","openingHours","utcOffsetMinutes","phone","countryCode","highlights","tags","socialStats","cardType",
+  "tagline","categoryLabel","pairingKey","experienceType","totalPriceMin","totalPriceMax","estimatedDurationMinutes","shoppingList","tip",
+  "priceTier","budget","oneLiner","websiteUri","googleMapsUri","location","selectedDateTime","strollData","picnicData","nightOutData","dateAdded","source","sourceScope",
+  "sourceRecordId","lockInEvent","scheduledAt","durationMinutes","lockerUserId","savedCardId","sessionId","teaserText","_locked",
+  "matchScore","matchFactors","recommendationReasons","distance","distanceKm","distanceFromUserKm","travelTime","travelMode",
+];
+const NATIVE_CURATED_SOURCE_KEYS = [
+  "id","experience_id","cardType","experienceType","pairingKey","title","tagline","categoryLabel","category","categoryIcon","image","images","description",
+  "fullDescription","stops","totalPriceMin","totalPriceMax","estimatedDurationMinutes","shoppingList","tip","priceTier","budget","oneLiner",
+  "rating","reviewCount","travelTime","priceRange","priceRangeStatus","sourceMinMinor","sourceMaxMinor","sourceCurrencyCode","sourceMinorUnitExponent",
+  "displayMinMinor","displayMaxMinor","displayCurrencyCode","displayMinorUnitExponent","priceIsApproximate","fxSnapshotId","fxProvider",
+  "fxProviderUpdatedAt","fxFreshness","address","openingHours","utcOffsetMinutes","highlights","tags","socialStats","lat","lng","website",
+  "websiteUri","phone","countryCode","placeId","googlePlaceId","placePoolId","googleMapsUri","location","selectedDateTime","strollData",
+  "picnicData","nightOutData","dateAdded","source",
+  "sourceScope","sourceRecordId","teaserText","_locked","lockInEvent","scheduledAt","durationMinutes","lockerUserId","savedCardId","sessionId",
+  "matchScore","matchFactors","recommendationReasons","distance","distanceKm","travelTime","travelMode",
+];
+const NATIVE_CURATED_STOP_KEYS = [
+  "stopNumber","stopLabel","placeId","placeName","placeType","address","rating","reviewCount","imageUrl","imageUrls","priceLevelLabel",
+  "priceTier","priceMin","priceMax","openingHours","utcOffsetMinutes","isOpenNow","website","lat","lng","aiDescription",
+  "estimatedDurationMinutes","optional","dismissible","role","phone","countryCode","comboCategory","rankSignal","distanceFromUserKm",
+  "travelTimeFromUserMin","travelTimeFromPreviousStopMin","travelModeFromPreviousStop",
+];
+
 /** Explicit recipient-safe allowlist. Private ownership, provider payloads,
  * processing metadata and internal notes cannot enter a native chat card. */
 export function buildNativeContentCardSnapshot(kind: "place" | "curated", row: RecordLike): RecordLike {
   const card = row.card_data && typeof row.card_data === "object" && !Array.isArray(row.card_data) ? row.card_data : {};
   const source = kind === "curated" ? card : row;
-  const sourceImages = source.images === undefined ? [] : nativeImages(source.images);
-  const poolImages = source.image || sourceImages.length ? [] : nativeImages(row.stored_photo_urls ?? []);
-  const image = source.image ? nativeImages([source.image])[0] : sourceImages[0] || poolImages[0];
+  if (!exactObjectKeys(source, kind === "curated" ? NATIVE_CURATED_SOURCE_KEYS : NATIVE_PLACE_SOURCE_KEYS)) throw new Error("invalid_native_snapshot");
+  if ((kind === "curated" && source.cardType !== undefined && source.cardType !== "curated")
+    || (kind === "place" && source.cardType !== undefined && source.cardType !== "single")) throw new Error("invalid_native_snapshot");
+  const sourceImages = source.images === undefined ? [] : nativeImages(source.images, 6);
+  const poolImages = source.image || sourceImages.length ? [] : nativeImages(row.stored_photo_urls ?? [], 6);
+  const image = source.image ? nativeImages([source.image], 1)[0] : sourceImages[0] || poolImages[0];
   const images = sourceImages.length ? sourceImages : image ? [image, ...poolImages.filter((item) => item !== image)] : poolImages;
   let stops: RecordLike[] | undefined;
   if (kind === "curated") {
-    if (!Array.isArray(card.stops) || card.stops.length === 0) throw new Error("invalid_native_snapshot");
+    if (!Array.isArray(card.stops) || card.stops.length === 0 || card.stops.length > 24) throw new Error("invalid_native_snapshot");
     stops = card.stops.map((raw: unknown) => {
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid_native_snapshot");
       const stop = raw as RecordLike;
-      const imageUrl = stop.imageUrl ? nativeImages([stop.imageUrl])[0] : undefined;
-      const imageUrls = stop.imageUrls === undefined ? undefined : nativeImages(stop.imageUrls);
+      if (!exactObjectKeys(stop, NATIVE_CURATED_STOP_KEYS)) throw new Error("invalid_native_snapshot");
+      const imageUrl = stop.imageUrl ? nativeImages([stop.imageUrl], 1)[0] : undefined;
+      const imageUrls = stop.imageUrls === undefined ? undefined : nativeImages(stop.imageUrls, 5);
       return compact({
         stopNumber: nativePositiveInteger(stop.stopNumber), stopLabel: nativeText(stop.stopLabel, 40),
         placeId: nativeText(stop.placeId, 256, true), placeName: nativeText(stop.placeName, 160, true), placeType: nativeText(stop.placeType, 120),
@@ -317,11 +355,11 @@ export function buildNativeContentCardSnapshot(kind: "place" | "curated", row: R
     openingHours: nativeHours(source.openingHours ?? row.opening_hours), utcOffsetMinutes: nativeUtcOffsetMinutes(source.utcOffsetMinutes ?? row.utc_offset_minutes),
     phone: nativeText(source.phone || row.national_phone_number, 80), countryCode: source.countryCode === null ? null : nativeCountryCode(source.countryCode || row.country_code),
     website: nativeExternalUrl(source.website || row.website),
-    highlights: nativeStrings(source.highlights, 240), tags: nativeStrings(source.tags, 120), socialStats: nativeSocialStats(source.socialStats),
+    highlights: nativeStrings(source.highlights, 240, 5), tags: nativeStrings(source.tags, 120, 10), socialStats: nativeSocialStats(source.socialStats),
     cardType: kind === "curated" ? "curated" : "single", stops,
     tagline: nativeText(source.tagline, 500), categoryLabel: nativeText(source.categoryLabel, 160), pairingKey: nativeText(source.pairingKey, 160),
     experienceType: nativeText(source.experienceType, 120), totalPriceMin: nativeMoney(source.totalPriceMin), totalPriceMax: nativeMoney(source.totalPriceMax),
-    estimatedDurationMinutes: nativePositiveInteger(source.estimatedDurationMinutes), shoppingList: nativeStrings(source.shoppingList, 500), tip: source.tip === null ? null : nativeText(source.tip, 2000),
+    estimatedDurationMinutes: nativePositiveInteger(source.estimatedDurationMinutes), shoppingList: nativeStrings(source.shoppingList, 500, 12), tip: source.tip === null ? null : nativeText(source.tip, 2000),
   });
   if (new TextEncoder().encode(JSON.stringify(snapshot)).byteLength > 262144) throw new Error("native_snapshot_too_large");
   return snapshot;

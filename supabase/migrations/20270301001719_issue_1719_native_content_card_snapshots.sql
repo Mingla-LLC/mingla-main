@@ -1,5 +1,5 @@
 -- #1719 private, immutable source-card snapshots for native Mingla chat.
-CREATE TABLE public.content_share_native_snapshots (
+CREATE TABLE IF NOT EXISTS public.content_share_native_snapshots (
   link_id uuid NOT NULL,
   version integer NOT NULL CHECK (version > 0),
   contract text NOT NULL CHECK (contract = 'native_content_card_snapshot_v1'),
@@ -21,6 +21,7 @@ GRANT ALL ON public.content_share_native_snapshots TO service_role;
 CREATE OR REPLACE FUNCTION public.reject_content_share_native_snapshot_mutation() RETURNS trigger
 LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
 BEGIN RAISE EXCEPTION 'immutable_native_content_card_snapshot'; END; $$;
+DROP TRIGGER IF EXISTS content_share_native_snapshot_immutable ON public.content_share_native_snapshots;
 CREATE TRIGGER content_share_native_snapshot_immutable
 BEFORE UPDATE OR DELETE ON public.content_share_native_snapshots FOR EACH ROW
 EXECUTE FUNCTION public.reject_content_share_native_snapshot_mutation();
@@ -46,6 +47,20 @@ BEGIN
     OR p_native_snapshot->>'contract'<>'native_content_card_snapshot_v1' OR p_native_snapshot->>'version'<>'1'
     OR p_native_snapshot->>'kind' IS DISTINCT FROM p_entity_kind OR jsonb_typeof(p_native_preview)<>'object'
     OR jsonb_typeof(p_native_preview->'title')<>'string' OR char_length(btrim(p_native_preview->>'title')) NOT BETWEEN 1 AND 160
+    OR EXISTS (SELECT 1 FROM jsonb_object_keys(p_native_snapshot) AS key
+      WHERE key<>ALL(ARRAY['contract','version','kind','id','title','category','categoryIcon','image','images','description','fullDescription',
+        'address','rating','reviewCount','priceRange','priceRangeStatus','sourceMinMinor','sourceMaxMinor','sourceCurrencyCode',
+        'sourceMinorUnitExponent','displayMinMinor','displayMaxMinor','displayCurrencyCode','displayMinorUnitExponent','priceIsApproximate',
+        'fxSnapshotId','fxProvider','fxProviderUpdatedAt','fxFreshness','lat','lng','placeId','openingHours','utcOffsetMinutes','phone',
+        'countryCode','website','highlights','tags','socialStats','cardType','stops','tagline','categoryLabel','pairingKey','experienceType',
+        'totalPriceMin','totalPriceMax','estimatedDurationMinutes','shoppingList','tip']))
+    OR EXISTS (SELECT 1 FROM jsonb_object_keys(p_native_preview) AS key
+      WHERE key<>ALL(ARRAY['title','category','image','cardType','stopCount']))
+    OR (p_native_preview?'image' AND (jsonb_typeof(p_native_preview->'image')<>'string' OR p_native_preview->>'image'!~'^https://'))
+    OR (p_entity_kind='place' AND (p_native_preview->>'cardType' IS DISTINCT FROM 'single' OR p_native_preview?'stopCount'))
+    OR (p_entity_kind='curated' AND (p_native_preview->>'cardType' IS DISTINCT FROM 'curated'
+      OR jsonb_typeof(p_native_preview->'stopCount')<>'number' OR (p_native_preview->>'stopCount')!~'^[0-9]+$'
+      OR (p_native_preview->>'stopCount')::numeric NOT BETWEEN 1 AND 24))
     OR v_snapshot_bytes>262144 OR v_preview_bytes>2600 THEN
     RAISE EXCEPTION 'invalid_native_content_share_contract';
   END IF;
@@ -108,6 +123,7 @@ BEGIN
   IF octet_length(convert_to(NEW.card_payload::text,'UTF8'))>5120 THEN RAISE EXCEPTION 'content_share_message_envelope_too_large'; END IF;
   RETURN NEW;
 END; $$;
+DROP TRIGGER IF EXISTS messages_attach_native_content_card_descriptor ON public.messages;
 CREATE TRIGGER messages_attach_native_content_card_descriptor
 BEFORE INSERT ON public.messages FOR EACH ROW EXECUTE FUNCTION public.attach_native_content_card_descriptor();
 

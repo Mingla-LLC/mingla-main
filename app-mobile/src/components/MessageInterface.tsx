@@ -83,7 +83,7 @@ import { colors } from "../constants/colors";
 import { useAppLayout } from "../hooks/useAppLayout";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
-import { validateNativeContentCardDescriptorV1 } from '@mingla/sharing';
+import { validateNativeContentCardDescriptorV1, type NativeContentCardDescriptorV1 } from '@mingla/sharing';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -327,6 +327,7 @@ export default function MessageInterface({
   const [showSavedCardPicker, setShowSavedCardPicker] = useState(false);
   const [pickerSubmittingCardId, setPickerSubmittingCardId] = useState<string | null>(null);
   const [resolvingNativeCardId, setResolvingNativeCardId] = useState<string | null>(null);
+  const [nativeCard, setNativeCard] = useState<NativeContentCardDescriptorV1 | null>(null);
   const pickerSubmittingRef = useRef(false);
   // ORCH-0685: typed state — replaces unsafe `any` typing (Constitution #12 fix).
   // Populated via cardPayloadToExpandedCardData helper (cardPayloadAdapter.ts).
@@ -1695,18 +1696,23 @@ export default function MessageInterface({
                   }}
                   onCardBubbleTap={async (payload, messageId) => {
                     if (isContentShareCardPayload(payload)) {
-                      const nativeCard = validateNativeContentCardDescriptorV1(payload.nativeCard);
-                      if (nativeCard) {
+                      const descriptor = validateNativeContentCardDescriptorV1(payload.nativeCard);
+                      if (descriptor) {
                         const openSnapshot = (card: LegacyCardPayload) => {
                           setExpandedCardFromChat(cardPayloadToExpandedCardData(card));
                           setShowExpandedCardFromChat(true);
                         };
                         const resolveAndOpen = async (): Promise<void> => {
                           setResolvingNativeCardId(messageId);
+                          setNativeCard(descriptor);
                           try {
-                            const cached = await nativeContentCardSnapshotService.cached(messageId, nativeCard.snapshotFingerprint);
+                            const cached = await nativeContentCardSnapshotService.cached(messageId, descriptor.snapshotFingerprint);
                             if (cached) { openSnapshot(cached); return; }
-                            const resolved = await nativeContentCardSnapshotService.resolve([messageId], { [messageId]: nativeCard.snapshotFingerprint });
+                            if (isOffline) {
+                              Alert.alert('Connect to open the full card', 'Reconnect, then try again.');
+                              return;
+                            }
+                            const resolved = await nativeContentCardSnapshotService.resolve([messageId], { [messageId]: descriptor.snapshotFingerprint });
                             const snapshot = resolved.get(messageId);
                             if (!snapshot) throw new Error('native_snapshot_unavailable');
                             openSnapshot(snapshot);
@@ -1715,7 +1721,7 @@ export default function MessageInterface({
                               { text: 'Open shared link', onPress: () => router.push(`/s/${payload.shareCode}` as never) },
                               { text: 'Retry', onPress: () => { void resolveAndOpen(); } },
                             ]);
-                          } finally { setResolvingNativeCardId(null); }
+                          } finally { setResolvingNativeCardId(null); setNativeCard(null); }
                         };
                         await resolveAndOpen();
                         return;
@@ -2136,7 +2142,7 @@ export default function MessageInterface({
           required onOpenAddToBoardModal prop. */}
 
       {/* ORCH-0667: shared-card picker modal */}
-      {resolvingNativeCardId ? <View accessibilityRole="progressbar" accessibilityLabel="Loading shared card"
+      {resolvingNativeCardId && nativeCard ? <View accessibilityRole="progressbar" accessibilityLabel={`Opening shared ${nativeCard.kind === 'curated' ? 'plan' : 'place'}`}
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,.28)', zIndex: 50 }}>
         <ActivityIndicator size="large" color="#fff" />
       </View> : null}

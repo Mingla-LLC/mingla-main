@@ -29,9 +29,11 @@ test('place snapshot preserves canonical recipient fields and removes every send
 });
 
 test('complete curated order and every allowlisted stop field survive without truncation',()=>{
-  const stops=Array.from({length:30},(_,i)=>stop(i+1));
+  // [TEST-MOD-APPROVED #1719] The previous 30-stop fixture contradicted the signed/public
+  // 24-stop contract. Twenty-four proves full preservation at the real boundary; 25 rejects below.
+  const stops=Array.from({length:24},(_,i)=>stop(i+1));
   const out=buildNativeContentCardSnapshot('curated',{card_data:{id:'plan',cardType:'curated',title:'All stops',category:'Plan',stops,totalPriceMin:12,totalPriceMax:90,estimatedDurationMinutes:240,matchScore:100}});
-  assert.equal(out.stops.length,30);
+  assert.equal(out.stops.length,24);
   for(let i=0;i<stops.length;i++) for(const key of ['stopNumber','stopLabel','placeId','placeName','placeType','address','rating','reviewCount','imageUrl','imageUrls','priceLevelLabel','priceTier','priceMin','priceMax','openingHours','utcOffsetMinutes','isOpenNow','website','lat','lng','aiDescription','estimatedDurationMinutes','optional','dismissible','role','phone','countryCode','comboCategory','rankSignal']) assert.deepEqual(out.stops[i][key],stops[i][key],`${i}:${key}`);
   assert.equal(JSON.stringify(out).includes('distanceFrom'),false);assert.equal(JSON.stringify(out).includes('travelTime'),false);assert.equal(out.matchScore,undefined);
 });
@@ -63,7 +65,9 @@ test('private cache identity changes across accounts and auth transitions clear 
 });
 
 test('descriptor requires immutable fingerprint and migration enforces current-read plus all-kind envelope',()=>{
-  const valid={contract:'native_content_card_v1',version:1,kind:'place',snapshotRef:'Aa0Bb1Cc2Dd3Ee4F:v1',snapshotFingerprint:'a'.repeat(64),preview:{title:'Cafe'}};
+  // [TEST-MOD-APPROVED #1719] The accepted fixture previously omitted cardType, so it could not
+  // prove the signed kind/cardType coherence rule now attacked by the independent tester.
+  const valid={contract:'native_content_card_v1',version:1,kind:'place',snapshotRef:'Aa0Bb1Cc2Dd3Ee4F:v1',snapshotFingerprint:'a'.repeat(64),preview:{title:'Cafe',cardType:'single'}};
   assert.deepEqual(validateNativeContentCardDescriptorV1(valid),valid);assert.equal(validateNativeContentCardDescriptorV1({...valid,snapshotFingerprint:'bad'}),null);
   assert.match(migration,/m\.deleted_at IS NULL/);assert.match(migration,/c\.is_enabled IS TRUE/);assert.match(migration,/conversation_participants cp[\s\S]+blocked_users/);
   assert.match(migration,/NEW\.card_payload := NEW\.card_payload - 'publicDetails'/);assert.match(migration,/content_share_message_envelope_too_large/);

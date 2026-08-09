@@ -502,9 +502,16 @@ function routeContractFor(kind) {
 
 function validateNativeContentCardDescriptorV1(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (Object.keys(value).some((key) => !['contract', 'version', 'kind', 'snapshotRef', 'snapshotFingerprint', 'preview'].includes(key))) return null;
   if (value.contract !== 'native_content_card_v1' || value.version !== 1 || !['place', 'curated'].includes(value.kind)) return null;
   if (!value.preview || typeof value.preview !== 'object' || Array.isArray(value.preview)) return null;
-  if (typeof value.preview.title !== 'string' || !cleanText(value.preview.title, 160)) return null;
+  if (Object.keys(value.preview).some((key) => !['title', 'category', 'image', 'cardType', 'stopCount'].includes(key))) return null;
+  if (typeof value.preview.title !== 'string' || cleanText(value.preview.title, 160) !== value.preview.title) return null;
+  if (value.preview.category !== undefined && (typeof value.preview.category !== 'string' || cleanText(value.preview.category, 80) !== value.preview.category)) return null;
+  if (value.preview.image !== undefined && cleanHttpsUrl(value.preview.image) !== value.preview.image) return null;
+  if (value.kind === 'place' && (value.preview.cardType !== 'single' || value.preview.stopCount !== undefined)) return null;
+  if (value.kind === 'curated' && (value.preview.cardType !== 'curated' || !Number.isSafeInteger(value.preview.stopCount)
+    || value.preview.stopCount < 1 || value.preview.stopCount > 24)) return null;
   if (typeof value.snapshotRef !== 'string' || !/^[0-9A-Za-z]{16}:v[1-9][0-9]*$/.test(value.snapshotRef)) return null;
   if (typeof value.snapshotFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(value.snapshotFingerprint)) return null;
   return value;
