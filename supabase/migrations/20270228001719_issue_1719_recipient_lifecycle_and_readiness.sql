@@ -3,18 +3,40 @@
 -- Additive follow-up: 20270227001719 is deployed and intentionally untouched.
 BEGIN;
 
-ALTER TABLE public.conversation_participants
-  ADD COLUMN IF NOT EXISTS hidden_at timestamptz NULL,
-  ADD COLUMN IF NOT EXISTS archived_at timestamptz NULL;
+CREATE TABLE IF NOT EXISTS public.conversation_participant_lifecycle (
+  conversation_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  hidden_at timestamptz NULL,
+  archived_at timestamptz NULL,
+  PRIMARY KEY (conversation_id,user_id),
+  CONSTRAINT conversation_participant_lifecycle_membership_fkey
+    FOREIGN KEY (conversation_id,user_id)
+    REFERENCES public.conversation_participants(conversation_id,user_id)
+    ON DELETE CASCADE
+);
 
-COMMENT ON COLUMN public.conversation_participants.hidden_at IS
+COMMENT ON TABLE public.conversation_participant_lifecycle IS
+  '#1719 private per-user conversation lifecycle. Membership remains on conversation_participants; peers must never read these timestamps.';
+COMMENT ON COLUMN public.conversation_participant_lifecycle.hidden_at IS
   '#1719 per-user remove-chat state. A qualifying incoming human message may clear it; never inferred from old clients.';
-COMMENT ON COLUMN public.conversation_participants.archived_at IS
+COMMENT ON COLUMN public.conversation_participant_lifecycle.archived_at IS
   '#1719 per-user archive state. Never auto-cleared by messages.';
 
-CREATE INDEX IF NOT EXISTS conversation_participants_user_lifecycle_idx
-  ON public.conversation_participants(user_id, conversation_id)
+CREATE INDEX IF NOT EXISTS conversation_participant_lifecycle_user_idx
+  ON public.conversation_participant_lifecycle(user_id, conversation_id)
   INCLUDE (hidden_at, archived_at);
+
+ALTER TABLE public.conversation_participant_lifecycle ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.conversation_participant_lifecycle FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON TABLE public.conversation_participant_lifecycle TO authenticated;
+GRANT ALL ON TABLE public.conversation_participant_lifecycle TO service_role;
+
+DROP POLICY IF EXISTS conversation_participant_lifecycle_owner_select ON public.conversation_participant_lifecycle;
+DROP POLICY IF EXISTS conversation_participant_lifecycle_owner_insert ON public.conversation_participant_lifecycle;
+DROP POLICY IF EXISTS conversation_participant_lifecycle_owner_update ON public.conversation_participant_lifecycle;
+CREATE POLICY conversation_participant_lifecycle_owner_select
+  ON public.conversation_participant_lifecycle FOR SELECT TO authenticated
+  USING (user_id=auth.uid());
 CREATE INDEX IF NOT EXISTS messages_meaningful_activity_idx
   ON public.messages(conversation_id, created_at DESC)
   WHERE deleted_at IS NULL AND sender_id IS NOT NULL AND message_type<>'system';
@@ -50,12 +72,14 @@ AS $function$
     WHERE blocker_id=p_user_id OR blocked_id=p_user_id
   ),
   eligible_conversations AS (
-    SELECT c.*, mine.archived_at,
+    SELECT c.*, lifecycle.archived_at,
       activity.meaningful_activity_at,
       (SELECT count(DISTINCT member.user_id)::integer
        FROM public.conversation_participants member WHERE member.conversation_id=c.id) AS member_count
     FROM public.conversation_participants mine
     JOIN public.conversations c ON c.id=mine.conversation_id
+    LEFT JOIN public.conversation_participant_lifecycle lifecycle
+      ON lifecycle.conversation_id=mine.conversation_id AND lifecycle.user_id=mine.user_id
     LEFT JOIN LATERAL (
       SELECT max(m.created_at) AS meaningful_activity_at
       FROM public.messages m
@@ -63,8 +87,8 @@ AS $function$
         AND m.message_type<>'system'
     ) activity ON true
     WHERE mine.user_id=p_user_id
-      AND (p_include_hidden OR mine.hidden_at IS NULL)
-      AND (p_include_archived OR mine.archived_at IS NULL)
+      AND (p_include_hidden OR lifecycle.hidden_at IS NULL)
+      AND (p_include_archived OR lifecycle.archived_at IS NULL)
       AND c.is_enabled IS TRUE
       AND (
         (c.type='direct' AND c.linked_entity_type='direct'
@@ -190,17 +214,19 @@ RETURNS TABLE(conversation_id uuid,archived_at timestamptz)
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path=public,pg_temp
 AS $function$
-  SELECT DISTINCT c.conversation_id,cp.archived_at
+  SELECT DISTINCT c.conversation_id,lifecycle.archived_at
   FROM public.content_share_recipient_candidates(auth.uid(),true,false) c
-  JOIN public.conversation_participants cp
-    ON cp.conversation_id=c.conversation_id AND cp.user_id=auth.uid()
+  LEFT JOIN public.conversation_participant_lifecycle lifecycle
+    ON lifecycle.conversation_id=c.conversation_id AND lifecycle.user_id=auth.uid()
   WHERE c.target_kind IN ('direct','group') AND c.conversation_id IS NOT NULL
   UNION
-  SELECT conversation.id,mine.archived_at
+  SELECT conversation.id,lifecycle.archived_at
   FROM public.conversation_participants mine
   JOIN public.conversations conversation ON conversation.id=mine.conversation_id
   JOIN public.collaboration_sessions session ON session.id=conversation.session_id
-  WHERE mine.user_id=auth.uid() AND mine.hidden_at IS NULL
+  LEFT JOIN public.conversation_participant_lifecycle lifecycle
+    ON lifecycle.conversation_id=mine.conversation_id AND lifecycle.user_id=mine.user_id
+  WHERE mine.user_id=auth.uid() AND lifecycle.hidden_at IS NULL
     AND conversation.type='group' AND conversation.linked_entity_type='session'
     AND conversation.is_enabled IS TRUE AND session.created_by=auth.uid()
     AND session.is_active IS TRUE AND session.archived_at IS NULL
@@ -215,17 +241,33 @@ CREATE OR REPLACE FUNCTION public.set_conversation_lifecycle(
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path=public,pg_temp
 AS $function$
-DECLARE v_user uuid:=auth.uid();v_row public.conversation_participants%ROWTYPE;
+DECLARE
+  v_user uuid:=auth.uid();
+  v_hidden_at timestamptz;
+  v_archived_at timestamptz;
 BEGIN
   IF v_user IS NULL THEN RAISE EXCEPTION 'authentication_required' USING ERRCODE='42501';END IF;
   IF p_action NOT IN ('archive','unarchive','hide') THEN RAISE EXCEPTION 'invalid_lifecycle_action' USING ERRCODE='22023';END IF;
-  UPDATE public.conversation_participants
-  SET archived_at=CASE WHEN p_action='archive' THEN now() WHEN p_action='unarchive' THEN NULL ELSE archived_at END,
-      hidden_at=CASE WHEN p_action='hide' THEN now() ELSE hidden_at END
-  WHERE conversation_id=p_conversation_id AND user_id=v_user
-  RETURNING * INTO v_row;
-  IF NOT FOUND THEN RAISE EXCEPTION 'conversation_unavailable' USING ERRCODE='42501';END IF;
-  RETURN jsonb_build_object('conversationId',p_conversation_id,'hiddenAt',v_row.hidden_at,'archivedAt',v_row.archived_at);
+  IF NOT EXISTS (
+    SELECT 1 FROM public.conversation_participants
+    WHERE conversation_id=p_conversation_id AND user_id=v_user
+  ) THEN RAISE EXCEPTION 'conversation_unavailable' USING ERRCODE='42501';END IF;
+  INSERT INTO public.conversation_participant_lifecycle(
+    conversation_id,user_id,hidden_at,archived_at
+  ) VALUES (
+    p_conversation_id,v_user,
+    CASE WHEN p_action='hide' THEN now() ELSE NULL END,
+    CASE WHEN p_action='archive' THEN now() ELSE NULL END
+  )
+  ON CONFLICT (conversation_id,user_id) DO UPDATE
+  SET hidden_at=CASE WHEN p_action='hide' THEN now() ELSE conversation_participant_lifecycle.hidden_at END,
+      archived_at=CASE
+        WHEN p_action='archive' THEN now()
+        WHEN p_action='unarchive' THEN NULL
+        ELSE conversation_participant_lifecycle.archived_at
+      END
+  RETURNING hidden_at,archived_at INTO v_hidden_at,v_archived_at;
+  RETURN jsonb_build_object('conversationId',p_conversation_id,'hiddenAt',v_hidden_at,'archivedAt',v_archived_at);
 END;$function$;
 REVOKE ALL ON FUNCTION public.set_conversation_lifecycle(uuid,text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.set_conversation_lifecycle(uuid,text) TO authenticated,service_role;
@@ -264,12 +306,12 @@ SET search_path=public,pg_temp
 AS $function$
 BEGIN
   IF NEW.sender_id IS NULL OR NEW.deleted_at IS NOT NULL OR NEW.message_type='system' THEN RETURN NEW;END IF;
-  UPDATE public.conversation_participants cp
+  UPDATE public.conversation_participant_lifecycle lifecycle
   SET hidden_at=NULL
-  WHERE cp.conversation_id=NEW.conversation_id AND cp.user_id<>NEW.sender_id
-    AND cp.hidden_at IS NOT NULL AND cp.archived_at IS NULL
+  WHERE lifecycle.conversation_id=NEW.conversation_id AND lifecycle.user_id<>NEW.sender_id
+    AND lifecycle.hidden_at IS NOT NULL AND lifecycle.archived_at IS NULL
     AND EXISTS (
-      SELECT 1 FROM public.content_share_recipient_candidates(cp.user_id,false,true) candidate
+      SELECT 1 FROM public.content_share_recipient_candidates(lifecycle.user_id,false,true) candidate
       WHERE candidate.conversation_id=NEW.conversation_id
     );
   RETURN NEW;

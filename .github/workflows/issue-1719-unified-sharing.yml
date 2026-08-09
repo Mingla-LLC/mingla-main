@@ -30,6 +30,8 @@ jobs:
         working-directory: app-mobile
       - run: node --test scripts/issue-1719/unified-sharing.implementor.happy.test.mjs
       - run: node --test scripts/issue-1719/unified-sharing.amendment.implementor.happy.test.mjs
+      - run: npx jest src/components/ui/__tests__/issue_1719_share_same_turn.happy.test.tsx --runInBand
+        working-directory: mingla-business
       - run: node --experimental-strip-types --test scripts/issue-1719/unified-sharing.tester.adversarial.test.mjs
       - run: node --test packages/sharing/__tests__/issue_1615_sharing_contract.happy.test.mjs packages/sharing/__tests__/issue_1615_media_identity.happy.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1615/content-share-producers.happy.test.mjs scripts/issue-1615/content-share-portrait.happy.test.mjs scripts/issue-1615/content-share-portrait.adversarial.test.mjs

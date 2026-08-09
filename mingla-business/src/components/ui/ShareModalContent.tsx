@@ -34,6 +34,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
   const generation = useRef(0);
   const posterStartedAt = useRef(0);
   const busyRef = useRef(false);
+  const shareFlightRef = useRef(false);
   const onCloseRef = useRef(onClose);
   const dialogRef = useRef<View | null>(null);
   const [prepared, setPrepared] = useState<PreparedBusinessShare | null>(null);
@@ -146,6 +147,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
 
   const share = async (): Promise<void> => {
     if (!prepared || busy || (prepared.media !== null && readiness !== 'ready')) return;
+    if (shareFlightRef.current) return;
+    shareFlightRef.current = true;
+    busyRef.current = true;
     setActionError(null); setBusy(true);
     try {
       const { sharePublicUrl } = await import('../../utils/sharePublicUrl');
@@ -156,7 +160,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
       setActionError("Couldn't open sharing. Please try again.");
       trackBusinessShareEvent('share_failure', { kind: contentKind, failure_type: 'native_share' });
     }
-    finally { setBusy(false); }
+    finally { shareFlightRef.current = false; busyRef.current = false; setBusy(false); }
   };
   const copy = async (): Promise<void> => {
     if (!prepared || busy) return;

@@ -26,8 +26,19 @@ const businessNetworkWeb = read('mingla-business/src/components/ui/useShareNetwo
 const readiness = read('mingla-marketing/lib/content-share-readiness.ts');
 
 test('A-H1 lifecycle is server-owned, private to authenticated callers, and migrated once without invented deletes', () => {
-  assert.match(migration, /ADD COLUMN IF NOT EXISTS hidden_at timestamptz NULL/);
-  assert.match(migration, /ADD COLUMN IF NOT EXISTS archived_at timestamptz NULL/);
+  // [TEST-MOD-APPROVED #1719] Fresh full-history PG17 testing proved that placing
+  // lifecycle columns on peer-readable conversation_participants violated SPEC
+  // 6.2. The corrected invariant is an owner-only companion table.
+  assert.doesNotMatch(migration, /ALTER TABLE public\.conversation_participants[\s\S]{0,200}hidden_at/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.conversation_participant_lifecycle/);
+  assert.match(migration, /FOREIGN KEY \(conversation_id,user_id\)[\s\S]*REFERENCES public\.conversation_participants\(conversation_id,user_id\)[\s\S]*ON DELETE CASCADE/);
+  assert.match(migration, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(migration, /REVOKE ALL ON TABLE public\.conversation_participant_lifecycle FROM PUBLIC,anon,authenticated/);
+  assert.match(migration, /GRANT SELECT ON TABLE public\.conversation_participant_lifecycle TO authenticated/);
+  assert.match(migration, /owner_select[\s\S]*USING \(user_id=auth\.uid\(\)\)/);
+  assert.match(migration, /DROP POLICY IF EXISTS conversation_participant_lifecycle_owner_select/);
+  assert.doesNotMatch(migration, /GRANT[^;]*(?:INSERT|UPDATE|DELETE)[^;]*conversation_participant_lifecycle TO authenticated/);
+  assert.doesNotMatch(migration, /CREATE POLICY conversation_participant_lifecycle_owner_(?:insert|update|delete)/);
   assert.match(migration, /set_conversation_lifecycle[\s\S]*WHERE conversation_id=p_conversation_id AND user_id=v_user/);
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.set_conversation_lifecycle\(uuid,text\) FROM PUBLIC,anon/);
   assert.match(migration, /leave_group_conversation[\s\S]*WHERE conversation_id=p_conversation_id AND user_id=v_user/);
@@ -63,9 +74,9 @@ test('A-H2 list, Connections and send consume one complete eligibility owner', (
 test('A-H3 hidden reopens only for another human, never archive, and only while canonically eligible', () => {
   const trigger = migration.slice(migration.indexOf('tg_reopen_hidden_conversation_on_human_message'), migration.indexOf('guard_content_share_delivery_target'));
   assert.match(trigger, /NEW\.sender_id IS NULL OR NEW\.deleted_at IS NOT NULL OR NEW\.message_type='system'/);
-  assert.match(trigger, /cp\.user_id<>NEW\.sender_id/);
-  assert.match(trigger, /cp\.hidden_at IS NOT NULL AND cp\.archived_at IS NULL/);
-  assert.match(trigger, /content_share_recipient_candidates\(cp\.user_id,false,true\)/);
+  assert.match(trigger, /lifecycle\.user_id<>NEW\.sender_id/);
+  assert.match(trigger, /lifecycle\.hidden_at IS NOT NULL AND lifecycle\.archived_at IS NULL/);
+  assert.match(trigger, /content_share_recipient_candidates\(lifecycle\.user_id,false,true\)/);
   assert.match(trigger, /SET hidden_at=NULL/);
   assert.doesNotMatch(trigger, /archived_at=NULL/);
 });
@@ -132,6 +143,7 @@ test('A-H7 Consumer and Business gate only native Share while Copy/internal work
   assert.match(consumer, /No one available in Mingla yet/);
   assert.match(consumer, /Pending requests appear after they're accepted/);
   assert.match(business, /disabled=\{!shareReady \|\| busy\}/);
+  assert.match(business, /shareFlightRef\.current/);
 });
 
 test('A-H8 lifecycle invalidation refreshes an open sheet and transactional invalid targets are removed', () => {
