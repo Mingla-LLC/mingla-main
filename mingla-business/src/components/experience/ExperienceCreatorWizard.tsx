@@ -678,7 +678,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         if (targetId === null) {
           throw new Error("Couldn't save experience. Tap to retry.");
         }
-        const { data, error } = await supabase.rpc("biz_publish_experience_v1719", {
+        const { data, error } = await supabase.rpc("issue_1719_publish_experience_with_poster", {
           p_event_id: targetId,
           p_payload: buildPayload(publish),
           p_publish: publish,

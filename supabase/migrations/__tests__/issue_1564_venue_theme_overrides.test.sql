@@ -197,8 +197,18 @@ BEGIN
   SELECT count(*) INTO v_count
   FROM information_schema.columns
   WHERE table_schema = 'public' AND table_name = 'venue_public_view';
-  IF v_count <> 29 THEN
+  -- [TEST-MOD-APPROVED #1719] The public venue contract intentionally gained
+  -- one append-only cover_media_poster_url column for truthful video/GIF
+  -- previews. The original #1564 theme ordinals remain pinned below, while the
+  -- new poster is required at position 30 so no existing consumer shifts.
+  IF v_count <> 30 THEN
     RAISE EXCEPTION 'issue_1564_T8_view_column_count_moved: %', v_count;
+  END IF;
+
+  IF (SELECT ordinal_position FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='venue_public_view'
+        AND column_name='cover_media_poster_url') <> 30 THEN
+    RAISE EXCEPTION 'issue_1719_T8_poster_not_append_only';
   END IF;
 
   SELECT ordinal_position INTO v_color_pos FROM information_schema.columns

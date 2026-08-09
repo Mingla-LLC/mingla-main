@@ -88,7 +88,7 @@ describe("ORCH-1076 — T-21 / T-22 publish pre-check vs draft bypass", () => {
     // The ACTUAL RPC call (not the comment mentioning the fn name).
     // [TEST-MOD-APPROVED #1719] The pre-check must precede the atomic poster
     // wrapper, which preserves the original publish RPC and Stripe gate.
-    const rpcIdx = src.indexOf('supabase.rpc("biz_publish_experience_v1719"', submitIdx);
+    const rpcIdx = src.indexOf('supabase.rpc("issue_1719_publish_experience_with_poster"', submitIdx);
     expect(rpcIdx).toBeGreaterThan(submitIdx);
     const block = src.slice(submitIdx, rpcIdx);
     // The pre-check exists and gates on publish && experienceNeedsStripe.

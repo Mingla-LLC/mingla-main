@@ -1485,7 +1485,7 @@ export async function publishTrip(
   eventId: string,
   draftPayload: Record<string, unknown>,
 ): Promise<Trip> {
-  const { data, error } = await supabase.rpc("business_publish_trip_draft_v1719", {
+  const { data, error } = await supabase.rpc("issue_1719_publish_trip_with_poster", {
     p_event_id: eventId,
     p_draft_payload: draftPayload,
     p_client_revision: null,
@@ -1654,7 +1654,7 @@ export async function updateLiveTripFields(
 ): Promise<UpdateLiveTripResult> {
   // #1719 wraps the proven refund gate and appends the poster write in the
   // SAME database transaction, so URL/type/poster can never split.
-  const { data, error } = await supabase.rpc("biz_update_live_trip_v1719", {
+  const { data, error } = await supabase.rpc("issue_1719_update_live_trip_with_poster", {
     p_event_id: eventId,
     p_patch: patch as Record<string, unknown>,
     p_reason: reason,

@@ -230,7 +230,7 @@ describe("business event publish RPC adapter", () => {
 
     // [TEST-MOD-APPROVED #1719] The production client now calls the atomic
     // poster-triplet wrapper; retaining the retired RPC name would test stale wiring.
-    expect(rpcMock).toHaveBeenCalledWith("business_publish_event_draft_v1719", {
+    expect(rpcMock).toHaveBeenCalledWith("issue_1719_publish_event_with_poster", {
       p_event_id: "00000000-0000-4000-8000-000000000001",
       p_draft_payload: expect.objectContaining({
         cover_media_alt: "Guests at a supper club",

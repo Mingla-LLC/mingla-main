@@ -48,7 +48,7 @@ describe("T-12 — Experience persists theme to COLUMNS, never a publish payload
     const w = wizard();
     // [TEST-MOD-APPROVED #1719] Publish now enters the atomic poster wrapper;
     // this assertion still proves the independent theme flush occurs afterward.
-    const publishAt = w.indexOf('supabase.rpc("biz_publish_experience_v1719"');
+    const publishAt = w.indexOf('supabase.rpc("issue_1719_publish_experience_with_poster"');
     const flushAt = w.indexOf("await flushThemeWrite(savedId)");
     expect(publishAt).toBeGreaterThan(-1);
     expect(flushAt).toBeGreaterThan(publishAt);

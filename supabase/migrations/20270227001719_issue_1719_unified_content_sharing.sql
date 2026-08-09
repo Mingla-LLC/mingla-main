@@ -129,7 +129,7 @@ $function$;
 REVOKE ALL ON FUNCTION public.assert_cover_media_triplet(text,text,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.assert_cover_media_triplet(text,text,text) TO service_role;
 
-CREATE OR REPLACE FUNCTION public.business_publish_event_draft_v1719(
+CREATE OR REPLACE FUNCTION public.issue_1719_publish_event_with_poster(
   p_event_id uuid,p_draft_payload jsonb,p_client_revision integer DEFAULT NULL
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
 AS $function$
@@ -142,7 +142,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'cover_media_persist_mismatch';END IF;RETURN v_result;
 END;$function$;
 
-CREATE OR REPLACE FUNCTION public.business_publish_trip_draft_v1719(
+CREATE OR REPLACE FUNCTION public.issue_1719_publish_trip_with_poster(
   p_event_id uuid,p_draft_payload jsonb,p_client_revision integer DEFAULT NULL
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
 AS $function$
@@ -155,7 +155,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'cover_media_persist_mismatch';END IF;RETURN v_result;
 END;$function$;
 
-CREATE OR REPLACE FUNCTION public.biz_publish_experience_v1719(
+CREATE OR REPLACE FUNCTION public.issue_1719_publish_experience_with_poster(
   p_event_id uuid,p_payload jsonb,p_publish boolean DEFAULT false
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
 AS $function$
@@ -171,7 +171,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'cover_media_persist_mismatch';END IF;RETURN v_result;
 END;$function$;
 
-CREATE OR REPLACE FUNCTION public.biz_update_live_trip_v1719(
+CREATE OR REPLACE FUNCTION public.issue_1719_update_live_trip_with_poster(
   p_event_id uuid,p_patch jsonb,p_reason text
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
 AS $function$
@@ -190,8 +190,8 @@ BEGIN
   END IF;RETURN v_result;
 END;$function$;
 
-REVOKE ALL ON FUNCTION public.business_publish_event_draft_v1719(uuid,jsonb,integer),public.business_publish_trip_draft_v1719(uuid,jsonb,integer),public.biz_publish_experience_v1719(uuid,jsonb,boolean),public.biz_update_live_trip_v1719(uuid,jsonb,text) FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.business_publish_event_draft_v1719(uuid,jsonb,integer),public.business_publish_trip_draft_v1719(uuid,jsonb,integer),public.biz_publish_experience_v1719(uuid,jsonb,boolean),public.biz_update_live_trip_v1719(uuid,jsonb,text) TO authenticated,service_role;
+REVOKE ALL ON FUNCTION public.issue_1719_publish_event_with_poster(uuid,jsonb,integer),public.issue_1719_publish_trip_with_poster(uuid,jsonb,integer),public.issue_1719_publish_experience_with_poster(uuid,jsonb,boolean),public.issue_1719_update_live_trip_with_poster(uuid,jsonb,text) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.issue_1719_publish_event_with_poster(uuid,jsonb,integer),public.issue_1719_publish_trip_with_poster(uuid,jsonb,integer),public.issue_1719_publish_experience_with_poster(uuid,jsonb,boolean),public.issue_1719_update_live_trip_with_poster(uuid,jsonb,text) TO authenticated,service_role;
 
 CREATE TABLE public.content_share_message_deliveries (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
