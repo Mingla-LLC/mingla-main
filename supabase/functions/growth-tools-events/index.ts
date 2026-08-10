@@ -20,12 +20,43 @@
 // The gate / report / booking flow is shared with the grader (growth-tools-gate
 // is tool-aware; growth-tools-report is tool-agnostic; /schedule is shared).
 //
+// ISSUE-1734 [shared platform] — SECOND LANE for the signed-in Business app.
+// Lane is BODY-EXPLICIT (`lane:"app"`, P-2); anything else is the web lane,
+// byte-stable. App lane: P-3 auth chain (_shared/growthToolsAuth.ts), brand-
+// keyed quota (cap 25/brand/24h → 429 {error:"rate_limited", scope:"brand"}),
+// input-hash cache ({run_id, report, cached:true}), rows carry lane='app' +
+// verified user_id/brand_id + input_hash/client_ref with NULL pid/utm/ip_hash
+// (P-7/P-9). Subjects are NOT accepted on this tool in v1 (P-40 — gate runs
+// are subjectless; 'event:' is format-reserved). BOTH lanes: per-call timeouts
+// + a 100s per-run budget (P-24) and meta.schema_version:1 (P-11).
+//
 // → 400 {error:"validation", fields?} | {error:"invalid_json"}
+//   401 {error:"unauthenticated"} · 403 {error:"forbidden"} (app lane only)
 //   429 {error:"rate_limited"} · 502 {error:"generation_failed"} · 500 server
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
+import { timeoutFetch } from "../_shared/timeoutFetch.ts";
+// ISSUE-1734 — the SINGLE shared app-lane auth/quota/cache/budget module (P-6).
+import {
+  type AppLaneAuth,
+  authenticateAppLane,
+  checkAppLaneQuota,
+  computeInputHash,
+  createRunBudget,
+  GROUNDED_CALL_TIMEOUT_MS,
+  isAbortError,
+  isAppLane,
+  isUuidValue,
+  lookupAppLaneCache,
+  PEXELS_CALL_TIMEOUT_MS,
+  resolveRunSubject,
+  RUN_BUDGET_MS,
+  type RunBudget,
+  STRUCTURED_CALL_TIMEOUT_MS,
+  WEATHER_CALL_TIMEOUT_MS,
+} from "../_shared/growthToolsAuth.ts";
 
 // deno-lint-ignore no-explicit-any
 type ServiceClient = any;
@@ -475,11 +506,12 @@ async function fetchCoverImage(
     .slice(0, 2)
     .join(" ") || input.category || "event party crowd";
   try {
-    const res = await fetch(
+    // ISSUE-1734 P-24: Pexels bounded at 8s (best-effort — any failure → null).
+    const res = await timeoutFetch(
       `https://api.pexels.com/v1/search?query=${
         encodeURIComponent(q)
       }&orientation=landscape&per_page=5`,
-      { headers: { Authorization: key } },
+      { headers: { Authorization: key }, timeoutMs: PEXELS_CALL_TIMEOUT_MS },
     );
     if (!res.ok) return null;
     const data = await res.json() as {
@@ -531,10 +563,12 @@ async function geocodeCity(city: string): Promise<{ lat: number; lon: number } |
   const name = city.split(",")[0].trim();
   if (name.length < 2) return null;
   try {
-    const res = await fetch(
+    // ISSUE-1734 P-24: Open-Meteo bounded at 8s (best-effort).
+    const res = await timeoutFetch(
       `https://geocoding-api.open-meteo.com/v1/search?name=${
         encodeURIComponent(name)
       }&count=1&language=en&format=json`,
+      { timeoutMs: WEATHER_CALL_TIMEOUT_MS },
     );
     if (!res.ok) return null;
     const d = await res.json() as {
@@ -559,10 +593,11 @@ async function fetchDayWeather(input: EventInput): Promise<EventResearch["weathe
   // Within the forecast horizon → a real daily forecast for THAT day.
   if (daysUntil >= 0 && daysUntil <= 15) {
     try {
-      const res = await fetch(
+      const res = await timeoutFetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
         `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code` +
         `&start_date=${input.date}&end_date=${input.date}&timezone=auto`,
+        { timeoutMs: WEATHER_CALL_TIMEOUT_MS },
       );
       if (res.ok) {
         const d = await res.json() as { daily?: Record<string, unknown[]> };
@@ -591,9 +626,10 @@ async function fetchDayWeather(input: EventInput): Promise<EventResearch["weathe
   try {
     const results = await Promise.all([1, 2, 3, 4, 5].map(async (n) => {
       const ds = `${yearNow - n}-${mmdd}`;
-      const res = await fetch(
+      const res = await timeoutFetch(
         `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}` +
         `&start_date=${ds}&end_date=${ds}&daily=temperature_2m_max,precipitation_sum&timezone=auto`,
+        { timeoutMs: WEATHER_CALL_TIMEOUT_MS },
       );
       if (!res.ok) return null;
       const d = await res.json() as { daily?: Record<string, unknown[]> };
@@ -717,16 +753,28 @@ async function callResearchOnce(
   apiKey: string,
   prompt: string,
 ): Promise<EventResearch | null> {
-  const res = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      systemInstruction: { parts: [{ text: RESEARCH_SYSTEM }] },
-      tools: [{ google_search: {} }],
-      generationConfig: { maxOutputTokens: 8192, temperature: GEMINI_TEMPERATURE },
-    }),
-  });
+  // ISSUE-1734 P-24: grounded pass bounded at 45s per attempt. BEST-EFFORT —
+  // an abort just fails the attempt (fallback research downstream).
+  let res: Response;
+  try {
+    res = await timeoutFetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        systemInstruction: { parts: [{ text: RESEARCH_SYSTEM }] },
+        tools: [{ google_search: {} }],
+        generationConfig: { maxOutputTokens: 8192, temperature: GEMINI_TEMPERATURE },
+      }),
+      timeoutMs: GROUNDED_CALL_TIMEOUT_MS,
+    });
+  } catch (err) {
+    if (isAbortError(err)) {
+      console.error("[growth-tools-events] research call timed out");
+      return null;
+    }
+    throw err;
+  }
   if (!res.ok) {
     console.error("[growth-tools-events] research HTTP", res.status);
     return null;
@@ -744,13 +792,21 @@ async function callResearchOnce(
 
 // Best-effort: two tries; on total failure the run still proceeds with a
 // fallback CPC and empty external findings (research_source='fallback').
+// ISSUE-1734 P-24: each attempt is SKIPPED when the remaining budget is under
+// the grounded single-attempt cap (fallback taken instead).
 async function generateResearch(
   apiKey: string,
   input: EventInput,
+  budget: RunBudget,
 ): Promise<EventResearch | null> {
+  if (budget.remainingMs() < GROUNDED_CALL_TIMEOUT_MS) {
+    console.error("[growth-tools-events] research skipped — budget low");
+    return null;
+  }
   const prompt = buildResearchPrompt(input);
   const first = await callResearchOnce(apiKey, prompt);
   if (first !== null) return first;
+  if (budget.remainingMs() < GROUNDED_CALL_TIMEOUT_MS) return null;
   return await callResearchOnce(
     apiKey,
     `${prompt}\n\nREMINDER: output ONLY the JSON object.`,
@@ -945,28 +1001,41 @@ function normalizeSynthesis(
   };
 }
 
+// ISSUE-1734 P-24: bounded by timeoutFetch; aborts reported via `timedOut` so
+// the caller returns the honest P-25 reason:"timeout".
 async function callSynthesisOnce(
   apiKey: string,
   prompt: string,
   capacity: number,
-): Promise<Synthesis | null> {
-  const res = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      systemInstruction: { parts: [{ text: SYNTH_SYSTEM }] },
-      generationConfig: {
-        maxOutputTokens: 4096,
-        temperature: GEMINI_TEMPERATURE,
-        responseMimeType: "application/json",
-        responseSchema: SYNTH_SCHEMA,
-      },
-    }),
-  });
+  timeoutMs: number,
+): Promise<{ value: Synthesis | null; timedOut: boolean }> {
+  let res: Response;
+  try {
+    res = await timeoutFetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        systemInstruction: { parts: [{ text: SYNTH_SYSTEM }] },
+        generationConfig: {
+          maxOutputTokens: 4096,
+          temperature: GEMINI_TEMPERATURE,
+          responseMimeType: "application/json",
+          responseSchema: SYNTH_SCHEMA,
+        },
+      }),
+      timeoutMs,
+    });
+  } catch (err) {
+    if (isAbortError(err)) {
+      console.error("[growth-tools-events] synthesis call timed out", { timeoutMs });
+      return { value: null, timedOut: true };
+    }
+    throw err;
+  }
   if (!res.ok) {
     console.error("[growth-tools-events] synthesis HTTP", res.status);
-    return null;
+    return { value: null, timedOut: false };
   }
   const payload = await res.json() as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -978,20 +1047,28 @@ async function callSynthesisOnce(
   try {
     parsed = JSON.parse(text);
   } catch {
-    return null;
+    return { value: null, timedOut: false };
   }
-  return normalizeSynthesis(parsed, capacity);
+  return { value: normalizeSynthesis(parsed, capacity), timedOut: false };
 }
 
+// FATAL stage (P-24): min(structured cap, remaining budget) per attempt; the
+// retry runs only if budget remains.
 async function generateSynthesis(
   apiKey: string,
   input: EventInput,
   research: EventResearch,
-): Promise<Synthesis | null> {
+  budget: RunBudget,
+): Promise<{ value: Synthesis | null; timedOut: boolean }> {
   const prompt = buildSynthesisPrompt(input, research);
-  const first = await callSynthesisOnce(apiKey, prompt, input.capacity);
-  if (first !== null) return first;
-  return await callSynthesisOnce(apiKey, prompt, input.capacity);
+  const cap1 = Math.min(STRUCTURED_CALL_TIMEOUT_MS, budget.remainingMs());
+  if (cap1 <= 0) return { value: null, timedOut: true };
+  const first = await callSynthesisOnce(apiKey, prompt, input.capacity, cap1);
+  if (first.value !== null) return first;
+  const cap2 = Math.min(STRUCTURED_CALL_TIMEOUT_MS, budget.remainingMs());
+  if (cap2 <= 0) return { value: null, timedOut: true };
+  const second = await callSynthesisOnce(apiKey, prompt, input.capacity, cap2);
+  return { value: second.value, timedOut: first.timedOut || second.timedOut };
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────
@@ -1000,53 +1077,123 @@ async function handleRun(
   req: Request,
   body: Record<string, unknown>,
 ): Promise<Response> {
+  // ISSUE-1734 P-24: per-run wall-clock budget, measured from handler start.
+  const budget = createRunBudget(RUN_BUDGET_MS.events);
+
+  // ISSUE-1734 P-2: lane is BODY-EXPLICIT; anything other than lane:"app" is
+  // the web lane, processed exactly as before.
+  const appLane = isAppLane(body);
+  let appAuth: AppLaneAuth | null = null;
+  let clientRef: string | null = null;
+  if (appLane) {
+    // P-3/P-4/P-5 (COMMS-0136): auth BEFORE any service-role read/write or
+    // Gemini call; forged/expired JWT → 401, never a downgrade.
+    const auth = await authenticateAppLane(req, body, supabase);
+    if (auth instanceof Response) return auth;
+    appAuth = auth;
+    // P-40: NO subject is accepted on this tool in v1 (gate runs are
+    // subjectless; their reuse is the input-hash cache). Any subject → 400.
+    const subject = await resolveRunSubject(supabase, auth, "events", body.subject);
+    if (subject instanceof Response) return subject;
+    const rawClientRef = body.client_ref;
+    if (rawClientRef !== undefined && rawClientRef !== null && rawClientRef !== "") {
+      if (!isUuidValue(rawClientRef)) {
+        return json({ error: "validation", fields: ["client_ref"] }, 400);
+      }
+      clientRef = rawClientRef;
+    }
+  }
+
   const validated = validateEventInput(body.input);
   if (!validated.ok) return json({ error: "validation", fields: validated.fields }, 400);
   const input = validated.input;
 
-  const pid = typeof body.pid === "string" && body.pid.trim().length > 0
+  // ISSUE-1734 P-7: app runs persist NULL pid/utm (product usage, not
+  // attribution). Web-lane handling unchanged.
+  const pid = appLane ? null : (typeof body.pid === "string" && body.pid.trim().length > 0
     ? body.pid.trim().slice(0, 120)
-    : null;
-  const utm = (body.utm !== null && typeof body.utm === "object" &&
+    : null);
+  const utm = appLane ? null : ((body.utm !== null && typeof body.utm === "object" &&
       !Array.isArray(body.utm))
     ? body.utm as Record<string, unknown>
-    : null;
+    : null);
 
-  // Rate limit by salted IP hash — scoped to THIS tool so grader runs (and
-  // failed attempts on other tools) don't eat the events budget.
-  const ip = firstForwardedHop(req.headers.get("x-forwarded-for"));
-  const ipHash = ip ? await hashIp(ip) : null;
-  if (ipHash) {
-    const sinceIso = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
-    const { count, error: countErr } = await supabase
-      .from("tool_leads")
-      .select("id", { count: "exact", head: true })
-      .eq("ip_hash", ipHash)
-      .eq("tool", "events")
-      .gte("created_at", sinceIso);
-    if (!countErr && (count ?? 0) >= RATE_LIMIT_MAX) {
-      return json({ error: "rate_limited" }, 429);
+  // The one normalized-input object: persisted AND hashed for the P-22 cache.
+  const normalizedInput = {
+    title: input.title, category: input.category, city: input.city,
+    venue_name: input.venue_name, date: input.date, start_time: input.start_time,
+    indoor_outdoor: input.indoor_outdoor, ticket_price: input.ticket_price,
+    capacity: input.capacity, budget: input.budget,
+    audience_size: input.audience_size, lineup: input.lineup,
+    currency: input.currency,
+  };
+
+  let ipHash: string | null = null;
+  let inputHash: string | null = null;
+  if (appLane && appAuth) {
+    // P-20 (I-PROPOSED-1734-LANE-QUOTAS-ISOLATED): the app lane never consults
+    // x-forwarded-for; ip_hash stays NULL on app rows.
+    inputHash = await computeInputHash("events", normalizedInput);
+    // P-22 cache — brand predicate + in-helper ownership assert IS the P-5
+    // check on this success path (COMMS-0136).
+    const cached = await lookupAppLaneCache(supabase, appAuth, "events", inputHash, null);
+    if (cached) {
+      return json({ run_id: cached.runId, report: cached.report, cached: true }, 200);
+    }
+    // P-19 brand-keyed quota (cap 25/brand/24h; fail-open observably).
+    const quota = await checkAppLaneQuota(supabase, appAuth.brandId, "events");
+    if (quota.limited) {
+      return json({ error: "rate_limited", scope: "brand" }, 429);
+    }
+  } else {
+    // WEB LANE (unchanged): rate limit by salted IP hash — scoped to THIS tool
+    // so grader runs (and failed attempts on other tools) don't eat the events
+    // budget.
+    const ip = firstForwardedHop(req.headers.get("x-forwarded-for"));
+    ipHash = ip ? await hashIp(ip) : null;
+    if (ipHash) {
+      const sinceIso = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+      const { count, error: countErr } = await supabase
+        .from("tool_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("ip_hash", ipHash)
+        .eq("tool", "events")
+        .gte("created_at", sinceIso);
+      if (!countErr && (count ?? 0) >= RATE_LIMIT_MAX) {
+        return json({ error: "rate_limited" }, 429);
+      }
     }
   }
 
-  // Insert lead (status 'created').
+  // Insert lead (status 'created') — append-only lifecycle
+  // (I-PROPOSED-1734-RUN-HISTORY-APPEND-ONLY).
   const { data: inserted, error: insertErr } = await supabase
     .from("tool_leads")
-    .insert({
-      tool: "events",
-      status: "created",
-      input: {
-        title: input.title, category: input.category, city: input.city,
-        venue_name: input.venue_name, date: input.date, start_time: input.start_time,
-        indoor_outdoor: input.indoor_outdoor, ticket_price: input.ticket_price,
-        capacity: input.capacity, budget: input.budget,
-        audience_size: input.audience_size, lineup: input.lineup,
-        currency: input.currency,
-      },
-      pid,
-      utm,
-      ip_hash: ipHash,
-    })
+    .insert(
+      appLane && appAuth
+        ? {
+          tool: "events",
+          status: "created",
+          input: normalizedInput,
+          pid: null,
+          utm: null,
+          ip_hash: null,
+          lane: "app",
+          user_id: appAuth.userId,
+          brand_id: appAuth.brandId,
+          client_ref: clientRef,
+          input_hash: inputHash,
+          subject_ref: null,
+        }
+        : {
+          tool: "events",
+          status: "created",
+          input: normalizedInput,
+          pid,
+          utm,
+          ip_hash: ipHash,
+        },
+    )
     .select("id")
     .single();
   if (insertErr || !inserted) {
@@ -1062,14 +1209,15 @@ async function handleRun(
   if (!apiKey) {
     console.error("[growth-tools-events] GEMINI_API_KEY missing");
     await markFailed();
-    return json({ error: "generation_failed" }, 502);
+    return json({ error: "generation_failed", reason: "upstream_failed" }, 502);
   }
 
-  // PASS A — grounded research (best-effort; fallback on failure).
+  // PASS A — grounded research (best-effort; fallback on failure; P-24 skips
+  // each attempt when the remaining budget is under the 45s grounded cap).
   let research: EventResearch;
   let researchSource: "grounded" | "fallback" = "grounded";
   try {
-    const r = await generateResearch(apiKey, input);
+    const r = await generateResearch(apiKey, input, budget);
     if (r === null) {
       researchSource = "fallback";
       research = normalizeResearch(null);
@@ -1088,19 +1236,28 @@ async function handleRun(
 
   // Day-specific weather (Open-Meteo) overrides the Gemini weather when it
   // resolves — so the synthesis and the report both use the real per-day read.
+  // BEST-EFFORT (P-24): skipped when the remaining budget is under the 8s cap.
   try {
-    const dw = await fetchDayWeather(input);
-    if (dw) research.weather = dw;
+    if (budget.remainingMs() >= WEATHER_CALL_TIMEOUT_MS) {
+      const dw = await fetchDayWeather(input);
+      if (dw) research.weather = dw;
+    }
   } catch (err) {
     console.error("[growth-tools-events] weather threw (non-fatal)", String(err));
   }
 
   // PASS B — structured synthesis (organic baseline + factors + fixes + copy).
-  const synth = await generateSynthesis(apiKey, input, research);
-  if (synth === null) {
+  // FATAL stage (P-24/P-25): budget exhaustion → reason:"timeout" (additive —
+  // the web `error` string is unchanged).
+  const synthRes = await generateSynthesis(apiKey, input, research, budget);
+  if (synthRes.value === null) {
     await markFailed();
-    return json({ error: "generation_failed" }, 502);
+    return json({
+      error: "generation_failed",
+      reason: synthRes.timedOut || budget.exhausted() ? "timeout" : "upstream_failed",
+    }, 502);
   }
+  const synth = synthRes.value;
   const organicMid = (synth.baseline_low + synth.baseline_high) / 2;
 
   // PLAN ENGINE — paid: recommend the profit-max budget; free: what the budget buys.
@@ -1112,7 +1269,10 @@ async function handleRun(
   const adAttHigh = plan.kind === "paid_optimized" ? plan.ad_attendees_high : plan.attendees_high;
 
   // Best-effort cover image for the "as a Mingla listing" render (Pexels).
-  const coverUrl = await fetchCoverImage(input, synth.listing_preview.vibe_tags);
+  // P-24: skipped when the remaining budget is under the 8s cap.
+  const coverUrl = budget.remainingMs() >= PEXELS_CALL_TIMEOUT_MS
+    ? await fetchCoverImage(input, synth.listing_preview.vibe_tags)
+    : null;
 
   // Totals = organic baseline + ad-driven attendees, capped at capacity.
   const total_low = Math.min(input.capacity, synth.baseline_low + adAttLow);
@@ -1150,6 +1310,9 @@ async function handleRun(
       generated_at: new Date().toISOString(),
       model: GEMINI_MODEL_ID,
       research_source: researchSource,
+      // ISSUE-1734 P-11 (I-PROPOSED-1734-REPORT-SCHEMA-VERSIONED): both lanes;
+      // readers tolerate absence; a breaking shape change bumps this integer.
+      schema_version: 1,
     },
   };
 
