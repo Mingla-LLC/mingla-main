@@ -413,6 +413,9 @@ export const SeeWhosGoingGate: React.FC<SeeWhosGoingGateProps> = ({
             <Text style={[styles.dialogBody, { color: palette.secondaryText }]}>
               Guest faces, names, and the group chat live in the Mingla app.
             </Text>
+            <Text style={[styles.dialogBody, { color: palette.secondaryText }]}>
+              Scan with your phone — the full guest list lives in the app.
+            </Text>
 
             {/* The ONE deliberate non-palette fill: solid white QR card —
                 scanner contrast is a hardware requirement (/download parity). */}
