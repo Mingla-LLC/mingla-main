@@ -9,11 +9,17 @@
  *
  * Reads via two SECURITY DEFINER RPCs (EXECUTE gated to authenticated + a
  * DB-level is_admin_user() guard; anon revoked) —
- *   admin_tool_leads_list(p_tool, p_has_email, p_search, p_limit, p_offset)
+ *   admin_tool_leads_list(p_tool, p_has_email, p_search, p_limit, p_offset, p_lane)
  *   admin_tool_lead_get(p_id)
  * The table itself denies anon SELECT (RLS deny-all). The list RPC never returns
  * `report` / `report_token` / `ip_hash`; the detail RPC returns `report` +
  * `report_token` (for the tokenized report link) but never `ip_hash`.
+ *
+ * ISSUE-1734 (ADM-1734-LANE, D-S1a resolved): rows now carry a `lane` badge
+ * (Web = anonymous marketing funnel; App = signed-in Business app runs) and an
+ * All/Web/App filter (default All — p_lane null). The detail modal shows
+ * lane + brand_id/user_id/subject_ref when present (app rows). App runs are
+ * product usage, NOT leads — filter lane=web for clean lead metrics.
  *
  * v1 is read-only: no edit/delete/status workflow/CSV export.
  */
@@ -56,6 +62,19 @@ const HAS_EMAIL_OPTIONS = [
   { value: "yes", label: "Has email" },
   { value: "no", label: "Anonymous" },
 ];
+
+// ISSUE-1734 lane filter → p_lane (null / 'web' / 'app'). Default All (D-S1a).
+const LANE_OPTIONS = [
+  { value: "", label: "All lanes" },
+  { value: "web", label: "Web" },
+  { value: "app", label: "App" },
+];
+
+// Lane badge variant/label. Legacy rows (pre-migration reads) default to Web.
+const LANE_BADGE = {
+  web: { variant: "default", label: "Web" },
+  app: { variant: "info", label: "App" },
+};
 
 // Stored status value → { variant, label } for the status badge.
 const STATUS = {
@@ -138,9 +157,11 @@ export function ToolLeadsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
 
-  // Filters. toolFilter "" = all; hasEmail "all"|"yes"|"no"; search debounced.
+  // Filters. toolFilter "" = all; hasEmail "all"|"yes"|"no"; laneFilter "" =
+  // all lanes (ISSUE-1734); search debounced.
   const [toolFilter, setToolFilter] = useState("");
   const [hasEmail, setHasEmail] = useState("all");
+  const [laneFilter, setLaneFilter] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -157,6 +178,7 @@ export function ToolLeadsPage() {
   // Changing a filter resets to page 0.
   const onToolChange = useCallback((v) => { setToolFilter(v); setPage(0); }, []);
   const onHasEmailChange = useCallback((v) => { setHasEmail(v); setPage(0); }, []);
+  const onLaneChange = useCallback((v) => { setLaneFilter(v); setPage(0); }, []);
 
   const pHasEmail = hasEmail === "yes" ? true : hasEmail === "no" ? false : null;
 
@@ -170,6 +192,8 @@ export function ToolLeadsPage() {
         p_search: search || null,
         p_limit: PAGE_SIZE,
         p_offset: page * PAGE_SIZE,
+        // ISSUE-1734: null = All (D-S1a default); 'web'/'app' filter exactly.
+        p_lane: laneFilter || null,
       });
       if (error) throw error;
       if (mountedRef.current) {
@@ -184,7 +208,7 @@ export function ToolLeadsPage() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [toolFilter, pHasEmail, search, page, addToast]);
+  }, [toolFilter, pHasEmail, laneFilter, search, page, addToast]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
@@ -234,6 +258,15 @@ export function ToolLeadsPage() {
       render: (_v, row) => (
         <Badge variant="outline">{TOOL_LABELS[row.tool] || row.tool}</Badge>
       ),
+    },
+    {
+      key: "lane",
+      label: "Lane",
+      width: "90px",
+      render: (_v, row) => {
+        const l = LANE_BADGE[row.lane] || LANE_BADGE.web;
+        return <Badge variant={l.variant}>{l.label}</Badge>;
+      },
     },
     {
       key: "subject",
@@ -381,6 +414,16 @@ export function ToolLeadsPage() {
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
+        <select
+          value={laneFilter}
+          onChange={(e) => onLaneChange(e.target.value)}
+          className={SELECT_CLASS}
+          aria-label="Filter by lane"
+        >
+          {LANE_OPTIONS.map((o) => (
+            <option key={o.value || "all"} value={o.value}>{o.label}</option>
+          ))}
+        </select>
         <SearchInput
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
@@ -429,6 +472,9 @@ export function ToolLeadsPage() {
               {/* Header row */}
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline">{TOOL_LABELS[detail.tool] || detail.tool}</Badge>
+                <Badge variant={(LANE_BADGE[detail.lane] || LANE_BADGE.web).variant}>
+                  {(LANE_BADGE[detail.lane] || LANE_BADGE.web).label}
+                </Badge>
                 <Badge variant={(STATUS[detail.status] || { variant: "default" }).variant}>
                   {(STATUS[detail.status] || { label: detail.status }).label}
                 </Badge>
@@ -436,6 +482,18 @@ export function ToolLeadsPage() {
                   {new Date(detail.created_at).toLocaleString()}
                 </span>
               </div>
+
+              {/* ISSUE-1734: app-run identity (present on lane='app' rows only) */}
+              {(detail.brand_id || detail.user_id || detail.subject_ref) && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-tertiary)] mb-1">App run</p>
+                  <div className="flex flex-col gap-0.5 font-mono text-xs text-[var(--color-text-secondary)]">
+                    {detail.brand_id && <span>brand: {detail.brand_id}</span>}
+                    {detail.user_id && <span>user: {detail.user_id}</span>}
+                    {detail.subject_ref && <span>subject: {detail.subject_ref}</span>}
+                  </div>
+                </div>
+              )}
 
               {/* Lead email */}
               <div>
