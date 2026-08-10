@@ -43,6 +43,15 @@ jobs:
         run: |
           node .github/scripts/strict-grep/issue-871-attendance-entitlement.mjs --self-test
           node .github/scripts/strict-grep/issue-871-attendance-entitlement.mjs
+      - name: Install buyer-web dependencies
+        working-directory: mingla-business
+        run: npm ci
+      - name: Prove the signed-out attendance handoff stays public
+        working-directory: mingla-business
+        run: >-
+          npx jest
+          src/utils/__tests__/issue_0871_attendance_claim_public_route.implementor.happy.test.ts
+          --runInBand
 
   issue-871-pg17:
     name: "Issue 871 atomic authorization proof (PG17)"
