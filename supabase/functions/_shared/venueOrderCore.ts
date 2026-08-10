@@ -55,6 +55,16 @@ export type ContextFailure = { code: VenueOrderErrorCode; venue?: string };
  * write onto the row. This is the same resolution performed by the service
  * client, applying the identical gates plus the ids, and it fails closed on
  * every one of them.
+ *
+ * ORCHESTRATOR RULING (P-9 vs P-22 gate 3), binding: `venue_ordering_settings`
+ * is read DIRECTLY here, never via the Phase-1 resolver. That resolver is
+ * implemented literally and fail-closed — it returns NULL for a venue whose
+ * ordering is disabled — so `ordering_enabled: false` can never come back
+ * through it, and sourcing the flag from it would make P-22's `ordering_paused`
+ * error UNREACHABLE. Reading the table itself is what lets this function tell
+ * "no such spot" (`spot_unknown`) apart from "the spot is real, the venue has
+ * paused" (`ordering_paused`) and return the right copy for each. Reads stay
+ * honest; the fail-closed boundary sits HERE, at the money.
  */
 export async function resolveOrderContext(
   supabase: ServiceClient,

@@ -27,10 +27,18 @@ BEGIN
   VALUES (v_brand, 'verified') RETURNING id INTO v_venue;
   INSERT INTO public.venue_tables (brand_id, venue_id, name, zone)
   VALUES (v_brand, v_venue, 'Table 12', 'indoor') RETURNING id INTO v_table;
-  INSERT INTO public.qr_spots (brand_id, venue_id, kind, venue_table_id, label,
-                               serving_venue_id, code)
-  VALUES (v_brand, v_venue, 'table', v_table, 'Table 12', v_venue, 'kq7m3pd2xr')
-  RETURNING id INTO v_spot;
+  -- #1789's P-7c auto-provision trigger mints the spot for a new table, and
+  -- qr_spots_table_uniq means there is AT MOST ONE per physical unit. Take the
+  -- one the trigger made rather than racing it — the venue never manages two
+  -- lists, and a fixture that inserted its own would be testing a shape the
+  -- product cannot produce.
+  SELECT id INTO v_spot FROM public.qr_spots WHERE venue_table_id = v_table;
+  IF v_spot IS NULL THEN
+    INSERT INTO public.qr_spots (brand_id, venue_id, kind, venue_table_id, label,
+                                 serving_venue_id, code)
+    VALUES (v_brand, v_venue, 'table', v_table, 'Table 12', v_venue, 'kq7m3pd2xr')
+    RETURNING id INTO v_spot;
+  END IF;
   INSERT INTO public.menus (brand_id, venue_id, name)
   VALUES (v_brand, v_venue, 'All day') RETURNING id INTO v_menu;
   INSERT INTO public.menu_items (menu_id, brand_id, name, price_cents, currency)
