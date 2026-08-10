@@ -6,11 +6,13 @@ on:
     paths:
       - "supabase/migrations/20270313001810_issue_1810_guest_roster_export_filter_compat.sql"
       - "supabase/migrations/__tests__/issue_1810_guest_roster_export_filter_compat.test.sql"
+      - "supabase/migrations/__tests__/issue_1810_guest_roster_export_filter_compat.tester_adversarial.test.sql"
       - ".github/workflows/issue-1810-guest-roster-export-compat-tests.yml"
   pull_request:
     paths:
       - "supabase/migrations/20270313001810_issue_1810_guest_roster_export_filter_compat.sql"
       - "supabase/migrations/__tests__/issue_1810_guest_roster_export_filter_compat.test.sql"
+      - "supabase/migrations/__tests__/issue_1810_guest_roster_export_filter_compat.tester_adversarial.test.sql"
       - ".github/workflows/issue-1810-guest-roster-export-compat-tests.yml"
 
 permissions:
@@ -69,4 +71,9 @@ jobs:
         run: >-
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
           -f supabase/migrations/__tests__/issue_1810_guest_roster_export_filter_compat.test.sql
-
+      - name: Attack nullable allowlist inputs
+        env:
+          PGPASSWORD: ${{ format('issue-1810-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1810_guest_roster_export_filter_compat.tester_adversarial.test.sql
