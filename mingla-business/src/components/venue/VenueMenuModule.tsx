@@ -61,10 +61,32 @@ import { MenuCategorySheet } from "./MenuCategorySheet";
 import type { MenuCategorySheetSaveInput } from "./MenuCategorySheet";
 import { MenuItemSheet } from "./MenuItemSheet";
 import type { MenuItemSheetSaveInput } from "./MenuItemSheet";
-import { MenuItemOptionsSection } from "./MenuItemOptionsSection";
-import { VenueSpotsSheet } from "./VenueSpotsSheet";
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
+
+/**
+ * Issue #1789 — both #1767 children load behind a LAZY boundary, the
+ * `LazyVenueInsightsModule` precedent (VenueSuiteShell.tsx:86) and the #1735
+ * rule it codifies: the HOST owns code-splitting.
+ *
+ * This is not a bundle-size nicety, it is a correctness constraint. Both
+ * children reach `useAuth` -> `AuthContext` -> `expo-constants` ->
+ * `expo-modules-core`, which THROWS AT MODULE SCOPE under the venue web
+ * render-proof configs (`Cannot read properties of undefined (reading
+ * 'EventEmitter')`). A static import here would evaluate that chain the moment
+ * anything imports this module — which is exactly how #1486's dormant render
+ * suites went red. The factories run only when the branch first RENDERS, and
+ * each render site is additionally gated on the sheet actually being open, so
+ * the chain stays out of the eager path on web and in every render proof.
+ */
+const LazyMenuItemOptionsSection = React.lazy(async () => {
+  const mod = await import("./MenuItemOptionsSection");
+  return { default: mod.MenuItemOptionsSection };
+});
+const LazyVenueSpotsSheet = React.lazy(async () => {
+  const mod = await import("./VenueSpotsSheet");
+  return { default: mod.VenueSpotsSheet };
+});
 
 export interface VenueMenuModuleProps {
   brandId: string | null;
@@ -645,12 +667,16 @@ export function VenueMenuModule({
         deleting={deleteMenu.isPending}
         canDelete={canMutate}
       />
-      <VenueSpotsSheet
-        visible={spotsSheetOpen}
-        onClose={() => setSpotsSheetOpen(false)}
-        brandId={brandId}
-        canMutate={canMutate}
-      />
+      {spotsSheetOpen ? (
+        <React.Suspense fallback={null}>
+          <LazyVenueSpotsSheet
+            visible
+            onClose={() => setSpotsSheetOpen(false)}
+            brandId={brandId}
+            canMutate={canMutate}
+          />
+        </React.Suspense>
+      ) : null}
 
       <MenuItemSheet
         visible={itemSheetOpen}
@@ -664,12 +690,16 @@ export function VenueMenuModule({
         deleting={deleteItem.isPending}
         canDelete={canMutate}
         optionsSection={
-          <MenuItemOptionsSection
-            brandId={brandId}
-            menuItemId={editingItem?.id ?? null}
-            currency={currency}
-            canMutate={canMutate}
-          />
+          itemSheetOpen ? (
+            <React.Suspense fallback={null}>
+              <LazyMenuItemOptionsSection
+                brandId={brandId}
+                menuItemId={editingItem?.id ?? null}
+                currency={currency}
+                canMutate={canMutate}
+              />
+            </React.Suspense>
+          ) : undefined
         }
       />
     </View>

@@ -31,11 +31,23 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueCapacityRulesPanel } from "./VenueCapacityRulesPanel";
 import { VenueTableSheet } from "./VenueTableSheet";
-import { VenueSpotsSheet } from "./VenueSpotsSheet";
 import type {
   VenueTable,
   VenueTableUpsert,
 } from "../../types/venueReservation";
+
+/**
+ * Issue #1789 — the Spots sheet loads behind a LAZY boundary, the
+ * `LazyVenueInsightsModule` precedent (VenueSuiteShell.tsx:86). It reaches
+ * `useAuth` -> `AuthContext` -> `expo-constants` -> `expo-modules-core`, which
+ * throws at MODULE SCOPE under the venue web render-proof configs, so a static
+ * import here would red every suite that mounts this module. The factory runs
+ * only when the sheet is actually opened.
+ */
+const LazyVenueSpotsSheet = React.lazy(async () => {
+  const mod = await import("./VenueSpotsSheet");
+  return { default: mod.VenueSpotsSheet };
+});
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 
@@ -285,12 +297,16 @@ export function VenueTablesModule({
         canDelete={canMutate}
       />
 
-      <VenueSpotsSheet
-        visible={spotsSheetOpen}
-        onClose={() => setSpotsSheetOpen(false)}
-        brandId={brandId}
-        canMutate={canMutate}
-      />
+      {spotsSheetOpen ? (
+        <React.Suspense fallback={null}>
+          <LazyVenueSpotsSheet
+            visible
+            onClose={() => setSpotsSheetOpen(false)}
+            brandId={brandId}
+            canMutate={canMutate}
+          />
+        </React.Suspense>
+      ) : null}
     </View>
   );
 }
