@@ -1,0 +1,79 @@
+name: Issue 994 OTA Env Resolution Differential
+
+# #994 [ota-publish-guardrails] — the #994 post-publish manifest check must stay
+# ABLE TO FAIL.
+#
+# WHY THIS WORKFLOW EXISTS. The post-publish check reads a handful of
+# EXPO_PUBLIC_* values out of the SERVED manifest and decides from them whether
+# `--environment production` took effect. That only works while those values
+# still DIFFER between a blind publish and a correct one. The day one of them
+# acquires a committed literal fallback, the check keeps printing OK forever and
+# detects nothing. This job resolves each app's config TWICE — once with the
+# environment stripped, once with obviously-fake sentinels applied — and asserts
+# the difference is still there. It guards the guard.
+#
+# WHY IT IS NOT IN strict-grep-mingla-business.yml. The class A batch runs on a
+# bare checkout with no app node_modules; this gate EXECUTES `expo config`, which
+# needs a real install. It is registered in MANIFEST.json as
+# `external:issue-994-ota-env-resolution.yml`, so meta-1383 parity P4 fails the
+# PR if this workflow ever stops invoking it.
+#
+# `npm ci`, NEVER a bare `npm install` — COMMS-0134 (BLOCK):
+# lottie-react-native@7.4.0 published a peer requiring react >= 19.2 against the
+# pinned 19.1.0, so a fresh resolve ERESOLVEs. `npm ci` installs straight from
+# the lockfile and is unaffected. Do NOT add --legacy-peer-deps.
+#
+# NO SECRETS ARE USED OR NEEDED. The sentinels are obviously-fake strings; the
+# blind run deliberately has nothing. This job never contacts EAS.
+
+on:
+  pull_request:
+    branches: [main, Seth]
+    paths:
+      - "app-mobile/app.config.ts"
+      - "app-mobile/app.json"
+      - "mingla-business/app.config.ts"
+      - "mingla-business/app.json"
+      - "scripts/ota/**"
+      - ".github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs"
+      - ".github/workflows/issue-994-ota-env-resolution.yml"
+  push:
+    branches: [main, Seth]
+    paths:
+      - "app-mobile/app.config.ts"
+      - "app-mobile/app.json"
+      - "mingla-business/app.config.ts"
+      - "mingla-business/app.json"
+      - "scripts/ota/**"
+      - ".github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs"
+      - ".github/workflows/issue-994-ota-env-resolution.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-994-ota-env-resolution:
+    name: "#994: the OTA manifest tripwires can still fail (${{ matrix.app }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [app-mobile, mingla-business]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+      # npm ci, never a bare npm install — COMMS-0134. The gate EXECUTES
+      # `expo config`, so the app's real dependency tree has to be present.
+      - name: Install ${{ matrix.app }} deps (npm ci — COMMS-0134)
+        working-directory: ${{ matrix.app }}
+        run: npm ci
+      - name: "#994 env-resolution gate: self-test"
+        run: node .github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs --self-test
+      - name: "#994 env-resolution gate: blind vs applied differential"
+        run: node .github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs --app ${{ matrix.app }}

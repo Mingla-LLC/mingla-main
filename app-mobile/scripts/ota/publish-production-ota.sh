@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# #994 (was ORCH-1296) — canonical production OTA publisher for mingla-business.
+# #994 — canonical production OTA publisher for app-mobile (the consumer app).
 # Invariant I-PROPOSED-994-PRODUCTION-OTA-ENV-BOUND.
 #
 # ALL production OTAs for this app MUST go through this script. Three reasons:
@@ -8,10 +8,13 @@
 #   1. THE ENVIRONMENT FLAG. The publish CLI, run without the production
 #      environment flag, resolves every EXPO_PUBLIC_* value from the operator's
 #      LOCAL .env instead of the EAS 'production' environment — and then exits 0.
-#      That has shipped five production incidents. On this app the Stripe key
-#      falls back to the committed pk_test_ sandbox literal, the live-mode
-#      handshake throws at boot, and the app sticks on the splash screen (#990).
-#      This script always passes the flag, on the same visible command.
+#      On THIS app the failure is worse than on mingla-business, because it is
+#      SILENT: app-mobile carries no Stripe key in `extra` at all, so there is no
+#      key mismatch to throw on. resolvePublishableKey() ends in `?? ""`, the
+#      mode handshake self-skips, checkout is dead, and the app boots and looks
+#      completely normal. Shipped 2026-08-06, live ~40 minutes, nothing in Sentry
+#      and nothing in the funnel. This script always passes the flag, on the same
+#      visible command, so remembering it is no longer anyone's job.
 #
 #   2. PRE-FLIGHT, PRESENCE BEFORE PREFIX. Every key this app silently defaults
 #      on is checked in the EAS 'production' environment: first that the name is
@@ -25,49 +28,63 @@
 #      serializes as {} — not null, not absent — which is easy to skim past, so
 #      that shape is checked first and named in the output.
 #
-# KEY TABLE (this app only — do NOT copy it to app-mobile; the two apps
-# genuinely differ, and a copied table is a false abort one way and a false
-# green the other):
+# KEY TABLE (this app only — it is DELIBERATELY different from
+# mingla-business's, and the differences below are derived from the code, not
+# copied. A copied table is a false abort one way and a false green the other):
 #
-#   EXPO_PUBLIC_SENTRY_DSN             REQUIRED  https:// + .ingest.  (app/_layout.tsx:122, static read)
-#   EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY REQUIRED  pk_live_             (app.config.ts -> extra; the #990 brick)
-#   EXPO_PUBLIC_GIPHY_API_KEY          REQUIRED  none                 (app.config.ts -> extra; GIF tab)
-#   EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN    ADVISORY  pk.                  (app.config.ts -> extra; trip-page map)
-#   EXPO_PUBLIC_MIXPANEL_TOKEN         ADVISORY  none                 (mixpanelService.ts:63, static read)
-#   EXPO_PUBLIC_POSTHOG_KEY            ADVISORY  phc_                 (app.config.ts carries a committed
-#                                                                      literal fallback, so it can NEVER be
-#                                                                      absent — it is deliberately not a
-#                                                                      tripwire on this app)
+#   EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY REQUIRED  pk_live_  (src/services/stripeModeHandshake.ts:52-53
+#                                                           and packages/payments-native/
+#                                                           StripeNativeProvider.tsx:57-61. NOT in
+#                                                           `extra` on this app, so the bundle-inlined
+#                                                           process.env read is the only live path —
+#                                                           and the reason the post-publish check
+#                                                           cannot see it directly.)
+#   EXPO_PUBLIC_POSTHOG_KEY            REQUIRED  phc_      (app.config.ts:75 -> extra. This app's ONLY
+#                                                           manifest tripwire: it is the one value with
+#                                                           no committed literal fallback, so it is the
+#                                                           only thing in the served manifest that can
+#                                                           tell a blind publish from a correct one.)
+#   EXPO_PUBLIC_MIXPANEL_TOKEN         ADVISORY  none      (src/services/mixpanelService.ts:6, static
+#                                                           read; never reaches `extra`.)
 #
-# WHY MAPBOX IS ADVISORY HERE. SPEC §3.4-V1 made its class conditional on the
-# variable existing in the EAS 'production' environment. The read-only check on
-# 2026-08-09 found it ABSENT from this app's production environment, so a
-# REQUIRED class would abort every correct publish. It also stays out of the
-# post-publish expectation table for the same reason. If it is ever provisioned,
-# promote it in both places together.
+# DELIBERATELY ABSENT FROM THIS TABLE — do NOT "fix" these omissions:
 #
-# OTA IS ENABLED (resolved). Production business OTA ships pure-JS /
-#   zero-native-module-delta changes through THIS script. The 2026-07-02
-#   stuck-on-splash brick (COMMS-0063/0052) was a NATIVE-MODULE DELTA — the OTA
-#   bundle referenced posthog-react-native, absent from the shipped binary —
-#   plus a wrong-key handshake (#990). Both are solved. Keep
-#   `eas update:roll-back-to-embedded` ready. A change that ADDS/BUMPS a native
-#   module or touches app.json / native config needs a full `eas build`, not an
-#   OTA.
+#   EXPO_PUBLIC_SENTRY_DSN          NOT USED by this app. app-mobile hardcodes its
+#                                   DSN literal at app/_layout.tsx:57, so consumer
+#                                   crash reporting does not depend on the EAS
+#                                   environment at all. Checking it here would abort
+#                                   correct publishes over a variable the app never
+#                                   reads. (mingla-business DOES read it from the
+#                                   environment — hence the asymmetry.)
+#   EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN NO live consumer in app-mobile. The producer was
+#                                   deleted; see the historical note at
+#                                   src/services/busynessService.ts:22. The only other
+#                                   tracked mentions are .env.example and a test
+#                                   fixture. (mingla-business DOES consume it.)
+#   EXPO_PUBLIC_APPSFLYER_*         NOT CHECKED. These are secret-visibility EAS
+#                                   variables, which are builder-only and absent from
+#                                   ANY locally-published OTA (#990 addendum). That is
+#                                   pre-existing behaviour, not a regression this
+#                                   script can detect or repair, and asserting them
+#                                   would abort every correct publish.
 #
-# Usage: mingla-business/scripts/ota/publish-production-ota.sh <ios|android> "<update message>"
+# Usage: app-mobile/scripts/ota/publish-production-ota.sh <ios|android> "<update message>"
 
 set -euo pipefail
 
-# TEST SEAM (do not repurpose). The publish binary is overridable ONLY so the
-# tester can drive this wrapper against a stub without publishing. The DEFAULT
-# is the real binary, and the #994 strict-grep gate asserts that default, so the
-# seam cannot become a bypass. There is deliberately no rehearsal/no-op mode: a
-# mode that does not publish would itself become the thing people run.
-MINGLA_EAS_BIN="${MINGLA_EAS_BIN:-eas}"
+# CLI RESOLUTION. This app must NOT use a globally-installed publish CLI — the
+# global binary crashes app-mobile's config spawn (handbook §7.6). The npx form
+# is the only one that works here.
+#
+# TEST SEAM (do not repurpose). The binary is overridable ONLY so the tester can
+# drive this wrapper against a stub without publishing. The DEFAULT is the real
+# binary, and the #994 strict-grep gate asserts that default, so the seam cannot
+# become a bypass. There is deliberately no rehearsal/no-op mode: a mode that
+# does not publish would itself become the thing people run.
+MINGLA_EAS_BIN="${MINGLA_EAS_BIN:-npx -y eas-cli@latest}"
 
-APP_LABEL="mingla-business"
-VERIFY_APP="business"
+APP_LABEL="app-mobile"
+VERIFY_APP="consumer"
 
 PLATFORM="${1:-}"
 MESSAGE="${2:-}"
@@ -95,7 +112,7 @@ if [ -z "${MESSAGE_STRIPPED}" ]; then
   exit 1
 fi
 
-# Run from the mingla-business root (where eas.json lives) regardless of CWD.
+# Run from the app-mobile root (where eas.json lives) regardless of CWD.
 #
 # BASH_SOURCE is DELIBERATELY NOT symlink-resolved. An invocation through a link
 # lands APP_ROOT in the link's directory and this script then refuses to run,
@@ -158,18 +175,12 @@ fi
 # What each key costs when it is missing. Used by both the abort and the warn.
 key_consequence() {
   case "$1" in
-    EXPO_PUBLIC_SENTRY_DSN)
-      echo "crash reporting would be OFF in this OTA" ;;
     EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY)
-      echo "the app would fall back to the committed pk_test_ sandbox literal and brick on the splash screen (#990)" ;;
-    EXPO_PUBLIC_GIPHY_API_KEY)
-      echo "the cover-picker GIF tab would silently degrade" ;;
-    EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN)
-      echo "the public trip page would hide its map" ;;
+      echo "checkout would be dead while the app boots and looks completely normal (2026-08-06)" ;;
+    EXPO_PUBLIC_POSTHOG_KEY)
+      echo "PostHog would be dark AND this app would lose its only served-manifest tripwire" ;;
     EXPO_PUBLIC_MIXPANEL_TOKEN)
       echo "Mixpanel would be dark in this OTA" ;;
-    EXPO_PUBLIC_POSTHOG_KEY)
-      echo "PostHog analytics would be dark in this OTA" ;;
     *)
       echo "this OTA would ship without it" ;;
   esac
@@ -256,30 +267,13 @@ preflight_key() {
     esac
   fi
 
-  # The Sentry DSN carries a second contract: it must be a real ingest endpoint.
-  if [ "${KEY_NAME}" = "EXPO_PUBLIC_SENTRY_DSN" ]; then
-    case "${KEY_VALUE}" in
-      *.ingest.*) : ;;
-      *)
-        echo "ABORT [#994 preflight] ${KEY_NAME} does not look like a Sentry ingest DSN (no '.ingest.' host)." >&2
-        echo "       Crash reporting would be silently dead in this OTA." >&2
-        exit 1
-        ;;
-    esac
-    echo "[preflight] OK ${KEY_NAME} = $(printf '%s' "${KEY_VALUE}" | sed -E 's#^(https?://)[^@]*@([^/]+)/.*#\1…@\2/…#') (${#KEY_VALUE} chars)"
-    return 0
-  fi
-
   # 6 — LOG THE PREFIX, never the secret.
   echo "[preflight] OK ${KEY_NAME} = $(printf '%s' "${KEY_VALUE}" | cut -c1-8)… (${#KEY_VALUE} chars)"
 }
 
-preflight_key EXPO_PUBLIC_SENTRY_DSN             required https://
 preflight_key EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY required pk_live_
-preflight_key EXPO_PUBLIC_GIPHY_API_KEY          required -
-preflight_key EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN    advisory pk.
+preflight_key EXPO_PUBLIC_POSTHOG_KEY            required phc_
 preflight_key EXPO_PUBLIC_MIXPANEL_TOKEN         advisory -
-preflight_key EXPO_PUBLIC_POSTHOG_KEY            advisory phc_
 
 # --- Publish ----------------------------------------------------------------
 # --json makes stdout pure JSON and routes CLI logs to stderr, so the update
