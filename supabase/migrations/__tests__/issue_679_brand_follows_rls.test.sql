@@ -36,7 +36,13 @@
 --        identity reads its brand's follow rows — ZERO rows; and the catalog
 --        carries EXACTLY the three owner policies, every qual/check being
 --        (auth.uid() = user_id), so no policy CAN widen silently
---   A-8  no UPDATE path: owner UPDATE rejected, 42501 (privilege absent)
+--   A-8  no UPDATE path: even the OWNER's UPDATE mutates NOTHING. On the
+--        Supabase image the initial-schema ALTER DEFAULT PRIVILEGES hands
+--        authenticated UPDATE on every new public table, so the contract is
+--        enforced by POLICY ABSENCE (RLS default-deny → zero-row no-op); on
+--        a bare PostgreSQL the same attack dies 42501. Either way the row is
+--        proven byte-unchanged, and the leg asserts it attacks as the
+--        authenticated client role (owner/superuser would prove nothing)
 --
 -- Fails-on-revert: deleting the migration fails the workflow's docker cp;
 -- loosening any policy/grant (adding a brand-side SELECT, widening the grant,
@@ -274,28 +280,60 @@ BEGIN
 END;
 $a7$;
 
--- ── A-8: no UPDATE path — even the OWNER is denied, 42501 ──
+-- ── A-8: no UPDATE path — even the OWNER's UPDATE mutates NOTHING ──
+-- Supabase's initial-schema.sql runs ALTER DEFAULT PRIVILEGES granting ALL on
+-- new public tables to authenticated, so the migration's select/insert/delete
+-- grant does NOT withhold UPDATE — policy absence does (RLS default-deny).
+-- There the attack is a zero-row no-op; on a bare PostgreSQL without those
+-- default grants it dies earlier with 42501. ANY mutated row is the breach:
+-- adding an UPDATE policy flips ROW_COUNT to 1 and fails here (and the
+-- policy census in A-7).
 SET request.jwt.claim.sub = '679a0000-0000-0000-0000-00000000000a';
 
 DO $a8$
 DECLARE
   v_threw boolean := false;
+  v_updated integer := 0;
+  v_source text;
 BEGIN
+  -- The leg must attack as the client role: the table OWNER (or a BYPASSRLS
+  -- superuser) sails past RLS, and this leg would then "pass" while proving
+  -- nothing (unfalsifiable-test guard).
+  IF current_user <> 'authenticated' THEN
+    RAISE EXCEPTION
+      'issue-679 A-8: leg is running as % — not the authenticated client role',
+      current_user;
+  END IF;
+
   BEGIN
     UPDATE public.brand_follows
        SET source = 'forged'
      WHERE user_id = '679a0000-0000-0000-0000-00000000000a';
+    GET DIAGNOSTICS v_updated = ROW_COUNT;
   EXCEPTION WHEN OTHERS THEN
     IF SQLSTATE <> '42501' THEN
       RAISE EXCEPTION
-        'issue-679 A-8: expected 42501 permission denied on UPDATE, got % (%)',
+        'issue-679 A-8: expected 42501 or a zero-row RLS no-op on UPDATE, got % (%)',
         SQLSTATE, SQLERRM;
     END IF;
     v_threw := true;
   END;
-  IF NOT v_threw THEN
+
+  IF NOT v_threw AND v_updated <> 0 THEN
     RAISE EXCEPTION
-      'issue-679 A-8: UPDATE on brand_follows succeeded — the no-update-path contract is gone';
+      'issue-679 A-8: UPDATE mutated % row(s) — the no-update-path contract is gone',
+      v_updated;
+  END IF;
+
+  -- Vacuity guard: the owner reads their own row back — 'forged' landing
+  -- anywhere means the attack mutated state regardless of how it reported.
+  SELECT source INTO v_source FROM public.brand_follows
+   WHERE user_id = '679a0000-0000-0000-0000-00000000000a'
+     AND brand_id = '679d0000-0000-0000-0000-0000000000d1';
+  IF v_source IS DISTINCT FROM 'brand_page' THEN
+    RAISE EXCEPTION
+      'issue-679 A-8: follow row source reads % — the UPDATE mutated the row',
+      v_source;
   END IF;
 END;
 $a8$;
