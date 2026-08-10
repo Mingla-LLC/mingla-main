@@ -19,11 +19,20 @@ const contentTypes = new Map([
 
 function resolveRequest(rawUrl) {
   const parsed = new URL(rawUrl, `http://127.0.0.1:${port}`);
+  if (parsed.pathname === "/accept-brand-invitation/") {
+    return { redirect: `/accept-brand-invitation${parsed.search}` };
+  }
+  if (parsed.pathname === "/accept-brand-invitation-entry.html") {
+    return { redirect: `/accept-brand-invitation-entry${parsed.search}` };
+  }
   if (
-    (parsed.pathname === "/accept-brand-invitation" || parsed.pathname === "/accept-brand-invitation/") &&
+    parsed.pathname === "/accept-brand-invitation" &&
     parsed.searchParams.get("issue922React") !== "1"
   ) {
-    return join(root, "accept-brand-invitation-entry.html");
+    parsed.pathname = "/accept-brand-invitation-entry";
+  }
+  if (parsed.pathname === "/accept-brand-invitation-entry") {
+    return { file: join(root, "accept-brand-invitation-entry.html") };
   }
   const clean = decodeURIComponent(parsed.pathname).replace(/^\/+/, "");
   const candidate = resolve(root, clean);
@@ -32,19 +41,24 @@ function resolveRequest(rawUrl) {
     existsSync(candidate) &&
     statSync(candidate).isFile()
   ) {
-    return candidate;
+    return { file: candidate };
   }
-  return join(root, "index.html");
+  return { file: join(root, "index.html") };
 }
 
 const server = createServer((req, res) => {
-  let file;
+  let resolved;
   try {
-    file = resolveRequest(req.url ?? "/");
+    resolved = resolveRequest(req.url ?? "/");
   } catch {
     res.writeHead(400).end("Bad request");
     return;
   }
+  if (resolved.redirect) {
+    res.writeHead(308, { Location: resolved.redirect }).end();
+    return;
+  }
+  const file = resolved.file;
   if (!existsSync(file)) {
     res.writeHead(500).end("Issue #922 build output is missing");
     return;

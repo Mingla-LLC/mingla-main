@@ -34,7 +34,7 @@ function validateRewrite(vercel) {
     "builder must run after the final blur/chunk-recovery injector",
   );
   const dedicated = vercel.rewrites.findIndex(
-    (rewrite) => rewrite.source === "/accept-brand-invitation" && rewrite.destination === "/accept-brand-invitation-entry.html",
+    (rewrite) => rewrite.source === "/accept-brand-invitation" && rewrite.destination === "/accept-brand-invitation-entry",
   );
   const catchall = vercel.rewrites.findIndex((rewrite) => rewrite.source === "/((?!_expo/static/).*)");
   invariant(dedicated >= 0, "exact invitation rewrite is missing");
@@ -120,11 +120,21 @@ function selfTest() {
   const vercel = {
     buildCommand: "x && node scripts/inject-mobile-blur-css.mjs && node scripts/build-invite-critical-entry.mjs",
     rewrites: [
-      { source: "/accept-brand-invitation", destination: "/accept-brand-invitation-entry.html" },
+      { source: "/accept-brand-invitation", destination: "/accept-brand-invitation-entry" },
       { source: "/((?!_expo/static/).*)", destination: "/" },
     ],
   };
   validateRewrite(vercel);
+  let caughtHtmlDestination = false;
+  try {
+    validateRewrite({
+      ...vercel,
+      rewrites: vercel.rewrites.map((rewrite) => rewrite.source === "/accept-brand-invitation"
+        ? { ...rewrite, destination: "/accept-brand-invitation-entry.html" }
+        : rewrite),
+    });
+  } catch { caughtHtmlDestination = true; }
+  invariant(caughtHtmlDestination, "self-test failed to detect the cleanUrls-incompatible .html destination");
   let caughtRewrite = false;
   try { validateRewrite({ ...vercel, rewrites: vercel.rewrites.slice(1) }); } catch { caughtRewrite = true; }
   invariant(caughtRewrite, "self-test failed to detect removed rewrite");
@@ -142,7 +152,7 @@ function selfTest() {
   let caughtEager = false;
   try { validateEntry(source, entry.replace("</script>", `${attrs[0]}</script>`)); } catch { caughtEager = true; }
   invariant(caughtEager, "self-test failed to detect restored eager script");
-  console.log("issue #922 guard self-test PASS (rewrite removal, script reordering, and eager-script restoration detected)");
+  console.log("issue #922 guard self-test PASS (.html destination, rewrite removal, script reordering, and eager-script restoration detected)");
 }
 
 try {
