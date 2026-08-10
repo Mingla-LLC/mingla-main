@@ -313,14 +313,21 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     });
   }
 
-  // ── Gate 8 — the contact triple. Required whenever Mingla moves money, which
-  //    is exactly when CHECK 5 on the row will demand it. ───────────────────
+  // ── Gate 8 — the contact triple, validated server-side and E.164-normalised.
+  //    UNCONDITIONAL, on purpose. A zero-total order still lands as
+  //    money_path='mingla' + payment_status='paid' (there is nothing to wait
+  //    for), and venue_orders_paid_needs_contact makes that row UNWRITABLE
+  //    without all three — so conditioning this on "does money move" would turn
+  //    a legitimate free order into an opaque `order_total_invalid` at INSERT
+  //    time instead of a clear "we need a phone number" at the gate. It is also
+  //    what the ticket path enforces: the guest needs a receipt and a status
+  //    link whether or not the number happened to be zero. ──────────────────
   const movesMoney = money.totalCents > 0;
   if (buyerName.length < 2) return fail("buyer_name_required");
-  if (movesMoney && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
     return fail("buyer_email_invalid");
   }
-  if (movesMoney && buyerPhoneE164 === null) return fail("buyer_phone_required");
+  if (buyerPhoneE164 === null) return fail("buyer_phone_required");
 
   // ── Gate 9b — charge readiness, BEFORE any row is written. ───────────────
   const stripeAccountId = typeof pricing.stripe_account_id === "string"
@@ -445,8 +452,8 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     pickup_code: pickupCode,
     buyer_user_id: userId,
     buyer_name: buyerName,
-    buyer_email: movesMoney ? buyerEmail : (buyerEmail || null),
-    buyer_phone_e164: movesMoney ? buyerPhoneE164 : buyerPhoneE164,
+    buyer_email: buyerEmail,
+    buyer_phone_e164: buyerPhoneE164,
     money_path: "mingla",
     currency: settlementCurrency,
     subtotal_cents: money.subtotalCents,
