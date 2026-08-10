@@ -69,8 +69,21 @@ BEGIN
   -- Real membership: biz_brand_effective_rank_for_caller reads brand_team_members
   -- for auth.uid(). The tab RPCs are rank-gated INSIDE the database, so a
   -- fixture that stubbed the rank would be testing nothing.
-  INSERT INTO public.brand_team_members (brand_id, user_id, role, invited_at, accepted_at)
-  VALUES (v_brand, v_user, 'brand_owner', now(), now());   -- ORCH-1047 renamed account_owner
+  --
+  -- B2a's biz_brand_owner_team_member_after_insert trigger already mints the
+  -- owner's membership when the brand is created, and
+  -- idx_brand_team_members_brand_user_active is UNIQUE on (brand_id, user_id)
+  -- WHERE removed_at IS NULL — so this ADOPTS the trigger's row rather than
+  -- racing it, exactly as the spot fixture adopts #1789's auto-provision.
+  -- Accepting it is the part that matters: the rank function ignores a
+  -- membership with a NULL accepted_at.
+  UPDATE public.brand_team_members
+     SET role = 'brand_owner', accepted_at = coalesce(accepted_at, now())
+   WHERE brand_id = v_brand AND user_id = v_user AND removed_at IS NULL;
+  IF NOT FOUND THEN
+    INSERT INTO public.brand_team_members (brand_id, user_id, role, invited_at, accepted_at)
+    VALUES (v_brand, v_user, 'brand_owner', now(), now());
+  END IF;
 
   INSERT INTO public.reservations (brand_id, venue_id, reserved_for, party_size, status)
   VALUES (v_brand, v_venue, now() + interval '1 hour', 4, 'seated')
