@@ -1,0 +1,79 @@
+name: Issue 1810 guest roster export compatibility
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270313001810_issue_1810_guest_roster_export_filter_compat.sql"
+      - "supabase/migrations/__tests__/issue_1810_guest_roster_export_filter_compat.test.sql"
+      - "supabase/migrations/__tests__/issue_1810_guest_roster_export_filter_compat.tester_adversarial.test.sql"
+      - ".github/workflows/issue-1810-guest-roster-export-compat-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/20270313001810_issue_1810_guest_roster_export_filter_compat.sql"
+      - "supabase/migrations/__tests__/issue_1810_guest_roster_export_filter_compat.test.sql"
+      - "supabase/migrations/__tests__/issue_1810_guest_roster_export_filter_compat.tester_adversarial.test.sql"
+      - ".github/workflows/issue-1810-guest-roster-export-compat-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1810-pg17:
+    name: "Issue 1810 export contract (fresh PG17)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-1810-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for PostgreSQL 17
+        env:
+          PGPASSWORD: ${{ format('issue-1810-ci-{0}', github.run_id) }}
+        run: |
+          for attempt in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - name: Apply every migration in lexical order
+        env:
+          PGPASSWORD: ${{ format('issue-1810-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration; do
+                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
+              done
+      - name: Prove the export allowlist and grant boundary
+        env:
+          PGPASSWORD: ${{ format('issue-1810-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1810_guest_roster_export_filter_compat.test.sql
+      - name: Attack nullable allowlist inputs
+        env:
+          PGPASSWORD: ${{ format('issue-1810-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1810_guest_roster_export_filter_compat.tester_adversarial.test.sql
