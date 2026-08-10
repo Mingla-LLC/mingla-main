@@ -13,7 +13,7 @@
  *   - Marketing (existing, creator_accounts-backed) — unchanged
  *
  * Master-with-children rows expand to reveal per-type child rows, each with a
- * Push + In-app toggle persisting to `notification_preferences` (so
+ * Push + In-app toggle persisting to `business_notification_type_preferences` (so
  * notify-dispatch honors them — NOT only Zustand). Master OFF disables +
  * writes opt_in=false for every child (SUB-C_DESIGN §8.1). The two NEW masters
  * (Payments & trust, Audience & content) are derived ON when any child is on.
@@ -143,6 +143,12 @@ export default function NotificationsRoute(): React.ReactElement {
     setToast({ visible: true, message });
   }, []);
 
+  useEffect(() => {
+    if (typePrefs.query.isError) {
+      showToast("Couldn't load notification settings. Reopen this screen to try again.");
+    }
+  }, [typePrefs.query.errorUpdatedAt, typePrefs.query.isError, showToast]);
+
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
       router.back();
@@ -218,6 +224,9 @@ export default function NotificationsRoute(): React.ReactElement {
 
   const paymentsMasterOn = anyChildOn(PAYMENTS_CHILDREN);
   const audienceMasterOn = anyChildOn(AUDIENCE_CHILDREN);
+  const typePrefsUnavailable =
+    typePrefs.query.data === undefined &&
+    (typePrefs.query.isPending || typePrefs.query.isError);
 
   return (
     <View
@@ -258,6 +267,7 @@ export default function NotificationsRoute(): React.ReactElement {
           children_={ORDER_CHILDREN}
           isOn={typePrefs.isOn}
           onChild={handleChildToggle}
+          preferencesDisabled={typePrefsUnavailable}
         />
 
         {/* Payments & trust (NEW master) */}
@@ -273,6 +283,7 @@ export default function NotificationsRoute(): React.ReactElement {
           children_={PAYMENTS_CHILDREN}
           isOn={typePrefs.isOn}
           onChild={handleChildToggle}
+          preferencesDisabled={typePrefsUnavailable}
         />
 
         {/* Audience & content (NEW master) */}
@@ -288,6 +299,7 @@ export default function NotificationsRoute(): React.ReactElement {
           children_={AUDIENCE_CHILDREN}
           isOn={typePrefs.isOn}
           onChild={handleChildToggle}
+          preferencesDisabled={typePrefsUnavailable}
         />
 
         {/* Brand team (master ON gates 2 children) */}
@@ -303,6 +315,7 @@ export default function NotificationsRoute(): React.ReactElement {
           children_={TEAM_CHILDREN}
           isOn={typePrefs.isOn}
           onChild={handleChildToggle}
+          preferencesDisabled={typePrefsUnavailable}
         />
 
         {/* Scanner activity (existing, no v1 children) */}
@@ -365,6 +378,7 @@ interface MasterCardProps {
     channel: PrefChannel,
     value: boolean,
   ) => void;
+  preferencesDisabled: boolean;
 }
 
 const MasterCard: React.FC<MasterCardProps> = ({
@@ -377,6 +391,7 @@ const MasterCard: React.FC<MasterCardProps> = ({
   children_,
   isOn,
   onChild,
+  preferencesDisabled,
 }) => (
   <GlassCard variant="elevated" radius="md" padding={spacing.md}>
     <View style={styles.masterRow}>
@@ -409,6 +424,8 @@ const MasterCard: React.FC<MasterCardProps> = ({
         trackColor={{ false: "rgba(255, 255, 255, 0.12)", true: accent.warm }}
         thumbColor="#ffffff"
         accessibilityLabel={`${label} master toggle`}
+        disabled={preferencesDisabled}
+        accessibilityState={{ checked: masterOn, disabled: preferencesDisabled }}
       />
     </View>
 
@@ -422,7 +439,10 @@ const MasterCard: React.FC<MasterCardProps> = ({
         {children_.map((child) => (
           <View
             key={child.type}
-            style={[styles.childRow, !masterOn ? styles.childDisabled : null]}
+            style={[
+              styles.childRow,
+              !masterOn || preferencesDisabled ? styles.childDisabled : null,
+            ]}
           >
             <View style={styles.childTextCol}>
               <Text style={styles.childLabel}>{child.label}</Text>
@@ -434,14 +454,14 @@ const MasterCard: React.FC<MasterCardProps> = ({
               <ChannelToggle
                 label="PUSH"
                 value={isOn(child.type, "push")}
-                disabled={!masterOn}
+                disabled={!masterOn || preferencesDisabled}
                 onToggle={(v) => onChild(child.type, "push", v)}
                 a11y={`${child.label} push`}
               />
               <ChannelToggle
                 label="IN-APP"
                 value={isOn(child.type, "in_app")}
-                disabled={!masterOn}
+                disabled={!masterOn || preferencesDisabled}
                 onToggle={(v) => onChild(child.type, "in_app", v)}
                 a11y={`${child.label} in-app`}
               />

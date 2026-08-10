@@ -164,12 +164,13 @@ serve(async (req: Request) => {
             ? { summary: entry.result.summary }
             : {}),
       };
-      recordPersonCardImpressions({
+      await recordPersonCardImpressions({
         adminClient,
         viewerId: user.id,
         pairedUserId: body.pairedUserId,
         holidayKey: entry.section.holidayKey,
         cards,
+        endpointContext: "get-paired-profile-cards",
       });
     }
 

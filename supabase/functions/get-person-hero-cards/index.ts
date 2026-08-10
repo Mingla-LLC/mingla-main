@@ -132,12 +132,13 @@ serve(async (req: Request) => {
     });
 
     if (usingPairedUser) {
-      recordPersonCardImpressions({
+      await recordPersonCardImpressions({
         adminClient,
         viewerId: user.id,
         pairedUserId: effectivePersonId,
         holidayKey: body.holidayKey,
         cards: result.cards,
+        endpointContext: "get-person-hero-cards",
       });
     }
 

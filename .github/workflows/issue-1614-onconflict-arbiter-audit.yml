@@ -1,0 +1,129 @@
+name: "#1614 PostgREST upsert arbiter audit"
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1614-onconflict-arbiter-audit:
+    name: "#1614 all-runtime onConflict + preference contracts (PG17)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-1614-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+
+      - name: Install Business test dependencies from lockfile
+        working-directory: mingla-business
+        run: npm ci
+
+      - name: Parse every runtime onConflict target and run parser fixtures
+        run: |
+          node .github/scripts/issue-1614-onconflict-arbiter-audit.mjs --self-test
+          node --test .github/scripts/__tests__/issue-1614-onconflict-arbiter-audit.test.mjs
+          if test -f .github/scripts/__tests__/issue-1614-onconflict-arbiter-audit.tester-adversarial.test.mjs; then
+            node --test .github/scripts/__tests__/issue-1614-onconflict-arbiter-audit.tester-adversarial.test.mjs
+          fi
+
+      - name: Wait for PostgreSQL 17
+        env:
+          PGPASSWORD: ${{ format('issue-1614-ci-{0}', github.run_id) }}
+        run: |
+          for attempt in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "PostgreSQL 17 did not become ready"
+          exit 1
+
+      - name: Apply complete migration chain in timestamp order
+        env:
+          PGPASSWORD: ${{ format('issue-1614-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration; do
+                echo "::group::Applying $migration"
+                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
+                echo "::endgroup::"
+              done
+
+      - name: Ask PostgreSQL to adjudicate every runtime target
+        env:
+          PGPASSWORD: ${{ format('issue-1614-ci-{0}', github.run_id) }}
+        run: >-
+          node .github/scripts/issue-1614-onconflict-arbiter-audit.mjs --emit-sql |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+
+      - name: Prove PostgreSQL rejects partial and accepts full UNIQUE arbiters
+        env:
+          PGPASSWORD: ${{ format('issue-1614-ci-{0}', github.run_id) }}
+        run: >-
+          node .github/scripts/issue-1614-onconflict-arbiter-audit.mjs --emit-self-test-sql |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+
+      - name: Run SQL happy-path and tester contracts
+        env:
+          PGPASSWORD: ${{ format('issue-1614-ci-{0}', github.run_id) }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1614_upsert_and_notification_prefs.test.sql
+          if test -f supabase/migrations/__tests__/issue_1614_upsert_and_notification_prefs.tester_adversarial.test.sql; then
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+              -f supabase/migrations/__tests__/issue_1614_upsert_and_notification_prefs.tester_adversarial.test.sql
+          fi
+
+      - name: Run paired-impression Deno contracts
+        run: |
+          deno test --allow-read supabase/functions/_shared/__tests__/issue_1614_person_impressions.test.ts
+          if test -f supabase/functions/_shared/__tests__/issue_1614_person_impressions.tester_adversarial.test.ts; then
+            deno test --allow-read supabase/functions/_shared/__tests__/issue_1614_person_impressions.tester_adversarial.test.ts
+          fi
+
+      - name: Run dispatch Deno contracts
+        run: |
+          deno test --allow-read supabase/functions/notify-dispatch/__tests__/issue_1614_business_type_preferences.test.ts
+          if test -f supabase/functions/notify-dispatch/__tests__/issue_1614_business_type_preferences.tester_adversarial.test.ts; then
+            deno test --allow-read supabase/functions/notify-dispatch/__tests__/issue_1614_business_type_preferences.tester_adversarial.test.ts
+          fi
+
+      - name: Run Business preference contracts
+        working-directory: mingla-business
+        run: |
+          npm test -- --runInBand src/hooks/__tests__/issue1614NotificationTypePrefs.test.tsx
+          if test -f src/hooks/__tests__/issue1614NotificationTypePrefs.testerAdversarial.test.tsx; then
+            npm test -- --runInBand src/hooks/__tests__/issue1614NotificationTypePrefs.testerAdversarial.test.tsx
+          fi

@@ -6,9 +6,7 @@
 import { supabase } from "./supabase";
 import {
   UserActivityHistory,
-  UserStats,
   UserVibes,
-  SavedExperiencePrivacy,
   UserTimeline,
   ProfileGamifiedData,
 } from "../types";
@@ -47,9 +45,8 @@ export class EnhancedProfileService {
       if (error) {
         console.error("Error tracking activity:", error);
       } else {
-        // Update user vibes and stats asynchronously
+        // Update user vibes asynchronously
         this.updateUserVibes(user.id);
-        this.updateUserStats(user.id);
       }
     } catch (error) {
       console.error("Error in trackActivity:", error);
@@ -179,44 +176,6 @@ export class EnhancedProfileService {
     }
   }
 
-  // Update user stats
-  private async updateUserStats(userId: string): Promise<void> {
-    try {
-      const now = new Date();
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-      // Get monthly stats
-      const { data: monthlyStats } = await supabase.rpc(
-        "get_user_monthly_stats",
-        {
-          p_user_id: userId,
-          p_month_start: monthStart.toISOString(),
-        }
-      );
-
-      if (monthlyStats && monthlyStats.length > 0) {
-        const stats = monthlyStats[0];
-
-        // Upsert monthly stats
-        await supabase.from("user_stats").upsert(
-          {
-            user_id: userId,
-            stat_type: "monthly_experiences",
-            stat_value: stats,
-            period_start: monthStart.toISOString(),
-            period_end: monthEnd.toISOString(),
-          },
-          {
-            onConflict: "user_id,stat_type,period_start",
-          }
-        );
-      }
-    } catch (error) {
-      console.error("Error updating user stats:", error);
-    }
-  }
-
   // Calculate user achievements
   private async calculateUserAchievements(userId: string): Promise<{
     totalExperiences: number;
@@ -335,63 +294,6 @@ export class EnhancedProfileService {
     } catch (error) {
       console.error("Error getting user badges:", error);
       return [];
-    }
-  }
-
-  // Privacy controls for saved experiences
-  async setExperiencePrivacy(
-    experienceId: string,
-    privacySettings: {
-      is_public?: boolean;
-      visible_to_friends?: boolean;
-      show_in_activity?: boolean;
-    }
-  ): Promise<boolean> {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return false;
-
-      const { error } = await supabase.from("saved_experience_privacy").upsert(
-        {
-          user_id: user.id,
-          experience_id: experienceId,
-          ...privacySettings,
-        },
-        {
-          onConflict: "user_id,experience_id",
-        }
-      );
-
-      return !error;
-    } catch (error) {
-      console.error("Error setting experience privacy:", error);
-      return false;
-    }
-  }
-
-  // Get experience privacy settings
-  async getExperiencePrivacy(
-    experienceId: string
-  ): Promise<SavedExperiencePrivacy | null> {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return null;
-
-      const { data, error } = await supabase
-        .from("saved_experience_privacy")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("experience_id", experienceId)
-        .single();
-
-      return error ? null : data;
-    } catch (error) {
-      console.error("Error getting experience privacy:", error);
-      return null;
     }
   }
 
