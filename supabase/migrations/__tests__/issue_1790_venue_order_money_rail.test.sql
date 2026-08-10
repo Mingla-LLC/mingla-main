@@ -66,6 +66,12 @@ BEGIN
   INSERT INTO public.menu_modifiers (group_id, brand_id, name, price_delta_cents, currency)
   VALUES (v_group, v_brand, 'No ice', 0, 'GBP') RETURNING id INTO v_mod;
 
+  -- Real membership: biz_brand_effective_rank_for_caller reads brand_team_members
+  -- for auth.uid(). The tab RPCs are rank-gated INSIDE the database, so a
+  -- fixture that stubbed the rank would be testing nothing.
+  INSERT INTO public.brand_team_members (brand_id, user_id, role, invited_at, accepted_at)
+  VALUES (v_brand, v_user, 'account_owner', now(), now());
+
   INSERT INTO public.reservations (brand_id, venue_id, reserved_for, party_size, status)
   VALUES (v_brand, v_venue, now() + interval '1 hour', 4, 'seated')
   RETURNING id INTO v_res;
@@ -511,8 +517,9 @@ DO $t$
 DECLARE
   v_s uuid; v_o uuid; v_res jsonb; v_raised boolean;
 BEGIN
-  PERFORM set_config('harness.uid', pg_temp.fx('user')::text, true);
-  PERFORM set_config('harness.rank', '100', true);
+  -- The REAL auth.uid() reads request.jwt.claim.sub; the REAL rank function
+  -- reads brand_team_members. Both are exercised here, unstubbed.
+  PERFORM set_config('request.jwt.claim.sub', pg_temp.fx('user')::text, true);
 
   v_s := pg_temp.mint_session();
 
