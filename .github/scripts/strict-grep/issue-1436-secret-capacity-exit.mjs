@@ -21,6 +21,7 @@ const paths = {
 };
 
 const retiredDirectNames = [
+  "CONTENT_SHARE_V1_CREATE_ENABLED",
   "NOTIFICATION_RECIPIENT_HMAC_SECRET",
   "PAYOUT_HOLD_ONBOARD_FLIP",
   "PAYOUT_RELEASE_EXECUTE",
@@ -111,6 +112,17 @@ export function violations(files) {
     failures.push("manifest: offering invite token pepper contract missing");
   }
 
+  const runtimeConfig = records.get("MINGLA_RUNTIME_CONFIG_JSON");
+  if (
+    !runtimeConfig?.bundle_fields?.some((entry) =>
+      entry.name === "content_share_v1_create_enabled" &&
+      entry.owner === "Platform Engineering" &&
+      entry.source_type === "approved_feature_operating_record"
+    )
+  ) {
+    failures.push("manifest: content-share runtime field missing");
+  }
+
   const conversion = records.get("AD_CONVERSION_TOKENS");
   if (
     !conversion?.bundle_fields?.some((entry) =>
@@ -134,6 +146,7 @@ export function violations(files) {
 
   for (const [token, label] of [
     ["target_must_be_87_unique_names", "capacity gate"],
+    ['["content_share_v1_create_enabled", "CONTENT_SHARE_V1_CREATE_ENABLED"]', "capacity gate"],
     ['["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]', "capacity gate"],
     ['["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]', "capacity gate"],
     ['["source_refunds_post_disabled", "SOURCE_REFUNDS_POST_DISABLED"]', "capacity gate"],
@@ -155,6 +168,8 @@ export function violations(files) {
     "PAYOUT_RELEASE_EXECUTE",
     "PAYOUT_HOLD_ONBOARD_FLIP",
     "exactly 87",
+    "content_share_v1_create_enabled",
+    "CONTENT_SHARE_V1_CREATE_ENABLED",
   ]) {
     requireToken(files.runbook ?? "", token, "capacity runbook", failures);
   }
@@ -201,6 +216,12 @@ export function violations(files) {
     failures.push("notification HMAC: second reader or missing canonical reader");
   }
   for (const { path: sourcePath, source } of files.productionSources ?? []) {
+    if (
+      sourcePath !== "supabase/functions/_shared/runtimeConfig.ts" &&
+      source.includes('Deno.env.get("CONTENT_SHARE_V1_CREATE_ENABLED")')
+    ) {
+      failures.push(`content share: retired direct reader forbidden: ${sourcePath}`);
+    }
     if (
       sourcePath !==
         "supabase/functions/_shared/notificationRecipientHmac.ts" &&
@@ -253,7 +274,7 @@ function readFiles() {
 }
 
 function fixtureManifest() {
-  const filler = Array.from({ length: 84 }, (_, index) => ({
+  const filler = Array.from({ length: 83 }, (_, index) => ({
     name: `SAFE_${String(index).padStart(2, "0")}`,
     readers: [],
     bundle_fields: [],
@@ -290,6 +311,15 @@ function fixtureManifest() {
         bundle_fields: paymentFields.map((name) => ({ name })),
       },
       {
+        name: "MINGLA_RUNTIME_CONFIG_JSON",
+        readers: ["supabase/functions/_shared/runtimeConfig.ts"],
+        bundle_fields: [{
+          name: "content_share_v1_create_enabled",
+          owner: "Platform Engineering",
+          source_type: "approved_feature_operating_record",
+        }],
+      },
+      {
         name: "OFFERING_INVITE_TOKEN_PEPPER",
         class: "cryptographic_secret",
         owner: "Platform Security",
@@ -311,11 +341,11 @@ function selfTest() {
   const clean = {
     manifest: JSON.stringify(fixtureManifest()),
     capacity:
-      'target_must_be_87_unique_names; ["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]; ["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]; ["source_refunds_post_disabled", "SOURCE_REFUNDS_POST_DISABLED"]',
+      'target_must_be_87_unique_names; ["content_share_v1_create_enabled", "CONTENT_SHARE_V1_CREATE_ENABLED"]; ["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]; ["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]; ["source_refunds_post_disabled", "SOURCE_REFUNDS_POST_DISABLED"]',
     refund:
       "retired direct compatibility name present; bundled payment authority missing; bundled notification HMAC authority missing; exact 87-name manifest",
     runbook:
-      "schema v2 NOTIFICATION_RECIPIENT_HMAC_SECRET SOURCE_REFUNDS_POST_DISABLED PAYOUT_RELEASE_EXECUTE PAYOUT_HOLD_ONBOARD_FLIP exactly 87",
+      "schema v2 NOTIFICATION_RECIPIENT_HMAC_SECRET SOURCE_REFUNDS_POST_DISABLED PAYOUT_RELEASE_EXECUTE PAYOUT_HOLD_ONBOARD_FLIP exactly 87 content_share_v1_create_enabled CONTENT_SHARE_V1_CREATE_ENABLED",
     invariant: "I-PROPOSED-1436-SECRET-CAPACITY-EXIT (ACTIVE)",
     test: "any retired direct-name return fails closed",
     adversarialTest:
@@ -398,9 +428,32 @@ function selfTest() {
       expected: "notification HMAC bundle field missing",
     },
     {
+      key: "manifest",
+      value: JSON.stringify({
+        ...fixtureManifest(),
+        secrets: fixtureManifest().secrets.map((entry) =>
+          entry.name === "MINGLA_RUNTIME_CONFIG_JSON"
+            ? { ...entry, bundle_fields: [] }
+            : entry
+        ),
+      }),
+      expected: "content-share runtime field missing",
+    },
+    {
       key: "workflow",
       value: `${clean.workflow}\ncontinue-on-error: true`,
       expected: "continue-on-error forbidden",
+    },
+    {
+      key: "productionSources",
+      value: [
+        ...clean.productionSources,
+        {
+          path: "supabase/functions/shared-card/index.ts",
+          source: 'Deno.env.get("CONTENT_SHARE_V1_CREATE_ENABLED")',
+        },
+      ],
+      expected: "retired direct reader forbidden",
     },
     {
       key: "productionSources",

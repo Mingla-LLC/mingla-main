@@ -82,7 +82,10 @@ test('H6 edge creation takes identity only, loads served truth and calls the sol
   assert.match(service, /rpc\("upsert_content_share_version"/);
   const block = service;
   for (const untrusted of ['raw.title', 'raw.cover', 'raw.price', 'raw.hours', 'raw.destination']) assert.doesNotMatch(block, new RegExp(untrusted.replace('.', '\\.')));
-  assert.match(edge, /CONTENT_SHARE_V1_CREATE_ENABLED/);
+  assert.match(edge, /resolveRuntimeBoolean\(/);
+  assert.match(edge, /"content_share_v1_create_enabled"/);
+  assert.match(edge, /"CONTENT_SHARE_V1_CREATE_ENABLED"/);
+  assert.doesNotMatch(edge, /Deno\.env\.get\("CONTENT_SHARE_V1_CREATE_ENABLED"\)/);
 });
 
 test('H7 later stages add receivers without mutating the stage-2 migration contract', () => {

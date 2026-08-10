@@ -3,6 +3,7 @@ import { type SecretEnvGetter } from "./secretBundle.ts";
 export type RuntimeConfigField =
   | "bunny_storage_cap_bytes"
   | "bunny_traffic_cap_bytes"
+  | "content_share_v1_create_enabled"
   | "event_cover_video_provider"
   | "google_ads_api_version"
   | "meta_api_version"
@@ -15,16 +16,19 @@ export type RuntimeStringField = Exclude<
   RuntimeConfigField,
   | "bunny_storage_cap_bytes"
   | "bunny_traffic_cap_bytes"
+  | "content_share_v1_create_enabled"
   | "offering_invite_sms_price_book_v1"
 >;
 export type RuntimeNumberField =
   | "bunny_storage_cap_bytes"
   | "bunny_traffic_cap_bytes";
+export type RuntimeBooleanField = "content_share_v1_create_enabled";
 
 type RuntimeConfig = {
   schema_version: 1;
   bunny_storage_cap_bytes: number;
   bunny_traffic_cap_bytes: number;
+  content_share_v1_create_enabled?: boolean;
   event_cover_video_provider: "cloudinary" | "bunny";
   google_ads_api_version: string;
   meta_api_version: string;
@@ -55,6 +59,7 @@ export const RUNTIME_CONFIG_BUNDLE = "MINGLA_RUNTIME_CONFIG_JSON";
 export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
   "bunny_storage_cap_bytes",
   "bunny_traffic_cap_bytes",
+  "content_share_v1_create_enabled",
   "event_cover_video_provider",
   "google_ads_api_version",
   "meta_api_version",
@@ -66,6 +71,7 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
 const RUNTIME_CONFIG_LEGACY_NAMES: Record<RuntimeConfigField, string> = {
   bunny_storage_cap_bytes: "BUNNY_STORAGE_CAP_BYTES",
   bunny_traffic_cap_bytes: "BUNNY_TRAFFIC_CAP_BYTES",
+  content_share_v1_create_enabled: "CONTENT_SHARE_V1_CREATE_ENABLED",
   event_cover_video_provider: "EVENT_COVER_VIDEO_PROVIDER",
   google_ads_api_version: "GOOGLE_ADS_API_VERSION",
   meta_api_version: "META_API_VERSION",
@@ -147,12 +153,23 @@ export function parseRuntimeConfig(raw: string): ParseResult {
   }
   for (
     const field of RUNTIME_CONFIG_FIELDS.filter((candidate) =>
+      candidate !== "content_share_v1_create_enabled" &&
       candidate !== "offering_invite_sms_price_book_v1"
     )
   ) {
     if (!Object.hasOwn(parsed, field)) {
       return { ok: false, reason: "missing_field", field };
     }
+  }
+  if (
+    Object.hasOwn(parsed, "content_share_v1_create_enabled") &&
+    typeof parsed.content_share_v1_create_enabled !== "boolean"
+  ) {
+    return {
+      ok: false,
+      reason: "wrong_type",
+      field: "content_share_v1_create_enabled",
+    };
   }
   if (
     Object.hasOwn(parsed, "offering_invite_sms_price_book_v1") &&
@@ -316,4 +333,47 @@ export function resolveRuntimeNumber(
   if (typeof value !== "string" || value.trim().length === 0) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
+ * Resolve an optional rollout boolean without truthy coercion. A valid bundled
+ * boolean is authoritative; an older bundle without the field may temporarily
+ * fall back to its exact direct name. Once that name is retired, every missing
+ * or invalid state fails closed to false.
+ */
+export function resolveRuntimeBoolean(
+  field: RuntimeBooleanField,
+  legacyName: string,
+  getEnv: SecretEnvGetter = defaultGetEnv,
+): boolean {
+  if (legacyName !== RUNTIME_CONFIG_LEGACY_NAMES[field]) {
+    throw new Error(`runtime_config_legacy_mapping_invalid:${field}`);
+  }
+  const raw = getEnv(RUNTIME_CONFIG_BUNDLE);
+  if (raw) {
+    const result = parseRuntimeConfig(raw);
+    if (result.ok) {
+      const value = result.value[field];
+      if (typeof value === "boolean") return value;
+      emit("secret_bundle_legacy_fallback", "missing", field);
+    } else {
+      emit(
+        "secret_bundle_invalid",
+        result.reason,
+        result.field ?? field,
+        result.schemaVersion,
+      );
+      emit(
+        "secret_bundle_legacy_fallback",
+        result.reason,
+        field,
+        result.schemaVersion,
+      );
+    }
+  } else {
+    emit("secret_bundle_legacy_fallback", "missing", field);
+  }
+  // [TRANSITIONAL] #1808 direct-name fallback — remove only through a separately
+  // reviewed cleanup after production bundle parity remains durable.
+  return getEnv(legacyName) === "true";
 }
