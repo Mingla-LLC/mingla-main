@@ -225,15 +225,25 @@ describe("ORCH-1155 brand page — adversarial data/parity contract", () => {
     expect(showMute(null)).toBe(false);
   });
 
-  // ---- no-fabricated-Follow, data side (different from the structural grep) ----
-  test("NO Follow/subscriber concept leaks into the desktop sticky panel", () => {
-    // isolate the sticky-panel block and assert it carries Share + Next-up only.
+  // ---- panel composition, data side (different from the structural grep) ----
+  // Issue #679 REWRITE [TEST-MOD-APPROVED #679] — Follow is now a REAL,
+  // callback-gated, server-truth primitive, so ONLY the /\bfollow\b/i ban is
+  // dropped. The panel must now reference the GATED FollowButton (the gate —
+  // `if (onToggleFollow === undefined) return null;` — is asserted here so a
+  // gateless always-on Follow cannot sneak past); subscriber language and
+  // reservation actions stay banned in the panel.
+  test("sticky panel carries the GATED FollowButton + Share + Next-up; no subscriber/reservation concepts", () => {
+    // isolate the sticky-panel block and assert its composition.
     const panelStart = brandPage.indexOf("const stickyPanel = isDesktop");
     expect(panelStart).toBeGreaterThan(-1);
     const panel = brandPage.slice(panelStart, panelStart + 2000);
     expect(panel).toMatch(/Share/);
     expect(panel).toMatch(/Next up/);
-    expect(panel).not.toMatch(/\bfollow\b/i);
+    expect(panel).toContain("<FollowButton");
+    // the mounted button is the gated one — the gate must still exist in-file
+    expect(brandPage).toContain(
+      "if (onToggleFollow === undefined) return null;",
+    );
     expect(panel).not.toMatch(/subscrib/i);
     expect(panel).not.toMatch(/\breserve\b/i);
   });

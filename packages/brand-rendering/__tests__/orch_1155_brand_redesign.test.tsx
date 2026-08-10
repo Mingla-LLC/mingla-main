@@ -66,9 +66,21 @@ describe("ORCH-1155 public brand page — Direction-A redesign", () => {
     );
   });
 
-  test("T-5 NO fabricated Follow / subscriber UI anywhere on the page — I-PROPOSED-1155-NO-FABRICATED-FOLLOW", () => {
-    expect(brandPage).not.toMatch(/\bfollow\b/i);
+  // Issue #679 REWRITE [TEST-MOD-APPROVED #679] — Follow is now a REAL,
+  // server-truth primitive (brand_follows + owner-only RLS), so the blanket
+  // /\bfollow\b/i ban became a lie-preventer preventing the truth. The honesty
+  // guard now pins the SHAPE of real Follow: callback-gated rendering, the
+  // server-truth label ternary, and a standing ban on follower COUNTS (plural)
+  // and subscriber language until the counts leg ships real aggregation.
+  test("T-5 Follow is REAL and callback-gated — no fabricated audience UI", () => {
+    // The gate: Follow renders ONLY when the host provides the callback.
+    expect(brandPage).toContain("callbacks.onToggleFollow");
+    // The honest server-truth ternary — both literals, nothing invented.
+    expect(brandPage).toContain('isFollowing === true ? "Following" : "Follow"');
+    // Counts stay banned (plural); subscriber language stays banned.
     expect(brandPage).not.toMatch(/\bsubscrib/i);
+    expect(brandPage).not.toMatch(/stats\.followers/);
+    expect(brandPage).not.toMatch(/\bfollowers\b/i);
   });
 
   test("conditional mute: showMute is gated on a VIDEO cover only", () => {
@@ -94,7 +106,9 @@ describe("ORCH-1155 public brand page — Direction-A redesign", () => {
     expect(brandPage).not.toContain("bioLeadCentered");
   });
 
-  test("desktop sticky panel carries Share + Next-up; NO Reserve, NO Follow, NO contact-in-panel", () => {
+  // Issue #679 REWRITE [TEST-MOD-APPROVED #679] — the panel now carries the
+  // gated FollowButton between socials and Share (spec insertion point).
+  test("desktop sticky panel carries Follow + Share + Next-up; NO Reserve, NO contact-in-panel", () => {
     expect(brandPage).toContain("stickyPanel");
     expect(brandPage).toContain("deskShareBtn");
     expect(brandPage).not.toContain("Reserve");
@@ -102,6 +116,7 @@ describe("ORCH-1155 public brand page — Direction-A redesign", () => {
     const panelStart = brandPage.indexOf("const stickyPanel");
     const panelEnd = brandPage.indexOf("// Desktop hero overlay");
     const panelSrc = brandPage.slice(panelStart, panelEnd);
+    expect(panelSrc).toContain("FollowButton");
     expect(panelSrc).not.toContain("mailto:");
   });
 
