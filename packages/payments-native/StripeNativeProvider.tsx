@@ -54,6 +54,40 @@ const resolveEnvString = (
   return fromExtra ?? fromEnv ?? undefined;
 };
 
+// #1732/#1733 — WHY THIS STILL ENDS IN `?? ""`, DELIBERATELY. Read before
+// "fixing" it; the honest-looking change here is the dangerous one.
+//
+// The empty string is what turns "the key is absent" into "checkout is silently
+// dead", so making it throw or warn was assessed at #1733. Verdict: DO NOT
+// throw. Reasons, from a full consumer walk of this shared package:
+//
+//   · TWO mount sites, both native, neither passes `publishableKey`:
+//     `app-mobile/app/_layout.tsx` mounts it at the ROOT of the consumer app,
+//     and `mingla-business/src/payments/StripeProviderWrapper.native.tsx`
+//     mounts it around the business checkout payment routes. A throw here is
+//     therefore a throw during ROOT render on consumer — and issue #993 records
+//     that boot-render throws are invisible behind the never-hidden splash. It
+//     would convert a degraded-checkout state into a bricked app, which is the
+//     #990 failure mode, on the app whose users are buyers.
+//   · `mingla-business` can never reach the empty string: its `app.config.ts`
+//     always emits a key into `extra` (a live key, or the sandbox literal on
+//     local dev), so the only app a throw could ever fire on is the consumer.
+//   · On `app-mobile` the empty string is now UNREACHABLE on any shipped build:
+//     since #1733 the config emits this key into `extra`, and since the same
+//     change a release-bound `EAS_BUILD_PROFILE` with the key missing FAILS THE
+//     BUILD. The hole is closed where it should be — at build time, loudly —
+//     rather than at mount, where the app is already in a user's hands.
+//   · What remains is local dev with no env, where `extra` carries `null` and
+//     the empty string is the correct, honest value: the root provider mounts
+//     without a bundled key and every payment path calls `initStripe()` with a
+//     SERVER-supplied key immediately before opening the sheet (`initStripe`
+//     REPLACES the SDK config rather than merging), and the server side cannot
+//     supply an empty one — `resolvePublishableKey()` in
+//     `supabase/functions/_shared/stripeMode.ts` throws when no key is set.
+//
+// So a throw would break exactly the case where the empty string is right, on a
+// package shared by both apps, to defend a case that can no longer occur.
+// Changing this is a product decision with its own issue, not a drive-by.
 const resolvePublishableKey = (): string =>
   resolveEnvString(
     "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
