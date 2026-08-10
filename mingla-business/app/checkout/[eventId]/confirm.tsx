@@ -22,6 +22,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -42,6 +43,7 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { eventPublicPath } from "../../../src/constants/publicUrls";
+import type { AttendanceClaimLinkResult } from "../../../src/services/attendanceClaimLinkService";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 import { formatCurrency } from "../../../src/utils/currency";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
@@ -56,7 +58,9 @@ import {
 } from "../../../src/components/checkout/checkoutPersistence";
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
 import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
-import { confirmTicketCheckout } from "../../../src/services/ticketCheckoutService";
+import {
+  confirmTicketCheckout,
+} from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
 import {
@@ -66,6 +70,11 @@ import {
   postAttributionConversion,
 } from "../../../src/analytics/webAnalytics";
 import { phMaskProps } from "../../../src/analytics/phMask";
+
+const MINGLA_APP_ICON = React.lazy(() =>
+  import("../../../src/components/checkout/AttendanceClaimAppIcon")
+);
+const attendanceClaimDeepLinkModule = import("../../../src/utils/attendanceClaimDeepLink");
 
 export default function CheckoutConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
@@ -119,6 +128,27 @@ function CheckoutConfirmScreenInner({
     checkoutSessionId: string;
     buyerStatusToken: string;
   } | null>(null);
+  const [attendanceClaim, setAttendanceClaim] = useState<{
+    phase: "idle" | "loading" | "ready" | "error" | "terminal" | "rate";
+    link: AttendanceClaimLinkResult | null;
+    authority: { sessionId: string; token: string } | null;
+  }>({ phase: "idle", link: null, authority: null });
+  const prepareAttendanceClaim = useCallback((sessionId: string, token: string): void => {
+    setAttendanceClaim({ phase: "loading", link: null, authority: { sessionId, token } });
+    void import("../../../src/services/attendanceClaimLinkService").then(({ createAttendanceClaimLink }) =>
+      createAttendanceClaimLink(sessionId, token)
+    ).then((link) => {
+      setAttendanceClaim({ phase: "ready", link, authority: { sessionId, token } });
+    }).catch((error: unknown) => {
+      const code = error instanceof Error && "code" in error ? error.code : null;
+      const phase = code === "rate_limited"
+        ? "rate"
+        : code === "invalid" || code === "ineligible"
+        ? "terminal"
+        : "error";
+      setAttendanceClaim({ phase, link: null, authority: { sessionId, token } });
+    });
+  }, []);
   // Ref flag — flipped to true when buyer taps "Back to event." The
   // beforeRemove listener checks this and lets the navigation through
   // when set, so the explicit CTA exit isn't blocked by the same guard
@@ -283,6 +313,7 @@ function CheckoutConfirmScreenInner({
             offering_type: "event",
             surface: "business_app",
           });
+          prepareAttendanceClaim(payload.checkoutSessionId, payload.buyerStatusToken);
           clearCheckoutResumePayload(win.sessionStorage, eventId);
           return;
         }
@@ -347,6 +378,9 @@ function CheckoutConfirmScreenInner({
       if (Platform.OS === "web" && eventId !== null) {
         const win = (globalThis as unknown as { sessionStorage?: Storage });
         clearCheckoutResumePayload(win.sessionStorage, eventId);
+      }
+      if (pendingSession !== null) {
+        prepareAttendanceClaim(pendingSession.checkoutSessionId, pendingSession.buyerStatusToken);
       }
       setRealtimePending(false);
       setPendingSession(null);
@@ -496,6 +530,18 @@ function CheckoutConfirmScreenInner({
     );
   }
 
+  const openAttendanceClaimLink = (): void => {
+    const link = attendanceClaim.link;
+    if (link) void attendanceClaimDeepLinkModule.then(
+      ({ openAttendanceClaimWithFallback }) =>
+        openAttendanceClaimWithFallback(link, Linking.openURL),
+    );
+  };
+  const retryAttendanceClaim = (): void => {
+    const authority = attendanceClaim.authority;
+    if (authority) prepareAttendanceClaim(authority.sessionId, authority.token);
+  };
+
   return (
     <View style={styles.host}>
       <ScrollView
@@ -589,6 +635,22 @@ function CheckoutConfirmScreenInner({
               tickets={carouselTickets}
             />
           ) : null}
+        </GlassCard>
+        <GlassCard variant="base" radius="lg" padding={spacing.md} style={[styles.qrCard, styles.attendanceClaimCard]}>
+          <React.Suspense fallback={<View style={styles.attendanceClaimIcon} />}>
+            <MINGLA_APP_ICON style={styles.attendanceClaimIcon} accessibilityLabel="Mingla app icon" />
+          </React.Suspense>
+          <Text style={styles.summaryEventName}>See who’s going in Mingla</Text>
+          <Text style={styles.heroEmail}>Connect this ticket to your Mingla account to unlock the guest list.</Text>
+          {attendanceClaim.phase === "ready" && attendanceClaim.link ? (
+            <Button label="Open Mingla" onPress={openAttendanceClaimLink} fullWidth />
+          ) : attendanceClaim.phase === "error" && attendanceClaim.authority ? (
+            <><Text style={styles.heroEmail}>Your tickets are confirmed. We couldn’t prepare the Mingla link.</Text><Button label="Try again" onPress={retryAttendanceClaim} fullWidth /></>
+          ) : attendanceClaim.phase === "terminal" ? (
+            <Text style={styles.heroEmail}>Your tickets are confirmed. Guest-list access isn’t available for this order.</Text>
+          ) : attendanceClaim.phase === "rate" ? (
+            <Text style={styles.heroEmail}>Your tickets are confirmed. Try the Mingla link again in a few minutes.</Text>
+          ) : <Text style={styles.heroEmail}>Preparing your Mingla link…</Text>}
         </GlassCard>
 
         <DownloadMinglaCta
@@ -736,6 +798,8 @@ const styles = StyleSheet.create({
   qrCard: {
     marginBottom: spacing.md,
   },
+  attendanceClaimCard: { height: 240 },
+  attendanceClaimIcon: { width: 44, height: 44, borderRadius: 12, marginBottom: spacing.sm },
   bottomBar: {
     position: "absolute",
     left: 0,

@@ -133,13 +133,16 @@ Deno.test("A-3 anonymous rows key by index and expose no actions", () => {
   );
 });
 
-// ── A-4 — the 100-row cap is a scrape guard, not a pagination seam ──────────
+// ── A-4 — #871 bounded server-authorized pagination ─────────────────────────
 
-Deno.test("A-4 no offset-walking: single page, no p_offset, no load-more", () => {
-  assert(!/p_offset/.test(SERVICE), "service never passes p_offset");
-  assert(!/p_offset/.test(HOOK), "hook never passes p_offset");
-  assert(!/onEndReached|fetchNextPage|useInfiniteQuery/.test(SHEET), "no load-more");
-  assert(!/useInfiniteQuery/.test(HOOK), "no infinite query");
+Deno.test("A-4 bounded pagination uses the central key and server nextOffset", () => {
+  // #871 supersedes the legacy capped-tail oracle with server-authorized page traversal.
+  // [TEST-MOD-APPROVED #871] the approved contract supersedes the v1 single-page cap.
+  assertStringIncludes(SERVICE, "p_offset: offset");
+  assertStringIncludes(HOOK, "useInfiniteQuery");
+  assertStringIncludes(HOOK, "lastPage.nextOffset ?? undefined");
+  assertStringIncludes(SHEET, "onEndReached");
+  assertStringIncludes(SHEET, "isFetchingNextPage");
   assertStringIncludes(SERVICE, "p_limit: 100");
 });
 

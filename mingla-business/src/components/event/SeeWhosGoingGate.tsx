@@ -408,6 +408,12 @@ export const SeeWhosGoingGate: React.FC<SeeWhosGoingGateProps> = ({
               See who's going
             </Text>
             <Text style={[styles.dialogBody, { color: palette.secondaryText }]}>
+              RSVP or get a ticket, then open Mingla to see the guest list.
+            </Text>
+            <Text style={[styles.dialogBody, { color: palette.secondaryText }]}>
+              Guest faces, names, and the group chat live in the Mingla app.
+            </Text>
+            <Text style={[styles.dialogBody, { color: palette.secondaryText }]}>
               Scan with your phone — the full guest list lives in the app.
             </Text>
 
@@ -486,6 +492,9 @@ export const SeeWhosGoingGate: React.FC<SeeWhosGoingGateProps> = ({
           accessibilityRole="header"
         >
           See who's going
+        </Text>
+        <Text style={[styles.panelBody, { color: palette.secondaryText }]}>
+          Guest names are visible in Mingla after you RSVP or get a ticket.
         </Text>
         <Text style={[styles.panelBody, { color: palette.secondaryText }]}>
           Guest faces, names, and the group chat live in the Mingla app.

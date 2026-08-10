@@ -17,7 +17,10 @@
  *  F1. `isAuthReady` is ABSENT from usePublicEvents.ts and publicEventsService.ts.
  *  F2. the single-by-id `useBrand` (useBrands.ts) does NOT reference isAuthReady.
  *  F3. PUBLIC_BUYER_ROUTE_PREFIXES + SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES
- *      membership in coldLoadAuthGates.ts is UNCHANGED (exact snapshot).
+ *      membership in coldLoadAuthGates.ts matches the exact canonical snapshot.
+ *      Issue #871 intentionally extends only the buyer snapshot with the
+ *      fragment-authenticated `/attendance/claim/` handoff; the Connect list
+ *      remains frozen byte-for-membership.
  *
  * NOTE: coldLoadAuthGates.ts legitimately uses `isAuthReady` as a PARAMETER NAME in
  * shouldGateColdLoad — so F does NOT ban the token there; it pins the route lists.
@@ -79,6 +82,7 @@ const EXPECTED_BUYER = [
   "/refund/",
   "/o/",
   "/booking/",
+  "/attendance/claim/",
 ].sort();
 const EXPECTED_CONNECT = [
   "/connect-onboarding",
@@ -142,10 +146,12 @@ function runSelfTest() {
     f++;
   }
   // F3 — prefix snapshot compare
-  const goodCold = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/refund/","/o/","/booking/"];`;
+  const goodCold = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/refund/","/o/","/booking/","/attendance/claim/"];`;
   const badCold = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/"];`;
-  const badMissingRefund = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/o/","/booking/"];`;
-  const badRefundsLookalike = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/refunds/","/o/","/booking/"];`;
+  const badMissingRefund = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/o/","/booking/","/attendance/claim/"];`;
+  const badRefundsLookalike = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/refunds/","/o/","/booking/","/attendance/claim/"];`;
+  const badMissingAttendanceClaim = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/refund/","/o/","/booking/"];`;
+  const badAttendanceClaimsLookalike = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/refund/","/o/","/booking/","/attendance/claims/"];`;
   if (!eqSet(extractPrefixList(goodCold, "PUBLIC_BUYER_ROUTE_PREFIXES"), EXPECTED_BUYER)) {
     console.error("SELF-TEST FAIL: good buyer-prefix snapshot mismatch");
     f++;
@@ -160,6 +166,14 @@ function runSelfTest() {
   }
   if (eqSet(extractPrefixList(badRefundsLookalike, "PUBLIC_BUYER_ROUTE_PREFIXES"), EXPECTED_BUYER)) {
     console.error("SELF-TEST FAIL: /refunds/ lookalike falsely matched exact /refund/ member");
+    f++;
+  }
+  if (eqSet(extractPrefixList(badMissingAttendanceClaim, "PUBLIC_BUYER_ROUTE_PREFIXES"), EXPECTED_BUYER)) {
+    console.error("SELF-TEST FAIL: snapshot missing exact /attendance/claim/ member falsely matched");
+    f++;
+  }
+  if (eqSet(extractPrefixList(badAttendanceClaimsLookalike, "PUBLIC_BUYER_ROUTE_PREFIXES"), EXPECTED_BUYER)) {
+    console.error("SELF-TEST FAIL: /attendance/claims/ lookalike falsely matched exact /attendance/claim/ member");
     f++;
   }
   if (f > 0) {

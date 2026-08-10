@@ -44,6 +44,7 @@ import { buildTicketPdf } from "../_shared/ticketPdf.ts";
 import { renderTripConfirmationEmail } from "../_shared/email/tripConfirmationEmail.ts";
 // ORCH-1195 FIX 4 — experience-shaped confirmation (includes the itinerary/stops).
 import { renderExperienceConfirmationEmail } from "../_shared/email/experienceConfirmationEmail.ts";
+import { renderAttendanceClaimAvailableEmail } from "../_shared/email/ticketBody.ts";
 import { buildCalendarLinks } from "../_shared/email/calendar.ts";
 // ORCH-0869 (Tr3) Stage 1b: installment-kind renderers. Routed via body.kind
 // from installmentWebhookHandlers.ts and process-scheduled-installments.
@@ -75,6 +76,13 @@ import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
 // adapter and to it alone; this import exists so the `provider` column stops
 // lying.
 import { countryFromE164 } from "../_shared/e164Country.ts";
+import {
+  attendanceClaimUrls,
+  bytesToPostgresHex,
+  hmacOrderClaimDigest,
+  mintOrderClaimToken,
+  shouldIssueOrderAttendanceClaimForNotification,
+} from "../_shared/attendanceClaim.ts";
 
 const MINGLA_LOGO_URL = minglaLogoUrl();
 
@@ -167,6 +175,7 @@ interface OrderJoin {
   event_id: string;
   buyer_name: string | null;
   buyer_email: string | null;
+  buyer_user_id: string | null;
   total_cents: number;
   tax_amount_cents: number | null;
   tax_breakdown: unknown[] | null;
@@ -729,6 +738,7 @@ async function fetchInstallmentEmailContext(
       id,
       buyer_name,
       buyer_email,
+      buyer_user_id,
       total_cents,
       tax_amount_cents,
       tax_breakdown,
@@ -1324,12 +1334,61 @@ export const handler = async (req: Request): Promise<Response> => {
               content: icsToBase64(calendarLinks.icsContent),
             });
           }
+          let attendanceWebClaimUrl: string | null = null;
+          if (
+            shouldIssueOrderAttendanceClaimForNotification({
+              templateKey,
+              channel: notification.channel,
+              buyerUserId: order.buyer_user_id,
+              paymentStatus: order.payment_status,
+            })
+          ) {
+            const pepper = Deno.env.get("ATTENDANCE_CLAIM_PEPPER");
+            if (!pepper) throw new Error("attendance_claim_pepper_missing");
+            const minted = mintOrderClaimToken();
+            const digest = await hmacOrderClaimDigest(minted.raw, pepper);
+            const { data: issuance, error: issuanceError } = await supabase.rpc(
+              "issue_order_attendance_claim_proof",
+              {
+                p_order_id: order.id,
+                p_event_id: order.event_id,
+                p_digest: bytesToPostgresHex(digest),
+                p_allow_retry_rotation: true,
+              },
+            );
+            if (issuanceError) throw new Error("attendance_claim_issue_failed");
+            if (
+              typeof issuance === "object" && issuance !== null &&
+              "result" in issuance && issuance.result === "issued"
+            ) {
+              attendanceWebClaimUrl = attendanceClaimUrls({
+                kind: "order",
+                eventId: order.event_id,
+                sourceId: order.id,
+                token: minted.token,
+              }).webClaimUrl;
+            }
+          }
           const sent = await sendResendEmailWithAttachment({
             from: formatSenderHeader(renderedEmail.from),
             to: notification.recipient,
             subject: renderedEmail.subject,
-            html: renderedEmail.html,
-            text: renderedEmail.text,
+            html: attendanceWebClaimUrl
+              ? `${renderedEmail.html}${
+                renderAttendanceClaimAvailableEmail({
+                  eventTitle: context.bodyInput.event.title,
+                  claimUrl: attendanceWebClaimUrl,
+                }).html
+              }`
+              : renderedEmail.html,
+            text: attendanceWebClaimUrl
+              ? `${renderedEmail.text}\n\n${
+                renderAttendanceClaimAvailableEmail({
+                  eventTitle: context.bodyInput.event.title,
+                  claimUrl: attendanceWebClaimUrl,
+                }).text
+              }`
+              : renderedEmail.text,
             attachments,
           });
           await supabase.from("ticket_order_notifications").update({

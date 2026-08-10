@@ -122,6 +122,7 @@ import { useEventTheme } from "../../hooks/useEventTheme";
 import { circleKeys, socialProofKeys } from "../../hooks/queryKeys";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338).
 import { fetchSocialProof } from "../../services/socialProofService";
+import { postHogService } from "../../services/postHogService";
 import {
   type NativeCheckoutOutcome,
   useNativeCheckoutFlow,
@@ -272,7 +273,12 @@ export default function ConsumerExperienceDetailScreen({
     null,
   );
   const handleSeeWhosGoing = useCallback(
-    (): void => setGuestSheetVisible(true),
+    (): void => {
+      postHogService.capture("guest_list_gate_opened", {
+        surface: "experience_detail",
+      });
+      setGuestSheetVisible(true);
+    },
     [],
   );
   const handleGuestSheetClose = useCallback(
@@ -322,6 +328,16 @@ export default function ConsumerExperienceDetailScreen({
     staleTime: 60 * 1000,
     queryFn: () => fetchSocialProof(eventId as string),
   });
+  const socialProofImpressionRef = useRef<boolean>(false);
+  useEffect(() => {
+    const proof = socialProofQuery.data;
+    if (socialProofImpressionRef.current || !proof ||
+      proof.privateGuestList || proof.goingCount <= 0) return;
+    socialProofImpressionRef.current = true;
+    postHogService.capture("social_proof_teaser_impression", {
+      surface: "experience_detail",
+    });
+  }, [socialProofQuery.data]);
 
   // ORCH-1342 (SPEC §4.8) — landing auto-open: same one-shot contract as
   // ConsumerEventDetailScreen, against THIS screen's data sources (the route-
@@ -552,6 +568,14 @@ export default function ConsumerExperienceDetailScreen({
     }
     setCartVisible(true);
   }, [tickets, bookableOccurrences, openDaily]);
+  const handleGuestSignIn = useCallback((): void => {
+    setGuestSheetVisible(false);
+    router.replace("/");
+  }, [router]);
+  const handleGuestAttendanceAction = useCallback((): void => {
+    setGuestSheetVisible(false);
+    requestAnimationFrame(() => beginBooking());
+  }, [beginBooking]);
 
   const handleOccurrenceSelect = useCallback((eventDateId: string): void => {
     setSelectedEventDateId(eventDateId);
@@ -1192,6 +1216,10 @@ export default function ConsumerExperienceDetailScreen({
         eventId={seed.eventId}
         goingCount={socialProofQuery.data?.goingCount ?? 0}
         onOpenProfile={setGuestProfileUserId}
+        gateKind="ticket"
+        onSignIn={handleGuestSignIn}
+        onAttendanceAction={handleGuestAttendanceAction}
+        attendanceActionAvailable
       />
 
       {/* ORCH-1359 (d) — detail-local peer-profile overlay (D-B). The sheet

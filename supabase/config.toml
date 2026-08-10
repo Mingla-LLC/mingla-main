@@ -652,3 +652,11 @@ verify_jwt = false
 # service-role posture as the other growth tools.
 [functions.growth-tools-pricing]
 verify_jwt = false
+[functions.claim-attendance]
+verify_jwt = true
+
+[functions.attendance-claim-link]
+verify_jwt = false
+
+[functions.attendance-claim-backfill]
+verify_jwt = false

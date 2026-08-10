@@ -3,6 +3,7 @@ import Feather from "@expo/vector-icons/Feather";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  InteractionManager,
   Platform,
   StatusBar,
   StyleSheet,
@@ -73,11 +74,26 @@ import {
 import { initializeAppsFlyer, startAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent, subscribeOneLinkDeepLink, triggerAndroidDeferredResolution } from "../src/services/appsFlyerService";
 import { sanitizeReferralCode, type OneLinkDestination } from "../src/services/oneLinkResolver";
 import { router } from "expo-router";
+import type { Href } from "expo-router";
 import { ensureAttRequested, requestPostTourPermissions, whenAttResolved } from "../src/services/permissionOrchestrator";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import { useTrialExpiryTracking } from "../src/hooks/useSubscription";
 import * as SplashScreen from 'expo-splash-screen';
 import AppLoadingScreen from '../src/components/AppLoadingScreen';
+import { AttendanceClaimSheet } from "../src/components/AttendanceClaimSheet";
+import {
+  attendanceClaimAuthAction,
+  attendanceClaimReviewModalPolicy,
+} from "../src/utils/attendanceClaimDeepLink";
+import {
+  isAttendanceClaimUrl,
+  clearAttendanceClaimIntent,
+  parseAttendanceClaimUrl,
+  readAttendanceClaimIntent,
+  saveAttendanceClaimIntent,
+  resolveAttendanceOfferingPath,
+  type AttendanceClaimIntent,
+} from "../src/services/attendanceClaimService";
 
 // ORCH-1125: PersistQueryClientProvider + AnimatedSplashScreen + asyncStoragePersister
 // + shouldDehydrateMinglaQuery imports were removed here when the provider/gate/splash
@@ -291,6 +307,61 @@ function AppContent() {
     useState<number>(0);
   const [isCreatingSession, setIsCreatingSession] = useState<boolean>(false);
   const [showPaywall, setShowPaywall] = useState<boolean>(false);
+  const { pendingReview, showReviewModal, dismissReview, deferScheduledPrompt, recheckPending } = usePostExperienceCheck();
+  const voluntaryPlaceReview = usePlaceReviewRequest();
+  const [attendanceClaimIntent, setAttendanceClaimIntent] =
+    useState<AttendanceClaimIntent | null>(null);
+  const [attendanceClaimVisible, setAttendanceClaimVisible] = useState(false);
+  const [attendanceClaimInvalid, setAttendanceClaimInvalid] = useState(false);
+  const [attendanceClaimPresentationPending, setAttendanceClaimPresentationPending] =
+    useState(false);
+  const beginAttendanceClaimPresentation = useCallback((): void => {
+    // Suppress without clearing either review rail. Periodic and voluntary
+    // targets may continue to update while the claim is open, then recover
+    // normally as soon as the claim presentation closes.
+    setAttendanceClaimPresentationPending(true);
+  }, []);
+  const closeAttendanceClaimPresentation = useCallback((): void => {
+    setAttendanceClaimVisible(false);
+    setAttendanceClaimPresentationPending(false);
+  }, []);
+  const attendanceClaimUserRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const nextUserId = user?.id ?? null;
+    const previousUserId = attendanceClaimUserRef.current;
+    attendanceClaimUserRef.current = nextUserId;
+    const authAction = attendanceClaimAuthAction(
+      previousUserId,
+      nextUserId,
+      attendanceClaimIntent !== null,
+    );
+    if (authAction === "clear") {
+      void clearAttendanceClaimIntent();
+      setAttendanceClaimIntent(null);
+      closeAttendanceClaimPresentation();
+    } else if (authAction === "resume") {
+      beginAttendanceClaimPresentation();
+      setCurrentPage("home");
+      setViewingTrip(null);
+      setViewingFriendProfileId(null);
+      setShowPaywall(false);
+      setShowPreferences(false);
+      setShowCollabPreferences(false);
+      setShowAccountSettings(false);
+      setShowShareModal(false);
+      void new Promise<void>((resolve) => InteractionManager.runAfterInteractions(() => resolve()))
+        .then(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+        .then(() => {
+          setAttendanceClaimVisible(true);
+          setAttendanceClaimPresentationPending(false);
+        });
+    }
+  }, [
+    attendanceClaimIntent, setCurrentPage, setShowAccountSettings,
+    setShowCollabPreferences, setShowPreferences, setShowShareModal,
+    setViewingFriendProfileId, beginAttendanceClaimPresentation,
+    closeAttendanceClaimPresentation, user?.id,
+  ]);
   // ORCH-1080: session deep-link target removed. A session/collab notification
   // now lands in the session's GROUP CHAT (Messages tab) via the `session`
   // executor branch in deepLinkService (setDeepLinkParams({tab:'messages',
@@ -304,9 +375,6 @@ function AppContent() {
     sessionId: string;
     sessionName: string;
   } | null>(null);
-
-  // Pending experience reviews — shows review modal after scheduled experiences
-  const { pendingReview, showReviewModal, dismissReview, deferScheduledPrompt, recheckPending } = usePostExperienceCheck();
 
   /**
    * #1687 — the VOLUNTARY entry into the SAME modal instance.
@@ -323,7 +391,6 @@ function AppContent() {
    * and a tap the user just made outranks a prompt that has not appeared yet. The
    * scheduled prompt re-arms on its own next check.
    */
-  const voluntaryPlaceReview = usePlaceReviewRequest();
   const voluntaryReviewTarget = useMemo(
     () =>
       voluntaryPlaceReview
@@ -340,6 +407,12 @@ function AppContent() {
     [voluntaryPlaceReview],
   );
   const activeReviewTarget = voluntaryReviewTarget ?? pendingReview;
+  const attendanceClaimSuppressesReview =
+    attendanceClaimPresentationPending || attendanceClaimVisible;
+  const reviewModalPolicy = attendanceClaimReviewModalPolicy(
+    attendanceClaimSuppressesReview,
+    activeReviewTarget !== null,
+  );
   const viewShotRef = useRef<any>(null);
   // V2: pending deep link from push notification received before auth
   const pendingDeepLinkRef = useRef<string | null>(null);
@@ -356,6 +429,58 @@ function AppContent() {
 
   // Initialize Mixpanel on mount + track cold open
   const lastActiveRef = useRef(Date.now());
+  const receiveAttendanceClaimUrl = useCallback(async (url: string): Promise<boolean> => {
+    if (!isAttendanceClaimUrl(url)) return false;
+    const intent = parseAttendanceClaimUrl(url);
+    if (intent !== null) await saveAttendanceClaimIntent(intent);
+    setAttendanceClaimIntent(intent);
+    setAttendanceClaimInvalid(intent === null);
+    beginAttendanceClaimPresentation();
+    setViewingTrip(null);
+    setViewingFriendProfileId(null);
+    setShowPaywall(false);
+    setShowPreferences(false);
+    setShowCollabPreferences(false);
+    setShowAccountSettings(false);
+    setShowShareModal(false);
+    setCurrentPage("home");
+    await new Promise<void>((resolve) => InteractionManager.runAfterInteractions(() => resolve()));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    setAttendanceClaimVisible(true);
+    setAttendanceClaimPresentationPending(false);
+    return true;
+  }, [
+    setCurrentPage, setShowAccountSettings, setShowCollabPreferences,
+    setShowPreferences, setShowShareModal, setViewingFriendProfileId,
+    beginAttendanceClaimPresentation,
+  ]);
+
+  useEffect(() => {
+    void readAttendanceClaimIntent().then((intent) => {
+      if (!intent) return;
+      setAttendanceClaimIntent(intent);
+      beginAttendanceClaimPresentation();
+      setCurrentPage("home");
+      setViewingTrip(null);
+      setViewingFriendProfileId(null);
+      setShowPaywall(false);
+      setShowPreferences(false);
+      setShowCollabPreferences(false);
+      setShowAccountSettings(false);
+      setShowShareModal(false);
+      void new Promise<void>((resolve) => InteractionManager.runAfterInteractions(() => resolve()))
+        .then(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+        .then(() => {
+          setAttendanceClaimVisible(true);
+          setAttendanceClaimPresentationPending(false);
+        });
+    });
+  }, [
+    setCurrentPage, setShowAccountSettings, setShowCollabPreferences,
+    setShowPreferences, setShowShareModal, setViewingFriendProfileId,
+    beginAttendanceClaimPresentation,
+  ]);
+
   useEffect(() => {
     mixpanelService.initialize().then(() => {
       mixpanelService.trackAppOpened({ source: 'cold' });
@@ -1774,6 +1899,7 @@ function AppContent() {
     // Handle initial URL (if app was opened via deep link)
     Linking.getInitialURL().then(async (url) => {
       if (!url) return;
+      if (await receiveAttendanceClaimUrl(url)) return;
       try {
         const handledByStripe = await handleURLCallback(url);
         if (!handledByStripe) {
@@ -1787,6 +1913,7 @@ function AppContent() {
 
     // Listen for deep links while app is running
     const subscription = Linking.addEventListener("url", async (event) => {
+      if (await receiveAttendanceClaimUrl(event.url)) return;
       try {
         const handledByStripe = await handleURLCallback(event.url);
         if (!handledByStripe) {
@@ -1802,7 +1929,7 @@ function AppContent() {
       subscription.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [receiveAttendanceClaimUrl]);
 
   const handleDeepLink = async (url: string) => {
     console.log("Deep link received:", url);
@@ -2332,6 +2459,24 @@ function AppContent() {
   // instead of the default null. Without this, Android cold start with expired token
   // shows permanent "Getting things ready" because profile fetch fails but persisted
   // profile hasn't loaded yet.
+  const attendanceClaimOverlay = (
+    <AttendanceClaimSheet
+      visible={attendanceClaimVisible}
+      intent={attendanceClaimIntent}
+      initialInvalid={attendanceClaimInvalid}
+      signedIn={isAuthenticated}
+      onClose={closeAttendanceClaimPresentation}
+      onSignIn={closeAttendanceClaimPresentation}
+      onSeeGuestList={async (eventId) => {
+        const path = await resolveAttendanceOfferingPath(eventId);
+        if (path === null) return false;
+        closeAttendanceClaimPresentation();
+        router.push(path as Href);
+        return true;
+      }}
+    />
+  );
+
   if (!_hasHydrated || isLoadingAuth) {
     logger.nav('Render: AuthLoading screen', { hydrated: _hasHydrated, authLoading: isLoadingAuth });
     return <AppLoadingScreen message="Welcome back" testID="auth-loading" />;
@@ -2380,12 +2525,15 @@ function AppContent() {
   if (!isAuthenticated) {
     logger.nav('Render: WelcomeScreen (not authenticated)');
     return (
+      <>
       <ErrorBoundary>
         <WelcomeScreen
           onGoogleSignIn={handleGoogleSignIn}
           onAppleSignIn={handleAppleSignIn}
         />
       </ErrorBoundary>
+      {attendanceClaimOverlay}
+      </>
     );
   }
 
@@ -2656,6 +2804,7 @@ function AppContent() {
 
                       {/* Coach Mark Spotlight Overlay */}
                       <SpotlightOverlay />
+                      {attendanceClaimOverlay}
 
                       {/* Bottom Navigation — ORCH-0589 floating glass capsule with orange spotlight.
                           ORCH-1016: hidden while a full detail/checkout sheet is open
@@ -2744,7 +2893,7 @@ function AppContent() {
                         BOTH entries: the scheduled calendar poll (locked, opens on
                         "did you go?") and #1687's voluntary "Been here" tap
                         (dismissible, opens on the rating step). */}
-                    {activeReviewTarget && (
+                    {reviewModalPolicy.render && activeReviewTarget && (
                       <PostExperienceModal
                         visible={voluntaryPlaceReview ? true : showReviewModal}
                         review={activeReviewTarget}

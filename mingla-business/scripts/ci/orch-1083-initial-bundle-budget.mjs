@@ -100,7 +100,18 @@ const CEILING_RAW_BYTES = Number(process.env.ORCH_1083_CEILING ?? 9_405_478);
 //
 // Cap raised by 10 KB to 2,330,000 B, preserving ~9.6 KB of live tripwire
 // headroom — the same increment and posture as the ORCH-1390 rebaseline above.
-const COMMON_CAP_BYTES = Number(process.env.ORCH_1083_COMMON_CAP ?? 2_330_000);
+//
+// #871 rebaseline 2026-08-10 (see-who's-going attendance handoff): the required
+// public-route exemption is the only #871 work left in the eager auth gate. The
+// claim service, deep-link parser, app icon, and roster UI all remain in deferred
+// route chunks, and the guard below still finds zero deferred specifiers in the
+// eager payload. Exact fresh exports of the same source measured __common at
+// 2,329,953 B on macOS and 2,330,102 B on GitHub's Linux runner — a 149 B
+// platform variance that left the prior cap 102 B below the Linux artifact.
+// Raising by the established 10 KB increment restores ~9.9 KB of live headroom
+// without relaxing the 9.4 MB total-payload ceiling or any deferred-dependency
+// detector.
+const COMMON_CAP_BYTES = Number(process.env.ORCH_1083_COMMON_CAP ?? 2_340_000);
 
 // The four deferred specifiers (must NOT appear in the initial-payload scripts).
 const DEFERRED_SPECIFIERS = [

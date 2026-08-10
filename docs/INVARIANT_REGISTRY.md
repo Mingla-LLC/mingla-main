@@ -7756,6 +7756,36 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Regression:** `mingla-business/app/venue/__tests__/venueCreateDoorFreshEntry.issue1685.test.tsx` (the happy-path suite named in SPEC §9) — mounting `/venue/create` with a fully-populated in-progress draft already in the store (workingName + category + `step: 3`) must land on the gate and mint a second draft id, leaving the first intact and resumable at `/venue/create?draft=<firstId>`. Fails-on-revert: restoring `resolveInitialPhase()` as the mount-time phase source, or re-pointing the no-param branch at `activateBrand`, turns that test red.
 - **Established:** DRAFT at issue #1685 SPEC 2026-08-09. **ACTIVE 2026-08-09** on tester PASS (issue #1685 comment 5233697782), merged as `c93160d46` via PR #1722.
 
+---
+
+## DRAFT — issue #871 (attendance-entitled peer roster and ownership claims)
+
+> Registered DRAFT at issue #871 IMPLEMENT. The orchestrator flips these entries to ACTIVE only after independent tester PASS and verified rollout.
+
+### I-PROPOSED-871-PEER-ROSTER-ATTENDANCE-ENTITLED (DRAFT)
+- **Rule:** The identity-bearing peer roster checks exact current RSVP/ticket ownership after event and privacy guards and before reading any roster identity. Email, plus-one, matched-guest, or chat association never grants access.
+- **Enforcement:** `peer_list_event_guests` in `20270302000872_issue_0871_entitled_guest_roster.sql`; marker `ISSUE871_PEER_ROSTER_EXACT_ENTITLEMENT` in the issue strict guard.
+- **Regression:** The issue #871 PostgreSQL 17 authorization/lifecycle matrix and source guard cover non-attendees, exact owners, privacy, unknown entity types, and revocation.
+- **Established:** DRAFT at issue #871 IMPLEMENT 2026-08-09.
+
+### I-PROPOSED-871-ATTENDANCE-CLAIM-PROOF-BOUND (DRAFT)
+- **Rule:** An unowned primary RSVP or order mutates only after its exact kind/source/event proof under a locked transaction. Claims and per-user admission are atomic; another owner or duplicate RSVP owner cannot be overwritten, merged, or disclosed.
+- **Enforcement:** `begin_attendance_claim_attempt`, `claim_attendance_internal`, and `issue_order_attendance_claim_proof`; marker `ISSUE871_ATOMIC_PROOF_BOUND_CLAIM` in the issue strict guard.
+- **Regression:** PostgreSQL 17 concurrent claim/rate tests plus edge handler tests cover one winner, ten-attempt admission, replay, conflict, proof mismatch, and service-only grants.
+- **Established:** DRAFT at issue #871 IMPLEMENT 2026-08-09.
+
+### I-PROPOSED-871-ROSTER-REVOCATION-ON-REQUEST (DRAFT)
+- **Rule:** Every roster page/refetch re-evaluates current entitlement; any authentication, attendance, privacy, or availability denial removes all cached identities before rendering its terminal state.
+- **Enforcement:** zero-stale roster query handling in `useEventGuestList`; marker `ISSUE871_DENIAL_PURGES_IDENTITIES` in the issue strict guard.
+- **Regression:** Consumer behavioral tests drive later-page denial after a successful first page and assert both cache removal and the locked/private/unavailable announcement.
+- **Established:** DRAFT at issue #871 IMPLEMENT 2026-08-09.
+
+### I-PROPOSED-871-ROSTER-PAGINATION-COMPLETE (DRAFT)
+- **Rule:** Server and client traverse the complete privacy-filtered roster in stable global avatar-first order, in pages capped at 100 with exact `nextOffset`; page-local sorting and passive capped tails are forbidden.
+- **Enforcement:** the roster SQL ordering and central infinite-query key; marker `ISSUE871_205_ROW_100_100_5` in the issue strict guard.
+- **Regression:** PostgreSQL 17 and consumer tests prove a 205-row `100/100/5` traversal with empty-avatar demotion, stable UUID tie-breaking, and no gaps or duplicates.
+- **Established:** DRAFT at issue #871 IMPLEMENT 2026-08-09.
+
 ### I-1685-VENUE-DRAFTS-ARE-ID-KEYED-AND-BRAND-SCOPED (ACTIVE)
 - **Rule:** Every venue draft is addressed by its own client-minted id (`dv_<ts36><rand6>`) and carries the id of the brand that owns it. A brand may hold ANY number of concurrent unfinished venue drafts without collision, and brand A must never see, list, resume, or delete brand B's drafts. No code may index venue drafts by brand id as though a brand had exactly one — that single-slot assumption (`drafts[brandId]`) is what made the create door and the resume door the same door.
 - **Persist clause:** the persisted key `mingla-business-draft-venue-v3` is **NOT renamed**. Renaming the storage key orphans every operator's in-progress draft, which is the exact loss this reshape exists to prevent (`draftEventStore.ts:790-791` records the same rule for events: "Store name unchanged — versions are tracked by `version`, and renaming the storage key would orphan existing user drafts"). The shape change is carried by `version: 4` plus a `migrate` that turns the legacy `activeBrandId` + `drafts: Record<brandId, DraftVenueState>` blob into the list, one entry per existing per-brand draft, ids minted at migration time.

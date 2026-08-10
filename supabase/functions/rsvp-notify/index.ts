@@ -17,6 +17,7 @@ import {
   rsvpRecoveryUrl,
   sha256Hex,
 } from "../_shared/rsvpPass.ts";
+import { attendanceClaimUrls } from "../_shared/attendanceClaim.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -136,24 +137,31 @@ async function passStillEligible(
     !rsvp || rsvp.rsvp_status !== "going" || rsvp.approval_status !== "approved"
   ) return false;
   const { data: event } = await admin.from("events")
-    .select("status,deleted_at").eq("id", rsvp.event_id).maybeSingle();
-  return !!event && event.deleted_at === null && event.status !== "cancelled";
+    .select("status,visibility,deleted_at,event_type,brands(deleted_at)")
+    .eq("id", rsvp.event_id).maybeSingle();
+  const brand = Array.isArray(event?.brands) ? event.brands[0] : event?.brands;
+  return !!event && event.deleted_at === null && brand?.deleted_at === null &&
+    event.visibility === "public" && event.event_type === "rsvp" &&
+    ["scheduled", "live"].includes(event.status);
 }
 
 async function recoveryLinkFor(
   admin: AdminClient,
   p: Record<string, unknown>,
-): Promise<string | null> {
+): Promise<{ passUrl: string; attendanceClaimUrl: string | null } | null> {
   const entityId = text(p.entityId);
   if (!entityId) return null;
   const table = text(p.role) === "guest" ? "event_rsvp_guests" : "event_rsvps";
   try {
     const { data: row } = await admin.from(table)
-      .select("pass_recovery_token_hash,pass_recovery_token_created_at")
+      .select(
+        "event_id,pass_recovery_token_hash,pass_recovery_token_created_at",
+      )
       .eq("id", entityId).maybeSingle();
     const current = row as {
       pass_recovery_token_hash?: string | null;
       pass_recovery_token_created_at?: string | null;
+      event_id?: string | null;
     } | null;
     const createdAt = current?.pass_recovery_token_created_at ??
       text(p.recoveryCreatedAt) ?? new Date().toISOString();
@@ -173,11 +181,23 @@ async function recoveryLinkFor(
       }).eq("id", entityId);
       if (error) return null;
     }
-    return rsvpRecoveryUrl(
-      table === "event_rsvp_guests" ? "guest" : "primary",
+    const passUrl = rsvpRecoveryUrl(
+      table === "event_rsvps" ? "primary" : "guest",
       entityId,
       token,
     );
+    if (table === "event_rsvps" && current?.event_id) {
+      return {
+        passUrl,
+        attendanceClaimUrl: attendanceClaimUrls({
+          kind: "rsvp",
+          eventId: current.event_id,
+          sourceId: entityId,
+          token,
+        }).webClaimUrl,
+      };
+    }
+    return { passUrl, attendanceClaimUrl: null };
   } catch {
     return null;
   }
@@ -254,7 +274,7 @@ async function processClaim(admin: AdminClient, claim: Claim): Promise<void> {
     ? await recoveryLinkFor(admin, p)
     : null;
   if (
-    claim.template_key === "rsvp_pass" && claim.channel === "sms" &&
+    claim.template_key === "rsvp_pass" && needsRecoveryLink &&
     !recoveryLink
   ) {
     await complete(
@@ -271,8 +291,14 @@ async function processClaim(admin: AdminClient, claim: Claim): Promise<void> {
       encodeURIComponent(text(p.rsvpId) ?? text(p.rsvp_id) ?? "")
     }`
     : defaultLink;
-  const link = recoveryLink ?? authenticatedPassLink;
+  const link = recoveryLink?.passUrl ?? authenticatedPassLink;
   const copy = copyFor(claim.template_key, p, link);
+  if (claim.template_key === "rsvp_pass" && recoveryLink?.attendanceClaimUrl) {
+    copy.body =
+      `${copy.body}\n\nConnect this RSVP to your Mingla account to see who’s going: ${recoveryLink.attendanceClaimUrl}`;
+    copy.sms =
+      `${copy.sms} Connect attendance: ${recoveryLink.attendanceClaimUrl}`;
+  }
   let attachment: { filename: string; content: string } | null = null;
   if (claim.template_key === "rsvp_pass" && claim.channel === "email") {
     const qrCode = text(p.qrCode);

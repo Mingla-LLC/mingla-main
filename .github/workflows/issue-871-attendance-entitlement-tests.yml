@@ -1,0 +1,98 @@
+name: Issue 871 attendance entitlement
+
+on:
+  pull_request:
+    paths:
+      - "app-mobile/**"
+      - "mingla-business/**"
+      - "supabase/functions/claim-attendance/**"
+      - "supabase/functions/attendance-claim-link/**"
+      - "supabase/functions/attendance-claim-backfill/**"
+      - "supabase/functions/_shared/attendanceClaim.ts"
+      - "supabase/functions/rsvp-notify/**"
+      - "supabase/functions/ticket-confirmation-dispatch/**"
+      - "supabase/migrations/20270302000871_issue_0871_attendance_claim_foundation.sql"
+      - "supabase/migrations/20270302000872_issue_0871_entitled_guest_roster.sql"
+      - "supabase/migrations/__tests__/issue_0871*"
+      - "docs/INVARIANT_REGISTRY.md"
+      - ".github/scripts/strict-grep/issue-871-attendance-entitlement.mjs"
+      - ".github/workflows/issue-871-attendance-entitlement-tests.yml"
+
+jobs:
+  issue-871-contract:
+    name: "Issue 871 edge/mobile/web contract"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check edge handlers
+        run: >-
+          deno check
+          supabase/functions/claim-attendance/index.ts
+          supabase/functions/attendance-claim-link/index.ts
+          supabase/functions/attendance-claim-backfill/index.ts
+      - name: Execute edge, mobile, web and source contracts
+        run: >-
+          deno test --allow-read
+          supabase/functions/claim-attendance/__tests__/issue_0871_attendance_claim_contract.test.ts
+          supabase/functions/claim-attendance/__tests__/issue_0871_claim_fragment_pollution.tester.adversarial.test.ts
+          supabase/migrations/__tests__/issue_0871_attendance_claim_and_roster.test.ts
+      - name: Execute invariant guard and its revert self-test
+        run: |
+          node .github/scripts/strict-grep/issue-871-attendance-entitlement.mjs --self-test
+          node .github/scripts/strict-grep/issue-871-attendance-entitlement.mjs
+      - name: Install buyer-web dependencies
+        working-directory: mingla-business
+        run: npm ci
+      - name: Prove the signed-out attendance handoff stays public
+        working-directory: mingla-business
+        run: >-
+          npx jest
+          src/utils/__tests__/issue_0871_attendance_claim_public_route.implementor.happy.test.ts
+          src/utils/__tests__/issue_0871_attendance_claim_auth_boundary.tester.adversarial.test.ts
+          --runInBand
+
+  issue-871-pg17:
+    name: "Issue 871 atomic authorization proof (PG17)"
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-871-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for PostgreSQL 17
+        env:
+          PGPASSWORD: ${{ format('issue-871-ci-{0}', github.run_id) }}
+        run: |
+          for i in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc "SELECT 1" 2>/dev/null | grep -qx 1; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Apply full migration history
+        env:
+          PGPASSWORD: ${{ format('issue-871-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 | sort -z |
+            while IFS= read -r -d '' migration; do
+              psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
+            done
+      - name: Execute authorization, pagination, delivery and concurrency proof
+        env:
+          PGPASSWORD: ${{ format('issue-871-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_0871_attendance_roster_pg17.test.sql

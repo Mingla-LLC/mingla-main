@@ -25,6 +25,9 @@
  *
  * [TEST-MOD-APPROVED ORCH-1365] Adds the public venue-reservation return route
  * to the existing single-source allowlist contract.
+ * [TEST-MOD-APPROVED #871] Adds the fragment-only attendance-claim handoff to
+ * the existing single-source allowlist contract.
+ * #871 [attendance claim public route] records why this canonical count grew.
  */
 
 import { describe, expect, test } from "@jest/globals";
@@ -241,7 +244,7 @@ describe("ORCH-1115 T-8 (regression) — ORCH-1103 '/' loop guard intact", () =>
 });
 
 describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web + native both consult it", () => {
-  test("PUBLIC_BUYER_ROUTE_PREFIXES contains exactly the 11 spec'd prefixes", () => {
+  test("PUBLIC_BUYER_ROUTE_PREFIXES contains exactly the 12 spec'd prefixes", () => {
     expect([...PUBLIC_BUYER_ROUTE_PREFIXES]).toEqual([
       "/e/",
       "/t/",
@@ -254,6 +257,7 @@ describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web 
       "/refund/",
       "/o/",
       "/booking/",
+      "/attendance/claim/",
     ]);
   });
 

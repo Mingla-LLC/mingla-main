@@ -131,8 +131,8 @@ test('H8 Business is native Share/Copy and web Share/Copy/QR without provider bu
 test('H9 Consumer and Business ship the same new runtime version', () => {
   const consumer = JSON.parse(read('app-mobile/app.json')).expo.version;
   const business = JSON.parse(read('mingla-business/app.json')).expo.version;
-  assert.equal(consumer, '1.1.3');
-  assert.equal(business, consumer);
+  assert.equal(consumer, business);
+  assert.equal(consumer, '1.1.4');
 });
 
 test('H10 delivery rejects revoked and deleted links at the mutation boundary', () => {
