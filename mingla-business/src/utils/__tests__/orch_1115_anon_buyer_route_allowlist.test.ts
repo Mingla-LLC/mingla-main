@@ -27,6 +27,7 @@
  * to the existing single-source allowlist contract.
  * [TEST-MOD-APPROVED #871] Adds the fragment-only attendance-claim handoff to
  * the existing single-source allowlist contract.
+ * #871 [attendance claim public route] records why this canonical count grew.
  */
 
 import { describe, expect, test } from "@jest/globals";
