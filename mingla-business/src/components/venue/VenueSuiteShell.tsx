@@ -35,7 +35,13 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -55,7 +61,6 @@ import { SuiteDesktopShell } from "../suite/SuiteDesktopShell";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueAvailabilityModule } from "./VenueAvailabilityModule";
-import { VenueInsightsModule } from "./insights/VenueInsightsModule";
 import { VenueIntelligenceModule } from "./VenueIntelligenceModule";
 import { VenueMenuModule } from "./VenueMenuModule";
 import { VenueReservationsModule } from "./VenueReservationsModule";
@@ -68,6 +73,20 @@ import {
   deriveVenueModules,
   isBookingModule,
 } from "./venueModules";
+
+/**
+ * Issue #1735 CI rework — the Insights module loads behind a HOST-owned lazy
+ * boundary (the GlobalSearchSheetHost precedent; the #1550 rule: hosts own
+ * code-splitting). Two loads it keeps out of the EAGER path: (a) the web
+ * boot payload — the full instrument/watch/report tree pushed __common past
+ * the ORCH-1083 cap; (b) the analytics→posthog→expo-modules-core chain,
+ * which throws at module scope under the stay/venue render-proof configs.
+ * The factory runs only when the Insights branch first RENDERS.
+ */
+const LazyVenueInsightsModule = React.lazy(async () => {
+  const mod = await import("./insights/VenueInsightsModule");
+  return { default: mod.VenueInsightsModule };
+});
 
 export interface VenueSuiteShellProps {
   brandId: string | null;
@@ -206,8 +225,20 @@ export function VenueSuiteShell({
     // watch; #1737 adds pricing). Command band, both derivation branches
     // (I-PROPOSED-1735-INSIGHTS-COMMAND-BAND-ADDITIVE). OWNS its ScrollView
     // (moduleSelfScrolls("insights") === true) — the shell must NOT wrap it.
+    // Lazy behind the host boundary (see LazyVenueInsightsModule above); the
+    // fallback is a centered spinner, never a blank frame.
     if (activeModule === "insights") {
-      return <VenueInsightsModule brandId={brandId} venueId={venueId} />;
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueInsightsModule brandId={brandId} venueId={venueId} />
+        </React.Suspense>
+      );
     }
     // 2.1a — Tables + Availability LIVE. 2.1b — Reservations + Waitlist LIVE.
     // The whole booking band is now real operator UI (no ComingSoon left).
@@ -300,6 +331,13 @@ const styles = StyleSheet.create({
   // phone / native
   phoneHost: {
     flex: 1,
+  },
+  // #1735 — Suspense fallback while the lazy Insights chunk loads.
+  lazyModuleFallback: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.xxl,
   },
   phoneScroll: {
     // paddingBottom supplied inline (insets.bottom + 120) for nav clearance.

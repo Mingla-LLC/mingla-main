@@ -20,7 +20,7 @@ jest.mock("expo-router", () => ({
 }));
 
 const mockUseIntelSubjectLatest = jest.fn();
-jest.mock("../../../../hooks/useGrowthTools", () => ({
+jest.mock("../../../../hooks/useGrowthToolsReads", () => ({
   __esModule: true,
   useIntelSubjectLatest: (...args: unknown[]) =>
     mockUseIntelSubjectLatest(...args),
@@ -31,7 +31,7 @@ jest.mock("../../../ui/GlassCard", () => ({
   GlassCard: (props: { children?: unknown; testID?: string }) =>
     ReactLocal.createElement("GlassCard", props, props.children as never),
 }));
-jest.mock("../SiteCheckInstrument", () => ({
+jest.mock("../GradeBadge", () => ({
   __esModule: true,
   GradeBadge: (props: Record<string, unknown>) =>
     ReactLocal.createElement("GradeBadge", props),

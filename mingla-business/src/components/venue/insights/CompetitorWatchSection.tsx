@@ -49,7 +49,7 @@ import {
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { GlassCard } from "../../ui/GlassCard";
-import { GradeBadge } from "./SiteCheckInstrument";
+import { GradeBadge } from "./GradeBadge";
 import { diffGraderReports } from "./graderReportDiff";
 import {
   competitorCheckIsStale,

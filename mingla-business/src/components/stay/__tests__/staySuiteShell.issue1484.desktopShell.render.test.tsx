@@ -598,6 +598,10 @@ describe("#1484 — Venue suite is NOT regressed by the extraction", () => {
     );
 
     expect(hostWithTestId(r, "venue-suite-shell-desktop")).toBeTruthy();
+    // Issue #1735 [TEST-MOD-APPROVED #1735] — the command-band "Insights"
+    // module lands between Menu and Settings (the ORCH-1186-C menu precedent).
+    // T-5's invariant (venue rail renders, existing order, Settings last,
+    // uncapped full-width workspace) is UNCHANGED — the pin gains one label.
     expect(railLabels(r, "venue-rail-")).toEqual([
       "Overview",
       "Tables",
@@ -605,6 +609,7 @@ describe("#1484 — Venue suite is NOT regressed by the extraction", () => {
       "Reservations",
       "Waitlist",
       "Menu",
+      "Insights",
       "Settings",
     ]);
 

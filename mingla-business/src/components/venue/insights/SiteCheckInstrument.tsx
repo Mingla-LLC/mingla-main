@@ -20,7 +20,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -29,7 +28,6 @@ import {
 
 import {
   accent,
-  radius,
   semantic,
   spacing,
   text as textTokens,
@@ -40,14 +38,13 @@ import type {
   GraderReport,
 } from "../../../services/growthToolsService";
 import { Button } from "../../ui/Button";
+import { GradeBadge } from "./GradeBadge";
 import { GlassCard } from "../../ui/GlassCard";
 import { Input } from "../../ui/Input";
 import { Skeleton } from "../../ui/Skeleton";
 import { GraderReportSections } from "./GraderReportSections";
 import {
-  INSIGHTS_ANDROID_OPAQUE,
   formatCheckedDate,
-  gradeBand,
   graderInputsValid,
   strongestSubScoreReason,
   websitesDiffer,
@@ -171,43 +168,6 @@ function IntelProgress({ domain }: { domain: string }): React.ReactElement {
           Still working — live research can take up to a minute.
         </Text>
       ) : null}
-    </View>
-  );
-}
-
-// ── Grade badge (28×28, radius.sm square, letter in h3 — G-5) ───────────────
-
-const BADGE_FILL_IOS: Record<ReturnType<typeof gradeBand>, string> = {
-  good: semantic.successTint,
-  mid: semantic.warningTint,
-  poor: semantic.errorTint,
-};
-const BADGE_FILL_ANDROID: Record<ReturnType<typeof gradeBand>, string> = {
-  good: INSIGHTS_ANDROID_OPAQUE.successFill,
-  mid: INSIGHTS_ANDROID_OPAQUE.warningFill,
-  poor: INSIGHTS_ANDROID_OPAQUE.errorFill,
-};
-
-export function GradeBadge({
-  grade,
-  size = 28,
-}: {
-  grade: string | null;
-  size?: number;
-}): React.ReactElement {
-  const band = gradeBand(grade);
-  const fill = Platform.OS === "android"
-    ? BADGE_FILL_ANDROID[band]
-    : BADGE_FILL_IOS[band];
-  return (
-    <View
-      style={[
-        styles.gradeBadge,
-        { width: size, height: size, backgroundColor: fill },
-      ]}
-      accessibilityLabel={grade !== null ? `Grade ${grade}` : "Not graded yet"}
-    >
-      <Text style={styles.gradeBadgeLetter}>{grade ?? "—"}</Text>
     </View>
   );
 }
@@ -667,15 +627,6 @@ const styles = StyleSheet.create({
   verdictChecked: {
     ...typography.caption,
     color: textTokens.tertiary,
-  },
-  gradeBadge: {
-    borderRadius: radius.sm,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gradeBadgeLetter: {
-    ...typography.h3,
-    color: textTokens.primary,
   },
 });
 

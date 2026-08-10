@@ -19,9 +19,9 @@ import {
   text as textTokens,
   typography,
 } from "../../../constants/designSystem";
-import { useIntelSubjectLatest } from "../../../hooks/useGrowthTools";
+import { useIntelSubjectLatest } from "../../../hooks/useGrowthToolsReads";
 import { GlassCard } from "../../ui/GlassCard";
-import { GradeBadge } from "./SiteCheckInstrument";
+import { GradeBadge } from "./GradeBadge";
 import {
   formatCheckedDate,
   strongestSubScoreReason,
