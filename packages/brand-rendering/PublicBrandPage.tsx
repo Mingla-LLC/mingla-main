@@ -238,8 +238,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   upcoming = [],
   upcomingHasMore = false,
   venue = null,
-  isFollowing,
-  followPending,
+  // Inferable defaults (not bare bindings): under the #1403/#874 delta
+  // harnesses' react-less tsc graph a bare binding here is TS7031; the
+  // defaults type them boolean with IDENTICAL behavior (every consumer
+  // compares `=== true`, so false ≡ undefined).
+  isFollowing = false,
+  followPending = false,
   venues = [],
   venuesLoadState = "ready",
   theme,
@@ -763,14 +767,27 @@ const SocialIcon: React.FC<{ kind: SocialKind; color: string }> = ({
 // callbacks.onToggleFollow (THE gate: hosts that pass nothing — buyer-web and
 // the business in-app preview — render no follow surface at all). State is
 // server-truth via the host's isFollowing prop; the renderer holds none.
-const FollowButton: React.FC<{
+// The destructured parameter carries the annotation DIRECTLY (not only via
+// React.FC): the #1403/#874 typecheck-delta harnesses run a tsc graph where
+// the react module does not resolve, so a React.FC-only annotation leaves the
+// bindings implicitly any (TS7031) — an explicit parameter type keeps this
+// component contributing ZERO delta diagnostics.
+type BrandFollowButtonProps = {
   brand: PublicBrand;
   palette: ThemePalette;
   isFollowing?: boolean;
   followPending?: boolean;
   onToggleFollow?: () => void;
   desktop?: boolean;
-}> = ({ brand, palette, isFollowing, followPending, onToggleFollow, desktop }) => {
+};
+const FollowButton: React.FC<BrandFollowButtonProps> = ({
+  brand,
+  palette,
+  isFollowing,
+  followPending,
+  onToggleFollow,
+  desktop,
+}: BrandFollowButtonProps) => {
   if (onToggleFollow === undefined) return null;
   const active = isFollowing === true;
   return (
