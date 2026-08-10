@@ -339,6 +339,30 @@ You do NOT run this yourself. If you need to test an edge function locally:
 supabase functions serve <name>
 ```
 
+### 7.5b Reading app config — `expo config --json` hides config errors
+
+**If `npx expo config --json` exits non-zero with NO output on either stream, re-run it without
+`--json`.** With `--json` the Expo CLI prints nothing when `app.config.ts` throws — empty stdout,
+empty stderr, exit 1. Drop the flag and the config's own error appears on stderr, naming exactly
+what is wrong:
+
+```bash
+npx expo config --type public          # error message on stderr
+npx expo config --json --type public   # exit 1, complete silence
+```
+
+This matters because both apps carry **release-bound fail-loud guards** — AppsFlyer (ORCH-1313),
+GIPHY (ORCH-1116), and the payment key (#1732/#1733) — that throw only when `EAS_BUILD_PROFILE` is
+a release profile (`production`, `production-apk`, `preview`, `preview-sim`). Evaluating the config
+under one of those profiles therefore needs the **full** env for every guard, not just the one you
+are testing. `hasAppsFlyerEnv()` requires all **three** AppsFlyer variables; one is not enough.
+
+**A silent exit 1 looks identical to a guard firing correctly.** That cost real time in #1748: an
+incomplete env produced a non-zero exit that was read as proof a newly-added guard worked, when a
+different guard had thrown. Confirm WHICH guard spoke before drawing a conclusion — the #994 S-5
+assertion does exactly this by requiring the failure to NAME the key under test
+(`.github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs`).
+
 ### 7.6 EAS OTA
 
 Production OTA is ENABLED for pure-JS / zero-native-module-delta changes (the old "business is
