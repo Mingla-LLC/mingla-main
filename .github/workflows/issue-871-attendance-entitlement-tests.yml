@@ -37,6 +37,7 @@ jobs:
         run: >-
           deno test --allow-read
           supabase/functions/claim-attendance/__tests__/issue_0871_attendance_claim_contract.test.ts
+          supabase/functions/claim-attendance/__tests__/issue_0871_claim_fragment_pollution.tester.adversarial.test.ts
           supabase/migrations/__tests__/issue_0871_attendance_claim_and_roster.test.ts
       - name: Execute invariant guard and its revert self-test
         run: |
