@@ -1221,10 +1221,16 @@ export async function handler(req: Request): Promise<Response> {
     });
 
     // ── Load the run (must have a generated report). ─────────────────────────
+    // ISSUE-1734 P-30 (I-PROPOSED-1734-NOTIFY-WEB-GATE-ONLY): the gate REFUSES
+    // app-lane rows — `lane = 'web'` is the row-lookup predicate, so an app
+    // run's UUID posted here gets the existing 404: no fake "lead", no founder
+    // notify, no report token minted for an app row. This predicate is the
+    // ONLY #1734 change to this function.
     const { data: lead, error: leadErr } = await supabase
       .from("tool_leads")
       .select("id, tool, status, report, report_token")
       .eq("id", runId as string)
+      .eq("lane", "web")
       .maybeSingle();
     if (leadErr) {
       console.error("[growth-tools-gate] lead lookup failed", leadErr.message);

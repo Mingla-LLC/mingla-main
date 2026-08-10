@@ -7749,3 +7749,75 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Ownership-check-precedes-every-early-return clause (learned the hard way — do NOT relax):** the ownership check MUST run before ANY success path in `activateDraft`, including the `activeDraftId === draftId` "already active" shortcut. The first implementation put the check only on the parked-draft path, exactly as SPEC §4.1.4 step 1 literally specified it, so the shortcut returned `true` for any brand and handed brand B the open edit session of brand A's half-built venue — and because the wizard submits under `currentBrand`, brand A's content would have been filed under brand B. It was the STEADY state, not a race, because `activateBrand` lost all production callers so switching brands no longer touches this store; it was reachable on business web by ordinary browser Back, since the draft id sits in the address bar. Both headless suites passed it — each set up the check from a state that never reached the broken branch. **A SPEC that names one code path for an isolation check is not a licence to leave the other paths unguarded.**
 - **Regression:** `mingla-business/src/store/__tests__/draftVenueMultiDraft.issue1685.test.ts` — three concurrent drafts under one brand survive independently; a second brand sees none of them; `activateDraft` refuses a cross-brand id; the v3→v4 migrator carries a two-brand legacy blob forward with zero field loss; `reset()` empties the list. Fails-on-revert: restoring `drafts: Record<string, DraftVenueState>` collapses draft 2 and 3 onto draft 1 and turns the concurrency assertions red. **Plus the tester's independent adversarial suite** `mingla-business/src/store/__tests__/draftVenueBrandLeak.issue1685.tester.adversarial.test.ts` (A-1 … A-4): A-1 pins the cross-brand ACTIVE-draft refusal and A-3 pins that an unowned migrated draft stays reachable rather than silently vanishing. Fails-on-revert proven twice — deleting the three guard lines turns A-1 red and reproduces the leak in a real browser; reverting the orphan-adoption fix turns A-3 red.
 - **Established:** DRAFT at issue #1685 SPEC 2026-08-09. **ACTIVE 2026-08-09** on tester PASS (issue #1685 comment 5233697782), merged as `c93160d46` via PR #1722.
+
+---
+
+## DRAFT — issue #1734 (growth-tools shared platform: dual-lane backbone for the Business-app embed)
+
+> Registered DRAFT at issue #1734 shared-platform IMPLEMENT. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS. Eleven stanzas: eight from the platform SPEC §S3 + three from the platform ADDENDUM (§S10–§S11). The four growth-tool engines (`growth-tools-run/-events/-trips/-pricing`), `growth-tools-report` and `growth-tools-gate` gained a second, authenticated lane for the signed-in Business app while the anonymous marketing funnel stays byte-stable; `tool_leads` gained lane/identity/subject columns and `tool_competitors` (per-venue watch list) was created — all in migration `20270303001734_issue_1734_tool_leads_app_lane.sql`.
+
+### I-PROPOSED-1734-WEB-FUNNEL-UNCHANGED (DRAFT)
+- **Rule:** The anonymous web growth-tools funnel is behaviorally identical end-to-end to its pre-#1734 contract: `POST {action:"run"}` without `lane:"app"` runs the full anonymous pipeline (salted-IP limiter, `tool_leads` insert with `lane='web'`, pid/utm/origin persisted as before) and returns `{run_id, report}`; `growth-tools-gate` mints/reuses tokens and emails the `/tools/*/report?id=…&t=…` link exactly as before; `growth-tools-report`'s `{run_id, token}` branch and its constant-time compare are untouched; tokens never expire and every historical emailed link keeps resolving. Timeout hardening (P-23/P-24) may bound the worst case but must not alter any happy-path response shape or error string.
+- **Enforcement:** lane selection is body-explicit (P-2); web-lane code paths take the `lane !== "app"` branch unmodified.
+- **Regression:** T-W1/T-W2 (`supabase/functions/growth-tools-run/__tests__/issue_1734_web_funnel_e2e.test.ts`) — full anonymous happy path + "web request with a Bearer header still runs anonymously" — fails on revert of the lane branch.
+- **Established:** DRAFT at #1734 shared-platform SPEC 2026-08-09.
+
+### I-PROPOSED-1734-NOTIFY-WEB-GATE-ONLY (DRAFT)
+- **Rule:** The #1354 founder-notify email fires ONLY inside `growth-tools-gate` on the `report_ready → gated_email` transition of a `lane='web'` row. No app-lane code path can reach it: the app lane never invokes the gate, and the gate refuses non-web rows (P-30). Re-gates never re-notify (existing idempotency preserved).
+- **Enforcement:** gate lane predicate (P-30); no notify call sites added anywhere else.
+- **Regression:** existing `issue_1354_notify_idempotency_adversarial.test.ts` stays green + T-W3 (`growth-tools-gate/__tests__/issue_1734_gate_lane_predicate.test.ts`: gate on an app row → 404, zero Resend calls) — fails on revert.
+- **Established:** DRAFT at #1734 shared-platform SPEC 2026-08-09.
+
+### I-PROPOSED-1734-ATTRIBUTION-WEB-ONLY-AND-PRESERVED (DRAFT)
+- **Rule:** Web-lane rows persist `pid`/`utm` exactly as before (hardcoded per intake page + `collectUtm()`, e.g. `pid:'tool_venues'`); app-lane rows persist `pid=NULL`, `utm=NULL`, `email=NULL`, `ip_hash=NULL`. Funnel attribution and per-email caps therefore keep their pre-#1734 meaning without a single query changing.
+- **Enforcement:** P-7/P-9; the `tool_leads_lane_identity_check` CHECK.
+- **Regression:** T-W1 asserts pid/utm on the web row; T-A1 asserts the four NULLs on the app row — fails on revert.
+- **Established:** DRAFT at #1734 shared-platform SPEC 2026-08-09.
+
+### I-PROPOSED-1734-APP-LANE-VERIFIED-IDENTITY-EVERY-PATH (DRAFT)
+- **Rule:** No growth-tools code path ever derives identity from an unverified source. `lane='app'` rows carry a `user_id` obtained exclusively from `auth.getUser(token)` and a `brand_id` that passed `biz_is_brand_member_for_read` — and EVERY app-lane success path (fresh run, cached hit, status read, report read) re-establishes user+brand authorization before returning; no early-return shortcut skips it (COMMS-0136 class).
+- **Enforcement:** single shared `_shared/growthToolsAuth.ts` entry point (P-6); code review rule that any new return path in an app-lane branch cites this invariant.
+- **Regression:** T-A2 (forged/expired JWT → 401, no row, no model call), T-A3 (member of brand A reading brand B's run → 403 on read AND on cached-hit path) — fails on revert.
+- **Established:** DRAFT at #1734 shared-platform SPEC 2026-08-09.
+
+### I-PROPOSED-1734-LANE-QUOTAS-ISOLATED (DRAFT)
+- **Rule:** The web lane's salted-IP limiter (10/day/tool, fail-open, `ip_hash`-keyed count) is arithmetically unaffected by app traffic, and vice versa: app rows store `ip_hash=NULL` so they can never enter a web count; web rows have `lane='web'` so they can never enter the brand-keyed app count. An app-lane request never consults `x-forwarded-for` for quota purposes.
+- **Enforcement:** P-9 (NULL ip_hash on app rows) + P-19/P-20 (brand-keyed counter with `lane='app'` predicate).
+- **Regression:** T-Q2 (web rows on a synthetic shared "IP" do not count against a brand's app quota and app rows do not count against that IP's web budget) — fails on revert.
+- **Established:** DRAFT at #1734 shared-platform SPEC 2026-08-09.
+
+### I-PROPOSED-1734-TOKEN-FLOW-UNTOUCHED (DRAFT)
+- **Rule:** `report_token` semantics are exclusively web-lane: minted/reused only by `growth-tools-gate`, compared only by `growth-tools-report`'s token branch (constant-time), never expiring. App-lane paths never mint, return, or accept a `report_token`; the authenticated read (P-26/P-43, OQ-U1) selects only `id, status, report, input, brand_id, created_at` and cannot leak `report_token`, `email`, or `ip_hash`.
+- **Enforcement:** P-26's column allowlist; P-30.
+- **Regression:** T-A4 asserts the authenticated read's response body and its DB select-list contain none of the three fields — fails on revert.
+- **Established:** DRAFT at #1734 shared-platform SPEC 2026-08-09.
+
+### I-PROPOSED-1734-REPORT-SCHEMA-VERSIONED (DRAFT)
+- **Rule:** Every report persisted by any growth-tools engine from #1734 onward carries integer `meta.schema_version` (currently 1). Readers tolerate absence (legacy rows). A breaking report-shape change and its version bump land in the same PR.
+- **Enforcement:** P-11; per-tool client parsers branch on it defensively.
+- **Regression:** T-S1 (all four assemblers stamp it; report read of a version-less legacy row still succeeds) — fails on revert.
+- **Established:** DRAFT at #1734 shared-platform SPEC 2026-08-09.
+
+### I-PROPOSED-1734-TOOL-RESULTS-NEVER-PERSISTED-CLIENT-SIDE (DRAFT)
+- **Rule:** Growth-tool run results (reports, forecasts, quotes, audits) live ONLY in React Query cache and component state in the Business app — never in any persisted Zustand store (`draftEventStore`, `draftVenueStore`, or future stores). Server data in a persisted store is the COMMS-0136 / Zustand-persist-IDs-not-records violation class. Corollary: any persisted-store reshape bumps `version` + writes `migrate` and NEVER renames the storage `name` key.
+- **Enforcement:** per-tool code review + the named CI-guard opportunity (P-36: strict-grep gate `issue-1734-tool-results-not-persisted.mjs`, authored when the first per-tool client PR lands — script + ONE MANIFEST entry; if `selfTest:"wired"`, bump `selfTestWiredFloor` (equality) + `expectedStrictGrepMjsFiles` in the SAME PR).
+- **Regression:** the gate itself once authored; until then the per-tool test suites assert no `growthToolsService`/report-type import exists under `mingla-business/src/store/`.
+- **Established:** DRAFT at #1734 shared-platform SPEC 2026-08-09.
+
+### I-PROPOSED-1734-SUBJECT-REF-APP-LANE-ONLY (DRAFT)
+- **Rule:** `tool_leads.subject_ref` is non-NULL only on `lane='app'` rows, always matches `^(venue|competitor|event):<uuid>$`, and is composed exclusively SERVER-side after the referenced entity is proven to belong to the authenticated brand (venue → `venue_listings.brand_id`, competitor → `tool_competitors.brand_id`). No client-sent string is ever stored; no web-lane path reads or writes it.
+- **Enforcement:** `tool_leads_subject_ref_lane_check` (schema) + P-41's resolve-then-compose code path (single site per engine, in `_shared/growthToolsAuth.ts` `resolveRunSubject`).
+- **Regression:** T-SR2 (forged/foreign subject → 403, no row; client-sent `subject_ref` string ignored; direct web-row-with-subject insert → CHECK violation) — fails on revert of either layer.
+- **Established:** DRAFT at #1734 platform ADDENDUM 2026-08-09.
+
+### I-PROPOSED-1734-COMPETITOR-WATCH-SERVER-SIDE (DRAFT)
+- **Rule:** `tool_competitors` is deny-all RLS (zero policies, service-role only) with every CRUD path behind the P-3 app-lane chain at member floor; the ≤5-per-venue cap, the per-venue dedup, and the venue↔brand consistency are enforced server-side at the schema layer (cap trigger with per-venue serialization; unique index) — a client, a race, or even a service-role coding bug cannot exceed the cap or split a competitor's history.
+- **Enforcement:** P-45 trigger + unique index; P-46 single CRUD door in `growth-tools-run`.
+- **Regression:** T-CW2 (6th add → 409 AND direct service-role insert → trigger exception) + T-CW3 (cross-brand/anon CRUD rejected) — fails on revert.
+- **Established:** DRAFT at #1734 platform ADDENDUM 2026-08-09.
+
+### I-PROPOSED-1734-RUN-HISTORY-APPEND-ONLY (DRAFT)
+- **Rule:** growth-tools re-runs APPEND rows; no code path updates a prior run's `report` in place of inserting, and no code path deletes `tool_leads` rows (list-row removal orphans, never cascades). "Latest" is exclusively a read-side concept (newest `report_ready` by subject/hash). This is what keeps the change-over-time diff, quota arithmetic, and the founder console's run history truthful.
+- **Enforcement:** the engines' single insert-shaped write path (P-44); no FK from `tool_leads` to `tool_competitors` (P-48).
+- **Regression:** T-SR4 (re-run → 2 rows, latest-read flips, prior row byte-identical) + T-CW5 (watch_remove leaves runs; admin RPC still lists them) — fails on revert.
+- **Established:** DRAFT at #1734 platform ADDENDUM 2026-08-09.

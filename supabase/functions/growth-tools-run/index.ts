@@ -31,13 +31,38 @@
 // The fetched SITE CONTENT is UNTRUSTED: it is fenced in the prompt with an
 // explicit never-follow-instructions rule, and is never logged (lengths only).
 //
+// ISSUE-1734 [shared platform] — SECOND LANE for the signed-in Business app.
+// Lane is BODY-EXPLICIT (`lane:"app"`), never header-sniffed (the marketing
+// transport already sends an anon-key Bearer — P-2). Any other value or an
+// absent field is the WEB lane, processed exactly as before (byte-stable,
+// I-PROPOSED-1734-WEB-FUNNEL-UNCHANGED). App lane:
+//   • P-3 auth chain via _shared/growthToolsAuth.ts (Bearer → auth.getUser →
+//     biz_is_brand_member_for_read; 401 on forged/expired JWT — NEVER
+//     downgraded to anonymous, P-4).
+//   • optional subject {type:"venue"|"competitor", id} — resolved + ownership-
+//     proven server-side, stamped as subject_ref; competitor runs take their
+//     input FROM THE WATCH ROW (P-40/P-41).
+//   • input-hash cache (P-22, subject-aware P-42): unchanged inputs re-serve
+//     the stored report — {run_id, report, cached:true} — no quota, no Gemini.
+//   • brand-keyed quota (P-19, cap 10/brand/24h): over cap →
+//     429 {error:"rate_limited", scope:"brand"}.
+//   • rows carry lane='app', verified user_id/brand_id, input_hash,
+//     client_ref; pid/utm/email/ip_hash are NULL (P-7/P-9).
+//   • competitor-watch CRUD actions watch_list / watch_add / watch_remove
+//     (§S11, app lane only — unknown actions on the web lane keep the
+//     existing 400 validation contract).
+// BOTH lanes: per-call timeouts + a 120s per-run budget (P-24) and
+// meta.schema_version:1 stamped on every new report (P-11).
+//
 // HTTP contract:
 //   POST search → 200 {results:[...]}
 //   POST run    → 200 {run_id, report}
 //   → 400 {error:"validation", fields?:string[]} | {error:"invalid_json"}
+//   → 401 {error:"unauthenticated"} | 403 {error:"forbidden"}  (app lane only)
+//   → 404 {error:"not_found"} | 409 {error:"watch_limit"|"duplicate_competitor"} (watch actions)
 //   → 405 {error:"method_not_allowed"}
-//   → 429 {error:"rate_limited"}
-//   → 502 {error:"generation_failed"}
+//   → 429 {error:"rate_limited"}   (+ scope:"brand" on the app lane)
+//   → 502 {error:"generation_failed"}   (+ additive reason:"timeout"|"upstream_failed")
 //   → 500 {error:"server"}
 //   OPTIONS → 200 "ok" + CORS
 
@@ -47,6 +72,24 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // preflight is not rejected. Do NOT inline a hand-rolled allow-list.
 import { corsHeaders } from "../_shared/cors.ts";
 import { timeoutFetch } from "../_shared/timeoutFetch.ts";
+// ISSUE-1734 — the SINGLE shared app-lane auth/quota/cache/budget module
+// (P-6: no per-function copies; one point of audit).
+import {
+  type AppLaneAuth,
+  authenticateAppLane,
+  checkAppLaneQuota,
+  computeInputHash,
+  createRunBudget,
+  GROUNDED_CALL_TIMEOUT_MS,
+  isAbortError,
+  isAppLane,
+  isUuidValue,
+  lookupAppLaneCache,
+  resolveRunSubject,
+  RUN_BUDGET_MS,
+  type RunBudget,
+  STRUCTURED_CALL_TIMEOUT_MS,
+} from "../_shared/growthToolsAuth.ts";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -1215,10 +1258,15 @@ export function buildGeminiUserPrompt(
   return lines.join("\n");
 }
 
+// ISSUE-1734 P-24: bounded by timeoutFetch (structured-pass cap ∧ remaining
+// budget). An abort is reported via `timedOut` so the caller can return the
+// honest P-25 reason:"timeout"; other network throws keep today's behavior
+// (propagate → 500 server).
 async function callGeminiOnce(
   apiKey: string,
   userPrompt: string,
-): Promise<GeminiReport | null> {
+  timeoutMs: number,
+): Promise<{ value: GeminiReport | null; timedOut: boolean }> {
   const requestBody = {
     contents: [{ role: "user", parts: [{ text: userPrompt }] }],
     systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
@@ -1229,11 +1277,21 @@ async function callGeminiOnce(
       responseSchema: RESPONSE_SCHEMA,
     },
   };
-  const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(requestBody),
-  });
+  let response: Response;
+  try {
+    response = await timeoutFetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+      timeoutMs,
+    });
+  } catch (err) {
+    if (isAbortError(err)) {
+      console.error("[growth-tools-run] Gemini call timed out", { timeoutMs });
+      return { value: null, timedOut: true };
+    }
+    throw err;
+  }
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     console.error(
@@ -1241,7 +1299,7 @@ async function callGeminiOnce(
       response.status,
       detail.slice(0, 200),
     );
-    return null;
+    return { value: null, timedOut: false };
   }
   const payload = await response.json() as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -1255,20 +1313,31 @@ async function callGeminiOnce(
     parsed = JSON.parse(rawText);
   } catch {
     console.error("[growth-tools-run] Gemini returned invalid JSON");
-    return null;
+    return { value: null, timedOut: false };
   }
-  return normalizeGeminiReport(parsed);
+  return { value: normalizeGeminiReport(parsed), timedOut: false };
 }
 
 // One retry on invalid JSON / bad shape / HTTP failure; null on second failure.
+// ISSUE-1734 P-24: PASS 1 is a FATAL stage — each attempt runs with
+// min(cap, remaining budget); the retry runs only if budget remains.
 async function generateReport(
   apiKey: string,
   userPrompt: string,
-): Promise<GeminiReport | null> {
-  const first = await callGeminiOnce(apiKey, userPrompt);
-  if (first !== null) return first;
+  budget: RunBudget,
+): Promise<{ value: GeminiReport | null; timedOut: boolean }> {
+  const cap1 = Math.min(STRUCTURED_CALL_TIMEOUT_MS, budget.remainingMs());
+  if (cap1 <= 0) return { value: null, timedOut: true };
+  const first = await callGeminiOnce(apiKey, userPrompt, cap1);
+  if (first.value !== null) return first;
+  const cap2 = Math.min(STRUCTURED_CALL_TIMEOUT_MS, budget.remainingMs());
+  if (cap2 <= 0) return { value: null, timedOut: true };
   console.error("[growth-tools-run] Gemini attempt 1 failed — retrying once");
-  return await callGeminiOnce(apiKey, userPrompt);
+  const second = await callGeminiOnce(apiKey, userPrompt, cap2);
+  return {
+    value: second.value,
+    timedOut: first.timedOut || second.timedOut,
+  };
 }
 
 // ── Grounded competition pass (ISSUE-1003 depth unlock) ──────────────────────
@@ -1653,6 +1722,7 @@ export function buildCompetitionPrompt(
 async function callCompetitionOnce(
   apiKey: string,
   userPrompt: string,
+  timeoutMs: number,
 ): Promise<GroundedCompetition | null> {
   const requestBody = {
     contents: [{ role: "user", parts: [{ text: userPrompt }] }],
@@ -1667,11 +1737,23 @@ async function callCompetitionOnce(
       temperature: GEMINI_TEMPERATURE,
     },
   };
-  const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(requestBody),
-  });
+  // ISSUE-1734 P-24: grounded-pass cap. This stage is BEST-EFFORT — an abort
+  // just fails the attempt (pool-only fallback downstream), never the run.
+  let response: Response;
+  try {
+    response = await timeoutFetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+      timeoutMs,
+    });
+  } catch (err) {
+    if (isAbortError(err)) {
+      console.error("[growth-tools-run] grounded Gemini call timed out", { timeoutMs });
+      return null;
+    }
+    throw err;
+  }
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     console.error(
@@ -1699,18 +1781,35 @@ async function callCompetitionOnce(
 }
 
 // One retry with an explicit JSON-only reminder; null after the second failure.
+// ISSUE-1734 P-24: BEST-EFFORT stage — each attempt is SKIPPED when the
+// remaining budget is under the grounded single-attempt cap (existing
+// pool-only fallback taken instead).
 async function generateCompetition(
   apiKey: string,
   userPrompt: string,
+  budget: RunBudget,
 ): Promise<GroundedCompetition | null> {
-  const first = await callCompetitionOnce(apiKey, userPrompt);
+  if (budget.remainingMs() < GROUNDED_CALL_TIMEOUT_MS) {
+    console.error(
+      "[growth-tools-run] grounded competition skipped — budget low",
+      { remainingMs: budget.remainingMs() },
+    );
+    return null;
+  }
+  const first = await callCompetitionOnce(
+    apiKey,
+    userPrompt,
+    GROUNDED_CALL_TIMEOUT_MS,
+  );
   if (first !== null) return first;
+  if (budget.remainingMs() < GROUNDED_CALL_TIMEOUT_MS) return null;
   console.error(
     "[growth-tools-run] grounded competition attempt 1 failed — retrying once",
   );
   return await callCompetitionOnce(
     apiKey,
     `${userPrompt}\n\nREMINDER: return ONLY the JSON object — no prose, no markdown fences, nothing before or after it.`,
+    GROUNDED_CALL_TIMEOUT_MS,
   );
 }
 
@@ -1872,63 +1971,174 @@ async function handleRun(
   req: Request,
   body: Record<string, unknown>,
 ): Promise<Response> {
+  // ISSUE-1734 P-24: per-run wall-clock budget, measured from handler start.
+  const budget = createRunBudget(RUN_BUDGET_MS.venues);
+
+  // ISSUE-1734 P-2: lane is BODY-EXPLICIT. Anything other than lane:"app" is
+  // the web lane, processed exactly as before (Authorization header
+  // accepted-and-ignored, as it already is for the anon key).
+  const appLane = isAppLane(body);
+  let appAuth: AppLaneAuth | null = null;
+  let subjectRef: string | null = null;
+  let clientRef: string | null = null;
+  if (appLane) {
+    // P-3/P-4/P-5 (I-PROPOSED-1734-APP-LANE-VERIFIED-IDENTITY-EVERY-PATH,
+    // COMMS-0136): the auth chain runs BEFORE any service-role read/write or
+    // Gemini call — a forged/expired JWT gets 401 here, never a downgrade.
+    const auth = await authenticateAppLane(req, body, supabase);
+    if (auth instanceof Response) return auth;
+    appAuth = auth;
+
+    // P-40/P-41: optional subject — resolved + ownership-proven server-side.
+    // A client-sent `subject_ref` STRING is ignored (server-derived only,
+    // I-PROPOSED-1734-SUBJECT-REF-APP-LANE-ONLY).
+    const subject = await resolveRunSubject(supabase, auth, "venues", body.subject);
+    if (subject instanceof Response) return subject;
+    subjectRef = subject.subjectRef;
+    if (subject.competitorInput) {
+      // P-41: the engine input comes FROM THE WATCH ROW, overriding any
+      // client-sent input fields — same subject ⇒ same competitor definition.
+      body = {
+        ...body,
+        input: {
+          name: subject.competitorInput.name,
+          city: subject.competitorInput.city,
+          website: subject.competitorInput.website,
+          ...(subject.competitorInput.place_pool_id
+            ? { place_id: subject.competitorInput.place_pool_id }
+            : {}),
+        },
+      };
+    }
+
+    // P-27: optional client-minted resume ref.
+    const rawClientRef = body.client_ref;
+    if (rawClientRef !== undefined && rawClientRef !== null && rawClientRef !== "") {
+      if (!isUuidValue(rawClientRef)) {
+        return json({ error: "validation", fields: ["client_ref"] }, 400);
+      }
+      clientRef = rawClientRef;
+    }
+  }
+
   // a. Validate.
   const validated = validateRunInput(body.input);
   if (!validated.ok) {
     return json({ error: "validation", fields: validated.fields }, 400);
   }
   const input = validated.input;
-  const pid = typeof body.pid === "string" && body.pid.trim().length > 0
+  // ISSUE-1734 P-7 (I-PROPOSED-1734-ATTRIBUTION-WEB-ONLY-AND-PRESERVED): app
+  // runs are product usage, not attribution — pid/utm are NOT persisted on the
+  // app lane; `origin` is ignored there and the "after" screenshot targets the
+  // default prod origin. Web-lane handling unchanged.
+  const pid = appLane ? null : (typeof body.pid === "string" && body.pid.trim().length > 0
     ? body.pid.trim().slice(0, 120)
-    : null;
-  const utm =
+    : null);
+  const utm = appLane ? null : (
     body.utm !== null && typeof body.utm === "object" &&
       !Array.isArray(body.utm)
       ? body.utm as Record<string, unknown>
-      : null;
+      : null);
   // Origin of the marketing surface — where the /tools/venues/preview page that
   // becomes the "after" screenshot lives. Validated (usemingla / vercel only).
-  const toolsOrigin = validateToolsOrigin(body.origin);
+  const toolsOrigin = appLane
+    ? "https://usemingla.com"
+    : validateToolsOrigin(body.origin);
 
-  // b. Rate limit by salted IP hash (8 runs / 24h) — scoped to THIS tool so the
-  //    grader and the event predictor never eat each other's budget.
-  const ip = firstForwardedHop(req.headers.get("x-forwarded-for"));
-  const ipHash = ip ? await hashIp(ip) : null;
-  if (ipHash) {
-    const sinceIso = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
-    const { count, error: countErr } = await supabase
-      .from("tool_leads")
-      .select("id", { count: "exact", head: true })
-      .eq("ip_hash", ipHash)
-      .eq("tool", "venues")
-      .gte("created_at", sinceIso);
-    if (countErr) {
-      console.error(
-        "[growth-tools-run] throttle count failed",
-        countErr.message,
-      );
-      // Fail-open on a throttle read error — do NOT block a legit run.
-    } else if ((count ?? 0) >= RATE_LIMIT_MAX) {
-      return json({ error: "rate_limited" }, 429);
+  // The one normalized-input object: persisted as `input` AND hashed for the
+  // P-22 cache (hash computed AFTER validation/normalization).
+  const normalizedInput = {
+    name: input.name,
+    city: input.city,
+    website: input.website,
+    ...(input.place_id ? { place_id: input.place_id } : {}),
+  };
+
+  let ipHash: string | null = null;
+  let inputHash: string | null = null;
+  if (appLane && appAuth) {
+    // ISSUE-1734 P-20 (I-PROPOSED-1734-LANE-QUOTAS-ISOLATED): the app lane
+    // NEVER consults x-forwarded-for — no header whose absence skips the
+    // check. ip_hash stays NULL on app rows so they can never enter a web
+    // count.
+    inputHash = await computeInputHash("venues", normalizedInput);
+
+    // P-22 cache (subject-aware, P-42). The brand predicate + in-helper
+    // ownership assert IS the P-5 check on this success path (COMMS-0136 —
+    // no early-return shortcut skips ownership).
+    const cached = await lookupAppLaneCache(
+      supabase,
+      appAuth,
+      "venues",
+      inputHash,
+      subjectRef,
+    );
+    if (cached) {
+      return json({ run_id: cached.runId, report: cached.report, cached: true }, 200);
+    }
+
+    // P-19 brand-keyed quota (cap 10/brand/24h; fail-open observably, P-23).
+    const quota = await checkAppLaneQuota(supabase, appAuth.brandId, "venues");
+    if (quota.limited) {
+      return json({ error: "rate_limited", scope: "brand" }, 429);
+    }
+  } else {
+    // b. WEB LANE (unchanged): rate limit by salted IP hash — scoped to THIS
+    //    tool so the grader and the event predictor never eat each other's
+    //    budget.
+    const ip = firstForwardedHop(req.headers.get("x-forwarded-for"));
+    ipHash = ip ? await hashIp(ip) : null;
+    if (ipHash) {
+      const sinceIso = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+      const { count, error: countErr } = await supabase
+        .from("tool_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("ip_hash", ipHash)
+        .eq("tool", "venues")
+        .gte("created_at", sinceIso);
+      if (countErr) {
+        console.error(
+          "[growth-tools-run] throttle count failed",
+          countErr.message,
+        );
+        // Fail-open on a throttle read error — do NOT block a legit run.
+      } else if ((count ?? 0) >= RATE_LIMIT_MAX) {
+        return json({ error: "rate_limited" }, 429);
+      }
     }
   }
 
-  // c. Insert the lead row (status 'created').
+  // c. Insert the lead row (status 'created'). Append-only lifecycle
+  //    (I-PROPOSED-1734-RUN-HISTORY-APPEND-ONLY): re-runs insert NEW rows;
+  //    "latest" is a read-side concept. App rows: verified identity + NULL
+  //    pid/utm/ip_hash (tool_leads_lane_identity_check is the schema backstop).
   const { data: inserted, error: insertErr } = await supabase
     .from("tool_leads")
-    .insert({
-      tool: "venues",
-      status: "created",
-      input: {
-        name: input.name,
-        city: input.city,
-        website: input.website,
-        ...(input.place_id ? { place_id: input.place_id } : {}),
-      },
-      pid,
-      utm,
-      ip_hash: ipHash,
-    })
+    .insert(
+      appLane && appAuth
+        ? {
+          tool: "venues",
+          status: "created",
+          input: normalizedInput,
+          pid: null,
+          utm: null,
+          ip_hash: null,
+          lane: "app",
+          user_id: appAuth.userId,
+          brand_id: appAuth.brandId,
+          client_ref: clientRef,
+          input_hash: inputHash,
+          subject_ref: subjectRef,
+        }
+        : {
+          tool: "venues",
+          status: "created",
+          input: normalizedInput,
+          pid,
+          utm,
+          ip_hash: ipHash,
+        },
+    )
     .select("id")
     .single();
   if (insertErr || !inserted) {
@@ -1963,21 +2173,29 @@ async function handleRun(
   // Live "before" screenshot (signed URL, rendered on first browser load).
   const screenshotUrl = await buildScreenshotUrl(input.website);
 
-  // f. Gemini grade (strict JSON, one retry).
+  // f. Gemini grade (strict JSON, one retry). FATAL stage (P-24): bounded by
+  //    min(structured cap, remaining budget); budget exhaustion → the honest
+  //    P-25 reason:"timeout" (additive field — the web `error` string is
+  //    unchanged, so the marketing KNOWN_ERRORS mapping is untouched).
   const apiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
   if (!apiKey) {
     console.error("[growth-tools-run] GEMINI_API_KEY missing");
     await markFailed();
-    return json({ error: "generation_failed" }, 502);
+    return json({ error: "generation_failed", reason: "upstream_failed" }, 502);
   }
-  const gemini = await generateReport(
+  const pass1 = await generateReport(
     apiKey,
     buildGeminiUserPrompt(input, site, match),
+    budget,
   );
-  if (gemini === null) {
+  if (pass1.value === null) {
     await markFailed();
-    return json({ error: "generation_failed" }, 502);
+    return json({
+      error: "generation_failed",
+      reason: pass1.timedOut || budget.exhausted() ? "timeout" : "upstream_failed",
+    }, 502);
   }
+  const gemini = pass1.value;
 
   // g. COMPETITION PASS (best-effort — the run NEVER fails because of it):
   //    pool competitors → parallel homepage peeks → ONE grounded Gemini call
@@ -1991,10 +2209,15 @@ async function handleRun(
   let competitionSource: "pool+grounded" | "pool_only" | "none" = "none";
   try {
     const poolCompetitors = await findPoolCompetitors(supabase, input, match);
-    const peeks = await peekCompetitorSites(poolCompetitors);
+    // P-24: peeks are BEST-EFFORT (5s per-attempt cap unchanged) — skipped
+    // when the remaining budget is under the peek cap.
+    const peeks = budget.remainingMs() >= PEEK_FETCH_TIMEOUT_MS
+      ? await peekCompetitorSites(poolCompetitors)
+      : [];
     const grounded = await generateCompetition(
       apiKey,
       buildCompetitionPrompt(input, match, gemini, poolCompetitors, peeks, site),
+      budget,
     );
     if (grounded !== null) {
       competition = grounded.competition;
@@ -2080,6 +2303,10 @@ async function handleRun(
       model: GEMINI_MODEL_ID,
       fetch_failed: site.fetch_failed,
       competition_source: competitionSource,
+      // ISSUE-1734 P-11 (I-PROPOSED-1734-REPORT-SCHEMA-VERSIONED): stamped on
+      // BOTH lanes; readers tolerate absence (legacy rows); a breaking shape
+      // change bumps this integer in the same PR.
+      schema_version: 1,
     },
   };
 
@@ -2100,6 +2327,242 @@ async function handleRun(
   }
 
   return json({ run_id: runId, report }, 200);
+}
+
+// ── ISSUE-1734 §S11: competitor-watch CRUD (app lane ONLY) ───────────────────
+// tool_competitors is RLS deny-all; this is the SINGLE door (P-46) — every
+// action requires lane:"app" + the full P-3 chain. On the web lane these
+// action names are unknown → the existing 400 validation (marketing contract
+// byte-stable). Cap-5 + dedup are STRUCTURAL in the migration (trigger +
+// unique index, I-PROPOSED-1734-COMPETITOR-WATCH-SERVER-SIDE) — the code-const
+// pre-checks here only make the errors friendly before the DB backstop.
+const WATCH_CAP = 5; // mirrors the tool_competitors_cap_guard trigger constant
+
+// Ownership gate shared by the three actions: the venue must exist AND belong
+// to the authenticated brand (P-5 on every success path — COMMS-0136 class).
+async function assertVenueOwned(
+  supabase: ServiceClient,
+  auth: AppLaneAuth,
+  venueListingId: unknown,
+): Promise<string | Response> {
+  if (!isUuidValue(venueListingId)) {
+    return json({ error: "validation", fields: ["venue_listing_id"] }, 400);
+  }
+  const { data, error } = await supabase
+    .from("venue_listings")
+    .select("id, brand_id")
+    .eq("id", venueListingId)
+    .maybeSingle();
+  if (error) {
+    console.error("[growth-tools-run] watch venue lookup failed", error.message);
+    return json({ error: "server" }, 500);
+  }
+  if (!data || (data as { brand_id?: unknown }).brand_id !== auth.brandId) {
+    return json({ error: "forbidden" }, 403);
+  }
+  return venueListingId;
+}
+
+// {action:"watch_list", lane:"app", brand_id, venue_listing_id} →
+// 200 { competitors: [ { id, name, city, website, place_pool_id, created_at,
+//        latest: { run_id, grade, overall, checked_at, schema_version } | null } ] }
+// `latest` plucks ONLY grade/overall/schema_version/created_at from the newest
+// report_ready 'competitor:<id>' row — the full report is NEVER bulk-shipped
+// in a list (the row tap fetches it via growth-tools-report P-43).
+async function handleWatchList(
+  supabase: ServiceClient,
+  auth: AppLaneAuth,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const venueId = await assertVenueOwned(supabase, auth, body.venue_listing_id);
+  if (venueId instanceof Response) return venueId;
+
+  const { data, error } = await supabase
+    .from("tool_competitors")
+    .select("id, name, city, website, place_pool_id, created_at")
+    .eq("venue_listing_id", venueId)
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.error("[growth-tools-run] watch list failed", error.message);
+    return json({ error: "server" }, 500);
+  }
+  const rows = (data ?? []) as Array<{
+    id: string;
+    name: string;
+    city: string | null;
+    website: string | null;
+    place_pool_id: string | null;
+    created_at: string;
+  }>;
+
+  const competitors = await Promise.all(rows.map(async (c) => {
+    // Newest report_ready run for this watch row's subject (index
+    // idx_tool_leads_app_subject). Keyed by the caller's verified brand —
+    // another brand's rows can never match (P-5).
+    const { data: latestRows, error: latestErr } = await supabase
+      .from("tool_leads")
+      .select(
+        "id, created_at, grade:report->scores->>grade, overall:report->scores->overall, schema_version:report->meta->schema_version",
+      )
+      .eq("brand_id", auth.brandId)
+      .eq("tool", "venues")
+      .eq("lane", "app")
+      .eq("subject_ref", `competitor:${c.id}`)
+      .eq("status", "report_ready")
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (latestErr) {
+      console.error(
+        "[growth-tools-run] watch latest lookup failed (non-fatal)",
+        latestErr.message,
+      );
+    }
+    const latest = Array.isArray(latestRows) && latestRows.length > 0
+      ? latestRows[0] as {
+        id: string;
+        created_at: string;
+        grade: string | null;
+        overall: number | null;
+        schema_version: number | null;
+      }
+      : null;
+    return {
+      id: c.id,
+      name: c.name,
+      city: c.city,
+      website: c.website,
+      place_pool_id: c.place_pool_id,
+      created_at: c.created_at,
+      latest: latest
+        ? {
+          run_id: latest.id,
+          grade: latest.grade ?? null,
+          overall: latest.overall ?? null,
+          checked_at: latest.created_at,
+          schema_version: latest.schema_version ?? null,
+        }
+        : null,
+    };
+  }));
+
+  return json({ competitors }, 200);
+}
+
+// {action:"watch_add", lane:"app", brand_id, venue_listing_id,
+//  competitor:{name, city, website, place_pool_id?}} → 200 {competitor} |
+//  409 {error:"watch_limit"} | 409 {error:"duplicate_competitor"}
+async function handleWatchAdd(
+  supabase: ServiceClient,
+  auth: AppLaneAuth,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const venueId = await assertVenueOwned(supabase, auth, body.venue_listing_id);
+  if (venueId instanceof Response) return venueId;
+
+  const raw = body.competitor;
+  const comp = (raw !== null && typeof raw === "object" && !Array.isArray(raw))
+    ? raw as Record<string, unknown>
+    : {};
+  const fields: string[] = [];
+  const name = typeof comp.name === "string" ? comp.name.trim() : "";
+  const city = typeof comp.city === "string" ? comp.city.trim() : "";
+  const website = typeof comp.website === "string" ? comp.website.trim() : "";
+  // Mirror the table CHECKs (name 2-80, city 2-60, website non-empty) so a
+  // stored competitor is always a runnable grader input.
+  if (name.length < 2 || name.length > 80) fields.push("name");
+  if (city.length < 2 || city.length > 60) fields.push("city");
+  if (website.length < 1) fields.push("website");
+  let placePoolId: string | null = null;
+  if (comp.place_pool_id !== undefined && comp.place_pool_id !== null && comp.place_pool_id !== "") {
+    if (isUuidValue(comp.place_pool_id)) placePoolId = comp.place_pool_id;
+    else fields.push("place_pool_id");
+  }
+  if (fields.length > 0) return json({ error: "validation", fields }, 400);
+
+  // Friendly cap pre-check (the trigger is the race-proof backstop).
+  const { count, error: capErr } = await supabase
+    .from("tool_competitors")
+    .select("id", { count: "exact", head: true })
+    .eq("venue_listing_id", venueId);
+  if (capErr) {
+    console.error("[growth-tools-run] watch cap count failed", capErr.message);
+    return json({ error: "server" }, 500);
+  }
+  if ((count ?? 0) >= WATCH_CAP) {
+    return json({ error: "watch_limit" }, 409);
+  }
+
+  const { data: insertedComp, error: insertErr } = await supabase
+    .from("tool_competitors")
+    .insert({
+      brand_id: auth.brandId,
+      venue_listing_id: venueId,
+      name,
+      city,
+      website,
+      place_pool_id: placePoolId,
+      // created_by = the P-3 verified userId, NEVER a client field.
+      created_by: auth.userId,
+    })
+    .select("id, name, city, website, place_pool_id, created_at")
+    .single();
+  if (insertErr || !insertedComp) {
+    const msg = insertErr?.message ?? "no row returned";
+    const code = (insertErr as { code?: string } | null)?.code ?? "";
+    // Structural dedup (unique index) → 409 duplicate_competitor.
+    if (code === "23505" || msg.includes("uq_tool_competitors_venue_site")) {
+      return json({ error: "duplicate_competitor" }, 409);
+    }
+    // Trigger backstops.
+    if (msg.includes("competitor_watch_cap")) {
+      return json({ error: "watch_limit" }, 409);
+    }
+    if (msg.includes("brand_mismatch") || msg.includes("venue_not_found")) {
+      return json({ error: "forbidden" }, 403);
+    }
+    console.error("[growth-tools-run] watch add failed", msg);
+    return json({ error: "server" }, 500);
+  }
+  return json({ competitor: insertedComp }, 200);
+}
+
+// {action:"watch_remove", lane:"app", brand_id, id} → 200 {ok:true} | 404 | 403
+// Deletes the LIST row only — run history is never cascaded and never deleted
+// (P-48, I-PROPOSED-1734-RUN-HISTORY-APPEND-ONLY): the orphaned
+// 'competitor:<dead-id>' rows remain spend/quota records, founder-visible.
+async function handleWatchRemove(
+  supabase: ServiceClient,
+  auth: AppLaneAuth,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const id = body.id;
+  if (!isUuidValue(id)) {
+    return json({ error: "validation", fields: ["id"] }, 400);
+  }
+  const { data, error } = await supabase
+    .from("tool_competitors")
+    .select("id, brand_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) {
+    console.error("[growth-tools-run] watch remove lookup failed", error.message);
+    return json({ error: "server" }, 500);
+  }
+  if (!data) return json({ error: "not_found" }, 404);
+  // (P-5 / COMMS-0136) ownership on THIS success path too — never delete
+  // another brand's watch row.
+  if ((data as { brand_id?: unknown }).brand_id !== auth.brandId) {
+    return json({ error: "forbidden" }, 403);
+  }
+  const { error: delErr } = await supabase
+    .from("tool_competitors")
+    .delete()
+    .eq("id", id);
+  if (delErr) {
+    console.error("[growth-tools-run] watch remove failed", delErr.message);
+    return json({ error: "server" }, 500);
+  }
+  return json({ ok: true }, 200);
 }
 
 // ── HTTP entry ───────────────────────────────────────────────────────────────
@@ -2132,8 +2595,29 @@ export async function handler(req: Request): Promise<Response> {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    if (body.action === "search") return await handleSearch(supabase, body);
+    if (body.action === "search") {
+      // ISSUE-1734 P-46: app-lane search runs the P-3 chain first, then
+      // behaves exactly as the anonymous search (≤5 pool rows, no quota).
+      // Anonymous web search is byte-for-byte unchanged.
+      if (isAppLane(body)) {
+        const auth = await authenticateAppLane(req, body, supabase);
+        if (auth instanceof Response) return auth;
+      }
+      return await handleSearch(supabase, body);
+    }
     if (body.action === "run") return await handleRun(supabase, req, body);
+    if (
+      isAppLane(body) &&
+      (body.action === "watch_list" || body.action === "watch_add" ||
+        body.action === "watch_remove")
+    ) {
+      // §S11: every watch action requires lane:"app" + the full P-3 chain.
+      const auth = await authenticateAppLane(req, body, supabase);
+      if (auth instanceof Response) return auth;
+      if (body.action === "watch_list") return await handleWatchList(supabase, auth, body);
+      if (body.action === "watch_add") return await handleWatchAdd(supabase, auth, body);
+      return await handleWatchRemove(supabase, auth, body);
+    }
     return json({ error: "validation", fields: ["action"] }, 400);
   } catch (err) {
     console.error(

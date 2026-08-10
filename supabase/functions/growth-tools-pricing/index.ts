@@ -24,12 +24,42 @@
 // Honesty rail: the loss/upside number is arithmetic from the host's OWN inputs,
 // shown worked; comps carry a source note + checked-on date.
 //
+// ISSUE-1734 [shared platform] — SECOND LANE for the signed-in Business app.
+// Lane is BODY-EXPLICIT (`lane:"app"`, P-2); anything else is the web lane,
+// byte-stable. App lane: P-3 auth chain (_shared/growthToolsAuth.ts), brand-
+// keyed quota (cap 15/brand/24h → 429 {error:"rate_limited", scope:"brand"}),
+// input-hash cache ({run_id, report, cached:true}), rows carry lane='app' +
+// verified user_id/brand_id + input_hash/client_ref with NULL pid/utm/ip_hash
+// (P-7/P-9). Subject `{type:"venue", id}` IS accepted on this tool (P-40 —
+// standing pricing checks for a venue; ownership-proven server-side, stamped
+// as subject_ref 'venue:<id>'). BOTH lanes: per-call timeouts + an 80s
+// per-run budget (P-24) and meta.schema_version:1 (P-11).
+//
 // → 400 {error:"validation", fields?} | {error:"invalid_json"}
+//   401 {error:"unauthenticated"} · 403 {error:"forbidden"} (app lane only)
 //   429 {error:"rate_limited"} · 502 {error:"generation_failed"} · 500 server
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
+import { timeoutFetch } from "../_shared/timeoutFetch.ts";
+// ISSUE-1734 — the SINGLE shared app-lane auth/quota/cache/budget module (P-6).
+import {
+  type AppLaneAuth,
+  authenticateAppLane,
+  checkAppLaneQuota,
+  computeInputHash,
+  createRunBudget,
+  GROUNDED_CALL_TIMEOUT_MS,
+  isAbortError,
+  isAppLane,
+  isUuidValue,
+  lookupAppLaneCache,
+  resolveRunSubject,
+  RUN_BUDGET_MS,
+  type RunBudget,
+  STRUCTURED_CALL_TIMEOUT_MS,
+} from "../_shared/growthToolsAuth.ts";
 
 // deno-lint-ignore no-explicit-any
 type ServiceClient = any;
@@ -454,16 +484,28 @@ function normalizeResearch(p: Record<string, unknown> | null): PricingResearch {
 }
 
 async function callResearchOnce(apiKey: string, prompt: string): Promise<PricingResearch | null> {
-  const res = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      systemInstruction: { parts: [{ text: RESEARCH_SYSTEM }] },
-      tools: [{ google_search: {} }],
-      generationConfig: { maxOutputTokens: 8192, temperature: GEMINI_TEMPERATURE },
-    }),
-  });
+  // ISSUE-1734 P-24: grounded pass bounded at 45s per attempt. BEST-EFFORT —
+  // an abort just fails the attempt (fallback research downstream).
+  let res: Response;
+  try {
+    res = await timeoutFetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        systemInstruction: { parts: [{ text: RESEARCH_SYSTEM }] },
+        tools: [{ google_search: {} }],
+        generationConfig: { maxOutputTokens: 8192, temperature: GEMINI_TEMPERATURE },
+      }),
+      timeoutMs: GROUNDED_CALL_TIMEOUT_MS,
+    });
+  } catch (err) {
+    if (isAbortError(err)) {
+      console.error("[growth-tools-pricing] research call timed out");
+      return null;
+    }
+    throw err;
+  }
   if (!res.ok) {
     console.error("[growth-tools-pricing] research HTTP", res.status);
     return null;
@@ -479,10 +521,21 @@ async function callResearchOnce(apiKey: string, prompt: string): Promise<Pricing
   return normalizeResearch(parsed);
 }
 
-async function generateResearch(apiKey: string, input: PricingInput): Promise<PricingResearch | null> {
+// ISSUE-1734 P-24: each attempt is SKIPPED when the remaining budget is under
+// the grounded single-attempt cap (fallback taken instead).
+async function generateResearch(
+  apiKey: string,
+  input: PricingInput,
+  budget: RunBudget,
+): Promise<PricingResearch | null> {
+  if (budget.remainingMs() < GROUNDED_CALL_TIMEOUT_MS) {
+    console.error("[growth-tools-pricing] research skipped — budget low");
+    return null;
+  }
   const prompt = buildResearchPrompt(input);
   const first = await callResearchOnce(apiKey, prompt);
   if (first !== null) return first;
+  if (budget.remainingMs() < GROUNDED_CALL_TIMEOUT_MS) return null;
   return await callResearchOnce(apiKey, `${prompt}\n\nREMINDER: output ONLY the JSON object.`);
 }
 
@@ -636,24 +689,40 @@ function normalizeSynthesis(parsed: unknown): Synthesis | null {
   };
 }
 
-async function callSynthesisOnce(apiKey: string, prompt: string): Promise<Synthesis | null> {
-  const res = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      systemInstruction: { parts: [{ text: SYNTH_SYSTEM }] },
-      generationConfig: {
-        maxOutputTokens: 4096,
-        temperature: GEMINI_TEMPERATURE,
-        responseMimeType: "application/json",
-        responseSchema: SYNTH_SCHEMA,
-      },
-    }),
-  });
+// ISSUE-1734 P-24: bounded by timeoutFetch; aborts reported via `timedOut` so
+// the caller returns the honest P-25 reason:"timeout".
+async function callSynthesisOnce(
+  apiKey: string,
+  prompt: string,
+  timeoutMs: number,
+): Promise<{ value: Synthesis | null; timedOut: boolean }> {
+  let res: Response;
+  try {
+    res = await timeoutFetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        systemInstruction: { parts: [{ text: SYNTH_SYSTEM }] },
+        generationConfig: {
+          maxOutputTokens: 4096,
+          temperature: GEMINI_TEMPERATURE,
+          responseMimeType: "application/json",
+          responseSchema: SYNTH_SCHEMA,
+        },
+      }),
+      timeoutMs,
+    });
+  } catch (err) {
+    if (isAbortError(err)) {
+      console.error("[growth-tools-pricing] synthesis call timed out", { timeoutMs });
+      return { value: null, timedOut: true };
+    }
+    throw err;
+  }
   if (!res.ok) {
     console.error("[growth-tools-pricing] synthesis HTTP", res.status);
-    return null;
+    return { value: null, timedOut: false };
   }
   const payload = await res.json() as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -665,16 +734,29 @@ async function callSynthesisOnce(apiKey: string, prompt: string): Promise<Synthe
   try {
     parsed = JSON.parse(text);
   } catch {
-    return null;
+    return { value: null, timedOut: false };
   }
-  return normalizeSynthesis(parsed);
+  return { value: normalizeSynthesis(parsed), timedOut: false };
 }
 
-async function generateSynthesis(apiKey: string, input: PricingInput, research: PricingResearch, audit: PricingAudit): Promise<Synthesis | null> {
+// FATAL stage (P-24): min(structured cap, remaining budget) per attempt; the
+// retry runs only if budget remains.
+async function generateSynthesis(
+  apiKey: string,
+  input: PricingInput,
+  research: PricingResearch,
+  audit: PricingAudit,
+  budget: RunBudget,
+): Promise<{ value: Synthesis | null; timedOut: boolean }> {
   const prompt = buildSynthesisPrompt(input, research, audit);
-  const first = await callSynthesisOnce(apiKey, prompt);
-  if (first !== null) return first;
-  return await callSynthesisOnce(apiKey, prompt);
+  const cap1 = Math.min(STRUCTURED_CALL_TIMEOUT_MS, budget.remainingMs());
+  if (cap1 <= 0) return { value: null, timedOut: true };
+  const first = await callSynthesisOnce(apiKey, prompt, cap1);
+  if (first.value !== null) return first;
+  const cap2 = Math.min(STRUCTURED_CALL_TIMEOUT_MS, budget.remainingMs());
+  if (cap2 <= 0) return { value: null, timedOut: true };
+  const second = await callSynthesisOnce(apiKey, prompt, cap2);
+  return { value: second.value, timedOut: first.timedOut || second.timedOut };
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────
@@ -683,50 +765,127 @@ async function handleRun(
   req: Request,
   body: Record<string, unknown>,
 ): Promise<Response> {
+  // ISSUE-1734 P-24: per-run wall-clock budget, measured from handler start.
+  const budget = createRunBudget(RUN_BUDGET_MS.experiences);
+
+  // ISSUE-1734 P-2: lane is BODY-EXPLICIT; anything other than lane:"app" is
+  // the web lane, processed exactly as before.
+  const appLane = isAppLane(body);
+  let appAuth: AppLaneAuth | null = null;
+  let subjectRef: string | null = null;
+  let clientRef: string | null = null;
+  if (appLane) {
+    // P-3/P-4/P-5 (COMMS-0136): auth BEFORE any service-role read/write or
+    // Gemini call; forged/expired JWT → 401, never a downgrade.
+    const auth = await authenticateAppLane(req, body, supabase);
+    if (auth instanceof Response) return auth;
+    appAuth = auth;
+    // P-40/P-41: `{type:"venue", id}` IS accepted on this tool (standing
+    // pricing checks per venue) — resolved + ownership-proven server-side; a
+    // client-sent `subject_ref` STRING is ignored (server-derived only).
+    const subject = await resolveRunSubject(supabase, auth, "experiences", body.subject);
+    if (subject instanceof Response) return subject;
+    subjectRef = subject.subjectRef;
+    const rawClientRef = body.client_ref;
+    if (rawClientRef !== undefined && rawClientRef !== null && rawClientRef !== "") {
+      if (!isUuidValue(rawClientRef)) {
+        return json({ error: "validation", fields: ["client_ref"] }, 400);
+      }
+      clientRef = rawClientRef;
+    }
+  }
+
   const validated = validatePricingInput(body.input);
   if (!validated.ok) return json({ error: "validation", fields: validated.fields }, 400);
   const input = validated.input;
 
-  const pid = typeof body.pid === "string" && body.pid.trim().length > 0
+  // ISSUE-1734 P-7: app runs persist NULL pid/utm. Web-lane handling unchanged.
+  const pid = appLane ? null : (typeof body.pid === "string" && body.pid.trim().length > 0
     ? body.pid.trim().slice(0, 120)
-    : null;
-  const utm = (body.utm !== null && typeof body.utm === "object" && !Array.isArray(body.utm))
+    : null);
+  const utm = appLane ? null : ((body.utm !== null && typeof body.utm === "object" && !Array.isArray(body.utm))
     ? body.utm as Record<string, unknown>
-    : null;
+    : null);
 
-  // Rate limit by salted IP hash — scoped to THIS tool.
-  const ip = firstForwardedHop(req.headers.get("x-forwarded-for"));
-  const ipHash = ip ? await hashIp(ip) : null;
-  if (ipHash) {
-    const sinceIso = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
-    const { count, error: countErr } = await supabase
-      .from("tool_leads")
-      .select("id", { count: "exact", head: true })
-      .eq("ip_hash", ipHash)
-      .eq("tool", "experiences")
-      .gte("created_at", sinceIso);
-    if (!countErr && (count ?? 0) >= RATE_LIMIT_MAX) {
-      return json({ error: "rate_limited" }, 429);
+  // The one normalized-input object: persisted AND hashed for the P-22 cache.
+  const normalizedInput = {
+    description: input.description, category: input.category, city: input.city,
+    seats: input.seats, current_price: input.current_price,
+    events_per_month: input.events_per_month, currency: input.currency,
+    venue_cost: input.venue_cost, materials_cost: input.materials_cost,
+    own_hours: input.own_hours, hourly_rate: input.hourly_rate,
+  };
+
+  let ipHash: string | null = null;
+  let inputHash: string | null = null;
+  if (appLane && appAuth) {
+    // P-20 (I-PROPOSED-1734-LANE-QUOTAS-ISOLATED): the app lane never consults
+    // x-forwarded-for; ip_hash stays NULL on app rows.
+    inputHash = await computeInputHash("experiences", normalizedInput);
+    // P-22 cache (subject-aware, P-42) — brand predicate + in-helper ownership
+    // assert IS the P-5 check on this success path (COMMS-0136).
+    const cached = await lookupAppLaneCache(
+      supabase,
+      appAuth,
+      "experiences",
+      inputHash,
+      subjectRef,
+    );
+    if (cached) {
+      return json({ run_id: cached.runId, report: cached.report, cached: true }, 200);
+    }
+    // P-19 brand-keyed quota (cap 15/brand/24h; fail-open observably).
+    const quota = await checkAppLaneQuota(supabase, appAuth.brandId, "experiences");
+    if (quota.limited) {
+      return json({ error: "rate_limited", scope: "brand" }, 429);
+    }
+  } else {
+    // WEB LANE (unchanged): rate limit by salted IP hash — scoped to THIS tool.
+    const ip = firstForwardedHop(req.headers.get("x-forwarded-for"));
+    ipHash = ip ? await hashIp(ip) : null;
+    if (ipHash) {
+      const sinceIso = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+      const { count, error: countErr } = await supabase
+        .from("tool_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("ip_hash", ipHash)
+        .eq("tool", "experiences")
+        .gte("created_at", sinceIso);
+      if (!countErr && (count ?? 0) >= RATE_LIMIT_MAX) {
+        return json({ error: "rate_limited" }, 429);
+      }
     }
   }
 
-  // Insert lead (status 'created').
+  // Insert lead (status 'created') — append-only lifecycle
+  // (I-PROPOSED-1734-RUN-HISTORY-APPEND-ONLY).
   const { data: inserted, error: insertErr } = await supabase
     .from("tool_leads")
-    .insert({
-      tool: "experiences",
-      status: "created",
-      input: {
-        description: input.description, category: input.category, city: input.city,
-        seats: input.seats, current_price: input.current_price,
-        events_per_month: input.events_per_month, currency: input.currency,
-        venue_cost: input.venue_cost, materials_cost: input.materials_cost,
-        own_hours: input.own_hours, hourly_rate: input.hourly_rate,
-      },
-      pid,
-      utm,
-      ip_hash: ipHash,
-    })
+    .insert(
+      appLane && appAuth
+        ? {
+          tool: "experiences",
+          status: "created",
+          input: normalizedInput,
+          pid: null,
+          utm: null,
+          ip_hash: null,
+          lane: "app",
+          user_id: appAuth.userId,
+          brand_id: appAuth.brandId,
+          client_ref: clientRef,
+          input_hash: inputHash,
+          subject_ref: subjectRef,
+        }
+        : {
+          tool: "experiences",
+          status: "created",
+          input: normalizedInput,
+          pid,
+          utm,
+          ip_hash: ipHash,
+        },
+    )
     .select("id")
     .single();
   if (insertErr || !inserted) {
@@ -742,14 +901,15 @@ async function handleRun(
   if (!apiKey) {
     console.error("[growth-tools-pricing] GEMINI_API_KEY missing");
     await markFailed();
-    return json({ error: "generation_failed" }, 502);
+    return json({ error: "generation_failed", reason: "upstream_failed" }, 502);
   }
 
-  // PASS A — grounded research (best-effort; fallback on failure).
+  // PASS A — grounded research (best-effort; fallback on failure; P-24 skips
+  // each attempt when the remaining budget is under the 45s grounded cap).
   let research: PricingResearch;
   let researchSource: "grounded" | "fallback" = "grounded";
   try {
-    const r = await generateResearch(apiKey, input);
+    const r = await generateResearch(apiKey, input, budget);
     if (r === null) {
       researchSource = "fallback";
       research = normalizeResearch(null);
@@ -769,11 +929,16 @@ async function handleRun(
   const audit = computeAudit(input, research);
 
   // PASS B — structured synthesis (verdict + framing + factors + fixes).
-  const synth = await generateSynthesis(apiKey, input, research, audit);
-  if (synth === null) {
+  // FATAL stage (P-24/P-25): budget exhaustion → reason:"timeout".
+  const synthRes = await generateSynthesis(apiKey, input, research, audit, budget);
+  if (synthRes.value === null) {
     await markFailed();
-    return json({ error: "generation_failed" }, 502);
+    return json({
+      error: "generation_failed",
+      reason: synthRes.timedOut || budget.exhausted() ? "timeout" : "upstream_failed",
+    }, 502);
   }
+  const synth = synthRes.value;
 
   const checkedOn = new Date().toISOString().slice(0, 10);
   const report = {
@@ -802,6 +967,9 @@ async function handleRun(
       generated_at: new Date().toISOString(),
       model: GEMINI_MODEL_ID,
       research_source: researchSource,
+      // ISSUE-1734 P-11 (I-PROPOSED-1734-REPORT-SCHEMA-VERSIONED): both lanes;
+      // readers tolerate absence; a breaking shape change bumps this integer.
+      schema_version: 1,
     },
   };
 
