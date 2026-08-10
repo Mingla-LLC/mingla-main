@@ -574,6 +574,21 @@ REVOKE ALL ON FUNCTION public.pg_venue_order_finalize_payment(
 GRANT EXECUTE ON FUNCTION public.pg_venue_order_finalize_payment(
   uuid, text, integer, text, text, text, integer, text) TO service_role;
 
+-- CREATE OR REPLACE preserves a function's ACL, so the two replaced functions
+-- above keep the grants #1171 gave them. Re-stating them is belt-and-braces and
+-- idempotent: neither may EVER be anon- or authenticated-executable, and the
+-- security-definer-anon-grant gate should be able to read that off this file
+-- rather than infer it from a migration three months upstream.
+REVOKE ALL ON FUNCTION public.attach_payout_release(
+  text,uuid,uuid,uuid,uuid,text,text,text,timestamptz,timestamptz,
+  integer,integer,integer,integer,integer,integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.attach_payout_release(
+  text,uuid,uuid,uuid,uuid,text,text,text,timestamptz,timestamptz,
+  integer,integer,integer,integer,integer,integer) TO service_role;
+REVOKE ALL ON FUNCTION public.run_payout_release_dark_sweep(timestamptz)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.run_payout_release_dark_sweep(timestamptz) TO service_role;
+
 -- ---------------------------------------------------------------------------
 -- ADDITIVE BEYOND P-49's FIVE, and stated as such (reported, not slipped in).
 --
