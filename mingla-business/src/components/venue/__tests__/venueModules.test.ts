@@ -14,15 +14,26 @@ import {
 } from "../venueModules";
 
 describe("deriveVenueModules", () => {
-  it("T-1 — toggle OFF → Overview, Menu, Settings (no booking band)", () => {
+  it("T-1 — toggle OFF → Overview, Menu, Insights, Settings (no booking band)", () => {
     // ORCH-1186-C T-MOD-1: menu is a command-band capability present even when
     // reservations is OFF (not gated on the toggle). Reverting menu out of the
     // OFF branch flips this → FAIL (dead-tap / missing-module regression).
-    expect(deriveVenueModules(false)).toEqual(["overview", "menu", "settings"]);
+    // Issue #1735 [TEST-MOD-APPROVED #1735]: the pinned array gains "insights"
+    // (command-band, both branches — the exact ORCH-1186-C menu precedent).
+    // The invariant under test (booking band gated SOLELY on the toggle) is
+    // UNCHANGED: OFF still contains zero booking modules.
+    expect(deriveVenueModules(false)).toEqual([
+      "overview",
+      "menu",
+      "insights",
+      "settings",
+    ]);
   });
 
-  it("T-2 — toggle ON → Overview, booking band, Menu, Settings (settings last)", () => {
+  it("T-2 — toggle ON → Overview, booking band, Menu, Insights, Settings (settings last)", () => {
     // ORCH-1186-C T-MOD-2: menu sits between the booking band and settings.
+    // Issue #1735 [TEST-MOD-APPROVED #1735]: insights sits after menu, before
+    // settings (the "newest command capability after menu" rule).
     const mods = deriveVenueModules(true);
     expect(mods).toEqual([
       "overview",
@@ -31,6 +42,7 @@ describe("deriveVenueModules", () => {
       "reservations",
       "waitlist",
       "menu",
+      "insights",
       "settings",
     ]);
     // booking modules present
@@ -63,5 +75,8 @@ describe("deriveVenueModules", () => {
     // ORCH-1186-C T-MOD-3: menu is command-band, NOT a booking module — so the
     // VenueSuiteShell booking-only "snap to overview" guard never fires on menu.
     expect(isBookingModule("menu")).toBe(false);
+    // Issue #1735 (append-only): insights is command-band, NOT a booking
+    // module — the snap-to-overview guard never fires on it either.
+    expect(isBookingModule("insights")).toBe(false);
   });
 });

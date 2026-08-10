@@ -62,6 +62,17 @@ export const VENUE_MODULES: Readonly<Record<VenueModule, VenueModuleMeta>> = {
     band: "command",
     summary: "Build your menu — categories, items, and prices guests see online.",
   },
+  // Issue #1735 — the combined Insights suite (site check + competitor watch;
+  // #1737 adds the pricing instrument). COMMAND band, present in BOTH
+  // derivation branches unconditionally
+  // (I-PROPOSED-1735-INSIGHTS-COMMAND-BAND-ADDITIVE). Label per approved
+  // decision row 15; summary verbatim design v2 §1.2b.
+  insights: {
+    id: "insights",
+    label: "Insights",
+    band: "command",
+    summary: "Your site, your pricing, your competition.",
+  },
   settings: {
     id: "settings",
     label: "Settings",
@@ -90,15 +101,21 @@ export const VENUE_BOOKING_MODULES: readonly VenueModule[] = [
  * Settings STAYS LAST. The booking-band gating is unchanged — the menu addition
  * does not affect I-PROPOSED-1148-RESERVATION-TOGGLE-GATES-SUITE.
  *
+ * Issue #1735 (I-PROPOSED-1735-INSIGHTS-COMMAND-BAND-ADDITIVE) — `insights` is
+ * likewise COMMAND-band, present in BOTH branches unconditionally, ordered
+ * after `menu` (the ORCH-1186-C "newest command capability after menu" rule)
+ * with Settings STILL LAST. Dropping it from either branch, gating it on the
+ * toggle, or ordering it after Settings flips the #1735 registry tests → FAIL.
+ *
  * Pure; unit-tested (mirrors `deriveHubVisibleTabs`).
  */
 export function deriveVenueModules(
   reservationsEnabled: boolean,
 ): readonly VenueModule[] {
   if (!reservationsEnabled) {
-    return ["overview", "menu", "settings"];
+    return ["overview", "menu", "insights", "settings"];
   }
-  return ["overview", ...VENUE_BOOKING_MODULES, "menu", "settings"];
+  return ["overview", ...VENUE_BOOKING_MODULES, "menu", "insights", "settings"];
 }
 
 /** True for the Band-B booking modules (which render ComingSoon in 2.0). */

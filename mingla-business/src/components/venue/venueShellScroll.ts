@@ -22,11 +22,13 @@ import type { VenueModule } from "../../types/venueReservation";
 export const VENUE_SCROLL_NAV_CLEARANCE = 120;
 
 /**
- * True iff the module brings its own ScrollView (Overview = VenueListingContent)
- * and therefore the shell must NOT add an outer ScrollView around it.
+ * True iff the module brings its own ScrollView (Overview =
+ * VenueIntelligenceModule; Insights = VenueInsightsModule, issue #1735) and
+ * therefore the shell must NOT add an outer ScrollView around it (nested
+ * same-axis scroll = the broken "doesn't scroll" symptom).
  */
 export function moduleSelfScrolls(module: VenueModule): boolean {
-  return module === "overview";
+  return module === "overview" || module === "insights";
 }
 
 /**

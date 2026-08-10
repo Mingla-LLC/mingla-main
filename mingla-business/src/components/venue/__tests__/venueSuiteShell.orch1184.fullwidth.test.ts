@@ -125,6 +125,10 @@ describe("ORCH-1184 — bare rail + full-width workspace", () => {
       // "Menu" module (between Waitlist and Settings), so the ON rail is now 7
       // items; Settings still stays last. The ORCH-1184 full-width layout +
       // bare-rail intent is unchanged — only the item count moved.
+      // Issue #1735 [TEST-MOD-APPROVED #1735] — the command-band "Insights"
+      // module lands between Menu and Settings (the ORCH-1186-C precedent);
+      // the ON rail is now 8 items, Settings still last, ORCH-1184's
+      // full-width + bare-rail intent unchanged.
       const ids = deriveVenueModules(true);
       const labels = ids.map((id) => VENUE_MODULES[id].label);
       expect(labels).toEqual([
@@ -134,9 +138,10 @@ describe("ORCH-1184 — bare rail + full-width workspace", () => {
         "Reservations",
         "Waitlist",
         "Menu",
+        "Insights",
         "Settings",
       ]);
-      expect(labels).toHaveLength(7);
+      expect(labels).toHaveLength(8);
     });
   });
 
