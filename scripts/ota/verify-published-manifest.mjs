@@ -62,15 +62,21 @@
  *   fallback can distinguish a blind publish from a correct one. A key with a
  *   literal fallback resolves identically either way and would be a FAKE check.
  *
- *   `consumer` holds exactly ONE key, `EXPO_PUBLIC_POSTHOG_KEY`. That is not a
- *   weakness to be fixed by adding more: `app-mobile/app.config.ts` emits no
- *   Stripe key into `extra` at all, and every other consumer entry (the
- *   AppsFlyer trio, the PostHog host, the four Google client IDs) carries a
- *   committed literal fallback and would pass identically on a blind publish.
- *   POSTHOG_KEY's role here is a CANARY for whether `--environment production`
- *   was applied at all — it is not coverage of Stripe. Adding
- *   `EXPO_PUBLIC_APPSFLYER_DEV_KEY` here would look like more coverage and
- *   would be none.
+ *   `consumer` holds exactly TWO keys, and both earn their place.
+ *     · `EXPO_PUBLIC_POSTHOG_KEY` — the original CANARY for whether
+ *       `--environment production` was applied at all. Until #1733 it was the
+ *       app's ONLY tripwire, i.e. a single point of failure for the whole
+ *       guardrail: one key acquiring a literal fallback would have retired the
+ *       consumer half of this check in silence.
+ *     · `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` — added at #1733, prefix-checked
+ *       `pk_live_`. `app-mobile/app.config.ts` now emits it into `extra` with a
+ *       `null` (never literal) local fallback, so the key that actually went
+ *       missing on 2026-08-06 is DIRECTLY measurable here instead of covered by
+ *       the transitive argument below.
+ *   Every OTHER consumer entry (the AppsFlyer trio, the PostHog host, the four
+ *   Google client IDs) carries a committed literal fallback and would pass
+ *   identically on a blind publish. Adding `EXPO_PUBLIC_APPSFLYER_DEV_KEY` here
+ *   would look like more coverage and would be none.
  *
  *   `business` deliberately EXCLUDES `EXPO_PUBLIC_POSTHOG_KEY`, which on that
  *   app has a committed literal fallback (`app.config.ts`) and therefore always
@@ -208,6 +214,14 @@ export function resolveAppExtra(manifestExtra) {
 export const EXPECTATIONS = {
   consumer: [
     { name: "EXPO_PUBLIC_POSTHOG_KEY", required: true, prefix: "phc_" },
+    // #1733 — the payment key, now emitted into `extra` by
+    // app-mobile/app.config.ts with a release-bound fail-loud guard and a
+    // `null` (never literal) local fallback. Second, independent tripwire.
+    {
+      name: "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+      required: true,
+      prefix: "pk_live_",
+    },
   ],
   business: [
     {
@@ -802,6 +816,24 @@ function selfTest() {
     if (!EXPECTATIONS.consumer.some((e) => e.name === "EXPO_PUBLIC_POSTHOG_KEY")) {
       problems.push("25 consumer table lost its only tripwire");
     }
+    // 25b (#1733) — the consumer table must carry the PAYMENT key, prefix-checked.
+    // Until #1733 the consumer half of this check rested on a single tripwire;
+    // losing this row puts it back to one thread and makes the key that actually
+    // went missing on 2026-08-06 unmeasurable again.
+    const consumerStripe = EXPECTATIONS.consumer.find(
+      (e) => e.name === "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+    );
+    if (!consumerStripe) {
+      problems.push(
+        "25b consumer table lost EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY — the payment key is " +
+          "no longer directly measurable in the served manifest (#1733)",
+      );
+    } else if (consumerStripe.prefix !== "pk_live_" || consumerStripe.required !== true) {
+      problems.push(
+        "25b consumer EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must stay required with the " +
+          `pk_live_ prefix; got required=${consumerStripe.required} prefix=${consumerStripe.prefix}`,
+      );
+    }
   }
 
   // ---- THE REAL WIRE SHAPE (cases 26-34) ----
@@ -819,7 +851,7 @@ function selfTest() {
   // is real, and case 31 fails if that shape ever drifts back to flat.
 
   /** The real app config `extra`, key-for-key (values redacted). */
-  const realAppExtra = (posthog) => ({
+  const realAppExtra = (posthog, stripe = "pk_live_fakebutwellformed") => ({
     eas: { build: {}, projectId: "01f9ff7c-0000-0000-0000-000000000000" },
     router: {},
     IOS_CLIENT_ID: "1691-i.apps.googleusercontent.com",
@@ -827,6 +859,9 @@ function selfTest() {
     GOOGLE_PROJECT_ID: "example-pr",
     googleWebClientId: "1691-w.apps.googleusercontent.com",
     EXPO_PUBLIC_POSTHOG_KEY: posthog,
+    // #1733 — app-mobile now emits the payment key into `extra`, so the real
+    // consumer shape carries it. Fake value, real shape.
+    EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: stripe,
     EXPO_PUBLIC_POSTHOG_HOST: "https://us.i.posthog.com",
     GOOGLE_ANDROID_CLIENT_ID: "1691-a.apps.googleusercontent.com",
     GOOGLE_IOS_CLIENT_SECRET: "",
@@ -1003,13 +1038,61 @@ function selfTest() {
     expectMsg("34 thin resolved extra is still vacuous", r.messages, "V-3");
   }
 
+  // ---- #1733: the CONSUMER payment tripwire (cases 35-37) ----
+  //
+  // The point of these three: before #1733 a consumer OTA published without
+  // `--environment production` could only be detected through PostHog. Now the
+  // payment key is measured directly, and 37 proves the two tripwires are
+  // INDEPENDENT — a healthy PostHog value can no longer certify a publish whose
+  // Stripe key went missing.
+  {
+    // 35 — a blind consumer publish: the payment key carries the UNSET SIGNATURE
+    //      while PostHog is fine. Must fail, and must name the signature.
+    const r = evalWire(realAppExtra(GOOD_POSTHOG, {}), EXPECTATIONS.consumer);
+    expect("35 consumer stripe key is the UNSET SIGNATURE", r.code, 1);
+    expectMsg("35 consumer stripe key is the UNSET SIGNATURE", r.messages, "UNSET SIGNATURE");
+    expectMsg(
+      "35 consumer stripe key is the UNSET SIGNATURE",
+      r.messages,
+      "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+    );
+  }
+  {
+    // 36 — the #990 shape on the consumer app: a pk_test_ key served to real
+    //      users. Presence alone is not enough; the prefix is contractual.
+    const r = evalWire(realAppExtra(GOOD_POSTHOG, "pk_test_wrongmode"), EXPECTATIONS.consumer);
+    expect("36 consumer stripe key has the wrong prefix", r.code, 1);
+    expectMsg("36 consumer stripe key has the wrong prefix", r.messages, "wrong prefix");
+  }
+  {
+    // 37 — INDEPENDENCE. A healthy PostHog value must NOT mask a dead payment
+    //      key, and a healthy payment key must NOT mask a dead PostHog value.
+    //      If either masked the other, the second tripwire would be decoration.
+    const healthy = evalWire(realAppExtra(GOOD_POSTHOG), EXPECTATIONS.consumer);
+    const stripeDead = evalWire(realAppExtra(GOOD_POSTHOG, {}), EXPECTATIONS.consumer);
+    const posthogDead = evalWire(realAppExtra({}), EXPECTATIONS.consumer);
+    expect("37 fully healthy consumer verifies", healthy.code, 0);
+    if (stripeDead.code === healthy.code || posthogDead.code === healthy.code) {
+      problems.push(
+        "37 a dead tripwire produced the same verdict as a healthy manifest — the consumer " +
+          "tripwires are not independent",
+      );
+    }
+    if (JSON.stringify(stripeDead.messages) === JSON.stringify(posthogDead.messages)) {
+      problems.push(
+        "37 a dead Stripe key and a dead PostHog key produced IDENTICAL output — the operator " +
+          "cannot tell which key went missing",
+      );
+    }
+  }
+
   if (problems.length) {
     console.error("#994 OTA-MANIFEST-VERIFY self-test FAIL:");
     problems.forEach((p) => console.error("  - " + p));
     process.exit(1);
   }
   console.log(
-    "#994 OTA-MANIFEST-VERIFY self-test PASS (34/34: 1-8 per-key verdicts incl. " +
+    "#994 OTA-MANIFEST-VERIFY self-test PASS (38/38: 1-8 per-key verdicts incl. " +
       "UNSET SIGNATURE first, 9-11 multipart/expo+json body extraction, 12-17 vacuity " +
       "(404, non-JSON, no launchAsset, thin extra, [] and wrong-platform update json), " +
       "18-23 empty table / unparseable / non-array / empty permalink / happy parse / null extra, " +
@@ -1018,7 +1101,10 @@ function selfTest() {
       "signature is caught on both apps, healthy and incident verdicts diverge, the fixture " +
       "shape-drift guard fails if the fixture is ever flattened back to the config shape, " +
       "V-6 refuses to assert the 3-key wrapper, the flat legacy shape still verifies, and the " +
-      "V-3 floor applies to the RESOLVED node).",
+      "V-3 floor applies to the RESOLVED node; " +
+      "25b/35-37 (#1733) the CONSUMER PAYMENT tripwire: the table keeps it required at " +
+      "pk_live_, the unset signature and a pk_test_ prefix are both caught on app-mobile, and " +
+      "the two consumer tripwires are proven INDEPENDENT — neither masks the other).",
   );
   process.exit(0);
 }

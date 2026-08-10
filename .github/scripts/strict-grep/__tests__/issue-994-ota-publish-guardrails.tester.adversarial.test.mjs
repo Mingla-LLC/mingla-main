@@ -333,6 +333,10 @@ const REAL_APP_EXTRA = (posthog) => ({
   EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: "1691-web.apps.googleusercontent.com",
   EXPO_PUBLIC_POSTHOG_HOST: "https://us.i.posthog.com",
   EXPO_PUBLIC_POSTHOG_KEY: posthog,
+  // #1733 — app-mobile now emits the payment key into `extra`, so the real
+  // consumer wire shape carries it and EXPECTATIONS.consumer asserts on it.
+  // Fake value, real shape. Business cases below override it explicitly.
+  EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_live_fakebutwellformed",
   GOOGLE_ANDROID_CLIENT_ID: "1691-a.apps.googleusercontent.com",
   GOOGLE_IOS_CLIENT_SECRET: "",
   GOOGLE_PROJECT_ID: "example-project",

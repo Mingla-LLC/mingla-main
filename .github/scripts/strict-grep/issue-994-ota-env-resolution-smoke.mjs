@@ -42,6 +42,29 @@
  *   S-4 is why S-1 does not apply to that one key: an expectation carrying an
  *   explicit `blindPrefix` is governed by S-4 instead. Every other tripwire is
  *   governed by S-1.
+ *   S-5 RELEASE-BOUND FAIL-CLOSED (#1732 / #1733). A THIRD run, sanitised but
+ *       carrying `EAS_BUILD_PROFILE=production` + `MINGLA_STRIPE_MODE=live`,
+ *       must EXIT NON-ZERO for BOTH apps, and the failure must NAME
+ *       `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
+ *
+ *   S-5 is the executed counterpart of S-4, and the two are not in tension —
+ *   they assert different environments. S-4 pins what LOCAL DEV resolves
+ *   (`EAS_BUILD_PROFILE` undefined -> the committed sandbox literal, exit 0), and
+ *   that is deliberately unchanged. S-5 pins what a RELEASE BUILD does with the
+ *   same absent environment: refuse. Before #1732 a native `mingla-business`
+ *   build with the env absent silently shipped the sandbox `pk_test_` literal
+ *   against the live backend (the #990 brick), because the mode DEFAULTS to
+ *   live and only pk_live-under-test was rejected; before #1733 `app-mobile`
+ *   shipped no payment key at all. `EAS_BUILD_PROFILE` is the discriminator,
+ *   which is exactly why the sanitiser strips it — a gate that could not turn
+ *   the discriminator on could not test the guard.
+ *
+ *   The masks (`RELEASE_BOUND_MASKS`) exist so the S-5 verdict cannot be earned
+ *   by the WRONG guard: both configs carry sibling release-bound fail-loud
+ *   guards (AppsFlyer on both, GIPHY on business) that would otherwise throw
+ *   first and make a non-zero exit meaningless. The Stripe key is the one value
+ *   deliberately left absent, and the message check proves it is the one that
+ *   spoke.
  *
  * DETERMINISM: both runs set `EXPO_NO_DOTENV=1`. Without it Expo re-injects the
  * operator's local `mingla-business/.env` into the child AFTER the sanitiser has
@@ -114,6 +137,27 @@ export const EXTRA_SANITISED = [
   "VERCEL_ENV",
   "MINGLA_STRIPE_MODE",
 ];
+
+/** S-5 — the EAS profile used to turn the release-bound guards ON. */
+export const RELEASE_BOUND_PROFILE = "production";
+
+/**
+ * S-5 — obviously-fake values for the SIBLING release-bound guards only.
+ *
+ * `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` is deliberately NOT here: it is the
+ * subject under test. Without these masks the AppsFlyer guard (both apps) or
+ * the GIPHY guard (business) throws first, the run still exits non-zero, and
+ * S-5 would pass while proving nothing about the payment key.
+ */
+export const RELEASE_BOUND_MASKS = {
+  EXPO_PUBLIC_APPSFLYER_DEV_KEY: "af_MINGLA1732SENTINEL",
+  EXPO_PUBLIC_APPSFLYER_IOS_APP_ID: "id0000000000",
+  EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID: "com.example.mingla1732sentinel",
+  EXPO_PUBLIC_GIPHY_API_KEY: "gk_MINGLA1732SENTINEL",
+};
+
+/** The payment key S-5 asserts on. */
+export const STRIPE_KEY_NAME = "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY";
 
 export class SmokeVacuityError extends Error {
   constructor(message) {
@@ -314,6 +358,74 @@ export function childEnv(applied) {
   return env;
 }
 
+/**
+ * S-5 — the sanitised environment PLUS a release-bound EAS profile and live
+ * mode, with every sibling release-bound guard masked. This is precisely the
+ * environment a blind `eas update`/EAS build sees on a production profile.
+ */
+export function releaseBoundEnv() {
+  const env = childEnv(false);
+  for (const [k, v] of Object.entries(RELEASE_BOUND_MASKS)) env[k] = v;
+  env.EAS_BUILD_PROFILE = RELEASE_BOUND_PROFILE;
+  env.MINGLA_STRIPE_MODE = "live";
+  return env;
+}
+
+/**
+ * S-5 — pure evaluator. All spawning is injected so the self-test drives every
+ * branch with fixtures.
+ *
+ * @param {object} a
+ * @param {string} a.app                expectation-table id ("consumer"|"business")
+ * @param {number|null|undefined} a.status  child exit status (null = never ran)
+ * @param {string} a.output             the child's combined stdout+stderr
+ * @returns {{code:number, messages:string[]}}
+ */
+export function evaluateReleaseBound({ app, status, output }) {
+  if (status === null || status === undefined) {
+    return {
+      code: 2,
+      messages: [
+        `VACUOUS: the release-bound run for "${app}" produced no exit status, so nothing was ` +
+          "measured. A check that could not run is never a pass.",
+      ],
+    };
+  }
+  const text = String(output ?? "");
+  if (status === 0) {
+    return {
+      code: 1,
+      messages: [
+        `S-5 ${app}: a RELEASE-BOUND config read (EAS_BUILD_PROFILE=${RELEASE_BOUND_PROFILE}, ` +
+          `MINGLA_STRIPE_MODE=live) with ${STRIPE_KEY_NAME} ABSENT exited 0. The fail-closed ` +
+          "guard is gone. On mingla-business that means the committed pk_test_ sandbox literal " +
+          "ships against the live backend and the app sticks on its splash screen (#990); on " +
+          "app-mobile it means the published update carries no payment key at all, so the #994 " +
+          "post-publish check has nothing to assert (2026-08-06).",
+      ],
+    };
+  }
+  if (!text.includes(STRIPE_KEY_NAME)) {
+    return {
+      code: 1,
+      messages: [
+        `S-5 ${app}: the release-bound run exited ${status}, but its output never names ` +
+          `${STRIPE_KEY_NAME}. Something ELSE refused first — a sibling release-bound guard, or ` +
+          "the config failing to load at all — so this non-zero exit is not evidence about the " +
+          "payment key. Add the missing sibling to RELEASE_BOUND_MASKS rather than accepting a " +
+          `verdict earned by the wrong guard.\n--- output ---\n${text.trim().slice(0, 1200)}`,
+      ],
+    };
+  }
+  return {
+    code: 0,
+    messages: [
+      `  S-5 OK ${app}: a release-bound config read with ${STRIPE_KEY_NAME} absent exits ` +
+        `${status} and names the payment key.`,
+    ],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Self-test
 // ---------------------------------------------------------------------------
@@ -330,9 +442,20 @@ function selfTest() {
   const pad = (o) => ({ a: 1, b: 2, c: 3, d: 4, e: 5, ...o });
 
   // ---- consumer ----
-  const consumerBlind = () => pad({ EXPO_PUBLIC_POSTHOG_KEY: {} });
-  const consumerApplied = () =>
-    pad({ EXPO_PUBLIC_POSTHOG_KEY: SENTINELS.EXPO_PUBLIC_POSTHOG_KEY });
+  // #1733: app-mobile now emits the payment key into `extra`, so the consumer
+  // table carries TWO tripwires and every consumer fixture must exercise both.
+  const consumerBlind = (over = {}) =>
+    pad({
+      EXPO_PUBLIC_POSTHOG_KEY: {},
+      EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: {},
+      ...over,
+    });
+  const consumerApplied = (over = {}) =>
+    pad({
+      EXPO_PUBLIC_POSTHOG_KEY: SENTINELS.EXPO_PUBLIC_POSTHOG_KEY,
+      EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: SENTINELS.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+      ...over,
+    });
 
   // 1 — blind run with the tripwire unset, applied run carrying the sentinel.
   expect(
@@ -348,7 +471,7 @@ function selfTest() {
   {
     const r = evaluateRuns({
       app: "consumer",
-      blindExtra: pad({ EXPO_PUBLIC_POSTHOG_KEY: "phc_committedliteral" }),
+      blindExtra: consumerBlind({ EXPO_PUBLIC_POSTHOG_KEY: "phc_committedliteral" }),
       appliedExtra: consumerApplied(),
     });
     expect("2 S-1 tripwire gained a fallback", r.code, 1);
@@ -359,14 +482,14 @@ function selfTest() {
     const r = evaluateRuns({
       app: "consumer",
       blindExtra: consumerBlind(),
-      appliedExtra: pad({ EXPO_PUBLIC_POSTHOG_KEY: "phc_somethingelse" }),
+      appliedExtra: consumerApplied({ EXPO_PUBLIC_POSTHOG_KEY: "phc_somethingelse" }),
     });
     expect("3 S-2 sentinel not plumbed through", r.code, 1);
     expectMsg("3 S-2 sentinel not plumbed through", r.messages, "S-2");
   }
   // 4 — S-3: identical A/B runs.
   {
-    const same = pad({ EXPO_PUBLIC_POSTHOG_KEY: SENTINELS.EXPO_PUBLIC_POSTHOG_KEY });
+    const same = consumerApplied();
     const r = evaluateRuns({
       app: "consumer",
       blindExtra: same,
@@ -380,11 +503,37 @@ function selfTest() {
     "4b null is an unset signature",
     evaluateRuns({
       app: "consumer",
-      blindExtra: pad({ EXPO_PUBLIC_POSTHOG_KEY: null }),
+      blindExtra: consumerBlind({ EXPO_PUBLIC_POSTHOG_KEY: null }),
       appliedExtra: consumerApplied(),
     }).code,
     0,
   );
+  // 4d (#1733) — S-1 on the SECOND consumer tripwire: the payment key resolving
+  // to a real value in the blind run means app.config.ts handed it a committed
+  // literal fallback, which is the one thing Corollary 4 forbids.
+  {
+    const r = evaluateRuns({
+      app: "consumer",
+      blindExtra: consumerBlind({
+        EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_live_committedliteral",
+      }),
+      appliedExtra: consumerApplied(),
+    });
+    expect("4d S-1 consumer payment tripwire gained a fallback", r.code, 1);
+    expectMsg("4d S-1 consumer payment tripwire gained a fallback", r.messages, "unfalsifiable");
+  }
+  // 4e (#1733) — S-2 on the SECOND consumer tripwire: the applied run failing to
+  // carry the sentinel means app.config.ts stopped EMITTING the payment key into
+  // `extra`, which is exactly the state #1733 fixed.
+  {
+    const r = evaluateRuns({
+      app: "consumer",
+      blindExtra: consumerBlind(),
+      appliedExtra: consumerApplied({ EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: undefined }),
+    });
+    expect("4e S-2 consumer payment key no longer emitted into extra", r.code, 1);
+    expectMsg("4e S-2 consumer payment key no longer emitted into extra", r.messages, "S-2");
+  }
   // 4c — the tripwire absent entirely is also the unset signature.
   expect(
     "4c absent is an unset signature",
@@ -511,6 +660,74 @@ function selfTest() {
       }
     }
   }
+  // 11b (#1733) — the consumer table must carry BOTH tripwires. One tripwire is
+  // a single point of failure for the whole consumer half of #994.
+  for (const name of ["EXPO_PUBLIC_POSTHOG_KEY", STRIPE_KEY_NAME]) {
+    if (!EXPECTATIONS.consumer.some((e) => e.name === name)) {
+      problems.push(`11b EXPECTATIONS.consumer lost the ${name} tripwire`);
+    }
+  }
+
+  // ---- S-5, release-bound fail-closed (#1732 / #1733), cases 12-15 ----
+  // 12 — the shipped shape: a non-zero exit whose output names the payment key.
+  for (const app of ["consumer", "business"]) {
+    const r = evaluateReleaseBound({
+      app,
+      status: 1,
+      output: `Error: ${STRIPE_KEY_NAME} is required for the production EAS_BUILD_PROFILE build`,
+    });
+    expect(`12 S-5 ${app} fails closed and names the key`, r.code, 0);
+  }
+  // 13 — THE FAILS-ON-REVERT CASE. Delete either config guard and the release-
+  //      bound read succeeds again; that must be a hard failure, not a pass.
+  {
+    const r = evaluateReleaseBound({ app: "business", status: 0, output: '{"extra":{}}' });
+    expect("13 S-5 release-bound read exits 0 (guard deleted)", r.code, 1);
+    expectMsg("13 S-5 release-bound read exits 0 (guard deleted)", r.messages, "fail-closed guard is gone");
+  }
+  // 14 — VERDICT EARNED BY THE WRONG GUARD. A sibling release-bound guard
+  //      (AppsFlyer / GIPHY) throwing first also exits non-zero. Accepting that
+  //      would let the payment guard be deleted while S-5 stayed green — the
+  //      unfalsifiable-gate mode this whole issue exists to prevent.
+  {
+    const r = evaluateReleaseBound({
+      app: "business",
+      status: 1,
+      output: "Error: EXPO_PUBLIC_APPSFLYER_DEV_KEY ... are required for the production build",
+    });
+    expect("14 S-5 non-zero exit from the wrong guard", r.code, 1);
+    expectMsg("14 S-5 non-zero exit from the wrong guard", r.messages, "Something ELSE refused first");
+  }
+  // 15 — VACUITY: the child never produced a status, so nothing was measured.
+  {
+    const r = evaluateReleaseBound({ app: "consumer", status: null, output: "" });
+    expect("15 S-5 VACUITY no exit status", r.code, 2);
+  }
+  // 15b — the release-bound env must actually turn the discriminator ON, must
+  //       keep the payment key ABSENT, and must mask the siblings.
+  {
+    const env = releaseBoundEnv();
+    if (env.EAS_BUILD_PROFILE !== RELEASE_BOUND_PROFILE) {
+      problems.push("15b releaseBoundEnv does not set a release-bound EAS_BUILD_PROFILE");
+    }
+    if (env.MINGLA_STRIPE_MODE !== "live") {
+      problems.push("15b releaseBoundEnv does not pin MINGLA_STRIPE_MODE=live");
+    }
+    if (env[STRIPE_KEY_NAME] !== undefined) {
+      problems.push(
+        `15b releaseBoundEnv leaks ${STRIPE_KEY_NAME} into the child — the subject under test ` +
+          "must be the one value that is absent",
+      );
+    }
+    for (const k of Object.keys(RELEASE_BOUND_MASKS)) {
+      if (env[k] !== RELEASE_BOUND_MASKS[k]) {
+        problems.push(`15b releaseBoundEnv does not mask the sibling guard variable ${k}`);
+      }
+    }
+    if (env.EXPO_NO_DOTENV !== "1") {
+      problems.push("15b releaseBoundEnv is not dotenv-blind, so a local .env could supply the key");
+    }
+  }
 
   if (problems.length) {
     console.error("#994 OTA-ENV-RESOLUTION self-test FAIL:");
@@ -518,11 +735,17 @@ function selfTest() {
     process.exit(1);
   }
   console.log(
-    "#994 OTA-ENV-RESOLUTION self-test PASS (14/14: 1/4b/4c/5 clean consumer+business incl. " +
+    "#994 OTA-ENV-RESOLUTION self-test PASS (22/22: 1/4b/4c/5 clean consumer+business incl. " +
       "null and absent unset signatures; 2/6b S-1 falsifiability lost; 3 S-2 plumbing broken; " +
       "4 S-3 degenerate A/B; 6 S-4 pinned #990 hazard changed; 7/7b/8/9 vacuity " +
       "(unparseable stdout, no extra, thin extra, empty table); 10 sanitiser + EXPO_NO_DOTENV " +
-      "+ sentinel plumbing; 11 every real tripwire has a sentinel).",
+      "+ sentinel plumbing; 11 every real tripwire has a sentinel; " +
+      "4d/4e/11b (#1733) the SECOND consumer tripwire — the payment key gaining a literal " +
+      "fallback, the payment key no longer emitted into `extra`, and the table keeping both; " +
+      "12-15b (#1732/#1733) S-5 release-bound fail-closed — both apps refuse and name the " +
+      "payment key, a release-bound read that exits 0 is a hard failure, a non-zero exit earned " +
+      "by a SIBLING guard is rejected, a missing exit status is vacuity, and the release-bound " +
+      "env really flips the discriminator while keeping the payment key absent).",
   );
   process.exit(0);
 }
@@ -556,6 +779,28 @@ function resolveConfig(appDir, applied) {
   return parseConfigStdout(proc.stdout);
 }
 
+/**
+ * S-5 — the release-bound run. Deliberately NOT `--json`: with `--json` the Expo
+ * CLI prints NOTHING on a config-evaluation error (verified 2026-08-09, both
+ * apps, empty stdout AND empty stderr, exit 1), so the message check that keeps
+ * this assertion honest would have nothing to read. Plain mode puts the config's
+ * own error on stderr.
+ */
+function resolveConfigReleaseBound(appDir) {
+  const proc = spawnSync("npx", ["expo", "config", "--type", "public"], {
+    cwd: path.join(repoRoot, appDir),
+    env: releaseBoundEnv(),
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (proc.error) {
+    throw new SmokeVacuityError(
+      `VACUOUS: could not spawn \`expo config\` for the release-bound run (${proc.error.message}).`,
+    );
+  }
+  return { status: proc.status, output: `${proc.stdout || ""}\n${proc.stderr || ""}` };
+}
+
 function liveRun() {
   const i = process.argv.indexOf("--app");
   const appDir = i === -1 ? null : process.argv[i + 1];
@@ -570,18 +815,24 @@ function liveRun() {
 
   let blindExtra;
   let appliedExtra;
+  let releaseBound;
   try {
     blindExtra = resolveConfig(appDir, false);
     appliedExtra = resolveConfig(appDir, true);
+    releaseBound = resolveConfigReleaseBound(appDir);
   } catch (err) {
     console.error(err.message);
     process.exit(err.exitCode ?? 2);
   }
 
   const result = evaluateRuns({ app, blindExtra, appliedExtra });
-  if (result.code === 0) result.messages.forEach((m) => console.log(m));
-  else result.messages.forEach((m) => console.error(m));
-  process.exit(result.code);
+  const s5 = evaluateReleaseBound({ app, ...releaseBound });
+  // Vacuity in either half wins; otherwise a failure in either half fails.
+  const code = Math.max(result.code === 2 || s5.code === 2 ? 2 : 0, result.code, s5.code);
+  const messages = [...result.messages, ...s5.messages];
+  if (code === 0) messages.forEach((m) => console.log(m));
+  else messages.forEach((m) => console.error(m));
+  process.exit(code);
 }
 
 if (process.argv.includes("--self-test")) selfTest();

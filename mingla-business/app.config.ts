@@ -20,6 +20,26 @@ const hasAppsFlyerEnv = (): boolean =>
 const hasOneSignalEnv = (): boolean =>
   Boolean(process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID);
 
+/**
+ * The EAS build profiles a tester or a real user actually installs.
+ *
+ * ONE list, module-scope, because three separate guards in this file gate on it
+ * (AppsFlyer ORCH-1313, Stripe #1732, GIPHY ORCH-1116) and a fourth copy is one
+ * refactor away from drifting. `app-mobile/app.config.ts` carries the identical
+ * list for the same reason — the two apps are separate Expo projects, so the
+ * constant cannot be shared across them, but within a file there is exactly one.
+ *
+ * `EAS_BUILD_PROFILE` is UNDEFINED for local dev and for `npx expo config`, and
+ * that is the whole discriminator: a guard keyed on it fails a release build
+ * loudly while leaving a developer without env completely untouched.
+ */
+const RELEASE_BOUND_EAS_PROFILES = [
+  "production",
+  "production-apk",
+  "preview",
+  "preview-sim",
+];
+
 const filterOptionalNativeStartupPlugins = (
   plugins: ExpoPluginEntry[] | undefined,
 ): ExpoPluginEntry[] =>
@@ -65,16 +85,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   // unattributed again. Dev/local builds keep the strip-and-no-op behavior (no throw)
   // so a developer without the env still builds. Safe: the business EAS production env
   // already carries the vars (dispatch's confirmed facts).
-  const APPSFLYER_RELEASE_BOUND_EAS_PROFILES = [
-    "production",
-    "production-apk",
-    "preview",
-    "preview-sim",
-  ];
+  // #1732: the profile list moved to the module-scope RELEASE_BOUND_EAS_PROFILES
+  // above (one list, three guards) — behaviour is byte-identical, the four
+  // profile names are unchanged.
   const easBuildProfile = process.env.EAS_BUILD_PROFILE;
   if (
     easBuildProfile !== undefined &&
-    APPSFLYER_RELEASE_BOUND_EAS_PROFILES.includes(easBuildProfile) &&
+    RELEASE_BOUND_EAS_PROFILES.includes(easBuildProfile) &&
     !hasAppsFlyerEnv()
   ) {
     throw new Error(
@@ -226,6 +243,47 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           );
         }
         const localValue = fromEnv ?? sandboxFallback;
+        // #1732 [payment-key-fail-closed] — RELEASE-BOUND FAIL-CLOSED.
+        //
+        // This branch (VERCEL_ENV undefined) covers BOTH a native EAS build and
+        // local dev, and its checks were asymmetric: a pk_live_ value under
+        // MINGLA_STRIPE_MODE=test was rejected, but a pk_test_ value under
+        // mode=live was accepted SILENTLY. Since the mode DEFAULTS to "live"
+        // (:200 above), a native release build with the env absent resolved to
+        // the committed sandboxFallback literal and shipped pk_test_ against a
+        // live backend — the #990 brick: verifyStripeModeAlignment() throws at
+        // boot and the app sticks on the splash forever.
+        //
+        // The naive rule ("require pk_live_ whenever stripeMode is live") cannot
+        // be used: local dev with no env resolves to mode=live + the sandbox
+        // fallback, i.e. exactly what that rule rejects, so every developer's
+        // `expo config` and every CI config read would start throwing.
+        // EAS_BUILD_PROFILE is the discriminator — it is set ONLY by an EAS
+        // build and is undefined for local dev — and it is the same one the
+        // AppsFlyer guard above and the GIPHY guard below already use.
+        //
+        // So: on a release-bound profile, under live mode, a non-pk_live_ value
+        // (INCLUDING the sandbox literal) is a hard build failure. Local dev
+        // (EAS_BUILD_PROFILE undefined) is completely untouched and still
+        // resolves the sandbox key — which is what #994's S-4 assertion pins.
+        // The sandbox literal deliberately STAYS: removing it breaks local dev
+        // for anyone without env, and this guard makes it unreachable on a
+        // release build, which is the actual hazard.
+        const easBuildProfileForStripe = process.env.EAS_BUILD_PROFILE;
+        const isReleaseBoundStripeBuild =
+          easBuildProfileForStripe !== undefined &&
+          RELEASE_BOUND_EAS_PROFILES.includes(easBuildProfileForStripe);
+        if (
+          isReleaseBoundStripeBuild &&
+          stripeMode === "live" &&
+          !localValue.startsWith("pk_live_")
+        ) {
+          throw new Error(
+            `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY must be a pk_live_ value for the ${easBuildProfileForStripe} EAS_BUILD_PROFILE build when MINGLA_STRIPE_MODE=live (resolved "${localValue.slice(0, 8)}…"). ` +
+              `A pk_test_ key against the live backend is the #990 boot brick — verifyStripeModeAlignment() throws and the app sticks on the splash screen. ` +
+              `The committed sandbox fallback is NOT acceptable on a release build. Provision the live key in the matching EAS environment. [#1732]`,
+          );
+        }
         // ORCH-1214: VERCEL_ENV undefined = native EAS build OR local dev. Accept the
         // mode-appropriate prefix: pk_live_ only when MINGLA_STRIPE_MODE=live (live
         // production builds); pk_test_ otherwise (local dev / test mode). Branch 4
@@ -268,15 +326,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         // Vercel production/preview web exports.
         const easProfile = process.env.EAS_BUILD_PROFILE;
         const vercelEnv = process.env.VERCEL_ENV;
-        const releaseBoundEasProfiles = [
-          "production",
-          "production-apk",
-          "preview",
-          "preview-sim",
-        ];
+        // #1732: the profile list moved to the module-scope
+        // RELEASE_BOUND_EAS_PROFILES above (one list, three guards) — behaviour
+        // is byte-identical, the four profile names are unchanged.
         const isReleaseBound =
           (easProfile !== undefined &&
-            releaseBoundEasProfiles.includes(easProfile)) ||
+            RELEASE_BOUND_EAS_PROFILES.includes(easProfile)) ||
           vercelEnv === "production" ||
           vercelEnv === "preview";
         if (isReleaseBound && (fromEnv === null || fromEnv.length === 0)) {

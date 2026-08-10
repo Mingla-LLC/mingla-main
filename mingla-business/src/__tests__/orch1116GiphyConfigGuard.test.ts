@@ -89,6 +89,13 @@ describe("ORCH-1116 app.config GIPHY fail-loud guard (real default fn)", () => {
         EAS_BUILD_PROFILE: "preview",
         VERCEL_ENV: undefined,
         ...FAKE_APPSFLYER_ENV, // [ORCH-1062] past the ORCH-1313 AppsFlyer guard.
+        // [#1732 drift-update] The comment below is NO LONGER TRUE. #1732 made
+        // the Stripe branch fail CLOSED on a release-bound EAS_BUILD_PROFILE
+        // under live mode (the mode defaults to live), so the sandbox fallback
+        // now THROWS here and would mask the GIPHY assertion — exactly as the
+        // AppsFlyer guard already did. Supply a valid pk_live to get past it,
+        // the same masking convention A3 uses for the Vercel branch.
+        EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: FAKE_PK_LIVE,
         EXPO_PUBLIC_GIPHY_API_KEY: undefined,
         EXPO_PUBLIC_GIPHY_KEY: undefined,
         // No VERCEL_ENV → Stripe guard uses sandbox fallback, no interference.
@@ -102,6 +109,7 @@ describe("ORCH-1116 app.config GIPHY fail-loud guard (real default fn)", () => {
         EAS_BUILD_PROFILE: "production-apk",
         VERCEL_ENV: undefined,
         ...FAKE_APPSFLYER_ENV, // [ORCH-1062] past the ORCH-1313 AppsFlyer guard.
+        EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: FAKE_PK_LIVE, // [#1732] past the release-bound Stripe guard.
         EXPO_PUBLIC_GIPHY_API_KEY: undefined,
         EXPO_PUBLIC_GIPHY_KEY: undefined,
       }),
@@ -170,6 +178,7 @@ describe("ORCH-1116 app.config GIPHY fail-loud guard (real default fn)", () => {
         EAS_BUILD_PROFILE: "preview",
         VERCEL_ENV: undefined,
         ...FAKE_APPSFLYER_ENV, // [ORCH-1062] past the ORCH-1313 AppsFlyer guard.
+        EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: FAKE_PK_LIVE, // [#1732] past the release-bound Stripe guard.
         EXPO_PUBLIC_GIPHY_API_KEY: "gphy_dummy_key_value_abcdef ".trim(),
         EXPO_PUBLIC_GIPHY_KEY: undefined,
       }) as { extra?: Record<string, unknown> };
@@ -183,6 +192,7 @@ describe("ORCH-1116 app.config GIPHY fail-loud guard (real default fn)", () => {
         EAS_BUILD_PROFILE: "preview",
         VERCEL_ENV: undefined,
         ...FAKE_APPSFLYER_ENV, // [ORCH-1062] past the ORCH-1313 AppsFlyer guard.
+        EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY: FAKE_PK_LIVE, // [#1732] past the release-bound Stripe guard.
         EXPO_PUBLIC_GIPHY_API_KEY: undefined,
         EXPO_PUBLIC_GIPHY_KEY: "legacy_giphy_fallback_key_value",
       }),
