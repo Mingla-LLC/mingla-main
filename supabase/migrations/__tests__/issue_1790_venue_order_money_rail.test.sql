@@ -16,17 +16,34 @@ CREATE TEMP TABLE t1790_fx (k text PRIMARY KEY, v uuid);
 
 DO $seed$
 DECLARE
-  v_brand uuid; v_venue uuid; v_table uuid; v_spot uuid; v_menu uuid;
-  v_item uuid; v_group uuid; v_mod uuid; v_user uuid; v_res uuid;
+  v_brand uuid := '00000000-1790-4000-8000-000000000002';
+  v_venue uuid := '00000000-1790-4000-8000-000000000010';
+  v_table uuid := '00000000-1790-4000-8000-000000000020';
+  v_user  uuid := '00000000-1790-4000-8000-000000000001';
+  v_spot uuid; v_menu uuid; v_item uuid; v_group uuid; v_mod uuid; v_res uuid;
 BEGIN
-  INSERT INTO auth.users DEFAULT VALUES RETURNING id INTO v_user;
-  INSERT INTO public.brands (name, payment_provider, payout_hold_cutover_at)
-  VALUES ('issue-1790 brand', 'stripe', now() - interval '365 days')
-  RETURNING id INTO v_brand;
-  INSERT INTO public.venue_listings (brand_id, claim_status)
-  VALUES (v_brand, 'verified') RETURNING id INTO v_venue;
-  INSERT INTO public.venue_tables (brand_id, venue_id, name, zone)
-  VALUES (v_brand, v_venue, 'Table 12', 'indoor') RETURNING id INTO v_table;
+  -- Explicit ids and the REAL column sets. `auth.users.id` has NO default in
+  -- production, and brands/venue_listings/reservations carry NOT NULLs a loose
+  -- fixture would trip over — this mirrors #1789's proven seed rather than
+  -- inventing a shape.
+  INSERT INTO auth.users (id, instance_id, aud, role, email, created_at, updated_at)
+  VALUES (v_user, '00000000-0000-0000-0000-000000000000',
+          'authenticated', 'authenticated', 'owner-1790@example.test', now(), now());
+  INSERT INTO public.creator_accounts (id, created_at) VALUES (v_user, now());
+
+  INSERT INTO public.brands (id, account_id, name, slug, default_currency,
+                             payment_provider, payout_hold_cutover_at, created_at, updated_at)
+  VALUES (v_brand, v_user, 'Issue 1790 Brand', 'issue1790brand', 'GBP',
+          'stripe', now() - interval '365 days', now(), now());
+
+  INSERT INTO public.venue_listings (id, brand_id, slug, name, lat, lng,
+                                     venue_category, claim_status)
+  VALUES (v_venue, v_brand, 'brasserie1790', 'The Brasserie', 51.50, -0.12,
+          'restaurant', 'verified');
+
+  INSERT INTO public.venue_tables (id, brand_id, venue_id, name, capacity, zone, sort_order)
+  VALUES (v_table, v_brand, v_venue, 'Table 12', 4, 'indoor', 1);
+
   -- #1789's P-7c auto-provision trigger mints the spot for a new table, and
   -- qr_spots_table_uniq means there is AT MOST ONE per physical unit. Take the
   -- one the trigger made rather than racing it — the venue never manages two
@@ -39,6 +56,7 @@ BEGIN
     VALUES (v_brand, v_venue, 'table', v_table, 'Table 12', v_venue, 'kq7m3pd2xr')
     RETURNING id INTO v_spot;
   END IF;
+
   INSERT INTO public.menus (brand_id, venue_id, name)
   VALUES (v_brand, v_venue, 'All day') RETURNING id INTO v_menu;
   INSERT INTO public.menu_items (menu_id, brand_id, name, price_cents, currency)
@@ -47,8 +65,10 @@ BEGIN
   VALUES (v_item, v_brand, 'Ice', 'single', 1, 1) RETURNING id INTO v_group;
   INSERT INTO public.menu_modifiers (group_id, brand_id, name, price_delta_cents, currency)
   VALUES (v_group, v_brand, 'No ice', 0, 'GBP') RETURNING id INTO v_mod;
-  INSERT INTO public.reservations (venue_id, party_size, status)
-  VALUES (v_venue, 4, 'seated') RETURNING id INTO v_res;
+
+  INSERT INTO public.reservations (brand_id, venue_id, reserved_for, party_size, status)
+  VALUES (v_brand, v_venue, now() + interval '1 hour', 4, 'seated')
+  RETURNING id INTO v_res;
 
   INSERT INTO t1790_fx VALUES
     ('brand', v_brand), ('venue', v_venue), ('table', v_table), ('spot', v_spot),
@@ -401,7 +421,10 @@ DO $t$
 DECLARE
   v_other_brand uuid; v_raised boolean := false;
 BEGIN
-  INSERT INTO public.brands (name) VALUES ('issue-1790 other') RETURNING id INTO v_other_brand;
+  INSERT INTO public.brands (id, account_id, name, slug, default_currency, created_at, updated_at)
+  VALUES ('00000000-1790-4000-8000-000000000004', pg_temp.fx('user'),
+          'Issue 1790 Other Brand', 'issue1790other', 'GBP', now(), now())
+  RETURNING id INTO v_other_brand;
   BEGIN
     INSERT INTO public.venue_order_sessions (brand_id, venue_id, currency)
     VALUES (v_other_brand, pg_temp.fx('venue'), 'GBP');
