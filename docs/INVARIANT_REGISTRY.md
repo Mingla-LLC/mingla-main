@@ -32,9 +32,16 @@
 
 ---
 
-## DRAFT — issue #994 (a production over-the-air update shipped with its live keys missing, and every check said it was fine)
+## ACTIVE — issue #994 (a production over-the-air update shipped with its live keys missing, and every check said it was fine — CLOSED 2026-08-09, PR #1744)
 
-> Registered DRAFT at issue #994 [ota-publish-guardrails] SPEC. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS.
+> Flipped ACTIVE at CLOSE. Independent tester returned FAIL with two P0s; both were fixed at REWORK and the orchestrator re-verified by hand (no subagents, publish path interlocked behind a stub seam AND a PATH trap) before merge: 778/778 strict-grep class A, manifest parity P1–P12, ratchet 4/4, tester adversarial 18/18, env-resolution smoke on both apps, and live-fire discrimination against six genuine production permalinks.
+>
+> **Registered DRAFT at SPEC. Two things nearly shipped green and are the reason this invariant reads the way it does:**
+>
+> 1. **The post-publish verifier read the wrong node** and exited 2 on every real manifest — it would have blocked every CORRECT publish, and a healthy manifest and a `{}` manifest produced byte-identical output. Its 25-case self-test was green because the fixtures used the flat `expo config` shape rather than the served wire shape. See Corollary 8.
+> 2. **The gate's own `--environment production` needle was satisfied by the wrapper's remediation echo**, so deleting the flag from the actual publish command left the gate green. Both were caught ONLY by execution — live-fire against production for the first, a real revert for the second. Neither was visible to reasoning or to a green suite.
+>
+> **Known residual, documented not fixed (P3):** a Python `subprocess.run(["eas","update","--branch","production", …])` argv-array literal evades the source rule, which tokenises SHELL command lines. `.py` is walked, so the file is opened; the shape is simply not recognised. Nothing in this repo publishes OTAs from Python, and widening the tokeniser to argv arrays in arbitrary languages buys a large surface against a hazard nobody is near. Recorded so this is a KNOWN LIMIT rather than an assumed capability — believing a check covered more than it did is the failure mode of this entire incident class.
 >
 > **Five production incidents, one mechanism.** `eas update` WITHOUT `--environment production` resolves `EXPO_PUBLIC_*` from the operator's LOCAL `.env`, which does not carry the EAS-only production values. The CLI exits 0. The published update is broken.
 >
@@ -51,7 +58,7 @@
 >
 > Cross-ref: the INVESTIGATION on issue #990, the 2026-08-06 incident comment and the SPEC on issue #994.
 
-### I-PROPOSED-994-PRODUCTION-OTA-ENV-BOUND (DRAFT)
+### I-994-PRODUCTION-OTA-ENV-BOUND (ACTIVE)
 - **Rule:** A production OTA for either mobile app is published ONLY by that app's canonical `scripts/ota/publish-production-ota.sh`. That script MUST (a) pass `--environment production` on the `eas update` invocation, (b) PRE-FLIGHT every key that app silently defaults on — asserting **PRESENCE first, THEN prefix**, per key, and printing the resolved prefix (never the secret) to the publish log — and (c) POST-PUBLISH fetch the SERVED manifest for the update it just created, per platform, and fail loudly if any expected `extra` key carries the unset signature `{}`, `null`, absence, an empty string, or a wrong prefix.
 - **Corollary 1 (the ordering is load-bearing):** presence before prefix. #990 was a WRONG key; 2026-08-06 was a MISSING one. A prefix-only preflight would not have caught the more recent and more dangerous incident.
 - **Corollary 2 (the exit code proves nothing):** a green `eas update` is not evidence of a correct publish. Only the served manifest is.
@@ -65,7 +72,7 @@
 - **Enforcement:** `.github/scripts/strict-grep/issue-994-ota-publish-guardrails.mjs` (batch:A) — rules 1-5 above, over a pruned repo-wide walk with vacuity guards; `.github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs` (external:`issue-994-ota-env-resolution.yml`) — executes `npx expo config --json --type public` for both apps under a blind env and a sentinel env and asserts the tripwires actually flip; `scripts/ota/verify-published-manifest.mjs` (batch:A, `--self-test`) — the shared assertion engine both publish scripts call.
 - **Regression:** the three gates' `--self-test` suites, whose fails-on-revert cases are: removing `--environment production` from the handbook's consumer commands (a literal revert of `d942a9281`), deleting `app-mobile/scripts/ota/publish-production-ota.sh`, removing either script's post-publish verification call, and giving `app-mobile/app.config.ts`'s `EXPO_PUBLIC_POSTHOG_KEY` a literal fallback. The tester's adversarial angles are reserved and different: scanner evasion (line continuations, `--branch=production`, `npx eas-cli@19`, flag indirection), live-fire assertion against a REAL served manifest, and hostile-input drive of both wrappers under `set -euo pipefail` on bash 3.2 via the `MINGLA_EAS_BIN` test seam.
 - **Explicitly NOT claimed.** This invariant does not prove the app BOOTS. A true release-mode boot smoke (Metro `--no-dev --minify` + an EAS-built dev client + live backend, the #990 harness) is not achievable per-PR in CI at reasonable cost and is documented as a pre-publish OPERATOR step, not a gate. It also does not prove bundle-INLINED values (`EXPO_PUBLIC_SENTRY_DSN`, `EXPO_PUBLIC_MIXPANEL_TOKEN`) are literally present in the Hermes bytecode — those never reach `extra`; they are covered transitively, by the preflight proving the environment holds them plus a live tripwire proving the environment was applied.
-- **Established:** DRAFT at issue #994 SPEC 2026-08-09.
+- **Established:** DRAFT at issue #994 SPEC 2026-08-09; flipped ACTIVE at CLOSE 2026-08-09 (PR #1744, merge `8cf81958e`).
 
 ---
 
