@@ -410,6 +410,9 @@ export const SeeWhosGoingGate: React.FC<SeeWhosGoingGateProps> = ({
             <Text style={[styles.dialogBody, { color: palette.secondaryText }]}>
               RSVP or get a ticket, then open Mingla to see the guest list.
             </Text>
+            <Text style={[styles.dialogBody, { color: palette.secondaryText }]}>
+              Guest faces, names, and the group chat live in the Mingla app.
+            </Text>
 
             {/* The ONE deliberate non-palette fill: solid white QR card —
                 scanner contrast is a hardware requirement (/download parity). */}
@@ -489,6 +492,9 @@ export const SeeWhosGoingGate: React.FC<SeeWhosGoingGateProps> = ({
         </Text>
         <Text style={[styles.panelBody, { color: palette.secondaryText }]}>
           Guest names are visible in Mingla after you RSVP or get a ticket.
+        </Text>
+        <Text style={[styles.panelBody, { color: palette.secondaryText }]}>
+          Guest faces, names, and the group chat live in the Mingla app.
         </Text>
         <Pressable
           onPress={() => handleGetApp()}

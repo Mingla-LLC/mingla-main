@@ -69,6 +69,7 @@ async function sendEmail(input: {
     html: rendered.html,
     text: rendered.text,
   });
+  // no-attachment: attendance-claim recovery notices are secure link-only transactional email; RSVP pass files remain owned by rsvp-notify.
   const request = (): Promise<Response> => fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {

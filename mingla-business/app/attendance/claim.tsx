@@ -2,30 +2,16 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Button } from "../../src/components/ui/Button";
 import { Icon } from "../../src/components/ui/Icon";
+import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import { APP_STORE_URL, PLAY_STORE_URL } from "../../src/constants/storeLinks";
 import { accent, canvas, glass, spacing, text as textTokens } from "../../src/constants/designSystem";
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const TOKEN = /^[A-Za-z0-9_-]{43}$/;
-
-export const attendanceAppUrlFromFragment = (raw: string): string | null => {
-  const params = new URLSearchParams(raw);
-  if ([...params.keys()].some((key) => !["v", "kind", "event", "source", "token"].includes(key))) return null;
-  const kind = params.get("kind");
-  const event = params.get("event");
-  const source = params.get("source");
-  const token = params.get("token");
-  if (params.get("v") !== "1" || (kind !== "order" && kind !== "rsvp") ||
-    event === null || source === null || token === null ||
-    !UUID.test(event) || !UUID.test(source) || !TOKEN.test(token)) return null;
-  const fragment = new URLSearchParams({ v: "1", kind, event, source, token }).toString();
-  return `com.mingla.app.v2://attendance-claim#${fragment}`;
-};
+import { attendanceAppUrlFromFragment } from "../../src/utils/attendanceClaimDeepLink";
 
 export default function AttendanceClaimLanding(): React.ReactElement | null {
   const [parsed, setParsed] = useState(false);
   const [appUrl, setAppUrl] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
+  const autoAttemptedRef = React.useRef(false);
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined") {
@@ -45,9 +31,10 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
   }, [appUrl, opening]);
 
   useEffect(() => {
-    if (!parsed || !appUrl) return;
+    if (!parsed || !appUrl || autoAttemptedRef.current) return;
+    autoAttemptedRef.current = true;
     openMingla();
-  }, [appUrl, openMingla, parsed]);
+  }, [appUrl, parsed]);
 
   useEffect(() => {
     if (Platform.OS !== "web" || !parsed || typeof document === "undefined") return;
@@ -85,7 +72,7 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
 
   if (!parsed) return null;
   return (
-    <View style={styles.host} accessibilityViewIsModal>
+    <SafeScreen edges={["top", "bottom"]} style={styles.host}>
       <View
         style={styles.card}
         role="dialog"
@@ -120,7 +107,7 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
           </View>
         ) : null}
       </View>
-    </View>
+    </SafeScreen>
   );
 }
 

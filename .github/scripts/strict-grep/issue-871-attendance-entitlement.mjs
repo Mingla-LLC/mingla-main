@@ -83,11 +83,11 @@ const check = (sources) => {
       /cancelPlaceReviewRequest\(\)|dismissReview\(\)/.test(suppressionStart) ||
       (sources.shell.match(/beginAttendanceClaimPresentation\(\)/g) ?? []).length < 3 ||
       !/attendanceClaimPresentationPending \|\| attendanceClaimVisible/.test(sources.shell) ||
-      !/attendanceClaimReviewModalPolicy\(\s*attendanceClaimSuppressesReview,\s*activeReviewTarget !== null,\s*showReviewModal,\s*voluntaryPlaceReview !== null,\s*\)/.test(sources.shell) ||
+      !/attendanceClaimReviewModalPolicy\(\s*attendanceClaimSuppressesReview,\s*activeReviewTarget !== null,\s*\)/.test(sources.shell) ||
       !/reviewModalPolicy\.render && activeReviewTarget/.test(sources.shell) ||
-      !/visible=\{reviewModalPolicy\.visible\}/.test(sources.shell) ||
+      !/visible=\{voluntaryPlaceReview \? true : showReviewModal\}/.test(sources.shell) ||
       !/setAttendanceClaimVisible\(false\)[\s\S]*setAttendanceClaimPresentationPending\(false\)/.test(suppressionClose) ||
-      !/render: !attendanceClaimVisible && hasActiveReviewTarget[\s\S]*visible: !attendanceClaimVisible && hasActiveReviewTarget &&[\s\S]*scheduledReviewVisible \|\| voluntaryReviewVisible/.test(sources.deepLink)) {
+      !/render: !attendanceClaimVisible && hasActiveReviewTarget/.test(sources.deepLink)) {
     failures.push("ISSUE871_REVIEW_MODAL_CONTINUOUS_SUPPRESSION open/rearm/voluntary/recovery policy missing");
   }
   if (/Promise\.race|setTimeout/.test(sources.claimService)) {
@@ -134,8 +134,8 @@ if (process.argv.includes("--self-test")) {
   }
   for (const [name, shell] of [
     ["open target", sources.shell.replace("reviewModalPolicy.render && activeReviewTarget", "activeReviewTarget")],
-    ["scheduled re-arm", sources.shell.replace(/(attendanceClaimReviewModalPolicy\([\s\S]*?activeReviewTarget !== null,\s*)showReviewModal,/, "$1false,")],
-    ["voluntary arrival", sources.shell.replace(/(attendanceClaimReviewModalPolicy\([\s\S]*?showReviewModal,\s*)voluntaryPlaceReview !== null,/, "$1false,")],
+    ["scheduled re-arm", sources.shell.replace("voluntaryPlaceReview ? true : showReviewModal", "voluntaryPlaceReview ? true : false")],
+    ["voluntary arrival", sources.shell.replace("voluntaryPlaceReview ? true : showReviewModal", "false ? true : showReviewModal")],
     ["post-close recovery", sources.shell.replace("setAttendanceClaimPresentationPending(false);", "// suppression remains stuck")],
   ]) {
     const broken = { ...sources, shell };

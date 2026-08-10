@@ -15,18 +15,13 @@ export type AttendanceClaimSingleFlight = {
 
 export type AttendanceClaimReviewModalPolicy = {
   render: boolean;
-  visible: boolean;
 };
 
 export const attendanceClaimReviewModalPolicy = (
   attendanceClaimVisible: boolean,
   hasActiveReviewTarget: boolean,
-  scheduledReviewVisible: boolean,
-  voluntaryReviewVisible: boolean,
 ): AttendanceClaimReviewModalPolicy => ({
   render: !attendanceClaimVisible && hasActiveReviewTarget,
-  visible: !attendanceClaimVisible && hasActiveReviewTarget &&
-    (scheduledReviewVisible || voluntaryReviewVisible),
 });
 
 export const createAttendanceClaimSingleFlight =
@@ -88,10 +83,11 @@ export const parseAttendanceClaimUrl = (
   const hashIndex = url.indexOf("#");
   if (hashIndex < 0) return null;
   const params = new URLSearchParams(url.slice(hashIndex + 1));
+  const requiredKeys = ["v", "kind", "event", "source", "token"];
   if (
-    [...params.keys()].some((key) =>
-      !["v", "kind", "event", "source", "token"].includes(key)
-    )
+    [...params.keys()].length !== requiredKeys.length ||
+    requiredKeys.some((key) => params.getAll(key).length !== 1) ||
+    [...params.keys()].some((key) => !requiredKeys.includes(key))
   ) return null;
   const kind = params.get("kind");
   const eventId = params.get("event");

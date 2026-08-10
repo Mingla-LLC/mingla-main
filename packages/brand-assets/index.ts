@@ -7,7 +7,7 @@
 // or an Expo-required per-app build derivative (app icons/splash — documented,
 // never imported from here).
 //
-// Only the two app-imported marks are exported; the email/vector/square masters
+// Only app-imported marks are exported; the email/vector masters
 // are file-level canon consumed by the parity gate and the hosted mirrors.
 // This package deliberately ships ZERO dependencies and NO node_modules
 // (single-React rule — see app-mobile/metro.config.js).
@@ -15,3 +15,4 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 export const MINGLA_WORDMARK = require("./mingla-wordmark.png") as number;
 export const MINGLA_BUSINESS_LOGO = require("./mingla-business-logo.png") as number;
+export const MINGLA_APP_ICON = require("./mingla-app-icon-500.png") as number;

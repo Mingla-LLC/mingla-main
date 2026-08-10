@@ -198,11 +198,23 @@ export const attendanceClaimUrls = (input: {
 export const claimJson = (
   status: number,
   body: Record<string, unknown>,
+  headers: Record<string, string> = {},
 ): Response =>
   new Response(JSON.stringify(body), {
     status,
     headers: {
       "content-type": "application/json",
       "cache-control": "no-store",
+      ...headers,
     },
   });
+
+export const shouldIssueOrderAttendanceClaimForNotification = (input: {
+  templateKey: string;
+  channel: string;
+  buyerUserId: string | null;
+  paymentStatus: string | null;
+}): boolean =>
+  input.templateKey === "buyer_ticket_confirmation" &&
+  input.channel === "email" && input.buyerUserId === null &&
+  ["paid", "partial_refund"].includes(input.paymentStatus ?? "");

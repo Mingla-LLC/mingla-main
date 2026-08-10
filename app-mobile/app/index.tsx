@@ -73,7 +73,8 @@ import {
 } from "../src/services/oneSignalService";
 import { initializeAppsFlyer, startAppsFlyer, setAppsFlyerUserId, registerAppsFlyerDevice, logAppsFlyerEvent, subscribeOneLinkDeepLink, triggerAndroidDeferredResolution } from "../src/services/appsFlyerService";
 import { sanitizeReferralCode, type OneLinkDestination } from "../src/services/oneLinkResolver";
-import { router, type Href } from "expo-router";
+import { router } from "expo-router";
+import type { Href } from "expo-router";
 import { ensureAttRequested, requestPostTourPermissions, whenAttResolved } from "../src/services/permissionOrchestrator";
 import { useCustomerInfoListener } from "../src/hooks/useRevenueCat";
 import { useTrialExpiryTracking } from "../src/hooks/useSubscription";
@@ -311,6 +312,7 @@ function AppContent() {
   const [attendanceClaimIntent, setAttendanceClaimIntent] =
     useState<AttendanceClaimIntent | null>(null);
   const [attendanceClaimVisible, setAttendanceClaimVisible] = useState(false);
+  const [attendanceClaimInvalid, setAttendanceClaimInvalid] = useState(false);
   const [attendanceClaimPresentationPending, setAttendanceClaimPresentationPending] =
     useState(false);
   const beginAttendanceClaimPresentation = useCallback((): void => {
@@ -410,8 +412,6 @@ function AppContent() {
   const reviewModalPolicy = attendanceClaimReviewModalPolicy(
     attendanceClaimSuppressesReview,
     activeReviewTarget !== null,
-    showReviewModal,
-    voluntaryPlaceReview !== null,
   );
   const viewShotRef = useRef<any>(null);
   // V2: pending deep link from push notification received before auth
@@ -432,9 +432,9 @@ function AppContent() {
   const receiveAttendanceClaimUrl = useCallback(async (url: string): Promise<boolean> => {
     if (!isAttendanceClaimUrl(url)) return false;
     const intent = parseAttendanceClaimUrl(url);
-    if (intent === null) return true;
-    await saveAttendanceClaimIntent(intent);
+    if (intent !== null) await saveAttendanceClaimIntent(intent);
     setAttendanceClaimIntent(intent);
+    setAttendanceClaimInvalid(intent === null);
     beginAttendanceClaimPresentation();
     setViewingTrip(null);
     setViewingFriendProfileId(null);
@@ -2463,6 +2463,7 @@ function AppContent() {
     <AttendanceClaimSheet
       visible={attendanceClaimVisible}
       intent={attendanceClaimIntent}
+      initialInvalid={attendanceClaimInvalid}
       signedIn={isAuthenticated}
       onClose={closeAttendanceClaimPresentation}
       onSignIn={closeAttendanceClaimPresentation}
@@ -2894,7 +2895,7 @@ function AppContent() {
                         (dismissible, opens on the rating step). */}
                     {reviewModalPolicy.render && activeReviewTarget && (
                       <PostExperienceModal
-                        visible={reviewModalPolicy.visible}
+                        visible={voluntaryPlaceReview ? true : showReviewModal}
                         review={activeReviewTarget}
                         voluntaryVisit={voluntaryPlaceReview}
                         dismissible={!!voluntaryPlaceReview}

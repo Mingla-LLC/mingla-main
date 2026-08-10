@@ -13,6 +13,7 @@ import {
   normalizeAttendanceEvent,
   parseAttendanceClaimLinkRequest,
   parseAttendanceClaimRequest,
+  shouldIssueOrderAttendanceClaimForNotification,
 } from "../../_shared/attendanceClaim.ts";
 import {
   attendanceClaimAuthAction,
@@ -21,6 +22,10 @@ import {
   parseAttendanceClaimUrl,
   rosterDenialPolicy,
 } from "../../../../app-mobile/src/utils/attendanceClaimDeepLink.ts";
+import {
+  attendanceAppUrlFromFragment,
+  openAttendanceClaimWithFallback,
+} from "../../../../mingla-business/src/utils/attendanceClaimDeepLink.ts";
 
 const eventId = "11111111-1111-4111-8111-111111111111";
 const sourceId = "22222222-2222-4222-8222-222222222222";
@@ -109,11 +114,101 @@ Deno.test("#871 order tokens are exact random 32-byte values with pepper-bound d
   assertNotEquals(one, other);
 });
 
+Deno.test("#871 order proof issuance belongs only to eligible confirmation email attempts", () => {
+  const eligible = {
+    templateKey: "buyer_ticket_confirmation",
+    buyerUserId: null,
+    paymentStatus: "paid",
+  };
+  assertEquals(
+    shouldIssueOrderAttendanceClaimForNotification({
+      ...eligible,
+      channel: "sms",
+    }),
+    false,
+  );
+  assertEquals(
+    shouldIssueOrderAttendanceClaimForNotification({
+      ...eligible,
+      channel: "email",
+    }),
+    true,
+  );
+  assertEquals(
+    shouldIssueOrderAttendanceClaimForNotification({
+      ...eligible,
+      channel: "email",
+    }),
+    true,
+  );
+  assertEquals(
+    shouldIssueOrderAttendanceClaimForNotification({
+      ...eligible,
+      channel: "email",
+      buyerUserId: eventId,
+    }),
+    false,
+  );
+
+  const dispatcher = read(
+    "supabase/functions/ticket-confirmation-dispatch/index.ts",
+  );
+  const emailBranch = dispatcher.indexOf('notification.channel === "email"');
+  const issueCall = dispatcher.indexOf('"issue_order_attendance_claim_proof"');
+  const providerCall = dispatcher.indexOf(
+    "sendResendEmailWithAttachment",
+    issueCall,
+  );
+  assert(
+    emailBranch < issueCall && issueCall < providerCall,
+    "proof must be minted immediately within email delivery",
+  );
+  assertStringIncludes(
+    dispatcher.slice(issueCall, providerCall),
+    "p_allow_retry_rotation: true",
+  );
+
+  const foundation = read(
+    "supabase/migrations/20270302000871_issue_0871_attendance_claim_foundation.sql",
+  );
+  assertStringIncludes(foundation, "attendance_claim_token_digest = p_digest");
+  assertStringIncludes(
+    foundation,
+    "fixed_digest_equal(v_expected, p_proof_digest)",
+  );
+});
+
+Deno.test("#871 anonymous browser link acquisition supports preflight and retry rotation", () => {
+  const source = read("supabase/functions/attendance-claim-link/index.ts");
+  assertStringIncludes(source, 'req.method === "OPTIONS"');
+  assertStringIncludes(source, "ticketCorsHeaders");
+  assertStringIncludes(source, "claimJson(status, body, ticketCorsHeaders)");
+  assertStringIncludes(source, "p_allow_retry_rotation: true");
+});
+
+Deno.test("#871 RSVP pass attendance CTA uses exact public live eligibility", () => {
+  const source = read("supabase/functions/rsvp-notify/index.ts");
+  for (
+    const contract of [
+      '.select("status,visibility,deleted_at,event_type,brands(deleted_at)")',
+      'event.visibility === "public"',
+      'event.event_type === "rsvp"',
+      '["scheduled", "live"].includes(event.status)',
+      "brand?.deleted_at === null",
+    ]
+  ) assertStringIncludes(source, contract);
+});
+
 Deno.test("#871 native and HTTPS fragment forms parse identically and reject ambiguity", () => {
   const urls = attendanceClaimUrls({ kind: "order", eventId, sourceId, token });
   assertEquals(parseAttendanceClaimUrl(urls.appClaimUrl)?.sourceId, sourceId);
   assertEquals(parseAttendanceClaimUrl(urls.webClaimUrl)?.sourceId, sourceId);
   assertEquals(parseAttendanceClaimUrl(`${urls.appClaimUrl}&extra=1`), null);
+  assertEquals(
+    parseAttendanceClaimUrl(`${urls.appClaimUrl}&token=${token}`),
+    null,
+  );
+  assertEquals(parseAttendanceClaimUrl(`${urls.appClaimUrl}&v=2`), null);
   assertEquals(
     parseAttendanceClaimUrl(urls.appClaimUrl.replace("#", "?")),
     null,
@@ -122,10 +217,70 @@ Deno.test("#871 native and HTTPS fragment forms parse identically and reject amb
 
 Deno.test("#871 web landing validates the exact fragment before registered-scheme launch", () => {
   const landing = read("mingla-business/app/attendance/claim.tsx");
-  assertStringIncludes(landing, "TOKEN.test(token)");
-  assertStringIncludes(landing, "[...params.keys()].some");
   assertStringIncludes(landing, "window.history.replaceState");
-  assertStringIncludes(landing, "com.mingla.app.v2://attendance-claim#");
+  assertStringIncludes(landing, "autoAttemptedRef.current");
+  const fragment =
+    attendanceClaimUrls({ kind: "order", eventId, sourceId, token })
+      .webClaimUrl.split("#")[1] ?? "";
+  assert(
+    attendanceAppUrlFromFragment(fragment)?.startsWith("com.mingla.app.v2://"),
+  );
+  assertEquals(
+    attendanceAppUrlFromFragment(`${fragment}&token=${token}`),
+    null,
+  );
+  assertEquals(attendanceAppUrlFromFragment(`${fragment}&v=2`), null);
+});
+
+Deno.test("#871 buyer app-first launch falls back only while the browser remains visible", async () => {
+  const links = {
+    appClaimUrl: "app://claim",
+    webClaimUrl: "https://example.test/claim",
+  };
+  const calls: string[] = [];
+  let scheduled: (() => void) | null = null;
+  let listener: (() => void) | null = null;
+  const doc = {
+    visibilityState: "visible",
+    addEventListener: (_type: "visibilitychange", next: () => void) => {
+      listener = next;
+    },
+    removeEventListener: () => undefined,
+  };
+  await openAttendanceClaimWithFallback(
+    links,
+    (url) => {
+      calls.push(url);
+      return Promise.resolve();
+    },
+    doc,
+    (callback) => {
+      scheduled = callback;
+      return 1 as unknown as ReturnType<typeof setTimeout>;
+    },
+  );
+  assertEquals(calls, [links.appClaimUrl]);
+  (scheduled as (() => void) | null)?.();
+  assertEquals(calls, [links.appClaimUrl, links.webClaimUrl]);
+
+  calls.length = 0;
+  scheduled = null;
+  await openAttendanceClaimWithFallback(
+    links,
+    (url) => {
+      calls.push(url);
+      return Promise.resolve();
+    },
+    doc,
+    (callback) => {
+      scheduled = callback;
+      return 2 as unknown as ReturnType<typeof setTimeout>;
+    },
+  );
+  doc.visibilityState = "hidden";
+  (listener as (() => void) | null)?.();
+  (scheduled as (() => void) | null)?.();
+  assertEquals(calls, [links.appClaimUrl]);
 });
 
 Deno.test("#871 relation normalization fails closed on malformed Supabase shapes", () => {
@@ -170,6 +325,7 @@ Deno.test("#871 root arbitration and offering actions cannot leave dead or stack
   assertStringIncludes(shell, "InteractionManager.runAfterInteractions");
   assertStringIncludes(shell, "requestAnimationFrame");
   assertStringIncludes(shell, "beginAttendanceClaimPresentation");
+  assertStringIncludes(shell, "setAttendanceClaimInvalid(intent === null)");
   const suppressionStart = shell.match(
     /const beginAttendanceClaimPresentation = useCallback\(\(\): void => \{([\s\S]*?)\n  \}, \[\]\);/,
   )?.[1] ?? "";
@@ -188,7 +344,10 @@ Deno.test("#871 root arbitration and offering actions cannot leave dead or stack
     "attendanceClaimPresentationPending || attendanceClaimVisible",
   );
   assertStringIncludes(shell, "reviewModalPolicy.render && activeReviewTarget");
-  assertStringIncludes(shell, "visible={reviewModalPolicy.visible}");
+  assertStringIncludes(
+    shell,
+    "visible={voluntaryPlaceReview ? true : showReviewModal}",
+  );
   const suppressionClose = shell.match(
     /const closeAttendanceClaimPresentation = useCallback\(\(\): void => \{([\s\S]*?)\n  \}, \[\]\);/,
   )?.[1] ?? "";
@@ -216,44 +375,25 @@ Deno.test("#871 root arbitration and offering actions cannot leave dead or stack
 });
 
 Deno.test("#871 review modal policy suppresses open/rearmed targets and recovers after claim close", () => {
-  const alreadyOpenAtIntake = attendanceClaimReviewModalPolicy(
-    true,
-    true,
-    true,
-    false,
-  );
-  assertEquals(alreadyOpenAtIntake, { render: false, visible: false });
+  const alreadyOpenAtIntake = attendanceClaimReviewModalPolicy(true, true);
+  assertEquals(alreadyOpenAtIntake, { render: false });
 
-  const scheduledPeriodicRearm = attendanceClaimReviewModalPolicy(
-    true,
-    true,
-    true,
-    false,
-  );
-  assertEquals(scheduledPeriodicRearm, { render: false, visible: false });
+  const scheduledPeriodicRearm = attendanceClaimReviewModalPolicy(true, true);
+  assertEquals(scheduledPeriodicRearm, { render: false });
 
-  const voluntaryTargetArrival = attendanceClaimReviewModalPolicy(
-    true,
-    true,
-    false,
-    true,
-  );
-  assertEquals(voluntaryTargetArrival, { render: false, visible: false });
+  const voluntaryTargetArrival = attendanceClaimReviewModalPolicy(true, true);
+  assertEquals(voluntaryTargetArrival, { render: false });
 
   const scheduledRecoveryAfterClose = attendanceClaimReviewModalPolicy(
     false,
     true,
-    true,
-    false,
   );
-  assertEquals(scheduledRecoveryAfterClose, { render: true, visible: true });
+  assertEquals(scheduledRecoveryAfterClose, { render: true });
   const voluntaryRecoveryAfterClose = attendanceClaimReviewModalPolicy(
     false,
     true,
-    false,
-    true,
   );
-  assertEquals(voluntaryRecoveryAfterClose, { render: true, visible: true });
+  assertEquals(voluntaryRecoveryAfterClose, { render: true });
 });
 
 Deno.test("#871 post-claim probe distinguishes authorization, privacy and recovery", () => {
@@ -262,6 +402,10 @@ Deno.test("#871 post-claim probe distinguishes authorization, privacy and recove
   assertStringIncludes(sheet, 'rosterState === "authorized"');
   assertStringIncludes(sheet, 'rosterState === "private"');
   assertStringIncludes(sheet, ': "route_error"');
+  assertStringIncludes(
+    sheet,
+    'backdropPressBehavior={submitting ? "none" : "close"}',
+  );
   assertStringIncludes(service, 'return "private"');
   assertStringIncludes(service, 'return "unavailable"');
   assertStringIncludes(service, 'return "error"');
@@ -413,6 +557,40 @@ Deno.test("#871 all three confirmation routes prepare every observed finalizatio
     assertStringIncludes(source, '"error"');
     assertStringIncludes(source, '"terminal"');
     assertStringIncludes(source, '"rate"');
-    assertStringIncludes(source, "webClaimUrl");
+    assertStringIncludes(
+      source,
+      "openAttendanceClaimWithFallback(link, Linking.openURL)",
+    );
+    assertStringIncludes(
+      source,
+      "Your tickets are confirmed. We couldn’t prepare the Mingla link.",
+    );
+    assertStringIncludes(
+      source,
+      "Your tickets are confirmed. Guest-list access isn’t available for this order.",
+    );
+    assertStringIncludes(
+      source,
+      "Your tickets are confirmed. Try the Mingla link again in a few minutes.",
+    );
+    assertStringIncludes(source, "styles.attendanceClaimCard");
+    assertStringIncludes(source, "MINGLA_APP_ICON");
+    assertStringIncludes(source, 'accessibilityLabel="Mingla app icon"');
   }
+});
+
+Deno.test("#871 guest sheet exposes close, party size, offline recovery and actionable unlock", () => {
+  const sheet = read("app-mobile/src/components/EventGuestListSheet.tsx");
+  assertStringIncludes(sheet, 'accessibilityLabel="Close guest list"');
+  assertStringIncludes(sheet, "width: 44");
+  assertStringIncludes(sheet, "const party = `party of ${guest.partySize}`");
+  assertStringIncludes(sheet, "Retry after reconnect");
+  assertStringIncludes(sheet, 'color: "#111827"');
+  assert(
+    sheet.indexOf("onClose();", sheet.indexOf("const handleAttendanceAction")) <
+      sheet.indexOf(
+        "onAttendanceAction?.();",
+        sheet.indexOf("const handleAttendanceAction"),
+      ),
+  );
 });

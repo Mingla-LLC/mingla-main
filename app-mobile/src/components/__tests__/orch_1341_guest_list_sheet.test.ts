@@ -187,6 +187,7 @@ Deno.test("T-09 no TouchableOpacity; row container is a plain accessible group",
 });
 
 Deno.test("T-10 every <Pressable> is one of the sanctioned action controls", () => {
+  // #871 keeps both attendance/revocation actions on the existing sanctioned control ID.
   const segments = SHEET.split("<Pressable");
   assert(segments.length >= 3, "add-friend + message + retry Pressables exist");
   for (let i = 1; i < segments.length; i++) {
@@ -196,7 +197,9 @@ Deno.test("T-10 every <Pressable> is one of the sanctioned action controls", () 
         window,
       ) ||
         /testID="orch-1341-guest-sheet-error-retry"/.test(window) ||
-        /testID="issue-871-guest-sheet-(sign-in|attendance-action|pagination-retry)"/.test(window) ||
+        // [TEST-MOD-APPROVED ORCH-0871] #871 adds explicit close and offline
+        // recovery controls while preserving the non-pressable row invariant.
+        /testID="issue-871-guest-sheet-(sign-in|attendance-action|pagination-retry|close|offline-retry)"/.test(window) ||
         // [TEST-MOD-APPROVED ORCH-1359] — ORCH-1359 (d): the guest NAME is now a
         // sanctioned profile-open target (I-PROPOSED-1359-GUEST-NAME-OPENS-PROFILE
         // supersedes I-PROPOSED-1341-GUEST-SHEET-ACTIONS-ONLY). The row CONTAINER
@@ -293,9 +296,11 @@ Deno.test("T-13 all five states render the design's copy", () => {
   // unlinked rows now carry "Not on Mingla" (item e). "Someone" / "Keeping it
   // low-key" / "You" are unchanged.
   assertStringIncludes(SHEET, '"Someone"');
-  assertStringIncludes(SHEET, '"Keeping it low-key"');
-  assertStringIncludes(SHEET, '"Not on Mingla"');
-  assertStringIncludes(SHEET, '"You"');
+  // [TEST-MOD-APPROVED ORCH-0871] the visible/a11y row copy now includes the
+  // server-authoritative partySize instead of asserting the superseded bare text.
+  assertStringIncludes(SHEET, "Keeping it low-key · ${party}");
+  assertStringIncludes(SHEET, "Not on Mingla · ${party}");
+  assertStringIncludes(SHEET, "You · ${party}");
   assertStringIncludes(SHEET, "Requested");
   assertStringIncludes(SHEET, "Couldn't send — try again");
 });

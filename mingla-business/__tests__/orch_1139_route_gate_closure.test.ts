@@ -121,6 +121,7 @@ const EXPECTED: Record<string, Bucket> = {
   "(tabs)": "gated-default",
   account: "gated-default",
   ari: "gated-default",
+  attendance: "gated-default",
   auth: "gated-default",
   brand: "gated-default",
   event: "gated-default",

@@ -22,6 +22,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Image,
   Linking,
   Platform,
   ScrollView,
@@ -29,6 +30,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { MINGLA_APP_ICON } from "@mingla/brand-assets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion (native; no-op on
@@ -43,6 +45,7 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { eventPublicPath } from "../../../src/constants/publicUrls";
+import { openAttendanceClaimWithFallback } from "../../../src/utils/attendanceClaimDeepLink";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 import { formatCurrency } from "../../../src/utils/currency";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
@@ -526,7 +529,7 @@ function CheckoutConfirmScreenInner({
 
   const openAttendanceClaimLink = (): void => {
     const link = attendanceClaim.link;
-    if (link) void Linking.openURL(link.webClaimUrl);
+    if (link) void openAttendanceClaimWithFallback(link, Linking.openURL);
   };
   const retryAttendanceClaim = (): void => {
     const authority = attendanceClaim.authority;
@@ -627,17 +630,18 @@ function CheckoutConfirmScreenInner({
             />
           ) : null}
         </GlassCard>
-        <GlassCard variant="base" radius="lg" padding={spacing.md} style={styles.qrCard}>
+        <GlassCard variant="base" radius="lg" padding={spacing.md} style={[styles.qrCard, styles.attendanceClaimCard]}>
+          <Image source={MINGLA_APP_ICON} style={styles.attendanceClaimIcon} accessibilityLabel="Mingla app icon" />
           <Text style={styles.summaryEventName}>See who’s going in Mingla</Text>
           <Text style={styles.heroEmail}>Connect this ticket to your Mingla account to unlock the guest list.</Text>
           {attendanceClaim.phase === "ready" && attendanceClaim.link ? (
             <Button label="Open Mingla" onPress={openAttendanceClaimLink} fullWidth />
           ) : attendanceClaim.phase === "error" && attendanceClaim.authority ? (
-            <Button label="Try again" onPress={retryAttendanceClaim} fullWidth />
+            <><Text style={styles.heroEmail}>Your tickets are confirmed. We couldn’t prepare the Mingla link.</Text><Button label="Try again" onPress={retryAttendanceClaim} fullWidth /></>
           ) : attendanceClaim.phase === "terminal" ? (
-            <Text style={styles.heroEmail}>Your ticket is confirmed. An attendance link isn’t available for this order.</Text>
+            <Text style={styles.heroEmail}>Your tickets are confirmed. Guest-list access isn’t available for this order.</Text>
           ) : attendanceClaim.phase === "rate" ? (
-            <Text style={styles.heroEmail}>Too many attempts. Try again in a few minutes.</Text>
+            <Text style={styles.heroEmail}>Your tickets are confirmed. Try the Mingla link again in a few minutes.</Text>
           ) : <Text style={styles.heroEmail}>Preparing your Mingla link…</Text>}
         </GlassCard>
 
@@ -786,6 +790,8 @@ const styles = StyleSheet.create({
   qrCard: {
     marginBottom: spacing.md,
   },
+  attendanceClaimCard: { height: 240 },
+  attendanceClaimIcon: { width: 44, height: 44, borderRadius: 12, marginBottom: spacing.sm },
   bottomBar: {
     position: "absolute",
     left: 0,

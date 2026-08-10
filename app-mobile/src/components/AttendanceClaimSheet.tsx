@@ -24,10 +24,11 @@ type Phase = "ready" | "submitting" | "success" | "private" | "network" |
   "invalid" | "rate" | "route_error";
 
 export function AttendanceClaimSheet({
-  visible, intent, signedIn, onClose, onSignIn, onSeeGuestList,
+  visible, intent, initialInvalid = false, signedIn, onClose, onSignIn, onSeeGuestList,
 }: {
   visible: boolean;
   intent: AttendanceClaimIntent | null;
+  initialInvalid?: boolean;
   signedIn: boolean;
   onClose: () => void;
   onSignIn: () => void;
@@ -38,11 +39,11 @@ export function AttendanceClaimSheet({
   const singleFlightRef = useRef(createAttendanceClaimSingleFlight());
 
   useEffect(() => {
-    if (visible && intent) {
-      setPhase("ready");
+    if (visible && (intent || initialInvalid)) {
+      setPhase(initialInvalid ? "invalid" : "ready");
       setClaimedEventId(null);
     }
-  }, [intent, visible]);
+  }, [initialInvalid, intent, visible]);
   const submit = useCallback(async (): Promise<void> => {
     if (!intent) return;
     await singleFlightRef.current.run(async () => {
@@ -192,6 +193,7 @@ export function AttendanceClaimSheet({
       initialIndex={0}
       enableDynamicSizing={false}
       enablePanDownToClose={!submitting}
+      backdropPressBehavior={submitting ? "none" : "close"}
       wrapInRNModal
       theme="dark"
       backgroundStyle={styles.sheet}

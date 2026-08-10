@@ -137,8 +137,12 @@ async function passStillEligible(
     !rsvp || rsvp.rsvp_status !== "going" || rsvp.approval_status !== "approved"
   ) return false;
   const { data: event } = await admin.from("events")
-    .select("status,deleted_at").eq("id", rsvp.event_id).maybeSingle();
-  return !!event && event.deleted_at === null && event.status !== "cancelled";
+    .select("status,visibility,deleted_at,event_type,brands(deleted_at)")
+    .eq("id", rsvp.event_id).maybeSingle();
+  const brand = Array.isArray(event?.brands) ? event.brands[0] : event?.brands;
+  return !!event && event.deleted_at === null && brand?.deleted_at === null &&
+    event.visibility === "public" && event.event_type === "rsvp" &&
+    ["scheduled", "live"].includes(event.status);
 }
 
 async function recoveryLinkFor(
@@ -150,7 +154,9 @@ async function recoveryLinkFor(
   const table = text(p.role) === "guest" ? "event_rsvp_guests" : "event_rsvps";
   try {
     const { data: row } = await admin.from(table)
-      .select("event_id,pass_recovery_token_hash,pass_recovery_token_created_at")
+      .select(
+        "event_id,pass_recovery_token_hash,pass_recovery_token_created_at",
+      )
       .eq("id", entityId).maybeSingle();
     const current = row as {
       pass_recovery_token_hash?: string | null;
@@ -184,10 +190,10 @@ async function recoveryLinkFor(
       return {
         passUrl,
         attendanceClaimUrl: attendanceClaimUrls({
-        kind: "rsvp",
-        eventId: current.event_id,
-        sourceId: entityId,
-        token,
+          kind: "rsvp",
+          eventId: current.event_id,
+          sourceId: entityId,
+          token,
         }).webClaimUrl,
       };
     }
@@ -264,12 +270,12 @@ async function processClaim(admin: AdminClient, claim: Claim): Promise<void> {
   const defaultLink = text(p.deepLink) ?? "https://usemingla.com";
   const needsRecoveryLink = claim.template_key === "rsvp_pass" &&
     (claim.channel === "email" || claim.channel === "sms");
-  const recovery = needsRecoveryLink
+  const recoveryLink = needsRecoveryLink
     ? await recoveryLinkFor(admin, p)
     : null;
   if (
-    claim.template_key === "rsvp_pass" && claim.channel === "sms" &&
-    !recovery
+    claim.template_key === "rsvp_pass" && needsRecoveryLink &&
+    !recoveryLink
   ) {
     await complete(
       admin,
@@ -285,11 +291,13 @@ async function processClaim(admin: AdminClient, claim: Claim): Promise<void> {
       encodeURIComponent(text(p.rsvpId) ?? text(p.rsvp_id) ?? "")
     }`
     : defaultLink;
-  const link = recovery?.passUrl ?? authenticatedPassLink;
+  const link = recoveryLink?.passUrl ?? authenticatedPassLink;
   const copy = copyFor(claim.template_key, p, link);
-  if (claim.template_key === "rsvp_pass" && recovery?.attendanceClaimUrl) {
-    copy.body = `${copy.body}\n\nConnect this RSVP to your Mingla account to see who’s going: ${recovery.attendanceClaimUrl}`;
-    copy.sms = `${copy.sms} Connect attendance: ${recovery.attendanceClaimUrl}`;
+  if (claim.template_key === "rsvp_pass" && recoveryLink?.attendanceClaimUrl) {
+    copy.body =
+      `${copy.body}\n\nConnect this RSVP to your Mingla account to see who’s going: ${recoveryLink.attendanceClaimUrl}`;
+    copy.sms =
+      `${copy.sms} Connect attendance: ${recoveryLink.attendanceClaimUrl}`;
   }
   let attachment: { filename: string; content: string } | null = null;
   if (claim.template_key === "rsvp_pass" && claim.channel === "email") {

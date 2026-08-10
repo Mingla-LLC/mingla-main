@@ -62,6 +62,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useNetInfo } from "@react-native-community/netinfo";
 
 import type { PeerGuestRow } from "@mingla/offering-rendering";
 
@@ -134,7 +135,7 @@ type GuestDisplayRow = {
 };
 
 type SheetPhase = "signedOut" | "skeleton" | "content" | "empty" | "gated" |
-  "attendance" | "revoked" | "unavailable" | "error";
+  "attendance" | "revoked" | "unavailable" | "offline" | "error";
 
 /** First letters of the first + last words, uppercased (exemplar initials idiom). */
 const initialsFor = (name: string): string => {
@@ -172,6 +173,7 @@ export function EventGuestListSheet({
   attendanceActionAvailable,
 }: EventGuestListSheetProps): React.ReactElement {
   const viewerId = useAppStore((s) => s.user?.id);
+  const netInfo = useNetInfo();
   const {
     pages, isLoading, isError, error, refetch, fetchNextPage, hasNextPage,
     isFetchingNextPage, isFetchNextPageError,
@@ -310,6 +312,8 @@ export function EventGuestListSheet({
           ? "attendance"
           : error instanceof GuestListUnavailableError
             ? "unavailable"
+          : netInfo.isConnected === false || netInfo.isInternetReachable === false
+            ? "offline"
         : rows.length > 0
           ? "content"
           : "error"
@@ -396,8 +400,9 @@ export function EventGuestListSheet({
       authenticated: true,
       guest_list_state: "attendance_required",
     });
+    onClose();
     onAttendanceAction?.();
-  }, [onAttendanceAction]);
+  }, [onAttendanceAction, onClose]);
 
   // ── skeleton pulse — ONE shared opacity loop, isInteraction:false ──────────
   const pulse = useRef(new Animated.Value(0.5)).current;
@@ -682,13 +687,14 @@ export function EventGuestListSheet({
       // ORCH-1359 city (named rows only; null → name-only row). Computed once
       // and reused by line2 + the a11y label.
       const city = item.isNamed ? cityFor(guest.location) : null;
+      const party = `party of ${guest.partySize}`;
       const line2 = item.isYou
-        ? "You" // self unchanged
+        ? `You · ${party}`
         : item.isNamed
-          ? city // (b) drop @username → (c) public city, or null if absent (rule 9)
+          ? city !== null ? `${city} · ${party}` : party
           : guest.isMinglaUser
-            ? "Keeping it low-key" // anon-Mingla-private UNCHANGED
-            : "Not on Mingla"; // (e) unlinked no-app indicator
+            ? `Keeping it low-key · ${party}`
+            : `Not on Mingla · ${party}`;
       const rowHint = hint !== null && hint.key === item.key ? hint.text : null;
 
       const isFriendRow =
@@ -726,14 +732,14 @@ export function EventGuestListSheet({
         onOpenProfile !== undefined;
 
       const a11yLabel = item.isYou
-        ? `${name}, you`
+        ? `${name}, you, ${party}`
         : item.isNamed
           ? city !== null
-            ? `${name}, ${city}`
-            : name
+            ? `${name}, ${city}, ${party}`
+            : `${name}, ${party}`
           : guest.isMinglaUser
-            ? "Someone, keeping it low-key"
-            : "Guest, not on Mingla";
+            ? `Someone, keeping it low-key, ${party}`
+            : `Guest, not on Mingla, ${party}`;
 
       return (
         // Rows are NOT pressable (SEALED) — a plain View group; the only
@@ -966,7 +972,7 @@ export function EventGuestListSheet({
           <Text style={styles.stateTitle}>Guest list locked</Text>
           <Text style={styles.stateBody}>Your RSVP or ticket no longer includes guest-list access.</Text>
           {attendanceActionAvailable && onAttendanceAction ? (
-            <Pressable onPress={handleAttendanceAction} style={styles.retryPill}>
+            <Pressable onPress={handleAttendanceAction} style={styles.retryPill} testID="issue-871-guest-sheet-attendance-action">
               <Text style={styles.retryText}>{action}</Text>
             </Pressable>
           ) : null}
@@ -978,6 +984,17 @@ export function EventGuestListSheet({
         <View style={styles.stateBlock}>
           <Text style={styles.stateTitle}>Guest list unavailable</Text>
           <Text style={styles.stateBody}>This guest list isn’t available anymore.</Text>
+        </View>
+      );
+    }
+    if (phase === "offline") {
+      return (
+        <View style={styles.stateBlock} testID="issue-871-guest-sheet-offline">
+          <Text style={styles.stateTitle}>You’re offline</Text>
+          <Text style={styles.stateBody}>Reconnect to load the guest list.</Text>
+          <Pressable onPress={refetch} style={styles.retryPill} testID="issue-871-guest-sheet-offline-retry">
+            <Text style={styles.retryText}>Retry after reconnect</Text>
+          </Pressable>
         </View>
       );
     }
@@ -1049,6 +1066,15 @@ export function EventGuestListSheet({
         </Text>
         <Text style={styles.headerSubtitle}>{`${goingCount} going`}</Text>
       </View>
+      <Pressable
+        onPress={onClose}
+        style={styles.closeButton}
+        accessibilityRole="button"
+        accessibilityLabel="Close guest list"
+        testID="issue-871-guest-sheet-close"
+      >
+        <Icon name="close" size={20} color="#ffffff" />
+      </Pressable>
     </View>
   );
 
@@ -1126,6 +1152,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: "rgba(255, 255, 255, 0.58)",
+  },
+  closeButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   // Horizontal inset lives on the ROWS/footer/states, NOT the scroll content
   // container (exemplar parity: eventAudienceListInner owns the inset while
@@ -1284,7 +1316,7 @@ const styles = StyleSheet.create({
   retryText: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#ffffff",
+    color: "#111827",
   },
   footerMore: {
     paddingVertical: 16,

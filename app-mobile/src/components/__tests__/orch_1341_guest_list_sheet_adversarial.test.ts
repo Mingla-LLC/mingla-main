@@ -136,6 +136,7 @@ Deno.test("A-3 anonymous rows key by index and expose no actions", () => {
 // ── A-4 — #871 bounded server-authorized pagination ─────────────────────────
 
 Deno.test("A-4 bounded pagination uses the central key and server nextOffset", () => {
+  // #871 supersedes the legacy capped-tail oracle with server-authorized page traversal.
   // [TEST-MOD-APPROVED #871] the approved contract supersedes the v1 single-page cap.
   assertStringIncludes(SERVICE, "p_offset: offset");
   assertStringIncludes(HOOK, "useInfiniteQuery");

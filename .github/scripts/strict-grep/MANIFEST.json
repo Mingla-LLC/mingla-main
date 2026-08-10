@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 486,
-  "selfTestWiredFloor": 296,
+  "expectedStrictGrepMjsFiles": 487,
+  "selfTestWiredFloor": 297,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -7495,6 +7495,20 @@
       ],
       "selfTest": "wired",
       "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-871-attendance-entitlement.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-871-attendance-entitlement-tests.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-871-contract"
+      ]
     },
     {
       "script": ".github/scripts/strict-grep/issue-994-ota-publish-guardrails.mjs",

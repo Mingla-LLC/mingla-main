@@ -237,6 +237,8 @@ interface BaseBottomSheetSheetProps extends BaseBottomSheetCommonProps {
   backgroundStyle?: ViewStyle;
   /** Theme-derived default if omitted (light 0.32 / dark 0.55). */
   backdropOpacity?: number;
+  /** Disable backdrop dismissal for transactional states such as submission. */
+  backdropPressBehavior?: 'close' | 'none';
   /**
    * ORCH-1315 [preferences-custom-location-paywall-not-firing] — VIEWPORT-FIXED
    * overlay slot. Rendered as a SIBLING of the gorhom sheet (NOT a child of the
@@ -371,6 +373,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     handleStyle,
     backgroundStyle,
     backdropOpacity,
+    backdropPressBehavior = 'close',
     // ORCH-1315: additive viewport-fixed overlay slot (default undefined → nothing).
     overlay,
   } = props;
@@ -440,10 +443,10 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         appearsOnIndex={0}
         disappearsOnIndex={-1}
         opacity={effectiveBackdropOpacity}
-        pressBehavior="close"
+        pressBehavior={backdropPressBehavior}
       />
     ),
-    [effectiveBackdropOpacity],
+    [backdropPressBehavior, effectiveBackdropOpacity],
   );
 
   const resolvedBackgroundStyle = backgroundStyle ?? defaultBackgroundStyle(theme);

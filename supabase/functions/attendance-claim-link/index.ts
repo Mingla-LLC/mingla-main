@@ -9,23 +9,29 @@ import {
   parseAttendanceClaimLinkRequest,
   sha256Digest,
 } from "../_shared/attendanceClaim.ts";
+import { ticketCorsHeaders } from "../_shared/ticketCheckout.ts";
 
 serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: ticketCorsHeaders });
+  }
+  const json = (status: number, body: Record<string, unknown>) =>
+    claimJson(status, body, ticketCorsHeaders);
   if (req.method !== "POST") {
-    return claimJson(400, { ok: false, error: "claim_link_invalid" });
+    return json(400, { ok: false, error: "claim_link_invalid" });
   }
   const body = parseAttendanceClaimLinkRequest(
     await req.json().catch(() => null),
   );
   if (!body) {
-    return claimJson(400, { ok: false, error: "claim_link_invalid" });
+    return json(400, { ok: false, error: "claim_link_invalid" });
   }
   const { checkoutSessionId, buyerStatusToken } = body;
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const pepper = Deno.env.get("ATTENDANCE_CLAIM_PEPPER");
   if (!url || !key || !pepper) {
-    return claimJson(500, { ok: false, error: "claim_link_failed" });
+    return json(500, { ok: false, error: "claim_link_failed" });
   }
   try {
     const admin = createClient(url, key, { auth: { persistSession: false } });
@@ -36,17 +42,17 @@ serve(async (req) => {
       .eq("id", checkoutSessionId).eq("buyer_status_token_hash", proof)
       .in("status", ["paid_completed", "free_completed"]).maybeSingle();
     if (!session || !session.order_id) {
-      return claimJson(404, { ok: false, error: "claim_link_invalid" });
+      return json(404, { ok: false, error: "claim_link_invalid" });
     }
     const { data: allowed, error: rateError } = await admin.rpc(
       "take_attendance_claim_link_attempt",
       { p_session_id: session.id },
     );
     if (rateError) {
-      return claimJson(500, { ok: false, error: "claim_link_failed" });
+      return json(500, { ok: false, error: "claim_link_failed" });
     }
     if (allowed !== true) {
-      return claimJson(429, {
+      return json(429, {
         ok: false,
         error: "claim_link_rate_limited",
         retryAfterSeconds: 600,
@@ -60,18 +66,18 @@ serve(async (req) => {
         p_order_id: session.order_id,
         p_event_id: session.event_id,
         p_digest: bytesToPostgresHex(digest),
-        p_allow_retry_rotation: false,
+        p_allow_retry_rotation: true,
       },
     );
     if (issuanceError) {
-      return claimJson(500, { ok: false, error: "claim_link_failed" });
+      return json(500, { ok: false, error: "claim_link_failed" });
     }
     const result = typeof issuance === "object" && issuance !== null &&
         "result" in issuance && typeof issuance.result === "string"
       ? issuance.result
       : "invalid";
     if (result !== "issued") {
-      return claimJson(409, { ok: false, error: "claim_link_ineligible" });
+      return json(409, { ok: false, error: "claim_link_ineligible" });
     }
     const links = attendanceClaimUrls({
       kind: "order",
@@ -79,7 +85,7 @@ serve(async (req) => {
       sourceId: session.order_id,
       token: minted.token,
     });
-    return claimJson(200, {
+    return json(200, {
       ok: true,
       kind: "order",
       eventId: session.event_id,
@@ -87,6 +93,6 @@ serve(async (req) => {
       ...links,
     });
   } catch {
-    return claimJson(500, { ok: false, error: "claim_link_failed" });
+    return json(500, { ok: false, error: "claim_link_failed" });
   }
 });
