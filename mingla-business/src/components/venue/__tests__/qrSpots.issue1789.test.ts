@@ -18,13 +18,17 @@
  *                                                 400 instead of a sentence. RED.
  *   T-7  drop the wrap-past-midnight wording   -> a late-night menu reads as a
  *                                                 typo (P-12). RED.
- *   T-8  delete the one-tap 86 row control     -> 86'ing is 5 taps again (P-15). RED.
+ *
+ * P-15's structural half (the 86 toggle is ON THE ROW, is a switch, flips one
+ * bit through the existing upsert, and stays manager-plus) is a SOURCE SHAPE,
+ * so it is enforced by the strict-grep gate
+ * `.github/scripts/strict-grep/issue-1789-one-tap-86-on-the-row.mjs` rather
+ * than by a readFileSync assertion here — a source-only jest pin is exactly
+ * what I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN forbids, and it would rot on the
+ * next refactor. This file stays behavioural.
  *
  * Run: npx jest src/components/venue/__tests__/qrSpots.issue1789.test.ts --runInBand
  */
-
-import fs from "fs";
-import path from "path";
 
 import {
   bulkPrintRequest,
@@ -264,29 +268,5 @@ describe("#1789 menu depth", () => {
     expect(
       serviceWindowSummary({ start: "21:00", end: "02:00", days: [5, 6, 7] }),
     ).toBe("21:00–02:00 (wraps past midnight) · Fri, Sat, Sun");
-  });
-
-  it("T-8 — the 86 control lives on the ROW, is one tap, and is manager-plus", () => {
-    // P-15 is a UI contract: the flag already existed, so what this test guards
-    // is that the CONTROL is on the row rather than five taps inside the form.
-    // The module is an RN .tsx that cannot mount under this node config, so the
-    // contract is asserted against its source — the house idiom for a
-    // structural UI pin.
-    const source = fs.readFileSync(
-      path.join(__dirname, "..", "VenueMenuModule.tsx"),
-      "utf8",
-    );
-    // The row-level toggle exists, keyed per item.
-    expect(source).toContain("venue-menu-item-86-${item.id}");
-    // It is a SIBLING Pressable in the row, with a switch role — never nested
-    // inside another Pressable (that flattens the a11y subtree).
-    expect(source).toMatch(/toggle86\(menu, item\)[\s\S]{0,400}accessibilityRole="switch"/);
-    // One tap flips exactly one bit through the EXISTING upsert.
-    expect(source).toContain("isAvailable: !item.isAvailable");
-    // Manager-plus: the control only renders for a mutating role, and RLS
-    // enforces the same floor server-side.
-    expect(source).toMatch(/canMutate \? \(\s*<Pressable/);
-    // The Spots inventory is reachable from the module every venue has.
-    expect(source).toContain("venue-menu-spots-entry");
   });
 });
