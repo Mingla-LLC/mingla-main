@@ -12,8 +12,14 @@
 -- .test.sql — fresh supabase/postgres:17.4.1.075 container, no baseline
 -- replay; the workflow docker-cp's the #679 migration to
 -- /issue_679_migration.sql and pipes this file through
--- `psql -v ON_ERROR_STOP=1`. auth.uid() is modeled exactly as Supabase
--- resolves it (the JWT sub claim), via a session GUC.
+-- `psql -v ON_ERROR_STOP=1`. Identity is minted through the image's REAL
+-- auth.uid() (which reads the PostgREST GUC request.jwt.claim.sub — see
+-- supabase/postgres init-scripts/00000000000001-auth-schema.sql at that tag);
+-- the suite sets that same GUC per attacker. Nothing is created in the auth
+-- schema on the image: its migration 20250421084701 REVOKEs CREATE on schema
+-- auth from `postgres`, so any auth-schema DDL here would 42501 (the exact
+-- red this arm replaces). On a bare PostgreSQL (local runs) the arm block
+-- creates the missing pieces with the verbatim Supabase definition.
 --
 -- ATTACKS (every EXPECT-FAIL leg raises unless the exact SQLSTATE arrives, so
 -- no leg can pass vacuously):
@@ -41,6 +47,9 @@
 BEGIN;
 
 -- ── ARM: Supabase-shaped auth model + the two FK target tables ──
+-- Everything auth-side is conditional: on the CI image the roles, the auth
+-- schema, and auth.uid() ALREADY exist (and `postgres` may not CREATE in
+-- schema auth), so the arm only fills gaps on a bare local PostgreSQL.
 DO $arm$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
@@ -49,20 +58,20 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
     CREATE ROLE authenticated NOLOGIN;
   END IF;
+  IF to_regprocedure('auth.uid()') IS NULL THEN
+    CREATE SCHEMA IF NOT EXISTS auth;
+    -- Supabase's auth.uid() VERBATIM (the JWT sub claim via PostgREST's GUC);
+    -- STABLE like the real function.
+    CREATE FUNCTION auth.uid() RETURNS uuid
+      LANGUAGE sql STABLE
+      AS $uid$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $uid$;
+    GRANT USAGE ON SCHEMA auth TO anon, authenticated;
+    GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated;
+  END IF;
 END;
 $arm$;
 
-CREATE SCHEMA IF NOT EXISTS auth;
-
--- Supabase's auth.uid() resolves the JWT sub claim; model it with a GUC the
--- test mints per attacker. STABLE like the real function.
-CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid
-  LANGUAGE sql STABLE
-  AS $$ SELECT nullif(current_setting('test.jwt.sub', true), '')::uuid $$;
-
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
-GRANT USAGE ON SCHEMA auth TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated;
 
 -- Minimal FK targets (shape only — brand_follows FKs point here).
 CREATE TABLE IF NOT EXISTS public.profiles (id uuid PRIMARY KEY);
@@ -81,7 +90,7 @@ INSERT INTO public.brands (id) VALUES
 
 -- ── A-1: owner INSERT lands (vacuity guard for every rejection below) ──
 SET ROLE authenticated;
-SET test.jwt.sub = '679a0000-0000-0000-0000-00000000000a';
+SET request.jwt.claim.sub = '679a0000-0000-0000-0000-00000000000a';
 
 INSERT INTO public.brand_follows (user_id, brand_id)
 VALUES ('679a0000-0000-0000-0000-00000000000a',
@@ -161,7 +170,7 @@ $a3$;
 -- ── A-4: anon has zero access — SELECT and INSERT both 42501 ──
 RESET ROLE;
 SET ROLE anon;
-SET test.jwt.sub = '';
+SET request.jwt.claim.sub = '';
 
 DO $a4$
 DECLARE
@@ -205,7 +214,7 @@ $a4$;
 -- ── A-5: cross-user SELECT — Bob sees ZERO of Alice's rows ──
 RESET ROLE;
 SET ROLE authenticated;
-SET test.jwt.sub = '679b0000-0000-0000-0000-00000000000b';
+SET request.jwt.claim.sub = '679b0000-0000-0000-0000-00000000000b';
 
 DO $a5$
 BEGIN
@@ -233,7 +242,7 @@ $a6$;
 
 -- ── A-7: BRAND-SIDE READ — Carol (the brand's controller) sees ZERO rows;
 --        and the catalog carries EXACTLY the three owner policies ──
-SET test.jwt.sub = '679c0000-0000-0000-0000-00000000000c';
+SET request.jwt.claim.sub = '679c0000-0000-0000-0000-00000000000c';
 
 DO $a7$
 DECLARE
@@ -266,7 +275,7 @@ END;
 $a7$;
 
 -- ── A-8: no UPDATE path — even the OWNER is denied, 42501 ──
-SET test.jwt.sub = '679a0000-0000-0000-0000-00000000000a';
+SET request.jwt.claim.sub = '679a0000-0000-0000-0000-00000000000a';
 
 DO $a8$
 DECLARE
