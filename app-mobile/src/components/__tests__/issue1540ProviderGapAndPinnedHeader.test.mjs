@@ -348,6 +348,9 @@ test("H-5 consumer inventory: every flatlist consumer passing a header is review
     "src/components/FeedbackHistorySheet.tsx",
     // Its own source called the search header "always-visible"; now it is.
     "src/components/connections/FriendPickerSheet.tsx",
+    // #871 tester runtime-verified the title/close header stays pinned while
+    // guest rows scroll; this is now a reviewed flatlist+header consumer.
+    "src/components/EventGuestListSheet.tsx",
   ].sort();
 
   assert.deepEqual(

@@ -684,17 +684,18 @@ export function EventGuestListSheet({
       const { guest } = item;
       const name = guest.displayName ?? guest.username ?? "Guest";
       const line1 = item.isNamed ? name : guest.isMinglaUser ? "Someone" : "Guest";
-      // ORCH-1359 city (named rows only; null → name-only row). Computed once
-      // and reused by line2 + the a11y label.
+      // ORCH-1359 city (named rows only; null → name-only row). Keep identity
+      // copy distinct from #871's party-size fact so private and unlinked rows
+      // retain their established hierarchy.
       const city = item.isNamed ? cityFor(guest.location) : null;
       const party = `party of ${guest.partySize}`;
       const line2 = item.isYou
-        ? `You · ${party}`
+        ? "You"
         : item.isNamed
-          ? city !== null ? `${city} · ${party}` : party
+          ? city
           : guest.isMinglaUser
-            ? `Keeping it low-key · ${party}`
-            : `Not on Mingla · ${party}`;
+            ? "Keeping it low-key"
+            : "Not on Mingla";
       const rowHint = hint !== null && hint.key === item.key ? hint.text : null;
 
       const isFriendRow =
@@ -732,14 +733,14 @@ export function EventGuestListSheet({
         onOpenProfile !== undefined;
 
       const a11yLabel = item.isYou
-        ? `${name}, you, ${party}`
+        ? `${name}, you`
         : item.isNamed
           ? city !== null
-            ? `${name}, ${city}, ${party}`
-            : `${name}, ${party}`
+            ? `${name}, ${city}`
+            : name
           : guest.isMinglaUser
-            ? `Someone, keeping it low-key, ${party}`
-            : `Guest, not on Mingla, ${party}`;
+            ? "Someone, keeping it low-key"
+            : "Guest, not on Mingla";
 
       return (
         // Rows are NOT pressable (SEALED) — a plain View group; the only
@@ -749,6 +750,7 @@ export function EventGuestListSheet({
           style={[styles.row, { opacity: bodyOpacity }]}
           accessible
           accessibilityLabel={a11yLabel}
+          accessibilityHint={party}
           testID={`orch-1341-guest-sheet-row-${item.key}`}
         >
           {renderAvatar(item)}
@@ -789,6 +791,9 @@ export function EventGuestListSheet({
                 {line2}
               </Text>
             ) : null}
+            <Text style={styles.rowParty} numberOfLines={1}>
+              {party}
+            </Text>
           </View>
           {showActions ? (
             <View style={styles.actionZone}>
@@ -1223,6 +1228,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "rgba(255, 255, 255, 0.48)",
+  },
+  rowParty: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.42)",
   },
   rowHint: {
     marginTop: 3,

@@ -296,11 +296,13 @@ Deno.test("T-13 all five states render the design's copy", () => {
   // unlinked rows now carry "Not on Mingla" (item e). "Someone" / "Keeping it
   // low-key" / "You" are unchanged.
   assertStringIncludes(SHEET, '"Someone"');
-  // [TEST-MOD-APPROVED ORCH-0871] the visible/a11y row copy now includes the
-  // server-authoritative partySize instead of asserting the superseded bare text.
-  assertStringIncludes(SHEET, "Keeping it low-key · ${party}");
-  assertStringIncludes(SHEET, "Not on Mingla · ${party}");
-  assertStringIncludes(SHEET, "You · ${party}");
+  // [TEST-MOD-APPROVED #871] Party size is a separate visible/a11y fact; it
+  // must not flatten ORCH-1359's private, unlinked, and self identity captions.
+  assertStringIncludes(SHEET, '"Keeping it low-key"');
+  assertStringIncludes(SHEET, '"Not on Mingla"');
+  assertStringIncludes(SHEET, '"You"');
+  assertStringIncludes(SHEET, "{party}");
+  assertStringIncludes(SHEET, "accessibilityHint={party}");
   assertStringIncludes(SHEET, "Requested");
   assertStringIncludes(SHEET, "Couldn't send — try again");
 });
