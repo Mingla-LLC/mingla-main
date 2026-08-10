@@ -6,9 +6,14 @@
  * hook (useMenus) as direct RLS-gated upserts/deletes — this service is
  * read-shape + mappers only (mirrors useVenueReservationSettings).
  *
- * DISPLAY-ONLY (DEC-C): no ordering/cart/checkout. This service NEVER touches
- * experience_stops / experiences / the snap-menu parser
- * (I-PROPOSED-1186C-MENU-NOT-EXPERIENCE-STOPS).
+ * AMENDED at #1767 Phase 1 (issue #1789): the DEC-C display-only clause is
+ * retired — this menu becomes an ordering surface. What survives is that the
+ * menu surface never does money itself (SPEC #1788 P-20 / P-61 SET-B). The
+ * #1789 depth columns (allows_notes, prep_station, cost_cents, service windows)
+ * are read here; nothing about them is priced on the client.
+ *
+ * This service NEVER touches experience_stops / experiences / the snap-menu
+ * parser (I-PROPOSED-1186C-MENU-NOT-EXPERIENCE-STOPS).
  *
  * Error contract: throws on `error !== null` (matches fetchVenueReservationSettings).
  */
@@ -24,6 +29,11 @@ export interface MenuRow {
   description: string | null;
   sort_order: number;
   is_active: boolean;
+  // Issue #1789 (SPEC #1788 P-12) — service windows, evaluated in VENUE-LOCAL
+  // time server-side. `end < start` means the window WRAPS MIDNIGHT.
+  service_window_start: string | null;
+  service_window_end: string | null;
+  service_days: number[] | null;
 }
 
 export interface MenuItemRow {
@@ -36,6 +46,10 @@ export interface MenuItemRow {
   currency: string;
   is_available: boolean;
   sort_order: number;
+  // Issue #1789 (SPEC #1788 P-12) — menu depth.
+  allows_notes: boolean;
+  prep_station: "kitchen" | "bar" | "other" | null;
+  cost_cents: number | null;
 }
 
 // ---- camelCase domain shapes (what the builder UI consumes) ----
@@ -49,6 +63,12 @@ export interface MenuItem {
   currency: string;
   isAvailable: boolean;
   sortOrder: number;
+  /** Issue #1789 — whether a guest may attach a kitchen note to this line. */
+  allowsNotes: boolean;
+  /** Issue #1789 — Phase-5 kiosk routing seam. Nullable, never required. */
+  prepStation: "kitchen" | "bar" | "other" | null;
+  /** Issue #1789 — opt-in food cost. NEVER public; the only honest margin input. */
+  costCents: number | null;
 }
 
 export interface Menu {
@@ -60,13 +80,20 @@ export interface Menu {
   description: string | null;
   sortOrder: number;
   isActive: boolean;
+  /** Issue #1789 — "HH:MM" (or "HH:MM:SS" as Postgres returns it); null = always. */
+  serviceWindowStart: string | null;
+  serviceWindowEnd: string | null;
+  /** Issue #1789 — ISO day-of-week 1..7; null = every day. */
+  serviceDays: number[] | null;
   items: MenuItem[];
 }
 
+// Single string literals, deliberately: supabase-js infers the row shape from
+// the LITERAL type of the select string, and a `+` concatenation erases it.
 const MENU_SELECT =
-  "id, brand_id, venue_id, name, description, sort_order, is_active";
+  "id, brand_id, venue_id, name, description, sort_order, is_active, service_window_start, service_window_end, service_days";
 const MENU_ITEM_SELECT =
-  "id, menu_id, brand_id, name, description, price_cents, currency, is_available, sort_order";
+  "id, menu_id, brand_id, name, description, price_cents, currency, is_available, sort_order, allows_notes, prep_station, cost_cents";
 
 export const mapMenuRow = (row: MenuRow): Omit<Menu, "items"> => ({
   id: row.id,
@@ -76,6 +103,9 @@ export const mapMenuRow = (row: MenuRow): Omit<Menu, "items"> => ({
   description: row.description,
   sortOrder: row.sort_order,
   isActive: row.is_active,
+  serviceWindowStart: row.service_window_start,
+  serviceWindowEnd: row.service_window_end,
+  serviceDays: row.service_days,
 });
 
 export const mapMenuItemRow = (row: MenuItemRow): MenuItem => ({
@@ -88,6 +118,9 @@ export const mapMenuItemRow = (row: MenuItemRow): MenuItem => ({
   currency: row.currency,
   isAvailable: row.is_available,
   sortOrder: row.sort_order,
+  allowsNotes: row.allows_notes,
+  prepStation: row.prep_station,
+  costCents: row.cost_cents,
 });
 
 /**

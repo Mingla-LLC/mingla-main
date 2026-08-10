@@ -58,7 +58,11 @@ import {
 } from "../../hooks/useMenus";
 import type { Menu, MenuItem } from "../../services/menusService";
 import { MenuCategorySheet } from "./MenuCategorySheet";
+import type { MenuCategorySheetSaveInput } from "./MenuCategorySheet";
 import { MenuItemSheet } from "./MenuItemSheet";
+import type { MenuItemSheetSaveInput } from "./MenuItemSheet";
+import { MenuItemOptionsSection } from "./MenuItemOptionsSection";
+import { VenueSpotsSheet } from "./VenueSpotsSheet";
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 
@@ -137,6 +141,9 @@ export function VenueMenuModule({
   const [itemSheetMenuId, setItemSheetMenuId] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [saveError, setSaveError] = useState<boolean>(false);
+  // #1789 — the row currently being 86'd, so one tap cannot fire twice.
+  const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
+  const [spotsSheetOpen, setSpotsSheetOpen] = useState<boolean>(false);
 
   // ---- category handlers ----
   const openAddCategory = useCallback((): void => {
@@ -149,7 +156,7 @@ export function VenueMenuModule({
   }, []);
 
   const handleSaveCategory = useCallback(
-    (input: { name: string; description: string | null }): void => {
+    (input: MenuCategorySheetSaveInput): void => {
       setSaveError(false);
       const nextSort =
         editingCategory !== null ? editingCategory.sortOrder : menus.length;
@@ -159,6 +166,10 @@ export function VenueMenuModule({
           name: input.name,
           description: input.description,
           sortOrder: nextSort,
+          // #1789 (P-12) — service windows. Both null = always available.
+          serviceWindowStart: input.serviceWindowStart,
+          serviceWindowEnd: input.serviceWindowEnd,
+          serviceDays: input.serviceDays,
         },
         {
           onSuccess: () => {
@@ -199,12 +210,7 @@ export function VenueMenuModule({
   }, []);
 
   const handleSaveItem = useCallback(
-    (input: {
-      name: string;
-      description: string | null;
-      priceCents: number | null;
-      isAvailable: boolean;
-    }): void => {
+    (input: MenuItemSheetSaveInput): void => {
       if (itemSheetMenuId === null) return;
       setSaveError(false);
       const parentMenu = menus.find((m) => m.id === itemSheetMenuId) ?? null;
@@ -222,6 +228,10 @@ export function VenueMenuModule({
           currency,
           isAvailable: input.isAvailable,
           sortOrder: nextSort,
+          // #1789 (P-12) — menu depth. Facts, never client-side money math.
+          allowsNotes: input.allowsNotes,
+          prepStation: input.prepStation,
+          costCents: input.costCents,
         },
         {
           onSuccess: () => {
@@ -234,6 +244,39 @@ export function VenueMenuModule({
       );
     },
     [itemSheetMenuId, editingItem, menus, currency, upsertItem],
+  );
+
+  /**
+   * #1789 (SPEC #1788 P-15) — flip ONE bit. The shipped upsert carries every
+   * column, so the row's current values are passed through untouched and only
+   * `isAvailable` changes. No new write path, no new RLS surface: the existing
+   * manager-plus policy is the gate.
+   */
+  const toggle86 = useCallback(
+    (menu: Menu, item: MenuItem): void => {
+      setSaveError(false);
+      setTogglingItemId(item.id);
+      upsertItem.mutate(
+        {
+          id: item.id,
+          menuId: menu.id,
+          name: item.name,
+          description: item.description,
+          priceCents: item.priceCents,
+          currency: item.currency,
+          isAvailable: !item.isAvailable,
+          sortOrder: item.sortOrder,
+        },
+        {
+          onSuccess: () => setTogglingItemId(null),
+          onError: () => {
+            setTogglingItemId(null);
+            setSaveError(true);
+          },
+        },
+      );
+    },
+    [upsertItem],
   );
 
   const handleDeleteItem = useCallback(
@@ -378,6 +421,25 @@ export function VenueMenuModule({
         {visibilityCopy.intro}
       </Text>
 
+      {/*
+        #1789 (#1767 Phase 1) — the way into the Spots inventory. It lives here
+        because the Menu module is the one command-band module every venue has,
+        including a Stay, so a hotelier and a restaurateur reach the SAME
+        brand-scoped list. Rooms and tables side by side, one print button
+        covering both (D-3b).
+      */}
+      {canMutate ? (
+        <Button
+          label="QR spots & printing"
+          onPress={() => setSpotsSheetOpen(true)}
+          variant="secondary"
+          size="sm"
+          leadingIcon="qr"
+          style={styles.spotsEntry}
+          testID="venue-menu-spots-entry"
+        />
+      ) : null}
+
       {saveError ? (
         <Text style={styles.errorNote} testID="venue-menu-error">
           Couldn&apos;t save. Check your connection and try again.
@@ -460,14 +522,58 @@ export function VenueMenuModule({
                 ) : (
                   <Text style={styles.itemPrice}>—</Text>
                 )}
-                <View
-                  style={[
-                    styles.availabilityDot,
-                    item.isAvailable
-                      ? styles.dotAvailable
-                      : styles.dotUnavailable,
-                  ]}
-                />
+                {/*
+                  #1789 (SPEC #1788 P-15) — ONE-TAP 86, on the row.
+                  The flag always existed; reaching it took ~5 taps behind the
+                  edit form, which is five taps too many when the kitchen just
+                  ran out mid-service. One tap now, and because
+                  public_menus_view filters is_available the dish leaves the
+                  guest menu on the very next read. Manager-plus, deliberately
+                  (OQ-4 ruling: 86 changes what guests can buy, so it holds the
+                  event_manager floor that RLS already enforces server-side).
+                  A SIBLING Pressable, never nested inside another — a nested
+                  Pressable flattens the a11y subtree.
+                */}
+                {canMutate ? (
+                  <Pressable
+                    onPress={() => toggle86(menu, item)}
+                    disabled={togglingItemId === item.id}
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: item.isAvailable }}
+                    accessibilityLabel={
+                      item.isAvailable
+                        ? `${item.name} is on the menu. Tap to take it off.`
+                        : `${item.name} is off the menu. Tap to put it back.`
+                    }
+                    hitSlop={12}
+                    style={({ pressed }) => [
+                      styles.availabilityToggle,
+                      pressed && styles.pressed,
+                    ]}
+                    testID={`venue-menu-item-86-${item.id}`}
+                  >
+                    <View
+                      style={[
+                        styles.availabilityDot,
+                        item.isAvailable
+                          ? styles.dotAvailable
+                          : styles.dotUnavailable,
+                      ]}
+                    />
+                    <Text style={styles.availabilityLabel}>
+                      {item.isAvailable ? "On" : "86'd"}
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <View
+                    style={[
+                      styles.availabilityDot,
+                      item.isAvailable
+                        ? styles.dotAvailable
+                        : styles.dotUnavailable,
+                    ]}
+                  />
+                )}
                 {canMutate ? (
                   <View style={styles.actionCluster}>
                     <ArrowControl
@@ -539,6 +645,13 @@ export function VenueMenuModule({
         deleting={deleteMenu.isPending}
         canDelete={canMutate}
       />
+      <VenueSpotsSheet
+        visible={spotsSheetOpen}
+        onClose={() => setSpotsSheetOpen(false)}
+        brandId={brandId}
+        canMutate={canMutate}
+      />
+
       <MenuItemSheet
         visible={itemSheetOpen}
         onClose={() => setItemSheetOpen(false)}
@@ -550,6 +663,14 @@ export function VenueMenuModule({
         onDelete={canMutate ? handleDeleteItem : undefined}
         deleting={deleteItem.isPending}
         canDelete={canMutate}
+        optionsSection={
+          <MenuItemOptionsSection
+            brandId={brandId}
+            menuItemId={editingItem?.id ?? null}
+            currency={currency}
+            canMutate={canMutate}
+          />
+        }
       />
     </View>
   );
@@ -684,6 +805,20 @@ const styles = StyleSheet.create({
   },
   priceOnRequest: {
     ...typography.bodySm,
+    color: textTokens.tertiary,
+  },
+  spotsEntry: {
+    alignSelf: "flex-start",
+  },
+  availabilityToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xxs,
+    minHeight: 44,
+    paddingHorizontal: spacing.xs,
+  },
+  availabilityLabel: {
+    ...typography.micro,
     color: textTokens.tertiary,
   },
   availabilityDot: {

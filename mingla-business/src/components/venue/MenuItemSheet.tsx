@@ -6,7 +6,18 @@
  * toggle. Price uses majorFromMinor (hydrate) / minorFromMajor (commit) so it is
  * zero-decimal-currency safe; a BLANK price commits NULL ("price on request").
  * The currency is the brand default_currency (NO per-item currency picker, never
- * GBP-defaulted). DISPLAY-ONLY — NO quantity/order/add-to-cart/checkout control.
+ * GBP-defaulted).
+ *
+ * SET-A, FOREVER (SPEC #1788 P-61): this is an AUTHORING form. Even though the
+ * venue menu becomes an ordering surface under #1767, an authoring form never
+ * becomes a buying form — no basket, no order control, no payment control here,
+ * ever. Enforced by orch-1186c-menu-display-only.mjs SET-A.
+ *
+ * Issue #1789 (SPEC #1788 P-11, P-12) adds the depth an orderable dish needs:
+ * a kitchen-note allowance, a prep station (the Phase-5 kiosk routing seam),
+ * an opt-in food cost that is NEVER public, and the options groups. Options are
+ * edited in a PANEL rendered inside this sheet — never a second Sheet stacked
+ * over it (the shipped sub-sheet rule).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -39,6 +50,13 @@ export interface MenuItemSheetSaveInput {
   /** Minor units (cents/kobo); null = "price on request". */
   priceCents: number | null;
   isAvailable: boolean;
+  // ---- Issue #1789 (SPEC #1788 P-12) — menu depth.
+  /** Whether a guest may attach a kitchen note to this line. */
+  allowsNotes: boolean;
+  /** Phase-5 kiosk routing seam. Nullable, never required. */
+  prepStation: "kitchen" | "bar" | "other" | null;
+  /** Opt-in food cost, minor units. NEVER exposed on the public menu. */
+  costCents: number | null;
 }
 
 export interface MenuItemSheetProps {
@@ -61,6 +79,12 @@ export interface MenuItemSheetProps {
   onDelete?: (id: string) => void;
   deleting?: boolean;
   canDelete?: boolean;
+  /**
+   * Issue #1789 — the options-group builder, rendered INSIDE this sheet's body
+   * by the parent module (which owns the modifier hooks). Absent for an unsaved
+   * item: a group cannot reference an item id that does not exist yet.
+   */
+  optionsSection?: React.ReactNode;
   testID?: string;
 }
 
@@ -75,6 +99,7 @@ export function MenuItemSheet({
   onDelete,
   deleting = false,
   canDelete = false,
+  optionsSection,
   testID,
 }: MenuItemSheetProps): React.ReactElement {
   const isEdit = item !== null;
@@ -83,6 +108,11 @@ export function MenuItemSheet({
   const [description, setDescription] = useState<string>("");
   const [priceDraft, setPriceDraft] = useState<string>("");
   const [isAvailable, setIsAvailable] = useState<boolean>(true);
+  const [allowsNotes, setAllowsNotes] = useState<boolean>(true);
+  const [prepStation, setPrepStation] = useState<
+    "kitchen" | "bar" | "other" | null
+  >(null);
+  const [costDraft, setCostDraft] = useState<string>("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState<boolean>(false);
 
   useEffect(() => {
@@ -99,6 +129,13 @@ export function MenuItemSheet({
         : "",
     );
     setIsAvailable(item?.isAvailable ?? true);
+    setAllowsNotes(item?.allowsNotes ?? true);
+    setPrepStation(item?.prepStation ?? null);
+    setCostDraft(
+      item?.costCents != null && item.costCents >= 0
+        ? String(majorFromMinor(item.costCents, code))
+        : "",
+    );
   }, [visible, item, code]);
 
   // Parse the draft → integer cents (currency-aware; zero-decimal safe). A
@@ -111,6 +148,15 @@ export function MenuItemSheet({
     return minorFromMajor(major, code);
   }, [priceDraft, code]);
 
+  // Same currency-aware parse as the price. Blank -> null (not yet costed).
+  const costCents = useMemo<number | null>(() => {
+    const trimmed = costDraft.replace(/,/g, "").trim();
+    if (trimmed.length === 0) return null;
+    const major = Number.parseFloat(trimmed);
+    if (!Number.isFinite(major) || major < 0) return null;
+    return minorFromMajor(major, code);
+  }, [costDraft, code]);
+
   const showDelete = isEdit && canDelete && onDelete !== undefined;
   const canSave = name.trim().length > 0 && !saving;
   const snap = useMemo<number>(() => 0.9, []);
@@ -122,8 +168,21 @@ export function MenuItemSheet({
       description: description.trim().length > 0 ? description.trim() : null,
       priceCents,
       isAvailable,
+      allowsNotes,
+      prepStation,
+      costCents,
     });
-  }, [canSave, name, description, priceCents, isAvailable, onSave]);
+  }, [
+    canSave,
+    name,
+    description,
+    priceCents,
+    isAvailable,
+    allowsNotes,
+    prepStation,
+    costCents,
+    onSave,
+  ]);
 
   const handleConfirmDelete = useCallback((): void => {
     if (item === null || onDelete === undefined) return;
@@ -180,6 +239,28 @@ export function MenuItemSheet({
             Leave blank to show “Price on request”.
           </Text>
 
+          {/*
+            Issue #1789 (P-12) — the venue's own food cost. Opt-in, never
+            public, and the ONLY honest input to a margin figure: until a venue
+            fills it, menu quadrants are labelled BY PRICE and never called
+            profit (SPEC #1788 P-58). Nothing on this screen computes a margin.
+          */}
+          <Field
+            label={`What it costs you (optional${brandHasCurrency ? `, ${code}` : ""})`}
+          >
+            <Input
+              value={costDraft}
+              onChangeText={setCostDraft}
+              variant="number"
+              placeholder="0.00"
+              accessibilityLabel={`What this item costs you${brandHasCurrency ? ` in ${code}` : ""}`}
+              testID="menu-item-cost"
+            />
+          </Field>
+          <Text style={styles.helper}>
+            Only you ever see this. Guests never do.
+          </Text>
+
           <Text style={styles.groupLabel}>Availability</Text>
           <ToggleRow
             label="Show this item to guests"
@@ -187,6 +268,39 @@ export function MenuItemSheet({
             onValueChange={setIsAvailable}
             testID="menu-item-available"
           />
+
+          <Text style={styles.groupLabel}>Kitchen</Text>
+          <ToggleRow
+            label="Let guests add a note (no ice, extra hot)"
+            value={allowsNotes}
+            onValueChange={setAllowsNotes}
+            testID="menu-item-allows-notes"
+          />
+          <Text style={styles.helper}>
+            Notes are capped so a kitchen ticket stays readable.
+          </Text>
+          <Field label="Where it&apos;s made (optional)">
+            <View style={styles.stationRow}>
+              {STATION_CHOICES.map((choice) => (
+                <Button
+                  key={choice.label}
+                  label={choice.label}
+                  onPress={() =>
+                    setPrepStation(
+                      prepStation === choice.value ? null : choice.value,
+                    )
+                  }
+                  variant={prepStation === choice.value ? "primary" : "secondary"}
+                  size="sm"
+                  testID={`menu-item-station-${choice.value ?? "none"}`}
+                />
+              ))}
+            </View>
+          </Field>
+
+          {optionsSection !== undefined ? (
+            <View testID="menu-item-options-section">{optionsSection}</View>
+          ) : null}
 
           <Button
             label={isEdit ? "Save item" : "Add item"}
@@ -239,6 +353,15 @@ export function MenuItemSheet({
     </Sheet>
   );
 }
+
+const STATION_CHOICES: readonly {
+  label: string;
+  value: "kitchen" | "bar" | "other";
+}[] = [
+  { label: "Kitchen", value: "kitchen" },
+  { label: "Bar", value: "bar" },
+  { label: "Somewhere else", value: "other" },
+];
 
 interface FieldProps {
   label: string;
@@ -309,6 +432,11 @@ const styles = StyleSheet.create({
   field: {
     gap: spacing.xxs,
     marginBottom: spacing.xs,
+  },
+  stationRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
   },
   fieldLabel: {
     ...typography.bodySm,

@@ -31,6 +31,7 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueCapacityRulesPanel } from "./VenueCapacityRulesPanel";
 import { VenueTableSheet } from "./VenueTableSheet";
+import { VenueSpotsSheet } from "./VenueSpotsSheet";
 import type {
   VenueTable,
   VenueTableUpsert,
@@ -138,6 +139,8 @@ export function VenueTablesModule({
     [canMutate, remove],
   );
 
+  const [spotsSheetOpen, setSpotsSheetOpen] = useState<boolean>(false);
+
   const header = useMemo(
     () => (
       <View style={styles.headerRow}>
@@ -165,6 +168,24 @@ export function VenueTablesModule({
   return (
     <View style={styles.host} testID={testID ?? "venue-tables-module"}>
       {header}
+
+      {/*
+        Issue #1789 (#1767 Phase 1) — every table already has a QR spot: the
+        database mints one the moment the table exists, so the operator never
+        keeps two lists (D-3). This is the way into that ONE brand-scoped
+        inventory and its print sheet.
+      */}
+      {canMutate ? (
+        <Button
+          label="QR spots & printing"
+          onPress={() => setSpotsSheetOpen(true)}
+          variant="secondary"
+          size="sm"
+          leadingIcon="qr"
+          style={styles.spotsEntry}
+          testID="venue-tables-spots-entry"
+        />
+      ) : null}
 
       {isEmpty ? (
         <GlassCard variant="elevated" style={styles.emptyCard}>
@@ -263,6 +284,13 @@ export function VenueTablesModule({
         deleting={remove.isPending}
         canDelete={canMutate}
       />
+
+      <VenueSpotsSheet
+        visible={spotsSheetOpen}
+        onClose={() => setSpotsSheetOpen(false)}
+        brandId={brandId}
+        canMutate={canMutate}
+      />
     </View>
   );
 }
@@ -272,6 +300,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     gap: spacing.md,
+  },
+  spotsEntry: {
+    alignSelf: "flex-start",
   },
   headerRow: {
     flexDirection: "row",
