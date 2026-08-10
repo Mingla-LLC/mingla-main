@@ -23,11 +23,19 @@
  * the reservations toggle): the DISPLAY-ONLY menu builder. It is NOT a booking
  * module (isBookingModule("menu") === false), so the booking-band gating is
  * unchanged (I-PROPOSED-1148-RESERVATION-TOGGLE-GATES-SUITE preserved).
+ *
+ * Issue #1735 (I-PROPOSED-1735-INSIGHTS-COMMAND-BAND-ADDITIVE) — `insights` is
+ * a COMMAND-band module (always visible, independent of the reservations
+ * toggle): the combined Insights suite (site check + competitor watch;
+ * #1737 adds pricing). NOT a booking module
+ * (isBookingModule("insights") === false) — the booking-band gating stays
+ * untouched.
  */
 export type VenueModule =
   | "overview"
   | "settings"
   | "menu"
+  | "insights"
   | "tables"
   | "availability"
   | "reservations"
@@ -36,7 +44,7 @@ export type VenueModule =
 /** The booking-band modules (gated on the toggle; ComingSoon in 2.0). */
 export type VenueBookingModule = Exclude<
   VenueModule,
-  "overview" | "settings" | "menu"
+  "overview" | "settings" | "menu" | "insights"
 >;
 
 /** No-show fee policy (enforcement is 2.2; 2.0 stores the policy only). */

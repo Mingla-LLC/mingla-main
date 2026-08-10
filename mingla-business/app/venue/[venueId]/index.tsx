@@ -92,10 +92,17 @@ export default function VenueManagementPage(): React.ReactElement {
   const params = useLocalSearchParams<{
     venueId?: string | string[];
     focus?: string | string[];
+    module?: string | string[];
   }>();
   const venueId = paramValue(params.venueId);
   const focus =
     paramValue(params.focus) === "feedback" ? ("feedback" as const) : undefined;
+  // Issue #1735 G-3 — `?module=insights` deep link (Overview tile + to-do
+  // nudges). Whitelist the literal "insights" ONLY: it is command-band, so it
+  // is always in `visibleModules` and can never select a hidden module. Any
+  // other value is ignored (the default Overview stands).
+  const initialModule =
+    paramValue(params.module) === "insights" ? ("insights" as const) : undefined;
 
   const venueQuery = useVenueListing(venueId);
   const venue = venueQuery.data ?? null;
@@ -340,7 +347,15 @@ export default function VenueManagementPage(): React.ReactElement {
           venueApproved={venue.claimStatus === "verified"}
         />
       ) : (
-        <VenueSuiteShell brandId={brandId} venueId={venueId} focus={focus} />
+        <VenueSuiteShell
+          brandId={brandId}
+          venueId={venueId}
+          focus={focus}
+          // #1735 G-3 — `?module=insights` lands with Insights active; the
+          // shell's store sync propagates it to the pill row/rail. Stays never
+          // reach this branch (Insights does not exist for stays in v1 — G-21).
+          initialModule={initialModule ?? "overview"}
+        />
       )}
 
       <VenueClaimFeedbackSheet

@@ -55,6 +55,7 @@ import { SuiteDesktopShell } from "../suite/SuiteDesktopShell";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueAvailabilityModule } from "./VenueAvailabilityModule";
+import { VenueInsightsModule } from "./insights/VenueInsightsModule";
 import { VenueIntelligenceModule } from "./VenueIntelligenceModule";
 import { VenueMenuModule } from "./VenueMenuModule";
 import { VenueReservationsModule } from "./VenueReservationsModule";
@@ -200,6 +201,13 @@ export function VenueSuiteShell({
     // ScrollView (moduleSelfScrolls("menu") === false), like Settings.
     if (activeModule === "menu") {
       return <VenueMenuModule brandId={brandId} venueId={venueId} />;
+    }
+    // Issue #1735 — the combined Insights suite (site check + competitor
+    // watch; #1737 adds pricing). Command band, both derivation branches
+    // (I-PROPOSED-1735-INSIGHTS-COMMAND-BAND-ADDITIVE). OWNS its ScrollView
+    // (moduleSelfScrolls("insights") === true) — the shell must NOT wrap it.
+    if (activeModule === "insights") {
+      return <VenueInsightsModule brandId={brandId} venueId={venueId} />;
     }
     // 2.1a — Tables + Availability LIVE. 2.1b — Reservations + Waitlist LIVE.
     // The whole booking band is now real operator UI (no ComingSoon left).
