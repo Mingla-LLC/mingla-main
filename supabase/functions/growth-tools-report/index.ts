@@ -8,10 +8,43 @@
 // POST {run_id, token} → 200 {report}
 //   → 400 {error:"validation"} | 403 {error:"forbidden"} | 404 {error:"not_found"}
 //   → 500 {error:"server"} · OPTIONS → 200 "ok" + CORS
+//
+// ISSUE-1734 [shared platform] — SECOND, AUTHENTICATED branch for the Business
+// app (P-26, amended P-43 + OQ-U1). Entered if and only if the body carries
+// `lane:"app"` (P-2 — the web token branch above is byte-stable). Bearer JWT +
+// the full P-3 chain (_shared/growthToolsAuth.ts), then EXACTLY ONE of three
+// selectors:
+//   • {lane:"app", brand_id, run_id}      — one specific run.
+//   • {lane:"app", brand_id, client_ref}  — newest run for a client-minted
+//     attempt ref (the P-27 resume poll).
+//   • {lane:"app", brand_id, tool, subject_ref, include_previous?} — newest
+//     report_ready run(s) for a subject (P-43; `include_previous:true` returns
+//     the prior one too, for the client-side diff). Reads MAY transmit the
+//     subject_ref string; only WRITES must not compose it (P-41).
+// Column allowlist (OQ-U1): id, status, report, input, brand_id, created_at —
+// NEVER report_token / email / ip_hash / pid / utm
+// (I-PROPOSED-1734-TOKEN-FLOW-UNTOUCHED). Ownership: the row's brand_id must
+// equal the verified brand on EVERY returned row (P-5, COMMS-0136 — the
+// subject selector is additionally keyed by the caller's brand, so foreign
+// rows are structurally unreachable there).
+//   run_id/client_ref → 200 {status:"created", input} | {status:"failed",
+//     reason:"failed", input} | {status:"report_ready", report, input}
+//     · 403 {error:"forbidden"} (exists, not owned) · 404 {error:"not_found"}
+//   subject → 200 {status:"none"} (never checked — the designed first-run
+//     state, NOT an error) | {status:"report_ready", run_id, created_at,
+//     report, input, previous?}
+//   → 401 {error:"unauthenticated"} · 400 {error:"validation"}
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
+// ISSUE-1734 — the SINGLE shared app-lane auth module (P-6).
+import {
+  authenticateAppLane,
+  isAppLane,
+  isUuidValue,
+  SUBJECT_REF_RE,
+} from "../_shared/growthToolsAuth.ts";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -33,6 +66,170 @@ function safeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+// ── ISSUE-1734 app branch ────────────────────────────────────────────────────
+// P-26/P-43 column allowlist (OQ-U1 amended): the select-list IS the
+// enforcement — report_token / email / ip_hash / pid / utm can never appear in
+// an app-lane response because they are never selected.
+const APP_READ_COLUMNS = "id, status, report, input, brand_id, created_at";
+
+const KNOWN_TOOLS = new Set(["venues", "events", "trips", "experiences"]);
+
+interface AppRow {
+  id: string;
+  status: string;
+  report: unknown;
+  input: unknown;
+  brand_id: string | null;
+  created_at: string;
+}
+
+// Map one OWNED row to the run_id/client_ref-selector response body. The
+// caller has already passed the brand-equality check (P-5).
+function rowStatusResponse(row: AppRow): Response {
+  if (row.status === "report_ready") {
+    return json({ status: "report_ready", report: row.report, input: row.input }, 200);
+  }
+  if (row.status === "failed") {
+    return json({ status: "failed", reason: "failed", input: row.input }, 200);
+  }
+  // 'created' (in-flight). gated_email/emailed are web-only statuses and
+  // structurally unreachable here (web rows have NULL brand_id → 403 earlier).
+  return json({ status: row.status, input: row.input }, 200);
+}
+
+async function handleAppRead(
+  req: Request,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+  const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  if (!SUPABASE_URL || !SERVICE_KEY) return json({ error: "server" }, 500);
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  // P-3 chain on EVERY read path (P-5, COMMS-0136 — no shortcut skips it).
+  const auth = await authenticateAppLane(req, body, supabase);
+  if (auth instanceof Response) return auth;
+
+  // Exactly ONE of the three selectors (P-43).
+  const hasRunId = body.run_id !== undefined && body.run_id !== null;
+  const hasClientRef = body.client_ref !== undefined && body.client_ref !== null;
+  const hasSubject = body.subject_ref !== undefined && body.subject_ref !== null;
+  const selectorCount = [hasRunId, hasClientRef, hasSubject].filter(Boolean).length;
+  if (selectorCount !== 1) {
+    return json({ error: "validation", fields: ["selector"] }, 400);
+  }
+
+  if (hasRunId || hasClientRef) {
+    let row: AppRow | null = null;
+    if (hasRunId) {
+      if (!isUuidValue(body.run_id)) {
+        return json({ error: "validation", fields: ["run_id"] }, 400);
+      }
+      const { data, error } = await supabase
+        .from("tool_leads")
+        .select(APP_READ_COLUMNS)
+        .eq("id", body.run_id)
+        .maybeSingle();
+      if (error) {
+        console.error("[growth-tools-report] app read failed", error.message);
+        return json({ error: "server" }, 500);
+      }
+      row = (data ?? null) as AppRow | null;
+    } else {
+      if (!isUuidValue(body.client_ref)) {
+        return json({ error: "validation", fields: ["client_ref"] }, 400);
+      }
+      // Newest attempt for this client ref (idx_tool_leads_app_client_ref) —
+      // the P-27 resume poll.
+      const { data, error } = await supabase
+        .from("tool_leads")
+        .select(APP_READ_COLUMNS)
+        .eq("client_ref", body.client_ref)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (error) {
+        console.error("[growth-tools-report] app read failed", error.message);
+        return json({ error: "server" }, 500);
+      }
+      row = ((data ?? [])[0] ?? null) as AppRow | null;
+    }
+    if (!row) return json({ error: "not_found" }, 404);
+    // (P-5 / COMMS-0136) ownership equality on EVERY returned row: a web row
+    // (NULL brand_id) or another brand's row can never match → 403 (exists but
+    // not owned — mirrors the web branch's 403/404 distinction; run_ids are
+    // unguessable UUIDs either way).
+    if (row.brand_id !== auth.brandId) {
+      return json({ error: "forbidden" }, 403);
+    }
+    return rowStatusResponse(row);
+  }
+
+  // Subject selector (P-43): {tool, subject_ref, include_previous?}.
+  const tool = body.tool;
+  if (typeof tool !== "string" || !KNOWN_TOOLS.has(tool)) {
+    return json({ error: "validation", fields: ["tool"] }, 400);
+  }
+  const subjectRef = body.subject_ref;
+  if (typeof subjectRef !== "string" || !SUBJECT_REF_RE.test(subjectRef)) {
+    return json({ error: "validation", fields: ["subject_ref"] }, 400);
+  }
+  const includePrevious = body.include_previous === true;
+
+  // Keyed by the CALLER's verified brand (idx_tool_leads_app_subject): another
+  // brand's rows can never match, so this selector has no 403 case —
+  // cross-brand probing is structurally empty. The per-row brand assert below
+  // stands anyway (P-5 — the predicate AND the assert, so a future query edit
+  // cannot silently widen).
+  const { data, error } = await supabase
+    .from("tool_leads")
+    .select(APP_READ_COLUMNS)
+    .eq("brand_id", auth.brandId)
+    .eq("tool", tool)
+    .eq("subject_ref", subjectRef)
+    .eq("lane", "app")
+    .eq("status", "report_ready")
+    .order("created_at", { ascending: false })
+    .limit(includePrevious ? 2 : 1);
+  if (error) {
+    console.error("[growth-tools-report] subject read failed", error.message);
+    return json({ error: "server" }, 500);
+  }
+  const rows = (data ?? []) as AppRow[];
+  for (const r of rows) {
+    if (r.brand_id !== auth.brandId) {
+      console.error("[growth-tools-report] subject ownership assert failed");
+      return json({ error: "server" }, 500);
+    }
+  }
+  if (rows.length === 0) {
+    // "Never checked yet" is the designed first-run state of every standing
+    // surface — NOT an error (deliberate: 404 stays the answer for the
+    // run_id/client_ref selectors, where a missing SPECIFIC run IS an error).
+    return json({ status: "none" }, 200);
+  }
+  const newest = rows[0];
+  const previous = includePrevious && rows.length > 1 ? rows[1] : null;
+  return json({
+    status: "report_ready",
+    run_id: newest.id,
+    created_at: newest.created_at,
+    report: newest.report,
+    input: newest.input,
+    ...(previous
+      ? {
+        previous: {
+          run_id: previous.id,
+          created_at: previous.created_at,
+          report: previous.report,
+          input: previous.input,
+        },
+      }
+      : {}),
+  }, 200);
+}
+
 export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -46,6 +243,22 @@ export async function handler(req: Request): Promise<Response> {
   } catch {
     return json({ error: "validation" }, 400);
   }
+
+  // ISSUE-1734 P-2: the app branch is entered ONLY on body-explicit
+  // lane:"app" — the anonymous token branch below is byte-stable
+  // (I-PROPOSED-1734-WEB-FUNNEL-UNCHANGED / TOKEN-FLOW-UNTOUCHED).
+  if (isAppLane(body)) {
+    try {
+      return await handleAppRead(req, body);
+    } catch (err) {
+      console.error(
+        "[growth-tools-report] app read unexpected error",
+        err instanceof Error ? err.message : String(err),
+      );
+      return json({ error: "server" }, 500);
+    }
+  }
+
   const runId = body.run_id;
   const token = typeof body.token === "string" ? body.token : "";
   if (!isUuid(runId) || token.length < 16 || token.length > 128) {
