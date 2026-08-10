@@ -10,9 +10,19 @@
  * tokens + manager-plus gate + the sheet add/edit pattern). Reorder is up/down
  * text controls (no drag dependency — Android-safe; OQ-2 resolved).
  *
- * HARD: NO order/cart/quantity/checkout/payment control anywhere (DEC-C,
- * I-PROPOSED-1186-MENU-DISPLAY-ONLY, strict-grep gate). NEVER touches
- * experience_stops / the snap-menu parser (I-PROPOSED-1186C-MENU-NOT-EXPERIENCE-STOPS).
+ * HARD (AMENDED at #1767 Phase 1 / issue #1789 — SPEC #1788 P-61 SET-B, P-64):
+ * the DEC-C display-only clause is deliberately RETIRED for this module. What
+ * survives, and is now the whole rule, is that this surface NEVER DOES MONEY
+ * ITSELF: no payment-provider SDK import, no payment sheet, no client-side fee,
+ * take-rate or tax arithmetic. Every money number it renders is a server value
+ * (SPEC #1788 P-20). Enforced by the re-scoped strict-grep gate
+ * `orch-1186c-menu-display-only.mjs` (SET-B) and by the amended
+ * I-PROPOSED-1186-MENU-DISPLAY-ONLY. The builder SHEETS (MenuItemSheet /
+ * MenuCategorySheet) and the marketing venue-preview skin stay display-only
+ * FOREVER (SET-A).
+ *
+ * NEVER touches experience_stops / the snap-menu parser
+ * (I-PROPOSED-1186C-MENU-NOT-EXPERIENCE-STOPS).
  */
 
 import React, { useCallback, useMemo, useState } from "react";
