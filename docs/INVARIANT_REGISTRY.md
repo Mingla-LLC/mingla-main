@@ -7839,19 +7839,17 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ---
 
-## DRAFT — issue #1614 (PostgREST upsert arbiters and Business notification preference coexistence)
+## ACTIVE — issue #1614 (PostgREST upsert arbiters and Business notification preference coexistence)
 
-> Registered DRAFT during #1614 IMPLEMENT. The orchestrator flips these entries to ACTIVE only after independent tester PASS, merge, schema apply, Edge deployment, and production verification.
-
-### I-PROPOSED-1614-POSTGREST-UPSERT-ARBITER (DRAFT)
+### I-1614-POSTGREST-UPSERT-ARBITER (ACTIVE)
 - **Rule:** Every executable string-literal Supabase `onConflict` target in runtime JavaScript/TypeScript must resolve, after the complete migration chain, to a PostgreSQL arbiter that accepts the exact bare `ON CONFLICT (columns)` shape emitted by PostgREST. A partial unique index is never sufficient unless the caller can repeat its predicate; Supabase/PostgREST callers cannot, so runtime conflict targets require a compatible non-partial UNIQUE constraint/index.
 - **Enforcement:** `.github/workflows/issue-1614-onconflict-arbiter-audit.yml` runs on every PR and every push to `main`, tokenizes all runtime source roots, asserts the 83-site bootstrap floor while discovering future sites, applies the complete chain to PostgreSQL 17, and executes a non-mutating `EXPLAIN INSERT ... ON CONFLICT ... DO NOTHING` for every deduplicated target. Dynamic, interpolated, unresolved, empty, and duplicate-column targets fail with file/line evidence.
 - **Regression:** `.github/scripts/__tests__/issue-1614-onconflict-arbiter-audit.test.mjs` plus the #1614 SQL happy-path and tester adversarial guards. The parser self-test covers comment exclusion, quote forms, multiline calls, future-site discovery, identifier quoting, and invalid-target rejection; PG17 remains the sole arbiter authority.
-- **Established:** DRAFT at #1614 IMPLEMENT, 2026-08-10.
+- **Established:** #1614 CLOSE, 2026-08-10.
 
-### I-PROPOSED-1614-BUSINESS-NOTIFICATION-PREF-COEXISTENCE (DRAFT)
+### I-1614-BUSINESS-NOTIFICATION-PREF-COEXISTENCE (ACTIVE)
 - **Rule:** `notification_preferences` remains the unchanged one-row-per-user global/category push-veto owner. `business_notification_type_preferences` is the sole owner of the 11 Business notification types' per-channel (`push`, `in_app`) choices. Missing rows use the locked template defaults: every in-app channel ON, `business.team_member_joined` push OFF, and every other supported Business push ON. Explicit per-type push permission never overrides a legacy global/category veto.
 - **Inbox clause:** Every notification remains durably inserted for audit/idempotency. A Business type whose in-app channel is OFF carries non-NULL `notifications.in_app_suppressed_at` and is excluded from initial fetch, realtime insertion/update, cache, unread count, and badge. Push remains independently eligible. A per-type preference lookup error fails closed before insertion/provider delivery with the stable retryable reason `business_preference_lookup_failed`.
 - **Security:** The new preference table is owner-only under authenticated RLS, grants no anon privilege, and remains service-role-readable for centralized dispatch. Existing notification, impression, and place RLS/auth gates are unchanged.
 - **Enforcement:** migration constraints/RLS; `notify-dispatch`; `useNotificationTypePrefs`; `useBusinessNotifications`; `.github/workflows/issue-1614-onconflict-arbiter-audit.yml`; the #1614 SQL, Deno, Business Jest, and independent tester guards.
-- **Established:** DRAFT at #1614 IMPLEMENT, 2026-08-10.
+- **Established:** #1614 CLOSE, 2026-08-10.
