@@ -51,6 +51,7 @@ jobs:
         run: >-
           npx jest
           src/utils/__tests__/issue_0871_attendance_claim_public_route.implementor.happy.test.ts
+          src/utils/__tests__/issue_0871_attendance_claim_auth_boundary.tester.adversarial.test.ts
           --runInBand
 
   issue-871-pg17:
