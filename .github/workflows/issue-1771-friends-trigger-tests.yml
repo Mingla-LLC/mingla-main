@@ -1,0 +1,68 @@
+name: "#1771 Friends accept-trigger dropped"
+
+# Issue #1771 (Wave 0 of #876) — regression gate proving the dormant, broken
+# accept_friend_request trigger/function are dropped and the pending→accepted
+# accept path is safe.
+#
+# Self-contained (no baseline replay, issue-1217 docker/psql house pattern):
+# the SQL test arms a minimal public.friends clone with the BROKEN baseline
+# function+trigger VERBATIM, proves the 42703 landmine fires, applies the real
+# #1771 migration (docker-cp'd into the container), then proves the same
+# UPDATE succeeds and both catalog rows are gone — plus double-apply
+# idempotency (SC-4).
+#
+# Fails-on-revert: deleting the migration fails the docker cp step; re-adding
+# the trigger/function fails leg 4's catalog assertions.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270305001771_issue_1771_drop_dormant_accept_friend_request_trigger.sql"
+      - "supabase/migrations/__tests__/issue_1771_friends_accept_trigger_dropped.test.sql"
+      - ".github/workflows/issue-1771-friends-trigger-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/20270305001771_issue_1771_drop_dormant_accept_friend_request_trigger.sql"
+      - "supabase/migrations/__tests__/issue_1771_friends_accept_trigger_dropped.test.sql"
+      - ".github/workflows/issue-1771-friends-trigger-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1771-friends-trigger-dropped:
+    name: "#1771 accept_friend_request trigger dropped (PG17 docker proof)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the #1771 landmine + drop proof on clean PostgreSQL 17
+        run: |
+          issue1771_db_password="$(openssl rand -hex 24)"
+          docker run --name issue1771-postgres \
+            -e POSTGRES_PASSWORD="$issue1771_db_password" \
+            -d supabase/postgres:17.4.1.075
+          for attempt in {1..90}; do
+            state="$(docker inspect --format \
+              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              issue1771-postgres)"
+            if [ "$state" = "healthy" ]; then
+              break
+            fi
+            sleep 1
+          done
+          # Fails-on-revert leg: deleting the migration fails this cp.
+          docker cp \
+            supabase/migrations/20270305001771_issue_1771_drop_dormant_accept_friend_request_trigger.sql \
+            issue1771-postgres:/issue_1771_migration.sql
+          docker exec -i issue1771-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1771_friends_accept_trigger_dropped.test.sql
+      - name: Remove disposable database
+        if: always()
+        run: docker rm -f issue1771-postgres || true
