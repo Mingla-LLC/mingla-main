@@ -53,6 +53,7 @@ import { GrowthToolsAppError } from "../../../../services/growthToolsService";
 
 interface RenderNode {
   type?: unknown;
+  parent?: RenderNode | null;
   props: Record<string, unknown> & { children?: unknown; testID?: string };
 }
 interface RenderTree {
@@ -276,6 +277,83 @@ describe("issue #1735 SiteCheckInstrument (T-G13 — 429 / error / offline)", ()
     expect(allText(tree)).toContain("You're offline — checks need a connection.");
     expect(byTestId(tree, "site-check-instrument-run-cta")[0]!.props.disabled).toBe(
       true,
+    );
+  });
+});
+
+describe("issue #1735 rework P1-2 — a11y sibling tree (WCAG operability, G-18)", () => {
+  /** Every ancestor of `node` up to the root, nearest first. */
+  const ancestorsOf = (node: RenderNode): RenderNode[] => {
+    const chain: RenderNode[] = [];
+    let current = node.parent ?? null;
+    while (current !== null && current !== undefined) {
+      chain.push(current);
+      current = current.parent ?? null;
+    }
+    return chain;
+  };
+
+  it("the Re-check button is a TRUE SIBLING — outside the accessible roll-up AND outside the open-report Pressable", async () => {
+    const tree = await render(
+      baseProps({
+        verdict: verdictFixture(),
+        onOpenReport: jest.fn(),
+      }),
+    );
+    const recheck = byTestId(tree, "site-check-instrument-recheck")[0]!;
+    const ancestors = ancestorsOf(recheck);
+    // NOT inside any rolled-up accessible element (a nested control is
+    // swallowed by VoiceOver — the tester's hierarchy-verdict.json finding).
+    expect(ancestors.some((a) => a.props.accessible === true)).toBe(false);
+    // NOT inside the open-report Pressable (nested Pressables flatten the
+    // a11y subtree — the house SIBLING rule).
+    expect(
+      ancestors.some(
+        (a) => a.props.testID === "site-check-instrument-open-report",
+      ),
+    ).toBe(false);
+    // The open-report Pressable EXISTS as its own sibling focusable.
+    expect(byTestId(tree, "site-check-instrument-open-report")).toHaveLength(1);
+  });
+
+  it("the speaking status lines are siblings too (stale/error reach AT users individually)", async () => {
+    const tree = await render(
+      baseProps({
+        websiteState: { kind: "ready", website: "https://newbartoto.com" },
+        verdict: verdictFixture(),
+        runError: new GrowthToolsAppError("generation_failed", {
+          reason: "timeout",
+        }),
+        onOpenReport: jest.fn(),
+      }),
+    );
+    for (const id of [
+      "site-check-instrument-stale",
+      "site-check-instrument-run-error",
+    ]) {
+      const node = byTestId(tree, id)[0]!;
+      const ancestors = ancestorsOf(node);
+      expect(ancestors.some((a) => a.props.accessible === true)).toBe(false);
+      expect(
+        ancestors.some(
+          (a) => a.props.testID === "site-check-instrument-open-report",
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it("the rolled-up accessible summary still exists (grade + fixes + date in ONE label)", async () => {
+    const tree = await render(baseProps({ verdict: verdictFixture() }));
+    const accessibleNodes = tree.root.findAll(
+      (n) =>
+        typeof n.type === "string" &&
+        n.props.accessible === true &&
+        typeof n.props.accessibilityLabel === "string" &&
+        (n.props.accessibilityLabel as string).startsWith("Site check: grade"),
+    );
+    expect(accessibleNodes).toHaveLength(1);
+    expect(accessibleNodes[0]!.props.accessibilityLabel).toContain(
+      "3 fixes waiting",
     );
   });
 });
