@@ -7,6 +7,40 @@
 
 ---
 
+## DRAFT — issue #1770 (Brand People and offering guest foundation)
+
+### I-PROPOSED-BRAND-PERSON-1 (DRAFT)
+- **Rule:** One brand-scoped person may accumulate many source records and contact methods without silently joining ambiguous identities; deterministic evidence links, ambiguous evidence creates a conflict, and every merge remains attributable and reversible when its partition is still provable.
+- **Enforcement:** #1770 tables, exact source resolver RPCs, merge/reversal RPCs, RLS, grants, and the batch-A #1770 guard.
+- **Regression:** The #1770 SQL happy-path contract and Edge worker tests fail when source uniqueness, conflict behavior, or merge evidence is removed.
+
+### I-PROPOSED-OFFERING-INVITE-1 (DRAFT)
+- **Rule:** Offering invitations use opaque one-time material whose raw value is never stored; the database stores only a peppered HMAC, validation is event-bound and evidence-bound, and preview performs zero provider I/O.
+- **Enforcement:** `OFFERING_INVITE_TOKEN_PEPPER`, the shared token helper, invite/token tables, validator RPC, send-group RPCs, and `offering-invite-dispatch`.
+- **Regression:** #1770 token and dispatch tests plus the batch-A guard pin value-blind crypto readiness, HMAC parity, preview ordering, and provider reuse.
+
+### I-PROPOSED-OFFERING-PUSH-RETRY-1 (DRAFT)
+- **Rule:** An offering push send group owns one immutable, token-free v1 push payload. Initial delivery, exact replay, and every homogeneous retry dispatch only the independently rehashed object returned by the database claim; caller content, current templates, inbox rows, and hashes without source bytes can never reconstruct or replace it.
+- **Enforcement:** `marketing_send_groups.push_payload_v1/push_payload_hash`, the immutable trigger, locked retry copy/revalidation, `biz_claim_offering_push_provider_io`, and the `offering_invitation`-only persisted seam in `notifyV2`.
+- **Regression:** The #1770 SQL, quote, dispatch, notification, and strict-guard tests pin exact storage, hash parity, service-role immutability, DB-backed dispatch, and the absence of push ownership from `marketing-send`.
+
+### I-PROPOSED-PERSON-SUPPRESSION-1 (DRAFT)
+- **Rule:** A person suppressed for marketing or all messaging remains suppressed across every linked source and contact method; a new order, RSVP, ticket, merge, or re-ingest can never silently reactivate marketing eligibility.
+- **Enforcement:** Brand-person suppression rows, legacy-ledger projection triggers, source-derived resolution, and offering audience selection.
+- **Regression:** The #1770 SQL contract and strict guard require suppression projection and exclusion before attempts are queued.
+
+### I-PROPOSED-SOURCE-FAILOPEN-1 (DRAFT)
+- **Rule:** Existing RSVP, order, and ticket writes remain authoritative if Brand People ingestion is unavailable; source writes enqueue work, the worker retries with bounded backoff, and only aggregate safe codes leave the boundary.
+- **Enforcement:** Four after-write outbox triggers, claim/finish RPCs, and `brand-person-ingest-worker` with service-only authorization.
+- **Regression:** The #1770 worker test and strict guard pin enqueue-only source triggers, a 100-row claim limit, bounded retry/dead-letter behavior, and PII-free responses.
+
+### I-PROPOSED-BRAND-EXPORT-1 (DRAFT)
+- **Rule:** Brand People exports are brand-authorized, scope-bound, audited, formula-neutralized RFC-4180 files in private storage, exposed only through short-lived signed URLs; an unsupported authoritative provider fails closed.
+- **Enforcement:** Export job/audit tables, export RPCs, private bucket, and `brand-people-export`.
+- **Regression:** The #1770 export test and strict guard pin authorization, provider-not-ready failure, private storage, 60-second signed URLs, and CSV injection defense.
+
+---
+
 ## ACTIVE — issue #1607 (Explorer guard integrity and executable wiring)
 
 > Activation approved at issue #1607 CLOSE after independent tester PASS. Enforcement becomes active when PR #1768 merges and is verified on fresh `origin/main`.
@@ -216,11 +250,11 @@
 
 ---
 
-## ACTIVE — issue #1436 (temporary exception retired; #1615 amended authority to 86 names)
+## ACTIVE — issue #1436 (temporary exception retired; #1770 amended authority to 87 names)
 
 ### I-PROPOSED-1436-SECRET-CAPACITY-EXIT (ACTIVE)
-- **Rule:** Production has exactly 86 user-managed Supabase secret names under the enforced manifest and no #1430 capacity exception. Issue #1615 authorizes `SHARED_CARD_PROXY_SECRET` as one standalone authentication credential; it must never enter noncredential `MINGLA_RUNTIME_CONFIG_JSON`. `MINGLA_DELIVERY_FLAGS_JSON` schema v2 owns three independent strict payment-operation booleans; missing or invalid financial authority fails safe (no onboarding flip, no payout execution, source-refund provider POSTs disabled). `AD_CONVERSION_TOKENS.NOTIFICATION_RECIPIENT_HMAC_SECRET` owns the exact untransformed current notification-recipient HMAC material and missing/invalid material fails before provider HTTP. Historical fingerprint material must be preserved whenever dependent deliveries or pending intents exist; replacement without a previous key is allowed only after a value-blind production gate proves zero dependent deliveries and zero pending intents, followed by one operator-only send and identical retries proving one provider acceptance before and after direct-name removal. The retired direct names `SOURCE_REFUNDS_POST_DISABLED`, `PAYOUT_RELEASE_EXECUTE`, `PAYOUT_HOLD_ONBOARD_FLIP`, and `NOTIFICATION_RECIPIENT_HMAC_SECRET` remain absent unless a new approved bounded migration issue explicitly restores one.
-- **Enforcement:** `supabase/secrets.manifest.json` pins exact 86-name authority and zero exceptions; `.github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs`, the strengthened #1203 capacity gate, and the strengthened #1430 refund-replay gate pin bundle ownership, safe defaults, retired-name absence, and provider replay safety. The scheduled/manual names-only audit requires exact manifest parity without raw CLI output.
+- **Rule:** Repository authority targets exactly 87 user-managed Supabase secret names under the enforced manifest and no #1430 capacity exception. Issue #1615 authorizes `SHARED_CARD_PROXY_SECRET` as one standalone authentication credential; issue #1770 authorizes `OFFERING_INVITE_TOKEN_PEPPER` as one standalone cryptographic secret with exactly three readers: the shared derivation helper, `marketing-send`, and `offering-invite-dispatch`. Neither may enter noncredential `MINGLA_RUNTIME_CONFIG_JSON`. `MINGLA_DELIVERY_FLAGS_JSON` schema v2 owns three independent strict payment-operation booleans; missing or invalid financial authority fails safe (no onboarding flip, no payout execution, source-refund provider POSTs disabled). `AD_CONVERSION_TOKENS.NOTIFICATION_RECIPIENT_HMAC_SECRET` owns the exact untransformed current notification-recipient HMAC material and missing/invalid material fails before provider HTTP. Historical fingerprint material must be preserved whenever dependent deliveries or pending intents exist; replacement without a previous key is allowed only after a value-blind production gate proves zero dependent deliveries and zero pending intents, followed by one operator-only send and identical retries proving one provider acceptance before and after direct-name removal. The retired direct names `SOURCE_REFUNDS_POST_DISABLED`, `PAYOUT_RELEASE_EXECUTE`, `PAYOUT_HOLD_ONBOARD_FLIP`, and `NOTIFICATION_RECIPIENT_HMAC_SECRET` remain absent unless a new approved bounded migration issue explicitly restores one.
+- **Enforcement:** `supabase/secrets.manifest.json` pins exact 87-name authority and zero exceptions; `.github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs`, the strengthened #1203 capacity gate, and the strengthened #1430 refund-replay gate pin bundle ownership, safe defaults, retired-name absence, and provider replay safety. The scheduled/manual names-only audit requires exact manifest parity without raw CLI output.
 - **Regression:** `scripts/secrets/issue_1436_secret_capacity_exit.test.mjs` proves exact set parity, both bundle owners, and fail-closed return of any retired name. The #1437 happy/adversarial runtime suite continues to prove all 64 payment combinations, strict schema handling, raw HMAC preservation, redacted diagnostics, and safe defaults. Every structural gate has controlled true-source reversions.
 - **Established:** ACTIVE at issue #1436 CLOSE after #1437 independent PASS and exact merged deployment, private bundle migration, four individually verified unsets, exact 85-name live audit, and independent #1436 tester PASS.
 
@@ -6699,7 +6733,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ### I-PROPOSED-1203-SECRET-CAPACITY (ACTIVE)
 
-- **Rule:** Production operates at no more than 86 user-managed Supabase secret names normally
+- **Rule:** Production operates at no more than 87 user-managed Supabase secret names normally
   and never above 90 under an approved, unexpired exception. Every user-managed name has
   names-only manifest ownership, backup ownership, readers, secure source type, and review
   metadata. Values, digests, credential prefixes, and raw CLI metadata never enter the repository,
@@ -6713,13 +6747,14 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   `supabase/functions/_shared/secretBundle.ts` and `_shared/runtimeConfig.ts`; batch-A guard
   `.github/scripts/strict-grep/issue-1203-secret-capacity.mjs` prevents runtime-bundle field growth,
   client exposure, raw CLI output, manifest shrink/drift, and payment-operation mapping drift;
-  `.github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs` pins the exact 86-name final
+  `.github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs` pins the exact 87-name final
   state and retired-direct-name absence.
 - **Regression:** Additive Deno happy-path/legacy-fallback tests and Node capacity tests, with
   strict-grep synthetic self-tests and implementor fail-on-revert/pass-on-restore proof. The
   independent tester adds malformed/smuggling/order/parity adversarial coverage before activation.
-- **Status:** ACTIVE. Production is enforced at exactly 86 user-managed names with 14 free slots
-  and no capacity exception; any future 87–90 state requires a new approved bounded issue.
+- **Status:** ACTIVE. Repository policy targets exactly 87 user-managed names with 13 free slots
+  and no capacity exception. Production remains on its last independently verified live set until
+  #1770's reviewed secret-install gate succeeds; any future 88–90 state requires a new approved issue.
 - **Established:** DRAFT 2026-07-24 at issue #1203 implementation; ACTIVE at issue #1436 CLOSE
   after the temporary #1430 names were consolidated into existing authorities, removed one by
   one, live-audited, and independently verified.

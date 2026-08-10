@@ -8,11 +8,14 @@ export type RuntimeConfigField =
   | "meta_api_version"
   | "mingla_footer_address"
   | "mingla_logo_url"
+  | "offering_invite_sms_price_book_v1"
   | "termii_base_url";
 
 export type RuntimeStringField = Exclude<
   RuntimeConfigField,
-  "bunny_storage_cap_bytes" | "bunny_traffic_cap_bytes"
+  | "bunny_storage_cap_bytes"
+  | "bunny_traffic_cap_bytes"
+  | "offering_invite_sms_price_book_v1"
 >;
 export type RuntimeNumberField =
   | "bunny_storage_cap_bytes"
@@ -27,6 +30,7 @@ type RuntimeConfig = {
   meta_api_version: string;
   mingla_footer_address: string;
   mingla_logo_url: string;
+  offering_invite_sms_price_book_v1?: unknown[];
   termii_base_url: string;
 };
 
@@ -56,6 +60,7 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
   "meta_api_version",
   "mingla_footer_address",
   "mingla_logo_url",
+  "offering_invite_sms_price_book_v1",
   "termii_base_url",
 ];
 const RUNTIME_CONFIG_LEGACY_NAMES: Record<RuntimeConfigField, string> = {
@@ -66,6 +71,7 @@ const RUNTIME_CONFIG_LEGACY_NAMES: Record<RuntimeConfigField, string> = {
   meta_api_version: "META_API_VERSION",
   mingla_footer_address: "MINGLA_FOOTER_ADDRESS",
   mingla_logo_url: "MINGLA_LOGO_URL",
+  offering_invite_sms_price_book_v1: "MINGLA_RUNTIME_CONFIG_JSON",
   termii_base_url: "TERMII_BASE_URL",
 };
 
@@ -139,10 +145,24 @@ export function parseRuntimeConfig(raw: string): ParseResult {
   if (Object.keys(parsed).some((field) => !allowed.has(field))) {
     return { ok: false, reason: "unknown_field", field: "unknown" };
   }
-  for (const field of RUNTIME_CONFIG_FIELDS) {
+  for (
+    const field of RUNTIME_CONFIG_FIELDS.filter((candidate) =>
+      candidate !== "offering_invite_sms_price_book_v1"
+    )
+  ) {
     if (!Object.hasOwn(parsed, field)) {
       return { ok: false, reason: "missing_field", field };
     }
+  }
+  if (
+    Object.hasOwn(parsed, "offering_invite_sms_price_book_v1") &&
+    !Array.isArray(parsed.offering_invite_sms_price_book_v1)
+  ) {
+    return {
+      ok: false,
+      reason: "wrong_type",
+      field: "offering_invite_sms_price_book_v1",
+    };
   }
   for (
     const field of [
@@ -264,6 +284,17 @@ export function resolveRuntimeConfigValue(
     emit("secret_bundle_legacy_fallback", "missing", field);
   }
   return getEnv(legacyName);
+}
+
+/** Read the optional price book from the existing runtime-config bundle. */
+export function resolveOfferingInviteSmsPriceBook(
+  getEnv: SecretEnvGetter = defaultGetEnv,
+): unknown[] | undefined {
+  const raw = getEnv(RUNTIME_CONFIG_BUNDLE);
+  if (!raw) return undefined;
+  const result = parseRuntimeConfig(raw);
+  if (!result.ok) return undefined;
+  return result.value.offering_invite_sms_price_book_v1;
 }
 
 export function resolveRuntimeString(

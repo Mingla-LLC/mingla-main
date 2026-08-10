@@ -7,8 +7,8 @@ response into GitHub, chat, logs, artifacts, or this file.
 
 ## Capacity policy
 
-- Normal ceiling: 86 user-managed names, leaving 14 slots.
-- Slots 86–90 require a linked issue, named owner, data class, reader list, secure source,
+- Normal ceiling: 87 user-managed names, leaving 13 slots.
+- Slots 88–90 require a linked issue, named owner, data class, reader list, secure source,
   review/expiry date, reason an existing store is unsuitable, and explicit approval.
 - A temporary migration name expires within 72 hours unless its issue records a shorter
   approved window.
@@ -18,14 +18,14 @@ response into GitHub, chat, logs, artifacts, or this file.
 - Review names monthly. Escalate an expired, unexpected, missing, duplicate, or consumerless
   name immediately regardless of the count.
 
-The pull-request audit validates the exact 86-name target manifest offline. The scheduled/manual
+The pull-request audit validates the exact 87-name target manifest offline. The scheduled/manual
 workflow uses the dedicated least-privilege `SUPABASE_SECRET_AUDIT_ACCESS_TOKEN` only at live
 runtime and emits sorted names/reasons/counts, never raw CLI output. Until that separately
 authorized credential exists, the live step records an explicit warning and does not invoke the
 CLI.
 
 `supabase/secrets.manifest.json` is in `enforced` / `complete` mode. The live audit accepts only
-the exact 86-name manifest set and applies the 86/90 ceilings. The historical `transition` /
+the exact 87-name manifest set and applies the 87/90 ceilings. The historical `transition` /
 `pre_rollout` mode remains test-covered solely to prove the original #1203 consolidation math; it
 is not an authorized production state.
 
@@ -65,6 +65,9 @@ These objects are permitted:
 - `AD_CONVERSION_TOKENS`: the existing private credential envelope. In addition to its existing
   independently named fields, it owns `NOTIFICATION_RECIPIENT_HMAC_SECRET` as exact raw material.
   The resolver never trims, normalizes, logs, rotates, or returns that value.
+- `OFFERING_INVITE_TOKEN_PEPPER`: the #1770 standalone cryptographic secret used only by the
+  shared offering-invite token helper, `marketing-send`, and the authenticated dispatch boundary. It stays outside every bundle
+  because its independent rotation and audit boundary is part of invite authorization.
 
 Do not put provider credentials, RAKs, account IDs, webhook/signing material, origins,
 sender IDs, app IDs, or payment keys into an operational bundle. Credential material belongs
@@ -91,8 +94,8 @@ authorize a secret, provider, or operational-boolean change.
 5. Remove only the approved direct names, one at a time, verifying after each. For the #1436
    exit the locked order is: `SOURCE_REFUNDS_POST_DISABLED`, `PAYOUT_RELEASE_EXECUTE`,
    `PAYOUT_HOLD_ONBOARD_FLIP`, then `NOTIFICATION_RECIPIENT_HMAC_SECRET`.
-6. Run the exact names-only audit. After the #1615 approved standalone credential, the enforced
-   state is exactly 86 user-managed names, 14 free slots, no exception, and no missing or unexpected name.
+6. Run the exact names-only audit. After the #1770 approved standalone pepper, the enforced
+   state is exactly 87 user-managed names, 13 free slots, no exception, and no missing or unexpected name.
 7. Merge repository truth only after live truth exists and independent testing passes. Removing
    compatibility code requires a separate reviewed issue.
 

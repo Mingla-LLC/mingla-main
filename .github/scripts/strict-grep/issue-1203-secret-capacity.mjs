@@ -24,6 +24,7 @@ const APPROVED_RUNTIME_FIELDS = [
   "meta_api_version",
   "mingla_footer_address",
   "mingla_logo_url",
+  "offering_invite_sms_price_book_v1",
   "termii_base_url",
 ];
 const BUNDLE_NAMES = [
@@ -144,8 +145,24 @@ export function check({
   }
   if (manifest) {
     const names = manifest.secrets?.map((record) => record.name) ?? [];
-    if (names.length !== 86 || new Set(names).size !== 86) {
-      violations.push(`${MANIFEST}:target_must_be_86_unique_names`);
+    if (names.length !== 87 || new Set(names).size !== 87) {
+      violations.push(`${MANIFEST}:target_must_be_87_unique_names`);
+    }
+    const offeringPepper = manifest.secrets?.find((record) =>
+      record.name === "OFFERING_INVITE_TOKEN_PEPPER"
+    );
+    if (
+      offeringPepper?.class !== "cryptographic_secret" ||
+      offeringPepper?.owner !== "Platform Security" ||
+      offeringPepper?.source_type !== "secure_vault" ||
+      offeringPepper?.issue !== 1770 ||
+      JSON.stringify(offeringPepper?.readers) !== JSON.stringify([
+        "supabase/functions/_shared/offeringInviteToken.ts",
+        "supabase/functions/marketing-send/index.ts",
+        "supabase/functions/offering-invite-dispatch/index.ts",
+      ])
+    ) {
+      violations.push(`${MANIFEST}:offering_invite_token_pepper_contract_invalid`);
     }
     const serializedKeys = [];
     const walk = (value) => {
@@ -220,7 +237,21 @@ function selfTest() {
       }];`,
     auditSource: 'spawnSync("supabase", [], { stdio: ["ignore", "pipe", "pipe"] });',
     manifestText: JSON.stringify({
-      secrets: Array.from({ length: 86 }, (_, index) => ({ name: `SYNTH_${index}` })),
+      secrets: [
+        {
+          name: "OFFERING_INVITE_TOKEN_PEPPER",
+          class: "cryptographic_secret",
+          owner: "Platform Security",
+          source_type: "secure_vault",
+          issue: 1770,
+          readers: [
+            "supabase/functions/_shared/offeringInviteToken.ts",
+            "supabase/functions/marketing-send/index.ts",
+            "supabase/functions/offering-invite-dispatch/index.ts",
+          ],
+        },
+        ...Array.from({ length: 86 }, (_, index) => ({ name: `SYNTH_${index}` })),
+      ],
     }),
     clientFiles: [{ path: "app-mobile/src/ok.ts", text: "export const ok = true;" }],
     backendFiles,

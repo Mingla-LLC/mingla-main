@@ -145,11 +145,10 @@ export function violations(files) {
     failures.push("manifest: invalid JSON");
     manifest = {};
   }
-  // [TEST-MOD-APPROVED #1615] The old 85 baseline became wrong when Seth
-  // approved SHARED_CARD_PROXY_SECRET as the sole new secret for the WAF-backed
-  // public share proxy. Keep the exact-count guard; advance it by one.
-  if (manifest.rollout?.expected_user_managed_count !== 86) {
-    failures.push("manifest: Phase B must enforce expected count at 86");
+  // [TEST-MOD-APPROVED #1770] The approved offering-invite pepper advances the
+  // exact capacity baseline while remaining a standalone cryptographic secret.
+  if (manifest.rollout?.expected_user_managed_count !== 87) {
+    failures.push("manifest: Phase B must enforce expected count at 87");
   }
   const records = new Map(
     (manifest.secrets ?? []).map((record) => [record.name, record]),
@@ -185,6 +184,19 @@ export function violations(files) {
     )
   ) {
     failures.push("manifest: Phase B notification HMAC field missing");
+  }
+  const offeringPepper = records.get("OFFERING_INVITE_TOKEN_PEPPER");
+  if (
+    offeringPepper?.class !== "cryptographic_secret" ||
+    offeringPepper?.source_type !== "secure_vault" ||
+    offeringPepper?.issue !== 1770 ||
+    JSON.stringify(offeringPepper?.readers) !== JSON.stringify([
+      "supabase/functions/_shared/offeringInviteToken.ts",
+      "supabase/functions/marketing-send/index.ts",
+      "supabase/functions/offering-invite-dispatch/index.ts",
+    ])
+  ) {
+    failures.push("manifest: offering invite token pepper contract missing");
   }
 
   const workflow = files.workflow ?? "";

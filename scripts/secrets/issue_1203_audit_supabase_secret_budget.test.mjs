@@ -10,11 +10,11 @@ import {
 const manifest = JSON.parse(readFileSync(DEFAULT_MANIFEST, "utf8"));
 const targetNames = manifest.secrets.map((record) => record.name);
 const exceptionWindowNow = Date.parse("2026-08-01T00:00:00Z");
-// [TEST-MOD-APPROVED #1615] Written reason: Seth authorized one standalone
-// proxy credential, moving the exact governed live set from 85 to 86 names.
+// [TEST-MOD-APPROVED #1770] Written reason: Seth authorized one standalone
+// invite pepper, moving the exact governed live set from 86 to 87 names.
 
-test("issue #1203 HP-4: target manifest is names-only, complete, and green at 86", () => {
-  assert.equal(targetNames.length, 86);
+test("issue #1203 HP-4: target manifest is names-only, complete, and green at 87", () => {
+  assert.equal(targetNames.length, 87);
   assert.deepEqual(validateManifest(manifest, exceptionWindowNow), []);
   const result = auditSecretBudget({
     manifest,
@@ -22,15 +22,15 @@ test("issue #1203 HP-4: target manifest is names-only, complete, and green at 86
     nowMs: exceptionWindowNow,
   });
   assert.equal(result.ok, true);
-  assert.equal(result.count, 86);
-  assert.equal(result.freeSlots, 14);
+  assert.equal(result.count, 87);
+  assert.equal(result.freeSlots, 13);
   assert.deepEqual(result.failures, []);
   assert.equal(result.warnings.length, 0);
 });
 
 test("issue #1203: 90 requires a current approved exception and 91 always fails", () => {
   const extraNames = Array.from(
-    { length: 5 },
+    { length: 4 },
     (_, index) => `SYNTHETIC_TEMPORARY_NAME_${index + 1}`,
   );
   const extraRecord = {
@@ -50,12 +50,12 @@ test("issue #1203: 90 requires a current approved exception and 91 always fails"
     ...manifest,
     secrets: [
       ...manifest.secrets,
-      ...extraNames.slice(0, 4).map((name) => ({ ...extraRecord, name })),
+      ...extraNames.slice(0, 3).map((name) => ({ ...extraRecord, name })),
     ],
   };
   const withoutException = auditSecretBudget({
     manifest: { ...manifest90, exceptions: [] },
-    liveNames: [...targetNames, ...extraNames.slice(0, 4)],
+    liveNames: [...targetNames, ...extraNames.slice(0, 3)],
     nowMs: exceptionWindowNow,
   });
   assert.equal(withoutException.ok, false);
@@ -71,7 +71,7 @@ test("issue #1203: 90 requires a current approved exception and 91 always fails"
         expires_at: "2026-08-02T00:00:00Z",
       }],
     },
-    liveNames: [...targetNames, ...extraNames.slice(0, 4)],
+    liveNames: [...targetNames, ...extraNames.slice(0, 3)],
     nowMs: exceptionWindowNow,
   });
   assert.equal(withException.ok, true);

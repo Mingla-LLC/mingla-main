@@ -11,6 +11,7 @@ import {
 } from "./secretBundle.ts";
 import {
   parseRuntimeConfig,
+  resolveOfferingInviteSmsPriceBook,
   resolveRuntimeNumber,
   resolveRuntimeString,
 } from "./runtimeConfig.ts";
@@ -124,6 +125,34 @@ Deno.test("issue #1203 HP-1: valid bundles win and every semantic field stays in
   assertEquals(
     resolveRuntimeString("termii_base_url", "TERMII_BASE_URL", getEnv),
     "https://v3.api.termii.com",
+  );
+});
+
+Deno.test("issue #1770 runtime bundle carries the optional versioned SMS price book", () => {
+  const priceBook = [{
+    rateId: "twilio-us-2026-08",
+    provider: "twilio",
+    country: "US",
+    currency: "USD",
+    unit: "sms_segment",
+    minorNumerator: 83,
+    minorDenominator: 100,
+    effectiveAt: "2026-08-01T00:00:00.000Z",
+    expiresAt: "2026-09-01T00:00:00.000Z",
+    sourceReference: "official-provider-pricing",
+  }];
+  const getEnv = env({
+    MINGLA_RUNTIME_CONFIG_JSON: JSON.stringify({
+      ...JSON.parse(runtimeBundle),
+      offering_invite_sms_price_book_v1: priceBook,
+    }),
+  });
+  assertEquals(resolveOfferingInviteSmsPriceBook(getEnv), priceBook);
+  assertStrictEquals(
+    resolveOfferingInviteSmsPriceBook(env({
+      MINGLA_RUNTIME_CONFIG_JSON: runtimeBundle,
+    })),
+    undefined,
   );
 });
 

@@ -14,17 +14,17 @@ const RETIRED_DIRECT_NAMES = [
   "PAYOUT_RELEASE_EXECUTE",
   "SOURCE_REFUNDS_POST_DISABLED",
 ];
-// [TEST-MOD-APPROVED #1615] Written reason: the approved standalone proxy
-// credential raises same-count exact-set parity fixtures from 85 to 86.
+// [TEST-MOD-APPROVED #1770] Written reason: the approved standalone invite
+// pepper raises same-count exact-set parity fixtures from 86 to 87.
 
 test("issue #1436 adversarial: a same-count direct-name substitution cannot bypass exact-set parity", () => {
-  assert.equal(expectedNames.length, 86);
+  assert.equal(expectedNames.length, 87);
 
   for (const retiredName of RETIRED_DIRECT_NAMES) {
     const substitutedNames = expectedNames
       .filter((name) => name !== "MAPBOX_ACCESS_TOKEN")
       .concat(retiredName);
-    assert.equal(substitutedNames.length, 86);
+    assert.equal(substitutedNames.length, 87);
 
     const result = auditSecretBudget({
       manifest,

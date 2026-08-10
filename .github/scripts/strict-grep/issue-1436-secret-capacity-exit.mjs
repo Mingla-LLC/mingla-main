@@ -52,18 +52,18 @@ export function violations(files) {
   if (
     manifest.rollout?.live_audit_mode !== "enforced" ||
     manifest.rollout?.transition_stage !== "complete" ||
-    manifest.rollout?.expected_user_managed_count !== 86
+    manifest.rollout?.expected_user_managed_count !== 87
   ) {
-    failures.push("manifest: final enforced 86-name rollout missing");
+    failures.push("manifest: final enforced 87-name rollout missing");
   }
   if (
-    manifest.policy?.normal_ceiling !== 86 ||
+    manifest.policy?.normal_ceiling !== 87 ||
     manifest.policy?.absolute_ceiling !== 90
   ) {
-    failures.push("manifest: 86/90 policy changed");
+    failures.push("manifest: 87/90 policy changed");
   }
-  if (records.size !== 86 || manifest.secrets?.length !== 86) {
-    failures.push("manifest: exactly 86 unique records required");
+  if (records.size !== 87 || manifest.secrets?.length !== 87) {
+    failures.push("manifest: exactly 87 unique records required");
   }
   if (!Array.isArray(manifest.exceptions) || manifest.exceptions.length !== 0) {
     failures.push("manifest: capacity exceptions must be empty");
@@ -96,6 +96,21 @@ export function violations(files) {
     }
   }
 
+  const offeringPepper = records.get("OFFERING_INVITE_TOKEN_PEPPER");
+  if (
+    offeringPepper?.class !== "cryptographic_secret" ||
+    offeringPepper?.owner !== "Platform Security" ||
+    offeringPepper?.source_type !== "secure_vault" ||
+    offeringPepper?.issue !== 1770 ||
+    JSON.stringify(offeringPepper?.readers) !== JSON.stringify([
+      "supabase/functions/_shared/offeringInviteToken.ts",
+      "supabase/functions/marketing-send/index.ts",
+      "supabase/functions/offering-invite-dispatch/index.ts",
+    ])
+  ) {
+    failures.push("manifest: offering invite token pepper contract missing");
+  }
+
   const conversion = records.get("AD_CONVERSION_TOKENS");
   if (
     !conversion?.bundle_fields?.some((entry) =>
@@ -118,7 +133,7 @@ export function violations(files) {
   }
 
   for (const [token, label] of [
-    ["target_must_be_86_unique_names", "capacity gate"],
+    ["target_must_be_87_unique_names", "capacity gate"],
     ['["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]', "capacity gate"],
     ['["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]', "capacity gate"],
     ['["source_refunds_post_disabled", "SOURCE_REFUNDS_POST_DISABLED"]', "capacity gate"],
@@ -129,7 +144,7 @@ export function violations(files) {
     "retired direct compatibility name present",
     "bundled payment authority missing",
     "bundled notification HMAC authority missing",
-    "exact 86-name manifest",
+    "exact 87-name manifest",
   ]) {
     requireToken(files.refund ?? "", token, "refund guard", failures);
   }
@@ -139,7 +154,7 @@ export function violations(files) {
     "SOURCE_REFUNDS_POST_DISABLED",
     "PAYOUT_RELEASE_EXECUTE",
     "PAYOUT_HOLD_ONBOARD_FLIP",
-    "exactly 86",
+    "exactly 87",
   ]) {
     requireToken(files.runbook ?? "", token, "capacity runbook", failures);
   }
@@ -244,11 +259,11 @@ function fixtureManifest() {
     bundle_fields: [],
   }));
   return {
-    policy: { normal_ceiling: 86, absolute_ceiling: 90 },
+    policy: { normal_ceiling: 87, absolute_ceiling: 90 },
     rollout: {
       live_audit_mode: "enforced",
       transition_stage: "complete",
-      expected_user_managed_count: 86,
+      expected_user_managed_count: 87,
     },
     exceptions: [],
     secrets: [
@@ -274,6 +289,19 @@ function fixtureManifest() {
         ],
         bundle_fields: paymentFields.map((name) => ({ name })),
       },
+      {
+        name: "OFFERING_INVITE_TOKEN_PEPPER",
+        class: "cryptographic_secret",
+        owner: "Platform Security",
+        source_type: "secure_vault",
+        issue: 1770,
+        readers: [
+          "supabase/functions/_shared/offeringInviteToken.ts",
+          "supabase/functions/marketing-send/index.ts",
+          "supabase/functions/offering-invite-dispatch/index.ts",
+        ],
+        bundle_fields: [],
+      },
       ...filler,
     ],
   };
@@ -283,11 +311,11 @@ function selfTest() {
   const clean = {
     manifest: JSON.stringify(fixtureManifest()),
     capacity:
-      'target_must_be_86_unique_names; ["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]; ["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]; ["source_refunds_post_disabled", "SOURCE_REFUNDS_POST_DISABLED"]',
+      'target_must_be_87_unique_names; ["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]; ["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]; ["source_refunds_post_disabled", "SOURCE_REFUNDS_POST_DISABLED"]',
     refund:
-      "retired direct compatibility name present; bundled payment authority missing; bundled notification HMAC authority missing; exact 86-name manifest",
+      "retired direct compatibility name present; bundled payment authority missing; bundled notification HMAC authority missing; exact 87-name manifest",
     runbook:
-      "schema v2 NOTIFICATION_RECIPIENT_HMAC_SECRET SOURCE_REFUNDS_POST_DISABLED PAYOUT_RELEASE_EXECUTE PAYOUT_HOLD_ONBOARD_FLIP exactly 86",
+      "schema v2 NOTIFICATION_RECIPIENT_HMAC_SECRET SOURCE_REFUNDS_POST_DISABLED PAYOUT_RELEASE_EXECUTE PAYOUT_HOLD_ONBOARD_FLIP exactly 87",
     invariant: "I-PROPOSED-1436-SECRET-CAPACITY-EXIT (ACTIVE)",
     test: "any retired direct-name return fails closed",
     adversarialTest:
@@ -319,7 +347,7 @@ function selfTest() {
           expected_user_managed_count: 89,
         },
       }),
-      expected: "final enforced 86-name rollout missing",
+      expected: "final enforced 87-name rollout missing",
     },
     {
       key: "manifest",
@@ -407,6 +435,6 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "issue-1436 secret-capacity exit gate PASS (86 names, bundled authority, no exception)",
+    "issue-1436 secret-capacity exit gate PASS (87 names, bundled authority, no exception)",
   );
 }

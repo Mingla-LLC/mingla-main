@@ -100,6 +100,8 @@ export interface RenderMarketingEmailInput {
    * placeholders in Apple Mail iOS.
    */
   brand_header_image_url?: string | null;
+  /** Server-owned inert marker. It is never rewritten into marketing_clicks. */
+  offering_invite_url_marker?: string;
 }
 
 export interface RenderMarketingEmailResult {
@@ -110,14 +112,16 @@ export interface RenderMarketingEmailResult {
   links: RenderedLink[];
 }
 
-const VARIABLE_RE = /\{(first_name|event_name|event_date|event_time|doors_open|ends_at|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g;
+const VARIABLE_RE =
+  /\{(first_name|event_name|event_date|event_time|doors_open|ends_at|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g;
 // ORCH-0891 M2: extended event token regex to optionally capture a
 // `|size` suffix (compact / medium / large). Backwards-compat preserved:
 // legacy `{{event:UUID}}` tokens (no suffix) default to `medium`.
 //   Group 1: event UUID
 //   Group 2: size if present, else undefined
 // Per SPEC §3.2 + I-EVENT-CHIP-SIZE-BACKWARDS-COMPAT.
-const EVENT_TOKEN_RE = /\{\{event:([0-9a-fA-F-]{36})(?:\|(compact|medium|large))?\}\}/g;
+const EVENT_TOKEN_RE =
+  /\{\{event:([0-9a-fA-F-]{36})(?:\|(compact|medium|large))?\}\}/g;
 
 /** ORCH-0891 M2 event chip size variants. */
 type EventChipSize = "compact" | "medium" | "large";
@@ -133,9 +137,19 @@ const HREF_RE = /href=(["'])(https?:\/\/[^"']+)\1/g;
 export function renderMarketingEmail(
   input: RenderMarketingEmailInput,
 ): RenderMarketingEmailResult {
+  if (input.offering_invite_url_marker !== undefined) {
+    const markerCount = input.body_html.split(input.offering_invite_url_marker)
+      .length - 1;
+    if (
+      markerCount !== 1 || input.offering_invite_url_marker.startsWith("http")
+    ) {
+      throw new Error("offering_invite_volatile_link_invalid");
+    }
+  }
   // Step 1 — variable substitution.
   const substituted = input.body_html.replace(VARIABLE_RE, (_match, key) => {
-    const value = (input.variables as unknown as Record<string, string | null>)[key];
+    const value =
+      (input.variables as unknown as Record<string, string | null>)[key];
     if (value === null || value === undefined) return "";
     return escapeHtml(value);
   });
@@ -189,18 +203,22 @@ export function renderMarketingEmail(
       Deno.env.get("SUPPORT_EMAIL") ??
       "support@usemingla.com",
     logoUrl: minglaLogoUrl(),
-    footerAddress: resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS") ??
-      "Mingla, hello@usemingla.com",
+    footerAddress:
+      resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS") ??
+        "Mingla, hello@usemingla.com",
     brandHeaderImageUrl: input.brand_header_image_url ?? null,
   });
 
   // Flat-text fallback (strip tags, collapse whitespace). Good-enough
   // baseline; Resend supports plain-text alternative for deliverability.
-  const text = withEventCards
+  let text = withEventCards
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<[^>]+>/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim() + `\n\nUnsubscribe: ${input.unsubscribe_url}`;
+  if (input.offering_invite_url_marker !== undefined) {
+    text += `\n\nEvent link: ${input.offering_invite_url_marker}`;
+  }
 
   return { subject: input.subject, html, text, links };
 }
@@ -241,7 +259,10 @@ function normalizeEventChipSize(raw: string | undefined): EventChipSize {
  * a solid cream `<td>` with the orange-to-cream transition done in the
  * brand-shell-wrap, NOT inside the card cells.
  */
-function renderEventCard(event: EmbeddedEvent, size: EventChipSize = "medium"): string {
+function renderEventCard(
+  event: EmbeddedEvent,
+  size: EventChipSize = "medium",
+): string {
   if (size === "compact") return renderEventCardCompact(event);
   // medium AND large both fall through to the full card; large just
   // emphasizes the cover by skipping the medium fallback when cover is
@@ -287,7 +308,10 @@ function renderEventCardCompact(event: EmbeddedEvent): string {
  * intentionally minimal to keep the migration risk low. Future polish
  * can expand large's distinct visuals as a separate ORCH.
  */
-function renderEventCardFull(event: EmbeddedEvent, _size: EventChipSize): string {
+function renderEventCardFull(
+  event: EmbeddedEvent,
+  _size: EventChipSize,
+): string {
   const title = escapeHtml(event.title);
   const date = escapeHtml(event.date_label ?? "");
   // ORCH-0877 — end-time sub-line (separate from the date chip per SPEC
@@ -359,7 +383,11 @@ function renderEventCardFull(event: EmbeddedEvent, _size: EventChipSize): string
             </td>
           </tr>
         </table>
-        ${dateChip || locationChip ? `<div style="margin:0 0 14px 0;">${dateChip}${locationChip}</div>` : ""}
+        ${
+    dateChip || locationChip
+      ? `<div style="margin:0 0 14px 0;">${dateChip}${locationChip}</div>`
+      : ""
+  }
         ${endsAtLine}
         <h2 style="margin:0 0 18px 0;font-size:22px;line-height:1.25;color:${INK};font-weight:800;letter-spacing:-0.3px;">${title}</h2>
         <table role="presentation" cellpadding="0" cellspacing="0" border="0">
@@ -392,7 +420,10 @@ function getTrackingLinkOrigin(): string {
   return `${supabaseUrl}/functions/v1/marketing-track-click`;
 }
 
-function renderUnsubscribeFooter(unsubscribeUrl: string, brandName: string): string {
+function renderUnsubscribeFooter(
+  unsubscribeUrl: string,
+  brandName: string,
+): string {
   const safeUrl = escapeHtml(unsubscribeUrl);
   const safeBrand = escapeHtml(brandName);
   return `<p style="margin:32px 0 0 0;padding-top:16px;border-top:1px solid ${BRAND_BORDER};font-size:12px;line-height:1.5;color:${BRAND_MUTED};">
