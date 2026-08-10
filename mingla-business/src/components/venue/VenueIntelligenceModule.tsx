@@ -65,6 +65,9 @@ import {
   WEEKDAY_TICKS,
 } from "./venueIntelligence";
 import { useVenueIntelligence } from "../../hooks/useVenueIntelligence";
+// Issue #1735 G-14 — the ONE additive Site-check cross-link tile (renders
+// nothing until a persisted site report exists; no existing tile modified).
+import { SiteCheckOverviewTile } from "./insights/SiteCheckOverviewTile";
 import { VENUE_SCROLL_NAV_CLEARANCE } from "./venueShellScroll";
 import {
   VenueReservationRefreshAnnouncement,
@@ -604,6 +607,10 @@ export function VenueIntelligenceModule({
             </>
           )}
         </GlassCard>
+
+        {/* Issue #1735 G-14 — Site check cross-link tile (additive; renders
+            ONLY when a persisted report exists — never an empty nudge). */}
+        <SiteCheckOverviewTile brandId={brandId} venueId={venueId} />
 
       </View>
     </ScrollView>
