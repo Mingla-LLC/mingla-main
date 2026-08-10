@@ -46,6 +46,22 @@ export interface VenueTodoDraft {
   route: string;
 }
 
+/**
+ * Issue #1735 G-15 — one Insights nudge row input. `route` is precomputed by
+ * the caller (`/venue/{venueId}?module=insights`) — this module stays
+ * route-string-agnostic. The caller emits a row ONLY when the underlying
+ * latest-read genuinely answered `status:"none"` (never on loading/error —
+ * a to-do row must be a true statement), only for verified non-stay venues,
+ * and the `pricing` kind only once #1737 registers its instrument (a to-do
+ * row must never deep-link to a surface that doesn't render).
+ */
+export interface InsightsNudgeTodo {
+  venueId: string;
+  venueName: string;
+  kind: "site" | "pricing";
+  route: string;
+}
+
 /** META-ORCH-1255 — one per-venue claim row for the `venue_claim_review` band. */
 export interface VenueTodoClaim {
   venueId: string;
@@ -180,6 +196,14 @@ export interface BusinessTodoInput {
    * brand loads.
    */
   profile?: BusinessTodoProfileInput & { editRoute: string };
+  /**
+   * Issue #1735 G-15 — Insights nudge rows. OPTIONAL so pre-1735
+   * callers/tests compile + behave unchanged (absent ⇒ zero rows). Emitted
+   * as the LAST band, AFTER the ORCH-1256 profile band: these are nudges,
+   * never setup blockers, and the operator-locked priority order above them
+   * is untouched.
+   */
+  insightsNudges?: InsightsNudgeTodo[];
 }
 
 function venueLiveSublabel(
@@ -504,6 +528,27 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
         label: "Add your social links",
         sublabel: "Instagram, TikTok, your website and more",
         action: profileRoute("social"),
+      });
+    }
+  }
+
+  // 7 — Insights nudges (issue #1735 G-15). LAST band, after profile: a nudge,
+  // never a setup blocker. One row per (venue, kind); each vanishes the
+  // moment a stored check exists (the caller stops emitting it).
+  for (const nudge of input.insightsNudges ?? []) {
+    if (nudge.kind === "site") {
+      todos.push({
+        id: `insights_site:${nudge.venueId}`,
+        label: `You haven't checked ${nudge.venueName}'s website`,
+        sublabel: "Free check — takes under a minute",
+        action: { kind: "route", route: nudge.route },
+      });
+    } else {
+      todos.push({
+        id: `insights_pricing:${nudge.venueId}`,
+        label: `You haven't checked ${nudge.venueName}'s pricing`,
+        sublabel: "Are you undercharging?",
+        action: { kind: "route", route: nudge.route },
       });
     }
   }

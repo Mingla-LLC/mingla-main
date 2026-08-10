@@ -29,9 +29,11 @@ import {
   useVenueDraftEntriesForBrand,
 } from "../store/draftVenueStore";
 import { deriveBrandProfileTodoInput } from "../utils/brandProfileCompleteness";
+import { useInsightsNudgeInputs } from "./useGrowthTools";
 import {
   buildBusinessTodos,
   type BusinessTodo,
+  type InsightsNudgeTodo,
   type VenueTodoClaim,
   type VenueTodoDraft,
   type VenueTodoPipeline,
@@ -167,6 +169,50 @@ export function useBusinessTodos(): BusinessTodo[] {
     return rows;
   }, [currentBrand, venues, openCountsByVenue]);
 
+  // Issue #1735 G-15 — Insights nudge rows. Stay venues and venues whose
+  // claim is not yet verified are EXCLUDED (don't nag pre-approval). The
+  // fan-out hook gates every read on auth + brand and only reports
+  // `needsSiteCheck` when a website is on file AND the venues latest-read
+  // genuinely answered "none" (never on loading/error).
+  const nudgeVenueInputs = useMemo(
+    () =>
+      venues
+        .filter((v) => v.venueCategory !== "stay" && v.claimStatus === "verified")
+        .map((v) => ({
+          venueId: v.id,
+          venueName: v.name,
+          placePoolId: v.placePoolId,
+        })),
+    [venues],
+  );
+  const nudgeStates = useInsightsNudgeInputs(
+    currentBrand?.id ?? null,
+    nudgeVenueInputs,
+  );
+  const insightsNudges = useMemo<InsightsNudgeTodo[]>(() => {
+    const rows: InsightsNudgeTodo[] = [];
+    for (const state of nudgeStates) {
+      const route = `/venue/${state.venueId}?module=insights`;
+      if (state.needsSiteCheck) {
+        rows.push({
+          venueId: state.venueId,
+          venueName: state.venueName,
+          kind: "site",
+          route,
+        });
+      }
+      if (state.needsPricingCheck) {
+        rows.push({
+          venueId: state.venueId,
+          venueName: state.venueName,
+          kind: "pricing",
+          route,
+        });
+      }
+    }
+    return rows;
+  }, [nudgeStates]);
+
   // META-ORCH-1255 — per-venue pipeline rows for `get_venue_live`.
   const venuePipelines = useMemo<VenueTodoPipeline[]>(() => {
     if (currentBrand === null) return [];
@@ -219,6 +265,7 @@ export function useBusinessTodos(): BusinessTodo[] {
             ? `/brand/${currentBrand.id}/listing?focus=feedback`
             : "",
         profile,
+        insightsNudges,
       }),
     [
       profile,
@@ -233,6 +280,7 @@ export function useBusinessTodos(): BusinessTodo[] {
       venueDrafts,
       upcoming.counts,
       drafts,
+      insightsNudges,
     ],
   );
 }
