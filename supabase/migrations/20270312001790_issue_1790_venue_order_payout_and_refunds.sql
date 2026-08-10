@@ -569,8 +569,15 @@ BEGIN
 END;
 $fn$;
 
+-- NOTE: `REVOKE ... FROM PUBLIC` alone is NOT enough on Supabase. The project
+-- carries ALTER DEFAULT PRIVILEGES granting EXECUTE on every new public function
+-- to anon/authenticated/service_role, which writes an EXPLICIT `anon=X` ACL entry
+-- that revoking PUBLIC never touches. anon must be named. (#1171's own grants use
+-- exactly this two-line shape, and the ORCH-1392 live-ACL gate is what proves it.)
 REVOKE ALL ON FUNCTION public.pg_venue_order_finalize_payment(
   uuid, text, integer, text, text, text, integer, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.pg_venue_order_finalize_payment(
+  uuid, text, integer, text, text, text, integer, text) FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.pg_venue_order_finalize_payment(
   uuid, text, integer, text, text, text, integer, text) TO service_role;
 

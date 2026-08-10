@@ -476,7 +476,13 @@ BEGIN
 END;
 $fn$;
 
+-- NOTE: `REVOKE ... FROM PUBLIC` alone is NOT enough on Supabase. The project
+-- carries ALTER DEFAULT PRIVILEGES granting EXECUTE on every new public function
+-- to anon/authenticated/service_role, which writes an EXPLICIT `anon=X` ACL entry
+-- that revoking PUBLIC never touches. anon must be named. (#1171's own grants use
+-- exactly this two-line shape, and the ORCH-1392 live-ACL gate is what proves it.)
 REVOKE ALL ON FUNCTION public.pg_venue_order_rate_limit_hit(text, int) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.pg_venue_order_rate_limit_hit(text, int) FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.pg_venue_order_rate_limit_hit(text, int) TO service_role;
 
 COMMENT ON FUNCTION public.pg_venue_order_rate_limit_hit(text, int) IS
@@ -612,8 +618,12 @@ BEGIN
 END;
 $fn$;
 
+-- The tab RPCs KEEP `authenticated` — they read auth.uid() and are the venue's own
+-- staff control. anon is revoked: a tab is never opened or settled by a stranger.
 REVOKE ALL ON FUNCTION public.biz_venue_tab_open(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_venue_tab_open(uuid) FROM anon;
 REVOKE ALL ON FUNCTION public.biz_venue_tab_close(uuid, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_venue_tab_close(uuid, text) FROM anon;
 GRANT EXECUTE ON FUNCTION public.biz_venue_tab_open(uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.biz_venue_tab_close(uuid, text) TO authenticated, service_role;
 
@@ -675,6 +685,7 @@ END;
 $fn$;
 
 REVOKE ALL ON FUNCTION public.pg_venue_local_now(uuid, uuid, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.pg_venue_local_now(uuid, uuid, timestamptz) FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.pg_venue_local_now(uuid, uuid, timestamptz) TO service_role;
 
 -- ---------------------------------------------------------------------------
@@ -707,6 +718,7 @@ END;
 $fn$;
 
 REVOKE ALL ON FUNCTION public.pg_venue_order_next_pickup_code(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.pg_venue_order_next_pickup_code(uuid) FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.pg_venue_order_next_pickup_code(uuid) TO service_role;
 
 COMMENT ON FUNCTION public.biz_venue_tab_close(uuid, text) IS

@@ -1020,6 +1020,64 @@ BEGIN
 END $t$;
 
 -- ---------------------------------------------------------------------------
+-- T-SD1 — NO ANON REACHES THIS RAIL (I-PROPOSED-1392-NO-UNALLOWLISTED-ANON-DEFINER).
+--
+-- Caught in CI, not here, the first time: `REVOKE ... FROM PUBLIC` alone is NOT
+-- sufficient on Supabase, because ALTER DEFAULT PRIVILEGES writes an EXPLICIT
+-- `anon=X` ACL entry on every new public function and revoking PUBLIC never
+-- touches it. `anon` has to be named. This asserts the OUTCOME on the live ACL
+-- rather than the presence of a REVOKE line, so it cannot be satisfied by a
+-- statement that does not actually work.
+--
+-- pg_venue_order_finalize_payment is the one that matters most: it flips orders
+-- to paid and writes the payout fee snapshot.
+-- ---------------------------------------------------------------------------
+DO $t$
+DECLARE
+  v_leak text;
+  v_checked int := 0;
+  v_fn text;
+BEGIN
+  FOREACH v_fn IN ARRAY ARRAY[
+    'pg_venue_order_finalize_payment','pg_venue_order_rate_limit_hit',
+    'pg_venue_local_now','pg_venue_order_next_pickup_code',
+    'biz_venue_tab_open','biz_venue_tab_close'
+  ] LOOP
+    FOR v_leak IN
+      SELECT p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')'
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = v_fn
+        AND has_function_privilege('anon', p.oid, 'EXECUTE')
+    LOOP
+      RAISE EXCEPTION 'issue_1790 T-SD1: % is EXECUTE-able by anon', v_leak;
+    END LOOP;
+    -- Vacuity guard: a renamed or dropped function must FAIL here, not pass by
+    -- looking at nothing.
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = v_fn) THEN
+      RAISE EXCEPTION 'issue_1790 T-SD1 VACUITY: public.% does not exist', v_fn;
+    END IF;
+    v_checked := v_checked + 1;
+  END LOOP;
+  IF v_checked <> 6 THEN
+    RAISE EXCEPTION 'issue_1790 T-SD1 VACUITY: checked % functions, expected 6', v_checked;
+  END IF;
+
+  -- The tab RPCs MUST stay reachable by `authenticated` — they read auth.uid()
+  -- and are the venue's own staff control. Over-revoking would make waiter mode
+  -- silently 403 for every real user.
+  FOREACH v_fn IN ARRAY ARRAY['biz_venue_tab_open','biz_venue_tab_close'] LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname='public' AND p.proname = v_fn
+        AND has_function_privilege('authenticated', p.oid, 'EXECUTE')) THEN
+      RAISE EXCEPTION 'issue_1790 T-SD1: public.% is no longer reachable by authenticated', v_fn;
+    END IF;
+  END LOOP;
+END $t$;
+
+-- ---------------------------------------------------------------------------
 -- T-DT1 — DO-NOT-TOUCH. The ticket path's two NOT NULLs are the whole reason
 -- this family exists. If either ever loses NOT NULL, #1767's D-1 decision was
 -- quietly reversed on the two hottest live money tables.
