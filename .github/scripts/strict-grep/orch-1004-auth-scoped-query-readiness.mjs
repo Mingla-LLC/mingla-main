@@ -133,6 +133,12 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #865 — brand's own ad-conversion rollup, auth.uid()-scoped RPC
   // (brand_conversion_rollup self-authorizes via biz_is_brand_member_for_read_for_caller).
   "useBrandConversionRollup.ts",
+  // ── Issue #1735 [growth-tools client] — reads the brand's OWN tool runs /
+  //    competitor watch via the app-lane growth-tools functions (P-3 verified
+  //    JWT + biz_is_brand_member_for_read on every door). Gates every query on
+  //    the proven `!loading && session !== null` template (the useEventOrders/
+  //    useVenueIntelligence idiom) + brand/subject completeness.
+  "useGrowthTools.ts",
   // #874 — all three brand Analytics RPCs are active-member/auth.uid()-scoped.
   "useBrandAnalytics.ts",
   // #1384 — both reads are brand-team/auth.uid()-scoped. A pre-auth request
