@@ -26,7 +26,7 @@ export type OneSignalAppType = "consumer" | "business";
 // business app_id MUST equal the OneSignal application the business client
 // registers against via EXPO_PUBLIC_ONESIGNAL_APP_ID.
 // — https://documentation.onesignal.com/docs/keys-and-ids
-function resolveAppCredentials(
+export function resolveAppCredentials(
   appType: OneSignalAppType,
 ): { appId: string; restKey: string } {
   if (appType === "business") {
@@ -54,15 +54,20 @@ export function hasOneSignalCredentials(appType: OneSignalAppType): boolean {
  * to the consumer application. There is no cross-app send in OneSignal.
  * — https://documentation.onesignal.com/docs/keys-and-ids
  */
-export function resolveOneSignalApp(type: string | undefined | null): OneSignalAppType {
-  if (typeof type === "string" && (type.startsWith("business.") || type.startsWith("stripe."))) {
+export function resolveOneSignalApp(
+  type: string | undefined | null,
+): OneSignalAppType {
+  if (
+    typeof type === "string" &&
+    (type.startsWith("business.") || type.startsWith("stripe."))
+  ) {
     return "business";
   }
   return "consumer";
 }
 
-interface PushPayload {
-  targetUserId: string;           // Supabase UUID — maps to OneSignal external_id
+export interface PushPayload {
+  targetUserId: string; // Supabase UUID — maps to OneSignal external_id
   title: string;
   body: string;
   data?: Record<string, unknown>;
@@ -70,13 +75,101 @@ interface PushPayload {
   // Defaults to "consumer" when omitted so every existing consumer call-site
   // is byte-stable. notify-dispatch sets this from resolveOneSignalApp(type).
   app?: OneSignalAppType;
-  androidChannelId?: string;      // Android notification channel
-  buttons?: Array<{ id: string; text: string }>;  // Action buttons (max 3)
-  collapseId?: string;            // Replaces previous notification with same collapse ID
-  threadId?: string;              // iOS thread grouping / Android group key
-  iosBadgeType?: string;          // "SetTo" | "Increase"
-  iosBadgeCount?: number;         // Badge count value
+  androidChannelId?: string; // Android notification channel
+  buttons?: Array<{ id: string; text: string }>; // Action buttons (max 3)
+  collapseId?: string; // Replaces previous notification with same collapse ID
+  threadId?: string; // iOS thread grouping / Android group key
+  iosBadgeType?: string; // "SetTo" | "Increase"
+  iosBadgeCount?: number; // Badge count value
   beforeProviderIo?: () => Promise<void>;
+}
+
+export interface OfferingPushClaimReceipt {
+  attemptId: string;
+  recipientUserId: string;
+  internalProviderClaimKey: string;
+  pushPayload: {
+    payloadVersion: 1;
+    payloadHash: string;
+    title: string;
+    body: string;
+    eventId: string;
+  };
+}
+
+export interface OfferingPushPayload
+  extends Omit<PushPayload, "beforeProviderIo"> {
+  offeringAttemptId: string;
+  internalProviderClaimKey: string;
+  oneSignalIdempotencyKey: string;
+  persistedPushPayload: OfferingPushClaimReceipt["pushPayload"];
+  beforeProviderIo: () => Promise<OfferingPushClaimReceipt>;
+}
+
+export type OfferingPushResult =
+  | {
+    outcome: "accepted";
+    ok: true;
+    status: "sending";
+    provider: "onesignal";
+    providerAppId: string;
+    providerMessageId: string;
+    safeCode: null;
+    retryable: false;
+  }
+  | {
+    outcome:
+      | "definitive_unsent_retryable"
+      | "definitive_unsent_terminal";
+    ok: false;
+    status: "failed";
+    provider: "onesignal";
+    providerAppId: null;
+    providerMessageId: null;
+    safeCode: string;
+    retryable: boolean;
+    retryAfterSeconds?: number;
+  }
+  | {
+    outcome: "ambiguous";
+    ok: false;
+    status: "sending";
+    provider: "onesignal";
+    providerAppId: null;
+    providerMessageId: null;
+    safeCode: "provider_outcome_unknown";
+    retryable: false;
+  }
+  | {
+    outcome: "suppressed";
+    ok: false;
+    status: "suppressed";
+    provider: "onesignal";
+    providerAppId: null;
+    providerMessageId: null;
+    safeCode: string;
+    retryable: false;
+  };
+
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+function isOfferingPayload(
+  value: PushPayload | OfferingPushPayload,
+): value is OfferingPushPayload {
+  return "offeringAttemptId" in value;
+}
+function sameJson(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+function boundedRetryAfter(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) {
+    return Math.min(3600, Math.max(1, Math.ceil(seconds)));
+  }
+  const date = Date.parse(value);
+  if (!Number.isFinite(date)) return undefined;
+  return Math.min(3600, Math.max(1, Math.ceil((date - Date.now()) / 1000)));
 }
 
 interface OneSignalResponse {
@@ -98,22 +191,68 @@ interface OneSignalResponse {
  *
  * Every call produces exactly one log line with the outcome.
  */
-export async function sendPush(payload: PushPayload): Promise<boolean> {
+export function sendPush(
+  payload: OfferingPushPayload,
+): Promise<OfferingPushResult>;
+export function sendPush(payload: PushPayload): Promise<boolean>;
+export async function sendPush(
+  payload: PushPayload | OfferingPushPayload,
+): Promise<boolean | OfferingPushResult> {
   // META-ORCH-1074 Sub-A: select the target OneSignal application by
   // payload.app (default "consumer"). Each app has its own (app_id, REST key).
   // — https://documentation.onesignal.com/docs/keys-and-ids
   const appType: OneSignalAppType = payload.app ?? "consumer";
   const { appId, restKey } = resolveAppCredentials(appType);
+  const offering = isOfferingPayload(payload);
+  const failed = (
+    safeCode: string,
+    retryable: boolean,
+    _providerAppId: string | null = null,
+    retryAfterSeconds?: number,
+  ): OfferingPushResult => ({
+    outcome: retryable
+      ? "definitive_unsent_retryable"
+      : "definitive_unsent_terminal",
+    ok: false,
+    status: "failed",
+    provider: "onesignal",
+    providerAppId: null,
+    providerMessageId: null,
+    safeCode,
+    retryable,
+    ...(retryAfterSeconds ? { retryAfterSeconds } : {}),
+  });
+  const ambiguous = (): OfferingPushResult => ({
+    outcome: "ambiguous",
+    ok: false,
+    status: "sending",
+    provider: "onesignal",
+    providerAppId: null,
+    providerMessageId: null,
+    safeCode: "provider_outcome_unknown",
+    retryable: false,
+  });
 
   // SC-A2 (LOCKED): if the SELECTED app's credentials are missing, skip+warn
   // and return false — per-app, never a silent cross-app fallback. A business
   // push delivered to the consumer app reaches nobody.
   if (!appId || !restKey) {
-    console.warn(
-      `[push-utils] OneSignal credentials not configured for app "${appType}". Skipping push.`,
-    );
-    return false;
+    console.warn("[push-utils] OneSignal credentials unavailable", {
+      app: appType,
+    });
+    return offering ? failed("provider_config_missing", true, null) : false;
   }
+
+  if (
+    offering && (!UUID.test(appId) || (
+      !UUID.test(payload.offeringAttemptId) ||
+      payload.oneSignalIdempotencyKey !== payload.offeringAttemptId ||
+      payload.internalProviderClaimKey !==
+        `offering:${payload.offeringAttemptId}:push:v1` ||
+      payload.targetUserId.length === 0 || payload.title.length === 0 ||
+      payload.body.length === 0
+    ))
+  ) return offering ? failed("local_payload_invalid", false) : false;
 
   const oneSignalPayload = {
     app_id: appId,
@@ -124,10 +263,12 @@ export async function sendPush(payload: PushPayload): Promise<boolean> {
     headings: { en: payload.title },
     contents: { en: payload.body },
     data: payload.data ?? {},
+    ...(offering && { idempotency_key: payload.oneSignalIdempotencyKey }),
     // small_icon: status bar icon (monochrome per Android guidelines)
     small_icon: "ic_stat_onesignal_default",
     // large_icon: Mingla logo from Supabase Storage (OneSignal auto-resizes)
-    large_icon: "https://gqnoajqerqhnvulmnyvv.supabase.co/storage/v1/object/public/App%20Stuff/Untitled%20design.png",
+    large_icon:
+      "https://gqnoajqerqhnvulmnyvv.supabase.co/storage/v1/object/public/App%20Stuff/Untitled%20design.png",
     ...(payload.androidChannelId && {
       android_channel_id: payload.androidChannelId,
     }),
@@ -138,8 +279,8 @@ export async function sendPush(payload: PushPayload): Promise<boolean> {
       collapse_id: payload.collapseId,
     }),
     ...(payload.threadId && {
-      thread_id: payload.threadId,            // iOS grouping
-      android_group: payload.threadId,        // Android grouping
+      thread_id: payload.threadId, // iOS grouping
+      android_group: payload.threadId, // Android grouping
       android_group_message: { en: "$[notif_count] new notifications" },
     }),
     ...(payload.iosBadgeType && {
@@ -150,82 +291,131 @@ export async function sendPush(payload: PushPayload): Promise<boolean> {
 
   // The durable caller-owned acceptance marker belongs after all local
   // credential/payload preflight and immediately before external I/O.
-  await payload.beforeProviderIo?.();
+  if (offering) {
+    let claim: OfferingPushClaimReceipt;
+    try {
+      claim = await payload.beforeProviderIo();
+    } catch (error) {
+      // A rejected claim never crossed the point of no return; caller returns
+      // a retryable 503 and the database remains queued.
+      if (
+        error instanceof Error &&
+        error.message === "offering_push_claim_ineligible"
+      ) throw error;
+      throw new Error("offering_push_claim_unavailable");
+    }
+    if (
+      claim.attemptId !== payload.offeringAttemptId ||
+      claim.recipientUserId !== payload.targetUserId ||
+      claim.internalProviderClaimKey !== payload.internalProviderClaimKey ||
+      !sameJson(claim.pushPayload, payload.persistedPushPayload) ||
+      claim.pushPayload.title !== payload.title ||
+      claim.pushPayload.body !== payload.body ||
+      !sameJson(payload.data ?? {}, {
+        event_id: payload.persistedPushPayload.eventId,
+        category_key: "offering_invitation",
+        offering_attempt_id: payload.offeringAttemptId,
+      })
+    ) return failed("claim_tuple_mismatch", false);
+  } else await payload.beforeProviderIo?.();
 
   let response: Response;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  let providerPromise: Promise<Response>;
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    try {
-      response = await fetch("https://api.onesignal.com/notifications", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // META-ORCH-1074 Sub-A: per-app REST API Key (canonical "Key" scheme).
-          // — https://documentation.onesignal.com/docs/rest-api-overview
-          Authorization: `Key ${restKey}`,
-        },
-        body: JSON.stringify(oneSignalPayload),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  } catch (networkErr) {
-    const errMsg = networkErr instanceof Error ? networkErr.message : String(networkErr);
-    console.error(
-      "[push-utils] ✗ Push network error:",
-      { user: payload.targetUserId, error: errMsg }
-    );
-    return false;
+    providerPromise = fetch("https://api.onesignal.com/notifications", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // META-ORCH-1074 Sub-A: per-app REST API Key (canonical "Key" scheme).
+        // — https://documentation.onesignal.com/docs/rest-api-overview
+        Authorization: `Key ${restKey}`,
+      },
+      body: JSON.stringify(oneSignalPayload),
+      signal: controller.signal,
+    });
+  } catch {
+    clearTimeout(timeoutId);
+    return offering ? failed("local_before_provider_io_failed", true) : false;
+  }
+  try {
+    response = await providerPromise;
+  } catch {
+    console.error("[push-utils] push provider outcome unknown", {
+      app: appType,
+    });
+    return offering ? ambiguous() : false;
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => "unknown");
-    console.error(
-      "[push-utils] ✗ Push HTTP error:",
-      { status: response.status, user: payload.targetUserId, body: errorText.slice(0, 500) }
-    );
-    return false;
+    if (!offering) return false;
+    if (response.status === 429) {
+      return failed(
+        "provider_rate_limited",
+        true,
+        appId,
+        boundedRetryAfter(response.headers.get("retry-after")),
+      );
+    }
+    if (response.status === 400) {
+      return failed("provider_request_invalid", false);
+    }
+    if (response.status === 401 || response.status === 403) {
+      return failed("provider_config_rejected", false);
+    }
+    if (
+      response.status >= 400 && response.status < 500 && response.status !== 408
+    ) return failed("provider_request_rejected", false);
+    return ambiguous();
   }
+  if (offering && response.status !== 200) return ambiguous();
 
   // Parse OneSignal response — must succeed for us to trust the result
   let body: OneSignalResponse;
   try {
     body = await response.json();
   } catch {
-    // Body already consumed by .json() — cannot call .text() here
-    console.error(
-      "[push-utils] ✗ Push response not JSON:",
-      { user: payload.targetUserId, note: "200 OK but body was not valid JSON" }
-    );
-    return false;
+    return offering ? ambiguous() : false;
   }
 
-  // Check for errors first — OneSignal returns 200 even when all targets are unsubscribed
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return offering ? ambiguous() : false;
+  }
+
+  // A canonical id is authoritative even if OneSignal also supplies a warning.
+  if (body.id && (!offering || UUID.test(body.id))) {
+    console.log("[push-utils] push accepted", { app: appType });
+    return offering
+      ? {
+        outcome: "accepted",
+        ok: true,
+        status: "sending",
+        provider: "onesignal",
+        providerAppId: appId,
+        providerMessageId: body.id,
+        safeCode: null,
+        retryable: false,
+      }
+      : true;
+  }
+
+  // OneSignal can return 200 when every target is unsubscribed.
   if (body.errors) {
-    console.warn(
-      "[push-utils] ✗ Push rejected:",
-      { user: payload.targetUserId, errors: JSON.stringify(body.errors) }
-    );
-    return false;
+    return offering ? failed("provider_no_valid_subscription", false) : false;
   }
 
   // Empty id means notification was not created (per OneSignal docs)
   if (!body.id) {
-    console.warn(
-      "[push-utils] ✗ Push failed: empty notification ID",
-      { user: payload.targetUserId, response: JSON.stringify(body) }
-    );
-    return false;
+    return offering ? failed("provider_no_valid_subscription", false) : false;
   }
 
+  if (!UUID.test(body.id)) return offering ? ambiguous() : true;
+
   // Success — OneSignal accepted the notification with a valid ID
-  console.log(
-    "[push-utils] ✓ Push sent:",
-    { id: body.id, user: payload.targetUserId, app: appType, appId },
-  );
-  return true;
+  return false;
 }
 
 /**
@@ -244,7 +434,21 @@ export async function sendPushToMany(
 ): Promise<boolean[]> {
   return Promise.all(
     userIds.map((userId) =>
-      sendPush({ targetUserId: userId, title, body, data, androidChannelId, app }).catch((err) => { console.warn('[push-utils] sendPushToMany: push failed for user:', userId, err); return false; })
-    )
+      sendPush({
+        targetUserId: userId,
+        title,
+        body,
+        data,
+        androidChannelId,
+        app,
+      }).catch((err) => {
+        console.warn(
+          "[push-utils] sendPushToMany: push failed for user:",
+          userId,
+          err,
+        );
+        return false;
+      })
+    ),
   );
 }

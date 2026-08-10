@@ -128,6 +128,10 @@ verify_jwt = false
 [functions.twilio-message-status]
 verify_jwt = false
 
+# #1770 — OneSignal authenticates with a rotating bundle-only bearer token.
+[functions.onesignal-event-stream]
+verify_jwt = false
+
 # Buyer status endpoint serves anonymous buyers reading their own checkout
 # session by buyerStatusToken; no Supabase JWT involved.
 [functions.ticket-checkout-status]
@@ -668,3 +672,18 @@ verify_jwt = false
 # rail into the private `venue-qr-sheets` bucket and returns a 60s signed URL.
 [functions.venue-qr-sheet]
 verify_jwt = false
+
+# Issue #1770 / parent #876 — bounded source-key worker. The gateway is open to
+# cron/service-role and the function independently checks that bearer.
+[functions.brand-person-ingest-worker]
+verify_jwt = false
+
+# Issue #1770 — organiser invite preview/confirm and private export surfaces.
+[functions.offering-invite-dispatch]
+verify_jwt = true
+
+[functions.brand-people-export]
+verify_jwt = true
+
+[functions.brand-people-export-worker]
+verify_jwt = true

@@ -19,27 +19,42 @@ const PAYMENT_FIELDS = [
   "payout_release_execute",
   "source_refunds_post_disabled",
 ];
-// [TEST-MOD-APPROVED #1615] Written reason: Seth authorized the standalone
-// shared-card proxy credential, so the exact governed set is now 86 names.
+// [TEST-MOD-APPROVED #1770] Written reason: Seth authorized the standalone
+// offering-invite token pepper, so the exact governed set is now 87 names.
 
 function record(name) {
   return manifest.secrets.find((entry) => entry.name === name);
 }
 
-test("issue #1436: final manifest is exactly 86 unique names with no exception or retired direct record", () => {
+test("issue #1436: final manifest is exactly 87 unique names with no exception or retired direct record", () => {
   const names = manifest.secrets.map((entry) => entry.name);
   assert.equal(manifest.rollout.live_audit_mode, "enforced");
   assert.equal(manifest.rollout.transition_stage, "complete");
-  assert.equal(manifest.rollout.expected_user_managed_count, 86);
-  assert.equal(manifest.policy.normal_ceiling, 86);
+  assert.equal(manifest.rollout.expected_user_managed_count, 87);
+  assert.equal(manifest.policy.normal_ceiling, 87);
   assert.equal(manifest.policy.absolute_ceiling, 90);
-  assert.equal(names.length, 86);
-  assert.equal(new Set(names).size, 86);
+  assert.equal(names.length, 87);
+  assert.equal(new Set(names).size, 87);
   assert.deepEqual(manifest.exceptions, []);
   for (const name of RETIRED_DIRECT_NAMES) {
     assert.equal(names.includes(name), false, `${name} must remain absent`);
   }
   assert.deepEqual(validateManifest(manifest), []);
+});
+
+test("issue #1770: offering invite pepper is standalone and exactly scoped", () => {
+  const pepper = record("OFFERING_INVITE_TOKEN_PEPPER");
+  assert.ok(pepper);
+  assert.equal(pepper.class, "cryptographic_secret");
+  assert.equal(pepper.owner, "Platform Security");
+  assert.equal(pepper.source_type, "secure_vault");
+  assert.equal(pepper.issue, 1770);
+  assert.deepEqual(pepper.readers, [
+    "supabase/functions/_shared/offeringInviteToken.ts",
+    "supabase/functions/marketing-send/index.ts",
+    "supabase/functions/offering-invite-dispatch/index.ts",
+  ]);
+  assert.deepEqual(pepper.bundle_fields, []);
 });
 
 test("issue #1436: the two existing bundles own all four retired authorities", () => {
@@ -90,7 +105,7 @@ test("issue #1436: exact live-set parity passes and any retired direct-name retu
     nowMs: Date.parse("2026-08-03T00:00:00Z"),
   });
   assert.equal(exact.ok, true);
-  assert.equal(exact.count, 86);
+  assert.equal(exact.count, 87);
 
   for (const retired of RETIRED_DIRECT_NAMES) {
     const restored = auditSecretBudget({

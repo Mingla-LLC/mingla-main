@@ -13,8 +13,16 @@ import { emailAdapter } from "./adapters/emailAdapter.ts";
 // #1537 — the adapter owns provider SELECTION, so it also owns provider
 // REPORTING. `smsProviderForDestination` is the same derivation `send()` runs,
 // exposed for the ledger rows written when no send is attempted.
-import { smsAdapter, smsProviderForDestination } from "./adapters/smsAdapter.ts";
+import {
+  smsAdapter,
+  smsProviderForDestination,
+} from "./adapters/smsAdapter.ts";
 import { renderCategoryMessage } from "./notifyTemplates.ts";
+import type { RenderedMessage } from "./notifyTemplates.ts";
+import {
+  type PersistedOfferingPushV1,
+  validatePersistedOfferingPushV1,
+} from "./offeringInviteQuote.ts";
 import { notificationSafeError } from "./notificationSafeError.ts";
 // #1529 — the single source of truth for E.164 → ISO-2, replacing the
 // two-country ternary that used to sit at the RSVP SMS call site below.
@@ -58,6 +66,10 @@ export interface DispatchV2Input {
   idempotency_key: string;
   country_code?: string | null;
   requested_channel?: "inapp" | "push" | "email" | "sms" | null;
+  persisted_offering_push?: PersistedOfferingPushV1;
+  offering_attempt_id?: string;
+  internal_provider_claim_key?: string;
+  onesignal_idempotency_key?: string;
 }
 
 export interface CategoryRow {
@@ -129,6 +141,9 @@ export async function dispatchV2(
   client: MinimalClient,
   input: DispatchV2Input,
 ): Promise<DispatchV2Result> {
+  if (input.persisted_offering_push !== undefined) {
+    return await dispatchPersistedOfferingPush(client, input);
+  }
   // 1. Load + assert category active.
   const { data: catData } = await client
     .from("notification_categories")
@@ -141,7 +156,11 @@ export async function dispatchV2(
   }
 
   // 2. Render the per-category copy (push title/body, email, sms).
-  const rendered = renderCategoryMessage(input.category_key, input.payload);
+  const rendered: RenderedMessage = renderCategoryMessage(
+    input.category_key,
+    input.payload,
+  );
+  const inboxData = { ...input.payload, category_key: input.category_key };
 
   // 3. Idempotent insert into notifications (the inbox). Reuse the existing
   //    23505 UNIQUE(idempotency_key) path. Only when we have a user_id (the
@@ -155,7 +174,7 @@ export async function dispatchV2(
         type: input.category_key,
         title: rendered.push.title,
         body: rendered.push.body,
-        data: { ...input.payload, category_key: input.category_key },
+        data: inboxData,
         idempotency_key: input.idempotency_key,
       })
       // deno-lint-ignore no-explicit-any
@@ -248,11 +267,12 @@ export async function dispatchV2(
 
     if (channel === "push") {
       tasks.push((async () => {
+        const pushData = { ...input.payload, category_key: input.category_key };
         const r = await pushAdapter.send({
           userId: input.user_id!,
           title: rendered.push.title,
           body: rendered.push.body,
-          data: { ...input.payload, category_key: input.category_key },
+          data: pushData,
           routingType: input.category_key,
         });
         await writeDelivery(
@@ -346,6 +366,278 @@ export async function dispatchV2(
   await Promise.all(tasks);
 
   return { success: true, notificationId, deliveries };
+}
+
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+async function recordOfferingPushResult(
+  client: MinimalClient,
+  attemptId: string,
+  outcome: string,
+  providerAppId: string | null,
+  providerMessageId: string | null,
+  safeCode: string | null,
+  retryable: boolean,
+): Promise<boolean> {
+  const { error } = await client.rpc(
+    "biz_record_offering_push_dispatch_result",
+    {
+      p_attempt_id: attemptId,
+      p_outcome: outcome,
+      p_provider_app_id: providerAppId,
+      p_provider_message_id: providerMessageId,
+      p_safe_code: safeCode,
+      p_retryable: retryable,
+    },
+  );
+  return !error;
+}
+
+async function dispatchPersistedOfferingPush(
+  client: MinimalClient,
+  input: DispatchV2Input,
+): Promise<DispatchV2Result> {
+  const attemptId = input.offering_attempt_id ?? "";
+  const internalKey = input.internal_provider_claim_key ?? "";
+  const oneSignalKey = input.onesignal_idempotency_key ?? "";
+  const scopeValid = input.category_key === "offering_invitation" &&
+    input.requested_channel === "push" && !!input.user_id &&
+    UUID.test(attemptId) && oneSignalKey === attemptId &&
+    internalKey === `offering:${attemptId}:push:v1` &&
+    input.idempotency_key === internalKey;
+  const persisted = scopeValid
+    ? await validatePersistedOfferingPushV1(input.persisted_offering_push!)
+    : null;
+  if (!scopeValid || persisted === null) {
+    if (UUID.test(attemptId)) {
+      const saved = await recordOfferingPushResult(
+        client,
+        attemptId,
+        "definitive_unsent_terminal",
+        null,
+        null,
+        "local_payload_invalid",
+        false,
+      );
+      if (!saved) {
+        return { success: false, reason: "push_result_persist_failed" };
+      }
+    }
+    return { success: false, reason: "persisted_push_payload_invalid" };
+  }
+
+  const { data: catData, error: categoryError } = await client.from(
+    "notification_categories",
+  )
+    .select("*").eq("key", "offering_invitation").maybeSingle();
+  if (categoryError) {
+    return { success: false, reason: "category_lookup_unavailable" };
+  }
+  const category = catData as CategoryRow | null;
+  if (!category?.active) {
+    const saved = await recordOfferingPushResult(
+      client,
+      attemptId,
+      "suppressed",
+      null,
+      null,
+      "category_inactive",
+      false,
+    );
+    if (!saved) return { success: false, reason: "push_result_persist_failed" };
+    return {
+      success: true,
+      deliveries: [{
+        channel: "push",
+        status: "suppressed",
+        providerMessageId: null,
+      }],
+    };
+  }
+
+  let notificationId: string | null = null;
+  const inserted = await client.from("notifications").insert({
+    user_id: input.user_id,
+    type: "offering_invitation",
+    title: persisted.title,
+    body: persisted.body,
+    data: { event_id: persisted.eventId, category_key: "offering_invitation" },
+    idempotency_key: internalKey,
+  }).select?.("id").single() as unknown as {
+    data: { id: string } | null;
+    error: { code?: string } | null;
+  };
+  if (inserted.error?.code === "23505") {
+    const existing = await client.from("notifications").select("*")
+      .eq("idempotency_key", internalKey).maybeSingle();
+    if (existing.error) {
+      return { success: false, reason: "inbox_unavailable" };
+    }
+    const row = existing.data as Record<string, unknown> | null;
+    if (
+      !row || row.user_id !== input.user_id ||
+      row.type !== "offering_invitation" || row.idempotency_key !== internalKey
+    ) {
+      const saved = await recordOfferingPushResult(
+        client,
+        attemptId,
+        "definitive_unsent_terminal",
+        null,
+        null,
+        "inbox_idempotency_collision",
+        false,
+      );
+      if (!saved) {
+        return { success: false, reason: "push_result_persist_failed" };
+      }
+      return { success: false, reason: "inbox_idempotency_collision" };
+    }
+    notificationId = String(row.id);
+  } else if (inserted.error || !inserted.data?.id) {
+    const saved = await recordOfferingPushResult(
+      client,
+      attemptId,
+      "definitive_unsent_retryable",
+      null,
+      null,
+      "inbox_unavailable",
+      true,
+    );
+    if (!saved) return { success: false, reason: "push_result_persist_failed" };
+    return { success: false, reason: "inbox_unavailable" };
+  } else notificationId = inserted.data.id;
+
+  const policy = await client.rpc("can_send", {
+    p_user_id: input.user_id,
+    p_category_key: "offering_invitation",
+    p_channel: "push",
+    p_contact: null,
+  });
+  if (policy.error) {
+    return { success: false, reason: "can_send_unavailable" };
+  }
+  if (policy.data !== true) {
+    const saved = await recordOfferingPushResult(
+      client,
+      attemptId,
+      "suppressed",
+      null,
+      null,
+      "can_send_denied",
+      false,
+    );
+    if (!saved) return { success: false, reason: "push_result_persist_failed" };
+    return {
+      success: true,
+      notificationId,
+      deliveries: [{
+        channel: "push",
+        status: "suppressed",
+        providerMessageId: null,
+      }],
+    };
+  }
+
+  try {
+    const result = await pushAdapter.send({
+      userId: input.user_id!,
+      title: persisted.title,
+      body: persisted.body,
+      data: {
+        event_id: persisted.eventId,
+        category_key: "offering_invitation",
+        offering_attempt_id: attemptId,
+      },
+      routingType: "offering_invitation",
+      offeringAttemptId: attemptId,
+      internalProviderClaimKey: internalKey,
+      oneSignalIdempotencyKey: oneSignalKey,
+      persistedPushPayload: persisted,
+      beforeProviderIo: async () => {
+        const claim = await client.rpc("biz_claim_offering_push_provider_io", {
+          p_attempt_id: attemptId,
+          p_recipient_user_id: input.user_id,
+          p_internal_provider_claim_key: internalKey,
+          p_push_payload: persisted,
+        });
+        if (claim.error || !claim.data) {
+          if (
+            String((claim.error as { message?: unknown } | null)?.message ?? "")
+              .includes("not_claimable")
+          ) {
+            throw new Error("offering_push_claim_ineligible");
+          }
+          throw new Error("offering_push_claim_unavailable");
+        }
+        return claim.data as {
+          attemptId: string;
+          recipientUserId: string;
+          internalProviderClaimKey: string;
+          pushPayload: PersistedOfferingPushV1;
+        };
+      },
+    });
+    const saved = await recordOfferingPushResult(
+      client,
+      attemptId,
+      result.outcome,
+      result.providerAppId,
+      result.providerMessageId,
+      result.safeCode,
+      result.retryable,
+    );
+    if (!saved) return { success: false, reason: "push_result_persist_failed" };
+    return {
+      success: true,
+      notificationId,
+      deliveries: [{
+        channel: "push",
+        status: result.status,
+        providerMessageId: result.providerMessageId,
+      }],
+    };
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "offering_push_claim_ineligible"
+    ) {
+      const current = await client.from(
+        "brand_offering_invite_delivery_attempts",
+      )
+        .select("status,provider_idempotency_key").eq("id", attemptId)
+        .maybeSingle();
+      const row = current.data as Record<string, unknown> | null;
+      if (
+        !current.error && row && row.status !== "queued" &&
+        row.provider_idempotency_key === internalKey
+      ) {
+        return { success: true, duplicate: true, notificationId };
+      }
+      const saved = await recordOfferingPushResult(
+        client,
+        attemptId,
+        "suppressed",
+        null,
+        null,
+        "claim_ineligible",
+        false,
+      );
+      if (!saved) {
+        return { success: false, reason: "push_result_persist_failed" };
+      }
+      return {
+        success: true,
+        notificationId,
+        deliveries: [{
+          channel: "push",
+          status: "suppressed",
+          providerMessageId: null,
+        }],
+      };
+    }
+    return { success: false, reason: "offering_push_claim_unavailable" };
+  }
 }
 
 export interface SourceRefundChannelInput extends DispatchV2Input {

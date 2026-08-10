@@ -40,11 +40,17 @@ export interface AudienceQueryCustomSegment {
   kind: "custom_segment";
   filters: ReadonlyArray<unknown>;
 }
+export interface AudienceQueryOfferingSendGroup {
+  kind: "offering_send_group";
+  send_group_id: string;
+  channel: "email" | "sms";
+}
 export type AudienceQueryDefinition =
   | AudienceQueryBrandBuyers
   | AudienceQueryEventBuyers
   | AudienceQueryBrandFollowers
-  | AudienceQueryCustomSegment;
+  | AudienceQueryCustomSegment
+  | AudienceQueryOfferingSendGroup;
 
 export interface ResolvedContact {
   contact_key: string;
@@ -60,6 +66,11 @@ export interface ResolvedContact {
   last_purchase_at: string | null;
   email_marketing_ok: boolean;
   sms_marketing_ok: boolean;
+  offering_invite?: {
+    attempt_id: string;
+    invite_id: string;
+    event_id: string;
+  };
 }
 
 export interface ResolveResult {
@@ -155,7 +166,9 @@ async function resolveSuppressedPhones(
   }
   const { data: phoneUnsubData, error: phoneUnsubError } = await unsubQuery;
   if (phoneUnsubError) {
-    throw new Error(`audience_phone_unsubs_query_failed:${phoneUnsubError.message}`);
+    throw new Error(
+      `audience_phone_unsubs_query_failed:${phoneUnsubError.message}`,
+    );
   }
   for (const row of (phoneUnsubData ?? []) as unknown as PhoneUnsubRow[]) {
     for (const k of phoneKeysOf(row.contact_phone)) suppressed.add(k);
@@ -175,9 +188,13 @@ async function resolveSuppressedPhones(
     // channel_suppressions ships with Sub-A; if it's somehow absent on an
     // un-migrated env, fail-closed is wrong for reach (would hide all phones).
     // Surface the error — the audience contract cannot silently degrade.
-    throw new Error(`audience_channel_suppressions_query_failed:${chanSuppError.message}`);
+    throw new Error(
+      `audience_channel_suppressions_query_failed:${chanSuppError.message}`,
+    );
   }
-  for (const row of (chanSuppData ?? []) as unknown as ChannelSuppressionRow[]) {
+  for (
+    const row of (chanSuppData ?? []) as unknown as ChannelSuppressionRow[]
+  ) {
     for (const k of phoneKeysOf(row.contact)) suppressed.add(k);
   }
 
@@ -210,7 +227,9 @@ async function resolveSuppressedEmails(
   if (error) {
     // Same fail-surfaced posture as resolveSuppressedPhones — the audience
     // contract cannot silently degrade (a swallowed error would over-report reach).
-    throw new Error(`audience_channel_suppressions_email_query_failed:${error.message}`);
+    throw new Error(
+      `audience_channel_suppressions_email_query_failed:${error.message}`,
+    );
   }
   for (const row of (data ?? []) as unknown as ChannelSuppressionRow[]) {
     const c = row.contact;
@@ -241,6 +260,8 @@ export async function resolveAudience(
       throw new Error("audience_kind_not_yet_enabled:brand_followers");
     case "custom_segment":
       throw new Error("audience_kind_not_yet_enabled:custom_segment");
+    case "offering_send_group":
+      return await resolveOfferingSendGroup(client, query);
     default: {
       // Exhaustiveness sentinel — TS compile error if a new kind is added
       // without a case branch.
@@ -248,6 +269,29 @@ export async function resolveAudience(
       throw new Error(`audience_kind_unknown:${String(_exhaustive)}`);
     }
   }
+}
+
+// #1770 — prepared offering recipients are resolved by the database owner.
+// The client supplies only an opaque group id/channel; arbitrary people or raw
+// contact lists are never accepted by this shared send path.
+// deno-lint-ignore no-explicit-any
+async function resolveOfferingSendGroup(
+  client: SupabaseClient<any, "public", any>,
+  query: AudienceQueryOfferingSendGroup,
+): Promise<ResolveResult> {
+  assertUuid(query.send_group_id, "resolveOfferingSendGroup.sendGroupId");
+  const { data, error } = await client.rpc("biz_offering_send_group_audience", {
+    p_send_group_id: query.send_group_id,
+    p_channel: query.channel,
+  });
+  if (error) {
+    throw new Error(`offering_send_group_audience_failed:${error.message}`);
+  }
+  const result = data as Partial<ResolveResult> | null;
+  if (result === null || !Array.isArray(result.rows)) {
+    throw new Error("offering_send_group_audience_invalid_response");
+  }
+  return result as ResolveResult;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -361,7 +405,9 @@ export function aggregate(
       channels.add("email");
       channels.add("sms");
       channels.add("rcs");
-    } else if (u.channel === "email" || u.channel === "sms" || u.channel === "rcs") {
+    } else if (
+      u.channel === "email" || u.channel === "sms" || u.channel === "rcs"
+    ) {
       channels.add(u.channel);
     }
     unsubLookup.set(email, channels);

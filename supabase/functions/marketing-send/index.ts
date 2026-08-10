@@ -34,8 +34,8 @@ import {
   userClient,
 } from "../_shared/ticketCheckout.ts";
 import {
-  resolveAudience,
   type AudienceQueryDefinition,
+  resolveAudience,
   type ResolvedContact,
 } from "../_shared/marketingAudience.ts";
 import {
@@ -43,12 +43,25 @@ import {
   type MarketingVariables,
   renderMarketingEmail,
 } from "../_shared/marketingEmailRender.ts";
-import { generateTrackingId, signUnsubscribeToken } from "../_shared/marketingTokens.ts";
-import { computeSegments, isValidE164, smsAdapter } from "../_shared/adapters/smsAdapter.ts";
+import {
+  generateTrackingId,
+  signUnsubscribeToken,
+} from "../_shared/marketingTokens.ts";
+import {
+  composeSmsBody,
+  computeSegments,
+  isValidE164,
+  smsAdapter,
+} from "../_shared/adapters/smsAdapter.ts";
 // #1529 — the single source of truth for E.164 → ISO-2. Replaces the
 // module-private copy that used to sit next to the SMS dispatch below.
 import { countryFromE164 } from "../_shared/e164Country.ts";
 import { resolveDeliveryFlagValue } from "../_shared/secretBundle.ts";
+import {
+  constantTimeTokenHashEquals,
+  deriveOfferingInviteToken,
+  resolveOfferingInviteTokenPepper,
+} from "../_shared/offeringInviteToken.ts";
 
 const BATCH_LIMIT = 10;
 const RESEND_MAX_RETRIES = 3;
@@ -59,6 +72,129 @@ const RESEND_BACKOFF_MS = [1000, 3000, 9000];
 // burst-blast past the toll-free/10DLC throughput tier (SPEC §6.8, R-2).
 const SMS_BATCH_SIZE = 10; // recipients per batch
 const SMS_BATCH_PAUSE_MS = 1100; // ~9 msg/s sustained — under the 1 MPS toll-free + headroom
+const OFFERING_LINK_MARKER = "__MINGLA_OFFERING_INVITE_URL_V1__";
+
+interface OfferingInviteContext {
+  attempt_id: string;
+  invite_id: string;
+  event_id: string;
+}
+
+function offeringContext(
+  contact: ResolvedContact,
+  query: AudienceQueryDefinition,
+): OfferingInviteContext | null {
+  if (query.kind === "offering_send_group") {
+    const value = contact.offering_invite;
+    if (
+      value === undefined || typeof value.attempt_id !== "string" ||
+      typeof value.invite_id !== "string" || typeof value.event_id !== "string"
+    ) throw new Error("offering_invite_context_missing");
+    return value;
+  }
+  if (contact.offering_invite !== undefined) {
+    throw new Error("offering_invite_context_unexpected");
+  }
+  return null;
+}
+
+// deno-lint-ignore no-explicit-any -- service client has no generated DB types.
+async function prepareOfferingLink(
+  supabase: any,
+  context: OfferingInviteContext,
+  eventUrl: string,
+): Promise<{ url: string; tokenId: string }> {
+  const pepper = await resolveOfferingInviteTokenPepper();
+  const proposedTokenId = crypto.randomUUID();
+  const proposed = await deriveOfferingInviteToken(pepper, {
+    tokenId: proposedTokenId,
+    inviteId: context.invite_id,
+    deliveryAttemptId: context.attempt_id,
+  });
+  const { data, error } = await supabase.rpc(
+    "biz_prepare_offering_invite_delivery",
+    {
+      p_attempt_id: context.attempt_id,
+      p_proposed_token_id: proposedTokenId,
+      p_proposed_token_hash: proposed.tokenHash,
+      p_derivation_version: 1,
+    },
+  );
+  if (error || data === null) throw new Error("offering_invite_prepare_failed");
+  const prepared = data as {
+    tokenId: string;
+    inviteId: string;
+    attemptId: string;
+    tokenHash: string;
+    eventId: string;
+  };
+  if (
+    prepared.attemptId !== context.attempt_id ||
+    prepared.inviteId !== context.invite_id ||
+    prepared.eventId !== context.event_id
+  ) throw new Error("offering_invite_prepare_mismatch");
+  const winner = await deriveOfferingInviteToken(pepper, {
+    tokenId: prepared.tokenId,
+    inviteId: prepared.inviteId,
+    deliveryAttemptId: prepared.attemptId,
+  });
+  if (!constantTimeTokenHashEquals(prepared.tokenHash, winner.tokenHash)) {
+    throw new Error("offering_invite_token_derivation_mismatch");
+  }
+  const url = new URL(eventUrl);
+  if (url.protocol !== "https:") {
+    throw new Error("offering_invite_volatile_link_invalid");
+  }
+  url.searchParams.set("oi", winner.opaqueToken);
+  return {
+    url: url.toString(),
+    tokenId: prepared.tokenId,
+  };
+}
+
+// deno-lint-ignore no-explicit-any -- service client has no generated DB types.
+async function claimOfferingProviderIo(
+  supabase: any,
+  context: OfferingInviteContext,
+  tokenId: string,
+  channel: "email" | "sms",
+): Promise<void> {
+  const providerKey = `offering:${context.attempt_id}:${channel}:v1`;
+  const { data, error } = await supabase.rpc(
+    "biz_claim_offering_invite_provider_io",
+    {
+      p_attempt_id: context.attempt_id,
+      p_token_id: tokenId,
+      p_provider_idempotency_key: providerKey,
+    },
+  );
+  if (error || data !== "claimed") {
+    throw new Error("offering_invite_provider_claim_failed");
+  }
+}
+
+function replaceSingleMarker(source: string, replacement: string): string {
+  if (source.split(OFFERING_LINK_MARKER).length !== 2) {
+    throw new Error("offering_invite_volatile_link_invalid");
+  }
+  return source.replace(OFFERING_LINK_MARKER, replacement);
+}
+
+function escapeOfferingUrlForHtml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll(
+    "'",
+    "&#39;",
+  );
+}
+
+function inertOfferingUrl(eventUrl: string): string {
+  const url = new URL(eventUrl);
+  if (url.protocol !== "https:") {
+    throw new Error("offering_invite_volatile_link_invalid");
+  }
+  url.searchParams.set("oi", "A".repeat(43));
+  return url.toString();
+}
 
 // META-ORCH-1161 Sub-B — marketing quiet hours (SPEC §6.6 / §8.2). Marketing SMS
 // is blocked outside these recipient-local windows. Transactional SMS is NOT
@@ -145,7 +281,11 @@ export function decideSmsDisposition(
   countryCode: string | null,
   now: Date,
   existing:
-    | { status?: string | null; attempt_count?: number | null; created_at?: string | null }
+    | {
+      status?: string | null;
+      attempt_count?: number | null;
+      created_at?: string | null;
+    }
     | null,
 ): SmsDisposition {
   // Rule 2 — unresolvable recipient timezone is terminal (honest), never deferred.
@@ -181,7 +321,10 @@ export function decideSmsDisposition(
     localHour = startHour;
   }
   const hoursUntilOpen = (startHour - localHour + 24) % 24;
-  const deltaMs = Math.max(hoursUntilOpen * 60 * 60 * 1000, MIN_DEFER_INTERVAL_MS);
+  const deltaMs = Math.max(
+    hoursUntilOpen * 60 * 60 * 1000,
+    MIN_DEFER_INTERVAL_MS,
+  );
   return {
     action: "defer",
     next_attempt_at: new Date(now.getTime() + deltaMs).toISOString(),
@@ -311,9 +454,12 @@ serve(async (req) => {
       // marketing_messages and NEVER marks 'sent' unless delivered>0 OR
       // preview_skipped>0 — a deferred cohort parks it back in 'scheduled' with
       // a future scheduled_for so the existing cron re-picks it in-window.
-      const { error: finalizeErr } = await supabase.rpc("mkt_finalize_campaign", {
-        p_campaign_id: campaign.id,
-      });
+      const { error: finalizeErr } = await supabase.rpc(
+        "mkt_finalize_campaign",
+        {
+          p_campaign_id: campaign.id,
+        },
+      );
       if (finalizeErr) throw new Error(`finalize:${finalizeErr.message}`);
       results.push({
         campaign_id: campaign.id,
@@ -515,6 +661,11 @@ async function sendEmail(
   const subject = campaign.channel_payload.subject ?? "";
   const bodyHtml = campaign.channel_payload.body_html ?? "";
   const bodyText = campaign.channel_payload.body_text ?? "";
+  const isOfferingAudience = audience.query_definition.kind ===
+    "offering_send_group";
+  if (bodyHtml.includes(OFFERING_LINK_MARKER) !== isOfferingAudience) {
+    throw new Error("offering_invite_volatile_link_invalid");
+  }
   let previewSkipped = 0;
   let sent = 0;
 
@@ -525,6 +676,7 @@ async function sendEmail(
       // "deliverable audience" not "all audience".
       continue;
     }
+    const inviteContext = offeringContext(contact, audience.query_definition);
 
     const messageId = crypto.randomUUID();
     const unsubscribeToken = await signUnsubscribeToken({
@@ -543,7 +695,16 @@ async function sendEmail(
       subject: substituteString(subject, variables),
       brand_name: brandName,
       brand_header_image_url: brandHeaderImageUrl,
+      offering_invite_url_marker: inviteContext === null
+        ? undefined
+        : OFFERING_LINK_MARKER,
     });
+    if (
+      rendered.links.some((link) =>
+        link.destination_url.includes("oi=") ||
+        link.destination_url.includes(OFFERING_LINK_MARKER)
+      )
+    ) throw new Error("offering_invite_volatile_link_invalid");
 
     // INSERT marketing_messages row (status='queued' until terminal).
     const { error: insMsgErr } = await supabase
@@ -590,13 +751,51 @@ async function sendEmail(
     // From-line is now per-brand (`brandFromHeader`), not the static
     // RESEND_MARKETING_FROM env var. usemingla.com domain is verified at
     // Resend so any local-part on it works without per-address verification.
+    let providerClaimed = false;
+    let providerHtml = rendered.html;
+    let providerText = rendered.text;
+    let offeringTokenId: string | null = null;
+    let offeringProviderKey: string | null = null;
+    if (inviteContext !== null) {
+      const eventUrl = embedded.find((event) =>
+        event.id === inviteContext.event_id
+      )
+        ?.url;
+      if (eventUrl === undefined) {
+        throw new Error("offering_invite_volatile_link_invalid");
+      }
+      const prepared = await prepareOfferingLink(
+        supabase,
+        inviteContext,
+        eventUrl,
+      );
+      providerHtml = replaceSingleMarker(
+        rendered.html,
+        escapeOfferingUrlForHtml(prepared.url),
+      );
+      providerText = replaceSingleMarker(rendered.text, prepared.url);
+      offeringTokenId = prepared.tokenId;
+      offeringProviderKey = `offering:${inviteContext.attempt_id}:email:v1`;
+    }
     const sendOutcome = await postToResend({
       apiKey: options.resendApiKey,
       from: brandFromHeader,
       to: contact.raw_email,
       subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
+      html: providerHtml,
+      text: providerText,
+      idempotencyKey: offeringProviderKey,
+      beforeProviderIo: inviteContext === null || offeringTokenId === null
+        ? undefined
+        : async () => {
+          await claimOfferingProviderIo(
+            supabase,
+            inviteContext,
+            offeringTokenId,
+            "email",
+          );
+          providerClaimed = true;
+        },
     });
     if (sendOutcome.ok) {
       await supabase
@@ -608,6 +807,11 @@ async function sendEmail(
         })
         .eq("id", messageId);
       sent += 1;
+    } else if (providerClaimed && inviteContext !== null) {
+      await supabase.from("brand_offering_invite_delivery_attempts").update({
+        safe_reason_code: "provider_outcome_unknown",
+        is_retryable: false,
+      }).eq("id", inviteContext.attempt_id);
     } else {
       await supabase
         .from("marketing_messages")
@@ -637,7 +841,12 @@ async function sendEmail(
   // §5.1). Email NEVER defers and its send logic is UNCHANGED: delivered = live
   // sends, preview_skipped = preview-gate skips. The finalizer recomputes truth
   // from marketing_messages, so these counts drive only the JSON response body.
-  return { delivered: sent, deferred: 0, failed: 0, preview_skipped: previewSkipped };
+  return {
+    delivered: sent,
+    deferred: 0,
+    failed: 0,
+    preview_skipped: previewSkipped,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -647,6 +856,7 @@ async function sendEmail(
 interface SmsContact {
   raw_phone: string | null;
   sms_marketing_ok: boolean;
+  offering_invite?: OfferingInviteContext;
 }
 
 // Region derivation (for quiet-hours + kill-switch routing) comes from the
@@ -674,7 +884,10 @@ interface SmsContact {
  */
 function rewriteSmsLinks(
   body: string,
-): { rewritten: string; links: Array<{ tracking_id: string; destination_url: string }> } {
+): {
+  rewritten: string;
+  links: Array<{ tracking_id: string; destination_url: string }>;
+} {
   const links: Array<{ tracking_id: string; destination_url: string }> = [];
   const origin = getTrackingRedirectOrigin();
   const urlRe = /https?:\/\/[^\s]+/g;
@@ -717,41 +930,296 @@ const US_AREACODE_TZ: Record<string, string> = (() => {
   };
   // Eastern.
   add("America/New_York", [
-    "201","202","203","207","212","215","216","219","220","223","224","226",
-    "229","234","239","240","267","272","276","283","301","302","304","305",
-    "321","330","339","340","347","351","352","380","386","401","404","407",
-    "410","412","413","419","434","440","443","445","464","470","475","478",
-    "484","508","513","516","517","518","540","551","557","561","564","567",
-    "570","571","585","586","588","603","606","607","609","610","614","616",
-    "617","631","646","667","678","680","681","689","703","704","706","716",
-    "717","718","724","727","732","734","737","740","743","754","757","762",
-    "770","772","774","781","786","787","802","803","804","810","813","814",
-    "828","835","843","845","848","850","856","857","860","862","863","864",
-    "878","901","904","910","912","914","917","919","920","929","937","939",
-    "941","947","954","959","978","980","984",
+    "201",
+    "202",
+    "203",
+    "207",
+    "212",
+    "215",
+    "216",
+    "219",
+    "220",
+    "223",
+    "224",
+    "226",
+    "229",
+    "234",
+    "239",
+    "240",
+    "267",
+    "272",
+    "276",
+    "283",
+    "301",
+    "302",
+    "304",
+    "305",
+    "321",
+    "330",
+    "339",
+    "340",
+    "347",
+    "351",
+    "352",
+    "380",
+    "386",
+    "401",
+    "404",
+    "407",
+    "410",
+    "412",
+    "413",
+    "419",
+    "434",
+    "440",
+    "443",
+    "445",
+    "464",
+    "470",
+    "475",
+    "478",
+    "484",
+    "508",
+    "513",
+    "516",
+    "517",
+    "518",
+    "540",
+    "551",
+    "557",
+    "561",
+    "564",
+    "567",
+    "570",
+    "571",
+    "585",
+    "586",
+    "588",
+    "603",
+    "606",
+    "607",
+    "609",
+    "610",
+    "614",
+    "616",
+    "617",
+    "631",
+    "646",
+    "667",
+    "678",
+    "680",
+    "681",
+    "689",
+    "703",
+    "704",
+    "706",
+    "716",
+    "717",
+    "718",
+    "724",
+    "727",
+    "732",
+    "734",
+    "737",
+    "740",
+    "743",
+    "754",
+    "757",
+    "762",
+    "770",
+    "772",
+    "774",
+    "781",
+    "786",
+    "787",
+    "802",
+    "803",
+    "804",
+    "810",
+    "813",
+    "814",
+    "828",
+    "835",
+    "843",
+    "845",
+    "848",
+    "850",
+    "856",
+    "857",
+    "860",
+    "862",
+    "863",
+    "864",
+    "878",
+    "901",
+    "904",
+    "910",
+    "912",
+    "914",
+    "917",
+    "919",
+    "920",
+    "929",
+    "937",
+    "939",
+    "941",
+    "947",
+    "954",
+    "959",
+    "978",
+    "980",
+    "984",
   ]);
   // Central.
   add("America/Chicago", [
-    "205","210","214","217","218","224","225","228","254","256","262","270",
-    "281","309","312","314","318","319","320","331","334","337","361","380",
-    "402","405","409","414","417","430","432","447","456","469","479","501",
-    "504","507","512","515","531","539","563","573","580","601","608","612",
-    "615","618","620","630","636","641","651","657","660","662","682","708",
-    "713","715","731","737","763","769","773","779","785","806","815","816",
-    "817","830","832","847","850","870","901","903","913","915","920","930",
-    "931","936","940","952","956","972","979","985",
+    "205",
+    "210",
+    "214",
+    "217",
+    "218",
+    "224",
+    "225",
+    "228",
+    "254",
+    "256",
+    "262",
+    "270",
+    "281",
+    "309",
+    "312",
+    "314",
+    "318",
+    "319",
+    "320",
+    "331",
+    "334",
+    "337",
+    "361",
+    "380",
+    "402",
+    "405",
+    "409",
+    "414",
+    "417",
+    "430",
+    "432",
+    "447",
+    "456",
+    "469",
+    "479",
+    "501",
+    "504",
+    "507",
+    "512",
+    "515",
+    "531",
+    "539",
+    "563",
+    "573",
+    "580",
+    "601",
+    "608",
+    "612",
+    "615",
+    "618",
+    "620",
+    "630",
+    "636",
+    "641",
+    "651",
+    "657",
+    "660",
+    "662",
+    "682",
+    "708",
+    "713",
+    "715",
+    "731",
+    "737",
+    "763",
+    "769",
+    "773",
+    "779",
+    "785",
+    "806",
+    "815",
+    "816",
+    "817",
+    "830",
+    "832",
+    "847",
+    "850",
+    "870",
+    "901",
+    "903",
+    "913",
+    "915",
+    "920",
+    "930",
+    "931",
+    "936",
+    "940",
+    "952",
+    "956",
+    "972",
+    "979",
+    "985",
   ]);
   // Mountain (DST-observing).
   add("America/Denver", [
-    "303","307","308","385","406","435","505","575","719","720","970","984",
+    "303",
+    "307",
+    "308",
+    "385",
+    "406",
+    "435",
+    "505",
+    "575",
+    "719",
+    "720",
+    "970",
+    "984",
   ]);
   // Arizona (no DST — distinct zone).
-  add("America/Phoenix", ["480","520","602","623","928"]);
+  add("America/Phoenix", ["480", "520", "602", "623", "928"]);
   // Pacific.
   add("America/Los_Angeles", [
-    "209","213","279","310","323","341","350","408","415","424","442","510",
-    "530","559","562","619","626","628","650","657","661","669","707","714",
-    "747","760","805","818","820","831","858","909","916","925","949","951",
+    "209",
+    "213",
+    "279",
+    "310",
+    "323",
+    "341",
+    "350",
+    "408",
+    "415",
+    "424",
+    "442",
+    "510",
+    "530",
+    "559",
+    "562",
+    "619",
+    "626",
+    "628",
+    "650",
+    "657",
+    "661",
+    "669",
+    "707",
+    "714",
+    "747",
+    "760",
+    "805",
+    "818",
+    "820",
+    "831",
+    "858",
+    "909",
+    "916",
+    "925",
+    "949",
+    "951",
   ]);
   // Alaska / Hawaii.
   add("America/Anchorage", ["907"]);
@@ -766,7 +1234,10 @@ const US_AREACODE_TZ: Record<string, string> = (() => {
  *   - NG (+234): Africa/Lagos (single zone, WAT).
  *   - any other / unknown market: null.
  */
-function resolveRecipientTz(phone: string, countryCode: string | null): string | null {
+function resolveRecipientTz(
+  phone: string,
+  countryCode: string | null,
+): string | null {
   const cc = (countryCode ?? "").toUpperCase();
   if (cc === "NG") return "Africa/Lagos";
   if (cc === "US") {
@@ -836,7 +1307,8 @@ async function sendSms(
     .eq("id", campaign.brand_id)
     .maybeSingle();
   if (brandErr) throw new Error(`brand_load:${brandErr.message}`);
-  const brandName: string = (brandRow as { name?: string } | null)?.name ?? "Mingla brand";
+  const brandName: string = (brandRow as { name?: string } | null)?.name ??
+    "Mingla brand";
 
   // 2. Resolve audience (service-role bypasses RLS). reachable_sms is now truthful
   //    (Sub-B phone-suppression fix in marketingAudience.ts).
@@ -844,6 +1316,15 @@ async function sendSms(
 
   const rawBody = (campaign.channel_payload.body ?? "").trim();
   if (rawBody.length === 0) throw new Error("sms_body_empty");
+  const isOfferingAudience = audience.query_definition.kind ===
+    "offering_send_group";
+  if (rawBody.includes(OFFERING_LINK_MARKER) !== isOfferingAudience) {
+    throw new Error("offering_invite_volatile_link_invalid");
+  }
+  const embedded = await loadEmbeddedEvents(
+    supabase,
+    campaign.channel_payload.embedded_events ?? [],
+  );
 
   // ORCH-1282 — MMS media. A passenger on the existing send: it rides the Twilio
   // MediaUrl param (US only); the NG/Termii branch inside the adapter never
@@ -851,11 +1332,12 @@ async function sendSms(
   // is byte-for-byte unchanged).
   const mediaUrls = Array.isArray(campaign.channel_payload.media_urls)
     ? campaign.channel_payload.media_urls.filter(
-        (u) => typeof u === "string" && u.length > 0,
-      )
+      (u) => typeof u === "string" && u.length > 0,
+    )
     : [];
 
-  const marketingSid = Deno.env.get("TWILIO_MARKETING_MESSAGING_SERVICE_SID") ?? null;
+  const marketingSid = Deno.env.get("TWILIO_MARKETING_MESSAGING_SERVICE_SID") ??
+    null;
 
   // 3. Throttled batches.
   const deliverable = resolved.rows.filter(
@@ -878,6 +1360,17 @@ async function sendSms(
         continue;
       }
       const countryCode = countryFromE164(phone);
+      const inviteContext = offeringContext(
+        contact as ResolvedContact,
+        audience.query_definition,
+      );
+      const eventUrl = inviteContext === null
+        ? null
+        : embedded.find((event) => event.id === inviteContext.event_id)?.url ??
+          null;
+      if (inviteContext !== null && eventUrl === null) {
+        throw new Error("offering_invite_volatile_link_invalid");
+      }
 
       // ORCH-1270 RC-1 + F-DS-1 — idempotency guard (SPEC §5.1 rule 1). Read the
       // existing row for (campaign, phone), INCLUDING provider_message_id. If it is
@@ -900,7 +1393,12 @@ async function sendSms(
 
       // ORCH-1270 RC-1 — quiet-hours DEFER (not terminal fail). TZ is derived
       // from the phone (US area code; NG = Lagos), not a fixed Eastern anchor.
-      const disposition = decideSmsDisposition(phone, countryCode, now, existing);
+      const disposition = decideSmsDisposition(
+        phone,
+        countryCode,
+        now,
+        existing,
+      );
 
       if (disposition.action === "fail") {
         // Terminal + honest: unresolvable tz OR aged/attempt-capped past the
@@ -949,7 +1447,16 @@ async function sendSms(
       // disposition.action === "send" — in-window: existing send path.
       // Branded links + per-link click rows.
       const { rewritten, links } = rewriteSmsLinks(rawBody);
-      const segments = computeSegments(rewritten);
+      if (
+        links.some((link) =>
+          link.destination_url.includes("oi=") ||
+          link.destination_url.includes(OFFERING_LINK_MARKER)
+        )
+      ) throw new Error("offering_invite_volatile_link_invalid");
+      const segmentBody = inviteContext === null || eventUrl === null
+        ? rewritten
+        : replaceSingleMarker(rewritten, inertOfferingUrl(eventUrl));
+      const segments = computeSegments(composeSmsBody(segmentBody, true));
 
       // UPSERT the queued row (∅→queued or deferred→queued). onConflict clears
       // next_attempt_at so a formerly-deferred row is no longer due.
@@ -985,7 +1492,9 @@ async function sendSms(
               tracking_id: link.tracking_id,
             })),
           );
-        if (insClicksErr) throw new Error(`clicks_insert:${insClicksErr.message}`);
+        if (insClicksErr) {
+          throw new Error(`clicks_insert:${insClicksErr.message}`);
+        }
       }
 
       if (!options.live) {
@@ -997,13 +1506,26 @@ async function sendSms(
         continue;
       }
 
+      let providerMessage = rewritten;
+      let offeringTokenId: string | null = null;
+      let providerClaimed = false;
+      if (inviteContext !== null && eventUrl !== null) {
+        const prepared = await prepareOfferingLink(
+          supabase,
+          inviteContext,
+          eventUrl,
+        );
+        providerMessage = replaceSingleMarker(rewritten, prepared.url);
+        offeringTokenId = prepared.tokenId;
+      }
+
       // Live path — adapter enforces the per-market kill-switch internally;
       // when SMS_LIVE_ENABLED_<MKT> is off it returns status='skipped' with
       // ZERO Twilio HTTP, so even LIVE marketing-send is text-dark until flip.
       const result = await smsAdapter.send({
         to: phone.trim(),
         brandName,
-        message: rewritten,
+        message: providerMessage,
         countryCode,
         messagingServiceSid: marketingSid,
         // ORCH-1227 (DEC-192) — NG marketing routes to Termii's `generic`
@@ -1017,6 +1539,17 @@ async function sendSms(
         // ORCH-1282 — MMS media (US/Twilio only; the adapter's NG/Termii branch
         // ignores it → NG silently sends SMS-only). ORCH-1289 — up to 10 items.
         mediaUrls,
+        beforeProviderIo: inviteContext === null || offeringTokenId === null
+          ? undefined
+          : async () => {
+            await claimOfferingProviderIo(
+              supabase,
+              inviteContext,
+              offeringTokenId,
+              "sms",
+            );
+            providerClaimed = true;
+          },
       });
 
       if (result.status === "sent") {
@@ -1052,11 +1585,24 @@ async function sendSms(
         }
         if (sentErr) {
           throw new Error(
-            `sms_sent_terminal_update_lost:${messageId}:${sentErr.message ?? String(sentErr)}`,
+            `sms_sent_terminal_update_lost:${messageId}:${
+              sentErr.message ?? String(sentErr)
+            }`,
           );
         }
         delivered += 1;
+      } else if (providerClaimed && inviteContext !== null) {
+        await supabase.from("brand_offering_invite_delivery_attempts").update({
+          safe_reason_code: "provider_outcome_unknown",
+          is_retryable: false,
+        }).eq("id", inviteContext.attempt_id);
+        failed += 1;
       } else {
+        if (inviteContext !== null && offeringTokenId !== null) {
+          await supabase.from("brand_offering_invite_tokens").update({
+            revoked_at: new Date().toISOString(),
+          }).eq("id", offeringTokenId);
+        }
         // skipped (kill-switch) OR failed — record honestly; no silent drop. This
         // twin UPDATE is intentionally NOT gated the same way: neither branch
         // reached Twilio (skipped = kill-switch, no HTTP; failed = adapter reported
@@ -1131,8 +1677,7 @@ async function writeBlastIntoEventChat(
     });
 
   if (messageError) {
-    const isDuplicate =
-      messageError.code === "23505" ||
+    const isDuplicate = messageError.code === "23505" ||
       messageError.message?.includes("messages_unique_blast_per_conversation");
     if (!isDuplicate) {
       console.error(
@@ -1195,7 +1740,10 @@ function buildVariables(
   };
 }
 
-function substituteString(template: string, variables: MarketingVariables): string {
+function substituteString(
+  template: string,
+  variables: MarketingVariables,
+): string {
   return template.replace(
     /\{(first_name|event_name|event_date|event_time|doors_open|ends_at|brand_name|event_url|spots_left|previous_event_name|next_event_name|event_id)\}/g,
     (_match, key: string) => {
@@ -1216,7 +1764,9 @@ async function loadEmbeddedEvents(
   // cover lives in cover_media_url, not cover_image_url).
   const { data: eventsData, error: eventsErr } = await supabase
     .from("events_with_master_date_view")
-    .select("id, title, location_text, cover_media_url, cover_media_type, master_start_at, master_end_at, master_timezone, slug, brand_id")
+    .select(
+      "id, title, location_text, cover_media_url, cover_media_type, master_start_at, master_end_at, master_timezone, slug, brand_id",
+    )
     .in("id", ids);
   if (eventsErr) throw new Error(`events_load:${eventsErr.message}`);
   const eventRows = (eventsData ?? []) as Array<{
@@ -1246,7 +1796,10 @@ async function loadEmbeddedEvents(
       .select("id, slug")
       .in("id", brandIds);
     if (brandsErr) throw new Error(`brands_load:${brandsErr.message}`);
-    for (const row of ((brandsData ?? []) as Array<{ id: string; slug: string | null }>)) {
+    for (
+      const row
+        of ((brandsData ?? []) as Array<{ id: string; slug: string | null }>)
+    ) {
       if (row.slug !== null && row.slug.length > 0) {
         brandSlugByBrandId.set(row.id, row.slug);
       }
@@ -1261,8 +1814,8 @@ async function loadEmbeddedEvents(
       // Defensive fallback when slug data is missing: route to brand
       // page so the link still lands somewhere honest.
       : brandSlug !== undefined
-        ? `${origin}/b/${brandSlug}`
-        : origin;
+      ? `${origin}/b/${brandSlug}`
+      : origin;
     // Coerce cover_media_type into the EmbeddedEvent union (`'image' |
     // 'video' | 'gif' | null`). Anything outside the union becomes null
     // — renderEventCard treats that as "no usable cover" and skips the
@@ -1407,26 +1960,38 @@ async function postToResend(input: {
   subject: string;
   html: string;
   text: string;
+  idempotencyKey?: string | null;
+  beforeProviderIo?: () => Promise<void>;
 }): Promise<ResendOutcome> {
   let lastError = "";
+  await input.beforeProviderIo?.();
   for (let attempt = 0; attempt < RESEND_MAX_RETRIES; attempt += 1) {
     // no-attachment: marketing campaign emails (Cycle B5 Phase B) are pure
     // HTML+text blasts; no PDF tickets or other file attachments are ever
     // sent through this code path. Per ORCH-0785-A invariant.
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${input.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: input.from,
-        to: [input.to],
-        subject: input.subject,
-        html: input.html,
-        text: input.text,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${input.apiKey}`,
+          "Content-Type": "application/json",
+          ...(input.idempotencyKey === null ||
+              input.idempotencyKey === undefined
+            ? {}
+            : { "Idempotency-Key": input.idempotencyKey }),
+        },
+        body: JSON.stringify({
+          from: input.from,
+          to: [input.to],
+          subject: input.subject,
+          html: input.html,
+          text: input.text,
+        }),
+      });
+    } catch {
+      return { ok: false, error: "resend_network_unknown" };
+    }
     if (response.status === 429) {
       lastError = "resend_rate_limited";
       const delay = RESEND_BACKOFF_MS[attempt] ?? 9000;
