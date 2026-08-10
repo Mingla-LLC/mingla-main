@@ -175,13 +175,26 @@ Deno.test("read-by-run_id — created/failed/ready bodies + T-A4 leak check + al
         decodeURIComponent(new URL(r.url).searchParams.get("select") ?? "")
       );
     assert(selects.length > 0, "tool_leads reads observed");
+    // NOT a substring check (a `select=*` widening would sail past
+    // `includes` — the unfalsifiable-test class): every requested column must
+    // be a member of the exact OQ-U1 allowlist, and `*` is rejected outright.
+    const ALLOWED = new Set([
+      "id",
+      "status",
+      "report",
+      "input",
+      "brand_id",
+      "created_at",
+    ]);
     for (const sel of selects) {
-      for (
-        const forbidden of ["report_token", "email", "ip_hash", "pid", "utm"]
-      ) {
+      assert(
+        sel !== "*" && sel.length > 0,
+        "select-list must be explicit, never *",
+      );
+      for (const col of sel.split(",").map((c) => c.trim())) {
         assert(
-          !sel.includes(forbidden),
-          `select-list must not request ${forbidden} (got: ${sel})`,
+          ALLOWED.has(col),
+          `select-list column '${col}' is outside the P-26/OQ-U1 allowlist (got: ${sel})`,
         );
       }
     }
