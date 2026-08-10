@@ -39,6 +39,29 @@ const venueTabs = fs.readFileSync(
 const types = fs.readFileSync(path.join(__dirname, "..", "types.ts"), "utf8");
 const indexTs = fs.readFileSync(path.join(__dirname, "..", "index.ts"), "utf8");
 
+// [TEST-MOD-APPROVED #1789] #1767 Phase 1 — I-PROPOSED-1186-MENU-DISPLAY-ONLY is
+// AMENDED, not deleted (SPEC #1788 P-62). The venue menu becomes an ordering
+// surface, so T-INV-1's five buyable-control assertions are RE-POINTED from the
+// public MenuTab block to the SET-A surfaces that stay display-only FOREVER —
+// the builder sheets and the marketing venue-preview sales-demo skin. Deleting
+// those five assertions instead of re-pointing them is forbidden: it would leave
+// the marketing skin unguarded.
+const repoRoot = path.join(__dirname, "..", "..", "..");
+const readSetA = (rel: string): string =>
+  fs.readFileSync(path.join(repoRoot, rel), "utf8");
+const SET_A_FILES = [
+  "mingla-business/src/components/venue/MenuItemSheet.tsx",
+  "mingla-business/src/components/venue/MenuCategorySheet.tsx",
+  "mingla-marketing/app/venue-preview/page.tsx",
+  "mingla-marketing/app/venue-preview/VenuePreviewClient.tsx",
+  "mingla-marketing/app/venue-preview/venueSkins.tsx",
+];
+// Comments are stripped exactly as the strict-grep gate strips them, so the
+// prose contracts that NAME these tokens ("NO cart/checkout control here") never
+// trip the assertion.
+const stripComments = (src: string): string =>
+  src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
 // The MenuTab component block (for scoped display-only assertions).
 const menuTabStart = menuSections.indexOf("const MenuTab");
 const menuTabBlock =
@@ -95,13 +118,21 @@ describe("ORCH-1186-C public Menu tab", () => {
     expect(brandPage).not.toContain('activeTab === "menu"');
   });
 
-  test("T-INV-1 — the MenuTab block carries NO buyable control (display-only, SC-7)", () => {
-    expect(menuTabBlock).not.toMatch(/add to order/i);
-    expect(menuTabBlock).not.toMatch(/order now/i);
-    expect(menuTabBlock).not.toMatch(/\bcheckout\b/i);
-    expect(menuTabBlock).not.toMatch(/\bcart\b/i);
-    expect(menuTabBlock).not.toMatch(/\bquantity\b/i);
-    // public rows are static <View>, not Pressable (no dead tap).
+  test("T-INV-1 — the SET-A surfaces carry NO buyable control (display-only FOREVER, #1789 re-point)", () => {
+    // [TEST-MOD-APPROVED #1789] Re-pointed per SPEC #1788 P-62. Same five
+    // assertions, aimed at the surfaces the amended invariant still protects.
+    expect(SET_A_FILES.length).toBe(5);
+    for (const rel of SET_A_FILES) {
+      const src = stripComments(readSetA(rel));
+      expect(src.length).toBeGreaterThan(0);
+      expect(src).not.toMatch(/add to order/i);
+      expect(src).not.toMatch(/order now/i);
+      expect(src).not.toMatch(/\bcheckout\b/i);
+      expect(src).not.toMatch(/\bcart\b/i);
+      expect(src).not.toMatch(/\bquantity\b/i);
+    }
+    // public rows are static <View>, not Pressable (no dead tap). Unchanged —
+    // #1789 ships no cart on the public menu (that is #1793).
     expect(menuTabBlock).not.toContain("Pressable");
     expect(menuTabBlock).not.toContain("onPress");
   });

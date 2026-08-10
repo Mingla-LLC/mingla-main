@@ -12,9 +12,28 @@ import {
 
 test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", () => {
   const sites = enumerateRepository();
-  // 84 = 83 pre-#679 targets + brand_follows (user_id,brand_id) from
-  // app-mobile/src/services/brandFollowsService.ts (issue #679).
-  assert.equal(sites.length, 84);
+  // Census counter, not a behavioural pin — the same class as MANIFEST.json's
+  // expectedStrictGrepMjsFiles, and designed to move when the census genuinely
+  // moves. It is computed FROM THE REPO, so it is also the one line two
+  // concurrent branches will always collide on; the house rule is
+  // `origin + delta`, never carrying an absolute number across a rebase.
+  //
+  // Current derivation:
+  //     83  pre-#679 targets
+  //   +  1  #679  brand_follows (user_id,brand_id)
+  //          — app-mobile/src/services/brandFollowsService.ts
+  //   +  2  #1789 menu_modifier_groups (id) + menu_modifiers (id)
+  //          — mingla-business/src/hooks/useMenuModifiers.ts:206 and :232
+  //   = 86
+  //
+  // [TEST-MOD-APPROVED #1789] Both #1789 sites resolve to a real, non-partial
+  // arbiter — `PRIMARY KEY (id)` on each table, created at
+  // supabase/migrations/20270305001789_issue_1789_qr_spots_menu_depth_and_ordering_settings.sql:544
+  // and :565. Verified on PostgreSQL 17, which reported
+  // `Conflict Arbiter Indexes: menu_modifier_groups_pkey` and
+  // `Conflict Arbiter Indexes: menu_modifiers_pkey` for this audit's own
+  // EXPLAIN. Every other assertion in this file is untouched.
+  assert.equal(sites.length, 86);
   assert.equal(sites.some((site) => site.table === "user_stats"), false);
   assert.equal(sites.some((site) => site.table === "saved_experience_privacy"), false);
   assert.equal(sites.some((site) => site.table === "business_notification_type_preferences"), true);

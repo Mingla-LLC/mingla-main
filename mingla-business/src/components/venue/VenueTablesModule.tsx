@@ -36,6 +36,19 @@ import type {
   VenueTableUpsert,
 } from "../../types/venueReservation";
 
+/**
+ * Issue #1789 — the Spots sheet loads behind a LAZY boundary, the
+ * `LazyVenueInsightsModule` precedent (VenueSuiteShell.tsx:86). It reaches
+ * `useAuth` -> `AuthContext` -> `expo-constants` -> `expo-modules-core`, which
+ * throws at MODULE SCOPE under the venue web render-proof configs, so a static
+ * import here would red every suite that mounts this module. The factory runs
+ * only when the sheet is actually opened.
+ */
+const LazyVenueSpotsSheet = React.lazy(async () => {
+  const mod = await import("./VenueSpotsSheet");
+  return { default: mod.VenueSpotsSheet };
+});
+
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 
 const ZONE_LABEL: Record<string, string> = {
@@ -138,6 +151,8 @@ export function VenueTablesModule({
     [canMutate, remove],
   );
 
+  const [spotsSheetOpen, setSpotsSheetOpen] = useState<boolean>(false);
+
   const header = useMemo(
     () => (
       <View style={styles.headerRow}>
@@ -165,6 +180,24 @@ export function VenueTablesModule({
   return (
     <View style={styles.host} testID={testID ?? "venue-tables-module"}>
       {header}
+
+      {/*
+        Issue #1789 (#1767 Phase 1) — every table already has a QR spot: the
+        database mints one the moment the table exists, so the operator never
+        keeps two lists (D-3). This is the way into that ONE brand-scoped
+        inventory and its print sheet.
+      */}
+      {canMutate ? (
+        <Button
+          label="QR spots & printing"
+          onPress={() => setSpotsSheetOpen(true)}
+          variant="secondary"
+          size="sm"
+          leadingIcon="qr"
+          style={styles.spotsEntry}
+          testID="venue-tables-spots-entry"
+        />
+      ) : null}
 
       {isEmpty ? (
         <GlassCard variant="elevated" style={styles.emptyCard}>
@@ -263,6 +296,17 @@ export function VenueTablesModule({
         deleting={remove.isPending}
         canDelete={canMutate}
       />
+
+      {spotsSheetOpen ? (
+        <React.Suspense fallback={null}>
+          <LazyVenueSpotsSheet
+            visible
+            onClose={() => setSpotsSheetOpen(false)}
+            brandId={brandId}
+            canMutate={canMutate}
+          />
+        </React.Suspense>
+      ) : null}
     </View>
   );
 }
@@ -272,6 +316,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     gap: spacing.md,
+  },
+  spotsEntry: {
+    alignSelf: "flex-start",
   },
   headerRow: {
     flexDirection: "row",

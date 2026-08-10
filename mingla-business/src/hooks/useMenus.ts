@@ -6,8 +6,13 @@
  * factory (never hardcoded). All mutations carry onError (Code Quality Contract)
  * and invalidate the brand-menus key on success.
  *
- * DISPLAY-ONLY (DEC-C): no ordering/cart/checkout. This hook NEVER touches
- * experience_stops / experiences / the snap-menu parser
+ * AMENDED at #1767 Phase 1 (issue #1789): the DEC-C display-only clause is
+ * retired — the venue menu becomes an ordering surface. What survives is that
+ * the menu surface never does money itself (SPEC #1788 P-20). The upsert
+ * inputs gain the #1789 depth fields (P-12); every one of them is a menu FACT,
+ * never a price computation.
+ *
+ * This hook NEVER touches experience_stops / experiences / the snap-menu parser
  * (I-PROPOSED-1186C-MENU-NOT-EXPERIENCE-STOPS).
  */
 
@@ -58,6 +63,15 @@ export interface MenuUpsertInput {
   description: string | null;
   /** Required on insert; preserved on edit. */
   sortOrder: number;
+  // ---- Issue #1789 (SPEC #1788 P-12) — service windows. Optional so every
+  // existing caller is byte-compatible; both null = always available, which is
+  // today's behaviour. `end < start` WRAPS MIDNIGHT (a late-night menu), and
+  // the window is evaluated in VENUE-LOCAL time SERVER-SIDE via the #1403
+  // ladder — never the device's clock.
+  serviceWindowStart?: string | null;
+  serviceWindowEnd?: string | null;
+  /** ISO day-of-week 1..7; null = every day. */
+  serviceDays?: number[] | null;
 }
 
 export function useUpsertMenu(
@@ -77,6 +91,13 @@ export function useUpsertMenu(
         sort_order: input.sortOrder,
         updated_at: new Date().toISOString(),
       };
+      if (input.serviceWindowStart !== undefined) {
+        row.service_window_start = input.serviceWindowStart;
+      }
+      if (input.serviceWindowEnd !== undefined) {
+        row.service_window_end = input.serviceWindowEnd;
+      }
+      if (input.serviceDays !== undefined) row.service_days = input.serviceDays;
       if (input.id !== undefined) row.id = input.id;
       const { error } = await supabase
         .from("menus")
@@ -135,6 +156,14 @@ export interface MenuItemUpsertInput {
   isAvailable: boolean;
   /** Required on insert; preserved on edit. */
   sortOrder: number;
+  // ---- Issue #1789 (SPEC #1788 P-12) — menu depth. All optional so the
+  // one-tap 86 path and every existing caller stay byte-compatible.
+  /** Whether a guest may attach a kitchen note to this line. */
+  allowsNotes?: boolean;
+  /** Phase-5 kiosk routing seam. */
+  prepStation?: "kitchen" | "bar" | "other" | null;
+  /** Opt-in food cost, minor units. NEVER exposed publicly. */
+  costCents?: number | null;
 }
 
 export function useUpsertMenuItem(
@@ -158,6 +187,11 @@ export function useUpsertMenuItem(
         sort_order: input.sortOrder,
         updated_at: new Date().toISOString(),
       };
+      // #1789 — only send the depth fields a caller actually set, so the
+      // one-tap 86 toggle can flip ONE bit without restating the whole row.
+      if (input.allowsNotes !== undefined) row.allows_notes = input.allowsNotes;
+      if (input.prepStation !== undefined) row.prep_station = input.prepStation;
+      if (input.costCents !== undefined) row.cost_cents = input.costCents;
       if (input.id !== undefined) row.id = input.id;
       const { error } = await supabase
         .from("menu_items")

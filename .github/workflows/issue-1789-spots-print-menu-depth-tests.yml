@@ -1,0 +1,96 @@
+name: "Issue #1789 spots, QR print, menu depth"
+
+# #1767 Phase 1. Three proofs, each fails-on-revert:
+#   1. the printed URL + the PDF rail + the edge function's auth contract (deno)
+#   2. the Spots/menu-depth client logic (jest, mingla-business)
+#   3. the re-scoped DEC-C gate's self-test (SPEC #1788 P-61a)
+# The SQL behavioural suite runs in supabase-migrations-and-stripe-deno.yml,
+# which is the only job with a real Postgres carrying every migration.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/venue-qr-sheet/**"
+      - "supabase/functions/_shared/ticketPdf.ts"
+      - "supabase/migrations/20270305001789_issue_1789_qr_spots_menu_depth_and_ordering_settings.sql"
+      - "supabase/migrations/20270305011789_issue_1789_venue_qr_sheet_storage.sql"
+      - "supabase/migrations/__tests__/issue_1789_qr_spots_menu_depth.test.sql"
+      - "mingla-business/src/hooks/useQrSpots.ts"
+      - "mingla-business/src/hooks/useMenuModifiers.ts"
+      - "mingla-business/src/hooks/useMenus.ts"
+      - "mingla-business/src/services/menusService.ts"
+      - "mingla-business/src/components/venue/**"
+      - ".github/scripts/strict-grep/orch-1186c-menu-display-only.mjs"
+      - ".github/workflows/issue-1789-spots-print-menu-depth-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/functions/venue-qr-sheet/**"
+      - "supabase/functions/_shared/ticketPdf.ts"
+      - "supabase/migrations/20270305001789_issue_1789_qr_spots_menu_depth_and_ordering_settings.sql"
+      - "supabase/migrations/20270305011789_issue_1789_venue_qr_sheet_storage.sql"
+      - "supabase/migrations/__tests__/issue_1789_qr_spots_menu_depth.test.sql"
+      - "mingla-business/src/hooks/useQrSpots.ts"
+      - "mingla-business/src/hooks/useMenuModifiers.ts"
+      - "mingla-business/src/hooks/useMenus.ts"
+      - "mingla-business/src/services/menusService.ts"
+      - "mingla-business/src/components/venue/**"
+      - ".github/scripts/strict-grep/orch-1186c-menu-display-only.mjs"
+      - ".github/workflows/issue-1789-spots-print-menu-depth-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  qr-sheet-edge:
+    name: "venue-qr-sheet: printed URL, PDF rail, auth contract"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Prove the canonical URL, the A4 card rail, and the manager-plus gate
+        run: >
+          deno test --allow-env --allow-net --allow-read --no-check
+          supabase/functions/venue-qr-sheet/__tests__/issue_1789_venue_qr_sheet.test.ts
+
+  dec-c-gate:
+    name: "DEC-C gate re-scope self-test (SPEC #1788 P-61a)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test proves the SET-A / SET-B split
+        run: node .github/scripts/strict-grep/orch-1186c-menu-display-only.mjs --self-test
+      - name: Plain run against the working tree
+        run: node .github/scripts/strict-grep/orch-1186c-menu-display-only.mjs
+
+  business-client:
+    name: "Spots + menu depth client logic"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Prove the Spots grouping, the print payloads, and the one-tap 86 write
+        run: >
+          npx jest
+          src/components/venue/__tests__/qrSpots.issue1789.test.ts
+          --runInBand

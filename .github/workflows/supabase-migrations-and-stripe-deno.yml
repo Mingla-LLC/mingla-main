@@ -294,6 +294,16 @@ jobs:
           # coordinates, and the ~100-city derivation grid.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1586_venue_timezone_derivation.test.sql
+          # issue #1789 (#1767 Phase 1) — the orderable-spot inventory and the
+          # menu depth that makes a menu buyable: auto-provision from
+          # venue_tables and named stay_units, a printed code that is
+          # server-minted and survives a rename, the brand-locked serving
+          # reference that lets Room 204 order from the Brasserie, the
+          # modifier currency weld, the additive menu columns, and the
+          # FAIL-CLOSED guest resolver that returns nothing at all while
+          # ordering_enabled is false.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1789_qr_spots_menu_depth.test.sql
 
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"

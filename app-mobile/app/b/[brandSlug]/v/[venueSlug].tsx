@@ -415,7 +415,19 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       reservabilityState={
         venue.reservability.state === "error" ? "error" : "ready"
       }
-      initialTab={requestedTab === "reservations" ? "reservations" : "overview"}
+      // #1789 (SPEC #1788 P-46) — a scanned table/room QR carries
+      // `?tab=menu&spot={code}&src=qr`. Before this, the ternary accepted ONE
+      // value and every scan landed on Overview. `PublicVenueTabs` already
+      // falls back to "overview" when the Menu tab is not visible for this
+      // venue (`tabs.includes(initialTab)`), so a scan never lands on an empty
+      // tab.
+      initialTab={
+        requestedTab === "menu"
+          ? "menu"
+          : requestedTab === "reservations"
+            ? "reservations"
+            : "overview"
+      }
       onRetryReservability={() => {
         void query.refetch();
       }}
