@@ -64,15 +64,115 @@ export function maskComments(source) {
   return out;
 }
 
-export function enumerateSource(source, file = "fixture.ts") {
+function readStringLiteral(source, start) {
+  const quote = source[start];
+  if (quote !== "'" && quote !== '"' && quote !== "`") return null;
+  for (let cursor = start + 1; cursor < source.length; cursor += 1) {
+    if (source[cursor] === "\\") {
+      cursor += 1;
+      continue;
+    }
+    if (source[cursor] === quote) {
+      return { raw: source.slice(start, cursor + 1), end: cursor + 1 };
+    }
+  }
+  return null;
+}
+
+function skipWhitespace(source, start) {
+  let cursor = start;
+  while (cursor < source.length && /\s/.test(source[cursor])) cursor += 1;
+  return cursor;
+}
+
+function previousSignificantCharacter(source, start) {
+  let cursor = start - 1;
+  while (cursor >= 0 && /\s/.test(source[cursor])) cursor -= 1;
+  return cursor >= 0 ? source[cursor] : null;
+}
+
+function propertyValueOffset(source, propertyEnd) {
+  const colon = skipWhitespace(source, propertyEnd);
+  return source[colon] === ":" ? skipWhitespace(source, colon + 1) : null;
+}
+
+function isExactOnConflictLiteral(raw, file, line) {
+  try {
+    return decodeLiteral(raw, file, line) === "onConflict";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Find exact executable object-property spellings of the onConflict key.
+ * Strings are consumed as whole lexical tokens, so text such as
+ * `const example = '"onConflict": "id"'` cannot masquerade as a property.
+ */
+export function findOnConflictProperties(source, file = "fixture.ts") {
   const clean = maskComments(source);
+  const properties = [];
+  for (let cursor = 0; cursor < clean.length; cursor += 1) {
+    const ch = clean[cursor];
+
+    if (ch === "'" || ch === '"' || ch === "`") {
+      const literal = readStringLiteral(clean, cursor);
+      if (literal === null) continue;
+      const previous = previousSignificantCharacter(clean, cursor);
+      const canStartProperty = previous === "{" || previous === ",";
+      if (canStartProperty &&
+          isExactOnConflictLiteral(literal.raw, file, lineAt(source, cursor))) {
+        const valueOffset = propertyValueOffset(clean, literal.end);
+        if (valueOffset !== null) properties.push({ index: cursor, valueOffset });
+      }
+      cursor = literal.end - 1;
+      continue;
+    }
+
+    if (ch === "[") {
+      const previous = previousSignificantCharacter(clean, cursor);
+      const canStartProperty = previous === "{" || previous === ",";
+      if (!canStartProperty) continue;
+      const literalStart = skipWhitespace(clean, cursor + 1);
+      const literal = readStringLiteral(clean, literalStart);
+      if (literal !== null &&
+          isExactOnConflictLiteral(literal.raw, file, lineAt(source, literalStart))) {
+        const closeBracket = skipWhitespace(clean, literal.end);
+        if (clean[closeBracket] === "]") {
+          const valueOffset = propertyValueOffset(clean, closeBracket + 1);
+          if (valueOffset !== null) {
+            properties.push({ index: cursor, valueOffset });
+            cursor = valueOffset - 1;
+          }
+        }
+      }
+      continue;
+    }
+
+    if (ch === "o" && clean.startsWith("onConflict", cursor)) {
+      const previous = previousSignificantCharacter(clean, cursor);
+      const canStartProperty = previous === "{" || previous === ",";
+      if (!canStartProperty) continue;
+      const afterKey = cursor + "onConflict".length;
+      if (!/[A-Za-z0-9_$]/.test(clean[afterKey] ?? "")) {
+        const valueOffset = propertyValueOffset(clean, afterKey);
+        if (valueOffset !== null) {
+          properties.push({ index: cursor, valueOffset });
+          cursor = valueOffset - 1;
+        }
+      }
+    }
+  }
+  return { clean, properties };
+}
+
+export function enumerateSource(source, file = "fixture.ts") {
+  const { clean, properties } = findOnConflictProperties(source, file);
   const sites = [];
-  const property = /\bonConflict\s*:\s*/g;
-  let match;
-  while ((match = property.exec(clean)) !== null) {
-    const valueOffset = property.lastIndex;
+  for (const property of properties) {
+    const valueOffset = property.valueOffset;
     const literalMatch = clean.slice(valueOffset).match(/^(["'`])(?:\\.|(?!\1)[\s\S])*?\1/);
-    const line = lineAt(source, match.index);
+    const line = lineAt(source, property.index);
     if (!literalMatch) throw new Error(`${file}:${line}: onConflict must be a string literal`);
     const target = decodeLiteral(literalMatch[0], file, line);
     const columns = target.split(",").map((column) => column.trim());
@@ -83,8 +183,8 @@ export function enumerateSource(source, file = "fixture.ts") {
       throw new Error(`${file}:${line}: onConflict has duplicate columns`);
     }
 
-    const statementStart = clean.lastIndexOf(";", match.index);
-    const prefix = clean.slice(statementStart + 1, match.index);
+    const statementStart = clean.lastIndexOf(";", property.index);
+    const prefix = clean.slice(statementStart + 1, property.index);
     const fromPattern = /\.from\s*\(\s*(["'`])(?:\\.|(?!\1)[\s\S])*?\1\s*,?\s*\)/g;
     const fromMatches = [...prefix.matchAll(fromPattern)];
     if (fromMatches.length === 0) {
@@ -96,7 +196,6 @@ export function enumerateSource(source, file = "fixture.ts") {
       throw new Error(`${file}:${line}: invalid .from(table) literal`);
     }
     sites.push({ table, columns, file, line });
-    property.lastIndex = valueOffset + literalMatch[0].length;
   }
   return sites;
 }

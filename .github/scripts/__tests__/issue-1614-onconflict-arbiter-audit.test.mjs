@@ -67,3 +67,44 @@ test("always-run workflow wires every implementor and tester contract", () => {
     "issue-1614-onconflict-arbiter-audit.tester-adversarial.test.mjs",
   ]) assert.match(workflow, new RegExp(required.replaceAll(".", "\\.")));
 });
+
+test("enumerates every exact literal key spelling without scanning string contents", () => {
+  const fixture = `
+    const documentation = '\"onConflict\": \"not_a_property\"';
+    // db.from("commented").upsert({}, { "onConflict": "ignored" });
+    /* db.from("commented_computed").upsert({}, { ["onConflict"]: "ignored" }); */
+    db.from("future_identifier").upsert({}, { onConflict: "tenant,id" });
+    db.from("future_quoted").upsert({}, { "onConflict": "tenant,id" });
+    db.from("future_single_quoted").upsert({}, { 'onConflict': 'tenant,id' });
+    db.from("future_computed").upsert({}, { ["onConflict"]: "tenant,id" });
+    db.from("future_computed_single").upsert({}, { ['onConflict']: 'tenant,id' });
+    db.from("future_computed_backtick").upsert({}, { [\`onConflict\`]: \`tenant,id\` });
+  `;
+  const sites = enumerateSource(fixture, "future-key-spellings.ts");
+  assert.equal(sites.length, 6);
+  assert.deepEqual(
+    sites.map((site) => site.table),
+    [
+      "future_identifier",
+      "future_quoted",
+      "future_single_quoted",
+      "future_computed",
+      "future_computed_single",
+      "future_computed_backtick",
+    ],
+  );
+
+  const manifest = manifestFor(sites);
+  const sql = emitExplainSql(manifest);
+  assert.equal(manifest.length, 6);
+  assert.match(sql, /future-key-spellings\.ts:\d+/);
+  assert.match(sql, /public\."future_quoted" \("tenant", "id"\)/);
+  assert.match(sql, /public\."future_computed" \("tenant", "id"\)/);
+
+  assert.throws(() =>
+    enumerateSource(`db.from("dynamic").upsert({}, { "onConflict": target })`)
+  );
+  assert.throws(() =>
+    enumerateSource(`db.from(table).upsert({}, { ["onConflict"]: "id" })`)
+  );
+});
