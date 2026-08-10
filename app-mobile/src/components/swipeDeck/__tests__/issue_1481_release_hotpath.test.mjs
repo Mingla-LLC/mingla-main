@@ -60,10 +60,19 @@ function assertStablePosterPromotion(swipeableSource, stageSource) {
     swipeableSource.indexOf('Next card is a poster-only'),
     swipeableSource.indexOf('{/* Current Card */}'),
   );
-  const current = swipeableSource.slice(
-    swipeableSource.indexOf('{/* Current Card */}'),
-    swipeableSource.indexOf('{/* Swipe Buttons */}'),
-  );
+  // [TEST-MOD-APPROVED #1607] The old current-card window ended on the absent
+  // `{/* Swipe Buttons */}` comment, so `slice(start, -1)` silently inspected an
+  // unrelated tail. Structural JSX boundaries plus cardinality/size checks make
+  // prose unable to shrink, widen, or disable this assertion.
+  const currentStartToken = '<GestureDetector key={currentRec.id} gesture={deckSwipe.gesture}>';
+  const currentEndToken = '</GestureDetector>';
+  const currentStart = swipeableSource.indexOf(currentStartToken);
+  const currentEnd = swipeableSource.indexOf(currentEndToken, currentStart + currentStartToken.length);
+  assert.equal((swipeableSource.match(/<GestureDetector key=\{currentRec\.id\} gesture=\{deckSwipe\.gesture\}>/g) ?? []).length, 1, 'current-card structural start must be unique');
+  assert.ok(currentStart >= 0 && currentEnd > currentStart, 'current-card structural boundaries are missing or reversed');
+  const current = swipeableSource.slice(currentStart, currentEnd + currentEndToken.length);
+  assert.ok(current.length > 5000 && current.length < 30000, `current-card slice is ${current.length} chars — structural window drifted`);
+  assert.match(current, /<DeckCardPlate\b/, 'current-card slice does not contain its load-bearing plate child');
   // [TEST-MOD-APPROVED #1609] THE END ANCHOR WAS A NEIGHBOURING COMMENT,
   // `'/** Map travel mode preference'`, and #1609 deleted the helper that comment
   // documented (travel time leaves the collapsed card under D-2). `indexOf`
@@ -196,6 +205,16 @@ test('keyed poster promotion preserves one native tree and rejects duplicate-cur
   assert.throws(
     () => assertStablePosterPromotion(duplicateCurrentMutant, source.stage),
     /video overlay remounted the stable poster/,
+  );
+
+  const commentHiddenChildMutant = source.swipeable.replace(
+    '</GestureDetector>',
+    '{/* Swipe Buttons */}<CardHeroImage uri={currentRec.image} /></GestureDetector>',
+  );
+  assert.notEqual(commentHiddenChildMutant, source.swipeable, 'comment-hidden child mutant was not applied');
+  assert.throws(
+    () => assertStablePosterPromotion(commentHiddenChildMutant, source.stage),
+    /current overlay mounted a second poster/,
   );
 
   const mounts = new Map();

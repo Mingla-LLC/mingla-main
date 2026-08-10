@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 483,
-  "selfTestWiredFloor": 295,
+  "expectedStrictGrepMjsFiles": 486,
+  "selfTestWiredFloor": 296,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -25,6 +25,46 @@
     "scripts/ota"
   ],
   "gates": [
+    {
+      "script": ".github/scripts/strict-grep/issue-1607-explorer-guard-integrity.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1607-explorer-guard-integrity"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.regression.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-1607-explorer-guard-integrity-regression"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-1607-explorer-guard-integrity-adversarial"
+      ]
+    },
     {
       "script": ".github/scripts/strict-grep/i-proposed-966-cover-video-provider-bunny-only.mjs",
       "kind": "file",
