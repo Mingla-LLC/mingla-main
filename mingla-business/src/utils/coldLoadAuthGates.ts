@@ -231,7 +231,7 @@ export const PUBLIC_BUYER_ROUTE_PREFIXES = [
   "/refund/", // /refund/[refundId]/attention — token-authorized guest refund recovery
   "/o/", // /o/[orderId] — buyer order receipt (post-purchase, anon-tolerant per I-21)
   "/booking/", // /booking/[orderId]/cancel — buyer cancel-from-email (anon-buyer-tolerant)
-  "/attendance/claim", // fragment-only RSVP/ticket handoff into the consumer app
+  "/attendance/claim/", // fragment-only RSVP/ticket handoff into the consumer app
 ] as const;
 
 /**
@@ -256,18 +256,13 @@ export const PUBLIC_BUYER_ROUTE_PREFIXES = [
 export const isPublicBuyerRoute = (
   pathname: string | null | undefined,
 ): boolean => {
-  if (pathname === null || pathname === undefined) return false;
-  const trimmed = pathname.trim();
-  if (trimmed === "") return false;
-  // Strip a single trailing slash (but never the root "/" itself).
-  const normalized =
-    trimmed.length > 1 && trimmed.endsWith("/")
-      ? trimmed.slice(0, -1)
-      : trimmed;
-  return PUBLIC_BUYER_ROUTE_PREFIXES.some((prefix) => {
-    const base = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
-    return normalized === base || normalized.startsWith(`${base}/`);
-  });
+  const trimmed = pathname?.trim();
+  if (!trimmed) return false;
+  // The root may normalize to empty because it cannot match a public prefix.
+  const normalized = trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
+  return PUBLIC_BUYER_ROUTE_PREFIXES.some(
+    (prefix) => normalized === prefix.slice(0, -1) || normalized.startsWith(prefix),
+  );
 };
 
 /**

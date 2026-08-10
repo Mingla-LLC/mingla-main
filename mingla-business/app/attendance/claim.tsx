@@ -5,7 +5,6 @@ import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import { APP_STORE_URL, PLAY_STORE_URL } from "../../src/constants/storeLinks";
 import { accent, canvas, glass, spacing, text as textTokens } from "../../src/constants/designSystem";
-import { attendanceAppUrlFromFragment } from "../../src/utils/attendanceClaimDeepLink";
 
 export default function AttendanceClaimLanding(): React.ReactElement | null {
   const [parsed, setParsed] = useState(false);
@@ -18,10 +17,22 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
       setParsed(true);
       return;
     }
+    let active = true;
     const raw = window.location.hash.replace(/^#/, "");
     window.history.replaceState(null, "", window.location.pathname);
-    setAppUrl(attendanceAppUrlFromFragment(raw));
-    setParsed(true);
+    void import("../../src/utils/attendanceClaimDeepLink").then(
+      ({ attendanceAppUrlFromFragment }) => {
+        if (!active) return;
+        setAppUrl(attendanceAppUrlFromFragment(raw));
+        setParsed(true);
+      },
+      () => {
+        if (active) setParsed(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
   }, []);
 
   const openMingla = useCallback(() => {

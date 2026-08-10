@@ -22,7 +22,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Image,
   Linking,
   Platform,
   ScrollView,
@@ -30,7 +29,6 @@ import {
   Text,
   View,
 } from "react-native";
-import { MINGLA_APP_ICON } from "@mingla/brand-assets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion (native; no-op on
@@ -45,7 +43,7 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 import { eventPublicPath } from "../../../src/constants/publicUrls";
-import { openAttendanceClaimWithFallback } from "../../../src/utils/attendanceClaimDeepLink";
+import type { AttendanceClaimLinkResult } from "../../../src/services/attendanceClaimLinkService";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 import { formatCurrency } from "../../../src/utils/currency";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
@@ -61,10 +59,7 @@ import {
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
 import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
 import {
-  AttendanceClaimLinkError,
   confirmTicketCheckout,
-  createAttendanceClaimLink,
-  type AttendanceClaimLinkResult,
 } from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
@@ -75,6 +70,11 @@ import {
   postAttributionConversion,
 } from "../../../src/analytics/webAnalytics";
 import { phMaskProps } from "../../../src/analytics/phMask";
+
+const MINGLA_APP_ICON = React.lazy(() =>
+  import("../../../src/components/checkout/AttendanceClaimAppIcon")
+);
+const attendanceClaimDeepLinkModule = import("../../../src/utils/attendanceClaimDeepLink");
 
 export default function CheckoutConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
@@ -135,12 +135,15 @@ function CheckoutConfirmScreenInner({
   }>({ phase: "idle", link: null, authority: null });
   const prepareAttendanceClaim = useCallback((sessionId: string, token: string): void => {
     setAttendanceClaim({ phase: "loading", link: null, authority: { sessionId, token } });
-    void createAttendanceClaimLink(sessionId, token).then((link) => {
+    void import("../../../src/services/attendanceClaimLinkService").then(({ createAttendanceClaimLink }) =>
+      createAttendanceClaimLink(sessionId, token)
+    ).then((link) => {
       setAttendanceClaim({ phase: "ready", link, authority: { sessionId, token } });
     }).catch((error: unknown) => {
-      const phase = error instanceof AttendanceClaimLinkError && error.code === "rate_limited"
+      const code = error instanceof Error && "code" in error ? error.code : null;
+      const phase = code === "rate_limited"
         ? "rate"
-        : error instanceof AttendanceClaimLinkError && (error.code === "invalid" || error.code === "ineligible")
+        : code === "invalid" || code === "ineligible"
         ? "terminal"
         : "error";
       setAttendanceClaim({ phase, link: null, authority: { sessionId, token } });
@@ -529,7 +532,10 @@ function CheckoutConfirmScreenInner({
 
   const openAttendanceClaimLink = (): void => {
     const link = attendanceClaim.link;
-    if (link) void openAttendanceClaimWithFallback(link, Linking.openURL);
+    if (link) void attendanceClaimDeepLinkModule.then(
+      ({ openAttendanceClaimWithFallback }) =>
+        openAttendanceClaimWithFallback(link, Linking.openURL),
+    );
   };
   const retryAttendanceClaim = (): void => {
     const authority = attendanceClaim.authority;
@@ -631,7 +637,9 @@ function CheckoutConfirmScreenInner({
           ) : null}
         </GlassCard>
         <GlassCard variant="base" radius="lg" padding={spacing.md} style={[styles.qrCard, styles.attendanceClaimCard]}>
-          <Image source={MINGLA_APP_ICON} style={styles.attendanceClaimIcon} accessibilityLabel="Mingla app icon" />
+          <React.Suspense fallback={<View style={styles.attendanceClaimIcon} />}>
+            <MINGLA_APP_ICON style={styles.attendanceClaimIcon} accessibilityLabel="Mingla app icon" />
+          </React.Suspense>
           <Text style={styles.summaryEventName}>See who’s going in Mingla</Text>
           <Text style={styles.heroEmail}>Connect this ticket to your Mingla account to unlock the guest list.</Text>
           {attendanceClaim.phase === "ready" && attendanceClaim.link ? (

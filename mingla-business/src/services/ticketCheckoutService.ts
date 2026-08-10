@@ -120,21 +120,6 @@ export interface TicketCheckoutConfirmResult {
   order: Omit<TicketCheckoutFreeCompleted, "kind"> | null;
 }
 
-export interface AttendanceClaimLinkResult {
-  ok: true;
-  kind: "order";
-  eventId: string;
-  sourceId: string;
-  webClaimUrl: string;
-  appClaimUrl: string;
-}
-
-export class AttendanceClaimLinkError extends Error {
-  constructor(readonly code: "invalid" | "ineligible" | "rate_limited" | "network") {
-    super(code);
-  }
-}
-
 export const FINALIZATION_BACKOFF_MS = [1000, 1500, 2000, 3000, 4000, 5000] as const;
 
 const centsFromMajor = (value: number): number => Math.round(value * 100);
@@ -222,29 +207,6 @@ export const confirmTicketCheckout = async (
     checkoutSessionId,
     buyerStatusToken,
   });
-
-export const createAttendanceClaimLink = async (
-  checkoutSessionId: string,
-  buyerStatusToken: string,
-): Promise<AttendanceClaimLinkResult> => {
-  const { data, error } = await supabase.functions.invoke("attendance-claim-link", {
-    body: {
-    checkoutSessionId,
-    buyerStatusToken,
-    },
-  });
-  if (error) {
-    const response = (error as { context?: Response }).context;
-    const payload = response
-      ? await response.clone().json().catch(() => null) as { error?: string } | null
-      : null;
-    if (payload?.error === "claim_link_ineligible") throw new AttendanceClaimLinkError("ineligible");
-    if (payload?.error === "claim_link_rate_limited") throw new AttendanceClaimLinkError("rate_limited");
-    if (payload?.error === "claim_link_invalid") throw new AttendanceClaimLinkError("invalid");
-    throw new AttendanceClaimLinkError("network");
-  }
-  return data as AttendanceClaimLinkResult;
-};
 
 const wait = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));

@@ -257,7 +257,7 @@ describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web 
       "/refund/",
       "/o/",
       "/booking/",
-      "/attendance/claim",
+      "/attendance/claim/",
     ]);
   });
 
