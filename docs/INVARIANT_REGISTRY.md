@@ -7798,7 +7798,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Regression:** T-S1 (all four assemblers stamp it; report read of a version-less legacy row still succeeds) — fails on revert.
 - **Established:** DRAFT at #1734 shared-platform SPEC 2026-08-09; flipped ACTIVE 2026-08-10 at platform-wave close (PR #1749 merged, migration applied, live-fire PASS). The TOOL-RESULTS-NEVER-PERSISTED-CLIENT-SIDE sibling stays DRAFT until the first per-tool client PR (#1735) lands its CI gate.
 
-### I-PROPOSED-1734-TOOL-RESULTS-NEVER-PERSISTED-CLIENT-SIDE (DRAFT)
+### I-PROPOSED-1734-TOOL-RESULTS-NEVER-PERSISTED-CLIENT-SIDE (ACTIVE)
 - **Rule:** Growth-tool run results (reports, forecasts, quotes, audits) live ONLY in React Query cache and component state in the Business app — never in any persisted Zustand store (`draftEventStore`, `draftVenueStore`, or future stores). Server data in a persisted store is the COMMS-0136 / Zustand-persist-IDs-not-records violation class. Corollary: any persisted-store reshape bumps `version` + writes `migrate` and NEVER renames the storage `name` key.
 - **Enforcement:** per-tool code review + the named CI-guard opportunity (P-36: strict-grep gate `issue-1734-tool-results-not-persisted.mjs`, authored when the first per-tool client PR lands — script + ONE MANIFEST entry; if `selfTest:"wired"`, bump `selfTestWiredFloor` (equality) + `expectedStrictGrepMjsFiles` in the SAME PR).
 - **Regression:** the gate itself once authored; until then the per-tool test suites assert no `growthToolsService`/report-type import exists under `mingla-business/src/store/`.
