@@ -108,3 +108,23 @@ test("enumerates every exact literal key spelling without scanning string conten
     enumerateSource(`db.from(table).upsert({}, { ["onConflict"]: "id" })`)
   );
 });
+
+test("scans template expressions and semantic escaped keys while excluding regex bodies", () => {
+  const fixture = [
+    'const receipt = `${db.from("template_expression").upsert({}, { onConflict: "id" })}`;',
+    String.raw`db.from("escaped_unicode").upsert({}, { ["on\u0043onflict"]: "tenant,id" });`,
+    String.raw`db.from("escaped_hex").upsert({}, { ["on\x43onflict"]: "id" });`,
+    String.raw`const regex = /db\.from\("ignored"\)\.upsert\(\{\}, \{ "onConflict": "id" \}\)/;`,
+  ].join("\n");
+  assert.deepEqual(
+    enumerateSource(fixture, "lexical-completeness.ts").map(({ table, columns }) => ({
+      table,
+      columns,
+    })),
+    [
+      { table: "template_expression", columns: ["id"] },
+      { table: "escaped_unicode", columns: ["tenant", "id"] },
+      { table: "escaped_hex", columns: ["id"] },
+    ],
+  );
+});

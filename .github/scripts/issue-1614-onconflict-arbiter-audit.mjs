@@ -29,39 +29,190 @@ function decodeLiteral(raw, file, line) {
   if (quote === "`" && body.includes("${")) {
     throw new Error(`${file}:${line}: template interpolation is forbidden in onConflict/from literals`);
   }
-  return body.replace(/\\([\\'"`])/g, "$1");
+  let decoded = "";
+  for (let cursor = 0; cursor < body.length; cursor += 1) {
+    const ch = body[cursor];
+    if (ch !== "\\") {
+      decoded += ch;
+      continue;
+    }
+
+    const escaped = body[cursor + 1];
+    if (escaped === undefined) {
+      throw new Error(`${file}:${line}: unterminated escape in string literal`);
+    }
+    cursor += 1;
+    const simpleEscapes = {
+      "'": "'", '"': '"', "`": "`", "\\": "\\",
+      b: "\b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v", 0: "\0",
+    };
+    if (Object.hasOwn(simpleEscapes, escaped)) {
+      decoded += simpleEscapes[escaped];
+      continue;
+    }
+    if (escaped === "\n") continue;
+    if (escaped === "\r") {
+      if (body[cursor + 1] === "\n") cursor += 1;
+      continue;
+    }
+    if (escaped === "x") {
+      const hex = body.slice(cursor + 1, cursor + 3);
+      if (!/^[0-9A-Fa-f]{2}$/.test(hex)) {
+        throw new Error(`${file}:${line}: invalid hexadecimal escape in string literal`);
+      }
+      decoded += String.fromCharCode(Number.parseInt(hex, 16));
+      cursor += 2;
+      continue;
+    }
+    if (escaped === "u") {
+      if (body[cursor + 1] === "{") {
+        const close = body.indexOf("}", cursor + 2);
+        const hex = close === -1 ? "" : body.slice(cursor + 2, close);
+        if (!/^[0-9A-Fa-f]{1,6}$/.test(hex) || Number.parseInt(hex, 16) > 0x10FFFF) {
+          throw new Error(`${file}:${line}: invalid Unicode code-point escape in string literal`);
+        }
+        decoded += String.fromCodePoint(Number.parseInt(hex, 16));
+        cursor = close;
+        continue;
+      }
+      const hex = body.slice(cursor + 1, cursor + 5);
+      if (!/^[0-9A-Fa-f]{4}$/.test(hex)) {
+        throw new Error(`${file}:${line}: invalid Unicode escape in string literal`);
+      }
+      decoded += String.fromCharCode(Number.parseInt(hex, 16));
+      cursor += 4;
+      continue;
+    }
+    decoded += escaped;
+  }
+  return decoded;
+}
+
+function copySpan(output, source, start, end) {
+  for (let cursor = start; cursor < end; cursor += 1) output[cursor] = source[cursor];
+}
+
+function previousWord(output, start) {
+  let cursor = start - 1;
+  while (cursor >= 0 && /\s/.test(output[cursor])) cursor -= 1;
+  const end = cursor + 1;
+  while (cursor >= 0 && /[A-Za-z0-9_$]/.test(output[cursor])) cursor -= 1;
+  return output.slice(cursor + 1, end).join("");
+}
+
+function canStartRegex(output, start) {
+  const previous = previousSignificantCharacter(output, start);
+  if (previous === null) return true;
+  if ("([{,;:=!?&|+-*%^~<>".includes(previous)) return true;
+  return new Set([
+    "await", "case", "delete", "do", "else", "in", "instanceof", "of",
+    "return", "throw", "typeof", "void", "yield",
+  ]).has(previousWord(output, start));
+}
+
+function regexLiteralEnd(source, start) {
+  let inCharacterClass = false;
+  for (let cursor = start + 1; cursor < source.length; cursor += 1) {
+    const ch = source[cursor];
+    if (ch === "\\") {
+      cursor += 1;
+      continue;
+    }
+    if (ch === "\n" || ch === "\r") return null;
+    if (ch === "[") inCharacterClass = true;
+    else if (ch === "]") inCharacterClass = false;
+    else if (ch === "/" && !inCharacterClass) {
+      cursor += 1;
+      while (/[A-Za-z]/.test(source[cursor] ?? "")) cursor += 1;
+      return cursor;
+    }
+  }
+  return null;
+}
+
+function sanitizeTemplate(source, output, start) {
+  let hasInterpolation = false;
+  for (let cursor = start + 1; cursor < source.length; cursor += 1) {
+    if (source[cursor] === "\\") {
+      cursor += 1;
+      continue;
+    }
+    if (source[cursor] === "`") {
+      if (!hasInterpolation) copySpan(output, source, start, cursor + 1);
+      return cursor + 1;
+    }
+    if (source[cursor] === "$" && source[cursor + 1] === "{") {
+      hasInterpolation = true;
+      cursor = sanitizeCode(source, output, cursor + 2, true) - 1;
+    }
+  }
+  return source.length;
+}
+
+function sanitizeCode(source, output, start = 0, templateExpression = false) {
+  let braceDepth = templateExpression ? 1 : 0;
+  for (let cursor = start; cursor < source.length;) {
+    const ch = source[cursor];
+    const next = source[cursor + 1];
+
+    if (templateExpression && ch === "{") {
+      output[cursor] = ch;
+      braceDepth += 1;
+      cursor += 1;
+      continue;
+    }
+    if (templateExpression && ch === "}") {
+      braceDepth -= 1;
+      if (braceDepth === 0) return cursor + 1;
+      output[cursor] = ch;
+      cursor += 1;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      cursor += 2;
+      while (cursor < source.length && source[cursor] !== "\n") cursor += 1;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      cursor += 2;
+      while (cursor < source.length && !(source[cursor] === "*" && source[cursor + 1] === "/")) {
+        cursor += 1;
+      }
+      cursor = Math.min(source.length, cursor + 2);
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      const literal = readStringLiteral(source, cursor);
+      if (literal === null) {
+        output[cursor] = ch;
+        cursor += 1;
+      } else {
+        copySpan(output, source, cursor, literal.end);
+        cursor = literal.end;
+      }
+      continue;
+    }
+    if (ch === "`") {
+      cursor = sanitizeTemplate(source, output, cursor);
+      continue;
+    }
+    if (ch === "/" && canStartRegex(output, cursor)) {
+      const end = regexLiteralEnd(source, cursor);
+      if (end !== null) {
+        cursor = end;
+        continue;
+      }
+    }
+    output[cursor] = ch;
+    cursor += 1;
+  }
+  return source.length;
 }
 
 export function maskComments(source) {
-  let out = "";
-  let state = "code";
-  let quote = "";
-  for (let i = 0; i < source.length; i += 1) {
-    const ch = source[i];
-    const next = source[i + 1];
-    if (state === "line") {
-      if (ch === "\n") { state = "code"; out += "\n"; } else out += " ";
-      continue;
-    }
-    if (state === "block") {
-      if (ch === "*" && next === "/") { out += "  "; i += 1; state = "code"; }
-      else out += ch === "\n" ? "\n" : " ";
-      continue;
-    }
-    if (state === "string") {
-      out += ch;
-      if (ch === "\\") { out += next ?? ""; i += 1; continue; }
-      if (ch === quote) state = "code";
-      continue;
-    }
-    if (ch === "/" && next === "/") { out += "  "; i += 1; state = "line"; continue; }
-    if (ch === "/" && next === "*") { out += "  "; i += 1; state = "block"; continue; }
-    if (ch === "'" || ch === '"' || ch === "`") {
-      state = "string"; quote = ch; out += ch; continue;
-    }
-    out += ch;
-  }
-  return out;
+  const output = [...source].map((ch) => ch === "\n" ? "\n" : " ");
+  sanitizeCode(source, output);
+  return output.join("");
 }
 
 function readStringLiteral(source, start) {

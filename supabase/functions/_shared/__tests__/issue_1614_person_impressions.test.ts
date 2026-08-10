@@ -107,3 +107,48 @@ Deno.test("no single cards performs no query", async () => {
   assertEquals(queried, false);
   assertEquals(result, { attempted: 0, written: true, errorCode: null });
 });
+
+Deno.test("transport rejection is fail-soft with stable redacted telemetry", async () => {
+  const errors: unknown[][] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => errors.push(args);
+  try {
+    const result = await recordPersonCardImpressions({
+      adminClient: {
+        from() {
+          return {
+            upsert: () =>
+              Promise.reject(new Error("transport leaked viewer-secret and paired-secret")),
+          };
+        },
+      },
+      viewerId: "viewer-secret",
+      pairedUserId: "paired-secret",
+      holidayKey: "holiday-secret",
+      cards: [single("first-place-secret"), single("second-place-secret")],
+      endpointContext: "get-paired-profile-cards",
+    });
+    assertEquals(result, { attempted: 2, written: false, errorCode: "unknown" });
+    assertEquals(errors, [[{
+      event: "person_card_impression_write_failed",
+      code: "unknown",
+      endpoint: "get-paired-profile-cards",
+      attemptedCount: 2,
+    }]]);
+    const serialized = JSON.stringify(errors);
+    for (
+      const secret of [
+        "viewer-secret",
+        "paired-secret",
+        "holiday-secret",
+        "first-place-secret",
+        "second-place-secret",
+        "transport leaked",
+      ]
+    ) {
+      assertEquals(serialized.includes(secret), false);
+    }
+  } finally {
+    console.error = originalError;
+  }
+});

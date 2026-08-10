@@ -848,12 +848,24 @@ export async function recordPersonCardImpressions(args: {
     place_pool_id: card.id,
     holiday_key: args.holidayKey,
   }));
-  const { error } = await args.adminClient
-    .from("person_card_impressions")
-    .upsert(rows, {
-      onConflict: "user_id,paired_user_id,place_pool_id",
-      ignoreDuplicates: true,
+  let error: { code?: unknown } | null;
+  try {
+    const result = await args.adminClient
+      .from("person_card_impressions")
+      .upsert(rows, {
+        onConflict: "user_id,paired_user_id,place_pool_id",
+        ignoreDuplicates: true,
+      });
+    error = result.error;
+  } catch {
+    console.error({
+      event: "person_card_impression_write_failed",
+      code: "unknown",
+      endpoint: args.endpointContext,
+      attemptedCount: rows.length,
     });
+    return { attempted: rows.length, written: false, errorCode: "unknown" };
+  }
   if (error) {
     console.error({
       event: "person_card_impression_write_failed",
