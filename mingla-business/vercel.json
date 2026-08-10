@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "node scripts/ci/require-sentry-dsn-on-prod-web.mjs && npx expo export -p web && node scripts/inject-mobile-blur-css.mjs",
+  "buildCommand": "node scripts/ci/require-sentry-dsn-on-prod-web.mjs && npx expo export -p web && node scripts/inject-mobile-blur-css.mjs && node scripts/build-invite-critical-entry.mjs",
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "framework": null,
@@ -62,6 +62,7 @@
     },
     { "source": "/stripe-onboarding-return", "destination": "/stripe-onboarding-return.html" },
     { "source": "/auth/callback", "destination": "/auth/callback.html" },
+    { "source": "/accept-brand-invitation", "destination": "/accept-brand-invitation-entry.html" },
     { "source": "/((?!_expo/static/).*)", "destination": "/" }
   ],
   "headers": [
