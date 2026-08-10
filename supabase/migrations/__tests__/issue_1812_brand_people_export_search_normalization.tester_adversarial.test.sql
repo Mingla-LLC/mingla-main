@@ -12,6 +12,11 @@ DECLARE
   v_first_job uuid;
   v_replay_job uuid;
 BEGIN
+  INSERT INTO auth.users(id,instance_id,aud,role,email,created_at,updated_at)
+  VALUES(
+    v_owner,'00000000-0000-0000-0000-000000000000','authenticated','authenticated',
+    'issue-1812-tester-owner@example.test',now(),now()
+  );
   INSERT INTO public.creator_accounts(id,created_at) VALUES(v_owner,now());
   INSERT INTO public.brands(id,account_id,slug,name,default_currency,created_at,updated_at)
   VALUES(v_brand,v_owner,'issue-1812-tester-brand','Issue 1812 Tester Brand','USD',now(),now());
