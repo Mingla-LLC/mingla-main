@@ -13,8 +13,9 @@
  * nav-lock guard in `_layout.tsx` is never touched.
  */
 
-import React from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import type { LayoutChangeEvent } from "react-native";
 
 import {
   accent,
@@ -36,6 +37,16 @@ export interface VenueModulePillRowProps {
   testID?: string;
 }
 
+/**
+ * Issue #1735 rework P3-5 — the scroll offset that reveals a pill whose left
+ * edge sits at `pillX` inside the content container: lead with one gutter so
+ * the ACTIVE pill is visibly in-frame (never flush to the clipped edge).
+ * Pure, unit-tested.
+ */
+export function pillRevealOffset(pillX: number): number {
+  return Math.max(0, pillX - spacing.lg);
+}
+
 export function VenueModulePillRow({
   modules,
   activeModule,
@@ -43,9 +54,35 @@ export function VenueModulePillRow({
   onBackToHub,
   testID,
 }: VenueModulePillRowProps): React.ReactElement {
+  // #1735 P3-5 — a deep link (`?module=insights`) can land with the active
+  // pill scrolled out of frame (the row starts at x=0). Track each pill's
+  // layout x and scroll the ACTIVE one into view: instantly on its first
+  // layout (mount), animated on later activeModule changes.
+  const scrollRef = useRef<ScrollView | null>(null);
+  const pillXRef = useRef<Partial<Record<VenueModule, number>>>({});
+  const revealActive = useCallback(
+    (module: VenueModule, animated: boolean): void => {
+      const x = pillXRef.current[module];
+      if (x === undefined) return;
+      scrollRef.current?.scrollTo({ x: pillRevealOffset(x), animated });
+    },
+    [],
+  );
+  const handlePillLayout = useCallback(
+    (module: VenueModule, event: LayoutChangeEvent): void => {
+      pillXRef.current[module] = event.nativeEvent.layout.x;
+      if (module === activeModule) revealActive(module, false);
+    },
+    [activeModule, revealActive],
+  );
+  useEffect(() => {
+    revealActive(activeModule, true);
+  }, [activeModule, revealActive]);
+
   return (
     <View style={styles.host} testID={testID ?? "venue-module-pill-row"}>
       <ScrollView
+        ref={scrollRef}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.content}
@@ -70,6 +107,7 @@ export function VenueModulePillRow({
               accessibilityLabel={`${VENUE_MODULES[id].label} module`}
               accessibilityState={{ selected: isActive }}
               onPress={() => onSelect(id)}
+              onLayout={(event) => handlePillLayout(id, event)}
               style={[
                 styles.pill,
                 isActive ? styles.pillActive : styles.pillInactive,
