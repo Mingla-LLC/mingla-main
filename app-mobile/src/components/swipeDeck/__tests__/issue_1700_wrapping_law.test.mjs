@@ -47,14 +47,17 @@ test('W-0 the oracle reproduces published reference values', () => {
 });
 
 test('W-1 the facts row may reach two lines, and the ceiling is exactly two', () => {
+  // [TEST-MOD-APPROVED #1607] #1615 replaced S4/S5's static landscape contract
+  // with the #1714 measured portrait contract. Portrait cards now intentionally
+  // carry the same two-line fact visibility law as interactive surfaces.
   assert.equal(CI.META_LINES_MAX, 2, 'W-1: the line ceiling moved; a third line pushes the title off the card');
-  for (const key of ['s1Single', 's1Curated', 's6Phone', 's7Expanded']) {
+  for (const key of ['s1Single', 's1Curated', 's4Snippet', 's5Og', 's6Phone', 's7Expanded']) {
     assert.equal(CI.SURFACES[key].metaLines, 2, `W-1: ${key} is a control surface and must allow the wrap`);
   }
   // The static surfaces are NOT given a taller plate: they render short fact
   // sets by design and are not interactive, and growing them would move a scrim
   // nobody has measured on a surface nobody has built.
-  for (const key of ['s2Grid', 's3Chat', 's4Snippet', 's5Og']) {
+  for (const key of ['s2Grid', 's3Chat']) {
     assert.equal(CI.SURFACES[key].metaLines, 1, `W-1: ${key} unexpectedly grew a second facts line`);
   }
 });
@@ -130,12 +133,19 @@ test('W-5 the plate holds L* 23.50 at every silhouette — it compensates, it do
     }
     // And the alphas must actually DIFFER between silhouettes on a surface that
     // has more than one, or the "re-solve" is a no-op that happens to pass.
-    if (seen.length > 1 && CI.SURFACES[key].metaLines > 1) {
+    if (seen.length > 1 && CI.SURFACES[key].metaLines > 1 && CI.SURFACES[key].plateBoundary !== 'portrait') {
       assert.ok(
         new Set(seen).size > 1,
         `W-5 (vacuity): ${key}'s under-alpha is identical at every plate height, so `
         + 'plateUnderForHeight is not actually re-solving anything',
       );
+    }
+    // [TEST-MOD-APPROVED #1607] #1714 owns the portrait boundary's independent
+    // 41-point contrast oracle. Here #1700 keeps the honest wrapping boundary:
+    // both portrait silhouettes remain at target L*, while no longer claiming a
+    // distinct alpha is necessary when their solved backdrop is unchanged.
+    if (CI.SURFACES[key].plateBoundary === 'portrait') {
+      assert.equal(new Set(seen).size, 1, `W-5: ${key}'s portrait contract unexpectedly forked its under-alpha`);
     }
   }
 });

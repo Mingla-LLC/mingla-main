@@ -180,7 +180,7 @@ const rules = {
     required: [
       "canonicalDiscoveryPriceDetail(card)",
       "Rates by ExchangeRate-API",
-      "Keep their legacy display isolated from createEventFromCard above",
+      "notesParts.push(`\\n\\nPrice: ${venuePrice.source}${approximation}`);",
     ],
     scope: [
       "static createEventFromCard(",
@@ -317,6 +317,41 @@ const rules = {
   },
 };
 
+// #1607: required executable properties may not be satisfied by prose. This
+// scanner preserves string/template contents while blanking JS comments, so the
+// ExchangeRate attribution string remains visible but a copied token in a
+// comment cannot make the gate green.
+export function stripJsComments(source) {
+  let output = "";
+  let state = "code";
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1];
+    if (state === "line") {
+      if (char === "\n") { state = "code"; output += char; } else output += " ";
+      continue;
+    }
+    if (state === "block") {
+      if (char === "*" && next === "/") { output += "  "; index += 1; state = "code"; }
+      else output += char === "\n" ? "\n" : " ";
+      continue;
+    }
+    if (state === "single" || state === "double" || state === "template") {
+      output += char;
+      if (char === "\\") { output += next ?? ""; index += 1; continue; }
+      if ((state === "single" && char === "'") || (state === "double" && char === '"') || (state === "template" && char === "`")) state = "code";
+      continue;
+    }
+    if (char === "/" && next === "/") { output += "  "; index += 1; state = "line"; continue; }
+    if (char === "/" && next === "*") { output += "  "; index += 1; state = "block"; continue; }
+    if (char === "'") state = "single";
+    else if (char === '"') state = "double";
+    else if (char === "`") state = "template";
+    output += char;
+  }
+  return output;
+}
+
 const forbiddenVenueAuthority = [
   {
     label: "fabricated dollar/pound literal",
@@ -374,7 +409,8 @@ function occurrenceCount(source, token) {
 export function violations(files) {
   const failures = [];
   for (const [name, rule] of Object.entries(rules)) {
-    const source = files[name] ?? "";
+    const rawSource = files[name] ?? "";
+    const source = name === "deviceCalendar" ? stripJsComments(rawSource) : rawSource;
     for (const token of rule.required) {
       if (!source.includes(token)) failures.push(`${name}: missing ${token}`);
     }
@@ -568,6 +604,16 @@ function selfTest() {
   const baseline = violations(valid);
   if (baseline.length !== 0) {
     throw new Error(`valid fixture rejected: ${baseline.join("; ")}`);
+  }
+  const commentOnlyDeviceCalendar = {
+    ...valid,
+    deviceCalendar: valid.deviceCalendar.replace(
+      "notesParts.push(`\\n\\nPrice: ${venuePrice.source}${approximation}`);",
+      "// notesParts.push(`\\n\\nPrice: ${venuePrice.source}${approximation}`);",
+    ),
+  };
+  if (!violations(commentOnlyDeviceCalendar).some((item) => item.startsWith("deviceCalendar: missing"))) {
+    throw new Error("comment-only device calendar property was accepted");
   }
   for (const [name, rule] of Object.entries(rules)) {
     for (const token of rule.required) {

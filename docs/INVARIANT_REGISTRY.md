@@ -7,6 +7,19 @@
 
 ---
 
+## DRAFT — issue #1607 (Explorer guard integrity and executable wiring)
+
+> Registered DRAFT at issue #1607 IMPLEMENT. Flip ACTIVE only after independent tester PASS, merge, and fresh-`origin/main` verification.
+
+### I-1607-EXPLORER-GUARDS-EXECUTABLE-AND-NONVACUOUS (DRAFT)
+- **Rule:** Every `app-mobile/src/components/swipeDeck/__tests__/*.test.mjs` guard is catalogued exactly once with an honest protection model and claim boundary, is named by executable (comment-stripped) workflow code in both a `test -f` assertion and a `node --test` invocation, and uses fail-closed structural boundaries where it slices production source. The #1481 workflow's executable require/run sets remain the same exact eight guards; prose can neither satisfy nor resize an assertion.
+- **Enforcement:** `.github/scripts/strict-grep/issue-1607-explorer-guard-integrity.mjs`, registered manifest batch A in self-test and plain modes, compares the 26-row catalog with disk and executable workflow blocks, pins #1481 exact-eight parity, and validates the release-hotpath structural window. Its GOOD plus six distinct BAD fixtures cover orphan, comment-only, existence-only, inventory drift, exact-eight drift, and invalid structural anchor.
+- **Regression:** `.github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.regression.test.mjs` drives the real repository boundary and turns red when a real #1701 workflow reference or the #1481 structural start is truly reverted. The modified #1481 release suite independently plants a duplicate current poster behind the historical comment and proves the structural window still catches it.
+- **Scope:** CI/test infrastructure only; no product source, runtime, package contract, migration, edge function, version, deploy, or OTA change.
+- **Activation gate:** independent tester adversarial protection and fails-on-revert proof, every required check green, merged commit verified from fresh `origin/main`.
+
+---
+
 ## ACTIVE — issue #1664 (Business Jest event-cover timeout determinism)
 
 > Activation approved at issue #1664 CLOSE after independent tester PASS; enforcement becomes active when PR #1740 merges and is verified on `main`.

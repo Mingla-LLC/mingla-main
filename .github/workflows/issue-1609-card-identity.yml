@@ -114,6 +114,11 @@ jobs:
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_silhouette_anchor_drift.adversarial.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_plate_anchor_wiring.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1609_short_plate_keeps_chevron.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1700_wrapping_law.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1700_wrapping_law.adversarial.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1701_dark_card_edges.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1701_details_and_travel_time.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1701_details_and_travel_time.adversarial.test.mjs
 
       - name: The package must stay RN-free and dependency-free
         # This is the property that lets @mingla/offering-rendering (web) and
@@ -157,3 +162,8 @@ jobs:
           app-mobile/src/components/swipeDeck/__tests__/issue_1609_silhouette_anchor_drift.adversarial.test.mjs
           app-mobile/src/components/swipeDeck/__tests__/issue_1609_plate_anchor_wiring.test.mjs
           app-mobile/src/components/swipeDeck/__tests__/issue_1609_short_plate_keeps_chevron.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1700_wrapping_law.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1700_wrapping_law.adversarial.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1701_dark_card_edges.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1701_details_and_travel_time.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1701_details_and_travel_time.adversarial.test.mjs
