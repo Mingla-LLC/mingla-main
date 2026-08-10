@@ -30,6 +30,12 @@ import {
   finalizeVerifiedPaystackReservation,
   type ReservationFinalizeSession,
 } from "./reservationPaystackFinalize.ts";
+// Issue #1790 (SPEC #1788 P-28) — the NG venue-menu-order rail, discriminated by
+// the `mingla_vo_` reference prefix (the way the stay arm is discriminated).
+import {
+  handleVenueOrderPaystackCharge,
+  isVenueOrderPaystackReference,
+} from "./venueOrderWebhook.ts";
 
 // Verifier is injected so tests can stub the network call deterministically.
 export type PaystackVerifier = (
@@ -51,7 +57,12 @@ export interface PaystackChargeResult {
     | "reservation_finalized"
     | "reservation_replayed"
     /** Slot taken between charge and finalize — manual refund owed (#1175 dark). */
-    | "reservation_refund_due";
+    | "reservation_refund_due"
+    // Issue #1790 — the venue-menu-order rail. DISTINCT from the ticket
+    // statuses so the edge fn never treats a venue order as a ticket order (no
+    // dispatchTicketConfirmation, no partner-split fan-out). No orderId is set.
+    | "venue_order_finalized"
+    | "venue_order_replayed";
   orderId?: string;
   /** ORCH-1331 — verified txn paid_at (ISO), plumbed to the partner-split
    * fan-out so the partner relationship pins at sale time. Additive/optional. */
@@ -152,6 +163,49 @@ export async function handlePaystackChargeSuccess(
       throw new Error(`paystack_contribution_finalize_failed: ${cFinalizeError.message}`);
     }
     return { status: "finalized" };
+  }
+
+  // Issue #1790 [venue menu orders] — a venue order's reference lives in
+  // venue_orders.paystack_reference (its OWN column, UNIQUE) and matches
+  // NEITHER the ticket nor the contribution slot, so without this arm it would
+  // fall straight to orphan: charged, never finalized, never refunded — the
+  // exact hole #1326 found on the reservation rail. Discriminated by the
+  // `mingla_vo_` prefix BEFORE any other lookup, so the ticket and contribution
+  // arms and their tests are untouched. Paystack's verify response carries the
+  // real `fees`, so this rail lands its payout fee snapshot immediately.
+  if (isVenueOrderPaystackReference(reference)) {
+    const outcome = await handleVenueOrderPaystackCharge(supabase, reference, txn);
+    if (!outcome.matched) {
+      await writeAudit(supabase, {
+        user_id: null,
+        brand_id: null,
+        action: "paystack.charge_orphan_reference",
+        target_type: "paystack_transaction",
+        target_id: reference,
+        after: { note: "venue-order reference matches no venue_orders row" },
+      });
+      return { status: "orphan" };
+    }
+    if (outcome.status === "amount_or_currency_mismatch") {
+      // The EXISTING slug, deliberately: ORCH-0806 keeps a closed vocabulary of
+      // audit action labels, and "a verified Paystack charge did not match what
+      // we priced" is the same operational fact whatever was being sold.
+      // `target_type` is what distinguishes the subject.
+      await writeAudit(supabase, {
+        user_id: null,
+        brand_id: null,
+        action: "paystack.charge_amount_mismatch",
+        target_type: "venue_order",
+        target_id: outcome.orderId ?? reference,
+        after: { reference, verified_amount: Number(txn?.amount ?? NaN) },
+      });
+      return { status: "amount_mismatch" };
+    }
+    return {
+      status: outcome.status === "replayed"
+        ? "venue_order_replayed"
+        : "venue_order_finalized",
+    };
   }
 
   // 3. Lookup the session by the persisted reference.

@@ -76,6 +76,13 @@ const BASELINE_PUBLICATION_TABLES = new Set([
   "tag_along_requests",
   "ticket_checkout_sessions",
   "tickets",
+  // Issue #1790 (SPEC #1788 P-6 / P-66) — paired IN THIS PR with
+  // supabase/migrations/20270311001790_issue_1790_venue_orders_realtime_publication.sql.
+  // Phase 3's Orders queue subscribes postgres_changes on venue_orders; a
+  // subscription on an unpublished table is silently no-op, which is the exact
+  // failure this gate exists to prevent (it has shipped twice).
+  "venue_order_sessions",
+  "venue_orders",
   "venue_waitlist",
 ]);
 
