@@ -156,7 +156,17 @@ test('A-H8 lifecycle invalidation refreshes an open sheet and transactional inva
   assert.match(consumer, /That selected chat is no longer available\./);
   assert.match(consumer, /selected chats are no longer available\./);
   assert.match(business, /useShareNetworkState\(\)/);
-  assert.match(businessNetworkNative, /useNetInfo\(\)/);
+  // [TEST-MOD-APPROVED #1758] The OTA guard made src/lib/netinfoSafe.ts the sole
+  // owner of the netinfo reach — a bare static import bricked startup on every
+  // binary predating the #1719 dependency (COMMS-0138). The pin now accepts the
+  // guarded shape as CORRECT while still binding the #1719 substance: native
+  // offline detection exists, is netinfo-sourced (via the guarded passthrough),
+  // and keeps the exact connectivity mapping.
+  assert.match(businessNetworkNative, /useNetInfoSafe\(\)/);
+  assert.doesNotMatch(businessNetworkNative, /@react-native-community\/netinfo/);
+  const businessNetinfoSafe = read('mingla-business/src/lib/netinfoSafe.ts');
+  assert.match(businessNetinfoSafe, /require\("@react-native-community\/netinfo"\)/);
+  assert.match(businessNetinfoSafe, /useNetInfo/);
   assert.match(businessNetworkNative, /isConnected === true && state\.isInternetReachable !== false/);
   assert.match(businessNetworkWeb, /addEventListener\?\.\('online'/);
   assert.match(businessNetworkWeb, /addEventListener\?\.\('offline'/);

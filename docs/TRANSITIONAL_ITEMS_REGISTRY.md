@@ -15,6 +15,7 @@
 | 3 | Notification sends: withTimeout + warn | Still fire-and-forget, just observable — no retry queue | Next hardening cycle | LAUNCH_READINESS_TRACKER.md: Notification send observability B | Managed background job queue with retry |
 | 4 | Service-layer masked errors: [TRANSITIONAL] logging | UI still shows empty for errors — consumers can't distinguish "no data" from "fetch failed" | Next hardening cycle | LAUNCH_READINESS_TRACKER.md: Service error contract F | ServiceResult<T> return type migration (~60+ call sites) |
 | 5 | Offline queue: log discard, no user notification | Board actions silently dropped after 5 retries with console.error | Next hardening cycle | LAUNCH_READINESS_TRACKER.md: Offline queue observability B | Surface failed actions in board UI with retry affordance |
+| 6 | Business netinfo assume-online fallback (`mingla-business/src/lib/netinfoSafe.ts`) | Shipped binaries (prod 07-14, dev-sim 07-20) predate the #1719 netinfo dependency — the guard degrades share network-detection to "always online" so OTAs don't brick startup | Next native build | GitHub #1758 (COMMS-0138) | Next business native build ships RNCNetInfo (autolinked); verify on-device, then the fallback branch is dead code — keep the guard as OTA armor, retire this row |
 
 ---
 
