@@ -687,3 +687,24 @@ verify_jwt = true
 
 [functions.brand-people-export-worker]
 verify_jwt = true
+
+# Issue #1790 (SPEC #1788 §S6) — venue-order-create serves BOTH an authenticated
+# consumer-app user AND an anonymous web guest, so verify_jwt=false and the fn
+# handles auth internally via userIdFromAuthHeader (the venue-reservation-create
+# pattern). Every money number is computed server-side through the shared all-in
+# engine; a price sent by a client is a validation error, not a hint.
+[functions.venue-order-create]
+verify_jwt = false
+
+# Issue #1790 — venue-order-status is the anon-possession read: access is gated
+# by a sha256 hash-match on buyerStatusToken, NOT a Supabase JWT (the shipped
+# ticket-checkout-status posture).
+[functions.venue-order-status]
+verify_jwt = false
+
+# Issue #1790 — venue-order-staff. verify_jwt=false because a Bearer is REQUIRED
+# IN-CODE: the token is verified via auth.getUser, then the brand-membership
+# floor is checked, and the rank-gated tab mutations enforce >= event_manager
+# inside their SECURITY DEFINER RPCs.
+[functions.venue-order-staff]
+verify_jwt = false

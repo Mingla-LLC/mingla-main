@@ -144,6 +144,42 @@ async function orderIdForDispute(
   return data?.id ?? null;
 }
 
+/**
+ * Issue #1790 (SPEC #1788 P-51) — the same charge-keyed resolution, against the
+ * venue-order family. Dispute handling was ALREADY subject-agnostic (it keys on
+ * the charge, not on what was sold), so this is plumbing: charge id first, then
+ * the PaymentIntent, exactly as the ticket lookup does.
+ *
+ * Only ONE of order_id / venue_order_id is ever set — a CHECK enforces it —
+ * because a row claiming both would double-count in `disputed_cents` on two
+ * payout arms at once.
+ */
+async function venueOrderIdForDispute(
+  supabase: SupabaseClient,
+  input: { chargeId: string; paymentIntentId: string | null },
+): Promise<string | null> {
+  let { data, error } = await supabase
+    .from("venue_orders")
+    .select("id")
+    .eq("stripe_charge_id", input.chargeId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`dispute venue order charge lookup failed: ${error.message}`);
+  }
+  if (data?.id) return data.id as string;
+
+  if (!input.paymentIntentId) return null;
+  ({ data, error } = await supabase
+    .from("venue_orders")
+    .select("id")
+    .eq("stripe_payment_intent_id", input.paymentIntentId)
+    .maybeSingle());
+  if (error) {
+    throw new Error(`dispute venue order PI lookup failed: ${error.message}`);
+  }
+  return data?.id ?? null;
+}
+
 async function brandNameForBrandId(
   supabase: SupabaseClient,
   brandId: string,
@@ -341,6 +377,15 @@ export async function handleChargeDispute(
     chargeId: stripeChargeId,
     paymentIntentId,
   });
+  // Issue #1790 — only ask the venue-order family when the charge is NOT a
+  // ticket order's. A charge belongs to exactly one subject, and the
+  // stripe_disputes_single_subject CHECK will reject a row claiming both.
+  const venueOrderId = orderId === null
+    ? await venueOrderIdForDispute(supabase, {
+      chargeId: stripeChargeId,
+      paymentIntentId,
+    })
+    : null;
 
   const { error } = await supabase
     .from("stripe_disputes")
@@ -352,6 +397,7 @@ export async function handleChargeDispute(
         stripe_account_id: stripeAccountId,
         brand_id: brandId,
         order_id: orderId,
+        venue_order_id: venueOrderId,
         amount,
         currency,
         status,

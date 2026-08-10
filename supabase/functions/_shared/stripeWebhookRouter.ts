@@ -57,6 +57,14 @@ import {
   handleStayStripePaymentEvent,
   isStayStripePaymentEvent,
 } from "./stayPaymentWebhook.ts";
+// Issue #1790 (SPEC #1788 P-28) — venue menu orders, discriminated by the
+// `metadata.mingla_venue_order_id` marker Mingla sets at create. Checked before
+// the ticket finalize path so the two money paths never cross; the ticket path
+// is byte-unchanged.
+import {
+  handleVenueOrderStripeEvent,
+  isVenueOrderStripeEvent,
+} from "./venueOrderWebhook.ts";
 
 export const STRIPE_ROUTED_EVENT_TYPES = [
   "account.updated",
@@ -1797,6 +1805,13 @@ export async function routeStripeEvent(
         brandId = await handleStayStripePaymentEvent(supabase, event);
         break;
       }
+      // Issue #1790 — a venue menu order. Handles succeeded (finalize + fee
+      // snapshot, idempotent) AND failed/canceled (mark the pending row failed,
+      // so the guest's status card can say honestly that nothing was charged).
+      if (isVenueOrderStripeEvent(event)) {
+        brandId = await handleVenueOrderStripeEvent(supabase, event);
+        break;
+      }
       // ORCH-1291 [rsvp-chip-in]: a voluntary RSVP contribution is discriminated
       // by metadata.mingla_purpose='rsvp_contribution' and finalized via the
       // contribution RPC (NO order/ticket). Checked FIRST so the ticket path is
@@ -1835,6 +1850,13 @@ export async function routeStripeEvent(
       // contribution row (idempotent with the payment_intent.succeeded finalize).
       if (isRsvpContributionEvent(event)) {
         brandId = await handleRsvpContributionEvent(supabase, event);
+        break;
+      }
+      // Issue #1790 — the buyer-web venue order completes on the hosted page.
+      // Idempotent with the payment_intent.succeeded finalize (whichever wins
+      // the race, the second is a no-op early return inside the RPC).
+      if (isVenueOrderStripeEvent(event)) {
+        brandId = await handleVenueOrderStripeEvent(supabase, event);
         break;
       }
       brandId = await handleCheckoutSessionCompleted(supabase, event);

@@ -617,6 +617,98 @@ REVOKE ALL ON FUNCTION public.biz_venue_tab_close(uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.biz_venue_tab_open(uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.biz_venue_tab_close(uuid, text) TO authenticated, service_role;
 
+-- ---------------------------------------------------------------------------
+-- P-13 support — the VENUE'S OWN CLOCK. A menu service window is evaluated in
+-- venue-local time using the shipped 3-step ladder
+-- (20270201001403_issue_1403_venue_reservation_rollup.sql:65-90):
+--   venue_availability_config.iana_timezone -> place_pool.utc_offset_minutes -> 'UTC'
+-- NEVER the server's clock, never the device's. One RPC so the ladder has ONE
+-- implementation rather than a SQL copy and a TypeScript copy that drift.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.pg_venue_local_now(
+  p_brand_id uuid,
+  p_venue_id uuid,
+  p_now timestamptz DEFAULT now()
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_tz text;
+  v_confidence text;
+  v_offset_min int;
+  v_local timestamp;
+  v_place uuid;
+BEGIN
+  SELECT availability.iana_timezone INTO v_tz
+    FROM public.venue_availability_config availability
+    JOIN public.analytics_iana_timezones valid_timezone
+      ON valid_timezone.name = availability.iana_timezone
+   WHERE availability.brand_id = p_brand_id
+     AND availability.venue_id = p_venue_id
+   LIMIT 1;
+
+  IF v_tz IS NOT NULL THEN
+    v_confidence := 'iana';
+    v_local := p_now AT TIME ZONE v_tz;
+  ELSE
+    SELECT v.place_pool_id INTO v_place FROM public.venue_listings v WHERE v.id = p_venue_id;
+    SELECT place.utc_offset_minutes INTO v_offset_min
+      FROM public.place_pool place
+     WHERE place.id = v_place AND place.utc_offset_minutes IS NOT NULL;
+    IF v_offset_min IS NOT NULL THEN
+      v_confidence := 'offset';
+      v_local := (p_now AT TIME ZONE 'UTC') + make_interval(mins => v_offset_min);
+    ELSE
+      v_confidence := 'utc';
+      v_tz := 'UTC';
+      v_local := p_now AT TIME ZONE 'UTC';
+    END IF;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'iso_dow', extract(isodow FROM v_local)::int,
+    'minutes', (extract(hour FROM v_local)::int * 60 + extract(minute FROM v_local)::int),
+    'timezone', v_tz,
+    'tz_confidence', v_confidence
+  );
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.pg_venue_local_now(uuid, uuid, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.pg_venue_local_now(uuid, uuid, timestamptz) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- D-3a — the counter-pickup code. 2-3 digits, unique among the venue's LIVE
+-- orders, and recycled once an order is delivered/cancelled/refunded (the
+-- partial UNIQUE index is the authority; this only proposes). Server-side only:
+-- a client-composed code would collide two guests onto one number.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.pg_venue_order_next_pickup_code(p_venue_id uuid)
+RETURNS text
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_code text;
+BEGIN
+  SELECT lpad(g::text, 2, '0') INTO v_code
+    FROM generate_series(10, 999) g
+   WHERE NOT EXISTS (
+     SELECT 1 FROM public.venue_orders o
+      WHERE o.venue_id = p_venue_id
+        AND o.pickup_code = lpad(g::text, 2, '0')
+        AND o.fulfillment_status NOT IN ('delivered','cancelled','refunded'))
+   ORDER BY g
+   LIMIT 1;
+  IF v_code IS NULL THEN
+    RAISE EXCEPTION 'pickup_codes_exhausted' USING ERRCODE = 'P0001';
+  END IF;
+  RETURN v_code;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.pg_venue_order_next_pickup_code(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.pg_venue_order_next_pickup_code(uuid) TO service_role;
+
 COMMENT ON FUNCTION public.biz_venue_tab_close(uuid, text) IS
   'SPEC #1788 P-2a — the ONLY tab close path. `venue_collected` closes '
   'immediately with no provider call, no fee, and no payout row; '
