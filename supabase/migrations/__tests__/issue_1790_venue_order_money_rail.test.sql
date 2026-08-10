@@ -613,11 +613,12 @@ BEGIN
     INSERT INTO public.source_refunds (
       source_type, source_id, subject_id, brand_id, venue_id, refund_kind,
       requested_by_type, reason, provider, currency, original_charge_cents,
-      buyer_refund_requested_cents, provider_payment_reference, idempotency_key
+      buyer_refund_requested_cents, organizer_refund_liability_cents,
+      platform_fee_absorption_cents, provider_payment_reference, idempotency_key
     ) VALUES (
       'venue_menu_order', v_o, v_o, pg_temp.fx('brand'), pg_temp.fx('venue'), v_kind,
       CASE WHEN v_kind='venue_order_guest_cancel' THEN 'guest' ELSE 'brand_staff' END,
-      'issue-1790 test', 'stripe', 'GBP', 5000, 5000,
+      'issue-1790 test', 'stripe', 'GBP', 5000, 5000, 5000, 0,
       'pi_test_1790', 'idem:sr:' || v_kind || ':' || v_o::text);
   END LOOP;
 
@@ -627,10 +628,11 @@ BEGIN
     INSERT INTO public.source_refunds (
       source_type, source_id, subject_id, brand_id, venue_id, refund_kind,
       requested_by_type, reason, provider, currency, original_charge_cents,
-      buyer_refund_requested_cents, provider_payment_reference, idempotency_key
+      buyer_refund_requested_cents, organizer_refund_liability_cents,
+      platform_fee_absorption_cents, provider_payment_reference, idempotency_key
     ) VALUES (
       'venue_menu_order', v_o, v_o, pg_temp.fx('brand'), NULL, 'venue_order_guest_cancel',
-      'guest', 'issue-1790 test', 'stripe', 'GBP', 5000, 5000,
+      'guest', 'issue-1790 test', 'stripe', 'GBP', 5000, 5000, 5000, 0,
       'pi_test_1790b', 'idem:sr:novenue:' || v_o::text);
   EXCEPTION WHEN check_violation THEN v_raised := true; END;
   IF NOT v_raised THEN
@@ -643,11 +645,12 @@ BEGIN
     INSERT INTO public.source_refunds (
       source_type, source_id, subject_id, brand_id, venue_id, refund_kind,
       requested_by_type, reason, provider, currency, original_charge_cents,
-      buyer_refund_requested_cents, provider_payment_reference, idempotency_key
+      buyer_refund_requested_cents, organizer_refund_liability_cents,
+      platform_fee_absorption_cents, provider_payment_reference, idempotency_key
     ) VALUES (
       'venue_menu_order', v_o, v_o, pg_temp.fx('brand'), pg_temp.fx('venue'),
       'venue_order_auto_timeout', 'system', 'issue-1790 test', 'stripe', 'GBP',
-      5000, 5000, 'pi_test_1790c', 'idem:sr:auto:' || v_o::text);
+      5000, 5000, 5000, 0, 'pi_test_1790c', 'idem:sr:auto:' || v_o::text);
   EXCEPTION WHEN check_violation THEN v_raised := true; END;
   IF NOT v_raised THEN
     RAISE EXCEPTION 'issue_1790 T-RF1: an AUTOMATIC refund kind was accepted — I-PROPOSED-1767-NO-MONEY-ON-A-TIMER is unenforced';
@@ -768,11 +771,12 @@ BEGIN
   INSERT INTO public.source_refunds (
     source_type, source_id, subject_id, brand_id, venue_id, refund_kind,
     requested_by_type, reason, provider, currency, original_charge_cents,
-    buyer_refund_requested_cents, financial_state, provider_payment_reference, idempotency_key
+    buyer_refund_requested_cents, organizer_refund_liability_cents,
+    platform_fee_absorption_cents, financial_state, provider_payment_reference, idempotency_key
   ) VALUES (
     'venue_menu_order', v_o, v_o, pg_temp.fx('brand'), pg_temp.fx('venue'),
     'venue_order_venue_approved', 'brand_staff', 'partial', 'stripe', 'GBP',
-    4400, 2000, 'pending', 'pi_half', 'idem:sr:half:' || v_o::text);
+    4400, 2000, 2000, 0, 'pending', 'pi_half', 'idem:sr:half:' || v_o::text);
 
   PERFORM public.run_payout_release_dark_sweep(now());
   SELECT count(*) INTO v_cnt FROM public.payout_release_items WHERE source_id = v_o;
@@ -839,11 +843,12 @@ BEGIN
       INSERT INTO public.source_refunds (
         source_type, source_id, subject_id, brand_id, venue_id, refund_kind,
         requested_by_type, reason, provider, currency, original_charge_cents,
-        buyer_refund_requested_cents, provider_payment_reference, idempotency_key
+        buyer_refund_requested_cents, organizer_refund_liability_cents,
+      platform_fee_absorption_cents, provider_payment_reference, idempotency_key
       ) VALUES (
         'venue_menu_order', v_o, v_o, pg_temp.fx('brand'), pg_temp.fx('venue'),
         'venue_order_guest_cancel', 'guest', 'revert probe', 'stripe', 'GBP',
-        1000, 1000, 'pi_revert', 'idem:sr:revert:' || v_o::text);
+        1000, 1000, 1000, 0, 'pi_revert', 'idem:sr:revert:' || v_o::text);
     EXCEPTION WHEN check_violation THEN v_w4 := true; END;
     RAISE EXCEPTION 'issue_1790_probe_unwind';
   EXCEPTION WHEN OTHERS THEN
