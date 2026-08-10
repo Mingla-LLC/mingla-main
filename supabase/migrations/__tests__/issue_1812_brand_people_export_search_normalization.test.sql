@@ -11,6 +11,8 @@ DECLARE
   v_roster_job uuid;
   v_empty_job uuid;
 BEGIN
+  INSERT INTO public.creator_accounts(id,email)
+  VALUES(v_owner,'issue-1812-owner@example.test');
   INSERT INTO public.brands(id,account_id,slug,name,default_currency,created_at,updated_at)
   VALUES(v_brand,v_owner,'issue-1812-brand','Issue 1812 Brand','USD',now(),now());
   INSERT INTO public.events(
