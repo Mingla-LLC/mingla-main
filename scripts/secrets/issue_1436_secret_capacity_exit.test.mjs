@@ -9,6 +9,7 @@ import {
 
 const manifest = JSON.parse(readFileSync(DEFAULT_MANIFEST, "utf8"));
 const RETIRED_DIRECT_NAMES = [
+  "CONTENT_SHARE_V1_CREATE_ENABLED",
   "NOTIFICATION_RECIPIENT_HMAC_SECRET",
   "PAYOUT_HOLD_ONBOARD_FLIP",
   "PAYOUT_RELEASE_EXECUTE",
@@ -55,6 +56,25 @@ test("issue #1770: offering invite pepper is standalone and exactly scoped", () 
     "supabase/functions/offering-invite-dispatch/index.ts",
   ]);
   assert.deepEqual(pepper.bundle_fields, []);
+});
+
+test("issue #1808: content-share creation authority is bundled and the direct name is retired", () => {
+  const runtime = record("MINGLA_RUNTIME_CONFIG_JSON");
+  assert.ok(runtime);
+  assert.equal(
+    runtime.bundle_fields.some((entry) =>
+      entry.name === "content_share_v1_create_enabled" &&
+      entry.owner === "Platform Engineering" &&
+      entry.source_type === "approved_feature_operating_record"
+    ),
+    true,
+  );
+  assert.equal(
+    manifest.secrets.some((entry) =>
+      entry.name === "CONTENT_SHARE_V1_CREATE_ENABLED"
+    ),
+    false,
+  );
 });
 
 test("issue #1436: the two existing bundles own all four retired authorities", () => {

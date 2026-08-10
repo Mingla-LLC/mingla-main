@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { mapCuratedSnapshot, mapPlaceSnapshot, publicSnapshotResponse, sharedCardOneLink, shareText } from "./snapshot.ts";
 import { createContentShareV1, refreshContentShareV1, validatePublicContentShareEnvelope } from "../_shared/contentShareService.ts";
 import { constantTimeEqualSecret, contentShareCreateRateLimitArgs } from "../_shared/contentShareProxyAuth.ts";
+import { resolveRuntimeBoolean } from "../_shared/runtimeConfig.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -116,7 +117,10 @@ serve(async (req) => {
     if (raw?.contract === "content_share_v1") {
       // Stages 1–3 build the authoritative creation dependency while receivers
       // remain intentionally unbuilt. Fail closed until stage 4 deploys /s.
-      if (Deno.env.get("CONTENT_SHARE_V1_CREATE_ENABLED") !== "true") {
+      if (!resolveRuntimeBoolean(
+        "content_share_v1_create_enabled",
+        "CONTENT_SHARE_V1_CREATE_ENABLED",
+      )) {
         return json({ error: "not_available" }, 503);
       }
       const created = await createContentShareV1(db, user?.id || null, raw, { serverCreated });

@@ -37,7 +37,9 @@ test('RA4 no unversioned new OG grammar exists', () => {
   assert.doesNotMatch(corpus, /\/og\/s\/:code\.png/);
 });
 
-test('RA5 receiver stage does not enable creation or deploy anything', () => {
-  assert.match(read('supabase/functions/shared-card/index.ts'), /CONTENT_SHARE_V1_CREATE_ENABLED/);
-  assert.doesNotMatch(read('supabase/functions/shared-card/index.ts'), /CONTENT_SHARE_V1_CREATE_ENABLED"\) !== "false"/);
+test('RA5 content creation remains fail-closed through the shared runtime resolver', () => {
+  const edge = read('supabase/functions/shared-card/index.ts');
+  assert.match(edge, /resolveRuntimeBoolean\(/);
+  assert.match(edge, /"content_share_v1_create_enabled"/);
+  assert.doesNotMatch(edge, /Deno\.env\.get\("CONTENT_SHARE_V1_CREATE_ENABLED"\)/);
 });

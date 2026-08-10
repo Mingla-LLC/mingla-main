@@ -60,8 +60,10 @@ These objects are permitted:
   production authority is v2.
 - `MINGLA_ALERT_RECIPIENTS_JSON`: independent API-health, Stripe-dispute, and
   Stripe-webhook-failure lists.
-- `MINGLA_RUNTIME_CONFIG_JSON`: exactly the eight non-credential fields enforced by
-  `_shared/runtimeConfig.ts`.
+- `MINGLA_RUNTIME_CONFIG_JSON`: eight required non-credential fields plus the optional
+  `offering_invite_sms_price_book_v1` and `content_share_v1_create_enabled` fields enforced by
+  `_shared/runtimeConfig.ts`. The content-share field is a strict JSON boolean; its retired
+  compatibility name is `CONTENT_SHARE_V1_CREATE_ENABLED`.
 - `AD_CONVERSION_TOKENS`: the existing private credential envelope. In addition to its existing
   independently named fields, it owns `NOTIFICATION_RECIPIENT_HMAC_SECRET` as exact raw material.
   The resolver never trims, normalizes, logs, rotates, or returns that value.
@@ -75,7 +77,9 @@ only in an approved credential envelope with field-level ownership. Every compat
 prefers its own bundle field and may fall back only to its exact legacy name during a reviewed
 migration window. Invalid bundles produce redacted field/reason telemetry and never invent a
 value. Missing/invalid onboarding and payout authority resolve false; missing/invalid
-source-refund authority resolves disabled=true.
+source-refund authority resolves disabled=true. Content-share creation accepts only a bundled
+JSON boolean or, during the #1808 migration window, the exact legacy string `true`; once the
+direct name is retired, missing or invalid authority resolves false.
 
 ## No-downtime sequence
 
@@ -101,6 +105,25 @@ authorize a secret, provider, or operational-boolean change.
 
 A partial or concurrent deployment, deployment-commit mismatch, parser/missing-field event,
 unknown ownership, missing source, or failed live-fire blocks every unset.
+
+### #1808 content-share switch reconciliation
+
+The active `CONTENT_SHARE_V1_CREATE_ENABLED` direct name is not part of the final 87-name
+manifest. Reconcile it without a capacity exception in this exact order:
+
+1. Deploy the exact merged `shared-card` revision containing `resolveRuntimeBoolean` while the
+   direct name remains `true`. The older bundle has no content-share field, so compatibility
+   fallback preserves creation.
+2. Reconstruct the complete approved `MINGLA_RUNTIME_CONFIG_JSON` record, add
+   `content_share_v1_create_enabled:true`, and validate it with the exact merged parser before
+   replacing the bundle. Never patch an object recovered from Supabase metadata.
+3. Prove one controlled content-share creation and read while both authorities exist.
+4. Unset only `CONTENT_SHARE_V1_CREATE_ENABLED`; prove creation and read again, then require an
+   exact names-only audit of 86 user-managed names.
+5. Set the separately governed `OFFERING_INVITE_TOKEN_PEPPER`; the exact audit must then match
+   the final 87-name manifest. If the bundle-backed smoke fails before the unset, stop. If it
+   fails immediately after the unset, restore only the direct flag and investigate; do not
+   weaken the parser or bundle the pepper.
 
 ## Notification HMAC zero-row epoch
 

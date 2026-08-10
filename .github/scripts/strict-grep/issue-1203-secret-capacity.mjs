@@ -19,6 +19,7 @@ const BACKEND_ROOT = "supabase/functions/";
 const APPROVED_RUNTIME_FIELDS = [
   "bunny_storage_cap_bytes",
   "bunny_traffic_cap_bytes",
+  "content_share_v1_create_enabled",
   "event_cover_video_provider",
   "google_ads_api_version",
   "meta_api_version",
@@ -62,6 +63,7 @@ const FIELD_LEGACY_MAPPINGS = [
   ["stripe_webhook_failures", "STRIPE_WEBHOOK_FAILURE_ALERT_EMAILS"],
   ["bunny_storage_cap_bytes", "BUNNY_STORAGE_CAP_BYTES"],
   ["bunny_traffic_cap_bytes", "BUNNY_TRAFFIC_CAP_BYTES"],
+  ["content_share_v1_create_enabled", "CONTENT_SHARE_V1_CREATE_ENABLED"],
   ["event_cover_video_provider", "EVENT_COVER_VIDEO_PROVIDER"],
   ["google_ads_api_version", "GOOGLE_ADS_API_VERSION"],
   ["meta_api_version", "META_API_VERSION"],
@@ -96,6 +98,7 @@ const CONSUMER_CONTRACTS = [
   ["supabase/functions/growth-tools-gate/index.ts", "resolveRuntimeString"],
   ["supabase/functions/invite-brand-member/index.ts", "resolveRuntimeString"],
   ["supabase/functions/partner-reissue-invitation/index.ts", "resolveRuntimeString"],
+  ["supabase/functions/shared-card/index.ts", "resolveRuntimeBoolean"],
 ];
 
 function executableSource(source) {
@@ -164,6 +167,18 @@ export function check({
     ) {
       violations.push(`${MANIFEST}:offering_invite_token_pepper_contract_invalid`);
     }
+    const runtimeConfig = manifest.secrets?.find((record) =>
+      record.name === "MINGLA_RUNTIME_CONFIG_JSON"
+    );
+    const contentShareField = runtimeConfig?.bundle_fields?.find((field) =>
+      field.name === "content_share_v1_create_enabled"
+    );
+    if (
+      contentShareField?.owner !== "Platform Engineering" ||
+      contentShareField?.source_type !== "approved_feature_operating_record"
+    ) {
+      violations.push(`${MANIFEST}:content_share_runtime_field_contract_invalid`);
+    }
     const serializedKeys = [];
     const walk = (value) => {
       if (Array.isArray(value)) return value.forEach(walk);
@@ -213,6 +228,16 @@ export function check({
         violations.push(`${path}:migrated_consumer_missing:${resolver}`);
       }
     }
+    const sharedCard = executableSource(
+      byPath.get("supabase/functions/shared-card/index.ts") ?? "",
+    );
+    const contentGate = sharedCard.indexOf("resolveRuntimeBoolean(");
+    const contentCreate = sharedCard.indexOf("await createContentShareV1(");
+    if (contentGate < 0 || contentCreate < 0 || contentGate > contentCreate) {
+      violations.push(
+        "supabase/functions/shared-card/index.ts:content_share_gate_must_precede_create",
+      );
+    }
   }
   return violations;
 }
@@ -227,7 +252,9 @@ function selfTest() {
     },
     ...CONSUMER_CONTRACTS.map(([path, resolver]) => ({
       path,
-      text: `import { ${resolver} } from "./resolver.ts"; ${resolver}();`,
+      text: path === "supabase/functions/shared-card/index.ts"
+        ? `import { ${resolver} } from "./resolver.ts"; if (!${resolver}()) return; await createContentShareV1();`
+        : `import { ${resolver} } from "./resolver.ts"; ${resolver}();`,
     })),
   ];
   const clean = {
@@ -238,6 +265,14 @@ function selfTest() {
     auditSource: 'spawnSync("supabase", [], { stdio: ["ignore", "pipe", "pipe"] });',
     manifestText: JSON.stringify({
       secrets: [
+        {
+          name: "MINGLA_RUNTIME_CONFIG_JSON",
+          bundle_fields: [{
+            name: "content_share_v1_create_enabled",
+            owner: "Platform Engineering",
+            source_type: "approved_feature_operating_record",
+          }],
+        },
         {
           name: "OFFERING_INVITE_TOKEN_PEPPER",
           class: "cryptographic_secret",
@@ -250,7 +285,7 @@ function selfTest() {
             "supabase/functions/offering-invite-dispatch/index.ts",
           ],
         },
-        ...Array.from({ length: 86 }, (_, index) => ({ name: `SYNTH_${index}` })),
+        ...Array.from({ length: 85 }, (_, index) => ({ name: `SYNTH_${index}` })),
       ],
     }),
     clientFiles: [{ path: "app-mobile/src/ok.ts", text: "export const ok = true;" }],
@@ -295,6 +330,18 @@ function selfTest() {
       ),
     }).every((violation) => !violation.includes("migrated_consumer_missing"))
   ) throw new Error("consumer_regression_fixture_passed");
+  const manifestWithoutContentField = JSON.parse(clean.manifestText);
+  manifestWithoutContentField.secrets.find((record) =>
+    record.name === "MINGLA_RUNTIME_CONFIG_JSON"
+  ).bundle_fields = [];
+  if (
+    check({
+      ...clean,
+      manifestText: JSON.stringify(manifestWithoutContentField),
+    }).every((violation) =>
+      !violation.includes("content_share_runtime_field_contract_invalid")
+    )
+  ) throw new Error("content_share_manifest_regression_fixture_passed");
   if (
     check({
       ...clean,
@@ -319,7 +366,7 @@ function selfTest() {
       ],
     }).every((violation) => !violation.includes("legacy_direct_read"))
   ) throw new Error("active_direct_reader_fixture_passed");
-  console.log("issue-1203 secret-capacity self-test OK (8/8 cases).");
+  console.log("issue-1203 secret-capacity self-test OK (9/9 cases).");
 }
 
 function trackedClientFiles() {
