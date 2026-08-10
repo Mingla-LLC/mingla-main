@@ -70,7 +70,7 @@ BEGIN
   -- for auth.uid(). The tab RPCs are rank-gated INSIDE the database, so a
   -- fixture that stubbed the rank would be testing nothing.
   INSERT INTO public.brand_team_members (brand_id, user_id, role, invited_at, accepted_at)
-  VALUES (v_brand, v_user, 'account_owner', now(), now());
+  VALUES (v_brand, v_user, 'brand_owner', now(), now());   -- ORCH-1047 renamed account_owner
 
   INSERT INTO public.reservations (brand_id, venue_id, reserved_for, party_size, status)
   VALUES (v_brand, v_venue, now() + interval '1 hour', 4, 'seated')
