@@ -358,9 +358,9 @@ export function VenueInsightsModule({
               }}
               onOpenReport={(row) => setReportRow(row)}
             />
-            {/* Design §4.6 — text only, no nav. */}
+            {/* Design §4.6 — text only, no nav. Copy verbatim per G-2. */}
             <Text style={styles.ariFooter}>
-              Or just ask Ari — &quot;check my site&quot;
+              Or just ask Ari — &apos;check my site&apos;
             </Text>
           </View>
         ) : view === "site" ? (
