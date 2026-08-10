@@ -1,0 +1,67 @@
+name: "#679 brand_follows RLS behavioral proof"
+
+# Issue #679 (Wave 0 of #876) — TESTER gate executing the brand_follows
+# owner-only RLS against a real PostgreSQL 17 catalog (issue-1771/1217 house
+# pattern). The implementor's Deno suite pins the MIGRATION TEXT; this job
+# APPLIES the migration and runs the attacks under the anon/authenticated
+# roles with a minted auth.uid(): cross-user INSERT/SELECT/DELETE, anon
+# access, brand-side read (the #876 Ring-2 boundary), duplicate-follow 23505,
+# and the absent UPDATE path. A migration that reads correctly but behaves
+# permissively fails HERE.
+#
+# Fails-on-revert: deleting the migration fails the docker cp step; loosening
+# any policy or grant fails the matching attack leg (verified locally by
+# appending a `using (true)` SELECT policy — the suite exits 3 at A-5).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270305000679_issue_679_brand_follows.sql"
+      - "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql"
+      - ".github/workflows/issue-679-brand-follows-rls-proof.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/20270305000679_issue_679_brand_follows.sql"
+      - "supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql"
+      - ".github/workflows/issue-679-brand-follows-rls-proof.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-679-brand-follows-rls:
+    name: "#679 brand_follows owner-only RLS (PG17 docker attack suite)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the #679 RLS attack suite on clean PostgreSQL 17
+        run: |
+          issue679_db_password="$(openssl rand -hex 24)"
+          docker run --name issue679-postgres \
+            -e POSTGRES_PASSWORD="$issue679_db_password" \
+            -d supabase/postgres:17.4.1.075
+          for attempt in {1..90}; do
+            state="$(docker inspect --format \
+              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              issue679-postgres)"
+            if [ "$state" = "healthy" ]; then
+              break
+            fi
+            sleep 1
+          done
+          # Fails-on-revert leg: deleting the migration fails this cp.
+          docker cp \
+            supabase/migrations/20270305000679_issue_679_brand_follows.sql \
+            issue679-postgres:/issue_679_migration.sql
+          docker exec -i issue679-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_679_brand_follows_rls.test.sql
+      - name: Remove disposable database
+        if: always()
+        run: docker rm -f issue679-postgres || true

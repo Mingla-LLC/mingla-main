@@ -238,6 +238,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   upcoming = [],
   upcomingHasMore = false,
   venue = null,
+  // Inferable defaults (not bare bindings): under the #1403/#874 delta
+  // harnesses' react-less tsc graph a bare binding here is TS7031; the
+  // defaults type them boolean with IDENTICAL behavior (every consumer
+  // compares `=== true`, so false ≡ undefined).
+  isFollowing = false,
+  followPending = false,
   venues = [],
   venuesLoadState = "ready",
   theme,
@@ -565,6 +571,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       {!isDesktop ? (
         <View style={styles.phoneIdentityWrap}>
           {identityBlock}
+          <FollowButton
+            brand={brand}
+            palette={palette}
+            isFollowing={isFollowing}
+            followPending={followPending}
+            onToggleFollow={callbacks.onToggleFollow}
+          />
           {socialsBlock}
           {featuredTeaser}
         </View>
@@ -600,6 +613,14 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           </View>
         </View>
         {socialsBlock}
+        <FollowButton
+          brand={brand}
+          palette={palette}
+          isFollowing={isFollowing}
+          followPending={followPending}
+          onToggleFollow={callbacks.onToggleFollow}
+          desktop
+        />
         <Pressable
           onPress={callbacks.onShare}
           accessibilityRole="button"
@@ -740,6 +761,68 @@ const SocialIcon: React.FC<{ kind: SocialKind; color: string }> = ({
 }) => {
   const Icon = SOCIAL_ICON_BY_KIND[kind];
   return <Icon color={color} size={21} strokeWidth={2.2} />;
+};
+
+// Issue #679 — Follow/Following toggle. Renders ONLY when the host provides
+// callbacks.onToggleFollow (THE gate: hosts that pass nothing — buyer-web and
+// the business in-app preview — render no follow surface at all). State is
+// server-truth via the host's isFollowing prop; the renderer holds none.
+// The destructured parameter carries the annotation DIRECTLY (not only via
+// React.FC): the #1403/#874 typecheck-delta harnesses run a tsc graph where
+// the react module does not resolve, so a React.FC-only annotation leaves the
+// bindings implicitly any (TS7031) — an explicit parameter type keeps this
+// component contributing ZERO delta diagnostics.
+type BrandFollowButtonProps = {
+  brand: PublicBrand;
+  palette: ThemePalette;
+  isFollowing?: boolean;
+  followPending?: boolean;
+  onToggleFollow?: () => void;
+  desktop?: boolean;
+};
+const FollowButton: React.FC<BrandFollowButtonProps> = ({
+  brand,
+  palette,
+  isFollowing,
+  followPending,
+  onToggleFollow,
+  desktop,
+}: BrandFollowButtonProps) => {
+  if (onToggleFollow === undefined) return null;
+  const active = isFollowing === true;
+  return (
+    <Pressable
+      onPress={onToggleFollow}
+      disabled={followPending === true}
+      accessibilityRole="button"
+      accessibilityLabel={
+        active
+          ? `Unfollow ${brand.displayName}`
+          : `Follow ${brand.displayName}`
+      }
+      accessibilityState={{
+        selected: isFollowing === true,
+        disabled: followPending === true,
+      }}
+      style={({ pressed }) => [
+        styles.followBtn,
+        desktop ? styles.followBtnDesk : styles.followBtnPhone,
+        active
+          ? { backgroundColor: "transparent", borderColor: palette.accent }
+          : { backgroundColor: palette.accent, borderColor: palette.accent },
+        pressed && styles.cardPressed,
+      ]}
+    >
+      <Text
+        style={[
+          styles.followLabel,
+          { color: active ? palette.primaryText : palette.accentText },
+        ]}
+      >
+        {isFollowing === true ? "Following" : "Follow"}
+      </Text>
+    </Pressable>
+  );
 };
 
 // ORCH-1155 — horizontally-scrollable tab bar (no clipping; nowrap chips sized to
@@ -2030,6 +2113,27 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
+  },
+  // Issue #679 — Follow/Following (Share-button family; ≥44pt touch target).
+  followBtn: {
+    minHeight: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+  followBtnPhone: {
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  followBtnDesk: {
+    marginTop: 18,
+    minHeight: 48,
+  },
+  followLabel: {
+    fontSize: 14,
+    fontWeight: "900",
   },
   deskShareLabel: {
     fontSize: 14,

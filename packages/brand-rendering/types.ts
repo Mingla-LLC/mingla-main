@@ -174,6 +174,9 @@ export interface PublicMenuGroup {
 export interface PublicBrandCallbacks {
   onClose: () => void;
   onShare: () => void;
+  // Issue #679 — host-provided Follow toggle. ABSENT ⇒ no Follow UI renders
+  // (the callback gate that keeps buyer-web + business preview unchanged).
+  onToggleFollow?: () => void;
   onOpenEvent: (event: PublicBrandEvent) => void;
   onOpenTrip: (trip: PublicBrandTrip) => void;
   onOpenExperience?: (experience: PublicBrandExperience) => void;
@@ -195,6 +198,10 @@ export interface PublicBrandPageProps {
   upcoming?: PublicBrandUpcoming[];
   upcomingHasMore?: boolean;
   venue?: PublicVenueDetail | null;
+  // Issue #679 — server-truth follow state, host-owned (the renderer holds no
+  // server state). Only read when callbacks.onToggleFollow is provided.
+  isFollowing?: boolean;
+  followPending?: boolean;
   // Issue #1365 — verified venues for the Reservations tab.
   // Absent / [] ⇒ section omitted (real-data-only).
   venues?: PublicBrandVenueSummary[];

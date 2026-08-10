@@ -12,10 +12,13 @@ import {
 
 test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", () => {
   const sites = enumerateRepository();
-  assert.equal(sites.length, 83);
+  // 84 = 83 pre-#679 targets + brand_follows (user_id,brand_id) from
+  // app-mobile/src/services/brandFollowsService.ts (issue #679).
+  assert.equal(sites.length, 84);
   assert.equal(sites.some((site) => site.table === "user_stats"), false);
   assert.equal(sites.some((site) => site.table === "saved_experience_privacy"), false);
   assert.equal(sites.some((site) => site.table === "business_notification_type_preferences"), true);
+  assert.equal(sites.some((site) => site.table === "brand_follows"), true);
 });
 
 test("discovers future literals and rejects dynamic/unresolved/duplicate targets", () => {
