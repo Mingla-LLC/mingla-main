@@ -7,6 +7,11 @@ import { join, resolve } from "node:path";
 const packageRoot = resolve(import.meta.dirname, "../..");
 const repoRoot = resolve(packageRoot, "..");
 const buildDir = resolve(packageRoot, process.env.ISSUE_922_WEB_BUILD ?? "dist");
+const eagerRolePatterns = [
+  ["Metro runtime", /^(?:__expo-metro-)?runtime(?:-.+)?\.js$/],
+  ["common", /^(?:__)?common(?:-.+)?\.js$/],
+  ["Router index", /^index(?:-.+)?\.js$/],
+];
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -46,8 +51,19 @@ function validateEntry(source, entry) {
   const metadata = JSON.parse(metadataText);
   invariant(metadata.length === 3, "fallback metadata must contain exactly 3 scripts");
   invariant(JSON.stringify(metadata) === JSON.stringify(sourceTags.map(scriptAttributes)), "fallback attributes/order drifted from index.html");
+  const actualRoles = metadata.map((attrs) => {
+    const src = attrs.find(({ name }) => name.toLowerCase() === "src")?.value ?? "";
+    const basename = new URL(src, "https://business.usemingla.com").pathname.split("/").at(-1) ?? "";
+    return eagerRolePatterns.find(([, pattern]) => pattern.test(basename))?.[0] ?? `unknown (${basename})`;
+  });
+  const expectedRoles = eagerRolePatterns.map(([label]) => label);
+  invariant(
+    actualRoles.every((role, index) => role === expectedRoles[index]),
+    `fallback eager script order/topology must be ${expectedRoles.join(" -> ")}; found ${actualRoles.join(" -> ")}`,
+  );
   invariant(entry.indexOf('<div id="root"></div>') < entry.indexOf('id="issue-922-critical-entry"'), "root scaffold must precede bootstrap");
-  invariant(entry.includes('requestAnimationFrame(function(){requestAnimationFrame(function(){'), "actionability marker must wait two animation frames");
+  invariant((entry.match(/requestAnimationFrame\(function\(\)/g) ?? []).length === 2, "actionability marker must wait two animation frames");
+  invariant(entry.includes('function protect(work){try{work()}catch(_error){boot()}}'), "eligible bootstrap failures must replay the full app");
   invariant(entry.includes('window.location.replace("/auth?next="+encodeURIComponent("/accept-brand-invitation?token="+token))'), "sign-in resume contract drifted");
   invariant(entry.includes('/^sb-.+-auth-token$/.test(key)'), "Supabase-session fallback detector is missing");
   invariant(entry.includes('key==="mingla_consent_v1"'), "returning-consent fallback detector is missing");
@@ -115,12 +131,18 @@ function selfTest() {
   const attrs = ["runtime", "common", "index"].map((name) => `<script src="/_expo/static/js/web/${name}.js" defer></script>`);
   const metadata = JSON.stringify(attrs.map(scriptAttributes));
   const source = `<div id="root"></div>${attrs.join("")}`;
-  const entry = `<div id="root"></div><script id="issue-922-critical-entry">var scripts=${metadata};var loaded=false;requestAnimationFrame(function(){requestAnimationFrame(function(){});});window.location.replace("/auth?next="+encodeURIComponent("/accept-brand-invitation?token="+token));/^sb-.+-auth-token$/.test(key);key==="mingla_consent_v1";window.__minglaPrebootConsentChoice=choice;node.async=false;</script>`;
+  const entry = `<div id="root"></div><script id="issue-922-critical-entry">var scripts=${metadata};var loaded=false;function protect(work){try{work()}catch(_error){boot()}}requestAnimationFrame(function(){requestAnimationFrame(function(){});});window.location.replace("/auth?next="+encodeURIComponent("/accept-brand-invitation?token="+token));/^sb-.+-auth-token$/.test(key);key==="mingla_consent_v1";window.__minglaPrebootConsentChoice=choice;node.async=false;</script>`;
   validateEntry(source, entry);
+  let caughtOrder = false;
+  try {
+    const reordered = [attrs[1], attrs[0], attrs[2]];
+    validateEntry(reordered.join(""), entry.replace(metadata, JSON.stringify(reordered.map(scriptAttributes))));
+  } catch { caughtOrder = true; }
+  invariant(caughtOrder, "self-test failed to detect reordered eager scripts");
   let caughtEager = false;
   try { validateEntry(source, entry.replace("</script>", `${attrs[0]}</script>`)); } catch { caughtEager = true; }
   invariant(caughtEager, "self-test failed to detect restored eager script");
-  console.log("issue #922 guard self-test PASS (rewrite removal and eager-script restoration detected)");
+  console.log("issue #922 guard self-test PASS (rewrite removal, script reordering, and eager-script restoration detected)");
 }
 
 try {
