@@ -13,7 +13,8 @@ AS $function$
 DECLARE v_brand uuid; v_actor uuid:=auth.uid(); v_job public.brand_people_export_jobs%ROWTYPE; v_snapshot jsonb; v_hash text; v_search text;
 BEGIN
   v_search:=lower(regexp_replace(btrim(COALESCE(p_search,'')),'\\s+',' ','g'));
-  IF p_scope NOT IN ('brand_book','offering_guest_roster')
+  IF p_scope IS NULL OR p_filter IS NULL OR p_sort IS NULL
+     OR p_scope NOT IN ('brand_book','offering_guest_roster')
      OR (p_scope='brand_book' AND (p_event_id IS NOT NULL OR p_filter NOT IN ('all','reachable','suppressed')))
      OR (p_scope='offering_guest_roster' AND (
        p_event_id IS NULL OR p_filter NOT IN (
@@ -58,4 +59,3 @@ GRANT EXECUTE ON FUNCTION public.biz_export_brand_people(text,uuid,text,text,tex
 -- clients must never execute it directly.
 REVOKE ALL ON FUNCTION public.biz_offering_guest_roster_export_rows(uuid) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_offering_guest_roster_export_rows(uuid) TO service_role;
-

@@ -73,4 +73,3 @@ END;
 $test$;
 
 SELECT 'issue_1810_guest_roster_export_filter_compat: PASS' AS result;
-
