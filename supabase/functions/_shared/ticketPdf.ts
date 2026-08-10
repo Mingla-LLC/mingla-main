@@ -448,3 +448,182 @@ export async function buildRsvpPassPdf(
     byteLength: bytes.byteLength,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Issue #1789 (#1767 Phase 1) — VENUE QR SHEET (SPEC #1788 P-27, DESIGN D-5).
+//
+// One A4 card per orderable spot: venue name, spot label, the QR, and the
+// Mingla seal. Bulk (every active spot) and single-spot re-print use the SAME
+// builder — a re-print is just a one-element array, so a re-printed card can
+// never drift from the sheet it came off.
+//
+// It lives in THIS file because pdf-lib may be imported from nowhere else under
+// supabase/functions/ (I-PROPOSED-AL TICKET_PDF_SINGLE_SOURCE_OF_TRUTH, gated by
+// .github/scripts/strict-grep/i-ticket-pdf-single-renderer.mjs). It reuses
+// qrPayloadAsPngBytes, truncate (which sanitises for WinAnsi so a render can
+// never hard-fail), bytesToBase64 and the shared brand band.
+//
+// The QR is drawn at near-black on solid white and is never tinted: that is a
+// scanner-hardware requirement, not a style choice
+// (mingla-business/src/components/event/GateQr.web.tsx:7-9).
+// ---------------------------------------------------------------------------
+export interface VenueQrSpotCard {
+  /** The venue whose name is printed on the card (the spot's physical home). */
+  venueName: string;
+  /** "Table 12", "Room 204", "Roof Bar" — re-pointable; never the identity. */
+  spotLabel: string;
+  /** Human hint under the label, e.g. "Serving: Brasserie · In-room dining". */
+  servingLine: string | null;
+  /** The canonical scan URL (SPEC P-10). Encoded verbatim into the QR. */
+  url: string;
+}
+
+export interface VenueQrSheetPdfInput {
+  brandName: string;
+  spots: VenueQrSpotCard[];
+  /** Optional Mingla wordmark PNG URL; falls back to the text wordmark. */
+  logoUrl?: string;
+}
+
+export async function buildVenueQrSheetPdf(
+  input: VenueQrSheetPdfInput,
+): Promise<TicketPdfResult> {
+  if (!input.spots || input.spots.length === 0) {
+    throw new Error("venue_qr_sheet_no_spots");
+  }
+
+  const pdf = await PDFDocument.create();
+  const fontRegular = await pdf.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const fontItalic = await pdf.embedFont(StandardFonts.HelveticaOblique);
+
+  // Same fetch-with-silent-fallback posture as the ticket + RSVP renderers: a
+  // logo failure must never cost a venue their printable sheet.
+  let logoImage: Awaited<ReturnType<typeof pdf.embedPng>> | null = null;
+  if (input.logoUrl) {
+    try {
+      const res = await fetch(input.logoUrl);
+      if (res.ok) {
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        logoImage = await pdf.embedPng(bytes);
+      }
+    } catch (_err) {
+      logoImage = null;
+    }
+  }
+
+  for (const spot of input.spots) {
+    const page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+
+    if (logoImage) {
+      const scaled = logoImage.scaleToFit(140, 56);
+      page.drawImage(logoImage, {
+        x: 32,
+        y: PAGE_HEIGHT - 24 - scaled.height,
+        width: scaled.width,
+        height: scaled.height,
+      });
+    } else {
+      page.drawText("Mingla", {
+        x: 32,
+        y: PAGE_HEIGHT - 56,
+        size: 28,
+        font: fontBold,
+        color: rgb(BRAND_ORANGE_R, BRAND_ORANGE_G, BRAND_ORANGE_B),
+      });
+    }
+    page.drawText("ORDER HERE", {
+      x: PAGE_WIDTH - 140,
+      y: PAGE_HEIGHT - 46,
+      size: 11,
+      font: fontBold,
+      color: rgb(BRAND_ORANGE_R, BRAND_ORANGE_G, BRAND_ORANGE_B),
+    });
+    page.drawRectangle({
+      x: 0,
+      y: PAGE_HEIGHT - 92,
+      width: PAGE_WIDTH,
+      height: 4,
+      color: rgb(BRAND_ORANGE_R, BRAND_ORANGE_G, BRAND_ORANGE_B),
+    });
+
+    // The spot IS the headline — a member of staff reading a stack of these
+    // needs to see "Table 12" from across the room.
+    let cursorY = PAGE_HEIGHT - 150;
+    page.drawText(truncate(spot.spotLabel, 28), {
+      x: 32,
+      y: cursorY,
+      size: 34,
+      font: fontBold,
+      color: rgb(0.06, 0.07, 0.09),
+    });
+    cursorY -= 30;
+    page.drawText(truncate(spot.venueName, 60), {
+      x: 32,
+      y: cursorY,
+      size: 14,
+      font: fontRegular,
+      color: rgb(0.36, 0.38, 0.45),
+    });
+    if (spot.servingLine) {
+      cursorY -= 20;
+      page.drawText(truncate(spot.servingLine, 70), {
+        x: 32,
+        y: cursorY,
+        size: 12,
+        font: fontRegular,
+        color: rgb(0.36, 0.38, 0.45),
+      });
+    }
+
+    // QR block — near-black on solid white, centred, generous quiet zone.
+    const qrBytes = await qrPayloadAsPngBytes(spot.url);
+    const qrImage = await pdf.embedPng(qrBytes);
+    const qrSize = 300;
+    const qrX = (PAGE_WIDTH - qrSize) / 2;
+    const qrY = 230;
+    page.drawRectangle({
+      x: qrX - 16,
+      y: qrY - 16,
+      width: qrSize + 32,
+      height: qrSize + 32,
+      color: rgb(1, 1, 1),
+    });
+    page.drawImage(qrImage, { x: qrX, y: qrY, width: qrSize, height: qrSize });
+
+    page.drawText("Scan to see the menu and order", {
+      x: 32,
+      y: 180,
+      size: 15,
+      font: fontBold,
+      color: rgb(0.06, 0.07, 0.09),
+    });
+    page.drawText(`Hosted by ${truncate(input.brandName, 60)}`, {
+      x: 32,
+      y: 156,
+      size: 11,
+      font: fontItalic,
+      color: rgb(0.36, 0.38, 0.45),
+    });
+    page.drawText("support@usemingla.com", {
+      x: 32,
+      y: 100,
+      size: 10,
+      font: fontRegular,
+      color: rgb(BRAND_ORANGE_R, BRAND_ORANGE_G, BRAND_ORANGE_B),
+    });
+  }
+
+  const bytes = await pdf.save();
+  if (bytes.byteLength > SIZE_CAP_BYTES) {
+    throw new Error("venue_qr_sheet_size_exceeded");
+  }
+  return {
+    filename: input.spots.length === 1
+      ? "mingla-qr-spot.pdf"
+      : "mingla-qr-spots.pdf",
+    contentBase64: bytesToBase64(bytes),
+    pageCount: input.spots.length,
+    byteLength: bytes.byteLength,
+  };
+}

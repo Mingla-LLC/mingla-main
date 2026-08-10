@@ -14,7 +14,8 @@
 # INVESTIGATION_ORCH-1392 bucket (definer_privilege_gate_inventory.csv). Format:
 # `proname(identity_args)` exactly as pg_get_function_identity_arguments renders.
 #
-# Signature count: 189 (intended-public 21, internally-gated 109, predicate/read-helper 56, PostGIS 3).
+# Signature count: 191 (intended-public 23, internally-gated 109, predicate/read-helper 56, PostGIS 3).
+# (#1789 added pg_public_qr_spot_resolve + pg_public_menu_modifiers to intended-public.)
 
 # === INTENDED-PUBLIC READS (power anonymous public pages / checkout / signup) — INVESTIGATION F-8 / SPEC §4.4 ===
 biz_ticket_checkout_create_session(p_event_id uuid, p_buyer_user_id uuid, p_buyer_name text, p_buyer_email text, p_buyer_phone_e164 text, p_marketing_opt_in boolean, p_lines jsonb, p_idempotency_key text, p_expires_at timestamp with time zone, p_application_fee_amount_cents integer, p_payment_plan_choice text)
@@ -34,6 +35,10 @@ pg_public_social_proof(p_event_id uuid)
 pg_public_stay_details(p_venue_id uuid)
 # #1423: gated Stay discovery returns only verified live Room inventory, fails closed when STAY_PUBLIC_PAGES is disabled, and exposes no private guest or owner data.
 pg_public_stays_discover(p_destination_query text, p_check_in date, p_check_out date, p_adults integer, p_children integer, p_rooms integer, p_property_kinds text[], p_amenities text[], p_confirmation_mode text, p_limit integer, p_offset integer)
+# #1789 (#1767 Phase 1): the ONE guest-facing read of a printed QR spot code. Returns only spot_label/kind/brand_slug/venue_slug/serving_menu_id/ordering_enabled — no enumerable id — and NULL for anything unknown, inactive, unverified, paused or ordering-disabled (fail-closed; qr_spots itself has no anon policy).
+pg_public_qr_spot_resolve(p_code text)
+# #1789 (#1767 Phase 1): option groups for a batch of PUBLIC menu items, verified-venue gated exactly like public_menus_view. Kept out of the view so the hot public menu read never grows a row-multiplying join. Exposes no cost_cents / prep_station.
+pg_public_menu_modifiers(p_menu_item_ids uuid[])
 pg_public_ticket_types_remaining(p_event_id uuid)
 pg_public_trip_by_slug(p_brand_slug text, p_event_slug text)
 pg_public_trips_by_brand(p_brand_slug text)

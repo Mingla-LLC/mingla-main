@@ -660,3 +660,11 @@ verify_jwt = false
 
 [functions.attendance-claim-backfill]
 verify_jwt = false
+
+# Issue #1789 (#1767 Phase 1) — venue QR print sheet (SPEC #1788 P-27). The
+# gateway is open so the 401 body is ours, but the function REQUIRES a Bearer
+# in-code (userIdFromAuthHeader) and gates on rank >= event_manager for the
+# brand before it reads a single spot code. Renders on the shipped ticket-PDF
+# rail into the private `venue-qr-sheets` bucket and returns a 60s signed URL.
+[functions.venue-qr-sheet]
+verify_jwt = false
