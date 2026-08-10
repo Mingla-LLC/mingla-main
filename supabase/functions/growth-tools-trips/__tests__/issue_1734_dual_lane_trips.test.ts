@@ -7,21 +7,26 @@
 // Run: deno test --allow-read --allow-env --allow-net \
 //   supabase/functions/growth-tools-trips/__tests__/issue_1734_dual_lane_trips.test.ts
 
-import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   BRAND_A,
   installStub,
   post,
   TOKEN_A,
-  tripsInput,
   TRIPS_SYNTH_PAYLOAD,
+  tripsInput,
   twoBrandWorld,
   USER_A,
   VENUE_A,
 } from "../../growth-tools-run/__tests__/harness_1734.ts";
 import { handler } from "../index.ts";
 
-function appRun(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function appRun(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     action: "run",
     lane: "app",
@@ -71,7 +76,10 @@ Deno.test("trips accept NO subject in v1 (design r26) → 400; forged JWT → 40
     const forged = await post(handler, appRun(), "forged");
     assertEquals(forged.status, 401);
     assertEquals(stub.state.toolLeads.length, 0);
-    assertEquals(stub.state.geminiCalls.structured + stub.state.geminiCalls.grounded, 0);
+    assertEquals(
+      stub.state.geminiCalls.structured + stub.state.geminiCalls.grounded,
+      0,
+    );
   } finally {
     stub.restore();
   }
@@ -91,7 +99,11 @@ Deno.test("trips quota — cap 15: the 16th distinct run → 429 scope:brand", a
     ip_hash: null,
     created_at: new Date(Date.now() - i * 1000).toISOString(),
   }));
-  const stub = installStub({ ...twoBrandWorld(), toolLeads: seeded, gemini: GEMINI_OK });
+  const stub = installStub({
+    ...twoBrandWorld(),
+    toolLeads: seeded,
+    gemini: GEMINI_OK,
+  });
   try {
     const r = await post(handler, appRun(), TOKEN_A);
     assertEquals(r.status, 429);
@@ -122,12 +134,17 @@ Deno.test("trips cache — identical input → cached:true, same run_id, no new 
 Deno.test("trips web lane byte-stable — pid/utm persisted, lane='web'", async () => {
   const stub = installStub({ ...twoBrandWorld(), gemini: GEMINI_OK });
   try {
-    const r = await post(handler, {
-      action: "run",
-      input: tripsInput(),
-      pid: "tool_trips",
-      utm: { source: "ig" },
-    }, undefined, { "x-forwarded-for": "4.4.4.4" });
+    const r = await post(
+      handler,
+      {
+        action: "run",
+        input: tripsInput(),
+        pid: "tool_trips",
+        utm: { source: "ig" },
+      },
+      undefined,
+      { "x-forwarded-for": "4.4.4.4" },
+    );
     assertEquals(r.status, 200);
     const row = stub.state.toolLeads[0];
     assertEquals(row.lane, "web");
@@ -149,7 +166,10 @@ Deno.test("trips T-B1 wiring — aborted passes → 502 reason:timeout, row fail
     assertEquals(r.status, 502);
     assertEquals(r.body.error, "generation_failed");
     assertEquals(r.body.reason, "timeout");
-    assertEquals(stub.state.statusLog[stub.state.toolLeads[0].id], ["created", "failed"]);
+    assertEquals(stub.state.statusLog[stub.state.toolLeads[0].id], [
+      "created",
+      "failed",
+    ]);
   } finally {
     stub.restore();
   }

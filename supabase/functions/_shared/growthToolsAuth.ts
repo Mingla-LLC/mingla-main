@@ -144,12 +144,18 @@ export function canonicalJson(value: unknown): string {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
-    return "[" + value.map((v) => canonicalJson(v === undefined ? null : v)).join(",") + "]";
+    return "[" + value.map((v) =>
+      canonicalJson(v === undefined ? null : v)
+    ).join(",") + "]";
   }
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record).sort();
   return "{" +
-    keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(record[k] === undefined ? null : record[k])}`)
+    keys.map((k) =>
+      `${JSON.stringify(k)}:${
+        canonicalJson(record[k] === undefined ? null : record[k])
+      }`
+    )
       .join(",") +
     "}";
 }
@@ -159,7 +165,9 @@ export async function computeInputHash(
   tool: string,
   normalizedInput: unknown,
 ): Promise<string> {
-  const data = new TextEncoder().encode(`${tool}\n${canonicalJson(normalizedInput)}`);
+  const data = new TextEncoder().encode(
+    `${tool}\n${canonicalJson(normalizedInput)}`,
+  );
   const digest = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -199,7 +207,9 @@ export function appLaneCapForTool(tool: string): number {
   if (raw.trim().length === 0) return fallback;
   try {
     const parsed = JSON.parse(raw);
-    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    if (
+      parsed === null || typeof parsed !== "object" || Array.isArray(parsed)
+    ) {
       throw new Error("not an object");
     }
     const key = ENV_KEY_BY_TOOL[tool] ?? tool;
@@ -249,7 +259,11 @@ export async function checkAppLaneQuota(
   if (error) {
     console.error(
       "[growth-tools] app-quota-count-failed",
-      JSON.stringify({ tool, brand_id: brandId, message: error.message ?? String(error) }),
+      JSON.stringify({
+        tool,
+        brand_id: brandId,
+        message: error.message ?? String(error),
+      }),
     );
     return { limited: false, failedOpen: true };
   }
@@ -308,7 +322,9 @@ export async function lookupAppLaneCache(
   // query already keys on brand_id, but a future query edit must not be able
   // to silently widen this. Never serve another brand's row.
   if ((row as { brand_id?: unknown }).brand_id !== auth.brandId) {
-    console.error("[growth-tools] cache ownership assert failed — treating as miss");
+    console.error(
+      "[growth-tools] cache ownership assert failed — treating as miss",
+    );
     return null;
   }
   const report = (row as { report?: unknown }).report;
@@ -377,7 +393,10 @@ export async function resolveRunSubject(
       .eq("id", id)
       .maybeSingle();
     if (error) {
-      console.error("[growth-tools] subject venue lookup failed", error.message);
+      console.error(
+        "[growth-tools] subject venue lookup failed",
+        error.message,
+      );
       return json({ error: "server" }, 500);
     }
     if (!data || (data as { brand_id?: unknown }).brand_id !== auth.brandId) {
@@ -396,7 +415,10 @@ export async function resolveRunSubject(
     .eq("id", id)
     .maybeSingle();
   if (error) {
-    console.error("[growth-tools] subject competitor lookup failed", error.message);
+    console.error(
+      "[growth-tools] subject competitor lookup failed",
+      error.message,
+    );
     return json({ error: "server" }, 500);
   }
   if (!data || (data as { brand_id?: unknown }).brand_id !== auth.brandId) {

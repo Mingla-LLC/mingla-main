@@ -14,7 +14,10 @@
 // Run: deno test --allow-read --allow-env --allow-net \
 //   supabase/functions/growth-tools-run/__tests__/issue_1734_shared_auth_unit.test.ts
 
-import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   appLaneCapForTool,
@@ -24,11 +27,26 @@ import {
   createRunBudget,
   RUN_BUDGET_MS,
 } from "../../_shared/growthToolsAuth.ts";
-import { BRAND_A, BRAND_B, installStub, STUB_URL, TOKEN_A, USER_A } from "./harness_1734.ts";
+import {
+  BRAND_A,
+  BRAND_B,
+  installStub,
+  STUB_URL,
+  TOKEN_A,
+  USER_A,
+} from "./harness_1734.ts";
 
 Deno.test("canonicalJson — key order never changes the string; nesting + arrays stable", () => {
-  const a = canonicalJson({ b: 2, a: 1, c: { z: [3, { y: 1, x: 2 }], w: null } });
-  const b = canonicalJson({ c: { w: null, z: [3, { x: 2, y: 1 }] }, a: 1, b: 2 });
+  const a = canonicalJson({
+    b: 2,
+    a: 1,
+    c: { z: [3, { y: 1, x: 2 }], w: null },
+  });
+  const b = canonicalJson({
+    c: { w: null, z: [3, { x: 2, y: 1 }] },
+    a: 1,
+    b: 2,
+  });
   assertEquals(a, b);
   assertEquals(canonicalJson({ k: undefined }), '{"k":null}');
   assertEquals(canonicalJson("x"), '"x"');
@@ -37,7 +55,11 @@ Deno.test("canonicalJson — key order never changes the string; nesting + array
 Deno.test("computeInputHash — stable per input, scoped per tool (P-22)", async () => {
   const input = { name: "A", city: "B", website: "https://a.b" };
   const h1 = await computeInputHash("venues", input);
-  const h2 = await computeInputHash("venues", { website: "https://a.b", city: "B", name: "A" });
+  const h2 = await computeInputHash("venues", {
+    website: "https://a.b",
+    city: "B",
+    name: "A",
+  });
   assertEquals(h1, h2, "property order never changes the hash");
   assertEquals(h1.length, 64);
   const other = await computeInputHash("events", input);
@@ -55,9 +77,17 @@ Deno.test("appLaneCapForTool — defaults 10/25/15/15; ONE packed env overrides;
     Deno.env.set("GROWTH_TOOLS_APP_LIMITS_JSON", '{"venues":3,"pricing":7}');
     assertEquals(appLaneCapForTool("venues"), 3);
     assertEquals(appLaneCapForTool("experiences"), 7);
-    assertEquals(appLaneCapForTool("events"), 25, "unlisted tools keep defaults");
+    assertEquals(
+      appLaneCapForTool("events"),
+      25,
+      "unlisted tools keep defaults",
+    );
     Deno.env.set("GROWTH_TOOLS_APP_LIMITS_JSON", "not-json{{");
-    assertEquals(appLaneCapForTool("venues"), 10, "malformed → defaults (+ console.error)");
+    assertEquals(
+      appLaneCapForTool("venues"),
+      10,
+      "malformed → defaults (+ console.error)",
+    );
   } finally {
     Deno.env.delete("GROWTH_TOOLS_APP_LIMITS_JSON");
   }
@@ -104,23 +134,37 @@ Deno.test("authenticateAppLane — the P-3 chain: 401/400/403/500-fail-closed/OK
   try {
     const supabase = serviceClient();
     // 1. No Bearer → 401.
-    const noBearer = await authenticateAppLane(req(), { brand_id: BRAND_A }, supabase);
+    const noBearer = await authenticateAppLane(
+      req(),
+      { brand_id: BRAND_A },
+      supabase,
+    );
     assert(noBearer instanceof Response);
     assertEquals(noBearer.status, 401);
     // 2. Forged token → 401 (never downgraded, P-4).
-    const forged = await authenticateAppLane(req("garbage"), { brand_id: BRAND_A }, supabase);
+    const forged = await authenticateAppLane(req("garbage"), {
+      brand_id: BRAND_A,
+    }, supabase);
     assert(forged instanceof Response);
     assertEquals(forged.status, 401);
     // 3. Bad brand_id → 400.
-    const badBrand = await authenticateAppLane(req(TOKEN_A), { brand_id: "nope" }, supabase);
+    const badBrand = await authenticateAppLane(req(TOKEN_A), {
+      brand_id: "nope",
+    }, supabase);
     assert(badBrand instanceof Response);
     assertEquals(badBrand.status, 400);
     // 4. Non-member → 403.
-    const nonMember = await authenticateAppLane(req(TOKEN_A), { brand_id: BRAND_B }, supabase);
+    const nonMember = await authenticateAppLane(req(TOKEN_A), {
+      brand_id: BRAND_B,
+    }, supabase);
     assert(nonMember instanceof Response);
     assertEquals(nonMember.status, 403);
     // Happy: verified ids.
-    const ok = await authenticateAppLane(req(TOKEN_A), { brand_id: BRAND_A }, supabase);
+    const ok = await authenticateAppLane(
+      req(TOKEN_A),
+      { brand_id: BRAND_A },
+      supabase,
+    );
     assert(!(ok instanceof Response));
     assertEquals(ok.userId, USER_A);
     assertEquals(ok.brandId, BRAND_A);

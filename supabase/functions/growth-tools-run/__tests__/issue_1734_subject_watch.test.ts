@@ -29,7 +29,10 @@
 // Run: deno test --allow-read --allow-env --allow-net \
 //   supabase/functions/growth-tools-run/__tests__/issue_1734_subject_watch.test.ts
 
-import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   BRAND_A,
   BRAND_B,
@@ -47,7 +50,9 @@ import { handler } from "../index.ts";
 
 const COMPETITOR_SITE = "https://rival-venue.example";
 
-function appRun(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function appRun(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     action: "run",
     lane: "app",
@@ -63,7 +68,11 @@ Deno.test("T-SR1 — venue-subject run stamps server-composed subject_ref 'venue
     gemini: { structuredPayload: VENUES_PASS1_PAYLOAD },
   });
   try {
-    const r = await post(handler, appRun({ subject: { type: "venue", id: VENUE_A } }), TOKEN_A);
+    const r = await post(
+      handler,
+      appRun({ subject: { type: "venue", id: VENUE_A } }),
+      TOKEN_A,
+    );
     assertEquals(r.status, 200);
     assertEquals(stub.state.toolLeads.length, 1);
     assertEquals(stub.state.toolLeads[0].subject_ref, `venue:${VENUE_A}`);
@@ -99,11 +108,17 @@ Deno.test("T-SR2 — foreign subjects → 403 + no row; raw subject_ref string i
     // Brand-B competitor id → 403, no row.
     const foreignComp = await post(
       handler,
-      appRun({ subject: { type: "competitor", id: stub.state.toolCompetitors[0].id } }),
+      appRun({
+        subject: { type: "competitor", id: stub.state.toolCompetitors[0].id },
+      }),
       TOKEN_A,
     );
     assertEquals(foreignComp.status, 403);
-    assertEquals(stub.state.toolLeads.length, 0, "no row on any subject rejection");
+    assertEquals(
+      stub.state.toolLeads.length,
+      0,
+      "no row on any subject rejection",
+    );
 
     // A raw client-sent subject_ref STRING is ignored — server-derived only.
     const rawString = await post(
@@ -141,15 +156,27 @@ Deno.test("T-SR5 — cache subject isolation: identical input under different su
   });
   try {
     // Run 1: venue:A subject.
-    const first = await post(handler, appRun({ subject: { type: "venue", id: VENUE_A } }), TOKEN_A);
+    const first = await post(
+      handler,
+      appRun({ subject: { type: "venue", id: VENUE_A } }),
+      TOKEN_A,
+    );
     assertEquals(first.status, 200);
     // Run 2: SAME input, NO subject → must MISS (fresh row).
     const second = await post(handler, appRun(), TOKEN_A);
     assertEquals(second.status, 200);
-    assertEquals(second.body.cached ?? false, false, "subjectless run never serves a subject row");
+    assertEquals(
+      second.body.cached ?? false,
+      false,
+      "subjectless run never serves a subject row",
+    );
     assertEquals(stub.state.toolLeads.length, 2);
     // Run 3: SAME input, venue:A again → HIT on run 1.
-    const third = await post(handler, appRun({ subject: { type: "venue", id: VENUE_A } }), TOKEN_A);
+    const third = await post(
+      handler,
+      appRun({ subject: { type: "venue", id: VENUE_A } }),
+      TOKEN_A,
+    );
     assertEquals(third.status, 200);
     assertEquals(third.body.cached, true);
     assertEquals(third.body.run_id, first.body.run_id);
@@ -171,11 +198,19 @@ Deno.test("T-CW1 + T-CW5 — watch lifecycle: add → list → grade (input FROM
       lane: "app",
       brand_id: BRAND_A,
       venue_listing_id: VENUE_A,
-      competitor: { name: "Rival Venue", city: "Test City", website: COMPETITOR_SITE },
+      competitor: {
+        name: "Rival Venue",
+        city: "Test City",
+        website: COMPETITOR_SITE,
+      },
     }, TOKEN_A);
     assertEquals(add.status, 200);
     const compId = add.body.competitor.id as string;
-    assertEquals(stub.state.toolCompetitors[0].created_by, USER_A, "created_by = verified userId");
+    assertEquals(
+      stub.state.toolCompetitors[0].created_by,
+      USER_A,
+      "created_by = verified userId",
+    );
 
     // list → latest null
     const list1 = await post(handler, {
@@ -198,8 +233,16 @@ Deno.test("T-CW1 + T-CW5 — watch lifecycle: add → list → grade (input FROM
     assertEquals(grade.status, 200);
     const gradedRow = stub.state.toolLeads[stub.state.toolLeads.length - 1];
     assertEquals(gradedRow.subject_ref, `competitor:${compId}`);
-    assertEquals(gradedRow.input.name, "Rival Venue", "engine input taken from the watch row");
-    assertEquals(gradedRow.input.website, `${COMPETITOR_SITE}/`, "watch-row website (normalized)");
+    assertEquals(
+      gradedRow.input.name,
+      "Rival Venue",
+      "engine input taken from the watch row",
+    );
+    assertEquals(
+      gradedRow.input.website,
+      `${COMPETITOR_SITE}/`,
+      "watch-row website (normalized)",
+    );
 
     // list → latest carries grade/overall/schema_version (plucked, not the full report)
     const list2 = await post(handler, {
@@ -214,7 +257,11 @@ Deno.test("T-CW1 + T-CW5 — watch lifecycle: add → list → grade (input FROM
     assertEquals(latest.grade, "B");
     assertEquals(latest.overall, 72);
     assertEquals(latest.schema_version, 1);
-    assertEquals("fixes" in latest, false, "the full report is never bulk-shipped in a list");
+    assertEquals(
+      "fixes" in latest,
+      false,
+      "the full report is never bulk-shipped in a list",
+    );
 
     // identical re-check within 24h → cached, no new row (quota untouched)
     const recheck = await post(handler, {
@@ -244,7 +291,11 @@ Deno.test("T-CW1 + T-CW5 — watch lifecycle: add → list → grade (input FROM
       venue_listing_id: VENUE_A,
     }, TOKEN_A);
     assertEquals(list3.body.competitors.length, 0);
-    assertEquals(stub.state.toolLeads.length, rowsBefore, "run history is NEVER deleted");
+    assertEquals(
+      stub.state.toolLeads.length,
+      rowsBefore,
+      "run history is NEVER deleted",
+    );
   } finally {
     stub.restore();
   }
@@ -273,13 +324,21 @@ Deno.test("T-CW3 — cross-brand watch CRUD → 403×3; web-lane watch_add → e
       brand_id: BRAND_A,
       venue_listing_id: VENUE_B,
     }, TOKEN_A);
-    assertEquals(list.status, 403, "brand-A member cannot list brand-B's venue watch");
+    assertEquals(
+      list.status,
+      403,
+      "brand-A member cannot list brand-B's venue watch",
+    );
     const add = await post(handler, {
       action: "watch_add",
       lane: "app",
       brand_id: BRAND_A,
       venue_listing_id: VENUE_B,
-      competitor: { name: "X", city: "Test City", website: "https://x.example" },
+      competitor: {
+        name: "X",
+        city: "Test City",
+        website: "https://x.example",
+      },
     }, TOKEN_A);
     assertEquals(add.status, 403);
     const remove = await post(handler, {
@@ -288,8 +347,16 @@ Deno.test("T-CW3 — cross-brand watch CRUD → 403×3; web-lane watch_add → e
       brand_id: BRAND_A,
       id: foreignCompId,
     }, TOKEN_A);
-    assertEquals(remove.status, 403, "ownership on the remove success path too (P-5)");
-    assertEquals(stub.state.toolCompetitors.length, 1, "brand-B's row untouched");
+    assertEquals(
+      remove.status,
+      403,
+      "ownership on the remove success path too (P-5)",
+    );
+    assertEquals(
+      stub.state.toolCompetitors.length,
+      1,
+      "brand-B's row untouched",
+    );
 
     // Web lane: the action name is unknown → the byte-stable 400 contract.
     const web = await post(handler, {
@@ -316,7 +383,10 @@ Deno.test("T-CW4 — dedup 409 duplicate_competitor; cap 409 watch_limit on the 
     created_by: USER_A,
     created_at: new Date().toISOString(),
   }));
-  const stub = installStub({ ...twoBrandWorld(), toolCompetitors: five.slice(0, 1) });
+  const stub = installStub({
+    ...twoBrandWorld(),
+    toolCompetitors: five.slice(0, 1),
+  });
   try {
     // Same website twice on one venue → 409 duplicate_competitor.
     const dup = await post(handler, {
@@ -324,7 +394,11 @@ Deno.test("T-CW4 — dedup 409 duplicate_competitor; cap 409 watch_limit on the 
       lane: "app",
       brand_id: BRAND_A,
       venue_listing_id: VENUE_A,
-      competitor: { name: "Rival Again", city: "Test City", website: "https://RIVAL-0.example " },
+      competitor: {
+        name: "Rival Again",
+        city: "Test City",
+        website: "https://RIVAL-0.example ",
+      },
     }, TOKEN_A);
     assertEquals(dup.status, 409);
     assertEquals(dup.body.error, "duplicate_competitor");
@@ -338,7 +412,11 @@ Deno.test("T-CW4 — dedup 409 duplicate_competitor; cap 409 watch_limit on the 
       lane: "app",
       brand_id: BRAND_A,
       venue_listing_id: VENUE_A,
-      competitor: { name: "One Too Many", city: "Test City", website: "https://sixth.example" },
+      competitor: {
+        name: "One Too Many",
+        city: "Test City",
+        website: "https://sixth.example",
+      },
     }, TOKEN_A);
     assertEquals(sixth.status, 409);
     assertEquals(sixth.body.error, "watch_limit");

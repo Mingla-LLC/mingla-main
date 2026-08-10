@@ -14,7 +14,10 @@
 // Run: deno test --allow-read --allow-env --allow-net \
 //   supabase/functions/growth-tools-gate/__tests__/issue_1734_gate_lane_predicate.test.ts
 
-import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   BRAND_A,
   installStub,
@@ -69,17 +72,33 @@ function seedRows() {
 Deno.test("T-W3 — gate on an app row → 404, ZERO Resend calls, row byte-unchanged", async () => {
   const stub = installStub({ toolLeads: seedRows() });
   try {
-    const before = JSON.stringify(stub.state.toolLeads.find((r) => r.id === APP_ROW_ID));
+    const before = JSON.stringify(
+      stub.state.toolLeads.find((r) => r.id === APP_ROW_ID),
+    );
     const r = await post(handler, {
       run_id: APP_ROW_ID,
       email: "attacker@example.com",
       origin: "https://usemingla.com",
     });
-    assertEquals(r.status, 404, "P-30: the lane='web' predicate refuses app rows");
+    assertEquals(
+      r.status,
+      404,
+      "P-30: the lane='web' predicate refuses app rows",
+    );
     assertEquals(r.body.error, "not_found");
-    assertEquals(stub.state.resendSends.length, 0, "no visitor email, no founder notify");
-    const after = JSON.stringify(stub.state.toolLeads.find((row) => row.id === APP_ROW_ID));
-    assertEquals(after, before, "no email captured, no token minted, no status move");
+    assertEquals(
+      stub.state.resendSends.length,
+      0,
+      "no visitor email, no founder notify",
+    );
+    const after = JSON.stringify(
+      stub.state.toolLeads.find((row) => row.id === APP_ROW_ID),
+    );
+    assertEquals(
+      after,
+      before,
+      "no email captured, no token minted, no status move",
+    );
   } finally {
     stub.restore();
   }
@@ -97,8 +116,14 @@ Deno.test("T-W3 control — a web row still gates exactly as before (200 + token
     assertEquals(r.body.ok, true);
     const row = stub.state.toolLeads.find((x) => x.id === WEB_ROW_ID)!;
     assertEquals(row.email, "lead@example.com");
-    assert(typeof row.report_token === "string" && row.report_token.length >= 32);
-    assertEquals(stub.state.statusLog[WEB_ROW_ID], ["report_ready", "gated_email", "emailed"]);
+    assert(
+      typeof row.report_token === "string" && row.report_token.length >= 32,
+    );
+    assertEquals(stub.state.statusLog[WEB_ROW_ID], [
+      "report_ready",
+      "gated_email",
+      "emailed",
+    ]);
     const visitor = stub.state.resendSends.filter((s) =>
       Array.isArray(s.to) && s.to[0] === "lead@example.com"
     );

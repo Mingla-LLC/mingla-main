@@ -8,7 +8,10 @@
 // Run: deno test --allow-read --allow-env --allow-net \
 //   supabase/functions/growth-tools-pricing/__tests__/issue_1734_dual_lane_pricing.test.ts
 
-import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   BRAND_A,
   installStub,
@@ -23,7 +26,9 @@ import {
 } from "../../growth-tools-run/__tests__/harness_1734.ts";
 import { handler } from "../index.ts";
 
-function appRun(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function appRun(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     action: "run",
     lane: "app",
@@ -42,7 +47,11 @@ const GEMINI_OK = {
 Deno.test("pricing app happy path — identity row + schema_version; venue subject stamped", async () => {
   const stub = installStub({ ...twoBrandWorld(), gemini: GEMINI_OK });
   try {
-    const r = await post(handler, appRun({ subject: { type: "venue", id: VENUE_A } }), TOKEN_A);
+    const r = await post(
+      handler,
+      appRun({ subject: { type: "venue", id: VENUE_A } }),
+      TOKEN_A,
+    );
     assertEquals(r.status, 200);
     assert(typeof r.body.run_id === "string");
     assertEquals(r.body.report.meta.schema_version, 1);
@@ -51,7 +60,11 @@ Deno.test("pricing app happy path — identity row + schema_version; venue subje
     assertEquals(row.lane, "app");
     assertEquals(row.user_id, USER_A);
     assertEquals(row.brand_id, BRAND_A);
-    assertEquals(row.subject_ref, `venue:${VENUE_A}`, "P-40: venue subject accepted on 'experiences'");
+    assertEquals(
+      row.subject_ref,
+      `venue:${VENUE_A}`,
+      "P-40: venue subject accepted on 'experiences'",
+    );
     assertEquals(row.pid, null);
     assertEquals(row.utm, null);
     assertEquals(row.ip_hash, null);
@@ -64,14 +77,26 @@ Deno.test("pricing app happy path — identity row + schema_version; venue subje
 Deno.test("pricing subject rules — foreign venue → 403 no row; competitor subject → 400 (venues-only)", async () => {
   const stub = installStub({ ...twoBrandWorld(), gemini: GEMINI_OK });
   try {
-    const foreign = await post(handler, appRun({ subject: { type: "venue", id: VENUE_B } }), TOKEN_A);
-    assertEquals(foreign.status, 403, "brand-B's venue id must not stamp brand-A history");
+    const foreign = await post(
+      handler,
+      appRun({ subject: { type: "venue", id: VENUE_B } }),
+      TOKEN_A,
+    );
+    assertEquals(
+      foreign.status,
+      403,
+      "brand-B's venue id must not stamp brand-A history",
+    );
     const competitor = await post(
       handler,
       appRun({ subject: { type: "competitor", id: VENUE_A } }),
       TOKEN_A,
     );
-    assertEquals(competitor.status, 400, "competitor subjects are venues-tool-only (P-40)");
+    assertEquals(
+      competitor.status,
+      400,
+      "competitor subjects are venues-tool-only (P-40)",
+    );
     assertEquals(stub.state.toolLeads.length, 0);
   } finally {
     stub.restore();
@@ -92,7 +117,11 @@ Deno.test("pricing quota — cap 15 ('pricing' env key): the 16th distinct run �
     ip_hash: null,
     created_at: new Date(Date.now() - i * 1000).toISOString(),
   }));
-  const stub = installStub({ ...twoBrandWorld(), toolLeads: seeded, gemini: GEMINI_OK });
+  const stub = installStub({
+    ...twoBrandWorld(),
+    toolLeads: seeded,
+    gemini: GEMINI_OK,
+  });
   try {
     const r = await post(handler, appRun(), TOKEN_A);
     assertEquals(r.status, 429);
@@ -106,12 +135,24 @@ Deno.test("pricing quota — cap 15 ('pricing' env key): the 16th distinct run �
 Deno.test("pricing cache — subject-aware: same input under venue:A vs subjectless never cross-serves", async () => {
   const stub = installStub({ ...twoBrandWorld(), gemini: GEMINI_OK });
   try {
-    const first = await post(handler, appRun({ subject: { type: "venue", id: VENUE_A } }), TOKEN_A);
+    const first = await post(
+      handler,
+      appRun({ subject: { type: "venue", id: VENUE_A } }),
+      TOKEN_A,
+    );
     assertEquals(first.status, 200);
     const subjectless = await post(handler, appRun(), TOKEN_A);
     assertEquals(subjectless.status, 200);
-    assertEquals(subjectless.body.cached ?? false, false, "no cross-subject serve (P-42)");
-    const recheck = await post(handler, appRun({ subject: { type: "venue", id: VENUE_A } }), TOKEN_A);
+    assertEquals(
+      subjectless.body.cached ?? false,
+      false,
+      "no cross-subject serve (P-42)",
+    );
+    const recheck = await post(
+      handler,
+      appRun({ subject: { type: "venue", id: VENUE_A } }),
+      TOKEN_A,
+    );
     assertEquals(recheck.status, 200);
     assertEquals(recheck.body.cached, true);
     assertEquals(recheck.body.run_id, first.body.run_id);
@@ -124,12 +165,17 @@ Deno.test("pricing cache — subject-aware: same input under venue:A vs subjectl
 Deno.test("pricing web lane byte-stable — pid/utm persisted, lane='web'", async () => {
   const stub = installStub({ ...twoBrandWorld(), gemini: GEMINI_OK });
   try {
-    const r = await post(handler, {
-      action: "run",
-      input: { ...PRICING_INPUT },
-      pid: "tool_pricing",
-      utm: { source: "ig" },
-    }, undefined, { "x-forwarded-for": "3.3.3.3" });
+    const r = await post(
+      handler,
+      {
+        action: "run",
+        input: { ...PRICING_INPUT },
+        pid: "tool_pricing",
+        utm: { source: "ig" },
+      },
+      undefined,
+      { "x-forwarded-for": "3.3.3.3" },
+    );
     assertEquals(r.status, 200);
     const row = stub.state.toolLeads[0];
     assertEquals(row.lane, "web");
@@ -151,7 +197,10 @@ Deno.test("pricing T-B1 wiring — aborted passes → 502 reason:timeout, row fa
     assertEquals(r.status, 502);
     assertEquals(r.body.error, "generation_failed");
     assertEquals(r.body.reason, "timeout");
-    assertEquals(stub.state.statusLog[stub.state.toolLeads[0].id], ["created", "failed"]);
+    assertEquals(stub.state.statusLog[stub.state.toolLeads[0].id], [
+      "created",
+      "failed",
+    ]);
   } finally {
     stub.restore();
   }

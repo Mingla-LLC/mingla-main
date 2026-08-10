@@ -72,7 +72,11 @@ export interface Stub {
   restore(): void;
 }
 
-function jsonRes(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
+function jsonRes(
+  body: unknown,
+  status = 200,
+  headers: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json", ...headers },
@@ -196,7 +200,10 @@ export function installStub(options: StubOptions = {}): Stub {
       });
     }
     if (method === "GET") {
-      const matched = applyOrderLimit(rows.filter((r) => rowMatches(r, params)), params);
+      const matched = applyOrderLimit(
+        rows.filter((r) => rowMatches(r, params)),
+        params,
+      );
       const select = params.get("select");
       return jsonRes(matched.map((r) => projectRow(r, select)));
     }
@@ -212,20 +219,29 @@ export function installStub(options: StubOptions = {}): Stub {
       if (!inserted.created_at) inserted.created_at = new Date().toISOString();
       if (table === "tool_competitors") {
         // Trigger + unique-index emulation (P-45).
-        const venue = state.venueListings.find((v) => v.id === inserted.venue_listing_id);
+        const venue = state.venueListings.find((v) =>
+          v.id === inserted.venue_listing_id
+        );
         if (!venue) return jsonRes({ message: "venue_not_found" }, 400);
         if (venue.brand_id !== inserted.brand_id) {
           return jsonRes({ message: "brand_mismatch" }, 400);
         }
-        const siblings = rows.filter((r) => r.venue_listing_id === inserted.venue_listing_id);
+        const siblings = rows.filter((r) =>
+          r.venue_listing_id === inserted.venue_listing_id
+        );
         if (siblings.length >= 5) {
           return jsonRes({ message: "competitor_watch_cap" }, 400);
         }
         const site = String(inserted.website ?? "").trim().toLowerCase();
-        if (siblings.some((r) => String(r.website ?? "").trim().toLowerCase() === site)) {
+        if (
+          siblings.some((r) =>
+            String(r.website ?? "").trim().toLowerCase() === site
+          )
+        ) {
           return jsonRes({
             code: "23505",
-            message: 'duplicate key value violates unique constraint "uq_tool_competitors_venue_site"',
+            message:
+              'duplicate key value violates unique constraint "uq_tool_competitors_venue_site"',
           }, 409);
         }
       }
@@ -246,7 +262,10 @@ export function installStub(options: StubOptions = {}): Stub {
       }
       for (const r of rows) {
         if (rowMatches(r, params)) {
-          if (table === "tool_leads" && typeof patch.status === "string" && patch.status !== r.status) {
+          if (
+            table === "tool_leads" && typeof patch.status === "string" &&
+            patch.status !== r.status
+          ) {
             (state.statusLog[r.id] ??= []).push(patch.status);
           }
           Object.assign(r, patch);
@@ -263,90 +282,116 @@ export function installStub(options: StubOptions = {}): Stub {
     return jsonRes({ message: "unsupported" }, 405);
   }
 
-  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
-    const bodyText = init?.body ? String(init.body) : "";
-    const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : {}));
-    state.requests.push({ method, url });
+  globalThis.fetch =
+    ((input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === "string"
+        ? input
+        : input instanceof URL
+        ? input.href
+        : input.url;
+      const method =
+        (init?.method ?? (input instanceof Request ? input.method : "GET"))
+          .toUpperCase();
+      const bodyText = init?.body ? String(init.body) : "";
+      const headers = new Headers(
+        init?.headers ?? (input instanceof Request ? input.headers : {}),
+      );
+      state.requests.push({ method, url });
 
-    // ── Gemini ──
-    if (url.includes("generativelanguage.googleapis.com")) {
-      const grounded = bodyText.includes('"tools"');
-      const g = options.gemini ?? {};
-      if (grounded) state.geminiCalls.grounded += 1;
-      else state.geminiCalls.structured += 1;
-      const abort = grounded ? g.abortGrounded : g.abortStructured;
-      if (abort) {
-        return Promise.reject(new DOMException("The signal has been aborted", "AbortError"));
-      }
-      const status = grounded ? (g.groundedStatus ?? 500) : (g.structuredStatus ?? 200);
-      if (status !== 200) return Promise.resolve(jsonRes({ error: "stub" }, status));
-      const payload = grounded ? g.groundedPayload : g.structuredPayload;
-      return Promise.resolve(jsonRes({
-        candidates: [{ content: { parts: [{ text: JSON.stringify(payload ?? {}) }] } }],
-      }));
-    }
-
-    // ── Resend ──
-    if (url.includes("api.resend.com")) {
-      const b = bodyText ? JSON.parse(bodyText) : {};
-      state.resendSends.push(b);
-      return Promise.resolve(jsonRes({ id: "msg" }));
-    }
-
-    // ── Open-Meteo / Pexels: scripted unavailability (best-effort paths). ──
-    if (url.includes("open-meteo.com") || url.includes("api.pexels.com")) {
-      return Promise.resolve(jsonRes({ error: "stub-down" }, 500));
-    }
-
-    // ── Supabase stack ──
-    if (url.startsWith(STUB_URL)) {
-      const u = new URL(url);
-      if (u.pathname === "/auth/v1/user") {
-        const auth = headers.get("authorization") ?? "";
-        const token = auth.replace(/^Bearer\s+/i, "");
-        const userId = (options.users ?? {})[token];
-        if (!userId) {
-          return Promise.resolve(jsonRes({ code: 401, msg: "invalid JWT" }, 401));
+      // ── Gemini ──
+      if (url.includes("generativelanguage.googleapis.com")) {
+        const grounded = bodyText.includes('"tools"');
+        const g = options.gemini ?? {};
+        if (grounded) state.geminiCalls.grounded += 1;
+        else state.geminiCalls.structured += 1;
+        const abort = grounded ? g.abortGrounded : g.abortStructured;
+        if (abort) {
+          return Promise.reject(
+            new DOMException("The signal has been aborted", "AbortError"),
+          );
         }
+        const status = grounded
+          ? (g.groundedStatus ?? 500)
+          : (g.structuredStatus ?? 200);
+        if (status !== 200) {
+          return Promise.resolve(jsonRes({ error: "stub" }, status));
+        }
+        const payload = grounded ? g.groundedPayload : g.structuredPayload;
         return Promise.resolve(jsonRes({
-          id: userId,
-          aud: "authenticated",
-          role: "authenticated",
-          email: "member@usemingla.com",
+          candidates: [{
+            content: { parts: [{ text: JSON.stringify(payload ?? {}) }] },
+          }],
         }));
       }
-      if (u.pathname.startsWith("/rest/v1/rpc/")) {
-        const fn = u.pathname.slice("/rest/v1/rpc/".length);
-        if (fn === "biz_is_brand_member_for_read") {
-          const params = bodyText ? JSON.parse(bodyText) : {};
-          const oracle = options.membership ?? (() => true);
-          const verdict = oracle(String(params.p_brand_id), String(params.p_user_id));
-          if (verdict === "error") {
-            return Promise.resolve(jsonRes({ message: "membership rpc down" }, 500));
-          }
-          return Promise.resolve(jsonRes(verdict === true));
-        }
-        return Promise.resolve(jsonRes([]));
-      }
-      if (u.pathname.startsWith("/rest/v1/")) {
-        const table = u.pathname.slice("/rest/v1/".length);
-        return Promise.resolve(handleTable(table, method, u.searchParams, bodyText));
-      }
-      return Promise.resolve(jsonRes({ message: "not_found" }, 404));
-    }
 
-    // ── Anything else = the venue's own website (site fetch). ──
-    return Promise.resolve(
-      new Response(
-        "<html><head><title>Stub Venue — great food in Test City</title>" +
-          '<meta name="description" content="A lovely test venue with a menu and prices."/></head>' +
-          "<body>Menu from $10. Call us.</body></html>",
-        { status: 200, headers: { "Content-Type": "text/html" } },
-      ),
-    );
-  }) as typeof fetch;
+      // ── Resend ──
+      if (url.includes("api.resend.com")) {
+        const b = bodyText ? JSON.parse(bodyText) : {};
+        state.resendSends.push(b);
+        return Promise.resolve(jsonRes({ id: "msg" }));
+      }
+
+      // ── Open-Meteo / Pexels: scripted unavailability (best-effort paths). ──
+      if (url.includes("open-meteo.com") || url.includes("api.pexels.com")) {
+        return Promise.resolve(jsonRes({ error: "stub-down" }, 500));
+      }
+
+      // ── Supabase stack ──
+      if (url.startsWith(STUB_URL)) {
+        const u = new URL(url);
+        if (u.pathname === "/auth/v1/user") {
+          const auth = headers.get("authorization") ?? "";
+          const token = auth.replace(/^Bearer\s+/i, "");
+          const userId = (options.users ?? {})[token];
+          if (!userId) {
+            return Promise.resolve(
+              jsonRes({ code: 401, msg: "invalid JWT" }, 401),
+            );
+          }
+          return Promise.resolve(jsonRes({
+            id: userId,
+            aud: "authenticated",
+            role: "authenticated",
+            email: "member@usemingla.com",
+          }));
+        }
+        if (u.pathname.startsWith("/rest/v1/rpc/")) {
+          const fn = u.pathname.slice("/rest/v1/rpc/".length);
+          if (fn === "biz_is_brand_member_for_read") {
+            const params = bodyText ? JSON.parse(bodyText) : {};
+            const oracle = options.membership ?? (() => true);
+            const verdict = oracle(
+              String(params.p_brand_id),
+              String(params.p_user_id),
+            );
+            if (verdict === "error") {
+              return Promise.resolve(
+                jsonRes({ message: "membership rpc down" }, 500),
+              );
+            }
+            return Promise.resolve(jsonRes(verdict === true));
+          }
+          return Promise.resolve(jsonRes([]));
+        }
+        if (u.pathname.startsWith("/rest/v1/")) {
+          const table = u.pathname.slice("/rest/v1/".length);
+          return Promise.resolve(
+            handleTable(table, method, u.searchParams, bodyText),
+          );
+        }
+        return Promise.resolve(jsonRes({ message: "not_found" }, 404));
+      }
+
+      // ── Anything else = the venue's own website (site fetch). ──
+      return Promise.resolve(
+        new Response(
+          "<html><head><title>Stub Venue — great food in Test City</title>" +
+            '<meta name="description" content="A lovely test venue with a menu and prices."/></head>' +
+            "<body>Menu from $10. Call us.</body></html>",
+          { status: 200, headers: { "Content-Type": "text/html" } },
+        ),
+      );
+    }) as typeof fetch;
 
   return {
     state,
@@ -359,7 +404,11 @@ export function installStub(options: StubOptions = {}): Stub {
 
 // ── canned Gemini payloads (minimal-valid per engine) ────────────────────────
 export const VENUES_PASS1_PAYLOAD = {
-  vibe_card: { vibes: ["cosy"], occasions: ["date night"], signature_mention: "the terrace" },
+  vibe_card: {
+    vibes: ["cosy"],
+    occasions: ["date night"],
+    signature_mention: "the terrace",
+  },
   scores: {
     overall: 72,
     grade: "B",
@@ -377,7 +426,12 @@ export const VENUES_PASS1_PAYLOAD = {
     },
   },
   google_listing: { lines: ["Shows up for 'test venue'"] },
-  fixes: [{ title: "Add prices", why: "Trust", change: "Show prices", impact: "high" }],
+  fixes: [{
+    title: "Add prices",
+    why: "Trust",
+    change: "Show prices",
+    impact: "high",
+  }],
   rewritten_hero: { before_excerpt: "Welcome", after_copy: "Eat well tonight" },
   ai_read: "A solid venue site.",
 };
@@ -388,8 +442,18 @@ export const EVENTS_SYNTH_PAYLOAD = {
   confidence: "medium",
   headline_read: "A solid Saturday crowd is likely.",
   narrative: "Good runway and demand.",
-  factors: [{ key: "day", label: "Saturday night", status: "help", detail: "Best night out." }],
-  fixes: [{ title: "Post teasers", why: "Reach", change: "3 reels", effort: "this_week" }],
+  factors: [{
+    key: "day",
+    label: "Saturday night",
+    status: "help",
+    detail: "Best night out.",
+  }],
+  fixes: [{
+    title: "Post teasers",
+    why: "Reach",
+    change: "3 reels",
+    effort: "this_week",
+  }],
   listing_preview: {
     title: "Test Night",
     tagline: "The big one",
@@ -405,9 +469,25 @@ export const TRIPS_SYNTH_PAYLOAD = {
   organic_bookings_high: 8,
   confidence: "medium",
   headline_read: "This trip prices at a healthy margin.",
-  itinerary: [{ day: 1, title: "Arrive", summary: "Settle in and explore.", stay: "Stub Hotel", activities: ["Walk"] }],
-  factors: [{ key: "season", label: "In season", status: "help", detail: "Great month." }],
-  fixes: [{ title: "Early-bird", why: "Fill", change: "Tiered price", effort: "this_week" }],
+  itinerary: [{
+    day: 1,
+    title: "Arrive",
+    summary: "Settle in and explore.",
+    stay: "Stub Hotel",
+    activities: ["Walk"],
+  }],
+  factors: [{
+    key: "season",
+    label: "In season",
+    status: "help",
+    detail: "Great month.",
+  }],
+  fixes: [{
+    title: "Early-bird",
+    why: "Fill",
+    change: "Tiered price",
+    effort: "this_week",
+  }],
   listing_preview: {
     title: "Test Trip",
     tagline: "Go now",
@@ -425,8 +505,18 @@ export const PRICING_SYNTH_PAYLOAD = {
   confidence: "medium",
   premium_framing: "An intimate, expert-led experience.",
   value_points: ["Expertise"],
-  factors: [{ key: "time", label: "Unpriced time", status: "hurt", detail: "5 hrs/event." }],
-  fixes: [{ title: "Raise to 45", why: "Market", change: "Phase it", effort: "this_week" }],
+  factors: [{
+    key: "time",
+    label: "Unpriced time",
+    status: "hurt",
+    detail: "5 hrs/event.",
+  }],
+  fixes: [{
+    title: "Raise to 45",
+    why: "Market",
+    change: "Phase it",
+    effort: "this_week",
+  }],
 };
 
 // ── canned inputs ────────────────────────────────────────────────────────────

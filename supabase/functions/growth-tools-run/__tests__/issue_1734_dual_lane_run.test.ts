@@ -34,7 +34,10 @@
 // Run: deno test --allow-read --allow-env --allow-net \
 //   supabase/functions/growth-tools-run/__tests__/issue_1734_dual_lane_run.test.ts
 
-import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   BRAND_A,
   BRAND_B,
@@ -51,7 +54,9 @@ import { handler, hashIp } from "../index.ts";
 
 const CLIENT_REF = "12345678-1234-4123-8123-123456789abc";
 
-function appRunBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function appRunBody(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     action: "run",
     lane: "app",
@@ -71,8 +76,15 @@ Deno.test("T-A1 — app happy path: verified identity row + inline report + sche
     const r = await post(handler, appRunBody(), TOKEN_A);
     assertEquals(r.status, 200);
     assert(typeof r.body.run_id === "string", "returns run_id");
-    assert(r.body.report && typeof r.body.report === "object", "returns inline report");
-    assertEquals(r.body.report.meta.schema_version, 1, "P-11: meta.schema_version stamped");
+    assert(
+      r.body.report && typeof r.body.report === "object",
+      "returns inline report",
+    );
+    assertEquals(
+      r.body.report.meta.schema_version,
+      1,
+      "P-11: meta.schema_version stamped",
+    );
 
     assertEquals(stub.state.toolLeads.length, 1);
     const row = stub.state.toolLeads[0];
@@ -80,12 +92,19 @@ Deno.test("T-A1 — app happy path: verified identity row + inline report + sche
     assertEquals(row.user_id, USER_A, "user_id from auth.getUser, not client");
     assertEquals(row.brand_id, BRAND_A);
     assertEquals(row.client_ref, CLIENT_REF);
-    assert(typeof row.input_hash === "string" && row.input_hash.length === 64, "sha256 input_hash");
+    assert(
+      typeof row.input_hash === "string" && row.input_hash.length === 64,
+      "sha256 input_hash",
+    );
     assertEquals(row.pid, null, "P-7: pid NULL on app rows");
     assertEquals(row.utm, null, "P-7: utm NULL on app rows");
     assertEquals(row.ip_hash, null, "P-9: ip_hash NULL on app rows");
     assertEquals(row.subject_ref, null, "no subject sent → NULL");
-    assertEquals(row.email ?? null, null, "email never written on the app lane");
+    assertEquals(
+      row.email ?? null,
+      null,
+      "email never written on the app lane",
+    );
     assertEquals(stub.state.statusLog[row.id], ["created", "report_ready"]);
   } finally {
     stub.restore();
@@ -106,11 +125,19 @@ Deno.test("T-A2 — forged JWT → 401, no row, no Gemini; non-member → 403; R
     const bare = await post(handler, appRunBody());
     assertEquals(bare.status, 401);
     // Valid token, foreign brand.
-    const foreign = await post(handler, appRunBody({ brand_id: BRAND_B }), TOKEN_A);
+    const foreign = await post(
+      handler,
+      appRunBody({ brand_id: BRAND_B }),
+      TOKEN_A,
+    );
     assertEquals(foreign.status, 403);
     assertEquals(foreign.body.error, "forbidden");
     // P-4: rejected, never downgraded — zero rows, zero model calls.
-    assertEquals(stub.state.toolLeads.length, 0, "no row written on any rejection");
+    assertEquals(
+      stub.state.toolLeads.length,
+      0,
+      "no row written on any rejection",
+    );
     assertEquals(
       stub.state.geminiCalls.structured + stub.state.geminiCalls.grounded,
       0,
@@ -156,13 +183,25 @@ Deno.test("T-W2 — Bearer-carrying web request (no lane) still runs anonymously
     assert(typeof r.body.run_id === "string");
     assertEquals(stub.state.toolLeads.length, 1);
     const row = stub.state.toolLeads[0];
-    assertEquals(row.lane, "web", "header presence NEVER selects the lane (P-2)");
+    assertEquals(
+      row.lane,
+      "web",
+      "header presence NEVER selects the lane (P-2)",
+    );
     assertEquals(row.pid, "tool_venues", "web pid persisted as before");
     assertEquals(row.utm.source, "ig", "web utm persisted as before");
     assertEquals(row.user_id ?? null, null);
     assertEquals(row.brand_id ?? null, null);
-    assertEquals(row.ip_hash, await hashIp("9.9.9.9"), "web ip hash persisted as before");
-    assertEquals(r.body.report.meta.schema_version, 1, "P-11 stamps BOTH lanes");
+    assertEquals(
+      row.ip_hash,
+      await hashIp("9.9.9.9"),
+      "web ip hash persisted as before",
+    );
+    assertEquals(
+      r.body.report.meta.schema_version,
+      1,
+      "P-11 stamps BOTH lanes",
+    );
   } finally {
     stub.restore();
   }
@@ -176,11 +215,16 @@ Deno.test("T-C1 — identical input within 24h → cached:true, same run_id, no 
   try {
     const first = await post(handler, appRunBody(), TOKEN_A);
     assertEquals(first.status, 200);
-    const callsAfterFirst = stub.state.geminiCalls.structured + stub.state.geminiCalls.grounded;
+    const callsAfterFirst = stub.state.geminiCalls.structured +
+      stub.state.geminiCalls.grounded;
     const second = await post(handler, appRunBody(), TOKEN_A);
     assertEquals(second.status, 200);
     assertEquals(second.body.cached, true, "P-22: cache hit flagged");
-    assertEquals(second.body.run_id, first.body.run_id, "SAME run_id re-served");
+    assertEquals(
+      second.body.run_id,
+      first.body.run_id,
+      "SAME run_id re-served",
+    );
     assertEquals(stub.state.toolLeads.length, 1, "no second row inserted");
     assertEquals(
       stub.state.geminiCalls.structured + stub.state.geminiCalls.grounded,
@@ -201,10 +245,15 @@ Deno.test("T-C2 — cache miss when the only matching row is >24h old → fresh 
     const first = await post(handler, appRunBody(), TOKEN_A);
     assertEquals(first.status, 200);
     // Clock-shift the stored row out of the 24h window.
-    stub.state.toolLeads[0].created_at = new Date(Date.now() - 25 * 3600_000).toISOString();
+    stub.state.toolLeads[0].created_at = new Date(Date.now() - 25 * 3600_000)
+      .toISOString();
     const second = await post(handler, appRunBody(), TOKEN_A);
     assertEquals(second.status, 200);
-    assertEquals(second.body.cached ?? false, false, "no cache flag on a fresh run");
+    assertEquals(
+      second.body.cached ?? false,
+      false,
+      "no cache flag on a fresh run",
+    );
     assertEquals(stub.state.toolLeads.length, 2, "fresh row inserted");
   } finally {
     stub.restore();
@@ -225,7 +274,11 @@ Deno.test("T-A3 (cache angle) — brand B with brand A's exact input is a MISS, 
       TOKEN_B,
     );
     assertEquals(b.status, 200);
-    assertEquals(b.body.cached ?? false, false, "cross-brand cache serve is forbidden (P-5)");
+    assertEquals(
+      b.body.cached ?? false,
+      false,
+      "cross-brand cache serve is forbidden (P-5)",
+    );
     assert(b.body.run_id !== a.body.run_id, "brand B gets its OWN run");
     assertEquals(stub.state.toolLeads.length, 2);
   } finally {
@@ -286,12 +339,21 @@ Deno.test("T-Q1 — 11th distinct-input app run past the cap → 429 scope:brand
     gemini: { structuredPayload: VENUES_PASS1_PAYLOAD },
   });
   try {
-    const r = await post(handler, { action: "run", input: { ...VENUES_INPUT } }, undefined, {
-      "x-forwarded-for": ip,
-    });
+    const r = await post(
+      handler,
+      { action: "run", input: { ...VENUES_INPUT } },
+      undefined,
+      {
+        "x-forwarded-for": ip,
+      },
+    );
     assertEquals(r.status, 429);
     assertEquals(r.body.error, "rate_limited");
-    assertEquals("scope" in r.body, false, "web 429 body byte-stable — no scope field");
+    assertEquals(
+      "scope" in r.body,
+      false,
+      "web 429 body byte-stable — no scope field",
+    );
   } finally {
     stub2.restore();
   }
@@ -317,7 +379,9 @@ Deno.test("T-Q2 — lane counter isolation: web rows never enter the brand count
   });
   try {
     // Even sent WITH the shared IP header, the app lane never consults it.
-    const r = await post(handler, appRunBody(), TOKEN_A, { "x-forwarded-for": ip });
+    const r = await post(handler, appRunBody(), TOKEN_A, {
+      "x-forwarded-for": ip,
+    });
     assertEquals(r.status, 200, "10 web rows on the IP do not block the brand");
   } finally {
     stub.restore();
@@ -329,9 +393,14 @@ Deno.test("T-Q2 — lane counter isolation: web rows never enter the brand count
     gemini: { structuredPayload: VENUES_PASS1_PAYLOAD },
   });
   try {
-    const r = await post(handler, { action: "run", input: { ...VENUES_INPUT } }, undefined, {
-      "x-forwarded-for": ip,
-    });
+    const r = await post(
+      handler,
+      { action: "run", input: { ...VENUES_INPUT } },
+      undefined,
+      {
+        "x-forwarded-for": ip,
+      },
+    );
     assertEquals(r.status, 200, "10 app rows do not block the web IP");
   } finally {
     stub2.restore();
@@ -370,10 +439,17 @@ Deno.test("T-B1 (wiring) — aborted structured pass → 502 reason:timeout, row
   try {
     const r = await post(handler, appRunBody(), TOKEN_A);
     assertEquals(r.status, 502);
-    assertEquals(r.body.error, "generation_failed", "web-visible error string unchanged");
+    assertEquals(
+      r.body.error,
+      "generation_failed",
+      "web-visible error string unchanged",
+    );
     assertEquals(r.body.reason, "timeout", "P-25: honest additive reason");
     assertEquals(stub.state.toolLeads.length, 1);
-    assertEquals(stub.state.statusLog[stub.state.toolLeads[0].id], ["created", "failed"]);
+    assertEquals(stub.state.statusLog[stub.state.toolLeads[0].id], [
+      "created",
+      "failed",
+    ]);
   } finally {
     stub.restore();
   }
@@ -397,7 +473,11 @@ Deno.test("client_ref must be a UUID when present → 400 validation", async () 
     gemini: { structuredPayload: VENUES_PASS1_PAYLOAD },
   });
   try {
-    const r = await post(handler, appRunBody({ client_ref: "not-a-uuid" }), TOKEN_A);
+    const r = await post(
+      handler,
+      appRunBody({ client_ref: "not-a-uuid" }),
+      TOKEN_A,
+    );
     assertEquals(r.status, 400);
     assertEquals(r.body.error, "validation");
     assertEquals(stub.state.toolLeads.length, 0);

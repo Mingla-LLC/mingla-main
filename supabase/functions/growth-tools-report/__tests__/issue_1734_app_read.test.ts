@@ -21,7 +21,10 @@
 // Run: deno test --allow-read --allow-env --allow-net \
 //   supabase/functions/growth-tools-report/__tests__/issue_1734_app_read.test.ts
 
-import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   BRAND_A,
   BRAND_B,
@@ -53,8 +56,15 @@ function appRow(overrides: Record<string, unknown>): Record<string, unknown> {
   return {
     tool: "venues",
     status: "report_ready",
-    input: { name: "Owned Venue", city: "Test City", website: "https://o.example" },
-    report: { scores: { grade: "B", overall: 72 }, meta: { schema_version: 1 } },
+    input: {
+      name: "Owned Venue",
+      city: "Test City",
+      website: "https://o.example",
+    },
+    report: {
+      scores: { grade: "B", overall: 72 },
+      meta: { schema_version: 1 },
+    },
     lane: "app",
     user_id: USER_A,
     brand_id: BRAND_A,
@@ -158,12 +168,21 @@ Deno.test("read-by-run_id — created/failed/ready bodies + T-A4 leak check + al
     // The DB select-list itself is allowlisted — no forbidden column is even
     // requested (I-PROPOSED-1734-TOKEN-FLOW-UNTOUCHED enforcement point).
     const selects = stub.state.requests
-      .filter((r) => r.method === "GET" && r.url.includes("/rest/v1/tool_leads"))
-      .map((r) => decodeURIComponent(new URL(r.url).searchParams.get("select") ?? ""));
+      .filter((r) =>
+        r.method === "GET" && r.url.includes("/rest/v1/tool_leads")
+      )
+      .map((r) =>
+        decodeURIComponent(new URL(r.url).searchParams.get("select") ?? "")
+      );
     assert(selects.length > 0, "tool_leads reads observed");
     for (const sel of selects) {
-      for (const forbidden of ["report_token", "email", "ip_hash", "pid", "utm"]) {
-        assert(!sel.includes(forbidden), `select-list must not request ${forbidden} (got: ${sel})`);
+      for (
+        const forbidden of ["report_token", "email", "ip_hash", "pid", "utm"]
+      ) {
+        assert(
+          !sel.includes(forbidden),
+          `select-list must not request ${forbidden} (got: ${sel})`,
+        );
       }
     }
   } finally {
@@ -186,7 +205,11 @@ Deno.test("read-by-client_ref — newest attempt resolves (P-27 resume)", async 
 Deno.test("T-A3 — cross-brand read → 403 on run_id AND client_ref; web row → 403; missing → 404", async () => {
   const stub = installStub({ ...twoBrandWorld(), toolLeads: seed() });
   try {
-    const byId = await post(handler, { lane: "app", brand_id: BRAND_B, run_id: READY_ID }, TOKEN_B);
+    const byId = await post(handler, {
+      lane: "app",
+      brand_id: BRAND_B,
+      run_id: READY_ID,
+    }, TOKEN_B);
     assertEquals(byId.status, 403, "brand B must not read brand A's run");
     const byRef = await post(
       handler,
@@ -195,8 +218,14 @@ Deno.test("T-A3 — cross-brand read → 403 on run_id AND client_ref; web row �
     );
     assertEquals(byRef.status, 403);
     const webRow = await appRead({ run_id: WEB_ID });
-    assertEquals(webRow.status, 403, "a web row (NULL brand_id) can never match");
-    const missing = await appRead({ run_id: "99999999-9999-4999-8999-999999999999" });
+    assertEquals(
+      webRow.status,
+      403,
+      "a web row (NULL brand_id) can never match",
+    );
+    const missing = await appRead({
+      run_id: "99999999-9999-4999-8999-999999999999",
+    });
     assertEquals(missing.status, 404);
   } finally {
     stub.restore();
@@ -213,10 +242,18 @@ Deno.test("T-SR1 (read) — latest-by-subject newest-first; include_previous ret
     assertEquals("previous" in latest.body, false);
     assertNoLeak(latest.body);
 
-    const both = await appRead({ tool: "venues", subject_ref: SUBJECT, include_previous: true });
+    const both = await appRead({
+      tool: "venues",
+      subject_ref: SUBJECT,
+      include_previous: true,
+    });
     assertEquals(both.status, 200);
     assertEquals(both.body.run_id, READY_ID);
-    assertEquals(both.body.previous.run_id, LEGACY_ID, "prior report for the diff (P-49)");
+    assertEquals(
+      both.body.previous.run_id,
+      LEGACY_ID,
+      "prior report for the diff (P-49)",
+    );
     // T-S1 read half: the legacy row has NO meta.schema_version and still serves.
     assertEquals(both.body.previous.report.scores.grade, "C");
     assertEquals(both.body.previous.report.meta ?? null, null);
@@ -242,7 +279,11 @@ Deno.test("T-SR3 — never-run subject → 200 {status:'none'}, NOT 404; cross-b
       TOKEN_B,
     );
     assertEquals(probe.status, 200);
-    assertEquals(probe.body.status, "none", "no oracle: foreign subjects read as never-run");
+    assertEquals(
+      probe.body.status,
+      "none",
+      "no oracle: foreign subjects read as never-run",
+    );
   } finally {
     stub.restore();
   }
@@ -255,9 +296,16 @@ Deno.test("selector exclusivity → 400; forged JWT → 401; malformed subject_r
     assertEquals(both.status, 400);
     const nothing = await appRead({});
     assertEquals(nothing.status, 400);
-    const forged = await post(handler, { lane: "app", brand_id: BRAND_A, run_id: READY_ID }, "forged");
+    const forged = await post(handler, {
+      lane: "app",
+      brand_id: BRAND_A,
+      run_id: READY_ID,
+    }, "forged");
     assertEquals(forged.status, 401);
-    const badRef = await appRead({ tool: "venues", subject_ref: "venue:not-a-uuid" });
+    const badRef = await appRead({
+      tool: "venues",
+      subject_ref: "venue:not-a-uuid",
+    });
     assertEquals(badRef.status, 400);
     const badTool = await appRead({ tool: "nope", subject_ref: SUBJECT });
     assertEquals(badTool.status, 400);
@@ -272,7 +320,10 @@ Deno.test("web token branch untouched — valid token 200, wrong token 403, no l
     const ok = await post(handler, { run_id: WEB_ID, token: SECRET_TOKEN });
     assertEquals(ok.status, 200);
     assertEquals(ok.body.report.web, true);
-    const bad = await post(handler, { run_id: WEB_ID, token: "y".repeat(SECRET_TOKEN.length) });
+    const bad = await post(handler, {
+      run_id: WEB_ID,
+      token: "y".repeat(SECRET_TOKEN.length),
+    });
     assertEquals(bad.status, 403);
   } finally {
     stub.restore();

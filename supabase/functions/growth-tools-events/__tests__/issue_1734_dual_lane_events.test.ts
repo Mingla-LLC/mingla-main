@@ -13,11 +13,14 @@
 // Run: deno test --allow-read --allow-env --allow-net \
 //   supabase/functions/growth-tools-events/__tests__/issue_1734_dual_lane_events.test.ts
 
-import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
 import {
   BRAND_A,
-  eventsInput,
   EVENTS_SYNTH_PAYLOAD,
+  eventsInput,
   installStub,
   post,
   TOKEN_A,
@@ -27,7 +30,9 @@ import {
 } from "../../growth-tools-run/__tests__/harness_1734.ts";
 import { handler } from "../index.ts";
 
-function appRun(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function appRun(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     action: "run",
     lane: "app",
@@ -73,11 +78,18 @@ Deno.test("events accepts NO subject in v1 (P-40) → 400; forged JWT → 401 + 
       appRun({ subject: { type: "venue", id: VENUE_A } }),
       TOKEN_A,
     );
-    assertEquals(withSubject.status, 400, "gate runs are subjectless; 'event:' is reserved");
+    assertEquals(
+      withSubject.status,
+      400,
+      "gate runs are subjectless; 'event:' is reserved",
+    );
     const forged = await post(handler, appRun(), "forged");
     assertEquals(forged.status, 401);
     assertEquals(stub.state.toolLeads.length, 0);
-    assertEquals(stub.state.geminiCalls.structured + stub.state.geminiCalls.grounded, 0);
+    assertEquals(
+      stub.state.geminiCalls.structured + stub.state.geminiCalls.grounded,
+      0,
+    );
   } finally {
     stub.restore();
   }
@@ -97,7 +109,11 @@ Deno.test("events quota — cap 25: the 26th distinct run → 429 scope:brand", 
     ip_hash: null,
     created_at: new Date(Date.now() - i * 1000).toISOString(),
   }));
-  const stub = installStub({ ...twoBrandWorld(), toolLeads: seeded, gemini: GEMINI_OK });
+  const stub = installStub({
+    ...twoBrandWorld(),
+    toolLeads: seeded,
+    gemini: GEMINI_OK,
+  });
   try {
     const r = await post(handler, appRun(), TOKEN_A);
     assertEquals(r.status, 429);
@@ -128,19 +144,28 @@ Deno.test("events cache — identical input → cached:true, same run_id, no new
 Deno.test("events web lane byte-stable — pid/utm persisted, lane='web'", async () => {
   const stub = installStub({ ...twoBrandWorld(), gemini: GEMINI_OK });
   try {
-    const r = await post(handler, {
-      action: "run",
-      input: eventsInput(),
-      pid: "tool_events",
-      utm: { source: "tiktok" },
-    }, "sb-anon-key-bearer", { "x-forwarded-for": "5.5.5.5" });
+    const r = await post(
+      handler,
+      {
+        action: "run",
+        input: eventsInput(),
+        pid: "tool_events",
+        utm: { source: "tiktok" },
+      },
+      "sb-anon-key-bearer",
+      { "x-forwarded-for": "5.5.5.5" },
+    );
     assertEquals(r.status, 200);
     const row = stub.state.toolLeads[0];
     assertEquals(row.lane, "web");
     assertEquals(row.pid, "tool_events");
     assertEquals(row.utm.source, "tiktok");
     assert(typeof row.ip_hash === "string");
-    assertEquals(r.body.report.meta.schema_version, 1, "P-11 stamps the web lane too");
+    assertEquals(
+      r.body.report.meta.schema_version,
+      1,
+      "P-11 stamps the web lane too",
+    );
   } finally {
     stub.restore();
   }
@@ -156,7 +181,10 @@ Deno.test("events T-B1 wiring — aborted passes → 502 reason:timeout, row fai
     assertEquals(r.status, 502);
     assertEquals(r.body.error, "generation_failed");
     assertEquals(r.body.reason, "timeout");
-    assertEquals(stub.state.statusLog[stub.state.toolLeads[0].id], ["created", "failed"]);
+    assertEquals(stub.state.statusLog[stub.state.toolLeads[0].id], [
+      "created",
+      "failed",
+    ]);
   } finally {
     stub.restore();
   }

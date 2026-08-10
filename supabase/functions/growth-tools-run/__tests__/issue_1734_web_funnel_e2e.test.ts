@@ -16,8 +16,16 @@
 // Run: deno test --allow-read --allow-env --allow-net \
 //   supabase/functions/growth-tools-run/__tests__/issue_1734_web_funnel_e2e.test.ts
 
-import { assert, assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { installStub, post, VENUES_INPUT, VENUES_PASS1_PAYLOAD } from "./harness_1734.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  installStub,
+  post,
+  VENUES_INPUT,
+  VENUES_PASS1_PAYLOAD,
+} from "./harness_1734.ts";
 import { handler as runHandler, hashIp } from "../index.ts";
 import { handler as gateHandler } from "../../growth-tools-gate/index.ts";
 import { handler as reportHandler } from "../../growth-tools-report/index.ts";
@@ -28,17 +36,26 @@ Deno.test("T-W1 — anonymous run → gate → email → token → report, statu
   });
   try {
     // 1. Anonymous run (no lane field; pid/utm/origin as the marketing site sends).
-    const run = await post(runHandler, {
-      action: "run",
-      input: { ...VENUES_INPUT },
-      pid: "tool_venues",
-      utm: { source: "ig", campaign: "bio" },
-      origin: "https://usemingla.com",
-    }, undefined, { "x-forwarded-for": "6.6.6.6" });
+    const run = await post(
+      runHandler,
+      {
+        action: "run",
+        input: { ...VENUES_INPUT },
+        pid: "tool_venues",
+        utm: { source: "ig", campaign: "bio" },
+        origin: "https://usemingla.com",
+      },
+      undefined,
+      { "x-forwarded-for": "6.6.6.6" },
+    );
     assertEquals(run.status, 200);
     const runId = run.body.run_id as string;
     assert(typeof runId === "string");
-    assertEquals(run.body.report.meta.schema_version, 1, "P-11 stamps the web lane too");
+    assertEquals(
+      run.body.report.meta.schema_version,
+      1,
+      "P-11 stamps the web lane too",
+    );
 
     const row = stub.state.toolLeads[0];
     assertEquals(row.lane, "web");
@@ -91,7 +108,10 @@ Deno.test("T-W1 — anonymous run → gate → email → token → report, statu
     assertEquals(report.status, 200);
     assertEquals(report.body.report.meta.schema_version, 1);
     // Wrong token still 403s (constant-time compare path).
-    const wrong = await post(reportHandler, { run_id: runId, token: "x".repeat(token.length) });
+    const wrong = await post(reportHandler, {
+      run_id: runId,
+      token: "x".repeat(token.length),
+    });
     assertEquals(wrong.status, 403);
     assertEquals(wrong.body.error, "forbidden");
   } finally {
