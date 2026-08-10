@@ -7,6 +7,9 @@ import { join, resolve } from "node:path";
 const packageRoot = resolve(import.meta.dirname, "../..");
 const repoRoot = resolve(packageRoot, "..");
 const buildDir = resolve(packageRoot, process.env.ISSUE_922_WEB_BUILD ?? "dist");
+const INVITE_SOURCE = "/accept-brand-invitation";
+const INVITE_DESTINATION = "/accept-brand-invitation-entry";
+const SPA_CATCHALL = "/((?!_expo/static/|accept-brand-invitation-entry$).*)";
 const eagerRolePatterns = [
   ["Metro runtime", /^(?:__expo-metro-)?runtime(?:-.+)?\.js$/],
   ["common", /^(?:__)?common(?:-.+)?\.js$/],
@@ -28,17 +31,38 @@ function scriptAttributes(tag) {
   return attrs;
 }
 
+function validateCatchallMatcher(source) {
+  invariant(source === SPA_CATCHALL, "SPA catchall must exclude only static assets and the exact invitation entry");
+  const matcher = new RegExp(`^(?:${source})$`);
+  const matrix = [
+    ["/_expo/static/a.js", false],
+    ["/_expo/staticish/a.js", true],
+    [INVITE_DESTINATION, false],
+    [`${INVITE_DESTINATION}/`, true],
+    [`${INVITE_DESTINATION}-evil`, true],
+    [`${INVITE_DESTINATION}/child`, true],
+    [INVITE_SOURCE, true],
+    [`${INVITE_SOURCE}/success`, true],
+    ["/", true],
+  ];
+  for (const [path, expected] of matrix) {
+    invariant(matcher.test(path) === expected, `SPA catchall matrix drift for ${path}`);
+  }
+}
+
 function validateRewrite(vercel) {
   invariant(
     vercel.buildCommand.endsWith("node scripts/inject-mobile-blur-css.mjs && node scripts/build-invite-critical-entry.mjs"),
     "builder must run after the final blur/chunk-recovery injector",
   );
   const dedicated = vercel.rewrites.findIndex(
-    (rewrite) => rewrite.source === "/accept-brand-invitation" && rewrite.destination === "/accept-brand-invitation-entry",
+    (rewrite) => rewrite.source === INVITE_SOURCE && rewrite.destination === INVITE_DESTINATION,
   );
-  const catchall = vercel.rewrites.findIndex((rewrite) => rewrite.source === "/((?!_expo/static/).*)");
+  const catchall = vercel.rewrites.findIndex((rewrite) => rewrite.destination === "/" && rewrite.source === SPA_CATCHALL);
   invariant(dedicated >= 0, "exact invitation rewrite is missing");
   invariant(catchall >= 0 && dedicated < catchall, "invitation rewrite must precede the SPA catchall");
+  invariant(catchall === vercel.rewrites.length - 1, "SPA catchall must remain the final rewrite");
+  validateCatchallMatcher(vercel.rewrites[catchall].source);
 }
 
 function validateEntry(source, entry) {
@@ -120,8 +144,8 @@ function selfTest() {
   const vercel = {
     buildCommand: "x && node scripts/inject-mobile-blur-css.mjs && node scripts/build-invite-critical-entry.mjs",
     rewrites: [
-      { source: "/accept-brand-invitation", destination: "/accept-brand-invitation-entry" },
-      { source: "/((?!_expo/static/).*)", destination: "/" },
+      { source: INVITE_SOURCE, destination: INVITE_DESTINATION },
+      { source: SPA_CATCHALL, destination: "/" },
     ],
   };
   validateRewrite(vercel);
@@ -129,12 +153,22 @@ function selfTest() {
   try {
     validateRewrite({
       ...vercel,
-      rewrites: vercel.rewrites.map((rewrite) => rewrite.source === "/accept-brand-invitation"
+      rewrites: vercel.rewrites.map((rewrite) => rewrite.source === INVITE_SOURCE
         ? { ...rewrite, destination: "/accept-brand-invitation-entry.html" }
         : rewrite),
     });
   } catch { caughtHtmlDestination = true; }
   invariant(caughtHtmlDestination, "self-test failed to detect the cleanUrls-incompatible .html destination");
+  let caughtEntryFallthrough = false;
+  try {
+    validateRewrite({
+      ...vercel,
+      rewrites: vercel.rewrites.map((rewrite) => rewrite.source === SPA_CATCHALL
+        ? { ...rewrite, source: "/((?!_expo/static/).*)" }
+        : rewrite),
+    });
+  } catch { caughtEntryFallthrough = true; }
+  invariant(caughtEntryFallthrough, "self-test failed to detect invitation-entry SPA fallthrough");
   let caughtRewrite = false;
   try { validateRewrite({ ...vercel, rewrites: vercel.rewrites.slice(1) }); } catch { caughtRewrite = true; }
   invariant(caughtRewrite, "self-test failed to detect removed rewrite");
@@ -152,7 +186,7 @@ function selfTest() {
   let caughtEager = false;
   try { validateEntry(source, entry.replace("</script>", `${attrs[0]}</script>`)); } catch { caughtEager = true; }
   invariant(caughtEager, "self-test failed to detect restored eager script");
-  console.log("issue #922 guard self-test PASS (.html destination, rewrite removal, script reordering, and eager-script restoration detected)");
+  console.log("issue #922 guard self-test PASS (entry fallthrough, .html destination, rewrite removal, script reordering, and eager-script restoration detected)");
 }
 
 try {

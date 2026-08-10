@@ -1,9 +1,18 @@
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 
 const root = resolve(process.env.ISSUE_922_WEB_BUILD ?? "dist");
 const port = Number(process.env.ISSUE_922_PORT ?? 19422);
+const vercel = JSON.parse(readFileSync(resolve(import.meta.dirname, "../vercel.json"), "utf8"));
+const inviteRewriteIndex = vercel.rewrites.findIndex(
+  (rewrite) => rewrite.source === "/accept-brand-invitation" && rewrite.destination === "/accept-brand-invitation-entry",
+);
+if (inviteRewriteIndex === -1) throw new Error("issue #922 exact invitation rewrite is missing");
+const relevantRewrites = vercel.rewrites.slice(inviteRewriteIndex).map((rewrite) => ({
+  ...rewrite,
+  matcher: new RegExp(`^(?:${rewrite.source})$`),
+}));
 
 const contentTypes = new Map([
   [".css", "text/css; charset=utf-8"],
@@ -17,33 +26,44 @@ const contentTypes = new Map([
   [".woff2", "font/woff2"],
 ]);
 
+function builtFile(pathname) {
+  if (pathname === "/") return join(root, "index.html");
+  const clean = decodeURIComponent(pathname).replace(/^\/+/, "");
+  const candidates = [resolve(root, clean)];
+  if (vercel.cleanUrls && extname(clean) === "") candidates.push(resolve(root, `${clean}.html`));
+  for (const candidate of candidates) {
+    if (
+      candidate.startsWith(root + sep) &&
+      existsSync(candidate) &&
+      statSync(candidate).isFile()
+    ) return candidate;
+  }
+  return null;
+}
+
 function resolveRequest(rawUrl) {
   const parsed = new URL(rawUrl, `http://127.0.0.1:${port}`);
-  if (parsed.pathname === "/accept-brand-invitation/") {
-    return { redirect: `/accept-brand-invitation${parsed.search}` };
+  if (vercel.trailingSlash === false && parsed.pathname !== "/" && parsed.pathname.endsWith("/")) {
+    return { redirect: `${parsed.pathname.slice(0, -1)}${parsed.search}` };
   }
-  if (parsed.pathname === "/accept-brand-invitation-entry.html") {
-    return { redirect: `/accept-brand-invitation-entry${parsed.search}` };
+  if (vercel.cleanUrls && parsed.pathname.endsWith(".html")) {
+    return { redirect: `${parsed.pathname.slice(0, -5)}${parsed.search}` };
   }
-  if (
-    parsed.pathname === "/accept-brand-invitation" &&
-    parsed.searchParams.get("issue922React") !== "1"
-  ) {
-    parsed.pathname = "/accept-brand-invitation-entry";
+
+  const originalFile = builtFile(parsed.pathname);
+  if (originalFile) return { file: originalFile };
+
+  let currentPath = parsed.pathname;
+  for (const rewrite of relevantRewrites) {
+    if (
+      rewrite.source === "/accept-brand-invitation" &&
+      parsed.searchParams.get("issue922React") === "1"
+    ) continue;
+    if (rewrite.matcher.test(currentPath)) currentPath = rewrite.destination;
   }
-  if (parsed.pathname === "/accept-brand-invitation-entry") {
-    return { file: join(root, "accept-brand-invitation-entry.html") };
-  }
-  const clean = decodeURIComponent(parsed.pathname).replace(/^\/+/, "");
-  const candidate = resolve(root, clean);
-  if (
-    candidate.startsWith(root + sep) &&
-    existsSync(candidate) &&
-    statSync(candidate).isFile()
-  ) {
-    return { file: candidate };
-  }
-  return { file: join(root, "index.html") };
+
+  const rewrittenFile = builtFile(currentPath);
+  return rewrittenFile ? { file: rewrittenFile } : { status: 404 };
 }
 
 const server = createServer((req, res) => {
@@ -56,6 +76,10 @@ const server = createServer((req, res) => {
   }
   if (resolved.redirect) {
     res.writeHead(308, { Location: resolved.redirect }).end();
+    return;
+  }
+  if (resolved.status === 404) {
+    res.writeHead(404).end("Not found");
     return;
   }
   const file = resolved.file;

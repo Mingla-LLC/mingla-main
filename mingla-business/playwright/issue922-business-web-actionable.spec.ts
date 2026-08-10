@@ -5,6 +5,51 @@ import { PNG } from "pngjs";
 
 const invite = "/accept-brand-invitation?token=token%20with%2Fsymbols";
 
+test("ordered Vercel routing preserves only the exact clean invitation entry", async ({ request }) => {
+  const tokenQuery = "token=route%2Fproof%20only";
+  const exact = await request.get(`/accept-brand-invitation?${tokenQuery}`);
+  const exactBody = await exact.body();
+  expect(exact.status()).toBe(200);
+  expect(exact.url()).toContain(`/accept-brand-invitation?${tokenQuery}`);
+  expect(exactBody.toString()).toContain('id="issue-922-critical-entry"');
+  expect(exactBody.toString()).not.toMatch(/<script\b[^>]*\bsrc=/i);
+
+  const trailing = await request.get(`/accept-brand-invitation/?${tokenQuery}`, { maxRedirects: 0 });
+  expect(trailing.status()).toBe(308);
+  expect(trailing.headers().location).toBe(`/accept-brand-invitation?${tokenQuery}`);
+
+  const html = await request.get("/accept-brand-invitation-entry.html", { maxRedirects: 0 });
+  expect(html.status()).toBe(308);
+  expect(html.headers().location).toBe("/accept-brand-invitation-entry");
+
+  const cleanEntry = await request.get("/accept-brand-invitation-entry");
+  expect(cleanEntry.status()).toBe(200);
+  expect(await cleanEntry.body()).toEqual(exactBody);
+
+  const root = await request.get("/");
+  const spaBody = await root.body();
+  expect(spaBody).not.toEqual(exactBody);
+  expect(spaBody.toString()).not.toContain('id="issue-922-critical-entry"');
+  for (const route of [
+    "/accept-brand-invitation-entry/child",
+    "/accept-brand-invitation-entry-evil",
+    "/accept-brand-invitation/success",
+    "/accept-brand-invitation/success/",
+    "/accept-brand-invitation-lookalike",
+    "/_expo/staticish/not-an-asset.js",
+  ]) {
+    const response = await request.get(route);
+    expect(response.status(), route).toBe(200);
+    expect(await response.body(), route).toEqual(spaBody);
+  }
+
+  const scriptPath = spaBody.toString().match(/<script\b[^>]*\bsrc="([^"]*\/_expo\/static\/[^"?]+\.js)[^"]*"/i)?.[1];
+  expect(scriptPath).toBeDefined();
+  const staticAsset = await request.get(scriptPath!);
+  expect(staticAsset.status()).toBe(200);
+  expect(await staticAsset.body()).not.toEqual(spaBody);
+});
+
 async function cleanStorage(context: BrowserContext): Promise<void> {
   await context.addInitScript(() => {
     window.localStorage.clear();
