@@ -298,17 +298,6 @@ export interface UserActivityHistory {
   created_at: string;
 }
 
-export interface UserStats {
-  id: string;
-  user_id: string;
-  stat_type: string;
-  stat_value: Record<string, any>;
-  period_start: string;
-  period_end: string;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface UserVibes {
   id: string;
   user_id: string;
@@ -317,17 +306,6 @@ export interface UserVibes {
   activity_count: number;
   period_start: string;
   period_end: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface SavedExperiencePrivacy {
-  id: string;
-  user_id: string;
-  experience_id: string;
-  is_public: boolean;
-  visible_to_friends: boolean;
-  show_in_activity: boolean;
   created_at: string;
   updated_at: string;
 }

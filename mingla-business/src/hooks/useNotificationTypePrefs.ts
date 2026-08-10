@@ -2,7 +2,7 @@
  * useNotificationTypePrefs — per-type push/in-app preference persistence
  * (META-ORCH-1074 Sub-C §5.C.4 / §8).
  *
- * Reads + writes `public.notification_preferences` (channel × type × opt_in,
+ * Reads + writes `public.business_notification_type_preferences` (channel × type × opt_in,
  * unique on (user_id, channel, type)). `notify-dispatch` reads this table
  * before delivery, so toggling a type OFF here actually stops the push
  * (SC-C5). No row = opted-in (the table default is opt_in=true), so the UI
@@ -86,7 +86,7 @@ export function useNotificationTypePrefs(userId: string | null): PrefsState {
     queryFn: async (): Promise<readonly NotificationPrefRow[]> => {
       if (userId === null) throw new Error("useNotificationTypePrefs: userId null");
       const { data, error } = await supabase
-        .from("notification_preferences")
+        .from("business_notification_type_preferences")
         .select("channel, type, opt_in")
         .eq("user_id", userId)
         .returns<NotificationPrefRow[]>();
@@ -130,7 +130,7 @@ export function useNotificationTypePrefs(userId: string | null): PrefsState {
         updated_at: new Date().toISOString(),
       }));
       const { error } = await supabase
-        .from("notification_preferences")
+        .from("business_notification_type_preferences")
         .upsert(payload, { onConflict: "user_id,channel,type" });
       if (error) throw error;
     },
@@ -176,10 +176,11 @@ export function useNotificationTypePrefs(userId: string | null): PrefsState {
       const prev = optimisticPatch([{ type, channel, opt_in: optIn }]);
       try {
         await upsertMutation.mutateAsync([{ type, channel, opt_in: optIn }]);
-      } catch {
+      } catch (error) {
         if (prev !== undefined) {
           queryClient.setQueryData(notificationPrefKeys.all(userId), prev);
         }
+        throw error;
       }
     },
     [userId, optimisticPatch, upsertMutation, queryClient],
@@ -198,10 +199,11 @@ export function useNotificationTypePrefs(userId: string | null): PrefsState {
       const prev = optimisticPatch(patches);
       try {
         await upsertMutation.mutateAsync(patches);
-      } catch {
+      } catch (error) {
         if (prev !== undefined) {
           queryClient.setQueryData(notificationPrefKeys.all(userId), prev);
         }
+        throw error;
       }
     },
     [userId, optimisticPatch, upsertMutation, queryClient],

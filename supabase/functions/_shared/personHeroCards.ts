@@ -823,28 +823,49 @@ export async function buildPersonHeroCardsForSection(args: {
   return { cards, hasMore };
 }
 
-export function recordPersonCardImpressions(args: {
+export interface PersonCardImpressionWriteResult {
+  attempted: number;
+  written: boolean;
+  errorCode: string | null;
+}
+
+export async function recordPersonCardImpressions(args: {
   adminClient: any;
   viewerId: string;
   pairedUserId: string;
   holidayKey: string;
   cards: Card[];
-}) {
+  endpointContext: "get-person-hero-cards" | "get-paired-profile-cards";
+}): Promise<PersonCardImpressionWriteResult> {
   const singleCards = args.cards.filter((card) => card.cardType === "single");
-  if (singleCards.length === 0) return;
+  if (singleCards.length === 0) {
+    return { attempted: 0, written: true, errorCode: null };
+  }
   const rows = singleCards.map((card) => ({
     user_id: args.viewerId,
+    person_id: null,
     paired_user_id: args.pairedUserId,
     place_pool_id: card.id,
     holiday_key: args.holidayKey,
   }));
-  args.adminClient
+  const { error } = await args.adminClient
     .from("person_card_impressions")
     .upsert(rows, {
       onConflict: "user_id,paired_user_id,place_pool_id",
       ignoreDuplicates: true,
-    })
-    .then(({ error }: { error: { message?: string } | null }) => {
-      if (error) console.warn("[personHeroCards] Impression insert error:", error);
     });
+  if (error) {
+    console.error({
+      event: "person_card_impression_write_failed",
+      code: typeof error.code === "string" ? error.code : "unknown",
+      endpoint: args.endpointContext,
+      attemptedCount: rows.length,
+    });
+    return {
+      attempted: rows.length,
+      written: false,
+      errorCode: typeof error.code === "string" ? error.code : "unknown",
+    };
+  }
+  return { attempted: rows.length, written: true, errorCode: null };
 }
