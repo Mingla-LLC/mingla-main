@@ -29,9 +29,17 @@ import type { VenueModule } from "../../../types/venueReservation";
 const ALL_MODULES = Object.keys(VENUE_MODULES) as VenueModule[];
 
 describe("META-ORCH-1148 — venue shell scroll + bottom-nav clearance", () => {
-  test("T-A: ONLY Overview self-scrolls (so the shell never double-wraps the listing's own ScrollView)", () => {
+  test("T-A: ONLY Overview + Insights self-scroll (so the shell never double-wraps a module's own ScrollView)", () => {
+    // Issue #1735 [TEST-MOD-APPROVED #1735]: `insights` joins `overview` as a
+    // self-scrolling module (VenueInsightsModule owns its ScrollView +
+    // clearance — G-1 binding; same delegation contract, second member). The
+    // invariant under test is UNCHANGED: every OTHER module must be
+    // shell-scrolled, and a self-scrolling module must never be double-wrapped.
     expect(moduleSelfScrolls("overview")).toBe(true);
-    for (const m of ALL_MODULES.filter((x) => x !== "overview")) {
+    expect(moduleSelfScrolls("insights")).toBe(true);
+    for (
+      const m of ALL_MODULES.filter((x) => x !== "overview" && x !== "insights")
+    ) {
       expect(moduleSelfScrolls(m)).toBe(false);
     }
   });
