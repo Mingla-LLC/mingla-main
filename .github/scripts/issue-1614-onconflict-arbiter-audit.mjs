@@ -1,0 +1,481 @@
+#!/usr/bin/env node
+
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const SOURCE_ROOTS = [
+  "app-mobile",
+  "mingla-business",
+  "mingla-admin",
+  "mingla-marketing",
+  "packages",
+  "supabase/functions",
+];
+const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx"]);
+const EXCLUDED_SEGMENTS = new Set([
+  "node_modules", "dist", "build", ".expo", ".next", "coverage", "vendor",
+  "migrations", "__tests__", "test", "tests", "fixtures", "generated",
+]);
+
+function lineAt(source, offset) {
+  return source.slice(0, offset).split("\n").length;
+}
+
+function decodeLiteral(raw, file, line) {
+  const quote = raw[0];
+  const body = raw.slice(1, -1);
+  if (quote === "`" && body.includes("${")) {
+    throw new Error(`${file}:${line}: template interpolation is forbidden in onConflict/from literals`);
+  }
+  let decoded = "";
+  for (let cursor = 0; cursor < body.length; cursor += 1) {
+    const ch = body[cursor];
+    if (ch !== "\\") {
+      decoded += ch;
+      continue;
+    }
+
+    const escaped = body[cursor + 1];
+    if (escaped === undefined) {
+      throw new Error(`${file}:${line}: unterminated escape in string literal`);
+    }
+    cursor += 1;
+    const simpleEscapes = {
+      "'": "'", '"': '"', "`": "`", "\\": "\\",
+      b: "\b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v", 0: "\0",
+    };
+    if (Object.hasOwn(simpleEscapes, escaped)) {
+      decoded += simpleEscapes[escaped];
+      continue;
+    }
+    if (escaped === "\n") continue;
+    if (escaped === "\r") {
+      if (body[cursor + 1] === "\n") cursor += 1;
+      continue;
+    }
+    if (escaped === "x") {
+      const hex = body.slice(cursor + 1, cursor + 3);
+      if (!/^[0-9A-Fa-f]{2}$/.test(hex)) {
+        throw new Error(`${file}:${line}: invalid hexadecimal escape in string literal`);
+      }
+      decoded += String.fromCharCode(Number.parseInt(hex, 16));
+      cursor += 2;
+      continue;
+    }
+    if (escaped === "u") {
+      if (body[cursor + 1] === "{") {
+        const close = body.indexOf("}", cursor + 2);
+        const hex = close === -1 ? "" : body.slice(cursor + 2, close);
+        if (!/^[0-9A-Fa-f]{1,6}$/.test(hex) || Number.parseInt(hex, 16) > 0x10FFFF) {
+          throw new Error(`${file}:${line}: invalid Unicode code-point escape in string literal`);
+        }
+        decoded += String.fromCodePoint(Number.parseInt(hex, 16));
+        cursor = close;
+        continue;
+      }
+      const hex = body.slice(cursor + 1, cursor + 5);
+      if (!/^[0-9A-Fa-f]{4}$/.test(hex)) {
+        throw new Error(`${file}:${line}: invalid Unicode escape in string literal`);
+      }
+      decoded += String.fromCharCode(Number.parseInt(hex, 16));
+      cursor += 4;
+      continue;
+    }
+    decoded += escaped;
+  }
+  return decoded;
+}
+
+function copySpan(output, source, start, end) {
+  for (let cursor = start; cursor < end; cursor += 1) output[cursor] = source[cursor];
+}
+
+function previousWord(output, start) {
+  let cursor = start - 1;
+  while (cursor >= 0 && /\s/.test(output[cursor])) cursor -= 1;
+  const end = cursor + 1;
+  while (cursor >= 0 && /[A-Za-z0-9_$]/.test(output[cursor])) cursor -= 1;
+  return output.slice(cursor + 1, end).join("");
+}
+
+function canStartRegex(output, start) {
+  const previous = previousSignificantCharacter(output, start);
+  if (previous === null) return true;
+  if ("([{,;:=!?&|+-*%^~<>".includes(previous)) return true;
+  return new Set([
+    "await", "case", "delete", "do", "else", "in", "instanceof", "of",
+    "return", "throw", "typeof", "void", "yield",
+  ]).has(previousWord(output, start));
+}
+
+function regexLiteralEnd(source, start) {
+  let inCharacterClass = false;
+  for (let cursor = start + 1; cursor < source.length; cursor += 1) {
+    const ch = source[cursor];
+    if (ch === "\\") {
+      cursor += 1;
+      continue;
+    }
+    if (ch === "\n" || ch === "\r") return null;
+    if (ch === "[") inCharacterClass = true;
+    else if (ch === "]") inCharacterClass = false;
+    else if (ch === "/" && !inCharacterClass) {
+      cursor += 1;
+      while (/[A-Za-z]/.test(source[cursor] ?? "")) cursor += 1;
+      return cursor;
+    }
+  }
+  return null;
+}
+
+function sanitizeTemplate(source, output, start) {
+  let hasInterpolation = false;
+  for (let cursor = start + 1; cursor < source.length; cursor += 1) {
+    if (source[cursor] === "\\") {
+      cursor += 1;
+      continue;
+    }
+    if (source[cursor] === "`") {
+      if (!hasInterpolation) copySpan(output, source, start, cursor + 1);
+      return cursor + 1;
+    }
+    if (source[cursor] === "$" && source[cursor + 1] === "{") {
+      hasInterpolation = true;
+      cursor = sanitizeCode(source, output, cursor + 2, true) - 1;
+    }
+  }
+  return source.length;
+}
+
+function sanitizeCode(source, output, start = 0, templateExpression = false) {
+  let braceDepth = templateExpression ? 1 : 0;
+  for (let cursor = start; cursor < source.length;) {
+    const ch = source[cursor];
+    const next = source[cursor + 1];
+
+    if (templateExpression && ch === "{") {
+      output[cursor] = ch;
+      braceDepth += 1;
+      cursor += 1;
+      continue;
+    }
+    if (templateExpression && ch === "}") {
+      braceDepth -= 1;
+      if (braceDepth === 0) return cursor + 1;
+      output[cursor] = ch;
+      cursor += 1;
+      continue;
+    }
+    if (ch === "/" && next === "/") {
+      cursor += 2;
+      while (cursor < source.length && source[cursor] !== "\n") cursor += 1;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      cursor += 2;
+      while (cursor < source.length && !(source[cursor] === "*" && source[cursor + 1] === "/")) {
+        cursor += 1;
+      }
+      cursor = Math.min(source.length, cursor + 2);
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      const literal = readStringLiteral(source, cursor);
+      if (literal === null) {
+        output[cursor] = ch;
+        cursor += 1;
+      } else {
+        copySpan(output, source, cursor, literal.end);
+        cursor = literal.end;
+      }
+      continue;
+    }
+    if (ch === "`") {
+      cursor = sanitizeTemplate(source, output, cursor);
+      continue;
+    }
+    if (ch === "/" && canStartRegex(output, cursor)) {
+      const end = regexLiteralEnd(source, cursor);
+      if (end !== null) {
+        cursor = end;
+        continue;
+      }
+    }
+    output[cursor] = ch;
+    cursor += 1;
+  }
+  return source.length;
+}
+
+export function maskComments(source) {
+  const output = [...source].map((ch) => ch === "\n" ? "\n" : " ");
+  sanitizeCode(source, output);
+  return output.join("");
+}
+
+function readStringLiteral(source, start) {
+  const quote = source[start];
+  if (quote !== "'" && quote !== '"' && quote !== "`") return null;
+  for (let cursor = start + 1; cursor < source.length; cursor += 1) {
+    if (source[cursor] === "\\") {
+      cursor += 1;
+      continue;
+    }
+    if (source[cursor] === quote) {
+      return { raw: source.slice(start, cursor + 1), end: cursor + 1 };
+    }
+  }
+  return null;
+}
+
+function skipWhitespace(source, start) {
+  let cursor = start;
+  while (cursor < source.length && /\s/.test(source[cursor])) cursor += 1;
+  return cursor;
+}
+
+function previousSignificantCharacter(source, start) {
+  let cursor = start - 1;
+  while (cursor >= 0 && /\s/.test(source[cursor])) cursor -= 1;
+  return cursor >= 0 ? source[cursor] : null;
+}
+
+function propertyValueOffset(source, propertyEnd) {
+  const colon = skipWhitespace(source, propertyEnd);
+  return source[colon] === ":" ? skipWhitespace(source, colon + 1) : null;
+}
+
+function isExactOnConflictLiteral(raw, file, line) {
+  try {
+    return decodeLiteral(raw, file, line) === "onConflict";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Find exact executable object-property spellings of the onConflict key.
+ * Strings are consumed as whole lexical tokens, so text such as
+ * `const example = '"onConflict": "id"'` cannot masquerade as a property.
+ */
+export function findOnConflictProperties(source, file = "fixture.ts") {
+  const clean = maskComments(source);
+  const properties = [];
+  for (let cursor = 0; cursor < clean.length; cursor += 1) {
+    const ch = clean[cursor];
+
+    if (ch === "'" || ch === '"' || ch === "`") {
+      const literal = readStringLiteral(clean, cursor);
+      if (literal === null) continue;
+      const previous = previousSignificantCharacter(clean, cursor);
+      const canStartProperty = previous === "{" || previous === ",";
+      if (canStartProperty &&
+          isExactOnConflictLiteral(literal.raw, file, lineAt(source, cursor))) {
+        const valueOffset = propertyValueOffset(clean, literal.end);
+        if (valueOffset !== null) properties.push({ index: cursor, valueOffset });
+      }
+      cursor = literal.end - 1;
+      continue;
+    }
+
+    if (ch === "[") {
+      const previous = previousSignificantCharacter(clean, cursor);
+      const canStartProperty = previous === "{" || previous === ",";
+      if (!canStartProperty) continue;
+      const literalStart = skipWhitespace(clean, cursor + 1);
+      const literal = readStringLiteral(clean, literalStart);
+      if (literal !== null &&
+          isExactOnConflictLiteral(literal.raw, file, lineAt(source, literalStart))) {
+        const closeBracket = skipWhitespace(clean, literal.end);
+        if (clean[closeBracket] === "]") {
+          const valueOffset = propertyValueOffset(clean, closeBracket + 1);
+          if (valueOffset !== null) {
+            properties.push({ index: cursor, valueOffset });
+            cursor = valueOffset - 1;
+          }
+        }
+      }
+      continue;
+    }
+
+    if (ch === "o" && clean.startsWith("onConflict", cursor)) {
+      const previous = previousSignificantCharacter(clean, cursor);
+      const canStartProperty = previous === "{" || previous === ",";
+      if (!canStartProperty) continue;
+      const afterKey = cursor + "onConflict".length;
+      if (!/[A-Za-z0-9_$]/.test(clean[afterKey] ?? "")) {
+        const valueOffset = propertyValueOffset(clean, afterKey);
+        if (valueOffset !== null) {
+          properties.push({ index: cursor, valueOffset });
+          cursor = valueOffset - 1;
+        }
+      }
+    }
+  }
+  return { clean, properties };
+}
+
+export function enumerateSource(source, file = "fixture.ts") {
+  const { clean, properties } = findOnConflictProperties(source, file);
+  const sites = [];
+  for (const property of properties) {
+    const valueOffset = property.valueOffset;
+    const literalMatch = clean.slice(valueOffset).match(/^(["'`])(?:\\.|(?!\1)[\s\S])*?\1/);
+    const line = lineAt(source, property.index);
+    if (!literalMatch) throw new Error(`${file}:${line}: onConflict must be a string literal`);
+    const target = decodeLiteral(literalMatch[0], file, line);
+    const columns = target.split(",").map((column) => column.trim());
+    if (columns.length === 0 || columns.some((column) => column.length === 0)) {
+      throw new Error(`${file}:${line}: onConflict has an empty column`);
+    }
+    if (new Set(columns).size !== columns.length) {
+      throw new Error(`${file}:${line}: onConflict has duplicate columns`);
+    }
+
+    const statementStart = clean.lastIndexOf(";", property.index);
+    const prefix = clean.slice(statementStart + 1, property.index);
+    const fromPattern = /\.from\s*\(\s*(["'`])(?:\\.|(?!\1)[\s\S])*?\1\s*,?\s*\)/g;
+    const fromMatches = [...prefix.matchAll(fromPattern)];
+    if (fromMatches.length === 0) {
+      throw new Error(`${file}:${line}: cannot resolve string-literal .from(table) in the same query expression`);
+    }
+    const fromRaw = fromMatches.at(-1)[0].match(/(["'`])(?:\\.|(?!\1)[\s\S])*?\1/)[0];
+    const table = decodeLiteral(fromRaw, file, line);
+    if (!table || table.includes("${")) {
+      throw new Error(`${file}:${line}: invalid .from(table) literal`);
+    }
+    sites.push({ table, columns, file, line });
+  }
+  return sites;
+}
+
+function walk(directory, files = []) {
+  if (!fs.existsSync(directory)) return files;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    if (entry.isDirectory() && EXCLUDED_SEGMENTS.has(entry.name)) continue;
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) walk(absolute, files);
+    else if (
+      SOURCE_EXTENSIONS.has(path.extname(entry.name)) &&
+      !/(?:^|\.)(?:test|spec)\.[cm]?[jt]sx?$/.test(entry.name)
+    ) files.push(absolute);
+  }
+  return files;
+}
+
+export function enumerateRepository(root = ROOT) {
+  const sites = [];
+  for (const sourceRoot of SOURCE_ROOTS) {
+    for (const file of walk(path.join(root, sourceRoot))) {
+      const relative = path.relative(root, file);
+      sites.push(...enumerateSource(fs.readFileSync(file, "utf8"), relative));
+    }
+  }
+  sites.sort((a, b) => a.table.localeCompare(b.table) ||
+    a.columns.join(",").localeCompare(b.columns.join(",")) ||
+    a.file.localeCompare(b.file) || a.line - b.line);
+  return sites;
+}
+
+export function manifestFor(sites) {
+  const grouped = new Map();
+  for (const site of sites) {
+    const key = `${site.table}\u0000${site.columns.join("\u0000")}`;
+    const entry = grouped.get(key) ?? {
+      table: site.table,
+      columns: site.columns,
+      callSites: [],
+    };
+    entry.callSites.push(`${site.file}:${site.line}`);
+    grouped.set(key, entry);
+  }
+  return [...grouped.values()].sort((a, b) =>
+    a.table.localeCompare(b.table) || a.columns.join(",").localeCompare(b.columns.join(","))
+  );
+}
+
+export function quoteIdentifier(identifier) {
+  if (typeof identifier !== "string" || identifier.length === 0 || identifier.includes("\0")) {
+    throw new Error("SQL identifier must be a non-empty string without NUL bytes");
+  }
+  return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+export function emitExplainSql(manifest) {
+  return manifest.map((entry) => {
+    const table = quoteIdentifier(entry.table);
+    const columns = entry.columns.map(quoteIdentifier).join(", ");
+    const values = entry.columns.map(() => "NULL").join(", ");
+    return `-- ${entry.callSites.join(", ")}\nEXPLAIN INSERT INTO public.${table} (${columns}) VALUES (${values}) ON CONFLICT (${columns}) DO NOTHING;`;
+  }).join("\n\n");
+}
+
+export function emitDatabaseSelfTestSql() {
+  return `BEGIN;
+CREATE TEMP TABLE issue_1614_partial_fixture (id uuid);
+CREATE UNIQUE INDEX issue_1614_partial_fixture_id
+  ON issue_1614_partial_fixture (id) WHERE id IS NOT NULL;
+CREATE TEMP TABLE issue_1614_full_fixture (id uuid UNIQUE);
+DO $issue_1614_self_test$
+BEGIN
+  BEGIN
+    EXECUTE 'EXPLAIN INSERT INTO issue_1614_partial_fixture(id) VALUES (NULL) ON CONFLICT (id) DO NOTHING';
+    RAISE EXCEPTION 'issue_1614_partial_arbiter_was_incorrectly_accepted';
+  EXCEPTION WHEN invalid_column_reference THEN
+    NULL;
+  END;
+  EXECUTE 'EXPLAIN INSERT INTO issue_1614_full_fixture(id) VALUES (NULL) ON CONFLICT (id) DO NOTHING';
+END
+$issue_1614_self_test$;
+ROLLBACK;`;
+}
+
+export function runSelfTest() {
+  const fixture = `
+    // onConflict: "ignored"
+    /* .from("ignored").upsert({}, { onConflict: "ignored" }) */
+    db.from('alpha').upsert({}, { onConflict: 'a,b' });
+    db.from("alpha").upsert({}, { onConflict: "a,b" });
+    db
+      .from(\`future\`)
+      .upsert({}, { onConflict: \`quoted\` });
+  `;
+  const sites = enumerateSource(fixture);
+  if (sites.length !== 3 || sites[2].table !== "future") throw new Error("literal/comment self-test failed");
+  if (manifestFor(sites).length !== 2) throw new Error("deduplication self-test failed");
+  if (quoteIdentifier('a"b') !== '"a""b"') throw new Error("identifier quoting self-test failed");
+  const databaseFixture = emitDatabaseSelfTestSql();
+  if (!databaseFixture.includes("partial_arbiter_was_incorrectly_accepted") ||
+      !databaseFixture.includes("full_fixture")) {
+    throw new Error("PostgreSQL partial/full arbiter fixture generation failed");
+  }
+  for (const bad of [
+    `db.from("x").upsert({}, { onConflict: target });`,
+    `db.from(table).upsert({}, { onConflict: "id" });`,
+    `db.from("x").upsert({}, { onConflict: "id,id" });`,
+    `db.from("x").upsert({}, { onConflict: \`id_\${suffix}\` });`,
+  ]) {
+    let rejected = false;
+    try { enumerateSource(bad); } catch { rejected = true; }
+    if (!rejected) throw new Error(`invalid fixture was accepted: ${bad}`);
+  }
+  process.stdout.write("issue-1614 audit self-test: PASS\n");
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  if (process.argv.includes("--self-test")) {
+    runSelfTest();
+  } else {
+    const sites = enumerateRepository();
+    if (sites.length < 83) {
+      throw new Error(`bootstrap sentinel failed: expected at least 83 executable literal sites, found ${sites.length}`);
+    }
+    const manifest = manifestFor(sites);
+    if (process.argv.includes("--emit-self-test-sql")) {
+      process.stdout.write(`${emitDatabaseSelfTestSql()}\n`);
+    } else if (process.argv.includes("--emit-sql")) process.stdout.write(`${emitExplainSql(manifest)}\n`);
+    else process.stdout.write(`${JSON.stringify({ siteCount: sites.length, targets: manifest }, null, 2)}\n`);
+  }
+}

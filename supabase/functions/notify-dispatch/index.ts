@@ -361,6 +361,60 @@ const typeToPreference: Record<string, string> = {
   "visit_feedback_prompt": "reminders",
 };
 
+type BusinessPreferenceType =
+  | "business.order_paid"
+  | "business.event_sold_out"
+  | "business.low_inventory"
+  | "business.refund_processed"
+  | "business.dispute_opened"
+  | "business.dispute_action_needed"
+  | "business.payout_paid"
+  | "business.account_status_changed"
+  | "business.new_review"
+  | "business.claim_decision"
+  | "business.team_member_joined";
+
+interface BusinessChannelDefaults {
+  push: boolean;
+  in_app: boolean;
+}
+
+const BUSINESS_NOTIFICATION_CHANNEL_DEFAULTS: Record<
+  BusinessPreferenceType,
+  BusinessChannelDefaults
+> = {
+  "business.order_paid": { push: true, in_app: true },
+  "business.event_sold_out": { push: true, in_app: true },
+  "business.low_inventory": { push: true, in_app: true },
+  "business.refund_processed": { push: true, in_app: true },
+  "business.dispute_opened": { push: true, in_app: true },
+  "business.dispute_action_needed": { push: true, in_app: true },
+  "business.payout_paid": { push: true, in_app: true },
+  "business.account_status_changed": { push: true, in_app: true },
+  "business.new_review": { push: true, in_app: true },
+  "business.claim_decision": { push: true, in_app: true },
+  "business.team_member_joined": { push: false, in_app: true },
+};
+
+function isBusinessPreferenceType(type: string): type is BusinessPreferenceType {
+  return Object.prototype.hasOwnProperty.call(
+    BUSINESS_NOTIFICATION_CHANNEL_DEFAULTS,
+    type,
+  );
+}
+
+export function resolveBusinessNotificationChannels(
+  type: BusinessPreferenceType,
+  rows: readonly { channel: string; opt_in: boolean }[],
+): BusinessChannelDefaults {
+  const resolved = { ...BUSINESS_NOTIFICATION_CHANNEL_DEFAULTS[type] };
+  for (const row of rows) {
+    if (row.channel === "push") resolved.push = row.opt_in;
+    if (row.channel === "in_app") resolved.in_app = row.opt_in;
+  }
+  return resolved;
+}
+
 // ── Quiet hours check ───────────────────────────────────────────────────────
 function isQuietHours(timezone: string | null): boolean {
   const tz = timezone || "America/New_York"; // conservative default
@@ -626,6 +680,33 @@ serve(async (req) => {
       }, 503);
     }
 
+    let businessChannels: BusinessChannelDefaults | null = null;
+    if (userId && isBusinessPreferenceType(type)) {
+      const { data: businessPrefRows, error: businessPrefError } = await adminClient
+        .from("business_notification_type_preferences")
+        .select("channel, opt_in")
+        .eq("user_id", userId)
+        .eq("type", type)
+        .limit(2);
+      if (businessPrefError) {
+        console.error({
+          event: "business_notification_preference_lookup_failed",
+          code: typeof businessPrefError.code === "string"
+            ? businessPrefError.code
+            : "unknown",
+        });
+        return jsonResponse({
+          success: false,
+          reason: "business_preference_lookup_failed",
+          retryPending: true,
+        }, 503);
+      }
+      businessChannels = resolveBusinessNotificationChannels(
+        type,
+        Array.isArray(businessPrefRows) ? businessPrefRows : [],
+      );
+    }
+
     let notificationId: string | null = null;
 
     // ── Idempotency check ───────────────────────────────────────────────────
@@ -694,6 +775,9 @@ serve(async (req) => {
         related_type: relatedType || null,
         idempotency_key: idempotencyKey || null,
         expires_at: expiresAt || null,
+        in_app_suppressed_at: businessChannels?.in_app === false
+          ? new Date().toISOString()
+          : null,
       };
 
       const { data: notification, error: insertError } = await adminClient
@@ -773,6 +857,17 @@ serve(async (req) => {
         emailSent,
         providerAccepted: emailSent,
         reason: "skip_push",
+      });
+    }
+
+    if (businessChannels?.push === false) {
+      return jsonResponse({
+        success: true,
+        notificationId,
+        pushSent: false,
+        emailSent,
+        providerAccepted: emailSent,
+        reason: "user_disabled_type",
       });
     }
 

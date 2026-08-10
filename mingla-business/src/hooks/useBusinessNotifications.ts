@@ -50,6 +50,8 @@ export interface BusinessNotification {
    * fetch + realtime patch EXCLUDE soft-deleted rows; never hard-delete.
    */
   deleted_at: string | null;
+  /** Issue #1614: non-NULL rows remain auditable but never enter the inbox. */
+  in_app_suppressed_at?: string | null;
   created_at: string;
   /** JSONB payload from notify-dispatch (entity ids, bold token, etc.). */
   data?: Record<string, unknown> | null;
@@ -66,7 +68,7 @@ export const businessNotificationKeys = {
 const DISABLED_KEY = ["business-notifications-disabled"] as const;
 
 const SELECT_COLUMNS =
-  "id, user_id, brand_id, type, title, body, deep_link, read_at, deleted_at, created_at, data";
+  "id, user_id, brand_id, type, title, body, deep_link, read_at, deleted_at, in_app_suppressed_at, created_at, data";
 
 function isBusinessType(type: string | undefined | null): boolean {
   const t = type ?? "";
@@ -102,8 +104,15 @@ function useBusinessNotificationsRealtime(
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          const newRow = payload.new as { type?: string } | null;
-          if (isBusinessType(newRow?.type)) {
+          const newRow = payload.new as {
+            type?: string;
+            in_app_suppressed_at?: string | null;
+          } | null;
+          if (
+            isBusinessType(newRow?.type) &&
+            (newRow?.in_app_suppressed_at === null ||
+              newRow?.in_app_suppressed_at === undefined)
+          ) {
             queryClient.invalidateQueries({
               queryKey: businessNotificationKeys.all(userId),
             });
@@ -124,7 +133,11 @@ function useBusinessNotificationsRealtime(
           // ORCH-1142: a soft-delete that arrives over realtime (e.g. the
           // operator deleted on another device) must DROP the row from cache,
           // not patch it in place — keeps multi-device inboxes consistent.
-          if (updated.deleted_at !== null && updated.deleted_at !== undefined) {
+          if (
+            (updated.deleted_at !== null && updated.deleted_at !== undefined) ||
+            (updated.in_app_suppressed_at !== null &&
+              updated.in_app_suppressed_at !== undefined)
+          ) {
             queryClient.setQueryData<readonly BusinessNotification[]>(
               businessNotificationKeys.all(userId),
               (old = []) => old.filter((n) => n.id !== updated.id),
@@ -162,6 +175,7 @@ async function fetchBusinessNotifications(
     .eq("user_id", userId)
     .or("type.like.stripe.%,type.like.business.%")
     .is("deleted_at", null)
+    .is("in_app_suppressed_at", null)
     .order("created_at", { ascending: false })
     .limit(FETCH_LIMIT)
     .returns<BusinessNotification[]>();
