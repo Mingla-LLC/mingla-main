@@ -46,13 +46,19 @@ VALUES (
   'Issue 1789 Brand', 'issue1789brand', 'GBP', now(), now()
 );
 
--- A SECOND brand, for the cross-brand splice control (T-7).
-INSERT INTO public.creator_accounts (id, created_at)
-VALUES ('00000000-1789-4000-8000-000000000003', now());
+-- A SECOND brand, for the cross-brand splice control (T-7). It deliberately
+-- reuses the account seeded above rather than inventing a second one: T-7
+-- asserts that a SPOT cannot be pointed at another BRAND's kitchen, and which
+-- creator owns that brand is irrelevant to it. `brands.account_id` carries only
+-- a plain index (`idx_brands_account_id`), never a UNIQUE, so one account
+-- legitimately owns several brands — and `creator_accounts.id` is FK'd to
+-- `auth.users(id)` (`creator_accounts_id_fkey`), so a second synthetic account
+-- would have needed a second synthetic auth user to exist at all. A fixture
+-- seeds only what its assertions require.
 INSERT INTO public.brands (id, account_id, name, slug, default_currency, created_at, updated_at)
 VALUES (
   '00000000-1789-4000-8000-000000000004',
-  '00000000-1789-4000-8000-000000000003',
+  '00000000-1789-4000-8000-000000000001',
   'Issue 1789 Other Brand', 'issue1789other', 'GBP', now(), now()
 );
 
