@@ -19,6 +19,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -170,21 +171,43 @@ export function CompetitorAddSheet({
   }, [canSubmit, addMutation, name, city, website, placePoolId, onClose]);
 
   return (
-    <Sheet visible={visible} onClose={onClose} testID={testID}>
+    // #1735 rework P2-4 — the GlobalSearchSheet typeahead idiom: FULL-height,
+    // TOP-anchored sheet so the input + results live ABOVE the keyboard, with
+    // the results in a keyboard-aware ScrollView (persist taps so a result
+    // row is tappable with the keyboard up; drag or a blank-area tap
+    // dismisses it). Height-stable: the scroll region bounds, cards don't move.
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      snapPoint="full"
+      verticalAlign="top"
+      testID={testID}
+    >
       <View style={styles.body}>
         <Text style={styles.title}>Watch a competitor</Text>
 
         {!manualMode ? (
+          <Input
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search venues near you"
+            leadingIcon="search"
+            clearable
+            accessibilityLabel="Search for a competitor"
+            testID={`${testID}-search-input`}
+          />
+        ) : null}
+
+        <ScrollView
+          style={styles.scrollRegion}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+          testID={`${testID}-scroll`}
+        >
+        {!manualMode ? (
           <>
-            <Input
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search venues near you"
-              leadingIcon="search"
-              clearable
-              accessibilityLabel="Search for a competitor"
-              testID={`${testID}-search-input`}
-            />
             {searchQuery.isFetching ? (
               <ActivityIndicator size="small" color={textTokens.tertiary} />
             ) : null}
@@ -303,6 +326,7 @@ export function CompetitorAddSheet({
             />
           </>
         )}
+        </ScrollView>
       </View>
     </Sheet>
   );
@@ -310,8 +334,18 @@ export function CompetitorAddSheet({
 
 const styles = StyleSheet.create({
   body: {
+    // P2-4 — flex-bound so the results ScrollView gets a real height inside
+    // the full-height sheet panel (the orch1193 bounded-body contract).
+    flex: 1,
     padding: spacing.md,
     gap: spacing.sm,
+  },
+  scrollRegion: {
+    flex: 1,
+  },
+  scrollContent: {
+    gap: spacing.sm,
+    paddingBottom: spacing.xl,
   },
   title: {
     ...typography.h3,
