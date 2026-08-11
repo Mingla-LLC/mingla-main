@@ -92,8 +92,22 @@ jobs:
           cache: npm
           cache-dependency-path: mingla-business/package-lock.json
       - run: npm ci
+      # `@testing-library/react-native` joined this step in #1834. It is not a
+      # package.json dependency, so before that "Typecheck full graph against
+      # exact PR base" below compiled every `*.render.test.tsx` in the repo with
+      # the module unresolvable — 29 files carrying
+      # `TS2307: Cannot find module '@testing-library/react-native'` were baked
+      # into the ratcheted baseline. That made the gate fail on the ADDITION of
+      # any new render test, for a reason having nothing to do with the test:
+      # #1834's suite tripped it at exactly +1. Installing the module removes
+      # the diagnostic at its source instead of suppressing it, and resolving
+      # the real types surfaced no new errors in the 29 files (794/795 -> 765/765,
+      # added 0). Pinned to the same version as
+      # issue-1486-dormant-render-suites.yml so both jobs compile and run these
+      # suites against one renderer — see that file for why an unpinned install
+      # of this package is not deterministic across npm versions.
       - name: Install render-only test dependencies
-        run: npm install --no-save react-test-renderer@19.1.0
+        run: npm install --no-save react-test-renderer@19.1.0 @testing-library/react-native@13.3.3
       - name: Pure contracts
         run: >-
           npm test -- --runInBand

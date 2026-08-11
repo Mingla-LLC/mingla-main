@@ -38,6 +38,12 @@
  * Every walk carries an explicit vacuity guard: a scan that matches nothing
  * FAILS and names the screen. An empty tree is never a pass.
  *
+ * Identity is read through @testing-library/react-native's PUBLIC element tree
+ * (`type` / `props` / `parent`), which is the same on RTL v13 and v14, and is
+ * re-anchored to the real modules by test 7. It is deliberately NOT read off
+ * React's private `unstable_fiber`, which exists only on v14+ and made this
+ * suite pass locally while failing every assertion on CI.
+ *
  * Run: npx jest --config jest.issue1834.render.cjs --runInBand
  */
 
@@ -54,6 +60,16 @@ import React from "react";
 // post-fix it is the wrapper's KeyboardAwareScrollView). The stub below keeps
 // a DISTINCT identity and renders a plain View, so an RN ScrollView appearing
 // on the path to the field can only have come from the screen's own source.
+//
+// That distinct identity is published as a testID on the HOST View the stub
+// renders (`KAS_HOST_MARKER` below — the literal is repeated here because a
+// jest.mock factory is hoisted above every module-scope binding and may not
+// close over one). Nothing else in this file or in the app stamps that value,
+// so a node carrying it can only have been rendered by THIS component; test 7
+// re-proves that link on every run and fails if the two literals ever drift.
+// Publishing identity as a host prop is what makes the walk below readable
+// through @testing-library/react-native's PUBLIC element tree on both v13
+// (react-test-renderer) and v14 (test-renderer) — see the walk's header.
 jest.mock("react-native-keyboard-controller", () => {
   const RN = require("react-native");
   const ReactLocal = require("react");
@@ -62,7 +78,11 @@ jest.mock("react-native-keyboard-controller", () => {
       props: { children?: React.ReactNode },
       ref: unknown,
     ) {
-      return ReactLocal.createElement(RN.View, { ...props, ref }, props.children);
+      return ReactLocal.createElement(
+        RN.View,
+        { ...props, testID: "issue1834-keyboard-aware-scroll-host", ref },
+        props.children,
+      );
     },
   );
   return {
@@ -257,11 +277,12 @@ jest.mock("../BrandPayoutTimelineExplainer", () => {
 
 
 import { fireEvent, render } from "@testing-library/react-native";
-import { ScrollView as RNScrollView } from "react-native";
+import { ScrollView as RNScrollView, Text as RNText } from "react-native";
 // The SAME module object the wrapper renders. Under the stub above this is the
-// stub; in production it is the library component. Either way the identity
-// comparison below is against whatever `SmartScrollView.native` actually
-// renders, never against a name this test typed out for itself.
+// stub; in production it is the library component. Test 7 renders THIS export
+// and react-native's own ScrollView and re-derives both identity markers from
+// what they actually put in the tree, so the walk is anchored to the real
+// modules rather than to a name this test typed out for itself.
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
 import { BrandOnboardView } from "../BrandOnboardView";
@@ -283,6 +304,9 @@ import {
 
 const ACCOUNT_FIELD_LABEL = "Bank account number";
 
+/** Label used only by test 7's two single-component identity fixtures. */
+const IDENTITY_PROBE_LABEL = "issue1834 identity probe";
+
 const ngBrand: Brand = {
   id: "brand-ng-1",
   displayName: "Lagos Nights",
@@ -301,42 +325,87 @@ const ngBrand: Brand = {
 type Mounted = Awaited<ReturnType<typeof render>>;
 
 /**
- * A React Fiber node, structurally. @testing-library/react-native v14 exposes
- * only HOST elements on its TestInstance tree (`type` is a string), so a
- * composite identity like "is this scroll host the wrapper's
- * KeyboardAwareScrollView or react-native's ScrollView?" is invisible there.
- * The fiber IS the mounted tree and carries the real component reference, so
- * the walk below runs on it.
+ * The marker the mocked KeyboardAwareScrollView stamps on the HOST View it
+ * renders. Kept in sync with the literal inside the jest.mock factory above by
+ * test 7, which renders the module's own export and asserts the marker comes
+ * back — so the two cannot drift into a silently-unmatchable pair.
  */
-interface FiberNode {
+const KAS_HOST_MARKER = "issue1834-keyboard-aware-scroll-host";
+
+/**
+ * react-native's ScrollView renders this HOST component. Pinned to the real
+ * module by test 7 rather than trusted as a typed-out string, so a react-native
+ * rename turns test 7 red instead of quietly making assertion 3 unfalsifiable.
+ */
+const RN_SCROLL_HOST_TYPE = "RCTScrollView";
+
+/**
+ * A node in @testing-library/react-native's PUBLIC element tree.
+ *
+ * WHY PUBLIC, AND WHY HOST NODES (#1834 CI repair): this walk previously read
+ * component identity off React's private fiber via `instance.unstable_fiber`.
+ * That property does not exist on RTL v13, whose element tree comes from
+ * `react-test-renderer`; it exists only on v14+, whose tree comes from the new
+ * `test-renderer` package. The workflow installed `@testing-library/react-native`
+ * UNPINNED, and npm's peer resolution picks v13.3.3 whenever `test-renderer`'s
+ * `react-reconciler@~0.33` (peer `react@^19.2.0`) cannot be satisfied against
+ * this app's pinned `react@19.1.0` — which is exactly what happens on CI. The
+ * suite therefore passed locally and failed every assertion on CI through its
+ * own vacuity guard. A private, explicitly-unstable API was the wrong thing to
+ * hang component identity on.
+ *
+ * `type`, `props` and `parent` are public on BOTH trees, and HOST elements
+ * appear in both (v14 exposes only hosts; v13 exposes hosts plus composites).
+ * So identity is published as a host prop by the mock and read back here, and
+ * the assertions are exactly as strong: matching `KAS_HOST_MARKER` still means
+ * "this node was rendered by react-native-keyboard-controller's
+ * KeyboardAwareScrollView", and matching `RN_SCROLL_HOST_TYPE` still means
+ * "this node was rendered by react-native's ScrollView" — both re-proved from
+ * the real modules by test 7 on every run.
+ */
+interface TreeNode {
   type: unknown;
-  memoizedProps: Record<string, unknown> | null;
-  return: FiberNode | null;
+  props: Record<string, unknown> | null;
+  parent: TreeNode | null;
 }
 
-/** Reads the fiber off a TestInstance, failing loudly if it is unavailable. */
-function fiberOf(node: unknown, screenName: string): FiberNode {
-  const fiber = (node as { unstable_fiber?: FiberNode | null }).unstable_fiber;
-  if (fiber == null) {
+/**
+ * Walks UP from an element through the public tree.
+ *
+ * Vacuity guard: if the element does not expose a `parent` chain at all — the
+ * shape this walk depends on — that is a silent-skip hazard of exactly the kind
+ * the fiber read turned out to be, so it THROWS and names the screen rather
+ * than returning an empty chain that every `.find` below would read as "not
+ * found".
+ */
+function ancestorChainOf(field: unknown, screenName: string): TreeNode[] {
+  if (typeof field !== "object" || field === null || !("parent" in field)) {
     throw new Error(
-      `[#1834 vacuity guard] ${screenName}: the account-number field exposes no fiber, so component ` +
-        `identity could not be read. This suite must FAIL rather than silently skip its only real assertion.`,
+      `[#1834 vacuity guard] ${screenName}: the account-number field exposes no ancestor chain, so the ` +
+        `scroll host that owns it could not be read. This suite must FAIL rather than silently skip its ` +
+        `only real assertion.`,
     );
   }
-  return fiber;
+  const chain: TreeNode[] = [];
+  let cursor: TreeNode | null = (field as TreeNode).parent;
+  while (cursor != null) {
+    chain.push(cursor);
+    cursor = cursor.parent;
+  }
+  return chain;
 }
 
-function isKeyboardAwareScrollView(fiber: FiberNode): boolean {
-  return fiber.type === (KeyboardAwareScrollView as unknown);
+function isKeyboardAwareScrollHost(node: TreeNode): boolean {
+  return node.props?.testID === KAS_HOST_MARKER;
 }
 
-function isBareRnScrollView(fiber: FiberNode): boolean {
-  return fiber.type === (RNScrollView as unknown);
+function isBareRnScrollHost(node: TreeNode): boolean {
+  return node.type === RN_SCROLL_HOST_TYPE;
 }
 
 interface ScrollHostFacts {
   /** The nearest scroll host above the account-number field. */
-  host: FiberNode;
+  host: TreeNode;
   /** Bare react-native ScrollViews between the screen root and the field. */
   bareRnScrollViewsOnPath: number;
   /** How many ancestors were walked — proof the scan was not empty. */
@@ -360,12 +429,7 @@ function scrollHostFactsFor(screenName: string, tree: Mounted): ScrollHostFacts 
     );
   }
 
-  const chain: FiberNode[] = [];
-  let cursor: FiberNode | null = fiberOf(field, screenName).return;
-  while (cursor != null) {
-    chain.push(cursor);
-    cursor = cursor.return;
-  }
+  const chain = ancestorChainOf(field, screenName);
   if (chain.length === 0) {
     throw new Error(
       `[#1834 vacuity guard] ${screenName}: the account-number field has no ancestors — the tree is degenerate.`,
@@ -373,7 +437,7 @@ function scrollHostFactsFor(screenName: string, tree: Mounted): ScrollHostFacts 
   }
 
   const host = chain.find(
-    (n) => isKeyboardAwareScrollView(n) || isBareRnScrollView(n),
+    (n) => isKeyboardAwareScrollHost(n) || isBareRnScrollHost(n),
   );
   if (host === undefined) {
     throw new Error(
@@ -385,14 +449,14 @@ function scrollHostFactsFor(screenName: string, tree: Mounted): ScrollHostFacts 
 
   return {
     host,
-    bareRnScrollViewsOnPath: chain.filter(isBareRnScrollView).length,
+    bareRnScrollViewsOnPath: chain.filter(isBareRnScrollHost).length,
     ancestorsWalked: chain.length,
   };
 }
 
-function hostLabel(host: FiberNode): string {
-  if (isKeyboardAwareScrollView(host)) return "KeyboardAwareScrollView";
-  if (isBareRnScrollView(host)) return "react-native ScrollView";
+function hostLabel(host: TreeNode): string {
+  if (isKeyboardAwareScrollHost(host)) return "KeyboardAwareScrollView";
+  if (isBareRnScrollHost(host)) return "react-native ScrollView";
   return "unknown";
 }
 
@@ -469,7 +533,7 @@ describe("#1834 — the NG account-number field is owned by a keyboard-aware scr
     "4. %s — the host's resolved bottomOffset is the inherited DEFAULT_BOTTOM_OFFSET",
     async (name, mount) => {
       const facts = scrollHostFactsFor(name, await mount());
-      const bottomOffset: unknown = facts.host.memoizedProps?.bottomOffset;
+      const bottomOffset: unknown = facts.host.props?.bottomOffset;
       expect(typeof bottomOffset).toBe("number");
       // Tied to the real module AND to the arithmetic that produces it, so
       // neither can drift away from the other unnoticed — and no literal is
@@ -487,7 +551,7 @@ describe("#1834 — the NG account-number field is owned by a keyboard-aware scr
     "5. %s — the resolved offset clears the ORCH-1165 Done bar with >= 12 visible",
     async (name, mount) => {
       const facts = scrollHostFactsFor(name, await mount());
-      const bottomOffset = facts.host.memoizedProps?.bottomOffset as number;
+      const bottomOffset = facts.host.props?.bottomOffset as number;
       // The arithmetic that makes the offset the RIGHT number, term by term:
       // DONE_BAR_OCCUPIED of it is spent on the Done bar (53 on iOS 26+, 42
       // elsewhere — derived from the library's own OPENED_OFFSET rule),
@@ -507,9 +571,56 @@ describe("#1834 — the NG account-number field is owned by a keyboard-aware scr
   it("6. the vacuity guard is real — a tree with no bank card FAILS instead of passing", async () => {
     // If the guard itself ever regressed into a silent skip, every assertion
     // above would become unfalsifiable. Prove it throws.
-    const empty = await render(<></>);
-    expect(() => scrollHostFactsFor("empty tree", empty)).toThrow(
+    //
+    // The fixture is a real scroll container with NO bank field, not an empty
+    // fragment: `render(<></>)` leaves @testing-library/react-native v13 with
+    // an unmounted renderer and throws "Can't access .root" before the guard is
+    // ever reached, and a fixture that only works on one RTL version is exactly
+    // the portability defect this repair exists to remove. A tree that HAS a
+    // scroll host but no field is also the stronger probe: it proves the guard
+    // keys on the FIELD, not on the absence of a container.
+    const noCard = await render(<RNScrollView />);
+    expect(() => scrollHostFactsFor("no-bank-card tree", noCard)).toThrow(
       /vacuity guard[\s\S]*no "Bank account number" field/,
     );
+  });
+
+  it("7. both identity markers are re-derived from the REAL modules, not typed-out names", async () => {
+    // Assertions 2-5 read component identity off PUBLIC host props rather than
+    // off React's private fiber (see the TreeNode header for why). That is only
+    // as strong as the link between each marker and the component it stands
+    // for, so the link is re-proved here from the real module objects on every
+    // run: render each component alone and check that the walk classifies it,
+    // and ONLY it. If the mock's marker literal drifts from KAS_HOST_MARKER, or
+    // react-native renames its ScrollView host, this fails loudly instead of
+    // quietly leaving the walk unable to match anything — which would otherwise
+    // surface as the "no scroll host of ANY kind" guard on a correct app.
+    const kas = await render(
+      <KeyboardAwareScrollView>
+        <RNText accessibilityLabel={IDENTITY_PROBE_LABEL}>probe</RNText>
+      </KeyboardAwareScrollView>,
+    );
+    const kasChain = ancestorChainOf(
+      kas.getByLabelText(IDENTITY_PROBE_LABEL),
+      "KeyboardAwareScrollView identity probe",
+    );
+    expect({
+      keyboardAware: kasChain.some(isKeyboardAwareScrollHost),
+      bareRnScrollView: kasChain.some(isBareRnScrollHost),
+    }).toEqual({ keyboardAware: true, bareRnScrollView: false });
+
+    const rn = await render(
+      <RNScrollView>
+        <RNText accessibilityLabel={IDENTITY_PROBE_LABEL}>probe</RNText>
+      </RNScrollView>,
+    );
+    const rnChain = ancestorChainOf(
+      rn.getByLabelText(IDENTITY_PROBE_LABEL),
+      "react-native ScrollView identity probe",
+    );
+    expect({
+      keyboardAware: rnChain.some(isKeyboardAwareScrollHost),
+      bareRnScrollView: rnChain.some(isBareRnScrollHost),
+    }).toEqual({ keyboardAware: false, bareRnScrollView: true });
   });
 });

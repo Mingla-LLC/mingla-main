@@ -46,8 +46,22 @@ jobs:
       # are installed --no-save exactly as issue-874-business-analytics-tests.yml
       # already does. The web-render configs need react-native-web + react-dom,
       # which the app already depends on.
+      #
+      # BOTH VERSIONS ARE PINNED (#1834). `@testing-library/react-native` used to
+      # be unpinned here, and an unpinned install of it is NOT deterministic
+      # across environments: RTL v14 peer-depends on `test-renderer@^1`, whose
+      # `react-reconciler@~0.33` peer-depends on `react@^19.2.0`, which this app's
+      # pinned `react@19.1.0` does not satisfy. npm 10.8 (this runner) therefore
+      # backtracks to 13.3.3, while npm >=10.9 (developer machines) overrides the
+      # peer and installs 14.0.1 — a DIFFERENT renderer (`react-test-renderer` vs
+      # `test-renderer`) with a different element tree. #1834's render suite was
+      # written and proven against 14.0.1 locally and then failed all 12
+      # assertions here on 13.3.3. Pinning to the version this job already
+      # resolves keeps all 20 suites below on exactly the renderer they were
+      # proven against and stops the tree drifting silently underneath them.
+      # Bump this deliberately, with the suites re-run — never by deleting the pin.
       - name: Install render-only test dependencies
-        run: npm install --no-save react-test-renderer@19.1.0 @testing-library/react-native
+        run: npm install --no-save react-test-renderer@19.1.0 @testing-library/react-native@13.3.3
 
       # ---- gate first: a config added without a workflow fails here ---------
       - name: Jest-config-invoked-by-workflow gate self-test
