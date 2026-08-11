@@ -59,10 +59,16 @@ jobs:
           docker exec -i issue1840-postgres \
             psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
             < supabase/migrations/__tests__/issue_1840_ng_payout_float_alerts.test.sql
+      - name: Run the #1840 independent adversarial SQL contract tests
+        run: |
+          docker exec -i issue1840-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1840_ng_float_alerts_adversarial.test.sql
       - name: Run the #1840 sweep wiring + money-path regression tests
         run: |
           deno test --allow-read --allow-env --allow-net --no-check \
-            supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts
+            supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts
       - name: Re-run the neighbouring #1177/#1219 payout suites
         run: |
           deno test --allow-read --allow-env --allow-net --no-check \
