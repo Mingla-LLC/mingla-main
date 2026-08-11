@@ -210,6 +210,8 @@ interface BaseBottomSheetSheetProps extends BaseBottomSheetCommonProps {
    */
   onNativeShow?: () => void;
   onNativeDismiss?: () => void;
+  /** #1880 Android fallback for a restored modal host only. Default false. */
+  androidPostCommitNativeShow?: boolean;
   /**
    * META-ORCH-0991 (sheet rework — Bug 4): when true, the primitive adds the
    * floating GlassBottomNav content height to the body's bottom padding so the
@@ -313,6 +315,7 @@ type NativeModalLifecycleAdapterProps = {
   visible: boolean;
   onNativeShow?: () => void;
   onNativeDismiss?: () => void;
+  androidPostCommitNativeShow: boolean;
   children: (callbacks: NativeModalLifecycleCallbacks) => ReactNode;
 };
 
@@ -328,6 +331,7 @@ function NativeModalLifecycleAdapter({
   visible,
   onNativeShow,
   onNativeDismiss,
+  androidPostCommitNativeShow,
   children,
 }: NativeModalLifecycleAdapterProps): React.ReactElement {
   const wasVisibleRef = useRef(false);
@@ -371,20 +375,17 @@ function NativeModalLifecycleAdapter({
       dismissRequestedRef.current = false;
       dismissDeliveredRef.current = false;
       cycleCallbacksRef.current = { onNativeShow, onNativeDismiss };
-      // Android does not reliably emit RN Modal.onShow again when the same
-      // Modal is hidden and then restored. The visible=true host mutation has
-      // already committed at this layout-effect boundary, so acknowledge that
-      // committed cycle here. The later native onShow callback is harmlessly
-      // deduplicated by showDeliveredRef. Without this acknowledgement an
-      // expanded card restored after Share stays permanently "busy" even
-      // though it is visibly back on screen.
-      if (Platform.OS === 'android') deliverNativeShow();
+      // Android does not reliably emit RN Modal.onShow again for the restored
+      // expanded-card host. Only that caller opts into this post-commit
+      // acknowledgement; initial presentations (including the Share sheet)
+      // must still wait for RN Modal.onShow and its presentation watchdog.
+      if (Platform.OS === 'android' && androidPostCommitNativeShow) deliverNativeShow();
     } else if (!visible && wasVisible) {
       dismissRequestedRef.current = true;
       if (Platform.OS === 'android') deliverNativeDismiss();
     }
     wasVisibleRef.current = visible;
-  }, [deliverNativeDismiss, onNativeDismiss, onNativeShow, visible]);
+  }, [androidPostCommitNativeShow, deliverNativeDismiss, deliverNativeShow, onNativeDismiss, onNativeShow, visible]);
 
   return <>{children({
     onNativeShow: deliverNativeShow,
@@ -461,6 +462,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     wrapInRNModal = false,
     onNativeShow,
     onNativeDismiss,
+    androidPostCommitNativeShow = false,
     tabBarAware = false,
     hidesBottomNav = false,
     bottomSheetInset = 0,
@@ -972,6 +974,7 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         visible={visible}
         onNativeShow={onNativeShow}
         onNativeDismiss={onNativeDismiss}
+        androidPostCommitNativeShow={androidPostCommitNativeShow}
       >
         {({ onNativeShow, onNativeDismiss }) => (
           <RNModal

@@ -333,6 +333,8 @@ test('T5 provider native show moves accessibility focus into the visible share s
 
 test('T6 modal lifecycle is platform-specific, cycle-guarded, and post-commit on Android', () => {
   const base = read(FILES.base);
+  const modal = read(FILES.modal);
+  const provider = read(FILES.provider);
   assert.match(base, /useLayoutEffect/,
     'Android dismissal acknowledgement must run after the committed visible transition');
   assert.match(base, /Platform\.OS\s*===\s*['"]android['"]/,
@@ -346,13 +348,32 @@ test('T6 modal lifecycle is platform-specific, cycle-guarded, and post-commit on
   const lifecycleEffect = sliceBetween(base, 'useLayoutEffect(() => {', 'return <>{children({');
   assert.match(
     lifecycleEffect,
-    /if \(visible && !wasVisible\)[\s\S]*Platform\.OS === 'android'[\s\S]*deliverNativeShow\(\)/,
+    /if \(visible && !wasVisible\)[\s\S]*Platform\.OS === 'android' && androidPostCommitNativeShow[\s\S]*deliverNativeShow\(\)/,
     'Android must acknowledge a restored visible=true host after commit because RN Modal.onShow may not fire again',
   );
+  const expandedRoot = modal.slice(
+    modal.indexOf('<BaseBottomSheet', modal.indexOf('const renderNightOutContent')),
+    modal.indexOf('>', modal.indexOf('<BaseBottomSheet', modal.indexOf('const renderNightOutContent'))) + 1,
+  );
+  assert.match(expandedRoot, /androidPostCommitNativeShow=\{shareHandoffPhase === 'expanded_restoring'\}/,
+    'only the restored expanded-card host may opt into Android post-commit show acknowledgement');
+  const providerSheetStart = provider.indexOf('<BaseBottomSheet');
+  assert.notEqual(providerSheetStart, -1, 'provider Share sheet mount is missing');
+  const providerSheet = provider.slice(providerSheetStart, provider.indexOf('\n', providerSheetStart));
+  assert.doesNotMatch(providerSheet, /androidPostCommitNativeShow/,
+    'the Share sheet initial presentation must wait for RN Modal.onShow and its watchdog');
+  assert.match(base, /androidPostCommitNativeShow = false/,
+    'post-commit Android show acknowledgement must remain default-off');
+  const showDelivery = sliceBetween(base, 'const deliverNativeShow = useCallback', 'const deliverNativeDismiss');
+  const showGuard = sliceBetween(showDelivery, 'if (', ') return;');
   assert.match(
-    base,
-    /showDeliveredRef\.current[\s\S]*deliverNativeShow/,
+    showGuard,
+    /showDeliveredRef\.current/,
     'a later native onShow callback must be deduplicated against the post-commit Android acknowledgement',
+  );
+  assert.ok(
+    showDelivery.indexOf('showDeliveredRef.current = true') < showDelivery.indexOf('onNativeShow?.()'),
+    'the per-cycle show latch must close before invoking the native-show callback',
   );
 });
 

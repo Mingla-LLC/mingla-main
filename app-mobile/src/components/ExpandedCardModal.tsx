@@ -1871,6 +1871,7 @@ export default function ExpandedCardModal({
         onClose={handleRootSheetClose}
         onNativeShow={handleRootNativeShow}
         onNativeDismiss={handleRootNativeDismiss}
+        androidPostCommitNativeShow={shareHandoffPhase === 'expanded_restoring'}
         wrapInRNModal
         /*
           A POOL CARD IS A LIGHT SHEET, AND THAT IS SAID ONCE.
