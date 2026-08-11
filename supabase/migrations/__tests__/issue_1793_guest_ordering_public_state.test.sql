@@ -52,8 +52,10 @@ BEGIN
      'restaurant', 'verified'),
     (v_other,   v_brand, 'roofbar1793',   'The Roof Bar',  51.51, -0.13,
      'restaurant', 'verified'),
+    -- 'none' is the venue_listings claim_status DEFAULT — an unverified venue,
+    -- the state every venue starts in. Ordering must read `unavailable` there.
     (v_unverif, v_brand, 'unclaimed1793', 'Not Yet Ours',  51.52, -0.14,
-     'restaurant', 'unclaimed');
+     'restaurant', 'none');
 
   INSERT INTO public.venue_tables (id, brand_id, venue_id, name, capacity, zone, sort_order)
   VALUES (v_table, v_brand, v_venue, 'Table 12', 4, 'indoor', 1);
