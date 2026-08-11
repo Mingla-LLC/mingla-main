@@ -87,7 +87,7 @@ function createPresentationDeferred(): PresentationDeferred {
   // #1880: cancellation may win before the expanded caller attaches its real
   // waiter. Observe rejection internally without replacing the Promise exposed
   // to that waiter; later awaiters still receive the original rejection.
-  void deferred.promise.catch(() => undefined);
+  void deferred.promise.then(undefined, () => undefined);
   return deferred;
 }
 

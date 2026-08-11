@@ -71,10 +71,33 @@ test('T2 pre-presentation cancellation cannot create an unhandled rejected Promi
     'const openContentShare',
   );
   const cancellationRejectsPresented = /attempt\.presented\.reject\(/.test(cancellation);
-  const rejectionObservedAtCreation = /(?:deferred|promise)\.promise\.catch\(|void\s+deferred\.promise\.catch\(/.test(deferredFactory);
+  const returnDeferred = deferredFactory.indexOf('return deferred;');
+  assert.notEqual(returnDeferred, -1, 'the deferred factory must return its original container');
+  const creationWindow = deferredFactory.slice(0, returnDeferred);
+  const actualRejectionHandler = String.raw`(?:async\s+)?(?:function(?:\s+[A-Za-z_$][\w$]*)?\s*\(|\([^)]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>|(?!undefined\b|null\b)[A-Za-z_$][\w$]*)`;
+  const catchObserver = new RegExp(
+    String.raw`(?:^|\n)\s*(?:void\s+)?deferred\.promise\.catch\s*\(\s*${actualRejectionHandler}`,
+    'm',
+  );
+  const secondArgumentObserver = new RegExp(
+    String.raw`(?:^|\n)\s*(?:void\s+)?deferred\.promise\.then\s*\(\s*undefined\s*,\s*${actualRejectionHandler}`,
+    'm',
+  );
+  const rejectionObservedAtCreation = catchObserver.test(creationWindow)
+    || secondArgumentObserver.test(creationWindow);
+  const observerChainReplacesOriginal = /deferred\.promise\s*=\s*deferred\.promise\.(?:catch|then)\s*\(|return\s+deferred\.promise\.(?:catch|then)\s*\(|promise\s*:\s*deferred\.promise\.(?:catch|then)\s*\(/.test(deferredFactory);
   assert.ok(
-    !cancellationRejectsPresented || rejectionObservedAtCreation,
+    cancellationRejectsPresented,
+    'Back/cancel must reject `presented` so the real handoff waiter receives cancellation',
+  );
+  assert.ok(
+    rejectionObservedAtCreation,
     'Back/cancel may occur before the handoff awaits `presented`; rejecting it requires an attached rejection observer',
+  );
+  assert.equal(
+    observerChainReplacesOriginal,
+    false,
+    'the observer-chain Promise must never replace the original Promise exposed to real waiters',
   );
 });
 
