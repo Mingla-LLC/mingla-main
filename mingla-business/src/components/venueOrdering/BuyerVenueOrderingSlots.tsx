@@ -39,6 +39,7 @@ import { VenueOrderingStickyBar } from "@mingla/brand-rendering/venueOrdering/Ve
 import { VenueOrderReviewPane } from "@mingla/brand-rendering/venueOrdering/VenueOrderReviewPane";
 import { VenueOrderStatusPane } from "@mingla/brand-rendering/venueOrdering/VenueOrderStatusPane";
 
+import { usePublicMenuBundle } from "../../hooks/usePublicMenuBundle";
 import { useBuyerVenueOrdering } from "./useBuyerVenueOrdering";
 import type { BuyerVenueOrdering } from "./useBuyerVenueOrdering";
 
@@ -59,6 +60,12 @@ export {
 } from "../../services/venueOrderingService";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
+
+/** Stable, so an empty window map does not churn the memo below it. */
+const EMPTY_WINDOWS: Record<
+  string,
+  { start: string | null; end: string | null; days: number[] | null }
+> = {};
 
 export interface BuyerVenueOrderingSlotProps {
   ordering: BuyerVenueOrdering;
@@ -247,12 +254,7 @@ export const BuyerVenueOrderingSurface: React.FC<{
   spotCode: string | null;
   entrySource: string | null;
   menu: PublicMenuGroup[];
-  menuWindows: Record<
-    string,
-    { start: string | null; end: string | null; days: number[] | null }
-  >;
   timezone: string | null;
-  notesAllowedByItemId: Record<string, boolean | undefined>;
 }> = ({
   palette,
   surface,
@@ -262,10 +264,35 @@ export const BuyerVenueOrderingSurface: React.FC<{
   spotCode,
   entrySource,
   menu,
-  menuWindows,
   timezone,
-  notesAllowedByItemId,
 }) => {
+  /**
+   * The service WINDOWS are read HERE rather than by the route, and that is not
+   * a style choice.
+   *
+   * The route already reads the public menu through the shipped
+   * `usePublicMenus`, and it is mounted by render suites that provide no
+   * QueryClient because every hook it calls is mocked by module path. Adding a
+   * SECOND query to it would mean editing those suites to mock a new module —
+   * a change to a pinned test for the convenience of an implementor, which is
+   * exactly the trade the append-only posture exists to refuse.
+   *
+   * This component is behind a lazy boundary and never mounts in those suites
+   * (it suspends to `null`), so the query belongs here. It rides the same
+   * `public_menus_view` read and is served from the same React Query cache.
+   */
+  const bundle = usePublicMenuBundle(brandSlug, venueSlug);
+  const menuWindows = bundle.data?.windows ?? EMPTY_WINDOWS;
+  const notesAllowedByItemId = React.useMemo<
+    Record<string, boolean | undefined>
+  >(() => {
+    const map: Record<string, boolean | undefined> = {};
+    for (const group of menu) {
+      for (const item of group.items) map[item.id] = item.allowsNotes === true;
+    }
+    return map;
+  }, [menu]);
+
   const ordering = useBuyerVenueOrdering({
     brandSlug,
     venueSlug,

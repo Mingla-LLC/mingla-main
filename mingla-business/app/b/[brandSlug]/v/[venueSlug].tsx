@@ -68,13 +68,7 @@ import {
   usePublicVenueDiscoveryPrice,
   usePublicVenueReservable,
 } from "../../../../src/hooks/usePublicEvents";
-// #1793 — the bundle hook replaces `usePublicMenus`: ONE query, now also
-// carrying each menu's service window (the columns #1789 appended to
-// `public_menus_view`), and living in a module that does NOT import
-// AuthContext — which `useMenus.ts` does, at module scope, for the brand-side
-// hooks that share it. This is an anon buyer route; the fewer things it can
-// wake up, the better.
-import { usePublicMenuBundle } from "../../../../src/hooks/usePublicMenuBundle";
+import { usePublicMenus } from "../../../../src/hooks/useMenus";
 import { usePublicStayDetail } from "../../../../src/hooks/usePublicStayDetail";
 import { PublicVenueNotFound } from "../../../../src/components/venue/PublicVenueNotFound";
 import { PublicVenueReservationSheet } from "../../../../src/components/venue/PublicVenueReservationSheet";
@@ -134,12 +128,8 @@ const LazyOrderingSurface = React.lazy(() =>
  */
 const analyticsSurface: VenueOrganicAnalyticsSurface = "buyer_web";
 
-/** #1793 — stable empties, so the ordering hook's deps do not churn. */
+/** #1793 — a stable empty menu, so the ordering surface's deps do not churn. */
 const EMPTY_MENU_GROUPS: PublicMenuGroup[] = [];
-const EMPTY_MENU_WINDOWS: Record<
-  string,
-  { start: string | null; end: string | null; days: number[] | null }
-> = {};
 
 /** `PublicVenue` (this app's read model) → the shared screen's view model. */
 const toVenueViewModel = (venue: PublicVenue): PublicVenueViewModel => ({
@@ -209,7 +199,7 @@ export default function PublicVenueRoute(): React.ReactElement {
 
   // Exact venue-owned menu — fetched only once the venue resolves (a
   // not-found page needs no menu round-trip).
-  const menusQuery = usePublicMenuBundle(
+  const menusQuery = usePublicMenus(
     venue !== null &&
         venue.venueCategory !== "stay" &&
         typeof brandSlug === "string"
@@ -231,18 +221,7 @@ export default function PublicVenueRoute(): React.ReactElement {
     venue?.venueCategory === "stay" ? null : venue?.placePoolId ?? null,
   );
 
-  const menuGroups = menusQuery.data?.groups ?? EMPTY_MENU_GROUPS;
-  const menuWindows = menusQuery.data?.windows ?? EMPTY_MENU_WINDOWS;
-  const notesAllowedByItemId = useMemo<Record<string, boolean | undefined>>(
-    () => {
-      const map: Record<string, boolean | undefined> = {};
-      for (const group of menuGroups) {
-        for (const item of group.items) map[item.id] = item.allowsNotes === true;
-      }
-      return map;
-    },
-    [menuGroups],
-  );
+  const menuGroups = menusQuery.data ?? EMPTY_MENU_GROUPS;
 
 
   // §6.8 — the secondary "See {brand} →" link renders only when the PARENT
@@ -533,9 +512,7 @@ export default function PublicVenueRoute(): React.ReactElement {
               spotCode={spotCode}
               entrySource={entrySource}
               menu={context.menu}
-              menuWindows={menuWindows}
               timezone={venue.timezone}
-              notesAllowedByItemId={notesAllowedByItemId}
             />
           </React.Suspense>
         ),
