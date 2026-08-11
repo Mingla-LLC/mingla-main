@@ -798,14 +798,11 @@ async function sendEmail(
         },
     });
     if (sendOutcome.ok) {
-      await supabase
-        .from("marketing_messages")
-        .update({
-          status: "sent",
-          sent_at: new Date().toISOString(),
-          provider_message_id: sendOutcome.providerId ?? null,
-        })
-        .eq("id", messageId);
+      await persistEmailSentTerminal(
+        supabase,
+        messageId,
+        sendOutcome.providerId,
+      );
       sent += 1;
     } else if (providerClaimed && inviteContext !== null) {
       await supabase.from("brand_offering_invite_delivery_attempts").update({
@@ -1947,13 +1944,68 @@ function getPublicAppOrigin(): string {
     Deno.env.get("MINGLA_PUBLIC_APP_ORIGIN") ?? "https://mingla.app";
 }
 
-interface ResendOutcome {
-  ok: boolean;
-  providerId?: string;
-  error?: string;
+export type ResendOutcome =
+  | { ok: true; providerId: string }
+  | { ok: false; error: string };
+
+interface TerminalUpdateError {
+  code?: string;
 }
 
-async function postToResend(input: {
+interface EmailTerminalRow {
+  id: string;
+  status: string;
+  provider_message_id: string | null;
+}
+
+function safeTerminalUpdateError(
+  error: TerminalUpdateError | null | undefined,
+): string {
+  if (error === null || error === undefined) return "write_not_persisted";
+  return typeof error.code === "string" && error.code.trim().length > 0
+    ? error.code
+    : "database_error";
+}
+
+// #1821: a Resend success is not locally counted until the exact terminal row
+// is read back with the same provider id. Retry once, then fail loud so an
+// accepted provider request can never become a silently resendable orphan.
+// deno-lint-ignore no-explicit-any -- service client has no generated DB types.
+export async function persistEmailSentTerminal(
+  supabase: any,
+  messageId: string,
+  providerMessageId: string,
+): Promise<void> {
+  const sentPatch = {
+    status: "sent",
+    sent_at: new Date().toISOString(),
+    provider_message_id: providerMessageId,
+  };
+  let safeError = "write_not_persisted";
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { data, error } = await supabase
+      .from("marketing_messages")
+      .update(sentPatch)
+      .eq("id", messageId)
+      .select("id,status,provider_message_id")
+      .maybeSingle();
+    const row = data as EmailTerminalRow | null;
+    if (
+      error === null && row !== null && row.id === messageId &&
+      row.status === "sent" && row.provider_message_id === providerMessageId
+    ) {
+      return;
+    }
+    safeError = safeTerminalUpdateError(error as TerminalUpdateError | null);
+  }
+
+  throw new Error(
+    `email_sent_terminal_update_lost:${messageId}:${safeError}`,
+  );
+}
+
+export async function postToResend(input: {
   apiKey: string;
   from: string;
   to: string;
@@ -2005,8 +2057,10 @@ async function postToResend(input: {
       payload = null;
     }
     if (response.ok) {
-      const providerId = isResendOk(payload) ? payload.id : undefined;
-      return { ok: true, providerId };
+      if (!isResendOk(payload)) {
+        return { ok: false, error: "resend_success_response_invalid" };
+      }
+      return { ok: true, providerId: payload.id };
     }
     return {
       ok: false,
@@ -2018,9 +2072,10 @@ async function postToResend(input: {
   return { ok: false, error: lastError || "resend_rate_limited_max_retries" };
 }
 
-function isResendOk(value: unknown): value is { id: string } {
+export function isResendOk(value: unknown): value is { id: string } {
   return typeof value === "object" && value !== null &&
-    typeof (value as { id?: unknown }).id === "string";
+    typeof (value as { id?: unknown }).id === "string" &&
+    (value as { id: string }).id.trim().length > 0;
 }
 
 function isResendErr(value: unknown): value is { message?: string } {
