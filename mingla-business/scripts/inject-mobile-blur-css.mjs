@@ -68,12 +68,52 @@ const CHUNK_RECOVERY_MARKER = "mingla-mobile-web-chunk-recovery";
 // chunkReloadGuard.ts's RELOAD_TS_KEY / RELOAD_COOLDOWN_MS (CI-pinned).
 const CHUNK_RECOVERY_KEY = "mingla:last-chunk-reload";
 const CHUNK_RECOVERY_COOLDOWN_MS = 10000;
+// ---------------------------------------------------------------------------
+// Issue #1876 F-3: the suppression branch is a PERMANENT DEAD END, so it has to
+// terminate in something the user can see and act on.
+//
+// The 10,000 ms cooldown above is the ONLY thing that guarantees recovery can
+// never reload-loop, so it cannot be relaxed. That makes its suppression branch
+// unreachable-by-design for a second attempt: once it fires, nothing else will
+// ever run. #1485 left that branch as a bare `console.warn` and deferred to
+// "the ErrorBoundary's recoverable fallback" — but the ErrorBoundary ships
+// INSIDE the entry bundle. When the ENTRY bundle is the missing file, React
+// never mounts, there is no boundary, and `<div id="root">` stays empty
+// forever. The deployed <body> on 2026-08-11 was a <noscript> + an empty #root
+// + three <script defer> tags and nothing else: a permanently white page with
+// no message and no way out. Constitution rule 3, live in production.
+//
+// So the suppression branch (and the blocked-storage `catch`, which never gets
+// even one reload) now arms a 1500 ms timer that paints `#mingla-boot-error`
+// into document.body.
+//
+// THE 1500 ms + EMPTY-#root TEST IS THE WHOLE SAFETY ARGUMENT. A suppressed
+// LAZY-ROUTE failure is survivable — React is alive, the app is on screen, and
+// a card thrown over a working app would be a WORSE bug than the blank page it
+// replaces. So the card renders only if #root is STILL empty when the timer
+// fires. It is appended as a SIBLING of #root, never into it, so React can
+// still mount over #root untouched if a late chunk lands.
+//
+// CONSTRAINTS ON EDITING THE SCRIPT BELOW — all CI-enforced, all easy to trip:
+//   * `${...}` interpolation is limited to CHUNK_RECOVERY_MARKER /
+//     CHUNK_RECOVERY_KEY / CHUNK_RECOVERY_COOLDOWN_MS. The #1485 suites rebuild
+//     the shipped bytes with `new Function` bound to exactly those three names,
+//     so any other interpolation throws a ReferenceError in CI. New literals go
+//     INLINE (that is why 1500 and the copy strings are hard-coded here).
+//   * ES5 only, no backticks, no `</script`, no navigation primitive other than
+//     `window.location.reload()` — pinned by
+//     `issue1485_p2_1_recovery_never_navigates.tester.adversarial.test.ts` I.4/N.2.
+//   * Reach the DOM through `window.document` / `window.setTimeout` and guard
+//     both. The #1485 harnesses execute these bytes against a SYNTHETIC window
+//     with neither, and a bare `document` reference would throw where those
+//     suites assert nothing escapes.
+// ---------------------------------------------------------------------------
 const JS_CACHE_BUST_MARKER = "orch1091-js-cache-bust";
 const JS_CACHE_BUST_PARAM = "orch1091";
 const STYLE_TAG =
   `<style id="${MARKER}">@media (max-width:767px){*,*::before,*::after{` +
   `-webkit-backdrop-filter:none !important;backdrop-filter:none !important}}</style>`;
-const CHUNK_RECOVERY_SCRIPT = `<script id="${CHUNK_RECOVERY_MARKER}">(function(){var KEY="${CHUNK_RECOVERY_KEY}";var LEGACY_KEY="${CHUNK_RECOVERY_MARKER}";var COOLDOWN_MS=${CHUNK_RECOVERY_COOLDOWN_MS};try{var boot=window.sessionStorage;var carried=boot.getItem(LEGACY_KEY);if(carried!==null){if(boot.getItem(KEY)===null){boot.setItem(KEY,carried)}boot.removeItem(LEGACY_KEY)}}catch(_m){/* storage blocked: nothing to migrate, and nothing to recover with */}function isChunkUrl(value){return typeof value==="string"&&value.indexOf("/_expo/static/js/web/")!==-1&&/\\.js(?:$|[?#])/.test(value)}function recover(reason){try{var store=window.sessionStorage;var now=Date.now();var last=Number(store.getItem(KEY)||0);if(isFinite(last)&&now-last<COOLDOWN_MS){console.warn("[mobile-web] chunk recovery suppressed by the shared cooldown",reason);return}store.setItem(KEY,String(now));console.warn("[mobile-web] stale chunk detected; reloading",reason);window.location.reload()}catch(_e){console.warn("[mobile-web] chunk recovery unavailable (sessionStorage blocked); not reloading",reason)}}window.addEventListener("error",function(event){var target=event&&event.target;var src=target&&(target.src||target.href);if(isChunkUrl(src)){recover(src)}} ,true);window.addEventListener("unhandledrejection",function(event){var reason=event&&event.reason;var text=String(reason&&((reason.message||reason.name)||reason)||"");if(/Loading chunk|loadBundleAsync|ChunkLoadError|Importing a module script failed|Failed to fetch dynamically imported module/i.test(text)){recover(text)}});})();</script>`;
+const CHUNK_RECOVERY_SCRIPT = `<script id="${CHUNK_RECOVERY_MARKER}">(function(){var KEY="${CHUNK_RECOVERY_KEY}";var LEGACY_KEY="${CHUNK_RECOVERY_MARKER}";var COOLDOWN_MS=${CHUNK_RECOVERY_COOLDOWN_MS};try{var boot=window.sessionStorage;var carried=boot.getItem(LEGACY_KEY);if(carried!==null){if(boot.getItem(KEY)===null){boot.setItem(KEY,carried)}boot.removeItem(LEGACY_KEY)}}catch(_m){/* storage blocked: nothing to migrate, and nothing to recover with */}function isChunkUrl(value){return typeof value==="string"&&value.indexOf("/_expo/static/js/web/")!==-1&&/\\.js(?:$|[?#])/.test(value)}var BOOT_ERROR_ID="mingla-boot-error";var BOOT_ERROR_DELAY_MS=1500;var bootErrorArmed=false;function bootRootIsEmpty(doc){var root=doc.getElementById("root");return !root||!root.childNodes||root.childNodes.length===0}function paintBootError(doc){if(!doc.body){return}if(doc.getElementById(BOOT_ERROR_ID)){return}if(!bootRootIsEmpty(doc)){return}var host=doc.createElement("div");host.id=BOOT_ERROR_ID;host.setAttribute("role","alert");host.style.cssText="box-sizing:border-box;max-width:22rem;margin:15vh auto 0;padding:24px;text-align:center;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif";var title=doc.createElement("h1");title.textContent="This page didn't finish loading";title.style.cssText="margin:0 0 8px;font-size:18px;line-height:24px;font-weight:600;color:#1f2430";var copy=doc.createElement("p");copy.textContent="Mingla just updated in the background. Reload and you'll be right back where you were.";copy.style.cssText="margin:0 0 20px;font-size:15px;line-height:22px;color:#4a5160";var button=doc.createElement("button");button.type="button";button.textContent="Reload";button.style.cssText="min-width:44px;min-height:44px;padding:0 24px;border:0;border-radius:8px;background:#eb7825;color:#ffffff;font-size:16px;line-height:44px;font-weight:600;cursor:pointer";button.onclick=function(){window.location.reload()};host.appendChild(title);host.appendChild(copy);host.appendChild(button);doc.body.appendChild(host)}function armBootError(){if(bootErrorArmed){return}var doc=window.document;if(!doc||typeof doc.createElement!=="function"||typeof doc.getElementById!=="function"){return}if(typeof window.setTimeout!=="function"){return}bootErrorArmed=true;window.setTimeout(function(){try{if(doc.body){paintBootError(doc);return}if(typeof doc.addEventListener==="function"){doc.addEventListener("DOMContentLoaded",function(){try{paintBootError(doc)}catch(_d){}})}}catch(_t){}},BOOT_ERROR_DELAY_MS)}function recover(reason){try{var store=window.sessionStorage;var now=Date.now();var last=Number(store.getItem(KEY)||0);if(isFinite(last)&&now-last<COOLDOWN_MS){console.warn("[mobile-web] chunk recovery suppressed by the shared cooldown",reason);armBootError();return}store.setItem(KEY,String(now));console.warn("[mobile-web] stale chunk detected; reloading",reason);window.location.reload()}catch(_e){console.warn("[mobile-web] chunk recovery unavailable (sessionStorage blocked); not reloading",reason);armBootError()}}window.addEventListener("error",function(event){var target=event&&event.target;var src=target&&(target.src||target.href);if(isChunkUrl(src)){recover(src)}} ,true);window.addEventListener("unhandledrejection",function(event){var reason=event&&event.reason;var text=String(reason&&((reason.message||reason.name)||reason)||"");if(/Loading chunk|loadBundleAsync|ChunkLoadError|Importing a module script failed|Failed to fetch dynamically imported module/i.test(text)){recover(text)}});})();</script>`;
 
 function normalizeExpoWebScriptFilenames(html) {
   const srcs = [...html.matchAll(/(\/_expo\/static\/js\/web\/[^"?]+\.js)(?:\?[^"]*)?/g)].map(

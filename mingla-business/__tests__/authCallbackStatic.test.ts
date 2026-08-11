@@ -21,10 +21,14 @@ describe("ORCH-1086 static web auth callback", () => {
     // [TEST-MOD-APPROVED #922] The prior literal encoded superseded routing
     // truth. Locating the exact approved fallback preserves the callback owner
     // and ordering while accepting only #922's exact internal-entry exclusion.
+    // [TEST-MOD-APPROVED #1876] Issue #1876 F-2 adds `assets/` to the fallback's
+    // exclusion alternation. The assertion below is unchanged — /auth/callback
+    // must still be ordered BEFORE the fallback; only the literal used to LOCATE
+    // the fallback moved.
     const fallbackIndex = vercel.rewrites.findIndex(
       (rewrite) =>
         rewrite.source ===
-        "/((?!_expo/static/|accept-brand-invitation-entry$).*)",
+        "/((?!_expo/static/|assets/|accept-brand-invitation-entry$).*)",
     );
 
     expect(callbackIndex).toBeGreaterThanOrEqual(0);

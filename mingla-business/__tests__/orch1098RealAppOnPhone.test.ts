@@ -120,8 +120,12 @@ describe("ORCH-1098 Stage 3 — real Business app boots on phone browsers", () =
       // [TEST-MOD-APPROVED #922] The prior literal encoded superseded routing
       // truth. The final ordered fallback now also excludes only #922's exact
       // clean entry, while /home retains the same real-app owner.
+      // [TEST-MOD-APPROVED #1876] Issue #1876 F-2 adds `assets/` to the fallback
+      // exclusion. /home is neither a static asset path nor an /assets/ path, so
+      // it still matches the fallback and still serves the real Expo route —
+      // which is the only thing this test asserts.
       const fallbackSource =
-        "/((?!_expo/static/|accept-brand-invitation-entry$).*)";
+        "/((?!_expo/static/|assets/|accept-brand-invitation-entry$).*)";
       const fallbackIndex = vercel.rewrites.findIndex(
         (rewrite) => rewrite.source === fallbackSource,
       );

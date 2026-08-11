@@ -57,8 +57,14 @@ describe("ORCH-1003 caching did not over-reach", () => {
     // [TEST-MOD-APPROVED #922] The prior literal encoded superseded routing
     // truth. The exact internal-entry exclusion is additive; the #1003 asset
     // boundary and ordinary SPA ownership remain unchanged.
+    // [TEST-MOD-APPROVED #1876] Issue #1876 F-2: `assets/` joins the same
+    // alternation, so a missing file under /assets/ returns a real 404 instead
+    // of the SPA shell (it was still 200 text/html on production 2026-08-11).
+    // The property this test protects — a catch-all exists, it is LAST, it
+    // points at "/", and it never swallows a static asset path — is unchanged
+    // and now covers one more asset tree.
     expect(last.source).toBe(
-      "/((?!_expo/static/|accept-brand-invitation-entry$).*)",
+      "/((?!_expo/static/|assets/|accept-brand-invitation-entry$).*)",
     );
     expect(last.destination).toBe("/");
     const matcher = new RegExp(`^(?:${last.source})$`);
