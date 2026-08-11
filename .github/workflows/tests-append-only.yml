@@ -10,9 +10,10 @@ name: Tests Append-Only
 # not only on the tip.
 #
 # Override tokens (in a PR-range commit that touches the file), citing this work's
-# GitHub ISSUE number — the '#' is REQUIRED, a bare number is rejected:
-#   [TEST-MOD-APPROVED #NNNN]    — modifications with deleted lines
-#   [TEST-RENAME-APPROVED #NNNN] — renames
+# canonical GitHub ISSUE number — `#` plus one or more decimal digits, first digit
+# 1-9, with no leading zero or suffix. A bare number is rejected:
+#   [TEST-MOD-APPROVED #ISSUE]    — modifications with deleted lines
+#   [TEST-RENAME-APPROVED #ISSUE] — renames
 # The legacy lineage forms [TEST-MOD-APPROVED ORCH-NNNN] / META-ORCH-NNNN (optional
 # -A suffix) are accepted PERMANENTLY — they are embedded in historical commit
 # bodies and history replay must keep working (#1495).
