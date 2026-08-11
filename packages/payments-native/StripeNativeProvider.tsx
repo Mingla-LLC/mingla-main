@@ -48,10 +48,17 @@ const resolveEnvString = (
   processEnvKey: string,
 ): string | undefined => {
   const fromExtra = (
-    Constants.expoConfig?.extra as Record<string, string | undefined> | undefined
+    Constants.expoConfig?.extra as Record<string, unknown> | undefined
   )?.[expoExtraKey];
   const fromEnv = process.env[processEnvKey];
-  return fromExtra ?? fromEnv ?? undefined;
+
+  // Expo config is an untyped native boundary at runtime. A TypeScript cast
+  // does not convert a malformed/object value into a string. Passing that
+  // value through to Stripe crashes iOS in StripeSdkImpl.initialise (and
+  // rejects on Android) before the signed-out screen can render.
+  if (typeof fromExtra === "string") return fromExtra;
+  if (typeof fromEnv === "string") return fromEnv;
+  return undefined;
 };
 
 // #1732/#1733 — WHY THIS STILL ENDS IN `?? ""`, DELIBERATELY. Read before

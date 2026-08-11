@@ -27,7 +27,8 @@ type CreatedShare = {
 const singleFlight=createContentShareSingleFlight();
 
 export type ContentShareTelemetryEvent =
-  | 'share_sheet_opened' | 'share_link_ready' | 'share_sheet_returned' | 'share_poster_result' | 'share_failure';
+  | 'share_sheet_opened' | 'share_presentation_requested' | 'share_sheet_presented'
+  | 'share_link_ready' | 'share_sheet_returned' | 'share_poster_result' | 'share_failure';
 
 export function trackContentShareEvent(
   event: ContentShareTelemetryEvent,

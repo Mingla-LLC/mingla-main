@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Image,
   Animated,
+  ActivityIndicator,
   Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -27,6 +28,8 @@ interface EventDetailLayoutProps {
   isSaved: boolean;
   onSave: (card: ExpandedCardData) => Promise<void> | void;
   onShare?: (card: ExpandedCardData) => void;
+  shareBusy?: boolean;
+  shareControlRef?: React.Ref<View>;
   onClose: () => void;
   onOpenBrowser: (url: string, title: string) => void;
   accountPreferences?: {
@@ -60,6 +63,8 @@ export default function EventDetailLayout({
   isSaved,
   onSave,
   onShare,
+  shareBusy = false,
+  shareControlRef = undefined,
   onClose,
   onOpenBrowser,
   accountPreferences,
@@ -289,13 +294,20 @@ export default function EventDetailLayout({
         </TouchableOpacity>
 
         <TouchableOpacity
+          ref={shareControlRef}
           style={styles.secondaryChip}
           activeOpacity={0.7}
           onPress={handleSharePress}
+          disabled={shareBusy}
           accessibilityRole="button"
           accessibilityLabel={t("cards:expanded.share")}
+          accessibilityState={shareBusy ? { disabled: true, busy: true } : undefined}
         >
-          <Icon name="share-outline" size={16} color={colors.white} />
+          {shareBusy ? (
+            <ActivityIndicator size={16} color={colors.white} />
+          ) : (
+            <Icon name="share-outline" size={16} color={colors.white} />
+          )}
           <Text
             style={styles.secondaryChipText}
             numberOfLines={1}

@@ -238,13 +238,32 @@ test('H16 safe-area, accessibility-size, and recipient-state contracts are expli
   // assertions were wrong at standard text sizes and must now pin both standard and accessibility modes.
   for (const source of [consumer, business]) {
     assert.match(source, /const shareHeading = prepared && fontScale < 1\.4 \? `Share \$\{prepared\.title\}` : 'Share'/);
-    assert.match(source, /<Text numberOfLines=\{1\} ellipsizeMode="tail" style=\{styles\.heading\}>\{shareHeading\}<\/Text>/);
+    const heading = source.match(/<Text\b[^>]*>\{shareHeading\}<\/Text>/)?.[0] ?? '';
+    assert.notEqual(heading, '', 'the dynamic share heading Text is missing');
+    assert.match(heading, /numberOfLines=\{1\}/);
+    assert.match(heading, /ellipsizeMode="tail"/);
+    assert.match(heading, /style=\{styles\.heading\}/);
     assert.match(source, /summary:\{minHeight:92/);
     assert.match(source, /posterWrap:\{width:64,height:72/);
     assert.match(source, /poster:\{width:64,height:72/);
     assert.match(source, /posterSkeleton:\{width:64,height:72/);
     assert.doesNotMatch(source, /summary:\{minHeight:104|poster(?:Wrap|Skeleton)?:\{width:64,height:80/);
   }
+  const consumerHeading = consumer.match(/<Text\b[^>]*>\{shareHeading\}<\/Text>/)?.[0] ?? '';
+  assert.match(consumer, /const shareHeadingRef = useRef<Text \| null>\(null\)/);
+  assert.match(consumerHeading, /ref=\{shareHeadingRef\}/);
+  assert.match(consumerHeading, /accessibilityRole="header"/);
+  const consumerNativeShow = consumer.slice(
+    consumer.indexOf('const handleNativeShow'),
+    consumer.indexOf('const handleNativeDismiss'),
+  );
+  assert.match(consumerNativeShow, /findNodeHandle\(shareHeadingRef\.current\)/);
+  assert.match(consumerNativeShow, /AccessibilityInfo\.setAccessibilityFocus\(headingNode\)/);
+  assert.ok(
+    consumerNativeShow.indexOf('AccessibilityInfo.setAccessibilityFocus(headingNode)') <
+      consumerNativeShow.indexOf('attempt.presented.resolve()'),
+    'Consumer focus must move into the heading before presentation completes',
+  );
   assert.match(consumer, /posterFallback:\{width:64,height:72/);
   assert.match(business, /noCover:\{width:64,height:72/);
   assert.match(business, /useColorScheme\(\) === 'dark'/);

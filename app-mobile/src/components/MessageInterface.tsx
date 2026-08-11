@@ -66,6 +66,7 @@ import { useChatCardTagSource } from "../hooks/useChatCardTagSource";
 import { useChatInputController } from "../hooks/useChatInputController";
 import { KEYBOARD_TOOLBAR_HEIGHT } from "../wrappers/keyboardConstants";
 import ExpandedCardModal from "./ExpandedCardModal";  // ORCH-0667
+import { openExpandedCardContentShare } from "../services/contentShareController";
 import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 // ORCH-1138 Leg 3 — chat purchased-banner repointed off ExpandedBusinessEventSheet
 // (EBES decommissioned) to the foundation detail screens: trip → Leg-1
@@ -2246,6 +2247,8 @@ export default function MessageInterface({
             // sharedCardIsSaved automatically.
           }}
           onSave={handleSaveSharedCard}  // ORCH-0685: CF-2 dead-tap fix
+          onShare={(card) => openExpandedCardContentShare(card, 'chat_expanded')}
+          shareProducerSurface="chat_expanded"
           isSaved={sharedCardIsSaved}    // ORCH-0685: button transitions to "Saved"
           currentMode="solo"
           // #1669: this mount dropped the viewer's units/currency, so a card

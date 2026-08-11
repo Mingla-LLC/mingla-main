@@ -489,6 +489,10 @@ export interface DeckCardPlateProps {
   readonly beenHere?: React.ReactNode;
   readonly onSharePress: () => void;
   readonly shareLabel: string;
+  /** #1880 — default-off so collapsed/non-expanded plates remain unchanged. */
+  readonly shareHandoffEnabled?: boolean;
+  readonly shareBusy?: boolean;
+  readonly shareControlRef?: React.Ref<View>;
   /**
    * WHICH WAY THE AFFORDANCE POINTS. `'up'` (the default, S1) means *this
    * opens*; `'down'` (S7, the expanded sheet's hero) means *this closes*. It is
@@ -560,6 +564,9 @@ export function DeckCardPlate({
   beenHere,
   onSharePress,
   shareLabel,
+  shareHandoffEnabled = false,
+  shareBusy = false,
+  shareControlRef,
   chevron = 'up',
   metaLines = 1,
   onMetaLinesChange,
@@ -678,13 +685,23 @@ export function DeckCardPlate({
           </Pressable>
         ) : null}
         <Pressable
+          ref={shareControlRef}
           onPress={onSharePress}
-          style={styles.shareButtonPlate}
+          style={({ pressed }) => [
+            styles.shareButtonPlate,
+            shareHandoffEnabled && pressed ? styles.shareButtonPressed : null,
+          ]}
           hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel={shareLabel}
+          accessibilityState={shareBusy ? { disabled: true, busy: true } : undefined}
+          disabled={shareBusy}
         >
-          <Icon name="share-outline" size={SHARE_GLYPH.size} color={SHARE_GLYPH.color} />
+          {shareBusy ? (
+            <ActivityIndicator size="small" color={SHARE_GLYPH.color} />
+          ) : (
+            <Icon name="share-outline" size={SHARE_GLYPH.size} color={SHARE_GLYPH.color} />
+          )}
         </Pressable>
       </View>
     </View>
@@ -910,6 +927,9 @@ const styles = StyleSheet.create({
     // has one. Right-anchoring is a property of the share control; it should not
     // be a property of how many siblings happen to have rendered.
     marginLeft: 'auto',
+  },
+  shareButtonPressed: {
+    opacity: 0.55,
   },
   beenHereText: {
     fontSize: BEEN_HERE.labelSize,

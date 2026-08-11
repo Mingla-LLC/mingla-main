@@ -48,6 +48,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { Icon, type IconName } from "./ui/Icon";
 import { formatPriceRange, parseAndFormatDistance } from "./utils/formatters";
 import ExpandedCardModal from "./ExpandedCardModal";
+import { openExpandedCardContentShare } from "../services/contentShareController";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 // ORCH-0828: discriminated-union expansion target
 import type { ExpansionTarget } from "../types/expansion";
@@ -2513,9 +2514,8 @@ function DiscoverScreen({
             throw error;
           }
         }}
-        onShare={() => {
-          // Share not implemented for Discover events yet
-        }}
+        onShare={(card) => openExpandedCardContentShare(card, 'discover_expanded')}
+        shareProducerSurface="discover_expanded"
         isSaved={savedCardIds.has(selectedCardForExpansion?.id ?? "")}
         currentMode="solo"
         accountPreferences={accountPreferences}

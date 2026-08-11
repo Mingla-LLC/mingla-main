@@ -31,6 +31,7 @@ import { CardFilterBar, WhenFilter } from "./CardFilterBar";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ProposeDateTimeModal from "./ProposeDateTimeModal";
 import ExpandedCardModal from "../ExpandedCardModal";
+import { openExpandedCardContentShare } from "../../services/contentShareController";
 import { mixpanelService } from "../../services/mixpanelService";
 import { logAppsFlyerEvent } from "../../services/appsFlyerService";
 import { recordCardExpand } from "../../services/cardEngagementService";
@@ -2052,7 +2053,21 @@ const CalendarTab = ({
     }
     // Calendar-owned identity + field-name normalisation.
     source.id = entry.id;
-    source.placeId = experience.placeId || (entry as any).placeId || entry.id;
+    source.placeId = experience.placeId || (entry as any).placeId;
+    const boardCardId = (
+      entry as unknown as { board_card_id?: unknown }
+    ).board_card_id;
+    const collaborationSourceRecordId =
+      entry.source === "collaboration" &&
+      typeof boardCardId === "string" &&
+      boardCardId.trim().length > 0
+        ? boardCardId.trim()
+        : undefined;
+    if (collaborationSourceRecordId) {
+      source.sourceScope = "collaboration";
+      source.sourceRecordId = collaborationSourceRecordId;
+      source.savedCardId = collaborationSourceRecordId;
+    }
     source.category = experience.category || entry.category || "Experience";
     source.categoryIcon = ExperienceIcon;
     source.phone = experience.phoneNumber || entry.phoneNumber;
@@ -2207,7 +2222,7 @@ const CalendarTab = ({
   };
 
   const handleShareFromModal = (card: ExpandedCardData) => {
-    onShareCard(card);
+    openExpandedCardContentShare(card, 'calendar_expanded');
   };
 
   const renderCalendarEntry = ({ item: entry }: { item: CalendarEntry }) => {
@@ -3097,6 +3112,7 @@ const CalendarTab = ({
           onSave={handleSaveFromModal}
           onPurchase={handlePurchaseFromModal}
           onShare={handleShareFromModal}
+          shareProducerSurface="calendar_expanded"
           userPreferences={userPreferences}
           // #1669: the Calendar mount dropped this, so a Metric user got miles
           // and °F here and km and °C on the deck for the same place.

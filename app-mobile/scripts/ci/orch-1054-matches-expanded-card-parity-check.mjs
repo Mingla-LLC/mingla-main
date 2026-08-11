@@ -66,7 +66,7 @@ const maybeRevert = (source, kind) => {
     // Revert the curated pass-through to a field-by-field rebuild that drops
     // the verbatim shape (simulates the old lossy curated handling).
     return source.replace(
-      /if \(c\.cardType === "curated"\) \{\s*return cardData as unknown as ExpandedCardData;\s*\}/,
+      /if \(c\.cardType === "curated"\) \{\s*return \{\s*\.\.\.cardData,\s*\.\.\.normalizedProvenance,\s*\} as unknown as ExpandedCardData;\s*\}/s,
       'if (c.cardType === "curated") { return { cardType: "curated" } as unknown as ExpandedCardData; }',
     );
   }
@@ -106,22 +106,19 @@ check(
   /import \{ savedCardToExpandedCardData \} from "\.\.\/utils\/savedCardToExpandedCardData";/.test(
     banners,
   ) &&
-    /setExpandedCard\(savedCardToExpandedCardData\(item\.cardData\)\)/.test(
-      banners,
-    ) &&
-    /const expanded = savedCardToExpandedCardData\(\s*\n?\s*card\.card_data \|\| card\.experience_data \|\| null,/.test(
-      banners,
-    ),
+    (banners.match(/savedCardToExpandedCardData\(/g) ?? []).length === 2 &&
+    /setExpandedCard\(savedCardToExpandedCardData\(\{[\s\S]*?\.\.\.item\.cardData,[\s\S]*?sourceRecordId: item\.savedCardId,[\s\S]*?savedCardId: item\.savedCardId,[\s\S]*?\}\)\)/.test(banners) &&
+    /const expanded = savedCardToExpandedCardData\(\s*\{[\s\S]*?\.\.\.\(card\.card_data \|\| card\.experience_data \|\| \{\}\),[\s\S]*?sourceRecordId: card\.saved_card_id \|\| card\.id,[\s\S]*?savedCardId: card\.saved_card_id \|\| card\.id,[\s\S]*?\},\s*\)/.test(banners),
   "Plans (ScheduleSheet) and Matches (SavedToSessionCardsSheet) must both map via the shared canonical mapper.",
 );
 
 // ── 3. The shared mapper mirrors the deck: curated pass-through verbatim. ──
 check(
-  "C3 [FAILS-ON-REVERT] shared mapper passes curated cards through AS-IS (deck parity)",
-  /if \(c\.cardType === "curated"\) \{\s*return cardData as unknown as ExpandedCardData;\s*\}/.test(
+  "C3 [FAILS-ON-REVERT] shared mapper preserves every curated field before provenance normalization",
+  /if \(c\.cardType === "curated"\) \{\s*return \{\s*\.\.\.cardData,\s*\.\.\.normalizedProvenance,\s*\} as unknown as ExpandedCardData;\s*\}/s.test(
     mapper,
   ),
-  "Curated cards must be returned verbatim (matching deck SwipeableCards.tsx:1830), preserving stops/itinerary.",
+  "Curated cards must spread the complete record before normalized provenance is overlaid, preserving stops/itinerary without fabricating provider identity.",
 );
 
 // ── 4. The deck no longer MIRRORS this mapper — it USES it. ──

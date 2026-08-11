@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, AppState, Clipboard, Image, Pressable, StyleSheet, Text, View, useColorScheme, useWindowDimensions, ActivityIndicator } from 'react-native';
+import { AccessibilityInfo, AppState, Clipboard, findNodeHandle, Image, Platform, Pressable, StyleSheet, Text, View, useColorScheme, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { checkContentShareReadiness, normalizeContentShareNote, selectCompactPreviewFacts, shareKindLabel, statusLabel } from '@mingla/sharing';
@@ -14,10 +14,46 @@ import {
   clearContentShareOperationId, listContentShareRecipients, loadContentShareOperation, reconcileContentShareOperation,
   sendContentShareToRecipients, subscribeContentShareRecipientInvalidation, type ContentShareRecipient,
 } from '../../services/contentShareDeliveryService';
-import { registerContentShareHandler, type OpenContentShareInput } from '../../services/contentShareController';
+import { registerContentShareHandler, type ContentShareProducerSurface, type OpenContentShareInput } from '../../services/contentShareController';
 import { HapticFeedback } from '../../utils/hapticFeedback';
 
-type UnifiedShareContextValue = { openContentShare: (input: OpenContentShareInput) => void };
+export type SharePresentationFailureClass =
+  | 'parent_modal_still_presented'
+  | 'presentation_timeout'
+  | 'presentation_rejected';
+
+export type SharePresentationObservation = {
+  readonly correlationId: string;
+  readonly presented: Promise<void>;
+  readonly dismissalRequested: Promise<void>;
+  readonly dismissed: Promise<void>;
+  cancel: (failureClass: SharePresentationFailureClass) => void;
+};
+
+type PresentationDeferred = {
+  readonly promise: Promise<void>;
+  resolve: () => void;
+  reject: (error: Error) => void;
+  settled: boolean;
+};
+
+type PresentationAttempt = {
+  readonly correlationId: string;
+  readonly producerSurface: ContentShareProducerSurface;
+  readonly requestedAt: number;
+  readonly presented: PresentationDeferred;
+  readonly dismissalRequested: PresentationDeferred;
+  readonly dismissed: PresentationDeferred;
+  input: OpenContentShareInput | null;
+  presentedAt: number | null;
+  failureEmitted: boolean;
+  finalized: boolean;
+};
+
+type UnifiedShareContextValue = {
+  openContentShare: (input: OpenContentShareInput) => void;
+  beginExpandedPresentation: (producerSurface: Exclude<ContentShareProducerSurface, 'direct'>) => SharePresentationObservation;
+};
 const UnifiedShareContext = createContext<UnifiedShareContextValue | null>(null);
 
 export function useUnifiedShare(): UnifiedShareContextValue {
@@ -27,6 +63,33 @@ export function useUnifiedShare(): UnifiedShareContextValue {
 }
 
 const initials = (name: string): string => name.split(/\s+/u).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+
+function createPresentationDeferred(): PresentationDeferred {
+  let resolvePromise: (() => void) | null = null;
+  let rejectPromise: ((error: Error) => void) | null = null;
+  const deferred: PresentationDeferred = {
+    promise: new Promise<void>((resolve, reject) => {
+      resolvePromise = resolve;
+      rejectPromise = reject;
+    }),
+    resolve: () => {
+      if (deferred.settled) return;
+      deferred.settled = true;
+      resolvePromise?.();
+    },
+    reject: (error) => {
+      if (deferred.settled) return;
+      deferred.settled = true;
+      rejectPromise?.(error);
+    },
+    settled: false,
+  };
+  // #1880: cancellation may win before the expanded caller attaches its real
+  // waiter. Observe rejection internally without replacing the Promise exposed
+  // to that waiter; later awaiters still receive the original rejection.
+  void deferred.promise.then(undefined, () => undefined);
+  return deferred;
+}
 
 export function UnifiedShareProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const dark = useColorScheme() === 'dark';
@@ -38,7 +101,14 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
   const generation = useRef(0);
   const posterStartedAt = useRef(0);
   const actionInFlight = useRef(false);
+  const presentationSequence = useRef(0);
+  const pendingExpandedAttempt = useRef<PresentationAttempt | null>(null);
+  const activePresentationAttempt = useRef<PresentationAttempt | null>(null);
+  const inputRef = useRef<OpenContentShareInput | null>(null);
+  const mountedRef = useRef(true);
+  const shareHeadingRef = useRef<Text | null>(null);
   const [visible, setVisible] = useState(false);
+  const [nativeCycleId, setNativeCycleId] = useState<string | null>(null);
   const [input, setInput] = useState<OpenContentShareInput | null>(null);
   const [prepared, setPrepared] = useState<PreparedContentShare | null>(null);
   const [prepError, setPrepError] = useState(false);
@@ -111,23 +181,135 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
       .finally(() => { if (generation.current === token) setRecipientsLoading(false); });
   }, []);
 
+  const emitPresentationFailure = useCallback((
+    attempt: PresentationAttempt,
+    failureClass: SharePresentationFailureClass,
+  ): void => {
+    if (attempt.failureEmitted) return;
+    attempt.failureEmitted = true;
+    const kind = attempt.input?.kind ?? 'place';
+    trackContentShareEvent('share_failure', {
+      kind,
+      producer_surface: attempt.producerSurface,
+      platform: Platform.OS,
+      duration_ms: Math.max(0, Date.now() - attempt.requestedAt),
+      request_correlation: attempt.correlationId,
+      failure_type: failureClass,
+    });
+  }, []);
+
+  const beginExpandedPresentation = useCallback((
+    producerSurface: Exclude<ContentShareProducerSurface, 'direct'>,
+  ): SharePresentationObservation => {
+    if (pendingExpandedAttempt.current !== null || activePresentationAttempt.current !== null || visible) {
+      throw new Error('share_presentation_busy');
+    }
+    presentationSequence.current += 1;
+    const attempt: PresentationAttempt = {
+      correlationId: `expanded-${presentationSequence.current}`,
+      producerSurface,
+      requestedAt: Date.now(),
+      presented: createPresentationDeferred(),
+      dismissalRequested: createPresentationDeferred(),
+      dismissed: createPresentationDeferred(),
+      input: null,
+      presentedAt: null,
+      failureEmitted: false,
+      finalized: false,
+    };
+    pendingExpandedAttempt.current = attempt;
+    return {
+      correlationId: attempt.correlationId,
+      presented: attempt.presented.promise,
+      dismissalRequested: attempt.dismissalRequested.promise,
+      dismissed: attempt.dismissed.promise,
+      cancel: (failureClass) => {
+        const isPending = pendingExpandedAttempt.current === attempt;
+        const isActive = activePresentationAttempt.current === attempt;
+        if (!isPending && !isActive) return;
+        emitPresentationFailure(attempt, failureClass);
+        attempt.presented.reject(new Error(failureClass));
+        if (isPending) {
+          pendingExpandedAttempt.current = null;
+          attempt.dismissalRequested.resolve();
+          attempt.dismissed.resolve();
+          return;
+        }
+        attempt.dismissalRequested.resolve();
+        generation.current += 1;
+        if (mountedRef.current) setVisible(false);
+      },
+    };
+  }, [emitPresentationFailure, visible]);
+
   const openContentShare = useCallback((nextInput: OpenContentShareInput): void => {
+    if (activePresentationAttempt.current !== null || visible) {
+      throw new Error('share_presentation_busy');
+    }
     const shellStartedAt = Date.now();
     const token = generation.current + 1;
     generation.current = token;
+    const pending = pendingExpandedAttempt.current;
+    if (
+      pending !== null &&
+      nextInput.producerSurface !== pending.producerSurface
+    ) {
+      throw new Error('share_presentation_busy');
+    }
+    const attempt = pending ?? {
+      correlationId: `direct-${token}`,
+      producerSurface: nextInput.producerSurface ?? 'direct',
+      requestedAt: shellStartedAt,
+      presented: createPresentationDeferred(),
+      dismissalRequested: createPresentationDeferred(),
+      dismissed: createPresentationDeferred(),
+      input: null,
+      presentedAt: null,
+      failureEmitted: false,
+      finalized: false,
+    };
+    pendingExpandedAttempt.current = null;
+    attempt.input = nextInput;
+    activePresentationAttempt.current = attempt;
+    inputRef.current = nextInput;
+    setNativeCycleId(attempt.correlationId);
     setInput(nextInput); setPrepared(null); setPrepError(false); setRecipients([]);
     setRecipientError(false); setRecipientsReady(false); setSelected(new Set()); setNote(''); setNoteExpanded(false);
     setSearch(''); setCopied(false); setSending(false);
     setDeliveryState({}); setPosterFailed(false); setExternalError(null);
     setReadiness('idle');
-    setOutcome({ kind: 'idle' }); setVisible(true); // synchronous: never wait before opening.
-    trackContentShareEvent('share_sheet_opened', { kind: nextInput.kind, result: 'committed', duration_ms: Date.now() - shellStartedAt });
+    setOutcome({ kind: 'idle' });
+    trackContentShareEvent('share_presentation_requested', {
+      kind: nextInput.kind,
+      producer_surface: attempt.producerSurface,
+      platform: Platform.OS,
+      duration_ms: 0,
+      request_correlation: attempt.correlationId,
+    });
+    setVisible(true); // synchronous: never wait before opening.
     console.info('[content-share] shell', { result: 'committed', durationMs: Date.now() - shellStartedAt });
     loadShare(nextInput, token);
     loadRecipients(token);
-  }, [loadRecipients, loadShare]);
+  }, [loadRecipients, loadShare, visible]);
 
   useEffect(() => { registerContentShareHandler(openContentShare); return () => registerContentShareHandler(null); }, [openContentShare]);
+  useEffect(() => () => {
+    mountedRef.current = false;
+    generation.current += 1;
+    const settleForUnmount = (attempt: PresentationAttempt | null): void => {
+      if (attempt === null || attempt.finalized) return;
+      attempt.finalized = true;
+      attempt.presented.reject(new Error('presentation_rejected'));
+      attempt.dismissalRequested.resolve();
+      attempt.dismissed.resolve();
+    };
+    settleForUnmount(pendingExpandedAttempt.current);
+    settleForUnmount(activePresentationAttempt.current);
+    pendingExpandedAttempt.current = null;
+    activePresentationAttempt.current = null;
+    inputRef.current = null;
+    registerContentShareHandler(null);
+  }, []);
   useEffect(() => subscribeContentShareRecipientInvalidation(() => {
     if (visible) loadRecipients(generation.current);
   }), [loadRecipients, visible]);
@@ -169,8 +351,66 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
     posterStartedAt.current = prepared?.media?.posterUrl ? Date.now() : 0;
   }, [prepared?.media?.posterUrl]);
 
-  const value = useMemo(() => ({ openContentShare }), [openContentShare]);
-  const close = useCallback(() => { if (sending) return; generation.current += 1; setVisible(false); }, [sending]);
+  const handleNativeShow = useCallback((correlationId: string | null): void => {
+    const attempt = activePresentationAttempt.current;
+    if (
+      !mountedRef.current ||
+      correlationId === null ||
+      attempt === null ||
+      attempt.correlationId !== correlationId ||
+      attempt.input === null ||
+      attempt.presented.settled ||
+      attempt.dismissalRequested.settled ||
+      attempt.finalized
+    ) return;
+    attempt.presentedAt = Date.now();
+    const properties = {
+      kind: attempt.input.kind,
+      producer_surface: attempt.producerSurface,
+      platform: Platform.OS,
+      duration_ms: Math.max(0, attempt.presentedAt - attempt.requestedAt),
+      request_correlation: attempt.correlationId,
+    };
+    const headingNode = findNodeHandle(shareHeadingRef.current);
+    if (headingNode !== null) AccessibilityInfo.setAccessibilityFocus(headingNode);
+    trackContentShareEvent('share_sheet_opened', { ...properties, result: 'presented' });
+    trackContentShareEvent('share_sheet_presented', properties);
+    attempt.presented.resolve();
+  }, []);
+
+  const handleNativeDismiss = useCallback((correlationId: string | null): void => {
+    const attempt = activePresentationAttempt.current;
+    if (
+      correlationId === null ||
+      attempt === null ||
+      attempt.correlationId !== correlationId ||
+      attempt.finalized
+    ) return;
+    attempt.finalized = true;
+    attempt.dismissalRequested.resolve();
+    attempt.dismissed.resolve();
+    activePresentationAttempt.current = null;
+    inputRef.current = null;
+    if (mountedRef.current) {
+      setInput(null);
+      setNativeCycleId(null);
+    }
+  }, []);
+
+  const value = useMemo(
+    () => ({ openContentShare, beginExpandedPresentation }),
+    [beginExpandedPresentation, openContentShare],
+  );
+  const close = useCallback(() => {
+    if (sending) return;
+    const attempt = activePresentationAttempt.current;
+    attempt?.dismissalRequested.resolve();
+    if (attempt && !attempt.presented.settled) {
+      attempt.presented.reject(new Error('presentation_rejected'));
+    }
+    generation.current += 1;
+    setVisible(false);
+  }, [sending]);
   const toggleRecipient = useCallback((key: string) => {
     if (sending || deliveryState[key] === 'sent') return;
     HapticFeedback.selection();
@@ -245,6 +485,11 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
   }, [isOffline, note, prepared, recipients, selected, sending]);
 
   const finishSuccess = useCallback(() => {
+    const attempt = activePresentationAttempt.current;
+    attempt?.dismissalRequested.resolve();
+    if (attempt && !attempt.presented.settled) {
+      attempt.presented.reject(new Error('presentation_rejected'));
+    }
     generation.current += 1;
     setSelected(new Set()); setNote(''); setVisible(false); setOutcome({ kind: 'idle' });
   }, []);
@@ -266,14 +511,14 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
     : readiness === 'transient' ? "Couldn't prepare the preview."
     : '';
   const shareHeading = prepared && fontScale < 1.4 ? `Share ${prepared.title}` : 'Share';
-  const header = <View style={styles.header}><Text numberOfLines={1} ellipsizeMode="tail" style={styles.heading}>{shareHeading}</Text><Pressable style={styles.closeTarget} accessibilityRole="button" accessibilityLabel="Close share" disabled={sending} onPress={outcome.kind === 'success' ? finishSuccess : close}><Text style={styles.close}>×</Text></Pressable></View>;
+  const header = <View style={styles.header}><Text ref={shareHeadingRef} accessibilityRole="header" numberOfLines={1} ellipsizeMode="tail" style={styles.heading}>{shareHeading}</Text><Pressable style={styles.closeTarget} accessibilityRole="button" accessibilityLabel="Close share" disabled={sending} onPress={outcome.kind === 'success' ? finishSuccess : close}><Text style={styles.close}>×</Text></Pressable></View>;
   const footer = outcome.kind === 'success'
     ? <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}><Pressable accessibilityRole="button" onPress={finishSuccess} style={styles.sendButton}><Text style={styles.sendText}>Done</Text></Pressable></View>
     : <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>{prepared && isOffline ? <Text accessibilityLiveRegion="polite" style={styles.offlineCopy}>{"You're offline. Reconnect to send in Mingla."}</Text> : null}<Pressable accessibilityRole="button" disabled={!prepared || selected.size === 0 || sending || isOffline} onPress={() => void send()} style={[styles.sendButton, (!prepared || selected.size === 0 || sending || isOffline) && styles.disabled]}><Text style={styles.sendText}>{sendLabel}</Text></Pressable></View>;
 
   return <UnifiedShareContext.Provider value={value}>
     {children}
-    <BaseBottomSheet accessibilityLabel={`Share ${prepared?.title ?? input?.kind ?? ''}`} visible={visible} onClose={close} theme={dark ? 'dark' : 'light'} snapPoints={['90%']} enablePanDownToClose={!sending} scrollMode="scroll" wrapInRNModal keyboardBehavior="interactive" keyboardBlurBehavior="restore" android_keyboardInputMode="adjustResize" header={header} stickyFooter={footer} scrollProps={{ keyboardShouldPersistTaps: 'handled', contentContainerStyle: styles.body }}>
+    <BaseBottomSheet accessibilityLabel={`Share ${prepared?.title ?? input?.kind ?? ''}`} visible={visible} onClose={close} onNativeShow={() => handleNativeShow(nativeCycleId)} onNativeDismiss={() => handleNativeDismiss(nativeCycleId)} theme={dark ? 'dark' : 'light'} snapPoints={['90%']} enablePanDownToClose={!sending} scrollMode="scroll" wrapInRNModal keyboardBehavior="interactive" keyboardBlurBehavior="restore" android_keyboardInputMode="adjustResize" header={header} stickyFooter={footer} scrollProps={{ keyboardShouldPersistTaps: 'handled', contentContainerStyle: styles.body }}>
       {outcome.kind === 'success' ? <View style={styles.successState} accessibilityLiveRegion="polite"><View style={styles.successCheck}><Text style={styles.successCheckText}>✓</Text></View><Text style={styles.successTitle}>Sent to {outcome.sent} {outcome.sent === 1 ? 'chat' : 'chats'}</Text></View> : <>
       <View style={styles.summary}>
         {!prepared && !prepError ? <View accessibilityLabel="Preparing cover" style={styles.posterSkeleton} /> : prepared?.media?.posterUrl && !posterFailed ? <View style={styles.posterWrap}><Image source={{ uri: prepared.media.posterUrl }} style={styles.poster} onLoad={() => trackContentShareEvent('share_poster_result', { kind: prepared.kind, result_class: 'ready', duration_ms: Math.max(0, Date.now() - posterStartedAt.current) })} onError={() => { setPosterFailed(true); trackContentShareEvent('share_poster_result', { kind: prepared.kind, result_class: 'failed', duration_ms: Math.max(0, Date.now() - posterStartedAt.current) }); }} />{prepared.media.kind === 'gif' || prepared.media.kind === 'video' ? <View style={styles.mediaTag}><Text style={styles.mediaTagText}>{prepared.media.kind === 'gif' ? 'GIF' : 'Video'}</Text></View> : null}</View> : <View accessibilityLabel="No cover" style={styles.posterFallback}><Text style={styles.posterFallbackText}>{prepared ? shareKindLabel(prepared.kind).slice(0, 1) : 'M'}</Text></View>}

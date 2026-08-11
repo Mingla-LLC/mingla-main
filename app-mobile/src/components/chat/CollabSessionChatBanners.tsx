@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import ExpandedCardModal from "../ExpandedCardModal";
+import { openExpandedCardContentShare } from "../../services/contentShareController";
 import { SwipeableSessionCards } from "../board/SwipeableSessionCards";
 import {
   useSessionScheduledCards,
@@ -279,7 +280,12 @@ export function ScheduleSheet({
               key={item.savedCardId}
               style={styles.scheduleRow}
               onPress={() =>
-                setExpandedCard(savedCardToExpandedCardData(item.cardData))
+                setExpandedCard(savedCardToExpandedCardData({
+                  ...item.cardData,
+                  sourceScope: 'collaboration',
+                  sourceRecordId: item.savedCardId,
+                  savedCardId: item.savedCardId,
+                }))
               }
               accessibilityRole="button"
               accessibilityLabel={`Open ${cardTitle(item.cardData)} scheduled for ${formatScheduledAt(item.scheduledAt)}`}
@@ -310,6 +316,8 @@ export function ScheduleSheet({
         }
         onClose={() => setExpandedCard(null)}
         onSave={() => {}}
+        onShare={(card) => openExpandedCardContentShare(card, 'collab_locked_expanded')}
+        shareProducerSurface="collab_locked_expanded"
         currentMode="collab"
         // #1669: both collab sheets dropped the viewer's units/currency, so the
         // same card rendered in miles/°F here and km/°C on the deck.
@@ -357,7 +365,12 @@ export function SavedToSessionCardsSheet({
 
   const openExpandedCardModal = useCallback((card: SavedSessionCard) => {
     const expanded = savedCardToExpandedCardData(
-      card.card_data || card.experience_data || null,
+      {
+        ...(card.card_data || card.experience_data || {}),
+        sourceScope: 'collaboration',
+        sourceRecordId: card.saved_card_id || card.id,
+        savedCardId: card.saved_card_id || card.id,
+      },
     );
     if (expanded) setExpandedCard(expanded);
   }, []);
@@ -396,6 +409,8 @@ export function SavedToSessionCardsSheet({
         }
         onClose={() => setExpandedCard(null)}
         onSave={() => {}}
+        onShare={(card) => openExpandedCardContentShare(card, 'collab_saved_expanded')}
+        shareProducerSurface="collab_saved_expanded"
         currentMode="collab"
         // #1669: both collab sheets dropped the viewer's units/currency, so the
         // same card rendered in miles/°F here and km/°C on the deck.

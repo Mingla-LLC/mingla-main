@@ -38,11 +38,11 @@ import { BoardDiscussionTab } from "./board/BoardDiscussionTab";
 import { BoardSettingsDropdown } from "./board/BoardSettingsDropdown";
 import { CardDiscussionModal } from "./board/CardDiscussionModal";
 import ExpandedCardModal from "./ExpandedCardModal";
+import { openExpandedCardContentShare } from "../services/contentShareController";
 import { ExpandedCardData } from "../types/expandedCardTypes";
 // #1669 [expanded-card-one-producer]: the collab session view routes through
 // the ONE canonical producer instead of a hand-written literal.
 import { savedCardToExpandedCardData } from "./utils/savedCardToExpandedCardData";
-import ShareModal from "./ShareModal";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -183,8 +183,6 @@ export default function SessionViewModal({
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
 
   // Share modal state
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [shareData, setShareData] = useState<{ experienceData: ExpandedCardData; dateTimePreferences: { timeOfDay: string; dayOfWeek: string; planningTimeframe: string } } | null>(null);
 
   const [cardMessageCounts, setCardMessageCounts] = useState<Record<string, number>>({});
 
@@ -620,7 +618,10 @@ export default function SessionViewModal({
       {
         ...(cardData as Record<string, unknown>),
         id: cardData.id || card.id,
-        placeId: cardData.placeId || card.id,
+        placeId: cardData.placeId,
+        sourceScope: 'collaboration',
+        sourceRecordId: card.saved_card_id || card.id,
+        savedCardId: card.saved_card_id || card.id,
         title: cardData.title || t('modals:session_view.session_fallback'),
         category: cardData.category || t('modals:session_view.session_fallback'),
         categoryIcon: cardData.categoryIcon || "star",
@@ -838,34 +839,15 @@ export default function SessionViewModal({
               // Card is already saved in this board
             }}
             onShare={(card) => {
-              setShareData({
-                experienceData: card,
-                dateTimePreferences: {
-                  timeOfDay: "Afternoon",
-                  dayOfWeek: "Weekend",
-                  planningTimeframe: "This month",
-                },
-              });
-              setShowShareModal(true);
+              openExpandedCardContentShare(card, 'session_expanded');
             }}
+            shareProducerSurface="session_expanded"
             accountPreferences={accountPreferences}
             isSaved={true}
             currentMode={localName || "board"}
           />
         )}
 
-        {/* Share Modal */}
-        {showShareModal && shareData && (
-          <ShareModal
-            isOpen={showShareModal}
-            onClose={() => {
-              setShowShareModal(false);
-              setShareData(null);
-            }}
-            experienceData={shareData.experienceData}
-            dateTimePreferences={shareData.dateTimePreferences}
-          />
-        )}
         {/* ORCH-0908 rework (2026-05-21): post-lock modal removed.
             The scheduling sheet now lives inside SwipeableSessionCards and
             opens directly from the Lock-it-in button (two-step: date pick

@@ -115,11 +115,13 @@ check(
     ) &&
     // 3. The adapter hands the record to the ONE canonical producer …
     /savedCardToExpandedCardData\(record\)/.test(files.adapter) &&
-    // 4. … which returns a curated card verbatim rather than rebuilding it.
-    /if \(c\.cardType === ["']curated["']\) \{\s*\n\s*return cardData as unknown as ExpandedCardData;/.test(
+    // 4. … which spreads the complete curated record before overlaying only
+    //    normalized provenance. This preserves every curated field without
+    //    relabelling an unproven display id as provider identity (#1880).
+    /if \(c\.cardType === ["']curated["']\) \{\s*return \{\s*\.\.\.cardData,\s*\.\.\.normalizedProvenance,\s*\} as unknown as ExpandedCardData;/s.test(
       files.canonicalMapper,
     ),
-  "Adapter must flatten legacy-then-top-level (so every curated key survives), normalise cardType to the literal discriminator, and delegate to savedCardToExpandedCardData — which must keep returning curated records VERBATIM. Do not go back to a field-by-field allowlist: that was the ORCH-1054 bug.",
+  "Adapter must flatten legacy-then-top-level (so every curated key survives), normalise cardType to the literal discriminator, and delegate to savedCardToExpandedCardData — which must spread the whole curated record before overlaying normalized provenance. Do not go back to a field-by-field allowlist: that was the ORCH-1054 bug.",
 );
 
 check(
