@@ -394,45 +394,108 @@ describe("ORCH-0892-A adversarial regression (tester)", () => {
 
   // --- TA-1-MUTATION: the collector can still say RED at all ---
   //
-  // A green assertion over an empty expected-set is unfalsifiable on its own.
-  // Plant a real leak under a real scanned root, prove it is caught, remove it.
-  it("TA-1-MUTATION: a planted leak under a scanned root IS flagged", () => {
-    const fixture = path.join(
+  // A green assertion over an empty expected-set is unfalsifiable on its own,
+  // so a real leak has to be planted and proven caught.
+  //
+  // #1627 REWORK — the leak probe must NEVER be planted inside `packages/` or
+  // `mingla-business/`. The first version of this test did exactly that, and it
+  // is a cross-worker defect, not a flake:
+  // `KeyboardRoot.sweep.v2.adversarial.test.tsx` TA-V3-6 walks those same two
+  // roots and asserts the leak set is EXACTLY empty. jest runs the two files in
+  // DIFFERENT workers concurrently against ONE working tree, so any run where
+  // TA-V3-6's walk overlapped the few milliseconds this probe existed saw a
+  // genuine library import and failed — naming this probe as a web leak.
+  // Observed on PR #1889 as `Expected []` / `Received
+  // ["packages/phone-input/__ta1MutationProbe.<pid>.tsx"]`, and reproduced
+  // deterministically by planting that same path by hand. It is the same shape
+  // as COMMS-0127's `venueGalleryWebPicker` flake — a test mutating state every
+  // worker shares, intermittent only because worker assignment is random — and
+  // the same shape as the vacuity this whole issue exists to remove: a guard
+  // that reports on something other than the product.
+  //
+  // The claim is therefore split into two halves. NEITHER ever puts a
+  // library-importing file under a root any other walker scans:
+  //
+  //   COVERAGE  — a probe that does NOT import the library, planted under the
+  //               real `packages/phone-input`, proves the walk genuinely
+  //               descends into the root whose absence let #1627's bug live.
+  //               Containing no library import, it cannot make any concurrent
+  //               detector red.
+  //   DETECTION — a probe that DOES import the library, in a temp directory
+  //               outside the repo passed as an explicit root, proves walk +
+  //               detector still go RED end-to-end on a real leak.
+  //
+  // Together these assert everything the single combined probe asserted.
+  it("TA-1-MUTATION: the walk reaches packages/, and a planted leak IS flagged", () => {
+    // -- COVERAGE: real root, no library import, zero cross-worker hazard. --
+    const coverageProbe = path.join(
       repoRoot,
       "packages",
       "phone-input",
-      `__ta1MutationProbe.${process.pid}.tsx`,
+      `__ta1CoverageProbe.${process.pid}.tsx`,
     );
-    const relative = path.relative(repoRoot, fixture).split(path.sep).join("/");
+    const coverageRelative = path
+      .relative(repoRoot, coverageProbe)
+      .split(path.sep)
+      .join("/");
     try {
       fs.writeFileSync(
-        fixture,
-        `import { KeyboardProvider } from "${LIBRARY_SPECIFIER}";\n` +
-          `export const Probe = KeyboardProvider;\n`,
+        coverageProbe,
+        "export const CoverageProbe = (): null => null;\n",
         "utf8",
       );
       const scanned = collectWebGraphSources();
-      expect(scanned).toContain(relative);
-      expect(findLibraryImporters(scanned)).toContain(relative);
+      // The walk descends into packages/phone-input …
+      expect(scanned).toContain(coverageRelative);
+      // … and does not invent a leak where there is none.
+      expect(findLibraryImporters(scanned)).not.toContain(coverageRelative);
     } finally {
-      if (fs.existsSync(fixture)) fs.unlinkSync(fixture);
+      if (fs.existsSync(coverageProbe)) fs.unlinkSync(coverageProbe);
     }
-    // And it must go away again, so the probe cannot leave the tree red.
-    expect(findLibraryImporters(collectWebGraphSources())).toEqual([]);
+    expect(collectWebGraphSources()).not.toContain(coverageRelative);
 
-    // A file OUTSIDE every scanned root must NOT be picked up — otherwise the
-    // walk is wandering and its file count means nothing.
-    const outside = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), "ta1-outside-")),
-      "Leak.tsx",
-    );
-    fs.writeFileSync(
-      outside,
-      `import { KeyboardProvider } from "${LIBRARY_SPECIFIER}";\n`,
-      "utf8",
-    );
-    expect(collectWebGraphSources()).not.toContain(outside);
-    fs.rmSync(path.dirname(outside), { recursive: true, force: true });
+    // -- DETECTION: real leak, outside every scanned root. --
+    const leakDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "ta1-leak-"));
+    const leakRoot = path.relative(repoRoot, leakDirectory);
+    try {
+      const leakProbe = path.join(leakDirectory, "Leak.tsx");
+      fs.writeFileSync(
+        leakProbe,
+        `import { KeyboardProvider } from "${LIBRARY_SPECIFIER}";\n` +
+          "export const Probe = KeyboardProvider;\n",
+        "utf8",
+      );
+      const leakRelative = path
+        .relative(repoRoot, leakProbe)
+        .split(path.sep)
+        .join("/");
+      // Walking that root end-to-end finds it AND flags it: the collector can
+      // still say RED, which is the whole point of this test.
+      const scannedLeak = collectWebGraphSources([leakRoot]);
+      expect(scannedLeak).toContain(leakRelative);
+      expect(findLibraryImporters(scannedLeak)).toContain(leakRelative);
+
+      // The hazard guard: the leak probe must live outside every root a
+      // concurrent walker scans. This is the assertion that goes red if someone
+      // moves the probe back into the tree and reintroduces the PR #1889 race.
+      // TA-V3-6 walks `mingla-business` and `packages`; TA-1 walks those plus
+      // `mingla-business/app`.
+      const normalizedLeakRoot = leakRoot.split(path.sep).join("/");
+      for (const scannedRoot of [...WEB_GRAPH_ROOTS, "mingla-business"]) {
+        expect(normalizedLeakRoot.startsWith(`${scannedRoot}/`)).toBe(false);
+        expect(normalizedLeakRoot).not.toBe(scannedRoot);
+      }
+      // And the real tree stays clean throughout — no probe of either kind is
+      // visible to a concurrent TA-V3-6.
+      expect(findLibraryImporters(collectWebGraphSources())).toEqual([]);
+
+      // A file outside every scanned root must NOT be picked up by the DEFAULT
+      // roots — otherwise the walk is wandering and its file count means
+      // nothing.
+      expect(collectWebGraphSources()).not.toContain(leakRelative);
+    } finally {
+      fs.rmSync(leakDirectory, { recursive: true, force: true });
+    }
   });
 
   // --- TA-1-WEB-SHIM-FLEX: the web shims must be boxes, not Fragments ---
