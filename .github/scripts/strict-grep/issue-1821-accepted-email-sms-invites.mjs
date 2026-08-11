@@ -147,12 +147,12 @@ export function violations(files) {
   ]) need(denoTest, token, "Deno acceptance/write matrix", failures);
 
   for (const token of [
-    "I-PROPOSED-OFFERING-EMAIL-SMS-ACCEPTANCE-1 (DRAFT)",
+    "I-PROPOSED-OFFERING-EMAIL-SMS-ACCEPTANCE-1 (ACTIVE)",
     "documented successful Resend/Twilio/Termii send response",
     "serialized group rollup",
     "may never erase acceptance",
     "depend on a paid receipt feature",
-  ]) need(invariant, token, "DRAFT invariant", failures);
+  ]) need(invariant, token, "ACTIVE invariant", failures);
 
   const runtime = `${migration}\n${sender}`.toLowerCase();
   for (const token of [

@@ -7,13 +7,14 @@
 
 ---
 
-## DRAFT — issue #1821 (Accepted email/SMS offering invitation completion)
+## ACTIVE — issue #1821 (Accepted email/SMS offering invitation completion)
 
-### I-PROPOSED-OFFERING-EMAIL-SMS-ACCEPTANCE-1 (DRAFT)
+### I-PROPOSED-OFFERING-EMAIL-SMS-ACCEPTANCE-1 (ACTIVE)
 
 - **Rule:** A non-empty provider message ID from a documented successful Resend/Twilio/Termii send response is durable Sent/provider-accepted truth for an offering invitation, never delivery/read/response truth. Acceptance atomically settles the attempt and serialized group rollup; later evidence may upgrade to Delivered or add safe downstream-failure detail but may never erase acceptance, change the provider tuple, authorize same-ordinal resend, fabricate actual cost, or depend on a paid receipt feature.
 - **Enforcement:** The provider-I/O claim, hardened Resend classifier and terminal writer, monotonic marketing-message reconciler, immutable attempt transition trigger, common group-row-locked projector, and #1821 batch-A guards.
 - **Regression:** The #1821 PostgreSQL 17 state/concurrency matrix, Deno source/acceptance-boundary test, implementor guard, and independent adversarial guard.
+- **Established:** ACTIVE at #1821 CLOSE after independent QA PASS, all-green PR #1832 merge `e8554d4e8`, production migration `20270314001821`, exact-source `marketing-send` v430 deployment, and a controlled Resend live-fire proving one provider-accepted/Sent attempt, zero fabricated delivery or cost, completed group projection, and replay rejection with no duplicate provider send.
 
 ## ACTIVE — issue #1817 (Free-plan offering invitation send completion)
 
