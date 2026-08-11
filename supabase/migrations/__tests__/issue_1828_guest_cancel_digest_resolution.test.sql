@@ -253,14 +253,19 @@ DECLARE
 BEGIN
   v_summary := public.pg_guest_venue_refund_summary(
     pg_temp.fx('res1'), pg_temp.tok('tok1'));
-  IF v_summary IS NULL OR (v_summary ->> 'id') IS NULL THEN
+  IF v_summary IS NULL OR (v_summary ->> 'refund_id') IS NULL THEN
     RAISE EXCEPTION 'B-01 guest refund summary came back empty: %', v_summary;
   END IF;
-  IF (v_summary ->> 'id') <> (
+  IF (v_summary ->> 'refund_id') <> (
        SELECT id::text FROM public.source_refunds
        WHERE source_id = pg_temp.fx('ses1') AND refund_kind = 'venue_eligible_cancel')
   THEN
     RAISE EXCEPTION 'B-02 summary returned a different refund than the cancel created';
+  END IF;
+  -- The number the guest is actually shown.
+  IF (v_summary ->> 'amount_cents') <> '5000' OR (v_summary ->> 'currency') <> 'GBP' THEN
+    RAISE EXCEPTION 'B-02b summary reports % %, expected 5000 GBP',
+      v_summary ->> 'amount_cents', v_summary ->> 'currency';
   END IF;
 
   -- B-03  A WRONG token must not resolve. If the digest comparison were
