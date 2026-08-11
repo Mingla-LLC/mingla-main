@@ -21,7 +21,7 @@ import {
 } from "react-native";
 // ORCH-0892: KeyboardAvoidingView must come from react-native-keyboard-controller
 // (frame-perfect native animation; drop-in for the RN one).
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { KeyboardAvoidingView } from "../../wrappers/SmartKeyboardAvoidingView";
 
 import {
   accent,
