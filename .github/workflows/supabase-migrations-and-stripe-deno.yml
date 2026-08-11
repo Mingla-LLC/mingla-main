@@ -405,6 +405,29 @@ jobs:
           # two broken shapes are caught and the three safe ones are not.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1828_extension_call_qualification.test.sql
+          # Issue #1856 — TRUNCATE on the four ordering tables, and the CLASS
+          # guard for the grant family. `authenticated` held TRUNCATE on
+          # qr_spots, menu_modifier_groups, menu_modifiers and
+          # venue_ordering_settings, and RLS does not gate TRUNCATE — so any
+          # signed-in user, member of no brand at all, could empty every
+          # venue's QR spots platform-wide (and `qr_spots.code` IS the printed
+          # code laminated onto the furniture). Nobody wrote that grant: it
+          # comes from Supabase's `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON
+          # TABLES TO anon, authenticated`, which is why three reviews missed
+          # it and why no grep over supabase/migrations could ever find it.
+          # This suite reads the LIVE ACL (pg_class.relacl via aclexplode —
+          # information_schema.role_table_grants is role-filtered AND blind to
+          # PG17's MAINTAIN), executes the TRUNCATE as a real `authenticated`
+          # session and requires 42501, then gates the whole schema: no
+          # relation in `public` may hold a privilege for anon/PUBLIC on a base
+          # table, or anything past SELECT for anyone, outside the reasoned
+          # allowlist and the 2026-08-11 baseline. Its vacuity guard plants a
+          # table with NO grant statement at all and asserts it arrives holding
+          # TRUNCATE — the root cause, reproduced live — and its fails-on-revert
+          # group re-grants TRUNCATE and proves an `authenticated` session then
+          # actually empties the table.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1856_ordering_table_grants_and_grant_class.test.sql
           # Issue #1792 (#1767 Phase 3b) — WAITER MODE, against the REAL applied
           # schema. Behavioural: it opens and closes real tabs through the real
           # SECURITY DEFINER RPCs as a real auth.uid() with a real rank, runs
