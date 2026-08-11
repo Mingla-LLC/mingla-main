@@ -42,7 +42,11 @@ import {
 import { handlePayoutReleaseSweep } from "../index.ts";
 import {
   NG_PAYOUT_FLOAT_HORIZON_DEFAULT_DAYS,
+  NG_PAYOUT_FLOAT_HORIZON_MAX_DAYS,
+  NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS,
+  parseRuntimeConfig,
   resolveNgPayoutFloatHorizonDays,
+  resolveRuntimeConfigValue,
 } from "../../_shared/runtimeConfig.ts";
 
 const MIGRATION =
@@ -280,24 +284,83 @@ Deno.test("#1840 the forecast horizon rides the existing runtime-config bundle",
     ),
     14,
   );
-  // Junk is rejected rather than coerced into a wrong forecast window.
-  for (const bad of [0, 91, 7.5, "7", null]) {
+  // Values that carry no usable intent fall back to the default.
+  for (const bad of [7.5, "7", null, true, Number.NaN]) {
     assertEquals(
       resolveNgPayoutFloatHorizonDays(
         bundleEnv(runtimeBundle({ ng_payout_float_horizon_days: bad })),
       ),
       undefined,
+      `${JSON.stringify(bad)} should degrade to the default`,
     );
   }
 });
 
-// ── Sweep wiring: after execution, isolated, ledger-first ──────────────────
+// #1840 REWORK — an out-of-range horizon is CLAMPED, never rejected, and the
+// floor is a horizon that can actually be acted on.
+Deno.test("#1840 an out-of-range horizon clamps into a usable window instead of poisoning the bundle", () => {
+  const bundleEnv = (raw: string) => (name: string) =>
+    name === "MINGLA_RUNTIME_CONFIG_JSON"
+      ? raw
+      : name === "MINGLA_LOGO_URL"
+      ? "https://legacy.test/legacy-logo.png"
+      : undefined;
+
+  // The floor is 3 days, not 1: a Nigerian release matures at event_end + 3
+  // days, so a shorter window warns later than the rail itself costs and no
+  // bank top-up clears inside it.
+  assertEquals(NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS, 3);
+  assertEquals(NG_PAYOUT_FLOAT_HORIZON_MAX_DAYS, 90);
+  for (const low of [0, 1, 2, -5]) {
+    assertEquals(
+      resolveNgPayoutFloatHorizonDays(
+        bundleEnv(runtimeBundle({ ng_payout_float_horizon_days: low })),
+      ),
+      NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS,
+      `${low} must clamp UP to the floor, never disable the forecast`,
+    );
+  }
+  for (const high of [91, 1000, 999_999]) {
+    assertEquals(
+      resolveNgPayoutFloatHorizonDays(
+        bundleEnv(runtimeBundle({ ng_payout_float_horizon_days: high })),
+      ),
+      NG_PAYOUT_FLOAT_HORIZON_MAX_DAYS,
+    );
+  }
+
+  // THE BLAST-RADIUS PROPERTY. parseRuntimeConfig is all-or-nothing, so a
+  // strict validator on this field turned a payments tunable into a
+  // platform-wide degradation: one bad horizon and mingla_logo_url,
+  // termii_base_url, the Bunny caps and every other unrelated field silently
+  // fell back to legacy env vars. The whole bundle must now survive any value
+  // in this field.
+  for (const anything of [0, 91, 7.5, "seven", null, true, { a: 1 }, [1, 2]]) {
+    const raw = runtimeBundle({ ng_payout_float_horizon_days: anything });
+    assertEquals(
+      parseRuntimeConfig(raw).ok,
+      true,
+      `a horizon of ${JSON.stringify(anything)} must not invalidate the bundle`,
+    );
+    assertEquals(
+      resolveRuntimeConfigValue("mingla_logo_url", "MINGLA_LOGO_URL", bundleEnv(raw)),
+      "https://example.test/logo.png",
+      "an unrelated reader must still get its bundled value",
+    );
+  }
+});
+
+// ── Sweep wiring: ahead of execution, isolated, ledger-first ──────────────
 
 type SweepCase = {
   obligationKobo: number;
   balanceKobo: number;
   obligationError?: string;
   runtimeBundleJson?: string;
+  /** #1840 rework — drive the 409 that used to silence the forecast. */
+  blockedPartnerAttributions?: number;
+  /** #1840 rework — drive the swallowed-failure path. */
+  balanceThrows?: boolean;
 };
 
 function sweepHarness(scenario: SweepCase) {
@@ -318,7 +381,10 @@ function sweepHarness(scenario: SweepCase) {
       }
       if (name === "plan_pending_payout_partner_legs") {
         return Promise.resolve({
-          data: { blocked_partner_attributions: 0 },
+          data: {
+            blocked_partner_attributions:
+              scenario.blockedPartnerAttributions ?? 0,
+          },
           error: null,
         });
       }
@@ -355,6 +421,7 @@ function sweepHarness(scenario: SweepCase) {
             obligation_kobo: scenario.obligationKobo,
             balance_kobo: args.p_balance_kobo,
             shortfall_kobo: Math.max(shortfall, 0),
+            alert_revision: shortfall > 0 ? 1 : null,
             alert: shortfall > 0 ? "raised" : "none",
           },
           error: null,
@@ -394,6 +461,9 @@ function sweepHarness(scenario: SweepCase) {
     },
     createPaystackReleaseClient: () => ({
       getBalance: () => {
+        if (scenario.balanceThrows) {
+          return Promise.reject(new Error("paystack_balance_unreachable"));
+        }
         balanceReads.push("balance");
         return Promise.resolve([
           { currency: "USD", balance: 999_999_999 },
@@ -427,30 +497,39 @@ function sweepHarness(scenario: SweepCase) {
   };
 }
 
-Deno.test("#1840 D2 the forecast runs AFTER the Paystack execution phase and alerts on a shortfall", async () => {
+Deno.test("#1840 D2 the forecast runs BEFORE any release execution and alerts on a shortfall", async () => {
   const harness = sweepHarness({ obligationKobo: 1_000_000, balanceKobo: 250_000 });
   const response = await harness.run();
   assertEquals(response.status, 200);
   const body = await response.json();
 
-  // Ledger first, provider second: the obligation RPC is called before the
-  // balance is ever read.
-  const claimAt = harness.rpcOrder.indexOf("claim_paystack_payout_releases");
+  // #1840 REWORK — placement inverted on purpose. Behind the release phases the
+  // forecast was silenced by the partner-plan 500, the 409
+  // partner_attribution_pending and the Stripe-phase 500. It now runs ahead of
+  // all of them, so no release-execution outcome can hide an unfunded float.
   const obligationAt = harness.rpcOrder.indexOf("paystack_payout_float_obligation");
   const raiseAt = harness.rpcOrder.indexOf("raise_paystack_float_shortfall_alert");
-  assert(claimAt >= 0, "the Paystack execution phase must still run");
-  assert(obligationAt > claimAt, "the forecast must run after release execution");
+  const partnerPlanAt = harness.rpcOrder.indexOf("plan_pending_payout_partner_legs");
+  const stripeClaimAt = harness.rpcOrder.indexOf("claim_stripe_payout_releases");
+  const paystackClaimAt = harness.rpcOrder.indexOf("claim_paystack_payout_releases");
+  assert(obligationAt >= 0, "the forecast must run");
+  assert(partnerPlanAt > obligationAt, "the forecast must precede partner planning");
+  assert(stripeClaimAt > obligationAt, "the forecast must precede Stripe execution");
+  assert(paystackClaimAt > obligationAt, "the forecast must precede Paystack execution");
+  // Ledger first, provider second — I-1013-LEDGER-ONLY at the call site.
   assert(raiseAt > obligationAt, "the alert must follow the ledger obligation");
   assertEquals(harness.balanceReads.length, 1);
 
   assertEquals(harness.raiseArgs()?.p_balance_kobo, 250_000);
   assertEquals(harness.raiseArgs()?.p_horizon_days, 7);
   assertEquals(body.paystackFloatForecast, {
+    status: "ok",
     horizonDays: 7,
     releaseCount: 2,
     obligationKobo: 1_000_000,
     balanceRead: true,
     shortfallKobo: 750_000,
+    alertRevision: 1,
     alert: "raised",
   });
 });
@@ -466,11 +545,13 @@ Deno.test("#1840 D2 no obligation in the horizon ⇒ no balance read and no aler
     false,
   );
   assertEquals(body.paystackFloatForecast, {
+    status: "ok",
     horizonDays: 7,
     releaseCount: 0,
     obligationKobo: 0,
     balanceRead: false,
     shortfallKobo: 0,
+    alertRevision: null,
     alert: "none",
   });
 });
@@ -491,33 +572,108 @@ Deno.test("#1840 D2 a configured horizon is honoured end to end", async () => {
   assertEquals(body.paystackFloatForecast.shortfallKobo, 0);
 });
 
-Deno.test("#1840 a forecast failure never changes the sweep result", async () => {
+// #1840 REWORK — a forecast failure must still not break the sweep, but it must
+// no longer vanish. The mechanism whose whole job is "never be silent" had a
+// silent failure mode of its own: `{}` in the body and one prose console line.
+Deno.test("#1840 a forecast failure is isolated from the sweep but never silent", async () => {
+  for (
+    const scenario of [
+      { obligationKobo: 1_000_000, balanceKobo: 1, obligationError: "forecast_rpc_exploded" },
+      { obligationKobo: 1_000_000, balanceKobo: 1, balanceThrows: true },
+    ]
+  ) {
+    const harness = sweepHarness(scenario);
+    const response = await harness.run();
+    // Isolation is preserved: the sweep is unharmed.
+    assertEquals(response.status, 200);
+    const body = await response.json();
+    assertEquals(body.ok, true);
+    assertEquals(body.dark, false);
+    // ...and the failure is now a durable, machine-readable verdict rather than
+    // an empty object that reads identically to "nothing to report".
+    assertEquals(body.paystackFloatForecast.status, "failed");
+    assert(
+      typeof body.paystackFloatForecast.reason === "string" &&
+        body.paystackFloatForecast.reason.length > 0,
+      "a failed forecast must say why",
+    );
+  }
+});
+
+// #1840 REWORK — C3: the 409 that used to silence the forecast entirely.
+Deno.test("#1840 a partner-attribution 409 no longer silences the float forecast", async () => {
   const harness = sweepHarness({
-    obligationKobo: 1_000_000,
-    balanceKobo: 1,
-    obligationError: "forecast_rpc_exploded",
+    obligationKobo: 50_000_000,
+    balanceKobo: 0,
+    blockedPartnerAttributions: 3,
   });
   const response = await harness.run();
-  assertEquals(response.status, 200);
+  assertEquals(response.status, 409);
   const body = await response.json();
-  assertEquals(body.ok, true);
-  assertEquals(body.dark, false);
-  assertEquals(body.paystackFloatForecast, {});
-  assertEquals(harness.balanceReads, []);
+  assertEquals(body.error, "partner_attribution_pending");
+  // The sweep is in trouble, which is exactly when an unfunded float matters
+  // most. The obligation was read, the balance was read, and the alert fired.
+  assert(harness.rpcOrder.includes("paystack_payout_float_obligation"));
+  assertEquals(harness.balanceReads.length, 1);
+  assertEquals(harness.raiseArgs()?.p_balance_kobo, 0);
+  assertEquals(body.paystackFloatForecast.alert, "raised");
+  assertEquals(body.paystackFloatForecast.shortfallKobo, 50_000_000);
 });
 
 // ── Wiring guards ──────────────────────────────────────────────────────────
 
-Deno.test("#1840 the forecast is wired after the Paystack phase in the sweep source", async () => {
+Deno.test("#1840 the forecast is wired ahead of every release-execution step", async () => {
   const sweep = await Deno.readTextFile(SWEEP);
-  const paystackPhase = sweep.indexOf("executeClaimedPaystackReleases(admin as never, deps)");
   const forecast = sweep.indexOf("forecastPaystackFloat(admin as never, deps)");
-  assert(paystackPhase >= 0, "the Paystack execution phase call disappeared");
-  assert(forecast > paystackPhase, "the forecast must be invoked after execution");
+  const darkGate = sweep.indexOf("if (!payoutReleaseExecute) {");
+  const partnerPlan = sweep.indexOf('"plan_pending_payout_partner_legs"');
+  const stripePhase = sweep.indexOf("await executeClaimedStripeReleases(");
+  const paystackPhase = sweep.indexOf(
+    "executeClaimedPaystackReleases(admin as never, deps)",
+  );
+  assert(forecast >= 0, "the forecast call site disappeared");
+  assert(darkGate >= 0 && forecast > darkGate, "DARK must still mean DARK");
+  assert(forecast < partnerPlan, "the forecast must precede partner planning");
+  assert(forecast < stripePhase, "the forecast must precede Stripe execution");
+  assert(forecast < paystackPhase, "the forecast must precede Paystack execution");
   // Both new kinds have distinct ops copy, so a float warning never reads as a
   // Stripe attempt-cap failure.
   assertStringIncludes(sweep, "ops.paystack_payout_release_balance_blocked");
   assertStringIncludes(sweep, "ops.paystack_payout_float_shortfall");
+});
+
+// #1840 REWORK — C1: the self-assert must be able to roll the migration back.
+Deno.test("#1840 the migration self-assert sits INSIDE the transaction", async () => {
+  const migration = await Deno.readTextFile(MIGRATION);
+  const begin = migration.indexOf("\nBEGIN;");
+  const assertBlock = migration.indexOf("DO $$");
+  const commit = migration.indexOf("\nCOMMIT;");
+  assert(begin >= 0 && assertBlock >= 0 && commit >= 0);
+  // After COMMIT it was a separate implicit transaction: it aborted the RUN and
+  // not the MIGRATION, so deleting either half of the widening still installed
+  // the #1217 trap and only `psql -v ON_ERROR_STOP=1` stood in the way. That
+  // flag protects CI, not the Management-API lane production applies through.
+  assert(
+    assertBlock > begin && assertBlock < commit,
+    "the self-assert must be between BEGIN and COMMIT so a failure rolls back",
+  );
+  assertStringIncludes(migration, "rolling back");
+});
+
+// #1840 REWORK — C2: a revised figure must survive the notification layer.
+Deno.test("#1840 only the float-shortfall kind carries its outbox idempotency key downstream", async () => {
+  const sweep = await Deno.readTextFile(SWEEP);
+  // The drain has always RETURNED idempotency_key; it must now be passed on.
+  assertStringIncludes(sweep, "alert.idempotency_key,");
+  const fnStart = sweep.indexOf("async function notifyAttemptCap(");
+  const fnEnd = sweep.indexOf("\nasync function deliverPendingAttemptCapAlerts(");
+  assert(fnStart >= 0 && fnEnd > fnStart);
+  const fn = sweep.slice(fnStart, fnEnd);
+  assertStringIncludes(fn, 'alertKind === "paystack_float_shortfall"');
+  // Every other kind keeps the #1217 key byte-for-byte: their payload is a
+  // fixed fact, so re-sending would be noise rather than news.
+  assertStringIncludes(fn, "`${copy.type}:${release.release_id}`");
+  assertStringIncludes(fn, "idempotencyKey,");
 });
 
 Deno.test("#1840 both regression suites are registered in a workflow that actually runs them", async () => {

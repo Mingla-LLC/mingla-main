@@ -36,6 +36,18 @@
 //       before the Paystack phase, so the float is never forecast in exactly
 //       the sweep that is already unhealthy.
 //
+// [TEST-MOD-APPROVED #1840] INVERTED BY THE IMPLEMENTOR REWORK. Five pins in
+// this file asserted behaviour the coordinator then promoted to conditions, so
+// they now assert the CORRECTED behaviour instead of the defect. Each inversion
+// is marked INVERTED inline with what it used to pin and why it changed. The
+// tester's angle, fixtures and harness are otherwise untouched, and B1, B3, B7,
+// B8 and B10 are unchanged and still green.
+//   B2  ordering flipped: the forecast now runs BEFORE the release phases.
+//   B4  a swallowed failure is now a durable `status:"failed"` verdict.
+//   B5  an out-of-range horizon is now CLAMPED, and the floor is 3, not 1.
+//   B6  a bad horizon no longer invalidates the whole shared bundle.
+//   B9  the 409 no longer silences the forecast.
+//
 // Fails-on-revert (verified by real line deletions, not comment-outs):
 //   * delete the forecast call site in index.ts        -> B2, B3, B5 fail;
 //   * move the forecast above the DARK early return    -> B1 fails;
@@ -50,7 +62,10 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handlePayoutReleaseSweep } from "../index.ts";
 import {
+  NG_PAYOUT_FLOAT_HORIZON_MAX_DAYS,
+  NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS,
   parseRuntimeConfig,
+  resolveNgPayoutFloatHorizonDays,
   resolveRuntimeConfigValue,
 } from "../../_shared/runtimeConfig.ts";
 
@@ -257,7 +272,16 @@ Deno.test("#1840 ADV a FAILED Paystack execution phase still leaves the float fo
   const obligationAt = h.rpcOrder.indexOf("paystack_payout_float_obligation");
   const claimAt = h.rpcOrder.indexOf("claim_paystack_payout_releases");
   assert(claimAt >= 0, "the Paystack claim must still have been attempted");
-  assert(obligationAt > claimAt, "the forecast must follow the Paystack phase");
+  // INVERTED [TEST-MOD-APPROVED #1840]: this used to require
+  // `obligationAt > claimAt`, pinning the forecast BEHIND the release phases —
+  // which is what let the 409 and the Stripe-phase 500 silence it (B9). The
+  // rework moved it ahead of every release-execution step, so the property this
+  // section is really about (an unhealthy phase must not blind the forecast) is
+  // now guaranteed structurally rather than by ordering luck.
+  assert(
+    obligationAt < claimAt,
+    "the forecast must run BEFORE the release phases so no execution outcome can silence it",
+  );
   assertEquals(body.paystackFloatForecast.alert, "raised");
   assertEquals(body.paystackFloatForecast.balanceRead, true);
 });
@@ -299,7 +323,7 @@ Deno.test("#1840 ADV a balance response with NO NGN row fails CLOSED (zero, aler
 
 // ── B4: the swallowed-failure property, pinned ─────────────────────────────
 
-Deno.test("#1840 ADV a balance-read failure is swallowed silently (pinned known gap)", async () => {
+Deno.test("#1840 ADV a balance-read failure is isolated but NEVER silent", async () => {
   const h = harness({ obligationKobo: 1_000_000, balanceThrows: true });
   const response = await h.run();
   assertEquals(response.status, 200);
@@ -307,11 +331,20 @@ Deno.test("#1840 ADV a balance-read failure is swallowed silently (pinned known 
   // The sweep is unharmed, which is the design intent...
   assertEquals(body.ok, true);
   assertEquals(body.dark, false);
-  // ...but NO alert of any kind is raised, and the response carries no signal
-  // that the forecast failed. The only trace is a console line. Pinned here so
-  // that if a future change adds a durable signal, this test fires and the
-  // improvement is deliberate rather than accidental.
-  assertEquals(body.paystackFloatForecast, {});
+  // INVERTED [TEST-MOD-APPROVED #1840]: this used to pin
+  // `paystackFloatForecast === {}` — a failure of the one mechanism whose whole
+  // job is "never be silent" was reported as an empty object indistinguishable
+  // from "nothing to report", with a prose console line as its only trace. The
+  // rework makes the failure a durable, machine-readable verdict in the
+  // response plus a single-line JSON log event log-based alerting can key on.
+  assertEquals(body.paystackFloatForecast.status, "failed");
+  assert(
+    typeof body.paystackFloatForecast.reason === "string" &&
+      body.paystackFloatForecast.reason.length > 0,
+    "a failed forecast must carry a reason, not an empty object",
+  );
+  // Still no alert RPC: the balance never resolved, so there is no honest
+  // figure to alert with. Failing loudly is the fix; inventing one is not.
   assertEquals(
     h.rpcOrder.includes("raise_paystack_float_shortfall_alert"),
     false,
@@ -320,10 +353,23 @@ Deno.test("#1840 ADV a balance-read failure is swallowed silently (pinned known 
 
 // ── B5: a bad horizon degrades to the default, never to a garbage window ───
 
-Deno.test("#1840 ADV an invalid configured horizon degrades to 7 days, never to 0/NaN/undefined", async () => {
-  for (
-    const bad of [0, -1, 91, 7.5, "14", null, true] as const
-  ) {
+Deno.test("#1840 ADV an invalid configured horizon degrades to a USABLE window, never to 0/NaN/undefined", async () => {
+  // INVERTED [TEST-MOD-APPROVED #1840]: this used to require every bad value to
+  // land on 7. Out-of-range NUMBERS are now clamped into the supported window
+  // instead of being rejected, because rejecting them invalidated the whole
+  // shared bundle (B6). Values that carry no usable intent still fall back to
+  // the default. Either way the ledger never sees 0, NaN or undefined.
+  const expectations: Array<[unknown, number]> = [
+    [0, NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS],
+    [-1, NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS],
+    [1, NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS],
+    [91, NG_PAYOUT_FLOAT_HORIZON_MAX_DAYS],
+    [7.5, 7],
+    ["14", 7],
+    [null, 7],
+    [true, 7],
+  ];
+  for (const [bad, expected] of expectations) {
     const h = harness({
       obligationKobo: 1_000,
       bundle: bundle({ ng_payout_float_horizon_days: bad }),
@@ -332,12 +378,12 @@ Deno.test("#1840 ADV an invalid configured horizon degrades to 7 days, never to 
     const sent = h.obligationArgs()?.p_horizon_days;
     assertEquals(
       sent,
-      7,
+      expected,
       `a horizon of ${JSON.stringify(bad)} reached the ledger as ${
         JSON.stringify(sent)
-      } instead of the 7-day default`,
+      } instead of ${expected}`,
     );
-    assertEquals(h.raiseArgs()?.p_horizon_days, 7);
+    assertEquals(h.raiseArgs()?.p_horizon_days, expected);
   }
   // A valid override is honoured, so the fallback above is not masking a
   // hard-coded 7.
@@ -354,28 +400,43 @@ Deno.test("#1840 ADV an invalid configured horizon degrades to 7 days, never to 
   assertEquals(none.obligationArgs()?.p_horizon_days, 7);
 });
 
-Deno.test("#1840 ADV the shortest legal horizon is still a real horizon, and both ends are reachable", () => {
-  // 1 day is legal and gives barely any notice; 90 is the ceiling. Both are
-  // accepted, so an operator can narrow the warning window to under 24h with a
-  // value the validator considers perfectly valid. Pinned because that is an
-  // operational hazard, not a code defect.
-  for (const days of [1, 2, 7, 30, 89, 90]) {
-    const parsed = parseRuntimeConfig(
-      bundle({ ng_payout_float_horizon_days: days }),
+Deno.test("#1840 ADV the shortest EFFECTIVE horizon is one the operator can act on", () => {
+  // INVERTED [TEST-MOD-APPROVED #1840]: this used to pin 1 day as legal — a
+  // value the validator considered perfectly valid that yielded under 24h of
+  // notice on a rail whose releases mature at event_end + 3 days, with no alarm
+  // anywhere. The floor is now 3 days, and anything below it is clamped up
+  // rather than honoured. Nothing in this field is rejected any more, so it can
+  // no longer take the whole bundle down with it.
+  const env = (raw: string) => (name: string) =>
+    name === "MINGLA_RUNTIME_CONFIG_JSON" ? raw : undefined;
+  assertEquals(NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS, 3);
+  for (const days of [-1, 0, 1, 2]) {
+    const raw = bundle({ ng_payout_float_horizon_days: days });
+    assertEquals(parseRuntimeConfig(raw).ok, true, `${days} must not fail the bundle`);
+    assertEquals(
+      resolveNgPayoutFloatHorizonDays(env(raw)),
+      NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS,
+      `${days} days must clamp up to a horizon an operator can act on`,
     );
-    assertEquals(parsed.ok, true, `${days} days should be accepted`);
   }
-  for (const days of [0, -1, 91, 1000]) {
-    const parsed = parseRuntimeConfig(
-      bundle({ ng_payout_float_horizon_days: days }),
+  for (const days of [3, 7, 30, 89, 90]) {
+    const raw = bundle({ ng_payout_float_horizon_days: days });
+    assertEquals(parseRuntimeConfig(raw).ok, true);
+    assertEquals(resolveNgPayoutFloatHorizonDays(env(raw)), days);
+  }
+  for (const days of [91, 1000]) {
+    const raw = bundle({ ng_payout_float_horizon_days: days });
+    assertEquals(parseRuntimeConfig(raw).ok, true);
+    assertEquals(
+      resolveNgPayoutFloatHorizonDays(env(raw)),
+      NG_PAYOUT_FLOAT_HORIZON_MAX_DAYS,
     );
-    assertEquals(parsed.ok, false, `${days} days must be rejected`);
   }
 });
 
 // ── B6: blast radius of a strict field on an all-or-nothing shared bundle ──
 
-Deno.test("#1840 ADV a bad horizon invalidates the WHOLE shared bundle for every unrelated reader", () => {
+Deno.test("#1840 ADV a bad horizon can no longer take the WHOLE shared bundle down with it", () => {
   const getEnv = (raw: string) => (name: string) =>
     name === "MINGLA_RUNTIME_CONFIG_JSON"
       ? raw
@@ -392,20 +453,28 @@ Deno.test("#1840 ADV a bad horizon invalidates the WHOLE shared bundle for every
     "https://example.test/logo.png",
   );
 
-  // One out-of-range horizon and parseRuntimeConfig is all-or-nothing, so
-  // mingla_logo_url — which has nothing to do with Nigerian payouts — silently
-  // falls back to its legacy env var. That is the documented hazard already
-  // called out in runtimeConfig.ts for event_cover_video_provider; #1840 adds
-  // a new way to trip it. Pinned so it is a known, reviewed cost.
-  const poisoned = getEnv(bundle({ ng_payout_float_horizon_days: 0 }));
-  assertEquals(
-    resolveRuntimeConfigValue("mingla_logo_url", "MINGLA_LOGO_URL", poisoned),
-    "https://legacy.test/legacy-logo.png",
-  );
-  assertEquals(
-    parseRuntimeConfig(bundle({ ng_payout_float_horizon_days: 0 })).ok,
-    false,
-  );
+  // INVERTED [TEST-MOD-APPROVED #1840]: this used to pin the blast radius —
+  // one out-of-range horizon and parseRuntimeConfig, which is all-or-nothing,
+  // invalidated the entire bundle, silently dropping mingla_logo_url,
+  // termii_base_url, the Bunny caps and every other unrelated field back to
+  // legacy env vars. A payments tunable could cause a platform-wide
+  // degradation. The field is no longer validated at bundle level at all; it is
+  // narrowed and clamped in its own reader, where the blast radius is one
+  // caller. The documented event_cover_video_provider hazard is unchanged —
+  // #1840 simply stops adding a new way to trip it.
+  for (const hostile of [0, -1, 91, 7.5, "seven", null, true, { a: 1 }, [1]]) {
+    const raw = bundle({ ng_payout_float_horizon_days: hostile });
+    assertEquals(
+      parseRuntimeConfig(raw).ok,
+      true,
+      `a horizon of ${JSON.stringify(hostile)} must not invalidate the bundle`,
+    );
+    assertEquals(
+      resolveRuntimeConfigValue("mingla_logo_url", "MINGLA_LOGO_URL", getEnv(raw)),
+      "https://example.test/logo.png",
+      "an unrelated reader must keep its BUNDLED value, not a legacy fallback",
+    );
+  }
 });
 
 // ── B7: every drainable kind must have dedicated ops copy ──────────────────
@@ -480,23 +549,29 @@ Deno.test("#1840 ADV the workflow runs both SQL suites under ON_ERROR_STOP and r
 
 // ── B9: an earlier early-return silences the forecast entirely ─────────────
 
-Deno.test("#1840 ADV a partner-attribution backlog short-circuits the sweep and silences the float forecast (pinned known gap)", async () => {
+Deno.test("#1840 ADV a partner-attribution backlog 409s the sweep WITHOUT silencing the float forecast", async () => {
   const h = harness({
     blockedPartnerAttributions: 3,
     obligationKobo: 50_000_000,
   });
   const response = await h.run();
-  // Pre-existing #1174 behaviour: the sweep 409s before the Stripe and
-  // Paystack phases. #1840 placed the forecast after those phases, so it
-  // inherits every earlier early-return.
+  // Pre-existing #1174 behaviour: the sweep still 409s before the Stripe and
+  // Paystack phases, and that is unchanged.
   assertEquals(response.status, 409);
   const body = await response.json();
   assertEquals(body.error, "partner_attribution_pending");
-  // The float is NOT forecast in this state, and no alert is raised, even
-  // though a large obligation is maturing. Pinned so this is a known,
-  // reviewed limitation rather than a surprise on the first real payout.
-  assertEquals(h.rpcOrder.includes("paystack_payout_float_obligation"), false);
-  assertEquals(h.balanceReads.length, 0);
+  // INVERTED [TEST-MOD-APPROVED #1840]: this used to pin
+  // `paystack_payout_float_obligation` as NEVER called on this path — a large
+  // Nigerian obligation could be maturing and the sweep would 409 without a
+  // word about it. A safety net that only runs on the happy path is not a
+  // safety net; the sweep being in trouble is exactly when an unfunded float
+  // matters most. The forecast now runs ahead of every release-execution step,
+  // so the 409 cannot silence it.
+  assert(h.rpcOrder.includes("paystack_payout_float_obligation"));
+  assertEquals(h.balanceReads.length, 1);
+  assertEquals(h.raiseArgs()?.p_balance_kobo, 0);
+  assertEquals(body.paystackFloatForecast.alert, "raised");
+  assertEquals(body.paystackFloatForecast.shortfallKobo, 50_000_000);
 });
 
 // ── B10: an unrecognised verdict from the alert RPC degrades to "none" ─────

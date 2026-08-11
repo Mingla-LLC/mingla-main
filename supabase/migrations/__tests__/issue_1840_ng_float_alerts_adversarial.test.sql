@@ -440,28 +440,53 @@ BEGIN
   IF (v->>'obligation_kobo')::bigint <> 10000000 THEN
     RAISE EXCEPTION 'A6 obligation did not grow: %', v->>'obligation_kobo';
   END IF;
-  IF v->>'alert' <> 'deduped' THEN
+  -- INVERTED [TEST-MOD-APPROVED #1840]: this section used to require 'deduped'
+  -- here, and to require the stored message to still carry the ORIGINAL,
+  -- ten-times-too-small figure. That pinned exactly the defect the coordinator
+  -- then promoted to a condition: because outbox rows are keyed on
+  -- (release_id, alert_kind) and are never deleted anywhere in the repo, a
+  -- stuck anchor made that key once-ever, so the only artefact ops ever
+  -- received kept understating the shortfall while it grew underneath. The
+  -- rework bounds the suppression instead of removing it: a MATERIALLY worse
+  -- shortfall (>= 25% of the last figure, or >= NGN 1,000, whichever is larger)
+  -- always surfaces, and a flat one still surfaces every 24 hours.
+  IF v->>'alert' <> 'refreshed' THEN
     RAISE EXCEPTION
-      'A6 a sticky anchor stopped deduping (%) — a release that blocks on every tick would spam ops',
+      'A6 a ten-fold worse shortfall did not surface (%) — ops would keep the stale number',
       v->>'alert';
   END IF;
+  -- Bounded re-alerting must still never fan out into a pile of rows.
   SELECT count(*) INTO n FROM public.payout_release_alert_outbox
     WHERE alert_kind='paystack_float_shortfall';
   IF n <> 1 THEN RAISE EXCEPTION 'A6 sticky anchor wrote % rows', n; END IF;
-  -- PINNED KNOWN EDGE (reported, not fixed): because the outbox row is keyed
-  -- on (release_id, alert_kind) and is never deleted, the ONLY artefact ops
-  -- ever receives still carries the ORIGINAL, ten-times-too-small number. If a
-  -- future change refreshes the message or re-raises on growth, this assertion
-  -- fires and the change is deliberate rather than accidental.
   SELECT error_message INTO msg FROM public.payout_release_alert_outbox
     WHERE alert_kind='paystack_float_shortfall';
-  IF position('10,000.00' in msg) = 0 THEN
-    RAISE EXCEPTION 'A6 delivered message lost its original figure: %', msg;
-  END IF;
-  IF position('100,000.00' in msg) <> 0 THEN
+  IF position('100,000.00' in msg) = 0 THEN
     RAISE EXCEPTION
-      'A6 the delivered message now carries the GROWN figure — the sticky-anchor suppression edge has changed behaviour: %',
+      'A6 the row does not carry the CURRENT figure — a delivered artefact would understate the shortfall: %',
       msg;
+  END IF;
+  IF position('10,000.00' in msg) <> 0 THEN
+    RAISE EXCEPTION 'A6 the row still carries the superseded figure: %', msg;
+  END IF;
+  -- Re-armed with a revision-bearing key, or notify-dispatch would dedupe the
+  -- corrected figure away one layer below this table and ops would never see it.
+  IF (SELECT status FROM public.payout_release_alert_outbox
+      WHERE alert_kind='paystack_float_shortfall') <> 'pending' THEN
+    RAISE EXCEPTION 'A6 an already-delivered row was not re-armed for delivery';
+  END IF;
+  IF (SELECT idempotency_key FROM public.payout_release_alert_outbox
+      WHERE alert_kind='paystack_float_shortfall') NOT LIKE '%:r2' THEN
+    RAISE EXCEPTION 'A6 the refreshed row kept a stale idempotency key';
+  END IF;
+  -- ANTI-SPAM, the other half of the bound: a trivial drift after the refresh
+  -- must go quiet again. Keying on the raw amount would fire here every tick,
+  -- which is its own way of burying a real alert.
+  UPDATE public.payout_release_alert_outbox SET status='provider_accepted'
+  WHERE alert_kind='paystack_float_shortfall';
+  v := public.raise_paystack_float_shortfall_alert(1, 7, '2027-06-01 01:10:00+00');
+  IF v->>'alert' <> 'suppressed' THEN
+    RAISE EXCEPTION 'A6 a one-kobo drift re-alerted (%) — that is spam', v->>'alert';
   END IF;
 
   -- Tick 3: the anchor rotates (E is paid). A NEW anchor must raise a NEW

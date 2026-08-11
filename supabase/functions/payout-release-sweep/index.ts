@@ -55,6 +55,7 @@ type SweepDeps = {
     release: Pick<StripeReleaseCandidate, "release_id" | "brand_id">,
     message: string,
     alertKind?: string,
+    outboxIdempotencyKey?: string | null,
   ) => Promise<"provider_accepted" | void>;
   // Issue #1177 — injectable Paystack transfer client (mirror of
   // createStripeReleaseClient) so the organiser rail is unit-testable.
@@ -90,14 +91,23 @@ export type PaystackSweepCounts = {
 // Issue #1840 D2 — the Nigerian float forecast summary returned in the sweep
 // response for observability. Purely a report: nothing here feeds a release
 // amount, a chunk plan, a ceiling check or an idempotency key.
-export type PaystackFloatForecast = {
-  horizonDays: number;
-  releaseCount: number;
-  obligationKobo: number;
-  balanceRead: boolean;
-  shortfallKobo: number;
-  alert: "none" | "raised" | "deduped";
-};
+export type PaystackFloatForecast =
+  | {
+    status: "ok";
+    horizonDays: number;
+    releaseCount: number;
+    obligationKobo: number;
+    balanceRead: boolean;
+    shortfallKobo: number;
+    /** Which revision of the figure the outbox row now states; null when none. */
+    alertRevision: number | null;
+    alert: "none" | "raised" | "refreshed" | "suppressed";
+  }
+  // #1840 rework — a failure of the forecast used to be reported as `{}` and a
+  // console line, which made the one mechanism whose entire job is "never be
+  // silent" silently fail. It now carries a durable, machine-readable verdict
+  // in the sweep response as well as a structured log event.
+  | { status: "failed"; reason: string };
 
 type AdminClient = ReturnType<typeof createClient>;
 
@@ -350,10 +360,25 @@ async function notifyAttemptCap(
   release: Pick<StripeReleaseCandidate, "release_id" | "brand_id">,
   message: string,
   alertKind = "stripe_attempt_cap",
+  outboxIdempotencyKey?: string | null,
 ): Promise<"provider_accepted"> {
   // Issue #1217 — pick rail-aware copy + a kind-specific idempotency key so a
   // Paystack payout-release alert reads correctly instead of as a Stripe one.
   const copy = payoutReleaseAlertCopy(alertKind);
+  // Issue #1840 — the float-shortfall alert is the ONE kind whose payload is a
+  // number that moves, so it is the one kind that can legitimately need to be
+  // re-sent for the same release with a corrected figure. Its outbox row
+  // carries a revision-bearing idempotency key for exactly that, and without
+  // honouring it here notify-dispatch would dedupe the corrected figure away
+  // one layer below this function and ops would keep the stale number. Every
+  // other kind keeps the #1217 key byte-for-byte: their payload is a fixed
+  // fact, and re-sending it would be noise.
+  const idempotencyKey =
+    alertKind === "paystack_float_shortfall" &&
+      typeof outboxIdempotencyKey === "string" &&
+      outboxIdempotencyKey.length > 0
+      ? outboxIdempotencyKey
+      : `${copy.type}:${release.release_id}`;
   const result = await dispatchNotification({
     emailTo: "ops@mingla.app",
     emailVariant: "generic_notification",
@@ -369,7 +394,7 @@ async function notifyAttemptCap(
     },
     relatedId: release.release_id,
     relatedType: "payout_release",
-    idempotencyKey: `${copy.type}:${release.release_id}`,
+    idempotencyKey,
     skipPush: true,
   });
   if (!result.providerAccepted) {
@@ -417,6 +442,10 @@ async function deliverPendingAttemptCapAlerts(
         },
         alert.error_message,
         alert.alert_kind,
+        // #1840 — the drain has always RETURNED idempotency_key and nothing has
+        // ever used it. The float-shortfall kind needs it so a revised figure
+        // is a genuinely new artefact rather than a downstream duplicate.
+        alert.idempotency_key,
       );
       outcome = "provider_accepted";
     } catch (error) {
@@ -843,12 +872,29 @@ async function executeClaimedPaystackReleases(
  *
  * Runs here, in payout-release-sweep, because this function already holds both
  * halves of the problem: it is the scheduled Nigerian job and it is the only
- * caller that reads the Paystack balance. It is invoked STRICTLY AFTER
- * executeClaimedPaystackReleases has returned, so it is structurally incapable
- * of perturbing release selection, chunk planning, the ceiling check, the
- * authorize re-anchor, or any initiate — all of that has already completed.
- * Its own try/catch at the call site means a forecast failure can never change
- * a release outcome or the sweep's HTTP result.
+ * caller that reads the Paystack balance.
+ *
+ * #1840 rework — WHERE it is invoked from moved, and that is the fix. It used
+ * to sit after the Stripe and Paystack execution phases, which put it behind
+ * every earlier early-return: the partner-plan 500, the 409
+ * partner_attribution_pending, and the Stripe-phase 500. A safety net that
+ * only runs on the happy path is not a safety net — a sweep in trouble is
+ * exactly when an unfunded float matters most. It is now invoked IMMEDIATELY
+ * after the DARK gate and BEFORE any release-execution work, so no
+ * release-execution outcome — success, swallowed failure, hard 500 or 409 —
+ * can silence it.
+ *
+ * It stops at the DARK gate on purpose: with PAYOUT_RELEASE_EXECUTE off the
+ * rail moves no money and the sweep makes no Paystack calls at all, and this
+ * must not become the one thing that starts probing a live provider while the
+ * rail is dark. Nothing is enabled by this change.
+ *
+ * Money safety is unchanged and is now structural in a second way: running
+ * BEFORE the release phases means it cannot perturb claim selection, chunk
+ * planning, the ceiling check, the authorize re-anchor or any initiate,
+ * because it holds no claim, writes nothing to any release or leg, and its
+ * only write is to the alert outbox. Its try/catch at the call site means a
+ * forecast failure can never change a release outcome or the HTTP result.
  *
  * I-1013-LEDGER-ONLY: the obligation comes from the payout ledger via
  * paystack_payout_float_obligation, which takes no balance argument at all. The
@@ -878,11 +924,13 @@ async function forecastPaystackFloat(
   const obligationKobo = Number(obligation.obligation_kobo ?? 0);
   const releaseCount = Number(obligation.release_count ?? 0);
   const idle: PaystackFloatForecast = {
+    status: "ok",
     horizonDays,
     releaseCount: Number.isFinite(releaseCount) ? releaseCount : 0,
     obligationKobo: Number.isFinite(obligationKobo) ? obligationKobo : 0,
     balanceRead: false,
     shortfallKobo: 0,
+    alertRevision: null,
     alert: "none",
   };
   // Nothing matures inside the horizon ⇒ nothing to fund, and no reason to
@@ -907,14 +955,20 @@ async function forecastPaystackFloat(
     throw new Error(`paystack_float_alert_failed:${alertError.message}`);
   }
   const result = (alertData ?? {}) as Record<string, unknown>;
-  const raised = result.alert;
+  const verdict = result.alert;
+  const revision = Number(result.alert_revision);
   return {
+    status: "ok",
     horizonDays,
     releaseCount: Number(result.release_count ?? idle.releaseCount),
     obligationKobo: Number(result.obligation_kobo ?? obligationKobo),
     balanceRead: true,
     shortfallKobo: Number(result.shortfall_kobo ?? 0),
-    alert: raised === "raised" || raised === "deduped" ? raised : "none",
+    alertRevision: Number.isSafeInteger(revision) ? revision : null,
+    alert: verdict === "raised" || verdict === "refreshed" ||
+        verdict === "suppressed"
+      ? verdict
+      : "none",
   };
 }
 
@@ -1036,6 +1090,35 @@ export async function handlePayoutReleaseSweep(
     });
   }
 
+  // Issue #1840 D2 — Nigerian float forecast, FIRST thing past the DARK gate.
+  //
+  // Deliberately ahead of every release-execution step. Behind them it was
+  // silenced by the partner-plan 500, the 409 partner_attribution_pending and
+  // the Stripe-phase 500 — and a sweep in trouble is precisely when an
+  // unfunded float needs surfacing. It holds no claim, writes to no release or
+  // leg, and its only write is to the alert outbox, so it cannot perturb the
+  // selection, planning, ceiling, authorize or initiate work that follows.
+  // Isolated like every other phase: a forecast failure logs a structured
+  // event, is reported in the response, and never changes a release outcome or
+  // the HTTP status.
+  let paystackFloatForecast: PaystackFloatForecast;
+  try {
+    paystackFloatForecast = await forecastPaystackFloat(admin as never, deps);
+  } catch (forecastError) {
+    const reason = forecastError instanceof Error
+      ? forecastError.message
+      : String(forecastError);
+    // Machine-readable and single-line so log-based alerting can key on it.
+    // The mechanism whose whole job is "never be silent" must not itself fail
+    // into nothing but prose.
+    console.error(JSON.stringify({
+      event: "ng_payout_float_forecast_failed",
+      function_name: "payout-release-sweep",
+      reason: reason.slice(0, 200),
+    }));
+    paystackFloatForecast = { status: "failed", reason: reason.slice(0, 200) };
+  }
+
   // Plan partner legs before C's organiser claim/authorization/execution.
   // Paystack
   // movement costs are itemized and deducted from organiser cash without
@@ -1068,6 +1151,10 @@ export async function handlePayoutReleaseSweep(
     return json({
       error: "partner_attribution_pending",
       blockedPartnerAttributions,
+      // #1840 — this 409 used to silence the float forecast entirely. It now
+      // runs upstream of here, so the warning that matters most in exactly
+      // this state is both raised and reported.
+      paystackFloatForecast,
     }, 409);
   }
 
@@ -1103,23 +1190,6 @@ export async function handlePayoutReleaseSweep(
       message: paystackError instanceof Error
         ? paystackError.message
         : String(paystackError),
-    });
-  }
-
-  // Issue #1840 D2 — Nigerian float forecast. Deliberately AFTER the Paystack
-  // execution phase: everything that selects, plans, ceilings, authorizes and
-  // initiates a release has already returned, so this observability step cannot
-  // perturb any of it, and the balance it reads is the post-sweep one an
-  // operator actually has to fund from. Isolated like the phases above — a
-  // forecast failure logs and never changes a release outcome or the response.
-  let paystackFloatForecast: PaystackFloatForecast | null = null;
-  try {
-    paystackFloatForecast = await forecastPaystackFloat(admin as never, deps);
-  } catch (forecastError) {
-    console.error("[payout-release-sweep] Nigerian float forecast failed", {
-      message: forecastError instanceof Error
-        ? forecastError.message
-        : String(forecastError),
     });
   }
 
@@ -1177,7 +1247,7 @@ export async function handlePayoutReleaseSweep(
     result: data ?? {},
     stripeExecution,
     paystackExecution: paystackExecution ?? {},
-    paystackFloatForecast: paystackFloatForecast ?? {},
+    paystackFloatForecast,
     partnerPlan: partnerPlan ?? {},
     partnerRelease: totals,
   });

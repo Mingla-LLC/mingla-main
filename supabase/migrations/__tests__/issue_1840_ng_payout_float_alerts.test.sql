@@ -252,9 +252,16 @@ BEGIN
     RAISE EXCEPTION 'wrong 90-day release count: %', v->>'release_count';
   END IF;
   -- Out-of-range horizons clamp rather than silently forecasting nothing.
+  -- The floor is 3 days, not 1: a Nigerian release matures at event_end+3d, so
+  -- a shorter window warns later than the rail itself costs and no bank top-up
+  -- clears inside it.
   v := public.paystack_payout_float_obligation(0, '2027-02-01 00:00:00+00');
-  IF (v->>'horizon_days')::integer <> 1 THEN
-    RAISE EXCEPTION 'horizon not clamped low: %', v->>'horizon_days';
+  IF (v->>'horizon_days')::integer <> 3 THEN
+    RAISE EXCEPTION 'horizon not clamped to the 3-day floor: %', v->>'horizon_days';
+  END IF;
+  v := public.paystack_payout_float_obligation(1, '2027-02-01 00:00:00+00');
+  IF (v->>'horizon_days')::integer <> 3 THEN
+    RAISE EXCEPTION 'a 1-day horizon was not raised to the floor: %', v->>'horizon_days';
   END IF;
   v := public.paystack_payout_float_obligation(9999, '2027-02-01 00:00:00+00');
   IF (v->>'horizon_days')::integer <> 90 THEN
@@ -312,13 +319,13 @@ BEGIN
   IF (v->>'shortfall_kobo')::bigint <> 1000000 THEN
     RAISE EXCEPTION 'wrong shortfall: %', v->>'shortfall_kobo';
   END IF;
-  -- Anchored to the earliest-maturing unpaid release, so a persistent shortfall
-  -- raises one alert rather than one per sweep tick.
+  -- An UNCHANGED shortfall an hour later is suppressed: bounded suppression
+  -- must still stop a per-tick alert storm.
   v_again := public.raise_paystack_float_shortfall_alert(
     378500, 7, '2027-02-01 04:00:00+00'
   );
-  IF v_again->>'alert' <> 'deduped' THEN
-    RAISE EXCEPTION 'shortfall alert is not deduped: %', v_again->>'alert';
+  IF v_again->>'alert' <> 'suppressed' THEN
+    RAISE EXCEPTION 'an unchanged shortfall was not suppressed: %', v_again->>'alert';
   END IF;
   SELECT count(*) INTO v_alerts FROM public.payout_release_alert_outbox
     WHERE alert_kind='paystack_float_shortfall';
@@ -352,5 +359,288 @@ BEGIN
   END IF;
 END;
 $test$;
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- #1840 REWORK — C2: suppression is BOUNDED, never permanent
+--
+-- The first version deduped with ON CONFLICT DO NOTHING on
+-- (release_id, alert_kind). Outbox rows are never deleted anywhere in the
+-- repo, so that key was once-ever: a stuck anchor meant the only artefact ops
+-- ever received kept stating the original figure while the real shortfall grew
+-- underneath it. Under-reporting a shortfall leaves an organiser unpaid — the
+-- same direction of failure as under-counting the obligation.
+--
+-- Isolated in a savepoint so the sections above keep their exact fixtures.
+-- The shortfall is moved by varying the BALANCE, never the ledger, which also
+-- demonstrates that the ledger is not touched by any of this.
+-- ══════════════════════════════════════════════════════════════════════════
+SAVEPOINT issue_1840_bounded;
+
+INSERT INTO public.brand_payout_releases (
+  id, brand_id, occurrence_key, surface, provider, currency,
+  anchor_end_at, releasable_at, gross_cents, net_release_cents,
+  organiser_cash_delivered_cents, status
+) VALUES (
+  '18400000-0000-0000-0000-0000000000c2',
+  '18400000-0000-0000-0000-0000000000b9',
+  'issue-1840-c2','order','paystack','ngn',
+  '2027-06-01 00:00:00+00','2027-06-04 00:00:00+00',
+  11000000, 10000000, 0, 'pending'
+);
+
+-- Retire the fixtures from the sections above so the C2 release is the sole
+-- anchor and the bounds below are measured against a single, known figure.
+-- The savepoint restores all of it.
+UPDATE public.brand_payout_releases SET status='released'
+WHERE id <> '18400000-0000-0000-0000-0000000000c2';
+DELETE FROM public.payout_release_alert_outbox;
+
+-- ── Test I: the re-alert bounds, in order ─────────────────────────────────
+DO $test$
+DECLARE
+  v jsonb;
+  v_row public.payout_release_alert_outbox;
+BEGIN
+  -- I1 — first shortfall on a new anchor: ₦100,000 owed, ₦90,000 held.
+  v := public.raise_paystack_float_shortfall_alert(
+    9000000, 7, '2027-06-02 00:00:00+00'
+  );
+  IF v->>'alert' <> 'raised' OR (v->>'alert_revision')::integer <> 1 THEN
+    RAISE EXCEPTION 'I1 first alert wrong: % rev %',
+      v->>'alert', v->>'alert_revision';
+  END IF;
+  IF (v->>'shortfall_kobo')::bigint <> 1000000 THEN
+    RAISE EXCEPTION 'I1 wrong shortfall: %', v->>'shortfall_kobo';
+  END IF;
+  SELECT * INTO v_row FROM public.payout_release_alert_outbox
+    WHERE release_id='18400000-0000-0000-0000-0000000000c2'
+      AND alert_kind='paystack_float_shortfall';
+  IF v_row.idempotency_key
+     <> 'paystack_float_shortfall:18400000-0000-0000-0000-0000000000c2:r1' THEN
+    RAISE EXCEPTION 'I1 idempotency key is not revision-bearing: %',
+      v_row.idempotency_key;
+  END IF;
+  IF v_row.alert_magnitude_kobo <> 1000000 THEN
+    RAISE EXCEPTION 'I1 magnitude not recorded: %', v_row.alert_magnitude_kobo;
+  END IF;
+
+  -- The drain delivers it. The row is NEVER deleted, only marked — which is
+  -- exactly what made the old key once-ever.
+  UPDATE public.payout_release_alert_outbox
+  SET status='provider_accepted', provider_accepted_at='2027-06-02 00:05:00+00'
+  WHERE id=v_row.id;
+
+  -- I2 — an identical shortfall minutes later must NOT re-alert.
+  v := public.raise_paystack_float_shortfall_alert(
+    9000000, 7, '2027-06-02 00:10:00+00'
+  );
+  IF v->>'alert' <> 'suppressed' THEN
+    RAISE EXCEPTION 'I2 an unchanged shortfall re-alerted: %', v->>'alert';
+  END IF;
+
+  -- I3 — a drift far below both thresholds must NOT re-alert. This is the
+  -- anti-spam property: a raw amount in the key would fire here every tick,
+  -- which is its own way of hiding a real alert.
+  v := public.raise_paystack_float_shortfall_alert(
+    8999999, 7, '2027-06-02 00:20:00+00'
+  );
+  IF v->>'alert' <> 'suppressed' THEN
+    RAISE EXCEPTION 'I3 a one-kobo drift re-alerted: %', v->>'alert';
+  END IF;
+  v := public.raise_paystack_float_shortfall_alert(
+    8900000, 7, '2027-06-02 00:30:00+00'
+  );
+  IF v->>'alert' <> 'suppressed' THEN
+    RAISE EXCEPTION 'I3b a 10%% drift (under the 25%% arm) re-alerted: %',
+      v->>'alert';
+  END IF;
+
+  -- I4 — a MATERIALLY worse shortfall must always surface. Balance halves, so
+  -- the shortfall doubles to ₦20,000.
+  v := public.raise_paystack_float_shortfall_alert(
+    8000000, 7, '2027-06-02 01:00:00+00'
+  );
+  IF v->>'alert' <> 'refreshed' OR (v->>'alert_revision')::integer <> 2 THEN
+    RAISE EXCEPTION 'I4 a doubled shortfall did not surface: % rev %',
+      v->>'alert', v->>'alert_revision';
+  END IF;
+  SELECT * INTO v_row FROM public.payout_release_alert_outbox
+    WHERE release_id='18400000-0000-0000-0000-0000000000c2'
+      AND alert_kind='paystack_float_shortfall';
+  -- The artefact now states the CURRENT figure, not the original one.
+  IF position('top up NGN 20,000.00' in v_row.error_message)=0 THEN
+    RAISE EXCEPTION 'I4 the row still states a stale figure: %',
+      v_row.error_message;
+  END IF;
+  IF position('10,000.00' in v_row.error_message)<>0 THEN
+    RAISE EXCEPTION 'I4 the row still carries the superseded figure: %',
+      v_row.error_message;
+  END IF;
+  -- Re-armed for delivery, with a revision-bearing key so notify-dispatch
+  -- cannot dedupe the corrected figure away downstream.
+  IF v_row.status <> 'pending' THEN
+    RAISE EXCEPTION 'I4 a delivered row was not re-armed (status %)',
+      v_row.status;
+  END IF;
+  IF v_row.provider_accepted_at IS NOT NULL THEN
+    RAISE EXCEPTION 'I4 re-armed row kept its delivered stamp';
+  END IF;
+  IF v_row.idempotency_key
+     <> 'paystack_float_shortfall:18400000-0000-0000-0000-0000000000c2:r2' THEN
+    RAISE EXCEPTION 'I4 revision did not reach the idempotency key: %',
+      v_row.idempotency_key;
+  END IF;
+  IF v_row.alert_magnitude_kobo <> 2000000 THEN
+    RAISE EXCEPTION 'I4 magnitude not advanced: %', v_row.alert_magnitude_kobo;
+  END IF;
+
+  -- I5 — once the corrected artefact has actually been delivered, suppression
+  -- RE-ARMS: a further tiny drift goes quiet again rather than latching open.
+  UPDATE public.payout_release_alert_outbox
+  SET status='provider_accepted', provider_accepted_at='2027-06-02 01:05:00+00'
+  WHERE id=v_row.id;
+  v := public.raise_paystack_float_shortfall_alert(
+    7999999, 7, '2027-06-02 01:10:00+00'
+  );
+  IF v->>'alert' <> 'suppressed' THEN
+    RAISE EXCEPTION 'I5 suppression did not re-arm after a refresh: %',
+      v->>'alert';
+  END IF;
+  IF (SELECT alert_revision FROM public.payout_release_alert_outbox
+      WHERE id=v_row.id) <> 2 THEN
+    RAISE EXCEPTION 'I5 a suppressed tick still bumped the revision';
+  END IF;
+
+  -- I6 — TIME bound: suppression is never permanent. 25 hours later the very
+  -- same figure surfaces again, so a flat, unfunded float cannot go quiet.
+  v := public.raise_paystack_float_shortfall_alert(
+    8000000, 7, '2027-06-03 02:00:00+00'
+  );
+  IF v->>'alert' <> 'refreshed' OR (v->>'alert_revision')::integer <> 3 THEN
+    RAISE EXCEPTION 'I6 a flat shortfall stayed silent past 24h: % rev %',
+      v->>'alert', v->>'alert_revision';
+  END IF;
+END;
+$test$;
+
+-- ── Test J: a claim in flight is never disturbed ──────────────────────────
+-- Rewriting a 'dispatching' row would invalidate the drain's claim inside
+-- record_payout_release_alert_delivery and turn an alert into a 500.
+DO $test$
+DECLARE
+  v jsonb;
+  v_status text;
+  v_key text;
+BEGIN
+  UPDATE public.payout_release_alert_outbox
+  SET status='dispatching',
+      dispatch_claim_id=gen_random_uuid(),
+      dispatch_claimed_at='2027-06-03 02:05:00+00'
+  WHERE release_id='18400000-0000-0000-0000-0000000000c2'
+    AND alert_kind='paystack_float_shortfall';
+  SELECT idempotency_key INTO v_key FROM public.payout_release_alert_outbox
+    WHERE release_id='18400000-0000-0000-0000-0000000000c2'
+      AND alert_kind='paystack_float_shortfall';
+  -- A hugely worse shortfall, which would otherwise refresh immediately.
+  v := public.raise_paystack_float_shortfall_alert(
+    0, 7, '2027-06-03 02:06:00+00'
+  );
+  IF v->>'alert' <> 'suppressed' THEN
+    RAISE EXCEPTION 'J an in-flight claim was rewritten: %', v->>'alert';
+  END IF;
+  SELECT status INTO v_status FROM public.payout_release_alert_outbox
+    WHERE release_id='18400000-0000-0000-0000-0000000000c2'
+      AND alert_kind='paystack_float_shortfall';
+  IF v_status <> 'dispatching' THEN
+    RAISE EXCEPTION 'J the in-flight row was moved (status %)', v_status;
+  END IF;
+  IF (SELECT idempotency_key FROM public.payout_release_alert_outbox
+      WHERE release_id='18400000-0000-0000-0000-0000000000c2'
+        AND alert_kind='paystack_float_shortfall') <> v_key THEN
+    RAISE EXCEPTION 'J the in-flight claim key was rotated underneath the drain';
+  END IF;
+END;
+$test$;
+
+-- ── Test K: a never-delivered row is corrected in place, for free ─────────
+-- No second artefact is needed when the first one has not gone out yet.
+DO $test$
+DECLARE
+  v jsonb;
+  v_row public.payout_release_alert_outbox;
+BEGIN
+  UPDATE public.payout_release_alert_outbox
+  SET status='pending', dispatch_claim_id=NULL, dispatch_claimed_at=NULL
+  WHERE release_id='18400000-0000-0000-0000-0000000000c2'
+    AND alert_kind='paystack_float_shortfall';
+  v := public.raise_paystack_float_shortfall_alert(
+    9500000, 7, '2027-06-03 02:10:00+00'
+  );
+  IF v->>'alert' <> 'refreshed' THEN
+    RAISE EXCEPTION 'K a pending row was not corrected in place: %',
+      v->>'alert';
+  END IF;
+  SELECT * INTO v_row FROM public.payout_release_alert_outbox
+    WHERE release_id='18400000-0000-0000-0000-0000000000c2'
+      AND alert_kind='paystack_float_shortfall';
+  IF position('top up NGN 5,000.00' in v_row.error_message)=0 THEN
+    RAISE EXCEPTION 'K the pending row kept a stale figure: %',
+      v_row.error_message;
+  END IF;
+  IF v_row.status <> 'pending' THEN
+    RAISE EXCEPTION 'K a pending row left the queue (status %)', v_row.status;
+  END IF;
+  -- Exactly one row, always: bounded re-alerting must never fan out.
+  IF (SELECT count(*) FROM public.payout_release_alert_outbox
+      WHERE release_id='18400000-0000-0000-0000-0000000000c2'
+        AND alert_kind='paystack_float_shortfall') <> 1 THEN
+    RAISE EXCEPTION 'K re-alerting fanned out into multiple rows';
+  END IF;
+END;
+$test$;
+
+-- ── Test L: the absolute floor is what stops small-number churn ───────────
+-- With a tiny magnitude the 25% arm would fire on a trivial move, so the
+-- ₦1,000 floor is the binding arm.
+DO $test$
+DECLARE
+  v jsonb;
+BEGIN
+  DELETE FROM public.payout_release_alert_outbox
+  WHERE release_id='18400000-0000-0000-0000-0000000000c2';
+  UPDATE public.brand_payout_releases SET net_release_cents=2000
+  WHERE id='18400000-0000-0000-0000-0000000000c2';
+  v := public.raise_paystack_float_shortfall_alert(
+    0, 7, '2027-06-04 00:00:00+00'
+  );
+  IF v->>'alert' <> 'raised' OR (v->>'shortfall_kobo')::bigint <> 2000 THEN
+    RAISE EXCEPTION 'L tiny shortfall did not raise: % / %',
+      v->>'alert', v->>'shortfall_kobo';
+  END IF;
+  UPDATE public.payout_release_alert_outbox SET status='provider_accepted'
+  WHERE release_id='18400000-0000-0000-0000-0000000000c2';
+  -- +25% in relative terms, but only ₦5 in absolute terms.
+  UPDATE public.brand_payout_releases SET net_release_cents=2500
+  WHERE id='18400000-0000-0000-0000-0000000000c2';
+  v := public.raise_paystack_float_shortfall_alert(
+    0, 7, '2027-06-04 00:10:00+00'
+  );
+  IF v->>'alert' <> 'suppressed' THEN
+    RAISE EXCEPTION 'L the absolute floor did not hold: %', v->>'alert';
+  END IF;
+  -- Past the ₦1,000 floor it surfaces.
+  UPDATE public.brand_payout_releases SET net_release_cents=200000
+  WHERE id='18400000-0000-0000-0000-0000000000c2';
+  v := public.raise_paystack_float_shortfall_alert(
+    0, 7, '2027-06-04 00:20:00+00'
+  );
+  IF v->>'alert' <> 'refreshed' THEN
+    RAISE EXCEPTION 'L a materially worse small shortfall stayed silent: %',
+      v->>'alert';
+  END IF;
+END;
+$test$;
+
+ROLLBACK TO SAVEPOINT issue_1840_bounded;
 
 ROLLBACK;

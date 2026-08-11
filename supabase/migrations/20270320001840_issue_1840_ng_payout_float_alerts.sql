@@ -73,6 +73,16 @@ ALTER TABLE public.payout_release_alert_outbox
     'paystack_float_shortfall'
   ));
 
+-- ── Bounded-suppression bookkeeping for the forecast alert ─────────────────
+-- Nullable and written by exactly one kind (paystack_float_shortfall), so every
+-- other alert kind and every existing row is untouched and keeps NULL. These
+-- carry the state the re-alert bounds need: which revision of the figure a row
+-- last stated, how large that figure was, and when it was last refreshed.
+ALTER TABLE public.payout_release_alert_outbox
+  ADD COLUMN IF NOT EXISTS alert_revision integer,
+  ADD COLUMN IF NOT EXISTS alert_magnitude_kobo bigint,
+  ADD COLUMN IF NOT EXISTS alert_refreshed_at timestamptz;
+
 -- ── Widen the drain in the SAME migration (the #1217 trap) ─────────────────
 -- Signature and RETURNS TABLE are unchanged from #1217, so CREATE OR REPLACE
 -- is safe and keeps the existing grants; they are re-asserted below anyway.
@@ -341,7 +351,14 @@ CREATE OR REPLACE FUNCTION public.paystack_payout_float_obligation(
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp
 AS $fn$
 DECLARE
-  v_days integer := greatest(1,least(coalesce(p_horizon_days,7),90));
+  -- #1840 rework — the floor is 3 days, not 1. A Nigerian release matures at
+  -- event_end + 3 days, so a horizon shorter than the rail's own settlement lag
+  -- gives the operator less notice than the rail already costs, and a bank
+  -- top-up cannot clear inside it. 1 day passed the old validator and yielded
+  -- under 24 hours of warning with no alarm anywhere. Clamped, never rejected:
+  -- an out-of-range value must degrade to a usable window, never disable the
+  -- forecast. Mirrors NG_PAYOUT_FLOAT_HORIZON_{MIN,MAX}_DAYS in runtimeConfig.
+  v_days integer := greatest(3,least(coalesce(p_horizon_days,7),90));
   v_horizon_end timestamptz;
   v_obligation bigint := 0;
   v_count integer := 0;
@@ -455,12 +472,48 @@ GRANT EXECUTE ON FUNCTION
   public.paystack_payout_float_obligation(integer,timestamptz)
   TO service_role;
 
--- ── D2b: the forecast alert ────────────────────────────────────────────────
+-- ── D2b: the forecast alert, with BOUNDED suppression ──────────────────────
 -- The obligation is re-derived from the ledger INSIDE this function; the
 -- balance is a comparison operand only and never contributes to any amount
--- that is paid out. Alerts only on a real shortfall, and dedupes on the
--- earliest-maturing unpaid release exactly like every other outbox writer, so
--- a persistent shortfall raises ONE alert rather than one per sweep tick.
+-- that is paid out.
+--
+-- #1840 rework — suppression must be bounded, never permanent. The first
+-- version deduped on (release_id, alert_kind) with DO NOTHING, exactly like
+-- every other outbox writer. That is right for the other kinds, whose payload
+-- is a fixed fact ("OTP is enabled", "attempts exhausted"), and wrong for this
+-- one, whose payload is a NUMBER THAT MOVES. Outbox rows are never deleted
+-- anywhere in the repo — delivery only flips status — so that key was
+-- once-ever: a stuck anchor (and the obligation deliberately over-includes
+-- parked releases, so an anchor CAN stick indefinitely) meant the only artefact
+-- ops ever received kept stating the original figure while the real shortfall
+-- grew underneath it. Under-reporting a shortfall is the same direction of
+-- failure as under-counting the obligation: it leaves an organiser unpaid.
+--
+-- Three bounds, deliberately chosen so that neither silence nor spam is
+-- possible. Re-alert when ANY of:
+--   1. MAGNITUDE — the shortfall has grown by at least 25% of the last
+--      alerted figure, or by ₦1,000, whichever is LARGER. The relative arm
+--      keeps large floats from re-alerting on rounding; the absolute floor is
+--      what stops a shortfall drifting a kobo per tick from spamming ops (a
+--      raw amount in the key would do exactly that, which is its own way of
+--      hiding a real alert).
+--   2. TIME — 24 hours since the row was last raised or refreshed. This is the
+--      bound that makes suppression provably temporary even when the number is
+--      perfectly flat, and it is the freshness contract: no delivered artefact
+--      can state a figure older than this threshold.
+--   3. NEVER-DELIVERED — the row is still 'pending', so nothing has gone out
+--      yet and the figure can be corrected in place for free, with no second
+--      artefact at all.
+-- A row in 'dispatching' is deliberately left alone: the drain holds a claim on
+-- it, and rewriting it would invalidate that claim inside
+-- record_payout_release_alert_delivery. It resolves within the drain's own
+-- 10-minute stale window and the next tick picks it up.
+--
+-- A refreshed row that was ALREADY DELIVERED is re-armed (status back to
+-- 'pending', claim cleared) AND given a revision-bearing idempotency_key, so
+-- notify-dispatch treats it as a genuinely new artefact instead of deduping it
+-- away downstream. Without the new key the re-raise would be swallowed one
+-- layer below this table and ops would still never see the corrected number.
 CREATE OR REPLACE FUNCTION public.raise_paystack_float_shortfall_alert(
   p_balance_kobo bigint,
   p_horizon_days integer DEFAULT 7,
@@ -469,6 +522,11 @@ CREATE OR REPLACE FUNCTION public.raise_paystack_float_shortfall_alert(
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $fn$
 DECLARE
+  -- Re-alert thresholds. Deliberately constants: an operator tunable here
+  -- would be one more way to accidentally silence the alert.
+  c_growth_ratio  constant numeric := 0.25;      -- 25% worse
+  c_growth_floor  constant bigint  := 100000;    -- or ₦1,000, whichever larger
+  c_max_silence   constant interval := interval '24 hours';
   v_forecast jsonb;
   v_obligation bigint;
   v_shortfall bigint;
@@ -476,7 +534,10 @@ DECLARE
   v_anchor_brand uuid;
   v_horizon_end timestamptz;
   v_message text;
-  v_inserted integer := 0;
+  v_existing public.payout_release_alert_outbox;
+  v_revision integer := 1;
+  v_written integer := 0;
+  v_verdict text;
 BEGIN
   IF p_balance_kobo IS NULL OR p_balance_kobo < 0 THEN
     RAISE EXCEPTION 'invalid_paystack_float_balance' USING ERRCODE='22023';
@@ -507,20 +568,94 @@ BEGIN
     || to_char(v_shortfall::numeric/100,'FM999,999,999,990.00')
     || ' before then.';
 
-  INSERT INTO public.payout_release_alert_outbox (
-    release_id,alert_kind,idempotency_key,brand_id,error_message,
-    created_at,updated_at
-  ) VALUES (
-    v_anchor_release,'paystack_float_shortfall',
-    'paystack_float_shortfall:'||v_anchor_release::text,
-    v_anchor_brand,left(v_message,1000),p_now,p_now
-  ) ON CONFLICT (release_id, alert_kind) DO NOTHING;
-  GET DIAGNOSTICS v_inserted = ROW_COUNT;
+  SELECT * INTO v_existing
+  FROM public.payout_release_alert_outbox
+  WHERE release_id=v_anchor_release AND alert_kind='paystack_float_shortfall'
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    INSERT INTO public.payout_release_alert_outbox (
+      release_id,alert_kind,idempotency_key,brand_id,error_message,
+      alert_revision,alert_magnitude_kobo,alert_refreshed_at,
+      created_at,updated_at
+    ) VALUES (
+      v_anchor_release,'paystack_float_shortfall',
+      'paystack_float_shortfall:'||v_anchor_release::text||':r1',
+      v_anchor_brand,left(v_message,1000),
+      1,v_shortfall,p_now,p_now,p_now
+    ) ON CONFLICT (release_id, alert_kind) DO NOTHING;
+    GET DIAGNOSTICS v_written = ROW_COUNT;
+    -- A concurrent sweep won the race; it wrote the current figure, so this
+    -- tick has nothing to add.
+    v_verdict := CASE WHEN v_written>0 THEN 'raised' ELSE 'suppressed' END;
+    RETURN v_forecast || jsonb_build_object(
+      'balance_kobo',p_balance_kobo,
+      'shortfall_kobo',v_shortfall,
+      'alert_revision',CASE WHEN v_written>0 THEN 1 ELSE NULL END,
+      'alert',v_verdict
+    );
+  END IF;
+
+  -- An in-flight claim is never disturbed (see the header note).
+  IF v_existing.status='dispatching' THEN
+    RETURN v_forecast || jsonb_build_object(
+      'balance_kobo',p_balance_kobo,
+      'shortfall_kobo',v_shortfall,
+      'alert_revision',v_existing.alert_revision,
+      'alert','suppressed'
+    );
+  END IF;
+
+  IF NOT (
+    -- 1. materially worse
+    v_shortfall - coalesce(v_existing.alert_magnitude_kobo,0)
+      >= greatest(
+           ceil(coalesce(v_existing.alert_magnitude_kobo,0)::numeric
+                * c_growth_ratio)::bigint,
+           c_growth_floor
+         )
+    -- 2. bounded silence
+    OR coalesce(v_existing.alert_refreshed_at,v_existing.created_at)
+         <= p_now - c_max_silence
+    -- 3. never delivered, and the figure actually moved
+    OR (
+      v_existing.status='pending'
+      AND left(v_message,1000) IS DISTINCT FROM v_existing.error_message
+    )
+  ) THEN
+    RETURN v_forecast || jsonb_build_object(
+      'balance_kobo',p_balance_kobo,
+      'shortfall_kobo',v_shortfall,
+      'alert_revision',v_existing.alert_revision,
+      'alert','suppressed'
+    );
+  END IF;
+
+  v_revision := coalesce(v_existing.alert_revision,1)+1;
+  UPDATE public.payout_release_alert_outbox
+  SET error_message=left(v_message,1000),
+      -- Revision-bearing so notify-dispatch cannot dedupe the corrected figure
+      -- away one layer below this table.
+      idempotency_key='paystack_float_shortfall:'||v_anchor_release::text
+        ||':r'||v_revision::text,
+      -- Re-arm an already-delivered row so a NEW artefact carries the NEW
+      -- number. A row still 'pending' simply keeps its place in the queue.
+      status='pending',
+      dispatch_claim_id=NULL,
+      dispatch_claimed_at=NULL,
+      last_delivery_error=NULL,
+      provider_accepted_at=NULL,
+      alert_revision=v_revision,
+      alert_magnitude_kobo=v_shortfall,
+      alert_refreshed_at=p_now,
+      updated_at=p_now
+  WHERE id=v_existing.id;
 
   RETURN v_forecast || jsonb_build_object(
     'balance_kobo',p_balance_kobo,
     'shortfall_kobo',v_shortfall,
-    'alert',CASE WHEN v_inserted>0 THEN 'raised' ELSE 'deduped' END
+    'alert_revision',v_revision,
+    'alert','refreshed'
   );
 END;
 $fn$;
@@ -532,12 +667,23 @@ GRANT EXECUTE ON FUNCTION
   public.raise_paystack_float_shortfall_alert(bigint,integer,timestamptz)
   TO service_role;
 
-COMMIT;
-
--- ── Advisory: the #1217 trap cannot recur silently ─────────────────────────
--- A kind present in the CHECK but absent from the drain is written, deduped
--- and NEVER delivered. This block fails the migration if either half of that
--- indivisible pair is missing, so the trap can never be half-shipped.
+-- ── SELF-ASSERT: the #1217 trap cannot be half-shipped ─────────────────────
+-- This block is INSIDE the transaction, above COMMIT, and that placement is
+-- the whole point of it.
+--
+-- It used to sit after COMMIT, which made it a separate implicit transaction:
+-- it aborted the RUN but not the MIGRATION. Delete either half of the widening
+-- and the DDL still committed — CHECK widened, drain not, both functions
+-- installed — i.e. the #1217 defect shipped, with a loud message and no
+-- rollback. The only thing standing in the way was `psql -v ON_ERROR_STOP=1`
+-- in CI, which protects the pipeline and not production: the production apply
+-- goes through the Management-API surgical lane, where ON_ERROR_STOP does not
+-- exist. Above COMMIT, a failed assertion aborts the transaction and NOTHING
+-- is installed, on every apply path.
+--
+-- Both catalogue reads see uncommitted DDL from this same transaction
+-- (pg_constraint for the CHECK added above; pg_get_functiondef for the drain
+-- re-created above), so the assertions are exact rather than advisory.
 DO $$
 DECLARE
   v_drain text := pg_get_functiondef(
@@ -554,13 +700,29 @@ BEGIN
         AND pg_get_constraintdef(oid) LIKE '%'||v_kind||'%'
     ) THEN
       RAISE EXCEPTION
-        '#1840 advisory: alert kind % missing from the outbox CHECK',v_kind;
+        '#1840 self-assert: alert kind % missing from the outbox CHECK — rolling back',v_kind;
     END IF;
     IF position(v_kind in v_drain)=0 THEN
       RAISE EXCEPTION
-        '#1840 advisory: alert kind % missing from claim_payout_release_alerts (written but never delivered — the #1217 defect)',
+        '#1840 self-assert: alert kind % missing from claim_payout_release_alerts (written but never delivered — the #1217 defect) — rolling back',
         v_kind;
     END IF;
   END LOOP;
-  RAISE NOTICE '#1840 NG payout float alerts installed (backstop + forecast; DARK until PAYOUT_RELEASE_EXECUTE=true).';
+  -- The bounded-suppression bookkeeping must exist, or the forecast alert
+  -- would silently fall back to once-ever suppression.
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public'
+      AND table_name='payout_release_alert_outbox'
+      AND column_name IN (
+        'alert_revision','alert_magnitude_kobo','alert_refreshed_at'
+      )
+    GROUP BY table_name HAVING count(*)=3
+  ) THEN
+    RAISE EXCEPTION
+      '#1840 self-assert: bounded-suppression columns missing — a stuck anchor would suppress the forecast permanently — rolling back';
+  END IF;
+  RAISE NOTICE '#1840 NG payout float alerts installed (backstop + bounded forecast; DARK until PAYOUT_RELEASE_EXECUTE=true).';
 END$$;
+
+COMMIT;
