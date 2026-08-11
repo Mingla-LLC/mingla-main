@@ -54,8 +54,16 @@ describe("ORCH-1003 caching did not over-reach", () => {
     // 200 with the SPA shell. The property this test protects — a catch-all
     // exists, it is LAST, and it points at "/" — is unchanged; only the literal
     // moved. Do not restore "/(.*)".
-    expect(last.source).toBe("/((?!_expo/static/).*)");
+    // [TEST-MOD-APPROVED #922] The prior literal encoded superseded routing
+    // truth. The exact internal-entry exclusion is additive; the #1003 asset
+    // boundary and ordinary SPA ownership remain unchanged.
+    expect(last.source).toBe(
+      "/((?!_expo/static/|accept-brand-invitation-entry$).*)",
+    );
     expect(last.destination).toBe("/");
+    const matcher = new RegExp(`^(?:${last.source})$`);
+    expect(matcher.test("/_expo/static/js/web/app.js")).toBe(false);
+    expect(matcher.test("/home")).toBe(true);
   });
 
   test("the .well-known JSON content-type rules are preserved (not clobbered)", () => {

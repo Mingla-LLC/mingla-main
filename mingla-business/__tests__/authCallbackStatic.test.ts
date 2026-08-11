@@ -18,8 +18,13 @@ describe("ORCH-1086 static web auth callback", () => {
     // Issue #1485 [web-missing-chunk-404]: the SPA fallback literal now excludes
     // /_expo/static/. The assertion below is unchanged — /auth/callback must
     // still be ordered BEFORE the fallback.
+    // [TEST-MOD-APPROVED #922] The prior literal encoded superseded routing
+    // truth. Locating the exact approved fallback preserves the callback owner
+    // and ordering while accepting only #922's exact internal-entry exclusion.
     const fallbackIndex = vercel.rewrites.findIndex(
-      (rewrite) => rewrite.source === "/((?!_expo/static/).*)",
+      (rewrite) =>
+        rewrite.source ===
+        "/((?!_expo/static/|accept-brand-invitation-entry$).*)",
     );
 
     expect(callbackIndex).toBeGreaterThanOrEqual(0);

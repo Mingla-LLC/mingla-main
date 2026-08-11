@@ -42,9 +42,17 @@ const TARGETS = new Set([
 ]);
 const PRIMARY_DIAGNOSTIC =
   /^(.*)\((\d+),(\d+)\): error TS(\d+):(?:\s?(.*))$/;
+const QUOTED_STRING_UNION =
+  /"(?:\\.|[^"\\])*"(?: \| "(?:\\.|[^"\\])*")+/g;
 
 function normalizeSlashes(value) {
   return value.replaceAll("\\", "/");
+}
+
+function canonicalizeQuotedStringUnions(message) {
+  return message.replace(QUOTED_STRING_UNION, (union) =>
+    union.split(" | ").sort().join(" | "),
+  );
 }
 
 function normalizeMessage(lines, runRepoRoot, runBusinessRoot) {
@@ -66,7 +74,7 @@ function normalizeMessage(lines, runRepoRoot, runBusinessRoot) {
   for (const prefix of repoPrefixes) {
     normalized = normalized.replaceAll(prefix, "<repo>/");
   }
-  return normalized.trimEnd();
+  return canonicalizeQuotedStringUnions(normalized.trimEnd());
 }
 
 function normalizePrimaryPath(rawPath, runBusinessRoot) {
@@ -178,6 +186,70 @@ function runSelfTest() {
   const business = `${repo}/mingla-business`;
   const parse = (log) => parseDiagnostics(log, repo, business);
   const baseline = syntheticLog("src/legacy.ts", "TS2322", "Legacy mismatch");
+  const orderedUnion = syntheticLog(
+    "src/legacy.ts",
+    "TS2322",
+    'Type string is not assignable to type "error" | "loading" | "ready".',
+  );
+  const reorderedUnion = syntheticLog(
+    "src/legacy.ts",
+    "TS2322",
+    'Type string is not assignable to type "error" | "ready" | "loading".',
+  );
+  const orderOnly = compareDiagnostics(parse(orderedUnion), parse(reorderedUnion));
+  const memberChanged = compareDiagnostics(
+    parse(orderedUnion),
+    parse(
+      syntheticLog(
+        "src/legacy.ts",
+        "TS2322",
+        'Type string is not assignable to type "error" | "loaded" | "ready".',
+      ),
+    ),
+  );
+  const duplicateGrowthAfterNormalization = compareDiagnostics(
+    parse(orderedUnion),
+    parse(
+      syntheticLog(
+        "src/legacy.ts",
+        "TS2322",
+        'Type string is not assignable to type "ready" | "error" | "loading".',
+        2,
+      ),
+    ),
+  );
+  const nonStringOrderChange = compareDiagnostics(
+    parse(
+      syntheticLog(
+        "src/legacy.ts",
+        "TS2322",
+        'Type string is not assignable to type "error" | undefined.',
+      ),
+    ),
+    parse(
+      syntheticLog(
+        "src/legacy.ts",
+        "TS2322",
+        'Type string is not assignable to type undefined | "error".',
+      ),
+    ),
+  );
+  const targetAfterNormalization = compareDiagnostics(
+    parse(
+      syntheticLog(
+        "src/services/brandAnalyticsService.ts",
+        "TS2322",
+        'Type string is not assignable to type "error" | "loading" | "ready".',
+      ),
+    ),
+    parse(
+      syntheticLog(
+        "src/services/brandAnalyticsService.ts",
+        "TS2322",
+        'Type string is not assignable to type "ready" | "error" | "loading".',
+      ),
+    ),
+  );
 
   const cases = [
     {
@@ -225,6 +297,44 @@ function runSelfTest() {
           parse(""),
           parse("error TS5083: Cannot read file 'missing-tsconfig.json'."),
         ).failures.length > 0,
+    },
+    {
+      name: "quoted string union presentation order is canonicalized",
+      passes:
+        orderOnly.failures.length === 0 &&
+        orderOnly.added.length === 0 &&
+        orderOnly.removed.length === 0,
+    },
+    {
+      name: "quoted string union member replacement remains a real delta",
+      passes:
+        memberChanged.failures.length > 0 &&
+        memberChanged.added.reduce((sum, item) => sum + item.count, 0) === 1 &&
+        memberChanged.removed.reduce((sum, item) => sum + item.count, 0) === 1,
+    },
+    {
+      name: "duplicate growth still fails after union normalization",
+      passes:
+        duplicateGrowthAfterNormalization.failures.length > 0 &&
+        duplicateGrowthAfterNormalization.added.reduce(
+          (sum, item) => sum + item.count,
+          0,
+        ) === 1,
+    },
+    {
+      name: "unions containing non-string members remain order-sensitive",
+      passes:
+        nonStringOrderChange.failures.length > 0 &&
+        nonStringOrderChange.added.length === 1 &&
+        nonStringOrderChange.removed.length === 1,
+    },
+    {
+      name: "exact target diagnostics still fail after union normalization",
+      passes:
+        targetAfterNormalization.failures.length > 0 &&
+        targetAfterNormalization.added.length === 0 &&
+        targetAfterNormalization.removed.length === 0 &&
+        targetAfterNormalization.targetDiagnostics.length === 1,
     },
   ];
 
