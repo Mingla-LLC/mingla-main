@@ -45,6 +45,14 @@
  * are NULL rather than fabricated 'daily'/'manual', by
  * 20270317001807_issue_1807_paystack_cutover_ledger_truth.sql.
  *
+ * #1807 also honours stamp_payout_hold_cutover's RETURN value on BOTH rails.
+ * The RPC re-checks the stamp under its own FOR UPDATE lock, so it — not this
+ * function's earlier read — is the authority on flipped-vs-skipped. Discarding
+ * it (the #1173 behaviour) made the loser of a concurrent stamp report
+ * 'flipped' to the admin audit trail while the append-only ledger correctly
+ * recorded 'skipped_already_stamped'. rollback_payout_hold_cutover has a
+ * single return value and no skip branch, so it has no equivalent gap.
+ *
  * Audit (two trails): (1) one payout_hold_cutover_migrations row per per-brand
  * attempt (written inside the stamp/rollback RPC for mutating cases, directly
  * for skip/fail cases); (2) one admin_write_audit row per mutating/failed brand
@@ -399,8 +407,14 @@ export async function handleAdminPayoutHoldMigrate(
             continue;
           }
 
+          // #1807 — the RPC is the authority on what actually happened. It
+          // returns 'skipped_already_stamped' when another session won the
+          // race between our read above and its own FOR UPDATE lock; reporting
+          // that as 'flipped' would put a second, contradicting story in the
+          // admin audit trail while the ledger recorded the truth.
+          let stampOutcome: MigrateResult = "flipped";
           try {
-            const { error: stampError } = await supabase.rpc(
+            const { data: stampData, error: stampError } = await supabase.rpc(
               "stamp_payout_hold_cutover",
               {
                 p_brand_id: brandId,
@@ -412,6 +426,9 @@ export async function handleAdminPayoutHoldMigrate(
               },
             );
             if (stampError) throw stampError;
+            if (stampData === "skipped_already_stamped") {
+              stampOutcome = "skipped_already_stamped";
+            }
           } catch (stampErr) {
             // Nothing was mutated on the provider, so the brand is already in
             // the state we found it (unstamped). NO compensation call, and so
@@ -441,16 +458,16 @@ export async function handleAdminPayoutHoldMigrate(
             continue;
           }
 
-          // The stamp RPC already wrote the 'flipped' ledger row; write the
-          // admin_audit_log trail.
+          // The stamp RPC already wrote its own ledger row; write the
+          // admin_audit_log trail with the outcome the RPC reported.
           await recordAdminAudit(
             brandId,
             null,
-            "flipped",
+            stampOutcome,
             { cutover_at: null },
             { stamped: true },
           );
-          push(brandId, "flipped");
+          push(brandId, stampOutcome);
           continue;
         }
 
@@ -570,8 +587,13 @@ export async function handleAdminPayoutHoldMigrate(
         }
 
         // Stamp cutover atomically. On failure → compensate (restore daily).
+        // #1807 — see the Paystack lane: the RPC's return value is the
+        // authority on flipped-vs-skipped, so a concurrency loser is not
+        // audited as a flip. The flip above is correct either way (an
+        // already-stamped brand belongs on the manual schedule).
+        let stampOutcome: MigrateResult = "flipped";
         try {
-          const { error: stampError } = await supabase.rpc(
+          const { data: stampData, error: stampError } = await supabase.rpc(
             "stamp_payout_hold_cutover",
             {
               p_brand_id: brandId,
@@ -583,6 +605,9 @@ export async function handleAdminPayoutHoldMigrate(
             },
           );
           if (stampError) throw stampError;
+          if (stampData === "skipped_already_stamped") {
+            stampOutcome = "skipped_already_stamped";
+          }
         } catch (stampErr) {
           const message = stampErr instanceof Error
             ? stampErr.message
@@ -622,16 +647,17 @@ export async function handleAdminPayoutHoldMigrate(
           continue;
         }
 
-        // Flip + stamp both succeeded. The stamp RPC already wrote the
-        // 'flipped' ledger row; write the admin_audit_log trail.
+        // Flip + stamp both succeeded. The stamp RPC already wrote its own
+        // ledger row; write the admin_audit_log trail with the outcome the RPC
+        // reported.
         await recordAdminAudit(
           brandId,
           stripeAccountId,
-          "flipped",
+          stampOutcome,
           { cutover_at: null, schedule: "daily" },
           { schedule: "manual" },
         );
-        push(brandId, "flipped");
+        push(brandId, stampOutcome);
         continue;
       }
 

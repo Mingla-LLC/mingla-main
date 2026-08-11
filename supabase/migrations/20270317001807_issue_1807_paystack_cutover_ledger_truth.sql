@@ -18,10 +18,20 @@
 --
 --   (1) stamp_payout_hold_cutover / rollback_payout_hold_cutover hardcode the
 --       Stripe schedule intervals ('daily'/'manual' and 'manual'/'daily') in
---       the ledger row they write on success. A row claiming a Stripe payout
---       schedule moved daily -> manual, for a brand that has no Stripe account
---       at all, is fabricated. Both now write NULL intervals when there is no
---       Stripe account id, and are byte-identical otherwise.
+--       the ledger row they write on success, and stamp_payout_hold_cutover
+--       does the same ('manual'/'manual') in its idempotent-skip branch. A row
+--       claiming a Stripe payout schedule moved daily -> manual, for a brand
+--       that has no Stripe account at all, is fabricated. All three now write
+--       NULL intervals when there is no Stripe account id, and are
+--       byte-identical otherwise.
+--
+--       The skip branch is NOT theoretical on the Paystack rail: it is what the
+--       losing session of a concurrent stamp writes (proven with two real
+--       PostgreSQL sessions in
+--       __tests__/issue_1807_paystack_ledger_truth.tester_adversarial.test.sql,
+--       attack A1), and what an admin retry writes when the stamp lands between
+--       the edge function's read and this RPC. rollback_payout_hold_cutover has
+--       no skip branch — one unconditional INSERT, one return value.
 --
 --       ZERO STRIPE IMPACT, structurally: the Stripe lane ALWAYS passes a
 --       non-null p_stripe_account_id (it resolves stripe_connect_accounts and
@@ -109,7 +119,13 @@ BEGIN
       result, actor_email, actor_uid, reason
     ) VALUES (
       p_batch_id, p_brand_id, p_stripe_account_id, 'hold',
-      'manual', 'manual', v_cutover, v_cutover,
+      -- #1807: rail-aware, same as the successful-flip row below. This branch
+      -- IS reachable on the Paystack rail — it is what the losing session of a
+      -- concurrent stamp writes, and what an admin retry writes when the stamp
+      -- lands between the edge function's read and this RPC.
+      CASE WHEN p_stripe_account_id IS NULL THEN NULL ELSE 'manual' END,
+      CASE WHEN p_stripe_account_id IS NULL THEN NULL ELSE 'manual' END,
+      v_cutover, v_cutover,
       'skipped_already_stamped', p_actor_email, p_actor_uid, p_reason
     );
     RETURN 'skipped_already_stamped';

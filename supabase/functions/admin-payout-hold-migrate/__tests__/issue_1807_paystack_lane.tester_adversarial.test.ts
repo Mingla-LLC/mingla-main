@@ -757,17 +757,17 @@ Deno.test("#1807 tester: every reported result is a known MigrateResult and no c
   }
 });
 
-// ── Known gap, pinned so a fix is deliberate ────────────────────────────────
+// ── Gap CLOSED (#1807 condition 3b) — the pin is now the inverse assertion ──
 
-Deno.test("#1807 tester: KNOWN GAP — the stamp RPC's return value is discarded, so a concurrency loser is still reported flipped", async () => {
-  // The DB is the source of truth and it is correct: the RPC itself returns
-  // 'skipped_already_stamped' and writes a truthful skip row (proved at SQL
-  // level in issue_1807_paystack_ledger_truth.tester_adversarial.test.sql A1).
-  // The edge fn, on both rails since #1173, ignores that return value and
-  // reports 'flipped' to the admin and to admin_write_audit. No money moves on
-  // this and the cutover ledger stays correct, so it is pinned rather than
-  // failed. If this assertion ever fires, the return value is now honoured —
-  // delete this test, do not weaken it.
+Deno.test("#1807 tester: the stamp RPC's return value is HONOURED — a concurrency loser is reported as a skip on the Paystack rail", async () => {
+  // A pin stood here asserting the #1173 behaviour (return value discarded →
+  // the loser reported 'flipped'), with the standing instruction "if this
+  // assertion ever fires, the return value is now honoured — delete this test,
+  // do not weaken it". It is honoured as of #1807 condition 3b, so rather than
+  // delete the case, the assertion is inverted: the DB is the source of truth,
+  // the RPC returns 'skipped_already_stamped' under its own FOR UPDATE lock
+  // (proved at SQL level in the A1 attack), and the admin audit trail must now
+  // agree with the ledger row the RPC itself wrote.
   const h = buildHarness({
     user: ADMIN,
     admin: true,
@@ -779,12 +779,42 @@ Deno.test("#1807 tester: KNOWN GAP — the stamp RPC's return value is discarded
     h.deps,
   )).json();
 
-  assertEquals(body.counts.flipped, 1);
-  assertEquals(body.counts.skipped_already_stamped, 0);
-  const audit = h.audits.find((a) =>
+  assertEquals(body.counts.skipped_already_stamped, 1);
+  assertEquals(body.counts.flipped, 0);
+  const flipAudit = h.audits.find((a) =>
     (a.p_metadata as Record<string, unknown>).result === "flipped"
   );
-  assert(audit, "the second audit trail records flipped for a call that skipped");
+  assert(
+    !flipAudit,
+    "the second audit trail still records flipped for a call that skipped",
+  );
+  const skipAudit = h.audits.find((a) =>
+    (a.p_metadata as Record<string, unknown>).result ===
+      "skipped_already_stamped"
+  );
+  assert(skipAudit, "the admin audit trail does not record the skip");
+});
+
+Deno.test("#1807 tester: the stamp RPC's return value is HONOURED on the STRIPE rail too", async () => {
+  // Same seam, other rail. The flip already fired before the stamp and is NOT
+  // compensated — an already-stamped brand belongs on the manual schedule.
+  const h = buildHarness({
+    user: ADMIN,
+    admin: true,
+    brands: { [US]: { stripe: "acct_us", cutover: null } },
+    stampReturns: { [US]: "skipped_already_stamped" },
+  });
+  const body = await (await handleAdminPayoutHoldMigrate(
+    post({ brand_ids: [US], reason: "race loser stripe" }),
+    h.deps,
+  )).json();
+
+  assertEquals(body.counts.skipped_already_stamped, 1);
+  assertEquals(body.counts.flipped, 0);
+  const flipAudit = h.audits.find((a) =>
+    (a.p_metadata as Record<string, unknown>).result === "flipped"
+  );
+  assert(!flipAudit, "the Stripe lane still audits a skipped call as flipped");
 });
 
 // ── The Stripe lane is untouched, asserted as a whole-journal shape ──────────

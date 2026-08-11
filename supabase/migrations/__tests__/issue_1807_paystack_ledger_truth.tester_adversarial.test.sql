@@ -216,20 +216,21 @@ BEGIN
       COALESCE(v_prior,'<null>'), COALESCE(v_new,'<null>');
   END IF;
 
-  -- KNOWN RESIDUAL, pinned deliberately. The idempotent-skip row written INSIDE
-  -- stamp_payout_hold_cutover was left at the #1173 hardcoded 'manual','manual'
-  -- by 20270317001807, which made only the flipped/rolled_back rows rail-aware.
-  -- A1 proves that row IS reachable on the Paystack rail (concurrency loser, and
-  -- equally an admin retry), so a Paystack brand CAN still receive a ledger row
-  -- naming a Stripe payout schedule it does not have. It is a no-op row and no
-  -- money moves on it, hence pinned rather than failed. If this assertion ever
-  -- fires the residual was fixed — delete this block, do not weaken it.
+  -- RESIDUAL FIXED (#1807 condition 3a). A pin stood here asserting the #1173
+  -- hardcoded 'manual','manual' on the idempotent-skip row, with the standing
+  -- instruction "if this assertion ever fires the residual was fixed — delete
+  -- this block, do not weaken it". 20270317001807 now makes that branch
+  -- rail-aware too, so the pin is replaced by the assertion of the CORRECTED
+  -- behaviour rather than deleted: A1 proved this row is genuinely reachable on
+  -- the Paystack rail (this very concurrency loser, and equally an admin
+  -- retry), so the seam stays covered — and now covered by truth, not by the
+  -- bug. The Stripe control for the same branch lives in A2.
   SELECT prior_interval, new_interval INTO v_prior, v_new
     FROM public.payout_hold_cutover_migrations
    WHERE brand_id = v_brand AND result = 'skipped_already_stamped';
-  IF v_prior IS DISTINCT FROM 'manual' OR v_new IS DISTINCT FROM 'manual' THEN
+  IF v_prior IS NOT NULL OR v_new IS NOT NULL THEN
     RAISE EXCEPTION
-      '#1807(A1): KNOWN RESIDUAL CHANGED — the Paystack idempotent-skip row now reads (prior=%, new=%) instead of manual/manual. If this was a deliberate fix, remove this pin.',
+      '#1807(A1): the race LOSER fabricated Stripe schedule intervals on a Paystack brand (prior=%, new=%)',
       COALESCE(v_prior,'<null>'), COALESCE(v_new,'<null>');
   END IF;
 END $a1b$;

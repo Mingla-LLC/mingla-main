@@ -37,6 +37,12 @@ interface MockOptions {
   stampReject?: boolean;
   rollbackReject?: boolean;
   /**
+   * The stamp RPC returns 'skipped_already_stamped' — i.e. another session won
+   * the race between this fn's read and the RPC's own FOR UPDATE lock. The RPC
+   * is the authority; the fn must report the skip, not a flip.
+   */
+  stampReturnsSkip?: boolean;
+  /**
    * Ledger inserts whose `result` is in this set REJECT (transport-level
    * failure) instead of returning `{ error }`. Used to reach the fn's outer
    * unexpected-error catch — the only place `flip_failed` can still be
@@ -130,6 +136,15 @@ function buildMock(opts: MockOptions) {
           return Promise.resolve({
             data: null,
             error: new Error("stamp boom"),
+          });
+        }
+        if (opts.stampReturnsSkip) {
+          const loser = opts.brands[args.p_brand_id as string];
+          // The winning session already stamped it under the RPC's row lock.
+          if (loser) loser.cutover_at = "2026-08-09T00:00:00Z";
+          return Promise.resolve({
+            data: "skipped_already_stamped",
+            error: null,
           });
         }
         const b = opts.brands[args.p_brand_id as string];
@@ -569,5 +584,107 @@ Deno.test("#1807: stamp_failed is an additive counter — zero on an all-Stripe 
     ]
   ) {
     assert(key in body.counts, `counts lost the ${key} key`);
+  }
+});
+
+Deno.test("#1807 hold: a PAYSTACK concurrency loser is audited as a skip, not a flip", async () => {
+  // The fn reads cutover_at as NULL, then the RPC — which re-checks under its
+  // own FOR UPDATE lock — reports that another session won. The RPC is the
+  // authority: reporting 'flipped' here would contradict the ledger row the
+  // RPC itself wrote.
+  const brands: Record<string, BrandState> = {
+    [NG]: { stripe_account_id: null, paystack_active: true, cutover_at: null },
+  };
+  const mock = buildMock({
+    user: ADMIN,
+    isAdmin: true,
+    brands,
+    stampReturnsSkip: true,
+  });
+  const res = await handleAdminPayoutHoldMigrate(
+    post({ brand_ids: [NG], reason: "concurrent stamp" }),
+    mock.deps,
+  );
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.counts.skipped_already_stamped, 1);
+  assertEquals(body.counts.flipped, 0);
+  assertEquals(body.results[0].result, "skipped_already_stamped");
+
+  // The admin audit trail must agree with the ledger.
+  const audits = mock.rpcCalls.filter((c) => c.name === "admin_write_audit");
+  assertEquals(audits.length, 1);
+  assertEquals(
+    (audits[0].args.p_metadata as Record<string, unknown>).result,
+    "skipped_already_stamped",
+  );
+  // Still no provider mutation on this rail.
+  assertEquals(mock.flipCalls.length, 0);
+  assertEquals(mock.restoreCalls.length, 0);
+});
+
+Deno.test("#1807 hold: a STRIPE concurrency loser is audited as a skip, not a flip", async () => {
+  const brands: Record<string, BrandState> = {
+    [US]: {
+      stripe_account_id: "acct_1",
+      paystack_active: false,
+      cutover_at: null,
+    },
+  };
+  const mock = buildMock({
+    user: ADMIN,
+    isAdmin: true,
+    brands,
+    stampReturnsSkip: true,
+  });
+  const res = await handleAdminPayoutHoldMigrate(
+    post({ brand_ids: [US], reason: "concurrent stamp" }),
+    mock.deps,
+  );
+  const body = await res.json();
+  assertEquals(body.counts.skipped_already_stamped, 1);
+  assertEquals(body.counts.flipped, 0);
+  const audits = mock.rpcCalls.filter((c) => c.name === "admin_write_audit");
+  assertEquals(audits.length, 1);
+  assertEquals(
+    (audits[0].args.p_metadata as Record<string, unknown>).result,
+    "skipped_already_stamped",
+  );
+  assertEquals(
+    (audits[0].args.p_metadata as Record<string, unknown>).stripe_account_id,
+    "acct_1",
+  );
+  // The flip already fired before the stamp and is NOT compensated — an
+  // already-stamped brand belongs on the manual schedule. No restore.
+  assertEquals(mock.flipCalls, ["acct_1"]);
+  assertEquals(mock.restoreCalls.length, 0);
+});
+
+Deno.test("#1807 hold: a normal (uncontended) stamp still reports flipped on both rails", async () => {
+  // Guards the read of the RPC's return value against over-correcting: when
+  // the RPC says 'flipped', the fn must still say flipped.
+  const brands: Record<string, BrandState> = {
+    [NG]: { stripe_account_id: null, paystack_active: true, cutover_at: null },
+    [US]: {
+      stripe_account_id: "acct_1",
+      paystack_active: false,
+      cutover_at: null,
+    },
+  };
+  const mock = buildMock({ user: ADMIN, isAdmin: true, brands });
+  const res = await handleAdminPayoutHoldMigrate(
+    post({ brand_ids: [NG, US], reason: "uncontended" }),
+    mock.deps,
+  );
+  const body = await res.json();
+  assertEquals(body.counts.flipped, 2);
+  assertEquals(body.counts.skipped_already_stamped, 0);
+  for (
+    const audit of mock.rpcCalls.filter((c) => c.name === "admin_write_audit")
+  ) {
+    assertEquals(
+      (audit.args.p_metadata as Record<string, unknown>).result,
+      "flipped",
+    );
   }
 });

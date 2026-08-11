@@ -10,7 +10,11 @@
 --       'manual'/'daily' — the STRIPE REGRESSION GUARD, which is the whole
 --       zero-impact claim of 20270317001807 made falsifiable;
 --   (c) the widened result CHECK accepts 'stamp_failed' AND still accepts every
---       previously-allowed value, and still rejects an unknown value.
+--       previously-allowed value, and still rejects an unknown value;
+--   (d) the IDEMPOTENT-SKIP row inside the stamp RPC is rail-aware too — NULL
+--       intervals on the Paystack rail, still exactly 'manual'/'manual' on the
+--       Stripe rail. That branch is reachable on both rails via the concurrent
+--       stamp / admin-retry path, so it is not a theoretical row.
 --
 -- Fails-on-revert: revert either CASE expression in
 -- 20270317001807_issue_1807_paystack_cutover_ledger_truth.sql back to the
@@ -51,6 +55,7 @@ DECLARE
   v_batch3 uuid := '18070000-0000-0000-0000-0000000000b3';
   v_batch4 uuid := '18070000-0000-0000-0000-0000000000b4';
   v_batch5 uuid := '18070000-0000-0000-0000-0000000000b5';
+  v_batch6 uuid := '18070000-0000-0000-0000-0000000000b6';
   v_result text;
   v_prior text;
   v_new text;
@@ -167,6 +172,61 @@ BEGIN
   );
   IF v_result <> 'skipped_already_stamped' THEN
     RAISE EXCEPTION '#1807: second stamp returned % (expected skipped_already_stamped)', v_result;
+  END IF;
+
+  ------------------------------------------------------------------------------
+  -- (d) The IDEMPOTENT-SKIP row is rail-aware too. This branch is genuinely
+  -- reachable on the Paystack rail: it is what the losing session of a
+  -- concurrent stamp writes (tester adversarial A1 proves that with two real
+  -- PostgreSQL sessions), and what an admin retry writes when the stamp lands
+  -- between the edge function's read and this RPC.
+  ------------------------------------------------------------------------------
+  SELECT prior_interval, new_interval, stripe_account_id
+    INTO v_prior, v_new, v_account
+  FROM public.payout_hold_cutover_migrations
+  WHERE batch_id = v_batch5 AND brand_id = v_ng_brand
+    AND result = 'skipped_already_stamped';
+
+  IF v_account IS NOT NULL THEN
+    RAISE EXCEPTION '#1807(d): paystack skip row carried a stripe account id (%)', v_account;
+  END IF;
+  IF v_prior IS NOT NULL OR v_new IS NOT NULL THEN
+    RAISE EXCEPTION
+      '#1807(d): paystack skipped_already_stamped row fabricated schedule intervals (prior=%, new=%)',
+      COALESCE(v_prior, '<null>'), COALESCE(v_new, '<null>');
+  END IF;
+
+  ------------------------------------------------------------------------------
+  -- (d cont.) STRIPE CONTROL for the same branch — the skip row must still
+  -- carry exactly 'manual'/'manual'. Must fail loudly if that ever changes.
+  ------------------------------------------------------------------------------
+  v_result := public.stamp_payout_hold_cutover(
+    v_us_brand, 'acct_1807', v_batch6, 'admin@usemingla.com', v_actor, 'stripe skip setup'
+  );
+  IF v_result <> 'flipped' THEN
+    RAISE EXCEPTION '#1807(d): stripe skip setup returned % (expected flipped)', v_result;
+  END IF;
+  v_result := public.stamp_payout_hold_cutover(
+    v_us_brand, 'acct_1807', v_batch6, 'admin@usemingla.com', v_actor, 'stripe skip'
+  );
+  IF v_result <> 'skipped_already_stamped' THEN
+    RAISE EXCEPTION '#1807(d): stripe second stamp returned % (expected skipped_already_stamped)', v_result;
+  END IF;
+
+  SELECT prior_interval, new_interval, stripe_account_id
+    INTO v_prior, v_new, v_account
+  FROM public.payout_hold_cutover_migrations
+  WHERE batch_id = v_batch6 AND brand_id = v_us_brand
+    AND result = 'skipped_already_stamped';
+
+  IF v_prior IS DISTINCT FROM 'manual' OR v_new IS DISTINCT FROM 'manual' THEN
+    RAISE EXCEPTION
+      '#1807(d): STRIPE REGRESSION — skip row intervals changed (prior=%, new=%; expected manual/manual)',
+      COALESCE(v_prior, '<null>'), COALESCE(v_new, '<null>');
+  END IF;
+  IF v_account IS DISTINCT FROM 'acct_1807' THEN
+    RAISE EXCEPTION '#1807(d): STRIPE REGRESSION — skip row lost the account id (%)',
+      COALESCE(v_account, '<null>');
   END IF;
 
   ------------------------------------------------------------------------------
