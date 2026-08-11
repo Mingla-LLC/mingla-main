@@ -280,7 +280,12 @@ export function ScheduleSheet({
               key={item.savedCardId}
               style={styles.scheduleRow}
               onPress={() =>
-                setExpandedCard(savedCardToExpandedCardData(item.cardData))
+                setExpandedCard(savedCardToExpandedCardData({
+                  ...item.cardData,
+                  sourceScope: 'collaboration',
+                  sourceRecordId: item.savedCardId,
+                  savedCardId: item.savedCardId,
+                }))
               }
               accessibilityRole="button"
               accessibilityLabel={`Open ${cardTitle(item.cardData)} scheduled for ${formatScheduledAt(item.scheduledAt)}`}
@@ -360,7 +365,12 @@ export function SavedToSessionCardsSheet({
 
   const openExpandedCardModal = useCallback((card: SavedSessionCard) => {
     const expanded = savedCardToExpandedCardData(
-      card.card_data || card.experience_data || null,
+      {
+        ...(card.card_data || card.experience_data || {}),
+        sourceScope: 'collaboration',
+        sourceRecordId: card.saved_card_id || card.id,
+        savedCardId: card.saved_card_id || card.id,
+      },
     );
     if (expanded) setExpandedCard(expanded);
   }, []);

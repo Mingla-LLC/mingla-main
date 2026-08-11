@@ -26,6 +26,7 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   type ReactNode,
@@ -301,6 +302,86 @@ function defaultBackgroundStyle(theme: BaseBottomSheetTheme): ViewStyle {
 function defaultHandleStyle(theme: BaseBottomSheetTheme): ViewStyle {
   const h = theme === 'dark' ? glass.bottomSheet.handle : glass.notificationsSheet.handle;
   return { backgroundColor: h.color, width: h.width, height: h.height };
+}
+
+type NativeModalLifecycleCallbacks = {
+  onNativeShow: () => void;
+  onNativeDismiss: () => void;
+};
+
+type NativeModalLifecycleAdapterProps = {
+  visible: boolean;
+  onNativeShow?: () => void;
+  onNativeDismiss?: () => void;
+  children: (callbacks: NativeModalLifecycleCallbacks) => ReactNode;
+};
+
+/**
+ * #1880 — one truthful acknowledgement per committed native-modal cycle.
+ *
+ * RN exposes onShow on both platforms but onDismiss only on iOS. Android
+ * removes the Modal host synchronously during the mutation that commits
+ * visible=false (animationType is none), so its layout effect is the first
+ * post-mutation boundary where dismissal can be acknowledged truthfully.
+ */
+function NativeModalLifecycleAdapter({
+  visible,
+  onNativeShow,
+  onNativeDismiss,
+  children,
+}: NativeModalLifecycleAdapterProps): React.ReactElement {
+  const wasVisibleRef = useRef(false);
+  const cycleActiveRef = useRef(false);
+  const showDeliveredRef = useRef(false);
+  const dismissRequestedRef = useRef(false);
+  const dismissDeliveredRef = useRef(false);
+  const cycleCallbacksRef = useRef({ onNativeShow, onNativeDismiss });
+
+  const deliverNativeShow = useCallback((): void => {
+    if (
+      !cycleActiveRef.current ||
+      dismissRequestedRef.current ||
+      showDeliveredRef.current
+    ) return;
+    showDeliveredRef.current = true;
+    cycleCallbacksRef.current.onNativeShow?.();
+  }, []);
+
+  const deliverNativeDismiss = useCallback((): void => {
+    if (
+      !cycleActiveRef.current ||
+      !dismissRequestedRef.current ||
+      dismissDeliveredRef.current
+    ) return;
+    dismissDeliveredRef.current = true;
+    cycleActiveRef.current = false;
+    const onNativeDismiss = cycleCallbacksRef.current.onNativeDismiss;
+    onNativeDismiss?.();
+  }, []);
+
+  const deliverIosNativeDismiss = useCallback((): void => {
+    if (Platform.OS === 'ios') deliverNativeDismiss();
+  }, [deliverNativeDismiss]);
+
+  useLayoutEffect(() => {
+    const wasVisible = wasVisibleRef.current;
+    if (visible && !wasVisible) {
+      cycleActiveRef.current = true;
+      showDeliveredRef.current = false;
+      dismissRequestedRef.current = false;
+      dismissDeliveredRef.current = false;
+      cycleCallbacksRef.current = { onNativeShow, onNativeDismiss };
+    } else if (!visible && wasVisible) {
+      dismissRequestedRef.current = true;
+      if (Platform.OS === 'android') deliverNativeDismiss();
+    }
+    wasVisibleRef.current = visible;
+  }, [deliverNativeDismiss, onNativeDismiss, onNativeShow, visible]);
+
+  return <>{children({
+    onNativeShow: deliverNativeShow,
+    onNativeDismiss: deliverIosNativeDismiss,
+  })}</>;
 }
 
 /**
@@ -879,19 +960,25 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     // sibling: the full-screen window already lets gorhom's own background paint
     // the band, so a separate filler View is dead code.
     return (
-      <RNModal
+      <NativeModalLifecycleAdapter
         visible={visible}
-        transparent
-        animationType="none"
-        onRequestClose={onClose}
-        onShow={onNativeShow}
-        onDismiss={onNativeDismiss}
-        statusBarTranslucent
-        navigationBarTranslucent
+        onNativeShow={onNativeShow}
+        onNativeDismiss={onNativeDismiss}
       >
-        <KeyboardRoot>
-          <GestureHandlerRootView style={styles.flexContainer}>
-            {sheet}
+        {({ onNativeShow, onNativeDismiss }) => (
+          <RNModal
+            visible={visible}
+            transparent
+            animationType="none"
+            onRequestClose={onClose}
+            onShow={onNativeShow}
+            onDismiss={onNativeDismiss}
+            statusBarTranslucent
+            navigationBarTranslucent
+          >
+            <KeyboardRoot>
+              <GestureHandlerRootView style={styles.flexContainer}>
+                {sheet}
             {/* ORCH-1315: viewport-fixed overlay slot — a SIBLING of {sheet} inside
                 the RN-Modal window + GestureHandlerRootView (touch registers on
                 Android), so an absolute inset:0 overlay covers the VISIBLE sheet at
@@ -903,15 +990,17 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
                 can't swallow taps over the sheet; a visible child still captures its
                 own). Default undefined → ternary → null → nothing (byte-identical for
                 every other consumer). */}
-            {overlay ? (
-              <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-                {overlay}
-              </View>
-            ) : null}
-          </GestureHandlerRootView>
-          <KeyboardToolbarRoot />
-        </KeyboardRoot>
-      </RNModal>
+                {overlay ? (
+                  <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+                    {overlay}
+                  </View>
+                ) : null}
+              </GestureHandlerRootView>
+              <KeyboardToolbarRoot />
+            </KeyboardRoot>
+          </RNModal>
+        )}
+      </NativeModalLifecycleAdapter>
     );
   }
 

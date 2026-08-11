@@ -618,7 +618,10 @@ export default function SessionViewModal({
       {
         ...(cardData as Record<string, unknown>),
         id: cardData.id || card.id,
-        placeId: cardData.placeId || card.id,
+        placeId: cardData.placeId,
+        sourceScope: 'collaboration',
+        sourceRecordId: card.saved_card_id || card.id,
+        savedCardId: card.saved_card_id || card.id,
         title: cardData.title || t('modals:session_view.session_fallback'),
         category: cardData.category || t('modals:session_view.session_fallback'),
         categoryIcon: cardData.categoryIcon || "star",

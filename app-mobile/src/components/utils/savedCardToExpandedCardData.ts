@@ -113,10 +113,32 @@ export function savedCardToExpandedCardData(
   if (!cardData) return null;
   const c = cardData as Record<string, unknown>;
 
+  const str = (v: unknown): string | undefined =>
+    typeof v === "string" && v.length > 0 ? v : undefined;
+  const explicitSourceScope = str(c.sourceScope);
+  const legacySourceScope = str(c.source);
+  const sourceScope: ExpandedCardData["sourceScope"] =
+    explicitSourceScope === "solo" || explicitSourceScope === "collaboration"
+      ? explicitSourceScope
+      : legacySourceScope === "solo" || legacySourceScope === "collaboration"
+      ? legacySourceScope
+      : undefined;
+  const normalizedProvenance = {
+    placePoolId: str(c.placePoolId) ?? str(c.place_pool_id),
+    googlePlaceId:
+      str(c.googlePlaceId) ?? str(c.google_place_id) ?? str(c.placeId),
+    sourceScope,
+    sourceRecordId: str(c.sourceRecordId) ?? str(c.source_record_id),
+    savedCardId: str(c.savedCardId) ?? str(c.saved_card_id),
+  };
+
   // Curated pass-through — identical to the deck (SwipeableCards.tsx:1829-1831).
   // The full curated shape (stops + itinerary metadata) is preserved verbatim.
   if (c.cardType === "curated") {
-    return cardData as unknown as ExpandedCardData;
+    return {
+      ...cardData,
+      ...normalizedProvenance,
+    } as unknown as ExpandedCardData;
   }
 
   // #1669: rows persisted before `cardType` was written carry only `stops`.
@@ -127,12 +149,11 @@ export function savedCardToExpandedCardData(
   if (Array.isArray(c.stops) && c.stops.length > 0) {
     return {
       ...(cardData as object),
+      ...normalizedProvenance,
       cardType: "curated",
     } as unknown as ExpandedCardData;
   }
 
-  const str = (v: unknown): string | undefined =>
-    typeof v === "string" ? v : undefined;
   const num = (v: unknown): number | undefined =>
     typeof v === "number" ? v : undefined;
   const strArr = (v: unknown): string[] | undefined =>
@@ -164,6 +185,7 @@ export function savedCardToExpandedCardData(
   return {
     id: String(c.id ?? c.experience_id ?? str(c.title) ?? ""),
     placeId: str(c.placeId) ?? (typeof c.id === "string" ? c.id : undefined),
+    ...normalizedProvenance,
     title: str(c.title) ?? "Untitled card",
     category: str(c.category) ?? "",
     // #1669: empty, not a placeholder pin. ExpandedCardModal resolves
@@ -238,7 +260,6 @@ export function savedCardToExpandedCardData(
     scheduledAt: str(c.scheduledAt),
     durationMinutes: num(c.durationMinutes),
     lockerUserId: str(c.lockerUserId),
-    savedCardId: str(c.savedCardId),
     sessionId: str(c.sessionId),
   };
 }

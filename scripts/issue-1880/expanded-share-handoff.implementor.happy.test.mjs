@@ -149,7 +149,8 @@ test('H6 expanded identity is canonical, non-empty and opened only through the o
   assert.match(controller, /curatedCompositionIdentity\(card\)/);
   assert.match(controller, /sourceRecordId: card\.sourceRecordId/);
   assert.match(controller, /placePoolId: card\.placePoolId/);
-  assert.match(controller, /googlePlaceId: card\.googlePlaceId \?\? card\.placeId/);
+  assert.match(controller, /googlePlaceId: card\.googlePlaceId/);
+  assert.doesNotMatch(controller, /googlePlaceId:\s*card\.googlePlaceId\s*\?\?\s*card\.placeId/);
   assert.match(controller, /savedCardId: card\.savedCardId/);
   assert.equal((controller.match(/openUnifiedContentShare\(\{/g) ?? []).length, 2);
   assert.match(controller, /throw new Error\('expanded_share_identity_unavailable'\)/);

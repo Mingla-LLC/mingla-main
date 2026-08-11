@@ -139,16 +139,35 @@ const SHARE_PRESENTATION_WATCHDOG_MS = 2_000;
 type VoidDeferred = {
   readonly promise: Promise<void>;
   resolve: () => void;
+  cancel: () => void;
+  readonly settled: boolean;
 };
 
 function createVoidDeferred(): VoidDeferred {
   let resolvePromise: (() => void) | null = null;
-  return {
-    promise: new Promise<void>((resolve) => {
-      resolvePromise = resolve;
-    }),
-    resolve: () => resolvePromise?.(),
+  let rejectPromise: ((error: Error) => void) | null = null;
+  let settled = false;
+  const promise = new Promise<void>((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  const deferred: VoidDeferred = {
+    promise,
+    resolve: () => {
+      if (settled) return;
+      settled = true;
+      resolvePromise?.();
+    },
+    cancel: () => {
+      if (settled) return;
+      settled = true;
+      rejectPromise?.(new Error('handoff_cancelled'));
+    },
+    get settled() { return settled; },
   };
+  // Back/unmount can cancel before the handoff task reaches its first await.
+  void promise.catch(() => undefined);
+  return deferred;
 }
 
 /** Acknowledgement timeout measured only while the app owns active foreground. */
@@ -211,14 +230,30 @@ function withActiveForegroundWatchdog(
   });
 }
 
-function waitUntilAppActive(): Promise<void> {
+function waitUntilAppActive(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(new Error('handoff_cancelled'));
   if (AppState.currentState === 'active') return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    const subscription = AppState.addEventListener('change', (state) => {
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    let subscription: { remove: () => void } | null = null;
+    const cleanup = (): void => {
+      subscription?.remove();
+      signal.removeEventListener('abort', cancelWait);
+    };
+    const cancelWait = (): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('handoff_cancelled'));
+    };
+    subscription = AppState.addEventListener('change', (state) => {
       if (state !== 'active') return;
-      subscription.remove();
+      if (settled) return;
+      settled = true;
+      cleanup();
       resolve();
     });
+    signal.addEventListener('abort', cancelWait, { once: true });
   });
 }
 
@@ -554,6 +589,8 @@ export default function ExpandedCardModal({
   const rootDismissedAcknowledgement = useRef<VoidDeferred | null>(null);
   const rootShownAcknowledgement = useRef<VoidDeferred | null>(null);
   const sharePresentationObservation = useRef<SharePresentationObservation | null>(null);
+  const shareHandoffAbortController = useRef<AbortController | null>(null);
+  const shareHandoffMounted = useRef(true);
   const shareControlRef = useRef<View | null>(null);
   const visibleRef = useRef(visible);
   const currentCardIdRef = useRef(card?.id ?? null);
@@ -567,7 +604,8 @@ export default function ExpandedCardModal({
 
   const shareHandoffBusy =
     shareHandoffPhase === 'expanded_dismissing' ||
-    shareHandoffPhase === 'provider_presenting';
+    shareHandoffPhase === 'provider_presenting' ||
+    shareHandoffPhase === 'expanded_restoring';
   const rootSuspendedForShare =
     shareHandoffPhase !== 'idle' && shareHandoffPhase !== 'expanded_restoring';
 
@@ -595,19 +633,36 @@ export default function ExpandedCardModal({
     if (nativeNode !== null) AccessibilityInfo.setAccessibilityFocus(nativeNode);
   }, []);
 
+  const cancelShareHandoff = useCallback((): void => {
+    shareHandoffGeneration.current += 1;
+    shareHandoffAbortController.current?.abort();
+    shareHandoffAbortController.current = null;
+    rootDismissedAcknowledgement.current?.cancel();
+    rootDismissedAcknowledgement.current = null;
+    rootShownAcknowledgement.current?.cancel();
+    rootShownAcknowledgement.current = null;
+    sharePresentationObservation.current?.cancel('presentation_rejected');
+    sharePresentationObservation.current = null;
+    capturedShareCard.current = null;
+    if (shareHandoffMounted.current) setShareHandoffPhase('idle');
+  }, [setShareHandoffPhase]);
+
   const restoreExpandedAfterShare = useCallback(async (
     generation: number,
     failureAlreadyShown = false,
   ): Promise<void> => {
+    const signal = shareHandoffAbortController.current?.signal;
     const captured = capturedShareCard.current;
     if (
       captured === null ||
+      signal === undefined ||
       !visibleRef.current ||
       currentCardIdRef.current !== captured.id ||
-      shareHandoffGeneration.current !== generation
+      shareHandoffGeneration.current !== generation ||
+      signal.aborted
     ) {
       capturedShareCard.current = null;
-      setShareHandoffPhase('idle');
+      if (shareHandoffMounted.current) setShareHandoffPhase('idle');
       return;
     }
 
@@ -616,15 +671,17 @@ export default function ExpandedCardModal({
     setShareHandoffPhase('expanded_restoring');
     try {
       await withActiveForegroundWatchdog(shown.promise);
-      if (shareHandoffGeneration.current !== generation) return;
+      if (shareHandoffGeneration.current !== generation || signal.aborted) return;
       capturedShareCard.current = null;
       rootShownAcknowledgement.current = null;
+      shareHandoffAbortController.current = null;
       setShareHandoffPhase('idle');
       focusShareControl();
     } catch {
-      if (shareHandoffGeneration.current !== generation) return;
+      if (shareHandoffGeneration.current !== generation || signal.aborted) return;
       capturedShareCard.current = null;
       rootShownAcknowledgement.current = null;
+      shareHandoffAbortController.current = null;
       setShareHandoffPhase('idle');
       if (!failureAlreadyShown) {
         toastManager.show("Couldn't open sharing. Please try again.", 'error');
@@ -650,11 +707,29 @@ export default function ExpandedCardModal({
     });
   }, [shareProducerSurface]);
 
-  const admitExpandedShare = useCallback((captured: ExpandedCardData): void => {
+  const admitExpandedShare = useCallback((cardToCapture: ExpandedCardData): void => {
     if (shareHandoffPhaseRef.current !== 'idle') return;
+
+    const planningPreference = cardToCapture.shareMessageContext?.planningPreference ?? {
+      timeOfDay: userPreferences?.timeOfDay ?? 'Afternoon',
+      dayOfWeek: userPreferences?.dayOfWeek ?? 'Weekend',
+      planningTimeframe: userPreferences?.planningTimeframe ?? 'This month',
+    };
+    const shareMessageContext = Object.freeze({
+      ...cardToCapture.shareMessageContext,
+      planningPreference: typeof planningPreference === 'string'
+        ? planningPreference
+        : Object.freeze({ ...planningPreference }),
+    });
+    const captured: ExpandedCardData = Object.freeze({
+      ...cardToCapture,
+      shareMessageContext,
+    });
 
     shareHandoffGeneration.current += 1;
     const generation = shareHandoffGeneration.current;
+    const abortController = new AbortController();
+    shareHandoffAbortController.current = abortController;
     const startedAt = Date.now();
     const parentCorrelationId = `expanded-parent-${generation}`;
     const dismissed = createVoidDeferred();
@@ -675,26 +750,44 @@ export default function ExpandedCardModal({
       try {
         await withActiveForegroundWatchdog(dismissed.promise);
         parentDismissed = true;
-        if (shareHandoffGeneration.current !== generation) return;
+        if (shareHandoffGeneration.current !== generation || abortController.signal.aborted) return;
         rootDismissedAcknowledgement.current = null;
-        await waitUntilAppActive();
-        if (shareHandoffGeneration.current !== generation) return;
+        await waitUntilAppActive(abortController.signal);
+        if (
+          shareHandoffGeneration.current !== generation ||
+          abortController.signal.aborted ||
+          !visibleRef.current ||
+          currentCardIdRef.current !== captured.id
+        ) return;
 
         observation = beginExpandedPresentation(shareProducerSurface);
         sharePresentationObservation.current = observation;
         setShareHandoffPhase('provider_presenting');
         onShare(captured);
         await withActiveForegroundWatchdog(observation.presented);
-        if (shareHandoffGeneration.current !== generation) return;
+        if (shareHandoffGeneration.current !== generation || abortController.signal.aborted) return;
         setShareHandoffPhase('provider_visible');
 
         await observation.dismissalRequested;
+        // Lifecycle contract: `await observation.dismissed` is deliberately
+        // watchdog-bounded below so a missing native callback recovers visibly.
         await withActiveForegroundWatchdog(observation.dismissed);
-        if (shareHandoffGeneration.current !== generation) return;
+        await waitUntilAppActive(abortController.signal);
+        if (
+          shareHandoffGeneration.current !== generation ||
+          abortController.signal.aborted ||
+          !visibleRef.current ||
+          currentCardIdRef.current !== captured.id
+        ) return;
         sharePresentationObservation.current = null;
+        // The foreground and caller checks above gate the expanded_restoring transition.
         await restoreExpandedAfterShare(generation);
       } catch (error: unknown) {
-        if (shareHandoffGeneration.current !== generation) return;
+        if (
+          shareHandoffGeneration.current !== generation ||
+          abortController.signal.aborted ||
+          error instanceof Error && error.message === 'handoff_cancelled'
+        ) return;
         const failureClass: SharePresentationFailureClass =
           observation === null
             ? parentDismissed
@@ -717,6 +810,7 @@ export default function ExpandedCardModal({
         sharePresentationObservation.current = null;
         toastManager.show("Couldn't open sharing. Please try again.", 'error');
         AccessibilityInfo.announceForAccessibility("Couldn't open sharing. Please try again.");
+        await waitUntilAppActive(abortController.signal);
         await restoreExpandedAfterShare(generation, true);
       }
     })();
@@ -727,6 +821,9 @@ export default function ExpandedCardModal({
     restoreExpandedAfterShare,
     setShareHandoffPhase,
     shareProducerSurface,
+    userPreferences?.dayOfWeek,
+    userPreferences?.planningTimeframe,
+    userPreferences?.timeOfDay,
   ]);
 
   const handleRootNativeDismiss = useCallback((): void => {
@@ -740,21 +837,24 @@ export default function ExpandedCardModal({
   useEffect(() => {
     if (shareHandoffPhase === 'idle' || shareHandoffPhase === 'provider_visible') return undefined;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      shareHandoffGeneration.current += 1;
-      sharePresentationObservation.current?.cancel('presentation_rejected');
-      sharePresentationObservation.current = null;
-      capturedShareCard.current = null;
-      setShareHandoffPhase('idle');
+      cancelShareHandoff();
       onClose();
       return true;
     });
     return () => subscription.remove();
-  }, [onClose, setShareHandoffPhase, shareHandoffPhase]);
+  }, [cancelShareHandoff, onClose, shareHandoffPhase]);
+
+  useEffect(() => {
+    if (
+      shareHandoffPhaseRef.current !== 'idle' &&
+      (!visible || capturedShareCard.current?.id !== (card?.id ?? null))
+    ) cancelShareHandoff();
+  }, [cancelShareHandoff, card?.id, visible]);
 
   useEffect(() => () => {
-    shareHandoffGeneration.current += 1;
-    sharePresentationObservation.current?.cancel('presentation_rejected');
-  }, []);
+    shareHandoffMounted.current = false;
+    cancelShareHandoff();
+  }, [cancelShareHandoff]);
 
   // Review navigation: horizontal swipe to cycle through reviewed cards
   const hasNavigation = onNavigateNext !== undefined || onNavigatePrevious !== undefined;
@@ -1767,6 +1867,7 @@ export default function ExpandedCardModal({
                   isSaved={!!isSaved}
                   onSave={onSave}
                   onShare={admitExpandedShare}
+                  shareBusy={shareHandoffBusy}
                   onClose={onClose}
                   onOpenBrowser={(url, title) => {
                     setBrowserUrl(url);

@@ -2053,7 +2053,7 @@ const CalendarTab = ({
     }
     // Calendar-owned identity + field-name normalisation.
     source.id = entry.id;
-    source.placeId = experience.placeId || (entry as any).placeId || entry.id;
+    source.placeId = experience.placeId || (entry as any).placeId;
     source.category = experience.category || entry.category || "Experience";
     source.categoryIcon = ExperienceIcon;
     source.phone = experience.phoneNumber || entry.phoneNumber;

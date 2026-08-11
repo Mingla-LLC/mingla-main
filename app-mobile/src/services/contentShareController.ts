@@ -66,7 +66,7 @@ export function openExpandedCardContentShare(
     sourceScope: card.sourceScope,
     sourceRecordId: card.sourceRecordId,
     placePoolId: card.placePoolId,
-    googlePlaceId: card.googlePlaceId ?? card.placeId,
+    googlePlaceId: card.googlePlaceId,
     savedCardId: card.savedCardId,
   };
   if (!identity.sourceRecordId && !identity.placePoolId && !identity.googlePlaceId && !identity.savedCardId) {
