@@ -126,10 +126,36 @@ test("five cold Samsung A72 runs stay inside the actionability budget", async ({
 });
 
 test("static invitation and consent UI has no visible Samsung delta from the React owner", async ({ browser, baseURL }) => {
-  async function capture(url: string): Promise<{ png: Buffer; box: { x: number; y: number; width: number; height: number } }> {
+  async function capture(
+    url: string,
+    options: { isolateStripeMode: boolean },
+  ): Promise<{
+    png: Buffer;
+    box: { x: number; y: number; width: number; height: number };
+    stripeModeRequests: number;
+  }> {
     const context = await browser.newContext();
     await cleanStorage(context);
     const page = await context.newPage();
+    let stripeModeRequests = 0;
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/functions/v1/stripe-mode") {
+        stripeModeRequests += 1;
+      }
+    });
+    if (options.isolateStripeMode) {
+      await page.route(
+        (requestUrl) => requestUrl.pathname === "/functions/v1/stripe-mode",
+        async (route) => {
+          expect(route.request().method()).toBe("GET");
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: '{"mode":"test","publishablePrefix":"pk_test_"}',
+          });
+        },
+      );
+    }
     await page.goto(url);
     // React Native Web renders Text as a div; the critical shell improves the
     // semantics to h1, so text is the cross-renderer parity anchor.
@@ -140,10 +166,18 @@ test("static invitation and consent UI has no visible Samsung delta from the Rea
     expect(box).not.toBeNull();
     const png = await page.screenshot();
     await context.close();
-    return { png, box: box! };
+    return { png, box: box!, stripeModeRequests };
   }
-  const react = await capture(`${baseURL}/accept-brand-invitation?token=visual&issue922React=1`);
-  const critical = await capture(`${baseURL}/accept-brand-invitation?token=visual`);
+  const react = await capture(
+    `${baseURL}/accept-brand-invitation?token=visual&issue922React=1`,
+    { isolateStripeMode: true },
+  );
+  const critical = await capture(
+    `${baseURL}/accept-brand-invitation?token=visual`,
+    { isolateStripeMode: false },
+  );
+  expect(react.stripeModeRequests).toBe(1);
+  expect(critical.stripeModeRequests).toBe(0);
   expect(critical.box).toEqual(react.box);
   const a = PNG.sync.read(react.png);
   const b = PNG.sync.read(critical.png);
