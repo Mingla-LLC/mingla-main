@@ -48,6 +48,64 @@ jobs:
       - name: ORCH-1083 initial-bundle budget guard
         working-directory: mingla-business
         run: ORCH_1083_WEB_BUILD=/tmp/web-build-check node scripts/ci/orch-1083-initial-bundle-budget.mjs
+      # #1627 [keyboard-guard-vacuity]: the native keyboard library must not be
+      # in the web bundle at all. T1 (KeyboardRoot.adversarial.test.tsx, inside
+      # the required jest check) asserts the same contract on SOURCE; this is
+      # the built-artefact half, and it catches what source cannot — a leak
+      # arriving through a transitive node_modules path.
+      #
+      # It lives HERE, and not in the jest job, on purpose. The reason the
+      # original guard was dark for its entire life is that it demanded an
+      # artefact nothing produced: it read a gitignored `mingla-business/dist/`,
+      # while the required jest job runs no export and all nineteen workflows
+      # that DO export write to /tmp/…. This job already exported to
+      # /tmp/web-build-check two steps up, so the assertion costs ~0s and CANNOT
+      # skip — if the export failed, the job is already red. There is no skip
+      # branch to write. Same hosting choice as the ORCH-1137 proof below.
+      - name: "#1627 no native keyboard library in the web bundle"
+        run: |
+          CHUNK_DIR=/tmp/web-build-check/_expo/static/js/web
+          # Non-empty-input guard FIRST. A moved output path or a partial export
+          # would otherwise leave the grep matching nothing and this step green
+          # — the identical vacuity bug, relocated. 180 chunks today.
+          if [ ! -d "$CHUNK_DIR" ]; then
+            echo "#1627 FAIL: chunk directory $CHUNK_DIR does not exist. The export moved, or did not run. This step must never pass without inspecting a real bundle." >&2
+            exit 1
+          fi
+          CHUNKS=$(find "$CHUNK_DIR" -name '*.js' -type f | wc -l | tr -d ' ')
+          if [ "$CHUNKS" -lt 100 ]; then
+            echo "#1627 FAIL: only $CHUNKS .js chunks under $CHUNK_DIR (expected >= 100; 180 at the time of writing). A partial export cannot be used to certify the bundle clean." >&2
+            exit 1
+          fi
+          # The token list is deliberately LIBRARY-INTERNAL ONLY.
+          #
+          # `KeyboardProvider` and `KeyboardController` are EXCLUDED on purpose.
+          # They are bare identifiers that a legitimate passthrough shim
+          # re-exports: with the library completely gone (0 hits for every token
+          # below) a build still shows 2 residual `KeyboardProvider` matches,
+          # both from #1627's own web shim's export name. Including them would
+          # leave a CORRECT fix red, and the obvious way out — renaming the
+          # shim's export — buys greenness with no behaviour change and makes
+          # this assertion depend on identifier choice rather than on the
+          # library's absence. Both directions unfalsifiable. Every token below
+          # can only be emitted by the library's own code.
+          MATCHES=$(grep -rlE 'react-native-keyboard-controller|keyboardEventsMap|KeyboardControllerView|useReanimatedFocusedInput' "$CHUNK_DIR" || true)
+          if [ -n "$MATCHES" ]; then
+            echo "#1627 FAIL: react-native-keyboard-controller is present in the exported web bundle." >&2
+            echo "Offending chunk(s):" >&2
+            for f in $MATCHES; do
+              N=$(grep -oE 'react-native-keyboard-controller|keyboardEventsMap|KeyboardControllerView|useReanimatedFocusedInput' "$f" | wc -l | tr -d ' ')
+              echo "  $(basename "$f"): $N match(es)" >&2
+            done
+            echo "" >&2
+            echo "This is a NATIVE keyboard library; web uses none of its twelve primitives." >&2
+            echo "One named import from the package root drags the whole barrel into __common," >&2
+            echo "the eager chunk every guest downloads before ANY route renders — 60,543 B raw /" >&2
+            echo "12,751 B gzip / 10,172 B brotli. Import through a platform-resolved wrapper" >&2
+            echo "(mingla-business: SmartKeyboardAvoidingView; phone-input: keyboardPrimitives)." >&2
+            exit 1
+          fi
+          echo "#1627 PASS: 0 react-native-keyboard-controller markers across $CHUNKS exported web chunks."
       # ORCH-1137: render-proof (T-7 / I-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL).
       # The biz-web lucide shim renders REAL lucide-react icons. Assert the lucide
       # Plus glyph path signature ("M5 12h14" + "M12 5v14") is present in the

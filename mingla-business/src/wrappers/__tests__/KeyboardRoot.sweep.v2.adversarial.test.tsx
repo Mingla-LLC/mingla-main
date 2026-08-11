@@ -146,12 +146,24 @@ const EXPECTED_ALLOWLISTED_FILES = [
  * three removes it entirely, -60,418 B raw / -12,719 gzip / -9,966 brotli. One
  * named import from the package root drags the whole 12-primitive barrel into
  * `__common`, the eager guest boot chunk. It is all-three-or-nothing.
+ *
+ * ---------------------------------------------------------------------------
+ * #1627 SHRANK THIS TO EMPTY. All three were split behind platform-resolved
+ * wrappers and the leak is closed, re-measured on the post-#1841 tree by a real
+ * `expo export -p web --clear`:
+ *
+ *   __common  raw 2,341,978 -> 2,281,435  (-60,543 B)
+ *             gzip  587,087 ->   574,336  (-12,751 B)
+ *             brotli 439,775 ->  429,603  (-10,172 B)
+ *   library markers in all 180 chunks: 0
+ *
+ * The ratchet now reads as designed: an EMPTY expected-set means any new leak
+ * fails immediately, with no constant to edit first. Keep it empty. If a leak
+ * must be granted, it needs an issue and a measured byte cost written here —
+ * not a quiet append.
+ * ---------------------------------------------------------------------------
  */
-const KNOWN_WEB_LEAKS = [
-  "mingla-business/src/components/brand/BrandPaystackOnboardView.tsx",
-  "mingla-business/src/components/groupChat/GroupChatPanel.tsx",
-  "packages/phone-input/CountryPickerModal.tsx",
-];
+const KNOWN_WEB_LEAKS: string[] = [];
 
 // ---------------------------------------------------------------------------
 // Harness — run code INSIDE the real gate module and bring back JSON.
@@ -628,10 +640,37 @@ export const MultiLineContainer = () => (
        ];
        const files = gate.collectSourceFiles(roots);
        const RE_LIBRARY_IMPORT = /from\\s+["']react-native-keyboard-controller["']/;
+       // #1627 — "not web-reachable" has TWO spellings, because the two
+       // packages in scope use OPPOSITE platform-split conventions and #1627's
+       // REVIEW GATE explicitly declined to impose one across the boundary:
+       //
+       //   X.native.tsx            mingla-business/src/wrappers — X.tsx is web.
+       //   X.tsx + X.web.tsx       packages/phone-input (WebOverlayPortal, and
+       //                           now keyboardPrimitives) — X.tsx is the
+       //                           DEFAULT/native file, shadowed on web by the
+       //                           .web sibling Metro resolves first.
+       //
+       // The suffix test alone understands only the first. Left as-is it would
+       // report packages/phone-input/keyboardPrimitives.tsx — the NATIVE half of
+       // #1627's own fix, which a real web export proves contributes zero
+       // library markers — as a leak, and the only ways to green that are to
+       // bank a file that does not leak (a FALSE floor, this suite's own
+       // I-PROPOSED-1841-B failure) or to rename against a convention already
+       // proven on a real export. Resolution order is the honest question, so
+       // ask resolution order.
+       const shadowedOnWeb = (f) => {
+         const base = path.basename(f);
+         if (/\\.native\\.(ts|tsx)$/.test(base)) return true;
+         const stem = base.replace(/\\.(ts|tsx)$/, "");
+         if (/\\.web$/.test(stem)) return false;
+         const dir = path.dirname(f);
+         return fs.existsSync(path.join(dir, stem + ".web.tsx")) ||
+                fs.existsSync(path.join(dir, stem + ".web.ts"));
+       };
        const out = [];
        for (const f of files) {
          const rel = path.relative(repoRoot, f).split(path.sep).join("/");
-         if (/\\.native\\.(ts|tsx)$/.test(rel)) continue;
+         if (shadowedOnWeb(f)) continue;
          if (RE_LIBRARY_IMPORT.test(gate.stripComments(fs.readFileSync(f, "utf8")))) out.push(rel);
        }
        return out.sort();`,

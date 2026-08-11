@@ -5982,6 +5982,24 @@ Two strict-grep gates run together:
 
 ---
 
+### I-PROPOSED-1627-NO-NATIVE-KEYBOARD-LIBRARY-IN-THE-WEB-GRAPH (DRAFT)
+
+**Status:** DRAFT, pre-staged by #1627 [keyboard-guard-vacuity] IMPLEMENT. Flips ACTIVE at CLOSE.
+
+**Rule.** No source file in the monorepo that is reachable from the web bundle — i.e. any `.ts`/`.tsx` not shadowed on web by a platform-specific variant — may import `react-native-keyboard-controller`, **in `packages/` exactly as in the apps**. A native-only keyboard primitive is consumed through a platform-resolved wrapper pair whose web variant imports nothing from the library and exports no symbol named `KeyboardProvider` or `KeyboardController`. Enforcement must assert on the **built bundle** as well as on source, and neither assertion may `return` early on a missing prerequisite.
+
+**Why.** On `3745ea19f` the whole library barrel — twelve exported primitives, of which web uses none — sat in `__common`, the chunk every guest downloads before any route renders: 60,543 B raw / 12,751 B gzip / 10,172 B brotli as re-measured on the post-#1841 tree, 16.9% of all remaining brotli runway under the #1509 product ceiling, and five times the entire per-PR `common` delta allowance in the good direction. Two guards existed to catch it and both had reported a tick since the day they were written, because they keyed on a gitignored `dist/` that CI has never produced. The largest single contributor, `packages/phone-input/CountryPickerModal.tsx`, was invisible to **three** separate scanners that all stopped at the `mingla-business` boundary — including the replacement ratchet written specifically to end this bug class. The leak is also **all-or-nothing**: measured, fixing only the two `mingla-business` files leaves the library fully present and *adds* 285 B, because one named import from the package root drags the entire barrel in on its own.
+
+**Corollary — shadowing has two spellings, and a guard must know both.** `mingla-business/src/wrappers` splits as `X.tsx` (web) + `X.native.tsx`; `packages/phone-input` splits as `X.tsx` (default/native) + `X.web.tsx`. Each package keeps its own proven convention — imposing one across the boundary was explicitly declined at REVIEW. A guard that tests only for the `.native.` suffix therefore misreads the *native* half of a correct fix as a leak, and the only ways to green that are to bank a non-leaking file (a false floor — I-PROPOSED-1841-B's exact failure) or to rename against a convention already proven on a real export. Ask about resolution order, not about a filename suffix.
+
+**Relationship to `I-1104-NO-KBC-ON-WEB`.** That invariant expresses the same intent but has **no entry in this registry** — it exists only as INV-A inside `.github/scripts/strict-grep/i-meta-orch-1104-support-backend-invariants.mjs`, scoped to the support feature's files. #1627's SPEC §9 asked for its scope note to be widened to the monorepo; there was no note to widen, and that gate script is outside #1627's allowlist. The monorepo-wide scope is therefore carried by THIS invariant, and I-1104's support-scoped gate is left as the narrower, still-correct special case. Consolidating the two is unowned.
+
+**Enforcement.** T1 — `mingla-business/src/wrappers/__tests__/KeyboardRoot.adversarial.test.tsx` TA-1, a source ratchet inside the only required jest check, with a four-sentinel vacuity guard spanning `packages/`, a comment-blindness proof and a mutation proof (TA-1-VACUITY / -COMMENT-BLIND / -MUTATION). T2 — the bundle grep in `.github/workflows/web-build-check.yml`, hosted on the export that job already performs, with a `>= 100` chunk-count non-empty-input guard; its token list is library-internal only (`react-native-keyboard-controller`, `keyboardEventsMap`, `KeyboardControllerView`, `useReanimatedFocusedInput`) and deliberately excludes the re-exportable identifiers `KeyboardProvider` / `KeyboardController`. TA-V3-6 in `KeyboardRoot.sweep.v2.adversarial.test.tsx`, whose `KNOWN_WEB_LEAKS` is now **empty**. `orch-1296-no-toplevel-boot-fragile-native-import.mjs` with `checkedRoots` extended to `packages`.
+
+**EXIT condition:** Permanent.
+
+---
+
 ### I-PROPOSED-META-0929-CHOOSER-DISMISS-BEFORE-OPEN
 
 **Statement:** The Friends `+` chooser sheet (`app-mobile/src/components/connections/FriendsActionChooserSheet.tsx`) MUST dismiss itself via local state mutation BEFORE triggering any downstream sheet (PairRequestModal / CreateGroupChatSheet / PaywallSheet), and the downstream trigger MUST be deferred to the next frame via `requestAnimationFrame`. Synchronous trigger without rAF defer = sibling-mounted native Modal layering violation (Cycle-13a precedent per `feedback_rn_sub_sheet_must_render_inside_parent.md`) — the downstream Modal renders but is visually blocked by the dismissing chooser Modal on iOS.
