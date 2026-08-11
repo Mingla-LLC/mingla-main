@@ -377,30 +377,53 @@ BEGIN
 END $t$;
 
 -- ---------------------------------------------------------------------------
--- T-C1b2 — a PARTIAL refund reads as partial, not as refunded, and the
--- reservation arm is untouched by the re-route (a regression guard for the
--- branch that already worked).
+-- T-C1b2 — the amount guard, which only became REAL once the write-back did.
+-- An order with half its money already returned gets a refund for the
+-- remainder and no more, and returning that remainder moves it to `refunded`.
+-- Before C-1(b) was fixed, `refunded_amount_cents` never moved, so this guard
+-- could never have been exercised at all.
 -- ---------------------------------------------------------------------------
 DO $t$
-DECLARE v_o uuid; v_refund uuid; v_ps text; v_refunded int;
+DECLARE v_o uuid; v_refund uuid; v_ps text; v_refunded int; v_total int; v_already int;
 BEGIN
+  -- An order that has ALREADY had part of its money returned. Setting the
+  -- order's own state (rather than editing a money row's amounts by hand) is
+  -- the only coherent way to build this: source_refunds CHECKs tie the
+  -- requested amount to its organiser-liability and fee-absorption split, so a
+  -- hand-halved row is not a state the system can produce.
   v_o := pg_temp.mint_paid_order();
+  SELECT total_cents INTO v_total FROM public.venue_orders WHERE id = v_o;
+  v_already := v_total / 2;
+  UPDATE public.venue_orders
+     SET refunded_amount_cents = v_already, payment_status = 'partial_refund'
+   WHERE id = v_o;
+
+  -- The mint gives back only what is LEFT — proof the amount guard is live now
+  -- that the write-back actually maintains refunded_amount_cents.
   v_refund := (public.pg_venue_order_mint_refund(
     v_o, 'venue_order_guest_cancel', 'guest', NULL, 'Guest cancelled'))->>'refundId';
-  -- Halve what the provider gives back, so the order lands partially refunded.
-  UPDATE public.source_refunds
-     SET buyer_refund_requested_cents = greatest(1, buyer_refund_requested_cents / 2)
-   WHERE id = v_refund;
+  IF v_refund IS NULL THEN
+    RAISE EXCEPTION 'issue_1846 T-C1b2 VACUITY: no refund was minted for the remainder';
+  END IF;
+  IF (SELECT buyer_refund_requested_cents FROM public.source_refunds WHERE id = v_refund)
+     <> v_total - v_already THEN
+    RAISE EXCEPTION
+      'issue_1846 T-C1b2: the mint asked for more than the order had left (% of %)',
+      (SELECT buyer_refund_requested_cents FROM public.source_refunds WHERE id = v_refund),
+      v_total - v_already;
+  END IF;
 
   PERFORM pg_temp.process_refund(v_refund);
 
   SELECT payment_status, refunded_amount_cents INTO v_ps, v_refunded
     FROM public.venue_orders WHERE id = v_o;
-  IF v_ps <> 'partial_refund' THEN
-    RAISE EXCEPTION 'issue_1846 T-C1b2: a partial refund reported payment_status=%', v_ps;
+  IF v_refunded <> v_total THEN
+    RAISE EXCEPTION 'issue_1846 T-C1b2: the remainder did not write back (% of %)',
+      v_refunded, v_total;
   END IF;
-  IF v_refunded <= 0 THEN
-    RAISE EXCEPTION 'issue_1846 T-C1b2: a partial refund wrote back nothing';
+  IF v_ps <> 'refunded' THEN
+    RAISE EXCEPTION
+      'issue_1846 T-C1b2: an order returned in full still reads payment_status=%', v_ps;
   END IF;
 END $t$;
 
