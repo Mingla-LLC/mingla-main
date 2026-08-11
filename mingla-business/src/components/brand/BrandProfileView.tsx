@@ -65,6 +65,10 @@ import {
   getBrandProfileStripeOperationsSub,
 } from "../../utils/brandStripeUiState";
 import { deriveCardStatus } from "../../../app/(tabs)/hub/eventCardStatus";
+// Issue #1835 — brand deletion is owner-only; hide the danger zone for anyone
+// whose delete the `brands` RLS policy would refuse.
+import { useAuth } from "../../context/AuthContext";
+import { canDeleteBrand } from "../../utils/brandDeletePermission";
 
 import { Avatar } from "../ui/Avatar";
 import { Button } from "../ui/Button";
@@ -266,6 +270,8 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   const queryClient = useQueryClient();
   const { width: windowWidth } = useWindowDimensions();
   const reduceMotion = useReducedMotion();
+  // Issue #1835 — signed-in operator, for the owner-only delete gate below.
+  const { user: authUser } = useAuth();
 
   // ORCH-0816 — pull-to-refresh as a manual freshness signal alongside the
   // Realtime subscription on `orders` in useBrand. Invalidates the detail
@@ -961,8 +967,12 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           </View>
         )}
 
-        {/* Cycle 17e-A — Danger zone (delete brand) */}
-        {onRequestDelete !== undefined && brand !== null ? (
+        {/* Cycle 17e-A — Danger zone (delete brand).
+            Issue #1835 — owner-only: hidden for admins, whose delete the
+            `brands` RLS policy refuses. */}
+        {onRequestDelete !== undefined &&
+        brand !== null &&
+        canDeleteBrand(brand, authUser?.id ?? null) ? (
           <View style={styles.dangerZone}>
             <Text style={styles.dangerLabel}>Danger zone</Text>
             <Text style={styles.dangerHelper}>

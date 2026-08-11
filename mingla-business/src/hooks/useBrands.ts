@@ -54,6 +54,8 @@ import {
   type SoftDeleteResult,
 } from "../services/brandsService";
 import type { Brand } from "../store/currentBrandStore";
+// Issue #1835 — brand-delete failures must leave a trace.
+import { captureException } from "../diagnostics/sentry";
 // ORCH-0740 Cycle 1: import the existing brandRoleKeys factory to replace
 // the hardcoded `["brand-role", brandId]` literal in useSoftDeleteBrand.onSuccess
 // (Constitutional #4 — one query key per entity).
@@ -591,9 +593,17 @@ export const useSoftDeleteBrand = (): UseSoftDeleteBrandResult => {
       }
       // On rejection: caller (BrandDeleteSheet) handles via modal; no cache changes
     },
-    onError: () => {
+    onError: (error, { brandId }) => {
+      // Issue #1835 — this handler was EMPTY, so a brand-delete failure left no
+      // trace anywhere: four production 403s were reconstructible only from
+      // Postgres logs. Same bug class as #1044 (native auth failures caught and
+      // discarded — Sentry never saw a broken sign-in).
       // Caller's mutateAsync still receives the throw — pessimistic pattern.
-      // Caller (BrandDeleteSheet) renders the error in the modal via setSubmitError.
+      // Caller (BrandDeleteSheet) renders the message via setSubmitError.
+      captureException(error, {
+        tags: { feature: "brand-delete", issue: "1835" },
+        extra: { brandId },
+      });
     },
   });
   return { mutateAsync: mutation.mutateAsync, isPending: mutation.isPending };

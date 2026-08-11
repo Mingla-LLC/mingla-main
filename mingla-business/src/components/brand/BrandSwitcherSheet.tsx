@@ -15,6 +15,8 @@ import {
   useCurrentBrandStore,
   type Brand,
 } from "../../store/currentBrandStore";
+// Issue #1835 — brand deletion is owner-only.
+import { canDeleteBrand } from "../../utils/brandDeletePermission";
 import { BrandCreationFlow } from "./BrandCreationFlow";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -141,7 +143,12 @@ export const BrandSwitcherSheet: React.FC<BrandSwitcherSheetProps> = ({
                           <Icon name="check" size={18} color={accent.warm} />
                         ) : null}
                       </Pressable>
-                      {onRequestDeleteBrand !== undefined ? (
+                      {/* Issue #1835 — PER-ROW gate, deliberately not a
+                          sheet-level one. The switcher lists every brand you can
+                          reach, owned or merely administered, so the trash must
+                          be decided per brand: shown only on rows you own. */}
+                      {onRequestDeleteBrand !== undefined &&
+                      canDeleteBrand(brand, user?.id ?? null) ? (
                         <Pressable
                           onPress={() => {
                             onRequestDeleteBrand(brand);

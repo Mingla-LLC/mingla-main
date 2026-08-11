@@ -205,6 +205,20 @@ export type Brand = {
    */
   coverHue: number;
   photo?: string;
+  /**
+   * `brands.account_id` — the account that OWNS this brand (the deed holder).
+   *
+   * Issue #1835: distinct from `role`, which is derived from
+   * `brand_team_members.role` and collapses six server roles into two UI values.
+   * Only `account_id` matches the `brands` RLS policy that decides whether a
+   * delete actually succeeds, so it is the only sound basis for gating the
+   * delete affordance (see `utils/brandDeletePermission.ts`).
+   *
+   * OPTIONAL on purpose: keeps the persisted-store schema at v12 (passthrough —
+   * a Brand cached before this field existed simply omits it), and
+   * `canDeleteBrand` fails closed when it is missing.
+   */
+  accountId?: string;
   role: BrandRole;
   stats: BrandStats;
   currentLiveEvent: BrandLiveEvent | null;
