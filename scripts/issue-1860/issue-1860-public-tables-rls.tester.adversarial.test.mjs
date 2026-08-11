@@ -354,3 +354,225 @@ test("#1860 adversarial D2 [VACUITY]: the real-input harness is wired to real fi
     );
   }
 });
+
+// ---------------------------------------------------------------------------
+// E — the REWORK surface (appended at #1860 RETEST, pure additions).
+//
+// F-1/F-2/F-3 were closed by rebuilding the parser around one structural claim:
+// a string is DDL when Postgres is told to run it, and at no other time. These
+// cases lock that claim and the two rules it rests on, so the fixes cannot
+// silently regress the way the guarantee they replaced did. Every case below is
+// a defect this file has actually had.
+// ---------------------------------------------------------------------------
+
+import { stripYamlComments } from "../../.github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs";
+
+/** This file, as the gate and the workflow name it. */
+const SUITE_REL = "scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs";
+const ADVERSARIAL_WORKFLOW_PATH = join(ROOT, ".github", "workflows", "issue-1860-rls-coverage-tests.yml");
+
+test("#1860 adversarial E1 [R2]: prose inside a DO body cannot fake an enable or hide a table, in EITHER quoting form", () => {
+  // The F-1 defect. Literals inside DO bodies were handed to the DDL regexes
+  // raw, so this failed both ways at once. Both spellings are covered because
+  // the chain really does use dollar-quoted EXECUTE arguments — a masker that
+  // knew only about single quotes would have left the hole open behind the fix.
+  const fakeEnable = [
+    ["single-quoted RAISE NOTICE", `DO $b$ BEGIN RAISE NOTICE 'ALTER TABLE public.naked ENABLE ROW LEVEL SECURITY'; END $b$;`],
+    ["dollar-quoted RAISE NOTICE", `DO $b$ BEGIN RAISE NOTICE $m$ALTER TABLE public.naked ENABLE ROW LEVEL SECURITY$m$; END $b$;`],
+    ["variable assignment", `DO $b$ DECLARE s text; BEGIN s := 'ALTER TABLE public.naked ENABLE ROW LEVEL SECURITY'; END $b$;`],
+    ["RAISE EXCEPTION that never fires", `DO $b$ BEGIN IF false THEN RAISE EXCEPTION 'ALTER TABLE public.naked ENABLE ROW LEVEL SECURITY'; END IF; END $b$;`],
+  ];
+  for (const [label, prose] of fakeEnable) {
+    const failures = runChecks({
+      ...FIXTURE_INPUTS,
+      files: carrier(`CREATE TABLE public.naked (id uuid);\n${prose}`),
+    });
+    assert.ok(
+      failures.some((f) => f.includes("C1: public.naked")),
+      `${label} laundered an unprotected table green`,
+    );
+  }
+
+  const hideTable = [
+    ["single-quoted", `DO $b$ BEGIN RAISE NOTICE 'operator runs DROP TABLE public.ghost; later'; END $b$;`],
+    ["dollar-quoted", `DO $b$ BEGIN RAISE NOTICE $m$operator runs DROP TABLE public.ghost; later$m$; END $b$;`],
+  ];
+  for (const [label, prose] of hideTable) {
+    const failures = runChecks({
+      ...FIXTURE_INPUTS,
+      files: carrier(`CREATE TABLE public.ghost (id uuid);\n${prose}`),
+    });
+    assert.ok(
+      failures.some((f) => f.includes("C1: public.ghost")),
+      `a ${label} drop sentence removed a live table from scrutiny`,
+    );
+  }
+});
+
+test("#1860 adversarial E2 [R3]: a dynamic enable counts from an EXECUTE position and only from there", () => {
+  const loopBody = `FOREACH v IN ARRAY ARRAY['looped'] LOOP %BODY% END LOOP;`;
+  const wrap = (inner) =>
+    `CREATE TABLE public.looped (id uuid);\nDO $b$ DECLARE v text; BEGIN ${loopBody.replace("%BODY%", inner)} END $b$;`;
+
+  // Executed: resolves against the loop's array, so the table is protected.
+  assert.deepEqual(
+    runChecks({
+      ...FIXTURE_INPUTS,
+      files: carrier(wrap(`EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v);`)),
+    }),
+    [],
+    "a FOREACH-driven EXECUTE enable did not resolve; this is ~a third of the schema",
+  );
+
+  // Identical text, never executed: must NOT count.
+  assert.ok(
+    runChecks({
+      ...FIXTURE_INPUTS,
+      files: carrier(wrap(`RAISE NOTICE '%', format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v);`)),
+    }).some((f) => f.includes("C1: public.looped")),
+    "a format() template that is only logged was counted as an executed enable",
+  );
+
+  // R4: the same loop inside a stored function body is not executed by the migration.
+  assert.ok(
+    runChecks({
+      ...FIXTURE_INPUTS,
+      files: carrier(
+        `CREATE TABLE public.dormant (id uuid);\n` +
+          `CREATE OR REPLACE FUNCTION public.someday() RETURNS void LANGUAGE plpgsql AS $fn$\n` +
+          `DECLARE v text; BEGIN FOREACH v IN ARRAY ARRAY['dormant'] LOOP\n` +
+          `EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v); END LOOP; END $fn$;`,
+      ),
+    }).some((f) => f.includes("C1: public.dormant")),
+    "a stored CREATE FUNCTION body was treated as executed DDL",
+  );
+});
+
+test("#1860 adversarial E3 [R5/C7]: unresolvable dynamic DDL fails CLOSED, and the drop asymmetry is deliberate", () => {
+  const c7 = (sql) =>
+    runChecks({ ...FIXTURE_INPUTS, files: carrier(sql) }).filter((f) => f.startsWith("C7:"));
+
+  // An EXECUTE with no literal at all — the statement was built up elsewhere.
+  assert.ok(
+    c7(`DO $b$ DECLARE s text; BEGIN EXECUTE s; END $b$;`).length > 0,
+    "an opaque EXECUTE did not fail closed; a statement built in a variable could create an unseen table",
+  );
+
+  // A placeholder create with no FOREACH binding to resolve it.
+  assert.ok(
+    c7(`DO $b$ DECLARE v text; BEGIN EXECUTE format('CREATE TABLE public.%I (id uuid)', v); END $b$;`).length > 0,
+    "an unresolvable dynamic CREATE did not fail closed — that is a false green on an unprotected schema",
+  );
+  assert.ok(
+    c7(`DO $b$ DECLARE v text; BEGIN EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v); END $b$;`)
+      .length > 0,
+    "an unresolvable dynamic ENABLE did not fail closed",
+  );
+
+  // The asymmetry, asserted rather than assumed: an unresolvable DROP does NOT
+  // fail, because leaving a table in scope only risks a false RED. Pinned so the
+  // asymmetry stays a decision instead of drifting into an accident.
+  assert.deepEqual(
+    c7(`DO $b$ DECLARE v text; BEGIN EXECUTE format('DROP TABLE public.%I', v); END $b$;`),
+    [],
+    "an unresolvable dynamic DROP failed closed; R5 documents the opposite",
+  );
+});
+
+test("#1860 adversarial E4 [R6]: a later DISABLE re-opens a table, but a DISABLE written as prose does not", () => {
+  assert.ok(
+    runChecks({
+      ...FIXTURE_INPUTS,
+      files: carrier(
+        `CREATE TABLE public.reopened (id uuid);\n` +
+          `ALTER TABLE public.reopened ENABLE ROW LEVEL SECURITY;\n` +
+          `ALTER TABLE public.reopened DISABLE ROW LEVEL SECURITY;`,
+      ),
+    }).some((f) => f.includes("C1: public.reopened")),
+    "a table whose RLS was turned back off still reports as protected",
+  );
+
+  // Across files, not just within one — the replay is ordered, not a set union.
+  assert.ok(
+    runChecks({
+      ...FIXTURE_INPUTS,
+      files: [
+        { name: "001.sql", sql: `CREATE TABLE public.later (id uuid);\nALTER TABLE public.later ENABLE ROW LEVEL SECURITY;` },
+        { name: "002.sql", sql: `ALTER TABLE public.later DISABLE ROW LEVEL SECURITY;` },
+      ],
+    }).some((f) => f.includes("C1: public.later")),
+    "a DISABLE in a later migration did not clear an earlier ENABLE",
+  );
+
+  // And the inverse: prose must not be able to re-open a protected table either.
+  assert.deepEqual(
+    runChecks({
+      ...FIXTURE_INPUTS,
+      files: carrier(
+        `CREATE TABLE public.safe (id uuid);\n` +
+          `ALTER TABLE public.safe ENABLE ROW LEVEL SECURITY;\n` +
+          `DO $b$ BEGIN RAISE NOTICE 'never run: ALTER TABLE public.safe DISABLE ROW LEVEL SECURITY'; END $b$;`,
+      ),
+    }),
+    [],
+    "a DISABLE written as prose re-opened a protected table",
+  );
+});
+
+test("#1860 adversarial E5 [REAL CHAIN ANCHOR]: the real chain contains ZERO unresolvable dynamic DDL", () => {
+  // C7's clean state on this repo, pinned. If someone introduces an opaque
+  // EXECUTE or an unresolvable dynamic create, this reds here as well as in the
+  // gate — and unlike a fixture, it is a statement about the real schema.
+  const { unresolved, live } = replayChain(loadMigrations());
+  assert.ok(live.size >= MIN_LIVE_TABLES, "vacuity: the chain did not replay");
+  assert.deepEqual(
+    unresolved.map((u) => `${u.file}: ${u.kind}`),
+    [],
+    "the real chain now contains dynamic DDL this parser cannot resolve",
+  );
+});
+
+test("#1860 adversarial E6 [C8]: this suite cannot go dark — the gate reds if it is deleted or un-wired", () => {
+  // Self-referential on purpose. This file sits outside .github/scripts/strict-grep/,
+  // so MANIFEST.json does not sweep it and run-batch.mjs does not run it: without
+  // C8 it would be a gate on disk that no CI job executes, which is the exact
+  // shape everything in #1860 is about.
+  const wired = `      - name: suite\n        run: node --test ${SUITE_REL}\n`;
+
+  assert.deepEqual(
+    runChecks({ ...FIXTURE_INPUTS, files: carrier(""), adversarialSuiteExists: true, adversarialWorkflowText: wired }),
+    [],
+    "a correctly wired suite should not fail C8",
+  );
+  assert.ok(
+    runChecks({ ...FIXTURE_INPUTS, files: carrier(""), adversarialSuiteExists: false, adversarialWorkflowText: wired })
+      .some((f) => f.startsWith("C8:")),
+    "deleting this suite does not fail the gate",
+  );
+  assert.ok(
+    runChecks({ ...FIXTURE_INPUTS, files: carrier(""), adversarialSuiteExists: true, adversarialWorkflowText: null })
+      .some((f) => f.startsWith("C8:")),
+    "deleting the workflow that runs this suite does not fail the gate",
+  );
+  // The one that matters: a commented-out step reads as wired to a plain
+  // substring match. C8 is checked on comment-stripped yaml.
+  assert.ok(
+    runChecks({
+      ...FIXTURE_INPUTS,
+      files: carrier(""),
+      adversarialSuiteExists: true,
+      adversarialWorkflowText: `      # - name: disabled\n      #   run: node --test ${SUITE_REL}\n`,
+    }).some((f) => f.startsWith("C8:")),
+    "a commented-out step still reads as wired; C8 is not comment-stripped",
+  );
+
+  // And the real workflow must genuinely invoke this file.
+  assert.ok(
+    existsSync(ADVERSARIAL_WORKFLOW_PATH),
+    "the workflow that runs this suite is missing",
+  );
+  assert.ok(
+    stripYamlComments(readFileSync(ADVERSARIAL_WORKFLOW_PATH, "utf8")).includes(SUITE_REL),
+    "the real workflow does not invoke this suite in executable yaml",
+  );
+});
