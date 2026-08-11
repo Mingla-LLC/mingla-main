@@ -2054,6 +2054,20 @@ const CalendarTab = ({
     // Calendar-owned identity + field-name normalisation.
     source.id = entry.id;
     source.placeId = experience.placeId || (entry as any).placeId;
+    const boardCardId = (
+      entry as unknown as { board_card_id?: unknown }
+    ).board_card_id;
+    const collaborationSourceRecordId =
+      entry.source === "collaboration" &&
+      typeof boardCardId === "string" &&
+      boardCardId.trim().length > 0
+        ? boardCardId.trim()
+        : undefined;
+    if (collaborationSourceRecordId) {
+      source.sourceScope = "collaboration";
+      source.sourceRecordId = collaborationSourceRecordId;
+      source.savedCardId = collaborationSourceRecordId;
+    }
     source.category = experience.category || entry.category || "Experience";
     source.categoryIcon = ExperienceIcon;
     source.phone = experience.phoneNumber || entry.phoneNumber;
