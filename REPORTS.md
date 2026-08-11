@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-10 — Append-only test approvals now accept canonical GitHub issue numbers of any length, so valid work such as #922 is no longer rejected while legacy ORCH approvals and every existing safety rail remain intact. (#1815, PR #1818)
 - 2026-08-10 — Partners creating a brand for themselves can now continue without the setup screen bouncing backward, with the same stable behavior across Business iOS, Android, and web. (#881, PR #1814)
 - 2026-08-10 — Brand People and guest-roster exports now normalize repeated spaces, tabs, and line breaks exactly like their on-screen searches, preventing a filtered export from silently returning a different population. (#1812, PR #1813)
 - 2026-08-10 — Guest-roster exports can now use every approved server-owned status filter while staying inside the existing audited Brand People export job, with unknown filters and caller-defined query fragments still rejected. (#1810, PR #1811)
