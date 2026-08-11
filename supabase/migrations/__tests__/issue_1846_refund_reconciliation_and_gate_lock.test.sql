@@ -270,10 +270,13 @@ BEGIN
   v_o := pg_temp.mint_paid_order();
   SELECT total_cents INTO v_total FROM public.venue_orders WHERE id = v_o;
 
+  -- `ready`, not `delivered`: P-25 closes self-service at delivery
+  -- (`refund_window_closed`), so a guest can only ask while the food is still
+  -- coming. That is the whole reachable shape of an approved refund today —
+  -- see the note under T-C1b3 about what it means for a DELIVERED order.
   PERFORM pg_temp.act_as(pg_temp.fx('manager'));
   PERFORM public.biz_venue_order_transition(v_o, 'acknowledged', NULL);
   PERFORM public.biz_venue_order_transition(v_o, 'ready', NULL);
-  PERFORM public.biz_venue_order_transition(v_o, 'delivered', NULL);
   PERFORM public.pg_venue_order_guest_action(
     v_o, 'guest-token-' || (SELECT session_id FROM public.venue_orders WHERE id = v_o)::text,
     'request_refund', 'it was cold');
@@ -312,14 +315,64 @@ BEGIN
       'issue_1846 T-C1b: refunded_amount_cents=% after a % refund — the payout sweep will over-release',
       v_refunded, v_total;
   END IF;
-  -- A fully-refunded DELIVERED order must not still read "Delivered".
-  IF v_fs <> 'refunded' THEN
+  -- The ticket is NOT yanked off the pass by a money event. Only the
+  -- `delivered -> refunded` edge that P-26's map reserves for the refund rail
+  -- may move fulfillment, and this order is `ready` — the kitchen still has
+  -- it, and the queue must keep saying so.
+  IF v_fs <> 'ready' THEN
     RAISE EXCEPTION
-      'issue_1846 T-C1b: a fully-refunded delivered order still reads % on the queue', v_fs;
+      'issue_1846 T-C1b: a refund moved a live ticket off the pass (fulfillment=%)', v_fs;
   END IF;
   -- ...and the rsvp table must not have been touched on the way past.
   IF v_rsvp_after <> v_rsvp_before THEN
     RAISE EXCEPTION 'issue_1846 T-C1b: a venue-order refund wrote to event_rsvp_contributions';
+  END IF;
+END $t$;
+
+-- ---------------------------------------------------------------------------
+-- T-C1b3 — WHAT THE REQUEST REQUIREMENT COSTS, asserted rather than assumed.
+--
+-- Requiring an outstanding request is what stops the double refund, and it has
+-- a consequence worth pinning: a DELIVERED order can no longer be refunded
+-- through this RPC, because P-25 refuses a guest's `request_refund` once the
+-- food has landed and there is therefore never a request to approve. That is
+-- the venue-INITIATED refund P-52 describes and no surface has ever built —
+-- it needs its own named action with its own confirmation, and it is
+-- registered for the orchestrator. This group exists so the gap is a KNOWN,
+-- tested boundary instead of a discovery someone makes on a live ticket.
+-- ---------------------------------------------------------------------------
+DO $t$
+DECLARE v_o uuid; v_err text;
+BEGIN
+  v_o := pg_temp.mint_paid_order();
+  PERFORM pg_temp.act_as(pg_temp.fx('manager'));
+  PERFORM public.biz_venue_order_transition(v_o, 'acknowledged', NULL);
+  PERFORM public.biz_venue_order_transition(v_o, 'ready', NULL);
+  PERFORM public.biz_venue_order_transition(v_o, 'delivered', NULL);
+
+  v_err := NULL;
+  BEGIN
+    PERFORM public.pg_venue_order_guest_action(
+      v_o, 'guest-token-' || (SELECT session_id FROM public.venue_orders WHERE id = v_o)::text,
+      'request_refund', 'too late');
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM; END;
+  IF v_err IS NULL OR v_err NOT LIKE '%refund_window_closed%' THEN
+    RAISE EXCEPTION 'issue_1846 T-C1b3: self-service refunds reopened after delivery (%)',
+      coalesce(v_err, 'no error');
+  END IF;
+
+  v_err := NULL;
+  BEGIN PERFORM public.biz_venue_order_refund_decision(v_o, 'approved', 'goodwill');
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM; END;
+  IF v_err IS NULL OR v_err NOT LIKE '%no_refund_requested%' THEN
+    RAISE EXCEPTION
+      'issue_1846 T-C1b3: the decision RPC approved a refund nobody asked for (%)',
+      coalesce(v_err, 'no error');
+  END IF;
+  -- ...and no money moved on the way past.
+  IF EXISTS (SELECT 1 FROM public.source_refunds
+              WHERE source_type = 'venue_menu_order' AND source_id = v_o) THEN
+    RAISE EXCEPTION 'issue_1846 T-C1b3: a refused decision still minted a refund';
   END IF;
 END $t$;
 

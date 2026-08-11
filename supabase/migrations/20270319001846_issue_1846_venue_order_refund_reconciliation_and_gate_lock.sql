@@ -446,13 +446,19 @@ GRANT EXECUTE ON FUNCTION public.pg_venue_order_mint_refund(uuid, text, text, uu
 -- Both now refuse, ahead of the mint's own dedupe, so the caller gets a
 -- specific error instead of a silent no-op.
 --
--- DELIBERATE NARROWING, STATED: P-52 allows a venue to INITIATE a refund as
--- well as approve one. A decision RPC with no request to decide is the wrong
--- home for that act — it is what let the double happen — and no shipped
--- surface uses it: `VenueOrderDetailSheet` renders the approve/decline block
--- only when `hasOpenRefundRequest(order)` is true. A venue-initiated refund
--- needs its own named action with its own confirmation; registered for the
--- orchestrator rather than smuggled through this one.
+-- DELIBERATE NARROWING, STATED, WITH ITS COST: P-52 allows a venue to INITIATE
+-- a refund as well as approve one. A decision RPC with no request to decide is
+-- the wrong home for that act — it is what let the double happen — and no
+-- shipped surface uses it: `VenueOrderDetailSheet` renders the approve/decline
+-- block only when `hasOpenRefundRequest(order)` is true.
+--
+-- THE COST, named so nobody discovers it on a live ticket: a DELIVERED order
+-- can no longer be refunded through this RPC at all, because P-25 refuses a
+-- guest's `request_refund` once the food has landed, so a request can never
+-- exist to approve. That is exactly the venue-initiated refund P-52 describes
+-- and no surface has ever built. It needs its own named action with its own
+-- confirmation; registered for the orchestrator rather than smuggled through
+-- this one. T-C1b3 pins the boundary so it stays a known gap, not a surprise.
 -- ===========================================================================
 CREATE OR REPLACE FUNCTION public.biz_venue_order_refund_decision(
   p_order_id uuid,
