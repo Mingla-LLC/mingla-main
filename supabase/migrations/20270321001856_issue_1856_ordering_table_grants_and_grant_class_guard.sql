@@ -53,14 +53,30 @@
 --   than the first.
 --
 -- AND THE GUARD IMMEDIATELY FOUND SOMETHING WORSE THAN THE BUG IT WAS BUILT
--- FOR. Part 1b below. Thirteen VIEWS carried the same default grants, and six
--- of them were auto-updatable without `security_invoker` — which means writes
--- through them run as the VIEW OWNER and the base table's RLS is never
--- consulted at all. `business_public_brands_view` was a simple view over
--- `public.brands` with anon holding INSERT/UPDATE/DELETE: an anonymous write
--- into brands, through PostgREST, with row security switched off. That is not
--- a TRUNCATE-shaped risk that RLS contains — it is an RLS bypass, it is now
--- its own severity in the guard, and it can never be baselined.
+-- FOR. Part 1b below. Thirteen VIEWS carried the same default write grants for
+-- anon and authenticated. Counted precisely, because overstating this would be
+-- as bad as missing it — of the thirteen, on 2026-08-11:
+--
+--   * ONE was live-exploitable: `business_public_brands_view`. Simple SELECT
+--     over `public.brands`, owner postgres, `security_invoker` UNSET,
+--     auto-updatable (pg_relation_is_updatable = 28), anon holding
+--     INSERT/UPDATE/DELETE. A write through it runs as the VIEW OWNER, and
+--     `brands` is owned by that same role with RLS enabled but NOT FORCEd — so
+--     row security is never consulted. That is an anonymous write into
+--     `brands` through PostgREST with RLS switched off. Not a TRUNCATE-shaped
+--     risk that a policy contains: an RLS BYPASS.
+--   * FIVE were auto-updatable but `security_invoker=true`
+--     (brands_public_view, events_public_view, organisers_public_view,
+--     profiles_with_segment, venue_claim_active_feedback). Writes run as the
+--     CALLER, so the base table's RLS does apply. Over-broad, contained.
+--   * SEVEN were not updatable at all (aggregates/joins), so Postgres would
+--     have refused the write regardless.
+--
+-- All thirteen are revoked anyway. A view definition is one migration away
+-- from becoming auto-updatable, and nothing in the product ever wrote through
+-- any of them — every repo reference is a `.select()`. The distinction is kept
+-- in the GUARD, not in what gets fixed: `rls_bypass_view_write` is its own
+-- severity, it can never be baselined, and it must be zero.
 --
 -- APPLY VIA THE MANAGEMENT-API LANE FROM MERGED MAIN. Never `supabase db push`.
 -- ===========================================================================
@@ -171,6 +187,12 @@ COMMENT ON TABLE public.qr_spots IS
 -- to these views is a `.select()`, and the migrations that created them wrote
 -- `GRANT SELECT` (see the per-view citations below). They are the same
 -- ALTER DEFAULT PRIVILEGES artefact as the tables above.
+--
+-- Only `business_public_brands_view` was live-exploitable (see the file header
+-- for the exact count of which views were auto-updatable and which were
+-- security_invoker). All thirteen are revoked because a view definition is one
+-- migration away from becoming auto-updatable, and a grant nobody wants should
+-- not be waiting for that day.
 --
 -- ANON READ SURFACE — each view keeps exactly the readers it has, and the
 -- reason is recorded, because narrowing a read is its own outage (#1846) and
