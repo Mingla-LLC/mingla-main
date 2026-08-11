@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 502,
+  "expectedStrictGrepMjsFiles": 503,
   "selfTestWiredFloor": 312,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -7756,6 +7756,19 @@
       "selfTest": "none",
       "jobKeys": [
         "issue-1850-quarantine-invariant-handoff-tester-adversarial"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-1890-lift-singularity.tester.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-1890-lift-singularity-tester-adversarial"
       ]
     }
   ]
