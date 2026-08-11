@@ -197,8 +197,8 @@ export function VenueTabsCard({
                 ))}
                 {closeTab.isError ? (
                   <Text style={styles.warn} testID={`venue-tab-close-error-${tab.sessionId}`}>
-                    That didn&apos;t go through. Nothing has been charged — try it
-                    again.
+                    {closeTab.error?.message ??
+                      "That didn't go through. Nothing has been charged — try it again."}
                   </Text>
                 ) : null}
                 <Pressable

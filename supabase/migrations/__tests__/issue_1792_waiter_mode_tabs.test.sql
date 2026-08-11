@@ -71,6 +71,12 @@ BEGIN
     RETURNING id INTO v_spot;
   END IF;
 
+  -- #1792 — biz_venue_tab_open now reads staff_tabs_enabled, and fails CLOSED
+  -- when a venue has no settings row at all.
+  INSERT INTO public.venue_ordering_settings (venue_id, brand_id, ordering_enabled)
+  VALUES (v_venue, v_brand, true)
+  ON CONFLICT (venue_id) DO UPDATE SET ordering_enabled = true;
+
   INSERT INTO public.menus (brand_id, venue_id, name)
   VALUES (v_brand, v_venue, 'All day') RETURNING id INTO v_menu;
   INSERT INTO public.menu_items (menu_id, brand_id, name, price_cents, currency)
@@ -509,6 +515,44 @@ BEGIN
   END;
   IF NOT v_raised THEN
     RAISE EXCEPTION 'issue_1792 T-1792-T5: per_round was accepted as a close method';
+  END IF;
+END $t$;
+
+-- ---------------------------------------------------------------------------
+-- T-1792-T6 — P-16's switch is REAL. A venue with staff tabs off cannot have
+-- one opened on them, and a venue with no settings row at all fails CLOSED.
+-- ---------------------------------------------------------------------------
+DO $t$
+DECLARE v_s uuid; v_raised boolean; v_state text;
+BEGIN
+  v_s := pg_temp.mint_session();
+  PERFORM pg_temp.mint_round(v_s, 1200);
+  PERFORM pg_temp.act_as(pg_temp.fx('owner'));
+
+  UPDATE public.venue_ordering_settings SET staff_tabs_enabled = false
+   WHERE venue_id = pg_temp.fx('venue');
+  v_raised := false;
+  BEGIN PERFORM public.biz_venue_tab_open(v_s);
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM LIKE '%staff_tabs_disabled%' THEN v_raised := true; ELSE RAISE; END IF;
+  END;
+  IF NOT v_raised THEN
+    RAISE EXCEPTION
+      'issue_1792 T-1792-T6: a tab opened on a venue that switched staff tabs OFF';
+  END IF;
+  SELECT tab_state INTO v_state FROM public.venue_order_sessions WHERE id = v_s;
+  IF v_state <> 'none' THEN
+    RAISE EXCEPTION 'issue_1792 T-1792-T6: a refused open still moved the tab to %', v_state;
+  END IF;
+
+  -- POSITIVE CONTROL: switched back on, the SAME call succeeds. Without this
+  -- the assertion above would pass on a function that refused everything.
+  UPDATE public.venue_ordering_settings SET staff_tabs_enabled = true
+   WHERE venue_id = pg_temp.fx('venue');
+  PERFORM public.biz_venue_tab_open(v_s);
+  SELECT tab_state INTO v_state FROM public.venue_order_sessions WHERE id = v_s;
+  IF v_state <> 'open' THEN
+    RAISE EXCEPTION 'issue_1792 T-1792-T6: the control open did not take (state %)', v_state;
   END IF;
 END $t$;
 

@@ -504,8 +504,8 @@ export function VenueOrderPadSheet({
                 ) : null}
                 {closeTab.isError ? (
                   <Text style={styles.blocker} testID="venue-order-pad-tab-bill-error">
-                    That didn&apos;t go through. Nothing has been charged — try it
-                    again.
+                    {closeTab.error?.message ??
+                      "That didn't go through. Nothing has been charged — try it again."}
                   </Text>
                 ) : null}
                 <Button
@@ -841,9 +841,12 @@ export function VenueOrderPadSheet({
                 </Text>
               ) : null}
               {createOrder.isError ? (
+                // The SERVER's words. "{Item} is 86'd", "Ordering is paused",
+                // "That tab has been closed" — each names the one thing to do
+                // next, which a generic retry line never can.
                 <Text style={styles.blocker} testID="venue-order-pad-send-error">
-                  That didn&apos;t send. Nothing has reached the kitchen — try it
-                  again.
+                  {createOrder.error?.message ??
+                    "That didn't send. Nothing has reached the kitchen — try it again."}
                 </Text>
               ) : null}
               <Button
@@ -934,8 +937,8 @@ export function VenueOrderPadSheet({
                 ) : null}
                 {settle.isError ? (
                   <Text style={styles.blocker} testID="venue-order-pad-bill-error">
-                    That didn&apos;t go through. Nothing has been charged — try it
-                    again.
+                    {settle.error?.message ??
+                      "That didn't go through. Nothing has been charged — try it again."}
                   </Text>
                 ) : null}
                 <Button
@@ -984,8 +987,15 @@ export function VenueOrderPadSheet({
                   </Pressable>
                 ))}
 
-                {/* D-2 AMENDED — a waiter may open a tab and keep serving. */}
-                {canOpenTabs && !resumingTab ? (
+                {/* D-2 AMENDED — a waiter may open a tab and keep serving,
+                    when their rank allows it AND the venue has staff tabs
+                    switched on (P-16). `staffTabsEnabled` comes back from the
+                    same preview that priced the cart; `!== false` so a preview
+                    that has not landed yet does not hide a control the venue
+                    does have. The server refuses either way
+                    (`staff_tabs_disabled`). */}
+                {canOpenTabs && !resumingTab &&
+                    preview.data?.staffTabsEnabled !== false ? (
                   <Pressable
                     onPress={handleStartTab}
                     disabled={openTab.isPending}
@@ -1020,8 +1030,8 @@ export function VenueOrderPadSheet({
 
                 {settle.isError ? (
                   <Text style={styles.blocker} testID="venue-order-pad-settle-error">
-                    That didn&apos;t go through. Nothing has been charged — try it
-                    again.
+                    {settle.error?.message ??
+                      "That didn't go through. Nothing has been charged — try it again."}
                   </Text>
                 ) : null}
               </>

@@ -887,6 +887,7 @@ function mapTabRpcError(message: string): Response {
   if (message.includes("not_authorized")) {
     return jsonResponse({ error: "not_authorized" }, 403);
   }
+  if (message.includes("staff_tabs_disabled")) return fail("staff_tabs_disabled");
   if (message.includes("tab_not_open")) return fail("tab_not_open");
   // Issue #1792 — a bill already out on the guest's phone is its own answer,
   // not "that order has moved on": the venue has to finish it or let it lapse

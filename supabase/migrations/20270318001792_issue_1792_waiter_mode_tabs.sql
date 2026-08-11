@@ -53,8 +53,17 @@
 -- so what a waiter sees on the tab card and what the close RPC bills are the
 -- same arithmetic by construction.
 --
+-- ---------------------------------------------------------------------------
+-- 4. P-16's TAB SWITCH HAD NO ENFORCEMENT POINT.
+--
+-- `venue_ordering_settings.staff_tabs_enabled` shipped in Phase 1 and P-26 says
+-- the tab actions are gated on it, but nothing in the product ever read it — a
+-- venue that switched staff tabs off could still have one opened on them. The
+-- gate goes into `biz_venue_tab_open`, beside the rank floor, because a rule the
+-- database does not enforce is a rule the next caller forgets.
+--
 -- Additive only. No table is created, no column is added, no live money row
--- changes shape. Two functions are CREATE OR REPLACE'd (ACL preserved), one
+-- changes shape. Three functions are CREATE OR REPLACE'd (ACL preserved), one
 -- trigger and one function are new.
 -- ===========================================================================
 
@@ -110,6 +119,67 @@ CREATE TRIGGER trg_venue_orders_settlement_marker_permanent
   BEFORE UPDATE ON public.venue_orders
   FOR EACH ROW
   EXECUTE FUNCTION public._issue_1792_settlement_marker_is_permanent();
+
+-- ---------------------------------------------------------------------------
+-- 1b — P-16's tab switch gets its ONE enforcement point.
+--
+-- `venue_ordering_settings.staff_tabs_enabled` shipped in Phase 1 and P-26 says
+-- tab_open / tab_close are "`staff_tabs_enabled` gated" — but nothing anywhere
+-- read it. A venue that switched staff tabs OFF could still have a tab opened on
+-- them, which is the venue's own credit decision being made for them. The gate
+-- goes in `biz_venue_tab_open` rather than in the edge function, for the same
+-- reason the rank floor did: it is the database that must refuse, or the next
+-- caller simply forgets.
+--
+-- FAIL CLOSED on a missing settings row. A venue with no row has never switched
+-- ordering on at all, so there is no service to extend credit against.
+--
+-- Body is 20270310001790:498-522 with exactly ONE addition, marked `#1792`.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.biz_venue_tab_open(p_session_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_session public.venue_order_sessions%ROWTYPE;
+  v_uid uuid := auth.uid();
+  v_tabs_enabled boolean;
+BEGIN
+  IF v_uid IS NULL THEN RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501'; END IF;
+  SELECT * INTO v_session FROM public.venue_order_sessions
+   WHERE id = p_session_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'session_not_found' USING ERRCODE = 'P0002'; END IF;
+  IF public.biz_brand_effective_rank_for_caller(v_session.brand_id)
+     < public.biz_role_rank('event_manager') THEN
+    RAISE EXCEPTION 'not_authorized' USING ERRCODE = '42501';
+  END IF;
+  -- #1792 — P-16's switch, enforced for the first time.
+  SELECT coalesce(s.staff_tabs_enabled, false) INTO v_tabs_enabled
+    FROM public.venue_ordering_settings s
+   WHERE s.venue_id = v_session.venue_id;
+  IF coalesce(v_tabs_enabled, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'staff_tabs_disabled' USING ERRCODE = 'P0001';
+  END IF;
+  IF v_session.tab_state <> 'none' THEN
+    RAISE EXCEPTION 'tab_not_open' USING ERRCODE = 'P0001';
+  END IF;
+  UPDATE public.venue_order_sessions
+     SET tab_state = 'open', opened_by_user_id = v_uid, opened_at = now()
+   WHERE id = p_session_id;
+  RETURN jsonb_build_object('sessionId', p_session_id, 'tabState', 'open');
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.biz_venue_tab_open(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.biz_venue_tab_open(uuid) FROM anon;
+GRANT EXECUTE ON FUNCTION public.biz_venue_tab_open(uuid)
+  TO authenticated, service_role;
+
+COMMENT ON FUNCTION public.biz_venue_tab_open(uuid) IS
+  'SPEC #1788 P-2a / P-16 — the ONLY tab open path. Rank >= event_manager (a '
+  'tab is the venue extending credit), and Issue #1792 adds the '
+  'staff_tabs_enabled gate P-26 always specified and nothing ever read. Fails '
+  'CLOSED when a venue has no ordering settings row at all.';
 
 -- ---------------------------------------------------------------------------
 -- 2 — the close RPC, with the settlement row excluded from BOTH arms.

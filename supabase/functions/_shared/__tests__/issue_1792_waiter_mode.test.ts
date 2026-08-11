@@ -19,6 +19,11 @@
 //      be added to a tab that was already settled and billed.
 //   3. THE REPLAY. A staff round must resume the SAME sitting the first attempt
 //      created, or a double-tap on a first round opens a second tab.
+//   4. P-16's TAB SWITCH had no enforcement point anywhere — the column shipped
+//      in Phase 1, P-26 said the tab actions were gated on it, and nothing ever
+//      read it. The gate now lives in `biz_venue_tab_open` (behavioural half in
+//      the SQL suite's T-1792-T6, with a positive control); its staff copy is
+//      pinned here.
 // ===========================================================================
 
 import {
@@ -273,8 +278,13 @@ Deno.test("#1792: a replayed staff round resumes the SAME sitting", async () => 
 // ---------------------------------------------------------------------------
 // P-29 — the three new codes, and the rule every one of them obeys.
 // ---------------------------------------------------------------------------
-Deno.test("#1792: the three waiter-mode codes are staff-only and say what to do", () => {
+Deno.test("#1792: the four waiter-mode codes are staff-only and say what to do", () => {
   const expected: Array<[string, number, string]> = [
+    [
+      "staff_tabs_disabled",
+      409,
+      "Tabs are switched off for this venue. Settle each round as it goes.",
+    ],
     [
       "session_not_addable",
       409,
@@ -313,5 +323,5 @@ Deno.test("#1792: the shipped error table only GREW", () => {
     venueOrderErrorCopy("transition_not_allowed", "staff"),
     "That order has already moved on. Pull to refresh.",
   );
-  assert(Object.keys(VENUE_ORDER_ERRORS).length >= 23);
+  assert(Object.keys(VENUE_ORDER_ERRORS).length >= 24);
 });

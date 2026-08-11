@@ -146,6 +146,11 @@ export const VENUE_ORDER_ERRORS = {
     guest: null,
     staff: "This round is on an open tab. Close the tab to settle it.",
   },
+  staff_tabs_disabled: {
+    status: 409,
+    guest: null,
+    staff: "Tabs are switched off for this venue. Settle each round as it goes.",
+  },
   tab_bill_already_sent: {
     status: 409,
     guest: null,

@@ -113,14 +113,54 @@ export function useVenueTabs(
   });
 }
 
+/**
+ * Issue #1792 — the tab card shows the SERVER's refusal, not a generic retry line.
+ *
+ * `functions.invoke` collapses every non-2xx into a `FunctionsHttpError` whose
+ * message is "Edge Function returned a non-2xx status code" — true, useless, and
+ * identical for "that item just came off the menu", "ordering is paused" and
+ * "this tab is already closed". At a busy pass that is the difference between a
+ * waiter fixing it in one tap and a waiter retrying the same doomed order.
+ *
+ * `venue-order-staff` already returns the exact staff-facing copy P-29 specifies
+ * in the body's `message`. This reads it. It never invents one: an unreadable
+ * body falls back to the SDK's own error, because a made-up explanation is worse
+ * than an honest shrug.
+ */
 async function invokeStaff(
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const { data, error } = await supabase.functions.invoke("venue-order-staff", {
     body,
   });
-  if (error !== null) throw error as unknown as Error;
+  if (error !== null) throw await staffError(error);
   return (data ?? {}) as Record<string, unknown>;
+}
+
+async function staffError(error: unknown): Promise<Error> {
+  const context = (error as { context?: unknown }).context;
+  if (context !== null && typeof context === "object") {
+    const response = context as { json?: () => Promise<unknown> };
+    if (typeof response.json === "function") {
+      try {
+        const parsed = (await response.json()) as {
+          message?: unknown;
+          error?: unknown;
+        };
+        const message = typeof parsed.message === "string" && parsed.message.trim()
+          ? parsed.message.trim()
+          : null;
+        if (message !== null) {
+          const surfaced = new Error(message);
+          surfaced.name = typeof parsed.error === "string" ? parsed.error : "Error";
+          return surfaced;
+        }
+      } catch {
+        // Body already read, or not JSON. Fall through to the SDK's error.
+      }
+    }
+  }
+  return error as Error;
 }
 
 /**

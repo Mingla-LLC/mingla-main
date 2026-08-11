@@ -63,12 +63,18 @@ jest.mock("../../context/AuthContext", () => ({
   useAuth: () => ({ isAuthReady: authReady, user: { id: "user-1" } }),
 }));
 
+let invokeError: unknown = null;
+
 jest.mock("../../services/supabase", () => ({
   supabase: {
     functions: {
       invoke: (fn: string, opts: { body: Record<string, unknown> }) => {
         captured.invokes.push({ fn, body: opts.body });
-        return Promise.resolve({ data: invokeResult, error: null });
+        return Promise.resolve(
+          invokeError === null
+            ? { data: invokeResult, error: null }
+            : { data: null, error: invokeError },
+        );
       },
     },
     rpc: (fn: string, args: Record<string, unknown>) => {
@@ -111,6 +117,7 @@ describe("issue #1792 — the pad asks the SERVER for every number", () => {
     captured.rpcs = [];
     authReady = true;
     invokeResult = {};
+    invokeError = null;
     rpcResult = { tabs: [] };
   });
 
@@ -248,6 +255,60 @@ describe("issue #1792 — the pad asks the SERVER for every number", () => {
     ).rejects.toThrow();
   });
 
+  test("T-ERR1 — a refusal surfaces the SERVER's words, never a generic retry", async () => {
+    // `functions.invoke` collapses every non-2xx into "Edge Function returned a
+    // non-2xx status code" — identical for "that item just came off the menu",
+    // "ordering is paused" and "this tab is already closed". At a pass that is
+    // the difference between fixing it in one tap and retrying a doomed order.
+    // A faithful FunctionsHttpError: a real Error carrying the Response on
+    // `context`, which is exactly what supabase-js hands back.
+    invokeError = Object.assign(
+      new Error("Edge Function returned a non-2xx status code"),
+      {
+        name: "FunctionsHttpError",
+        context: {
+          json: () =>
+            Promise.resolve({
+              error: "item_not_orderable",
+              message: "Negroni is 86'd or outside its service window.",
+            }),
+        },
+      },
+    );
+    useCreateStaffOrder("brand-1");
+    await expect(
+      lastMutationFn()({
+        spotCode: "kq7m3pd2xr",
+        venueId: null,
+        sessionId: null,
+        buyerName: null,
+        lines: [{ menuItemId: "item-1", quantity: 1, modifierIds: [], notes: null }],
+        idempotencyKey: "pad:abc",
+      } as never),
+    ).rejects.toThrow("Negroni is 86'd or outside its service window.");
+  });
+
+  test("T-ERR2 — an unreadable body falls back, it never invents an explanation", async () => {
+    invokeError = Object.assign(
+      new Error("Edge Function returned a non-2xx status code"),
+      {
+        name: "FunctionsHttpError",
+        context: { json: () => Promise.reject(new Error("body already read")) },
+      },
+    );
+    useCreateStaffOrder("brand-1");
+    await expect(
+      lastMutationFn()({
+        spotCode: "kq7m3pd2xr",
+        venueId: null,
+        sessionId: null,
+        buyerName: null,
+        lines: [{ menuItemId: "item-1", quantity: 1, modifierIds: [], notes: null }],
+        idempotencyKey: "pad:abc",
+      } as never),
+    ).rejects.toThrow("Edge Function returned a non-2xx status code");
+  });
+
   test("T-SETTLE-WIRE — venue_collected sends NO buyer, and no money field", async () => {
     invokeResult = { kind: "settled_venue_collected" };
     useSettleStaffOrder("brand-1");
@@ -274,6 +335,7 @@ describe("issue #1792 — tabs", () => {
     captured.invokes = [];
     captured.rpcs = [];
     authReady = true;
+    invokeError = null;
     rpcResult = { tabs: [] };
   });
 
