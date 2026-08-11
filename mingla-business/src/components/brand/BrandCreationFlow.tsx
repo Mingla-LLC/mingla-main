@@ -7,6 +7,7 @@ import {
   Text,
   TextInput,
   View,
+  type View as ViewInstance,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 // ORCH-1081 — partner mode (Step 0 + Step 5 "Invite the owner"). The toggle
@@ -279,6 +280,12 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   })();
 
   const [state, setState] = useState<BrandCreationState>(initialState);
+  const [name, setName] = useState("");
+  const [bio, setBio] = useState("");
+  const stepZeroCommittedRef = useRef(false);
+  const pendingHeadingFocusRef = useRef<0 | 1 | null>(null);
+  const stepZeroHeadingRef = useRef<ViewInstance | null>(null);
+  const stepOneHeadingRef = useRef<ViewInstance | null>(null);
 
   // If partner status arrives AFTER initial mount (network race), promote the
   // user to step 0 IF they haven't started the wizard yet (still on step 1
@@ -290,16 +297,17 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   // auth-warm open of `/brand/new?partner_mode=client`, partner status can
   // resolve AFTER mount, leaving the flow in self-mode with no path to step 5
   // (the invite). The added `else if` re-applies client mode once `isPartner`
-  // becomes true. Both branches stay gated on "user hasn't started typing"
-  // (empty name + bio), so neither overrides real user intent.
+  // becomes true. Client query intent is authoritative without hiding typed
+  // identity; the Step 0 initialization branch uses the actual local inputs.
   useEffect(() => {
     if (
       isPartner &&
+      !stepZeroCommittedRef.current &&
+      partnerModeParam !== "client" &&
       state.step === 1 &&
-      state.name === "" &&
-      state.bio === "" &&
       state.mode === "self" &&
-      partnerModeParam !== "client"
+      name === "" &&
+      bio === ""
     ) {
       setState((prev) => ({ ...prev, step: 0 }));
     } else if (
@@ -317,14 +325,23 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   }, [
     isPartner,
     state.step,
+    state.mode,
     state.name,
     state.bio,
-    state.mode,
     partnerModeParam,
+    name,
+    bio,
   ]);
+
+  useEffect(() => {
+    const destination = pendingHeadingFocusRef.current;
+    if (destination === null || destination !== state.step) return;
+    pendingHeadingFocusRef.current = null;
+    const headingRef = destination === 0 ? stepZeroHeadingRef : stepOneHeadingRef;
+    headingRef.current?.focus();
+  }, [state.step]);
+
   const [brand, setBrand] = useState<Brand | null>(null);
-  const [name, setName] = useState("");
-  const [bio, setBio] = useState("");
   const [address, setAddress] = useState("");
   // META-ORCH-1009 Sub-F WS1: validated-address metadata. Only set when the user
   // PICKS an autocomplete result; cleared on free-text typing so Continue stays
@@ -433,6 +450,13 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   const updateState = useCallback((action: BrandCreationAction): void => {
     setState((prev) => brandCreationReducer(prev, action));
   }, []);
+
+  const handleModeContinue = useCallback((): void => {
+    if (stepZeroCommittedRef.current) return;
+    stepZeroCommittedRef.current = true;
+    pendingHeadingFocusRef.current = 1;
+    updateState({ type: "next" });
+  }, [updateState]);
 
   const commitDefaultBrand = useCallback(
     (newBrand: Brand): void => {
@@ -643,7 +667,13 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         <Pressable
           onPress={() => {
             if (isAtEntry) onCancel?.();
-            else updateState({ type: "back" });
+            else {
+              if (isPartner && state.step === 1) {
+                stepZeroCommittedRef.current = false;
+                pendingHeadingFocusRef.current = 0;
+              }
+              updateState({ type: "back" });
+            }
           }}
           accessibilityRole="button"
           accessibilityLabel={isAtEntry ? "Cancel brand creation" : "Back"}
@@ -665,83 +695,112 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
       >
         {state.step === 0 ? (
           <View style={styles.stepBody}>
-            <Text style={styles.title}>{BRAND_CREATION_COPY.step0.title}</Text>
+            <View
+              ref={stepZeroHeadingRef}
+              accessible
+              focusable
+              tabIndex={-1}
+              accessibilityRole="header"
+              accessibilityLabel={BRAND_CREATION_COPY.step0.title}
+            >
+              <Text style={styles.title}>{BRAND_CREATION_COPY.step0.title}</Text>
+            </View>
             <Text style={styles.body}>
               {BRAND_CREATION_COPY.step0.subtitle}
             </Text>
-            <Pressable
-              accessibilityRole="radio"
-              accessibilityState={{ selected: state.mode === "self" }}
-              accessibilityLabel={BRAND_CREATION_COPY.step0.selfTitle}
-              onPress={() => updateState({ type: "setMode", mode: "self" })}
-              style={styles.modeCardWrap}
+            <View
+              accessibilityRole="radiogroup"
+              accessibilityLabel={BRAND_CREATION_COPY.step0.title}
+              style={styles.modeGroup}
             >
-              <GlassCard
-                variant="elevated"
-                padding={spacing.lg}
-                style={state.mode === "self" ? styles.modeCardActive : undefined}
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ selected: state.mode === "self" }}
+                accessibilityLabel={BRAND_CREATION_COPY.step0.selfTitle}
+                onPress={() => updateState({ type: "setMode", mode: "self" })}
+                style={styles.modeCardWrap}
               >
-                <View style={styles.modeCardRow}>
-                  <View style={styles.modeCardCol}>
-                    <Text style={styles.modeCardTitle}>
-                      {BRAND_CREATION_COPY.step0.selfTitle}
-                    </Text>
-                    <Text style={styles.modeCardBody}>
-                      {BRAND_CREATION_COPY.step0.selfBody}
-                    </Text>
+                <GlassCard
+                  variant="elevated"
+                  padding={spacing.lg}
+                  style={state.mode === "self" ? styles.modeCardActive : undefined}
+                >
+                  <View style={styles.modeCardRow}>
+                    <View style={styles.modeCardCol}>
+                      <Text style={styles.modeCardTitle}>
+                        {BRAND_CREATION_COPY.step0.selfTitle}
+                      </Text>
+                      <Text style={styles.modeCardBody}>
+                        {BRAND_CREATION_COPY.step0.selfBody}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.radioDot,
+                        state.mode === "self" && styles.radioDotActive,
+                      ]}
+                    />
                   </View>
-                  <View
-                    style={[
-                      styles.radioDot,
-                      state.mode === "self" && styles.radioDotActive,
-                    ]}
-                  />
-                </View>
-              </GlassCard>
-            </Pressable>
-            <Pressable
-              accessibilityRole="radio"
-              accessibilityState={{ selected: state.mode === "client" }}
-              accessibilityLabel={BRAND_CREATION_COPY.step0.clientTitle}
-              onPress={() => updateState({ type: "setMode", mode: "client" })}
-              style={styles.modeCardWrap}
-            >
-              <GlassCard
-                variant="elevated"
-                padding={spacing.lg}
-                style={
-                  state.mode === "client" ? styles.modeCardActive : undefined
-                }
+                </GlassCard>
+              </Pressable>
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ selected: state.mode === "client" }}
+                accessibilityLabel={BRAND_CREATION_COPY.step0.clientTitle}
+                onPress={() => updateState({ type: "setMode", mode: "client" })}
+                style={styles.modeCardWrap}
               >
-                <View style={styles.modeCardRow}>
-                  <View style={styles.modeCardCol}>
-                    <Text style={styles.modeCardTitle}>
-                      🤝 {BRAND_CREATION_COPY.step0.clientTitle}
-                    </Text>
-                    <Text style={styles.modeCardBody}>
-                      {BRAND_CREATION_COPY.step0.clientBody}
-                    </Text>
+                <GlassCard
+                  variant="elevated"
+                  padding={spacing.lg}
+                  style={
+                    state.mode === "client" ? styles.modeCardActive : undefined
+                  }
+                >
+                  <View style={styles.modeCardRow}>
+                    <View style={styles.modeCardCol}>
+                      <Text style={styles.modeCardTitle}>
+                        🤝 {BRAND_CREATION_COPY.step0.clientTitle}
+                      </Text>
+                      <Text style={styles.modeCardBody}>
+                        {BRAND_CREATION_COPY.step0.clientBody}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.radioDot,
+                        state.mode === "client" && styles.radioDotActive,
+                      ]}
+                    />
                   </View>
-                  <View
-                    style={[
-                      styles.radioDot,
-                      state.mode === "client" && styles.radioDotActive,
-                    ]}
-                  />
-                </View>
-              </GlassCard>
-            </Pressable>
+                </GlassCard>
+              </Pressable>
+            </View>
           </View>
         ) : null}
 
         {state.step === 1 ? (
           <View style={styles.stepBody}>
             <View style={styles.titleRow}>
-              <Text style={[styles.title, styles.titleFlex]}>
-                {state.mode === "client"
-                  ? BRAND_CREATION_COPY.step1.titleClient
-                  : BRAND_CREATION_COPY.step1.title}
-              </Text>
+              <View
+                ref={stepOneHeadingRef}
+                accessible
+                focusable
+                tabIndex={-1}
+                accessibilityRole="header"
+                accessibilityLabel={
+                  state.mode === "client"
+                    ? BRAND_CREATION_COPY.step1.titleClient
+                    : BRAND_CREATION_COPY.step1.title
+                }
+                style={styles.titleFlex}
+              >
+                <Text style={styles.title}>
+                  {state.mode === "client"
+                    ? BRAND_CREATION_COPY.step1.titleClient
+                    : BRAND_CREATION_COPY.step1.title}
+                </Text>
+              </View>
               {state.mode === "client" ? (
                 <Text style={styles.partnerChip}>🤝 Client setup</Text>
               ) : null}
@@ -1026,7 +1085,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         {state.step === 0 ? (
           <Button
             label={BRAND_CREATION_COPY.step0.cta}
-            onPress={() => updateState({ type: "next" })}
+            onPress={handleModeContinue}
             variant="primary"
             size="lg"
           />
@@ -1197,6 +1256,9 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   stepBody: {
+    gap: spacing.md,
+  },
+  modeGroup: {
     gap: spacing.md,
   },
   title: {
