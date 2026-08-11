@@ -21,18 +21,29 @@
  * tables this issue fixed are additionally asserted to carry ZERO policies, but
  * that assertion lives in the live half and covers only those twelve.
  *
- * ── TWO HALVES, EACH OF WHICH FAILS IF THE OTHER IS REMOVED ────────────────
- * This half is STATIC: it replays the migration chain in filename order and
- * asserts every table it leaves alive in `public` has an RLS enable. That is
- * the half that can run on every PR with no database.
+ * ── THE EARLY HALF, NOT THE AUTHORITATIVE ONE. READ THIS BEFORE TRUSTING IT ─
+ * This file is the EARLY half: static, no database, runs on every PR, and
+ * therefore tells you within seconds that a migration forgot an ENABLE. It
+ * works by PARSING TEXT, so its accuracy is bounded by how well it models
+ * PostgreSQL's literal and dynamic-DDL grammar — and that grammar is larger
+ * than any regex sweep of it. It has known blind spots (listed under KNOWN
+ * LIMITS below) and it will acquire more, because every one found so far has
+ * been a new corner of the same grammar.
  *
- * The LIVE half — `pg_class.relrowsecurity` against the real applied schema —
- * is `supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql`,
- * run by the containerised Postgres job in
- * `.github/workflows/supabase-migrations-and-stripe-deno.yml`. Neither half is
- * sufficient alone: source can lie about what the catalog holds, and a catalog
- * assertion cannot run on a PR that never reaches the container. C5 asserts the
- * live half is still WIRED; deleting it fails this gate.
+ * The AUTHORITATIVE half is
+ * `supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql`, run
+ * by the containerised Postgres job in
+ * `.github/workflows/supabase-migrations-and-stripe-deno.yml`. It reads
+ * `pg_class.relrowsecurity` on the schema the chain actually produced, so it is
+ * immune to EVERY parsing limitation on this page BY CONSTRUCTION — it does not
+ * parse anything. Whatever a `DO` block, an `EXECUTE`, an `E'…'` or a string
+ * concatenation did, the catalog records the result.
+ *
+ * **A green run of THIS file is the weaker statement of the two.** It means "no
+ * missing ENABLE that static analysis can see". It is not a substitute for the
+ * catalog test, and anyone reading it as one has the guarantee backwards. C5
+ * asserts the authoritative half is still WIRED; deleting it fails this gate,
+ * precisely because this half alone is not enough.
  *
  * A third file is load-bearing and is guarded the same way: the tester-owned
  * `scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs`,
@@ -77,7 +88,8 @@
  *      now masked inside `DO` bodies too, in BOTH forms: `'…'` and dollar-quoted
  *      `$tag$…$tag$` (the chain really does use `EXECUTE $convert$ … $convert$`).
  *
- *  R3  DYNAMIC DDL IS READ ONLY FROM AN `EXECUTE` ARGUMENT POSITION. A string is
+ *  R3  DYNAMIC DDL IS READ ONLY FROM THE EXECUTED STATEMENT — WHICH IS THE FIRST
+ *      ADJACENT-LITERAL RUN AFTER `EXECUTE`, AND NOTHING AFTER IT. A string is
  *      DDL when Postgres is told to run it, and at no other time. Roughly a
  *      third of this schema enables RLS through
  *      `FOREACH v IN ARRAY ARRAY[…] LOOP EXECUTE format('ALTER TABLE public.%I
@@ -85,6 +97,20 @@
  *      `ALTER TABLE` statements reports ~45 false positives, gets muted, and is
  *      then worth nothing — so these are resolved, from the `EXECUTE` position
  *      only, against the enclosing loop's array.
+ *      The second half of the rule is what G-1 cost: `format()` arguments and
+ *      `USING` parameters are DATA. Reading them as DDL let a `%L` argument
+ *      spelling an enable report an unprotected table as protected, and one
+ *      spelling a drop remove a live table from scrutiny. Data is never DDL, no
+ *      matter what it spells.
+ *
+ *  R7  THE LITERAL GRAMMAR IS BIGGER THAN ONE QUOTE CHARACTER. Three forms carry
+ *      text and each ends differently: `'…'` (doubled quotes), dollar-quoted
+ *      `$tag$…$tag$`, and `E'…'`, which additionally honours BACKSLASH escapes.
+ *      G-2 was the third: `E'don\\'t …'` mis-ended, and the tail was read as
+ *      statement-level DDL — so a `COMMENT ON TABLE … IS E'…'` could hide a live
+ *      table with no `DO` block involved at all. `U&'…'` deliberately gets no
+ *      special handling: it doubles quotes like an ordinary literal and uses
+ *      backslash only for Unicode code points. Do not "fix" it.
  *
  *  R4  ONLY `DO` BLOCKS ARE EXECUTED. The same `format()` text inside a
  *      `CREATE FUNCTION` body is stored, not run, and must not count.
@@ -102,6 +128,27 @@
  *  R6  RLS CAN BE TURNED BACK OFF. `DISABLE ROW LEVEL SECURITY` and a
  *      drop-then-recreate both clear the enabled state; the replay is ordered by
  *      event, not a set union, so a later disable wins over an earlier enable.
+ *
+ * ── KNOWN LIMITS OF THE STATIC HALF (deliberately not fixed) ───────────────
+ * Written down rather than chased, because "prose read as DDL" has now been
+ * found three times — in the predecessor audit, then F-1, then G-1/G-2 — and
+ * each fix was correct while the next corner of the grammar was still there. A
+ * documented limit is worth more than an undocumented one, and the catalog test
+ * catches every case below regardless.
+ *
+ *  L1  A DDL STATEMENT ASSEMBLED BY CONCATENATION IS INVISIBLE, AND C7 IS SILENT
+ *      ABOUT IT. `EXECUTE 'CREATE TABLE public.' || quote_ident(v) || ' (…)'`
+ *      produces no complete DDL match in any single fragment, so there is no
+ *      event AND nothing for R5 to call unresolvable. R5's fail-closed covers
+ *      the `%I` placeholder form and the fully-opaque `EXECUTE v_sql` form; it
+ *      does not cover this middle case. Today's chain has three concatenated
+ *      `EXECUTE`s and all three build `CREATE TRIGGER` / `CREATE POLICY`, so no
+ *      table is currently hidden by it — a fact, not a defence.
+ *
+ *  L2  MORE OF THE SAME CLASS SHOULD BE ASSUMED TO EXIST. PostgreSQL's literal
+ *      and dynamic-DDL grammar is larger than this file models. If you find one,
+ *      the correct response is to add it HERE and rely on the catalog test,
+ *      not to assume the static half was ever the guarantee.
  *
  * Supports `--self-test`: GOOD plus one BAD fixture per rule, AND — since the
  * #1860 tester proved a fixture-only suite stays green when the real fix is
@@ -150,10 +197,39 @@ function blankRange(chars, from, to) {
   for (let k = from; k < to; k++) if (chars[k] !== "\n") chars[k] = " ";
 }
 
-/** End offset (exclusive) of the `'…'` literal starting at `start`. */
+/**
+ * R7 / G-2. Is the quote at `quoteIdx` the opening quote of an ESCAPE string,
+ * `E'…'`? Only that form honours backslash escapes, so only that form can end
+ * somewhere other than the next undoubled quote.
+ *
+ * The `E` must be a standalone prefix, not the tail of an identifier —
+ * `value_e'x'` is not an escape string, `E'x'` and `(e'x'` are.
+ *
+ * `U&'…'` deliberately needs NO handling and must not be given any: it doubles
+ * quotes exactly like an ordinary literal and uses backslash only to introduce a
+ * Unicode code point (`\0041`), never to escape a quote. Adding backslash
+ * handling for it would MIS-END an ordinary `U&` string. Left alone on purpose.
+ */
+function isEscapeString(text, quoteIdx) {
+  const prev = text[quoteIdx - 1];
+  if (prev !== "E" && prev !== "e") return false;
+  const before = text[quoteIdx - 2];
+  return before === undefined || !/[A-Za-z0-9_$]/.test(before);
+}
+
+/**
+ * End offset (exclusive) of the literal whose opening quote is at `start`.
+ *
+ * G-2: an `E'don\'t'` mis-ended here before, and everything downstream then read
+ * the tail as statement-level DDL. That broke masking at TOP level, not only
+ * inside `DO` bodies — a `COMMENT ON TABLE … IS E'…'` carrying a drop sentence
+ * hid a live table with no `DO` block involved. 15 migrations already use `E'`.
+ */
 function endOfSingleQuoted(sql, start) {
+  const honoursBackslash = isEscapeString(sql, start);
   let j = start + 1;
   while (j < sql.length) {
+    if (honoursBackslash && sql[j] === "\\") { j += 2; continue; }
     if (sql[j] === "'" && sql[j + 1] === "'") { j += 2; continue; }
     if (sql[j] === "'") return j + 1;
     j++;
@@ -417,23 +493,32 @@ export function analyzeDoBody(body, offset = 0) {
       }
     }
 
-    for (const run of runs) {
-      for (const found of ddlIn(run.text)) {
+    // R3 / G-1. ONLY THE FIRST RUN IS THE STATEMENT BEING EXECUTED.
+    //
+    // `EXECUTE format(<template>, <args…>)` and `EXECUTE <stmt> USING <params…>`
+    // both put the executed text first; everything after it is DATA. Reading the
+    // later runs as DDL was F-1's bug one layer in — a `%L` data argument
+    // spelling an enable reported an unprotected table as protected, and one
+    // spelling a drop removed a live table from scrutiny. Data is never DDL, no
+    // matter what it spells.
+    const executed = runs[0];
+    if (executed) {
+      for (const found of ddlIn(executed.text)) {
         if (!isPlaceholder(found.name)) {
-          events.push({ kind: found.kind, name: found.name, at: offset + run.start });
+          events.push({ kind: found.kind, name: found.name, at: offset + executed.start });
           continue;
         }
         const bound = resolve(m.index);
         const names = bound.flatMap((l) => l.names);
         if (names.length > 0) {
-          for (const name of names) events.push({ kind: found.kind, name, at: offset + run.start });
+          for (const name of names) events.push({ kind: found.kind, name, at: offset + executed.start });
           continue;
         }
         if (found.kind === "drop") continue; // R5: safe direction, left in scope.
         unresolved.push({
           kind: found.kind,
-          at: offset + run.start,
-          excerpt: run.text.replace(/\s+/g, " ").slice(0, 120),
+          at: offset + executed.start,
+          excerpt: executed.text.replace(/\s+/g, " ").slice(0, 120),
         });
       }
     }
@@ -997,6 +1082,93 @@ DO $b$ BEGIN RAISE NOTICE 'never do: ALTER TABLE public.safe DISABLE ROW LEVEL S
   );
   check("T-23 a real DROP removes the table from scope", runChecks(one(`CREATE TABLE "public"."temp_thing" (id uuid);\nDROP TABLE "public"."temp_thing";`)), false);
 
+  // ---- G-1: an EXECUTE ARGUMENT is data, never DDL -----------------------
+  check(
+    "T-34 [G-1] a %L data argument spelling an ENABLE does not protect a table",
+    runChecks(
+      one(`CREATE TABLE public.data_faked (id uuid);
+DO $b$ BEGIN
+  EXECUTE format('INSERT INTO public.audit_log(msg) VALUES (%L)',
+                 'ALTER TABLE public.data_faked ENABLE ROW LEVEL SECURITY');
+END $b$;`),
+    ),
+    true,
+    "C1: public.data_faked",
+  );
+  check(
+    "T-35 [G-1] a %L data argument spelling a DROP does not hide a live table",
+    runChecks(
+      one(`CREATE TABLE public.data_hidden (id uuid);
+DO $b$ BEGIN
+  EXECUTE format('INSERT INTO public.audit_log(msg) VALUES (%L)',
+                 'DROP TABLE public.data_hidden;');
+END $b$;`),
+    ),
+    true,
+    "C1: public.data_hidden",
+  );
+  check(
+    "T-36 [G-1] a USING parameter spelling an ENABLE does not protect a table",
+    runChecks(
+      one(`CREATE TABLE public.using_faked (id uuid);
+DO $b$ BEGIN
+  EXECUTE 'INSERT INTO public.audit_log(msg) VALUES (x)'
+    USING 'ALTER TABLE public.using_faked ENABLE ROW LEVEL SECURITY';
+END $b$;`),
+    ),
+    true,
+    "C1: public.using_faked",
+  );
+  check(
+    "T-37 [G-1] the necessary other half: a real template still resolves when data arguments follow it",
+    runChecks(
+      one(`CREATE TABLE public.tmpl_ok (id uuid);
+DO $b$ DECLARE v text; BEGIN
+  FOREACH v IN ARRAY ARRAY['tmpl_ok'] LOOP
+    EXECUTE format('ALTER TABLE public.%I '
+                   'ENABLE ROW LEVEL SECURITY', v || '_ignored_data');
+  END LOOP;
+END $b$;`),
+    ),
+    false,
+  );
+
+  // ---- G-2: E'…' escape strings ------------------------------------------
+  check(
+    "T-38 [G-2] an E-string COMMENT body at TOP level does not hide a live table",
+    runChecks(
+      one(`CREATE TABLE public.e_hidden (id uuid);
+COMMENT ON TABLE public.e_hidden IS E'don\\'t forget: DROP TABLE public.e_hidden;';`),
+    ),
+    true,
+    "C1: public.e_hidden",
+  );
+  check(
+    "T-39 [G-2] an E-string inside a DO body cannot fake an ENABLE",
+    runChecks(
+      one(`CREATE TABLE public.e_faked (id uuid);
+DO $b$ BEGIN
+  RAISE NOTICE E'can\\'t: ALTER TABLE public.e_faked ENABLE ROW LEVEL SECURITY';
+END $b$;`),
+    ),
+    true,
+    "C1: public.e_faked",
+  );
+  check(
+    "T-40 [G-2] a U&'…' literal is still masked — the E fix must not be over-applied",
+    runChecks(
+      one(`CREATE TABLE public.u_hidden (id uuid);
+COMMENT ON TABLE public.u_hidden IS U&'later: DROP TABLE public.u_hidden;';`),
+    ),
+    true,
+    "C1: public.u_hidden",
+  );
+  check(
+    "T-41 [G-2] an ordinary (non-E) literal still ends at the first undoubled quote",
+    runChecks(one(`CREATE TABLE public.plain_ok (id uuid);\nALTER TABLE public.plain_ok ENABLE ROW LEVEL SECURITY;\nCOMMENT ON TABLE public.plain_ok IS 'a backslash \\ is literal here';`)),
+    false,
+  );
+
   // ---- exemption + wiring ------------------------------------------------
   check("T-24 a second exemption FAILS", runChecks(base({ allowlistJson: { tables: ["spatial_ref_sys", "seed_map_presence"] } })), true, "C2:");
   check("T-25 an empty exemption list FAILS", runChecks(base({ allowlistJson: { tables: [] } })), true, "C2:");
@@ -1077,6 +1249,39 @@ DO $b$ BEGIN RAISE NOTICE 'never do: ALTER TABLE public.safe DISABLE ROW LEVEL S
     });
   }
   {
+    // T-34..T-41 guard two code paths. If the real chain never took either, they
+    // would be fixtures defending dead code — true, and worth nothing. This
+    // anchors both to the schema as it actually is.
+    const eFiles = realChain.filter((f) => /(^|[^A-Za-z0-9_$])[Ee]'/.test(f.sql)).length;
+    let multiRun = 0;
+    for (const f of realChain) {
+      for (const body of segment(maskComments(f.sql)).doBodies) {
+        const lits = stringLiterals(body.text);
+        const masked = maskStringLiterals(body.text);
+        for (const m of matches(/\bEXECUTE\b/gi, masked)) {
+          const semi = masked.indexOf(";", m.index);
+          const end = semi === -1 ? masked.length : semi;
+          const inRange = lits.filter((l) => l.start >= m.index && l.end <= end + 1);
+          let runs = 0;
+          let prevEnd = -1;
+          for (const lit of inRange) {
+            if (prevEnd === -1 || !/^\s*$/.test(body.text.slice(prevEnd, lit.start))) runs++;
+            prevEnd = lit.end;
+          }
+          if (runs > 1) multiRun++;
+        }
+      }
+    }
+    results.push({
+      label: "T-42 [ANCHOR] the REAL chain exercises both G-1 and G-2 paths (they are not dead code)",
+      ok: eFiles >= 10 && multiRun >= 5,
+      failures:
+        eFiles >= 10 && multiRun >= 5
+          ? []
+          : [`chain has ${eFiles} files using E'-strings and ${multiRun} multi-run EXECUTEs; the G-1/G-2 fixtures would be guarding paths the chain never takes`],
+    });
+  }
+  {
     const withoutFix = loadChain({ includeFix: false });
     const failures = runChecks({ ...realInputs, files: withoutFix });
     const c1 = failures.filter((f) => f.startsWith("C1:"));
@@ -1151,7 +1356,9 @@ function main() {
   console.log(
     `issue-1860 public-tables-RLS gate passed (${files.length} migrations, ${live.size} live public ` +
       `tables, ${EXEMPT.length} reviewed exemption: ${EXEMPT.join(", ")}). ` +
-      `Scope: RLS is PRESENT on all of them — not that it constrains.`,
+      `Scope: RLS is PRESENT on all of them — not that it constrains. ` +
+      `This is the EARLY half and it parses text; ` +
+      `${LIVE_TEST_PATH} reads pg_class and is the authoritative one.`,
   );
 }
 
