@@ -22,6 +22,9 @@ Deno.test("#873 action edge owns validation, preview persistence, and shared dis
   if (!dispatchSource.includes('request.headers.get("x-mingla-internal-service-key") !== serviceKey')) {
     throw new Error("resolved person/attempt selection is not protected by service-only delegation proof");
   }
+  if (!dispatchSource.includes('body.purpose === "retry_delivery"')) {
+    throw new Error("shared dispatch rejects the retry_delivery purpose delegated by the roster action edge");
+  }
 });
 
 Deno.test("#873 audited export status returns only a short-lived authorized signed URL", () => {

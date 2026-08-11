@@ -16,7 +16,7 @@ import {
 type Channel = "email" | "push" | "sms";
 interface DispatchBody {
   eventId: string;
-  purpose: "invitation" | "reminder";
+  purpose: "invitation" | "reminder" | "retry_delivery";
   selection: Record<string, unknown> & {
     kind:
       | "all_brand_people"
@@ -117,7 +117,8 @@ function isBody(value: unknown): value is DispatchBody {
       ))
   ) return false;
   return typeof body.eventId === "string" && UUID.test(body.eventId) &&
-    (body.purpose === "invitation" || body.purpose === "reminder") &&
+    (body.purpose === "invitation" || body.purpose === "reminder" ||
+      body.purpose === "retry_delivery") &&
     typeof body.clientRequestId === "string" &&
     UUID.test(body.clientRequestId) &&
     (body.mode === "preview" || body.mode === "confirm") &&
