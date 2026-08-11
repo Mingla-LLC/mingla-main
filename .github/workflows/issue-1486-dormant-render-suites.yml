@@ -137,6 +137,16 @@ jobs:
         if: always()
         run: npx jest --config jest.issue1863.render.cjs --runInBand --ci
 
+      # #1890 [keyboard-clearance-overshoot] — Ari's composer is the second of the
+      # four keyboard-compensating surfaces, and the only one whose lift was
+      # blessed as correct by a source pin while overshooting by ~60 on glass.
+      # This suite mounts the real AriChatScreen and reads the composer's
+      # resolved paddingBottom off the mounted tree, so the arithmetic is proven
+      # by execution rather than by the instrument that got it wrong.
+      - name: "#1890 — Ari composer keyboard clearance"
+        if: always()
+        run: npx jest --config jest.issue1890.render.cjs --runInBand --ci
+
       # ---- WEB render proofs -------------------------------------------------
       # react-test-renderer is structurally blind to react-native-web's atomic
       # classes, so these are the only suites in the repo that can catch a whole

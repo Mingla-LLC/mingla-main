@@ -18,6 +18,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // #1850 — the composer's lift is budgeted against the DERIVED Done-bar cost, not
 // a hand-typed number. See the comment at the KeyboardAvoidingView below.
 import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";
+// #1890 — the visible gap promised above the bar, from the shared occluder
+// budget. Exported by BOTH platform variants, so this never reads `undefined`.
+import { MIN_VISIBLE_CLEARANCE } from "../../wrappers/keyboardClearance";
 import { useRouter } from "expo-router";
 
 import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
@@ -235,10 +238,17 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
               the bar 11pt clear of the keyboard's rounded corners, so it occupies 53
               and a 42pt lift left this composer 11pt behind it. DONE_BAR_OCCUPIED is
               derived from the same inputs the library uses, so an OS or library bump
-              moves it without anyone editing this line. */}
+              moves it without anyone editing this line.
+
+              #1890 F-8 — clearing the bar EXACTLY still leaves the composer flush
+              against it, with zero visible gap. This panel renders in the ROOT
+              window, where the bar is definitely present, so it was a 23pt
+              undershoot on iOS 26+ and 12dp on Android: #1834's original
+              field-behind-the-bar bug, on a screen nobody had checked. The
+              clearance contract is bar cost PLUS the promised visible gap. */}
           <KeyboardAvoidingView
             behavior="padding"
-            keyboardVerticalOffset={DONE_BAR_OCCUPIED}
+            keyboardVerticalOffset={DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE}
           >
             {attachment ? (
               <View style={styles.attachmentPreview}>

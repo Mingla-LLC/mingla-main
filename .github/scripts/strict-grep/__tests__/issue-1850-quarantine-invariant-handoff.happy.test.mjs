@@ -186,10 +186,21 @@ test("T-5 the keyboard gate goes RED when a literal 42 returns to any migrated s
     }
     return files;
   };
+  // [TEST-MOD-APPROVED #1890] rule (E) was INVERTED. It used to require Ari's
+  // lift to keep ADDING the composer's measured height; that is the double count
+  // #1890 measured on glass (61.0pt of dead gap on an iPhone SE3, 71.8dp on a
+  // physical Samsung, against a 12pt contract). It now requires the lift to be
+  // EXACTLY the occluder budget and nothing else.
   const MEASURED = [
-    ["src/screens/ari/AriChatScreen.tsx", /onLayout\s*=\s*\{\s*onComposerLayout\s*\}/, "onLayout"],
-    ["src/screens/ari/AriChatScreen.tsx", /setComposerHeight\s*\(/, "setComposerHeight"],
-    ["src/screens/ari/AriChatScreen.tsx", /\bcomposerHeight\b[\s\S]{0,80}?\+/, "composerHeight in the lift"],
+    {
+      rel: "src/screens/ari/AriChatScreen.tsx",
+      lift: /keyboardHeight\s*>\s*0\s*\?([^:]*)/,
+      terms: ["keyboardHeight", "DONE_BAR_OCCUPIED", "MIN_VISIBLE_CLEARANCE"],
+      banned: [
+        [/onLayout\s*=\s*\{\s*onComposerLayout\s*\}/, "onLayout={onComposerLayout} on a composer wrapper"],
+        [/setComposerHeight\s*\(/, "a setComposerHeight(…) call"],
+      ],
+    },
   ];
   const base = () => ({
     files: load(),
@@ -203,12 +214,19 @@ test("T-5 the keyboard gate goes RED when a literal 42 returns to any migrated s
   assert.equal(keyboard.run(base()).code, 0, "the tree as committed must be green");
 
   // Each surface, one at a time, back to the literal it shipped with.
+  //
+  // [TEST-MOD-APPROVED #1890] the mutation is re-keyed onto BEHAVIOUR. It used to
+  // match the exact string `keyboardVerticalOffset={DONE_BAR_OCCUPIED}`, so it
+  // silently stopped mutating the moment a surface's expression changed at all —
+  // and a revert-proof that no longer reverts anything proves nothing. It now
+  // replaces WHATEVER expression the attribute holds, and rewrites Ari's derived
+  // bar term (Ari has no KeyboardAvoidingView; its clearance lives in the lift).
   for (const rel of DERIVED) {
     const m = base();
     const reverted = m.files
       .get(rel)
-      .replace(/keyboardVerticalOffset=\{DONE_BAR_OCCUPIED\}/g, "keyboardVerticalOffset={42}")
-      .replace(/\bDONE_BAR_OCCUPIED \+\n(\s*)composerHeight/g, "42 +\n$1composerHeight");
+      .replace(/keyboardVerticalOffset=\{[^}]*\}/g, "keyboardVerticalOffset={42}")
+      .replace(/keyboardHeight \+ DONE_BAR_OCCUPIED/g, "keyboardHeight + 42");
     assert.notEqual(reverted, m.files.get(rel), `fixture did not revert ${rel}`);
     m.files.set(rel, reverted);
     const r = keyboard.run(m);
@@ -238,10 +256,21 @@ test("T-6 the keyboard gate goes RED when the ORCH-1170 toolbar is un-nested", (
       /keyboardHeight\s*>\s*0\s*\?\s*keyboardHeight\s*\+\s*42/,
     ],
   ];
+  // [TEST-MOD-APPROVED #1890] rule (E) was INVERTED. It used to require Ari's
+  // lift to keep ADDING the composer's measured height; that is the double count
+  // #1890 measured on glass (61.0pt of dead gap on an iPhone SE3, 71.8dp on a
+  // physical Samsung, against a 12pt contract). It now requires the lift to be
+  // EXACTLY the occluder budget and nothing else.
   const MEASURED = [
-    ["src/screens/ari/AriChatScreen.tsx", /onLayout\s*=\s*\{\s*onComposerLayout\s*\}/, "onLayout"],
-    ["src/screens/ari/AriChatScreen.tsx", /setComposerHeight\s*\(/, "setComposerHeight"],
-    ["src/screens/ari/AriChatScreen.tsx", /\bcomposerHeight\b[\s\S]{0,80}?\+/, "composerHeight in the lift"],
+    {
+      rel: "src/screens/ari/AriChatScreen.tsx",
+      lift: /keyboardHeight\s*>\s*0\s*\?([^:]*)/,
+      terms: ["keyboardHeight", "DONE_BAR_OCCUPIED", "MIN_VISIBLE_CLEARANCE"],
+      banned: [
+        [/onLayout\s*=\s*\{\s*onComposerLayout\s*\}/, "onLayout={onComposerLayout} on a composer wrapper"],
+        [/setComposerHeight\s*\(/, "a setComposerHeight(…) call"],
+      ],
+    },
   ];
   for (const rel of NESTED) {
     const files = new Map();

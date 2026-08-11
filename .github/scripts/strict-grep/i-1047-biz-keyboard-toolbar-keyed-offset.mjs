@@ -53,6 +53,15 @@
  *      uses, so an OS bump or a library change to OPENED_OFFSET moves it with no
  *      edit here.
  *
+ *  (E) NO PILL-HEIGHT DOUBLE COUNT (INVERTED by #1890) — Ari's keyboard-open lift
+ *      must be EXACTLY `keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE`.
+ *      This rule previously demanded the OPPOSITE — that the lift keep adding the
+ *      composer's MEASURED height. That pinned the arithmetic instead of the intent
+ *      and hard-required the defect: `inputWrap`'s paddingBottom already positions
+ *      the pill's bottom edge, so adding the pill's height lifts it twice (61.0pt of
+ *      dead gap measured on an iPhone SE3, 71.8dp on a physical Samsung, against a
+ *      12pt contract).
+ *
  * Rule (B) still names 42 on purpose: those three surfaces add the clearance to a
  * `spacing.*` term and were NOT migrated by #1850 (two of them are additionally
  * pinned by live jest suites that append-only forbids editing). Rule (D)'s
@@ -136,21 +145,40 @@ const IMPORTS_DERIVED = /import\s*\{[^}]*\bDONE_BAR_OCCUPIED\b[^}]*\}\s*from\s*[
 const USES_DERIVED = /\bDONE_BAR_OCCUPIED\b/;
 
 /**
- * (E) MEASURED COMPOSER HEIGHT — the Ari composer's lift must keep reading the
- * pill's REAL rendered height. ORCH-1165 REWORK loop 2 shipped this because the
- * pill is taller than the Done bar (~57dp on one line, more multi-line or at a
- * large font scale), so lifting by clearance alone left the text-input row behind
- * the bar with the typed text invisible until dismiss. `onLayout` +
- * `setComposerHeight` is what makes it self-adjust; replacing them with any
- * constant — however carefully chosen — reintroduces the exact defect. Named
- * separately from (D) because (D) only stops a guessed CLEARANCE, and this stops
- * a guessed PILL HEIGHT.
+ * (E) NO PILL-HEIGHT DOUBLE COUNT — INVERTED by #1890.
+ *
+ * This rule used to require the OPPOSITE: that Ari's lift keep adding the
+ * composer's measured height (`onLayout` + `setComposerHeight` + `composerHeight`
+ * inside the addition). That was my own-goal, approved from #1850's spec text
+ * without asking what the measurement was USED for.
+ *
+ * Measuring the pill is fine. Adding it to `inputWrap`'s `paddingBottom` is the
+ * bug: `inputWrap` carries only paddingHorizontal/paddingTop and is the last
+ * in-flow child of a flex:1 column, so its paddingBottom ALREADY positions the
+ * pill's bottom edge. Adding the pill's own height lifts it a second time.
+ * #1890 measured the result on glass — 61.0pt of gap on an iPhone SE3 and
+ * 71.8dp on a physical Samsung, against a 12pt contract.
+ *
+ * So the rule now pins the INTENT it should have pinned all along: the
+ * keyboard-open lift is EXACTLY the occluder budget — `keyboardHeight`, the
+ * derived bar cost, and the promised visible clearance — and nothing else. That
+ * catches a returning `composerHeight`, a returning `spacing.sm`, and a
+ * returning numeric literal, without pinning the expression's text.
+ *
+ * `terms` is the exact identifier set the lift may contain. Any extra
+ * identifier, and any numeric literal at all, is a violation.
  */
-const MEASURED_COMPOSER = [
-  ["src/screens/ari/AriChatScreen.tsx", /onLayout\s*=\s*\{\s*onComposerLayout\s*\}/, "onLayout={onComposerLayout} on the composer wrapper"],
-  ["src/screens/ari/AriChatScreen.tsx", /setComposerHeight\s*\(/, "a setComposerHeight(…) call fed by the measured layout"],
-  ["src/screens/ari/AriChatScreen.tsx", /\bcomposerHeight\b[\s\S]{0,80}?\+/, "composerHeight added into the keyboard-open lift"],
-];
+const NO_DOUBLE_COUNT = {
+  rel: "src/screens/ari/AriChatScreen.tsx",
+  /** The keyboard-open consequent of the `keyboardHeight > 0 ? … : …` ternary. */
+  lift: /keyboardHeight\s*>\s*0\s*\?([^:]*)/,
+  terms: ["keyboardHeight", "DONE_BAR_OCCUPIED", "MIN_VISIBLE_CLEARANCE"],
+  /** Plumbing that only ever existed to feed the double count. */
+  banned: [
+    [/onLayout\s*=\s*\{\s*onComposerLayout\s*\}/, "onLayout={onComposerLayout} on a composer wrapper"],
+    [/setComposerHeight\s*\(/, "a setComposerHeight(…) call"],
+  ],
+};
 
 /**
  * The whole check, over an injected file map so `--self-test` can drive it with
@@ -168,7 +196,7 @@ export function run({ files, mountHosts, keyed, nestedHosts, derivedHosts, measu
   if (keyed.length === 0) empty.push("(B) keyed offset");
   if (nestedHosts.length === 0) empty.push("(C) provider nesting");
   if (derivedHosts.length === 0) empty.push("(D) derived clearance");
-  if (measured.length === 0) empty.push("(E) measured composer");
+  if (measured.length === 0) empty.push("(E) no pill-height double count");
   if (empty.length > 0) {
     return {
       code: 2,
@@ -181,7 +209,7 @@ export function run({ files, mountHosts, keyed, nestedHosts, derivedHosts, measu
   }
 
   // ---- VACUITY: an unreadable target is a hard stop, never a skip (#1559). ----
-  const all = [...new Set([...mountHosts, ...keyed.map(([r]) => r), ...nestedHosts, ...derivedHosts, ...measured.map(([r]) => r)])];
+  const all = [...new Set([...mountHosts, ...keyed.map(([r]) => r), ...nestedHosts, ...derivedHosts, ...measured.map((sp) => sp.rel)])];
   const missing = all.filter((rel) => typeof get(rel) !== "string");
   if (missing.length > 0) {
     return {
@@ -267,15 +295,46 @@ export function run({ files, mountHosts, keyed, nestedHosts, derivedHosts, measu
     }
   }
 
-  // ---- (E) the Ari composer keeps MEASURING its pill -----------------------
-  for (const [rel, re, what] of measured) {
-    if (!re.test(stripComments(get(rel)))) {
+  // ---- (E) the Ari lift is the occluder budget and NOTHING else ------------
+  for (const spec of measured) {
+    const code = stripComments(get(spec.rel));
+
+    const m = spec.lift.exec(code);
+    if (m === null) {
+      // Cannot locate the lift ⇒ cannot verify it. Never a silent pass.
+      return {
+        code: 2,
+        failures: [
+          `${spec.rel}: could not locate the keyboard-open lift (\`keyboardHeight > 0 ? …\`). ` +
+            "This rule checks the SHAPE of that expression, so a rule that cannot find it checks " +
+            "nothing and would read identically to a rule that holds. Repoint it in the same PR " +
+            "that moves the expression.",
+        ],
+      };
+    }
+
+    const tokens = m[1].match(/[A-Za-z_$][\w$]*|\d+(?:\.\d+)?/g) ?? [];
+    const allowed = new Set(spec.terms);
+    const extra = [...new Set(tokens.filter((t) => !allowed.has(t)))];
+    if (extra.length > 0) {
       failures.push(
-        `${rel} no longer carries ${what}. ORCH-1165 REWORK loop 2: the composer pill is taller ` +
-          "than the Done bar, so the keyboard-open lift must include the pill's MEASURED height. " +
-          "Swapping the measurement for a constant puts the text-input row back behind the bar at " +
-          "multi-line or large font scale — invisible typing until dismiss.",
+        `${spec.rel}: the keyboard-open lift contains ${extra.map((e) => `\`${e}\``).join(", ")} ` +
+          `on top of ${spec.terms.map((t) => `\`${t}\``).join(" + ")}. #1890: \`inputWrap\`'s ` +
+          "paddingBottom ALREADY positions the composer pill's bottom edge, so adding the pill's " +
+          "own measured height (or a spacing term, or a hand-typed number) lifts it a second time " +
+          "— measured at 61.0pt of dead gap on an iPhone SE3 and 71.8dp on a physical Samsung " +
+          "against a 12pt contract. The lift is the occluder budget and nothing else.",
       );
+    }
+
+    for (const [re, what] of spec.banned) {
+      if (re.test(code)) {
+        failures.push(
+          `${spec.rel} carries ${what} again. That plumbing existed only to feed the pill-height ` +
+            "double count #1890 deleted; measuring the pill is harmless, but nothing may consume " +
+            "the measurement in the lift, so re-adding it is how the defect comes back.",
+        );
+      }
     }
   }
 
@@ -311,7 +370,7 @@ if (IS_MAIN && SELF_TEST) {
     ],
     [
       "src/screens/ari/AriChatScreen.tsx",
-      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + composerHeight + 12 : 0;\nsetComposerHeight(h);\n<View onLayout={onComposerLayout}/>`,
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE : 0;`,
     ],
   ]);
   const base = () => ({
@@ -320,7 +379,7 @@ if (IS_MAIN && SELF_TEST) {
     keyed: KEYED.map(([r, re]) => [r, re]),
     nestedHosts: [...NESTED_PROVIDER_HOSTS],
     derivedHosts: [...DERIVED_CLEARANCE],
-    measured: MEASURED_COMPOSER.map((x) => [...x]),
+    measured: [{ ...NO_DOUBLE_COUNT }],
   });
 
   const problems = [];
@@ -373,6 +432,8 @@ if (IS_MAIN && SELF_TEST) {
   }
 
   // 5b — (D) THE P2-6 HOLE: the import stays, the clearance term is DELETED.
+  //      (Post-#1890 this fixture also trips rule (E); the assertion below still
+  //      pins the (D) message specifically, which is what this case is about.)
   //      Before #1850 TEST this was GREEN — no literal, import present, and no
   //      Done-bar budget at all. The rule was satisfiable by doing nothing.
   {
@@ -416,6 +477,7 @@ if (IS_MAIN && SELF_TEST) {
   }
 
   // 6 — (D) a hand-typed `+ 42` clearance term returns to a keyboard branch.
+  //     (Also trips (E) post-#1890; the assertion pins the (D) message.)
   {
     const m = base();
     m.files.set(
@@ -449,14 +511,58 @@ if (IS_MAIN && SELF_TEST) {
     check("(B) offset becomes unconditional", m, 1, "keyboard-open");
   }
 
-  // 9b — (E) the measured pill height is replaced by a constant.
+  // 9b — (E) THE #1890 DEFECT ITSELF: the measured pill height is added back
+  //      into the lift. This is the fixture the rule existed to REQUIRE before
+  //      #1890 inverted it, and the one Seth could see on his device.
   {
     const m = base();
     m.files.set(
       "src/screens/ari/AriChatScreen.tsx",
-      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + 110 + 12 : 0;`,
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + composerHeight + MIN_VISIBLE_CLEARANCE : 0;`,
     );
-    check("(E) measurement replaced by a constant", m, 1, "MEASURED height");
+    check("(E) the pill height is added back into the lift", m, 1, "`composerHeight`");
+  }
+
+  // 9b-ii — (E) a spacing term creeps back in (the stray spacing.sm #1890 found
+  //         riding alongside the double count).
+  {
+    const m = base();
+    m.files.set(
+      "src/screens/ari/AriChatScreen.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + spacing.sm + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE : 0;`,
+    );
+    check("(E) a stray spacing term in the lift", m, 1, "`spacing`");
+  }
+
+  // 9b-iii — (E) a hand-typed number replaces the named clearance.
+  {
+    const m = base();
+    m.files.set(
+      "src/screens/ari/AriChatScreen.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + 12 : 0;`,
+    );
+    check("(E) a numeric literal in the lift", m, 1, "`12`");
+  }
+
+  // 9b-iv — (E) the measuring plumbing returns even though the lift looks clean.
+  //         Harmless on its own, but it is the half-step back to the defect.
+  {
+    const m = base();
+    m.files.set(
+      "src/screens/ari/AriChatScreen.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE : 0;\nsetComposerHeight(h);\n<View onLayout={onComposerLayout}/>`,
+    );
+    check("(E) the composer-measuring plumbing returns", m, 1, "setComposerHeight");
+  }
+
+  // 9b-v — (E) an unlocatable lift is exit 2, never a silent pass.
+  {
+    const m = base();
+    m.files.set(
+      "src/screens/ari/AriChatScreen.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = DONE_BAR_OCCUPIED;`,
+    );
+    check("(E) an unlocatable lift is VACUOUS", m, 2, "could not locate");
   }
 
   // 9c — an empty (E) list is VACUOUS too.
@@ -486,7 +592,7 @@ if (IS_MAIN && SELF_TEST) {
     console.error("");
     process.exit(1);
   }
-  console.log("OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET --self-test]: 17 fixtures behaved as specified.");
+  console.log("OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET --self-test]: 21 fixtures behaved as specified.");
   process.exit(0);
 }
 
@@ -498,7 +604,7 @@ function main() {
     ...KEYED.map(([r]) => r),
     ...NESTED_PROVIDER_HOSTS,
     ...DERIVED_CLEARANCE,
-    ...MEASURED_COMPOSER.map(([r]) => r),
+    NO_DOUBLE_COUNT.rel,
   ])) {
     try {
       files.set(rel, fs.readFileSync(path.join(BIZ, rel), "utf8"));
@@ -513,7 +619,7 @@ function main() {
     keyed: KEYED,
     nestedHosts: NESTED_PROVIDER_HOSTS,
     derivedHosts: DERIVED_CLEARANCE,
-    measured: MEASURED_COMPOSER,
+    measured: [NO_DOUBLE_COUNT],
   });
 
   if (result.code !== 0) {
@@ -526,7 +632,7 @@ function main() {
     `OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET]: ${MOUNT_HOSTS.length} mount hosts render the toolbar; ` +
       `${KEYED.length} offsets stay keyboard-keyed; ${NESTED_PROVIDER_HOSTS.length} Modal windows nest it in their ` +
       `own provider; ${DERIVED_CLEARANCE.length} surfaces derive clearance from DONE_BAR_OCCUPIED; the Ari ` +
-      "composer still measures its pill.",
+      "lift is the occluder budget and nothing else.",
   );
 }
 
