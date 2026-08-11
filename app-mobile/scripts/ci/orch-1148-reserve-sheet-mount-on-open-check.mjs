@@ -42,6 +42,17 @@ const check = (name, pass, detail) => checks.push({ name, pass, detail });
 
 const mainStart = source.indexOf("export default function ExpandedCardModal");
 const mainBody = mainStart >= 0 ? source.slice(mainStart) : "";
+const childGateStart = mainBody.indexOf("const anyChildModalOpen");
+const rootCloseStart = mainBody.indexOf("const handleRootSheetClose", childGateStart);
+const childGateBlock =
+  childGateStart >= 0 && rootCloseStart > childGateStart
+    ? mainBody.slice(childGateStart, rootCloseStart)
+    : "";
+const rootCloseEnd = mainBody.indexOf("const focusShareControl", rootCloseStart);
+const rootCloseBlock =
+  rootCloseStart >= 0 && rootCloseEnd > rootCloseStart
+    ? mainBody.slice(rootCloseStart, rootCloseEnd)
+    : "";
 
 // Locate the VenueReserveSheet render block (gate condition → element).
 const reserveRenderStart = mainBody.indexOf("venueReservable?.reservable === true");
@@ -70,10 +81,8 @@ check(
 
 check(
   "G-03 reserve flag participates in the child-overlay gate and the swallow",
-  /const anyChildModalOpen\s*=\s*[\s\S]*?isReserveSheetOpen;/s.test(mainBody) &&
-    /const handleRootSheetClose = useCallback[\s\S]*?isReserveSheetOpen\) \{[\s\S]*?return;/s.test(
-      mainBody,
-    ),
+  /\bisReserveSheetOpen\b/.test(childGateBlock) &&
+    /if \([\s\S]*\bisReserveSheetOpen\b[\s\S]*\) \{\s*return;/.test(rootCloseBlock),
   "isReserveSheetOpen must gate the root sheet (anyChildModalOpen) AND be swallowed by handleRootSheetClose so the synthetic root close does not tear the card down while the reserve sheet is open.",
 );
 
