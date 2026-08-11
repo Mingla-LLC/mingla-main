@@ -71,12 +71,16 @@ jobs:
           docker exec -i issue1173-postgres \
             psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
             < supabase/migrations/__tests__/issue_1807_paystack_ledger_truth.test.sql
+          docker exec -i issue1173-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1807_paystack_ledger_truth.tester_adversarial.test.sql
       - name: Run #1173 schedule-flip regression tests (Deno)
         run: |
           deno test --allow-read --allow-env --allow-net --no-check \
             supabase/functions/_shared/__tests__/issue_1173_payout_schedule_helper.test.ts \
             supabase/functions/admin-payout-hold-migrate/__tests__/issue_1173_admin_migrate.test.ts \
             supabase/functions/admin-payout-hold-migrate/__tests__/issue_1807_paystack_lane.test.ts \
+            supabase/functions/admin-payout-hold-migrate/__tests__/issue_1807_paystack_lane.tester_adversarial.test.ts \
             supabase/functions/brand-stripe-onboard/__tests__/issue_1173_onboard_dark_default.test.ts
       - name: Remove disposable database
         if: always()
