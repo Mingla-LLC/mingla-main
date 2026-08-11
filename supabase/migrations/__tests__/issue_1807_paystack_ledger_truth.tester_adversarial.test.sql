@@ -70,52 +70,130 @@ VALUES
 COMMIT;
 
 --------------------------------------------------------------------------------
--- Resolve a working dblink conninfo. Several candidates are tried because the
--- #1173 job reaches psql through `docker exec` (unix socket, inet_server_addr()
--- is NULL) while other suites use a TCP service container. If NONE connect the
--- test FAILS LOUDLY — a concurrency test that silently skips is an unfalsifiable
--- test, which is the exact bug class this file exists to prevent.
+-- Resolve a working dblink conninfo.
+--
+-- The #1173 job reaches psql through `docker exec` against supabase/postgres,
+-- so inet_server_addr() is NULL (unix socket) and the pg_hba posture, socket
+-- directory and port must all be discovered rather than assumed. The first
+-- version of this file guessed, and every guess failed in CI because a
+-- passwordless connection cannot satisfy that image's authentication. So the
+-- workflow now passes the container's random per-run password in as a psql
+-- variable and the deterministic path uses it; the resolver below remains for
+-- a by-hand run where no variable is set.
+--
+-- Candidates are the cross-product of {every unix_socket_directories entry,
+-- libpq's compiled-in default socket, localhost, 127.0.0.1} x {with password,
+-- without}, deduplicated by construction and each with connect_timeout=5.
+--
+-- If NONE connect the test FAILS LOUDLY, listing every candidate and the
+-- driver's error for each — a concurrency test that silently skips is an
+-- unfalsifiable test, which is the exact bug class this file exists to prevent.
 --------------------------------------------------------------------------------
+-- The password is supplied by the workflow as a psql variable. It is a random
+-- per-run value for a disposable container, not a secret, but it is still kept
+-- out of every message this file can emit. psql does NOT interpolate variables
+-- inside dollar-quoted blocks, so it is captured at top level here and read from
+-- the temp table below (the same mechanism issue_1447_rsvp_admission.pg17 uses).
+\if :{?issue1807_db_password}
+\else
+\set issue1807_db_password ''
+\endif
+
+CREATE TEMP TABLE issue1807_secret(pw text);
+INSERT INTO issue1807_secret(pw) VALUES (:'issue1807_db_password');
+
 CREATE TEMP TABLE issue1807_conn(conninfo text);
 
 DO $conn$
 DECLARE
-  v_candidates text[];
-  v_c text;
+  v_pw text := COALESCE((SELECT pw FROM issue1807_secret), '');
+  v_hosts text[] := ARRAY[]::text[];
+  v_host text;
   v_sock text;
+  v_socks text[];
+  v_base text;
+  v_conninfo text;
+  v_label text;
+  v_detail text;
+  v_diag text := '';
+  v_ok boolean := false;
 BEGIN
-  v_sock := btrim(split_part(current_setting('unix_socket_directories'), ',', 1));
-
-  v_candidates := ARRAY[]::text[];
-  IF v_sock <> '' THEN
-    v_candidates := v_candidates || format(
-      'dbname=%s user=%s host=%s port=%s',
-      current_database(), current_user, v_sock, current_setting('port'));
+  -- unix_socket_directories is a COMMA-SEPARATED LIST; every entry is a
+  -- candidate. '' is the sentinel for "omit host entirely", which makes libpq
+  -- use its compiled-in default socket directory — a genuinely distinct case
+  -- from any value the server reports.
+  v_socks := string_to_array(current_setting('unix_socket_directories'), ',');
+  IF v_socks IS NOT NULL THEN
+    FOREACH v_sock IN ARRAY v_socks LOOP
+      IF btrim(v_sock) <> '' THEN
+        v_hosts := v_hosts || btrim(v_sock)::text;
+      END IF;
+    END LOOP;
   END IF;
-  v_candidates := v_candidates || format(
-    'dbname=%s user=%s port=%s',
-    current_database(), current_user, current_setting('port'));
-  v_candidates := v_candidates || format(
-    'dbname=%s user=%s host=localhost port=%s',
-    current_database(), current_user, current_setting('port'));
-  v_candidates := v_candidates || format(
-    'dbname=%s user=%s hostaddr=127.0.0.1 port=%s',
-    current_database(), current_user, current_setting('port'));
+  -- Explicit ::text on every append: `anyarray || ''` binds to the
+  -- array-concat operator and fails as a malformed array literal.
+  v_hosts := v_hosts || ''::text;           -- compiled-in default socket
+  v_hosts := v_hosts || 'localhost'::text;  -- TCP, name
+  v_hosts := v_hosts || '127.0.0.1'::text;  -- TCP, literal address (no DNS)
 
-  FOREACH v_c IN ARRAY v_candidates LOOP
-    BEGIN
-      PERFORM dblink_connect('issue1807_probe', v_c);
-      PERFORM dblink_disconnect('issue1807_probe');
-      INSERT INTO issue1807_conn(conninfo) VALUES (v_c);
-      RETURN;
-    EXCEPTION WHEN OTHERS THEN
-      -- try the next candidate
-      NULL;
-    END;
+  FOREACH v_host IN ARRAY v_hosts LOOP
+    v_base := format(
+      'dbname=%s user=%s port=%s connect_timeout=5',
+      current_database(), current_user, current_setting('port'));
+    IF v_host <> '' THEN
+      v_base := v_base || format(' host=%s', v_host);
+    END IF;
+    v_label := CASE WHEN v_host = '' THEN '<libpq default socket>' ELSE v_host END;
+
+    -- Try WITH the password first when one was supplied: supabase/postgres does
+    -- not use a stock pg_hba, and a scram-sha-256 rule on local as well as host
+    -- connections is exactly what a passwordless attempt cannot satisfy.
+    FOR i IN 1..2 LOOP
+      IF i = 1 THEN
+        CONTINUE WHEN v_pw = '';
+        v_conninfo := v_base || format(' password=%L', v_pw);
+      ELSE
+        v_conninfo := v_base;
+      END IF;
+
+      BEGIN
+        PERFORM dblink_connect('issue1807_probe', v_conninfo);
+        BEGIN
+          PERFORM dblink_disconnect('issue1807_probe');
+        EXCEPTION WHEN OTHERS THEN NULL;
+        END;
+        INSERT INTO issue1807_conn(conninfo) VALUES (v_conninfo);
+        v_ok := true;
+        EXIT;
+      EXCEPTION WHEN OTHERS THEN
+        -- Record WHY, so a failure diagnoses itself instead of costing another
+        -- blind CI cycle. dblink_connect's SQLERRM is only "could not establish
+        -- connection"; the actionable libpq reason ("fe_sendauth: no password
+        -- supplied", "password authentication failed", "No such file or
+        -- directory") is in the exception DETAIL, so both are captured.
+        -- Host/label only; the password is scrubbed from both as belt-and-braces.
+        GET STACKED DIAGNOSTICS v_detail = PG_EXCEPTION_DETAIL;
+        v_diag := v_diag || format(
+          E'\n  - host=%s auth=%s -> %s',
+          v_label,
+          CASE WHEN i = 1 THEN 'password' ELSE 'none' END,
+          replace(
+            btrim(SQLERRM || ' | ' || COALESCE(NULLIF(btrim(v_detail), ''), '(no detail)')),
+            CASE WHEN v_pw = '' THEN '\x00never-matches' ELSE v_pw END,
+            '<redacted>'));
+      END;
+    END LOOP;
+    EXIT WHEN v_ok;
   END LOOP;
 
-  RAISE EXCEPTION
-    '#1807(A): no dblink conninfo worked — the concurrency assertions could not run. Refusing to pass vacuously.';
+  IF NOT v_ok THEN
+    RAISE EXCEPTION
+      '#1807(A): no dblink conninfo worked — the concurrency assertions could not run. Refusing to pass vacuously. port=%, unix_socket_directories=%, password supplied=%. Candidates tried:%',
+      current_setting('port'),
+      current_setting('unix_socket_directories'),
+      CASE WHEN v_pw = '' THEN 'no' ELSE 'yes' END,
+      v_diag;
+  END IF;
 END $conn$;
 
 --------------------------------------------------------------------------------

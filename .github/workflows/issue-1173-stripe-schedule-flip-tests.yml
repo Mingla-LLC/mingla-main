@@ -71,8 +71,15 @@ jobs:
           docker exec -i issue1173-postgres \
             psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
             < supabase/migrations/__tests__/issue_1807_paystack_ledger_truth.test.sql
+          # The tester-adversarial suite opens two REAL concurrent sessions via
+          # dblink, so it needs a conninfo that satisfies this image's pg_hba.
+          # The container password is a random per-run value created above; it is
+          # passed in explicitly so the proof never depends on guessing the
+          # socket, the port or the auth method. The suite scrubs it from every
+          # message it can emit.
           docker exec -i issue1173-postgres \
             psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            -v issue1807_db_password="$issue1173_db_password" \
             < supabase/migrations/__tests__/issue_1807_paystack_ledger_truth.tester_adversarial.test.sql
       - name: Run #1173 schedule-flip regression tests (Deno)
         run: |
