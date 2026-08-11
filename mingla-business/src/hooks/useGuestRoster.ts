@@ -1,4 +1,6 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState, type AppStateStatus } from "react-native";
+import { useFocusEffect } from "expo-router";
 import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
@@ -8,6 +10,7 @@ import {
   type GuestRosterAccess,
 } from "../services/guestRosterService";
 import { supabase } from "../services/supabase";
+import { useNetInfoSafe } from "../lib/netinfoSafe";
 import type {
   GuestRosterFilter,
   GuestRosterPage,
@@ -38,15 +41,25 @@ export function useGuestRosterAccess(eventId: string | null): UseQueryResult<Gue
   });
 }
 
+export type GuestRosterQueryResult = UseQueryResult<GuestRosterPage> & {
+  lastSuccessfulSyncAt: number | null;
+  isStaleTruth: boolean;
+  isOffline: boolean;
+};
+
 export function useGuestRoster(input: {
   eventId: string | null;
   enabled: boolean;
   filter: GuestRosterFilter;
   search: string;
   sort: GuestRosterSort;
-}): UseQueryResult<GuestRosterPage> {
+}): GuestRosterQueryResult {
   const { isAuthReady, user } = useAuth();
   const queryClient = useQueryClient();
+  const network = useNetInfoSafe();
+  const isOffline = network?.isConnected === false || network?.isInternetReachable === false;
+  const wasOffline = useRef(isOffline);
+  const [now, setNow] = useState(Date.now());
   const enabled = input.enabled && isAuthReady && user !== null && input.eventId !== null;
   const queryKey = enabled && input.eventId !== null
     ? guestRosterKeys.list(input.eventId, input.filter, input.search, input.sort)
@@ -69,6 +82,33 @@ export function useGuestRoster(input: {
       });
     },
   });
+  const invalidateEvent = useCallback(() => {
+    if (!enabled || input.eventId === null) return;
+    void queryClient.invalidateQueries({
+      predicate: (candidate) => candidate.queryKey[0] === "guest-roster" && candidate.queryKey[1] === input.eventId,
+    });
+  }, [enabled, input.eventId, queryClient]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useFocusEffect(useCallback(() => { invalidateEvent(); }, [invalidateEvent]));
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state: AppStateStatus) => {
+      if (state === "active") invalidateEvent();
+    });
+    return () => subscription.remove();
+  }, [invalidateEvent]);
+
+  useEffect(() => {
+    if (wasOffline.current && !isOffline && enabled) {
+      invalidateEvent();
+    }
+    wasOffline.current = isOffline;
+  }, [enabled, invalidateEvent, isOffline]);
 
   useEffect(() => {
     if (!enabled || input.eventId === null) return;
@@ -90,11 +130,18 @@ export function useGuestRoster(input: {
           });
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") invalidateEvent();
+      });
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [enabled, input.eventId, queryClient]);
+  }, [enabled, input.eventId, invalidateEvent, queryClient]);
 
-  return query;
+  const lastSuccessfulSyncAt = query.dataUpdatedAt > 0 ? query.dataUpdatedAt : null;
+  return Object.assign(query, {
+    lastSuccessfulSyncAt,
+    isStaleTruth: lastSuccessfulSyncAt === null || now-lastSuccessfulSyncAt > 30_000,
+    isOffline,
+  });
 }

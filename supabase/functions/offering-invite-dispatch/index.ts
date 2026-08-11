@@ -17,7 +17,13 @@ type Channel = "email" | "push" | "sms";
 interface DispatchBody {
   eventId: string;
   purpose: "invitation" | "reminder";
-  selection: { kind: "all_brand_people" | "invited_people" };
+  selection: Record<string, unknown> & {
+    kind:
+      | "all_brand_people"
+      | "invited_people"
+      | "resolved_brand_people_v1"
+      | "failed_attempts_v1";
+  };
   channels: Channel[];
   clientRequestId: string;
   mode: "preview" | "confirm";
@@ -71,12 +77,23 @@ function isBody(value: unknown): value is DispatchBody {
     ])
   ) return false;
   const selection = body.selection as Record<string, unknown> | null;
-  if (
-    selection === null || typeof selection !== "object" ||
-    !exactKeys(selection, ["kind"]) ||
-    (selection.kind !== "all_brand_people" &&
-      selection.kind !== "invited_people")
-  ) return false;
+  if (selection === null || typeof selection !== "object") return false;
+  const ordinarySelection =
+    exactKeys(selection, ["kind"]) &&
+    (selection.kind === "all_brand_people" || selection.kind === "invited_people");
+  const resolvedSelection =
+    exactKeys(selection, ["brandPersonIds", "kind", "selectionHash", "source"]) &&
+    selection.kind === "resolved_brand_people_v1" &&
+    selection.source === "guest_roster_actions" &&
+    Array.isArray(selection.brandPersonIds) &&
+    typeof selection.selectionHash === "string" && HASH.test(selection.selectionHash);
+  const retrySelection =
+    exactKeys(selection, ["failedAttemptIds", "kind", "selectionHash", "source"]) &&
+    selection.kind === "failed_attempts_v1" &&
+    selection.source === "guest_roster_actions" &&
+    Array.isArray(selection.failedAttemptIds) &&
+    typeof selection.selectionHash === "string" && HASH.test(selection.selectionHash);
+  if (!ordinarySelection && !resolvedSelection && !retrySelection) return false;
   const channels = body.channels;
   if (
     !Array.isArray(channels) || channels.length === 0 ||
@@ -180,6 +197,13 @@ export async function handler(request: Request): Promise<Response> {
   const authorization = request.headers.get("authorization") ?? "";
   if (!url || !anonKey || !serviceKey || !authorization.startsWith("Bearer ")) {
     return json({ error: "unauthorized" }, 401);
+  }
+  if (
+    (body.selection.kind === "resolved_brand_people_v1" ||
+      body.selection.kind === "failed_attempts_v1") &&
+    request.headers.get("x-mingla-internal-service-key") !== serviceKey
+  ) {
+    return json({ error: "forbidden", providerIo: false }, 403);
   }
   const user = createClient(url, anonKey, {
     global: { headers: { Authorization: authorization } },

@@ -12,9 +12,10 @@
  * Per Cycle 10 SPEC §5/J-G1.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -52,6 +53,7 @@ import { useAuth } from "../../../../src/context/AuthContext";
 import { exportGuestsCsv } from "../../../../src/utils/guestCsvExport";
 import {
   createGuestRosterRequestId,
+  getGuestRosterExport,
   requestGuestRosterExport,
 } from "../../../../src/services/guestRosterService";
 import type {
@@ -291,6 +293,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
     visible: false,
     message: "",
   });
+  const pendingRosterExportJob = useRef<string | null>(null);
 
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -387,15 +390,33 @@ export default function EventGuestsListRoute(): React.ReactElement {
   }): Promise<void> => {
     if (typeof eventId !== "string") return;
     try {
-      await requestGuestRosterExport({
-        eventId,
-        filter: input.filter,
-        search: input.search,
-        sort: input.sort,
-        clientRequestId: createGuestRosterRequestId(),
-      });
-      showToast("Export is being prepared. It will be available from this screen shortly.");
+      const requested = pendingRosterExportJob.current === null
+        ? await requestGuestRosterExport({
+          eventId,
+          filter: input.filter,
+          search: input.search,
+          sort: input.sort,
+          clientRequestId: createGuestRosterRequestId(),
+        })
+        : null;
+      const jobId = pendingRosterExportJob.current ?? (typeof requested?.jobId === "string" ? requested.jobId : null);
+      if (jobId === null) throw new Error("guest_roster_export_job_missing");
+      pendingRosterExportJob.current = jobId;
+      showToast("Preparing the audited guest export…");
+      for (let attempt = 0; attempt < 15; attempt += 1) {
+        const status = await getGuestRosterExport(jobId);
+        if (status.status === "failed") throw new Error("guest_roster_export_failed");
+        if (status.status === "ready" && typeof status.signedUrl === "string") {
+          await Linking.openURL(status.signedUrl);
+          pendingRosterExportJob.current = null;
+          showToast("Guest export ready.");
+          return;
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
+      }
+      showToast("The export is still being prepared. Tap Export again shortly to check it.");
     } catch {
+      pendingRosterExportJob.current = null;
       showToast("Couldn't prepare the export. Tap Export to try again.");
     }
   }, [eventId, showToast]);

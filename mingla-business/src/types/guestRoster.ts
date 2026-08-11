@@ -113,6 +113,17 @@ export interface GuestRosterPage {
   canExport: boolean;
 }
 
+export interface GuestRosterActionPreview {
+  previewId: string;
+  selectedCount: number;
+  eligibleCount: number;
+  reachableCount: number;
+  suppressedCount: number;
+  skippedCount: number;
+  estimatedCostMinor: number;
+  currency: string | null;
+}
+
 export const GUEST_ROSTER_PRIMARY_LABELS: Readonly<Record<GuestRosterPrimaryStatus, string>> = {
   bought_ticket: "Bought ticket",
   going: "Going",

@@ -31,6 +31,13 @@ import {
   GUEST_ROSTER_INVITATION_LABELS,
   GUEST_ROSTER_PRIMARY_LABELS,
 } from "../../types/guestRoster";
+import type { GuestRosterActionPreview } from "../../types/guestRoster";
+import {
+  createGuestRosterRequestId,
+  executeGuestRosterAction,
+  previewGuestRosterAction,
+  setGuestRosterRsvpApproval,
+} from "../../services/guestRosterService";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { GlassCard } from "../ui/GlassCard";
@@ -156,7 +163,11 @@ const GuestDetailSheet: React.FC<{
   row: GuestRosterRow | null;
   onClose: () => void;
   onOpenOrder: (orderId: string) => void;
-}> = ({ row, onClose, onOpenOrder }) => (
+  actionsDisabled: boolean;
+  actionPending: boolean;
+  onPreviewAction: (action: "reminder" | "retry_delivery") => void;
+  onApproval: (decision: "approve" | "deny") => void;
+}> = ({ row, onClose, onOpenOrder, actionsDisabled, actionPending, onPreviewAction, onApproval }) => (
   <Sheet visible={row !== null} onClose={onClose} snapPoint="full">
     {row !== null ? (
       <ScrollView contentContainerStyle={styles.detailContent}>
@@ -194,6 +205,15 @@ const GuestDetailSheet: React.FC<{
         <Text style={styles.detailBody}>
           {row.party.size} {row.party.size === 1 ? "person" : "people"} · {row.party.activeTickets} active tickets · {row.party.checkedIn} checked in
         </Text>
+        {row.canRemind || row.canRetry || row.canApprove || row.canDeny ? (
+          <View style={styles.actionButtons}>
+            {row.canRemind ? <Button variant="primary" label={actionPending ? "Checking reminder…" : "Preview reminder"} disabled={actionsDisabled || actionPending} onPress={() => onPreviewAction("reminder")} /> : null}
+            {row.canRetry ? <Button variant="secondary" label={actionPending ? "Checking retry…" : "Preview delivery retry"} disabled={actionsDisabled || actionPending} onPress={() => onPreviewAction("retry_delivery")} /> : null}
+            {row.canApprove ? <Button variant="primary" label={actionPending ? "Saving…" : "Approve RSVP"} disabled={actionsDisabled || actionPending} onPress={() => onApproval("approve")} /> : null}
+            {row.canDeny ? <Button variant="secondary" label="Deny RSVP" disabled={actionsDisabled || actionPending} onPress={() => onApproval("deny")} /> : null}
+            {actionsDisabled ? <Text style={styles.detailMuted}>Refresh the guest list before taking action.</Text> : null}
+          </View>
+        ) : null}
         {row.orderIds.length > 0 ? (
           <View style={styles.orderLinks}>
             <Text style={styles.sectionTitle}>Orders</Text>
@@ -228,6 +248,9 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selected, setSelected] = useState<GuestRosterRow | null>(null);
+  const [actionPreview, setActionPreview] = useState<GuestRosterActionPreview | null>(null);
+  const [actionPending, setActionPending] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const query = useGuestRoster({ eventId, enabled: true, filter, search, sort });
   const data = query.data;
   const summary = data?.summary;
@@ -240,6 +263,43 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
   ], [summary]);
 
   const refresh = useCallback(() => { void query.refetch(); }, [query]);
+  const previewAction = useCallback(async (action: "reminder" | "retry_delivery") => {
+    if (selected === null || query.isStaleTruth || query.isOffline) return;
+    setActionPending(true); setActionMessage(null);
+    const channels = Array.from(new Set(selected.attempts
+      .filter((attempt) => action === "reminder" || (attempt.status === "failed" && attempt.retryable))
+      .map((attempt) => attempt.channel)));
+    try {
+      const preview = await previewGuestRosterAction({ eventId, action, rosterKeys: [selected.rosterKey], channels: channels.length > 0 ? channels : ["email"] });
+      setActionPreview(preview);
+    } catch {
+      setActionMessage("This guest's status changed or the action is no longer available. Refresh and try again.");
+      void query.refetch();
+    } finally { setActionPending(false); }
+  }, [eventId, query, selected]);
+
+  const executeAction = useCallback(async () => {
+    if (actionPreview === null) return;
+    setActionPending(true); setActionMessage(null);
+    try {
+      await executeGuestRosterAction({ previewId: actionPreview.previewId, clientRequestId: createGuestRosterRequestId() });
+      setActionMessage("Queued. The guest's status will update when provider evidence arrives.");
+      setActionPreview(null);
+      void query.refetch();
+    } catch { setActionMessage("Nothing was queued. Refresh and try again."); }
+    finally { setActionPending(false); }
+  }, [actionPreview, query]);
+
+  const setApproval = useCallback(async (decision: "approve" | "deny") => {
+    if (selected === null || query.isStaleTruth || query.isOffline) return;
+    setActionPending(true); setActionMessage(null);
+    try {
+      await setGuestRosterRsvpApproval({ eventId, rosterKey: selected.rosterKey, decision, clientRequestId: createGuestRosterRequestId() });
+      setActionMessage(decision === "approve" ? "RSVP approved." : "RSVP denied.");
+      setSelected(null); void query.refetch();
+    } catch { setActionMessage("The RSVP changed before this action. Refresh and try again."); void query.refetch(); }
+    finally { setActionPending(false); }
+  }, [eventId, query, selected]);
 
   return (
     <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
@@ -252,7 +312,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
         <View style={styles.chromeRight}>
           <IconChrome icon="search" size={36} onPress={() => setSearchOpen((value) => !value)} accessibilityLabel="Search guests" />
           <IconChrome icon="filter" size={36} onPress={() => setFiltersOpen(true)} accessibilityLabel="Filter and sort guests" />
-          {data?.canExport === true ? (
+          {data?.canExport === true && !query.isStaleTruth ? (
             <IconChrome icon="download" size={36} onPress={() => onExport({ filter, search, sort })} accessibilityLabel="Export current guest roster" />
           ) : null}
         </View>
@@ -261,6 +321,16 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
       {searchOpen ? (
         <View style={styles.searchWrap}>
           <Input value={search} onChangeText={setSearch} placeholder="Name, permitted contact, or order reference" variant="text" />
+        </View>
+      ) : null}
+
+      {data !== undefined && (query.isStaleTruth || query.isOffline || query.isRefetchError) ? (
+        <View style={styles.freshnessBanner} accessibilityRole="alert">
+          <Text style={styles.freshnessTitle}>{query.isOffline ? "You're offline" : "Guest list may be out of date"}</Text>
+          <Text style={styles.freshnessBody}>
+            {query.isOffline ? "Last-known guests are shown. Reconnect, then refresh before taking action." : "Last-known guests are shown. Refresh before taking action."}
+          </Text>
+          <Button variant="secondary" label="Refresh" onPress={refresh} />
         </View>
       ) : null}
 
@@ -322,7 +392,19 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
         </View>
       </Sheet>
 
-      <GuestDetailSheet row={selected} onClose={() => setSelected(null)} onOpenOrder={onOpenOrder} />
+      <GuestDetailSheet row={selected} onClose={() => { setSelected(null); setActionPreview(null); setActionMessage(null); }} onOpenOrder={onOpenOrder}
+        actionsDisabled={query.isStaleTruth || query.isOffline} actionPending={actionPending}
+        onPreviewAction={(action) => { void previewAction(action); }} onApproval={(decision) => { void setApproval(decision); }} />
+      <Sheet visible={actionPreview !== null} onClose={() => setActionPreview(null)} snapPoint="half">
+        {actionPreview !== null ? <View style={styles.filterSheet}>
+          <Text style={styles.sheetTitle}>Confirm guest action</Text>
+          <Text style={styles.detailBody}>{actionPreview.reachableCount} reachable · {actionPreview.suppressedCount} suppressed · {actionPreview.skippedCount} skipped</Text>
+          <Text style={styles.detailBody}>Estimated cost: {actionPreview.currency === null ? "No paid channel cost" : `${actionPreview.currency} ${(actionPreview.estimatedCostMinor/100).toFixed(2)}`}</Text>
+          <Button variant="primary" label={actionPending ? "Queueing…" : "Queue action"} disabled={actionPending} onPress={() => { void executeAction(); }} />
+          <Button variant="secondary" label="Cancel" disabled={actionPending} onPress={() => setActionPreview(null)} />
+        </View> : null}
+      </Sheet>
+      {actionMessage !== null ? <View style={styles.actionNotice} accessibilityRole="alert"><Text style={styles.detailBody}>{actionMessage}</Text></View> : null}
     </View>
   );
 };
@@ -335,6 +417,9 @@ const styles = StyleSheet.create({
   liveLabel: { color: textTokens.tertiary, fontSize: 12, marginTop: 1 },
   chromeRight: { flexDirection: "row", gap: spacing.xs },
   searchWrap: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  freshnessBanner: { marginHorizontal: spacing.md, marginBottom: spacing.sm, padding: spacing.md, borderRadius: radiusTokens.md, borderWidth: StyleSheet.hairlineWidth, borderColor: semantic.warning, backgroundColor: semantic.warningTint, gap: spacing.xs },
+  freshnessTitle: { color: textTokens.primary, fontSize: 14, fontWeight: "800" },
+  freshnessBody: { color: textTokens.secondary, fontSize: 13, lineHeight: 18 },
   scroll: { flex: 1 },
   content: { paddingHorizontal: spacing.md, gap: spacing.md },
   contentDesktop: { width: "100%", maxWidth: 1180, alignSelf: "center", paddingHorizontal: spacing.xl },
@@ -386,6 +471,8 @@ const styles = StyleSheet.create({
   attemptChannel: { color: textTokens.tertiary, fontSize: 11, fontWeight: "800", letterSpacing: 0.8 },
   attemptStatus: { color: textTokens.secondary, fontSize: 14, textTransform: "capitalize" },
   orderLinks: { gap: spacing.sm },
+  actionButtons: { gap: spacing.sm, marginTop: spacing.sm },
+  actionNotice: { position: "absolute", left: spacing.md, right: spacing.md, bottom: spacing.xl, padding: spacing.md, borderRadius: radiusTokens.md, backgroundColor: glass.tint.profileElevated, borderWidth: StyleSheet.hairlineWidth, borderColor: glass.border.profileBase },
 });
 
 export default GuestRosterExperience;

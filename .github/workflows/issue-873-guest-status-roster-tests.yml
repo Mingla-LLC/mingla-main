@@ -6,11 +6,19 @@ on:
     paths:
       - "supabase/migrations/20270319000873_issue_0873_guest_status_roster.sql"
       - "supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql"
+      - "supabase/functions/guest-roster-actions/**"
+      - "supabase/functions/offering-invite-dispatch/index.ts"
+      - "supabase/functions/brand-people-export/index.ts"
+      - "supabase/config.toml"
       - ".github/workflows/issue-873-guest-status-roster-tests.yml"
   pull_request:
     paths:
       - "supabase/migrations/20270319000873_issue_0873_guest_status_roster.sql"
       - "supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql"
+      - "supabase/functions/guest-roster-actions/**"
+      - "supabase/functions/offering-invite-dispatch/index.ts"
+      - "supabase/functions/brand-people-export/index.ts"
+      - "supabase/config.toml"
       - ".github/workflows/issue-873-guest-status-roster-tests.yml"
 
 permissions:
@@ -21,6 +29,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  action-edge:
+    name: "Issue 873 reminder/retry action boundary"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno test --allow-env --allow-read supabase/functions/guest-roster-actions/issue_0873_guest_roster_actions.test.ts
+
   business-render:
     name: "Issue 873 Business shared roster render"
     runs-on: ubuntu-latest

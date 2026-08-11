@@ -21,6 +21,8 @@ $catalog$;
 INSERT INTO auth.users(id) VALUES
   ('87300000-0000-4000-8000-000000000001'),
   ('87300000-0000-4000-8000-000000000002');
+INSERT INTO public.creator_accounts(id)
+VALUES('87300000-0000-4000-8000-000000000001');
 INSERT INTO public.brands(id,account_id,name,slug,default_currency,created_at,updated_at)
 VALUES('87300000-0000-4000-8000-000000000010','87300000-0000-4000-8000-000000000001',
   'Issue 873 Brand','issue-873-brand','USD',now(),now());
@@ -63,9 +65,12 @@ VALUES('87300000-0000-4000-8000-000000000053','87300000-0000-4000-8000-000000000
 INSERT INTO public.guest_roster_brand_rollouts(brand_id,phase)
 VALUES('87300000-0000-4000-8000-000000000010','internal_read');
 UPDATE public.feature_flags SET is_enabled=true WHERE flag_key='guest_roster_read_enabled';
+UPDATE public.feature_flags SET is_enabled=true WHERE flag_key='guest_roster_single_actions_enabled';
+UPDATE public.guest_roster_brand_rollouts SET phase='single_actions'
+WHERE brand_id='87300000-0000-4000-8000-000000000010';
 
 DO $accepted$
-DECLARE v jsonb; v_item jsonb;
+DECLARE v jsonb; v_item jsonb; v_action jsonb;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub','87300000-0000-4000-8000-000000000001',true);
   v:=public.biz_guest_roster_list('87300000-0000-4000-8000-000000000020','all',NULL,'action_priority',NULL,50);
@@ -75,13 +80,21 @@ BEGIN
     RAISE EXCEPTION 'T-873-01 FAIL: accepted invite truth wrong: %',v;
   END IF;
   IF v_item::text LIKE '%provider-873%' THEN RAISE EXCEPTION 'T-873-01 FAIL: provider ID leaked'; END IF;
+  v_action:=public.biz_guest_roster_resolve_action(
+    '87300000-0000-4000-8000-000000000001','87300000-0000-4000-8000-000000000020',
+    'reminder',ARRAY['person:87300000-0000-4000-8000-000000000030'],ARRAY['email']
+  );
+  IF v_action->'selection'->>'kind'<>'resolved_brand_people_v1'
+     OR jsonb_array_length(v_action->'selection'->'brandPersonIds')<>1 THEN
+    RAISE EXCEPTION 'T-873-01B FAIL: eligible reminder selection wrong: %',v_action;
+  END IF;
 END;
 $accepted$;
 
 INSERT INTO public.event_rsvps(id,event_id,user_id,guest_name,guest_email,guest_phone,rsvp_status,
   approval_status,plus_count,created_at)
 VALUES('87300000-0000-4000-8000-000000000060','87300000-0000-4000-8000-000000000020',NULL,
-  'Casey Guest','casey@example.test','+14155550873','going','approved',0,now());
+  'Casey Guest','casey@example.test','+14155550873','going','pending',0,now());
 INSERT INTO public.brand_person_source_links(id,brand_id,brand_person_id,source_kind,source_id,
   offering_invite_id,link_method,source_occurred_at)
 VALUES('87300000-0000-4000-8000-000000000061','87300000-0000-4000-8000-000000000010',
@@ -93,18 +106,33 @@ DECLARE v jsonb;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub','87300000-0000-4000-8000-000000000001',true);
   v:=public.biz_guest_roster_list('87300000-0000-4000-8000-000000000020','all',NULL,'action_priority',NULL,50);
-  IF v->'rows'->0->>'primaryStatus'<>'going' OR v->'summary'->>'notResponded'<>'0'
-     OR v->'summary'->>'confirmed'<>'1' THEN
+  IF v->'rows'->0->>'primaryStatus'<>'awaiting_approval' OR v->'summary'->>'notResponded'<>'0'
+     OR v->'summary'->>'confirmed'<>'0' THEN
     RAISE EXCEPTION 'T-873-02 FAIL: RSVP did not outrank accepted invite: %',v;
+  END IF;
+  BEGIN
+    PERFORM public.biz_guest_roster_resolve_action(
+      '87300000-0000-4000-8000-000000000001','87300000-0000-4000-8000-000000000020',
+      'reminder',ARRAY['person:87300000-0000-4000-8000-000000000030'],ARRAY['email']
+    );
+    RAISE EXCEPTION 'T-873-02B FAIL: responded guest stayed reminder-eligible';
+  EXCEPTION WHEN serialization_failure THEN NULL;
+  END;
+  v:=public.biz_guest_roster_set_rsvp_approval(
+    '87300000-0000-4000-8000-000000000020','person:87300000-0000-4000-8000-000000000030',
+    'approve','87300000-0000-4000-8000-000000000062'
+  );
+  IF v->>'primaryStatus'<>'going' THEN
+    RAISE EXCEPTION 'T-873-02C FAIL: approval did not recompute Going: %',v;
   END IF;
 END;
 $response$;
 
 INSERT INTO public.ticket_types(id,event_id,name,price_cents,currency,is_unlimited)
 VALUES('87300000-0000-4000-8000-000000000070','87300000-0000-4000-8000-000000000020','General',1000,'USD',true);
-INSERT INTO public.orders(id,event_id,buyer_user_id,buyer_email,buyer_name,total_cents,currency,payment_status)
+INSERT INTO public.orders(id,event_id,buyer_user_id,buyer_email,buyer_name,buyer_phone,buyer_phone_e164,total_cents,currency,payment_status)
 VALUES('87300000-0000-4000-8000-000000000071','87300000-0000-4000-8000-000000000020',NULL,
-  'casey@example.test','Casey Guest',1000,'USD','paid');
+  'casey@example.test','Casey Guest','+14155550873','+14155550873',1000,'USD','paid');
 INSERT INTO public.tickets(id,order_id,ticket_type_id,event_id,attendee_name,attendee_email,qr_code,status)
 VALUES('87300000-0000-4000-8000-000000000072','87300000-0000-4000-8000-000000000071',
   '87300000-0000-4000-8000-000000000070','87300000-0000-4000-8000-000000000020',

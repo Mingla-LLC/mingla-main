@@ -4,7 +4,19 @@
  * Append-only new test; fails if the approved labels/detail are removed.
  */
 import React from "react";
-import TestRenderer, { act, type ReactTestInstance } from "react-test-renderer";
+interface TestInstance {
+  type: unknown;
+  children: Array<string | TestInstance>;
+  props: Record<string, unknown> & { onPress?: () => void };
+  findAll(predicate: (node: TestInstance) => boolean): TestInstance[];
+  findByProps(props: Record<string, unknown>): TestInstance;
+}
+interface TestTree { root: TestInstance }
+const testRenderer = require("react-test-renderer") as {
+  create: (element: React.ReactElement) => TestTree;
+  act: (callback: () => void) => void;
+};
+const { act } = testRenderer;
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -41,6 +53,11 @@ const mockRoster = {
 jest.mock("../src/hooks/useGuestRoster", () => ({
   useGuestRoster: () => ({ data: mockRoster, isLoading: false, isError: false, isFetching: false, isRefetching: false, refetch: jest.fn() }),
 }));
+jest.mock("../src/services/guestRosterService", () => ({
+  createGuestRosterRequestId: () => "87300000-0000-4000-8000-000000000099",
+  previewGuestRosterAction: jest.fn(),
+  executeGuestRosterAction: jest.fn(),
+}));
 jest.mock("../src/components/ui/GlassCard", () => {
   const ReactLocal = require("react"); const { View } = require("react-native");
   return { GlassCard: ({ children }: { children?: React.ReactNode }) => ReactLocal.createElement(View, null, children) };
@@ -72,19 +89,19 @@ jest.mock("../src/components/ui/Sheet", () => {
 
 import { GuestRosterExperience } from "../src/components/guests/GuestRosterExperience";
 
-const textOf = (node: ReactTestInstance): string => node.children.map((child) =>
+const textOf = (node: TestInstance): string => node.children.map((child: string | TestInstance) =>
   typeof child === "string" ? child : textOf(child)).join("");
 
-const renderRoster = (): TestRenderer.ReactTestRenderer => {
-  let tree!: TestRenderer.ReactTestRenderer;
+const renderRoster = (): TestTree => {
+  let tree!: TestTree;
   act(() => {
-    tree = TestRenderer.create(<GuestRosterExperience eventId="event-873" onBack={jest.fn()} onOpenOrder={jest.fn()} onExport={jest.fn()} />);
+    tree = testRenderer.create(<GuestRosterExperience eventId="event-873" onBack={jest.fn()} onOpenOrder={jest.fn()} onExport={jest.fn()} />);
   });
   return tree;
 };
 
-const visibleTexts = (tree: TestRenderer.ReactTestRenderer): string[] =>
-  tree.root.findAll((node) => node.type === "Text").map(textOf);
+const visibleTexts = (tree: TestTree): string[] =>
+  tree.root.findAll((node: TestInstance) => node.type === "Text").map(textOf);
 
 describe("#873 GuestRosterExperience rendered status truth", () => {
   test("renders approved summary cards and one row per person", () => {
@@ -101,7 +118,7 @@ describe("#873 GuestRosterExperience rendered status truth", () => {
   test("opens person detail and describes acceptance honestly", () => {
     const tree = renderRoster();
     const row = tree.root.findByProps({ accessibilityLabel: "Casey Guest, Not responded, Invited" });
-    act(() => row.props.onPress());
+    act(() => row.props.onPress?.());
     const texts = visibleTexts(tree);
     expect(texts).toContain("Sent to provider. This does not claim delivery, display, opening, or reading.");
     expect(texts).not.toContain("Delivered");

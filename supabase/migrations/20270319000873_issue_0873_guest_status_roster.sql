@@ -23,6 +23,32 @@ ALTER TABLE public.guest_roster_brand_rollouts ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.guest_roster_brand_rollouts FROM PUBLIC,anon,authenticated;
 GRANT ALL ON TABLE public.guest_roster_brand_rollouts TO service_role;
 
+CREATE TABLE public.guest_roster_action_previews (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  brand_id uuid NOT NULL REFERENCES public.brands(id) ON DELETE RESTRICT,
+  event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE RESTRICT,
+  actor_id uuid NOT NULL,
+  action text NOT NULL CHECK (action IN ('reminder','retry_delivery')),
+  selection jsonb NOT NULL,
+  channels text[] NOT NULL CHECK (channels <@ ARRAY['email','sms','push']::text[]),
+  quote_hash text NOT NULL CHECK (quote_hash~'^[0-9a-f]{64}$'),
+  estimated_cost_minor bigint NOT NULL CHECK (estimated_cost_minor>=0),
+  currency char(3) NULL,
+  expires_at timestamptz NOT NULL,
+  consumed_at timestamptz NULL,
+  execute_client_request_id uuid NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT guest_roster_preview_consumed_shape CHECK (
+    (consumed_at IS NULL AND execute_client_request_id IS NULL)
+    OR (consumed_at IS NOT NULL AND execute_client_request_id IS NOT NULL)
+  )
+);
+CREATE INDEX guest_roster_action_previews_expiry_idx
+  ON public.guest_roster_action_previews(expires_at) WHERE consumed_at IS NULL;
+ALTER TABLE public.guest_roster_action_previews ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.guest_roster_action_previews FROM PUBLIC,anon,authenticated;
+GRANT ALL ON TABLE public.guest_roster_action_previews TO service_role;
+
 CREATE TABLE public.guest_roster_change_events (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
@@ -130,7 +156,7 @@ WITH event_row AS (
   SELECT e.id,e.brand_id FROM public.events e
   WHERE e.id=p_event_id AND e.deleted_at IS NULL
 ), canonical_people AS (
-  SELECT DISTINCT p.id,p.display_name,p.avatar_url
+  SELECT DISTINCT p.id,p.display_name,p.avatar_url,p.updated_at
   FROM event_row e
   JOIN public.brand_people p ON p.brand_id=e.brand_id AND p.record_status='active'
   WHERE EXISTS (SELECT 1 FROM public.brand_offering_invites i WHERE i.event_id=e.id AND i.brand_person_id=p.id)
@@ -176,6 +202,7 @@ WITH event_row AS (
     COALESCE(delivery.retryable,false) AS retryable,
     COALESCE(delivery.attempts,'[]'::jsonb) AS attempts,
     delivery.last_contact_at,
+    delivery.last_reminder_at,
     contact.contact_label,
     GREATEST(p.updated_at,invite.updated_at,rsvp.updated_at,commerce.activity_at,delivery.activity_at) AS activity_at
   FROM canonical_people p
@@ -227,6 +254,10 @@ WITH event_row AS (
       bool_or(a.status='failed' AND a.is_retryable) AS retryable,
       max(COALESCE(a.delivered_at,a.sent_at,a.provider_accepted_at,a.failed_at,a.queued_at,a.created_at)) AS activity_at,
       max(COALESCE(a.delivered_at,a.sent_at,a.provider_accepted_at)) AS last_contact_at,
+      max(COALESCE(a.delivered_at,a.sent_at,a.provider_accepted_at)) FILTER (
+        WHERE a.attempt_kind='reminder'
+          AND (a.provider_accepted_at IS NOT NULL OR a.status IN ('sent','delivered'))
+      ) AS last_reminder_at,
       jsonb_agg(jsonb_build_object(
         'channel',a.channel,'status',a.status,
         'providerAccepted',(a.provider_accepted_at IS NOT NULL OR a.status IN ('sent','delivered')),
@@ -285,7 +316,8 @@ WITH event_row AS (
       'transferredTickets',c.transferred_tickets,'checkedIn',c.checked_in),
     'rsvpId',c.rsvp_id,'orderIds',to_jsonb(c.order_ids),
     'latestActivityAt',COALESCE(c.activity_at,now()),'checkedIn',c.checked_in>0,
-    'canRemind',c.primary_status='not_responded',
+    'canRemind',c.primary_status='not_responded'
+      AND (c.last_reminder_at IS NULL OR c.last_reminder_at<=now()-interval '24 hours'),
     'canRetry',c.primary_status='invite_failed' AND c.retryable,
     'canApprove',c.primary_status='awaiting_approval','canDeny',c.primary_status='awaiting_approval',
     'isExportable',c.person_id IS NOT NULL
@@ -326,6 +358,138 @@ UNION ALL SELECT row_data FROM unlinked_rsvps
 UNION ALL SELECT row_data FROM unlinked_orders
 $function$;
 
+CREATE OR REPLACE FUNCTION public.biz_guest_roster_resolve_action(
+  p_actor_id uuid,p_event_id uuid,p_action text,p_roster_keys text[],p_channels text[]
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,extensions,auth,pg_temp
+AS $function$
+DECLARE
+  v_brand uuid; v_rollout jsonb; v_people uuid[]; v_attempts uuid[]; v_hash text;
+BEGIN
+  v_brand:=public.issue_1770_offering_actor_brand(p_actor_id,p_event_id,false);
+  v_rollout:=public.biz_guest_roster_rollout(v_brand);
+  IF p_action NOT IN ('reminder','retry_delivery') OR p_roster_keys IS NULL
+     OR cardinality(p_roster_keys) NOT BETWEEN 1 AND 500
+     OR cardinality(p_roster_keys)<>cardinality(ARRAY(SELECT DISTINCT unnest(p_roster_keys)))
+     OR p_channels IS NULL OR cardinality(p_channels) NOT BETWEEN 1 AND 3
+     OR p_channels IS DISTINCT FROM ARRAY(SELECT DISTINCT x FROM unnest(p_channels) x ORDER BY x)
+     OR NOT p_channels<@ARRAY['email','push','sms']::text[]
+     OR NOT COALESCE((v_rollout->>CASE WHEN cardinality(p_roster_keys)>1 THEN 'bulkActionsEnabled' ELSE 'singleActionsEnabled' END)::boolean,false) THEN
+    RAISE EXCEPTION 'guest_roster_action_invalid' USING ERRCODE='22023';
+  END IF;
+  WITH selected AS (
+    SELECT row_data FROM public.biz_guest_roster_project(p_event_id)
+    WHERE row_data->>'rosterKey'=ANY(p_roster_keys)
+  )
+  SELECT array_agg((row_data->>'personId')::uuid ORDER BY row_data->>'personId') INTO v_people
+  FROM selected
+  WHERE row_data->>'personId' IS NOT NULL
+    AND CASE p_action WHEN 'reminder' THEN (row_data->>'canRemind')::boolean
+      ELSE (row_data->>'canRetry')::boolean END;
+  IF cardinality(COALESCE(v_people,'{}'))<>cardinality(p_roster_keys) THEN
+    RAISE EXCEPTION 'guest_roster_status_changed' USING ERRCODE='40001';
+  END IF;
+  IF p_action='retry_delivery' THEN
+    SELECT array_agg(id ORDER BY id) INTO v_attempts FROM (
+      SELECT DISTINCT ON (i.brand_person_id,a.channel) a.id
+      FROM public.brand_offering_invite_delivery_attempts a
+      JOIN public.brand_offering_invites i ON i.id=a.invite_id
+      WHERE i.event_id=p_event_id AND i.brand_person_id=ANY(v_people)
+        AND a.channel=ANY(p_channels) AND a.status='failed' AND a.is_retryable
+        AND NOT EXISTS (SELECT 1 FROM public.brand_offering_invite_delivery_attempts later
+          WHERE later.invite_id=a.invite_id AND later.channel=a.channel
+            AND later.attempt_ordinal>a.attempt_ordinal)
+      ORDER BY i.brand_person_id,a.channel,a.attempt_ordinal DESC
+    ) q;
+    IF cardinality(COALESCE(v_attempts,'{}'))=0 THEN
+      RAISE EXCEPTION 'guest_roster_status_changed' USING ERRCODE='40001';
+    END IF;
+  END IF;
+  v_hash:=encode(extensions.digest(convert_to(
+    p_event_id::text||':'||p_action||':'||array_to_string(p_roster_keys,',')||':'||array_to_string(p_channels,','),'UTF8'
+  ),'sha256'),'hex');
+  IF p_action='reminder' THEN
+    RETURN jsonb_build_object('selection',jsonb_build_object(
+      'kind','resolved_brand_people_v1','brandPersonIds',to_jsonb(v_people),
+      'selectionHash',v_hash,'source','guest_roster_actions'),
+      'selectedCount',cardinality(p_roster_keys));
+  END IF;
+  RETURN jsonb_build_object('selection',jsonb_build_object(
+    'kind','failed_attempts_v1','failedAttemptIds',to_jsonb(v_attempts),
+    'selectionHash',v_hash,'source','guest_roster_actions'),
+    'selectedCount',cardinality(p_roster_keys));
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.biz_guest_roster_store_preview(
+  p_actor_id uuid,p_event_id uuid,p_action text,p_selection jsonb,p_channels text[],
+  p_quote_hash text,p_estimated_cost_minor bigint,p_currency text
+) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
+AS $function$
+DECLARE v_brand uuid; v_id uuid;
+BEGIN
+  v_brand:=public.issue_1770_offering_actor_brand(p_actor_id,p_event_id,false);
+  IF p_action NOT IN ('reminder','retry_delivery') OR p_selection->>'source'<>'guest_roster_actions'
+     OR p_quote_hash!~'^[0-9a-f]{64}$' OR p_estimated_cost_minor<0
+     OR (p_currency IS NOT NULL AND p_currency!~'^[A-Z]{3}$') THEN
+    RAISE EXCEPTION 'guest_roster_preview_invalid' USING ERRCODE='22023';
+  END IF;
+  INSERT INTO public.guest_roster_action_previews(
+    brand_id,event_id,actor_id,action,selection,channels,quote_hash,
+    estimated_cost_minor,currency,expires_at
+  ) VALUES(v_brand,p_event_id,p_actor_id,p_action,p_selection,p_channels,p_quote_hash,
+    p_estimated_cost_minor,p_currency,now()+interval '5 minutes') RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.biz_guest_roster_get_preview(
+  p_actor_id uuid,p_preview_id uuid,p_client_request_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
+AS $function$
+DECLARE v public.guest_roster_action_previews%ROWTYPE;
+BEGIN
+  SELECT * INTO v FROM public.guest_roster_action_previews WHERE id=p_preview_id FOR UPDATE;
+  IF NOT FOUND OR v.actor_id<>p_actor_id
+     OR public.issue_1770_offering_actor_brand(p_actor_id,v.event_id,false)<>v.brand_id THEN
+    RAISE EXCEPTION 'guest_roster_preview_forbidden' USING ERRCODE='42501';
+  END IF;
+  IF v.consumed_at IS NOT NULL AND v.execute_client_request_id<>p_client_request_id THEN
+    RAISE EXCEPTION 'guest_roster_preview_consumed' USING ERRCODE='23505';
+  END IF;
+  IF v.expires_at<now() AND v.consumed_at IS NULL THEN
+    RAISE EXCEPTION 'guest_roster_preview_expired' USING ERRCODE='40001';
+  END IF;
+  IF v.consumed_at IS NULL AND v.action='reminder' AND EXISTS (
+    SELECT 1 FROM jsonb_array_elements_text(v.selection->'brandPersonIds') person_id
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.biz_guest_roster_project(v.event_id) r
+      WHERE r.row_data->>'personId'=person_id AND (r.row_data->>'canRemind')::boolean
+    )
+  ) THEN RAISE EXCEPTION 'guest_roster_status_changed' USING ERRCODE='40001'; END IF;
+  RETURN jsonb_build_object('eventId',v.event_id,'action',v.action,'selection',v.selection,
+    'channels',to_jsonb(v.channels),'quoteHash',v.quote_hash,
+    'estimatedCostMinor',v.estimated_cost_minor,'currency',v.currency,
+    'replayed',v.consumed_at IS NOT NULL);
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.biz_guest_roster_consume_preview(
+  p_actor_id uuid,p_preview_id uuid,p_client_request_id uuid
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
+AS $function$
+BEGIN
+  UPDATE public.guest_roster_action_previews SET consumed_at=COALESCE(consumed_at,now()),
+    execute_client_request_id=COALESCE(execute_client_request_id,p_client_request_id)
+  WHERE id=p_preview_id AND actor_id=p_actor_id
+    AND (execute_client_request_id IS NULL OR execute_client_request_id=p_client_request_id);
+  IF NOT FOUND THEN RAISE EXCEPTION 'guest_roster_preview_forbidden' USING ERRCODE='42501'; END IF;
+END;
+$function$;
+
 CREATE OR REPLACE FUNCTION public.biz_guest_roster_list(
   p_event_id uuid,p_filter text DEFAULT 'all',p_search text DEFAULT NULL,
   p_sort text DEFAULT 'action_priority',p_cursor jsonb DEFAULT NULL,p_limit integer DEFAULT 50
@@ -350,7 +514,7 @@ BEGIN
     RAISE EXCEPTION 'guest_roster_filter_invalid' USING ERRCODE='22023';
   END IF;
   v_search:=lower(regexp_replace(btrim(COALESCE(p_search,'')),'\s+',' ','g'));
-  IF length(v_search)>200 OR v_search~E'[\x00-\x1F\x7F]' THEN RAISE EXCEPTION 'guest_roster_search_invalid' USING ERRCODE='22023'; END IF;
+  IF length(v_search)>200 OR v_search~E'[\\x00-\\x1F\\x7F]' THEN RAISE EXCEPTION 'guest_roster_search_invalid' USING ERRCODE='22023'; END IF;
   WITH all_rows AS MATERIALIZED (SELECT row_data r FROM public.biz_guest_roster_project(p_event_id)),
   filtered AS (
     SELECT r FROM all_rows WHERE
@@ -411,6 +575,39 @@ BEGIN
 END;
 $function$;
 
+CREATE OR REPLACE FUNCTION public.biz_guest_roster_set_rsvp_approval(
+  p_event_id uuid,p_roster_key text,p_decision text,p_client_request_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
+AS $function$
+DECLARE v_brand uuid; v_rollout jsonb; v_row jsonb; v_rsvp uuid; v_target text;
+BEGIN
+  SELECT e.brand_id INTO v_brand FROM public.events e WHERE e.id=p_event_id AND e.deleted_at IS NULL;
+  IF auth.uid() IS NULL OR v_brand IS NULL
+     OR public.biz_brand_effective_rank(v_brand,auth.uid())<public.biz_role_rank('event_manager') THEN
+    RAISE EXCEPTION 'guest_roster_forbidden' USING ERRCODE='42501';
+  END IF;
+  v_rollout:=public.biz_guest_roster_rollout(v_brand);
+  IF NOT COALESCE((v_rollout->>'singleActionsEnabled')::boolean,false)
+     OR p_decision NOT IN ('approve','deny') OR p_client_request_id IS NULL THEN
+    RAISE EXCEPTION 'guest_roster_action_invalid' USING ERRCODE='22023';
+  END IF;
+  SELECT row_data INTO v_row FROM public.biz_guest_roster_project(p_event_id)
+  WHERE row_data->>'rosterKey'=p_roster_key;
+  v_rsvp:=(v_row->>'rsvpId')::uuid;
+  v_target:=CASE p_decision WHEN 'approve' THEN 'approved' ELSE 'denied' END;
+  IF v_rsvp IS NULL OR NOT EXISTS (
+    SELECT 1 FROM public.event_rsvps r WHERE r.id=v_rsvp
+      AND r.event_id=p_event_id AND r.rsvp_status='going'
+      AND r.approval_status IN ('pending',v_target)
+  ) THEN RAISE EXCEPTION 'guest_roster_status_changed' USING ERRCODE='40001'; END IF;
+  UPDATE public.event_rsvps SET approval_status=v_target WHERE id=v_rsvp AND approval_status<>v_target;
+  SELECT row_data INTO v_row FROM public.biz_guest_roster_project(p_event_id)
+  WHERE row_data->>'rosterKey'=p_roster_key;
+  RETURN v_row;
+END;
+$function$;
+
 CREATE OR REPLACE FUNCTION public.biz_offering_guest_roster_export_rows(p_job_id uuid)
 RETURNS TABLE(row_data jsonb)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp
@@ -420,6 +617,9 @@ BEGIN
   SELECT * INTO v_job FROM public.brand_people_export_jobs WHERE id=p_job_id;
   IF NOT FOUND OR v_job.export_kind<>'offering_guest_roster' THEN
     RAISE EXCEPTION 'export_job_not_found' USING ERRCODE='P0002';
+  END IF;
+  IF NOT COALESCE((public.biz_guest_roster_rollout(v_job.brand_id)->>'exportEnabled')::boolean,false) THEN
+    RAISE EXCEPTION 'guest_roster_export_disabled' USING ERRCODE='42501';
   END IF;
   RETURN QUERY
   SELECT jsonb_build_object(
@@ -485,20 +685,30 @@ FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('ticket');
 REVOKE ALL ON FUNCTION public.biz_guest_roster_phase_rank(text) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.biz_guest_roster_rollout(uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.biz_guest_roster_project(uuid) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.biz_guest_roster_resolve_action(uuid,uuid,text,text[],text[]) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.biz_guest_roster_store_preview(uuid,uuid,text,jsonb,text[],text,bigint,text) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.biz_guest_roster_get_preview(uuid,uuid,uuid) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.biz_guest_roster_consume_preview(uuid,uuid,uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_0873_emit_roster_change() FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_phase_rank(text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_rollout(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_project(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_guest_roster_resolve_action(uuid,uuid,text,text[],text[]) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_guest_roster_store_preview(uuid,uuid,text,jsonb,text[],text,bigint,text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_guest_roster_get_preview(uuid,uuid,uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_guest_roster_consume_preview(uuid,uuid,uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_0873_emit_roster_change() TO service_role;
 
 REVOKE ALL ON FUNCTION public.biz_guest_roster_access(uuid) FROM PUBLIC,anon;
 REVOKE ALL ON FUNCTION public.biz_guest_roster_list(uuid,text,text,text,jsonb,integer) FROM PUBLIC,anon;
 REVOKE ALL ON FUNCTION public.biz_guest_roster_summary(uuid) FROM PUBLIC,anon;
 REVOKE ALL ON FUNCTION public.biz_guest_roster_detail(uuid,text) FROM PUBLIC,anon;
+REVOKE ALL ON FUNCTION public.biz_guest_roster_set_rsvp_approval(uuid,text,text,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_access(uuid) TO authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_list(uuid,text,text,text,jsonb,integer) TO authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_summary(uuid) TO authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_detail(uuid,text) TO authenticated,service_role;
+GRANT EXECUTE ON FUNCTION public.biz_guest_roster_set_rsvp_approval(uuid,text,text,uuid) TO authenticated,service_role;
 
 REVOKE ALL ON FUNCTION public.biz_offering_guest_roster_export_rows(uuid) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_offering_guest_roster_export_rows(uuid) TO service_role;

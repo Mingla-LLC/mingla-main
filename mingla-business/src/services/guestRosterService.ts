@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import type {
   GuestRosterFilter,
+  GuestRosterActionPreview,
   GuestRosterPage,
   GuestRosterSort,
 } from "../types/guestRoster";
@@ -80,13 +81,67 @@ export async function requestGuestRosterExport(input: {
   sort: GuestRosterSort;
   clientRequestId: string;
 }): Promise<Record<string, unknown>> {
-  const { data, error } = await supabase.rpc("biz_export_brand_people", {
-    p_scope: "offering_guest_roster",
+  const { data, error } = await supabase.functions.invoke("brand-people-export", {
+    body: {
+      scope: "offering_guest_roster",
+      eventId: input.eventId,
+      filter: input.filter,
+      search: input.search.trim().length > 0 ? input.search.trim() : null,
+      sort: input.sort,
+      filterSnapshot: {},
+      clientRequestId: input.clientRequestId,
+    },
+  });
+  if (error !== null) throw new GuestRosterError(error.message, error.message);
+  return asObject(data);
+}
+
+export async function getGuestRosterExport(jobId: string): Promise<Record<string, unknown>> {
+  const { data, error } = await supabase.functions.invoke("brand-people-export", {
+    body: { operation: "status", jobId },
+  });
+  if (error !== null) throw new GuestRosterError("guest_roster_export_status_failed", error.message);
+  return asObject(data);
+}
+
+export async function previewGuestRosterAction(input: {
+  eventId: string;
+  action: "reminder" | "retry_delivery";
+  rosterKeys: string[];
+  channels: Array<"email" | "sms" | "push">;
+}): Promise<GuestRosterActionPreview> {
+  const { data, error } = await supabase.functions.invoke("guest-roster-actions", {
+    body: { operation: "preview", ...input },
+  });
+  if (error !== null) throw new GuestRosterError("guest_roster_action_preview_failed", error.message);
+  const value = asObject(data);
+  if (value.ok !== true) throw new GuestRosterError(String(value.code ?? "guest_roster_action_preview_failed"));
+  return value as unknown as GuestRosterActionPreview;
+}
+
+export async function executeGuestRosterAction(input: {
+  previewId: string;
+  clientRequestId: string;
+}): Promise<Record<string, unknown>> {
+  const { data, error } = await supabase.functions.invoke("guest-roster-actions", {
+    body: { operation: "execute", ...input },
+  });
+  if (error !== null) throw new GuestRosterError("guest_roster_action_execute_failed", error.message);
+  const value = asObject(data);
+  if (value.ok !== true) throw new GuestRosterError(String(value.code ?? "guest_roster_action_execute_failed"));
+  return value;
+}
+
+export async function setGuestRosterRsvpApproval(input: {
+  eventId: string;
+  rosterKey: string;
+  decision: "approve" | "deny";
+  clientRequestId: string;
+}): Promise<Record<string, unknown>> {
+  const { data, error } = await supabase.rpc("biz_guest_roster_set_rsvp_approval", {
     p_event_id: input.eventId,
-    p_filter: input.filter,
-    p_search: input.search.trim().length > 0 ? input.search.trim() : null,
-    p_sort: input.sort,
-    p_filter_snapshot: {},
+    p_roster_key: input.rosterKey,
+    p_decision: input.decision,
     p_client_request_id: input.clientRequestId,
   });
   if (error !== null) throw new GuestRosterError(error.message, error.message);
