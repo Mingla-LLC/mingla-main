@@ -30,6 +30,7 @@ import { usePairingPills } from '../../hooks/usePairings';
 import { useAppStore } from '../../store/appStore';
 import PersonHolidayView from '../PersonHolidayView';
 import ExpandedCardModal from '../ExpandedCardModal';
+import { openExpandedCardContentShare } from '../../services/contentShareController';
 import type { ExpandedCardData } from '../../types/expandedCardTypes';
 import { savedCardToExpandedCardData } from '../utils/savedCardToExpandedCardData';
 import CustomHolidayModal from '../CustomHolidayModal';
@@ -861,7 +862,8 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
             await handleSaveCard(card);
             setExpandedCard(null);
           }}
-          onShare={() => {}}
+          onShare={(card) => openExpandedCardContentShare(card, 'friend_profile_expanded')}
+          shareProducerSurface="friend_profile_expanded"
           isSaved={false}
           currentMode="solo"
           accountPreferences={accountPreferences}

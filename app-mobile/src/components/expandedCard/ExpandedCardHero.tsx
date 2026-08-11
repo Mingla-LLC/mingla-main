@@ -110,6 +110,10 @@ export interface ExpandedCardHeroProps {
   readonly beenHere?: React.ReactNode;
   readonly onSharePress: () => void;
   readonly shareLabel: string;
+  /** #1880 — expanded handoff only; omitted callers keep the prior plate. */
+  readonly shareHandoffEnabled?: boolean;
+  readonly shareBusy?: boolean;
+  readonly shareControlRef?: React.Ref<View>;
   /** The sheet's accessible close affordance — gorhom's handle is suppressed. */
   readonly onClosePress: () => void;
   readonly closeLabel: string;
@@ -209,6 +213,9 @@ export function ExpandedCardHero({
   beenHere,
   onSharePress,
   shareLabel,
+  shareHandoffEnabled = false,
+  shareBusy = false,
+  shareControlRef,
   onClosePress,
   closeLabel,
 }: ExpandedCardHeroProps): React.ReactElement {
@@ -239,6 +246,9 @@ export function ExpandedCardHero({
       beenHere={beenHere}
       onSharePress={onSharePress}
       shareLabel={shareLabel}
+      shareHandoffEnabled={shareHandoffEnabled}
+      shareBusy={shareBusy}
+      shareControlRef={shareControlRef}
       chevron="down"
     />
   );

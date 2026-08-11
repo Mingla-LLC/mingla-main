@@ -203,6 +203,13 @@ interface BaseBottomSheetSheetProps extends BaseBottomSheetCommonProps {
   /** ORCH-0908 z-stacking-over-tab-bar escape hatch. Default false. */
   wrapInRNModal?: boolean;
   /**
+   * #1880 — additive native-window lifecycle acknowledgements. These fire from
+   * RN Modal itself, not from React visibility state or gorhom's index. Omitted
+   * callbacks preserve every existing consumer byte-for-byte.
+   */
+  onNativeShow?: () => void;
+  onNativeDismiss?: () => void;
+  /**
    * META-ORCH-0991 (sheet rework — Bug 4): when true, the primitive adds the
    * floating GlassBottomNav content height to the body's bottom padding so the
    * last button/content clears Mingla's floating tab bar (not just the OS home
@@ -363,6 +370,8 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
     bodyContainerStyle,
     stickyFooter,
     wrapInRNModal = false,
+    onNativeShow,
+    onNativeDismiss,
     tabBarAware = false,
     hidesBottomNav = false,
     bottomSheetInset = 0,
@@ -875,6 +884,8 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         transparent
         animationType="none"
         onRequestClose={onClose}
+        onShow={onNativeShow}
+        onDismiss={onNativeDismiss}
         statusBarTranslucent
         navigationBarTranslucent
       >

@@ -31,6 +31,7 @@ import { CardFilterBar, WhenFilter } from "./CardFilterBar";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ProposeDateTimeModal from "./ProposeDateTimeModal";
 import ExpandedCardModal from "../ExpandedCardModal";
+import { openExpandedCardContentShare } from "../../services/contentShareController";
 import { mixpanelService } from "../../services/mixpanelService";
 import { logAppsFlyerEvent } from "../../services/appsFlyerService";
 import { recordCardExpand } from "../../services/cardEngagementService";
@@ -2207,7 +2208,7 @@ const CalendarTab = ({
   };
 
   const handleShareFromModal = (card: ExpandedCardData) => {
-    onShareCard(card);
+    openExpandedCardContentShare(card, 'calendar_expanded');
   };
 
   const renderCalendarEntry = ({ item: entry }: { item: CalendarEntry }) => {
@@ -3097,6 +3098,7 @@ const CalendarTab = ({
           onSave={handleSaveFromModal}
           onPurchase={handlePurchaseFromModal}
           onShare={handleShareFromModal}
+          shareProducerSurface="calendar_expanded"
           userPreferences={userPreferences}
           // #1669: the Calendar mount dropped this, so a Metric user got miles
           // and °F here and km and °C on the deck for the same place.

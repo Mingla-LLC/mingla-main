@@ -83,6 +83,7 @@ import { savedCardsService } from "../services/savedCardsService";
 import { useAppStore } from "../store/appStore";
 import { useUserPreferences } from "../hooks/useUserPreferences";
 import ExpandedCardModal from "./ExpandedCardModal";
+import { openExpandedCardContentShare } from "../services/contentShareController";
 // #1669 [expanded-card-one-producer]: the deck's producer, which delegates to
 // the ONE canonical mapper. The deck no longer hand-writes the object.
 import { recommendationToExpandedCardData } from "./utils/recommendationToExpandedCardData";
@@ -3840,8 +3841,9 @@ export default function SwipeableCards({
           handleCloseExpandedModal();
         }}
         onShare={(card) => {
-          onShareCard?.(card);
+          openExpandedCardContentShare(card, 'explorer_expanded');
         }}
+        shareProducerSurface="explorer_expanded"
         /*
           #1707 — the edited plan reaches the DECK. `applyCuratedEdit` patches the
           live list AND the cache the deck restores from: patching only the state

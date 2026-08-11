@@ -5,10 +5,17 @@
 import { CuratedStop } from './curatedExperience';
 import { PriceTierSlug } from '../constants/priceTiers';
 import type { CanonicalDiscoveryPrice } from '../utils/priceTiers';
+import type { ShareMessageContext } from '../services/contentShareAdapter';
+import type { ContentShareProducerSurface } from '../services/contentShareController';
 
 export interface ExpandedCardData extends Partial<CanonicalDiscoveryPrice> {
   id: string;
   placeId?: string;
+  googlePlaceId?: string;
+  placePoolId?: string;
+  sourceScope?: 'solo' | 'collaboration';
+  sourceRecordId?: string;
+  shareMessageContext?: ShareMessageContext;
   title: string;
   category: string;
   categoryIcon: string;
@@ -286,7 +293,8 @@ export interface ExpandedCardModalProps {
   onClose: () => void;
   onSave: (card: ExpandedCardData) => Promise<void> | void;
   onPurchase?: (card: ExpandedCardData, bookingOption: BookingOption) => void;
-  onShare?: (card: ExpandedCardData) => void;
+  onShare: (card: ExpandedCardData) => void;
+  shareProducerSurface: Exclude<ContentShareProducerSurface, 'direct'>;
   userPreferences?: any;
   accountPreferences?: {
     currency: string;

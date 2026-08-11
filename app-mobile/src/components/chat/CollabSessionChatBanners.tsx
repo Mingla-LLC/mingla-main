@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import { Icon } from "../ui/Icon";
 import ExpandedCardModal from "../ExpandedCardModal";
+import { openExpandedCardContentShare } from "../../services/contentShareController";
 import { SwipeableSessionCards } from "../board/SwipeableSessionCards";
 import {
   useSessionScheduledCards,
@@ -310,6 +311,8 @@ export function ScheduleSheet({
         }
         onClose={() => setExpandedCard(null)}
         onSave={() => {}}
+        onShare={(card) => openExpandedCardContentShare(card, 'collab_locked_expanded')}
+        shareProducerSurface="collab_locked_expanded"
         currentMode="collab"
         // #1669: both collab sheets dropped the viewer's units/currency, so the
         // same card rendered in miles/°F here and km/°C on the deck.
@@ -396,6 +399,8 @@ export function SavedToSessionCardsSheet({
         }
         onClose={() => setExpandedCard(null)}
         onSave={() => {}}
+        onShare={(card) => openExpandedCardContentShare(card, 'collab_saved_expanded')}
+        shareProducerSurface="collab_saved_expanded"
         currentMode="collab"
         // #1669: both collab sheets dropped the viewer's units/currency, so the
         // same card rendered in miles/°F here and km/°C on the deck.

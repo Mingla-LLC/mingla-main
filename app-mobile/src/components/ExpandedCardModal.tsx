@@ -12,6 +12,10 @@ import {
   Animated,
   PanResponder,
   Alert,
+  AccessibilityInfo,
+  AppState,
+  BackHandler,
+  findNodeHandle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -90,7 +94,6 @@ import { normalizeWebsiteUrl } from "../utils/normalizeWebsiteUrl";
 // images-only, so a video entry past the hero was a broken tile.
 import { isVideoUrl } from "../utils/videoUrl";
 import ActionButtons from "./expandedCard/ActionButtons";
-import ShareModal from "./ShareModal";
 import InAppBrowserModal from "./InAppBrowserModal";
 // ORCH-0824: business-event branch (renders when props.businessEvent is set and props.card is null).
 import ConsumerExperienceDetailScreen from "../screens/Experience/ConsumerExperienceDetailScreen";
@@ -124,7 +127,100 @@ import { useAppStore } from "../store/appStore";
 import { toastManager } from "./ui/Toast";
 import { useWindowDimensions } from "react-native";
 import { useUserLocation } from "../hooks/useUserLocation";
+import {
+  useUnifiedShare,
+  type SharePresentationFailureClass,
+  type SharePresentationObservation,
+} from "./share/UnifiedShareProvider";
+import { trackContentShareEvent } from "../services/contentShareAdapter";
 
+const SHARE_PRESENTATION_WATCHDOG_MS = 2_000;
+
+type VoidDeferred = {
+  readonly promise: Promise<void>;
+  resolve: () => void;
+};
+
+function createVoidDeferred(): VoidDeferred {
+  let resolvePromise: (() => void) | null = null;
+  return {
+    promise: new Promise<void>((resolve) => {
+      resolvePromise = resolve;
+    }),
+    resolve: () => resolvePromise?.(),
+  };
+}
+
+/** Acknowledgement timeout measured only while the app owns active foreground. */
+function withActiveForegroundWatchdog(
+  acknowledgement: Promise<void>,
+  timeoutMs = SHARE_PRESENTATION_WATCHDOG_MS,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let remainingMs = timeoutMs;
+    let activeStartedAt: number | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let settled = false;
+    let subscription: { remove: () => void } | null = null;
+
+    const cleanup = (): void => {
+      if (timer !== null) clearTimeout(timer);
+      subscription?.remove();
+    };
+    const settle = (result: 'resolved' | 'rejected', error?: Error): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (result === 'resolved') resolve();
+      else reject(error ?? new Error('active_foreground_timeout'));
+    };
+    const pause = (): void => {
+      if (activeStartedAt !== null) {
+        remainingMs = Math.max(0, remainingMs - (Date.now() - activeStartedAt));
+        activeStartedAt = null;
+      }
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+    const resume = (): void => {
+      if (settled || activeStartedAt !== null) return;
+      if (remainingMs <= 0) {
+        settle('rejected', new Error('active_foreground_timeout'));
+        return;
+      }
+      activeStartedAt = Date.now();
+      timer = setTimeout(
+        () => settle('rejected', new Error('active_foreground_timeout')),
+        remainingMs,
+      );
+    };
+    subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') resume();
+      else pause();
+    });
+    if (AppState.currentState === 'active') resume();
+    acknowledgement.then(
+      () => settle('resolved'),
+      (error: unknown) => settle(
+        'rejected',
+        error instanceof Error ? error : new Error('presentation_rejected'),
+      ),
+    );
+  });
+}
+
+function waitUntilAppActive(): Promise<void> {
+  if (AppState.currentState === 'active') return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      subscription.remove();
+      resolve();
+    });
+  });
+}
 
 // ============================================================================
 // ORCH-0908 — LockedInBanner: shown at top of ExpandedCardModal when a card
@@ -302,6 +398,7 @@ export default function ExpandedCardModal({
   onSave,
   onPurchase,
   onShare,
+  shareProducerSurface,
   userPreferences,
   accountPreferences,
   isSaved,
@@ -325,6 +422,7 @@ export default function ExpandedCardModal({
   canAccessCurated = true,
   reservationPass,
 }: ExpandedCardModalProps) {
+  const { beginExpandedPresentation } = useUnifiedShare();
   // ORCH-0828: project the union back to the legacy `card` / `businessEvent`
   // local bindings used throughout the rest of this large component. The
   // PROP-level mutual exclusion is enforced by the discriminated-union type
@@ -396,7 +494,6 @@ export default function ExpandedCardModal({
   const [loadingStrollData, setLoadingStrollData] = useState(false);
   const [picnicData, setPicnicData] = useState(card?.picnicData);
   const [loadingPicnicData, setLoadingPicnicData] = useState(false);
-  const [isNightOutShareOpen, setIsNightOutShareOpen] = useState(false);
   const [seatMapFailed, setSeatMapFailed] = useState(false);
   const [ticketBrowserUrl, setTicketBrowserUrl] = useState<string | null>(null);
   const [browserUrl, setBrowserUrl] = useState<string | null>(null);
@@ -449,24 +546,215 @@ export default function ExpandedCardModal({
   const { data: venueReservable } = useVenueReservable(card?.id);
   const [isReserveSheetOpen, setIsReserveSheetOpen] = useState(false);
 
+  type ShareHandoffPhase = 'idle' | 'expanded_dismissing' | 'provider_presenting' | 'provider_visible' | 'expanded_restoring';
+  const [shareHandoffPhase, setShareHandoffPhaseState] = useState<ShareHandoffPhase>('idle');
+  const shareHandoffPhaseRef = useRef<ShareHandoffPhase>('idle');
+  const shareHandoffGeneration = useRef(0);
+  const capturedShareCard = useRef<ExpandedCardData | null>(null);
+  const rootDismissedAcknowledgement = useRef<VoidDeferred | null>(null);
+  const rootShownAcknowledgement = useRef<VoidDeferred | null>(null);
+  const sharePresentationObservation = useRef<SharePresentationObservation | null>(null);
+  const shareControlRef = useRef<View | null>(null);
+  const visibleRef = useRef(visible);
+  const currentCardIdRef = useRef(card?.id ?? null);
+  visibleRef.current = visible;
+  currentCardIdRef.current = card?.id ?? null;
+
+  const setShareHandoffPhase = useCallback((phase: ShareHandoffPhase): void => {
+    shareHandoffPhaseRef.current = phase;
+    setShareHandoffPhaseState(phase);
+  }, []);
+
+  const shareHandoffBusy =
+    shareHandoffPhase === 'expanded_dismissing' ||
+    shareHandoffPhase === 'provider_presenting';
+  const rootSuspendedForShare =
+    shareHandoffPhase !== 'idle' && shareHandoffPhase !== 'expanded_restoring';
+
   const anyChildModalOpen =
     browserUrl !== null ||
     ticketBrowserUrl !== null ||
-    isNightOutShareOpen ||
     isSchedulePickerOpen ||
     curatedLightbox.visible ||
     selectedVenueExperience !== null ||
-    isReserveSheetOpen;
+    isReserveSheetOpen ||
+    rootSuspendedForShare;
 
   const handleRootSheetClose = useCallback(() => {
     // ORCH-1022: while a child RN Modal/WebView is open, the root sheet is
     // intentionally suppressed to free the native presentation slot. Swallow
     // BaseBottomSheet's synthetic close so the card state is not torn down.
-    if (browserUrl !== null || ticketBrowserUrl !== null || isNightOutShareOpen || isSchedulePickerOpen || curatedLightbox.visible || selectedVenueExperience !== null || isReserveSheetOpen) {
+    if (browserUrl !== null || ticketBrowserUrl !== null || isSchedulePickerOpen || curatedLightbox.visible || selectedVenueExperience !== null || isReserveSheetOpen || shareHandoffPhaseRef.current !== 'idle') {
       return;
     }
     onClose();
-  }, [browserUrl, curatedLightbox.visible, isNightOutShareOpen, isSchedulePickerOpen, onClose, ticketBrowserUrl, selectedVenueExperience, isReserveSheetOpen]);
+  }, [browserUrl, curatedLightbox.visible, isSchedulePickerOpen, onClose, ticketBrowserUrl, selectedVenueExperience, isReserveSheetOpen]);
+
+  const focusShareControl = useCallback((): void => {
+    const nativeNode = findNodeHandle(shareControlRef.current);
+    if (nativeNode !== null) AccessibilityInfo.setAccessibilityFocus(nativeNode);
+  }, []);
+
+  const restoreExpandedAfterShare = useCallback(async (
+    generation: number,
+    failureAlreadyShown = false,
+  ): Promise<void> => {
+    const captured = capturedShareCard.current;
+    if (
+      captured === null ||
+      !visibleRef.current ||
+      currentCardIdRef.current !== captured.id ||
+      shareHandoffGeneration.current !== generation
+    ) {
+      capturedShareCard.current = null;
+      setShareHandoffPhase('idle');
+      return;
+    }
+
+    const shown = createVoidDeferred();
+    rootShownAcknowledgement.current = shown;
+    setShareHandoffPhase('expanded_restoring');
+    try {
+      await withActiveForegroundWatchdog(shown.promise);
+      if (shareHandoffGeneration.current !== generation) return;
+      capturedShareCard.current = null;
+      rootShownAcknowledgement.current = null;
+      setShareHandoffPhase('idle');
+      focusShareControl();
+    } catch {
+      if (shareHandoffGeneration.current !== generation) return;
+      capturedShareCard.current = null;
+      rootShownAcknowledgement.current = null;
+      setShareHandoffPhase('idle');
+      if (!failureAlreadyShown) {
+        toastManager.show("Couldn't open sharing. Please try again.", 'error');
+        AccessibilityInfo.announceForAccessibility("Couldn't open sharing. Please try again.");
+      }
+      focusShareControl();
+    }
+  }, [focusShareControl, setShareHandoffPhase]);
+
+  const emitParentPresentationFailure = useCallback((
+    captured: ExpandedCardData,
+    failureClass: SharePresentationFailureClass,
+    startedAt: number,
+    correlationId: string,
+  ): void => {
+    trackContentShareEvent('share_failure', {
+      kind: captured.cardType === 'curated' || Array.isArray(captured.stops) ? 'curated' : 'place',
+      producer_surface: shareProducerSurface,
+      platform: Platform.OS,
+      duration_ms: Math.max(0, Date.now() - startedAt),
+      request_correlation: correlationId,
+      failure_type: failureClass,
+    });
+  }, [shareProducerSurface]);
+
+  const admitExpandedShare = useCallback((captured: ExpandedCardData): void => {
+    if (shareHandoffPhaseRef.current !== 'idle') return;
+
+    shareHandoffGeneration.current += 1;
+    const generation = shareHandoffGeneration.current;
+    const startedAt = Date.now();
+    const parentCorrelationId = `expanded-parent-${generation}`;
+    const dismissed = createVoidDeferred();
+    rootDismissedAcknowledgement.current = dismissed;
+    capturedShareCard.current = captured;
+    shareHandoffPhaseRef.current = 'expanded_dismissing';
+    setShareHandoffPhaseState('expanded_dismissing');
+    void Haptics.selectionAsync().catch((error: unknown) => {
+      console.info('[content-share] selection haptic unavailable', {
+        reason: error instanceof Error ? error.name : 'unknown',
+      });
+    });
+    AccessibilityInfo.announceForAccessibility('Opening sharing.');
+
+    void (async (): Promise<void> => {
+      let observation: SharePresentationObservation | null = null;
+      let parentDismissed = false;
+      try {
+        await withActiveForegroundWatchdog(dismissed.promise);
+        parentDismissed = true;
+        if (shareHandoffGeneration.current !== generation) return;
+        rootDismissedAcknowledgement.current = null;
+        await waitUntilAppActive();
+        if (shareHandoffGeneration.current !== generation) return;
+
+        observation = beginExpandedPresentation(shareProducerSurface);
+        sharePresentationObservation.current = observation;
+        setShareHandoffPhase('provider_presenting');
+        onShare(captured);
+        await withActiveForegroundWatchdog(observation.presented);
+        if (shareHandoffGeneration.current !== generation) return;
+        setShareHandoffPhase('provider_visible');
+
+        await observation.dismissalRequested;
+        await withActiveForegroundWatchdog(observation.dismissed);
+        if (shareHandoffGeneration.current !== generation) return;
+        sharePresentationObservation.current = null;
+        await restoreExpandedAfterShare(generation);
+      } catch (error: unknown) {
+        if (shareHandoffGeneration.current !== generation) return;
+        const failureClass: SharePresentationFailureClass =
+          observation === null
+            ? parentDismissed
+              ? 'presentation_rejected'
+              : 'parent_modal_still_presented'
+            : error instanceof Error && error.message === 'active_foreground_timeout'
+              ? 'presentation_timeout'
+              : 'presentation_rejected';
+        if (observation === null) {
+          emitParentPresentationFailure(captured, failureClass, startedAt, parentCorrelationId);
+        } else {
+          observation.cancel(failureClass);
+          try {
+            await withActiveForegroundWatchdog(observation.dismissed);
+          } catch {
+            // The recovery boundary is already bounded; restoration below is
+            // the only safe interactive surface left after the provider cancel.
+          }
+        }
+        sharePresentationObservation.current = null;
+        toastManager.show("Couldn't open sharing. Please try again.", 'error');
+        AccessibilityInfo.announceForAccessibility("Couldn't open sharing. Please try again.");
+        await restoreExpandedAfterShare(generation, true);
+      }
+    })();
+  }, [
+    beginExpandedPresentation,
+    emitParentPresentationFailure,
+    onShare,
+    restoreExpandedAfterShare,
+    setShareHandoffPhase,
+    shareProducerSurface,
+  ]);
+
+  const handleRootNativeDismiss = useCallback((): void => {
+    rootDismissedAcknowledgement.current?.resolve();
+  }, []);
+
+  const handleRootNativeShow = useCallback((): void => {
+    rootShownAcknowledgement.current?.resolve();
+  }, []);
+
+  useEffect(() => {
+    if (shareHandoffPhase === 'idle' || shareHandoffPhase === 'provider_visible') return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      shareHandoffGeneration.current += 1;
+      sharePresentationObservation.current?.cancel('presentation_rejected');
+      sharePresentationObservation.current = null;
+      capturedShareCard.current = null;
+      setShareHandoffPhase('idle');
+      onClose();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [onClose, setShareHandoffPhase, shareHandoffPhase]);
+
+  useEffect(() => () => {
+    shareHandoffGeneration.current += 1;
+    sharePresentationObservation.current?.cancel('presentation_rejected');
+  }, []);
 
   // Review navigation: horizontal swipe to cycle through reviewed cards
   const hasNavigation = onNavigateNext !== undefined || onNavigatePrevious !== undefined;
@@ -510,7 +798,6 @@ export default function ExpandedCardModal({
       setTicketBrowserUrl(null);
       setBrowserUrl(null);
       setBrowserTitle('');
-      setIsNightOutShareOpen(false);
       setIsSchedulePickerOpen(false);
       setCuratedLightbox({ visible: false, images: [], initialIndex: 0 });
     }
@@ -1396,6 +1683,8 @@ export default function ExpandedCardModal({
       <BaseBottomSheet
         visible={visible && !anyChildModalOpen}
         onClose={handleRootSheetClose}
+        onNativeShow={handleRootNativeShow}
+        onNativeDismiss={handleRootNativeDismiss}
         wrapInRNModal
         /*
           A POOL CARD IS A LIGHT SHEET, AND THAT IS SAID ONCE.
@@ -1477,7 +1766,7 @@ export default function ExpandedCardModal({
                   nightOut={nightOut}
                   isSaved={!!isSaved}
                   onSave={onSave}
-                  onShare={onShare}
+                  onShare={admitExpandedShare}
                   onClose={onClose}
                   onOpenBrowser={(url, title) => {
                     setBrowserUrl(url);
@@ -1538,11 +1827,16 @@ export default function ExpandedCardModal({
                   }}
                 />
               }
-              onSharePress={() => onShare?.(card)}
-              shareLabel={t('cards:swipeable.share_card', {
-                defaultValue: 'Share {{title}}',
-                title: card.title,
-              })}
+              onSharePress={() => admitExpandedShare(card)}
+              shareLabel={shareHandoffBusy
+                ? `Opening sharing for ${card.title}`
+                : t('cards:swipeable.share_card', {
+                    defaultValue: 'Share {{title}}',
+                    title: card.title,
+                  })}
+              shareHandoffEnabled
+              shareBusy={shareHandoffBusy}
+              shareControlRef={shareControlRef}
               onClosePress={onClose}
               closeLabel={t('common:close', { defaultValue: 'Close' })}
             />
@@ -2031,29 +2325,6 @@ export default function ExpandedCardModal({
         onClose={() => setCuratedLightbox(prev => ({ ...prev, visible: false }))}
       />
 
-      {isNightOut && nightOut && (
-        <ShareModal
-          isOpen={isNightOutShareOpen}
-          onClose={() => setIsNightOutShareOpen(false)}
-          experienceData={{
-            title: card.title,
-            image: card.image,
-            images: card.images,
-            distance: card.distance,
-            priceRange: nightOut.price,
-            rating: card.rating,
-            address: card.address,
-            description: card.description,
-            location: card.location,
-          }}
-          dateTimePreferences={{
-            timeOfDay: nightOut.time,
-            dayOfWeek: nightOut.date,
-            planningTimeframe: nightOut.date,
-          }}
-          accountPreferences={accountPreferences}
-        />
-      )}
     </>
   );
 }

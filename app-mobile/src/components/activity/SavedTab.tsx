@@ -31,6 +31,7 @@ const ISSUE_1636_WINDOW_SIZE = 5;
 import { Icon } from "../ui/Icon";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ExpandedCardModal from "../ExpandedCardModal";
+import { openExpandedCardContentShare } from "../../services/contentShareController";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
 // #1669 [expanded-card-one-producer]: Likes routes through the ONE canonical
 // producer instead of its own two hand-written literals.
@@ -1951,8 +1952,7 @@ const SavedTab = ({
   };
 
   const handleModalShare = (card: ExpandedCardData) => {
-    handleCloseModal();
-    onShareCard(card as any);
+    openExpandedCardContentShare(card, 'saved_expanded');
   };
 
   const handleCloseProposeDateTimeModal = () => {
@@ -2317,6 +2317,7 @@ const SavedTab = ({
           onSave={handleModalSave}
           onPurchase={handleModalPurchase}
           onShare={handleModalShare}
+          shareProducerSurface="saved_expanded"
           userPreferences={userPreferences}
           // #1669: without this the modal fell back to its Imperial/USD
           // defaults, so a Metric user saw miles and °F from Likes and km and

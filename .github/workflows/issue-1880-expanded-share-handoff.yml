@@ -1,0 +1,63 @@
+name: Issue 1880 Expanded Share Handoff
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/src/components/DiscoverScreen.tsx"
+      - "app-mobile/src/components/ExpandedCardModal.tsx"
+      - "app-mobile/src/components/MessageInterface.tsx"
+      - "app-mobile/src/components/SessionViewModal.tsx"
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/components/activity/CalendarTab.tsx"
+      - "app-mobile/src/components/activity/SavedTab.tsx"
+      - "app-mobile/src/components/chat/CollabSessionChatBanners.tsx"
+      - "app-mobile/src/components/deckCardPlate.tsx"
+      - "app-mobile/src/components/expandedCard/ExpandedCardHero.tsx"
+      - "app-mobile/src/components/profile/ViewFriendProfileScreen.tsx"
+      - "app-mobile/src/components/share/UnifiedShareProvider.tsx"
+      - "app-mobile/src/components/ui/BaseBottomSheet.tsx"
+      - "app-mobile/src/services/contentShareAdapter.ts"
+      - "app-mobile/src/services/contentShareController.ts"
+      - "app-mobile/src/types/expandedCardTypes.ts"
+      - "scripts/issue-1880/**"
+      - ".github/workflows/issue-1880-expanded-share-handoff.yml"
+  pull_request:
+    paths:
+      - "app-mobile/src/components/DiscoverScreen.tsx"
+      - "app-mobile/src/components/ExpandedCardModal.tsx"
+      - "app-mobile/src/components/MessageInterface.tsx"
+      - "app-mobile/src/components/SessionViewModal.tsx"
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/components/activity/CalendarTab.tsx"
+      - "app-mobile/src/components/activity/SavedTab.tsx"
+      - "app-mobile/src/components/chat/CollabSessionChatBanners.tsx"
+      - "app-mobile/src/components/deckCardPlate.tsx"
+      - "app-mobile/src/components/expandedCard/ExpandedCardHero.tsx"
+      - "app-mobile/src/components/profile/ViewFriendProfileScreen.tsx"
+      - "app-mobile/src/components/share/UnifiedShareProvider.tsx"
+      - "app-mobile/src/components/ui/BaseBottomSheet.tsx"
+      - "app-mobile/src/services/contentShareAdapter.ts"
+      - "app-mobile/src/services/contentShareController.ts"
+      - "app-mobile/src/types/expandedCardTypes.ts"
+      - "scripts/issue-1880/**"
+      - ".github/workflows/issue-1880-expanded-share-handoff.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  expanded-share-handoff:
+    name: "Issue 1880: one native owner across expanded Share"
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Require the implementor guard
+        run: test -f scripts/issue-1880/expanded-share-handoff.implementor.happy.test.mjs
+      - name: Run lifecycle, topology, inventory, recovery, and privacy guard
+        run: node --test scripts/issue-1880/expanded-share-handoff.implementor.happy.test.mjs
