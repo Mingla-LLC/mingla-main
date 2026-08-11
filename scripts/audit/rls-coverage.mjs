@@ -63,9 +63,14 @@ function analyzeMigrations(files) {
 function runAudit(migrationFiles, allowlist) {
   const { live, rlsEnabled } = analyzeMigrations(migrationFiles);
   const violations = [];
+  // Issue #1860 — the `_archive_` blanket skip that used to live here is GONE.
+  // A prefix skip is an unbounded exemption list with no names, no review and no
+  // record, and it is how two archive tables sat outside RLS for months without
+  // ever appearing on an allowlist. Exemptions live in rls-allowlist.json, one
+  // name at a time. Re-adding any `.startsWith(` here fails
+  // .github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs (C6).
   for (const table of live.sort()) {
     if (allowlist.has(table)) continue;
-    if (table.startsWith("_archive_")) continue;
     if (!rlsEnabled.has(table)) {
       violations.push(`public.${table} has no ENABLE ROW LEVEL SECURITY in migrations`);
     }

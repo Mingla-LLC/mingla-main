@@ -7,6 +7,22 @@
 
 ---
 
+## DRAFT — issue #1860 (public tables with row-level security disabled)
+
+> Registered DRAFT at issue #1860 IMPLEMENT. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS and an all-green merge. Split out of the #1827 privilege audit, which found twelve tables in `public` running with `relrowsecurity = false` while the schema default grant made row-level security the only constraint that existed.
+
+### I-PROPOSED-1860-PUBLIC-TABLES-RLS-ENABLED (DRAFT)
+
+- **Rule:** Every table in the `public` schema has row-level security ENABLED. The exemption set is exactly one name — `public.spatial_ref_sys`, which the PostGIS extension owns and we do not, and which holds published coordinate-system reference data. Nothing else may be exempt. On the tables this issue fixed, "RLS enabled with zero policies" IS the denial: `anon` and `authenticated` match no row on any command, while `postgres` and `service_role` continue to bypass by design (`rolbypassrls`), which is how every live reader reaches them. `FORCE ROW LEVEL SECURITY` is deliberately absent on those tables — FORCE subjects the OWNER to RLS, and the owner is the role their SECURITY DEFINER readers run as.
+- **Why it is an invariant and not a convention:** convention already failed here. The predecessor audit (`scripts/audit/rls-coverage.mjs`) had a nine-name allowlist AND an unbounded `_archive_` prefix skip, so tables accumulated outside RLS over months while CI stayed green. Both laundering paths are removed; the allowlist now holds one name and the prefix skip is gone.
+- **Enforcement:** Migration `20270321001860_issue_1860_enable_rls_on_unprotected_public_tables.sql` turns RLS on and drops nothing. Two independent halves keep it that way, and neither is sufficient alone. **Static, every PR:** `.github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs` (manifest `batch:A`, self-test + plain) replays the whole migration chain in filename order and asserts every table it leaves alive has an RLS enable; it masks comments and string literals before any DDL regex (a `DROP TABLE` sentence inside a `COMMENT` body fooled the predecessor audit into treating a live table as dropped), resolves the `DO $block$ … FOREACH … format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY')` loops that roughly a third of this schema uses, and deliberately does NOT resolve the same text inside a `CREATE FUNCTION` body, which is stored rather than executed. It also pins the exemption file to exactly `spatial_ref_sys` (C2), refuses an exemption for a table this repo creates (C3), and fails if the live half is un-wired (C5) or if a `.startsWith(` prefix skip returns to the predecessor audit (C6). **Live catalog, containerised Postgres:** `supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql`, registered by explicit filename in `.github/workflows/supabase-migrations-and-stripe-deno.yml`.
+- **Regression:** The gate's `--self-test` is 15/15 and includes the case that matters — a table created with RLS off makes the gate FAIL — plus the comment-poisoning trap, the executed-versus-stored `format()` distinction, drop-then-recreate resetting RLS state, both directions of exemption-list drift, and three vacuity guards (zero files, zero `CREATE TABLE`, and a live-table floor). The SQL suite carries its own falsifiability proof: T-1860-05 BECOMES `anon`, reads a planted row and requires zero, then DISABLEs RLS inside a savepoint and requires the row back. If the second read cannot see what the first could not, the first proved nothing and the file fails on that ground alone. A catalog assertion proves a switch is flipped; only that probe proves anything is refused.
+- **Scope:** Backend only — table privilege posture, CI, and the invariant. No client code path changes on any surface.
+- **Explicitly NOT in scope:** dropping the dead tables. Nine of the twelve are abandoned archive/backup remnants and an absent table cannot regress, but a drop is destructive, irreversible, and the operator's call. Enabling RLS is non-destructive and trivially reversible, which is why it is the first move. Also not in scope: the schema-wide grant design, which remains #1827.
+- **Established:** DRAFT at issue #1860 IMPLEMENT 2026-08-11.
+
+---
+
 ## ACTIVE — issue #1821 (Accepted email/SMS offering invitation completion)
 
 ### I-PROPOSED-OFFERING-EMAIL-SMS-ACCEPTANCE-1 (ACTIVE)
