@@ -21,6 +21,7 @@ on:
       - "supabase/functions/venue-order-staff/**"
       - "supabase/functions/_shared/venueOrderCore.ts"
       - "supabase/functions/_shared/venueOrderPricing.ts"
+      - "supabase/functions/_shared/__tests__/issue_1848_order_gate_codes.test.ts"
       - "supabase/migrations/20270318001792_issue_1792_waiter_mode_tabs.sql"
       - "supabase/migrations/__tests__/issue_1792_waiter_mode_tabs.test.sql"
       - "mingla-business/src/components/venue/**"
@@ -32,6 +33,7 @@ on:
       - "supabase/functions/venue-order-staff/**"
       - "supabase/functions/_shared/venueOrderCore.ts"
       - "supabase/functions/_shared/venueOrderPricing.ts"
+      - "supabase/functions/_shared/__tests__/issue_1848_order_gate_codes.test.ts"
       - "supabase/migrations/20270318001792_issue_1792_waiter_mode_tabs.sql"
       - "supabase/migrations/__tests__/issue_1792_waiter_mode_tabs.test.sql"
       - "mingla-business/src/components/venue/**"
@@ -60,6 +62,7 @@ jobs:
         run: >
           deno test --allow-env --allow-net --allow-read --no-check
           supabase/functions/_shared/__tests__/issue_1792_waiter_mode.test.ts
+          supabase/functions/_shared/__tests__/issue_1848_order_gate_codes.test.ts
 
   waiter-mode-client:
     name: "Client: the pad's rules, and the ticket the kitchen cannot tell apart"

@@ -514,6 +514,17 @@ jobs:
             # rounds stuck at `pending`, the tab permanently unclosable, and a
             # Phase-6 revenue query counting the tab twice.
             supabase/functions/_shared/__tests__/issue_1792_waiter_mode.test.ts
+            # Issue #1848 — the order rail's two refusals are two codes. Gate 2
+            # (claim not verified) and gate 3 (`ordering_enabled` false) both
+            # answered `venue_not_orderable`, whose staff sentence read "This
+            # venue isn't verified for ordering." — so a VERIFIED venue whose
+            # only problem was an unflipped switch was told it was unverified,
+            # and its manager went off to re-do a verification that was already
+            # correct while the switch sat one screen away in Orders. Driven
+            # through `resolveOrderContext` against a client that really answers
+            # both reads, so "gate 2 passed before gate 3 refused" is a fact
+            # about the queries rather than a stub's say-so.
+            supabase/functions/_shared/__tests__/issue_1848_order_gate_codes.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

@@ -92,10 +92,33 @@ export const VENUE_ORDER_ERRORS = {
     guest: "This code isn't active. Ask a member of staff.",
     staff: "That spot is inactive or deleted.",
   },
+  // ---- Issue #1848 — TWO causes, TWO codes. Both used to answer
+  // `venue_not_orderable` with the verification sentence, so a VERIFIED venue
+  // whose only problem was an unflipped switch was told it was unverified —
+  // sending the operator off to fix something already correct while the actual
+  // switch sat one screen away, at exactly the moment they hit it
+  // (`ordering_enabled` defaults OFF).
+  //
+  // `venue_not_orderable` keeps its name because it is also raised by
+  // `biz_venue_ordering_set_enabled` (P0001) for this SAME cause — an attempt
+  // to switch ordering ON at a venue whose claim is not verified — and that
+  // raise, its SQL suites, and `mapQueueRpcError` all mean verification and
+  // nothing else. Narrowing the code to the cause it already carried in the
+  // database is what makes the pair honest.
   venue_not_orderable: {
     status: 409,
     guest: "{Venue} isn't taking orders through Mingla yet.",
-    staff: "This venue isn't verified for ordering.",
+    staff:
+      "This venue isn't verified yet. Ordering opens once its claim is approved.",
+  },
+  ordering_disabled: {
+    status: 409,
+    // DELIBERATELY the same sentence a guest reads for an unverified venue. A
+    // guest must not be able to tell "claim still in review" from "they haven't
+    // switched it on" — that is the venue's business, not the scanner's — and
+    // both are truthfully "not yet".
+    guest: "{Venue} isn't taking orders through Mingla yet.",
+    staff: "Ordering is switched off for this venue. Turn it on from Orders.",
   },
   ordering_paused: {
     status: 409,
