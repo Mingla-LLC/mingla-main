@@ -1022,6 +1022,57 @@ function scenarioT53() {
   }
 }
 
+// T54 (#1815 tester adversarial): canonical and padded issue spellings sit beside
+// each other in the same PR range. The truthful #922 token must authorize only its
+// own file; padding the same number as #0922 must remain inert.
+function scenarioT54() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("canonical.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\n");
+    write("padded.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    write("canonical.test.ts", "expect(a).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "canonical correction", "-m", APPROVED_ISSUE_922);
+
+    write("padded.test.ts", "expect(a).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "padded correction", "-m", "[TEST-MOD-APPROVED #0922] #922 [noncanonical padding must fail]");
+
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T55 (#1815 tester adversarial): the same canonical-versus-padded boundary is
+// independently enforced by the rename authority.
+function scenarioT55() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("canonical-before.test.ts", "expect(a).toBe(1);\n");
+    write("padded-before.test.ts", "expect(a).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    g("mv", "canonical-before.test.ts", "canonical-after.test.ts");
+    g("commit", "-q", "-m", "canonical rename", "-m", "[TEST-RENAME-APPROVED #922] #922 [canonical issue token grammar]");
+
+    g("mv", "padded-before.test.ts", "padded-after.test.ts");
+    g("commit", "-q", "-m", "padded rename", "-m", "[TEST-RENAME-APPROVED #0922] #922 [noncanonical padding must fail]");
+
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // T5 (#1495 tester adversarial) — SC-6 ENFORCED AT RUNTIME, not just as a literal.
 // G-5 only asserts that the string "[TEST-MOD-APPROVED #ISSUE]" fails the regex; it
 // cannot notice if someone later respells a message placeholder with real digits,
@@ -2895,6 +2946,53 @@ function selfTest() {
     { input: "[TEST-MOD-APPROVED #12345]", expect: true, label: "regex adversarial A-19: five-digit canonical issue number accepted" },
     { input: "[TEST-MOD-APPROVED META-ORCH-1174-F]", expect: true, label: "regex adversarial A-20: real historical META-ORCH leg token from this repo's git history still accepted" },
     { input: "[TEST-RENAME-APPROVED #1485-A]", expect: false, re: RENAME_TOKEN, label: "regex adversarial A-21: rename current issue form rejects leg suffix" },
+    // --- #1815 TESTER ADVERSARIAL (B-1..B-40) -------------------------------
+    // Canonical current issues are positive ASCII decimals with no leading zero.
+    { input: "[TEST-MOD-APPROVED #0]", expect: false, label: "regex adversarial B-1: MOD rejects zero issue" },
+    { input: "[TEST-MOD-APPROVED #00]", expect: false, label: "regex adversarial B-2: MOD rejects repeated zero issue" },
+    { input: "[TEST-MOD-APPROVED #01]", expect: false, label: "regex adversarial B-3: MOD rejects leading-zero one-digit issue" },
+    { input: "[TEST-MOD-APPROVED #0922]", expect: false, label: "regex adversarial B-4: MOD rejects padded three-digit issue" },
+    { input: "[TEST-MOD-APPROVED #000922]", expect: false, label: "regex adversarial B-5: MOD rejects multiply padded issue" },
+    { input: "[TEST-RENAME-APPROVED #0]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-6: RENAME rejects zero issue" },
+    { input: "[TEST-RENAME-APPROVED #00]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-7: RENAME rejects repeated zero issue" },
+    { input: "[TEST-RENAME-APPROVED #01]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-8: RENAME rejects leading-zero one-digit issue" },
+    { input: "[TEST-RENAME-APPROVED #0922]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-9: RENAME rejects padded three-digit issue" },
+    { input: "[TEST-RENAME-APPROVED #000922]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-10: RENAME rejects multiply padded issue" },
+    // Current issue citations never inherit the legacy leg suffix.
+    { input: "[TEST-MOD-APPROVED #922-A]", expect: false, label: "regex adversarial B-11: MOD rejects uppercase issue suffix" },
+    { input: "[TEST-MOD-APPROVED #922-a]", expect: false, label: "regex adversarial B-12: MOD rejects lowercase issue suffix" },
+    { input: "[TEST-MOD-APPROVED #922-AB]", expect: false, label: "regex adversarial B-13: MOD rejects multi-letter issue suffix" },
+    { input: "[TEST-RENAME-APPROVED #922-A]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-14: RENAME rejects uppercase issue suffix" },
+    { input: "[TEST-RENAME-APPROVED #922-a]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-15: RENAME rejects lowercase issue suffix" },
+    { input: "[TEST-RENAME-APPROVED #922-AB]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-16: RENAME rejects multi-letter issue suffix" },
+    // Only ASCII '#' and ASCII digits are accepted.
+    { input: "[TEST-MOD-APPROVED ＃922]", expect: false, label: "regex adversarial B-17: MOD rejects fullwidth number sign" },
+    { input: "[TEST-MOD-APPROVED #٩٢٢]", expect: false, label: "regex adversarial B-18: MOD rejects Arabic-Indic digits" },
+    { input: "[TEST-MOD-APPROVED #９２２]", expect: false, label: "regex adversarial B-19: MOD rejects fullwidth digits" },
+    { input: "[TEST-RENAME-APPROVED ＃922]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-20: RENAME rejects fullwidth number sign" },
+    { input: "[TEST-RENAME-APPROVED #٩٢٢]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-21: RENAME rejects Arabic-Indic digits" },
+    { input: "[TEST-RENAME-APPROVED #９２２]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-22: RENAME rejects fullwidth digits" },
+    // Bare/wrong prefixes and relaxed token shapes remain inert.
+    { input: "[TEST-MOD-APPROVED ISSUE-922]", expect: false, label: "regex adversarial B-23: MOD rejects uppercase ISSUE prefix" },
+    { input: "[TEST-MOD-APPROVED issue #922]", expect: false, label: "regex adversarial B-24: MOD rejects prose issue prefix" },
+    { input: "[TEST-RENAME-APPROVED ISSUE-922]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-25: RENAME rejects uppercase ISSUE prefix" },
+    { input: "[TEST-RENAME-APPROVED issue #922]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-26: RENAME rejects prose issue prefix" },
+    { input: "[TEST-RENAME-APPROVED  #922]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-27: RENAME rejects double separator" },
+    { input: "[TEST-RENAME-APPROVED #922 ]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-28: RENAME rejects trailing whitespace" },
+    { input: "[TEST-RENAME-APPROVED\n#922]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-29: RENAME rejects split-line token" },
+    { input: "[TEST-RENAME-APPROVED #922 because approved]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-30: RENAME rejects prose inside token" },
+    // The four-digit legacy minimum and optional uppercase leg remain byte-compatible.
+    { input: "[TEST-MOD-APPROVED ORCH-0922]", expect: true, label: "regex adversarial B-31: MOD preserves four-digit legacy ORCH" },
+    { input: "[TEST-MOD-APPROVED ORCH-12345]", expect: true, label: "regex adversarial B-32: MOD preserves five-digit legacy ORCH" },
+    { input: "[TEST-RENAME-APPROVED ORCH-0840-A]", expect: true, re: RENAME_TOKEN, label: "regex adversarial B-33: RENAME preserves legacy uppercase leg" },
+    { input: "[TEST-RENAME-APPROVED META-ORCH-0001-A]", expect: true, re: RENAME_TOKEN, label: "regex adversarial B-34: RENAME preserves legacy META-ORCH leg" },
+    { input: "[TEST-MOD-APPROVED ORCH-922]", expect: false, label: "regex adversarial B-35: MOD rejects three-digit legacy ORCH" },
+    { input: "[TEST-MOD-APPROVED META-ORCH-922]", expect: false, label: "regex adversarial B-36: MOD rejects three-digit legacy META-ORCH" },
+    { input: "[TEST-RENAME-APPROVED ORCH-922]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-37: RENAME rejects three-digit legacy ORCH" },
+    { input: "[TEST-RENAME-APPROVED META-ORCH-922]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-38: RENAME rejects three-digit legacy META-ORCH" },
+    // Authority separation is pinned again at the newly admitted short boundary.
+    { input: "[TEST-RENAME-APPROVED #922]", expect: false, label: "regex adversarial B-39: short RENAME token never satisfies MOD" },
+    { input: "[TEST-MOD-APPROVED #922]", expect: false, re: RENAME_TOKEN, label: "regex adversarial B-40: short MOD token never satisfies RENAME" },
   ];
   for (const c of cases) {
     const got = (c.re ?? MOD_TOKEN).test(c.input);
@@ -2953,6 +3051,26 @@ function selfTest() {
     t53.status === 0 && /✅[^\n]*after\.test\.ts/.test(t53.out),
     "T53 (#1815 implementor): three-digit #922 rename token works end-to-end",
     `check exited ${t53.status} (expected 0); renamed file passed=${/✅[^\n]*after\.test\.ts/.test(t53.out)}`,
+  );
+
+  const t54 = scenarioT54();
+  const t54Canonical = /✅[^\n]*canonical\.test\.ts/.test(t54.out);
+  const t54Padded = /❌[^\n]*padded\.test\.ts/.test(t54.out);
+  const t54Tally = /Append-only check: 1 passed, 1 failed\./.test(t54.out);
+  check(
+    t54.status === 1 && t54Canonical && t54Padded && t54Tally,
+    "T54 (#1815 tester adversarial): canonical #922 authorizes its own deletion while padded #0922 stays inert beside it",
+    `check exited ${t54.status} (expected 1); canonical passed=${t54Canonical}; padded refused=${t54Padded}; tally 1/1=${t54Tally}`,
+  );
+
+  const t55 = scenarioT55();
+  const t55Canonical = /✅[^\n]*canonical-before\.test\.ts[^\n]*canonical-after\.test\.ts/.test(t55.out);
+  const t55Padded = /❌[^\n]*padded-before\.test\.ts[^\n]*padded-after\.test\.ts/.test(t55.out);
+  const t55Tally = /Append-only check: 1 passed, 1 failed\./.test(t55.out);
+  check(
+    t55.status === 1 && t55Canonical && t55Padded && t55Tally,
+    "T55 (#1815 tester adversarial): canonical #922 authorizes its own rename while padded #0922 stays inert beside it",
+    `check exited ${t55.status} (expected 1); canonical passed=${t55Canonical}; padded refused=${t55Padded}; tally 1/1=${t55Tally}`,
   );
 
   // --- #1495 TESTER ADVERSARIAL git scenarios (T5..T8) ---
@@ -3534,6 +3652,26 @@ function selfTest() {
     t46.status === 0 && !t46Unmeasurable && t46Tally,
     "T46 (#1534 rework, negative control): the same disagreement seen from the side that costs trust instead of safety — when the two readings come apart, every entry after the mistake loses its place, and ORDINARY files get refused as unmeasurable with a remediation for content that is perfectly fine. Three separator-bearing names beside three ordinary ones, every file only growing, must be six passes and no refusal",
     `check exited ${t46.status} (expected 0); any innocent file refused as unmeasurable=${t46Unmeasurable}; tally 6/0=${t46Tally}`,
+  );
+
+  // T56 (#1815 tester adversarial): redaction explicitly covers every newly valid
+  // short current form for both authorities. This is independent of operator-message
+  // hygiene and catches a parser/redactor split before the transcript assertion below.
+  const t56Raw = [
+    "[TEST-MOD-APPROVED #1]",
+    "[TEST-MOD-APPROVED #27]",
+    "[TEST-MOD-APPROVED #922]",
+    "[TEST-RENAME-APPROVED #1]",
+    "[TEST-RENAME-APPROVED #27]",
+    "[TEST-RENAME-APPROVED #922]",
+  ];
+  const t56Redacted = t56Raw.map(redactTokens);
+  const t56NoLive = t56Redacted.every((line) => !MOD_TOKEN.test(line) && !RENAME_TOKEN.test(line));
+  const t56AllInert = t56Redacted.every((line) => line.includes("#ISSUE"));
+  check(
+    t56NoLive && t56AllInert,
+    "T56 (#1815 tester adversarial): one-, two-, and three-digit MOD and RENAME approvals are globally redacted to inert output",
+    `samples=${t56Raw.length}; all inert placeholders=${t56AllInert}; live tokens after redaction=${t56Redacted.filter((line) => MOD_TOKEN.test(line) || RENAME_TOKEN.test(line)).length}`,
   );
 
   // T33 (#1514) — the hygiene invariant over the SELF-TEST's own stream, asserted on the
