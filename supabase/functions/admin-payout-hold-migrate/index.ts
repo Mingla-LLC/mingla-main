@@ -18,6 +18,41 @@
  * unstamped (the one dangerous state). One brand's failure never aborts the
  * batch. Idempotent: an already-stamped brand is skipped WITHOUT a Stripe call.
  *
+ * #1807 — PAYSTACK LANE. A Paystack-only (Nigerian) brand has no
+ * stripe_connect_accounts row, so before this it was recorded
+ * skipped_no_account every time and could never be stamped — which left
+ * issue_1389_prepare_payment raising stay_bank_not_ready for every NGN Stay
+ * booking. Account resolution is now: Stripe row → Stripe lane (unchanged);
+ * else an ACTIVE brand_paystack_recipients row → Paystack lane; else
+ * skipped_no_account (unchanged). Stripe wins if both somehow exist.
+ *
+ * The Paystack lane has NO schedule flip and NO compensation, by design.
+ * Paystack has no payout-schedule concept: settlement routing is decided per
+ * charge by the split fields (ticket-checkout-create/ngPaystackSplit.ts — an
+ * unstamped brand splits to the organiser sub-account at charge; a stamped
+ * brand settles 100% to Mingla for later event-anchored release). The stamp
+ * is therefore the ONLY mutation, so there is nothing to compensate: it calls
+ * stamp_payout_hold_cutover / rollback_payout_hold_cutover with a NULL
+ * p_stripe_account_id (both the column and the RPC parameter are nullable —
+ * 20270110000007_issue_1173_stripe_schedule_flip.sql:32,74-81) and writes the
+ * same ledger + admin-audit trails. Idempotency, dry-run, the admin gate,
+ * batch limits and per-brand isolation are identical across both lanes.
+ *
+ * A failed stamp on the Paystack lane records the #1807 result 'stamp_failed'
+ * — NOT 'stamp_failed_rolled_back' (nothing was rolled back) and NOT
+ * 'flip_failed' (there is no schedule flip on this rail). The ledger CHECK is
+ * widened for it, and both RPCs are made rail-aware so the interval columns
+ * are NULL rather than fabricated 'daily'/'manual', by
+ * 20270317001807_issue_1807_paystack_cutover_ledger_truth.sql.
+ *
+ * #1807 also honours stamp_payout_hold_cutover's RETURN value on BOTH rails.
+ * The RPC re-checks the stamp under its own FOR UPDATE lock, so it — not this
+ * function's earlier read — is the authority on flipped-vs-skipped. Discarding
+ * it (the #1173 behaviour) made the loser of a concurrent stamp report
+ * 'flipped' to the admin audit trail while the append-only ledger correctly
+ * recorded 'skipped_already_stamped'. rollback_payout_hold_cutover has a
+ * single return value and no skip branch, so it has no equivalent gap.
+ *
  * Audit (two trails): (1) one payout_hold_cutover_migrations row per per-brand
  * attempt (written inside the stamp/rollback RPC for mutating cases, directly
  * for skip/fail cases); (2) one admin_write_audit row per mutating/failed brand
@@ -63,6 +98,10 @@ type MigrateResult =
   | "skipped_already_stamped"
   | "skipped_no_account"
   | "flip_failed"
+  // #1807 — the stamp failed and there was NO provider mutation to compensate.
+  // Reachable only from the Paystack lane; the Stripe lane has a flip to undo
+  // and therefore records stamp_failed_rolled_back instead.
+  | "stamp_failed"
   | "stamp_failed_rolled_back"
   | "rolled_back"
   | "rollback_failed";
@@ -105,6 +144,7 @@ const EMPTY_COUNTS: Record<MigrateResult, number> = {
   skipped_already_stamped: 0,
   skipped_no_account: 0,
   flip_failed: 0,
+  stamp_failed: 0,
   stamp_failed_rolled_back: 0,
   rolled_back: 0,
   rollback_failed: 0,
@@ -275,6 +315,10 @@ export async function handleAdminPayoutHoldMigrate(
 
   // ── Per brand, sequential, each isolated (one failure never aborts others). ──
   for (const brandId of brandIds) {
+    // #1807 — declared OUTSIDE the try so the unexpected-error catch at the
+    // bottom knows which rail it was on. ALWAYS false for a brand that has a
+    // Stripe connected account, so the Stripe outcome there is unchanged.
+    let paystackLane = false;
     try {
       // Resolve the connected account + current stamp state.
       const { data: scaRow, error: scaError } = await supabase
@@ -294,7 +338,22 @@ export async function handleAdminPayoutHoldMigrate(
       const stripeAccountId: string | null = scaRow?.stripe_account_id ?? null;
       const cutoverAt: string | null = brandRow?.payout_hold_cutover_at ?? null;
 
+      // #1807 — resolve a Paystack transfer recipient ONLY when there is no
+      // Stripe row. Stripe wins when both exist (a brand should not have both;
+      // no merge policy is invented here), and a Stripe brand issues exactly
+      // the same reads it always did — this query never runs for it.
       if (!stripeAccountId) {
+        const { data: recipientRow, error: recipientError } = await supabase
+          .from("brand_paystack_recipients")
+          .select("id")
+          .eq("brand_id", brandId)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (recipientError) throw recipientError;
+        paystackLane = recipientRow != null;
+      }
+
+      if (!stripeAccountId && !paystackLane) {
         if (!dryRun) {
           await recordLedger(
             brandId,
@@ -308,6 +367,160 @@ export async function handleAdminPayoutHoldMigrate(
           );
         }
         push(brandId, "skipped_no_account");
+        continue;
+      }
+
+      if (!stripeAccountId) {
+        // ── #1807 PAYSTACK LANE ────────────────────────────────────────────
+        // No provider mutation exists on this rail (see the header note), so
+        // the stamp RPC is the whole transaction and there is nothing to
+        // compensate. prior_interval / new_interval are Stripe payout-schedule
+        // concepts and are written NULL rather than fabricated.
+        if (direction === "hold") {
+          if (cutoverAt !== null) {
+            // Idempotent no-op — mirrors the Stripe lane.
+            if (!dryRun) {
+              await recordLedger(
+                brandId,
+                null,
+                "skipped_already_stamped",
+                null,
+                null,
+                cutoverAt,
+                cutoverAt,
+                null,
+              );
+              await recordAdminAudit(
+                brandId,
+                null,
+                "skipped_already_stamped",
+                { cutover_at: cutoverAt },
+                { cutover_at: cutoverAt },
+              );
+            }
+            push(brandId, "skipped_already_stamped");
+            continue;
+          }
+
+          if (dryRun) {
+            push(brandId, "flipped"); // would-be
+            continue;
+          }
+
+          // #1807 — the RPC is the authority on what actually happened. It
+          // returns 'skipped_already_stamped' when another session won the
+          // race between our read above and its own FOR UPDATE lock; reporting
+          // that as 'flipped' would put a second, contradicting story in the
+          // admin audit trail while the ledger recorded the truth.
+          let stampOutcome: MigrateResult = "flipped";
+          try {
+            const { data: stampData, error: stampError } = await supabase.rpc(
+              "stamp_payout_hold_cutover",
+              {
+                p_brand_id: brandId,
+                p_stripe_account_id: null,
+                p_batch_id: batchId,
+                p_actor_email: user.email,
+                p_actor_uid: user.id,
+                p_reason: reason,
+              },
+            );
+            if (stampError) throw stampError;
+            if (stampData === "skipped_already_stamped") {
+              stampOutcome = "skipped_already_stamped";
+            }
+          } catch (stampErr) {
+            // Nothing was mutated on the provider, so the brand is already in
+            // the state we found it (unstamped). NO compensation call, and so
+            // NOT stamp_failed_rolled_back — nothing was rolled back. Not
+            // flip_failed either: there is no schedule flip on this rail.
+            const message = stampErr instanceof Error
+              ? stampErr.message
+              : String(stampErr);
+            await recordLedger(
+              brandId,
+              null,
+              "stamp_failed",
+              null,
+              null,
+              null,
+              null,
+              message,
+            );
+            await recordAdminAudit(
+              brandId,
+              null,
+              "stamp_failed",
+              { cutover_at: null },
+              { cutover_at: null, error: message },
+            );
+            push(brandId, "stamp_failed", message);
+            continue;
+          }
+
+          // The stamp RPC already wrote its own ledger row; write the
+          // admin_audit_log trail with the outcome the RPC reported.
+          await recordAdminAudit(
+            brandId,
+            null,
+            stampOutcome,
+            { cutover_at: null },
+            { stamped: true },
+          );
+          push(brandId, stampOutcome);
+          continue;
+        }
+
+        // direction === "rollback"
+        if (dryRun) {
+          push(brandId, "rolled_back"); // would-be
+          continue;
+        }
+        try {
+          const { error: rollbackError } = await supabase.rpc(
+            "rollback_payout_hold_cutover",
+            {
+              p_brand_id: brandId,
+              p_stripe_account_id: null,
+              p_batch_id: batchId,
+              p_actor_email: user.email,
+              p_actor_uid: user.id,
+              p_reason: reason,
+            },
+          );
+          if (rollbackError) throw rollbackError;
+        } catch (rpcErr) {
+          const message = rpcErr instanceof Error
+            ? rpcErr.message
+            : String(rpcErr);
+          await recordLedger(
+            brandId,
+            null,
+            "rollback_failed",
+            null,
+            null,
+            cutoverAt,
+            cutoverAt,
+            message,
+          );
+          await recordAdminAudit(
+            brandId,
+            null,
+            "rollback_failed",
+            { cutover_at: cutoverAt },
+            { cutover_at: cutoverAt, error: message },
+          );
+          push(brandId, "rollback_failed", message);
+          continue;
+        }
+        await recordAdminAudit(
+          brandId,
+          null,
+          "rolled_back",
+          { cutover_at: cutoverAt },
+          { cutover_at: null },
+        );
+        push(brandId, "rolled_back");
         continue;
       }
 
@@ -374,8 +587,13 @@ export async function handleAdminPayoutHoldMigrate(
         }
 
         // Stamp cutover atomically. On failure → compensate (restore daily).
+        // #1807 — see the Paystack lane: the RPC's return value is the
+        // authority on flipped-vs-skipped, so a concurrency loser is not
+        // audited as a flip. The flip above is correct either way (an
+        // already-stamped brand belongs on the manual schedule).
+        let stampOutcome: MigrateResult = "flipped";
         try {
-          const { error: stampError } = await supabase.rpc(
+          const { data: stampData, error: stampError } = await supabase.rpc(
             "stamp_payout_hold_cutover",
             {
               p_brand_id: brandId,
@@ -387,6 +605,9 @@ export async function handleAdminPayoutHoldMigrate(
             },
           );
           if (stampError) throw stampError;
+          if (stampData === "skipped_already_stamped") {
+            stampOutcome = "skipped_already_stamped";
+          }
         } catch (stampErr) {
           const message = stampErr instanceof Error
             ? stampErr.message
@@ -426,16 +647,17 @@ export async function handleAdminPayoutHoldMigrate(
           continue;
         }
 
-        // Flip + stamp both succeeded. The stamp RPC already wrote the
-        // 'flipped' ledger row; write the admin_audit_log trail.
+        // Flip + stamp both succeeded. The stamp RPC already wrote its own
+        // ledger row; write the admin_audit_log trail with the outcome the RPC
+        // reported.
         await recordAdminAudit(
           brandId,
           stripeAccountId,
-          "flipped",
+          stampOutcome,
           { cutover_at: null, schedule: "daily" },
           { schedule: "manual" },
         );
-        push(brandId, "flipped");
+        push(brandId, stampOutcome);
         continue;
       }
 
@@ -525,9 +747,17 @@ export async function handleAdminPayoutHoldMigrate(
         `[admin-payout-hold-migrate] brand ${brandId} unexpected error:`,
         message,
       );
-      const failResult: MigrateResult = direction === "hold"
-        ? "flip_failed"
-        : "rollback_failed";
+      // #1807 — flip_failed claims a payout-schedule flip was attempted, which
+      // is only ever true on the Stripe rail. paystackLane is ALWAYS false for
+      // a brand with a Stripe account, so this is identical for Stripe. It is
+      // also false when the rail was never determined (an error thrown by the
+      // account-resolution reads themselves), which is the honest reading:
+      // the hold attempt failed before a rail was known.
+      const failResult: MigrateResult = direction === "rollback"
+        ? "rollback_failed"
+        : paystackLane
+        ? "stamp_failed"
+        : "flip_failed";
       if (!dryRun) {
         await recordLedger(
           brandId,

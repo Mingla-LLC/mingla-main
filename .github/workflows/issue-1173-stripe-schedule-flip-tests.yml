@@ -68,11 +68,44 @@ jobs:
           docker exec -i issue1173-postgres \
             psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
             < supabase/migrations/__tests__/issue_1173_rollback_cutover_guard.adversarial.test.sql
+          docker exec -i issue1173-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1807_paystack_ledger_truth.test.sql
+          # The #1807 tester-adversarial suite proves two admins stamping the
+          # same brand at once cannot double-stamp it. That needs two genuinely
+          # concurrent sessions. dblink cannot supply them here: dblink_connect
+          # and dblink_connect_u are the same C function differing only in
+          # SECURITY DEFINER, and it gates on superuser() — supabase/postgres
+          # de-superusers `postgres`, which is also the role that creates the
+          # extension in this job and therefore OWNS dblink_connect_u, so the
+          # bypass is inert. Two real psql processes authenticate exactly the way
+          # every other step here already does, and need no credential passed in.
+          #
+          # A is launched in the background and holds the FOR UPDATE row lock;
+          # B contends two seconds later and blocks on it; the suite then asserts
+          # exactly one stamp and one idempotent skip per brand, whichever won.
+          docker exec -i issue1173-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1807_tester_adversarial_race_setup.sql
+          docker exec -i issue1173-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1807_tester_adversarial_race_a.sql &
+          issue1807_race_a_pid=$!
+          sleep 2
+          docker exec -i issue1173-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1807_tester_adversarial_race_b.sql
+          wait "$issue1807_race_a_pid"
+          docker exec -i issue1173-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1807_paystack_ledger_truth.tester_adversarial.test.sql
       - name: Run #1173 schedule-flip regression tests (Deno)
         run: |
           deno test --allow-read --allow-env --allow-net --no-check \
             supabase/functions/_shared/__tests__/issue_1173_payout_schedule_helper.test.ts \
             supabase/functions/admin-payout-hold-migrate/__tests__/issue_1173_admin_migrate.test.ts \
+            supabase/functions/admin-payout-hold-migrate/__tests__/issue_1807_paystack_lane.test.ts \
+            supabase/functions/admin-payout-hold-migrate/__tests__/issue_1807_paystack_lane.tester_adversarial.test.ts \
             supabase/functions/brand-stripe-onboard/__tests__/issue_1173_onboard_dark_default.test.ts
       - name: Remove disposable database
         if: always()
