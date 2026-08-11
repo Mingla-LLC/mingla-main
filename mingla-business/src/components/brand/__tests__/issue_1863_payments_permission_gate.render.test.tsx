@@ -489,6 +489,22 @@ const LIVE_WHEN_NOT_CONNECTED: readonly RegExp[] = [
   /^LAST PAYOUT$/,
 ];
 
+/**
+ * The §4.4 controls that render no text of their own — asserted by testID so the
+ * eleven-item enumeration is COMPLETE rather than "the ones that happened to
+ * have a string". `BrandStripeDetachConfirmSheet` is the load-bearing one: the
+ * SPEC requires it to be NOT MOUNTED AT ALL, because an unmounted sheet cannot
+ * be opened by a stale ref.
+ */
+const PAYMENT_CONTROL_TEST_IDS: readonly string[] = [
+  "payout-breakdown",
+  "detach-sheet",
+  "bank-section",
+  "kyc-card",
+  "deadline-banner",
+  "orphaned-refunds",
+];
+
 const DENIED_ROLES: readonly string[] = [
   "event_manager",
   "marketing_manager",
@@ -561,6 +577,7 @@ describe("#1863 — the brand payments routes are gated on the server's role pre
     // Anti-vacuity floor: deleting entries fails HERE, before any loop below
     // can run zero times and report a green tick.
     expect(PAYMENT_CONTROL_MATCHERS.length).toBeGreaterThanOrEqual(8);
+    expect(PAYMENT_CONTROL_TEST_IDS.length).toBeGreaterThanOrEqual(6);
     expect(DENIED_ROLES).toHaveLength(3);
     expect(ALLOWED_ROLES).toHaveLength(3);
   });
@@ -601,6 +618,17 @@ describe("#1863 — the brand payments routes are gated on the server's role pre
       });
     }
     expect(present(tree, new RegExp(BRAND_PAYMENTS_DENIED_TITLE))).toBe(false);
+    // Rule 4 again, for the text-less controls: each testID asserted ABSENT for
+    // a denied role must be PRESENT for an allowed one, or the absence proves
+    // nothing. `bank-section` and `detach-sheet` are live on an active brand;
+    // `kyc-card`/`deadline-banner`/`orphaned-refunds` are status-conditional and
+    // are covered by the not-connected and stale-role legs.
+    for (const id of ["payout-breakdown", "detach-sheet", "bank-section"]) {
+      await waitFor(() => {
+        expect({ id, found: tree.queryAllByTestId(id).length > 0 })
+          .toEqual({ id, found: true });
+      });
+    }
   });
 
   it("3. an ALLOWED role on a not-connected brand sees the connect journey", async () => {
@@ -657,6 +685,12 @@ describe("#1863 — the brand payments routes are gated on the server's role pre
       for (const matcher of PAYMENT_CONTROL_MATCHERS) {
         expect({ role, matcher: String(matcher), found: present(tree, matcher) })
           .toEqual({ role, matcher: String(matcher), found: false });
+      }
+      // The controls that render no text of their own, incl. the detach sheet,
+      // which must not be MOUNTED at all.
+      for (const id of PAYMENT_CONTROL_TEST_IDS) {
+        expect({ role, id, found: tree.queryAllByTestId(id).length > 0 })
+          .toEqual({ role, id, found: false });
       }
 
       // SC-2 — the whole point. Real queryFns through a real QueryClient; a
