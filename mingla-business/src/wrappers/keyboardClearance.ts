@@ -30,3 +30,19 @@ export const MIN_VISIBLE_CLEARANCE = 12;
 
 /** There is no raw-<Modal> keyboard window on web, and no bar to be present in it. */
 export const DONE_BAR_PRESENT_IN_RAW_MODAL = false;
+
+/**
+ * The bottom spacer a keyboard-lifted surface applies BELOW its own controls —
+ * the web half of the #1890 C-5 rework. Same name, same signature, same body as
+ * keyboardClearance.native.ts, for the same reason every other name here is
+ * mirrored: a platform-agnostic screen imports it unconditionally and must
+ * never read `undefined` on web and spread NaN through its style object.
+ *
+ * On web `keyboardOpen` is always false — the soft-keyboard wrappers report no
+ * height here (useKeyboardHeight.ts returns 0), so a lifted surface does not
+ * exist and the resting spacer is the only value this can return. The
+ * keyboard-open branch is written out rather than thrown away so the two
+ * variants stay readably identical; it is dormant, not dead-wrong.
+ */
+export const liftedBottomSpacer = (keyboardOpen: boolean, restingSpacer: number): number =>
+  keyboardOpen ? MIN_VISIBLE_CLEARANCE : restingSpacer;

@@ -63,3 +63,43 @@ export const MIN_VISIBLE_CLEARANCE = 12;
  * occluder a per-window fact instead of an assumption.
  */
 export const DONE_BAR_PRESENT_IN_RAW_MODAL = Platform.OS === "ios";
+
+/**
+ * The bottom spacer a keyboard-lifted surface applies BELOW its own controls.
+ *
+ * #1890 C-5 REWORK — the SAME double count Ari carried, in a different file and
+ * hidden in a different PROPERTY, which is exactly why nothing caught it.
+ *
+ * A composer that is resting on the screen's bottom edge owes room to clear the
+ * navigation bar / home indicator: that is `restingSpacer` (the group-chat
+ * composer's is `insets.bottom + spacing.lg`, MEASURED at 48 + 24 = 72dp on the
+ * physical Samsung R58R54YV7JT). The moment the keyboard opens, the surface is
+ * no longer touching that edge — the lift mechanism (a KeyboardAvoidingView's
+ * `keyboardVerticalOffset`, or a paddingBottom keyed to the keyboard height)
+ * has ALREADY positioned its bottom edge against the Done bar. Keeping the
+ * resting spacer there budgets the bottom a SECOND time, and every one of those
+ * dp is dead space between the controls and the bar.
+ *
+ * Measured on glass at #1890 TEST, before this function existed: the group-chat
+ * reply field sat 71.47dp above the bar against a 12dp contract with the offset
+ * at DONE_BAR_OCCUPIED, and 83.56dp after C-5 added MIN_VISIBLE_CLEARANCE to
+ * that offset. 72.00dp of it is `restingSpacer`, to within half a pixel — the
+ * lift was never the short term, so raising it only made the gap bigger. F-8
+ * had diagnosed the screen as an UNDERSHOOT (field behind the bar) by reading
+ * the offset alone and assuming the controls sat on the container's bottom
+ * edge; they do not, and the premise inverted.
+ *
+ * While lifted, what a surface owes below its controls is exactly the promised
+ * visible gap — nothing more, and nothing that varies with the resting layout.
+ * The resting value stays a caller argument because it is genuinely per surface
+ * (Ari clears a floating BottomNav capsule; this composer clears the safe-area
+ * inset plus a spacing token). The keyboard-open value is NOT per surface,
+ * which is the whole reason it lives here rather than being re-typed at each.
+ *
+ * NOTE FOR THE NEXT EDIT — this must stay the surface's ONE bottom spacer. A
+ * sibling `marginBottom`/`paddingVertical` on the same node re-introduces the
+ * double count through a property neither i-1047 rule (E) nor the render proofs
+ * inspect (#1890 TEST evasion E4). One spacer, and it comes from here.
+ */
+export const liftedBottomSpacer = (keyboardOpen: boolean, restingSpacer: number): number =>
+  keyboardOpen ? MIN_VISIBLE_CLEARANCE : restingSpacer;

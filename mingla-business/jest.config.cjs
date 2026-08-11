@@ -65,6 +65,10 @@ module.exports = {
     // (no RTL installed here). Named `.happy.test.ts`, so it is NOT covered by
     // the `\.render\.test\.tsx$` catch-all below.
     "issue_1890_ari_composer_clearance\\.happy\\.test\\.ts$",
+    // #1890 C-5 REWORK render-proof — mounts the REAL GroupChatPanel and reads
+    // the composer row's resolved paddingBottom plus the offset it passes to the
+    // KeyboardAvoidingView. Same config, same reason it must not run here.
+    "issue_1890_group_chat_composer_clearance\\.happy\\.test\\.ts$",
     // #1036 [remove-contrast-chip] tester adversarial WEB render-proof — mounts
     // the REAL ThemeSheet through react-native-web (ReactDOMServer) to assert no
     // contrast-advisory node renders for any seed. Runs under

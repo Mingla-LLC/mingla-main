@@ -48,6 +48,10 @@ module.exports = {
   },
   testMatch: [
     "**/__tests__/issue_1890_ari_composer_clearance.happy.test.ts",
+    // C-5 REWORK — the same render-proof instrument pointed at the group-chat
+    // composer, whose overshoot lived in a DIFFERENT property on a DIFFERENT
+    // node and was therefore invisible to the Ari proof above.
+    "**/__tests__/issue_1890_group_chat_composer_clearance.happy.test.ts",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|@testing-library|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom)",
