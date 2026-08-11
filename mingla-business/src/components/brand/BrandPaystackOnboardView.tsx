@@ -44,6 +44,9 @@ import {
 } from "../../hooks/useBrandPaystack";
 // #1850 — the bank picker's lift is budgeted against the DERIVED Done-bar cost.
 import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";
+// #1890 — whether the Done bar is actually IN this raw <Modal>'s own native
+// window, from #1841's measurement rather than from assumption.
+import { DONE_BAR_PRESENT_IN_RAW_MODAL } from "../../wrappers/keyboardClearance";
 
 interface Props {
   brandId: string;
@@ -310,11 +313,22 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
             offset applies exactly where the bar is: iOS. The number was still
             wrong. 42 is KEYBOARD_TOOLBAR_HEIGHT (the bar's own height);
             DONE_BAR_OCCUPIED is what it costs above the keyboard — 53 on iOS 26+,
-            because the library floats it 11pt clear of the rounded corners. */}
+            because the library floats it 11pt clear of the rounded corners.
+
+            #1890 — the occluder is now stated per WINDOW rather than assumed.
+            `DONE_BAR_PRESENT_IN_RAW_MODAL` carries #1841's measurement (iOS: the
+            bar belongs to the system keyboard window and composites through this
+            transparent Modal; Android: absent) instead of leaving the
+            bar-is-here assumption implicit in a bare constant. On Android this
+            resolves to 0, which is also what the platform already did with
+            `behavior` undefined — the difference is that the code now SAYS so,
+            so the next reader cannot mistake an inert 42 for a real budget. */}
         <KeyboardAvoidingView
           style={styles.modalRoot}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={DONE_BAR_OCCUPIED}
+          keyboardVerticalOffset={
+            DONE_BAR_PRESENT_IN_RAW_MODAL ? DONE_BAR_OCCUPIED : 0
+          }
         >
           <Pressable
             style={styles.backdrop}

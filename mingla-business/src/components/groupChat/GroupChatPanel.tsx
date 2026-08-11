@@ -18,6 +18,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // #1850 — the composer's lift is budgeted against the DERIVED Done-bar cost, not
 // a hand-typed number. See the comment at the KeyboardAvoidingView below.
 import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";
+// #1890 C-5 REWORK — the composer's bottom spacer comes from the shared
+// occluder budget, which is where the rule "a lifted surface does not also
+// budget for the screen edge it is no longer touching" is written down. Both
+// platform variants export it, so this never reads `undefined`.
+import { liftedBottomSpacer } from "../../wrappers/keyboardClearance";
+// #1890 C-5 REWORK — the composer needs to know whether it is LIFTED, and the
+// library-backed wrapper is the sanctioned source (orch-0892 forbids a bespoke
+// Keyboard.addListener pair). Same hook AriChatScreen uses, and for the same
+// reason: `onStart` carries the target height as the keyboard BEGINS moving, so
+// the spacer swaps in the same frame the KeyboardAvoidingView starts lifting
+// rather than an animation late.
+import { useKeyboardHeight } from "../../wrappers/useKeyboardHeight";
 import { useRouter } from "expo-router";
 
 import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
@@ -48,6 +60,8 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
   const [sending, setSending] = useState(false);
   const [moderationOpen, setModerationOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  const keyboardHeight = useKeyboardHeight();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -235,11 +249,22 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
               the bar 11pt clear of the keyboard's rounded corners, so it occupies 53
               and a 42pt lift left this composer 11pt behind it. DONE_BAR_OCCUPIED is
               derived from the same inputs the library uses, so an OS or library bump
-              moves it without anyone editing this line. */}
-          <KeyboardAvoidingView
-            behavior="padding"
-            keyboardVerticalOffset={DONE_BAR_OCCUPIED}
-          >
+              moves it without anyone editing this line.
+
+              #1890 F-8 read this offset ALONE and called the screen a 23pt
+              undershoot — "the field sits behind the bar". Measured on the
+              physical Samsung it was a 59.47dp OVERSHOOT, and C-5's first
+              attempt (adding MIN_VISIBLE_CLEARANCE here) pushed it 12.09dp
+              further away, to 83.56dp against a 12dp contract. The premise was
+              inverted because the reply field does NOT sit on this container's
+              bottom edge: the composer's own bottom spacer stands between them,
+              and THAT is where the overshoot lived. See the composer's
+              paddingBottom below.
+              So this offset budgets exactly ONE thing — the occluder. The
+              promised visible gap is the composer's own bottom spacer while it
+              is lifted, so the two terms are added once, in different places,
+              instead of one of them twice. */}
+          <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={DONE_BAR_OCCUPIED}>
             {attachment ? (
               <View style={styles.attachmentPreview}>
                 <Image
@@ -261,7 +286,24 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
             <View
               style={[
                 styles.composer,
-                { paddingBottom: Math.max(insets.bottom, 0) + spacing.lg },
+                {
+                  // #1890 C-5 REWORK — this is the composer's ONE bottom spacer,
+                  // and it must stay the only one: `styles.composer` carries
+                  // paddingHorizontal/paddingTop only, so this value alone stands
+                  // between the controls' bottom edge and the container's.
+                  //
+                  // At rest it clears the navigation bar / home indicator
+                  // (measured 48 + 24 = 72dp on R58R54YV7JT). While the keyboard
+                  // is up the KeyboardAvoidingView above has already put that
+                  // container edge on the Done bar, so the resting value would be
+                  // 72dp of dead space — which is exactly the overshoot #1890
+                  // TEST measured. Lifted, the composer owes the promised visible
+                  // gap and nothing else.
+                  paddingBottom: liftedBottomSpacer(
+                    keyboardHeight > 0,
+                    Math.max(insets.bottom, 0) + spacing.lg,
+                  ),
+                },
               ]}
             >
               <Pressable

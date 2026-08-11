@@ -58,6 +58,17 @@ module.exports = {
     // (RN preset + RTL); MUST NOT run under this default node/ts-jest config
     // (no RTL installed here).
     "issue_1863_payments_permission_gate\\.render\\.test\\.tsx$",
+    // #1890 [keyboard-clearance-overshoot] implementor happy-path render-proof —
+    // mounts the REAL AriChatScreen and reads the composer wrapper's resolved
+    // paddingBottom off the mounted tree. Runs under jest.issue1890.render.cjs
+    // (RN preset + RTL); MUST NOT run under this default node/ts-jest config
+    // (no RTL installed here). Named `.happy.test.ts`, so it is NOT covered by
+    // the `\.render\.test\.tsx$` catch-all below.
+    "issue_1890_ari_composer_clearance\\.happy\\.test\\.ts$",
+    // #1890 C-5 REWORK render-proof — mounts the REAL GroupChatPanel and reads
+    // the composer row's resolved paddingBottom plus the offset it passes to the
+    // KeyboardAvoidingView. Same config, same reason it must not run here.
+    "issue_1890_group_chat_composer_clearance\\.happy\\.test\\.ts$",
     // #1036 [remove-contrast-chip] tester adversarial WEB render-proof — mounts
     // the REAL ThemeSheet through react-native-web (ReactDOMServer) to assert no
     // contrast-advisory node renders for any seed. Runs under
