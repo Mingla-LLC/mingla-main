@@ -78,7 +78,7 @@ const OPENED_OFFSET = KEYBOARD_HAS_ROUNDED_CORNERS ? -11 : 0;
  * plus however far it floats. 53 on iOS 26+, 42 everywhere else — derived, so
  * an OS bump or a library change to OPENED_OFFSET moves it automatically.
  */
-export const DONE_BAR_OCCUPIED = 53;
+export const DONE_BAR_OCCUPIED = KEYBOARD_TOOLBAR_HEIGHT - OPENED_OFFSET;
 
 /**
  * Distance from the library's scroll target (the focused TextInput's text
