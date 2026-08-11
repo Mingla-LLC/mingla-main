@@ -37,23 +37,54 @@
  * does not, and cannot, compare what the quarantined test asserted about that file
  * against what the gate asserts about it.
  *
- * That is not hypothetical. Measured against the eleven live hand-offs, this rule
- * would have caught #1850's own case (11 files named by nothing) and four others.
- * It would NOT have caught the `PaymentPlanEditor` hand-off, where the gate reads
- * exactly the right file and keeps 8 of the test's 32 rules inside it — dropping
- * the RPC contract and the React-Query cache-invalidation rules for a real-money
- * retry flow, while its own docstring calls what it dropped "brittle UI/copy pins".
- * A green run here is silent about that entire class.
+ * That is not hypothetical, and it is MEASURED rather than reasoned. The method:
+ * strip one entry's ledger, re-run, record what reddens; repeat for all eleven live
+ * hand-offs. The eleven fall into exactly three buckets.
+ *
+ *   MEASURED-CATCHES: metaOrch1255R2, PaymentPlanEditor, orch_0893a_hydration_gate,
+ *     orch_1165_keyboard_toolbar_mount_coverage, venueIntelligence
+ *   MEASURED-INVERSION-ONLY: venueAdsDrivenTile
+ *   MEASURED-MISSES: liveEventStore-v4-v5-migrator, rsvp, orch_0911_trip_confirm_loading_state,
+ *     home.orch_0974.test, home.orch_0974.adversarial
+ *
+ * CATCHES are the five the ⊆ rule reddens on. INVERSION-ONLY is the one where ⊆ is
+ * silent — the named gate does read the file — and R4 reddens instead, so the gate
+ * as a whole still sees it. MISSES are the five nothing here reddens on at all:
+ * those are the blind spots, and they are the only ones.
+ *
+ * THE FLAGSHIP BLIND SPOT IS `rsvp/[id]/preview` — one file, fully covered, and
+ * roughly 24 of its 29 assertions dark inside it. Only the negative "do not import
+ * the ticket renderer" rule survived the hand-off; every positive-mount, migration,
+ * guard and UX-state rule is unguarded, and this gate is silent about all of it,
+ * because the named gate does read the file. If you are looking for what this
+ * mechanism cannot see, look there first, then at the other four named above.
+ *
+ * CORRECTION OF THE RECORD (#1850 TEST, P2-4). This paragraph previously offered
+ * `PaymentPlanEditor` as its one concrete example of a case the gate would NOT
+ * catch. That was false, and worse, a happy-path assertion pinned the error in
+ * place. The gate DOES catch it: strip its ledger and it reddens with
+ * `6 of 7 file(s) covered by NOTHING`, because the RPC-contract and
+ * cache-invalidation rules that hand-off dropped live in OTHER files
+ * (`orderInstallmentsService.ts`, `useOrderInstallments.ts`) — which a file-level
+ * rule sees perfectly well. Only the residue INSIDE `PaymentPlanEditor.tsx` is
+ * invisible here. The count of five was right; the set was wrong, and it named
+ * none of the five genuinely missed.
+ *
+ * The lesson is the one this whole issue is about: a documented limitation is an
+ * assertion, and it needs evidence like any other. `T-7` of the happy-path suite
+ * now RE-MEASURES both sets against the live corpus and fails if this paragraph
+ * and the tree ever disagree — so this text cannot rot the way it was born.
  *
  * The residue is a judgement call: whether the rules a gate keeps INSIDE a file
  * are the load-bearing ones is not decidable from string literals, and a gate that
  * pretended otherwise would be making the same mistake it exists to catch. So the
  * division of labour is deliberate — this gate makes the file-level ledger
- * unfalsifiable, and a human still has to read what survived inside each file.
+ * unfalsifiable, and a human still has to read what survived inside each file. The
+ * backfill records that per-entry residue in the `// note:` line beside each entry.
  *
  * It is written here, in the gate's own header, because the defect #1850 is about
  * is mechanisms that overstate their coverage. A gate that overstated its own
- * would refute itself.
+ * would refute itself — which, for one review cycle, is exactly what this one did.
  * ─────────────────────────────────────────────────────────────────────────────
  *
  * ANNOTATION SHAPE
@@ -92,7 +123,7 @@
  *                the extractor did not observe the file it is judging, so every
  *                verdict about that entry would be vacuously true.
  *
- * `--self-test` runs the ten fixtures below, including #1850's own defect.
+ * `--self-test` runs the twelve fixtures below, including #1850's own defect.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -288,7 +319,12 @@ export function extractTargets(source, selfDir, roots) {
   //     cannot follow and reports zero targets for the file it is judging.
   //     The parameter is bound to a sentinel and the resolved path is split on it,
   //     which gets nesting (`join(REPO, join("mingla-business", rel))`) for free.
-  const SENTINEL = " ARG ";
+  // Written as ESCAPES, never as raw bytes: a literal NUL in the source makes the
+  // whole file read as BINARY to grep and friends, and a grep-based gate that
+  // silently skips a binary file is the "green because it checked nothing" mode
+  // this very gate exists to prevent. The runtime value is unchanged, and NUL is
+  // still the right sentinel: it cannot occur in a real path segment.
+  const SENTINEL = "\u0000ARG\u0000";
   const readers = new Map();
   const declarations = [
     /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?\(\s*([A-Za-z_$][\w$]*)\s*(?::[^,)]*)?\)\s*(?::[^=]*?)?=>/g,
@@ -507,7 +543,13 @@ export function parseLedger(configText) {
   let lastKey = null;
 
   const ENTRY = /^\s*("(?:[^"\\]|\\.)*")\s*,\s*\/\/\s*invariant\s*->\s*(?:.*?\s)?([\w.-]+\.mjs)\s*$/;
-  const LEDGER = /^\s*\/\/\s*(moved|dropped|note|inverted)\s*(?:->)?\s*:?\s*(.*)$/;
+  // The separator is REQUIRED. With it optional, any prose line that merely BEGINS
+  // with one of these words — "dropped and needs no drop line: …" inside a note —
+  // parsed as a ledger line and invented a bogus dropped path. Caught by this gate
+  // failing on its own backfill while #1850 TEST P2-8 was being written; a keyword
+  // is only a keyword when it is followed by `:` (or `->`, for an inversion).
+  const LEDGER = /^\s*\/\/\s*(moved|dropped|note)\s*:\s*(.*)$/;
+  const INVERTED = /^\s*\/\/\s*inverted\s*(?:->|:)\s*(.*)$/;
   const CONT = /^\s*\/\/\s{2,}(\S.*)$/;
 
   for (const line of lines) {
@@ -541,6 +583,13 @@ export function parseLedger(configText) {
       }
     }
 
+    const inv = INVERTED.exec(line);
+    if (inv) {
+      current.raw += `\n${line}`;
+      lastKey = null;
+      continue;
+    }
+
     const l = LEDGER.exec(line);
     if (!l) {
       // A code line (or a blank/prose line) ends this entry's ledger.
@@ -558,6 +607,9 @@ export function parseLedger(configText) {
       current.dropped.push({ path: (split[0] ?? "").trim(), reason: split.slice(1).join(" — ").trim() });
       lastKey = "dropped";
     } else {
+      // `note:` — free prose for a human. Deliberately contributes NOTHING to any
+      // rule, and its continuation lines are not collected, so nothing written here
+      // can widen or narrow coverage.
       lastKey = null;
     }
   }
@@ -911,13 +963,38 @@ if (IS_MAIN && SELF_TEST) {
   // 11 — the block marker is gone ⇒ exit 2.
   check("11 marker missing", { ...mkModel(CLEAN_LEDGER), configText: "module.exports = { testPathIgnorePatterns: [\n] };" }, 2, "V-MARKER");
 
+  // 12 — PROSE IS NOT A LEDGER LINE. A `note:` whose continuation happens to begin
+  //      with the word "dropped" must not invent a drop. This fired for real on the
+  //      #1850 backfill while the P2-8 correction was being written: the separator
+  //      was optional, so "dropped and needs no drop line: …" parsed as a drop and
+  //      the gate reported a bogus path. A keyword is only a keyword before `:`.
+  {
+    const m = mkModel([
+      ...CLEAN_LEDGER,
+      "    // note: the second gap is invisible here by construction, and the file is not",
+      "    //   dropped and needs no drop line: the named gate reads it for other rules",
+      "    //   moved somewhere else entirely, which this prose must not be read as claiming",
+    ]);
+    check("12 prose beginning with a keyword is not a ledger line", m, 0);
+  }
+
+  // 13 — …but a real `dropped:` line inside the same entry is still parsed.
+  {
+    const m = mkModel([
+      ...CLEAN_LEDGER.filter((l) => !l.includes("GroupChatPanel")),
+      "    // note: prose that mentions dropped files without declaring one",
+      "    // dropped: src/components/groupChat/GroupChatPanel.tsx — really dropped, see #1850",
+    ]);
+    check("13 a real dropped: line still parses after prose", m, 0);
+  }
+
   if (problems.length > 0) {
     console.error("\nSELF-TEST FAIL [ISSUE-1850-QUARANTINE-INVARIANT-HANDOFF-COMPLETE]:");
     for (const p of problems) console.error(`  x ${p}`);
     console.error("");
     process.exit(1);
   }
-  console.log("OK [ISSUE-1850-QUARANTINE-INVARIANT-HANDOFF-COMPLETE --self-test]: 10 scenarios behaved as specified.");
+  console.log("OK [ISSUE-1850-QUARANTINE-INVARIANT-HANDOFF-COMPLETE --self-test]: 12 scenarios behaved as specified.");
   process.exit(0);
 }
 

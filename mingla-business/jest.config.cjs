@@ -214,12 +214,19 @@ module.exports = {
     //   orch-0892-no-bespoke-keyboard-plumbing.mjs owns it now.
     // dropped: app/checkout-experience/[experienceEventId]/buyer.tsx — ORCH-1252 migrated it to
     //   SmartScrollView; orch-0892-no-bespoke-keyboard-plumbing.mjs owns it now.
-    // dropped: app/checkout/[eventId]/payment.tsx — #1841 DELETED the keyboard plumbing here after a
-    //   closure probe found zero input-rendering modules on the route; there is nothing left to pin.
-    // dropped: app/checkout-trip/[tripEventId]/payment.tsx — #1841 deleted the plumbing (no focusable
-    //   input on the route; payment runs in Stripe PaymentSheet's own window).
-    // dropped: app/checkout-experience/[experienceEventId]/payment.tsx — #1841 deleted the plumbing
-    //   (no focusable input on the route).
+    // dropped: app/checkout/[eventId]/payment.tsx — #1841 deleted the keyboard-OPEN branch after a
+    //   closure probe found zero input-rendering modules on the route. NOT "nothing left to pin"
+    //   (corrected after #1850 TEST P2-7): the test's second, keyboard-CLOSED assertion
+    //   `paddingBottom: insets.bottom + 140` still matches verbatim at :635. It is deliberately not
+    //   re-homed — with no +42 anywhere on the route the KEYBOARD invariant is genuinely gone, and
+    //   what survives is a plain layout constant carrying no keyboard semantics.
+    // dropped: app/checkout-trip/[tripEventId]/payment.tsx — same as above; #1841 deleted the
+    //   keyboard-open branch (payment runs in Stripe PaymentSheet's own window, no focusable input
+    //   on the route). The plan-aware closed branch `insets.bottom + (isPlanActive ? 260 : 140)`
+    //   still matches at :664 and is deliberately not re-homed, for the same reason.
+    // dropped: app/checkout-experience/[experienceEventId]/payment.tsx — same as above; #1841
+    //   deleted the keyboard-open branch. The closed branch `insets.bottom + 140` still matches at
+    //   :543 and is deliberately not re-homed, for the same reason.
     // dropped: app/checkout-trip/[tripEventId]/intake.tsx — #1841 migrated it to SmartScrollView, which
     //   deletes the pinned expression; orch-0892-no-bespoke-keyboard-plumbing.mjs owns it now.
     // note: measured by #1850, not estimated — 41 assertions over 17 files kept as 6. The header of the
@@ -255,11 +262,19 @@ module.exports = {
     //   FAILS if "COMING SOON", "Busy hours" or "Signal to bookings" are PRESENT; the quarantined test
     //   required them present. #1421 removed the feature, so the gate is right and the arrow is not a
     //   hand-off.
-    // dropped: src/components/venue/venueIntelligence.ts — NO SUCCESSOR GATE. The Constitution-#9
-    //   no-fabrication money rules (formatCurrencyRound only, Intl.NumberFormat banned, the
-    //   INTELLIGENCE_MIN_ORDERS_FOR_TIME_BUCKETS = 14 threshold anchor) still hold on the tree and are
-    //   enforced by nothing at all. Live unenforced gap, owned by whoever owns #1421's area; recorded
-    //   in #1850 §S8 for routing.
+    // dropped: src/components/venue/venueIntelligence.ts — NO SUCCESSOR GATE. Corrected after #1850
+    //   TEST P2-8: this helper owns ONLY the INTELLIGENCE_MIN_ORDERS_FOR_TIME_BUCKETS = 14 threshold
+    //   anchor (:15). It contains zero formatCurrencyRound and zero Intl.NumberFormat — the money
+    //   rules were attributed here in error. The anchor still holds and is enforced by nothing.
+    //   Live unenforced gap, owned by whoever owns #1421's area; recorded in #1850 §S8 for routing.
+    // note: SECOND GAP, and it is invisible to this gate by construction. The Constitution-#9
+    //   no-fabrication MONEY rules (formatCurrencyRound only, Intl.NumberFormat banned) assert on
+    //   VenueIntelligenceModule.tsx (3x formatCurrencyRound), not on the helper. That file is NOT
+    //   dropped and needs no drop line: it satisfies the subset rule because
+    //   issue-1421-venue-organic-insights-wiring.mjs reads it — but only for the DECOMMISSION rules.
+    //   So the money rules INSIDE it are enforced by nothing while this ledger reads as covered.
+    //   That is exactly the file-level limitation stated in
+    //   issue-1850-quarantine-invariant-handoff-complete.mjs, biting live. Same owner as above.
   ],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   // #1062 [biz-jest-residual-burndown] Wave 1 — B3a shared-harness (fix-once-

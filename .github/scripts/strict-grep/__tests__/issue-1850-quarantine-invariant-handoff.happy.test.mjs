@@ -269,28 +269,157 @@ test("T-6 the keyboard gate goes RED when the ORCH-1170 toolbar is un-nested", (
   }
 });
 
-// ── T-7 ────────────────────────────────────────────────────────────────────
-test("T-7 the ledger gate states its own limitation, and the limitation is real", () => {
+// ── T-7 ───────────────────────────────────────────────────────────────────
+//
+// The first version of this test asserted the docstring CONTAINED the string
+// "PaymentPlanEditor" and called that proof. The docstring's claim about
+// PaymentPlanEditor was false, so the test pinned the error in place and review
+// could not see it — the failure mode #1850 exists to end, reproduced inside
+// #1850's own regression suite.
+//
+// So T-7 no longer reads the paragraph. It RE-DERIVES the limitation from the live
+// corpus — strip each entry's ledger, re-run the gate, record whether the ⊆ rule
+// reddens — and fails if the docstring and the tree disagree in either direction.
+// A documented limitation is an assertion; it gets evidence like any other.
+
+/** Strip the ledger comment lines belonging to ONE entry, leaving the bare arrow. */
+function stripOneLedger(configText, entryLine) {
+  const out = [];
+  let dropping = false;
+  for (const line of configText.split("\n")) {
+    if (line === entryLine) {
+      out.push(line);
+      dropping = true;
+      continue;
+    }
+    if (dropping) {
+      if (/^\s*\/\//.test(line)) continue;
+      dropping = false;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
+/** A stable key per entry: its decoded pattern with regex backslashes removed. */
+const patternKey = (pattern) => pattern.replace(/\\/g, "");
+
+/** Read one `LABEL: a, b, c` list out of the gate's header, continuations included. */
+function docstringList(header, label) {
+  const lines = header.split("\n").map((l) => l.replace(/^\s*\*\s?/, ""));
+  const i = lines.findIndex((l) => l.trim().startsWith(`${label}:`));
+  assert.ok(i >= 0, `the gate header must carry a ${label}: list — it is the machine-checkable ` +
+    "form of its own limitation, and without it this test cannot verify the claim");
+  let buf = lines[i].slice(lines[i].indexOf(":") + 1);
+  for (let j = i + 1; j < lines.length; j += 1) {
+    const t = lines[j].trim();
+    if (t === "" || /^[A-Z][A-Z-]+:/.test(t) || !/^[\w.\-,/ ]+$/.test(t)) break;
+    buf += ` ${t}`;
+  }
+  return buf.split(",").map((x) => x.trim()).filter(Boolean);
+}
+
+test("T-7 the stated limitation is re-measured against the live corpus, not read back", () => {
   const source = fs.readFileSync(LEDGER_GATE, "utf8");
   const header = source.slice(0, source.indexOf("import fs"));
   assert.match(header, /KNOWN LIMITATION/, "the gate must state its limitation in its own docstring");
   assert.match(header, /FILE level/i);
-  assert.match(header, /PaymentPlanEditor/, "the limitation must name the case it would NOT have caught");
 
-  // And the limitation is not decoration: a gate that reads the right file and
-  // asserts NOTHING about it still counts as coverage. Pinned deliberately, so
-  // nobody later reads a green run as assertion-level proof.
+  // ---- what the docstring claims -----------------------------------------
+  const claimedCatches = docstringList(header, "MEASURED-CATCHES");
+  const claimedInversionOnly = docstringList(header, "MEASURED-INVERSION-ONLY");
+  const claimedMisses = docstringList(header, "MEASURED-MISSES");
+
+  // ---- what the tree actually does ---------------------------------------
+  const base = realModel();
+  assert.equal(ledger.run(base).code, 0, "the corpus must be green before measuring it");
+
+  const measuredCatches = [];
+  const measuredInversionOnly = [];
+  const measuredMisses = [];
+  for (const entry of base.entries) {
+    const stripped = stripOneLedger(CONFIG, entry.raw.split("\n")[0]);
+    assert.notEqual(stripped, CONFIG, `could not strip the ledger for ${entry.pattern}`);
+    const r = ledger.run(realModel(stripped));
+    const key = patternKey(entry.pattern);
+    const mine = r.failures.filter((f) => f.includes(entry.pattern));
+    if (mine.some((f) => f.includes("covered by NOTHING"))) measuredCatches.push(key);
+    else if (mine.length > 0) measuredInversionOnly.push(key);
+    else measuredMisses.push(key);
+  }
+
+  // ---- every claimed name must resolve to exactly one real entry ----------
+  const resolve = (claim, side) => {
+    const hits = base.entries.map((e) => patternKey(e.pattern)).filter((k) => k.includes(claim));
+    assert.equal(
+      hits.length,
+      1,
+      `the header's ${side} names "${claim}", which matches ${hits.length} quarantine entries. ` +
+        "Every name in the limitation must identify exactly one hand-off, or the claim is unfalsifiable.",
+    );
+    return hits[0];
+  };
+  const claimedCatchKeys = claimedCatches.map((c) => resolve(c, "MEASURED-CATCHES")).sort();
+  const claimedInvKeys = claimedInversionOnly.map((c) => resolve(c, "MEASURED-INVERSION-ONLY")).sort();
+  const claimedMissKeys = claimedMisses.map((c) => resolve(c, "MEASURED-MISSES")).sort();
+
+  assert.deepEqual(
+    measuredInversionOnly.slice().sort(),
+    claimedInvKeys,
+    "the header's MEASURED-INVERSION-ONLY list does not match the tree.\n" +
+      `  measured: ${measuredInversionOnly.sort().join(", ")}\n  header:   ${claimedInvKeys.join(", ")}\n` +
+      "These are hand-offs the subset rule is silent on but R4 still reddens — miscategorising one " +
+      "either overstates the blind spot or hides it.",
+  );
+
+  // ---- and the two must agree, in BOTH directions ------------------------
+  assert.deepEqual(
+    measuredCatches.slice().sort(),
+    claimedCatchKeys,
+    "the header's MEASURED-CATCHES list does not match what the gate actually catches on this tree.\n" +
+      `  measured: ${measuredCatches.sort().join(", ")}\n  header:   ${claimedCatchKeys.join(", ")}\n` +
+      "Re-measure and correct the header. A limitation paragraph that has drifted from the tree is " +
+      "exactly the defect #1850 was opened to fix.",
+  );
+  assert.deepEqual(
+    measuredMisses.slice().sort(),
+    claimedMissKeys,
+    "the header's MEASURED-MISSES list does not match what the gate actually misses on this tree.\n" +
+      `  measured: ${measuredMisses.sort().join(", ")}\n  header:   ${claimedMissKeys.join(", ")}\n` +
+      "This is the list a reader trusts to know where the blind spots are; a wrong entry here tells " +
+      "them a covered case is uncovered, or an uncovered case is safe.",
+  );
+
+  // ---- the specific error P2-4 caught must not come back ------------------
+  assert.ok(
+    !claimedMisses.some((c) => c.includes("PaymentPlanEditor")),
+    "the header lists PaymentPlanEditor as a MISS. It is not: stripping its ledger reddens the gate " +
+      "with `6 of 7 file(s) covered by NOTHING`, because the RPC and cache rules it dropped live in " +
+      "other files. This exact claim shipped once and was pinned by this test's predecessor.",
+  );
+  assert.match(
+    header,
+    /FLAGSHIP BLIND SPOT IS `rsvp\/\[id\]\/preview`/,
+    "the header must name the real flagship blind spot — rsvp/[id]/preview, ~24 of 29 assertions " +
+      "dark inside one fully-covered file — not merely list keys.",
+  );
+});
+
+// ── T-8 ───────────────────────────────────────────────────────────────────
+test("T-8 the documented boundary is real: a gate that only READS its targets still passes", () => {
+  // The limitation is not decoration. Pinned deliberately, so nobody later reads a
+  // green run as assertion-level proof. If this ever starts failing the limitation
+  // shrank — which is good news, and the header must be updated to say so.
   const model = realModel();
   const entry = model.entries.find((e) => e.pattern.includes("orch_1165"));
   const hollow = model.gates.get(entry.gateName);
   hollow.source = [...ledger.extractTargets(hollow.source, SG, ROOTS)]
     .map((p) => `read(${JSON.stringify(p)});`)
     .join("\n");
-  const r = ledger.run(model);
   assert.equal(
-    r.code,
+    ledger.run(model).code,
     0,
     "a gate that only READS its targets still passes — this is the documented boundary, " +
-      "not an undiscovered hole. If this ever starts failing the limitation shrank; update the header.",
+      "not an undiscovered hole.",
   );
 });

@@ -79,6 +79,16 @@ const IS_MAIN =
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 const stripImports = (s) => s.split("\n").filter((l) => !/^\s*import\b/.test(l)).join("\n");
+/**
+ * Removes whole import STATEMENTS, including the multi-line `import {\n  A,\n  B,\n}
+ * from "…"` form that a line-prefix filter leaves half-standing — which would let the
+ * bare name `DONE_BAR_OCCUPIED,` sitting on its own line inside an import count as a
+ * USE. Used only by rule (D)'s use-check, where that distinction decides the verdict.
+ */
+const stripImportStatements = (s) =>
+  s
+    .replace(/^[ \t]*import\b[\s\S]*?\bfrom\s*["'][^"']*["'][ \t]*;?/gm, "")
+    .replace(/^[ \t]*import\s*["'][^"']*["'][ \t]*;?/gm, "");
 /** Comments never satisfy — and never violate — a source rule. */
 const stripComments = (s) =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
@@ -122,6 +132,8 @@ const NESTED = /<KeyboardRoot\b[^>]*>[\s\S]*<KeyboardToolbarRoot\s*\/?>[\s\S]*<\
 const LITERAL_KAV_OFFSET = /keyboardVerticalOffset\s*=\s*\{\s*\d+(?:\.\d+)?\s*\}/;
 const LITERAL_CLEARANCE_TERM = /keyboard[A-Za-z]*\s*(?:>\s*0[\s\S]{0,200}?)?\+\s*42\b/;
 const IMPORTS_DERIVED = /import\s*\{[^}]*\bDONE_BAR_OCCUPIED\b[^}]*\}\s*from\s*["'][^"']*wrappers\/SmartScrollView["']/;
+/** …and it must actually be USED, not just imported (#1850 TEST P2-6). */
+const USES_DERIVED = /\bDONE_BAR_OCCUPIED\b/;
 
 /**
  * (E) MEASURED COMPOSER HEIGHT — the Ari composer's lift must keep reading the
@@ -226,6 +238,18 @@ export function run({ files, mountHosts, keyed, nestedHosts, derivedHosts, measu
       );
     }
     const code = stripComments(raw);
+    // #1850 TEST P2-6 — the import alone was enough to satisfy this rule, so
+    // DELETING the clearance term while keeping the import read as GREEN: no
+    // literal, an import present, and no clearance at all. That is the rule
+    // failing at its own job, not a documentation gap. The name must be USED,
+    // outside imports and outside comments.
+    if (!USES_DERIVED.test(stripImportStatements(code))) {
+      failures.push(
+        `${rel} imports DONE_BAR_OCCUPIED but never USES it. An unused import is not a derivation — ` +
+          "deleting the clearance term while keeping the import leaves the surface with NO Done-bar " +
+          "budget at all, which is worse than the literal this rule replaced.",
+      );
+    }
     if (LITERAL_KAV_OFFSET.test(code)) {
       failures.push(
         `${rel} sets keyboardVerticalOffset to a NUMERIC LITERAL. Use DONE_BAR_OCCUPIED: 42 is ` +
@@ -348,6 +372,49 @@ if (IS_MAIN && SELF_TEST) {
     check("(D) DONE_BAR_OCCUPIED import removed", m, 1, "does not import DONE_BAR_OCCUPIED");
   }
 
+  // 5b — (D) THE P2-6 HOLE: the import stays, the clearance term is DELETED.
+  //      Before #1850 TEST this was GREEN — no literal, import present, and no
+  //      Done-bar budget at all. The rule was satisfiable by doing nothing.
+  {
+    const m = base();
+    m.files.set(
+      "src/screens/ari/AriChatScreen.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + composerHeight + 12 : 0;\nsetComposerHeight(h);\n<View onLayout={onComposerLayout}/>`,
+    );
+    check("(D) imported but never used", m, 1, "never USES it");
+  }
+
+  // 5c — (D) a MULTI-LINE import must not read as a use: the bare name sitting
+  //      on its own line inside the import braces is still an import.
+  {
+    const m = base();
+    m.files.set(
+      "src/components/groupChat/GroupChatPanel.tsx",
+      `import {\n  DONE_BAR_OCCUPIED,\n  ScrollView,\n} from "../../wrappers/SmartScrollView";\n<KeyboardAvoidingView behavior="padding"/>`,
+    );
+    check("(D) multi-line import is not a use", m, 1, "never USES it");
+  }
+
+  // 5d — …and the same multi-line import WITH a real use passes.
+  {
+    const m = base();
+    m.files.set(
+      "src/components/groupChat/GroupChatPanel.tsx",
+      `import {\n  DONE_BAR_OCCUPIED,\n  ScrollView,\n} from "../../wrappers/SmartScrollView";\n<KeyboardAvoidingView keyboardVerticalOffset={DONE_BAR_OCCUPIED}/>`,
+    );
+    check("(D) multi-line import plus a real use passes", m, 0);
+  }
+
+  // 5e — a mention in a COMMENT is not a use either.
+  {
+    const m = base();
+    m.files.set(
+      "src/components/support/SupportThread.native.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\n// we budget DONE_BAR_OCCUPIED here, honest\n<KeyboardAvoidingView behavior="padding"/>`,
+    );
+    check("(D) a comment mention is not a use", m, 1, "never USES it");
+  }
+
   // 6 — (D) a hand-typed `+ 42` clearance term returns to a keyboard branch.
   {
     const m = base();
@@ -419,7 +486,7 @@ if (IS_MAIN && SELF_TEST) {
     console.error("");
     process.exit(1);
   }
-  console.log("OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET --self-test]: 13 fixtures behaved as specified.");
+  console.log("OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET --self-test]: 17 fixtures behaved as specified.");
   process.exit(0);
 }
 
