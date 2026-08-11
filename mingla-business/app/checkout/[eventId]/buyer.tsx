@@ -13,7 +13,8 @@
  *   - Paid order → router.push to /checkout/{eventId}/payment.
  *
  * Keyboard handling: focused-field scroll is delegated to SmartScrollView
- * (KeyboardAwareScrollView, bottomOffset=54). ORCH-1252 removed the prior
+ * (KeyboardAwareScrollView, at the wrapper's DERIVED DEFAULT_BOTTOM_OFFSET).
+ * ORCH-1252 removed the prior
  * manual keyboard-driven padding + scroll, which double-adjusted on top of the
  * library and overshot the field off the top of the screen.
  * Memory rule: keyboard never blocks an Input.
@@ -40,12 +41,23 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 // ORCH-1252 — keyboard-driven focused-field scroll is delegated entirely to
 // SmartScrollView (native = react-native-keyboard-controller's
-// KeyboardAwareScrollView, bottomOffset=54; web = plain RN ScrollView). The
+// KeyboardAwareScrollView at the wrapper's DERIVED DEFAULT_BOTTOM_OFFSET;
+// web = plain RN ScrollView). The
 // prior manual keyboard listener + dynamic padding + programmatic scroll
 // DOUBLE-adjusted on top of the library's auto-scroll, overshooting the field
 // off the top of the screen. useKeyboardIsVisible supplies the minimal
 // keyboard-visible boolean retained ONLY to hide the sticky bottom bar
 // (returns false on web — no-op there, matching prior web behavior).
+//
+// #1834 [keyboard-blocks-bank-field] — that offset was documented here as a
+// flat `bottomOffset=54` until it was measured on glass. It is now DERIVED in
+// src/wrappers/SmartScrollView.native.tsx from three named terms:
+//   DONE_BAR_OCCUPIED (KEYBOARD_TOOLBAR_HEIGHT - the library's OPENED_OFFSET —
+//   53 on iOS 26+, 42 elsewhere) + INPUT_CHROME_BELOW_TEXT_FRAME (iOS 13.5 /
+//   Android 3.16, measured) + MIN_VISIBLE_CLEARANCE (12)
+//   => 78.5 iOS 26+ / 67.5 iOS <26 / 57.16 Android.
+// 54 budgeted 1pt of visible clearance on iOS 26+, not 12, which put the
+// focused field BEHIND the Done bar. Read the wrapper; never re-type a total.
 import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
@@ -284,7 +296,8 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   );
 
   // ----- Keyboard visibility (ORCH-1252) ---------------------------
-  // SmartScrollView (KeyboardAwareScrollView, bottomOffset=54) is now the SOLE
+  // SmartScrollView (KeyboardAwareScrollView, inheriting the wrapper's DERIVED
+  // DEFAULT_BOTTOM_OFFSET) is now the SOLE
   // owner of focused-field scrolling — the prior manual listener + dynamic
   // padding + programmatic scroll double-adjusted and overshot the field off the
   // top. All that remains is a single visibility boolean, used ONLY to hide the
