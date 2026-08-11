@@ -185,6 +185,17 @@ COMMENT ON TABLE public.venue_ordering_settings IS
 --   `has_table_privilege()` answers the EFFECTIVE question and is used as the
 --   independent cross-check in the CI suite; the two must agree.
 --
+-- WHY THE CLASS SURVIVED A GUARD THAT ALREADY EXISTED
+--   ORCH-1392 shipped `.github/workflows/security-definer-anon-grant-gate.yml`
+--   for the FUNCTION half of exactly this class, and its own header says why a
+--   grep cannot do the job: "the anon grant is an implicit default-privilege,
+--   never written in a migration". That gate has been green and correct the
+--   whole time — it asks `has_function_privilege`. Nobody ever built the TABLE
+--   half. So every table shipped since has been uncovered, which is precisely
+--   the shape of #1819, #1846 and now #1856: three instances AFTER the class
+--   was already understood and already guarded one object type over. This
+--   function is that missing half.
+--
 -- WHY A BASELINE AND NOT A BIGGER ALLOWLIST
 --   On 2026-08-11 the live schema had 272 relations in `public` carrying the
 --   raw Supabase default grants — 3452 offending (relation, grantee,
