@@ -101,6 +101,35 @@ BEGIN
 END;
 $accepted$;
 
+DO $export_boundary$
+DECLARE v jsonb; v_job_count integer;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub','87300000-0000-4000-8000-000000000001',true);
+  SELECT count(*) INTO v_job_count FROM public.brand_people_export_jobs;
+  BEGIN
+    PERFORM public.biz_export_brand_people(
+      'offering_guest_roster','87300000-0000-4000-8000-000000000020','no_response',NULL,
+      'action_priority','{}','87300000-0000-4000-8000-000000000054'
+    );
+    RAISE EXCEPTION 'T-873-01C FAIL: export job persisted before export rollout';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  IF (SELECT count(*) FROM public.brand_people_export_jobs)<>v_job_count THEN
+    RAISE EXCEPTION 'T-873-01C FAIL: disabled export left a job behind';
+  END IF;
+  UPDATE public.feature_flags SET is_enabled=true WHERE flag_key='guest_roster_export_enabled';
+  UPDATE public.guest_roster_brand_rollouts SET phase='ga'
+  WHERE brand_id='87300000-0000-4000-8000-000000000010';
+  v:=public.biz_export_brand_people(
+    'offering_guest_roster','87300000-0000-4000-8000-000000000020','no_response',NULL,
+    'action_priority','{}','87300000-0000-4000-8000-000000000054'
+  );
+  IF v->>'status' NOT IN ('pending','queued') OR v->>'jobId' IS NULL THEN
+    RAISE EXCEPTION 'T-873-01D FAIL: current roster filter did not create audited export job: %',v;
+  END IF;
+END;
+$export_boundary$;
+
 INSERT INTO public.event_rsvps(id,event_id,user_id,guest_name,guest_email,guest_phone,rsvp_status,
   approval_status,plus_count,created_at)
 VALUES('87300000-0000-4000-8000-000000000060','87300000-0000-4000-8000-000000000020',NULL,
