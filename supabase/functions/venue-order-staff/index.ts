@@ -57,6 +57,7 @@ import {
   venueOrderErrorStatus,
 } from "../_shared/venueOrderPricing.ts";
 import {
+  findReplayableVenueOrder,
   insertVenueOrderRow,
   loadMenuSnapshot,
   markVenueOrderFailed,
@@ -713,12 +714,14 @@ async function handleTabClose(
   if (insertError !== null || !created) {
     // ONE settlement order per tab, forever: the idempotency key is the session
     // id. A retried close (the tab is already `settling`) must resume the SAME
-    // payment, never mint a second bill for the same table.
-    const { data: existing } = await supabase
-      .from("venue_orders")
-      .select("id")
-      .eq("idempotency_key", `venue_tab_settlement:${sessionId}`)
-      .maybeSingle();
+    // payment, never mint a second bill for the same table. Tenant-scoped like
+    // every other read of this column (#1819 H-2) — a session id is already
+    // unguessable, but the scope is the rule, not a case-by-case judgement.
+    const existing = await findReplayableVenueOrder(supabase, {
+      brandId: String(session.brand_id),
+      venueId: String(session.venue_id),
+      idempotencyKey: `venue_tab_settlement:${sessionId}`,
+    });
     if (!existing) {
       console.error("[venue-order-staff] settlement order insert failed", insertError);
       return fail("internal_error");

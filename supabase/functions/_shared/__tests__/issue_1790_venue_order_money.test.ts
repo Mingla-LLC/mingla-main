@@ -497,10 +497,20 @@ Deno.test("P-13: a late-night menu window wraps midnight", () => {
 
 // ---------------------------------------------------------------------------
 // P-23 layer 1 — the deterministic idempotency fingerprint.
+//
+// #1819 H-2 renamed `sessionId` to `scopeId` and made `buyerKey` required, so
+// the derived key can no longer collapse to a shared constant when a guest has
+// no sitting yet. Every assertion below is the ORIGINAL one; `buyerKey` is held
+// CONSTANT throughout so this group still tests exactly what it tested before.
+// The buyer dimension itself is covered in
+// supabase/functions/_shared/__tests__/issue_1819_order_idempotency_scope.test.ts.
 // ---------------------------------------------------------------------------
+const P23_BUYER = "ada@example.test|+12015550199";
+
 Deno.test("P-23: the fingerprint is order-insensitive, session-scoped, and tip-aware", () => {
   const a = venueOrderIdempotencyFingerprint({
-    sessionId: "S1",
+    scopeId: "S1",
+    buyerKey: P23_BUYER,
     lines: [
       { menuItemId: "i1", quantity: 2, modifierIds: ["m2", "m1"], notes: "no ice" },
       { menuItemId: "i2", quantity: 1, modifierIds: [], notes: null },
@@ -508,7 +518,8 @@ Deno.test("P-23: the fingerprint is order-insensitive, session-scoped, and tip-a
     tipBps: 1000,
   });
   const reordered = venueOrderIdempotencyFingerprint({
-    sessionId: "S1",
+    scopeId: "S1",
+    buyerKey: P23_BUYER,
     lines: [
       { menuItemId: "i2", quantity: 1, modifierIds: [], notes: null },
       { menuItemId: "i1", quantity: 2, modifierIds: ["m1", "m2"], notes: "no ice" },
@@ -520,7 +531,8 @@ Deno.test("P-23: the fingerprint is order-insensitive, session-scoped, and tip-a
   // A DIFFERENT sitting is a different order, even with an identical cart —
   // this is the deliberate difference from the ticket path's key.
   assert(a !== venueOrderIdempotencyFingerprint({
-    sessionId: "S2",
+    scopeId: "S2",
+    buyerKey: P23_BUYER,
     lines: [
       { menuItemId: "i1", quantity: 2, modifierIds: ["m1", "m2"], notes: "no ice" },
       { menuItemId: "i2", quantity: 1, modifierIds: [], notes: null },
@@ -530,7 +542,8 @@ Deno.test("P-23: the fingerprint is order-insensitive, session-scoped, and tip-a
 
   // Changing the tip changes the order.
   assert(a !== venueOrderIdempotencyFingerprint({
-    sessionId: "S1",
+    scopeId: "S1",
+    buyerKey: P23_BUYER,
     lines: [
       { menuItemId: "i1", quantity: 2, modifierIds: ["m1", "m2"], notes: "no ice" },
       { menuItemId: "i2", quantity: 1, modifierIds: [], notes: null },
@@ -540,7 +553,8 @@ Deno.test("P-23: the fingerprint is order-insensitive, session-scoped, and tip-a
 
   // ...and so does a note, because the kitchen ticket differs.
   assert(a !== venueOrderIdempotencyFingerprint({
-    sessionId: "S1",
+    scopeId: "S1",
+    buyerKey: P23_BUYER,
     lines: [
       { menuItemId: "i1", quantity: 2, modifierIds: ["m1", "m2"], notes: "extra ice" },
       { menuItemId: "i2", quantity: 1, modifierIds: [], notes: null },

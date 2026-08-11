@@ -577,17 +577,36 @@ export function resolveTipCents(
 // ---------------------------------------------------------------------------
 // P-23 layer 1 — the deterministic idempotency key.
 //
-// Deliberately DIFFERENT from the ticket path: it includes sessionId, so a
+// Deliberately DIFFERENT from the ticket path: it includes the sitting, so a
 // table legitimately ordering "two more of the same" in a later sitting is not
 // collapsed into the first order. The derived default is the CRASH-SAFETY
 // FLOOR, not the primary mechanism — the client MUST send a per-tap key, and
 // two identical rounds inside ONE sitting are exactly why.
+//
+// #1819 H-2 — `buyerKey` is REQUIRED and always mixed in. Before it, a guest
+// with no sitting yet fell back to the literal string "new", so two counter-
+// pickup guests ordering the same thing at the same venue in the same minute
+// derived the SAME key: the second was silently handed the first's order.
+// `buyerKey` is the contact triple order-create has already validated by this
+// point, so it is genuinely per-caller — and it fixes the same collision INSIDE
+// a sitting, where two people at one table ordering an identical round used to
+// collapse into one order.
+//
+// It stays deterministic: the SAME caller retrying the SAME cart still derives
+// the same key, which is the whole point of a crash-safety floor.
 // ---------------------------------------------------------------------------
-export function venueOrderIdempotencyFingerprint(input: {
-  sessionId: string;
+export interface VenueOrderIdempotencyInput {
+  /** The sitting when one exists, else a per-request constant. */
+  scopeId: string;
+  /** WHO is ordering. Never empty — the caller validates contact first. */
+  buyerKey: string;
   lines: RequestedLine[];
   tipBps: number | null;
-}): string {
+}
+
+export function venueOrderIdempotencyFingerprint(
+  input: VenueOrderIdempotencyInput,
+): string {
   const lineKey = input.lines
     .map((line) =>
       [
@@ -599,15 +618,20 @@ export function venueOrderIdempotencyFingerprint(input: {
     )
     .sort()
     .join("|");
-  return [input.sessionId, lineKey, `tip:${input.tipBps ?? "none"}`].join(":");
+  return [
+    input.scopeId,
+    `buyer:${input.buyerKey.trim().toLowerCase()}`,
+    lineKey,
+    `tip:${input.tipBps ?? "none"}`,
+  ].join(":");
 }
 
 export async function venueOrderIdempotencyKey(
-  input: { sessionId: string; lines: RequestedLine[]; tipBps: number | null },
+  input: VenueOrderIdempotencyInput,
   sha256Hex: (value: string) => Promise<string>,
 ): Promise<string> {
   const digest = await sha256Hex(venueOrderIdempotencyFingerprint(input));
-  return `venue_order:${input.sessionId}:${digest}:${input.tipBps ?? "none"}`;
+  return `venue_order:${input.scopeId}:${digest}`;
 }
 
 // ---------------------------------------------------------------------------

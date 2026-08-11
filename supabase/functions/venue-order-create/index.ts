@@ -51,6 +51,7 @@ import {
 } from "../_shared/venueOrderPricing.ts";
 import {
   checkOrderRateLimit,
+  findReplayableVenueOrder,
   insertVenueOrderRow,
   loadMenuSnapshot,
   markVenueOrderFailed,
@@ -356,18 +357,33 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
 
   // ── P-23 layer 1 — idempotency. The client MUST send a per-tap key; the
   //    derived composite is the CRASH-SAFETY FLOOR beneath it. ──────────────
-  const sessionKeyPart = session !== null ? String(session.id) : (bodySessionId ?? "new");
+  //    #1819 H-2: the derived fallback used to collapse to the literal "new"
+  //    when no sitting existed yet, so two counter-pickup guests ordering the
+  //    same thing at the same venue in the same minute derived the SAME key and
+  //    the second was handed the first's order. The buyer identity — already
+  //    validated above — makes it per-caller while staying deterministic for a
+  //    genuine retry.
+  const sessionKeyPart = session !== null
+    ? String(session.id)
+    : (bodySessionId ?? "no-session");
   const idempotencyKey = clientIdempotencyKey ??
     await venueOrderIdempotencyKey(
-      { sessionId: sessionKeyPart, lines: requested, tipBps: effectiveTipBps },
+      {
+        scopeId: sessionKeyPart,
+        buyerKey: `${buyerEmail}|${buyerPhoneE164}`,
+        lines: requested,
+        tipBps: effectiveTipBps,
+      },
       sha256Hex,
     );
   {
-    const { data: existing } = await supabase
-      .from("venue_orders")
-      .select("id, total_cents, currency, payment_status, buyer_status_token_hash")
-      .eq("idempotency_key", idempotencyKey)
-      .maybeSingle();
+    // Scoped to the tenant: an unscoped match on a CLIENT-SUPPLIED key returned
+    // another brand's order id, total and status (#1819 H-2).
+    const existing = await findReplayableVenueOrder(supabase, {
+      brandId: ctx.brandId,
+      venueId: ctx.servingVenueId,
+      idempotencyKey,
+    });
     if (existing) {
       // A replayed submit returns the EXISTING order, never a second one. The
       // plaintext status token is held only by the first response — a replay

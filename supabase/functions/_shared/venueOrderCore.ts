@@ -328,6 +328,50 @@ export async function checkOrderRateLimit(
   }
 }
 
+/**
+ * #1819 H-2 — the ONLY way to look up a replayable order.
+ *
+ * `idempotency_key` is CLIENT-SUPPLIED and therefore not a global namespace.
+ * Matching on it alone let one brand's key collide with another's and handed
+ * the caller back the OTHER brand's order id, total and payment status. The
+ * unique index is (brand_id, venue_id, idempotency_key) and every read must
+ * carry the same three, which is why this is a shared helper rather than an
+ * inline query each caller writes for itself.
+ */
+export async function findReplayableVenueOrder(
+  supabase: ServiceClient,
+  input: { brandId: string; venueId: string; idempotencyKey: string },
+): Promise<
+  | {
+    id: string;
+    total_cents: number;
+    currency: string;
+    payment_status: string;
+  }
+  | null
+> {
+  const { data, error } = await supabase
+    .from("venue_orders")
+    .select("id, total_cents, currency, payment_status")
+    .eq("brand_id", input.brandId)
+    .eq("venue_id", input.venueId)
+    .eq("idempotency_key", input.idempotencyKey)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`venue_order_replay_lookup_failed: ${error.message}`);
+  }
+  if (!data || typeof (data as Record<string, unknown>).id !== "string") {
+    return null;
+  }
+  const row = data as Record<string, unknown>;
+  return {
+    id: String(row.id),
+    total_cents: Number(row.total_cents),
+    currency: String(row.currency),
+    payment_status: String(row.payment_status),
+  };
+}
+
 /** Write the order + its lines + their modifier snapshots. */
 export async function insertVenueOrderRow(
   supabase: ServiceClient,
