@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 491,
-  "selfTestWiredFloor": 301,
+  "expectedStrictGrepMjsFiles": 492,
+  "selfTestWiredFloor": 302,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -7608,6 +7608,18 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-1817-free-plan-invite-send.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1817-free-plan-invite-send.tester.adversarial.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",
