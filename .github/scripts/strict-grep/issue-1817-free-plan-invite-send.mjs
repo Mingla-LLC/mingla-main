@@ -131,7 +131,7 @@ export function violations(files) {
   ]) need(denoTest, token, "Deno result matrix", failures);
 
   for (const token of [
-    "I-PROPOSED-OFFERING-PROVIDER-ACCEPTANCE-1 (DRAFT)",
+    "I-OFFERING-PROVIDER-ACCEPTANCE-1 (ACTIVE)",
     "canonical OneSignal Create Message ID is durable Sent/provider-accepted truth",
     "never device-delivery truth",
     "without Event Streams",
