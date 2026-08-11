@@ -36,8 +36,15 @@ const TARGETS = new Set([
   "src/components/venue/VenueIntelligenceModule.tsx",
 ]);
 const PRIMARY = /^(.*)\((\d+),(\d+)\): error TS(\d+):(?:\s?(.*))$/;
+const QUOTED_STRING_UNION =
+  /"(?:\\.|[^"\\])*"(?: \| "(?:\\.|[^"\\])*")+/g;
 
 const slashes = (value) => value.replaceAll("\\", "/");
+
+const canonicalizeQuotedStringUnions = (message) =>
+  message.replace(QUOTED_STRING_UNION, (union) =>
+    union.split(" | ").sort().join(" | "),
+  );
 
 const normalizePath = (raw, businessRoot) =>
   slashes(
@@ -66,7 +73,9 @@ const normalizeMessage = (
   ]) {
     normalized = normalized.replaceAll(`${slashes(root)}/`, "<repo>/");
   }
-  return normalized.replace(/\(\d+,\d+\)/g, "(line,column)").trimEnd();
+  return canonicalizeQuotedStringUnions(
+    normalized.replace(/\(\d+,\d+\)/g, "(line,column)").trimEnd(),
+  );
 };
 
 export function parseDiagnostics(
@@ -168,6 +177,70 @@ const selfTest = () => {
   const business = `${repo}/mingla-business`;
   const parse = (log) => parseDiagnostics(log, repo, business);
   const baseline = synthetic("src/legacy.ts", "TS2322", "Legacy mismatch");
+  const orderedUnion = synthetic(
+    "src/legacy.ts",
+    "TS2322",
+    'Type string is not assignable to type "error" | "loading" | "ready".',
+  );
+  const reorderedUnion = synthetic(
+    "src/legacy.ts",
+    "TS2322",
+    'Type string is not assignable to type "error" | "ready" | "loading".',
+  );
+  const orderOnly = compareDiagnostics(parse(orderedUnion), parse(reorderedUnion));
+  const memberChanged = compareDiagnostics(
+    parse(orderedUnion),
+    parse(
+      synthetic(
+        "src/legacy.ts",
+        "TS2322",
+        'Type string is not assignable to type "error" | "loaded" | "ready".',
+      ),
+    ),
+  );
+  const duplicateGrowthAfterNormalization = compareDiagnostics(
+    parse(orderedUnion),
+    parse(
+      synthetic(
+        "src/legacy.ts",
+        "TS2322",
+        'Type string is not assignable to type "ready" | "error" | "loading".',
+        2,
+      ),
+    ),
+  );
+  const nonStringOrderChange = compareDiagnostics(
+    parse(
+      synthetic(
+        "src/legacy.ts",
+        "TS2322",
+        'Type string is not assignable to type "error" | undefined.',
+      ),
+    ),
+    parse(
+      synthetic(
+        "src/legacy.ts",
+        "TS2322",
+        'Type string is not assignable to type undefined | "error".',
+      ),
+    ),
+  );
+  const targetAfterNormalization = compareDiagnostics(
+    parse(
+      synthetic(
+        "src/services/listingInsightsService.ts",
+        "TS2322",
+        'Type string is not assignable to type "error" | "loading" | "ready".',
+      ),
+    ),
+    parse(
+      synthetic(
+        "src/services/listingInsightsService.ts",
+        "TS2322",
+        'Type string is not assignable to type "ready" | "error" | "loading".',
+      ),
+    ),
+  );
   const cases = [
     compareDiagnostics(parse(baseline), parse(baseline)).failures.length === 0,
     compareDiagnostics(parse(baseline), parse("")).failures.length === 0,
@@ -219,12 +292,30 @@ const selfTest = () => {
         "/current/repo/mingla-business",
       ),
     ).failures.length === 0,
+    orderOnly.failures.length === 0 &&
+      orderOnly.added.length === 0 &&
+      orderOnly.removed.length === 0,
+    memberChanged.failures.length > 0 &&
+      memberChanged.added.reduce((sum, item) => sum + item.count, 0) === 1 &&
+      memberChanged.removed.reduce((sum, item) => sum + item.count, 0) === 1,
+    duplicateGrowthAfterNormalization.failures.length > 0 &&
+      duplicateGrowthAfterNormalization.added.reduce(
+        (sum, item) => sum + item.count,
+        0,
+      ) === 1,
+    nonStringOrderChange.failures.length > 0 &&
+      nonStringOrderChange.added.length === 1 &&
+      nonStringOrderChange.removed.length === 1,
+    targetAfterNormalization.failures.length > 0 &&
+      targetAfterNormalization.added.length === 0 &&
+      targetAfterNormalization.removed.length === 0 &&
+      targetAfterNormalization.targetDiagnostics.length === 1,
   ];
   if (cases.some((passed) => !passed)) {
     console.error("issue #1403 typecheck delta self-test FAIL");
     return 1;
   }
-  console.log("issue #1403 typecheck delta self-test PASS (7/7 cases)");
+  console.log("issue #1403 typecheck delta self-test PASS (12/12 cases)");
   return 0;
 };
 

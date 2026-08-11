@@ -44,14 +44,19 @@ const vercel = JSON.parse(
   readFileSync(path.join(process.cwd(), "vercel.json"), "utf8"),
 ) as { rewrites: Rewrite[]; headers: HeaderRule[] };
 
-const CATCH_ALL_SOURCE = "/((?!_expo/static/).*)";
+// [TEST-MOD-APPROVED #922] The prior literal encoded superseded routing truth.
+// The protected #1485 asset boundary is unchanged, and the additional exact
+// entry exclusion prevents the later SPA rewrite from consuming #922's file.
+const CATCH_ALL_SOURCE =
+  "/((?!_expo/static/|accept-brand-invitation-entry$).*)";
 
 /**
  * The exact regex `@vercel/routing-utils@6.4.0` (path-to-regexp@6.1.0) compiles
  * `CATCH_ALL_SOURCE` to. Verified in the #1485 INVESTIGATION by running the real
  * compiler over the real config.
  */
-const COMPILED_CATCH_ALL_SOURCE = "^(?:/((?!_expo/static/).*))$";
+const COMPILED_CATCH_ALL_SOURCE =
+  "^(?:/((?!_expo/static/|accept-brand-invitation-entry$).*))$";
 
 const shippedCatchAll = vercel.rewrites[vercel.rewrites.length - 1];
 
@@ -123,6 +128,12 @@ describe("#1485 T1 — /_expo/static/ is excluded from the SPA catch-all", () =>
     }
   });
 
+  test("T1.3b — only the exact invitation entry is newly excluded", () => {
+    expect(COMPILED_CATCH_ALL.test("/accept-brand-invitation-entry")).toBe(false);
+    expect(COMPILED_CATCH_ALL.test("/accept-brand-invitation-entry/child")).toBe(true);
+    expect(COMPILED_CATCH_ALL.test("/accept-brand-invitation-entry-evil")).toBe(true);
+  });
+
   test("T1.4 — every rewrite that must win stays ordered before the catch-all", () => {
     const catchAllIndex = sourceIndex(CATCH_ALL_SOURCE);
     expect(catchAllIndex).toBe(vercel.rewrites.length - 1);
@@ -130,6 +141,7 @@ describe("#1485 T1 — /_expo/static/ is excluded from the SPA catch-all", () =>
     const mustPrecede = [
       "/stripe-onboarding-return",
       "/auth/callback",
+      "/accept-brand-invitation",
       "/og/event/:eventId.png",
       "/e/:brandSlug/:eventSlug",
       "/b/:brandSlug/v/:venueSlug",
@@ -140,6 +152,12 @@ describe("#1485 T1 — /_expo/static/ is excluded from the SPA catch-all", () =>
       expect([source, index >= 0]).toEqual([source, true]);
       expect([source, index < catchAllIndex]).toEqual([source, true]);
     }
+    expect(
+      vercel.rewrites.find((rewrite) => rewrite.source === "/accept-brand-invitation"),
+    ).toEqual({
+      source: "/accept-brand-invitation",
+      destination: "/accept-brand-invitation-entry",
+    });
   });
 
   test("T1.5 — the ORCH-1003 / ORCH-1091 header contract is untouched", () => {

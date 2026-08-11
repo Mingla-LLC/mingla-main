@@ -122,6 +122,7 @@ declare global {
   // gtag/dataLayer injected by the GA4 loader below; the four ad-pixel globals
   // are injected by their vendor snippets on consent (bootstrapAdPixels).
   interface Window {
+    __minglaPrebootConsentChoice?: ConsentChoice;
     dataLayer?: unknown[];
     gtag?: (...args: unknown[]) => void;
     fbq?: ((...args: unknown[]) => void) & { callMethod?: (...a: unknown[]) => void; queue?: unknown[] };
@@ -140,6 +141,15 @@ function hasWindow(): boolean {
 /** The banner's stored choice, or null if the visitor has not chosen yet. */
 export function readStoredConsent(): ConsentChoice | null {
   if (!hasWindow()) return null;
+  // Issue #922: the zero-JS invitation shell can record a first choice before
+  // this canonical analytics module loads. Keep the validated choice for this
+  // page lifetime so ConsentBanner, analytics init, and later same-page readers
+  // all see it if localStorage persistence fails. Navigation/reload is the
+  // natural ephemeral boundary; persistence and side effects remain owned below.
+  const prebootChoice = window.__minglaPrebootConsentChoice;
+  if (prebootChoice === "granted" || prebootChoice === "denied") {
+    return prebootChoice;
+  }
   try {
     const raw = window.localStorage.getItem(CONSENT_STORAGE_KEY);
     if (raw === null) return null;

@@ -1,0 +1,72 @@
+name: Issue 922 Business Web Actionability
+
+on:
+  push:
+    branches: [Seth, main]
+    paths: &issue922_paths
+      - "mingla-business/app/accept-brand-invitation.tsx"
+      - "mingla-business/src/analytics/ConsentBanner.web.tsx"
+      - "mingla-business/src/analytics/webAnalytics.web.ts"
+      - "mingla-business/src/components/ui/Button.tsx"
+      - "mingla-business/src/constants/designSystem.ts"
+      - "mingla-business/scripts/inject-mobile-blur-css.mjs"
+      - "mingla-business/scripts/build-invite-critical-entry.mjs"
+      - "mingla-business/scripts/ci/issue-922-business-web-actionable.mjs"
+      - "mingla-business/__tests__/issue922BusinessWebActionable.happy.test.ts"
+      - "mingla-business/__tests__/issue922BusinessWebActionable.adversarial.test.ts"
+      - "mingla-business/playwright.issue922.config.ts"
+      - "mingla-business/playwright/issue922-business-web-actionable.spec.ts"
+      - "mingla-business/playwright/issue922-business-web-actionable.adversarial.spec.ts"
+      - "mingla-business/playwright/issue922-static-server.mjs"
+      - "mingla-business/vercel.json"
+      - ".github/workflows/issue-922-business-web-actionable.yml"
+  pull_request:
+    paths: *issue922_paths
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-922-business-web-actionable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Guard detector self-test
+        run: node scripts/ci/issue-922-business-web-actionable.mjs --self-test
+      - name: Require independent tester proofs
+        run: |
+          test -f __tests__/issue922BusinessWebActionable.adversarial.test.ts
+          test -f playwright/issue922-business-web-actionable.adversarial.spec.ts
+      - name: Export and build the dedicated entry
+        run: |
+          npx expo export -p web --clear
+          node scripts/inject-mobile-blur-css.mjs
+          node scripts/build-invite-critical-entry.mjs
+      - name: Structural, drift, route, and size guard
+        run: ISSUE_922_REQUIRE_ADVERSARIAL=1 node scripts/ci/issue-922-business-web-actionable.mjs
+      - name: Happy and independent adversarial unit tests
+        run: >
+          npx jest
+          __tests__/issue922BusinessWebActionable.happy.test.ts
+          __tests__/issue922BusinessWebActionable.adversarial.test.ts
+          --runInBand
+      - name: Samsung A72 browser regression proofs
+        run: npx playwright test --config playwright.issue922.config.ts
+      - name: ORCH-1083 eager-bundle invariant
+        run: ORCH_1083_WEB_BUILD=dist node scripts/ci/orch-1083-initial-bundle-budget.mjs
+      - name: Native exports remain healthy
+        run: |
+          npx expo export --platform ios --output-dir /tmp/issue-922-ios --clear
+          npx expo export --platform android --output-dir /tmp/issue-922-android --clear

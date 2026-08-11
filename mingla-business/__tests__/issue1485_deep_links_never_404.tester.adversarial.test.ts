@@ -116,7 +116,12 @@ const COMPILED_SRC: Record<string, string> = {
   "/b/:brandSlug/v/:venueSlug": "^/b(?:/([^/]+?))/v(?:/([^/]+?))$",
   "/stripe-onboarding-return": "^/stripe-onboarding-return$",
   "/auth/callback": "^/auth/callback$",
-  "/((?!_expo/static/).*)": "^(?:/((?!_expo/static/).*))$",
+  // [TEST-MOD-APPROVED #922] The prior literal encoded superseded routing
+  // truth. The exhaustive #1485 oracle now preserves the exact invitation
+  // owner while retaining the original static-asset exclusion unchanged.
+  "/accept-brand-invitation": "^/accept-brand-invitation$",
+  "/((?!_expo/static/|accept-brand-invitation-entry$).*)":
+    "^(?:/((?!_expo/static/|accept-brand-invitation-entry$).*))$",
 };
 
 /**
@@ -190,12 +195,13 @@ const EXTRA_LIVE_PATHS = [
 ];
 
 /**
- * The two paths that MUST be answered by an earlier rewrite rather than the SPA
- * shell — ORCH-1086 and ORCH-1098. Everything else must reach the shell.
+ * Paths that MUST be answered by an earlier rewrite rather than the SPA shell.
+ * Everything else must reach the shell.
  */
 const STATIC_HANDLER_PATHS: Record<string, string> = {
   "/stripe-onboarding-return": "/stripe-onboarding-return.html",
   "/auth/callback": "/auth/callback.html",
+  "/accept-brand-invitation": "/accept-brand-invitation-entry",
 };
 
 /**
@@ -230,7 +236,9 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
     // getTransformedRoutes from @vercel/routing-utils) or the chain simulation
     // below would silently stop covering it.
     expect(unmapped).toEqual([]);
-    expect(COMPILED_SRC[catchAll.source]).toBe("^(?:/((?!_expo/static/).*))$");
+    expect(COMPILED_SRC[catchAll.source]).toBe(
+      "^(?:/((?!_expo/static/|accept-brand-invitation-entry$).*))$",
+    );
   });
 
   it("A.1 — the derivation actually found the route tree (never vacuously green)", () => {
@@ -250,7 +258,9 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
       source: "/og/s/:code/v:version-r2.jpg",
       destination: "/api/content-share-image?code=:code&version=:version",
     });
-    expect(catchAll.source).toBe("/((?!_expo/static/).*)");
+    expect(catchAll.source).toBe(
+      "/((?!_expo/static/|accept-brand-invitation-entry$).*)",
+    );
   });
 
   it("A.2 — the four production incident routes are inside the derived set", () => {
@@ -384,6 +394,24 @@ const BOUNDARY_ROWS: { pathname: string; caught: boolean; why: string }[] = [
     caught: false,
     why: "bare directory with a trailing slash",
   },
+  // [TEST-MOD-APPROVED #922] The new exclusion is exact: only the internal
+  // clean entry bypasses the SPA, while its children and lookalikes stay owned
+  // by the same fallback that #1485 has always protected.
+  {
+    pathname: "/accept-brand-invitation-entry",
+    caught: false,
+    why: "the exact internal invitation artifact resolves through cleanUrls",
+  },
+  {
+    pathname: "/accept-brand-invitation-entry/child",
+    caught: true,
+    why: "the invitation exclusion is exact rather than prefix-wide",
+  },
+  {
+    pathname: "/accept-brand-invitation-entry-evil",
+    caught: true,
+    why: "a suffix lookalike remains an ordinary SPA deep link",
+  },
   // --- correctly caught: not asset URLs, so the shell is the right answer ---
   {
     pathname: "/_expo/static",
@@ -483,7 +511,16 @@ describe("#1485 T2/B — boundary and near-miss paths behave exactly as intended
     expect(headerSources).toContain("/_expo/static/(.*)");
     expect(catchAll.source).toContain("_expo/static/");
     const excluded = /\(\?!([^)]+)\)/.exec(catchAll.source)?.[1];
-    expect(excluded).toBe("_expo/static/");
+    const alternatives = excluded?.split("|");
+    expect(alternatives).toEqual([
+      "_expo/static/",
+      "accept-brand-invitation-entry$",
+    ]);
+    expect(alternatives?.[0]).toBe(
+      vercel.headers.find((header) => header.source === "/_expo/static/(.*)")
+        ?.source.replace(/^\//, "").replace("(.*)", ""),
+    );
+    expect(alternatives).toHaveLength(2);
     expect(headerSources.every((s) => s === s.toLowerCase())).toBe(true);
   });
 
