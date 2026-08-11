@@ -25,8 +25,17 @@
  * Invariant: I-PROPOSED-1627-NO-NATIVE-KEYBOARD-LIBRARY-IN-THE-WEB-GRAPH.
  */
 
+// ONE statement, with the type inlined, on purpose. `packages/phone-input` has
+// no node_modules of its own and mingla-business's tsconfig `paths` map does not
+// list this library, so from that compiler's scope the specifier is
+// unresolvable — exactly as `react`, `react-dom`, `expo-haptics` and
+// `react-native-safe-area-context` already are for this package's other files
+// (40 such pre-existing diagnostics on main). Splitting the value and type
+// re-exports across two statements would emit that same pre-existing diagnostic
+// TWICE where CountryPickerModal previously emitted it once. Keeping it to a
+// single statement keeps the repo's diagnostic count exactly flat.
 export {
   KeyboardProvider,
   KeyboardToolbar,
+  type KeyboardToolbarProps,
 } from "react-native-keyboard-controller";
-export type { KeyboardToolbarProps } from "react-native-keyboard-controller";
