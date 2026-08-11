@@ -7,13 +7,14 @@
 
 ---
 
-## DRAFT — issue #1817 (Free-plan offering invitation send completion)
+## ACTIVE — issue #1817 (Free-plan offering invitation send completion)
 
-### I-PROPOSED-OFFERING-PROVIDER-ACCEPTANCE-1 (DRAFT)
+### I-OFFERING-PROVIDER-ACCEPTANCE-1 (ACTIVE)
 
 - **Rule:** A canonical OneSignal Create Message ID is durable Sent/provider-accepted truth, never device-delivery truth. Free-plan offering invitations settle from `sending` to `sent` on that acceptance without Event Streams; an earlier or later terminal callback may refine the lifecycle, but may never erase provider acceptance.
 - **Enforcement:** The #1817 accepted-result recorder, callback reducer, and push adapter contract preserve exact claim/attempt/provider identity, project recipient and group status through the existing database owner, and reject non-canonical or ambiguous provider responses.
 - **Regression:** The #1817 SQL transaction matrix, Deno adapter matrix, and batch-A strict guard pin callback-before/result, callback-after/result, replay, conflict, partial-failure, no-receipt, ACL/RLS, and fail-on-revert behavior.
+- **Established:** ACTIVE at #1817 CLOSE after independent QA PASS, all-green PR #1825 merge `3feb629e6`, production migration `20270314001817`, exact-source Edge Function v11 deployment, and a controlled OneSignal live-fire proving 2 accepted/Sent, 0 Delivered, 1 honest no-subscription failure, 0 callback rows, and no second provider send on replay.
 
 ## DRAFT — issue #1770 (Brand People and offering guest foundation)
 
