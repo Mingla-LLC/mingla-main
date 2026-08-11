@@ -43,9 +43,22 @@
  *           STEP lives in separately-named components that are explicitly OUT of
  *           SET-B; this gate is never pointed at them.
  *
- *   SET-C — anti-vacuity. Every explicitly listed SET-A / SET-B file must EXIST.
- *           A gate that goes green because its target moved is the failure class
- *           the registry exists to prevent.
+ *   SET-C — anti-vacuity, HARDENED at #1819. Presence was never enough. Every
+ *           listed file must EXIST, must still DECLARE its named anchors, must
+ *           not wildcard-re-export, and must clear a per-file substance floor.
+ *           The tester proved all three evasions on the presence-only version:
+ *           hollowing an anchor into a re-export stayed green, renaming
+ *           `MenuTab` stayed green, and a fully buyable control passed SET-A
+ *           with none of the nine tokens. "A gate that goes green because its
+ *           target moved" includes a target that moved by being RENAMED or
+ *           DELEGATED, not only one that was deleted.
+ *
+ * #1819 also gives SET-A a structural needle set (FORBIDDEN_PURCHASE_RAIL) on
+ * top of the nine spellings, because a spelling is precisely what an evasion
+ * changes. The rule it encodes: a control is only genuinely PURCHASABLE if it
+ * can reach the money rail, so the coupling — an order edge function, an
+ * ordering renderer, a cart hook, an order/spot table — is the signal, whatever
+ * the control is named. SET-B is deliberately NOT held to it: SET-B may sell.
  *
  * Comments are stripped before matching, so explanatory notes never trip it.
  * Mirrors the modular gate pattern (sibling: orch-1130-no-buyer-tax-form.mjs).
@@ -65,14 +78,42 @@ const root = process.cwd().endsWith("mingla-business")
 // The builder sheets: authoring a dish is not buying one.
 // NOTE: VenueMenuModule.tsx deliberately MOVED to SET-B — it hosts the one-tap
 // availability (86) row toggle and, from #1793, the venue-side order surfaces.
+//
+// Each entry names the SYMBOLS the file must still DECLARE. Presence of the
+// file was never enough: #1819 proved an anchor could be hollowed into a
+// re-export shell, or its component renamed, and this gate stayed green while
+// the real code moved somewhere it does not scan. `anchors` closes that.
 const setAFiles = [
-  "mingla-business/src/components/venue/MenuItemSheet.tsx",
-  "mingla-business/src/components/venue/MenuCategorySheet.tsx",
+  {
+    rel: "mingla-business/src/components/venue/MenuItemSheet.tsx",
+    anchors: ["MenuItemSheet"],
+    minBodyChars: 3000, // measured 10,977
+  },
+  {
+    rel: "mingla-business/src/components/venue/MenuCategorySheet.tsx",
+    anchors: ["MenuCategorySheet"],
+    minBodyChars: 3000, // measured 9,081
+  },
   // The ISSUE-1080 venue-preview sales-demo skin (mingla-marketing is
   // DO-NOT-TOUCH for the whole #1767 programme — SPEC §10).
-  "mingla-marketing/app/venue-preview/page.tsx",
-  "mingla-marketing/app/venue-preview/VenuePreviewClient.tsx",
-  "mingla-marketing/app/venue-preview/venueSkins.tsx",
+  {
+    rel: "mingla-marketing/app/venue-preview/page.tsx",
+    anchors: ["VenuePreviewPage"],
+    // A THIN Next.js route by design (measured 351) — it renders the client
+    // component and nothing else. Its floor is low on purpose; the anchor rule
+    // is what actually guards it, since a shim declares no VenuePreviewPage.
+    minBodyChars: 150,
+  },
+  {
+    rel: "mingla-marketing/app/venue-preview/VenuePreviewClient.tsx",
+    anchors: ["VenuePreviewClient"],
+    minBodyChars: 600, // measured 1,974
+  },
+  {
+    rel: "mingla-marketing/app/venue-preview/venueSkins.tsx",
+    anchors: ["skinMeta", "SKIN_ORDER"],
+    minBodyChars: 3000, // measured 11,016
+  },
 ];
 
 // Any NEW sibling renderer dropped into the venue-preview skin is scanned
@@ -85,8 +126,19 @@ const setADirs = ["mingla-marketing/app/venue-preview"];
 // SET-B — may sell, may never touch money (money tokens only, whole file).
 // ---------------------------------------------------------------------------
 const setBFiles = [
-  "packages/brand-rendering/PublicMenuSections.tsx",
-  "mingla-business/src/components/venue/VenueMenuModule.tsx",
+  {
+    rel: "packages/brand-rendering/PublicMenuSections.tsx",
+    // `MenuTab` is the SPEC's named anchor for the public menu renderer and
+    // `formatMenuPrice` is the never-GBP-defaulted formatter the amended
+    // invariant still protects. Renaming either used to slip through.
+    anchors: ["MenuTab", "formatMenuPrice"],
+    minBodyChars: 1500, // measured 4,295
+  },
+  {
+    rel: "mingla-business/src/components/venue/VenueMenuModule.tsx",
+    anchors: ["VenueMenuModule"],
+    minBodyChars: 3000, // measured 24,665
+  },
 ];
 
 // Recursive; may legitimately not exist yet (the ordering renderers land at
@@ -107,6 +159,35 @@ const FORBIDDEN_DISPLAY = [
   /\bpaystack\b/i,
 ];
 
+// #1819 SET-A structural needles. The nine tokens above are SPELLINGS, and a
+// spelling is exactly what an evasion changes. These describe what a buying
+// control IS instead:
+//
+//   A control is only genuinely PURCHASABLE if it reaches the money rail.
+//   A button that reaches nothing is a dead button, not a purchase. So any
+//   coupling from a display-only surface to the ordering rail is the real
+//   signal — whatever the control happens to be called.
+const FORBIDDEN_PURCHASE_RAIL = [
+  // The order edge functions (venue-order-create / -status / -guest-action /
+  // -staff), however the string is assembled.
+  /venue-order-/i,
+  // The ordering renderers and any cart/basket context they export.
+  /venueOrdering/i,
+  /\buse(Cart|Basket|Order)\b/i,
+  // The order family + the spot inventory: a display-only surface has no
+  // business reading either.
+  /\bvenue_orders?\b/i,
+  /\bvenue_order_(items|sessions)\b/i,
+  /\bqr_spots\b/i,
+  // Purchase call-to-action copy the nine tokens do not spell.
+  /\bbuy\s*(it|now)?\b/i,
+  /\bbasket\b/i,
+  /add to bag/i,
+  /place (an )?order/i,
+  /\bpay\s*now\b/i,
+  /proceed to pay/i,
+];
+
 // The money subset + the two client-money-math needles (SPEC P-61 SET-B).
 const FORBIDDEN_MONEY = [
   /paymentsheet/i,
@@ -122,6 +203,67 @@ const stripComments = (src) =>
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
+/**
+ * #1819 — SET-C, made real.
+ *
+ * `source === null` means the file is MISSING. Everything else is the
+ * substance check the old presence-only test could not make:
+ *
+ *   1. every declared anchor must still be DECLARED here (`const X` /
+ *      `function X` / `class X`), so RENAMING the component reds the gate;
+ *   2. no wildcard re-export, which is the canonical hollowing vector;
+ *   3. the body — comments and import/re-export lines removed — must clear a
+ *      substance floor, so replacing a 350-line form with a 2-line shim reds
+ *      the gate even if the shim happens to mention the anchor's name.
+ *
+ * The floor is declared PER FILE next to its anchors, at roughly a third of
+ * the file's measured body, because a blanket number is brittle in both
+ * directions: `venue-preview/page.tsx` is a legitimate 351-char Next.js route,
+ * while `VenueMenuModule.tsx` is 24 KB. A shim is tens of characters, so every
+ * floor here sits an order of magnitude above one and a wide margin below the
+ * real file.
+ */
+const auditAnchors = (label, source, anchors, minBodyChars) => {
+  const failures = [];
+  if (source === null) {
+    failures.push(
+      `${label}: missing — a scanned surface must EXIST (ORCH-1186-C; SPEC #1788 P-61 SET-C).`,
+    );
+    return failures;
+  }
+  const clean = stripComments(source);
+  for (const anchor of anchors ?? []) {
+    const declared = new RegExp(
+      `(?:const|function|class|let|var)\\s+${anchor}\\b`,
+    );
+    if (!declared.test(clean)) {
+      failures.push(
+        `${label}: no longer DECLARES \`${anchor}\` — renaming or re-exporting an ` +
+          `anchor moves the code somewhere this gate does not scan, which is the ` +
+          `exact failure class SET-C exists to prevent (#1819 H-3).`,
+      );
+    }
+  }
+  if (/export\s+\*\s+from/.test(clean)) {
+    failures.push(
+      `${label}: wildcard re-export — a scanned surface may not delegate its ` +
+        `contents to an unscanned module (#1819 H-3).`,
+    );
+  }
+  const body = clean
+    .replace(/^\s*import[\s\S]*?from\s*["'][^"']+["'];?\s*$/gm, "")
+    .replace(/^\s*export\s+[^;]*?from\s*["'][^"']+["'];?\s*$/gm, "")
+    .trim();
+  if (typeof minBodyChars === "number" && body.length < minBodyChars) {
+    failures.push(
+      `${label}: hollowed to ${body.length} chars of real body (floor ` +
+        `${minBodyChars}) — the surface was replaced by a shim and the ` +
+        `code this gate guards now lives elsewhere (#1819 H-3).`,
+    );
+  }
+  return failures;
+};
+
 const scan = (label, code, failures, patterns, why) => {
   const clean = stripComments(code);
   for (const re of patterns) {
@@ -133,6 +275,8 @@ const scan = (label, code, failures, patterns, why) => {
 
 const SET_A_WHY =
   "this surface is DISPLAY-ONLY FOREVER: an authoring form never becomes a buying form and the marketing venue-preview skin never becomes a checkout (I-PROPOSED-1186-MENU-DISPLAY-ONLY as amended at #1789; SPEC #1788 P-61 SET-A).";
+const SET_A_PURCHASE_WHY =
+  "this surface reaches the ORDERING RAIL. SET-A is display-only forever, and a control is only genuinely purchasable if it can reach the money rail — so the coupling is the signal, whatever the control is named (#1819 H-3; SPEC #1788 P-61 SET-A).";
 const SET_B_WHY =
   "this surface may sell but may NEVER touch money: no provider SDK, no payment sheet, no client-side fee/take-rate math — every money number comes from venue-order-create's priced response (SPEC #1788 P-20; P-61 SET-B).";
 
@@ -206,13 +350,95 @@ if (process.argv.includes("--self-test")) {
   );
   cases.push(["comments are stripped before matching", commented.length === 0]);
 
-  // 7. Anti-vacuity: a missing anchor file is a FAILURE, never a silent pass.
-  const missing = [];
-  const bogus = "mingla-business/src/components/venue/__ThisFileDoesNotExist.tsx";
-  if (!existsSync(join(root, bogus))) {
-    missing.push(`${bogus}: missing`);
-  }
-  cases.push(["SET-C flags a missing scanned file", missing.length > 0]);
+  // ---- SET-C, exercised for real (#1819) --------------------------------
+  // The previous case here was MIS-NAMED: it asserted that a path it invented
+  // did not exist, which is a fact about the filesystem, not about this gate.
+  // It would have passed with the gate's entire missing-file branch deleted.
+  // These call `auditAnchors` — the very function the run loops call.
+  const HEALTHY = `
+    import React from "react";
+    const MenuItemSheet = () => {
+      ${"// substance\n".repeat(40)}
+      return <View><Text>Name</Text><Text>Price</Text></View>;
+    };
+    export { MenuItemSheet };
+  `;
+
+  cases.push([
+    "SET-C flags a MISSING scanned file",
+    auditAnchors("fixture.tsx", null, ["MenuItemSheet"], 100).length > 0,
+  ]);
+  cases.push([
+    "SET-C passes a healthy anchor",
+    auditAnchors("fixture.tsx", HEALTHY, ["MenuItemSheet"], 100).length === 0,
+  ]);
+  cases.push([
+    "SET-C flags a RENAMED anchor",
+    auditAnchors("fixture.tsx", HEALTHY.replace(/MenuItemSheet/g, "MenuItemSheetRenamed"), [
+      "MenuItemSheet",
+    ], 100).some((f) => /no longer DECLARES/.test(f)),
+  ]);
+  cases.push([
+    "SET-C flags an anchor HOLLOWED into a named re-export",
+    auditAnchors(
+      "fixture.tsx",
+      `export { MenuItemSheet } from "./MenuItemSheetReal";`,
+      ["MenuItemSheet"],
+      100,
+    ).length > 0,
+  ]);
+  cases.push([
+    "SET-C flags a WILDCARD re-export",
+    auditAnchors("fixture.tsx", `${HEALTHY}\nexport * from "./elsewhere";`, [
+      "MenuItemSheet",
+    ], 100).some((f) => /wildcard re-export/.test(f)),
+  ]);
+  cases.push([
+    "SET-C flags a shim that mentions the anchor but carries no body",
+    auditAnchors(
+      "fixture.tsx",
+      `import Real from "./real";\nconst MenuItemSheet = Real;\nexport { MenuItemSheet };`,
+      ["MenuItemSheet"],
+      400,
+    ).some((f) => /hollowed to/.test(f)),
+  ]);
+
+  // ---- The buyable-control evasion (#1819) -------------------------------
+  // A control that is genuinely purchasable while spelling NONE of the nine
+  // display tokens. The rail coupling is what gives it away.
+  const BUYABLE = `
+    const submit = async () => {
+      await supabase.functions.invoke("venue-order-create", {
+        body: { lines: [{ menuItemId: item.id, howMany: 1 }] },
+      });
+    };
+    return <Pressable onPress={submit}><Text>Buy now</Text></Pressable>;
+  `;
+  const tokenOnly = [];
+  scan("self-test", BUYABLE, tokenOnly, FORBIDDEN_DISPLAY, SET_A_WHY);
+  cases.push([
+    "the nine tokens alone MISS a renamed buyable control (why SET-A needed more)",
+    tokenOnly.length === 0,
+  ]);
+  const railed = [];
+  scan("self-test", BUYABLE, railed, FORBIDDEN_PURCHASE_RAIL, SET_A_PURCHASE_WHY);
+  cases.push([
+    "SET-A catches a buyable control by its RAIL COUPLING",
+    railed.length > 0,
+  ]);
+  const legitimateForm = [];
+  scan(
+    "self-test",
+    `const save = () => upsertItem.mutate({ id, name, priceCents });
+     return <Pressable onPress={save}><Text>Save item</Text></Pressable>;`,
+    legitimateForm,
+    FORBIDDEN_PURCHASE_RAIL,
+    SET_A_PURCHASE_WHY,
+  );
+  cases.push([
+    "an ordinary authoring form still passes SET-A",
+    legitimateForm.length === 0,
+  ]);
 
   const failed = cases.filter(([, ok]) => !ok);
   if (failed.length > 0) {
@@ -230,38 +456,36 @@ const failures = [];
 
 // ---- SET-A ---------------------------------------------------------------
 const seenA = new Set();
-for (const rel of setAFiles) {
+for (const { rel, anchors, minBodyChars } of setAFiles) {
   const abs = join(root, rel);
-  if (!existsSync(abs)) {
-    // SET-C anti-vacuity.
-    failures.push(
-      `${rel}: missing — a SET-A display-only surface must exist (ORCH-1186-C; SPEC #1788 P-61 SET-C).`,
-    );
-    continue;
-  }
+  const source = existsSync(abs) ? readFileSync(abs, "utf8") : null;
+  // SET-C: exists, still declares its anchors, is not a hollow shim.
+  failures.push(...auditAnchors(rel, source, anchors, minBodyChars));
+  if (source === null) continue;
   seenA.add(rel);
-  scan(rel, readFileSync(abs, "utf8"), failures, FORBIDDEN_DISPLAY, SET_A_WHY);
+  scan(rel, source, failures, FORBIDDEN_DISPLAY, SET_A_WHY);
+  scan(rel, source, failures, FORBIDDEN_PURCHASE_RAIL, SET_A_PURCHASE_WHY);
 }
 for (const relDir of setADirs) {
   for (const { abs, rel } of collect(join(root, relDir), relDir, false)) {
     if (seenA.has(rel)) continue;
-    scan(rel, readFileSync(abs, "utf8"), failures, FORBIDDEN_DISPLAY, SET_A_WHY);
+    // Discovered siblings carry no declared anchor (they are found, not
+    // pinned), but they are held to the same content rules.
+    const source = readFileSync(abs, "utf8");
+    scan(rel, source, failures, FORBIDDEN_DISPLAY, SET_A_WHY);
+    scan(rel, source, failures, FORBIDDEN_PURCHASE_RAIL, SET_A_PURCHASE_WHY);
   }
 }
 
 // ---- SET-B ---------------------------------------------------------------
 const seenB = new Set();
-for (const rel of setBFiles) {
+for (const { rel, anchors, minBodyChars } of setBFiles) {
   const abs = join(root, rel);
-  if (!existsSync(abs)) {
-    // SET-C anti-vacuity.
-    failures.push(
-      `${rel}: missing — a SET-B menu/ordering renderer must exist (ORCH-1186-C; SPEC #1788 P-61 SET-C).`,
-    );
-    continue;
-  }
+  const source = existsSync(abs) ? readFileSync(abs, "utf8") : null;
+  failures.push(...auditAnchors(rel, source, anchors, minBodyChars));
+  if (source === null) continue;
   seenB.add(rel);
-  scan(rel, readFileSync(abs, "utf8"), failures, FORBIDDEN_MONEY, SET_B_WHY);
+  scan(rel, source, failures, FORBIDDEN_MONEY, SET_B_WHY);
 }
 for (const relDir of setBDirs) {
   for (const { abs, rel } of collect(join(root, relDir), relDir, true)) {
