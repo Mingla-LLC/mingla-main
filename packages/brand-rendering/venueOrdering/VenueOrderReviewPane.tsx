@@ -101,7 +101,16 @@ export interface VenueOrderReviewPaneProps {
   TextInputComponent?: React.ComponentType<TextInputProps>;
 }
 
-/** 1000 → "10%", 1250 → "12.5%". A RATE label, not a money computation. */
+/**
+ * 1000 → "10%", 1250 → "12.5%". A RATE label, not a money computation.
+ *
+ * The presets carry no money on them ON PURPOSE. "10% · £2.40" would mean this
+ * file multiplying a subtotal by a rate, which is exactly the arithmetic P-20
+ * keeps off this surface. The guest picks a percentage, the server re-prices,
+ * and the TIP LINE below shows the amount it computed. `tipFlatCents` is
+ * plumbed end-to-end for a typed-in amount but has no control in v1 — a
+ * seam, not a dead affordance, because nothing on screen offers it.
+ */
 const tipPresetLabel = (bps: number): string => {
   const percent = bps / 100;
   return `${Number.isInteger(percent) ? percent : percent.toFixed(1)}%`;

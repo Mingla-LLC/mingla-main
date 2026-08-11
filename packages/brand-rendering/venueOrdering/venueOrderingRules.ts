@@ -289,11 +289,16 @@ export const VENUE_ORDER_DEFAULT_TIP_PRESETS_BPS: readonly number[] = [
 ];
 
 export function venueOrderTipPresets(config: VenueOrderingConfig): number[] {
-  const configured = config.tipPresetsBps;
-  if (Array.isArray(configured) && configured.length > 0) {
-    return configured.filter((bps) => Number.isInteger(bps) && bps > 0);
-  }
-  return [...VENUE_ORDER_DEFAULT_TIP_PRESETS_BPS];
+  const configured = Array.isArray(config.tipPresetsBps)
+    ? config.tipPresetsBps.filter((bps) => Number.isInteger(bps) && bps > 0)
+    : [];
+  // The filter runs BEFORE the emptiness check, not after: a venue that
+  // configured a single junk preset would otherwise be left with a tip row
+  // offering nothing but "None" — a control that looks broken rather than a
+  // venue that simply has not configured one.
+  return configured.length > 0
+    ? configured
+    : [...VENUE_ORDER_DEFAULT_TIP_PRESETS_BPS];
 }
 
 /**
