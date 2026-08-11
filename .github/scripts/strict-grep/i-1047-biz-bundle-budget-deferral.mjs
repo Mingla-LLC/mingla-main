@@ -8,7 +8,13 @@
  * (jest.config.cjs testPathIgnorePatterns); this ADDITIVE strict-grep gate keeps
  * the actual rule enforced by CI.
  *
- * THE RULE: the eager web `__common` chunk is capped (ORCH-1083, 2,250,000 bytes).
+ * THE RULE: the eager web `__common` chunk is budgeted. #1509 replaced ORCH-1083's
+ * single hand-edited cap with a measured baseline (`mingla-business/scripts/ci/
+ * bundle-baseline.json`), a per-PR delta allowance, and a Seth-only product
+ * ceiling — so do NOT read a fixed byte figure out of this header, and do not
+ * add one back. This gate's job is unchanged and independent of that number:
+ * it pins the import TOPOLOGY that keeps route-scoped code out of the boot path,
+ * in seconds, instead of waiting for the ten-minute export gate to notice.
  * Two import-topology facts keep route-scoped code OUT of the boot path:
  *   (1) The public venue ROUTE must import PublicVenueScreen from the DEEP
  *       specifier "@mingla/brand-rendering/PublicVenueScreen", and any bare
