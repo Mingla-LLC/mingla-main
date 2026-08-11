@@ -25,6 +25,10 @@ const APPROVED_RUNTIME_FIELDS = [
   "meta_api_version",
   "mingla_footer_address",
   "mingla_logo_url",
+  // #1840 — NG payout float forecast horizon. Bounded operational tunable, not
+  // a credential; it rides the EXISTING runtime-config bundle so the 87-secret
+  // budget is unchanged.
+  "ng_payout_float_horizon_days",
   "offering_invite_sms_price_book_v1",
   "termii_base_url",
 ];

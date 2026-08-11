@@ -1,0 +1,86 @@
+name: "#1840 NG Payout Float Alerts"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/payout-release-sweep/**"
+      - "supabase/functions/_shared/runtimeConfig.ts"
+      - "supabase/functions/_shared/paystackOrganiserRelease.ts"
+      - ".github/workflows/issue-1840-ng-payout-float-alerts-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/payout-release-sweep/**"
+      - "supabase/functions/_shared/runtimeConfig.ts"
+      - "supabase/functions/_shared/paystackOrganiserRelease.ts"
+      - ".github/workflows/issue-1840-ng-payout-float-alerts-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1840-ng-payout-float-alerts:
+    name: "#1840 blocked-balance backstop + NG float forecast"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Apply every migration to clean PostgreSQL 17 (validates the #1840 migration)
+        run: |
+          issue1840_db_password="$(openssl rand -hex 24)"
+          docker run --name issue1840-postgres \
+            -e POSTGRES_PASSWORD="$issue1840_db_password" \
+            -d supabase/postgres:17.4.1.075
+          for attempt in {1..90}; do
+            state="$(docker inspect --format \
+              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              issue1840-postgres)"
+            if [ "$state" = "healthy" ]; then
+              break
+            fi
+            sleep 1
+          done
+          for migration_file in supabase/migrations/*.sql; do
+            docker exec -i issue1840-postgres \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              < "$migration_file"
+          done
+      - name: Run the #1840 alert-delivery + float-forecast SQL contract tests
+        run: |
+          docker exec -i issue1840-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1840_ng_payout_float_alerts.test.sql
+      - name: Run the #1840 independent adversarial SQL contract tests
+        run: |
+          docker exec -i issue1840-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1840_ng_float_alerts_adversarial.test.sql
+      - name: Run the #1840 rework retest SQL contract tests
+        run: |
+          docker exec -i issue1840-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1840_ng_float_alerts_retest.test.sql
+      - name: Run the #1840 sweep wiring + money-path regression tests
+        run: |
+          deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_retest.test.ts
+      - name: Re-run the neighbouring #1177/#1219 payout suites
+        run: |
+          deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/functions/payout-release-sweep/__tests__/issue_1177_paystack_organiser_release.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1177_paystack_organiser_release_adversarial.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1219_reversal_amount_safety.test.ts
+      - name: Remove disposable database
+        if: always()
+        run: docker rm -f issue1840-postgres || true

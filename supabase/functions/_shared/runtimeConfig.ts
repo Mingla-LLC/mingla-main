@@ -9,6 +9,7 @@ export type RuntimeConfigField =
   | "meta_api_version"
   | "mingla_footer_address"
   | "mingla_logo_url"
+  | "ng_payout_float_horizon_days"
   | "offering_invite_sms_price_book_v1"
   | "termii_base_url";
 
@@ -17,6 +18,7 @@ export type RuntimeStringField = Exclude<
   | "bunny_storage_cap_bytes"
   | "bunny_traffic_cap_bytes"
   | "content_share_v1_create_enabled"
+  | "ng_payout_float_horizon_days"
   | "offering_invite_sms_price_book_v1"
 >;
 export type RuntimeNumberField =
@@ -34,6 +36,23 @@ type RuntimeConfig = {
   meta_api_version: string;
   mingla_footer_address: string;
   mingla_logo_url: string;
+  /**
+   * Issue #1840 — how many days ahead payout-release-sweep forecasts the
+   * Nigerian payout float. Optional: an older deployed bundle without it still
+   * parses, and the caller applies the 7-day default.
+   *
+   * Deliberately typed `unknown` and deliberately NOT validated by
+   * parseRuntimeConfig. parseRuntimeConfig is all-or-nothing — the hazard this
+   * file already documents for `event_cover_video_provider` — so a strict
+   * validator here would let one bad payments tunable invalidate the WHOLE
+   * shared bundle and silently fall `mingla_logo_url`, `termii_base_url`, the
+   * Bunny caps and every other unrelated field back to legacy env vars. A
+   * platform-wide degradation caused by a payout knob is a far worse outcome
+   * than a wrong horizon. All narrowing and clamping happens in
+   * resolveNgPayoutFloatHorizonDays instead, where the blast radius is one
+   * reader.
+   */
+  ng_payout_float_horizon_days?: unknown;
   offering_invite_sms_price_book_v1?: unknown[];
   termii_base_url: string;
 };
@@ -65,6 +84,7 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
   "meta_api_version",
   "mingla_footer_address",
   "mingla_logo_url",
+  "ng_payout_float_horizon_days",
   "offering_invite_sms_price_book_v1",
   "termii_base_url",
 ];
@@ -77,9 +97,27 @@ const RUNTIME_CONFIG_LEGACY_NAMES: Record<RuntimeConfigField, string> = {
   meta_api_version: "META_API_VERSION",
   mingla_footer_address: "MINGLA_FOOTER_ADDRESS",
   mingla_logo_url: "MINGLA_LOGO_URL",
+  // #1840 — bundle-only, exactly like the price book: no new Supabase secret is
+  // created for the horizon (user-managed secret capacity is near its ceiling).
+  ng_payout_float_horizon_days: "MINGLA_RUNTIME_CONFIG_JSON",
   offering_invite_sms_price_book_v1: "MINGLA_RUNTIME_CONFIG_JSON",
   termii_base_url: "TERMII_BASE_URL",
 };
+
+/**
+ * #1840 — inclusive bounds for the Nigerian float forecast horizon, in days.
+ *
+ * The floor is 3, not 1. A Nigerian release matures at `event_end + 3 days`, so
+ * a horizon shorter than the rail's own settlement lag warns the operator later
+ * than the rail already costs them, and no bank top-up clears inside it. 1 day
+ * was legal under the first version and produced under 24 hours of notice with
+ * nothing anywhere flagging it. Out-of-range values are CLAMPED into this
+ * window and logged, never rejected — rejecting is what let one bad value
+ * invalidate the whole shared bundle.
+ */
+export const NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS = 3;
+export const NG_PAYOUT_FLOAT_HORIZON_MAX_DAYS = 90;
+export const NG_PAYOUT_FLOAT_HORIZON_DEFAULT_DAYS = 7;
 
 const MAX_BUNDLE_BYTES = 48 * 1024;
 const MAX_DIAGNOSTIC_SCHEMA_VERSION = 1_000_000;
@@ -154,6 +192,7 @@ export function parseRuntimeConfig(raw: string): ParseResult {
   for (
     const field of RUNTIME_CONFIG_FIELDS.filter((candidate) =>
       candidate !== "content_share_v1_create_enabled" &&
+      candidate !== "ng_payout_float_horizon_days" &&
       candidate !== "offering_invite_sms_price_book_v1"
     )
   ) {
@@ -161,6 +200,13 @@ export function parseRuntimeConfig(raw: string): ParseResult {
       return { ok: false, reason: "missing_field", field };
     }
   }
+  // #1840 — optional, so a bundle deployed before this field still parses and
+  // every existing reader keeps working unchanged. DELIBERATELY NOT VALIDATED
+  // HERE: parseRuntimeConfig is all-or-nothing, so rejecting a bad horizon
+  // would invalidate the entire shared bundle and silently degrade every
+  // unrelated reader to its legacy env var. The value is narrowed and clamped
+  // in resolveNgPayoutFloatHorizonDays, where a bad value can only affect the
+  // forecast window it belongs to.
   if (
     Object.hasOwn(parsed, "content_share_v1_create_enabled") &&
     typeof parsed.content_share_v1_create_enabled !== "boolean"
@@ -301,6 +347,64 @@ export function resolveRuntimeConfigValue(
     emit("secret_bundle_legacy_fallback", "missing", field);
   }
   return getEnv(legacyName);
+}
+
+/**
+ * Issue #1840 — read the Nigerian payout float forecast horizon (in days) from
+ * the EXISTING runtime-config bundle. Bundle-only by design: no new Supabase
+ * secret is introduced, and an absent/invalid bundle returns undefined so the
+ * caller falls back to NG_PAYOUT_FLOAT_HORIZON_DEFAULT_DAYS rather than
+ * silently forecasting over a wrong window.
+ */
+export function resolveNgPayoutFloatHorizonDays(
+  getEnv: SecretEnvGetter = defaultGetEnv,
+): number | undefined {
+  const raw = getEnv(RUNTIME_CONFIG_BUNDLE);
+  if (!raw) return undefined;
+  const result = parseRuntimeConfig(raw);
+  if (!result.ok) return undefined;
+  const configured = result.value.ng_payout_float_horizon_days;
+  if (configured === undefined) return undefined;
+  // A value that is not a whole number of days carries no usable intent, so the
+  // caller falls back to the default rather than guessing at a rounding.
+  if (typeof configured !== "number" || !Number.isSafeInteger(configured)) {
+    emitHorizonDiagnostic("wrong_type");
+    return undefined;
+  }
+  // Out of range degrades to the nearest usable window and says so. It never
+  // rejects (that would poison the shared bundle) and never disables the
+  // forecast (a horizon of 0 would be a silent switch-off of the one thing
+  // standing between a matured Nigerian payout and an unpaid organiser).
+  if (configured < NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS) {
+    emitHorizonDiagnostic("clamped_low");
+    return NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS;
+  }
+  if (configured > NG_PAYOUT_FLOAT_HORIZON_MAX_DAYS) {
+    emitHorizonDiagnostic("clamped_high");
+    return NG_PAYOUT_FLOAT_HORIZON_MAX_DAYS;
+  }
+  return configured;
+}
+
+/**
+ * #1840 — a clamped or unusable horizon must be visible, not silently absorbed.
+ * Value-blind and once-per-reason per isolate, matching the diagnostic
+ * discipline the rest of this file already uses.
+ */
+function emitHorizonDiagnostic(
+  reason: "wrong_type" | "clamped_low" | "clamped_high",
+): void {
+  const identity = ["ng_payout_float_horizon", reason].join(":");
+  if (emittedDiagnostics.has(identity)) return;
+  emittedDiagnostics.add(identity);
+  console.warn(JSON.stringify({
+    event: "ng_payout_float_horizon_degraded",
+    bundle: RUNTIME_CONFIG_BUNDLE,
+    field: "ng_payout_float_horizon_days",
+    reason,
+    min_days: NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS,
+    max_days: NG_PAYOUT_FLOAT_HORIZON_MAX_DAYS,
+  }));
 }
 
 /** Read the optional price book from the existing runtime-config bundle. */
