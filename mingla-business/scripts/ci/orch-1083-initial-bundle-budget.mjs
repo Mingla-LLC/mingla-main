@@ -1,275 +1,363 @@
 #!/usr/bin/env node
 /**
- * ORCH-1083 — initial-web-bundle budget guard (M-3 / SC-3 / I-PROPOSED-1083-A).
+ * Business-web boot-payload gate.
  *
- * Run AFTER `npm run web:export` (from mingla-business/). Asserts:
- *   1. The initial JS payload (sum of every <script> referenced by
- *      web-build/index.html, RAW bytes) is <= a budget ceiling. This fails CI if
- *      a future eager-import regresses the boot bundle.
- *   2. There are >= 3 chunk files under _expo/static/js/web/ (proves code-split
- *      points still exist — the lazy connect bodies + route chunks).
- *   3. The MAIN entry chunk (the largest index-*.js — the 9 MB app bulk) does
- *      NOT statically reference any of the four deferred specifiers (Stripe
- *      Connect web SDK, the QR renderer, the 14 @expo-google-fonts/* families).
- *      They must live only in split chunks.
- *   4. Metro's eager `__common` shared chunk stays small (<= a tight cap), so it
- *      cannot become a back-door bulk-leak vector. (Metro hoists the small
- *      @stripe/react-connect-js React wrapper — shared by the 5 lazy connect
- *      bodies — into __common; that ~18 KB wrapper is acceptable, but the cap
- *      guarantees the heavy SDK / QR / font bulk never re-enters via __common.)
+ * Origin: ORCH-1083 (M-3 / SC-3 / I-PROPOSED-1083-A). Rebuilt by issue #1509.
  *
- * This is the durable guard against organic re-bloat: any of the deferred deps'
- * BULK reappearing in the entry, or the entry growing past the ceiling, fails.
+ * Run AFTER `npm run web:export` (from mingla-business/).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY THIS FILE WAS REBUILT — read before changing anything (issue #1509)
+ * ─────────────────────────────────────────────────────────────────────────────
+ * The original gate protected the eager `__common` chunk with a single
+ * hand-edited constant sitting ~10 KB above wherever main last landed. Several
+ * PRs merge per day and each adds a few KB, so the headroom was consumed in
+ * days and the only available action at the gate was to edit the number upward.
+ * That happened five times — 2026-07-18, 07-30, 08-03, 08-10, 08-11 — with the
+ * interval collapsing from twelve days to one. Every individual raise was
+ * measured and honestly documented. That was never the problem. The problem is
+ * that a number which can only move up is not a budget; it is a changelog.
+ *
+ * Two further defects were found while rebuilding it:
+ *
+ *   - The total-payload ceiling (9,405,478 B) was measured in June 2026 when the
+ *     whole app was eager. Route splitting (ORCH-1085/1098) later cut the real
+ *     payload to ~3.35 MB and the ceiling was never rebaselined, leaving it 2.8x
+ *     above reality. It could not fail. Same for `chunkCount >= 3` against an
+ *     export that emits ~180 chunks. Two of the four original checks had been
+ *     silently vacuous for months while being cited as live protection.
+ *
+ *   - Every number was RAW bytes. Vercel serves brotli, so the figure a guest on
+ *     mobile data actually waits for had never once been recorded.
+ *
+ * The mechanism below separates three things the old constant conflated:
+ *
+ *   1. BASELINE — what main measured last (bundle-baseline.json). Machine-
+ *      maintained. Ratchets DOWN automatically after every merge that shrinks
+ *      the payload, so improvements are banked instead of evaporating.
+ *   2. PR_DELTA_ALLOWANCE — how much ONE pull request may add on top of the
+ *      baseline. This is the tripwire: it catches a heavy eager import, and it
+ *      names the offending delta instead of demanding a number be edited.
+ *   3. HARD_CEILING — the product limit. An absolute constant. Nothing automated
+ *      may move it and no PR should; it is Seth's decision in its own commit.
+ *
+ * Net effect: a sixth quiet bump is structurally impossible. Growth is loud,
+ * reduction is permanent, and the ceiling that represents a product judgement is
+ * the only number a human touches.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * CHECKS
+ * ─────────────────────────────────────────────────────────────────────────────
+ *   1. HARD CEILING — eager payload and `__common` are under the product limit,
+ *      in BOTH raw bytes and brotli (the customer-felt number).
+ *   2. PER-PR DELTA — neither eager nor `__common` exceeds baseline + allowance.
+ *   3. CODE-SPLIT POINTS still exist (the export is genuinely chunked).
+ *   4. DEFERRED SPECIFIERS — the Stripe Connect web SDK, the QR renderer and the
+ *      14 @expo-google-fonts/* families are not statically reachable from the
+ *      MAIN entry chunk, nor from ANY eager script. UNCHANGED by #1509: this
+ *      half of the gate works and has caught real regressions.
+ *   5. RATCHET NOTICE — if the payload shrank meaningfully below the baseline,
+ *      say so. Informational on a PR (never fail a PR for being better); the
+ *      post-merge workflow is what actually banks it.
  *
  * Self-test: pass `--self-test`.
  *
- * Refs: SPEC §6 M-3, §8 I-PROPOSED-1083-A.
+ * Refs: SPEC §6 M-3, §8 I-PROPOSED-1083-A; issue #1509; issue #943 (attribution).
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  DEFERRED_SPECIFIERS,
+  measureWebBuild,
+  fmtTriple,
+  fmtDelta,
+} from "./bundle-budget-lib.mjs";
 
+const HERE = dirname(fileURLToPath(import.meta.url));
 const WEB_BUILD = process.env.ORCH_1083_WEB_BUILD ?? "web-build";
-const JS_DIR = join(WEB_BUILD, "_expo", "static", "js", "web");
 
-// Ceiling = measured AFTER initial payload (9,131,533 bytes) + ~3% headroom.
-// If a legitimate future increase is needed, bump this AND record why.
-const CEILING_RAW_BYTES = Number(process.env.ORCH_1083_CEILING ?? 9_405_478);
+// ═══════════════════════════════════════════════════════════════════════════
+// HARD CEILING — THE PRODUCT LIMIT. DO NOT RAISE TO UNBLOCK A PULL REQUEST.
+//
+// These are the only numbers in the boot-budget system that represent a
+// judgement rather than a measurement, and moving one is Seth's call, made
+// deliberately, in a commit that does nothing else.
+//
+// If your PR trips a HARD CEILING, the boot payload has grown ~11-14% since
+// 2026-08-11 without anyone deciding that was acceptable. That is a product
+// conversation (issue #943 owns the trim, and the parked audience-split issue
+// owns the permanent cure), not a one-line edit.
+//
+// Seeded 2026-08-11 from a measured main (see bundle-baseline.json), with
+// deliberate runway above it so the DELTA gate — not this one — is what a
+// normal PR ever meets:
+//   __common  brotli 439,775 → ceiling 500,000   (~14% runway)
+//   __common  raw    2,341,978 → ceiling 2,600,000 (~11% runway)
+//   eager     brotli 660,678 → ceiling 750,000   (~14% runway)
+//   eager     raw    3,349,598 → ceiling 4,000,000 (~19% runway)
+//
+// The eager raw ceiling REPLACES the old 9,405,478 B constant, which had been
+// unfailable since route splitting landed. This is a tightening, not a
+// relaxation: 4,000,000 is 57% below the number it replaces.
+// ═══════════════════════════════════════════════════════════════════════════
+const HARD_CEILING = {
+  common: { raw: 2_600_000, brotli: 500_000 },
+  eager: { raw: 4_000_000, brotli: 750_000 },
+};
 
-// Eager __common shared-chunk cap.
+// How much ONE pull request may add on top of main's measured baseline.
 //
-// ORCH-1098 Stage 3: the ORCH-1085 static `home.html` stand-in was DELETED (the
-// real Expo SPA now boots `/home` on every device, the BottomNav reanimated OOM
-// being fixed). The cap was previously relaxed to 2.25 MB ONLY while that static
-// home existed (`HAS_ORCH_1085_STATIC_HOME ? 2_250_000 : 50_000`); with the
-// stand-in gone, that conditional would snap the cap back to 50 KB and fail the
-// CI build even though the real boot `__common` (~1.89 MB) is UNCHANGED by this
-// ORCH — it is the SPA's pre-existing eager shared chunk, not new weight. We
-// therefore pin the cap to the already-sanctioned 2.25 MB unconditionally so the
-// budget reflects the real (and only) boot path. Tightening __common is its own
-// future ORCH; this ORCH must not regress an unrelated bundle metric.
+// Calibrated against every real delta on record: #1503 added 3,870 B, #871 about
+// 3 KB, #1835 3,660 B. 12 KB is roughly three times the largest legitimate
+// single-PR growth ever observed, while an actual regression — a heavy library
+// pulled into the boot path — is tens to hundreds of KB and trips instantly.
 //
-// ORCH-1373 rebaseline 2026-07-18: __common has organically grown from ~1.89 MB
-// (when the 2.25 MB cap was set) to ~2.25 MB across MANY merged ORCHs, so main
-// was already AT the cap before this PR. ORCH-1373's NECESSARY boot-path
-// correctness additions — the P0 `isSignInRoute("/auth")` fix (coldLoadAuthGates),
-// the ORCH-1377 auth-bootstrap diagnostics (AuthContext), and the ORCH-1378
-// web-shim exports `_layout` requires — pushed it to 2,254,684 B, ~4.7 KB over.
-// VERIFIED this is NOT the regression this guard targets: no deferred heavy dep
-// (Stripe web SDK / QR / 14 fonts) re-entered — the deferred-specifier check
-// still PASSES; the appsFlyer/oneSignal web shims are pure no-ops. This is
-// organic boot growth, not re-bloat. Per the "future ORCH" note above, the real
-// __common tightening is tracked as its OWN ORCH (registered from this PR).
-// Cap raised to 2.30 MB (~45 KB headroom over current) — the tripwire stays live.
-//
-// ORCH-1390 rebaseline 2026-07-30: the cross-surface Stay launch adds one shared
-// domain contract (exact-currency parsing, Room/Place cart invariants, query
-// keys) plus @stripe/stripe-js's small official remote-script loader. Both the
-// 930-line booking renderer and the Payment Element implementation are behind
-// nested React.lazy boundaries and emit dedicated Stay chunks; the prior
-// @stripe/react-stripe-js wrapper was removed after it proved unnecessary.
-// Measured __common is 2,309,350 B. Raising the cap by only 20 KB preserves
-// ~10 KB of tripwire headroom without duplicating Stay rules between the public
-// booking and reservation-management routes.
-//
-// #1503 rebaseline 2026-08-03 (issue #1503 [stay-date-pickers]): MEASURED, not
-// estimated. Baseline export of `origin/main` @ c3cc5e7af gives __common =
-// 2,316,499 B (3,501 B of headroom left); this branch gives 2,320,369 B — a
-// +3,870 B delta that lands 369 B over the old cap.
-//
-// WHAT the delta is: exactly one new module, `packages/brand-rendering/
-// stayDateRules.ts` — the pure venue-local Stay date rules (parse/format at noon
-// anchoring, `venueToday` via Intl, horizon/min-notice/ordering bounds, the
-// guest-facing copy). Metro hoists it into __common because TWO async chunks
-// import it: the lazy buyer Stay chunk (StayGuestBooking + StayDateRangeField)
-// and the business venue chunk (ui/DateField -> VenueBlackoutSheet).
-//
-// WHY it is NOT the regression this tripwire targets: nothing deferred re-entered
-// the boot path — the deferred-specifier check (Stripe web SDK / QR / fonts)
-// still PASSES, and `@react-native-community/datetimepicker` internals were
-// ALREADY in baseline __common via the six pre-existing #1027 consumers, so the
-// new picker adds no native-module weight (verified: the `.native.tsx` half is
-// absent from the web export and present in the iOS export). This is ~3.8 KB of
-// plain date arithmetic.
-//
-// WHY the module is not split to dodge the cap: SPEC #1503 §12 makes "all date
-// math lives in exactly ONE pure module" the structural safeguard against the
-// very drift this issue fixed (three competing definitions of "today" coexisting
-// across surfaces). Splitting it to save 3 KB would trade a correctness
-// invariant for bundle bytes.
-//
-// Cap raised by 10 KB to 2,330,000 B, preserving ~9.6 KB of live tripwire
-// headroom — the same increment and posture as the ORCH-1390 rebaseline above.
-//
-// #871 rebaseline 2026-08-10 (see-who's-going attendance handoff): the required
-// public-route exemption is the only #871 work left in the eager auth gate. The
-// claim service, deep-link parser, app icon, and roster UI all remain in deferred
-// route chunks, and the guard below still finds zero deferred specifiers in the
-// eager payload. Exact fresh exports of the same source measured __common at
-// 2,329,953 B on macOS and 2,330,102 B on GitHub's Linux runner — a 149 B
-// platform variance that left the prior cap 102 B below the Linux artifact.
-// Raising by the established 10 KB increment restores ~9.9 KB of live headroom
-// without relaxing the 9.4 MB total-payload ceiling or any deferred-dependency
-// detector.
-// #1835 rebaseline 2026-08-11 (brand delete is owner-only + failures say why):
-// MEASURED, not estimated. Fresh `expo export -p web --clear` of both source
-// states on the same macOS machine:
-//   origin/main @ 57cbe2016 ....... __common = 2,338,318 B  (1,682 B headroom)
-//   this branch @ 3b9a599fb ....... __common = 2,341,978 B  (1,978 B over cap)
-//   delta ......................... +3,660 B
-// GitHub's Linux runner measured this branch at 2,341,922 B — a 56 B platform
-// variance, consistent with the ±149 B variance recorded in the #871 note above.
-//
-// WHAT the delta is: the eager brand surfaces now import three small pure
-// modules — `utils/brandDeletePermission.ts` (the owner-only predicate),
-// `utils/supabaseErrorMessage.ts` (PostgREST error normalisation), and
-// `utils/brandDeleteError.ts` (three vetted user-facing strings) — plus the
-// owner-only panel in BrandDeleteSheet and two `captureException` call sites.
-// Metro hoists the utils into __common because the eager brands service and
-// several brand chunks all import them.
-//
-// WHY it is NOT the regression this tripwire targets: the guard fails fast
-// (`fail()` → `process.exit(1)`), so reaching this check proves checks 1–3
-// PASSED on the branch build — zero deferred specifiers in the main entry chunk
-// (@stripe/connect-js, react-native-qrcode-svg, @expo-google-fonts/* all still
-// deferred) and total initial payload 3,346,310 B against the 9,405,478 B
-// ceiling. Nothing heavy re-entered the boot path; this is organic growth on a
-// cap that main was already sitting 0.07% under.
-//
-// WHY the modules are not deferred to dodge the cap: TRIED AND MEASURED. Putting
-// BrandDeleteSheet behind React.lazy at the two remaining eager call sites
-// (app/(tabs)/home.tsx, app/brand/[id]/index.tsx — mirroring account.tsx and
-// hub/_layout.tsx) produced a BYTE-IDENTICAL __common of 2,341,978 B. Metro
-// hoists modules shared across multiple chunks into __common, so deferring a
-// component into a 4th chunk keeps it shared and it lands right back. That
-// attempt was reverted rather than kept for zero measured benefit.
-//
-// Cap raised by the established 10 KB increment to 2,350,000 B, preserving
-// ~8 KB of live tripwire headroom. The 9.4 MB total-payload ceiling and every
-// deferred-dependency detector are UNCHANGED.
-//
-// STANDING NOTE for whoever trips this next: main has now arrived at this cap
-// within ~1.7 KB on four of the last five rebaselines. A budget with 0.07%
-// headroom stops functioning as a budget and becomes a blocker on unrelated
-// work. The real fix is the __common tightening tracked as its own ORCH per the
-// note above — not a fifth increment.
-const COMMON_CAP_BYTES = Number(process.env.ORCH_1083_COMMON_CAP ?? 2_350_000);
+// It also ends the macOS/Linux variance failure mode for good. The #871 raise
+// was forced by a 149 B platform difference against ~9.9 KB of headroom; this
+// allowance is 80x that variance, so where the baseline was measured no longer
+// matters.
+const PR_DELTA_ALLOWANCE = { common: 12_000, eager: 25_000 };
 
-// The four deferred specifiers (must NOT appear in the initial-payload scripts).
-const DEFERRED_SPECIFIERS = [
-  "@stripe/connect-js",
-  "@stripe/react-connect-js",
-  "react-native-qrcode-svg",
-  "@expo-google-fonts/",
-];
+// The 2026-08-11 measurement the ceilings were set against. FIXED — this is the
+// origin point that makes "% of runway consumed" mean something over time. It is
+// deliberately NOT read from bundle-baseline.json (which tracks main and moves);
+// if it moved with the baseline, drift would always read as 0% consumed, which
+// is precisely the blindness that let five raises pass unremarked.
+const SEED = {
+  date: "2026-08-11",
+  common: { raw: 2_341_978, brotli: 439_775 },
+  eager: { raw: 3_349_598, brotli: 660_678 },
+};
+
+// Below this, a shrink is measurement noise and not worth a ratchet PR.
+const RATCHET_NOTICE_THRESHOLD = 2_048;
+
+const MIN_CHUNKS = 3;
 
 function fail(msg) {
-  console.error(`ORCH-1083 bundle-budget FAIL: ${msg}`);
+  console.error(`\nbundle-budget FAIL: ${msg}\n`);
   process.exit(1);
 }
 
+// ── Self-test ───────────────────────────────────────────────────────────────
+// Proves the three mechanisms this gate depends on actually discriminate,
+// without needing a web export. Each assertion is written so that breaking the
+// corresponding production check breaks the self-test too.
 if (process.argv.includes("--self-test")) {
-  // Self-test: prove the deferred-specifier detection works against a fixture.
-  const fixture =
-    'import x from "@stripe/connect-js"; const y = "ok";';
-  const hit = DEFERRED_SPECIFIERS.find((s) => fixture.includes(s));
-  if (hit !== "@stripe/connect-js") {
-    console.error("ORCH-1083 bundle-budget self-test FAILED: detector broken.");
+  const checks = [];
+
+  // 1 — the deferred-specifier detector still detects.
+  const fixture = 'import x from "@stripe/connect-js"; const y = "ok";';
+  checks.push([
+    "deferred-specifier detector",
+    DEFERRED_SPECIFIERS.find((s) => fixture.includes(s)) === "@stripe/connect-js",
+  ]);
+  checks.push([
+    "deferred-specifier detector does not false-positive",
+    DEFERRED_SPECIFIERS.every((s) => !'import y from "react";'.includes(s)),
+  ]);
+
+  // 2 — the baseline file is present, parseable, and complete. A missing or
+  // malformed baseline must be a hard error, never a silently-skipped check.
+  let baseline;
+  try {
+    baseline = JSON.parse(readFileSync(join(HERE, "bundle-baseline.json"), "utf8"));
+  } catch (err) {
+    console.error(`bundle-budget self-test FAILED: baseline unreadable: ${err.message}`);
     process.exit(1);
   }
-  console.log("ORCH-1083 bundle-budget self-test PASS.");
+  for (const scope of ["common", "eager"]) {
+    for (const unit of ["raw", "gzip", "brotli"]) {
+      checks.push([
+        `baseline.${scope}.${unit} is a positive number`,
+        Number.isFinite(baseline?.[scope]?.[unit]) && baseline[scope][unit] > 0,
+      ]);
+    }
+  }
+
+  // 3 — the ordering invariant that makes the whole design work: every hard
+  // ceiling must sit ABOVE baseline + allowance, or the delta gate is dead code
+  // and we are back to a single conflated number.
+  for (const scope of ["common", "eager"]) {
+    checks.push([
+      `${scope}: hard ceiling is above baseline + allowance (delta gate is reachable)`,
+      HARD_CEILING[scope].raw > baseline[scope].raw + PR_DELTA_ALLOWANCE[scope],
+    ]);
+    checks.push([
+      `${scope}: baseline is under the hard ceiling (main is currently legal)`,
+      baseline[scope].raw < HARD_CEILING[scope].raw &&
+        baseline[scope].brotli < HARD_CEILING[scope].brotli,
+    ]);
+    checks.push([
+      `${scope}: compression ordering holds (brotli < gzip < raw)`,
+      baseline[scope].brotli < baseline[scope].gzip &&
+        baseline[scope].gzip < baseline[scope].raw,
+    ]);
+  }
+
+  const failed = checks.filter(([, ok]) => !ok);
+  for (const [name, ok] of checks) {
+    console.log(`  ${ok ? "ok  " : "FAIL"}  ${name}`);
+  }
+  if (failed.length > 0) {
+    console.error(`\nbundle-budget self-test FAILED (${failed.length}/${checks.length}).`);
+    process.exit(1);
+  }
+  console.log(`\nbundle-budget self-test PASS (${checks.length} assertions).`);
   process.exit(0);
 }
 
-// Read index.html and extract the eagerly-loaded <script src> entries.
-let html;
+// ── Measure ─────────────────────────────────────────────────────────────────
+let measured;
 try {
-  html = readFileSync(join(WEB_BUILD, "index.html"), "utf8");
+  measured = measureWebBuild(WEB_BUILD);
 } catch (err) {
-  fail(`cannot read ${WEB_BUILD}/index.html (run "npm run web:export" first): ${err.message}`);
+  fail(err.message);
 }
 
-const scriptRels = [...html.matchAll(/\/_expo\/static\/js\/web\/[^"']+\.js/g)].map(
-  (m) => m[0],
-);
-if (scriptRels.length === 0) {
-  fail("no <script> references found in index.html");
-}
-
-// 1 — initial-payload raw bytes <= ceiling.
-let initialRaw = 0;
-for (const rel of scriptRels) {
-  const abs = join(WEB_BUILD, rel.replace(/^\//, ""));
-  initialRaw += statSync(abs).size;
-}
-if (initialRaw > CEILING_RAW_BYTES) {
+let baseline;
+try {
+  baseline = JSON.parse(readFileSync(join(HERE, "bundle-baseline.json"), "utf8"));
+} catch (err) {
+  // A missing baseline must never degrade into "no budget enforced".
   fail(
-    `initial JS payload ${initialRaw} bytes exceeds ceiling ${CEILING_RAW_BYTES} ` +
-      `(an eager-import regression likely re-bloated the boot bundle).`,
+    `cannot read scripts/ci/bundle-baseline.json: ${err.message}\n` +
+      `  Without a baseline this gate cannot tell growth from drift. Restore the file ` +
+      `rather than removing the check.`,
   );
 }
 
-// 2 — >= 3 chunk files exist.
-const allChunks = readdirSync(JS_DIR).filter((n) => n.endsWith(".js"));
-if (allChunks.length < 3) {
-  fail(
-    `expected >= 3 chunk files under ${JS_DIR}, found ${allChunks.length} ` +
-      `(code-split points missing).`,
+const scopes = [
+  { key: "common", label: "__common (eager shared chunk)", got: measured.common },
+  { key: "eager", label: "eager payload (all boot <script>s)", got: measured.eager },
+];
+
+// ── Report every run, pass or fail. A gate that only speaks when angry leaves
+//    no record of drift, which is how the last five raises crept up unnoticed.
+console.log("\nbusiness-web boot payload");
+console.log("─".repeat(78));
+for (const { key, label, got } of scopes) {
+  if (!got) continue;
+  const base = baseline[key];
+  console.log(`  ${label}`);
+  console.log(`    measured   ${fmtTriple(got)}`);
+  console.log(`    baseline   ${fmtTriple(base)}`);
+  console.log(
+    `    delta      raw ${fmtDelta(got.raw - base.raw)} · brotli ${fmtDelta(
+      got.brotli - base.brotli,
+    )}`,
+  );
+  console.log(
+    `    ceiling    raw ${HARD_CEILING[key].raw.toLocaleString(
+      "en-US",
+    )} · brotli ${HARD_CEILING[key].brotli.toLocaleString("en-US")}`,
+  );
+  // Runway is printed on EVERY run, passing or failing. Slow drift is what
+  // produced five raises in four weeks, and it is invisible unless something
+  // states it out loud while everything is still green.
+  const runway = HARD_CEILING[key].brotli - got.brotli;
+  const consumed = (
+    ((got.brotli - SEED[key].brotli) / (HARD_CEILING[key].brotli - SEED[key].brotli)) *
+    100
+  ).toFixed(1);
+  console.log(
+    `    runway     ${runway.toLocaleString("en-US")} B brotli to the product ceiling ` +
+      `(${consumed}% consumed since ${SEED.date})`,
   );
 }
+console.log(`  chunk files: ${measured.chunkCount}`);
+console.log("─".repeat(78));
 
-// 3 — deferred specifiers must NOT be statically referenced by the MAIN entry
-// chunk (the largest index-*.js — the app bulk). The small eager __common
-// shared chunk is excluded here and capped separately in check 4.
-const mainRel = scriptRels
-  .filter((r) => /\/index-[0-9a-f]+\.js$/.test(r))
-  .map((r) => ({ rel: r, size: statSync(join(WEB_BUILD, r.replace(/^\//, ""))).size }))
-  .sort((a, b) => b.size - a.size)[0];
-if (!mainRel) {
-  fail("could not identify the main entry chunk (index-*.js) in index.html");
-}
-const mainSrc = readFileSync(join(WEB_BUILD, mainRel.rel.replace(/^\//, "")), "utf8");
-const mainOffenders = DEFERRED_SPECIFIERS.filter((s) => mainSrc.includes(s));
-if (mainOffenders.length > 0) {
-  fail(
-    `deferred specifier(s) leaked back into the MAIN entry chunk ${mainRel.rel}:\n  ` +
-      mainOffenders.join("\n  "),
-  );
-}
-
-// ORCH-1085: async route splitting can legitimately create a larger shared
-// runtime chunk, so protect ORCH-1083's original deferrals across every eager
-// script instead of relying only on the old tiny __common cap.
-const eagerOffenders = [];
-for (const rel of scriptRels) {
-  const src = readFileSync(join(WEB_BUILD, rel.replace(/^\//, "")), "utf8");
-  for (const specifier of DEFERRED_SPECIFIERS) {
-    if (src.includes(specifier)) {
-      eagerOffenders.push(`${rel}: ${specifier}`);
+// ── 1. HARD CEILING ─────────────────────────────────────────────────────────
+for (const { key, label, got } of scopes) {
+  if (!got) continue;
+  for (const unit of ["raw", "brotli"]) {
+    if (got[unit] > HARD_CEILING[key][unit]) {
+      fail(
+        `${label} is ${got[unit].toLocaleString("en-US")} B ${unit}, over the PRODUCT ` +
+          `CEILING of ${HARD_CEILING[key][unit].toLocaleString("en-US")} B.\n\n` +
+          `  This ceiling is not a build detail — it is the boot cost we decided a guest ` +
+          `arriving on a public event, trip or Stay page should pay.\n` +
+          `  Do NOT raise it to land this PR. Either bring the payload back under it, or ` +
+          `take it to Seth as an explicit product decision.\n` +
+          `  Attribution tooling: node scripts/ci/bundle-attribute.mjs (issue #943).`,
+      );
     }
   }
 }
-if (eagerOffenders.length > 0) {
-  fail(
-    `deferred specifier(s) leaked back into eager script(s):\n  ` +
-      eagerOffenders.join("\n  "),
-  );
-}
 
-// 4 — eager __common shared chunk must stay under the cap.
-const commonRel = scriptRels.find((r) => r.includes("__common"));
-if (commonRel) {
-  const commonSize = statSync(join(WEB_BUILD, commonRel.replace(/^\//, ""))).size;
-  if (commonSize > COMMON_CAP_BYTES) {
+// ── 2. PER-PR DELTA ─────────────────────────────────────────────────────────
+for (const { key, label, got } of scopes) {
+  if (!got) continue;
+  const base = baseline[key];
+  const delta = got.raw - base.raw;
+  if (delta > PR_DELTA_ALLOWANCE[key]) {
     fail(
-      `eager __common chunk is ${commonSize} bytes, over the ${COMMON_CAP_BYTES}-byte cap ` +
-        `(heavy deferred bulk may have re-entered the boot path via __common).`,
+      `${label} grew ${delta.toLocaleString("en-US")} B in this branch — over the ` +
+        `${PR_DELTA_ALLOWANCE[key].toLocaleString("en-US")} B a single PR may add.\n\n` +
+        `  baseline (main) ${base.raw.toLocaleString("en-US")} B → this branch ` +
+        `${got.raw.toLocaleString("en-US")} B\n\n` +
+        `  This is the tripwire. It means one change put a meaningful amount of new ` +
+        `JavaScript into the payload every visitor downloads before anything renders.\n` +
+        `  Find out what: node scripts/ci/bundle-attribute.mjs --compare\n\n` +
+        `  Note that ${key === "common" ? "__common" : "the eager payload"} also grows when ` +
+        `a module is shared between two LAZY chunks — Metro hoists it into the boot path ` +
+        `even though no boot screen uses it. If that is what happened, say so in the PR ` +
+        `with the measurement; do not split a cohesive module purely to dodge this gate ` +
+        `(issue #1509 rejects that by default).\n\n` +
+        `  Editing bundle-baseline.json to make this pass is the specific habit issue ` +
+        `#1509 exists to end.`,
     );
   }
 }
 
+// ── 3. CODE-SPLIT POINTS ────────────────────────────────────────────────────
+if (measured.chunkCount < MIN_CHUNKS) {
+  fail(
+    `expected >= ${MIN_CHUNKS} chunk files under the web export, found ` +
+      `${measured.chunkCount} (code-split points missing — the whole app would be eager).`,
+  );
+}
+
+// ── 4. DEFERRED SPECIFIERS (unchanged by #1509) ─────────────────────────────
+const mainSrc = readFileSync(join(WEB_BUILD, measured.mainEntryRel.replace(/^\//, "")), "utf8");
+const mainOffenders = DEFERRED_SPECIFIERS.filter((s) => mainSrc.includes(s));
+if (mainOffenders.length > 0) {
+  fail(
+    `deferred specifier(s) leaked back into the MAIN entry chunk ` +
+      `${measured.mainEntryRel}:\n  ${mainOffenders.join("\n  ")}`,
+  );
+}
+
+// ORCH-1085: async route splitting can legitimately create a larger shared
+// runtime chunk, so protect ORCH-1083's original deferrals across EVERY eager
+// script rather than relying only on the main-entry check above.
+const eagerOffenders = [];
+for (const rel of measured.scriptRels) {
+  const src = readFileSync(join(WEB_BUILD, rel.replace(/^\//, "")), "utf8");
+  for (const specifier of DEFERRED_SPECIFIERS) {
+    if (src.includes(specifier)) eagerOffenders.push(`${rel}: ${specifier}`);
+  }
+}
+if (eagerOffenders.length > 0) {
+  fail(`deferred specifier(s) leaked back into eager script(s):\n  ${eagerOffenders.join("\n  ")}`);
+}
+
+// ── 5. RATCHET NOTICE ───────────────────────────────────────────────────────
+const shrunk = scopes
+  .filter(({ key, got }) => got && baseline[key].raw - got.raw >= RATCHET_NOTICE_THRESHOLD)
+  .map(({ key, got }) => `${key} −${(baseline[key].raw - got.raw).toLocaleString("en-US")} B`);
+if (shrunk.length > 0) {
+  console.log(
+    `\nNOTICE — boot payload is SMALLER than the recorded baseline (${shrunk.join(", ")}).\n` +
+      `  Not a failure. The post-merge ratchet (.github/workflows/bundle-baseline-ratchet.yml)\n` +
+      `  will lower bundle-baseline.json once this lands on main, so the improvement is kept.`,
+  );
+}
+
 console.log(
-  `ORCH-1083 bundle-budget PASS — initial payload ${initialRaw} bytes ` +
-    `(ceiling ${CEILING_RAW_BYTES}), ${allChunks.length} chunk files, ` +
-    `0 deferred specifiers in the main entry chunk, __common within cap.`,
+  `\nbundle-budget PASS — ${measured.chunkCount} chunks, 0 deferred specifiers in any ` +
+    `eager script, both scopes within baseline+allowance and under the product ceiling.\n`,
 );

@@ -1,0 +1,156 @@
+name: Bundle Baseline Ratchet
+
+# Issue #1509 — the mechanism that makes the boot budget self-maintaining.
+#
+# THE PROBLEM THIS EXISTS FOR: the eager `__common` cap used to be a hand-edited
+# constant sitting ~10 KB above wherever main last landed. It was raised five
+# times between 2026-07-18 and 2026-08-11 — twelve days apart, then four, then
+# seven, then one — because the only action available at the gate was to edit the
+# number upward. Reductions, meanwhile, were never recorded at all: any PR that
+# made the payload smaller simply handed its saving to whichever branch merged
+# next. Growth was permanent and improvement was invisible.
+#
+# WHAT THIS DOES: after every merge to main that can move the bundle, re-measure
+# and open a PR writing the true numbers into bundle-baseline.json. A reduction
+# is therefore BANKED — the next PR's allowance is computed from the smaller
+# number and the saving cannot be silently re-spent. A growth is RECORDED in a
+# pull request with the size printed in its title, so drift has to be seen.
+#
+# WHAT THIS DELIBERATELY DOES NOT DO: touch a limit. HARD_CEILING and
+# PR_DELTA_ALLOWANCE live in orch-1083-initial-bundle-budget.mjs and no automation
+# may move them. The ceiling is a product decision and stays Seth's.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-business/**"
+      - "packages/**"
+      - ".github/workflows/bundle-baseline-ratchet.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: bundle-baseline-ratchet
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  ratchet:
+    name: "Re-measure main's boot payload and bank the result"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # `npm ci` only, never a bare `npm install` — COMMS-0134: a floating
+      # caret next to a pinned react peer makes a fresh resolve fail ERESOLVE,
+      # while the lockfile installs cleanly.
+      - name: Install dependencies
+        working-directory: mingla-business
+        run: npm ci
+
+      - name: Export web bundle
+        working-directory: mingla-business
+        run: npx expo export -p web --output-dir /tmp/ratchet-web-build
+
+      - name: Compare against the recorded baseline
+        id: compare
+        working-directory: mingla-business
+        run: |
+          set +e
+          ORCH_1083_WEB_BUILD=/tmp/ratchet-web-build \
+            node scripts/ci/bundle-baseline-update.mjs --check
+          code=$?
+          set -e
+          # 0 = baseline already current, 2 = stale. Anything else is a real error.
+          if [ "$code" -eq 0 ]; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          elif [ "$code" -eq 2 ]; then
+            echo "baseline is stale — a PR will be opened"
+          else
+            echo "bundle-baseline-update.mjs failed with exit $code"
+            exit "$code"
+          fi
+
+      - name: Write the new baseline
+        if: steps.compare.outputs.stale == 'true'
+        working-directory: mingla-business
+        env:
+          BASELINE_COMMIT: ${{ github.sha }}
+        run: |
+          ORCH_1083_WEB_BUILD=/tmp/ratchet-web-build \
+            node scripts/ci/bundle-baseline-update.mjs --write
+
+      - name: Open the baseline pull request
+        if: steps.compare.outputs.stale == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIRECTION: ${{ steps.compare.outputs.direction }}
+          SUMMARY: ${{ steps.compare.outputs.summary }}
+          COMMON_RAW: ${{ steps.compare.outputs.common_raw }}
+          COMMON_BROTLI: ${{ steps.compare.outputs.common_brotli }}
+          EAGER_BROTLI: ${{ steps.compare.outputs.eager_brotli }}
+        run: |
+          branch="bundle-baseline/${GITHUB_SHA::7}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add mingla-business/scripts/ci/bundle-baseline.json
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+
+          if [ "$DIRECTION" = "reduction" ]; then
+            title="Bank the business-web boot payload reduction (${SUMMARY})"
+          elif [ "$DIRECTION" = "growth" ]; then
+            title="Record business-web boot payload growth (${SUMMARY})"
+          else
+            title="Re-baseline the business-web boot payload (${SUMMARY})"
+          fi
+
+          git commit -m "$title
+
+          Measured from ${GITHUB_SHA} by .github/workflows/bundle-baseline-ratchet.yml.
+          Baseline only — no limit was changed."
+          git push origin "$branch"
+
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "$title" \
+            --body "$(cat <<EOF
+          Automated by \`.github/workflows/bundle-baseline-ratchet.yml\` (issue #1509).
+
+          Re-measured \`main\` at \`${GITHUB_SHA}\` and updated
+          \`mingla-business/scripts/ci/bundle-baseline.json\` to the true numbers.
+
+          | | value |
+          |---|---|
+          | direction | **${DIRECTION}** |
+          | movement | ${SUMMARY} |
+          | \`__common\` raw | ${COMMON_RAW} B |
+          | \`__common\` brotli | ${COMMON_BROTLI} B |
+          | eager payload brotli | ${EAGER_BROTLI} B |
+
+          **What this changes:** the number the per-PR delta gate subtracts from.
+          A *reduction* means the saving is now permanent — the next branch computes
+          its allowance from the smaller figure and cannot quietly spend it.
+
+          **What this does not change:** any limit. \`HARD_CEILING\` and
+          \`PR_DELTA_ALLOWANCE\` live in
+          \`mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs\` and no
+          automation touches them. If this says **growth** and the runway line in the
+          budget gate is climbing, that is the signal to work #943 (trim) rather than
+          to move a ceiling.
+
+          Note: pull requests opened with \`GITHUB_TOKEN\` do not start \`pull_request\`
+          workflows. If required checks have not appeared, close and reopen this PR.
+          EOF
+          )"
