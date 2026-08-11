@@ -454,6 +454,22 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     // the honest-state banner is shown to the first and never to the second.
     scanned: spotCode !== null || entrySource === "qr",
   });
+  /**
+   * #1793 — the ordering chunk loads only when there is ordering to do.
+   *
+   * `React.lazy` fires on MOUNT, so a slot that always renders its lazy child
+   * downloads the cart, the review pane and the status card for every visitor to
+   * every venue page — and ordering is switched OFF for every venue by default.
+   * These two flags keep the whole surface unmounted until the venue's own state
+   * says otherwise: `off`/`unavailable` mounts nothing at all, and a guest who
+   * scanned a code at a paused venue mounts only the one card that tells them so.
+   */
+  const orderingState = ordering.config.state;
+  const orderingActive = orderingState === "on";
+  const orderingNoticeActive = orderingActive ||
+    ((spotCode !== null || entrySource === "qr") &&
+      (orderingState === "paused" || orderingState === "off"));
+
   const notesAllowedByItemId = useMemo<Record<string, boolean | undefined>>(
     () => {
       const map: Record<string, boolean | undefined> = {};
@@ -536,7 +552,8 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       // this venue can actually take an order from this guest right now, so a
       // venue with ordering off is byte-for-byte the page it was before.
       ordering={{
-        notice: (context: PublicVenueOrderingSlotContext) => (
+        notice: (context: PublicVenueOrderingSlotContext) =>
+          !orderingNoticeActive ? null : (
           <React.Suspense fallback={null}>
             <LazyOrderingNotice
               ordering={ordering}
@@ -546,7 +563,8 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
             />
           </React.Suspense>
         ),
-        menuBody: (context: PublicVenueOrderingSlotContext) => (
+        menuBody: (context: PublicVenueOrderingSlotContext) =>
+          !orderingActive ? null : (
           <React.Suspense fallback={<ActivityIndicator />}>
             <LazyOrderingMenu
               ordering={ordering}
@@ -559,7 +577,8 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
             />
           </React.Suspense>
         ),
-        stickyBar: (context: PublicVenueOrderingSlotContext) => (
+        stickyBar: (context: PublicVenueOrderingSlotContext) =>
+          !orderingActive ? null : (
           <React.Suspense fallback={null}>
             <LazyOrderingBar
               ordering={ordering}
@@ -569,7 +588,8 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
             />
           </React.Suspense>
         ),
-        overlay: (context: PublicVenueOrderingSlotContext) => (
+        overlay: (context: PublicVenueOrderingSlotContext) =>
+          !orderingActive ? null : (
           <React.Suspense fallback={null}>
             <LazyOrderingSheet
               ordering={ordering}
