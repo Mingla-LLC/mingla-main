@@ -1,0 +1,121 @@
+name: Issue 873 guest status roster
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270319000873_issue_0873_guest_status_roster.sql"
+      - "supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql"
+      - "supabase/functions/guest-roster-actions/**"
+      - "supabase/functions/offering-invite-dispatch/index.ts"
+      - "supabase/functions/brand-people-export/index.ts"
+      - "supabase/config.toml"
+      - ".github/workflows/issue-873-guest-status-roster-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/20270319000873_issue_0873_guest_status_roster.sql"
+      - "supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql"
+      - "supabase/functions/guest-roster-actions/**"
+      - "supabase/functions/offering-invite-dispatch/index.ts"
+      - "supabase/functions/brand-people-export/index.ts"
+      - "supabase/config.toml"
+      - ".github/workflows/issue-873-guest-status-roster-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  action-edge:
+    name: "Issue 873 reminder/retry action boundary"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: >-
+          deno test --allow-env --allow-read
+          supabase/functions/guest-roster-actions/issue_0873_guest_roster_actions.test.ts
+          supabase/functions/guest-roster-actions/issue_873_actions.tester_adversarial.test.ts
+
+  business-render:
+    name: "Issue 873 Business shared roster render"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - run: npx jest --config jest.issue873.render.cjs --runInBand
+
+  issue-873-pg17:
+    name: "Issue 873 roster truth and authorization (fresh PG17)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-873-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for PostgreSQL 17
+        env:
+          PGPASSWORD: ${{ format('issue-873-ci-{0}', github.run_id) }}
+        run: |
+          for attempt in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - name: Apply every migration in lexical order
+        env:
+          PGPASSWORD: ${{ format('issue-873-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration; do
+                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
+              done
+      - name: Match hosted Supabase Auth user shape
+        env:
+          PGPASSWORD: ${{ format('issue-873-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS banned_until timestamptz"
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \
+            "SELECT 1 FROM information_schema.columns
+             WHERE table_schema='auth' AND table_name='users'
+               AND column_name='banned_until'" | grep -qx 1
+      - name: Prove roster status, precedence, privacy, and rollout
+        env:
+          PGPASSWORD: ${{ format('issue-873-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql

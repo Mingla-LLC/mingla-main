@@ -99,6 +99,10 @@ const AUTH_SCOPED_HOOK_FILES = [
   "marketing/useCampaignReport.ts",
   "marketing/useTemplate.ts",
   "marketing/useStarterTemplates.ts",
+  // ── #873 — reads event-manager-only guest roster RPCs. Both the access
+  //    probe and roster query fold isAuthReady into enabled so a cold web
+  //    session cannot cache an RLS-empty/forbidden result as guest truth.
+  "useGuestRoster.ts",
   // ── ORCH-1202 DELTA-2 (17) — already correctly gated (isAuthReady or the
   //    SESSION_GATE_EQUIVALENT pattern), registered now so a future edit that
   //    silently drops the gate is caught by CI (the per-file checkHook).

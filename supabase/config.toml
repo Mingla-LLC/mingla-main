@@ -682,6 +682,9 @@ verify_jwt = false
 [functions.offering-invite-dispatch]
 verify_jwt = true
 
+[functions.guest-roster-actions]
+verify_jwt = true
+
 [functions.brand-people-export]
 verify_jwt = true
 

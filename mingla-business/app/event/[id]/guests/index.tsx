@@ -12,9 +12,10 @@
  * Per Cycle 10 SPEC §5/J-G1.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -41,6 +42,7 @@ import {
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
+import { useGuestRosterAccess } from "../../../../src/hooks/useGuestRoster";
 import { useEventGuestList } from "../../../../src/hooks/useEventOrders";
 import {
   capitalizeNoun,
@@ -49,8 +51,18 @@ import {
 } from "../../../../src/components/offering/offeringKind";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { exportGuestsCsv } from "../../../../src/utils/guestCsvExport";
+import {
+  createGuestRosterRequestId,
+  getGuestRosterExport,
+  requestGuestRosterExport,
+} from "../../../../src/services/guestRosterService";
+import type {
+  GuestRosterFilter,
+  GuestRosterSort,
+} from "../../../../src/types/guestRoster";
 
 import { AddCompGuestSheet } from "../../../../src/components/guests/AddCompGuestSheet";
+import { GuestRosterExperience } from "../../../../src/components/guests/GuestRosterExperience";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
 import { Input } from "../../../../src/components/ui/Input";
@@ -207,7 +219,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const { user } = useAuth();
+  const { isAuthReady, user } = useAuth();
   const operatorAccountId = user?.id ?? "anonymous";
 
   const routeEvent = useManagedEventRoute(
@@ -215,6 +227,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
   );
   const event = routeEvent.event;
   const brand = routeEvent.brand;
+  const guestRosterAccess = useGuestRosterAccess(typeof eventId === "string" ? eventId : null);
 
   // META-ORCH-1059 — kind-aware copy lens. This "Guests" screen is shared with
   // trips + experiences. Read the per-kind headcount metric from the loaded
@@ -280,6 +293,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
     visible: false,
     message: "",
   });
+  const pendingRosterExportJob = useRef<string | null>(null);
 
   const showToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -369,6 +383,44 @@ export default function EventGuestsListRoute(): React.ReactElement {
     [showToast],
   );
 
+  const handleGuestRosterExport = useCallback(async (input: {
+    filter: GuestRosterFilter;
+    search: string;
+    sort: GuestRosterSort;
+  }): Promise<void> => {
+    if (typeof eventId !== "string") return;
+    try {
+      const requested = pendingRosterExportJob.current === null
+        ? await requestGuestRosterExport({
+          eventId,
+          filter: input.filter,
+          search: input.search,
+          sort: input.sort,
+          clientRequestId: createGuestRosterRequestId(),
+        })
+        : null;
+      const jobId = pendingRosterExportJob.current ?? (typeof requested?.jobId === "string" ? requested.jobId : null);
+      if (jobId === null) throw new Error("guest_roster_export_job_missing");
+      pendingRosterExportJob.current = jobId;
+      showToast("Preparing the audited guest export…");
+      for (let attempt = 0; attempt < 15; attempt += 1) {
+        const status = await getGuestRosterExport(jobId);
+        if (status.status === "failed") throw new Error("guest_roster_export_failed");
+        if (status.status === "ready" && typeof status.signedUrl === "string") {
+          await Linking.openURL(status.signedUrl);
+          pendingRosterExportJob.current = null;
+          showToast("Guest export ready.");
+          return;
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 2_000));
+      }
+      showToast("The export is still being prepared. Tap Export again shortly to check it.");
+    } catch {
+      pendingRosterExportJob.current = null;
+      showToast("Couldn't prepare the export. Tap Export to try again.");
+    }
+  }, [eventId, showToast]);
+
   useEffect(() => {
     if (routeEvent.replacementEventId !== null) {
       router.replace(`/event/${routeEvent.replacementEventId}/guests` as never);
@@ -434,6 +486,57 @@ export default function EventGuestsListRoute(): React.ReactElement {
   }
 
   const totalCount = merged.length;
+
+  if (guestRosterAccess.isError || (isAuthReady && user === null)) {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <View style={styles.chromeRow}>
+          <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
+          <Text style={styles.chromeTitle}>Guests</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <EmptyState illustration="ticket" title="Couldn't load guest status" description="No guest view is shown until access is confirmed." cta={{ label: "Try again", onPress: () => { void guestRosterAccess.refetch(); }, variant: "primary" }} />
+        </View>
+      </View>
+    );
+  }
+
+  if (guestRosterAccess.isPending || guestRosterAccess.data === undefined) {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <View style={styles.chromeRow}>
+          <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
+          <Text style={styles.chromeTitle}>Guests</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost} accessibilityRole="progressbar">
+          <Text style={styles.emptyLoadingText}>Loading guest status…</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (guestRosterAccess.data?.enabled === true) {
+    return (
+      <>
+        <GuestRosterExperience
+          eventId={eventId}
+          onBack={handleBack}
+          onOpenOrder={(orderId) => router.push(`/event/${eventId}/orders/${orderId}` as never)}
+          onExport={(input) => { void handleGuestRosterExport(input); }}
+        />
+        <View style={styles.toastWrap} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            kind="info"
+            message={toast.message}
+            onDismiss={() => setToast({ visible: false, message: "" })}
+          />
+        </View>
+      </>
+    );
+  }
 
   return (
     <View

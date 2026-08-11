@@ -90,6 +90,18 @@ export async function handler(request: Request): Promise<Response> {
     return json({ error: "invalid_request" }, 400);
   }
   const input = body as Record<string, unknown>;
+  if (input.operation === "status") {
+    if (typeof input.jobId !== "string") return json({ error: "job_id_required" }, 400);
+    const { data, error } = await user.rpc("biz_get_brand_people_export_job", { p_job_id: input.jobId });
+    if (error) return json({ error: "forbidden" }, 403);
+    const job = data as { jobId: string; status: string; result: { fileName: string; expiresAt: string } | null; safeErrorCode: string | null };
+    if (job.result === null) return json(job as unknown as Record<string, unknown>);
+    const { data: storagePath, error: storageError } = await service.rpc("biz_get_brand_people_export_storage", { p_job_id: job.jobId });
+    if (storageError || typeof storagePath !== "string") return json({ error: "export_storage_unavailable" }, 500);
+    const { data: signed, error: signedError } = await service.storage.from("brand-people-exports").createSignedUrl(storagePath, 60);
+    if (signedError || signed === null) return json({ error: "signed_url_failed" }, 500);
+    return json({ ...job, signedUrl: signed.signedUrl, signedUrlExpiresInSeconds: 60 });
+  }
   const { data: jobData, error: jobError } = await user.rpc(
     "biz_export_brand_people",
     {
