@@ -277,6 +277,26 @@ BEGIN
   END IF;
 
   BEGIN
+    UPDATE public.marketing_messages SET
+      status='failed',provider_message_id=NULL
+    WHERE id=v_message;
+    RAISE EXCEPTION 'T-1821-03 FAIL: failed provider null erasure was accepted';
+  EXCEPTION WHEN check_violation THEN
+    IF SQLERRM <> 'offering_marketing_message_provider_mismatch' THEN
+      RAISE;
+    END IF;
+  END;
+  IF (SELECT to_jsonb(m) FROM public.marketing_messages m WHERE id=v_message)
+      IS DISTINCT FROM v_message_before
+    OR (SELECT to_jsonb(a) FROM public.brand_offering_invite_delivery_attempts a
+        WHERE id=v_attempt) IS DISTINCT FROM v_attempt_before
+    OR (SELECT to_jsonb(g) FROM public.marketing_send_groups g WHERE id=v_group)
+        IS DISTINCT FROM v_group_before
+  THEN
+    RAISE EXCEPTION 'T-1821-03 FAIL: null provider erasure did not roll back all rows';
+  END IF;
+
+  BEGIN
     UPDATE public.marketing_messages SET provider_message_id='   '
     WHERE id=v_message;
     RAISE EXCEPTION 'T-1821-03 FAIL: present blank provider id was accepted';
@@ -294,7 +314,7 @@ BEGIN
   THEN
     RAISE EXCEPTION 'T-1821-03 FAIL: blank provider id did not roll back all rows';
   END IF;
-  RAISE NOTICE 'T-1821-03 PASS: failed/bounced/blank cross-state tuple conflicts roll back all rows';
+  RAISE NOTICE 'T-1821-03 PASS: failed/bounced/null/blank cross-state tuple conflicts roll back all rows';
 
   UPDATE public.marketing_messages SET status='failed' WHERE id=v_message;
   IF NOT EXISTS(

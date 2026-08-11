@@ -187,7 +187,6 @@ BEGIN
       USING ERRCODE='23514';
   END IF;
   IF v_attempt.provider_message_id IS NOT NULL
-    AND NEW.provider_message_id IS NOT NULL
     AND v_attempt.provider_message_id IS DISTINCT FROM NEW.provider_message_id
   THEN
     RAISE EXCEPTION 'offering_marketing_message_provider_mismatch'

@@ -74,7 +74,7 @@ export function violations(files) {
     failures.push("serialization: group row lock must precede the all-attempt recount");
   }
   const matchedTupleCheck = migration.indexOf(
-    "IF v_attempt.provider_message_id IS NOT NULL\n    AND NEW.provider_message_id IS NOT NULL\n    AND v_attempt.provider_message_id IS DISTINCT FROM NEW.provider_message_id",
+    "IF v_attempt.provider_message_id IS NOT NULL\n    AND v_attempt.provider_message_id IS DISTINCT FROM NEW.provider_message_id",
   );
   const stateBranch = migration.indexOf("IF NEW.status IN ('sent','delivered') THEN");
   if (matchedTupleCheck < 0 || stateBranch < 0 || matchedTupleCheck > stateBranch) {
@@ -124,6 +124,8 @@ export function violations(files) {
     "T-1821-03 FAIL: bounced provider tuple conflict was accepted",
     "T-1821-03 FAIL: failed provider conflict did not roll back all rows",
     "T-1821-03 FAIL: bounced provider conflict did not roll back all rows",
+    "T-1821-03 FAIL: failed provider null erasure was accepted",
+    "T-1821-03 FAIL: null provider erasure did not roll back all rows",
     "T-1821-03 FAIL: present blank provider id was accepted",
     "T-1821-04 FAIL: accepted then failed downgraded Sent",
     "T-1821-05 FAIL: post-claim ambiguity fabricated acceptance or retry",
@@ -186,9 +188,9 @@ function selfTest() {
     ],
     [
       "migration",
+      "IF v_attempt.provider_message_id IS NOT NULL\n    AND v_attempt.provider_message_id IS DISTINCT FROM NEW.provider_message_id",
       "IF v_attempt.provider_message_id IS NOT NULL\n    AND NEW.provider_message_id IS NOT NULL\n    AND v_attempt.provider_message_id IS DISTINCT FROM NEW.provider_message_id",
-      "IF v_attempt.provider_message_id IS NOT NULL\n    AND NEW.status IN ('sent','delivered')\n    AND v_attempt.provider_message_id IS DISTINCT FROM NEW.provider_message_id",
-      "cross-state provider tuple check narrowed back to accepted states",
+      "provider tuple check permits null erasure",
     ],
     [
       "migration",
