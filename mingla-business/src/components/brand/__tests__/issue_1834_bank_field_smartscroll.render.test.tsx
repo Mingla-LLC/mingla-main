@@ -19,10 +19,21 @@
  *   A-2  walking UP from the field, the nearest scroll host is the wrapper's
  *        KeyboardAwareScrollView — and no bare react-native ScrollView appears
  *        anywhere between the screen root and the field;
- *   A-3  that host's resolved bottomOffset === 54, === DEFAULT_BOTTOM_OFFSET
- *        imported from the real wrapper module (so moving the constant moves
- *        this test instead of being re-typed here), and the arithmetic that
- *        makes 54 correct holds: bottomOffset - DONE_BAR_HEIGHT >= 12.
+ *   A-3  that host's resolved bottomOffset === DEFAULT_BOTTOM_OFFSET imported
+ *        from the real wrapper module (so moving the constant moves this test
+ *        instead of being re-typed here), and the DERIVED arithmetic that makes
+ *        it correct holds:
+ *          bottomOffset === DONE_BAR_OCCUPIED
+ *                         + INPUT_CHROME_BELOW_TEXT_FRAME
+ *                         + MIN_VISIBLE_CLEARANCE
+ *        with a real visible gap left over.
+ *
+ * NO NUMERIC LITERAL IS PINNED HERE. #1834 AMENDMENT 2 withdrew the literal 54:
+ * measured on glass it left -12.5pt of clearance on iOS 26+ (the Done bar
+ * occupies 53pt there, not 42, and the library aligns the inner text frame
+ * rather than the Input's bordered box) and +8.89dp where 12 was contracted on
+ * Android. A test that re-types a number can only ever pin whatever number the
+ * wrapper happened to have.
  *
  * Every walk carries an explicit vacuity guard: a scan that matches nothing
  * FAILS and names the screen. An empty tree is never a pass.
@@ -256,18 +267,19 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { BrandOnboardView } from "../BrandOnboardView";
 import { BrandPaymentsView } from "../BrandPaymentsView";
 import type { Brand } from "../../../types/brand";
-// A REAL module import, not a re-typed literal: if DEFAULT_BOTTOM_OFFSET ever
-// moves, this suite moves with it instead of silently pinning a stale 54.
-import { DEFAULT_BOTTOM_OFFSET } from "../../../wrappers/SmartScrollView.native";
-
-/**
- * ORCH-1165's Done bar (KEYBOARD_TOOLBAR_HEIGHT). It sits ON TOP of the OS
- * keyboard, so clearing the keyboard is not the same as clearing the bar —
- * that distinction is the whole of #1834.
- */
-const DONE_BAR_HEIGHT = 42;
-/** The visible gap the wrapper contract promises ABOVE the Done bar. */
-const MIN_CLEARANCE = 12;
+// REAL module imports, not re-typed literals: the wrapper owns the clearance
+// budget, so if any term of it moves this suite moves with it instead of
+// silently pinning a stale number. DONE_BAR_OCCUPIED is itself derived inside
+// the wrapper from the keyboard library's own KEYBOARD_TOOLBAR_HEIGHT and
+// OPENED_OFFSET rule (53 on iOS 26+, 42 elsewhere), which is exactly the fact
+// the pre-rework literal 54 got wrong.
+import {
+  DEFAULT_BOTTOM_OFFSET,
+  DONE_BAR_OCCUPIED,
+  INPUT_CHROME_BELOW_TEXT_FRAME,
+  KEYBOARD_TOOLBAR_HEIGHT,
+  MIN_VISIBLE_CLEARANCE,
+} from "../../../wrappers/SmartScrollView.native";
 
 const ACCOUNT_FIELD_LABEL = "Bank account number";
 
@@ -459,10 +471,15 @@ describe("#1834 — the NG account-number field is owned by a keyboard-aware scr
       const facts = scrollHostFactsFor(name, await mount());
       const bottomOffset: unknown = facts.host.memoizedProps?.bottomOffset;
       expect(typeof bottomOffset).toBe("number");
-      // Numerically pinned AND tied to the real module, so neither can drift
-      // away from the other unnoticed.
-      expect(bottomOffset).toBe(54);
+      // Tied to the real module AND to the arithmetic that produces it, so
+      // neither can drift away from the other unnoticed — and no literal is
+      // re-typed here, per #1834 AMENDMENT 2.
       expect(bottomOffset).toBe(DEFAULT_BOTTOM_OFFSET);
+      expect(bottomOffset).toBe(
+        DONE_BAR_OCCUPIED +
+          INPUT_CHROME_BELOW_TEXT_FRAME +
+          MIN_VISIBLE_CLEARANCE,
+      );
     },
   );
 
@@ -471,10 +488,19 @@ describe("#1834 — the NG account-number field is owned by a keyboard-aware scr
     async (name, mount) => {
       const facts = scrollHostFactsFor(name, await mount());
       const bottomOffset = facts.host.memoizedProps?.bottomOffset as number;
-      // The arithmetic that makes 54 the RIGHT number: 42 of it is spent on the
-      // Done bar, and what is left must still be a visible gap. Clearing the
-      // keyboard is not the criterion — clearing the bar is.
-      expect(bottomOffset - DONE_BAR_HEIGHT).toBeGreaterThanOrEqual(MIN_CLEARANCE);
+      // The arithmetic that makes the offset the RIGHT number, term by term:
+      // DONE_BAR_OCCUPIED of it is spent on the Done bar (53 on iOS 26+, 42
+      // elsewhere — derived from the library's own OPENED_OFFSET rule),
+      // INPUT_CHROME_BELOW_TEXT_FRAME of it covers the gap between the
+      // library's scroll target (the inner text frame) and the Input's visible
+      // bottom border, and what is LEFT must still be a real visible gap.
+      // Clearing the keyboard is not the criterion — clearing the bar is.
+      expect(
+        bottomOffset - DONE_BAR_OCCUPIED - INPUT_CHROME_BELOW_TEXT_FRAME,
+      ).toBeGreaterThanOrEqual(MIN_VISIBLE_CLEARANCE);
+      // I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE — the ORCH-1165 floor, unchanged
+      // and not regressed by the #1834 rework.
+      expect(bottomOffset).toBeGreaterThanOrEqual(KEYBOARD_TOOLBAR_HEIGHT);
     },
   );
 
