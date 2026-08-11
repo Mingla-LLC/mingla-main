@@ -41,8 +41,30 @@ const HELPER_SOURCE = fs.readFileSync(
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Frozen pre-change bodies, verbatim from
+// Frozen pre-CAPTURE bodies.
+//
+// [TEST-MOD-APPROVED #1875] — SPEC §9.2, differential-baseline amendment.
+//
+// These two strings are the differential baseline for A1/A2 (byte-level "the
+// #1044 capture block is purely additive") and A4/A5 (behavioural differential).
+// They were frozen verbatim from
 //   git show origin/main:app-mobile/src/hooks/useAuthSimple.ts
+// at #1044 time, when "origin/main" and "the shipped body minus the capture
+// block" were the same text.
+//
+// #1875 deliberately changed the user-facing Alert in both catch blocks — F-4:
+// `Alert.alert("<Provider> Sign-In Failed", error.message)` rendered
+// `JSON.stringify(Response)`, including our Supabase project URL and a blob id,
+// to the user — and added a retry-aware copy selection. That text is therefore
+// no longer equal to origin/main, and holding these strings at the pre-#1875
+// copy would pin the very defect #1875 removes.
+//
+// So they are rebaselined to the CURRENT shipped catch bodies MINUS the #1044
+// capture block, which is exactly what A1/A2's `exciseCaptureBlock` produces.
+// A1/A2's real purpose is preserved byte-for-byte: they still prove the #1044
+// capture block is purely additive and that nothing else in either catch moved.
+// A4/A5's differential is likewise preserved — and its logger / console /
+// Mixpanel / return-value assertions are NOT relaxed by this change.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PRE_GOOGLE_CATCH = `      const error = err instanceof Error ? err : new Error(String(err));
@@ -70,10 +92,47 @@ const PRE_GOOGLE_CATCH = `      const error = err instanceof Error ? err : new E
         };
       }
 
-      Alert.alert(
-        "Google Sign-In Failed",
-        error.message || "Unable to sign in with Google. Please try again."
+      // #1875 [transient-signin-failure] — F-4. The user NEVER sees a caught
+      // error's value again. \`error.message\` here is whatever auth-js put in it;
+      // for a 502/503/504 that is JSON.stringify(Response), carrying our Supabase
+      // project URL and a blob id. Every string below is a fixed i18n key, never
+      // an interpolation, never a concatenation. The full original message still
+      // reaches Sentry via the #1044 capture above, unchanged.
+      if (retryAbandoned) {
+        // The user backgrounded the app or the screen went away mid-retry.
+        // Suppress the modal ONLY — the capture, logger, console and Mixpanel
+        // calls above all already fired, and the return value is unchanged.
+        return { data: null, error };
+      }
+      const failure = classifyAuthFailure(
+        error.name,
+        code,
+        (err as { status?: unknown })?.status,
+        error.message,
+        Platform.OS,
       );
+      let alertTitleKey = "auth:welcome.sign_in_failed_title";
+      let alertBodyKey = "auth:welcome.sign_in_permanent_body";
+      if (failure !== "permanent") {
+        if (transportRetryAttempts > 0) {
+          alertTitleKey = "auth:welcome.sign_in_retry_exhausted_title";
+          alertBodyKey = "auth:welcome.sign_in_retry_exhausted_body";
+        } else if (failure === "transient-transport-offline") {
+          alertTitleKey = "auth:welcome.sign_in_offline_title";
+          alertBodyKey = "auth:welcome.sign_in_offline_body";
+        } else {
+          alertBodyKey = "auth:welcome.sign_in_failed_body";
+        }
+      }
+      // Single button on purpose. Alert.alert is fire-and-forget, so
+      // WelcomeScreen's finally has already re-enabled the button by the time
+      // this renders — a "Try again" onPress would re-enter sign-in with no busy
+      // state and no disabled button, inviting GMS IN_PROGRESS (12502). The
+      // correctly-wired affordance is the Continue button itself, which every
+      // string points the user back at.
+      Alert.alert(i18n.t(alertTitleKey), i18n.t(alertBodyKey), [
+        { text: i18n.t("auth:welcome.sign_in_failed_ok") },
+      ]);
       return { data: null, error };`;
 
 const PRE_APPLE_CATCH = `      const error = err instanceof Error ? err : new Error(String(err));
@@ -89,10 +148,35 @@ const PRE_APPLE_CATCH = `      const error = err instanceof Error ? err : new Er
       console.error("Apple sign-in error:", err);
       mixpanelService.trackLoginFailed('apple', error.message);
 
-      Alert.alert(
-        "Apple Sign-In Failed",
-        error.message || "Unable to sign in with Apple. Please try again."
+      // #1875 [transient-signin-failure] — F-4, Apple half. Same leak, same
+      // signInWithIdToken leg, same fix. Copy is provider-neutral so both paths
+      // share it. See the Google block above for the full rationale.
+      if (retryAbandoned) {
+        return { data: null, error };
+      }
+      const failure = classifyAuthFailure(
+        error.name,
+        code,
+        (err as { status?: unknown })?.status,
+        error.message,
+        Platform.OS,
       );
+      let alertTitleKey = "auth:welcome.sign_in_failed_title";
+      let alertBodyKey = "auth:welcome.sign_in_permanent_body";
+      if (failure !== "permanent") {
+        if (transportRetryAttempts > 0) {
+          alertTitleKey = "auth:welcome.sign_in_retry_exhausted_title";
+          alertBodyKey = "auth:welcome.sign_in_retry_exhausted_body";
+        } else if (failure === "transient-transport-offline") {
+          alertTitleKey = "auth:welcome.sign_in_offline_title";
+          alertBodyKey = "auth:welcome.sign_in_offline_body";
+        } else {
+          alertBodyKey = "auth:welcome.sign_in_failed_body";
+        }
+      }
+      Alert.alert(i18n.t(alertTitleKey), i18n.t(alertBodyKey), [
+        { text: i18n.t("auth:welcome.sign_in_failed_ok") },
+      ]);
       return { data: null, error };`;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -186,10 +270,48 @@ const compilePredicate = (
   return make(statusCodes);
 };
 
+/**
+ * [TEST-MOD-APPROVED #1875] — SPEC §9.2, dependency-map amendment ONLY.
+ * The REAL compiled `classifyAuthFailure` body from the shipped source (never a
+ * retyped copy — ORCH-1373 P2-2), injected because both catch bodies now call it
+ * and a free identifier is a `ReferenceError` under `new Function`.
+ */
+const compileClassifier = (): ((
+  errName: unknown,
+  errCode: unknown,
+  errStatus: unknown,
+  errMessage: unknown,
+  platformOS: string,
+) => string) => {
+  const m = SOURCE.match(
+    /const classifyAuthFailure = \([\s\S]*?\): AuthFailureClass => \{\n([\s\S]*?)\n\};/,
+  );
+  assert.ok(m, "classifyAuthFailure not found in shipped source");
+  return new Function(
+    `"use strict"; return function (errName, errCode, errStatus, errMessage, platformOS) {\n${m![1]}\n};`,
+  )() as (
+    errName: unknown,
+    errCode: unknown,
+    errStatus: unknown,
+    errMessage: unknown,
+    platformOS: string,
+  ) => string;
+};
+
+/**
+ * [TEST-MOD-APPROVED #1875] — SPEC §9.2, dependency-map amendment ONLY.
+ * Key-echoing stub. This suite is a DIFFERENTIAL: both sides get the same stub,
+ * so it cannot mask drift. Rendered English is pinned by the #1875 suite.
+ */
+const I18N_STUB = { t: (k: string): string => k };
+
 interface RunOpts {
   statusCodes?: Record<string, string | undefined>;
   webClientId?: unknown;
   reportNonFatal?: (...a: unknown[]) => void;
+  /** [TEST-MOD-APPROVED #1875] — #1875 retry state, free in a CATCH-ONLY slice. */
+  transportRetryAttempts?: number;
+  retryAbandoned?: boolean;
 }
 
 const run = (
@@ -217,6 +339,14 @@ const run = (
     "console",
     "mixpanelService",
     "__DEV__",
+    // [TEST-MOD-APPROVED #1875] — SPEC §9.2 dep-map entries. `transportRetryAttempts`
+    // and `retryAbandoned` are declared before `try {` in the shipped functions and
+    // are therefore free identifiers in a catch-only slice; both sides of the
+    // differential receive identical values, so nothing can be masked.
+    "classifyAuthFailure",
+    "i18n",
+    "transportRetryAttempts",
+    "retryAbandoned",
     `"use strict";\n${eraseTypeAssertions(body)}`,
   ) as (...a: unknown[]) => unknown;
 
@@ -237,6 +367,12 @@ const run = (
       trackLoginFailed: (...a: unknown[]) => rec.mixpanelCalls.push(a),
     },
     false,
+    // [TEST-MOD-APPROVED #1875] — SPEC §9.2 dep-map values, positionally matching
+    // the four parameter names added above.
+    compileClassifier(),
+    I18N_STUB,
+    opts.transportRetryAttempts ?? 0,
+    opts.retryAbandoned ?? false,
   );
   return { ret, rec };
 };

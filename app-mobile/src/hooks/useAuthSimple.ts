@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Alert, Platform } from "react-native";
+import { useState, useEffect, useRef } from "react";
+import { Alert, AppState, Platform } from "react-native";
 import Constants from "expo-constants";
 import {
   GoogleSignin,
@@ -22,6 +22,10 @@ import { normalizeCategoryArray } from "../utils/categoryUtils";
 // ORCH-0640 ch09: experiencesService DELETED. getUserPreferences retained on preferencesService.
 import { PreferencesService } from "../services/preferencesService";
 import { performPrivateAuthCleanup, signOutWithPrivateCleanup, signOutWithoutPrivateCleanup } from "../utils/authCleanup";
+// #1875 [transient-signin-failure] — user-facing sign-in failure copy is read
+// from fixed i18n keys, never from a caught error's message. Non-hook accessor,
+// same specifier depth as AppStateManager.tsx.
+import i18n from "../i18n";
 
 
 // Module-level flag — shared across ALL instances of useAuthSimple.
@@ -108,9 +112,124 @@ const shouldReportAuthFailure = (code: unknown): boolean => {
   return true;
 };
 
+/**
+ * #1875 [transient-signin-failure] —
+ * I-PROPOSED-1875-SIGNIN-FAILURE-CLASSIFIED-AND-OPAQUE.
+ *
+ * THE single decision point for whether a caught NATIVE sign-in failure is a
+ * recoverable blip or a real, permanent fault. One named, greppable predicate,
+ * deliberately mirroring shouldReportAuthFailure's idiom above: the transient /
+ * permanent distinction must not get re-scattered across the catch branches.
+ *
+ * Why it exists: #1875 found that a one-second connectivity blip during
+ * "Continue with Google" was handled exactly like a hard configuration fault —
+ * no retry, no offline-aware copy — and the user was then shown the raw
+ * `error.message`. For a 502/503/504 that message is `JSON.stringify(Response)`
+ * (@supabase/auth-js's `_getErrorMessage` falls through to `JSON.stringify(err)`
+ * for a `Response`), so the modal contained our Supabase project URL and a blob
+ * id. Both halves of that are fixed here: classification drives a bounded retry,
+ * and the copy is read from fixed i18n keys.
+ *
+ * ┌── DO NOT ── the F-7 trap, restated for THIS predicate ───────────────────┐
+ * NEVER write `errCode === statusCodes.INTERNAL_ERROR` (or `.NETWORK_ERROR`, or
+ * `.TIMEOUT`). This app ships @react-native-google-signin/google-signin 16.0.0,
+ * whose `statusCodes` is frozen to exactly SIGN_IN_CANCELLED, IN_PROGRESS,
+ * PLAY_SERVICES_NOT_AVAILABLE and SIGN_IN_REQUIRED. Those three names are
+ * `undefined`, so the comparison evaluates `undefined === undefined` and matches
+ * EVERY codeless error — the exact #1038 blind spot #1044 exists to close, this
+ * time reproduced inside its own fix. Key on the numeric strings the native
+ * bridge actually emits: ErrorDto.kt does `this.code = codeInt.toString()`,
+ * where codeInt is ApiException.getStatusCode() — "7" NETWORK_ERROR,
+ * "8" INTERNAL_ERROR, "15" TIMEOUT.
+ *
+ * Rule R6 — the DEFAULT — is "permanent". An unrecognised error is NEVER
+ * retried. Anything you cannot name is a fault, not a blip. Widening R4 is a
+ * decision that needs evidence, not a tidy-up: "14" (INTERRUPTED) and every iOS
+ * kGIDSignInErrorCode (small negatives, where a network fault is
+ * indistinguishable from a real one) are excluded ON PURPOSE.
+ *
+ * NEVER use `instanceof AuthRetryableFetchError`: Metro can resolve
+ * @supabase/auth-js through more than one module instance, and the regression
+ * suites execute this body via `new Function`, where the class is not in scope.
+ * `name` is a plain string assigned by CustomAuthError's constructor and is
+ * stable across both.
+ *
+ * NEVER read NetInfo / onlineManager / networkMonitor / offlineService here.
+ * `AuthRetryableFetchError.status === 0` is an observation of THIS request
+ * failing just now; `onlineManager`'s belief demonstrably goes stale (#1642
+ * physical-device run: a paused write was still paused 60s after connectivity
+ * returned).
+ *
+ * PURE: no I/O, no Date, no Math.random, no logging, no throwing. Same five
+ * arguments in, same value out, always.
+ * └─────────────────────────────────────────────────────────────────────────┘
+ */
+type AuthFailureClass =
+  | "permanent"
+  | "transient-transport-offline"
+  | "transient-transport-remote"
+  | "transient-provider";
+
+/** Extra attempts BEYOND the first, so 3 total. Frozen; the loop bound. */
+const TRANSPORT_RETRY_MAX_ATTEMPTS = 2;
+/**
+ * Fixed, no jitter — jitter buys nothing at n=2 and makes tests nondeterministic.
+ * Length MUST equal TRANSPORT_RETRY_MAX_ATTEMPTS. Worst case adds 1600 ms of
+ * waiting; a Google ID token is valid for ~1 hour, so staleness is not a concern.
+ */
+const TRANSPORT_RETRY_DELAYS_MS = Object.freeze([400, 1200]);
+
+const classifyAuthFailure = (
+  errName: unknown,
+  errCode: unknown,
+  errStatus: unknown,
+  errMessage: unknown,
+  platformOS: string,
+): AuthFailureClass => {
+  // R1 / R2 / R3 — @supabase/auth-js labels this class retryable itself, so
+  // trust its label and do not guess beyond it. R1: status 0 (or absent) means
+  // the request never received a response at all — device offline, DNS, TLS,
+  // connection reset. R2: 502 / 503 / 504, auth-js's own NETWORK_ERROR_CODES,
+  // which is the class of #1875's Event B. R3: any other status it chose to
+  // wrap in this error.
+  if (errName === "AuthRetryableFetchError") {
+    if (errStatus === 0 || errStatus === undefined || errStatus === null) {
+      return "transient-transport-offline";
+    }
+    return "transient-transport-remote";
+  }
+  // R4 — Google Play Services transient status codes, Android only. Numeric
+  // strings from ErrorDto.kt; see the DO NOT banner above. Classified transient
+  // for COPY purposes only — the provider leg is never auto-retried, because
+  // re-invoking signIn() re-presents the account picker.
+  if (
+    platformOS === "android" &&
+    typeof errCode === "string" &&
+    (errCode === "7" || errCode === "8" || errCode === "15")
+  ) {
+    return "transient-provider";
+  }
+  // R5 — React Native's fetch polyfill rejection. EXACT equality, never
+  // `includes`: a substring inside a serialized JSON blob or a locale-varying
+  // message must never promote a permanent failure to transient.
+  if (typeof errMessage === "string" && errMessage === "Network request failed") {
+    return "transient-transport-offline";
+  }
+  // R6 — THE DEFAULT. Unrecognised means permanent, and permanent is never
+  // retried. This catches "10" (DEVELOPER_ERROR, the #1038 certificate class),
+  // "getTokens", "12500", "14", every iOS code, every AuthApiError, and every
+  // codeless error.
+  return "permanent";
+};
+
 export const useAuthSimple = () => {
   const [loading, setLoading] = useState(true);
   const { user, setAuth, setProfile } = useAppStore();
+  // #1875 [transient-signin-failure] — cancellation checkpoint C1 for the
+  // bounded transport retry. Flipped false in the auth effect's cleanup below,
+  // alongside `mounted = false`. A retry must not keep running against a hook
+  // that is gone, and it must not raise a modal for a screen nobody is on.
+  const isMountedRef = useRef(true);
 
   // Add timeout to prevent infinite loading
   useEffect(() => {
@@ -123,6 +242,11 @@ export const useAuthSimple = () => {
 
   useEffect(() => {
     let mounted = true;
+    // #1875 — re-arm on (re)mount. Fast Refresh and any future StrictMode
+    // double-invoke run cleanup then re-run this effect; without this line the
+    // ref would stay false for the rest of the process and permanently cancel
+    // every retry and suppress every failure Alert.
+    isMountedRef.current = true;
 
     const initializeAuth = async () => {
       try {
@@ -457,6 +581,8 @@ export const useAuthSimple = () => {
 
     return () => {
       mounted = false;
+      // #1875 — C1: stop any in-flight bounded transport retry.
+      isMountedRef.current = false;
       subscription.unsubscribe();
     };
   }, []);
@@ -513,6 +639,31 @@ export const useAuthSimple = () => {
   };
 
   const signInWithGoogle = async () => {
+    // #1875 [transient-signin-failure] — declared OUTSIDE the try so the catch
+    // can read them. `transportRetryAttempts` selects the retry-exhausted copy;
+    // `retryAbandoned` suppresses the Alert (and ONLY the Alert) when the user
+    // walked away mid-retry.
+    let transportRetryAttempts = 0;
+    let retryAbandoned = false;
+    // #1875 — cancellation checkpoints C1 (hook unmounted) and C2 (app
+    // backgrounded), read FRESH on every call. C2 tests === "background" and NOT
+    // !== "active": "inactive" is a normal iOS transition state while a system
+    // sheet is up or Control Centre is pulled, and currentState can be null very
+    // early in the process — both would cancel spuriously. A synchronous
+    // property read: no listener, no subscription, no cleanup.
+    //
+    // ┌── DO NOT ── inline this back into the two checkpoints. TypeScript
+    // narrows `AppState.currentState` after the first `=== "background"` test,
+    // so the SECOND checkpoint — the one that matters, because it runs AFTER the
+    // sleep, when the state genuinely can have changed — then fails to compile
+    // as "no overlap". Reading through this closure keeps both checkpoints
+    // honest without a cast or a suppression. Return type is inferred (boolean)
+    // on purpose: the #1044 harnesses execute this body through `new Function`,
+    // which compiles JS, and an annotation here would be a ReferenceError-class
+    // syntax failure in a sliced body.
+    // └──
+    const retryCancelled = () =>
+      !isMountedRef.current || AppState.currentState === "background";
     try {
       logger.auth('Google sign-in started');
       // Check if Google Sign-In is configured
@@ -620,6 +771,53 @@ export const useAuthSimple = () => {
         provider: "google",
         token: tokens.idToken,
       });
+
+      // #1875 [transient-signin-failure] — bounded retry of the SUPABASE TOKEN
+      // EXCHANGE ONLY. The Google ID token is already in hand, this is a plain
+      // server round-trip, and no user-facing UI is re-presented — WelcomeScreen
+      // set isGoogleSignInInProgress before awaiting this call and clears it in
+      // finally, so its existing spinner and accessibilityState.busy simply stay
+      // up for up to ~1.6s longer. No new UI, no new state.
+      //
+      // The provider leg is NEVER auto-retried: re-invoking GoogleSignin.signIn()
+      // would shove the account picker back in the user's face, which is a worse
+      // defect than the one being fixed. That is why "transient-provider" is
+      // transient for COPY only and is not retry-eligible here.
+      //
+      // ┌── DO NOT ── the bound is a COUNTER against a frozen constant, never a
+      // predicate over the error. `transportRetryAttempts` is incremented
+      // unconditionally on every completed iteration, so even an error that
+      // always classifies transient terminates after exactly two extra attempts.
+      // A `while (isTransient(error))` without the counter would be a defect.
+      // └──
+      while (
+        error &&
+        transportRetryAttempts < TRANSPORT_RETRY_MAX_ATTEMPTS &&
+        classifyAuthFailure(
+          error.name,
+          error.code,
+          error.status,
+          error.message,
+          Platform.OS,
+        ).startsWith("transient-transport")
+      ) {
+        if (retryCancelled()) {
+          retryAbandoned = true;
+          break;
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, TRANSPORT_RETRY_DELAYS_MS[transportRetryAttempts]),
+        );
+        if (retryCancelled()) {
+          retryAbandoned = true;
+          break;
+        }
+        transportRetryAttempts += 1;
+        ({ data, error } = await supabase.auth.signInWithIdToken({
+          provider: "google",
+          token: tokens.idToken,
+        }));
+      }
 
       // Handle case where user already exists
       let isExistingUserError = false;
@@ -782,15 +980,62 @@ export const useAuthSimple = () => {
         };
       }
 
-      Alert.alert(
-        "Google Sign-In Failed",
-        error.message || "Unable to sign in with Google. Please try again."
+      // #1875 [transient-signin-failure] — F-4. The user NEVER sees a caught
+      // error's value again. `error.message` here is whatever auth-js put in it;
+      // for a 502/503/504 that is JSON.stringify(Response), carrying our Supabase
+      // project URL and a blob id. Every string below is a fixed i18n key, never
+      // an interpolation, never a concatenation. The full original message still
+      // reaches Sentry via the #1044 capture above, unchanged.
+      if (retryAbandoned) {
+        // The user backgrounded the app or the screen went away mid-retry.
+        // Suppress the modal ONLY — the capture, logger, console and Mixpanel
+        // calls above all already fired, and the return value is unchanged.
+        return { data: null, error };
+      }
+      const failure = classifyAuthFailure(
+        error.name,
+        code,
+        (err as { status?: unknown })?.status,
+        error.message,
+        Platform.OS,
       );
+      let alertTitleKey = "auth:welcome.sign_in_failed_title";
+      let alertBodyKey = "auth:welcome.sign_in_permanent_body";
+      if (failure !== "permanent") {
+        if (transportRetryAttempts > 0) {
+          alertTitleKey = "auth:welcome.sign_in_retry_exhausted_title";
+          alertBodyKey = "auth:welcome.sign_in_retry_exhausted_body";
+        } else if (failure === "transient-transport-offline") {
+          alertTitleKey = "auth:welcome.sign_in_offline_title";
+          alertBodyKey = "auth:welcome.sign_in_offline_body";
+        } else {
+          alertBodyKey = "auth:welcome.sign_in_failed_body";
+        }
+      }
+      // Single button on purpose. Alert.alert is fire-and-forget, so
+      // WelcomeScreen's finally has already re-enabled the button by the time
+      // this renders — a "Try again" onPress would re-enter sign-in with no busy
+      // state and no disabled button, inviting GMS IN_PROGRESS (12502). The
+      // correctly-wired affordance is the Continue button itself, which every
+      // string points the user back at.
+      Alert.alert(i18n.t(alertTitleKey), i18n.t(alertBodyKey), [
+        { text: i18n.t("auth:welcome.sign_in_failed_ok") },
+      ]);
       return { data: null, error };
     }
   };
 
   const signInWithApple = async () => {
+    // #1875 [transient-signin-failure] — same contract as signInWithGoogle. Apple
+    // has no Google Play Services layer, so "transient-provider" is unreachable
+    // here; the transport leg is byte-for-byte the same signInWithIdToken call
+    // and therefore had the byte-for-byte same leak.
+    let transportRetryAttempts = 0;
+    let retryAbandoned = false;
+    // #1875 — C1 / C2, identical contract to signInWithGoogle. See the banner
+    // there for why this is a closure and not two inline reads.
+    const retryCancelled = () =>
+      !isMountedRef.current || AppState.currentState === "background";
     try {
       logger.auth('Apple sign-in started');
       // Check if Apple Authentication is available (iOS 13+)
@@ -830,10 +1075,44 @@ export const useAuthSimple = () => {
       }
 
       // Sign in to Supabase with the identity token
-      const { data, error } = await supabase.auth.signInWithIdToken({
+      let { data, error } = await supabase.auth.signInWithIdToken({
         provider: "apple",
         token: credential.identityToken,
       });
+
+      // #1875 [transient-signin-failure] — bounded retry of the SUPABASE TOKEN
+      // EXCHANGE ONLY, identical contract to the Google path above. The Apple
+      // identity token is already in hand; AppleAuthentication.signInAsync() is
+      // never re-invoked, because that would re-present the Face ID sheet.
+      // The bound is a counter against a frozen constant — see the Google banner.
+      while (
+        error &&
+        transportRetryAttempts < TRANSPORT_RETRY_MAX_ATTEMPTS &&
+        classifyAuthFailure(
+          error.name,
+          error.code,
+          error.status,
+          error.message,
+          Platform.OS,
+        ).startsWith("transient-transport")
+      ) {
+        if (retryCancelled()) {
+          retryAbandoned = true;
+          break;
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, TRANSPORT_RETRY_DELAYS_MS[transportRetryAttempts]),
+        );
+        if (retryCancelled()) {
+          retryAbandoned = true;
+          break;
+        }
+        transportRetryAttempts += 1;
+        ({ data, error } = await supabase.auth.signInWithIdToken({
+          provider: "apple",
+          token: credential.identityToken,
+        }));
+      }
 
       if (error) {
         throw error;
@@ -922,10 +1201,35 @@ export const useAuthSimple = () => {
       console.error("Apple sign-in error:", err);
       mixpanelService.trackLoginFailed('apple', error.message);
 
-      Alert.alert(
-        "Apple Sign-In Failed",
-        error.message || "Unable to sign in with Apple. Please try again."
+      // #1875 [transient-signin-failure] — F-4, Apple half. Same leak, same
+      // signInWithIdToken leg, same fix. Copy is provider-neutral so both paths
+      // share it. See the Google block above for the full rationale.
+      if (retryAbandoned) {
+        return { data: null, error };
+      }
+      const failure = classifyAuthFailure(
+        error.name,
+        code,
+        (err as { status?: unknown })?.status,
+        error.message,
+        Platform.OS,
       );
+      let alertTitleKey = "auth:welcome.sign_in_failed_title";
+      let alertBodyKey = "auth:welcome.sign_in_permanent_body";
+      if (failure !== "permanent") {
+        if (transportRetryAttempts > 0) {
+          alertTitleKey = "auth:welcome.sign_in_retry_exhausted_title";
+          alertBodyKey = "auth:welcome.sign_in_retry_exhausted_body";
+        } else if (failure === "transient-transport-offline") {
+          alertTitleKey = "auth:welcome.sign_in_offline_title";
+          alertBodyKey = "auth:welcome.sign_in_offline_body";
+        } else {
+          alertBodyKey = "auth:welcome.sign_in_failed_body";
+        }
+      }
+      Alert.alert(i18n.t(alertTitleKey), i18n.t(alertBodyKey), [
+        { text: i18n.t("auth:welcome.sign_in_failed_ok") },
+      ]);
       return { data: null, error };
     }
   };
