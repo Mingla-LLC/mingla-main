@@ -290,13 +290,21 @@ AS $issue_1856_guard$
   --
   -- The anon-side set is a SUBSET of the authenticated-side set (verified on
   -- production: zero relations offend for anon but not for authenticated), so
-  -- the shared 263 are listed once and the authenticated side adds its 6.
+  -- the shared 264 are listed once and the authenticated side adds its 6.
+  -- (263 came from production; the 264th is a CI-only table, marked below.)
   -- -------------------------------------------------------------------------
   baseline_shared (relation_name) AS (
     SELECT unnest(ARRAY[
     '_archive_card_pool', '_archive_card_pool_stops',
     '_archive_orch_0700_doomed_columns',
-    '_archive_orch_0734_signal_anchors', '_backup_friends',
+    '_archive_orch_0734_signal_anchors',
+    -- CI-ONLY. `20260624000000_orch_0898_unified_chat_substrate.sql:389`
+    -- creates this with CREATE TABLE ... AS, so a from-baseline apply has it
+    -- and production does NOT (`to_regclass` returns NULL there on 2026-08-11
+    -- — it was dropped out of band). Recorded so the gate is honest about the
+    -- schema it actually runs against, and flagged here because a table the
+    -- migration set creates but production does not have is its own finding.
+    '_archive_orch_0898_board_messages_pre_migration', '_backup_friends',
     '_backup_messages', '_backup_profiles', '_backup_user_sessions',
     '_deprecated_profiles_is_admin_backup', '_orch_0588_dead_cards_backup',
     '_orch_0588_dead_stops_backup', 'account_deletion_requests',
