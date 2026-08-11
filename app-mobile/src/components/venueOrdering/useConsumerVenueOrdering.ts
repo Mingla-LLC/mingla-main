@@ -281,6 +281,20 @@ export function useConsumerVenueOrdering(
   const [actionPending, setActionPending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  /**
+   * OQ-2, made real across an ASYNC read. The sitting resolves at least one
+   * render after the cart reducer was seeded, so the remembered tip has to be
+   * applied when it lands — and applied only to what the guest has not already
+   * answered. Without this a table's second round shows an unselected tip row
+   * under a heading that says the answer is remembered, which is the surface
+   * contradicting itself even though the SERVER still charges the right tip.
+   */
+  useEffect(() => {
+    if (sitting === null) return;
+    cart.hydrateSitting(sitting.tip, sitting.buyerName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sitting?.sessionId, sitting?.tip.bps, sitting?.tip.flatCents]);
+
   /** A returning guest lands on their last round rather than an empty menu. */
   useEffect(() => {
     if (!sittingLoaded || sitting === null) return;

@@ -42,6 +42,17 @@ export interface VenueOrderingCartState {
   /** The one item whose options panel is expanded, if any. */
   openItemId: string | null;
   tip: VenueOrderTipChoice;
+  /**
+   * Has the GUEST touched the tip on this screen?
+   *
+   * Load-bearing for OQ-2. A sitting resolves from storage ASYNCHRONOUSLY (a
+   * disk read on native), which is always at least one render AFTER the reducer
+   * was initialised — so the remembered answer has to be applied later, and
+   * "later" must never overwrite a choice the guest has meanwhile made with
+   * their thumb. This flag is the difference between remembering an answer and
+   * silently changing one.
+   */
+  tipTouched: boolean;
   partySize: number | null;
   buyer: VenueOrderBuyerDraft;
 }
@@ -56,6 +67,11 @@ type Action =
   | { type: "TIP"; tip: VenueOrderTipChoice }
   | { type: "PARTY_SIZE"; value: number | null }
   | { type: "BUYER"; patch: Partial<VenueOrderBuyerDraft> }
+  | {
+    type: "HYDRATE_SITTING";
+    tip: VenueOrderTipChoice | null;
+    buyerName: string;
+  }
   | { type: "ROUND_SETTLED" };
 
 function reducer(state: State, action: Action): State {
@@ -113,7 +129,17 @@ function reducer(state: State, action: Action): State {
     case "OPEN_ITEM":
       return { ...state, openItemId: action.itemId };
     case "TIP":
-      return { ...state, tip: action.tip };
+      return { ...state, tip: action.tip, tipTouched: true };
+    case "HYDRATE_SITTING": {
+      // The sitting arrived. Apply what it remembers to anything the guest has
+      // not already answered here — and to nothing else.
+      const tip = action.tip !== null && !state.tipTouched ? action.tip : state.tip;
+      const name = state.buyer.name.trim() === ""
+        ? action.buyerName
+        : state.buyer.name;
+      if (tip === state.tip && name === state.buyer.name) return state;
+      return { ...state, tip, buyer: { ...state.buyer, name } };
+    }
     case "PARTY_SIZE":
       return { ...state, partySize: action.value };
     case "BUYER":
@@ -140,6 +166,8 @@ export interface VenueOrderingCartApi {
   setTip: (tip: VenueOrderTipChoice) => void;
   setPartySize: (value: number | null) => void;
   patchBuyer: (patch: Partial<VenueOrderBuyerDraft>) => void;
+  /** Apply a sitting that resolved after mount, without overwriting a guest. */
+  hydrateSitting: (tip: VenueOrderTipChoice | null, buyerName: string) => void;
   roundSettled: () => void;
 }
 
@@ -158,6 +186,7 @@ export function useVenueOrderingCart(input: {
       view: "browse",
       openItemId: null,
       tip: venueOrderInitialTip(seed.config, seed.rememberedTip),
+      tipTouched: false,
       partySize: null,
       buyer: {
         name: input.initialBuyer?.name ?? "",
@@ -207,6 +236,11 @@ export function useVenueOrderingCart(input: {
       dispatch({ type: "BUYER", patch }),
     [],
   );
+  const hydrateSitting = React.useCallback(
+    (tip: VenueOrderTipChoice | null, buyerName: string): void =>
+      dispatch({ type: "HYDRATE_SITTING", tip, buyerName }),
+    [],
+  );
   const roundSettled = React.useCallback(
     (): void => dispatch({ type: "ROUND_SETTLED" }),
     [],
@@ -226,6 +260,7 @@ export function useVenueOrderingCart(input: {
     setTip,
     setPartySize,
     patchBuyer,
+    hydrateSitting,
     roundSettled,
   };
 }
