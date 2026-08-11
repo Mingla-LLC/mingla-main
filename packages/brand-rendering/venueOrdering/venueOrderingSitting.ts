@@ -137,3 +137,32 @@ export function venueOrderShouldAskPartySize(
 ): boolean {
   return sitting === null;
 }
+
+/**
+ * The tip after a sitting resolves, applied to a screen that is already on.
+ *
+ * OQ-2 says the tip is asked ONCE and remembered. A sitting is read from disk
+ * (native) or from `localStorage` (web), which lands at least one render after
+ * the screen mounted — so "remembered" has to be applied late, and applying it
+ * late must never overwrite an answer the guest has meanwhile given with their
+ * thumb. That is the entire rule, and it is a pure function so it can be driven
+ * directly rather than inferred from a rendered chip.
+ */
+export function venueOrderTipAfterHydration(input: {
+  current: VenueOrderTipChoice;
+  /** Has the guest touched the tip on THIS screen? */
+  touched: boolean;
+  remembered: VenueOrderTipChoice | null;
+}): VenueOrderTipChoice {
+  if (input.touched) return input.current;
+  if (input.remembered === null) return input.current;
+  return input.remembered;
+}
+
+/** The same rule for the name: fill a blank, never overwrite what was typed. */
+export function venueOrderNameAfterHydration(
+  current: string,
+  remembered: string,
+): string {
+  return current.trim() === "" ? remembered : current;
+}

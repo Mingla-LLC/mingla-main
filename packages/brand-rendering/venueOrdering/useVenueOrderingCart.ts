@@ -35,6 +35,10 @@ import {
   venueOrderCartReducer,
   venueOrderInitialTip,
 } from "./venueOrderingRules";
+import {
+  venueOrderNameAfterHydration,
+  venueOrderTipAfterHydration,
+} from "./venueOrderingSitting";
 
 export interface VenueOrderingCartState {
   lines: VenueOrderCartLine[];
@@ -133,10 +137,12 @@ function reducer(state: State, action: Action): State {
     case "HYDRATE_SITTING": {
       // The sitting arrived. Apply what it remembers to anything the guest has
       // not already answered here — and to nothing else.
-      const tip = action.tip !== null && !state.tipTouched ? action.tip : state.tip;
-      const name = state.buyer.name.trim() === ""
-        ? action.buyerName
-        : state.buyer.name;
+      const tip = venueOrderTipAfterHydration({
+        current: state.tip,
+        touched: state.tipTouched,
+        remembered: action.tip,
+      });
+      const name = venueOrderNameAfterHydration(state.buyer.name, action.buyerName);
       if (tip === state.tip && name === state.buyer.name) return state;
       return { ...state, tip, buyer: { ...state.buyer, name } };
     }

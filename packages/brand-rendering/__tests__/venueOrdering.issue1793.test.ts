@@ -43,8 +43,10 @@ import {
   parseVenueOrderSitting,
   serialiseVenueOrderSitting,
   VENUE_ORDER_SITTING_TTL_MS,
+  venueOrderNameAfterHydration,
   venueOrderShouldAskPartySize,
   venueOrderSittingKey,
+  venueOrderTipAfterHydration,
 } from "../venueOrdering/venueOrderingSitting";
 import { venueOrderCreateBody } from "../venueOrdering/venueOrderingWire";
 import type {
@@ -313,6 +315,37 @@ describe("T-1793-C3 — the tip is a sitting's answer, not a per-round question"
     expect(parseVenueOrderSitting("{not json", now)).toBeNull();
     expect(parseVenueOrderSitting(null, now)).toBeNull();
     expect(parseVenueOrderSitting('{"expiresAt":9e15}', now)).toBeNull();
+  });
+
+  test("a sitting that resolves AFTER mount restores the tip — and never overwrites the guest", () => {
+    const remembered = { bps: 1500, flatCents: null };
+    // The disk read lands a render late. The guest has touched nothing.
+    expect(
+      venueOrderTipAfterHydration({
+        current: { bps: null, flatCents: null },
+        touched: false,
+        remembered,
+      }),
+    ).toEqual(remembered);
+    // The guest got there first. Their thumb wins, always.
+    expect(
+      venueOrderTipAfterHydration({
+        current: { bps: 0, flatCents: null },
+        touched: true,
+        remembered,
+      }),
+    ).toEqual({ bps: 0, flatCents: null });
+    // Nothing remembered changes nothing.
+    expect(
+      venueOrderTipAfterHydration({
+        current: { bps: 1000, flatCents: null },
+        touched: false,
+        remembered: null,
+      }),
+    ).toEqual({ bps: 1000, flatCents: null });
+    // The name fills a blank and never overwrites what was typed.
+    expect(venueOrderNameAfterHydration("", "Ada")).toBe("Ada");
+    expect(venueOrderNameAfterHydration("Grace", "Ada")).toBe("Grace");
   });
 
   test("the party-size question is asked ONCE per sitting, and skipping it is free", () => {

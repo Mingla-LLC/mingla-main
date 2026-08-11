@@ -81,6 +81,8 @@ export {
   serialiseVenueOrderSitting,
   VENUE_ORDER_SITTING_TTL_MS,
   type VenueOrderSitting,
+  venueOrderNameAfterHydration,
   venueOrderShouldAskPartySize,
   venueOrderSittingKey,
+  venueOrderTipAfterHydration,
 } from "./venueOrderingSitting";
