@@ -110,7 +110,7 @@ export type OfferingPushResult =
   | {
     outcome: "accepted";
     ok: true;
-    status: "sending";
+    status: "sent";
     provider: "onesignal";
     providerAppId: string;
     providerMessageId: string;
@@ -392,7 +392,7 @@ export async function sendPush(
       ? {
         outcome: "accepted",
         ok: true,
-        status: "sending",
+        status: "sent",
         provider: "onesignal",
         providerAppId: appId,
         providerMessageId: body.id,

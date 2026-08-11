@@ -35,7 +35,7 @@ export type PushAdapterResult =
   | {
     outcome: "accepted";
     ok: true;
-    status: "sending";
+    status: "sent";
     provider: "onesignal";
     providerAppId: string;
     providerMessageId: string;
