@@ -71,8 +71,7 @@ BEGIN
     RETURNING id INTO v_spot;
   END IF;
 
-  -- #1792 — biz_venue_tab_open now reads staff_tabs_enabled, and fails CLOSED
-  -- when a venue has no settings row at all.
+  -- #1792 — biz_venue_tab_open now reads staff_tabs_enabled.
   INSERT INTO public.venue_ordering_settings (venue_id, brand_id, ordering_enabled)
   VALUES (v_venue, v_brand, true)
   ON CONFLICT (venue_id) DO UPDATE SET ordering_enabled = true;
@@ -519,8 +518,10 @@ BEGIN
 END $t$;
 
 -- ---------------------------------------------------------------------------
--- T-1792-T6 — P-16's switch is REAL. A venue with staff tabs off cannot have
--- one opened on them, and a venue with no settings row at all fails CLOSED.
+-- T-1792-T6 — P-16's switch is REAL, and it refuses ONLY on an explicit false.
+-- A venue that switched staff tabs off cannot have one opened on them; a venue
+-- that has expressed no preference (no settings row) still can, because the
+-- column DEFAULTS to true and silence is not an opt-out.
 -- ---------------------------------------------------------------------------
 DO $t$
 DECLARE v_s uuid; v_raised boolean; v_state text;
@@ -554,6 +555,22 @@ BEGIN
   IF v_state <> 'open' THEN
     RAISE EXCEPTION 'issue_1792 T-1792-T6: the control open did not take (state %)', v_state;
   END IF;
+
+  -- NO SETTINGS ROW: still allowed. Refusing here would be a stricter rule than
+  -- the schema states, and it is what broke #1790's shipped tab suite when this
+  -- gate first failed closed.
+  DELETE FROM public.venue_ordering_settings WHERE venue_id = pg_temp.fx('venue');
+  v_s := pg_temp.mint_session();
+  PERFORM pg_temp.mint_round(v_s, 1200);
+  PERFORM public.biz_venue_tab_open(v_s);
+  SELECT tab_state INTO v_state FROM public.venue_order_sessions WHERE id = v_s;
+  IF v_state <> 'open' THEN
+    RAISE EXCEPTION
+      'issue_1792 T-1792-T6: a venue with NO settings row was refused a tab (state %)', v_state;
+  END IF;
+  INSERT INTO public.venue_ordering_settings (venue_id, brand_id, ordering_enabled)
+  VALUES (pg_temp.fx('venue'), pg_temp.fx('brand'), true)
+  ON CONFLICT (venue_id) DO UPDATE SET ordering_enabled = true;
 END $t$;
 
 -- ---------------------------------------------------------------------------
