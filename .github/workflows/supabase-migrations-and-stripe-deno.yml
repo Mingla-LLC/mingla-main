@@ -366,6 +366,33 @@ jobs:
           # approve-or-explain decision.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1791_venue_order_queue_and_alerting.test.sql
+          # Issue #1828 — a P1 that shipped to production behind green CI. Three
+          # functions called pgcrypto's digest() UNQUALIFIED under a pinned
+          # search_path of `public, pg_temp`, and pgcrypto lives in `extensions`,
+          # so the call could not resolve and a guest could not self-cancel a
+          # venue reservation. Every test that existed asserted the functions'
+          # SOURCE TEXT, which is byte-identical either way — so this suite CALLS
+          # them: it seeds a real paid reservation, cancels it as the guest,
+          # checks the refund arithmetic and the ledger legs, reads the summary
+          # back, runs the GDPR erasure, and then DERIVES the pre-fix body from
+          # the live definition (strip `extensions.`, re-create) to prove each
+          # call comes back 42883 on revert and passes again after a rollback to
+          # savepoint.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1828_guest_cancel_digest_resolution.test.sql
+          # Issue #1828 class guard. The instance suite above fixes three call
+          # sites; THIS one reds on the class — any function in `public` calling
+          # an `extensions`-only routine unqualified while its own search_path
+          # does not guarantee `extensions`. 79 routine names are exposed on
+          # production (crypt, hmac, gen_salt, gen_random_bytes, uuid_generate_*,
+          # unaccent, similarity, the pgp_* family, ...), so the next instance is
+          # a matter of when. It reads pg_proc, not migration text, so it sees
+          # the LAST definition of every function regardless of which migration
+          # wrote it — something no grep over supabase/migrations can do. Runs
+          # its own vacuity guard: it plants five probe functions and asserts the
+          # two broken shapes are caught and the three safe ones are not.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1828_extension_call_qualification.test.sql
 
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"
