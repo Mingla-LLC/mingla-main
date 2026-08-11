@@ -52,6 +52,17 @@ export interface CurrentBrandRoleState {
   role: BrandRole | null;
   rank: number;
   permissionsOverride: Record<string, unknown>;
+  /**
+   * #1863 §4.0.2 — `brand_team_members.accepted_at IS NOT NULL` for this
+   * membership. ADDITIVE: `role`, `rank` and `permissionsOverride` semantics
+   * are unchanged, because nine other gated surfaces read them.
+   *
+   * The server requires acceptance on BOTH branches of
+   * `biz_can_manage_payments_for_brand`, so `canManageBrandPayments` needs it
+   * to mirror the predicate. A pending `brand_admin` who was treated as
+   * accepted would get the full payments surface and the identical 403 storm.
+   */
+  readonly accepted: boolean;
   isLoading: boolean;
   isError: boolean;
   refetch: () => Promise<unknown>;
@@ -77,6 +88,8 @@ export const brandRoleKeys = {
 interface QueryResult {
   role: BrandRole | null;
   permissionsOverride: Record<string, unknown>;
+  /** #1863 §4.0.2 — mirrors brand_team_members.accepted_at IS NOT NULL. */
+  accepted: boolean;
 }
 
 const DISABLED_KEY = ["brand-role-disabled"] as const;
@@ -113,12 +126,14 @@ export const useCurrentBrandRole = (
     staleTime: STALE_TIME_MS,
     queryFn: async (): Promise<QueryResult> => {
       if (!enabled || brandId === null || userId === null) {
-        return { role: null, permissionsOverride: {} };
+        return { role: null, permissionsOverride: {}, accepted: false };
       }
       // Step 1: try brand_team_members for active row.
+      // #1863 §4.0.2 — `accepted_at` joins the select so the payments predicate
+      // can mirror the server's acceptance requirement. Additive column only.
       const { data: memberRow, error: memberErr } = await supabase
         .from("brand_team_members")
-        .select("role, permissions_override")
+        .select("role, permissions_override, accepted_at")
         .eq("brand_id", brandId)
         .eq("user_id", userId)
         .is("removed_at", null)
@@ -130,6 +145,7 @@ export const useCurrentBrandRole = (
           permissionsOverride:
             (memberRow.permissions_override as Record<string, unknown> | null) ??
             {},
+          accepted: memberRow.accepted_at !== null,
         };
       }
       // Step 2: brand_owner synthesis fallback for solo operators.
@@ -144,7 +160,7 @@ export const useCurrentBrandRole = (
         .maybeSingle();
       if (brandErr) throw brandErr;
       if (brandRow === null) {
-        return { role: null, permissionsOverride: {} };
+        return { role: null, permissionsOverride: {}, accepted: false };
       }
       const { data: accountRow, error: accountErr } = await supabase
         .from("creator_accounts")
@@ -153,13 +169,19 @@ export const useCurrentBrandRole = (
         .maybeSingle();
       if (accountErr) throw accountErr;
       if (accountRow !== null && accountRow.user_id === userId) {
-        return { role: "brand_owner", permissionsOverride: {} };
+        // #1863 §4.0.2 — the brand-owner trigger writes accepted_at =
+        // created_at (20260819000000_orch_1047_*.sql:195-213), and a
+        // synthesised owner is by definition an accepted relationship.
+        // Returning `false` here would lock every solo operator out of their
+        // own payments surface.
+        return { role: "brand_owner", permissionsOverride: {}, accepted: true };
       }
-      return { role: null, permissionsOverride: {} };
+      return { role: null, permissionsOverride: {}, accepted: false };
     },
   });
 
   let role: BrandRole | null = data?.role ?? null;
+  let accepted: boolean = data?.accepted ?? false;
 
   // [TRANSITIONAL] stub-mode synthesis fallback — fires when the DB chain
   // EXIT CONDITION: remove once every brand is persisted with membership rows.
@@ -172,15 +194,27 @@ export const useCurrentBrandRole = (
   // a non-null role on Step 1 or Step 2, `data.role` wins above, and this
   // branch becomes dead code. EXIT condition documented in file header.
   if (role === null && stubBrandRole !== null) {
+    // #1863 §4.0.2 — a local-only stub brand has no membership row to accept
+    // and the operator is its creator, so the synthesised role is accepted.
     if (stubBrandRole === "owner") {
       role = "brand_owner";
+      accepted = true;
     } else if (stubBrandRole === "admin") {
       role = "brand_admin";
+      accepted = true;
     }
   }
 
   const rank = role !== null ? BRAND_ROLE_RANK[role] : NO_MEMBERSHIP_RANK;
   const permissionsOverride = data?.permissionsOverride ?? {};
 
-  return { role, rank, permissionsOverride, isLoading, isError, refetch };
+  return {
+    role,
+    rank,
+    permissionsOverride,
+    accepted,
+    isLoading,
+    isError,
+    refetch,
+  };
 };

@@ -14,7 +14,19 @@ describe("queryClient — META-ORCH-1235 networkMode", () => {
 
   test("retry stays at 2 with a capped retryDelay (no retry-storm widening)", () => {
     const queries = queryClient.getDefaultOptions().queries;
-    expect(queries?.retry).toBe(2);
+    // #1863 [error-toast-covers-bank-field] — `retry` became a FUNCTION so a
+    // permission denial can be terminal (a 403 is never transient, and retrying
+    // it produced ~2,650 unanswerable edge invocations in eight idle hours).
+    // META-ORCH-1235's claim is UNCHANGED and is now proven by EXECUTING the
+    // policy rather than reading a literal: a non-permission error still gets
+    // the same 2-retry budget — attempts at failureCount 0 and 1, stopping at
+    // 2 — which is exactly what `retry: 2` meant to query-core's retryer.
+    const retry = queries?.retry;
+    expect(typeof retry).toBe("function");
+    const retryFn = retry as (count: number, error: unknown) => boolean;
+    expect(retryFn(0, new Error("x"))).toBe(true);
+    expect(retryFn(1, new Error("x"))).toBe(true);
+    expect(retryFn(2, new Error("x"))).toBe(false);
     const retryDelay = queries?.retryDelay;
     expect(typeof retryDelay).toBe("function");
     if (typeof retryDelay === "function") {

@@ -14,6 +14,9 @@ import { supabase } from "./supabase";
 // ORCH-0808 — organizer-funnel instrumentation.
 import { logAppsFlyerEvent } from "./appsFlyerService";
 import { businessWebOriginOverrideBody } from "./businessWebOriginOverride";
+// #1863 — 403 classification. A permission denial must reach the hook layer as
+// a typed, recognisable error instead of being flattened into a generic Error.
+import { EdgeFunctionPermissionDeniedError } from "../utils/edgeFunctionErrors";
 
 declare const __DEV__: boolean | undefined;
 
@@ -86,9 +89,57 @@ function formatFunctionErrorPayload(payload: unknown): string | null {
   return detail ?? error;
 }
 
-function mapFunctionErrorPayload(payload: unknown): Error | null {
-  if (!isRecord(payload)) return null;
-  if (payload.error === "country_locked") {
+/** The exact `detail` `requirePaymentsManager` returns with its 403. */
+const PERMISSION_DENIED_DETAIL = "permission_denied";
+
+/**
+ * #1863 §4.6 — is this edge-function response a ROLE denial?
+ *
+ * Keyed on `requirePaymentsManager`'s actual signature
+ * (`supabase/functions/_shared/stripeEdgeAuth.ts`), which is
+ * `403 {error:"forbidden", detail:"permission_denied"}`.
+ *
+ * NOT "any 403", and this narrowing is load-bearing. `brand-stripe-onboard`
+ * returns `403 {error:"forbidden", detail:"mingla_tos_not_accepted"}` from its
+ * Mingla-ToS gate (`brand-stripe-onboard/index.ts:337`) — same status, same
+ * `error` field, entirely different rule, and one the caller CAN act on by
+ * accepting the terms. Classifying it as a role denial would tell someone whose
+ * role is fine to "ask the brand owner to change your role", which is the exact
+ * class of lie this issue exists to remove, pointed the other way. So a 403 that
+ * names a MORE SPECIFIC business rule in `detail` keeps its own message and its
+ * own UI, exactly as before.
+ *
+ * The bare-403 case (no readable body) still counts: a proxy or a transport
+ * that drops the body must not downgrade a denial into a retryable error.
+ */
+function isPermissionDeniedResponse(
+  status: number | undefined,
+  payload: unknown,
+): boolean {
+  const detail = isRecord(payload) && typeof payload.detail === "string"
+    ? payload.detail
+    : null;
+  if (detail !== null && detail !== PERMISSION_DENIED_DETAIL) return false;
+  if (status === 403) return true;
+  return isRecord(payload) &&
+    payload.error === "forbidden" &&
+    detail === PERMISSION_DENIED_DETAIL;
+}
+
+/**
+ * ORDER IS LOAD-BEARING (#1863 §4.6): country_locked → permission_denied →
+ * generic.
+ *
+ * `country_locked` keeps precedence because it is a 400-class business rule
+ * with its own dedicated UI (`BrandOnboardView.tsx` failed-stripe branch) and
+ * must not be swallowed by the new permission branch.
+ */
+function mapFunctionErrorPayload(
+  functionName: string,
+  status: number | undefined,
+  payload: unknown,
+): Error | null {
+  if (isRecord(payload) && payload.error === "country_locked") {
     return new BrandStripeCountryLockedError({
       existingCountry: typeof payload.existing_country === "string"
         ? payload.existing_country
@@ -99,6 +150,13 @@ function mapFunctionErrorPayload(payload: unknown): Error | null {
       reason: typeof payload.reason === "string" ? payload.reason : null,
     });
   }
+  if (isPermissionDeniedResponse(status, payload)) {
+    const detail = isRecord(payload) && typeof payload.detail === "string"
+      ? payload.detail
+      : null;
+    return new EdgeFunctionPermissionDeniedError(functionName, detail);
+  }
+  if (!isRecord(payload)) return null;
   const formatted = formatFunctionErrorPayload(payload);
   return formatted ? new Error(formatted) : null;
 }
@@ -107,37 +165,84 @@ function shouldLogDiagnostics(): boolean {
   return typeof __DEV__ !== "undefined" && __DEV__ === true;
 }
 
-async function unwrapFunctionError(
+/**
+ * #1863 §4.9 — DEV-ONLY diagnostic, split by whether the failure is expected.
+ *
+ * This is TESTING NOISE ONLY. `shouldLogDiagnostics()` is `__DEV__`, and React
+ * Native's LogBox does not exist in a release build, so no production user has
+ * ever seen this line. It is reclassified because a `console.error` on a
+ * HANDLED permission boundary raised a red LogBox notification three times
+ * every thirty seconds during testing — which is what got #1863 filed as a
+ * toast covering a bank field, against the wrong subsystem entirely.
+ *
+ * `console.log` for a 403 because it raises NO LogBox notification.
+ * `console.warn` is NOT an acceptable substitute — it raises a yellow one, so
+ * the obvious "just downgrade it to warn" produces the same artefact in a
+ * different colour. Every other status keeps `console.error`: a 500 or a
+ * malformed payload IS a program error and must stay loud.
+ */
+function logEdgeFunctionDiagnostic(
+  functionName: string,
+  status: number | undefined,
+  detail: Record<string, unknown>,
+): void {
+  if (!shouldLogDiagnostics()) return;
+  if (status === 403) {
+    console.log(`[${functionName}] permission denied (expected)`, {
+      status,
+      ...detail,
+    });
+    return;
+  }
+  console.error(`[${functionName}] edge function failed`, {
+    status,
+    ...detail,
+  });
+}
+
+/**
+ * Turns a Supabase `FunctionsHttpError` into the app's typed error.
+ *
+ * #1863 §4.8 — EXPORTED so `brandStripeBalancesService` routes its failures
+ * through the identical classification instead of `throw error` (raw), which
+ * bypassed every branch below and is why the balances twin kept 403-storming
+ * after the primary was understood.
+ */
+export async function unwrapFunctionError(
   functionName: string,
   error: Error,
 ): Promise<Error> {
   const functionError = error as SupabaseFunctionError;
+  const status = functionError.context?.status;
   const response = functionError.context?.clone?.();
-  if (!response) return error;
+  if (!response) {
+    // No body to read. The status alone still classifies a denial — otherwise a
+    // transport that omits `clone` would hand back a retryable generic Error.
+    if (isPermissionDeniedResponse(status, null)) {
+      return new EdgeFunctionPermissionDeniedError(functionName, null);
+    }
+    return error;
+  }
 
   try {
     const payload = response.json ? await response.json() : null;
-    if (shouldLogDiagnostics()) {
-      console.error(`[${functionName}] edge function failed`, {
-        status: functionError.context?.status,
-        payload,
-      });
-    }
-    const mapped = mapFunctionErrorPayload(payload);
+    logEdgeFunctionDiagnostic(functionName, status, { payload });
+    const mapped = mapFunctionErrorPayload(functionName, status, payload);
     if (mapped) return mapped;
   } catch {
     try {
       const text = response.text ? await response.text() : "";
-      if (shouldLogDiagnostics()) {
-        console.error(`[${functionName}] edge function failed`, {
-          status: functionError.context?.status,
-          body: text,
-        });
+      logEdgeFunctionDiagnostic(functionName, status, { body: text });
+      if (isPermissionDeniedResponse(status, null)) {
+        return new EdgeFunctionPermissionDeniedError(functionName, null);
       }
       if (text.trim().length > 0) return new Error(text.trim());
     } catch {
       // Fall through to the original Supabase error.
     }
+  }
+  if (isPermissionDeniedResponse(status, null)) {
+    return new EdgeFunctionPermissionDeniedError(functionName, null);
   }
   return error;
 }

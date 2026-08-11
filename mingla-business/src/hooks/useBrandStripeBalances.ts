@@ -20,6 +20,7 @@ import {
   type BrandStripeBalancesResult,
 } from "../services/brandStripeBalancesService";
 import { shouldEnableBrandStripeStatusQuery } from "./brandStripeStatusAuthGate";
+import { useCanManageBrandPayments } from "./useCanManageBrandPayments";
 
 const STALE_TIME_MS = 30 * 1000;
 const REFETCH_INTERVAL_MS = 60 * 1000;
@@ -44,6 +45,10 @@ export function useBrandStripeBalances(
   // ORCH-1004 — tighten to the canonical isAuthReady signal alongside the
   // existing loading+user+session gate (balances edge call is auth-scoped).
   const { isAuthReady, loading, session, user } = useAuth();
+  // #1863 §4.2/§4.8 — the TWIN. `brand-stripe-balances` sits behind the same
+  // `requirePaymentsManager` gate and was 403-storming identically (606 denials
+  // in the same four-hour window). One mechanism has to kill both.
+  const { allowed: canManagePayments } = useCanManageBrandPayments(brandId);
   const enabled =
     isAuthReady &&
     options.stripeStatus === "active" &&
@@ -52,6 +57,7 @@ export function useBrandStripeBalances(
       authLoading: loading,
       user,
       session,
+      canManagePayments,
     });
 
   return useQuery<BrandStripeBalancesResult>({

@@ -103,7 +103,15 @@ import {
   getStripeCountryLockedCopy,
   getStripeCountryReplaceableCopy,
   isStripeCountryPickerLocked,
+  mapStripeStatusErrorToViewState,
 } from "../../utils/brandStripeUiState";
+// #1863 — a 403 is a permission boundary, not a transport failure, and not a
+// program error. One exported copy pair, shared with the route gate.
+import { isPermissionDeniedError } from "../../utils/edgeFunctionErrors";
+import {
+  BRAND_PAYMENTS_DENIED_BODY,
+  BRAND_PAYMENTS_DENIED_TITLE,
+} from "../../utils/brandPaymentsPermission";
 import { BrandStripeCountryLockedError } from "../../services/brandStripeService";
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
 import { resolveBankConnectRail } from "../../utils/bankConnectRail";
@@ -386,6 +394,30 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     if (viewState !== "checking-status" || brand === null) return;
 
     if (statusQuery.isError) {
+      // #1863 §4.7 — this used to map EVERY error to `failed-network` and tell
+      // the user to check their connection. A 403 from `requirePaymentsManager`
+      // is a permission boundary: their connection is fine, their role is the
+      // problem, and "try again" can never help. The `permission-denied`
+      // ViewState below has existed with a correct renderer since B2a and was
+      // dead code — nothing set it. This is the wire.
+      //
+      // Reachable even with the route gate in place: the role cache is 30s
+      // stale (`useCurrentBrandRole.ts` STALE_TIME_MS), so a member demoted
+      // mid-session passes the client gate and gets a server 403 inside that
+      // window. It is also the honest fallback for any future divergence
+      // between the mirrored predicate and the SQL.
+      if (
+        mapStripeStatusErrorToViewState(statusQuery.error) ===
+          "permission-denied"
+      ) {
+        setViewState("permission-denied");
+        setErrorMessage(null);
+        // "warning", not "error" — a permission boundary is not a program
+        // failure.
+        fireHaptic("warning");
+        announceForAccessibility(BRAND_PAYMENTS_DENIED_TITLE);
+        return;
+      }
       setViewState("failed-network");
       setErrorMessage(
         "We couldn't confirm your Stripe status. Check your connection and try again.",
@@ -421,6 +453,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     applyOnboardingOutcome,
     brand,
     statusQuery.data,
+    statusQuery.error,
     statusQuery.isError,
     viewState,
   ]);
@@ -511,6 +544,18 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         setErrorMessage(err.message);
         fireHaptic("warning");
         announceForAccessibility(err.message);
+        return;
+      }
+      // #1863 §4.6 — a 403 from `brand-stripe-onboard` used to fall through the
+      // `message.includes("stripe")` discriminator below (the string
+      // "forbidden: permission_denied" contains no "stripe") straight into
+      // `failed-network`. Placed AFTER country_locked so that 400-class rule
+      // keeps its precedence.
+      if (isPermissionDeniedError(err)) {
+        setViewState("permission-denied");
+        setErrorMessage(null);
+        fireHaptic("warning");
+        announceForAccessibility(BRAND_PAYMENTS_DENIED_TITLE);
         return;
       }
       // Discriminate network vs Stripe errors
@@ -697,17 +742,45 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* #1863 §4.4.1/§4.7 — copy comes from the ONE exported pair, never
+            re-typed. The shipped string said "Finance Manager RANK", which is
+            exactly what makes a rank-40 event_manager (who DOES outrank finance
+            manager at 30) conclude the app is broken, omitted Brand Owner, and
+            used "account owner" — a label renamed to brand_owner at ORCH-1047.
+
+            Deliberately NO "Try again" button. `handleTryAgain` sets viewState
+            to "idle", which would walk a denied user straight back into the
+            bank-connect journey. There is nothing to retry. "Back to payments"
+            is the way out — every other terminal state in this component offers
+            one, and this one used to be a dead end reachable only by the back
+            gesture. */}
         {viewState === "permission-denied" ? (
-          <View style={styles.stateBlock}>
-            <View style={[styles.stateIconCircle, styles.stateIconCircleFailed]}>
-              <Icon name="flag" size={32} color={semantic.error} />
+          <>
+            <View style={styles.stateBlock}>
+              <View
+                style={[styles.stateIconCircle, styles.stateIconCircleFailed]}
+              >
+                <Icon name="flag" size={32} color={semantic.error} />
+              </View>
+              <Text
+                style={styles.stateTitle}
+                accessibilityRole="header"
+              >
+                {BRAND_PAYMENTS_DENIED_TITLE}
+              </Text>
+              <Text style={styles.stateSub}>{BRAND_PAYMENTS_DENIED_BODY}</Text>
             </View>
-            <Text style={styles.stateTitle}>You don{"’"}t have permission</Text>
-            <Text style={styles.stateSub}>
-              Only Brand Admin or Finance Manager rank can set up payments. Ask
-              your account owner to invite you with a higher role.
-            </Text>
-          </View>
+            <View style={styles.actionsCol}>
+              <Button
+                label="Back to payments"
+                onPress={handleDone}
+                variant="secondary"
+                size="lg"
+                fullWidth
+                accessibilityLabel="Back to payments"
+              />
+            </View>
+          </>
         ) : null}
 
         {viewState === "already-active" ? (

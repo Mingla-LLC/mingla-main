@@ -12,6 +12,12 @@
  */
 
 import { supabase } from "./supabase";
+// #1863 §4.8 — the TWIN fix. This service used to `throw error` raw, bypassing
+// every classification branch, so a 403 from `brand-stripe-balances` reached
+// React Query as an untyped error and was retried forever (606 denials in the
+// same four-hour window that produced 2,600 on `brand-stripe-refresh-status`).
+// One mechanism has to kill both.
+import { unwrapFunctionError } from "./brandStripeService";
 
 export interface BrandStripeBalancesResult {
   /** ISO 4217 currency code matching the brand's `default_currency` */
@@ -67,6 +73,6 @@ export async function fetchBrandStripeBalances(
       body: { brand_id: brandId },
     },
   );
-  if (error) throw error;
+  if (error) throw await unwrapFunctionError("brand-stripe-balances", error);
   return parseBrandStripeBalancesResponse(data);
 }

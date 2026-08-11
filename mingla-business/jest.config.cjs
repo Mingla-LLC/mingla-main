@@ -51,6 +51,13 @@ module.exports = {
     // jest.issue1834.render.cjs (RN preset + RTL); MUST NOT run under this
     // default node/ts-jest config (no RTL installed here).
     "issue_1834_bank_field_smartscroll\\.render\\.test\\.tsx$",
+    // #1863 [error-toast-covers-bank-field] implementor happy-path render-proof —
+    // mounts the three REAL payments ROUTE components and asserts the role gate
+    // on the mounted tree (denied → explanation card + zero edge invocations;
+    // allowed → byte-identical surface). Runs under jest.issue1863.render.cjs
+    // (RN preset + RTL); MUST NOT run under this default node/ts-jest config
+    // (no RTL installed here).
+    "issue_1863_payments_permission_gate\\.render\\.test\\.tsx$",
     // #1036 [remove-contrast-chip] tester adversarial WEB render-proof — mounts
     // the REAL ThemeSheet through react-native-web (ReactDOMServer) to assert no
     // contrast-advisory node renders for any seed. Runs under

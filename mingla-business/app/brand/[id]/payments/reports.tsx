@@ -17,6 +17,13 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandFinanceReportsView } from "../../../../src/components/brand/BrandFinanceReportsView";
+// #1863 [error-toast-covers-bank-field] — the payouts/refunds this surface
+// reads are governed by the IDENTICAL server predicate
+// (`biz_can_manage_payments_for_brand_for_caller` on both RLS policies), so
+// ungated it does not error: it renders ZEROS, because RLS filters the rows
+// away silently. On a money surface a fabricated total is worse than a locked
+// door (Constitution rule 3).
+import { BrandPaymentsPermissionGate } from "../../../../src/components/brand/BrandPaymentsPermissionGate";
 import { canvas } from "../../../../src/constants/designSystem";
 import { useBrandList } from "../../../../src/store/currentBrandStore";
 
@@ -26,10 +33,12 @@ export default function BrandFinanceReportsRoute(): React.ReactElement {
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const brands = useBrandList();
-  const brand =
-    typeof idParam === "string" && idParam.length > 0
-      ? brands.find((b) => b.id === idParam) ?? null
-      : null;
+  const brandId = typeof idParam === "string" && idParam.length > 0
+    ? idParam
+    : null;
+  const brand = brandId !== null
+    ? brands.find((b) => b.id === brandId) ?? null
+    : null;
 
   const handleBack = (): void => {
     if (router.canGoBack()) {
@@ -49,7 +58,13 @@ export default function BrandFinanceReportsRoute(): React.ReactElement {
         backgroundColor: canvas.discover, // I-12
       }}
     >
-      <BrandFinanceReportsView brand={brand} onBack={handleBack} />
+      <BrandPaymentsPermissionGate
+        brandId={brandId}
+        title="Payout reports"
+        onBack={handleBack}
+      >
+        <BrandFinanceReportsView brand={brand} onBack={handleBack} />
+      </BrandPaymentsPermissionGate>
     </View>
   );
 }
