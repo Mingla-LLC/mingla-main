@@ -58,8 +58,25 @@
  * Runs under the DEFAULT jest.config.cjs (ts-jest / node). No new config, no RTL.
  */
 
+// The native keyboard library cannot be loaded under the default node/ts-jest
+// runtime (it needs the linked native module). Mocking it with a DISTINCT
+// sentinel is what lets TA-2 EXECUTE the real SmartScrollView wrapper module
+// instead of reading its text: the assertions there drive the wrapper's own
+// default-prop logic and inspect the element it actually produces, so the
+// offset constant propagates from the shipped module rather than being retyped
+// in this file. The sentinel is deliberately NOT react-native's ScrollView —
+// substituting that would erase the distinction the suite measures.
+jest.mock("react-native-keyboard-controller", () => ({
+  KeyboardAwareScrollView: "KeyboardAwareScrollView@library",
+}));
+
 import * as fs from "fs";
 import * as path from "path";
+
+import {
+  DEFAULT_BOTTOM_OFFSET,
+  ScrollView as SmartScrollView,
+} from "../../../wrappers/SmartScrollView.native";
 
 // ---------------------------------------------------------------------------
 // Shared filesystem walk. One helper, used by TA-1 and TA-3, so the two
@@ -246,35 +263,32 @@ describe("#1834 TA-1 — every native host of the Paystack bank card scrolls thr
 // TA-2 — CRITERION BOUNDARY
 // ===========================================================================
 
-const WRAPPER_NATIVE = "src/wrappers/SmartScrollView.native.tsx";
+interface ForwardRefRenderable {
+  readonly render: (
+    props: Record<string, unknown>,
+    ref: unknown,
+  ) => { type: unknown; props: Record<string, unknown> };
+}
 
 /**
- * Read DEFAULT_BOTTOM_OFFSET out of the REAL wrapper module rather than
- * re-typing 54 here. The wrapper cannot be `import`ed under the default node /
- * ts-jest config (it pulls react-native-keyboard-controller, which is not
- * linked in this runtime), so the value is parsed from the module source — the
- * point being that moving the constant moves this test instead of leaving a
- * stale copy behind.
+ * EXECUTE the real wrapper. `SmartScrollView.ScrollView` is a forwardRef
+ * component, so calling its render function runs the shipped default-prop logic
+ * (`{ bottomOffset = DEFAULT_BOTTOM_OFFSET, ...rest }`) and returns the element
+ * it actually produces. Nothing here reads the wrapper's source text — a change
+ * to the constant or to the forwarding moves this test.
  */
-function readDefaultBottomOffset(): number {
-  const src = SOURCE.get(WRAPPER_NATIVE);
-  if (src == null) {
+function renderWrapper(
+  props: Record<string, unknown> = {},
+): { type: unknown; props: Record<string, unknown> } {
+  const component = SmartScrollView as unknown as Partial<ForwardRefRenderable>;
+  if (typeof component.render !== "function") {
     throw new Error(
-      `[#1834 TA-2] ${WRAPPER_NATIVE} not found in the scan. The offset ` +
-        `constant is the whole basis of the criterion — refusing to pass ` +
-        `without it.`,
+      "[#1834 TA-2] SmartScrollView is no longer a forwardRef component — the " +
+        "wrapper could not be EXECUTED. Refusing to fall back to a source-text " +
+        "read.",
     );
   }
-  const m = /export\s+const\s+DEFAULT_BOTTOM_OFFSET\s*=\s*(\d+(?:\.\d+)?)/.exec(
-    src,
-  );
-  if (m == null) {
-    throw new Error(
-      `[#1834 TA-2] could not parse DEFAULT_BOTTOM_OFFSET out of ` +
-        `${WRAPPER_NATIVE}. Refusing to substitute a hard-coded fallback.`,
-    );
-  }
-  return Number(m[1]);
+  return component.render(props, null);
 }
 
 /** ORCH-1165 KEYBOARD_TOOLBAR_HEIGHT — the Done bar sits ON TOP of the keyboard. */
@@ -346,7 +360,8 @@ const CELLS: readonly Cell[] = [
 const EXPECTED_CELL_COUNT = 5;
 
 describe("#1834 TA-2 — the success criterion is clearance of the Done bar, not the keyboard", () => {
-  const bottomOffset = readDefaultBottomOffset();
+  // Read off the EXECUTED wrapper element, not off the module's text.
+  const bottomOffset = renderWrapper().props.bottomOffset as number;
   const minClearance = bottomOffset - DONE_BAR;
 
   const clears = (fieldBottom: number, keyboardTop: number): boolean =>
@@ -356,6 +371,27 @@ describe("#1834 TA-2 — the success criterion is clearance of the Done bar, not
     expect(CELLS.length).toBe(EXPECTED_CELL_COUNT);
     expect(CELLS.filter((c) => c.clearsKeyboard && c.expected === "FAIL").length)
       .toBeGreaterThanOrEqual(3);
+  });
+
+  it("0b. the wrapper EXECUTES to the library primitive and honours an override", () => {
+    // Drives the real component: the default element must be the keyboard
+    // library's KeyboardAwareScrollView (never react-native's ScrollView), the
+    // inherited offset must be DEFAULT_BOTTOM_OFFSET, and an explicit prop must
+    // still win — the three behaviours the criterion below rests on.
+    const inherited = renderWrapper();
+    const overridden = renderWrapper({ bottomOffset: 9 });
+    expect({
+      type: inherited.type,
+      inheritedOffset: inherited.props.bottomOffset,
+      matchesExportedConstant:
+        inherited.props.bottomOffset === DEFAULT_BOTTOM_OFFSET,
+      overriddenOffset: overridden.props.bottomOffset,
+    }).toEqual({
+      type: "KeyboardAwareScrollView@library",
+      inheritedOffset: DEFAULT_BOTTOM_OFFSET,
+      matchesExportedConstant: true,
+      overriddenOffset: 9,
+    });
   });
 
   it("1. the wrapper default still budgets a real visible gap ABOVE the Done bar", () => {
