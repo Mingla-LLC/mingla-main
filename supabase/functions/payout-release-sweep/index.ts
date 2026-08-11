@@ -31,6 +31,10 @@ import {
 } from "./engine.ts";
 import { releasePartnerSplitsForOrganiserRelease } from "./partnerRelease.ts";
 import { resolvePaymentOperationFlagValue } from "../_shared/secretBundle.ts";
+import {
+  NG_PAYOUT_FLOAT_HORIZON_DEFAULT_DAYS,
+  resolveNgPayoutFloatHorizonDays,
+} from "../_shared/runtimeConfig.ts";
 
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -81,6 +85,18 @@ export type PaystackSweepCounts = {
   retryable: number;
   definitive: number;
   reversed: number;
+};
+
+// Issue #1840 D2 — the Nigerian float forecast summary returned in the sweep
+// response for observability. Purely a report: nothing here feeds a release
+// amount, a chunk plan, a ceiling check or an idempotency key.
+export type PaystackFloatForecast = {
+  horizonDays: number;
+  releaseCount: number;
+  obligationKobo: number;
+  balanceRead: boolean;
+  shortfallKobo: number;
+  alert: "none" | "raised" | "deduped";
 };
 
 type AdminClient = ReturnType<typeof createClient>;
@@ -179,6 +195,24 @@ function payoutReleaseAlertCopy(alertKind: string): {
         type: "ops.paystack_payout_release_over_cap",
         title: "Paystack organiser payout exceeds the transfer cap",
         bodyLead: "exceeds the Paystack transfer cap",
+      };
+    // Issue #1840 D1 — the backstop. A release parked on blocked_balance used
+    // to surface nowhere at all; it now reads as an unfunded-float failure.
+    case "paystack_balance_blocked":
+      return {
+        type: "ops.paystack_payout_release_balance_blocked",
+        title: "Paystack organiser payout is blocked on the Nigerian balance",
+        bodyLead:
+          "cannot be paid because the Nigerian Paystack balance is below its release ceiling",
+      };
+    // Issue #1840 D2 — the forecast. A warning, not a failure: nobody is unpaid
+    // yet, and the error_message carries the actionable top-up number.
+    case "paystack_float_shortfall":
+      return {
+        type: "ops.paystack_payout_float_shortfall",
+        title: "Nigerian payout float needs a top-up before maturity",
+        bodyLead:
+          "anchors Nigerian payouts maturing sooner than the Paystack balance can cover",
       };
     case "stripe_attempt_cap":
     default:
@@ -803,6 +837,87 @@ async function executeClaimedPaystackReleases(
   return totals;
 }
 
+/**
+ * Issue #1840 D2 — forecast the Nigerian payout float and alert BEFORE the
+ * shortfall becomes an unpaid organiser.
+ *
+ * Runs here, in payout-release-sweep, because this function already holds both
+ * halves of the problem: it is the scheduled Nigerian job and it is the only
+ * caller that reads the Paystack balance. It is invoked STRICTLY AFTER
+ * executeClaimedPaystackReleases has returned, so it is structurally incapable
+ * of perturbing release selection, chunk planning, the ceiling check, the
+ * authorize re-anchor, or any initiate — all of that has already completed.
+ * Its own try/catch at the call site means a forecast failure can never change
+ * a release outcome or the sweep's HTTP result.
+ *
+ * I-1013-LEDGER-ONLY: the obligation comes from the payout ledger via
+ * paystack_payout_float_obligation, which takes no balance argument at all. The
+ * balance is read only once an obligation is known to exist, and only as a
+ * comparison operand — exactly as the existing ceiling check uses it. No
+ * release amount is ever derived from a balance read.
+ */
+async function forecastPaystackFloat(
+  admin: AdminClient,
+  deps: SweepDeps,
+): Promise<PaystackFloatForecast> {
+  const horizonDays = resolveNgPayoutFloatHorizonDays(deps.env) ??
+    NG_PAYOUT_FLOAT_HORIZON_DEFAULT_DAYS;
+  const { data: obligationData, error: obligationError } = await admin.rpc(
+    "paystack_payout_float_obligation" as never,
+    {
+      p_horizon_days: horizonDays,
+      p_now: new Date().toISOString(),
+    } as never,
+  );
+  if (obligationError) {
+    throw new Error(
+      `paystack_float_obligation_failed:${obligationError.message}`,
+    );
+  }
+  const obligation = (obligationData ?? {}) as Record<string, unknown>;
+  const obligationKobo = Number(obligation.obligation_kobo ?? 0);
+  const releaseCount = Number(obligation.release_count ?? 0);
+  const idle: PaystackFloatForecast = {
+    horizonDays,
+    releaseCount: Number.isFinite(releaseCount) ? releaseCount : 0,
+    obligationKobo: Number.isFinite(obligationKobo) ? obligationKobo : 0,
+    balanceRead: false,
+    shortfallKobo: 0,
+    alert: "none",
+  };
+  // Nothing matures inside the horizon ⇒ nothing to fund, and no reason to
+  // spend a provider call reading the balance.
+  if (!Number.isFinite(obligationKobo) || obligationKobo <= 0) return idle;
+
+  const client = deps.createPaystackReleaseClient?.() ??
+    defaultPaystackReleaseClient();
+  const rows = await client.getBalance();
+  const ngn = rows.find((row) => row.currency === "NGN");
+  const balanceKobo = ngn ? ngn.balance : 0;
+
+  const { data: alertData, error: alertError } = await admin.rpc(
+    "raise_paystack_float_shortfall_alert" as never,
+    {
+      p_balance_kobo: balanceKobo,
+      p_horizon_days: horizonDays,
+      p_now: new Date().toISOString(),
+    } as never,
+  );
+  if (alertError) {
+    throw new Error(`paystack_float_alert_failed:${alertError.message}`);
+  }
+  const result = (alertData ?? {}) as Record<string, unknown>;
+  const raised = result.alert;
+  return {
+    horizonDays,
+    releaseCount: Number(result.release_count ?? idle.releaseCount),
+    obligationKobo: Number(result.obligation_kobo ?? obligationKobo),
+    balanceRead: true,
+    shortfallKobo: Number(result.shortfall_kobo ?? 0),
+    alert: raised === "raised" || raised === "deduped" ? raised : "none",
+  };
+}
+
 export async function handlePayoutReleaseSweep(
   req: Request,
   deps: SweepDeps = defaultDeps,
@@ -991,6 +1106,23 @@ export async function handlePayoutReleaseSweep(
     });
   }
 
+  // Issue #1840 D2 — Nigerian float forecast. Deliberately AFTER the Paystack
+  // execution phase: everything that selects, plans, ceilings, authorizes and
+  // initiates a release has already returned, so this observability step cannot
+  // perturb any of it, and the balance it reads is the post-sweep one an
+  // operator actually has to fund from. Isolated like the phases above — a
+  // forecast failure logs and never changes a release outcome or the response.
+  let paystackFloatForecast: PaystackFloatForecast | null = null;
+  try {
+    paystackFloatForecast = await forecastPaystackFloat(admin as never, deps);
+  } catch (forecastError) {
+    console.error("[payout-release-sweep] Nigerian float forecast failed", {
+      message: forecastError instanceof Error
+        ? forecastError.message
+        : String(forecastError),
+    });
+  }
+
   // Only organiser releases already accepted by their provider can unlock
   // partner rows. The claim RPC repeats that check under database truth.
   const { data: releasedRows, error: releasedError } = await admin
@@ -1045,6 +1177,7 @@ export async function handlePayoutReleaseSweep(
     result: data ?? {},
     stripeExecution,
     paystackExecution: paystackExecution ?? {},
+    paystackFloatForecast: paystackFloatForecast ?? {},
     partnerPlan: partnerPlan ?? {},
     partnerRelease: totals,
   });

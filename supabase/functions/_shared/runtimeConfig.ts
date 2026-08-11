@@ -9,6 +9,7 @@ export type RuntimeConfigField =
   | "meta_api_version"
   | "mingla_footer_address"
   | "mingla_logo_url"
+  | "ng_payout_float_horizon_days"
   | "offering_invite_sms_price_book_v1"
   | "termii_base_url";
 
@@ -17,6 +18,7 @@ export type RuntimeStringField = Exclude<
   | "bunny_storage_cap_bytes"
   | "bunny_traffic_cap_bytes"
   | "content_share_v1_create_enabled"
+  | "ng_payout_float_horizon_days"
   | "offering_invite_sms_price_book_v1"
 >;
 export type RuntimeNumberField =
@@ -34,6 +36,12 @@ type RuntimeConfig = {
   meta_api_version: string;
   mingla_footer_address: string;
   mingla_logo_url: string;
+  /**
+   * Issue #1840 — how many days ahead payout-release-sweep forecasts the
+   * Nigerian payout float. Optional: an older deployed bundle without it still
+   * parses, and the caller applies the 7-day default.
+   */
+  ng_payout_float_horizon_days?: number;
   offering_invite_sms_price_book_v1?: unknown[];
   termii_base_url: string;
 };
@@ -65,6 +73,7 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
   "meta_api_version",
   "mingla_footer_address",
   "mingla_logo_url",
+  "ng_payout_float_horizon_days",
   "offering_invite_sms_price_book_v1",
   "termii_base_url",
 ];
@@ -77,9 +86,17 @@ const RUNTIME_CONFIG_LEGACY_NAMES: Record<RuntimeConfigField, string> = {
   meta_api_version: "META_API_VERSION",
   mingla_footer_address: "MINGLA_FOOTER_ADDRESS",
   mingla_logo_url: "MINGLA_LOGO_URL",
+  // #1840 — bundle-only, exactly like the price book: no new Supabase secret is
+  // created for the horizon (user-managed secret capacity is near its ceiling).
+  ng_payout_float_horizon_days: "MINGLA_RUNTIME_CONFIG_JSON",
   offering_invite_sms_price_book_v1: "MINGLA_RUNTIME_CONFIG_JSON",
   termii_base_url: "TERMII_BASE_URL",
 };
+
+/** #1840 — inclusive bounds for the Nigerian float forecast horizon, in days. */
+export const NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS = 1;
+export const NG_PAYOUT_FLOAT_HORIZON_MAX_DAYS = 90;
+export const NG_PAYOUT_FLOAT_HORIZON_DEFAULT_DAYS = 7;
 
 const MAX_BUNDLE_BYTES = 48 * 1024;
 const MAX_DIAGNOSTIC_SCHEMA_VERSION = 1_000_000;
@@ -154,11 +171,37 @@ export function parseRuntimeConfig(raw: string): ParseResult {
   for (
     const field of RUNTIME_CONFIG_FIELDS.filter((candidate) =>
       candidate !== "content_share_v1_create_enabled" &&
+      candidate !== "ng_payout_float_horizon_days" &&
       candidate !== "offering_invite_sms_price_book_v1"
     )
   ) {
     if (!Object.hasOwn(parsed, field)) {
       return { ok: false, reason: "missing_field", field };
+    }
+  }
+  // #1840 — optional, so a bundle deployed before this field still parses and
+  // every existing reader keeps working unchanged. Present ⇒ it must be a whole
+  // number of days inside the supported window; a junk value is rejected rather
+  // than silently coerced into a wrong forecast horizon.
+  if (Object.hasOwn(parsed, "ng_payout_float_horizon_days")) {
+    const horizon = parsed.ng_payout_float_horizon_days;
+    if (typeof horizon !== "number") {
+      return {
+        ok: false,
+        reason: "wrong_type",
+        field: "ng_payout_float_horizon_days",
+      };
+    }
+    if (
+      !Number.isSafeInteger(horizon) ||
+      horizon < NG_PAYOUT_FLOAT_HORIZON_MIN_DAYS ||
+      horizon > NG_PAYOUT_FLOAT_HORIZON_MAX_DAYS
+    ) {
+      return {
+        ok: false,
+        reason: "invalid_value",
+        field: "ng_payout_float_horizon_days",
+      };
     }
   }
   if (
@@ -301,6 +344,23 @@ export function resolveRuntimeConfigValue(
     emit("secret_bundle_legacy_fallback", "missing", field);
   }
   return getEnv(legacyName);
+}
+
+/**
+ * Issue #1840 — read the Nigerian payout float forecast horizon (in days) from
+ * the EXISTING runtime-config bundle. Bundle-only by design: no new Supabase
+ * secret is introduced, and an absent/invalid bundle returns undefined so the
+ * caller falls back to NG_PAYOUT_FLOAT_HORIZON_DEFAULT_DAYS rather than
+ * silently forecasting over a wrong window.
+ */
+export function resolveNgPayoutFloatHorizonDays(
+  getEnv: SecretEnvGetter = defaultGetEnv,
+): number | undefined {
+  const raw = getEnv(RUNTIME_CONFIG_BUNDLE);
+  if (!raw) return undefined;
+  const result = parseRuntimeConfig(raw);
+  if (!result.ok) return undefined;
+  return result.value.ng_payout_float_horizon_days;
 }
 
 /** Read the optional price book from the existing runtime-config bundle. */
