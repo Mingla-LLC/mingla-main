@@ -186,12 +186,18 @@ test("T-5 the keyboard gate goes RED when a literal 42 returns to any migrated s
     }
     return files;
   };
+  const MEASURED = [
+    ["src/screens/ari/AriChatScreen.tsx", /onLayout\s*=\s*\{\s*onComposerLayout\s*\}/, "onLayout"],
+    ["src/screens/ari/AriChatScreen.tsx", /setComposerHeight\s*\(/, "setComposerHeight"],
+    ["src/screens/ari/AriChatScreen.tsx", /\bcomposerHeight\b[\s\S]{0,80}?\+/, "composerHeight in the lift"],
+  ];
   const base = () => ({
     files: load(),
     mountHosts: MOUNT,
     keyed: KEYED,
     nestedHosts: NESTED,
     derivedHosts: DERIVED,
+    measured: MEASURED,
   });
 
   assert.equal(keyboard.run(base()).code, 0, "the tree as committed must be green");
@@ -232,6 +238,11 @@ test("T-6 the keyboard gate goes RED when the ORCH-1170 toolbar is un-nested", (
       /keyboardHeight\s*>\s*0\s*\?\s*keyboardHeight\s*\+\s*42/,
     ],
   ];
+  const MEASURED = [
+    ["src/screens/ari/AriChatScreen.tsx", /onLayout\s*=\s*\{\s*onComposerLayout\s*\}/, "onLayout"],
+    ["src/screens/ari/AriChatScreen.tsx", /setComposerHeight\s*\(/, "setComposerHeight"],
+    ["src/screens/ari/AriChatScreen.tsx", /\bcomposerHeight\b[\s\S]{0,80}?\+/, "composerHeight in the lift"],
+  ];
   for (const rel of NESTED) {
     const files = new Map();
     for (const r of new Set([...MOUNT, ...KEYED.map(([x]) => x), ...NESTED, ...DERIVED])) {
@@ -245,7 +256,14 @@ test("T-6 the keyboard gate goes RED when the ORCH-1170 toolbar is un-nested", (
     );
     assert.notEqual(unnested, src, `fixture did not un-nest ${rel}`);
     files.set(rel, unnested);
-    const r = keyboard.run({ files, mountHosts: MOUNT, keyed: KEYED, nestedHosts: NESTED, derivedHosts: DERIVED });
+    const r = keyboard.run({
+      files,
+      mountHosts: MOUNT,
+      keyed: KEYED,
+      nestedHosts: NESTED,
+      derivedHosts: DERIVED,
+      measured: MEASURED,
+    });
     assert.equal(r.code, 1, `${rel}: a sibling toolbar must fail rule (C)`);
     assert.match(r.failures.join("\n"), /separate native window/);
   }

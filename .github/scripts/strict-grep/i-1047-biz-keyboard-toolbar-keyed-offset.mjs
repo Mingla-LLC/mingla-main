@@ -124,13 +124,30 @@ const LITERAL_CLEARANCE_TERM = /keyboard[A-Za-z]*\s*(?:>\s*0[\s\S]{0,200}?)?\+\s
 const IMPORTS_DERIVED = /import\s*\{[^}]*\bDONE_BAR_OCCUPIED\b[^}]*\}\s*from\s*["'][^"']*wrappers\/SmartScrollView["']/;
 
 /**
+ * (E) MEASURED COMPOSER HEIGHT — the Ari composer's lift must keep reading the
+ * pill's REAL rendered height. ORCH-1165 REWORK loop 2 shipped this because the
+ * pill is taller than the Done bar (~57dp on one line, more multi-line or at a
+ * large font scale), so lifting by clearance alone left the text-input row behind
+ * the bar with the typed text invisible until dismiss. `onLayout` +
+ * `setComposerHeight` is what makes it self-adjust; replacing them with any
+ * constant — however carefully chosen — reintroduces the exact defect. Named
+ * separately from (D) because (D) only stops a guessed CLEARANCE, and this stops
+ * a guessed PILL HEIGHT.
+ */
+const MEASURED_COMPOSER = [
+  ["src/screens/ari/AriChatScreen.tsx", /onLayout\s*=\s*\{\s*onComposerLayout\s*\}/, "onLayout={onComposerLayout} on the composer wrapper"],
+  ["src/screens/ari/AriChatScreen.tsx", /setComposerHeight\s*\(/, "a setComposerHeight(…) call fed by the measured layout"],
+  ["src/screens/ari/AriChatScreen.tsx", /\bcomposerHeight\b[\s\S]{0,80}?\+/, "composerHeight added into the keyboard-open lift"],
+];
+
+/**
  * The whole check, over an injected file map so `--self-test` can drive it with
  * fixtures instead of the tree. `files` maps a mingla-business-relative path to
  * its source, or to `null` for "not readable".
  *
  * Returns { code, failures }: 0 clean, 1 rule violation, 2 vacuous/unreadable.
  */
-export function run({ files, mountHosts, keyed, nestedHosts, derivedHosts }) {
+export function run({ files, mountHosts, keyed, nestedHosts, derivedHosts, measured }) {
   const get = (rel) => (files.has(rel) ? files.get(rel) : null);
 
   // ---- VACUITY: a rule that resolves no targets checks nothing. ----
@@ -139,6 +156,7 @@ export function run({ files, mountHosts, keyed, nestedHosts, derivedHosts }) {
   if (keyed.length === 0) empty.push("(B) keyed offset");
   if (nestedHosts.length === 0) empty.push("(C) provider nesting");
   if (derivedHosts.length === 0) empty.push("(D) derived clearance");
+  if (measured.length === 0) empty.push("(E) measured composer");
   if (empty.length > 0) {
     return {
       code: 2,
@@ -151,7 +169,7 @@ export function run({ files, mountHosts, keyed, nestedHosts, derivedHosts }) {
   }
 
   // ---- VACUITY: an unreadable target is a hard stop, never a skip (#1559). ----
-  const all = [...new Set([...mountHosts, ...keyed.map(([r]) => r), ...nestedHosts, ...derivedHosts])];
+  const all = [...new Set([...mountHosts, ...keyed.map(([r]) => r), ...nestedHosts, ...derivedHosts, ...measured.map(([r]) => r)])];
   const missing = all.filter((rel) => typeof get(rel) !== "string");
   if (missing.length > 0) {
     return {
@@ -225,6 +243,18 @@ export function run({ files, mountHosts, keyed, nestedHosts, derivedHosts }) {
     }
   }
 
+  // ---- (E) the Ari composer keeps MEASURING its pill -----------------------
+  for (const [rel, re, what] of measured) {
+    if (!re.test(stripComments(get(rel)))) {
+      failures.push(
+        `${rel} no longer carries ${what}. ORCH-1165 REWORK loop 2: the composer pill is taller ` +
+          "than the Done bar, so the keyboard-open lift must include the pill's MEASURED height. " +
+          "Swapping the measurement for a constant puts the text-input row back behind the bar at " +
+          "multi-line or large font scale — invisible typing until dismiss.",
+      );
+    }
+  }
+
   return { code: failures.length > 0 ? 1 : 0, failures };
 }
 
@@ -257,7 +287,7 @@ if (IS_MAIN && SELF_TEST) {
     ],
     [
       "src/screens/ari/AriChatScreen.tsx",
-      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + h : 0;`,
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + composerHeight + 12 : 0;\nsetComposerHeight(h);\n<View onLayout={onComposerLayout}/>`,
     ],
   ]);
   const base = () => ({
@@ -266,6 +296,7 @@ if (IS_MAIN && SELF_TEST) {
     keyed: KEYED.map(([r, re]) => [r, re]),
     nestedHosts: [...NESTED_PROVIDER_HOSTS],
     derivedHosts: [...DERIVED_CLEARANCE],
+    measured: MEASURED_COMPOSER.map((x) => [...x]),
   });
 
   const problems = [];
@@ -322,7 +353,7 @@ if (IS_MAIN && SELF_TEST) {
     const m = base();
     m.files.set(
       "src/screens/ari/AriChatScreen.tsx",
-      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + 42 + h : 0;`,
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + 42 + composerHeight + 12 : 0;\nsetComposerHeight(h);\n<View onLayout={onComposerLayout}/>`,
     );
     check("(D) hand-typed +42 clearance term", m, 1, "hand-typed");
   }
@@ -351,6 +382,23 @@ if (IS_MAIN && SELF_TEST) {
     check("(B) offset becomes unconditional", m, 1, "keyboard-open");
   }
 
+  // 9b — (E) the measured pill height is replaced by a constant.
+  {
+    const m = base();
+    m.files.set(
+      "src/screens/ari/AriChatScreen.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + 110 + 12 : 0;`,
+    );
+    check("(E) measurement replaced by a constant", m, 1, "MEASURED height");
+  }
+
+  // 9c — an empty (E) list is VACUOUS too.
+  {
+    const m = base();
+    m.measured = [];
+    check("empty (E) target list is VACUOUS", m, 2, "VACUOUS");
+  }
+
   // 10 — an EMPTY target list is exit 2, never a pass.
   {
     const m = base();
@@ -371,7 +419,7 @@ if (IS_MAIN && SELF_TEST) {
     console.error("");
     process.exit(1);
   }
-  console.log("OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET --self-test]: 11 fixtures behaved as specified.");
+  console.log("OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET --self-test]: 13 fixtures behaved as specified.");
   process.exit(0);
 }
 
@@ -383,6 +431,7 @@ function main() {
     ...KEYED.map(([r]) => r),
     ...NESTED_PROVIDER_HOSTS,
     ...DERIVED_CLEARANCE,
+    ...MEASURED_COMPOSER.map(([r]) => r),
   ])) {
     try {
       files.set(rel, fs.readFileSync(path.join(BIZ, rel), "utf8"));
@@ -397,6 +446,7 @@ function main() {
     keyed: KEYED,
     nestedHosts: NESTED_PROVIDER_HOSTS,
     derivedHosts: DERIVED_CLEARANCE,
+    measured: MEASURED_COMPOSER,
   });
 
   if (result.code !== 0) {
@@ -408,7 +458,8 @@ function main() {
   console.log(
     `OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET]: ${MOUNT_HOSTS.length} mount hosts render the toolbar; ` +
       `${KEYED.length} offsets stay keyboard-keyed; ${NESTED_PROVIDER_HOSTS.length} Modal windows nest it in their ` +
-      `own provider; ${DERIVED_CLEARANCE.length} surfaces derive clearance from DONE_BAR_OCCUPIED.`,
+      `own provider; ${DERIVED_CLEARANCE.length} surfaces derive clearance from DONE_BAR_OCCUPIED; the Ari ` +
+      "composer still measures its pill.",
   );
 }
 
