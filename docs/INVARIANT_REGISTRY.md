@@ -25,37 +25,43 @@
 - **Regression:** The #1817 SQL transaction matrix, Deno adapter matrix, and batch-A strict guard pin callback-before/result, callback-after/result, replay, conflict, partial-failure, no-receipt, ACL/RLS, and fail-on-revert behavior.
 - **Established:** ACTIVE at #1817 CLOSE after independent QA PASS, all-green PR #1825 merge `3feb629e6`, production migration `20270314001817`, exact-source Edge Function v11 deployment, and a controlled OneSignal live-fire proving 2 accepted/Sent, 0 Delivered, 1 honest no-subscription failure, 0 callback rows, and no second provider send on replay.
 
-## DRAFT — issue #1770 (Brand People and offering guest foundation)
+## ACTIVE — issue #1770 (Brand People and offering guest foundation)
 
-### I-PROPOSED-BRAND-PERSON-1 (DRAFT)
+### I-PROPOSED-BRAND-PERSON-1 (ACTIVE)
 - **Rule:** One brand-scoped person may accumulate many source records and contact methods without silently joining ambiguous identities; deterministic evidence links, ambiguous evidence creates a conflict, and every merge remains attributable and reversible when its partition is still provable.
 - **Enforcement:** #1770 tables, exact source resolver RPCs, merge/reversal RPCs, RLS, grants, and the batch-A #1770 guard.
 - **Regression:** The #1770 SQL happy-path contract and Edge worker tests fail when source uniqueness, conflict behavior, or merge evidence is removed.
+- **Established:** ACTIVE at #1770 CLOSE after independent QA PASS, all-green PR #1805 merge `5b408e8ff`, production migration `20270305001770`, exact-source worker deployments, and live catalog/auth verification.
 
-### I-PROPOSED-OFFERING-INVITE-1 (DRAFT)
+### I-PROPOSED-OFFERING-INVITE-1 (ACTIVE)
 - **Rule:** Offering invitations use opaque one-time material whose raw value is never stored; the database stores only a peppered HMAC, validation is event-bound and evidence-bound, and preview performs zero provider I/O.
 - **Enforcement:** `OFFERING_INVITE_TOKEN_PEPPER`, the shared token helper, invite/token tables, validator RPC, send-group RPCs, and `offering-invite-dispatch`.
 - **Regression:** #1770 token and dispatch tests plus the batch-A guard pin value-blind crypto readiness, HMAC parity, preview ordering, and provider reuse.
+- **Established:** ACTIVE at #1770 CLOSE after production pepper readiness, authenticated provider-dark preview, and one controlled provider-accepted invitation with replay creating no second attempt or provider send.
 
-### I-PROPOSED-OFFERING-PUSH-RETRY-1 (DRAFT)
+### I-PROPOSED-OFFERING-PUSH-RETRY-1 (ACTIVE)
 - **Rule:** An offering push send group owns one immutable, token-free v1 push payload. Initial delivery, exact replay, and every homogeneous retry dispatch only the independently rehashed object returned by the database claim; caller content, current templates, inbox rows, and hashes without source bytes can never reconstruct or replace it.
 - **Enforcement:** `marketing_send_groups.push_payload_v1/push_payload_hash`, the immutable trigger, locked retry copy/revalidation, `biz_claim_offering_push_provider_io`, and the `offering_invitation`-only persisted seam in `notifyV2`.
 - **Regression:** The #1770 SQL, quote, dispatch, notification, and strict-guard tests pin exact storage, hash parity, service-role immutability, DB-backed dispatch, and the absence of push ownership from `marketing-send`.
+- **Established:** ACTIVE at #1770 CLOSE after #1817 proved OneSignal provider acceptance completes free-plan push sends without Event Streams or Confirmed Receipt, while preserving the database-owned retry boundary.
 
-### I-PROPOSED-PERSON-SUPPRESSION-1 (DRAFT)
+### I-PROPOSED-PERSON-SUPPRESSION-1 (ACTIVE)
 - **Rule:** A person suppressed for marketing or all messaging remains suppressed across every linked source and contact method; a new order, RSVP, ticket, merge, or re-ingest can never silently reactivate marketing eligibility.
 - **Enforcement:** Brand-person suppression rows, legacy-ledger projection triggers, source-derived resolution, and offering audience selection.
 - **Regression:** The #1770 SQL contract and strict guard require suppression projection and exclusion before attempts are queued.
+- **Established:** ACTIVE at #1770 CLOSE after PostgreSQL state, merge, re-ingest, and offering-audience exclusion proofs passed independently.
 
-### I-PROPOSED-SOURCE-FAILOPEN-1 (DRAFT)
+### I-PROPOSED-SOURCE-FAILOPEN-1 (ACTIVE)
 - **Rule:** Existing RSVP, order, and ticket writes remain authoritative if Brand People ingestion is unavailable; source writes enqueue work, the worker retries with bounded backoff, and only aggregate safe codes leave the boundary.
 - **Enforcement:** Four after-write outbox triggers, claim/finish RPCs, and `brand-person-ingest-worker` with service-only authorization.
 - **Regression:** The #1770 worker test and strict guard pin enqueue-only source triggers, a 100-row claim limit, bounded retry/dead-letter behavior, and PII-free responses.
+- **Established:** ACTIVE at #1770 CLOSE after PostgreSQL proofs covered inserts, material RSVP/approval revisions, exact no-ops, replay, and injected ingest failure without blocking the authoritative source write.
 
-### I-PROPOSED-BRAND-EXPORT-1 (DRAFT)
+### I-PROPOSED-BRAND-EXPORT-1 (ACTIVE)
 - **Rule:** Brand People exports are brand-authorized, scope-bound, audited, formula-neutralized RFC-4180 files in private storage, exposed only through short-lived signed URLs; an unsupported authoritative provider fails closed.
 - **Enforcement:** Export job/audit tables, export RPCs, private bucket, and `brand-people-export`.
 - **Regression:** The #1770 export test and strict guard pin authorization, provider-not-ready failure, private storage, 60-second signed URLs, and CSV injection defense.
+- **Established:** ACTIVE at #1770 CLOSE after hostile-filter, search, sort, authorization, private-storage, signed-URL, and CSV-neutralization proofs passed; #1810 and #1812 supplied the guest-roster filter/search compatibility seam.
 
 ---
 
