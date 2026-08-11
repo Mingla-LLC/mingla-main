@@ -47,6 +47,17 @@
 --       flip_failed falsely claims a schedule flip was attempted. Adds
 --       'stamp_failed'. Every previously-allowed value is kept.
 --
+--   (3) The table was never actually append-only. #1173:63 grants exactly
+--       `SELECT, INSERT ... TO service_role` and documents append-only intent,
+--       but the baseline squash carries Supabase's platform default privileges
+--       (20260505000000:18606-18609 — ALTER DEFAULT PRIVILEGES FOR ROLE postgres
+--       IN SCHEMA public GRANT ALL ON TABLES TO postgres, anon, authenticated,
+--       service_role), so this table was granted ALL at CREATE and the narrow
+--       grant narrowed nothing. RLS was the only protection it ever had — and
+--       service_role bypasses RLS. A money audit ledger whose writing role can
+--       UPDATE, DELETE or TRUNCATE it is not an audit ledger. Restored with a
+--       targeted REVOKE, below.
+--
 -- Moves NO money. Touches NO charge path, NO release amounts, NO feature flag,
 -- and NO publish/sell gating. Changes NO function signature (so CREATE OR
 -- REPLACE is safe and existing grants survive; they are re-stated below for
@@ -214,8 +225,51 @@ REVOKE ALL ON FUNCTION public.rollback_payout_hold_cutover(uuid,text,uuid,text,u
 GRANT EXECUTE ON FUNCTION public.rollback_payout_hold_cutover(uuid,text,uuid,text,uuid,text) TO service_role;
 
 --------------------------------------------------------------------------------
+-- (4) APPEND-ONLY, ACTUALLY — targeted REVOKE on this ONE table.
+--
+-- Deliberately NOT a schema-wide privilege sweep. Every table in public inherits
+-- the same platform default privileges; that is a separate, systemic question.
+-- This fixes the one table whose append-only claim #1807 actively relies on.
+--
+-- Verified before writing this: nothing in supabase/functions, supabase/
+-- migrations or the admin app UPDATEs, DELETEs or TRUNCATEs this table — the
+-- only writes are INSERTs (the two SECURITY DEFINER RPCs above, and the edge
+-- function's direct skip/fail insert), plus reads. This removes capability
+-- nobody uses.
+--
+-- What each grantee keeps, and why:
+--   service_role  SELECT + INSERT — admin-payout-hold-migrate's recordLedger
+--                 inserts directly and reads back.
+--   authenticated SELECT ONLY, and SELECT is LOAD-BEARING: the #1173 policy
+--                 payout_hold_cutover_migrations_admin_read is
+--                 `FOR SELECT TO authenticated`, and an RLS policy still
+--                 requires the underlying table GRANT. Revoking SELECT here
+--                 would silently break Admin's ability to read the ledger while
+--                 every catalog check still looked correct.
+--   anon          nothing. No policy grants anon anything.
+--   postgres      untouched — it owns the SECURITY DEFINER RPCs that write the
+--                 successful-flip, skip and rollback rows.
+--------------------------------------------------------------------------------
+REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON public.payout_hold_cutover_migrations FROM service_role;
+
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON public.payout_hold_cutover_migrations FROM authenticated;
+
+REVOKE ALL
+  ON public.payout_hold_cutover_migrations FROM anon;
+
+-- Re-assert the surviving intent positively, so the end state is readable in one
+-- place and survives a future REVOKE ALL that forgets to put these back.
+GRANT SELECT, INSERT ON public.payout_hold_cutover_migrations TO service_role;
+GRANT SELECT ON public.payout_hold_cutover_migrations TO authenticated;
+
+--------------------------------------------------------------------------------
 -- Self-assert: apply FAILS if the widened CHECK did not actually replace the
--- old one, or if either function went missing.
+-- old one, if either function went missing, or if the grant matrix is not
+-- exactly what (4) documents — in BOTH directions. Asserting only that the
+-- dangerous privileges are gone would pass a migration that revoked everything
+-- and broke Admin's read.
 --
 -- The count check is deliberate. The #1173 CHECK was created inline and
 -- UNNAMED, so it carries PostgreSQL's auto-generated name. If that name ever
@@ -266,6 +320,53 @@ BEGIN
      WHERE n.nspname = 'public' AND p.proname = 'rollback_payout_hold_cutover'
   ) THEN
     RAISE EXCEPTION '#1807: rollback_payout_hold_cutover function missing';
+  END IF;
+
+  -- (4) service_role: SELECT + INSERT, and nothing that can rewrite history.
+  FOREACH v_value IN ARRAY ARRAY['UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] LOOP
+    IF has_table_privilege(
+         'service_role', 'public.payout_hold_cutover_migrations', v_value) THEN
+      RAISE EXCEPTION
+        '#1807: APPEND-ONLY BROKEN — service_role still holds % on the cutover ledger',
+        v_value;
+    END IF;
+  END LOOP;
+  IF NOT has_table_privilege(
+       'service_role', 'public.payout_hold_cutover_migrations', 'SELECT') THEN
+    RAISE EXCEPTION '#1807: service_role lost SELECT on the cutover ledger';
+  END IF;
+  IF NOT has_table_privilege(
+       'service_role', 'public.payout_hold_cutover_migrations', 'INSERT') THEN
+    RAISE EXCEPTION
+      '#1807: service_role lost INSERT on the cutover ledger — the skip/fail rows would vanish';
+  END IF;
+
+  -- (4) authenticated: SELECT only. SELECT is load-bearing for the admin read.
+  FOREACH v_value IN ARRAY ARRAY['INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] LOOP
+    IF has_table_privilege(
+         'authenticated', 'public.payout_hold_cutover_migrations', v_value) THEN
+      RAISE EXCEPTION
+        '#1807: a client role still holds % on the cutover ledger', v_value;
+    END IF;
+  END LOOP;
+  IF NOT has_table_privilege(
+       'authenticated', 'public.payout_hold_cutover_migrations', 'SELECT') THEN
+    RAISE EXCEPTION
+      '#1807: authenticated lost SELECT — payout_hold_cutover_migrations_admin_read is FOR SELECT TO authenticated and an RLS policy still requires the table GRANT, so Admin could no longer read the ledger';
+  END IF;
+
+  -- (4) anon: nothing at all.
+  FOREACH v_value IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] LOOP
+    IF has_table_privilege(
+         'anon', 'public.payout_hold_cutover_migrations', v_value) THEN
+      RAISE EXCEPTION '#1807: anon still holds % on the cutover ledger', v_value;
+    END IF;
+  END LOOP;
+
+  -- (4) RLS must still be on — the grants are a second layer, not a replacement.
+  IF NOT (SELECT relrowsecurity FROM pg_class
+           WHERE oid = 'public.payout_hold_cutover_migrations'::regclass) THEN
+    RAISE EXCEPTION '#1807: RLS was disabled on the cutover ledger';
   END IF;
 END $$;
 

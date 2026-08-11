@@ -11,6 +11,11 @@
 --       zero-impact claim of 20270317001807 made falsifiable;
 --   (c) the widened result CHECK accepts 'stamp_failed' AND still accepts every
 --       previously-allowed value, and still rejects an unknown value;
+--   (e) the append-only GRANT matrix, in BOTH directions — the dangerous
+--       privileges are gone AND the load-bearing ones (service_role SELECT +
+--       INSERT, authenticated SELECT) survive;
+--   (f) a REAL UPDATE as service_role is refused at runtime, not merely absent
+--       from the catalog;
 --   (d) the IDEMPOTENT-SKIP row inside the stamp RPC is rail-aware too — NULL
 --       intervals on the Paystack rail, still exactly 'manual'/'manual' on the
 --       Stripe rail. That branch is reachable on both rails via the concurrent
@@ -273,7 +278,110 @@ BEGIN
     RAISE EXCEPTION '#1807(c): result CHECK accepted an unknown value — the widen was too broad';
   END IF;
 
+  ------------------------------------------------------------------------------
+  -- (e) APPEND-ONLY GRANT MATRIX, asserted in BOTH directions.
+  --
+  -- The table was granted ALL at CREATE by Supabase's platform default
+  -- privileges, so #1173's narrow `GRANT SELECT, INSERT ... TO service_role`
+  -- never narrowed anything and RLS — which service_role bypasses — was the only
+  -- protection. Asserting only that the dangerous privileges are gone would pass
+  -- a migration that revoked everything and silently broke Admin's read, so the
+  -- privileges that must SURVIVE are asserted just as hard.
+  ------------------------------------------------------------------------------
+  FOREACH v_value IN ARRAY ARRAY['UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] LOOP
+    IF has_table_privilege(
+         'service_role', 'public.payout_hold_cutover_migrations', v_value) THEN
+      RAISE EXCEPTION
+        '#1807(e): APPEND-ONLY BROKEN — service_role holds % on the cutover ledger',
+        v_value;
+    END IF;
+  END LOOP;
+
+  -- POSITIVE: service_role must keep SELECT + INSERT or recordLedger stops
+  -- writing the skip/fail rows and the audit trail silently loses them.
+  IF NOT has_table_privilege(
+       'service_role', 'public.payout_hold_cutover_migrations', 'SELECT') THEN
+    RAISE EXCEPTION '#1807(e): service_role lost SELECT on the cutover ledger';
+  END IF;
+  IF NOT has_table_privilege(
+       'service_role', 'public.payout_hold_cutover_migrations', 'INSERT') THEN
+    RAISE EXCEPTION '#1807(e): service_role lost INSERT on the cutover ledger';
+  END IF;
+
+  FOREACH v_value IN ARRAY ARRAY['INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] LOOP
+    IF has_table_privilege(
+         'authenticated', 'public.payout_hold_cutover_migrations', v_value) THEN
+      RAISE EXCEPTION
+        '#1807(e): authenticated holds % on the cutover ledger', v_value;
+    END IF;
+  END LOOP;
+
+  -- POSITIVE, and the easiest thing to get wrong: the #1173 admin-read policy is
+  -- FOR SELECT TO authenticated, and an RLS policy still requires the underlying
+  -- table GRANT. Without this, Admin's ledger view goes blank with no error.
+  IF NOT has_table_privilege(
+       'authenticated', 'public.payout_hold_cutover_migrations', 'SELECT') THEN
+    RAISE EXCEPTION
+      '#1807(e): authenticated lost SELECT — the admin_read RLS policy needs the table GRANT, so Admin could no longer read the ledger';
+  END IF;
+
+  FOREACH v_value IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] LOOP
+    IF has_table_privilege(
+         'anon', 'public.payout_hold_cutover_migrations', v_value) THEN
+      RAISE EXCEPTION '#1807(e): anon holds % on the cutover ledger', v_value;
+    END IF;
+  END LOOP;
+
+  -- The admin-read policy itself must still exist, or the surviving SELECT grant
+  -- is protecting nothing.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+     WHERE schemaname = 'public'
+       AND tablename = 'payout_hold_cutover_migrations'
+       AND policyname = 'payout_hold_cutover_migrations_admin_read'
+  ) THEN
+    RAISE EXCEPTION '#1807(e): the admin-read policy is gone';
+  END IF;
+
   RAISE NOTICE '#1807 paystack ledger truth: all assertions passed';
 END $test$;
+
+--------------------------------------------------------------------------------
+-- (f) The catalog is not the behaviour. Attempt a REAL UPDATE as service_role
+-- and require it to be REFUSED with insufficient_privilege (42501).
+--
+-- This is the assertion a catalog-only check cannot make. Note RLS would NOT
+-- have caught this: with no UPDATE policy an unprivileged UPDATE silently
+-- affects zero rows rather than erroring, and service_role bypasses RLS in
+-- production anyway. `WHERE false` is deliberate — the privilege check happens
+-- before any row is considered, so nothing can be mutated even if it passed.
+--------------------------------------------------------------------------------
+DO $priv$
+DECLARE
+  v_refused boolean := false;
+BEGIN
+  -- Vacuity guard: if we cannot actually become service_role, a "permission
+  -- denied to set role" would ALSO raise insufficient_privilege and this test
+  -- would pass without ever attempting the UPDATE. Fail loudly instead.
+  IF NOT pg_has_role(current_user, 'service_role', 'USAGE') THEN
+    RAISE EXCEPTION
+      '#1807(f): cannot assume service_role from % — the runtime refusal check would be vacuous',
+      current_user;
+  END IF;
+
+  SET LOCAL ROLE service_role;
+  BEGIN
+    EXECUTE 'UPDATE public.payout_hold_cutover_migrations SET reason = ''tamper'' WHERE false';
+  EXCEPTION WHEN insufficient_privilege THEN
+    v_refused := true;
+  END;
+  RESET ROLE;
+
+  IF NOT v_refused THEN
+    RAISE EXCEPTION
+      '#1807(f): service_role was ALLOWED to UPDATE the append-only cutover ledger';
+  END IF;
+  RAISE NOTICE '#1807 append-only enforcement: service_role UPDATE refused at runtime';
+END $priv$;
 
 ROLLBACK;
