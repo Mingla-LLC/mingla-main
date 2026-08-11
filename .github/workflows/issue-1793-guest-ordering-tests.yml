@@ -10,10 +10,14 @@ name: "Issue #1793 guest ordering (the launch)"
 #      timezones, because the service-window rule is resolved in the VENUE's
 #      zone and a bug that only appears in one zone is the historical failure
 #      mode on this page (#1503's lesson).
-#   2. BUYER WEB (jest, mingla-business) — the rail and its landing page stay
-#      anon, the sitting is written before the guest is sent away to pay, the
-#      redirect is a same-tab assignment rather than a popup after an await, and
-#      the return leg lands on a route that exists.
+#   2. BUYER WEB (jest, mingla-business) — EXECUTED against a fake Supabase
+#      client: nothing with a price in it leaves the surface, a guest reads the
+#      sentence rather than the machine code, both provider rails come back as
+#      one redirect, and the honest ordering state survives the wire and fails
+#      honest. The STRUCTURAL half — anon, the sitting before the redirect, the
+#      same-tab assignment, the single ordering chunk, no client money math — is
+#      a strict-grep gate, because asserting a code SHAPE from jest is the pure
+#      source-text pin I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN forbids.
 #   3. THE CONSUMER APP (node --test) — no auth on the guest rail, the payment
 #      step outside the shared renderers, the Pay button dead until the server
 #      has priced the basket, and the scanned spot kept apart from the entry
@@ -44,6 +48,7 @@ on:
       - "supabase/functions/venue-order-create/**"
       - "supabase/functions/venue-order-status/**"
       - "supabase/functions/_shared/venueOrderPricing.ts"
+      - ".github/scripts/strict-grep/issue-1793-guest-ordering-structure.mjs"
       - ".github/workflows/issue-1793-guest-ordering-tests.yml"
   pull_request:
     paths:
@@ -65,6 +70,7 @@ on:
       - "supabase/functions/venue-order-create/**"
       - "supabase/functions/venue-order-status/**"
       - "supabase/functions/_shared/venueOrderPricing.ts"
+      - ".github/scripts/strict-grep/issue-1793-guest-ordering-structure.mjs"
       - ".github/workflows/issue-1793-guest-ordering-tests.yml"
 
 permissions:
@@ -133,6 +139,23 @@ jobs:
           src/components/venue/__tests__/venueOrderPad.issue1792.test.ts
           src/components/venue/__tests__/qrSpots.issue1789.test.ts
           --runInBand
+
+  guest-ordering-structure:
+    name: "Structure: the gate's own self-test (GOOD + BAD per rule)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # The gate itself runs in strict-grep batch A off its MANIFEST row; this
+      # job proves the gate can still FAIL, which is the half a green batch
+      # cannot tell you.
+      - name: The structure gate can still catch every shape it names
+        run: >
+          node .github/scripts/strict-grep/issue-1793-guest-ordering-structure.mjs
+          --self-test
 
   guest-ordering-consumer:
     name: "Consumer: no auth, host-owned payment, no price without the server"

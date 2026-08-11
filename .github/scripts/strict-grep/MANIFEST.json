@@ -7798,6 +7798,18 @@
       "jobKeys": [
         "issue-1890-lift-singularity-tester-adversarial"
       ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1793-guest-ordering-structure.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
     }
   ]
 }
