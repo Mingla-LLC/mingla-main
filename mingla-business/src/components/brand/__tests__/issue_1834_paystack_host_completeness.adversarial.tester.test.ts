@@ -536,9 +536,38 @@ const CELLS: readonly Cell[] = [
     expected: "FAIL",
     clearsKeyboard: true,
   },
+  // ---- RETEST cells: measured on glass after SPEC AMENDMENT 1, in SCREEN
+  // space, each after a cold launch. These are the rows that make the fix
+  // falsifiable: shrink the budget and every one of them flips to FAIL.
+  // iPhone SE3 375x667 / iOS 26.5, Done pill top pixel-measured at 379.0.
+  {
+    id: "ios-se3-R2-create-postfix",
+    branch: "ios-26.5",
+    fieldBottom: 367.0,
+    keyboardTop: 432,
+    expected: "PASS",
+    clearsKeyboard: true,
+  },
+  {
+    id: "ios-se3-R2-update-postfix",
+    branch: "ios-26.5",
+    fieldBottom: 367.0,
+    keyboardTop: 432,
+    expected: "PASS",
+    clearsKeyboard: true,
+  },
+  // Physical Samsung SM-A725F, Done bar top pixel-measured at 452.98 dp.
+  {
+    id: "android-R2-create-postfix",
+    branch: "android-34",
+    fieldBottom: 440.89,
+    keyboardTop: 494.93,
+    expected: "PASS",
+    clearsKeyboard: true,
+  },
 ];
 
-const EXPECTED_CELL_COUNT = 5;
+const EXPECTED_CELL_COUNT = 8;
 
 describe("#1834 TA-2 — the clearance budget is DERIVED per platform, and the criterion is the Done bar", () => {
   // One real load + one real execution PER BRANCH. This is the repair: the
