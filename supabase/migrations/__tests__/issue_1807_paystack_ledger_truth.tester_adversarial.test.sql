@@ -34,167 +34,44 @@
 -- fails with a DOUBLE STAMP.
 
 \set ON_ERROR_STOP on
-CREATE EXTENSION IF NOT EXISTS dblink;
 
 --------------------------------------------------------------------------------
--- Fixtures. Namespace 18079999- so nothing collides with the sibling suite.
---------------------------------------------------------------------------------
-BEGIN;
-SET LOCAL session_replication_role = replica;
-
-DELETE FROM public.payout_hold_cutover_migrations
- WHERE brand_id IN (
-   '18079999-0000-4000-8000-000000000011',
-   '18079999-0000-4000-8000-000000000012',
-   '18079999-0000-4000-8000-000000000013');
-DELETE FROM public.brands WHERE id IN (
-   '18079999-0000-4000-8000-000000000011',
-   '18079999-0000-4000-8000-000000000012',
-   '18079999-0000-4000-8000-000000000013');
-DELETE FROM public.creator_accounts WHERE id = '18079999-0000-4000-8000-000000000001';
-DELETE FROM auth.users WHERE id = '18079999-0000-4000-8000-000000000001';
-
-INSERT INTO auth.users(id) VALUES ('18079999-0000-4000-8000-000000000001');
-INSERT INTO public.creator_accounts(id) VALUES ('18079999-0000-4000-8000-000000000001');
-
--- NG: Paystack-only. US: Stripe. NEVER: stamped by nobody, used for rollback.
-INSERT INTO public.brands(id, account_id, name, slug, default_currency, payout_hold_cutover_at)
-VALUES
-  ('18079999-0000-4000-8000-000000000011','18079999-0000-4000-8000-000000000001',
-   'issue-1807 adversarial NG','issue-1807-adversarial-ng','NGN',NULL),
-  ('18079999-0000-4000-8000-000000000012','18079999-0000-4000-8000-000000000001',
-   'issue-1807 adversarial US','issue-1807-adversarial-us','USD',NULL),
-  ('18079999-0000-4000-8000-000000000013','18079999-0000-4000-8000-000000000001',
-   'issue-1807 adversarial NEVER','issue-1807-adversarial-never','NGN',NULL);
-
-COMMIT;
-
---------------------------------------------------------------------------------
--- Resolve a working dblink conninfo.
+-- Concurrency is produced by REAL OS PROCESSES, not from inside this file.
 --
--- The #1173 job reaches psql through `docker exec` against supabase/postgres,
--- so inet_server_addr() is NULL (unix socket) and the pg_hba posture, socket
--- directory and port must all be discovered rather than assumed. The first
--- version of this file guessed, and every guess failed in CI because a
--- passwordless connection cannot satisfy that image's authentication. So the
--- workflow now passes the container's random per-run password in as a psql
--- variable and the deterministic path uses it; the resolver below remains for
--- a by-hand run where no variable is set.
+-- The #1173 workflow runs, in order: ..._race_setup.sql (fixtures),
+-- ..._race_a.sql in the BACKGROUND (stamps both race brands, then holds its
+-- transaction open on the FOR UPDATE row lock), ..._race_b.sql two seconds later
+-- in the foreground (contends for the same rows and blocks), and finally this
+-- file, which asserts what the two of them produced.
 --
--- Candidates are the cross-product of {every unix_socket_directories entry,
--- libpq's compiled-in default socket, localhost, 127.0.0.1} x {with password,
--- without}, deduplicated by construction and each with connect_timeout=5.
+-- The earlier version of this file opened the second session with dblink. That
+-- cannot work here: dblink_connect and dblink_connect_u are the SAME C function
+-- differing only in SECURITY DEFINER, and it gates on superuser(). supabase/
+-- postgres de-superusers `postgres`, and `postgres` is what creates the
+-- extension in this job, so it also OWNS dblink_connect_u — SECURITY DEFINER
+-- resolves to a non-superuser and the bypass is inert. Every candidate, with and
+-- without a password, over sockets and TCP alike, is refused with
+-- "Non-superusers may only connect using credentials they provide". Two psql
+-- processes authenticate exactly the way every other step in this job already
+-- does, so the proof depends on nothing that has to be guessed.
 --
--- If NONE connect the test FAILS LOUDLY, listing every candidate and the
--- driver's error for each — a concurrency test that silently skips is an
--- unfalsifiable test, which is the exact bug class this file exists to prevent.
+-- Neither race process is told it is the winner. The assertions below are
+-- written so that whichever commits first, the outcome must be exactly one stamp
+-- and exactly one idempotent skip per brand.
 --------------------------------------------------------------------------------
--- The password is supplied by the workflow as a psql variable. It is a random
--- per-run value for a disposable container, not a secret, but it is still kept
--- out of every message this file can emit. psql does NOT interpolate variables
--- inside dollar-quoted blocks, so it is captured at top level here and read from
--- the temp table below (the same mechanism issue_1447_rsvp_admission.pg17 uses).
-\if :{?issue1807_db_password}
-\else
-\set issue1807_db_password ''
-\endif
-
-CREATE TEMP TABLE issue1807_secret(pw text);
-INSERT INTO issue1807_secret(pw) VALUES (:'issue1807_db_password');
-
-CREATE TEMP TABLE issue1807_conn(conninfo text);
-
-DO $conn$
-DECLARE
-  v_pw text := COALESCE((SELECT pw FROM issue1807_secret), '');
-  v_hosts text[] := ARRAY[]::text[];
-  v_host text;
-  v_sock text;
-  v_socks text[];
-  v_base text;
-  v_conninfo text;
-  v_label text;
-  v_detail text;
-  v_diag text := '';
-  v_ok boolean := false;
+DO $precheck$
 BEGIN
-  -- unix_socket_directories is a COMMA-SEPARATED LIST; every entry is a
-  -- candidate. '' is the sentinel for "omit host entirely", which makes libpq
-  -- use its compiled-in default socket directory — a genuinely distinct case
-  -- from any value the server reports.
-  v_socks := string_to_array(current_setting('unix_socket_directories'), ',');
-  IF v_socks IS NOT NULL THEN
-    FOREACH v_sock IN ARRAY v_socks LOOP
-      IF btrim(v_sock) <> '' THEN
-        v_hosts := v_hosts || btrim(v_sock)::text;
-      END IF;
-    END LOOP;
-  END IF;
-  -- Explicit ::text on every append: `anyarray || ''` binds to the
-  -- array-concat operator and fails as a malformed array literal.
-  v_hosts := v_hosts || ''::text;           -- compiled-in default socket
-  v_hosts := v_hosts || 'localhost'::text;  -- TCP, name
-  v_hosts := v_hosts || '127.0.0.1'::text;  -- TCP, literal address (no DNS)
-
-  FOREACH v_host IN ARRAY v_hosts LOOP
-    v_base := format(
-      'dbname=%s user=%s port=%s connect_timeout=5',
-      current_database(), current_user, current_setting('port'));
-    IF v_host <> '' THEN
-      v_base := v_base || format(' host=%s', v_host);
-    END IF;
-    v_label := CASE WHEN v_host = '' THEN '<libpq default socket>' ELSE v_host END;
-
-    -- Try WITH the password first when one was supplied: supabase/postgres does
-    -- not use a stock pg_hba, and a scram-sha-256 rule on local as well as host
-    -- connections is exactly what a passwordless attempt cannot satisfy.
-    FOR i IN 1..2 LOOP
-      IF i = 1 THEN
-        CONTINUE WHEN v_pw = '';
-        v_conninfo := v_base || format(' password=%L', v_pw);
-      ELSE
-        v_conninfo := v_base;
-      END IF;
-
-      BEGIN
-        PERFORM dblink_connect('issue1807_probe', v_conninfo);
-        BEGIN
-          PERFORM dblink_disconnect('issue1807_probe');
-        EXCEPTION WHEN OTHERS THEN NULL;
-        END;
-        INSERT INTO issue1807_conn(conninfo) VALUES (v_conninfo);
-        v_ok := true;
-        EXIT;
-      EXCEPTION WHEN OTHERS THEN
-        -- Record WHY, so a failure diagnoses itself instead of costing another
-        -- blind CI cycle. dblink_connect's SQLERRM is only "could not establish
-        -- connection"; the actionable libpq reason ("fe_sendauth: no password
-        -- supplied", "password authentication failed", "No such file or
-        -- directory") is in the exception DETAIL, so both are captured.
-        -- Host/label only; the password is scrubbed from both as belt-and-braces.
-        GET STACKED DIAGNOSTICS v_detail = PG_EXCEPTION_DETAIL;
-        v_diag := v_diag || format(
-          E'\n  - host=%s auth=%s -> %s',
-          v_label,
-          CASE WHEN i = 1 THEN 'password' ELSE 'none' END,
-          replace(
-            btrim(SQLERRM || ' | ' || COALESCE(NULLIF(btrim(v_detail), ''), '(no detail)')),
-            CASE WHEN v_pw = '' THEN '\x00never-matches' ELSE v_pw END,
-            '<redacted>'));
-      END;
-    END LOOP;
-    EXIT WHEN v_ok;
-  END LOOP;
-
-  IF NOT v_ok THEN
+  IF NOT EXISTS (SELECT 1 FROM public.brands
+                  WHERE id = '18079999-0000-4000-8000-000000000011') THEN
     RAISE EXCEPTION
-      '#1807(A): no dblink conninfo worked — the concurrency assertions could not run. Refusing to pass vacuously. port=%, unix_socket_directories=%, password supplied=%. Candidates tried:%',
-      current_setting('port'),
-      current_setting('unix_socket_directories'),
-      CASE WHEN v_pw = '' THEN 'no' ELSE 'yes' END,
-      v_diag;
+      '#1807(A): race fixtures are missing — issue_1807_tester_adversarial_race_setup.sql did not run. Refusing to pass vacuously.';
   END IF;
-END $conn$;
+  IF NOT EXISTS (SELECT 1 FROM public.payout_hold_cutover_migrations
+                  WHERE brand_id = '18079999-0000-4000-8000-000000000011') THEN
+    RAISE EXCEPTION
+      '#1807(A): the race produced NO ledger rows — race_a/race_b did not run, so the concurrency assertions would be vacuous. Refusing to pass.';
+  END IF;
+END $precheck$;
 
 --------------------------------------------------------------------------------
 -- A1 — TWO REAL CONCURRENT SESSIONS stamp the SAME Paystack brand.
@@ -205,55 +82,6 @@ END $conn$;
 -- Session A stamps and HOLDS its transaction open; session B fires into the
 -- lock. Exactly one must win; the loser must record a SKIP, never a second flip.
 --------------------------------------------------------------------------------
-DO $a1$
-DECLARE
-  v_conn text := (SELECT conninfo FROM issue1807_conn);
-  v_brand uuid := '18079999-0000-4000-8000-000000000011';
-  v_a text;
-  v_b text;
-BEGIN
-  PERFORM dblink_connect('issue1807_a', v_conn);
-  PERFORM dblink_connect('issue1807_b', v_conn);
-
-  PERFORM dblink_exec('issue1807_a', 'BEGIN');
-  PERFORM dblink_send_query('issue1807_a', format($q$
-    SELECT public.stamp_payout_hold_cutover(
-      %L::uuid, NULL, '18079999-0000-4000-8000-0000000000a1'::uuid,
-      'admin@usemingla.com', '18079999-0000-4000-8000-000000000001'::uuid,
-      'adversarial race A')
-  $q$, v_brand));
-  PERFORM pg_sleep(0.4);
-  SELECT r INTO v_a FROM dblink_get_result('issue1807_a') AS t(r text);
-  PERFORM * FROM dblink_get_result('issue1807_a') AS t(r text);
-
-  IF v_a IS DISTINCT FROM 'flipped' THEN
-    RAISE EXCEPTION '#1807(A1): session A returned % (expected flipped)', COALESCE(v_a,'<null>');
-  END IF;
-
-  -- B fires while A still holds the FOR UPDATE lock and has NOT committed.
-  PERFORM dblink_send_query('issue1807_b', format($q$
-    SELECT public.stamp_payout_hold_cutover(
-      %L::uuid, NULL, '18079999-0000-4000-8000-0000000000a2'::uuid,
-      'admin@usemingla.com', '18079999-0000-4000-8000-000000000001'::uuid,
-      'adversarial race B')
-  $q$, v_brand));
-  PERFORM pg_sleep(0.6);
-
-  PERFORM dblink_exec('issue1807_a', 'COMMIT');
-
-  SELECT r INTO v_b FROM dblink_get_result('issue1807_b') AS t(r text);
-  PERFORM * FROM dblink_get_result('issue1807_b') AS t(r text);
-
-  IF v_b IS DISTINCT FROM 'skipped_already_stamped' THEN
-    RAISE EXCEPTION
-      '#1807(A1): DOUBLE STAMP RISK — the losing concurrent session returned % (expected skipped_already_stamped)',
-      COALESCE(v_b,'<null>');
-  END IF;
-
-  PERFORM dblink_disconnect('issue1807_a');
-  PERFORM dblink_disconnect('issue1807_b');
-END $a1$;
-
 DO $a1b$
 DECLARE
   v_brand uuid := '18079999-0000-4000-8000-000000000011';
@@ -319,48 +147,6 @@ END $a1b$;
 -- daily -> manual. This is the zero-Stripe-impact claim tested where it is
 -- hardest, not on the quiet single-session path.
 --------------------------------------------------------------------------------
-DO $a2$
-DECLARE
-  v_conn text := (SELECT conninfo FROM issue1807_conn);
-  v_brand uuid := '18079999-0000-4000-8000-000000000012';
-  v_a text;
-  v_b text;
-BEGIN
-  PERFORM dblink_connect('issue1807_c', v_conn);
-  PERFORM dblink_connect('issue1807_d', v_conn);
-
-  PERFORM dblink_exec('issue1807_c', 'BEGIN');
-  PERFORM dblink_send_query('issue1807_c', format($q$
-    SELECT public.stamp_payout_hold_cutover(
-      %L::uuid, 'acct_adv_1807', '18079999-0000-4000-8000-0000000000c1'::uuid,
-      'admin@usemingla.com', '18079999-0000-4000-8000-000000000001'::uuid,
-      'adversarial stripe race C')
-  $q$, v_brand));
-  PERFORM pg_sleep(0.4);
-  SELECT r INTO v_a FROM dblink_get_result('issue1807_c') AS t(r text);
-  PERFORM * FROM dblink_get_result('issue1807_c') AS t(r text);
-
-  PERFORM dblink_send_query('issue1807_d', format($q$
-    SELECT public.stamp_payout_hold_cutover(
-      %L::uuid, 'acct_adv_1807', '18079999-0000-4000-8000-0000000000c2'::uuid,
-      'admin@usemingla.com', '18079999-0000-4000-8000-000000000001'::uuid,
-      'adversarial stripe race D')
-  $q$, v_brand));
-  PERFORM pg_sleep(0.6);
-  PERFORM dblink_exec('issue1807_c', 'COMMIT');
-  SELECT r INTO v_b FROM dblink_get_result('issue1807_d') AS t(r text);
-  PERFORM * FROM dblink_get_result('issue1807_d') AS t(r text);
-
-  IF v_a IS DISTINCT FROM 'flipped' OR v_b IS DISTINCT FROM 'skipped_already_stamped' THEN
-    RAISE EXCEPTION
-      '#1807(A2): STRIPE REGRESSION under contention — winner=%, loser=% (expected flipped / skipped_already_stamped)',
-      COALESCE(v_a,'<null>'), COALESCE(v_b,'<null>');
-  END IF;
-
-  PERFORM dblink_disconnect('issue1807_c');
-  PERFORM dblink_disconnect('issue1807_d');
-END $a2$;
-
 DO $a2b$
 DECLARE
   v_brand uuid := '18079999-0000-4000-8000-000000000012';
@@ -385,6 +171,19 @@ BEGIN
   END IF;
   IF v_acct IS DISTINCT FROM 'acct_adv_1807' THEN
     RAISE EXCEPTION '#1807(A2): STRIPE REGRESSION — account id not recorded (%)', COALESCE(v_acct,'<null>');
+  END IF;
+
+  -- The Stripe control for the branch #1807 condition 3a made rail-aware. The
+  -- Paystack loser's row must be NULL/NULL (asserted in A1); the STRIPE loser's
+  -- row must still read manual/manual, exactly as #1173 wrote it. Without this,
+  -- a CASE that collapsed to NULL for every rail would pass A1 and go unnoticed.
+  SELECT prior_interval, new_interval INTO v_prior, v_new
+    FROM public.payout_hold_cutover_migrations
+   WHERE brand_id = v_brand AND result = 'skipped_already_stamped';
+  IF v_prior IS DISTINCT FROM 'manual' OR v_new IS DISTINCT FROM 'manual' THEN
+    RAISE EXCEPTION
+      '#1807(A2): STRIPE REGRESSION — the idempotent-skip row reads (prior=%, new=%), expected manual/manual',
+      COALESCE(v_prior,'<null>'), COALESCE(v_new,'<null>');
   END IF;
 END $a2b$;
 
