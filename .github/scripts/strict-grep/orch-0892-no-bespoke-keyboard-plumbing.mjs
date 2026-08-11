@@ -48,6 +48,43 @@
  *       `automaticallyAdjustKeyboardInsets` (the regex required `=`), and
  *       `import * as RN from "react-native"` + `<RN.KeyboardAvoidingView>`.
  *
+ * ---------------------------------------------------------------------------
+ * #1841 TEST census (E1/E2/E3) — three evasions the FIRST pass left open, and
+ * the one property they share: each was created by fixing HALF of a symmetry.
+ *
+ *   E1  FAIL-QUIET. `Keyboard`⏎`.addListener(` matched pattern 1's guard —
+ *       `\s*` spans newlines — and then emitted NOTHING, because the
+ *       per-occurrence enumerator tested LINE BY LINE and found none. A gate
+ *       that matches and then reports nothing is strictly worse than one that
+ *       never matched: it CONSUMES the violation and stays silent. Cause: B1-5
+ *       gave the whole-text fallback to `findLineOfMatch` and not to
+ *       `allLinesMatching`, which is where per-occurrence flagging happens.
+ *       Closed at `allLinesMatching` + `requireOccurrences` below: there is now
+ *       ONE enumerator (the second one is deleted), it is a UNION and never a
+ *       swap, and an enumeration that comes back empty after the pattern has
+ *       already matched is an INTERNAL ERROR, not a quiet return.
+ *   E2  ALIAS. `import { ScrollView as SV } from "react-native"` + the `Input`
+ *       primitive walked straight through pattern 4 — H1, the headline hole,
+ *       re-opened by one word. Cause: the container set was built from the
+ *       LOCAL binding name, which an alias changes, instead of the IMPORTED
+ *       name, which it cannot.
+ *   E3  NAMESPACE. `import * as RN` + `<RN.ScrollView>` — same hole, same one
+ *       word. Cause: the SAME asymmetry as E1 in a different place. H5 taught
+ *       pattern 2 about namespace imports and pattern 4 was never told.
+ *
+ * Pattern-asymmetry sweep (#1841, all four patterns, both axes):
+ *   - fail-quiet enumeration: affected patterns 1, 2-namespace and 3. All three
+ *     now go through the single enumerator, so the halves cannot drift again.
+ *   - alias: pattern 2 already covers it (its regex matches the IMPORT
+ *     STATEMENT, so `{ KeyboardAvoidingView as KAV }` still matches); pattern 3
+ *     is a prop name and has no import to alias; pattern 4 did not — E2.
+ *   - namespace: pattern 2 covers it (H5); pattern 4 did not — E3.
+ *   - pattern 1 covers NEITHER alias (`{ Keyboard as KB }`) nor computed access
+ *     (`Keyboard["addListener"]`). That is the same asymmetry class, it is
+ *     REAL, and it is deliberately still open here: those are census E4/E5/E6,
+ *     out of scope for this change and triaged separately. Recorded so the next
+ *     reader does not mistake silence for coverage.
+ *
  * Also: `--self-test` is now real. It was passed in
  * .github/workflows/issue-1532-stay-manager-ux-tests.yml and silently ignored,
  * because this script had no process.argv handling at all.
@@ -291,26 +328,6 @@ const BOUNDARY_TAGS = ["Modal", "Sheet"];
 // Line helpers
 // ---------------------------------------------------------------------------
 
-/**
- * B1-5 — the `:0` defect. The old implementation tested the regex line by
- * line, so a MULTI-LINE `react-native` import never matched and returned -1,
- * which was then reported as line 0 and made the allowlist window scan lines
- * 0–2 instead of the import site. That is why one file in this repo carries a
- * comment saying its allowlist marker must physically sit in the first three
- * lines. Fall back to a whole-text search and convert the match offset to a
- * line index.
- */
-function findLineOfMatch(content, re) {
-  const lines = content.split("\n");
-  for (let i = 0; i < lines.length; i += 1) {
-    if (re.test(lines[i])) return i;
-  }
-  const whole = new RegExp(re.source, re.flags.replace("g", ""));
-  const m = whole.exec(content);
-  if (m === null) return -1;
-  return offsetToLine(content, m.index);
-}
-
 function offsetToLine(content, offset) {
   let line = 0;
   for (let i = 0; i < offset && i < content.length; i += 1) {
@@ -336,15 +353,95 @@ function hasInlineAllowlist(content, lineIndex) {
   return false;
 }
 
-/** Every line index whose text matches `re`. */
+/**
+ * Every line index whose text matches `re`.
+ *
+ * E1 — THE FAIL-QUIET FIX. This used to be line-scan ONLY, so a match that
+ * straddles a newline (`Keyboard`⏎`.addListener(` — every one of this gate's
+ * patterns spells its gaps `\s*`, which spans newlines) produced an EMPTY list
+ * and the caller's `for` loop emitted zero warnings. B1-5 fixed exactly this in
+ * `findLineOfMatch` and not here. `findLineOfMatch` is now DELETED and every
+ * caller routes through this one function, because two enumerators is precisely
+ * how the two halves came to disagree.
+ *
+ * B1-5's original finding, preserved because it is the same defect seen from the
+ * other side: a MULTI-LINE `react-native` import matched nothing line by line,
+ * was reported as line 0, and put the allowlist window on lines 0–2 instead of
+ * the import site — which is why one file in this repo carried a comment saying
+ * its marker had to sit physically in the first three lines. Same cause, two
+ * symptoms: a wrong line number where a first-match helper was used, and total
+ * silence where a per-occurrence enumerator was used.
+ *
+ * UNION, never a swap. The whole-text sweep is ADDED to the line scan rather
+ * than replacing it: a lookahead-bearing pattern decides differently when it can
+ * see across a newline (`automaticallyAdjustKeyboardInsets` followed by
+ * `={false}` on the NEXT line matches per-line and not whole-text), and only a
+ * union guarantees the corrected enumerator can report MORE than before and
+ * never less.
+ */
 function allLinesMatching(content, re) {
   const single = new RegExp(re.source, re.flags.replace("g", ""));
-  const out = [];
+  const found = new Set();
   const lines = content.split("\n");
   for (let i = 0; i < lines.length; i += 1) {
-    if (single.test(lines[i])) out.push(i);
+    if (single.test(lines[i])) found.add(i);
   }
-  return out;
+  const sweep = new RegExp(
+    re.source,
+    re.flags.includes("g") ? re.flags : `${re.flags}g`,
+  );
+  sweep.lastIndex = 0;
+  let m;
+  while ((m = sweep.exec(content)) !== null) {
+    found.add(offsetToLine(content, m.index));
+    if (m.index === sweep.lastIndex) sweep.lastIndex += 1; // zero-length guard
+  }
+  return [...found].sort((a, b) => a - b);
+}
+
+/**
+ * E1's STRUCTURAL half — a silent consume is now impossible by construction,
+ * not merely corrected.
+ *
+ * Every call site below has ALREADY proven the pattern matches this file. An
+ * empty enumeration at that point means the gate saw a violation and dropped it,
+ * which is the one outcome this gate must never have. So it is an internal
+ * error, not a quiet return.
+ *
+ * Both length-preserving views of the file are enumerated and unioned:
+ *   `raw`     — what shipped, so no warning that used to be emitted can be lost;
+ *   `blanked` — comments turned to spaces, which is what makes the joined shapes
+ *               (`Keyboard/* … *\/.addListener(`, or a `//` line sitting between
+ *               the receiver and the call) reachable at all.
+ * The guards test `stripped`, whose comment classification is identical to
+ * `blanked`'s, so this throw is unreachable for anything a human or a formatter
+ * writes — which is the point of asserting it.
+ */
+function requireOccurrences(doc, re, context) {
+  const found = new Set([
+    ...allLinesMatching(doc.raw, re),
+    ...allLinesMatching(doc.blanked, re),
+  ]);
+  if (found.size === 0) {
+    throw new Error(
+      `orch-0892 INTERNAL (${context}): the pattern MATCHED this file and then ` +
+        "enumerated ZERO occurrences. A gate that matches and reports nothing is " +
+        "worse than a gate that never matched — it consumes the violation and " +
+        "stays silent. Refusing to return quietly (#1841 E1).",
+    );
+  }
+  return [...found].sort((a, b) => a - b);
+}
+
+/**
+ * A local binding name is interpolated into a regex in two places below. `$` is
+ * legal in a JS identifier and a metacharacter in a regex, so an alias spelled
+ * `RN$` would silently never match — the same silent-miss class as E1, one
+ * character wide. Escape before interpolating, everywhere, so the two sites
+ * cannot drift apart either.
+ */
+function escapeRe(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // ---------------------------------------------------------------------------
@@ -360,6 +457,15 @@ const RE_IMPORT_STMT =
  * `import { type ScrollView } from "react-native"`. A migrated screen keeps a
  * type-only ScrollView import for its imperative scroll handle, and flagging
  * that would make the correct fix trip the gate.
+ *
+ * E2 — each import now yields TWO views of itself, because the two consumers
+ * want opposite things and conflating them is what re-opened H1:
+ *   `names`    — the LOCAL binding, which is how this file spells the thing.
+ *                Correct for resolving `<Foo>` to the module it came from.
+ *   `bindings` — {kind, imported, local}. `imported` is what react-native
+ *                actually exports, which an alias cannot change. Pattern 4 read
+ *                `names` and therefore could not see `{ ScrollView as SV }` at
+ *                all; it reads `imported` now, and matches on `local`.
  */
 function parseValueImports(text) {
   const out = [];
@@ -372,6 +478,7 @@ function parseValueImports(text) {
     if (typeOnly) continue;
 
     const names = [];
+    const bindings = [];
     const braceMatch = clause.match(/\{([\s\S]*)\}/);
     if (braceMatch) {
       for (const rawPart of braceMatch[1].split(",")) {
@@ -379,17 +486,29 @@ function parseValueImports(text) {
         if (part.length === 0) continue;
         if (/^type\s/.test(part)) continue; // inline `{ type X }`
         const asMatch = part.match(/^(\S+)\s+as\s+(\S+)$/);
-        names.push(asMatch ? asMatch[2] : part);
+        const imported = asMatch ? asMatch[1] : part;
+        const local = asMatch ? asMatch[2] : part;
+        names.push(local);
+        bindings.push({ kind: "named", imported, local });
       }
     }
     const beforeBrace = clause.split("{")[0];
     const nsMatch = beforeBrace.match(/\*\s+as\s+([A-Za-z_$][\w$]*)/);
-    if (nsMatch) names.push(nsMatch[1]);
-    else {
+    if (nsMatch) {
+      names.push(nsMatch[1]);
+      bindings.push({ kind: "namespace", imported: "*", local: nsMatch[1] });
+    } else {
       const defaultMatch = beforeBrace.match(/^\s*([A-Za-z_$][\w$]*)\s*,?\s*$/);
-      if (defaultMatch) names.push(defaultMatch[1]);
+      if (defaultMatch) {
+        names.push(defaultMatch[1]);
+        bindings.push({
+          kind: "default",
+          imported: "default",
+          local: defaultMatch[1],
+        });
+      }
     }
-    out.push({ specifier, names });
+    out.push({ specifier, names, bindings });
   }
   return out;
 }
@@ -532,6 +651,36 @@ function findElementSpans(text, tag) {
   return spans;
 }
 
+/**
+ * E3 — a namespace member tag is a real element with a real span.
+ * `findElementSpans` searches for the literal token `<Tag`, which cannot express
+ * `< RN . ScrollView`. Rather than teach the span walker about whitespace (and
+ * risk the offsets every downstream line number depends on), canonicalise the
+ * tag IN PLACE, LENGTH-PRESERVINGLY: the slack moves LEFT of the `<`, so the tag
+ * ends at exactly the offset it ended at before and not one line index moves.
+ * `[ \t]` never matches a newline, so a canonicalisation can never swallow a
+ * line break.
+ */
+function canonicaliseMemberTags(text, alias, container) {
+  const dotted = `${alias}.${container}`;
+  const a = escapeRe(alias);
+  const c = escapeRe(container);
+  const closeRe = new RegExp(
+    `<[ \\t]*/[ \\t]*${a}[ \\t]*\\.[ \\t]*${c}[ \\t]*>`,
+    "g",
+  );
+  const openRe = new RegExp(`<[ \\t]*${a}[ \\t]*\\.[ \\t]*${c}\\b`, "g");
+  return text
+    .replace(
+      closeRe,
+      (match) => " ".repeat(match.length - dotted.length - 3) + `</${dotted}>`,
+    )
+    .replace(
+      openRe,
+      (match) => " ".repeat(match.length - dotted.length - 1) + `<${dotted}`,
+    );
+}
+
 /** Length-preserving blanking of every isolating-boundary subtree. */
 function blankBoundaries(text) {
   let out = text;
@@ -593,10 +742,14 @@ export function scanKeyboardPlumbing({
   const docs = new Map();
   for (const path of files) {
     const raw = readFile(path);
+    // `blanked` is length-preserving, so its line indexes are `raw`'s line
+    // indexes; E1's enumerator unions the two.
+    const blanked = blankComments(raw);
     docs.set(path, {
       raw,
+      blanked,
       stripped: clean(raw),
-      flow: blankBoundaries(blankComments(raw)),
+      flow: blankBoundaries(blanked),
       imports: parseValueImports(clean(raw)),
     });
   }
@@ -655,7 +808,11 @@ export function scanKeyboardPlumbing({
 
     // ---- Pattern 1 — Keyboard.addListener, any argument form. ------------
     if (RE_KEYBOARD_ADDLISTENER.test(stripped)) {
-      for (const lineIdx of allLinesMatching(raw, RE_KEYBOARD_ADDLISTENER)) {
+      for (const lineIdx of requireOccurrences(
+        doc,
+        RE_KEYBOARD_ADDLISTENER,
+        `${relPath}: pattern 1 Keyboard.addListener`,
+      )) {
         if (raw.split("\n")[lineIdx].trim().startsWith("//")) continue;
         if (hasInlineAllowlist(raw, lineIdx)) continue;
         flag(
@@ -669,7 +826,11 @@ export function scanKeyboardPlumbing({
 
     // ---- Pattern 2 — KeyboardAvoidingView reached from 'react-native'. ---
     if (RE_KAV_FROM_RN_NAMED.test(stripped)) {
-      const lineIdx = findLineOfMatch(raw, RE_KAV_FROM_RN_NAMED);
+      const lineIdx = requireOccurrences(
+        doc,
+        RE_KAV_FROM_RN_NAMED,
+        `${relPath}: pattern 2 named KeyboardAvoidingView import`,
+      )[0];
       if (!hasInlineAllowlist(raw, lineIdx)) {
         flag(
           relPath,
@@ -684,10 +845,14 @@ export function scanKeyboardPlumbing({
     while ((nsMatch = RE_RN_NAMESPACE_IMPORT.exec(stripped)) !== null) {
       const alias = nsMatch[1];
       const usage = new RegExp(
-        `<\\s*${alias}\\s*\\.\\s*KeyboardAvoidingView\\b`,
+        `<\\s*${escapeRe(alias)}\\s*\\.\\s*KeyboardAvoidingView\\b`,
       );
       if (!usage.test(stripped)) continue;
-      for (const lineIdx of allLinesMatching(raw, usage)) {
+      for (const lineIdx of requireOccurrences(
+        doc,
+        usage,
+        `${relPath}: pattern 2 namespace <${alias}.KeyboardAvoidingView>`,
+      )) {
         if (hasInlineAllowlist(raw, lineIdx)) continue;
         flag(
           relPath,
@@ -700,7 +865,11 @@ export function scanKeyboardPlumbing({
 
     // ---- Pattern 3 — automaticallyAdjustKeyboardInsets, any truthy form. -
     if (RE_AUTO_INSETS.test(stripped)) {
-      for (const lineIdx of allLinesMatching(raw, RE_AUTO_INSETS)) {
+      for (const lineIdx of requireOccurrences(
+        doc,
+        RE_AUTO_INSETS,
+        `${relPath}: pattern 3 automaticallyAdjustKeyboardInsets`,
+      )) {
         if (raw.split("\n")[lineIdx].trim().startsWith("//")) continue;
         if (hasInlineAllowlist(raw, lineIdx)) continue;
         flag(
@@ -713,14 +882,41 @@ export function scanKeyboardPlumbing({
     }
 
     // ---- Pattern 4 — bare container hosting a focusable field. -----------
-    const containerNames = new Set();
+    //
+    // E2/E3 — the headline hole, re-opened by ONE WORD. This set used to be
+    // built from the LOCAL binding name, so `import { ScrollView as SV }` (E2)
+    // and `import * as RN` + `<RN.ScrollView>` (E3) both made the container
+    // invisible to branch (b); paired with the `Input` primitive (no TextInput
+    // token anywhere in the file) branch (a) could not fire either, and H1 was
+    // open again. The set is now keyed on the IMPORTED name — which an alias
+    // cannot change — and carries the local spelling to look for in the JSX.
+    const containerTags = new Set();
+    const namespaceAliases = new Set();
     for (const imp of doc.imports) {
       if (imp.specifier !== "react-native") continue;
-      for (const name of imp.names) {
-        if (BARE_CONTAINERS.includes(name)) containerNames.add(name);
+      for (const binding of imp.bindings) {
+        if (binding.kind === "namespace") namespaceAliases.add(binding.local);
+        else if (BARE_CONTAINERS.includes(binding.imported)) {
+          containerTags.add(binding.local);
+        }
       }
     }
-    if (containerNames.size > 0) {
+
+    // E3 — a namespace member tag only becomes findable once it is canonical.
+    // Length-preserving, so `containerFlow` and `flow` agree on every offset.
+    let containerFlow = flow;
+    for (const alias of namespaceAliases) {
+      for (const container of BARE_CONTAINERS) {
+        const probe = new RegExp(
+          `<[ \\t]*${escapeRe(alias)}[ \\t]*\\.[ \\t]*${escapeRe(container)}\\b`,
+        );
+        if (!probe.test(containerFlow)) continue;
+        containerFlow = canonicaliseMemberTags(containerFlow, alias, container);
+        containerTags.add(`${alias}.${container}`);
+      }
+    }
+
+    if (containerTags.size > 0) {
       // (a) THE EXISTING RULE, RETAINED VERBATIM. Keeping it means the
       //     corrected gate is a strict superset of what shipped before, so
       //     this change can never be a silent weakening — only (b) is new.
@@ -732,15 +928,15 @@ export function scanKeyboardPlumbing({
       //     where "input-bearing" is derived from the import graph above.
       const map = componentModule.get(path);
       const offending = [];
-      for (const name of containerNames) {
-        for (const span of findElementSpans(flow, name)) {
+      for (const name of containerTags) {
+        for (const span of findElementSpans(containerFlow, name)) {
           // A self-closing container is NOT exempt. The dominant shape for a
           // virtualised list is `<FlatList renderItem={…} />` — every child it
           // will ever render lives inside the opening tag's props, so skipping
           // self-closing spans would make FlatList/SectionList permanently
           // invisible, which is precisely hole H1's other half. The span
           // therefore always spans the props too.
-          const body = flow.slice(span.start, span.end);
+          const body = containerFlow.slice(span.start, span.end);
           let hosts = RE_INPUT_LEAF.test(body);
           if (!hosts) {
             for (const child of renderedComponentsIn(body)) {
@@ -751,7 +947,7 @@ export function scanKeyboardPlumbing({
               }
             }
           }
-          if (hosts) offending.push(offsetToLine(flow, span.start));
+          if (hosts) offending.push(offsetToLine(containerFlow, span.start));
         }
       }
 
@@ -769,7 +965,11 @@ export function scanKeyboardPlumbing({
           );
         }
       } else if (branchA) {
-        const lineIdx = findLineOfMatch(raw, RE_SCROLLVIEW_FROM_RN_NAMED);
+        const lineIdx = requireOccurrences(
+          doc,
+          RE_SCROLLVIEW_FROM_RN_NAMED,
+          `${relPath}: pattern 4 branch (a) ScrollView import`,
+        )[0];
         if (!hasInlineAllowlist(raw, lineIdx)) {
           flag(
             relPath,
@@ -971,6 +1171,64 @@ export const MultiLine = () => (
 `,
     },
   },
+  {
+    id: "G-11",
+    why: "E1 — a MULTI-LINE `Keyboard`/`.addListener(` matched the guard and then emitted NOTHING, because the enumerator only ever tested line by line",
+    expect: /Keyboard\.addListener/,
+    expectLineAbove: 1,
+    files: {
+      [`${FIXTURE_ROOT}/src/bad/SplitListener.ts`]: `import { Keyboard } from "react-native";
+
+export function useSplit() {
+  const sub = Keyboard
+    .addListener("keyboardDidShow", () => undefined);
+  return sub;
+}
+`,
+    },
+  },
+  {
+    id: "G-12",
+    why: "E2 — an ALIASED container import made the container invisible to pattern 4, re-opening H1 with one word (no TextInput token, so branch (a) cannot rescue it)",
+    expect: /bare react-native container/,
+    files: {
+      ...GOOD_FIXTURE,
+      [`${FIXTURE_ROOT}/src/bad/AliasedContainer.tsx`]: `
+import React from "react";
+import { ScrollView as SV, View } from "react-native";
+import { Input } from "../ui/Input";
+
+export const AliasedContainer = () => (
+  <SV>
+    <View>
+      <Input value="" onChangeText={() => undefined} />
+    </View>
+  </SV>
+);
+`,
+    },
+  },
+  {
+    id: "G-13",
+    why: "E3 — a NAMESPACE container walked through pattern 4, though H5 had already taught pattern 2 exactly this lesson",
+    expect: /bare react-native container/,
+    files: {
+      ...GOOD_FIXTURE,
+      [`${FIXTURE_ROOT}/src/bad/NamespaceContainer.tsx`]: `
+import React from "react";
+import * as RN from "react-native";
+import { Input } from "../ui/Input";
+
+export const NamespaceContainer = () => (
+  <RN.ScrollView>
+    <RN.View>
+      <Input value="" onChangeText={() => undefined} />
+    </RN.View>
+  </RN.ScrollView>
+);
+`,
+    },
+  },
 ];
 
 const NEGATIVE_FIXTURES = [
@@ -1034,6 +1292,24 @@ export const HorizontalStrip = () => (
       <Text>chip</Text>
     </View>
   </ScrollView>
+);
+`,
+    },
+  },
+  {
+    id: "G-14",
+    why: "E3's other direction — closing the namespace form must not make every namespaced container a violation. The rule is still about HOSTING an input, not about how the container was imported",
+    files: {
+      [`${FIXTURE_ROOT}/src/good/NamespaceStrip.tsx`]: `
+import React from "react";
+import * as RN from "react-native";
+
+export const NamespaceStrip = () => (
+  <RN.ScrollView horizontal>
+    <RN.View>
+      <RN.Text>chip</RN.Text>
+    </RN.View>
+  </RN.ScrollView>
 );
 `,
     },
