@@ -138,9 +138,14 @@ BEGIN
   PERFORM public.ensure_source_refund_attempt(p_refund, 'buyer_refund');
   SELECT buyer_refund_requested_cents INTO v_amount
     FROM public.source_refunds WHERE id = p_refund;
+  -- Every provider identifier is derived from the refund id. `provider_refund_id`
+  -- carries a UNIQUE index (source_refunds_stripe_refund_idx), so a shared
+  -- literal makes the SECOND refund in this suite collide — which would look
+  -- like a product defect and is only a fixture one.
   PERFORM public.record_source_refund_provider_event(
     p_refund, 'buyer_refund', 1, 'evt:1846:' || p_refund::text,
-    'charge.refunded', 're_1846', 'processed', v_amount, 're_op_1846', NULL);
+    'charge.refunded', 're_1846_' || p_refund::text, 'processed', v_amount,
+    're_op_1846_' || p_refund::text, NULL);
 END $$;
 
 -- ---------------------------------------------------------------------------
