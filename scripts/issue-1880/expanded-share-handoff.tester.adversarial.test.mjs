@@ -9,6 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -58,7 +59,7 @@ test('T1 Android dismissal acknowledgement cannot depend on RN Modal onDismiss',
   );
 });
 
-test('T2 pre-presentation cancellation cannot create an unhandled rejected Promise', () => {
+test('T2 pre-presentation cancellation cannot create an unhandled rejected Promise', async () => {
   const provider = read(FILES.provider);
   const deferredFactory = sliceBetween(
     provider,
@@ -74,17 +75,171 @@ test('T2 pre-presentation cancellation cannot create an unhandled rejected Promi
   const returnDeferred = deferredFactory.indexOf('return deferred;');
   assert.notEqual(returnDeferred, -1, 'the deferred factory must return its original container');
   const creationWindow = deferredFactory.slice(0, returnDeferred);
-  const actualRejectionHandler = String.raw`(?:async\s+)?(?:function(?:\s+[A-Za-z_$][\w$]*)?\s*\(|\([^)]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>|(?!undefined\b|null\b)[A-Za-z_$][\w$]*)`;
-  const catchObserver = new RegExp(
-    String.raw`(?:^|\n)\s*(?:void\s+)?deferred\.promise\.catch\s*\(\s*${actualRejectionHandler}`,
-    'm',
-  );
-  const secondArgumentObserver = new RegExp(
-    String.raw`(?:^|\n)\s*(?:void\s+)?deferred\.promise\.then\s*\(\s*undefined\s*,\s*${actualRejectionHandler}`,
-    'm',
-  );
-  const rejectionObservedAtCreation = catchObserver.test(creationWindow)
-    || secondArgumentObserver.test(creationWindow);
+
+  function readBalancedArguments(source, openIndex) {
+    const pairs = { '(': ')', '[': ']', '{': '}' };
+    const stack = ['('];
+    const args = [];
+    let current = '';
+    let quote = null;
+    let escaped = false;
+    let lineComment = false;
+    let blockComment = false;
+    for (let index = openIndex + 1; index < source.length; index += 1) {
+      const character = source[index];
+      const next = source[index + 1];
+      if (lineComment) {
+        current += character;
+        if (character === '\n') lineComment = false;
+        continue;
+      }
+      if (blockComment) {
+        current += character;
+        if (character === '*' && next === '/') {
+          current += next;
+          index += 1;
+          blockComment = false;
+        }
+        continue;
+      }
+      if (quote !== null) {
+        current += character;
+        if (escaped) escaped = false;
+        else if (character === '\\') escaped = true;
+        else if (character === quote) quote = null;
+        continue;
+      }
+      if (character === '/' && next === '/') {
+        current += character + next;
+        index += 1;
+        lineComment = true;
+        continue;
+      }
+      if (character === '/' && next === '*') {
+        current += character + next;
+        index += 1;
+        blockComment = true;
+        continue;
+      }
+      if (character === "'" || character === '"' || character === '`') {
+        quote = character;
+        current += character;
+        continue;
+      }
+      if (Object.hasOwn(pairs, character)) {
+        stack.push(character);
+        current += character;
+        continue;
+      }
+      if (character === pairs[stack.at(-1)]) {
+        stack.pop();
+        if (stack.length === 0) {
+          args.push(current.trim());
+          return { args, endIndex: index };
+        }
+        current += character;
+        continue;
+      }
+      if (character === ',' && stack.length === 1) {
+        args.push(current.trim());
+        current = '';
+        continue;
+      }
+      current += character;
+    }
+    assert.fail('rejection observer call has an unterminated argument list');
+  }
+
+  function isCompleteHandler(handler, scopeBeforeCall) {
+    const trimmed = handler.trim();
+    const bareIdentifier = /^[A-Za-z_$][\w$]*$/u.exec(trimmed);
+    if (bareIdentifier) {
+      const name = bareIdentifier[0].replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+      const declaration = new RegExp(
+        String.raw`(?:function\s+${name}\s*\(|(?:const|let|var)\s+${name}\s*=\s*(?:async\s+)?(?:function(?:\s+[A-Za-z_$][\w$]*)?\s*\(|\([^)]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>))`,
+        'u',
+      );
+      return declaration.test(scopeBeforeCall);
+    }
+    const inlineFunction = /^(?:async\s+)?function(?:\s+[A-Za-z_$][\w$]*)?\s*\([^)]*\)\s*\{[\s\S]*\}$/u;
+    const parenthesizedArrow = /^(?:async\s+)?\([^)]*\)\s*=>[\s\S]+$/u;
+    const singleParameterArrow = /^(?:async\s+)?[A-Za-z_$][\w$]*\s*=>[\s\S]+$/u;
+    if (!inlineFunction.test(trimmed) && !parenthesizedArrow.test(trimmed) && !singleParameterArrow.test(trimmed)) {
+      return false;
+    }
+    try {
+      return typeof new Function(`return (${trimmed});`)() === 'function';
+    } catch {
+      return false;
+    }
+  }
+
+  function hasCompleteCreationObserver(source) {
+    for (const method of ['catch', 'then']) {
+      const marker = `deferred.promise.${method}`;
+      let searchFrom = 0;
+      while (searchFrom < source.length) {
+        const callStart = source.indexOf(marker, searchFrom);
+        if (callStart === -1) break;
+        searchFrom = callStart + marker.length;
+        const lineStart = source.lastIndexOf('\n', callStart) + 1;
+        const prefix = source.slice(lineStart, callStart).trim();
+        if (prefix !== '' && prefix !== 'void') continue;
+        let openIndex = searchFrom;
+        while (/\s/u.test(source[openIndex] ?? '')) openIndex += 1;
+        if (source[openIndex] !== '(') continue;
+        const { args } = readBalancedArguments(source, openIndex);
+        const handler = method === 'catch' && args.length === 1
+          ? args[0]
+          : method === 'then' && args.length === 2 && args[0] === 'undefined'
+            ? args[1]
+            : null;
+        if (handler !== null && isCompleteHandler(handler, source.slice(0, callStart))) return true;
+      }
+    }
+    return false;
+  }
+
+  const fixtureRecognized = (fixture) => {
+    const source = fixture.includes('return deferred;') ? fixture : `${fixture}\nreturn deferred;`;
+    return hasCompleteCreationObserver(source.slice(0, source.indexOf('return deferred;')));
+  };
+  const acceptedFixtures = [
+    'void deferred.promise.then(undefined, () => undefined);',
+    'void deferred.promise.then(undefined, async () => undefined);',
+    'void deferred.promise.then(undefined, error => undefined);',
+    'void deferred.promise.catch(function () {});',
+    'void deferred.promise.catch(async function named(error) {});',
+    'const handleThen = () => undefined;\nvoid deferred.promise.then(undefined, handleThen);',
+    'function handleCatch(error) {}\nvoid deferred.promise.catch(handleCatch);',
+  ];
+  const rejectedFixtures = [
+    'const makeObserver = () => undefined;\nvoid deferred.promise.then(undefined, makeObserver());',
+    'void deferred.promise.then(undefined, observer.handle);',
+    "void deferred.promise.then(undefined, observer['handle']);",
+    'void deferred.promise.then(undefined, observer?.handle);',
+    'void deferred.promise.then(undefined, handler?.());',
+    'void deferred.promise.then(undefined, handler.bind(null));',
+    'const handler = () => undefined;\nvoid deferred.promise.then(undefined, (handler));',
+    'void deferred.promise.then(undefined, undefined);',
+    'void deferred.promise.then(undefined, null);',
+    'void deferred.promise.then(undefined);',
+    'void deferred.promise.catch();',
+    'void deferred.promise.catch(true);',
+    'void deferred.promise.catch({});',
+    'void deferred.promise.catch([]);',
+    'void deferred.promise.catch(class {});',
+    'void deferred.promise.catch(1 + 1);',
+    'void deferred.promise.then(handler, undefined);',
+    'void deferred.promise.then(null, () => undefined);',
+    'void deferred.promise.then(undefined, undeclaredHandler);',
+    'return deferred;\nvoid deferred.promise.then(undefined, () => undefined);',
+    'deferred.promise = deferred.promise.then(undefined, () => undefined);',
+  ];
+  for (const fixture of acceptedFixtures) assert.equal(fixtureRecognized(fixture), true, fixture);
+  for (const fixture of rejectedFixtures) assert.equal(fixtureRecognized(fixture), false, fixture);
+
+  const rejectionObservedAtCreation = hasCompleteCreationObserver(creationWindow);
   const observerChainReplacesOriginal = /deferred\.promise\s*=\s*deferred\.promise\.(?:catch|then)\s*\(|return\s+deferred\.promise\.(?:catch|then)\s*\(|promise\s*:\s*deferred\.promise\.(?:catch|then)\s*\(/.test(deferredFactory);
   assert.ok(
     cancellationRejectsPresented,
@@ -99,6 +254,40 @@ test('T2 pre-presentation cancellation cannot create an unhandled rejected Promi
     false,
     'the observer-chain Promise must never replace the original Promise exposed to real waiters',
   );
+
+  const typeStart = provider.indexOf('type PresentationDeferred');
+  const typeEnd = provider.indexOf('type PresentationAttempt', typeStart);
+  const factoryStart = provider.indexOf('function createPresentationDeferred');
+  const factoryEnd = provider.indexOf('export function UnifiedShareProvider', factoryStart);
+  assert.notEqual(typeStart, -1, 'production deferred type start is missing');
+  assert.notEqual(typeEnd, -1, 'production deferred type end is missing');
+  assert.notEqual(factoryStart, -1, 'production deferred factory start is missing');
+  assert.notEqual(factoryEnd, -1, 'production deferred factory end is missing');
+  const strippedFactory = stripTypeScriptTypes(
+    `${provider.slice(typeStart, typeEnd)}\n${provider.slice(factoryStart, factoryEnd)}`,
+    { mode: 'strip' },
+  );
+  const createPresentationDeferred = new Function(
+    `${strippedFactory}\nreturn createPresentationDeferred;`,
+  )();
+  assert.equal(typeof createPresentationDeferred, 'function', 'production deferred factory did not load');
+  const unhandled = [];
+  const onUnhandled = (error) => unhandled.push(error);
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    const deferred = createPresentationDeferred();
+    const originalPromise = deferred.promise;
+    const rejection = new Error('presentation_rejected');
+    deferred.reject(rejection);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(unhandled, []);
+    let received = null;
+    await originalPromise.catch((error) => { received = error; });
+    assert.equal(received, rejection);
+    assert.equal(deferred.promise, originalPromise);
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
 });
 
 test('T3 the Night Out Share affordance exposes the same busy lock as the pool hero', () => {

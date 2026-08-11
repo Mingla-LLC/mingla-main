@@ -1,27 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const modal = fs.readFileSync(path.join(ROOT, 'app-mobile/src/components/ExpandedCardModal.tsx'), 'utf8');
-const require = createRequire(import.meta.url);
-const ts = require('../../app-mobile/node_modules/typescript');
 
 function loadProductionRecoveryHelpers() {
   const start = modal.indexOf('type ExpandedShareRecoveryDependencies');
   const end = modal.indexOf('// ============================================================================', start);
   assert.notEqual(start, -1, 'production recovery helper start is missing');
   assert.notEqual(end, -1, 'production recovery helper end is missing');
-  const source = `${modal.slice(start, end)}\nexport { runExpandedShareRecovery, observeExpandedShareTask };`;
-  const output = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
-  const loaded = { exports: {} };
-  new Function('module', 'exports', output)(loaded, loaded.exports);
-  return loaded.exports;
+  const output = stripTypeScriptTypes(modal.slice(start, end), { mode: 'strip' });
+  const loaded = new Function(
+    `${output}\nreturn { runExpandedShareRecovery, observeExpandedShareTask };`,
+  )();
+  assert.equal(typeof loaded.runExpandedShareRecovery, 'function', 'production recovery helper did not load');
+  assert.equal(typeof loaded.observeExpandedShareTask, 'function', 'production task observer did not load');
+  return loaded;
 }
 
 const { runExpandedShareRecovery, observeExpandedShareTask } = loadProductionRecoveryHelpers();
