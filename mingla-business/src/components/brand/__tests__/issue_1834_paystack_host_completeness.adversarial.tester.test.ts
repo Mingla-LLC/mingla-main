@@ -23,7 +23,24 @@
  *         keyboard by 5.7dp and was still 36.3dp under the bar. This encodes
  *         the real measured cells as data and pins the classifier, so anyone
  *         who redefines success as "clears the keyboard", or drops the
- *         wrapper's DEFAULT_BOTTOM_OFFSET below 42+12, turns this red.
+ *         wrapper's DEFAULT_BOTTOM_OFFSET below the bar + 12, turns this red.
+ *
+ *         REPAIRED at RETEST (#1834, SPEC AMENDMENTS 1-3). The first version of
+ *         TA-2 was BLIND, and blind in the exact bug class this issue exists to
+ *         end. It executed the wrapper exactly once, under the default jest
+ *         config, whose `moduleNameMapper` sends `react-native` to
+ *         `__manual_mocks__/react-native.js` where `Platform.OS === "web"`. On
+ *         that branch `INPUT_CHROME_BELOW_TEXT_FRAME` collapses to `default: 0`
+ *         and `OPENED_OFFSET` is 0, so the derivation summed to 54 and the old
+ *         `toEqual({ bottomOffset: DONE_BAR + 12 })` passed — by exercising the
+ *         ONE platform branch on which the reported bug cannot occur. Three
+ *         instances of that shape have now appeared in this single issue
+ *         (#1627's guard that never ran; the KeyboardRoot clone that prints SKIP
+ *         and reports a tick; this). TA-2 now LOADS THE REAL WRAPPER ONCE PER
+ *         PLATFORM BRANCH — iOS 26+, iOS <26, Android — with `Platform` driven
+ *         from a branch table, and pins each branch's arithmetic, the deltas
+ *         BETWEEN branches (which is what a re-hardcoded literal destroys), and
+ *         the library's own `>= 26` boundary.
  *
  *   TA-3  DEAD COMPENSATION — D1 deleted a 42dp Android bank-list pad that
  *         compensated for a Done bar that is not rendered in that raw RN
@@ -45,14 +62,19 @@
  *     `existsSync` escape hatch, no `console.warn`-and-pass, no `it.skip`.
  *   - EVERY scan carries a vacuity guard and an EMPTY SCAN FAILS LOUDLY:
  *     TA-1 fails if it discovers fewer than 3 render sites, TA-2 fails if the
- *     cell table or the parsed wrapper constant is missing, TA-3 fails if it
- *     visits zero files. A test that passes by finding nothing is the exact bug
- *     class (#1627) this issue exists to end.
+ *     cell table, the branch table, or any branch's module load is missing —
+ *     AND fails if the three branches do not produce three DIFFERENT offsets,
+ *     which is the specific way TA-2 was blind before — TA-3 fails if it visits
+ *     zero files. A test that passes by finding nothing, or by finding the same
+ *     thing three times, is the exact bug class (#1627) this issue exists to end.
  *
  * FAILS-ON-REVERT (demonstrated by the tester at real commit SHAs):
  *   - revert R1 or R2 (restore `ScrollView` to the react-native import) → TA-1 fails
  *   - revert D1 (restore `bankListKbPad` + `androidKbOpen`)            → TA-3 fails
- *   - weaken MIN_CLEARANCE / DEFAULT_BOTTOM_OFFSET                     → TA-2 fails
+ *   - re-hardcode DEFAULT_BOTTOM_OFFSET to ANY literal (54, 78.5, …)   → TA-2 fails
+ *   - re-hardcode DONE_BAR_OCCUPIED to 42 or to 53                     → TA-2 fails
+ *   - move the library's iOS-26 rounded-corner boundary                → TA-2 fails
+ *   - drop MIN_VISIBLE_CLEARANCE below 12 on any branch                → TA-2 fails
  *
  * Append-only: NEW file. No existing test is modified or deleted.
  * Runs under the DEFAULT jest.config.cjs (ts-jest / node). No new config, no RTL.
@@ -70,13 +92,52 @@ jest.mock("react-native-keyboard-controller", () => ({
   KeyboardAwareScrollView: "KeyboardAwareScrollView@library",
 }));
 
+// `react-native` is module-name-mapped by jest.config.cjs to
+// `__manual_mocks__/react-native.js`, whose Platform is HARD-WIRED to
+// `OS: "web", Version: 0`. That single fact is what made the first TA-2 blind:
+// the wrapper's per-platform derivation collapsed to its `default` branch and
+// the assertion passed on the one platform the app never ships this module to
+// (`SmartScrollView.native.tsx` is loaded only by iOS and Android).
+//
+// This decorator keeps every other export of the manual mock EXACTLY as-is
+// (`jest.requireActual` — nothing is faked beyond what the repo already fakes)
+// and replaces ONLY `Platform` with a branch-drivable one. The mutable state is
+// parked on `globalThis` on purpose: `jest.isolateModules` builds a fresh module
+// registry and re-invokes this factory, so a closure-local state object would be
+// reconstructed per branch and silently reset the OS back to the default.
+jest.mock("react-native", () => {
+  const actual = jest.requireActual("react-native");
+  const scope = globalThis as unknown as Record<string, unknown>;
+  if (scope.__ISSUE_1834_PLATFORM__ == null) {
+    scope.__ISSUE_1834_PLATFORM__ = { OS: "web", Version: 0 };
+  }
+  const state = scope.__ISSUE_1834_PLATFORM__ as {
+    OS: string;
+    Version: number | string;
+  };
+  return {
+    ...actual,
+    Platform: {
+      get OS(): string {
+        return state.OS;
+      },
+      get Version(): number | string {
+        return state.Version;
+      },
+      // Same contract as react-native's own Platform.select: the OS key wins,
+      // `default` is the fallback. Deliberately NOT the manual mock's
+      // web-only version, which can never see an ios/android key.
+      select: (spec: Record<string, unknown>): unknown =>
+        spec != null &&
+            Object.prototype.hasOwnProperty.call(spec, state.OS)
+          ? spec[state.OS]
+          : spec?.default,
+    },
+  };
+});
+
 import * as fs from "fs";
 import * as path from "path";
-
-import {
-  DEFAULT_BOTTOM_OFFSET,
-  ScrollView as SmartScrollView,
-} from "../../../wrappers/SmartScrollView.native";
 
 // ---------------------------------------------------------------------------
 // Shared filesystem walk. One helper, used by TA-1 and TA-3, so the two
@@ -260,7 +321,7 @@ describe("#1834 TA-1 — every native host of the Paystack bank card scrolls thr
 });
 
 // ===========================================================================
-// TA-2 — CRITERION BOUNDARY
+// TA-2 — CRITERION BOUNDARY, EXERCISED ON EVERY REAL PLATFORM BRANCH
 // ===========================================================================
 
 interface ForwardRefRenderable {
@@ -270,17 +331,74 @@ interface ForwardRefRenderable {
   ) => { type: unknown; props: Record<string, unknown> };
 }
 
+/** The shape `SmartScrollView.native.tsx` exports. Read, never re-declared. */
+interface WrapperModule {
+  readonly ScrollView: unknown;
+  readonly KEYBOARD_TOOLBAR_HEIGHT: number;
+  readonly DONE_BAR_OCCUPIED: number;
+  readonly INPUT_CHROME_BELOW_TEXT_FRAME: number;
+  readonly MIN_VISIBLE_CLEARANCE: number;
+  readonly DEFAULT_BOTTOM_OFFSET: number;
+}
+
 /**
- * EXECUTE the real wrapper. `SmartScrollView.ScrollView` is a forwardRef
- * component, so calling its render function runs the shipped default-prop logic
- * (`{ bottomOffset = DEFAULT_BOTTOM_OFFSET, ...rest }`) and returns the element
- * it actually produces. Nothing here reads the wrapper's source text — a change
- * to the constant or to the forwarding moves this test.
+ * The one shared platform-state object. Created by whichever side runs first —
+ * this module's initialiser or the `react-native` mock factory — and found by
+ * the other, so both always hold the SAME reference across every
+ * `jest.isolateModules` registry.
  */
-function renderWrapper(
-  props: Record<string, unknown> = {},
-): { type: unknown; props: Record<string, unknown> } {
-  const component = SmartScrollView as unknown as Partial<ForwardRefRenderable>;
+const PLATFORM_STATE: { OS: string; Version: number | string } = (() => {
+  const scope = globalThis as unknown as Record<string, unknown>;
+  if (scope.__ISSUE_1834_PLATFORM__ == null) {
+    scope.__ISSUE_1834_PLATFORM__ = { OS: "web", Version: 0 };
+  }
+  return scope.__ISSUE_1834_PLATFORM__ as {
+    OS: string;
+    Version: number | string;
+  };
+})();
+
+/**
+ * Load the REAL wrapper module under a chosen platform, in its own module
+ * registry, and EXECUTE its forwardRef so the reported offset is the one the
+ * shipped default-prop logic actually produces — not a constant read out of the
+ * module namespace, and never the module's source text.
+ */
+function loadWrapperUnder(
+  os: string,
+  version: number | string,
+): { module: WrapperModule; element: { type: unknown; props: Record<string, unknown> }; renderWith: (props: Record<string, unknown>) => { type: unknown; props: Record<string, unknown> } } {
+  PLATFORM_STATE.OS = os;
+  PLATFORM_STATE.Version = version;
+
+  let loaded: WrapperModule | null = null;
+  jest.isolateModules(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    loaded = require("../../../wrappers/SmartScrollView.native") as WrapperModule;
+  });
+  if (loaded == null) {
+    throw new Error(
+      `[#1834 TA-2] the wrapper module failed to load under ${os}/${version}.`,
+    );
+  }
+  const mod: WrapperModule = loaded;
+
+  // BLINDNESS GUARD. `SmartScrollView.native.tsx` is loaded ONLY by iOS and
+  // Android in production, so on either of those the chrome term must resolve to
+  // a real measured correction. Resolving `default: 0` means Platform never
+  // switched and this whole suite is back to executing one branch N times — the
+  // exact defect this repair exists to remove. Refuse to continue.
+  if (mod.INPUT_CHROME_BELOW_TEXT_FRAME === 0) {
+    throw new Error(
+      `[#1834 TA-2] loading the wrapper under ${os}/${version} resolved ` +
+        `INPUT_CHROME_BELOW_TEXT_FRAME to its \`default: 0\` branch. Platform ` +
+        `did not switch, so this "branch" is the web branch wearing a different ` +
+        `name. An assertion that cannot see the platform it claims to test is a ` +
+        `FAILURE, never a pass.`,
+    );
+  }
+
+  const component = mod.ScrollView as unknown as Partial<ForwardRefRenderable>;
   if (typeof component.render !== "function") {
     throw new Error(
       "[#1834 TA-2] SmartScrollView is no longer a forwardRef component — the " +
@@ -288,14 +406,71 @@ function renderWrapper(
         "read.",
     );
   }
-  return component.render(props, null);
+  const renderWith = (
+    props: Record<string, unknown> = {},
+  ): { type: unknown; props: Record<string, unknown> } =>
+    (component.render as ForwardRefRenderable["render"])(props, null);
+
+  return { module: mod, element: renderWith({}), renderWith };
 }
 
-/** ORCH-1165 KEYBOARD_TOOLBAR_HEIGHT — the Done bar sits ON TOP of the keyboard. */
-const DONE_BAR = 42;
+/**
+ * The three branches `SmartScrollView.native.tsx` can actually be loaded on in
+ * production, with the offset each MUST derive.
+ *
+ *   iOS 26+   53 (42 bar, floated 11 clear of the rounded keyboard) + 13.5 + 12
+ *   iOS < 26  42                                                    + 13.5 + 12
+ *   Android   42                                                    +  3.16 + 12
+ *
+ * The `doneBarOccupied` figures are not free-standing numbers: assertion 2 below
+ * re-derives each from the branch's OWN `KEYBOARD_TOOLBAR_HEIGHT`, so pinning
+ * 53 (or 42) as a literal in the wrapper fails on the branch where it is wrong.
+ */
+interface PlatformBranch {
+  readonly id: string;
+  readonly os: "ios" | "android";
+  readonly version: number | string;
+  readonly doneBarOccupied: number;
+  readonly inputChrome: number;
+  readonly bottomOffset: number;
+}
+
+const PLATFORM_BRANCHES: readonly PlatformBranch[] = [
+  {
+    id: "ios-26.5",
+    os: "ios",
+    version: "26.5",
+    doneBarOccupied: 53,
+    inputChrome: 13.5,
+    bottomOffset: 78.5,
+  },
+  {
+    id: "ios-18.4",
+    os: "ios",
+    version: "18.4",
+    doneBarOccupied: 42,
+    inputChrome: 13.5,
+    bottomOffset: 67.5,
+  },
+  {
+    id: "android-34",
+    os: "android",
+    version: 34,
+    doneBarOccupied: 42,
+    inputChrome: 3.16,
+    bottomOffset: 57.16,
+  },
+];
+
+const EXPECTED_BRANCH_COUNT = 3;
+
+/** Float-safe comparison for a table printed to 4dp. `3.16` is not binary-exact. */
+const dp4 = (n: number): number => Number(n.toFixed(4));
 
 interface Cell {
   readonly id: string;
+  /** Which PLATFORM_BRANCHES row supplies this cell's criterion constants. */
+  readonly branch: string;
   readonly fieldBottom: number;
   readonly keyboardTop: number;
   /** Expected verdict under the #1834 criterion (Done bar, not keyboard). */
@@ -315,6 +490,7 @@ const CELLS: readonly Cell[] = [
   // 36.3dp UNDER the Done bar.
   {
     id: "android-R2-create-prefix",
+    branch: "android-34",
     fieldBottom: 489.24,
     keyboardTop: 494.93,
     expected: "FAIL",
@@ -324,6 +500,7 @@ const CELLS: readonly Cell[] = [
   // 10pt above the bar — recorded as a "pass" once, and it was not one.
   {
     id: "ios-R2-create-prefix-17pro",
+    branch: "ios-26.5",
     fieldBottom: 514,
     keyboardTop: 566,
     expected: "FAIL",
@@ -333,6 +510,7 @@ const CELLS: readonly Cell[] = [
   // clear of the bar.
   {
     id: "android-R1-create-postfix",
+    branch: "android-34",
     fieldBottom: 364.09,
     keyboardTop: 494.93,
     expected: "PASS",
@@ -341,15 +519,18 @@ const CELLS: readonly Cell[] = [
   // Android / R1 create, pre-fix: 83.2dp UNDER the bare keyboard.
   {
     id: "android-R1-create-prefix",
+    branch: "android-34",
     fieldBottom: 578.13,
     keyboardTop: 494.93,
     expected: "FAIL",
     clearsKeyboard: false,
   },
-  // iOS SE3 / R2 create, POST-fix: clears the keyboard by 40.5pt and is still
-  // under the bar. The cell that made #1834 a NEEDS REWORK.
+  // iOS SE3 / R2 create, POST-fix-R1 (DEFAULT_BOTTOM_OFFSET = 54): clears the
+  // keyboard by 40.5pt and is still 12.5pt UNDER the bar. The cell that made
+  // #1834 a NEEDS REWORK and forced SPEC AMENDMENT 1.
   {
-    id: "ios-se3-R2-create-postfix",
+    id: "ios-se3-R2-create-offset54",
+    branch: "ios-26.5",
     fieldBottom: 391.5,
     keyboardTop: 432,
     expected: "FAIL",
@@ -359,74 +540,227 @@ const CELLS: readonly Cell[] = [
 
 const EXPECTED_CELL_COUNT = 5;
 
-describe("#1834 TA-2 — the success criterion is clearance of the Done bar, not the keyboard", () => {
-  // Read off the EXECUTED wrapper element, not off the module's text.
-  const bottomOffset = renderWrapper().props.bottomOffset as number;
-  const minClearance = bottomOffset - DONE_BAR;
+describe("#1834 TA-2 — the clearance budget is DERIVED per platform, and the criterion is the Done bar", () => {
+  // One real load + one real execution PER BRANCH. This is the repair: the
+  // previous version executed the wrapper exactly once, on the web branch.
+  const loaded = PLATFORM_BRANCHES.map((b) => ({
+    branch: b,
+    ...loadWrapperUnder(b.os, b.version),
+  }));
 
-  const clears = (fieldBottom: number, keyboardTop: number): boolean =>
-    fieldBottom <= keyboardTop - (DONE_BAR + minClearance);
+  const byId = new Map(loaded.map((l) => [l.branch.id, l]));
 
-  it("0. VACUITY GUARD — the measured cell table is intact", () => {
+  const offsetOf = (id: string): number => {
+    const entry = byId.get(id);
+    if (entry == null) {
+      throw new Error(`[#1834 TA-2] unknown branch "${id}".`);
+    }
+    return entry.element.props.bottomOffset as number;
+  };
+
+  /**
+   * The #1834 acceptance predicate, per SPEC AMENDMENT 2, sourced from the
+   * branch's OWN executed module: a field's visible bottom border must sit at
+   * least MIN_VISIBLE_CLEARANCE above the top of the Done bar, and the bar
+   * occupies DONE_BAR_OCCUPIED above the keyboard's top edge. Screen space
+   * (AMENDMENT 3) — never window space.
+   */
+  const clears = (cell: Cell): boolean => {
+    const entry = byId.get(cell.branch);
+    if (entry == null) {
+      throw new Error(
+        `[#1834 TA-2] cell "${cell.id}" names branch "${cell.branch}", which is ` +
+          `not in PLATFORM_BRANCHES. A cell whose criterion cannot be resolved ` +
+          `must FAIL, never be skipped.`,
+      );
+    }
+    const { DONE_BAR_OCCUPIED, MIN_VISIBLE_CLEARANCE } = entry.module;
+    return (
+      cell.fieldBottom <=
+        cell.keyboardTop - (DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE)
+    );
+  };
+
+  it("0. VACUITY GUARD — three DISTINCT branches really loaded, and the cell table is intact", () => {
+    // If the Platform decorator ever stops working, all three loads return the
+    // same module values and the suite silently degrades to the single-branch
+    // blindness it was repaired to remove. Distinctness is therefore the guard,
+    // not a nicety: it is the one observable that separates "three branches ran"
+    // from "one branch ran three times".
+    const offsets = loaded.map((l) => l.element.props.bottomOffset as number);
+    const observedOS = loaded.map((l) => l.branch.os);
+    expect({
+      branchCount: loaded.length,
+      distinctOffsets: new Set(offsets).size,
+      distinctChrome: new Set(
+        loaded.map((l) => dp4(l.module.INPUT_CHROME_BELOW_TEXT_FRAME)),
+      ).size,
+      anyCollapsedToWebDefault: loaded.some(
+        (l) => l.module.INPUT_CHROME_BELOW_TEXT_FRAME === 0,
+      ),
+      osCovered: [...new Set(observedOS)].sort(),
+    }).toEqual({
+      branchCount: EXPECTED_BRANCH_COUNT,
+      distinctOffsets: EXPECTED_BRANCH_COUNT,
+      distinctChrome: 2, // iOS 13.5 and Android 3.16 — never the `default: 0`
+      anyCollapsedToWebDefault: false,
+      osCovered: ["android", "ios"],
+    });
+
     expect(CELLS.length).toBe(EXPECTED_CELL_COUNT);
     expect(CELLS.filter((c) => c.clearsKeyboard && c.expected === "FAIL").length)
       .toBeGreaterThanOrEqual(3);
   });
 
-  it("0b. the wrapper EXECUTES to the library primitive and honours an override", () => {
+  it("0b. the wrapper EXECUTES to the library primitive on every branch and honours an override", () => {
     // Drives the real component: the default element must be the keyboard
     // library's KeyboardAwareScrollView (never react-native's ScrollView), the
-    // inherited offset must be DEFAULT_BOTTOM_OFFSET, and an explicit prop must
-    // still win — the three behaviours the criterion below rests on.
-    const inherited = renderWrapper();
-    const overridden = renderWrapper({ bottomOffset: 9 });
-    expect({
-      type: inherited.type,
-      inheritedOffset: inherited.props.bottomOffset,
+    // inherited offset must be that branch's DEFAULT_BOTTOM_OFFSET, and an
+    // explicit prop must still win — the three behaviours the criterion rests on.
+    const actual = loaded.map((l) => ({
+      id: l.branch.id,
+      type: l.element.type,
       matchesExportedConstant:
-        inherited.props.bottomOffset === DEFAULT_BOTTOM_OFFSET,
-      overriddenOffset: overridden.props.bottomOffset,
+        l.element.props.bottomOffset === l.module.DEFAULT_BOTTOM_OFFSET,
+      overriddenOffset: l.renderWith({ bottomOffset: 9 }).props.bottomOffset,
+    }));
+    expect(actual).toEqual(
+      PLATFORM_BRANCHES.map((b) => ({
+        id: b.id,
+        type: "KeyboardAwareScrollView@library",
+        matchesExportedConstant: true,
+        overriddenOffset: 9,
+      })),
+    );
+  });
+
+  it("1. every platform branch derives its own budget — the exact arithmetic, on glass-measured terms", () => {
+    const actual = loaded.map((l) => ({
+      id: l.branch.id,
+      doneBarOccupied: dp4(l.module.DONE_BAR_OCCUPIED),
+      inputChrome: dp4(l.module.INPUT_CHROME_BELOW_TEXT_FRAME),
+      minClearance: dp4(l.module.MIN_VISIBLE_CLEARANCE),
+      bottomOffset: dp4(l.element.props.bottomOffset as number),
+      // The sum is not merely EQUAL to the terms; it must BE the terms. This is
+      // the assertion that catches keeping the exports and hardcoding the total.
+      isTheSumOfItsTerms:
+        (l.element.props.bottomOffset as number) ===
+          l.module.DONE_BAR_OCCUPIED +
+            l.module.INPUT_CHROME_BELOW_TEXT_FRAME +
+            l.module.MIN_VISIBLE_CLEARANCE,
+    }));
+    expect(actual).toEqual(
+      PLATFORM_BRANCHES.map((b) => ({
+        id: b.id,
+        doneBarOccupied: dp4(b.doneBarOccupied),
+        inputChrome: dp4(b.inputChrome),
+        minClearance: 12,
+        bottomOffset: dp4(b.bottomOffset),
+        isTheSumOfItsTerms: true,
+      })),
+    );
+  });
+
+  it("2. the Done bar's occupied height is DERIVED from the library's own rule, not pinned", () => {
+    // `DONE_BAR_OCCUPIED = KEYBOARD_TOOLBAR_HEIGHT - OPENED_OFFSET`, and the
+    // library's OPENED_OFFSET is -11 only when it draws rounded corners
+    // (iOS >= 26). Pinning 53 fails on the iOS <26 and Android rows; pinning 42
+    // fails on the iOS 26 row. Only the derivation satisfies all three.
+    const actual = loaded.map((l) => ({
+      id: l.branch.id,
+      floatAboveKeyboard: dp4(
+        l.module.DONE_BAR_OCCUPIED - l.module.KEYBOARD_TOOLBAR_HEIGHT,
+      ),
+      barHeight: l.module.KEYBOARD_TOOLBAR_HEIGHT,
+    }));
+    expect(actual).toEqual([
+      { id: "ios-26.5", floatAboveKeyboard: 11, barHeight: 42 },
+      { id: "ios-18.4", floatAboveKeyboard: 0, barHeight: 42 },
+      { id: "android-34", floatAboveKeyboard: 0, barHeight: 42 },
+    ]);
+  });
+
+  it("3. ANTI-HARDCODE — the deltas BETWEEN branches are exactly the terms that differ", () => {
+    // A single re-hardcoded literal (54, 78.5, anything) collapses every delta
+    // to 0. A per-platform table of hardcoded totals survives assertion 1 but
+    // dies here the moment its numbers stop tracking the terms.
+    const ios26 = offsetOf("ios-26.5");
+    const ios18 = offsetOf("ios-18.4");
+    const android = offsetOf("android-34");
+    const iosChrome = (byId.get("ios-26.5") as { module: WrapperModule }).module
+      .INPUT_CHROME_BELOW_TEXT_FRAME;
+    const androidChrome = (byId.get("android-34") as { module: WrapperModule })
+      .module.INPUT_CHROME_BELOW_TEXT_FRAME;
+
+    expect({
+      iosVersionDelta: dp4(ios26 - ios18),
+      crossPlatformDelta: dp4(ios18 - android),
+      expectedCrossPlatformDelta: dp4(iosChrome - androidChrome),
     }).toEqual({
-      type: "KeyboardAwareScrollView@library",
-      inheritedOffset: DEFAULT_BOTTOM_OFFSET,
-      matchesExportedConstant: true,
-      overriddenOffset: 9,
+      // The library's OPENED_OFFSET float — the whole reason 54 was wrong.
+      iosVersionDelta: 11,
+      crossPlatformDelta: dp4(iosChrome - androidChrome),
+      expectedCrossPlatformDelta: dp4(iosChrome - androidChrome),
     });
+    // And the deltas must be real: three identical offsets is the failure.
+    expect(new Set([ios26, ios18, android]).size).toBe(3);
   });
 
-  it("1. the wrapper default still budgets a real visible gap ABOVE the Done bar", () => {
-    // 54 = 42 (bar) + 12 (visible clearance). Dropping the offset to the bar's
-    // own height, or below it, silently reintroduces the reported bug.
-    expect({ bottomOffset, minClearance }).toEqual({
-      bottomOffset: DONE_BAR + 12,
-      minClearance: 12,
-    });
+  it("4. the library's iOS-26 rounded-corner BOUNDARY is honoured, not approximated", () => {
+    // Straddle the exact version the library switches on. Moving the boundary
+    // (>26, >=25, a hardcoded true/false) shows up here and nowhere else.
+    const justBelow = loadWrapperUnder("ios", "25.9");
+    const atBoundary = loadWrapperUnder("ios", "26.0");
+    const wellAbove = loadWrapperUnder("ios", "29.1");
+    expect({
+      "25.9": dp4(justBelow.element.props.bottomOffset as number),
+      "26.0": dp4(atBoundary.element.props.bottomOffset as number),
+      "29.1": dp4(wellAbove.element.props.bottomOffset as number),
+    }).toEqual({ "25.9": 67.5, "26.0": 78.5, "29.1": 78.5 });
   });
 
-  it("2. every measured cell classifies as recorded", () => {
+  it("5. the 12pt visible gap and the ORCH-1165 floor survive on EVERY branch", () => {
+    const actual = loaded.map((l) => ({
+      id: l.branch.id,
+      visibleGapAfterBothCosts: dp4(
+        (l.element.props.bottomOffset as number) -
+          l.module.DONE_BAR_OCCUPIED -
+          l.module.INPUT_CHROME_BELOW_TEXT_FRAME,
+      ),
+      clearsOrch1165Floor:
+        (l.element.props.bottomOffset as number) >=
+          l.module.KEYBOARD_TOOLBAR_HEIGHT,
+    }));
+    expect(actual).toEqual(
+      PLATFORM_BRANCHES.map((b) => ({
+        id: b.id,
+        visibleGapAfterBothCosts: 12,
+        clearsOrch1165Floor: true,
+      })),
+    );
+  });
+
+  it("6. every measured cell classifies as recorded, under its OWN platform's criterion", () => {
     const actual = CELLS.map((c) => ({
       id: c.id,
-      verdict: clears(c.fieldBottom, c.keyboardTop) ? "PASS" : "FAIL",
+      verdict: clears(c) ? "PASS" : "FAIL",
     }));
     const expected = CELLS.map((c) => ({ id: c.id, verdict: c.expected }));
     expect(actual).toEqual(expected);
   });
 
-  it("3. clearing the KEYBOARD is provably not sufficient — the weaker criterion disagrees", () => {
+  it("7. clearing the KEYBOARD is provably not sufficient — the weaker criterion disagrees", () => {
     // This is the assertion that makes the criterion un-weakenable. If the
     // criterion is ever redefined as `fieldBottom <= keyboardTop`, these cells
     // stop disagreeing and the expectation below fails.
     const weakenedButStillFailing = CELLS.filter(
-      (c) =>
-        c.clearsKeyboard &&
-        c.expected === "FAIL" &&
-        !clears(c.fieldBottom, c.keyboardTop),
+      (c) => c.clearsKeyboard && c.expected === "FAIL" && !clears(c),
     ).map((c) => c.id);
 
     expect(weakenedButStillFailing).toEqual([
       "android-R2-create-prefix",
       "ios-R2-create-prefix-17pro",
-      "ios-se3-R2-create-postfix",
+      "ios-se3-R2-create-offset54",
     ]);
   });
 });
@@ -446,6 +780,14 @@ describe("#1834 TA-2 — the success criterion is clearance of the Done bar, not
 const DECLARED_DEAD_COMPENSATORS = [
   "src/components/partner/PartnerPaystackOnboardForm.tsx",
 ];
+
+/**
+ * The bar's own HEIGHT — the number a dead compensator would have been written
+ * against. Deliberately NOT the same quantity as TA-2's DONE_BAR_OCCUPIED (which
+ * is height + float, and platform-dependent): a pad written to cancel the bar
+ * was written against its height, so that is what TA-3 looks for.
+ */
+const DONE_BAR = 42;
 
 function rendersRawReactNativeModal(src: string): boolean {
   return (
