@@ -258,6 +258,27 @@ Deno.test("T-1793-M4 — the paused / not-yet-orderable sentences are shared wit
   );
   assertEquals(notYet, "The Brasserie isn't taking orders through Mingla yet.");
 
+  // #1848 landed while this phase was in flight and split the ONE refusal into
+  // two: `venue_not_orderable` now means "claim not verified" and
+  // `ordering_disabled` means "switched off". Phase 4 consumes the split — and
+  // the reason the guest banner needs no branch of its own is that #1848 gave
+  // both codes the SAME guest sentence, deliberately: a scanner must not be
+  // able to tell "still in review" from "they haven't turned it on", because
+  // that is the venue's business, and both are truthfully "not yet". If those
+  // two sentences ever diverge, the banner starts under-reporting one of them
+  // and this line is what says so.
+  assertEquals(
+    venueOrderErrorCopy("ordering_disabled", "guest", { venue: "The Brasserie" }),
+    notYet,
+  );
+  // The STAFF sentences, by contrast, MUST differ — that split is the whole
+  // point of #1848, and a guest surface that quietly re-merged them would undo
+  // it for the one audience it was written for.
+  assertNotEquals(
+    venueOrderErrorCopy("ordering_disabled", "staff"),
+    venueOrderErrorCopy("venue_not_orderable", "staff"),
+  );
+
   const rules = Deno.readTextFileSync(
     new URL(
       "../../../../packages/brand-rendering/venueOrdering/venueOrderingRules.ts",
