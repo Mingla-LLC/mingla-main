@@ -329,6 +329,19 @@ jobs:
           # with a provider, a fee, or Mingla-computed tax.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1790_venue_order_money_rail.test.sql
+          # Issue #1819 — the adversarial tester's two HIGH findings against
+          # Phase 2, executed against the REAL applied schema. H-1 sweeps the
+          # LIVE ACL of all five money tables (a REVOKE that does not work still
+          # looks like a REVOKE in source) and then BECOMES anon and attempts the
+          # TRUNCATE that succeeded on production — aimed at leaf tables, so
+          # SQLSTATE 42501 is the only way it can fail and it cannot pass for the
+          # wrong reason. H-2 writes two brands' orders under one client-chosen
+          # idempotency key and proves the scoped replay read returns each
+          # brand its OWN order, while a true duplicate inside one tenant is
+          # still refused. Every group was verified to fail on the pre-fix
+          # schema and pass on the post-fix one.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1819_order_grants_and_idempotency_scope.test.sql
 
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"
@@ -407,6 +420,14 @@ jobs:
             # placeholder would over-release the venue by exactly the processing
             # cost, so the order must WAIT for the real number instead.
             supabase/functions/_shared/__tests__/issue_1790_venue_order_webhook.test.ts
+            # Issue #1819 H-2 — the collision and the leak. Proves two counter-
+            # pickup guests with identical carts no longer derive one key (the
+            # second used to be handed the first's order), that the same guest
+            # retrying still collapses to one, and that the replay read is
+            # filtered on all three tenant columns — asserted against a fake
+            # client that really applies the filters, so a foreign-brand row is
+            # excluded by the QUERY rather than by a stub's say-so.
+            supabase/functions/_shared/__tests__/issue_1819_order_idempotency_scope.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
