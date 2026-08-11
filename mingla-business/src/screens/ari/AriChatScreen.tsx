@@ -58,6 +58,11 @@ import { useAuth } from "../../context/AuthContext";
 // `Keyboard.dismiss()`, which is not a listener and is not in scope for
 // orch-0892.
 import { useKeyboardHeight } from "../../wrappers/useKeyboardHeight";
+// #1850 [quarantined-checkout-pins] — the Done-bar term in the composer lift is
+// the DERIVED cost of the bar, not the hand-typed 42 that used to sit here. Metro
+// picks the .native variant (53 on iOS 26+, 42 elsewhere); the web variant exports
+// 0, which the web branch below never reads anyway.
+import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";
 
 // Height the floating BottomNav capsule occupies above the safe-area bottom.
 // Matches NAV_HEIGHT (64) + paddingTop (8) + paddingBottom (≥8) in
@@ -91,9 +96,9 @@ export const AriChatScreen: React.FC = () => {
   const keyboardHeight = useKeyboardHeight();
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   // ORCH-1165 REWORK loop 2 — the keyboard-open lift must clear the ENTIRE
-  // composer pill above the 42dp Done bar, not just its bottom edge. The pill
-  // is taller than 42 (~57dp one-line, more multi-line / at large font scale),
-  // so `keyboardHeight + spacing.sm + 42` left the text-input row BEHIND the
+  // composer pill above the Done bar, not just its bottom edge. The pill is
+  // taller than the bar (~57dp one-line, more multi-line / at large font scale),
+  // so `keyboardHeight + spacing.sm + DONE_BAR_OCCUPIED` left the input row BEHIND
   // bar (typed text invisible until dismiss). We measure the composer's
   // rendered height via onLayout and lift by that full height + 12dp breathing
   // room, so it self-adjusts to multi-line growth and font scaling — no guessed
@@ -334,18 +339,28 @@ export const AriChatScreen: React.FC = () => {
               // 80px gap below the composer. Web → spacing.sm only.
               //
               // Native: when the keyboard is up, lift the WHOLE composer pill
-              // above the 42dp Done bar. ORCH-1165 REWORK loop 2 — the bar sits
-              // keyboardHeight + spacing.sm + 42 from the bottom; clearing only
-              // the pill's bottom edge to that line left the input row behind
-              // the bar. Add the measured composerHeight + 12dp so the entire
-              // pill sits above the bar's top (self-adjusts to multi-line /
+              // above the Done bar. ORCH-1165 REWORK loop 2 — the bar sits
+              // keyboardHeight + spacing.sm + DONE_BAR_OCCUPIED from the bottom;
+              // clearing only the pill's bottom edge to that line left the input
+              // row behind the bar. Add the measured composerHeight + 12dp so the
+              // entire pill sits above the bar's top (self-adjusts to multi-line /
               // font scaling; conservative fallback before first measure). When
               // closed, clear the floating BottomNav capsule + safe-area inset.
+              //
+              // #1850 — the Done-bar term was a hand-typed 42, which is
+              // KEYBOARD_TOOLBAR_HEIGHT, not what the bar occupies above the
+              // keyboard. #1834 measured 53 on iOS 26+ (the library floats the bar
+              // 11pt clear of the rounded corners) and made it derivable, so this
+              // reads the derived value and moves with the OS.
               paddingBottom:
                 Platform.OS === "web"
                   ? spacing.sm
                   : keyboardHeight > 0
-                    ? keyboardHeight + spacing.sm + 42 + composerHeight + 12
+                    ? keyboardHeight +
+                      spacing.sm +
+                      DONE_BAR_OCCUPIED +
+                      composerHeight +
+                      12
                     : Math.max(insets.bottom, spacing.md) + BOTTOM_NAV_CLEARANCE_PX,
             },
           ]}
@@ -369,7 +384,7 @@ export const AriChatScreen: React.FC = () => {
           {/* ORCH-1165 REWORK loop 2 — measure the composer pill's rendered
               height (NOT the inputWrap, whose dynamic paddingBottom would feed
               back) so the keyboard-open lift clears the full pill above the
-              42dp Done bar. */}
+              Done bar. */}
           <View onLayout={onComposerLayout}>
             <InputBar
               onSend={handleSend}

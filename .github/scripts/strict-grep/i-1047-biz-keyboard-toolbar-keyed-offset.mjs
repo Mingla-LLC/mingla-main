@@ -1,70 +1,533 @@
 #!/usr/bin/env node
 /**
- * I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET  (issue #1047)
+ * I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET  (issue #1047, extended by #1850)
  *
  * Re-homes the load-bearing parts of the keyboard Done-bar invariant previously
  * pinned by `mingla-business/src/wrappers/__tests__/orch_1165_keyboard_toolbar_mount_coverage.test.ts`
- * (ORCH-1165 / ORCH-1170). That jest file also pinned ~13 checkout-scrollview
- * paddings (some drifted) and is now quarantined; this additive gate keeps the two
- * load-bearing rules enforced.
+ * (ORCH-1165 / ORCH-1170), which is quarantined by the #1047 block of
+ * `mingla-business/jest.config.cjs`.
+ *
+ * WHAT THAT QUARANTINED FILE ACTUALLY PINNED — measured, not estimated (#1850).
+ * The header this gate shipped with said "~13 checkout-scrollview paddings (some
+ * drifted)". That was wrong in three ways, and #1850 replayed all of it against
+ * the tree to get the real numbers:
+ *
+ *   - It is TWO describe blocks, not one: 41 assertions over 17 source files.
+ *   - The second block is the ORCH-1170 per-Modal-window provider rule (8
+ *     assertions). The old header did not mention it at all, and this gate did
+ *     not enforce it — see rule (C), which restores it.
+ *   - "(some drifted)" is exactly 3 assertions, all on the three checkout BUYER
+ *     screens, all red since 2026-07-01 (ORCH-1252 / PR #701 migrated them to
+ *     SmartScrollView and deleted the pinned expression). The PIN was wrong, not
+ *     the code, and no live defect is attributable to the drift.
+ *
+ * The full moved/dropped ledger for the hand-off now lives beside the quarantine
+ * entry in `mingla-business/jest.config.cjs`, and
+ * `issue-1850-quarantine-invariant-handoff-complete.mjs` fails if it stops
+ * reconciling against this gate's own target list.
  *
  * THE RULE:
  *  (A) MOUNT COVERAGE — the Done bar can only reach a focused field if a
  *      <KeyboardToolbarRoot/> is rendered in the SAME native window. Three host
  *      windows must each render it: app/_layout.tsx (root), SheetMobile.tsx (sheet
  *      Modal window), Modal.tsx (dialog Modal window).
- *  (B) KEYED-ON-KEYBOARD-OPEN OFFSET — the +42pt Done-bar clearance MUST be gated
- *      on the keyboard being open (`> 0 ? … + 42`), NEVER unconditional (an
- *      unconditional +42 leaves a permanent dead 42pt gap). Pinned on the three
- *      stable surfaces (auth welcome, waitlist sheet, marketing composer).
+ *  (B) KEYED-ON-KEYBOARD-OPEN OFFSET — the Done-bar clearance MUST be gated on the
+ *      keyboard being open (`> 0 ? … + 42`), NEVER unconditional (an unconditional
+ *      offset leaves a permanent dead gap). Pinned on the three stable surfaces
+ *      (auth welcome, waitlist sheet, marketing composer).
+ *  (C) ORCH-1170 PER-WINDOW PROVIDER NESTING (restored by #1850) — in the two
+ *      Modal hosts the toolbar must render INSIDE that window's own
+ *      <KeyboardRoot>. A toolbar that is a SIBLING of the provider mounts and then
+ *      never appears: this was a proven Samsung defect, where rule (A) passed, the
+ *      bar mounted, and it still never showed, because a RN <Modal> is a separate
+ *      native window that the app-root provider does not reach.
+ *  (D) NO NUMERIC DONE-BAR LITERAL (added by #1850) — the four surfaces that
+ *      budget clearance for the bar by hand must derive it from
+ *      `DONE_BAR_OCCUPIED`, never type a number. `42` is the library's
+ *      KEYBOARD_TOOLBAR_HEIGHT — the bar's own height — which is NOT what the bar
+ *      occupies above the keyboard: #1834 measured 53 on iOS 26+, because the
+ *      library floats the bar 11pt clear of the keyboard's rounded corners. Every
+ *      hand-typed 42 was therefore 11pt short on iOS 26+, leaving the composer
+ *      partially behind the bar. `DONE_BAR_OCCUPIED` is derived in
+ *      `src/wrappers/SmartScrollView.native.tsx` from the same inputs the library
+ *      uses, so an OS bump or a library change to OPENED_OFFSET moves it with no
+ *      edit here.
+ *
+ * Rule (B) still names 42 on purpose: those three surfaces add the clearance to a
+ * `spacing.*` term and were NOT migrated by #1850 (two of them are additionally
+ * pinned by live jest suites that append-only forbids editing). Rule (D)'s
+ * allowlist is exactly the four that were migrated. Widening (D) means migrating
+ * the surface first — that ordering is the whole point.
+ *
+ * VACUITY: resolving zero target files for any rule is `exit 2` (VACUOUS), never a
+ * silent pass. `--self-test` runs the fixture battery below.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const read = (rel) => fs.readFileSync(path.join(REPO, path.join("mingla-business", rel)), "utf8");
+const BIZ = path.join(REPO, "mingla-business");
+const SELF_TEST = process.argv.includes("--self-test");
+/**
+ * Only scan when invoked directly. `run` is imported by
+ * `__tests__/issue-1850-quarantine-invariant-handoff.happy.test.mjs`, which drives it
+ * with a mutated file map; without this guard the import alone would scan and exit.
+ */
+const IS_MAIN =
+  typeof process.argv[1] === "string" &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
 const stripImports = (s) => s.split("\n").filter((l) => !/^\s*import\b/.test(l)).join("\n");
+/**
+ * Removes whole import STATEMENTS, including the multi-line `import {\n  A,\n  B,\n}
+ * from "…"` form that a line-prefix filter leaves half-standing — which would let the
+ * bare name `DONE_BAR_OCCUPIED,` sitting on its own line inside an import count as a
+ * USE. Used only by rule (D)'s use-check, where that distinction decides the verdict.
+ */
+const stripImportStatements = (s) =>
+  s
+    .replace(/^[ \t]*import\b[\s\S]*?\bfrom\s*["'][^"']*["'][ \t]*;?/gm, "")
+    .replace(/^[ \t]*import\s*["'][^"']*["'][ \t]*;?/gm, "");
+/** Comments never satisfy — and never violate — a source rule. */
+const stripComments = (s) =>
+  s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 
-const violations = [];
+/** (A) the three host windows that must render the toolbar in their own window. */
+const MOUNT_HOSTS = [
+  "app/_layout.tsx",
+  "src/components/ui/SheetMobile.tsx",
+  "src/components/ui/Modal.tsx",
+];
 
-// (A) mount coverage — all three host windows render <KeyboardToolbarRoot/>.
-for (const rel of ["app/_layout.tsx", "src/components/ui/SheetMobile.tsx", "src/components/ui/Modal.tsx"]) {
-  let src;
-  try {
-    src = read(rel);
-  } catch {
-    violations.push(`${rel} is missing — a keyboard-toolbar host window disappeared.`);
-    continue;
-  }
-  if (!/<KeyboardToolbarRoot\s*\/?>/.test(stripImports(src))) {
-    violations.push(`${rel} no longer renders <KeyboardToolbarRoot/> — inputs in its native window get no Done bar.`);
-  }
-}
-
-// (B) keyed (never-unconditional) +42 offsets on the three stable surfaces.
+/** (B) surfaces whose clearance is added to a spacing term and stays literal. */
 const KEYED = [
   ["src/components/auth/BusinessWelcomeScreen.tsx", /keyboardPad\s*>\s*0\s*\?\s*keyboardPad\s*\+\s*42/],
   ["src/components/waitlist/JoinWaitlistSheet.tsx", /keyboardPadding\s*>\s*0\s*\?\s*42/],
   ["src/components/marketing/ComposerV2/ComposerV2Editor.tsx", /keyboardHeight\s*>\s*0\s*\?\s*keyboardHeight\s*\+\s*42/],
 ];
-for (const [rel, re] of KEYED) {
-  let src;
-  try {
-    src = read(rel);
-  } catch {
-    violations.push(`${rel} is missing.`);
-    continue;
+
+/** (C) the two Modal windows that must nest the toolbar inside their provider. */
+const NESTED_PROVIDER_HOSTS = [
+  "src/components/ui/SheetMobile.tsx",
+  "src/components/ui/Modal.tsx",
+];
+
+/** (D) surfaces migrated off the literal by #1850. */
+const DERIVED_CLEARANCE = [
+  "src/components/groupChat/GroupChatPanel.tsx",
+  "src/components/support/SupportThread.native.tsx",
+  "src/components/brand/BrandPaystackOnboardView.tsx",
+  "src/screens/ari/AriChatScreen.tsx",
+];
+
+/**
+ * (C) the toolbar must be NESTED inside the window's own provider, not a sibling.
+ * Import lines are stripped first so the `import { KeyboardRoot } …` line cannot
+ * be mistaken for an opening tag.
+ */
+const NESTED = /<KeyboardRoot\b[^>]*>[\s\S]*<KeyboardToolbarRoot\s*\/?>[\s\S]*<\/KeyboardRoot>/;
+
+/** (D) a hand-typed offset, and a hand-typed clearance term in a keyboard branch. */
+const LITERAL_KAV_OFFSET = /keyboardVerticalOffset\s*=\s*\{\s*\d+(?:\.\d+)?\s*\}/;
+const LITERAL_CLEARANCE_TERM = /keyboard[A-Za-z]*\s*(?:>\s*0[\s\S]{0,200}?)?\+\s*42\b/;
+const IMPORTS_DERIVED = /import\s*\{[^}]*\bDONE_BAR_OCCUPIED\b[^}]*\}\s*from\s*["'][^"']*wrappers\/SmartScrollView["']/;
+/** …and it must actually be USED, not just imported (#1850 TEST P2-6). */
+const USES_DERIVED = /\bDONE_BAR_OCCUPIED\b/;
+
+/**
+ * (E) MEASURED COMPOSER HEIGHT — the Ari composer's lift must keep reading the
+ * pill's REAL rendered height. ORCH-1165 REWORK loop 2 shipped this because the
+ * pill is taller than the Done bar (~57dp on one line, more multi-line or at a
+ * large font scale), so lifting by clearance alone left the text-input row behind
+ * the bar with the typed text invisible until dismiss. `onLayout` +
+ * `setComposerHeight` is what makes it self-adjust; replacing them with any
+ * constant — however carefully chosen — reintroduces the exact defect. Named
+ * separately from (D) because (D) only stops a guessed CLEARANCE, and this stops
+ * a guessed PILL HEIGHT.
+ */
+const MEASURED_COMPOSER = [
+  ["src/screens/ari/AriChatScreen.tsx", /onLayout\s*=\s*\{\s*onComposerLayout\s*\}/, "onLayout={onComposerLayout} on the composer wrapper"],
+  ["src/screens/ari/AriChatScreen.tsx", /setComposerHeight\s*\(/, "a setComposerHeight(…) call fed by the measured layout"],
+  ["src/screens/ari/AriChatScreen.tsx", /\bcomposerHeight\b[\s\S]{0,80}?\+/, "composerHeight added into the keyboard-open lift"],
+];
+
+/**
+ * The whole check, over an injected file map so `--self-test` can drive it with
+ * fixtures instead of the tree. `files` maps a mingla-business-relative path to
+ * its source, or to `null` for "not readable".
+ *
+ * Returns { code, failures }: 0 clean, 1 rule violation, 2 vacuous/unreadable.
+ */
+export function run({ files, mountHosts, keyed, nestedHosts, derivedHosts, measured }) {
+  const get = (rel) => (files.has(rel) ? files.get(rel) : null);
+
+  // ---- VACUITY: a rule that resolves no targets checks nothing. ----
+  const empty = [];
+  if (mountHosts.length === 0) empty.push("(A) mount coverage");
+  if (keyed.length === 0) empty.push("(B) keyed offset");
+  if (nestedHosts.length === 0) empty.push("(C) provider nesting");
+  if (derivedHosts.length === 0) empty.push("(D) derived clearance");
+  if (measured.length === 0) empty.push("(E) measured composer");
+  if (empty.length > 0) {
+    return {
+      code: 2,
+      failures: [
+        `VACUOUS: ${empty.join(", ")} resolved ZERO target files. A rule with an empty ` +
+          "target list passes no matter what the tree looks like, which reads identically " +
+          "to a rule that holds. Repoint or delete the rule in the same PR that empties it.",
+      ],
+    };
   }
-  if (!re.test(src)) {
-    violations.push(`${rel} no longer gates its +42 Done-bar offset on keyboard-open (\`> 0 ? … + 42\`) — an unconditional offset leaves a permanent dead 42pt gap.`);
+
+  // ---- VACUITY: an unreadable target is a hard stop, never a skip (#1559). ----
+  const all = [...new Set([...mountHosts, ...keyed.map(([r]) => r), ...nestedHosts, ...derivedHosts, ...measured.map(([r]) => r)])];
+  const missing = all.filter((rel) => typeof get(rel) !== "string");
+  if (missing.length > 0) {
+    return {
+      code: 2,
+      failures: missing.map(
+        (rel) =>
+          `${rel}: MISSING or unreadable. A keyboard host that disappears takes its rule with ` +
+          "it; skipping it would turn this gate green by subtraction.",
+      ),
+    };
   }
+
+  const failures = [];
+
+  // ---- (A) mount coverage -------------------------------------------------
+  for (const rel of mountHosts) {
+    if (!/<KeyboardToolbarRoot\s*\/?>/.test(stripImports(get(rel)))) {
+      failures.push(
+        `${rel} no longer renders <KeyboardToolbarRoot/> — inputs in its native window get no Done bar.`,
+      );
+    }
+  }
+
+  // ---- (B) keyed (never-unconditional) offsets ----------------------------
+  for (const [rel, re] of keyed) {
+    if (!re.test(get(rel))) {
+      failures.push(
+        `${rel} no longer gates its +42 Done-bar offset on keyboard-open (\`> 0 ? … + 42\`) — ` +
+          "an unconditional offset leaves a permanent dead 42pt gap.",
+      );
+    }
+  }
+
+  // ---- (C) ORCH-1170 per-window provider nesting --------------------------
+  for (const rel of nestedHosts) {
+    const body = stripImports(get(rel));
+    if (!NESTED.test(body)) {
+      failures.push(
+        `${rel}: <KeyboardToolbarRoot/> is not nested inside this window's own <KeyboardRoot>. ` +
+          "ORCH-1170: the bar mounts but never appears — a RN Modal is a separate native window " +
+          "and the app-root provider does not reach it. A toolbar rendered as a SIBLING of the " +
+          "provider passes rule (A) and still shows nothing (proven on Samsung). Wrap it.",
+      );
+    }
+  }
+
+  // ---- (D) no numeric Done-bar literal ------------------------------------
+  for (const rel of derivedHosts) {
+    const raw = get(rel);
+    if (!IMPORTS_DERIVED.test(raw)) {
+      failures.push(
+        `${rel} does not import DONE_BAR_OCCUPIED from src/wrappers/SmartScrollView — its ` +
+          "Done-bar clearance is not derived from #1834's model.",
+      );
+    }
+    const code = stripComments(raw);
+    // #1850 TEST P2-6 — the import alone was enough to satisfy this rule, so
+    // DELETING the clearance term while keeping the import read as GREEN: no
+    // literal, an import present, and no clearance at all. That is the rule
+    // failing at its own job, not a documentation gap. The name must be USED,
+    // outside imports and outside comments.
+    if (!USES_DERIVED.test(stripImportStatements(code))) {
+      failures.push(
+        `${rel} imports DONE_BAR_OCCUPIED but never USES it. An unused import is not a derivation — ` +
+          "deleting the clearance term while keeping the import leaves the surface with NO Done-bar " +
+          "budget at all, which is worse than the literal this rule replaced.",
+      );
+    }
+    if (LITERAL_KAV_OFFSET.test(code)) {
+      failures.push(
+        `${rel} sets keyboardVerticalOffset to a NUMERIC LITERAL. Use DONE_BAR_OCCUPIED: 42 is ` +
+          "KEYBOARD_TOOLBAR_HEIGHT (the bar's own height), not what the bar occupies above the " +
+          "keyboard — #1834 measured 53 on iOS 26+, so a literal 42 sits 11pt short and leaves " +
+          "the composer partly behind the bar.",
+      );
+    }
+    if (LITERAL_CLEARANCE_TERM.test(code)) {
+      failures.push(
+        `${rel} adds a hand-typed \`+ 42\` clearance term inside a keyboard-conditional ` +
+          "expression. Use DONE_BAR_OCCUPIED — the derived value moves with the OS and the " +
+          "library; a literal does not.",
+      );
+    }
+  }
+
+  // ---- (E) the Ari composer keeps MEASURING its pill -----------------------
+  for (const [rel, re, what] of measured) {
+    if (!re.test(stripComments(get(rel)))) {
+      failures.push(
+        `${rel} no longer carries ${what}. ORCH-1165 REWORK loop 2: the composer pill is taller ` +
+          "than the Done bar, so the keyboard-open lift must include the pill's MEASURED height. " +
+          "Swapping the measurement for a constant puts the text-input row back behind the bar at " +
+          "multi-line or large font scale — invisible typing until dismiss.",
+      );
+    }
+  }
+
+  return { code: failures.length > 0 ? 1 : 0, failures };
 }
 
-if (violations.length) {
-  console.error("\nFAIL [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET]:");
-  for (const v of violations) console.error(`  x ${v}`);
-  console.error("");
-  process.exit(1);
+// ───────────────────────────── self-test ──────────────────────────────────
+if (IS_MAIN && SELF_TEST) {
+  const CLEAN = new Map([
+    ["app/_layout.tsx", `import { KeyboardToolbarRoot } from "x";\n<KeyboardRoot><App/><KeyboardToolbarRoot/></KeyboardRoot>`],
+    [
+      "src/components/ui/SheetMobile.tsx",
+      `import { KeyboardRoot } from "../../wrappers/KeyboardRoot";\n<Modal><KeyboardRoot><Body/><KeyboardToolbarRoot/></KeyboardRoot></Modal>`,
+    ],
+    [
+      "src/components/ui/Modal.tsx",
+      `import { KeyboardRoot } from "../../wrappers/KeyboardRoot";\n<RNModal><KeyboardRoot><Body/><KeyboardToolbarRoot/></KeyboardRoot></RNModal>`,
+    ],
+    ["src/components/auth/BusinessWelcomeScreen.tsx", "paddingBottom: keyboardPad > 0 ? keyboardPad + 42 : 0,"],
+    ["src/components/waitlist/JoinWaitlistSheet.tsx", "pad + (keyboardPadding > 0 ? 42 : 0),"],
+    ["src/components/marketing/ComposerV2/ComposerV2Editor.tsx", "const s = keyboardHeight > 0 ? keyboardHeight + 42 : 0;"],
+    [
+      "src/components/groupChat/GroupChatPanel.tsx",
+      `import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";\n<KeyboardAvoidingView keyboardVerticalOffset={DONE_BAR_OCCUPIED}/>`,
+    ],
+    [
+      "src/components/support/SupportThread.native.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\n<KeyboardAvoidingView keyboardVerticalOffset={DONE_BAR_OCCUPIED}/>`,
+    ],
+    [
+      "src/components/brand/BrandPaystackOnboardView.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\n<KeyboardAvoidingView keyboardVerticalOffset={DONE_BAR_OCCUPIED}/>`,
+    ],
+    [
+      "src/screens/ari/AriChatScreen.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + composerHeight + 12 : 0;\nsetComposerHeight(h);\n<View onLayout={onComposerLayout}/>`,
+    ],
+  ]);
+  const base = () => ({
+    files: new Map(CLEAN),
+    mountHosts: [...MOUNT_HOSTS],
+    keyed: KEYED.map(([r, re]) => [r, re]),
+    nestedHosts: [...NESTED_PROVIDER_HOSTS],
+    derivedHosts: [...DERIVED_CLEARANCE],
+    measured: MEASURED_COMPOSER.map((x) => [...x]),
+  });
+
+  const problems = [];
+  const check = (label, model, wantCode, wantText) => {
+    const r = run(model);
+    if (r.code !== wantCode) {
+      problems.push(`${label}: expected exit ${wantCode}, got ${r.code} — ${r.failures.join(" | ")}`);
+      return;
+    }
+    if (wantText && !r.failures.some((f) => f.includes(wantText))) {
+      problems.push(`${label}: failure did not mention "${wantText}" — ${r.failures.join(" | ")}`);
+    }
+  };
+
+  // 1 — the clean tree passes.
+  check("clean fixture", base(), 0);
+
+  // 2 — (C) the ORCH-1170 defect itself: toolbar is a SIBLING of the provider.
+  {
+    const m = base();
+    m.files.set(
+      "src/components/ui/Modal.tsx",
+      `import { KeyboardRoot } from "x";\n<RNModal><KeyboardRoot><Body/></KeyboardRoot><KeyboardToolbarRoot/></RNModal>`,
+    );
+    check("(C) toolbar as sibling of the provider", m, 1, "separate native window");
+  }
+
+  // 3 — (C) the provider removed entirely (rule (A) still passes; this must not).
+  {
+    const m = base();
+    m.files.set("src/components/ui/SheetMobile.tsx", `import { X } from "x";\n<Modal><Body/><KeyboardToolbarRoot/></Modal>`);
+    check("(C) provider removed", m, 1, "not nested inside this window's own <KeyboardRoot>");
+  }
+
+  // 4 — (D) a numeric keyboardVerticalOffset comes back.
+  {
+    const m = base();
+    m.files.set(
+      "src/components/groupChat/GroupChatPanel.tsx",
+      `import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";\n<KeyboardAvoidingView keyboardVerticalOffset={42}/>`,
+    );
+    check("(D) literal keyboardVerticalOffset", m, 1, "NUMERIC LITERAL");
+  }
+
+  // 5 — (D) the derived import is dropped.
+  {
+    const m = base();
+    m.files.set("src/components/support/SupportThread.native.tsx", `<KeyboardAvoidingView keyboardVerticalOffset={DONE_BAR_OCCUPIED}/>`);
+    check("(D) DONE_BAR_OCCUPIED import removed", m, 1, "does not import DONE_BAR_OCCUPIED");
+  }
+
+  // 5b — (D) THE P2-6 HOLE: the import stays, the clearance term is DELETED.
+  //      Before #1850 TEST this was GREEN — no literal, import present, and no
+  //      Done-bar budget at all. The rule was satisfiable by doing nothing.
+  {
+    const m = base();
+    m.files.set(
+      "src/screens/ari/AriChatScreen.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + composerHeight + 12 : 0;\nsetComposerHeight(h);\n<View onLayout={onComposerLayout}/>`,
+    );
+    check("(D) imported but never used", m, 1, "never USES it");
+  }
+
+  // 5c — (D) a MULTI-LINE import must not read as a use: the bare name sitting
+  //      on its own line inside the import braces is still an import.
+  {
+    const m = base();
+    m.files.set(
+      "src/components/groupChat/GroupChatPanel.tsx",
+      `import {\n  DONE_BAR_OCCUPIED,\n  ScrollView,\n} from "../../wrappers/SmartScrollView";\n<KeyboardAvoidingView behavior="padding"/>`,
+    );
+    check("(D) multi-line import is not a use", m, 1, "never USES it");
+  }
+
+  // 5d — …and the same multi-line import WITH a real use passes.
+  {
+    const m = base();
+    m.files.set(
+      "src/components/groupChat/GroupChatPanel.tsx",
+      `import {\n  DONE_BAR_OCCUPIED,\n  ScrollView,\n} from "../../wrappers/SmartScrollView";\n<KeyboardAvoidingView keyboardVerticalOffset={DONE_BAR_OCCUPIED}/>`,
+    );
+    check("(D) multi-line import plus a real use passes", m, 0);
+  }
+
+  // 5e — a mention in a COMMENT is not a use either.
+  {
+    const m = base();
+    m.files.set(
+      "src/components/support/SupportThread.native.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\n// we budget DONE_BAR_OCCUPIED here, honest\n<KeyboardAvoidingView behavior="padding"/>`,
+    );
+    check("(D) a comment mention is not a use", m, 1, "never USES it");
+  }
+
+  // 6 — (D) a hand-typed `+ 42` clearance term returns to a keyboard branch.
+  {
+    const m = base();
+    m.files.set(
+      "src/screens/ari/AriChatScreen.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + 42 + composerHeight + 12 : 0;\nsetComposerHeight(h);\n<View onLayout={onComposerLayout}/>`,
+    );
+    check("(D) hand-typed +42 clearance term", m, 1, "hand-typed");
+  }
+
+  // 7 — (D) a `42` in a COMMENT is prose, not a violation.
+  {
+    const m = base();
+    m.files.set(
+      "src/components/brand/BrandPaystackOnboardView.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\n// the old literal was 42; keyboardVerticalOffset={42} is what we removed\n<KeyboardAvoidingView keyboardVerticalOffset={DONE_BAR_OCCUPIED}/>`,
+    );
+    check("(D) 42 in a comment does not fail", m, 0);
+  }
+
+  // 8 — (A) still enforced.
+  {
+    const m = base();
+    m.files.set("app/_layout.tsx", "<KeyboardRoot><App/></KeyboardRoot>");
+    check("(A) toolbar removed from the root window", m, 1, "no longer renders <KeyboardToolbarRoot/>");
+  }
+
+  // 9 — (B) still enforced.
+  {
+    const m = base();
+    m.files.set("src/components/auth/BusinessWelcomeScreen.tsx", "paddingBottom: keyboardPad + 42,");
+    check("(B) offset becomes unconditional", m, 1, "keyboard-open");
+  }
+
+  // 9b — (E) the measured pill height is replaced by a constant.
+  {
+    const m = base();
+    m.files.set(
+      "src/screens/ari/AriChatScreen.tsx",
+      `import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";\nconst p = keyboardHeight > 0 ? keyboardHeight + DONE_BAR_OCCUPIED + 110 + 12 : 0;`,
+    );
+    check("(E) measurement replaced by a constant", m, 1, "MEASURED height");
+  }
+
+  // 9c — an empty (E) list is VACUOUS too.
+  {
+    const m = base();
+    m.measured = [];
+    check("empty (E) target list is VACUOUS", m, 2, "VACUOUS");
+  }
+
+  // 10 — an EMPTY target list is exit 2, never a pass.
+  {
+    const m = base();
+    m.derivedHosts = [];
+    check("empty (D) target list is VACUOUS", m, 2, "VACUOUS");
+  }
+
+  // 11 — an unreadable target is exit 2, never a skip.
+  {
+    const m = base();
+    m.files.delete("src/components/ui/Modal.tsx");
+    check("unreadable target is exit 2", m, 2, "MISSING or unreadable");
+  }
+
+  if (problems.length > 0) {
+    console.error("\nSELF-TEST FAIL [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET]:");
+    for (const p of problems) console.error(`  x ${p}`);
+    console.error("");
+    process.exit(1);
+  }
+  console.log("OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET --self-test]: 17 fixtures behaved as specified.");
+  process.exit(0);
 }
-console.log("OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET]: 3 mount hosts render the toolbar; +42 offsets are keyboard-keyed.");
+
+// ───────────────────────────── live run ───────────────────────────────────
+function main() {
+  const files = new Map();
+  for (const rel of new Set([
+    ...MOUNT_HOSTS,
+    ...KEYED.map(([r]) => r),
+    ...NESTED_PROVIDER_HOSTS,
+    ...DERIVED_CLEARANCE,
+    ...MEASURED_COMPOSER.map(([r]) => r),
+  ])) {
+    try {
+      files.set(rel, fs.readFileSync(path.join(BIZ, rel), "utf8"));
+    } catch {
+      files.set(rel, null);
+    }
+  }
+
+  const result = run({
+    files,
+    mountHosts: MOUNT_HOSTS,
+    keyed: KEYED,
+    nestedHosts: NESTED_PROVIDER_HOSTS,
+    derivedHosts: DERIVED_CLEARANCE,
+    measured: MEASURED_COMPOSER,
+  });
+
+  if (result.code !== 0) {
+    console.error("\nFAIL [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET]:");
+    for (const v of result.failures) console.error(`  x ${v}`);
+    console.error("");
+    process.exit(result.code);
+  }
+  console.log(
+    `OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET]: ${MOUNT_HOSTS.length} mount hosts render the toolbar; ` +
+      `${KEYED.length} offsets stay keyboard-keyed; ${NESTED_PROVIDER_HOSTS.length} Modal windows nest it in their ` +
+      `own provider; ${DERIVED_CLEARANCE.length} surfaces derive clearance from DONE_BAR_OCCUPIED; the Ari ` +
+      "composer still measures its pill.",
+  );
+}
+
+if (IS_MAIN) main();

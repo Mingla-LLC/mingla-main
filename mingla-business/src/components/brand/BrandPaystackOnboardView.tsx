@@ -42,6 +42,8 @@ import {
   useUpdatePaystackRecipient,
   useUpdatePaystackSubaccount,
 } from "../../hooks/useBrandPaystack";
+// #1850 — the bank picker's lift is budgeted against the DERIVED Done-bar cost.
+import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";
 
 interface Props {
   brandId: string;
@@ -296,10 +298,23 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
         // there, so the key never changes.
         onShow={() => setPickerShown(true)}
       >
+        {/* #1850 — this offset was a literal 42, and #1850's investigation argued
+            it was clearing a bar that could not render inside a Modal's own native
+            window at all. #1841's tester SETTLED that by measurement and the
+            argument was wrong on iOS: the Done bar renders in the ROOT window and
+            is visible THROUGH this transparent Modal (396.0pt measured against
+            396.5pt predicted), so the search field genuinely does need clearing
+            here. On Android the bar is genuinely absent inside the Modal — and the
+            offset is already inert there, because `behavior` is undefined on
+            Android and KeyboardAvoidingView ignores the offset without one. So the
+            offset applies exactly where the bar is: iOS. The number was still
+            wrong. 42 is KEYBOARD_TOOLBAR_HEIGHT (the bar's own height);
+            DONE_BAR_OCCUPIED is what it costs above the keyboard — 53 on iOS 26+,
+            because the library floats it 11pt clear of the rounded corners. */}
         <KeyboardAvoidingView
           style={styles.modalRoot}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={42}
+          keyboardVerticalOffset={DONE_BAR_OCCUPIED}
         >
           <Pressable
             style={styles.backdrop}

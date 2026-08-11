@@ -149,16 +149,132 @@ module.exports = {
     // is quarantined ONLY because its invariant moved to a gate — enforcement is
     // continuous, never dropped.
     "metaOrch1255R2\\.bundleBudgetDeferral\\.happy\\.test\\.ts$", // invariant -> i-1047-biz-bundle-budget-deferral.mjs
+    // moved: app/b/[brandSlug]/v/[venueSlug].tsx, packages/brand-rendering/PublicVenueScreen.tsx,
+    //   src/components/event/CreatorStep5Tickets.tsx
+    // dropped: packages/brand-rendering/PublicMenuSections.tsx — describe block R2-2 (module split) is
+    //   dark; rule holds today, enforced by nothing. Unenforced gap recorded in #1850.
+    // dropped: packages/brand-rendering/PublicBrandPage.tsx — R2-2 module split, same dark set as
+    //   PublicMenuSections. Unenforced gap recorded in #1850.
+    // dropped: src/components/venue/VenueDeckReadinessSetup.tsx — R2-4 (reservation-hook split) is dark;
+    //   rule holds today, enforced by nothing. Unenforced gap recorded in #1850.
+    // dropped: src/components/venue/VenueCreatorWizard.tsx — R2-4 reservation-hook split, dark.
+    //   Unenforced gap recorded in #1850.
+    // dropped: app/venue/deck-readiness.tsx — R2-4 reservation-hook split, dark. Recorded in #1850.
+    // dropped: src/hooks/useBrandReservationSettingsList.ts — R2-4 reservation-hook split, dark.
+    //   Unenforced gap recorded in #1850.
+    // dropped: src/hooks/useVenueReservationSettings.ts — R2-4 reservation-hook split, dark.
+    //   Unenforced gap recorded in #1850.
+    // dropped: src/components/venue/VenueCardList.tsx — R2-4 reservation-hook split, dark.
+    //   Unenforced gap recorded in #1850.
+    // note: #1850 measured 19 assertions kept as 7. Every dark rule holds on the tree today; the loss
+    //   is enforcement, not behaviour.
     "liveEventStore-v4-v5-migrator\\.test\\.ts$", // invariant -> i-1047-biz-liveeventstore-v5-drops-server-snapshot.mjs
+    // moved: src/store/liveEventStore.ts
+    // note: FILE fully covered, ASSERTIONS are not — 16 kept as 4. The legacy v1/v2/v3 branch
+    //   preservation and the param-naming rules are inside the covered file and enforced by nothing.
+    //   The gate's relax of `version: 5` to a monotonic `>= 5` is correct (the store is at 6). This is
+    //   the residue class the ledger gate documents that it cannot see; recorded in #1850.
     "[/\\\\]rsvp[/\\\\].*preview\\.test\\.tsx$", // invariant -> i-1047-biz-rsvp-preview-no-ticket-renderer.mjs
+    // moved: app/rsvp/[id]/preview.tsx
+    // note: FILE fully covered, ASSERTIONS are not, badly — 29 kept as 4, roughly 24 dark. Only the
+    //   negative "do not import the ticket renderer" rule survived; every positive-mount, migration,
+    //   guard and UX-state rule inside that file is unguarded. Worst assertion-level residue of the 11;
+    //   recorded in #1850 and outside what a file-level ledger can decide.
     "PaymentPlanEditor\\.test\\.ts$", // invariant -> i-1047-biz-payment-plan-editor-constraints.mjs
+    // moved: src/components/trip/PaymentPlanEditor.tsx
+    // dropped: app/trip/[id]/index.tsx — trip-detail installment surface unguarded after the hand-off.
+    //   Unenforced gap recorded in #1850.
+    // dropped: src/services/tripsService.ts — installment service contract unguarded. Recorded in #1850.
+    // dropped: src/copy/installmentReassurance.ts — installment reassurance copy unguarded.
+    //   Unenforced gap recorded in #1850.
+    // dropped: src/components/trip/InstallmentScheduleDisplay.tsx — schedule display rules unguarded.
+    //   Unenforced gap recorded in #1850.
+    // dropped: src/hooks/useOrderInstallments.ts — React-Query cache-invalidation rules for the
+    //   real-money retry flow are enforced by nothing. Unenforced gap recorded in #1850.
+    // dropped: src/services/orderInstallmentsService.ts — the biz_retry_installment RPC contract
+    //   (p_installment_id) is enforced by nothing. Unenforced gap recorded in #1850.
+    // note: 53 assertions kept as 8, and the gate's own docstring calls what it dropped "brittle UI/copy
+    //   pins". That characterisation is wrong: the dropped set is an RPC contract and cache-invalidation
+    //   rules for a REAL-MONEY retry flow. Correcting that docstring is #1047's, per #1850 §S8.
     "orch_0893a_hydration_gate\\.test\\.ts$", // invariant -> i-1047-biz-create-hydration-gate.mjs
+    // moved: app/event/create.tsx
+    // dropped: app/event/[id]/edit.tsx — the whole live-merge half (10 assertions) is unrehomed; the
+    //   gate covers create.tsx only. Unenforced gap recorded in #1850.
+    // note: pin drift confirmed inside the COVERED file too — "Getting things ready" became
+    //   "Loading local drafts…" (create.tsx), a deliberate copy change the quarantined pin never saw.
     "orch_1165_keyboard_toolbar_mount_coverage\\.test\\.ts$", // invariant -> i-1047-biz-keyboard-toolbar-keyed-offset.mjs
+    // moved: app/_layout.tsx, src/components/ui/SheetMobile.tsx, src/components/ui/Modal.tsx,
+    //   src/components/auth/BusinessWelcomeScreen.tsx, src/components/waitlist/JoinWaitlistSheet.tsx,
+    //   src/components/marketing/ComposerV2/ComposerV2Editor.tsx,
+    //   src/components/groupChat/GroupChatPanel.tsx, src/components/support/SupportThread.native.tsx,
+    //   src/components/brand/BrandPaystackOnboardView.tsx, src/screens/ari/AriChatScreen.tsx
+    // dropped: app/checkout/[eventId]/buyer.tsx — ORCH-1252 (PR #701) migrated it to SmartScrollView and
+    //   deleted the pinned expression on purpose; orch-0892-no-bespoke-keyboard-plumbing.mjs owns it now.
+    // dropped: app/checkout-trip/[tripEventId]/buyer.tsx — ORCH-1252 migrated it to SmartScrollView;
+    //   orch-0892-no-bespoke-keyboard-plumbing.mjs owns it now.
+    // dropped: app/checkout-experience/[experienceEventId]/buyer.tsx — ORCH-1252 migrated it to
+    //   SmartScrollView; orch-0892-no-bespoke-keyboard-plumbing.mjs owns it now.
+    // dropped: app/checkout/[eventId]/payment.tsx — #1841 deleted the keyboard-OPEN branch after a
+    //   closure probe found zero input-rendering modules on the route. NOT "nothing left to pin"
+    //   (corrected after #1850 TEST P2-7): the test's second, keyboard-CLOSED assertion
+    //   `paddingBottom: insets.bottom + 140` still matches verbatim at :635. It is deliberately not
+    //   re-homed — with no +42 anywhere on the route the KEYBOARD invariant is genuinely gone, and
+    //   what survives is a plain layout constant carrying no keyboard semantics.
+    // dropped: app/checkout-trip/[tripEventId]/payment.tsx — same as above; #1841 deleted the
+    //   keyboard-open branch (payment runs in Stripe PaymentSheet's own window, no focusable input
+    //   on the route). The plan-aware closed branch `insets.bottom + (isPlanActive ? 260 : 140)`
+    //   still matches at :664 and is deliberately not re-homed, for the same reason.
+    // dropped: app/checkout-experience/[experienceEventId]/payment.tsx — same as above; #1841
+    //   deleted the keyboard-open branch. The closed branch `insets.bottom + 140` still matches at
+    //   :543 and is deliberately not re-homed, for the same reason.
+    // dropped: app/checkout-trip/[tripEventId]/intake.tsx — #1841 migrated it to SmartScrollView, which
+    //   deletes the pinned expression; orch-0892-no-bespoke-keyboard-plumbing.mjs owns it now.
+    // note: measured by #1850, not estimated — 41 assertions over 17 files kept as 6. The header of the
+    //   named gate said "~13 checkout paddings (some drifted)"; it omitted the entire ORCH-1170
+    //   per-Modal-window provider block (8 assertions), now restored as that gate's rule (C). The drift
+    //   is exactly 3 assertions, all on the three buyer screens, red since ORCH-1252 on 2026-07-01 —
+    //   the PIN was wrong, not the code, and no live defect is attributable to it.
     "orch_0911_trip_confirm_loading_state\\.adversarial\\.test\\.tsx$", // invariant -> i-1047-biz-trip-confirm-hascs-url-only.mjs
+    // moved: app/checkout-trip/[tripEventId]/confirm.tsx
+    // note: FILE fully covered, ASSERTIONS are not — 16 kept as 2. Three of four groups (exact loading
+    //   copy, the sessionStorage negative, and the no-dead-end-UI rule) are dark inside the covered
+    //   file. All hold today. Recorded in #1850; outside what a file-level ledger can decide.
     "[/\\\\]home\\.orch_0974\\.test\\.tsx$", // invariant -> updated orch-0974-home-mobile-lock-pane.mjs
+    // moved: app/(tabs)/home.tsx, src/components/home/UpcomingListItem.tsx
+    // note: FILE fully covered, ASSERTIONS are not — the pair of 0974 suites kept 61 assertions as 10.
+    //   To-do toggle wiring, handleTodoAction exhaustiveness, six legacy-derivation negatives, the
+    //   empty-state negatives, three of four refresh keys and the list-item internals are all dark
+    //   inside covered files. One direct contradiction is correctly won by the gate (hasActiveEvents was
+    //   removed by #1616, so the test is stale there). Recorded in #1850.
     "[/\\\\]home\\.orch_0974\\.adversarial\\.test\\.tsx$", // invariant -> updated orch-0974-home-mobile-lock-pane.mjs
+    // moved: app/(tabs)/home.tsx, src/components/home/UpcomingListItem.tsx
+    // note: see the sibling entry above — same two covered files, same assertion-level residue.
     "[/\\\\]venueAdsDrivenTile\\.issue865pr1\\.test\\.ts$", // invariant -> issue-1403-listing-insights-wiring.mjs
+    // inverted -> DECOMMISSIONED. This is NOT a re-homing. #865's "Customers your ads drove" tile was
+    //   removed, and issue-1403-listing-insights-wiring.mjs FAILS if that tile or useBrandConversionRollup
+    //   is still PRESENT — the exact opposite of what the quarantined test required. The named gate
+    //   belongs to an unrelated feature and enforces the decommission, not the invariant.
+    // note: nothing of this test survives, and nothing should — the feature is gone. Recorded in #1850
+    //   because an arrow that reads as a hand-off while pointing at a 180-degree reversal is worse than
+    //   no arrow at all.
     "[/\\\\]venueIntelligence\\.noFabrication\\.test\\.ts$", // invariant -> issue-1421-venue-organic-insights-wiring.mjs
+    // inverted -> DECOMMISSIONED for the surface rules. issue-1421-venue-organic-insights-wiring.mjs
+    //   FAILS if "COMING SOON", "Busy hours" or "Signal to bookings" are PRESENT; the quarantined test
+    //   required them present. #1421 removed the feature, so the gate is right and the arrow is not a
+    //   hand-off.
+    // dropped: src/components/venue/venueIntelligence.ts — NO SUCCESSOR GATE. Corrected after #1850
+    //   TEST P2-8: this helper owns ONLY the INTELLIGENCE_MIN_ORDERS_FOR_TIME_BUCKETS = 14 threshold
+    //   anchor (:15). It contains zero formatCurrencyRound and zero Intl.NumberFormat — the money
+    //   rules were attributed here in error. The anchor still holds and is enforced by nothing.
+    //   Live unenforced gap, owned by whoever owns #1421's area; recorded in #1850 §S8 for routing.
+    // note: SECOND GAP, and it is invisible to this gate by construction. The Constitution-#9
+    //   no-fabrication MONEY rules (formatCurrencyRound only, Intl.NumberFormat banned) assert on
+    //   VenueIntelligenceModule.tsx (3x formatCurrencyRound), not on the helper. That file is NOT
+    //   dropped and needs no drop line: it satisfies the subset rule because
+    //   issue-1421-venue-organic-insights-wiring.mjs reads it — but only for the DECOMMISSION rules.
+    //   So the money rules INSIDE it are enforced by nothing while this ledger reads as covered.
+    //   That is exactly the file-level limitation stated in
+    //   issue-1850-quarantine-invariant-handoff-complete.mjs, biting live. Same owner as above.
   ],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   // #1062 [biz-jest-residual-burndown] Wave 1 — B3a shared-harness (fix-once-
