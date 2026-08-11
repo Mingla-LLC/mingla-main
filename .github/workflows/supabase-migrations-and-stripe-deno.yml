@@ -366,6 +366,18 @@ jobs:
           # approve-or-explain decision.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1791_venue_order_queue_and_alerting.test.sql
+          # Issue #1846 — the Phase-3 tester's four findings, reproduced and
+          # then refused. Two of these are written to fail the way the bugs
+          # actually failed: T-C1b asserts the ORDER reconciled (a test that
+          # only checked "a refund row exists" passed for the whole of #1791
+          # while every refunded order read as `paid` forever), and T-H1
+          # BECOMES a real rank-40 event_manager the way PostgREST does
+          # (SET ROLE authenticated + the JWT claim GUC) and requires a 42501
+          # on the ordering switch — a strict-grep gate cannot see a PostgREST
+          # verb, and a catalog assertion that a policy exists proves nothing
+          # about who can write through it.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1846_refund_reconciliation_and_gate_lock.test.sql
           # Issue #1828 — a P1 that shipped to production behind green CI. Three
           # functions called pgcrypto's digest() UNQUALIFIED under a pinned
           # search_path of `public, pg_temp`, and pgcrypto lives in `extensions`,
