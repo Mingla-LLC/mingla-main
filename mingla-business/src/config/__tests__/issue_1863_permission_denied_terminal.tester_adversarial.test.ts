@@ -274,6 +274,45 @@ describe("#1863 T-A3 — BOTH twins classify a 403 identically", () => {
     expect(isPermissionDeniedError({ code: "42501" })).toBe(true);
   });
 
+  it("T-A7b a 403 naming a DIFFERENT rule is not a role denial (the ToS gate)", async () => {
+    // `brand-stripe-onboard` returns 403 {error:"forbidden",
+    // detail:"mingla_tos_not_accepted"} from its Mingla-ToS gate — same status
+    // and same `error` field as requirePaymentsManager, entirely different
+    // rule, and one the caller CAN act on. Classifying it as a role denial
+    // would tell someone whose role is fine to "ask the brand owner to change
+    // your role" — the exact class of lie this issue exists to remove, pointed
+    // the other way. Its own message must survive intact.
+    mockInvoke.mockResolvedValue({
+      data: null,
+      error: functionsHttpError(403, {
+        error: "forbidden",
+        detail: "mingla_tos_not_accepted",
+      }),
+    });
+    const thrown = await refreshBrandStripeStatus("brand-1").then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(thrown).not.toBeInstanceOf(EdgeFunctionPermissionDeniedError);
+    expect(isPermissionDeniedError(thrown)).toBe(false);
+    expect((thrown as Error).message).toBe("forbidden: mingla_tos_not_accepted");
+    expect(mapStripeStatusErrorToViewState(thrown)).toBe("failed-network");
+  });
+
+  it("T-A7c a bare 403 with no readable body IS still a role denial", async () => {
+    // A proxy or a transport that drops the body must not downgrade a denial
+    // into a retryable error.
+    const bare = new Error("Edge Function returned a non-2xx status code");
+    (bare as Error & { context: unknown }).context = { status: 403 };
+    mockInvoke.mockResolvedValue({ data: null, error: bare });
+    const thrown = await refreshBrandStripeStatus("brand-1").then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(thrown).toBeInstanceOf(EdgeFunctionPermissionDeniedError);
+    expect(isPermissionDeniedError(thrown)).toBe(true);
+  });
+
   it("T-A7 country_locked keeps PRECEDENCE over the new permission branch", async () => {
     mockInvoke.mockResolvedValue({
       data: null,

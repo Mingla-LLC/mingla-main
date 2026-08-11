@@ -174,6 +174,24 @@ export function violations(files) {
   need(balancesService, "unwrapFunctionError", "C-8 balances twin", failures);
   need(statusService, "export async function unwrapFunctionError", "C-8 balances twin", failures);
 
+  // ── C-8b — the role-denial classifier keys on requirePaymentsManager's
+  // ACTUAL signature, not "any 403". `brand-stripe-onboard` returns
+  // 403 {error:"forbidden", detail:"mingla_tos_not_accepted"} from its ToS gate;
+  // swallowing that would tell a user whose role is fine to change their role.
+  need(statusService, "PERMISSION_DENIED_DETAIL", "C-8b denial signature", failures);
+  need(
+    statusService,
+    'const PERMISSION_DENIED_DETAIL = "permission_denied"',
+    "C-8b denial signature",
+    failures,
+  );
+  need(
+    statusService,
+    "detail !== null && detail !== PERMISSION_DENIED_DETAIL",
+    "C-8b denial signature",
+    failures,
+  );
+
   // ── C-9 — the __DEV__ diagnostic: a handled 403 uses console.log (which
   // raises no LogBox notification) and the discriminator precedes the generic
   // console.error. console.warn is NOT a substitute — it raises a yellow box.
@@ -299,6 +317,9 @@ function selfTest() {
     ["balancesService", "if (error) throw await unwrapFunctionError(",
       "if (error) throw error; if (false) await unwrapFunctionError(",
       "C-8 the twin goes back to throwing raw"],
+    ["statusService", "if (detail !== null && detail !== PERMISSION_DENIED_DETAIL) return false;",
+      "if (false) return false;",
+      "C-8b the ToS 403 is swallowed as a role denial again"],
     ["statusService", "    console.log(`[${functionName}] permission denied (expected)`,",
       "    console.error(`[${functionName}] permission denied (expected)`,",
       "C-9 a handled 403 raises a LogBox error again"],

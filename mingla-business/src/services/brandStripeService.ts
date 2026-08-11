@@ -89,21 +89,41 @@ function formatFunctionErrorPayload(payload: unknown): string | null {
   return detail ?? error;
 }
 
+/** The exact `detail` `requirePaymentsManager` returns with its 403. */
+const PERMISSION_DENIED_DETAIL = "permission_denied";
+
 /**
- * #1863 §4.6 — is this edge-function response a terminal permission denial?
+ * #1863 §4.6 — is this edge-function response a ROLE denial?
  *
- * Either the transport status is 403, or the payload's `error` field is the
- * literal `"forbidden"` that `requirePaymentsManager` returns
- * (`supabase/functions/_shared/stripeEdgeAuth.ts`). The payload clause exists
- * because a proxy or a mocked transport can drop the status while keeping the
- * body.
+ * Keyed on `requirePaymentsManager`'s actual signature
+ * (`supabase/functions/_shared/stripeEdgeAuth.ts`), which is
+ * `403 {error:"forbidden", detail:"permission_denied"}`.
+ *
+ * NOT "any 403", and this narrowing is load-bearing. `brand-stripe-onboard`
+ * returns `403 {error:"forbidden", detail:"mingla_tos_not_accepted"}` from its
+ * Mingla-ToS gate (`brand-stripe-onboard/index.ts:337`) — same status, same
+ * `error` field, entirely different rule, and one the caller CAN act on by
+ * accepting the terms. Classifying it as a role denial would tell someone whose
+ * role is fine to "ask the brand owner to change your role", which is the exact
+ * class of lie this issue exists to remove, pointed the other way. So a 403 that
+ * names a MORE SPECIFIC business rule in `detail` keeps its own message and its
+ * own UI, exactly as before.
+ *
+ * The bare-403 case (no readable body) still counts: a proxy or a transport
+ * that drops the body must not downgrade a denial into a retryable error.
  */
 function isPermissionDeniedResponse(
   status: number | undefined,
   payload: unknown,
 ): boolean {
+  const detail = isRecord(payload) && typeof payload.detail === "string"
+    ? payload.detail
+    : null;
+  if (detail !== null && detail !== PERMISSION_DENIED_DETAIL) return false;
   if (status === 403) return true;
-  return isRecord(payload) && payload.error === "forbidden";
+  return isRecord(payload) &&
+    payload.error === "forbidden" &&
+    detail === PERMISSION_DENIED_DETAIL;
 }
 
 /**
