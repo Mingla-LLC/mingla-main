@@ -805,6 +805,23 @@ function mapQueueRpcError(message: string): Response {
   if (message.includes("transition_not_allowed")) return fail("transition_not_allowed");
   if (message.includes("refund_window_closed")) return fail("refund_window_closed");
   if (message.includes("venue_not_orderable")) return fail("venue_not_orderable");
+  // Issue #1846 C-1 — the two refusals that stop a double refund. Both are
+  // states a second manager can genuinely walk into a second later, so they
+  // get the honest sentence rather than "Something went wrong": an operator
+  // who is told nothing taps again, and tapping again is how the double
+  // happened in the first place.
+  if (message.includes("already_refunded")) {
+    return jsonResponse({
+      error: "already_refunded",
+      message: "This order has already been refunded — the guest has their money.",
+    }, 409);
+  }
+  if (message.includes("no_refund_requested")) {
+    return jsonResponse({
+      error: "no_refund_requested",
+      message: "Nobody has asked for a refund on this order.",
+    }, 409);
+  }
   if (
     message.includes("order_not_found") || message.includes("venue_not_found")
   ) {
