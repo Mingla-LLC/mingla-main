@@ -118,13 +118,89 @@ function signature(diagnostic) {
   return `${diagnostic.path}\u0000${diagnostic.code}\u0000${diagnostic.message}`;
 }
 
+// Keyed by signature; each entry keeps the diagnostic's own fields alongside
+// the count so relocation matching can compare code/message/path structurally
+// instead of re-splitting the packed signature string.
 function toMultiset(diagnostics) {
   const counts = new Map();
   for (const diagnostic of diagnostics) {
     const key = signature(diagnostic);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    const existing = counts.get(key);
+    if (existing === undefined) {
+      counts.set(key, {
+        path: diagnostic.path,
+        code: diagnostic.code,
+        message: diagnostic.message,
+        count: 1,
+      });
+      continue;
+    }
+    existing.count += 1;
   }
   return counts;
+}
+
+function instances(items) {
+  return items.reduce((sum, item) => sum + item.count, 0);
+}
+
+/**
+ * Identical rule to `issue-1403-typecheck-delta.mjs` -- see the long comment
+ * on `matchRelocations` there for the full rationale and the enumerated
+ * conditions. Both scripts run `tsc` over the SAME mingla-business graph on
+ * every pull request, so both saw the same #1627 false positive: an
+ * unresolvable `react-native-keyboard-controller` import moved between two
+ * files inside `packages/phone-input`, 765 -> 765, added 1 / removed 1, with a
+ * byte-identical message. Signatures are keyed on PATH, so the move alone
+ * registered as an addition.
+ *
+ * A relocation is recognised ONLY when the repo-wide total did NOT grow, the
+ * code AND message are identical, the paths differ, and matching is one-to-one
+ * against the removed multiset. Anything that survives matching is still
+ * reported as added, and the exact-#874-target check runs over the CURRENT
+ * diagnostics independently of matching. The RELOCATION-RED-* self-test cases
+ * below pin each condition.
+ */
+export function matchRelocations(added, removed, totalDidNotGrow) {
+  if (!totalDidNotGrow) {
+    return { relocated: [], residualAdded: added, residualRemoved: removed };
+  }
+  const pool = removed.map((item) => ({ ...item, remaining: item.count }));
+  const relocated = [];
+  const residualAdded = [];
+  for (const item of added) {
+    let outstanding = item.count;
+    for (const candidate of pool) {
+      if (outstanding === 0) break;
+      if (candidate.remaining === 0) continue;
+      if (candidate.code !== item.code) continue;
+      if (candidate.message !== item.message) continue;
+      if (candidate.path === item.path) continue;
+      const matched = Math.min(outstanding, candidate.remaining);
+      candidate.remaining -= matched;
+      outstanding -= matched;
+      relocated.push({
+        from: candidate.path,
+        to: item.path,
+        code: item.code,
+        message: item.message,
+        count: matched,
+      });
+    }
+    if (outstanding > 0) {
+      residualAdded.push({ ...item, count: outstanding });
+    }
+  }
+  return {
+    relocated,
+    residualAdded,
+    residualRemoved: pool
+      .filter((candidate) => candidate.remaining > 0)
+      .map(({ remaining, ...candidate }) => ({
+        ...candidate,
+        count: remaining,
+      })),
+  };
 }
 
 export function compareDiagnostics(baseParsed, currentParsed) {
@@ -142,24 +218,31 @@ export function compareDiagnostics(baseParsed, currentParsed) {
 
   const baseCounts = toMultiset(baseParsed.diagnostics);
   const currentCounts = toMultiset(currentParsed.diagnostics);
-  const added = [];
-  const removed = [];
-  for (const [key, currentCount] of currentCounts) {
-    const baseCount = baseCounts.get(key) ?? 0;
-    if (currentCount > baseCount) {
-      added.push({ signature: key, count: currentCount - baseCount });
+  const rawAdded = [];
+  const rawRemoved = [];
+  for (const [key, entry] of currentCounts) {
+    const baseCount = baseCounts.get(key)?.count ?? 0;
+    if (entry.count > baseCount) {
+      rawAdded.push({ ...entry, signature: key, count: entry.count - baseCount });
     }
   }
-  for (const [key, baseCount] of baseCounts) {
-    const currentCount = currentCounts.get(key) ?? 0;
-    if (baseCount > currentCount) {
-      removed.push({ signature: key, count: baseCount - currentCount });
+  for (const [key, entry] of baseCounts) {
+    const currentCount = currentCounts.get(key)?.count ?? 0;
+    if (entry.count > currentCount) {
+      rawRemoved.push({
+        ...entry,
+        signature: key,
+        count: entry.count - currentCount,
+      });
     }
   }
-  if (added.length > 0) {
-    failures.push(
-      `${added.reduce((sum, item) => sum + item.count, 0)} new diagnostic instance(s)`,
-    );
+  const { relocated, residualAdded, residualRemoved } = matchRelocations(
+    rawAdded,
+    rawRemoved,
+    currentParsed.diagnostics.length <= baseParsed.diagnostics.length,
+  );
+  if (residualAdded.length > 0) {
+    failures.push(`${instances(residualAdded)} new diagnostic instance(s)`);
   }
 
   const targetDiagnostics = currentParsed.diagnostics.filter((diagnostic) =>
@@ -171,7 +254,13 @@ export function compareDiagnostics(baseParsed, currentParsed) {
     );
   }
 
-  return { failures, added, removed, targetDiagnostics };
+  return {
+    failures,
+    added: residualAdded,
+    removed: residualRemoved,
+    relocated,
+    targetDiagnostics,
+  };
 }
 
 function syntheticLog(pathname, code, message, copies = 1) {
@@ -247,6 +336,75 @@ function runSelfTest() {
         "src/services/brandAnalyticsService.ts",
         "TS2322",
         'Type string is not assignable to type "ready" | "error" | "loading".',
+      ),
+    ),
+  );
+
+  // --- #1627 relocation fixtures -------------------------------------------
+  // Mirrors issue-1403-typecheck-delta.mjs case-for-case. Both scripts compile
+  // the same graph and both saw the same false positive; the conditions each
+  // fixture pins are documented on `matchRelocations` above.
+  const UNRESOLVED_KEYBOARD_LIBRARY =
+    "Cannot find module 'react-native-keyboard-controller' or its corresponding type declarations.";
+  const UNRESOLVED_REANIMATED =
+    "Cannot find module 'react-native-reanimated' or its corresponding type declarations.";
+  const ORIGIN_FILE = "../packages/phone-input/CountryPickerModal.tsx";
+  const DESTINATION_FILE = "../packages/phone-input/keyboardPrimitives.tsx";
+  const relocationOrigin = syntheticLog(
+    ORIGIN_FILE,
+    "TS2307",
+    UNRESOLVED_KEYBOARD_LIBRARY,
+  );
+  const relocationDestination = syntheticLog(
+    DESTINATION_FILE,
+    "TS2307",
+    UNRESOLVED_KEYBOARD_LIBRARY,
+  );
+  const ballast = syntheticLog("src/ballast.ts", "TS2322", "Ballast mismatch");
+  const relocationFlatTotal = compareDiagnostics(
+    parse(relocationOrigin),
+    parse(relocationDestination),
+  );
+  // Shares the origin's CODE so the MESSAGE check is the thing under test.
+  const relocationRedNewDiagnostic = compareDiagnostics(
+    parse(relocationOrigin),
+    parse(syntheticLog("src/newModule.ts", "TS2307", UNRESOLVED_REANIMATED)),
+  );
+  const relocationRedMessageChangeSamePath = compareDiagnostics(
+    parse(
+      syntheticLog(DESTINATION_FILE, "TS2307", UNRESOLVED_KEYBOARD_LIBRARY),
+    ),
+    parse(syntheticLog(DESTINATION_FILE, "TS2307", UNRESOLVED_REANIMATED)),
+  );
+  const relocationRedNetIncrease = compareDiagnostics(
+    parse(relocationOrigin),
+    parse(
+      `${relocationDestination}\n${syntheticLog("src/newModule.ts", "TS2345", "Unrelated growth")}`,
+    ),
+  );
+  // Multiplicity 2 is required: at count 1 one-to-one matching and plain
+  // counting are indistinguishable and the case cannot fail.
+  const relocationRedDuplication = compareDiagnostics(
+    parse(
+      `${relocationOrigin}\n${syntheticLog("src/ballast.ts", "TS2322", "Ballast mismatch", 2)}`,
+    ),
+    parse(
+      `${syntheticLog(DESTINATION_FILE, "TS2307", UNRESOLVED_KEYBOARD_LIBRARY, 2)}\n${ballast}`,
+    ),
+  );
+  const relocationRedDifferentCode = compareDiagnostics(
+    parse(relocationOrigin),
+    parse(
+      syntheticLog(DESTINATION_FILE, "TS2306", UNRESOLVED_KEYBOARD_LIBRARY),
+    ),
+  );
+  const relocationRedIntoTarget = compareDiagnostics(
+    parse(syntheticLog("src/unrelated.ts", "TS2322", "Legacy mismatch")),
+    parse(
+      syntheticLog(
+        "src/services/brandAnalyticsService.ts",
+        "TS2322",
+        "Legacy mismatch",
       ),
     ),
   );
@@ -335,6 +493,59 @@ function runSelfTest() {
         targetAfterNormalization.added.length === 0 &&
         targetAfterNormalization.removed.length === 0 &&
         targetAfterNormalization.targetDiagnostics.length === 1,
+    },
+    {
+      name: "RELOCATION-PASS: identical diagnostic moving path at a flat total is not an addition",
+      passes:
+        relocationFlatTotal.failures.length === 0 &&
+        relocationFlatTotal.added.length === 0 &&
+        relocationFlatTotal.removed.length === 0 &&
+        instances(relocationFlatTotal.relocated) === 1 &&
+        relocationFlatTotal.relocated[0].from === ORIGIN_FILE &&
+        relocationFlatTotal.relocated[0].to === DESTINATION_FILE,
+    },
+    {
+      name: "RELOCATION-RED-NEW-DIAGNOSTIC: a genuinely new diagnostic at a flat total still fails",
+      passes:
+        relocationRedNewDiagnostic.failures.length > 0 &&
+        instances(relocationRedNewDiagnostic.added) === 1 &&
+        relocationRedNewDiagnostic.relocated.length === 0,
+    },
+    {
+      name: "RELOCATION-RED-MESSAGE-CHANGE-SAME-PATH: a changed message in place still fails",
+      passes:
+        relocationRedMessageChangeSamePath.failures.length > 0 &&
+        instances(relocationRedMessageChangeSamePath.added) === 1 &&
+        relocationRedMessageChangeSamePath.relocated.length === 0,
+    },
+    {
+      name: "RELOCATION-RED-NET-INCREASE: growth suspends the allowance and reports every added instance",
+      passes:
+        relocationRedNetIncrease.failures.length > 0 &&
+        instances(relocationRedNetIncrease.added) === 2 &&
+        relocationRedNetIncrease.relocated.length === 0,
+    },
+    {
+      name: "RELOCATION-RED-DUPLICATION: matching is one-to-one, so a duplicated copy still fails",
+      passes:
+        relocationRedDuplication.failures.length > 0 &&
+        instances(relocationRedDuplication.added) === 1 &&
+        instances(relocationRedDuplication.relocated) === 1,
+    },
+    {
+      name: "RELOCATION-RED-DIFFERENT-CODE: same message under a different code still fails",
+      passes:
+        relocationRedDifferentCode.failures.length > 0 &&
+        instances(relocationRedDifferentCode.added) === 1 &&
+        relocationRedDifferentCode.relocated.length === 0,
+    },
+    {
+      name: "RELOCATION-RED-INTO-TARGET: relocating onto an exact #874 target still fails",
+      passes:
+        relocationRedIntoTarget.failures.length > 0 &&
+        relocationRedIntoTarget.added.length === 0 &&
+        instances(relocationRedIntoTarget.relocated) === 1 &&
+        relocationRedIntoTarget.targetDiagnostics.length === 1,
     },
   ];
 
@@ -457,14 +668,17 @@ function runComparison(baseRef, outputDirArg) {
       currentExit: currentRun.exitCode,
       baseDiagnostics: baseParsed.diagnostics.length,
       currentDiagnostics: currentParsed.diagnostics.length,
-      removedDiagnostics: comparison.removed.reduce(
-        (sum, item) => sum + item.count,
-        0,
-      ),
-      addedDiagnostics: comparison.added.reduce(
-        (sum, item) => sum + item.count,
-        0,
-      ),
+      removedDiagnostics: instances(comparison.removed),
+      addedDiagnostics: instances(comparison.added),
+      // Reported so a relocation is visible in the uploaded evidence rather
+      // than silently absorbed: a run that cancels something must say so.
+      relocatedDiagnostics: instances(comparison.relocated),
+      relocations: comparison.relocated.map((item) => ({
+        from: item.from,
+        to: item.to,
+        code: item.code,
+        count: item.count,
+      })),
       targetDiagnostics: comparison.targetDiagnostics.length,
       failures: comparison.failures,
     };
@@ -479,6 +693,7 @@ function runComparison(baseRef, outputDirArg) {
       `issue-874 typecheck delta: base exit=${String(summary.baseExit)} diagnostics=${summary.baseDiagnostics}; ` +
         `current exit=${String(summary.currentExit)} diagnostics=${summary.currentDiagnostics}; ` +
         `removed=${summary.removedDiagnostics}; added=${summary.addedDiagnostics}; ` +
+        `relocated=${summary.relocatedDiagnostics}; ` +
         `target diagnostics=${summary.targetDiagnostics}.`,
     );
     if (comparison.failures.length > 0) {

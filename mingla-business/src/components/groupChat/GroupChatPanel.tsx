@@ -13,7 +13,7 @@ import {
 // react-native-keyboard-controller is the canonical Mingla keyboard library
 // per I-PROPOSED-KEYBOARD-LIBRARY-ONLY (ORCH-0892-C) — already a project dep.
 // orch-strict-grep-allow orch-0892 — chat composer needs sticky-above-keyboard lift
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { KeyboardAvoidingView } from "../../wrappers/SmartKeyboardAvoidingView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 // #1850 — the composer's lift is budgeted against the DERIVED Done-bar cost, not
 // a hand-typed number. See the comment at the KeyboardAvoidingView below.

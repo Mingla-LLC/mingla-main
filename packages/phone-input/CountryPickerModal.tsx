@@ -22,7 +22,7 @@ import {
   KeyboardProvider,
   KeyboardToolbar,
   type KeyboardToolbarProps,
-} from "react-native-keyboard-controller";
+} from "./keyboardPrimitives";
 import {
   View,
   Text,

@@ -35,7 +35,21 @@ const root = process.cwd().endsWith("mingla-business")
   ? path.resolve(process.cwd(), "..")
   : process.cwd();
 
-const checkedRoots = ["mingla-business/app", "mingla-business/src"];
+// #1627 — `packages` belongs in a gate named for the apps, and its absence was
+// a live defect rather than a scoping choice. The workspace packages are not
+// adjacent to the boot path; they are ON it. `packages/phone-input` is linked
+// as `node_modules/@mingla/phone-input` and pulled in by the three buyer
+// checkout routes, PublicEventPage and GuestVenueReservation — all of which
+// Expo Router eagerly require()s at native startup. So a top-level import of a
+// boot-fragile native module inside a package EVALUATES during boot for exactly
+// the same reason one inside `mingla-business/src` does, and bricks the splash
+// on OTA identically. It was simply never looked at: this gate, orch-0892's
+// SCAN_ROOTS and #1841's TA-V3-6 all stopped at the `mingla-business` boundary,
+// which is how `packages/phone-input/CountryPickerModal.tsx` held a top-level
+// `react-native-keyboard-controller` import, unaudited, for months.
+// See I-PROPOSED-1841-B-GUARDS-ENUMERATE-CLASSES-NOT-HOSTS: the class is
+// "source we ship", not "source under the app directory".
+const checkedRoots = ["mingla-business/app", "mingla-business/src", "packages"];
 
 // Whole-package boot-fragile natives: ANY top-level runtime import is forbidden.
 const fragilePackages = [
@@ -75,9 +89,32 @@ const ALLOWLIST = new Set([
   "mingla-business/src/wrappers/KeyboardRoot.native.tsx",
   "mingla-business/src/wrappers/SmartScrollView.native.tsx",
   "mingla-business/src/wrappers/KeyboardToolbarRoot.native.tsx",
-  "mingla-business/src/components/groupChat/GroupChatPanel.tsx",
-  "mingla-business/src/components/brand/BrandPaystackOnboardView.tsx",
   "mingla-business/src/components/support/SupportThread.native.tsx",
+  // #1627 — the two platform-resolved `.native`/default wrapper variants that
+  // now own the library import on behalf of the screens below. Same boot-safety
+  // audit as their siblings above: `react-native-keyboard-controller` is
+  // ALREADY evaluated at native boot (app/_layout.tsx mounts
+  // KeyboardRoot.native.tsx, which top-level-imports KeyboardProvider from it),
+  // so a further top-level import of a package the boot path has already loaded
+  // cannot make boot more fragile than it is.
+  //
+  // Both currently spell the load as `export { X } from "pkg"`, which this
+  // gate's regex — keyed on the `import` keyword — does not match. The
+  // registrations are therefore pre-emptive rather than presently load-bearing:
+  // `export … from` performs the identical runtime module load, so rewriting
+  // either as `import { X } from "pkg"; export { X };` is a semantically null
+  // refactor that would otherwise turn the gate red for no behaviour change.
+  // These entries are NOT the stale kind removed below — the files really do
+  // pull the library in at boot.
+  "mingla-business/src/wrappers/SmartKeyboardAvoidingView.native.tsx",
+  "packages/phone-input/keyboardPrimitives.tsx",
+  // #1627 — REMOVED, not moved: `GroupChatPanel.tsx` and
+  // `BrandPaystackOnboardView.tsx`. Both now import KeyboardAvoidingView from
+  // `src/wrappers/SmartKeyboardAvoidingView`, so neither touches the library at
+  // all. Leaving their grandfather entries behind would be the dangerous kind
+  // of stale paperwork: a standing permission, attached to two ordinary screen
+  // files, for the next author to re-add the exact top-level import this gate
+  // exists to stop — and CI would wave it through.
 ]);
 
 const isTestFile = (p) =>
