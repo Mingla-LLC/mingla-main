@@ -350,11 +350,37 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
 
   it("A.6 — no route in app/ can ever be shadowed by the exclusion", () => {
     // The exclusion is a prefix rule. If a route file ever produced a URL under
-    // `/_expo/static/`, that route would 404 in production. Derived, so a future
-    // `app/_expo/...` directory fails here instead of in production.
-    const shadowed = DERIVED_URLS.filter((u) => u.startsWith("/_expo/static/"));
+    // an excluded prefix, that route would 404 in production. Derived, so a
+    // future `app/_expo/...` directory fails here instead of in production.
+    //
+    // [TEST-MOD-APPROVED #1876] WIDENED. This used to hard-code the single
+    // literal `/_expo/static/`, so when `assets/` joined the alternation in
+    // #1876 the guard's coverage silently NARROWED in relative terms: a future
+    // `app/assets/…` route would have 404'd in production with this suite green.
+    // The alternates are now read out of the SHIPPED alternation itself, so
+    // alternate number four is covered the day it lands rather than the day it
+    // breaks. No assertion was weakened — the original `_expo/static/` case is
+    // still checked, now as one member of a derived set.
+    const alternates = (/\(\?!([^)]+)\)/.exec(catchAll.source)?.[1] ?? "").split("|");
+    expect(alternates.length).toBeGreaterThanOrEqual(3); // never silently empty
+    expect(alternates).toContain("_expo/static/"); // the original guard, intact
+
+    const shadowed: string[] = [];
+    for (const alternate of alternates) {
+      // `foo/` is a DIRECTORY PREFIX and swallows the whole subtree under it.
+      // `foo$` is an EXACT match and can only ever collide with that one URL.
+      const exact = alternate.endsWith("$");
+      const bare = alternate.replace(/\$$/, "");
+      const hits = (value: string): boolean =>
+        exact ? value === bare : value.startsWith(bare);
+      shadowed.push(
+        ...DERIVED_URLS.filter((u) => hits(u.replace(/^\//, ""))).map(
+          (u) => `${alternate} shadows ${u}`,
+        ),
+        ...ROUTE_FILES.filter((f) => hits(f)).map((f) => `${alternate} shadows app/${f}`),
+      );
+    }
     expect(shadowed).toEqual([]);
-    expect(ROUTE_FILES.filter((f) => f.startsWith("_expo/"))).toEqual([]);
   });
 });
 
