@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 501,
+  "expectedStrictGrepMjsFiles": 502,
   "selfTestWiredFloor": 312,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -7743,6 +7743,19 @@
       "selfTest": "none",
       "jobKeys": [
         "issue-1850-quarantine-invariant-handoff-happy"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-1850-quarantine-invariant-handoff.tester.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-1850-quarantine-invariant-handoff-tester-adversarial"
       ]
     }
   ]
