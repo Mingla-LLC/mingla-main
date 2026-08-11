@@ -73,6 +73,14 @@ jobs:
         working-directory: app-mobile
     steps:
       - uses: actions/checkout@v4
+        with:
+          # FULL history is required. The tester adversarial suite's AX-F1..AX-F3
+          # differential resolves the PINNED pre-#1875 baseline of
+          # useAuthSimple.ts (commit fcb78cfac, verified by sha256) and proves
+          # the shipped sign-in functions are byte-identical to it once the
+          # declared #1875 regions are excised. A shallow checkout cannot see
+          # that commit and the gate fails closed with a re-baseline message.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           # Node 22 — `--experimental-strip-types` is how EVERY .test.ts in this
@@ -84,20 +92,20 @@ jobs:
         run: >
           node --experimental-strip-types --test
           src/hooks/__tests__/useAuthSimple.transientSignInFailure.issue1875.test.ts
-      # TESTER ADVERSARIAL suite — registered before it exists so the guard is not
-      # dark when it lands. `if` keeps the job green until then; delete the guard
-      # when the file is committed.
-      - name: Check for the tester adversarial suite
-        id: adversarial
-        run: |
-          if [ -f src/hooks/__tests__/useAuthSimple.transientSignInFailure.adversarial.issue1875.test.ts ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::#1875 tester adversarial suite not yet committed — registered, not yet running."
-          fi
+      # TESTER ADVERSARIAL suite — UNCONDITIONAL.
+      #
+      # This step was previously wrapped in a `Check for the tester adversarial
+      # suite` guard with an `if:` condition, so the job stayed green while the
+      # suite did not exist. That guard was correct for exactly one window — the
+      # gap between the implementor landing the workflow and the tester landing
+      # the suite — and it is DELETED now that the suite is committed.
+      #
+      # ┌── DO NOT ── re-introduce a file-existence guard, a `continue-on-error`,
+      # or any `if:` on this step. A gate that can silently skip its own test is
+      # worse than no gate: it reports green for an absent proof. If the file is
+      # missing, this job MUST fail.
+      # └──
       - name: Run issue-1875 consumer TESTER ADVERSARIAL suite
-        if: steps.adversarial.outputs.present == 'true'
         run: >
           node --experimental-strip-types --test
           src/hooks/__tests__/useAuthSimple.transientSignInFailure.adversarial.issue1875.test.ts
