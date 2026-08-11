@@ -328,7 +328,10 @@ BEGIN
   SELECT * INTO v_refund FROM public.source_refunds
    WHERE source_type = 'venue_menu_order' AND source_id = p_order_id
      AND buyer_state NOT IN ('failed_terminal', 'processed')
-   ORDER BY created_at
+   -- `requested_at`, not `created_at`: source_refunds has no created_at
+   -- (20270131001221:59). Oldest first, so a caller racing a second refund is
+   -- always handed the ORIGINAL one.
+   ORDER BY requested_at
    LIMIT 1;
   IF FOUND THEN
     RETURN jsonb_build_object('refundId', v_refund.id, 'reason', 'already_requested',
