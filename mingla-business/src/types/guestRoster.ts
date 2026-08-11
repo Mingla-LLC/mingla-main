@@ -110,6 +110,7 @@ export interface GuestRosterPage {
   summary: GuestRosterSummary;
   nextCursor: Record<string, unknown> | null;
   staleAfter: string;
+  canBulkActions: boolean;
   canExport: boolean;
 }
 

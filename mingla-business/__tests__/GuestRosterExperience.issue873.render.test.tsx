@@ -11,7 +11,7 @@ interface TestInstance {
   findAll(predicate: (node: TestInstance) => boolean): TestInstance[];
   findByProps(props: Record<string, unknown>): TestInstance;
 }
-interface TestTree { root: TestInstance }
+interface TestTree { root: TestInstance; unmount: () => void }
 const testRenderer = require("react-test-renderer") as {
   create: (element: React.ReactElement) => TestTree;
   act: (callback: () => void) => void;
@@ -47,16 +47,23 @@ const mockRoster = {
     },
   ],
   summary: { all: 2, notResponded: 1, confirmed: 1, needsAttention: 1, invited: 2, notSent: 0, sending: 0, inviteFailed: 0, watermark: 3, generatedAt: "2026-08-11T00:00:00Z" },
-  nextCursor: null, staleAfter: "2026-08-11T00:00:30Z", canExport: true,
+  nextCursor: null, staleAfter: "2026-08-11T00:00:30Z", canBulkActions: true, canExport: true,
 };
+const mockQuery: Record<string, unknown> = {};
+const resetMockQuery = (): void => {
+  Object.assign(mockQuery, { data: mockRoster, isLoading: false, isError: false, isFetching: false,
+    isRefetching: false, isRefetchError: false, isStaleTruth: false, isOffline: false, refetch: jest.fn() });
+};
+resetMockQuery();
 
 jest.mock("../src/hooks/useGuestRoster", () => ({
-  useGuestRoster: () => ({ data: mockRoster, isLoading: false, isError: false, isFetching: false, isRefetching: false, refetch: jest.fn() }),
+  useGuestRoster: () => mockQuery,
 }));
 jest.mock("../src/services/guestRosterService", () => ({
   createGuestRosterRequestId: () => "87300000-0000-4000-8000-000000000099",
   previewGuestRosterAction: jest.fn(),
   executeGuestRosterAction: jest.fn(),
+  setGuestRosterRsvpApproval: jest.fn(),
 }));
 jest.mock("../src/components/ui/GlassCard", () => {
   const ReactLocal = require("react"); const { View } = require("react-native");
@@ -89,6 +96,8 @@ jest.mock("../src/components/ui/Sheet", () => {
 
 import { GuestRosterExperience } from "../src/components/guests/GuestRosterExperience";
 
+const renderedTrees: TestTree[] = [];
+
 const textOf = (node: TestInstance): string => node.children.map((child: string | TestInstance) =>
   typeof child === "string" ? child : textOf(child)).join("");
 
@@ -97,6 +106,7 @@ const renderRoster = (): TestTree => {
   act(() => {
     tree = testRenderer.create(<GuestRosterExperience eventId="event-873" onBack={jest.fn()} onOpenOrder={jest.fn()} onExport={jest.fn()} />);
   });
+  renderedTrees.push(tree);
   return tree;
 };
 
@@ -104,6 +114,13 @@ const visibleTexts = (tree: TestTree): string[] =>
   tree.root.findAll((node: TestInstance) => node.type === "Text").map(textOf);
 
 describe("#873 GuestRosterExperience rendered status truth", () => {
+  beforeEach(resetMockQuery);
+  afterEach(() => {
+    act(() => {
+      renderedTrees.splice(0).forEach((tree) => tree.unmount());
+    });
+  });
+
   test("renders approved summary cards and one row per person", () => {
     const texts = visibleTexts(renderRoster());
     expect(texts).toContain("All guests");
@@ -123,5 +140,29 @@ describe("#873 GuestRosterExperience rendered status truth", () => {
     expect(texts).toContain("Sent to provider. This does not claim delivery, display, opening, or reading.");
     expect(texts).not.toContain("Delivered");
     expect(texts).not.toContain("Read");
+  });
+
+  test("bulk selection includes only an eligible action kind and reaches preview", () => {
+    const tree = renderRoster();
+    act(() => tree.root.findByProps({ accessibilityLabel: "Select guests" }).props.onPress?.());
+    act(() => tree.root.findByProps({ accessibilityLabel: "Casey Guest, Not responded, Invited" }).props.onPress?.());
+    const texts = visibleTexts(tree);
+    expect(texts).toContain("1 selected");
+    expect(texts).toContain("Preview reminders");
+  });
+
+  test("distinguishes loading, genuine empty, and stale cached states", () => {
+    Object.assign(mockQuery, { data: undefined, isLoading: true });
+    const loading = visibleTexts(renderRoster());
+    expect(loading).toContain("Loading guest status…");
+    expect(loading).not.toContain("No guests yet");
+
+    Object.assign(mockQuery, { data: { ...mockRoster, rows: [], summary: { ...mockRoster.summary, all: 0 } }, isLoading: false });
+    expect(visibleTexts(renderRoster())).toContain("No guests yet");
+
+    Object.assign(mockQuery, { data: mockRoster, isStaleTruth: true });
+    const stale = renderRoster();
+    expect(visibleTexts(stale)).toContain("Guest list may be out of date");
+    expect(stale.root.findAll((node) => node.props.accessibilityLabel === "Export current guest roster")).toHaveLength(0);
   });
 });

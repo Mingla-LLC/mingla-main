@@ -59,6 +59,7 @@ export function useGuestRoster(input: {
   const network = useNetInfoSafe();
   const isOffline = network?.isConnected === false || network?.isInternetReachable === false;
   const wasOffline = useRef(isOffline);
+  const mountNonce = useRef(`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
   const [now, setNow] = useState(Date.now());
   const enabled = input.enabled && isAuthReady && user !== null && input.eventId !== null;
   const queryKey = enabled && input.eventId !== null
@@ -113,7 +114,7 @@ export function useGuestRoster(input: {
   useEffect(() => {
     if (!enabled || input.eventId === null) return;
     const channel = supabase
-      .channel(`guest-roster:${input.eventId}`)
+      .channel(`guest-roster-changes-${input.eventId}-${mountNonce.current}`)
       .on(
         "postgres_changes",
         {
@@ -139,9 +140,10 @@ export function useGuestRoster(input: {
   }, [enabled, input.eventId, invalidateEvent, queryClient]);
 
   const lastSuccessfulSyncAt = query.dataUpdatedAt > 0 ? query.dataUpdatedAt : null;
-  return Object.assign(query, {
+  return {
+    ...query,
     lastSuccessfulSyncAt,
-    isStaleTruth: lastSuccessfulSyncAt === null || now-lastSuccessfulSyncAt > 30_000,
+    isStaleTruth: lastSuccessfulSyncAt === null || now - lastSuccessfulSyncAt > 30_000,
     isOffline,
-  });
+  };
 }

@@ -49,21 +49,30 @@ const asObject = (value: unknown): Record<string, unknown> => {
 };
 
 export async function fetchGuestRoster(input: GuestRosterListInput): Promise<GuestRosterPage> {
-  const { data, error } = await supabase.rpc("biz_guest_roster_list", {
-    p_event_id: input.eventId,
-    p_filter: input.filter,
-    p_search: input.search.trim().length > 0 ? input.search.trim() : null,
-    p_sort: input.sort,
-    p_cursor: input.cursor ?? null,
-    p_limit: input.limit ?? 50,
-  });
-  if (error !== null) {
-    const code = typeof error.message === "string" && error.message.length > 0
-      ? error.message
-      : "guest_roster_load_failed";
-    throw new GuestRosterError(code, error.message);
+  let cursor = input.cursor ?? null;
+  let firstPage: GuestRosterPage | null = null;
+  const rows: GuestRosterPage["rows"] = [];
+  for (let pageIndex = 0; pageIndex < 1_000; pageIndex += 1) {
+    const { data, error } = await supabase.rpc("biz_guest_roster_list", {
+      p_event_id: input.eventId,
+      p_filter: input.filter,
+      p_search: input.search.trim().length > 0 ? input.search.trim() : null,
+      p_sort: input.sort,
+      p_cursor: cursor,
+      p_limit: input.limit ?? 100,
+    });
+    if (error !== null) {
+      const code = typeof error.message === "string" && error.message.length > 0
+        ? error.message : "guest_roster_load_failed";
+      throw new GuestRosterError(code, error.message);
+    }
+    const page = asObject(data) as unknown as GuestRosterPage;
+    firstPage ??= page;
+    rows.push(...page.rows);
+    cursor = page.nextCursor;
+    if (cursor === null) return { ...firstPage, rows, nextCursor: null };
   }
-  return asObject(data) as unknown as GuestRosterPage;
+  throw new GuestRosterError("guest_roster_pagination_limit");
 }
 
 export async function fetchGuestRosterAccess(eventId: string): Promise<GuestRosterAccess> {

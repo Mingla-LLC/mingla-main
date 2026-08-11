@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
   Pressable,
@@ -126,18 +126,20 @@ const Avatar: React.FC<{ row: GuestRosterRow }> = ({ row }) => {
   );
 };
 
-const RosterRow: React.FC<{ row: GuestRosterRow; onPress: () => void }> = ({ row, onPress }) => {
+const RosterRow: React.FC<{ row: GuestRosterRow; onPress: () => void; selectionMode: boolean; selected: boolean }> = ({ row, onPress, selectionMode, selected }) => {
   const invitationLabel = GUEST_ROSTER_INVITATION_LABELS[row.invitationStatus];
   const partyText = row.party.size > 1 ? `${row.party.size} people` : "1 person";
   const checkedText = row.party.checkedIn > 0 ? ` · ${row.party.checkedIn} checked in` : "";
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ selected: selectionMode ? selected : undefined, disabled: selectionMode && !row.canRemind && !row.canRetry }}
       accessibilityLabel={`${row.displayName}, ${GUEST_ROSTER_PRIMARY_LABELS[row.primaryStatus]}${invitationLabel !== null ? `, ${invitationLabel}` : ""}`}
       onPress={onPress}
       style={({ pressed }) => [styles.rowPressable, pressed && styles.pressed]}
     >
       <GlassCard padding={0} style={styles.rowCard} contentStyle={styles.rowContent}>
+        {selectionMode ? <Text style={styles.selectionMark} accessibilityElementsHidden>{selected ? "●" : "○"}</Text> : null}
         <Avatar row={row} />
         <View style={styles.rowMain}>
           <View style={styles.rowTitleLine}>
@@ -245,15 +247,39 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
   const [filter, setFilter] = useState<GuestRosterFilter>("all");
   const [sort, setSort] = useState<GuestRosterSort>("action_priority");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selected, setSelected] = useState<GuestRosterRow | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
+  const [bulkAction, setBulkAction] = useState<"reminder" | "retry_delivery" | null>(null);
   const [actionPreview, setActionPreview] = useState<GuestRosterActionPreview | null>(null);
   const [actionPending, setActionPending] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const query = useGuestRoster({ eventId, enabled: true, filter, search, sort });
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim().length > 0 ? search : ""), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+  const query = useGuestRoster({ eventId, enabled: true, filter, search: debouncedSearch, sort });
   const data = query.data;
   const summary = data?.summary;
+
+  useEffect(() => {
+    if (data === undefined) return;
+    if (selected !== null) {
+      const current = data.rows.find((row) => row.rosterKey === selected.rosterKey) ?? null;
+      if (current !== selected) setSelected(current);
+    }
+    setSelectedKeys((current) => {
+      const allowed = new Set(data.rows.filter((row) => row.canRemind || row.canRetry).map((row) => row.rosterKey));
+      const next = new Set(Array.from(current).filter((key) => allowed.has(key)));
+      return next.size === current.size ? current : next;
+    });
+  }, [data, selected]);
+  useEffect(() => {
+    if (selectedKeys.size === 0) setBulkAction(null);
+  }, [selectedKeys]);
 
   const cards = useMemo(() => [
     { key: "all" as const, label: "All guests", count: summary?.all ?? 0 },
@@ -263,20 +289,33 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
   ], [summary]);
 
   const refresh = useCallback(() => { void query.refetch(); }, [query]);
-  const previewAction = useCallback(async (action: "reminder" | "retry_delivery") => {
-    if (selected === null || query.isStaleTruth || query.isOffline) return;
+  const previewAction = useCallback(async (action: "reminder" | "retry_delivery", rows?: GuestRosterRow[]) => {
+    const targets = rows ?? (selected === null ? [] : [selected]);
+    if (targets.length === 0 || query.isStaleTruth || query.isOffline) return;
     setActionPending(true); setActionMessage(null);
-    const channels = Array.from(new Set(selected.attempts
+    const channels = Array.from(new Set(targets.flatMap((target) => target.attempts)
       .filter((attempt) => action === "reminder" || (attempt.status === "failed" && attempt.retryable))
       .map((attempt) => attempt.channel)));
     try {
-      const preview = await previewGuestRosterAction({ eventId, action, rosterKeys: [selected.rosterKey], channels: channels.length > 0 ? channels : ["email"] });
+      const preview = await previewGuestRosterAction({ eventId, action, rosterKeys: targets.map((target) => target.rosterKey), channels: channels.length > 0 ? channels : ["email"] });
       setActionPreview(preview);
     } catch {
       setActionMessage("This guest's status changed or the action is no longer available. Refresh and try again.");
       void query.refetch();
     } finally { setActionPending(false); }
   }, [eventId, query, selected]);
+
+  const toggleSelected = useCallback((row: GuestRosterRow) => {
+    const action = row.canRemind ? "reminder" : row.canRetry ? "retry_delivery" : null;
+    if (action === null || (bulkAction !== null && bulkAction !== action)) return;
+    setBulkAction((current) => current ?? action);
+    setSelectedKeys((current) => {
+      const next = new Set(current);
+      if (next.has(row.rosterKey)) next.delete(row.rosterKey); else next.add(row.rosterKey);
+      if (next.size === 0) setBulkAction(null);
+      return next;
+    });
+  }, [bulkAction]);
 
   const executeAction = useCallback(async () => {
     if (actionPreview === null) return;
@@ -285,6 +324,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
       await executeGuestRosterAction({ previewId: actionPreview.previewId, clientRequestId: createGuestRosterRequestId() });
       setActionMessage("Queued. The guest's status will update when provider evidence arrives.");
       setActionPreview(null);
+      setSelectedKeys(new Set()); setBulkAction(null); setSelectionMode(false);
       void query.refetch();
     } catch { setActionMessage("Nothing was queued. Refresh and try again."); }
     finally { setActionPending(false); }
@@ -310,10 +350,14 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
           <Text style={styles.liveLabel}>{query.isFetching ? "Refreshing…" : "Live guest status"}</Text>
         </View>
         <View style={styles.chromeRight}>
+          {data?.canBulkActions === true ? <Pressable accessibilityRole="button" accessibilityLabel={selectionMode ? "Finish selecting guests" : "Select guests"}
+            onPress={() => { setSelectionMode((value) => !value); setSelectedKeys(new Set()); setBulkAction(null); }} style={styles.selectControl}>
+            <Text style={styles.selectControlText}>{selectionMode ? "Done" : "Select"}</Text>
+          </Pressable> : null}
           <IconChrome icon="search" size={36} onPress={() => setSearchOpen((value) => !value)} accessibilityLabel="Search guests" />
           <IconChrome icon="filter" size={36} onPress={() => setFiltersOpen(true)} accessibilityLabel="Filter and sort guests" />
           {data?.canExport === true && !query.isStaleTruth ? (
-            <IconChrome icon="download" size={36} onPress={() => onExport({ filter, search, sort })} accessibilityLabel="Export current guest roster" />
+            <IconChrome icon="download" size={36} onPress={() => onExport({ filter, search: debouncedSearch, sort })} accessibilityLabel="Export current guest roster" />
           ) : null}
         </View>
       </View>
@@ -366,7 +410,8 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
           </View>
         ) : (
           <View style={[styles.list, isWideDesktop && styles.listDesktop]}>
-            {data.rows.map((row) => <RosterRow key={row.rosterKey} row={row} onPress={() => setSelected(row)} />)}
+            {data.rows.map((row) => <RosterRow key={row.rosterKey} row={row} selectionMode={selectionMode} selected={selectedKeys.has(row.rosterKey)}
+              onPress={() => { if (selectionMode) toggleSelected(row); else setSelected(row); }} />)}
           </View>
         )}
       </ScrollView>
@@ -395,6 +440,14 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
       <GuestDetailSheet row={selected} onClose={() => { setSelected(null); setActionPreview(null); setActionMessage(null); }} onOpenOrder={onOpenOrder}
         actionsDisabled={query.isStaleTruth || query.isOffline} actionPending={actionPending}
         onPreviewAction={(action) => { void previewAction(action); }} onApproval={(decision) => { void setApproval(decision); }} />
+      {selectionMode && selectedKeys.size > 0 && bulkAction !== null ? (
+        <View style={[styles.bulkBar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]} accessibilityRole="toolbar">
+          <Text style={styles.bulkCount}>{selectedKeys.size} selected</Text>
+          <Button variant="primary" label={bulkAction === "reminder" ? "Preview reminders" : "Preview retries"}
+            disabled={query.isStaleTruth || query.isOffline || actionPending}
+            onPress={() => { const rows = data?.rows.filter((row) => selectedKeys.has(row.rosterKey)) ?? []; void previewAction(bulkAction, rows); }} />
+        </View>
+      ) : null}
       <Sheet visible={actionPreview !== null} onClose={() => setActionPreview(null)} snapPoint="half">
         {actionPreview !== null ? <View style={styles.filterSheet}>
           <Text style={styles.sheetTitle}>Confirm guest action</Text>
@@ -416,6 +469,8 @@ const styles = StyleSheet.create({
   chromeTitle: { color: textTokens.primary, fontSize: 24, lineHeight: 29, fontWeight: "800" },
   liveLabel: { color: textTokens.tertiary, fontSize: 12, marginTop: 1 },
   chromeRight: { flexDirection: "row", gap: spacing.xs },
+  selectControl: { minHeight: 44, minWidth: 54, alignItems: "center", justifyContent: "center", paddingHorizontal: spacing.xs },
+  selectControlText: { color: accent.warm, fontSize: 13, fontWeight: "800" },
   searchWrap: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   freshnessBanner: { marginHorizontal: spacing.md, marginBottom: spacing.sm, padding: spacing.md, borderRadius: radiusTokens.md, borderWidth: StyleSheet.hairlineWidth, borderColor: semantic.warning, backgroundColor: semantic.warningTint, gap: spacing.xs },
   freshnessTitle: { color: textTokens.primary, fontSize: 14, fontWeight: "800" },
@@ -439,6 +494,7 @@ const styles = StyleSheet.create({
   avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: glass.tint.profileBase },
   avatarFallback: { width: 48, height: 48, borderRadius: 24, backgroundColor: accent.tint, borderWidth: StyleSheet.hairlineWidth, borderColor: accent.border, alignItems: "center", justifyContent: "center" },
   avatarText: { color: textTokens.primary, fontSize: 15, fontWeight: "800" },
+  selectionMark: { color: accent.warm, fontSize: 22, width: 24, textAlign: "center" },
   rowMain: { flex: 1, minWidth: 0, gap: 5 },
   rowTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   rowName: { color: textTokens.primary, fontSize: 16, lineHeight: 21, fontWeight: "800", flex: 1 },
@@ -473,6 +529,8 @@ const styles = StyleSheet.create({
   orderLinks: { gap: spacing.sm },
   actionButtons: { gap: spacing.sm, marginTop: spacing.sm },
   actionNotice: { position: "absolute", left: spacing.md, right: spacing.md, bottom: spacing.xl, padding: spacing.md, borderRadius: radiusTokens.md, backgroundColor: glass.tint.profileElevated, borderWidth: StyleSheet.hairlineWidth, borderColor: glass.border.profileBase },
+  bulkBar: { position: "absolute", left: 0, right: 0, bottom: 0, minHeight: 72, paddingHorizontal: spacing.md, paddingTop: spacing.sm, flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: canvas.profile, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: glass.border.profileBase },
+  bulkCount: { flex: 1, color: textTokens.primary, fontSize: 14, fontWeight: "800" },
 });
 
 export default GuestRosterExperience;

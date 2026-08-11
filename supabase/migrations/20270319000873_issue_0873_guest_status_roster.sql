@@ -121,7 +121,7 @@ BEGIN
     'phase',v_phase,
     'readEnabled',v_read AND public.biz_guest_roster_phase_rank(v_phase)>=1,
     'singleActionsEnabled',v_single AND public.biz_guest_roster_phase_rank(v_phase)>=3,
-    'bulkActionsEnabled',v_bulk AND public.biz_guest_roster_phase_rank(v_phase)>=4,
+    'bulkActionsEnabled',v_single AND v_bulk AND public.biz_guest_roster_phase_rank(v_phase)>=4,
     'exportEnabled',v_export AND public.biz_guest_roster_phase_rank(v_phase)>=4
   );
 END;
@@ -146,6 +146,35 @@ BEGIN
 END;
 $function$;
 
+-- #873 exercises the #1770 resolved-selection lane on fresh Supabase PG17.
+-- Supabase auth.users has banned_until but no deleted_at column; the prior
+-- helper referenced a production-only drift column and made this lane fail on
+-- a canonical fresh schema. Preserve the actor/rank/lock contract without it.
+CREATE OR REPLACE FUNCTION public.issue_1770_offering_actor_brand(
+  p_actor_id uuid,p_event_id uuid,p_lock boolean DEFAULT false
+) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,auth,pg_temp
+AS $function$
+DECLARE v_brand_id uuid;
+BEGIN
+  IF p_actor_id IS NULL OR NOT EXISTS (
+    SELECT 1 FROM auth.users u WHERE u.id=p_actor_id
+      AND (u.banned_until IS NULL OR u.banned_until<=now())
+  ) THEN RAISE EXCEPTION 'offering_send_actor_forbidden' USING ERRCODE='42501'; END IF;
+  IF p_lock THEN
+    SELECT e.brand_id INTO v_brand_id FROM public.events e JOIN public.brands b ON b.id=e.brand_id
+    WHERE e.id=p_event_id AND e.deleted_at IS NULL AND b.deleted_at IS NULL FOR UPDATE OF e,b;
+  ELSE
+    SELECT e.brand_id INTO v_brand_id FROM public.events e JOIN public.brands b ON b.id=e.brand_id
+    WHERE e.id=p_event_id AND e.deleted_at IS NULL AND b.deleted_at IS NULL;
+  END IF;
+  IF v_brand_id IS NULL OR public.biz_brand_effective_rank(v_brand_id,p_actor_id)<public.biz_role_rank('event_manager') THEN
+    RAISE EXCEPTION 'offering_send_actor_forbidden' USING ERRCODE='42501';
+  END IF;
+  RETURN v_brand_id;
+END;
+$function$;
+
 -- Service-only common projection. Each row is one canonical person, or one
 -- truthful unlinked source record when reconciliation has not safely linked it.
 CREATE OR REPLACE FUNCTION public.biz_guest_roster_project(p_event_id uuid)
@@ -163,12 +192,9 @@ WITH event_row AS (
      OR EXISTS (
        SELECT 1 FROM public.brand_person_source_links l
        LEFT JOIN public.event_rsvps r ON l.source_kind='event_rsvp' AND r.id=l.source_id
-       LEFT JOIN public.event_rsvp_guests rg ON l.source_kind='rsvp_plus_one' AND rg.id=l.source_id
-       LEFT JOIN public.event_rsvps rr ON rr.id=rg.rsvp_id
        LEFT JOIN public.orders o ON l.source_kind='order' AND o.id=l.source_id
-       LEFT JOIN public.tickets st ON l.source_kind='ticket_holder' AND st.id=l.source_id
        WHERE l.brand_person_id=p.id AND l.detached_at IS NULL
-         AND COALESCE(r.event_id,rr.event_id,o.event_id,st.event_id)=e.id
+         AND COALESCE(r.event_id,o.event_id)=e.id
      )
 ), projected AS (
   SELECT
@@ -225,12 +251,7 @@ WITH event_row AS (
   LEFT JOIN LATERAL (
     WITH person_orders AS (
       SELECT DISTINCT o.* FROM public.brand_person_source_links l
-      JOIN public.orders o ON (
-        (l.source_kind='order' AND o.id=l.source_id)
-        OR (l.source_kind='ticket_holder' AND EXISTS (
-          SELECT 1 FROM public.tickets lt WHERE lt.id=l.source_id AND lt.order_id=o.id
-        ))
-      )
+      JOIN public.orders o ON l.source_kind='order' AND o.id=l.source_id
       WHERE l.brand_person_id=p.id AND l.detached_at IS NULL AND o.event_id=p_event_id
     )
     SELECT array_agg(DISTINCT o.id ORDER BY o.id) AS order_ids,
@@ -350,7 +371,7 @@ WITH event_row AS (
   FROM public.orders o LEFT JOIN public.tickets t ON t.order_id=o.id
   WHERE o.event_id=p_event_id AND NOT EXISTS (
     SELECT 1 FROM public.brand_person_source_links l
-    WHERE l.source_kind='order' AND l.source_id=o.id AND l.detached_at IS NULL
+    WHERE l.detached_at IS NULL AND l.source_kind='order' AND l.source_id=o.id
   ) GROUP BY o.id
 )
 SELECT row_data FROM canonical_json
@@ -496,10 +517,15 @@ CREATE OR REPLACE FUNCTION public.biz_guest_roster_list(
 ) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp
 AS $function$
-DECLARE v_brand uuid; v_rollout jsonb; v_search text; v_rows jsonb; v_all jsonb; v_count integer;
+DECLARE v_brand uuid; v_rollout jsonb; v_search text; v_rows jsonb; v_all jsonb;
+  v_count integer; v_filtered_count integer; v_offset integer:=0; v_rank integer;
 BEGIN
   SELECT e.brand_id INTO v_brand FROM public.events e WHERE e.id=p_event_id AND e.deleted_at IS NULL;
-  IF auth.uid() IS NULL OR v_brand IS NULL OR public.biz_brand_effective_rank(v_brand,auth.uid())<public.biz_role_rank('event_manager') THEN
+  IF auth.uid() IS NULL OR v_brand IS NULL THEN
+    RAISE EXCEPTION 'guest_roster_forbidden' USING ERRCODE='42501';
+  END IF;
+  v_rank:=public.biz_brand_effective_rank(v_brand,auth.uid());
+  IF v_rank<public.biz_role_rank('event_manager') THEN
     RAISE EXCEPTION 'guest_roster_forbidden' USING ERRCODE='42501';
   END IF;
   v_rollout:=public.biz_guest_roster_rollout(v_brand);
@@ -510,9 +536,14 @@ BEGIN
     'checked_in','not_checked_in','delivery_failed','removed','going','maybe','awaiting_approval','waitlisted',
     'declined','denied','bought_ticket','refunded','cancelled','transferred')
     OR p_sort NOT IN ('action_priority','name_asc','name_desc','recent_first')
-    OR p_limit NOT BETWEEN 1 AND 100 OR p_cursor IS NOT NULL THEN
+    OR p_limit NOT BETWEEN 1 AND 100
+    OR (p_cursor IS NOT NULL AND (jsonb_typeof(p_cursor)<>'object'
+      OR public.issue_1770_json_keys(p_cursor)<>ARRAY['offset']::text[])) THEN
     RAISE EXCEPTION 'guest_roster_filter_invalid' USING ERRCODE='22023';
   END IF;
+  BEGIN v_offset:=COALESCE((p_cursor->>'offset')::integer,0);
+    EXCEPTION WHEN OTHERS THEN RAISE EXCEPTION 'guest_roster_filter_invalid' USING ERRCODE='22023'; END;
+  IF v_offset<0 OR v_offset>100000 THEN RAISE EXCEPTION 'guest_roster_filter_invalid' USING ERRCODE='22023'; END IF;
   v_search:=lower(regexp_replace(btrim(COALESCE(p_search,'')),'\s+',' ','g'));
   IF length(v_search)>200 OR v_search~E'[\\x00-\\x1F\\x7F]' THEN RAISE EXCEPTION 'guest_roster_search_invalid' USING ERRCODE='22023'; END IF;
   WITH all_rows AS MATERIALIZED (SELECT row_data r FROM public.biz_guest_roster_project(p_event_id)),
@@ -532,15 +563,31 @@ BEGIN
         WHEN 'ticketed' THEN jsonb_array_length(r->'orderIds')>0
         WHEN 'maybe' THEN false ELSE r->>'primaryStatus'=p_filter END
   ), ordered AS (
-    SELECT r FROM filtered ORDER BY
+    SELECT CASE WHEN COALESCE((v_rollout->>'singleActionsEnabled')::boolean,false)
+      THEN r ELSE r||jsonb_build_object('canRemind',false,'canRetry',false,'canApprove',false,'canDeny',false) END AS r
+    FROM filtered ORDER BY
       CASE WHEN p_sort='action_priority' THEN CASE r->>'primaryStatus'
         WHEN 'invite_failed' THEN 0 WHEN 'awaiting_approval' THEN 1 WHEN 'not_responded' THEN 2 WHEN 'waitlisted' THEN 3 ELSE 9 END END,
       CASE WHEN p_sort='recent_first' THEN (r->>'latestActivityAt')::timestamptz END DESC NULLS LAST,
       CASE WHEN p_sort IN ('action_priority','name_asc') THEN lower(r->>'displayName') END ASC,
-      CASE WHEN p_sort='name_desc' THEN lower(r->>'displayName') END DESC,r->>'rosterKey' LIMIT p_limit
+      CASE WHEN p_sort='name_desc' THEN lower(r->>'displayName') END DESC,r->>'rosterKey'
+      OFFSET v_offset LIMIT p_limit
   ) SELECT COALESCE(jsonb_agg(r),'[]'::jsonb) INTO v_rows FROM ordered;
   WITH all_rows AS MATERIALIZED (SELECT row_data r FROM public.biz_guest_roster_project(p_event_id))
   SELECT COALESCE(jsonb_agg(r),'[]'::jsonb),count(*) INTO v_all,v_count FROM all_rows;
+  WITH all_rows AS MATERIALIZED (SELECT row_data r FROM public.biz_guest_roster_project(p_event_id))
+  SELECT count(*) INTO v_filtered_count FROM all_rows WHERE
+    (v_search='' OR strpos(lower(r->>'displayName'),v_search)>0 OR strpos(lower(COALESCE(r->>'contactLabel','')),v_search)>0)
+    AND CASE p_filter
+      WHEN 'all' THEN true WHEN 'no_response' THEN r->>'primaryStatus'='not_responded'
+      WHEN 'confirmed' THEN r->>'primaryStatus' IN ('bought_ticket','going')
+      WHEN 'needs_attention' THEN r->>'primaryStatus' IN ('not_responded','invite_failed','awaiting_approval','waitlisted')
+      WHEN 'not_yet' THEN r->>'primaryStatus' IN ('not_responded','not_sent','sending','invite_failed','suppressed_or_skipped')
+      WHEN 'delivery_failed' THEN r->>'primaryStatus'='invite_failed'
+      WHEN 'suppressed' THEN r->>'primaryStatus'='suppressed_or_skipped'
+      WHEN 'checked_in' THEN (r->>'checkedIn')::boolean WHEN 'not_checked_in' THEN NOT (r->>'checkedIn')::boolean
+      WHEN 'rsvpd' THEN r->>'rsvpId' IS NOT NULL WHEN 'ticketed' THEN jsonb_array_length(r->'orderIds')>0
+      WHEN 'maybe' THEN false ELSE r->>'primaryStatus'=p_filter END;
   RETURN jsonb_build_object('rows',v_rows,'summary',jsonb_build_object(
     'all',v_count,
     'notResponded',(SELECT count(*) FROM jsonb_array_elements(v_all) x WHERE x->>'primaryStatus'='not_responded'),
@@ -551,8 +598,12 @@ BEGIN
     'sending',(SELECT count(*) FROM jsonb_array_elements(v_all) x WHERE x->>'invitationStatus'='sending'),
     'inviteFailed',(SELECT count(*) FROM jsonb_array_elements(v_all) x WHERE x->>'invitationStatus'='failed'),
     'watermark',(SELECT COALESCE(max(id),0) FROM public.guest_roster_change_events WHERE event_id=p_event_id),
-    'generatedAt',now()),'nextCursor',NULL,'staleAfter',now()+interval '30 seconds',
-    'canExport',COALESCE((v_rollout->>'exportEnabled')::boolean,false));
+    'generatedAt',now()),'nextCursor',CASE WHEN v_offset+p_limit<v_filtered_count
+      THEN jsonb_build_object('offset',v_offset+p_limit) ELSE NULL END,
+    'staleAfter',now()+interval '30 seconds',
+    'canBulkActions',COALESCE((v_rollout->>'bulkActionsEnabled')::boolean,false),
+    'canExport',COALESCE((v_rollout->>'exportEnabled')::boolean,false)
+      AND v_rank>=public.biz_role_rank('brand_admin'));
 END;
 $function$;
 
@@ -653,7 +704,36 @@ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
 AS $function$
 DECLARE v_event uuid; v_person uuid; v_kind text:=TG_ARGV[0];
 BEGIN
-  IF TG_TABLE_NAME='brand_offering_invites' THEN v_event:=NEW.event_id; v_person:=NEW.brand_person_id;
+  IF TG_TABLE_NAME='brand_people' THEN
+    INSERT INTO public.guest_roster_change_events(event_id,roster_key,fact_kind)
+    SELECT DISTINCT event_id,'person:'||NEW.id::text,'identity' FROM (
+      SELECT i.event_id FROM public.brand_offering_invites i WHERE i.brand_person_id=NEW.id
+      UNION ALL SELECT r.event_id FROM public.brand_person_source_links l JOIN public.event_rsvps r
+        ON l.source_kind='event_rsvp' AND r.id=l.source_id WHERE l.brand_person_id=NEW.id AND l.detached_at IS NULL
+      UNION ALL SELECT o.event_id FROM public.brand_person_source_links l JOIN public.orders o
+        ON l.source_kind='order' AND o.id=l.source_id WHERE l.brand_person_id=NEW.id AND l.detached_at IS NULL
+    ) affected;
+    RETURN NEW;
+  ELSIF TG_TABLE_NAME='brand_person_contact_methods' THEN
+    INSERT INTO public.guest_roster_change_events(event_id,roster_key,fact_kind)
+    SELECT DISTINCT event_id,'person:'||NEW.brand_person_id::text,'identity' FROM (
+      SELECT i.event_id FROM public.brand_offering_invites i WHERE i.brand_person_id=NEW.brand_person_id
+      UNION ALL SELECT r.event_id FROM public.brand_person_source_links l JOIN public.event_rsvps r
+        ON l.source_kind='event_rsvp' AND r.id=l.source_id WHERE l.brand_person_id=NEW.brand_person_id AND l.detached_at IS NULL
+      UNION ALL SELECT o.event_id FROM public.brand_person_source_links l JOIN public.orders o
+        ON l.source_kind='order' AND o.id=l.source_id WHERE l.brand_person_id=NEW.brand_person_id AND l.detached_at IS NULL
+    ) affected;
+    RETURN NEW;
+  ELSIF TG_TABLE_NAME='brand_person_source_links' THEN
+    v_person:=NEW.brand_person_id;
+    IF NEW.source_kind='event_rsvp' THEN SELECT r.event_id INTO v_event FROM public.event_rsvps r WHERE r.id=NEW.source_id;
+    ELSIF NEW.source_kind='order' THEN SELECT o.event_id INTO v_event FROM public.orders o WHERE o.id=NEW.source_id;
+    END IF;
+  ELSIF TG_TABLE_NAME='guest_roster_brand_rollouts' THEN
+    INSERT INTO public.guest_roster_change_events(event_id,roster_key,fact_kind)
+    SELECT e.id,NULL,'rollout' FROM public.events e WHERE e.brand_id=NEW.brand_id AND e.deleted_at IS NULL;
+    RETURN NEW;
+  ELSIF TG_TABLE_NAME='brand_offering_invites' THEN v_event:=NEW.event_id; v_person:=NEW.brand_person_id;
   ELSIF TG_TABLE_NAME='brand_offering_invite_delivery_attempts' THEN
     SELECT i.event_id,i.brand_person_id INTO v_event,v_person FROM public.brand_offering_invites i WHERE i.id=NEW.invite_id;
   ELSIF TG_TABLE_NAME='event_rsvps' THEN v_event:=NEW.event_id;
@@ -681,6 +761,14 @@ CREATE TRIGGER issue_0873_order_change AFTER INSERT OR UPDATE ON public.orders
 FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('order');
 CREATE TRIGGER issue_0873_ticket_change AFTER INSERT OR UPDATE ON public.tickets
 FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('ticket');
+CREATE TRIGGER issue_0873_person_change AFTER UPDATE OF display_name,avatar_url,record_status,merged_into_person_id ON public.brand_people
+FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('identity');
+CREATE TRIGGER issue_0873_contact_change AFTER INSERT OR UPDATE OF normalized_value,record_state,is_exportable,provenance_scope ON public.brand_person_contact_methods
+FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('identity');
+CREATE TRIGGER issue_0873_source_link_change AFTER INSERT OR UPDATE OF brand_person_id,detached_at ON public.brand_person_source_links
+FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('identity');
+CREATE TRIGGER issue_0873_rollout_change AFTER INSERT OR UPDATE OF phase ON public.guest_roster_brand_rollouts
+FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('rollout');
 
 REVOKE ALL ON FUNCTION public.biz_guest_roster_phase_rank(text) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.biz_guest_roster_rollout(uuid) FROM PUBLIC,anon,authenticated;

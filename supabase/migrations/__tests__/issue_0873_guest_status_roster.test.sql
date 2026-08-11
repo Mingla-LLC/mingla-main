@@ -15,6 +15,11 @@ BEGIN
      OR has_function_privilege('authenticated','public.biz_offering_guest_roster_export_rows(uuid)','EXECUTE') THEN
     RAISE EXCEPTION 'T-873-00 FAIL: read/provider ACL drift';
   END IF;
+  IF (SELECT array_agg(column_name::text ORDER BY ordinal_position) FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='guest_roster_change_events')
+     IS DISTINCT FROM ARRAY['id','event_id','roster_key','fact_kind','occurred_at']::text[] THEN
+    RAISE EXCEPTION 'T-873-00 FAIL: realtime invalidation gained a PII/provider column';
+  END IF;
 END;
 $catalog$;
 
@@ -80,6 +85,11 @@ BEGIN
     RAISE EXCEPTION 'T-873-01 FAIL: accepted invite truth wrong: %',v;
   END IF;
   IF v_item::text LIKE '%provider-873%' THEN RAISE EXCEPTION 'T-873-01 FAIL: provider ID leaked'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.guest_roster_change_events
+    WHERE event_id='87300000-0000-4000-8000-000000000020'
+      AND fact_kind IN ('invitation','delivery')) THEN
+    RAISE EXCEPTION 'T-873-01 FAIL: invitation/delivery did not emit realtime invalidation';
+  END IF;
   v_action:=public.biz_guest_roster_resolve_action(
     '87300000-0000-4000-8000-000000000001','87300000-0000-4000-8000-000000000020',
     'reminder',ARRAY['person:87300000-0000-4000-8000-000000000030'],ARRAY['email']

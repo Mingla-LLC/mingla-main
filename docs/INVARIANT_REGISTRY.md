@@ -8049,3 +8049,31 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   lane and the resulting grant matrix verified in production
   (`authenticated|SELECT`, `service_role|INSERT,SELECT`, `anon` absent, `postgres`
   untouched), `admin-payout-hold-migrate` redeployed as v96 with `verify_jwt = true`.
+
+---
+
+## DRAFT — issue #873 (person-first guest status roster)
+
+### I-PROPOSED-0873-INVITED-MEANS-PROVIDER-ACCEPTED (DRAFT)
+- **Rule:** **Invited** requires durable provider acceptance on at least one email, SMS, or push attempt. Audience selection, queueing, provider-call start, opens, and clicks are not invitation acceptance and never become Delivered or Read claims.
+- **Enforcement:** `public.biz_guest_roster_project`; the monotonic #1817/#1821 attempt ledger; `GuestRosterExperience` truth copy; service-only provider IDs.
+- **Regression:** `issue_0873_guest_status_roster.test.sql` T-873-01 and `GuestRosterExperience.issue873.render.test.tsx`.
+- **Established:** DRAFT at #873 IMPLEMENT 2026-08-11; flips ACTIVE only after independent tester PASS and production readback.
+
+### I-PROPOSED-0873-NOT-RESPONDED-REQUIRES-AN-ACCEPTED-INVITE (DRAFT)
+- **Rule:** **Not responded** exists only when provider acceptance is proven and no RSVP, qualifying purchase, or terminal/history outcome exists. RSVP, purchase, refund, cancellation, transfer, decline, denial, and removal have deterministic precedence and never fall back to Not responded.
+- **Enforcement:** the single computed `public.biz_guest_roster_project` owner feeds list, summary, filter, detail, actions, and export; no mutable primary-status column exists.
+- **Regression:** `issue_0873_guest_status_roster.test.sql` T-873-01 through T-873-05.
+- **Established:** DRAFT at #873 IMPLEMENT 2026-08-11; flips ACTIVE only after independent tester PASS and production transition proof.
+
+### I-PROPOSED-0873-GUESTS-ARE-PEOPLE-ORDERS-ARE-TRANSACTIONS (DRAFT)
+- **Rule:** Guests contains one top-level row per canonical person and nests party/ticket quantities; Orders remains the unchanged financial ledger with one row per transaction. A guest may link to several existing order details, but the guest roster never becomes a second money authority.
+- **Enforcement:** `public.biz_guest_roster_project`; canonical `/event/[id]/guests`; unchanged `/event/[id]/orders` route and stores.
+- **Regression:** `issue_0873_guest_status_roster.test.sql` T-873-03 and the Business rendered roster suite.
+- **Established:** DRAFT at #873 IMPLEMENT 2026-08-11; flips ACTIVE only after independent tester PASS and Business web/iOS/Android proof.
+
+### I-PROPOSED-0873-ROSTER-ACTIONS-REVALIDATE-SERVER-TRUTH (DRAFT)
+- **Rule:** Roster reads require same-brand event-manager authority; exports require the existing brand-admin audited exporter; actions require rollout permission, a fresh server preview, execute-time status/suppression/cost revalidation, and idempotent shared send owners. Stale/offline clients cannot act, and no client can fabricate Going, Paid, Delivered, or Checked-in.
+- **Enforcement:** four default-OFF flags, per-brand rollout phase, guard-first RPCs, `guest-roster-actions`, the #1770 send owner, five-minute previews, 24-hour reminder cooldown, and the audited #1770 export worker.
+- **Regression:** fresh-PG17 #873 suite, action-edge Deno suite, rendered stale/action locks, and cross-brand denial T-873-06.
+- **Established:** DRAFT at #873 IMPLEMENT 2026-08-11; flips ACTIVE only after independent tester PASS and controlled runtime proof.
