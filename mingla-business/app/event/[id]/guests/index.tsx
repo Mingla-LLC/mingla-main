@@ -41,6 +41,7 @@ import {
   type DoorSaleRecord,
 } from "../../../../src/store/doorSalesStore";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
+import { useGuestRosterAccess } from "../../../../src/hooks/useGuestRoster";
 import { useEventGuestList } from "../../../../src/hooks/useEventOrders";
 import {
   capitalizeNoun,
@@ -49,8 +50,17 @@ import {
 } from "../../../../src/components/offering/offeringKind";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { exportGuestsCsv } from "../../../../src/utils/guestCsvExport";
+import {
+  createGuestRosterRequestId,
+  requestGuestRosterExport,
+} from "../../../../src/services/guestRosterService";
+import type {
+  GuestRosterFilter,
+  GuestRosterSort,
+} from "../../../../src/types/guestRoster";
 
 import { AddCompGuestSheet } from "../../../../src/components/guests/AddCompGuestSheet";
+import { GuestRosterExperience } from "../../../../src/components/guests/GuestRosterExperience";
 import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { IconChrome } from "../../../../src/components/ui/IconChrome";
 import { Input } from "../../../../src/components/ui/Input";
@@ -215,6 +225,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
   );
   const event = routeEvent.event;
   const brand = routeEvent.brand;
+  const guestRosterAccess = useGuestRosterAccess(typeof eventId === "string" ? eventId : null);
 
   // META-ORCH-1059 — kind-aware copy lens. This "Guests" screen is shared with
   // trips + experiences. Read the per-kind headcount metric from the loaded
@@ -369,6 +380,26 @@ export default function EventGuestsListRoute(): React.ReactElement {
     [showToast],
   );
 
+  const handleGuestRosterExport = useCallback(async (input: {
+    filter: GuestRosterFilter;
+    search: string;
+    sort: GuestRosterSort;
+  }): Promise<void> => {
+    if (typeof eventId !== "string") return;
+    try {
+      await requestGuestRosterExport({
+        eventId,
+        filter: input.filter,
+        search: input.search,
+        sort: input.sort,
+        clientRequestId: createGuestRosterRequestId(),
+      });
+      showToast("Export is being prepared. It will be available from this screen shortly.");
+    } catch {
+      showToast("Couldn't prepare the export. Tap Export to try again.");
+    }
+  }, [eventId, showToast]);
+
   useEffect(() => {
     if (routeEvent.replacementEventId !== null) {
       router.replace(`/event/${routeEvent.replacementEventId}/guests` as never);
@@ -434,6 +465,27 @@ export default function EventGuestsListRoute(): React.ReactElement {
   }
 
   const totalCount = merged.length;
+
+  if (guestRosterAccess.data?.enabled === true) {
+    return (
+      <>
+        <GuestRosterExperience
+          eventId={eventId}
+          onBack={handleBack}
+          onOpenOrder={(orderId) => router.push(`/event/${eventId}/orders/${orderId}` as never)}
+          onExport={(input) => { void handleGuestRosterExport(input); }}
+        />
+        <View style={styles.toastWrap} pointerEvents="box-none">
+          <Toast
+            visible={toast.visible}
+            kind="info"
+            message={toast.message}
+            onDismiss={() => setToast({ visible: false, message: "" })}
+          />
+        </View>
+      </>
+    );
+  }
 
   return (
     <View
