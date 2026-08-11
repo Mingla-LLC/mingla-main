@@ -6,13 +6,20 @@
 --   A-C  the four tables themselves — the LIVE ACL, then the TRUNCATE executed
 --        as a real `authenticated` session, then a cross-check that the two
 --        catalog authorities agree;
+--   G    the RLS-BYPASS class — a view that is auto-updatable and NOT
+--        `security_invoker` executes its writes as the VIEW OWNER, so a write
+--        privilege on it means the base table's row security is never
+--        consulted at all. That is categorically worse than an over-broad
+--        grant a policy still contains, so it is its own class, it can never
+--        be baselined, and it MUST be zero;
 --   D    the class gate — NOTHING in schema `public` may hold a privilege for
 --        anon/PUBLIC on a base table, or anything beyond SELECT for anyone,
 --        outside the allowlist and the baseline frozen on 2026-08-11;
---   E    the vacuity guard — six probe relations, one per corner of the rule.
+--   E    the vacuity guard — nine probe relations, one per corner of the rule.
 --        A check that cannot fail is not a check, and this whole class exists
 --        because the grants nobody wrote were invisible to everything that
---        looked;
+--        looked. E-10..E-14 are the severity split: three views, all carrying
+--        anon INSERT, exactly ONE of them an RLS bypass;
 --   F    fails-on-revert — re-GRANT TRUNCATE and prove BOTH that the gate reds
 --        AND that a real `authenticated` session can then actually empty the
 --        table. Without F, "42501" in group B could be any refusal at all.
@@ -213,6 +220,94 @@ BEGIN
 END $group_c$;
 
 -- ===========================================================================
+-- G  THE RLS-BYPASS CLASS. Zero, always, with no baseline to hide in.
+--
+--    A view that is auto-updatable and NOT `security_invoker` executes its
+--    writes AS THE VIEW OWNER. Every Mingla view is owned by `postgres`, which
+--    also owns the base tables, and no base table sets FORCE ROW LEVEL
+--    SECURITY — so a write privilege on such a view does not merely pass RLS,
+--    it means RLS is never consulted. `business_public_brands_view` was that
+--    exact shape over `public.brands` with anon holding INSERT/UPDATE/DELETE.
+--
+--    This is a strictly worse finding than an over-broad grant on a base
+--    table, so it is reported as its own class and can never be baselined.
+-- ===========================================================================
+DO $group_g$
+DECLARE
+  v_offenders text;
+  v_tbl  text;
+  v_priv text;
+BEGIN
+  -- G-01  Not one, anywhere in the schema.
+  SELECT string_agg(
+           relation_name || ' -> ' || grantee || ' holds ' || privilege_type ||
+           E'\n      ' || remediation,
+           E'\n    ' ORDER BY relation_name, grantee, privilege_type)
+    INTO v_offenders
+  FROM public.audit_overbroad_table_grants()
+  WHERE finding_class = 'rls_bypass_view_write';
+
+  IF v_offenders IS NOT NULL THEN
+    RAISE EXCEPTION
+      'G-01 RLS-BYPASSING view writes in schema public — anonymous or signed-in writes that skip row security entirely:%',
+      E'\n    ' || v_offenders;
+  END IF;
+
+  -- G-02  The thirteen views #1856 revoked hold SELECT and nothing else...
+  FOREACH v_tbl IN ARRAY ARRAY[
+    'business_public_brands_view', 'business_public_events_view',
+    'claimed_venues_public_view', 'public_menus_view', 'venue_public_view',
+    'ad_public_stay_destinations_view', 'brands_public_view',
+    'events_public_view', 'events_with_master_date_view',
+    'organisers_public_view', 'profiles_with_segment',
+    'venue_claim_active_feedback', 'business_management_events_view'
+  ] LOOP
+    IF to_regclass('public.' || v_tbl) IS NULL THEN
+      RAISE EXCEPTION 'G-02 VACUITY: view public.% does not exist', v_tbl;
+    END IF;
+    FOREACH v_priv IN ARRAY ARRAY[
+      'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN'
+    ] LOOP
+      IF has_table_privilege('anon', 'public.' || v_tbl, v_priv) THEN
+        RAISE EXCEPTION 'G-02: anon still holds % on the view public.%', v_priv, v_tbl;
+      END IF;
+      IF has_table_privilege('authenticated', 'public.' || v_tbl, v_priv) THEN
+        RAISE EXCEPTION 'G-02: authenticated still holds % on the view public.%', v_priv, v_tbl;
+      END IF;
+    END LOOP;
+
+    -- ...and still hold the read. A public read model that lost its SELECT is
+    -- an outage nobody sees an error for.
+    IF NOT has_table_privilege('authenticated', 'public.' || v_tbl, 'SELECT') THEN
+      RAISE EXCEPTION 'G-02: public.% lost its authenticated SELECT — the read model went dark', v_tbl;
+    END IF;
+  END LOOP;
+
+  -- G-03  The five views whose migrations wrote `GRANT SELECT ... TO anon`
+  --       keep the anonymous read. Narrowing one of these is the #1846 shape:
+  --       guest-facing surfaces (menus, venue and event pages) simply go
+  --       blank, with no error anywhere.
+  FOREACH v_tbl IN ARRAY ARRAY[
+    'business_public_brands_view', 'business_public_events_view',
+    'claimed_venues_public_view', 'public_menus_view', 'venue_public_view'
+  ] LOOP
+    IF NOT has_table_privilege('anon', 'public.' || v_tbl, 'SELECT') THEN
+      RAISE EXCEPTION
+        'G-03: anon lost SELECT on public.% — its migration granted exactly that, and this is a guest-facing read',
+        v_tbl;
+    END IF;
+  END LOOP;
+
+  -- G-04  business_management_events_view is the one view anon must NOT read.
+  --       Its migration granted `authenticated, service_role`; every call site
+  --       is signed-in mingla-business; production never had the anon grant.
+  IF has_table_privilege('anon', 'public.business_management_events_view', 'SELECT') THEN
+    RAISE EXCEPTION
+      'G-04: anon can read business_management_events_view — the management read model is not a public surface';
+  END IF;
+END $group_g$;
+
+-- ===========================================================================
 -- D  THE CLASS GATE. No offender anywhere in `public` outside the allowlist
 --    and the frozen baseline.
 --
@@ -270,10 +365,30 @@ CREATE VIEW public.issue_1856_probe_view_read AS
 REVOKE ALL ON public.issue_1856_probe_view_read FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.issue_1856_probe_view_read TO anon, authenticated;
 
+-- Auto-updatable, NOT security_invoker, anon INSERT: the exact
+-- business_public_brands_view shape. Writes run as the view owner and the base
+-- table's RLS is never consulted.
 CREATE VIEW public.issue_1856_probe_view_write AS
   SELECT id FROM public.issue_1856_probe_clean;
 REVOKE ALL ON public.issue_1856_probe_view_write FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT ON public.issue_1856_probe_view_write TO anon;
+
+-- Its security_invoker TWIN. Same auto-updatable shape, same anon INSERT — but
+-- the write runs as the CALLER, so the base table's RLS does apply. It is
+-- still an over-broad grant and must be flagged, but it is NOT an RLS bypass.
+-- If the guard cannot tell these two apart, the severity split is decoration.
+CREATE VIEW public.issue_1856_probe_view_invoker WITH (security_invoker = true) AS
+  SELECT id FROM public.issue_1856_probe_clean;
+REVOKE ALL ON public.issue_1856_probe_view_invoker FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON public.issue_1856_probe_view_invoker TO anon;
+
+-- Not auto-updatable (aggregate), not security_invoker, anon INSERT granted.
+-- Postgres would refuse the write anyway, so this is an over-broad grant and
+-- not a bypass. Guards that key on `security_invoker` alone get this wrong.
+CREATE VIEW public.issue_1856_probe_view_not_updatable AS
+  SELECT count(*) AS n FROM public.issue_1856_probe_clean;
+REVOKE ALL ON public.issue_1856_probe_view_not_updatable FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON public.issue_1856_probe_view_not_updatable TO anon;
 
 DO $group_e$
 DECLARE
@@ -332,9 +447,56 @@ BEGIN
     RAISE EXCEPTION 'E-06 the guard false-flagged SELECT on a view — that IS the public read surface';
   END IF;
 
-  -- E-07  Exactly the four planted offenders and no more.
-  IF array_length(v_flagged, 1) <> 4 THEN
-    RAISE EXCEPTION 'E-07 expected exactly 4 flagged probes, got: %', v_flagged;
+  -- E-07  Exactly the six planted offenders and no more.
+  IF array_length(v_flagged, 1) <> 6 THEN
+    RAISE EXCEPTION 'E-07 expected exactly 6 flagged probes, got: %', v_flagged;
+  END IF;
+
+  -- E-10  THE SEVERITY SPLIT IS REAL, not a label. Three views, all
+  --       auto-updatable-or-not, all carrying anon INSERT, and only ONE of
+  --       them is an RLS bypass. A guard that keys on `security_invoker`
+  --       alone, or on "is a view" alone, gets two of these three wrong.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.audit_overbroad_table_grants()
+    WHERE relation_name = 'issue_1856_probe_view_write'
+      AND privilege_type = 'INSERT'
+      AND finding_class = 'rls_bypass_view_write'
+  ) THEN
+    RAISE EXCEPTION 'E-10 the auto-updatable non-security_invoker view was NOT classed as an RLS bypass';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.audit_overbroad_table_grants()
+    WHERE relation_name = 'issue_1856_probe_view_invoker'
+      AND finding_class = 'rls_bypass_view_write'
+  ) THEN
+    RAISE EXCEPTION 'E-11 a security_invoker view was mis-classed as an RLS bypass — its writes run as the caller';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.audit_overbroad_table_grants()
+    WHERE relation_name = 'issue_1856_probe_view_not_updatable'
+      AND finding_class = 'rls_bypass_view_write'
+  ) THEN
+    RAISE EXCEPTION 'E-12 a non-updatable view was mis-classed as an RLS bypass — Postgres refuses the write anyway';
+  END IF;
+  -- ...and the two non-bypass views are still reported, just at the lower
+  -- severity. Downgrading must never mean disappearing.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.audit_overbroad_table_grants()
+    WHERE relation_name = 'issue_1856_probe_view_invoker' AND finding_class = 'overbroad_grant'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM public.audit_overbroad_table_grants()
+    WHERE relation_name = 'issue_1856_probe_view_not_updatable' AND finding_class = 'overbroad_grant'
+  ) THEN
+    RAISE EXCEPTION 'E-13 a non-bypass over-broad view grant vanished instead of being downgraded';
+  END IF;
+
+  -- E-14  The bypass class can never be baselined, whatever the frozen list
+  --       says. This is the property that makes "it must be zero" enforceable.
+  IF EXISTS (
+    SELECT 1 FROM public.audit_overbroad_table_grants()
+    WHERE finding_class = 'rls_bypass_view_write' AND is_baselined
+  ) THEN
+    RAISE EXCEPTION 'E-14 an RLS-bypass finding was marked baselined — it must never be absorbable';
   END IF;
 
   -- E-08  Nothing planted here is baselined. A frozen baseline that quietly
@@ -347,6 +509,8 @@ BEGIN
   END IF;
 END $group_e$;
 
+DROP VIEW public.issue_1856_probe_view_not_updatable;
+DROP VIEW public.issue_1856_probe_view_invoker;
 DROP VIEW public.issue_1856_probe_view_write;
 DROP VIEW public.issue_1856_probe_view_read;
 DROP TABLE public.issue_1856_probe_public_grant;

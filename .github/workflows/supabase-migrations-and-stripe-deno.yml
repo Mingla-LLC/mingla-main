@@ -426,6 +426,16 @@ jobs:
           # TRUNCATE — the root cause, reproduced live — and its fails-on-revert
           # group re-grants TRUNCATE and proves an `authenticated` session then
           # actually empties the table.
+          # Group G is the half the guard found on its own and matters more: a
+          # VIEW that is auto-updatable and NOT `security_invoker` executes its
+          # writes as the VIEW OWNER, so the base table's RLS is never
+          # consulted. `business_public_brands_view` was exactly that over
+          # `public.brands` with anon holding INSERT/UPDATE/DELETE — an
+          # anonymous write with row security switched off. Thirteen views are
+          # now SELECT-only in Part 1b of the migration, and that class is
+          # reported at its own severity, can never be baselined, and must be
+          # zero. E-10..E-14 prove the split is real: three views, all carrying
+          # anon INSERT, and exactly ONE of them is a bypass.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1856_ordering_table_grants_and_grant_class.test.sql
           # Issue #1792 (#1767 Phase 3b) — WAITER MODE, against the REAL applied

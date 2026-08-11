@@ -52,6 +52,16 @@
 --   time after review. That is why the second half of this file matters more
 --   than the first.
 --
+-- AND THE GUARD IMMEDIATELY FOUND SOMETHING WORSE THAN THE BUG IT WAS BUILT
+-- FOR. Part 1b below. Thirteen VIEWS carried the same default grants, and six
+-- of them were auto-updatable without `security_invoker` — which means writes
+-- through them run as the VIEW OWNER and the base table's RLS is never
+-- consulted at all. `business_public_brands_view` was a simple view over
+-- `public.brands` with anon holding INSERT/UPDATE/DELETE: an anonymous write
+-- into brands, through PostgREST, with row security switched off. That is not
+-- a TRUNCATE-shaped risk that RLS contains — it is an RLS bypass, it is now
+-- its own severity in the guard, and it can never be baselined.
+--
 -- APPLY VIA THE MANAGEMENT-API LANE FROM MERGED MAIN. Never `supabase db push`.
 -- ===========================================================================
 
@@ -136,6 +146,168 @@ COMMENT ON TABLE public.qr_spots IS
   'else as of #1856: TRUNCATE is not gated by RLS, and truncating this table '
   'invalidates every printed code a venue has laminated onto its furniture.';
 
+-- ===========================================================================
+-- PART 1b — THE VIEWS. A STRICTLY WORSE SHAPE THAN THE TABLES ABOVE.
+--
+-- Found by this file's own guard while it was being written, verified on
+-- production by the orchestrator, and mitigated there directly. These REVOKEs
+-- exist so that state is REPRODUCIBLE FROM SOURCE and a rebuild from the
+-- baseline cannot resurrect it.
+--
+-- WHY IT IS WORSE THAN THE TABLE CASE. On a base table, an unwanted anon
+-- INSERT is contained by RLS. On a view it is not. A view that is
+--   (a) auto-updatable (simple SELECT over one relation), and
+--   (b) NOT `security_invoker`
+-- executes its writes AS THE VIEW OWNER. Every one of these is owned by
+-- `postgres`, which also owns the base tables, and none of those tables set
+-- FORCE ROW LEVEL SECURITY — so the base table's policies never evaluate at
+-- all. `business_public_brands_view` was exactly that: a simple view over
+-- `public.brands`, owner postgres, security_invoker unset, auto-updatable,
+-- with anon holding INSERT/UPDATE/DELETE. That is an anonymous write into
+-- `brands` through PostgREST with RLS switched off, not a TRUNCATE-shaped
+-- risk.
+--
+-- The write privileges were never intentional anywhere: every repo reference
+-- to these views is a `.select()`, and the migrations that created them wrote
+-- `GRANT SELECT` (see the per-view citations below). They are the same
+-- ALTER DEFAULT PRIVILEGES artefact as the tables above.
+--
+-- ANON READ SURFACE — each view keeps exactly the readers it has, and the
+-- reason is recorded, because narrowing a read is its own outage (#1846) and
+-- widening one is its own leak.
+--   anon SELECT written in source, kept:
+--     business_public_brands_view, business_public_events_view,
+--     claimed_venues_public_view, public_menus_view, venue_public_view
+--   anon SELECT NOT in source but present on production before the mitigation
+--   (a default-privilege artefact, kept here so this migration changes no
+--   read; flagged for its own triage, NOT blessed):
+--     ad_public_stay_destinations_view, brands_public_view,
+--     events_public_view, events_with_master_date_view,
+--     organisers_public_view, profiles_with_segment,
+--     venue_claim_active_feedback
+--   anon SELECT in NEITHER source NOR pre-mitigation production:
+--     business_management_events_view — `authenticated, service_role` is what
+--     its migration granted, every call site is signed-in mingla-business
+--     (useBusinessEvents.ts:117, brandsService.ts:286/:671,
+--     businessEvents.ts:73), and production did not have it. It is granted to
+--     `authenticated` ONLY here, so applying this file does not make a
+--     brand-new anonymous read surface permanent.
+-- ===========================================================================
+REVOKE ALL ON public.business_public_brands_view     FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.business_public_brands_view   TO anon, authenticated;
+
+REVOKE ALL ON public.business_public_events_view     FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.business_public_events_view   TO anon, authenticated;
+
+REVOKE ALL ON public.claimed_venues_public_view      FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.claimed_venues_public_view    TO anon, authenticated;
+
+-- The read model behind every guest-facing menu. Its own migration granted
+-- exactly this (20270305001789:820) — the writes were pure default-grant.
+REVOKE ALL ON public.public_menus_view               FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.public_menus_view             TO anon, authenticated;
+
+REVOKE ALL ON public.venue_public_view               FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.venue_public_view             TO anon, authenticated;
+
+REVOKE ALL ON public.ad_public_stay_destinations_view   FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.ad_public_stay_destinations_view TO anon, authenticated;
+
+REVOKE ALL ON public.brands_public_view              FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.brands_public_view            TO anon, authenticated;
+
+REVOKE ALL ON public.events_public_view              FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.events_public_view            TO anon, authenticated;
+
+REVOKE ALL ON public.events_with_master_date_view    FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.events_with_master_date_view  TO anon, authenticated;
+
+REVOKE ALL ON public.organisers_public_view          FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.organisers_public_view        TO anon, authenticated;
+
+REVOKE ALL ON public.profiles_with_segment           FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.profiles_with_segment         TO anon, authenticated;
+
+REVOKE ALL ON public.venue_claim_active_feedback     FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.venue_claim_active_feedback   TO anon, authenticated;
+
+-- authenticated ONLY — see the note above.
+REVOKE ALL ON public.business_management_events_view   FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.business_management_events_view TO authenticated;
+
+-- service_role keeps its reads on all thirteen.
+GRANT SELECT ON public.business_public_brands_view,
+                public.business_public_events_view,
+                public.claimed_venues_public_view,
+                public.public_menus_view,
+                public.venue_public_view,
+                public.ad_public_stay_destinations_view,
+                public.brands_public_view,
+                public.events_public_view,
+                public.events_with_master_date_view,
+                public.organisers_public_view,
+                public.profiles_with_segment,
+                public.venue_claim_active_feedback,
+                public.business_management_events_view
+  TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- PART 1c — THE TWO POSTGIS CATALOG VIEWS.
+--
+-- `geometry_columns` and `geography_columns` carry the same default grants and
+-- `geometry_columns` is auto-updatable, so it matches the shape above. On
+-- production they are owned by `supabase_admin` and our role CANNOT change
+-- their ACL — the REVOKE simply errors. They are therefore a STATED EXCEPTION
+-- in the guard below rather than a silent baseline row.
+--
+-- They are also not a Mingla data path: both are catalog-backed views over
+-- pg_class/pg_attribute that PostGIS maintains and that every SRID lookup
+-- reads. A write through them targets system catalogs, not Mingla rows.
+--
+-- Where we DO own them (a from-baseline apply creates PostGIS itself at
+-- 20260701000000_orch_0909_positional_shared_deck.sql:15, so CI may own them),
+-- take the write privileges away for real. Ownership is checked rather than
+-- assumed so this can never abort an apply on production.
+-- ---------------------------------------------------------------------------
+DO $issue_1856_postgis$
+DECLARE
+  v_view  text;
+  v_owner text;
+BEGIN
+  FOREACH v_view IN ARRAY ARRAY['geometry_columns', 'geography_columns'] LOOP
+    IF to_regclass('public.' || v_view) IS NULL THEN
+      CONTINUE;
+    END IF;
+    SELECT pg_get_userbyid(c.relowner) INTO v_owner
+    FROM pg_class c WHERE c.oid = to_regclass('public.' || v_view);
+
+    IF v_owner = current_user OR pg_has_role(current_user, v_owner, 'USAGE') THEN
+      -- MAINTAIN is named explicitly: REVOKE ALL is not used here because the
+      -- PUBLIC SELECT these views ship with is load-bearing for PostGIS, and
+      -- a privilege left off this list survives (that is exactly how #1846
+      -- left MAINTAIN behind on venue_ordering_settings).
+      EXECUTE format(
+        'REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN ON public.%I FROM PUBLIC, anon, authenticated',
+        v_view);
+      EXECUTE format('GRANT SELECT ON public.%I TO anon, authenticated', v_view);
+      RAISE NOTICE 'issue_1856: revoked write privileges on public.% (owner %)', v_view, v_owner;
+    ELSE
+      RAISE NOTICE
+        'issue_1856: public.% is owned by % and its ACL is not ours to change — covered by the guard''s stated exception',
+        v_view, v_owner;
+    END IF;
+  END LOOP;
+END $issue_1856_postgis$;
+
+COMMENT ON VIEW public.business_public_brands_view IS
+  'PUBLIC READ MODEL over public.brands. SELECT ONLY for anon/authenticated '
+  '(#1856). This view is auto-updatable and NOT security_invoker, so any write '
+  'privilege on it executes as the view OWNER against `brands` — whose RLS is '
+  'enabled but not FORCEd — and bypasses row security entirely. It held anon '
+  'INSERT/UPDATE/DELETE from Supabase''s default grants until #1856. Never '
+  'grant a write privilege here; make it security_invoker first if one is ever '
+  'genuinely needed.';
+
 COMMENT ON TABLE public.venue_ordering_settings IS
   'SPEC #1788 — per-venue ordering switch and service charge. authenticated '
   'holds SELECT ONLY: writes are the venue-order-staff edge function (ruling '
@@ -197,21 +369,38 @@ COMMENT ON TABLE public.venue_ordering_settings IS
 --   function is that missing half.
 --
 -- WHY A BASELINE AND NOT A BIGGER ALLOWLIST
---   On 2026-08-11 the live schema had 272 relations in `public` carrying the
---   raw Supabase default grants — 3452 offending (relation, grantee,
---   privilege) rows. That is the class at full size, and it is a BACKLOG, not
---   noise. Widening the allowlist to swallow it would convert the finding into
---   a permanent blessing. Instead the set is FROZEN below: the gate asserts
---   NO NEW OFFENDER beyond it, so the class cannot grow by one row while the
---   backlog is worked, and every entry removed from the baseline is a
---   permanent one-way ratchet.
+--   After Part 1 and Part 1b, the live schema still has 254 BASE TABLES in
+--   `public` carrying the raw Supabase default grants — 3754 offending
+--   (relation, grantee, privilege) rows. That is the class at full size, and
+--   it is a BACKLOG, not noise. Widening the allowlist to swallow it would
+--   convert the finding into a permanent blessing. Instead the set is FROZEN
+--   below: the gate asserts NO NEW OFFENDER beyond it, so the class cannot
+--   grow by one row while the backlog is worked, and every entry removed from
+--   the baseline is a permanent one-way ratchet.
+--
+--   The 15 VIEWS that were in the first draft of this baseline are gone from
+--   it: Part 1b revoked thirteen of them for real, and the two PostGIS
+--   catalog views are a stated exception with a reason, not a baseline row.
+--   The baseline is base tables only.
 -- ===========================================================================
+-- TWO SEVERITIES, REPORTED SEPARATELY
+--   `rls_bypass_view_write` — a view that is auto-updatable AND not
+--     `security_invoker` AND holds INSERT/UPDATE/DELETE for anon,
+--     authenticated or PUBLIC. Postgres executes writes through such a view as
+--     the VIEW OWNER, so the base table's RLS is not merely passed, it is
+--     never consulted. This is not an over-broad grant that RLS contains — it
+--     is an RLS bypass. It is NEVER baselined: `is_baselined` is forced false
+--     for this class no matter what the frozen list says, so it can only ever
+--     be fixed, never absorbed. It MUST be zero.
+--   `overbroad_grant` — everything else the rule catches. Contained by RLS
+--     where RLS is on, and carried by the frozen baseline below.
 CREATE OR REPLACE FUNCTION public.audit_overbroad_table_grants()
 RETURNS TABLE (
   relation_name  text,
   relation_kind  text,
   grantee        text,
   privilege_type text,
+  finding_class  text,
   is_baselined   boolean,
   remediation    text
 )
@@ -230,7 +419,22 @@ AS $issue_1856_guard$
         WHEN 'v' THEN 'view'
         WHEN 'm' THEN 'materialized view'
       END AS kind,
-      c.relacl
+      c.relacl,
+      pg_catalog.pg_get_userbyid(c.relowner)::text AS owner,
+      -- The RLS-bypass shape, derived live, never assumed:
+      --   auto- or trigger-updatable (include_triggers => true), AND
+      --   `security_invoker` absent or false.
+      -- Postgres normalises the reloption to 'security_invoker=true'; anything
+      -- else — unset, =false, =off — means writes run as the VIEW OWNER.
+      (
+        c.relkind = 'v'
+        AND pg_catalog.pg_relation_is_updatable(c.oid, true) <> 0
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pg_catalog.unnest(COALESCE(c.reloptions, '{}'::text[])) AS opt
+          WHERE lower(opt) IN ('security_invoker=true', 'security_invoker=on', 'security_invoker=1')
+        )
+      ) AS writes_run_as_owner
     FROM pg_catalog.pg_class c
     WHERE c.relnamespace = 'public'::regnamespace
       AND c.relkind IN ('r', 'p', 'v', 'm')
@@ -241,6 +445,8 @@ AS $issue_1856_guard$
       r.relname,
       r.relkind,
       r.kind,
+      r.owner,
+      r.writes_run_as_owner,
       CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE a.grantee::regrole::text END AS grantee,
       a.privilege_type::text AS privilege_type
     FROM rel r
@@ -253,6 +459,24 @@ AS $issue_1856_guard$
     FROM held h
     WHERE (h.relkind IN ('r', 'p') AND h.grantee IN ('anon', 'PUBLIC'))
        OR h.privilege_type <> 'SELECT'
+  ),
+  -- -------------------------------------------------------------------------
+  -- STATED EXCEPTIONS — relations whose ACL this project CANNOT change.
+  --
+  -- Deliberately NOT baseline rows and NOT allowlist rows: they are neither a
+  -- backlog item we intend to work nor a decision we made. They are recorded
+  -- here with the reason, and — this is the point — the exemption is
+  -- CONDITIONAL ON THE FACT THAT JUSTIFIES IT. If PostGIS is ever reinstalled
+  -- under a role we control, `owner` changes, the exemption stops applying,
+  -- and the guard reds until the grants are fixed for real. An exception that
+  -- outlives its own justification is just a hole.
+  -- -------------------------------------------------------------------------
+  unmanageable (relation_name, reason) AS (
+    VALUES
+      ('geometry_columns',
+       'PostGIS catalog view over pg_class/pg_attribute, owned by supabase_admin: our role cannot REVOKE on it. Not a Mingla data path — a write targets system catalogs, not Mingla rows.'),
+      ('geography_columns',
+       'PostGIS catalog view over pg_class/pg_attribute, owned by supabase_admin: our role cannot REVOKE on it. Not a Mingla data path — a write targets system catalogs, not Mingla rows.')
   ),
   -- -------------------------------------------------------------------------
   -- ALLOWLIST — (relation, grantee, privilege) triples that are DELIBERATE.
@@ -288,37 +512,41 @@ AS $issue_1856_guard$
   -- `SELECT * FROM public.audit_overbroad_table_grants() WHERE is_baselined`
   -- stays the standing worklist.
   --
+  -- BASE TABLES ONLY. Every view that was in the first draft of this list is
+  -- gone: Part 1b revoked thirteen for real and the two PostGIS catalog views
+  -- moved to `unmanageable` above with a stated reason.
+  --
   -- The anon-side set is a SUBSET of the authenticated-side set (verified on
   -- production: zero relations offend for anon but not for authenticated), so
-  -- the shared 264 are listed once and the authenticated side adds its 6.
-  -- (263 came from production; the 264th is a CI-only table, marked below.)
+  -- the shared 249 are listed once and the authenticated side adds its 6.
+  -- 248 came from production after Part 1b; the 249th,
+  -- `_archive_orch_0898_board_messages_pre_migration`, is CI-ONLY —
+  -- 20260624000000_orch_0898_unified_chat_substrate.sql:389 creates it with
+  -- CREATE TABLE ... AS, so a from-baseline apply has it and production does
+  -- NOT (`to_regclass` is NULL there). Recorded so the gate is honest about
+  -- the schema it runs against, and called out because a table the migration
+  -- set creates but production does not have is its own finding.
   -- -------------------------------------------------------------------------
   baseline_shared (relation_name) AS (
     SELECT unnest(ARRAY[
     '_archive_card_pool', '_archive_card_pool_stops',
     '_archive_orch_0700_doomed_columns',
     '_archive_orch_0734_signal_anchors',
-    -- CI-ONLY. `20260624000000_orch_0898_unified_chat_substrate.sql:389`
-    -- creates this with CREATE TABLE ... AS, so a from-baseline apply has it
-    -- and production does NOT (`to_regclass` returns NULL there on 2026-08-11
-    -- — it was dropped out of band). Recorded so the gate is honest about the
-    -- schema it actually runs against, and flagged here because a table the
-    -- migration set creates but production does not have is its own finding.
     '_archive_orch_0898_board_messages_pre_migration', '_backup_friends',
     '_backup_messages', '_backup_profiles', '_backup_user_sessions',
     '_deprecated_profiles_is_admin_backup', '_orch_0588_dead_cards_backup',
     '_orch_0588_dead_stops_backup', 'account_deletion_requests',
     'activity_history', 'ad_attribution_touches', 'ad_campaigns',
     'ad_connections', 'ad_conversions', 'ad_creative_platform_refs',
-    'ad_creatives', 'ad_public_stay_destinations_view', 'ad_sets',
-    'ad_status_events', 'admin_audit_log', 'admin_backfill_log',
-    'admin_backfill_log_archive_orch_0671', 'admin_config',
-    'admin_email_log', 'admin_subscription_overrides', 'admin_users', 'ads',
-    'agent_conversations', 'agent_messages', 'agent_pending_actions',
-    'agent_user_profile', 'api_health_alert_state', 'api_health_checks',
-    'api_health_meta', 'api_health_observations', 'api_health_services',
-    'app_config', 'app_feedback', 'appsflyer_devices', 'archived_holidays',
-    'audit_log', 'beta_access_leads', 'beta_feedback', 'blocked_users',
+    'ad_creatives', 'ad_sets', 'ad_status_events', 'admin_audit_log',
+    'admin_backfill_log', 'admin_backfill_log_archive_orch_0671',
+    'admin_config', 'admin_email_log', 'admin_subscription_overrides',
+    'admin_users', 'ads', 'agent_conversations', 'agent_messages',
+    'agent_pending_actions', 'agent_user_profile', 'api_health_alert_state',
+    'api_health_checks', 'api_health_meta', 'api_health_observations',
+    'api_health_services', 'app_config', 'app_feedback',
+    'appsflyer_devices', 'archived_holidays', 'audit_log',
+    'beta_access_leads', 'beta_feedback', 'blocked_users',
     'board_card_message_reads', 'board_card_messages', 'board_card_rsvps',
     'board_cards', 'board_collaborators', 'board_message_reactions',
     'board_message_reads', 'board_messages', 'board_participant_presence',
@@ -327,11 +555,9 @@ AS $issue_1856_guard$
     'brand_appsflyer_milestones', 'brand_hours', 'brand_invitations',
     'brand_payout_releases', 'brand_paystack_recipients',
     'brand_place_pipeline_state', 'brand_team_members', 'brands',
-    'brands_public_view', 'business_management_events_view',
-    'business_public_brands_view', 'business_public_events_view',
     'calendar_entries', 'card_generation_runs', 'category_type_exclusions',
-    'channel_suppressions', 'claimed_venues_public_view',
-    'collaboration_invites', 'collaboration_sessions', 'consent_records',
+    'channel_suppressions', 'collaboration_invites',
+    'collaboration_sessions', 'consent_records',
     'conversation_participants', 'conversation_presence', 'conversations',
     'country_vat_config', 'creator_accounts', 'curated_places_cache',
     'curated_teaser_cache', 'custom_holidays', 'direct_message_reactions',
@@ -339,28 +565,26 @@ AS $issue_1856_guard$
     'discover_merged_events_cache', 'door_sales_ledger', 'email_templates',
     'engagement_metrics', 'event_cover_video_jobs', 'event_dates',
     'event_rsvp_contributions', 'event_rsvp_guests', 'event_rsvps',
-    'event_scanners', 'events', 'events_public_view',
-    'events_with_master_date_view', 'experience_edit_log',
+    'event_scanners', 'events', 'experience_edit_log',
     'experience_feedback', 'experience_stops', 'explorer_app_leads',
     'feature_flags', 'friend_requests', 'friends', 'gdpr_erasure_log',
-    'geography_columns', 'geometry_columns', 'integrations',
-    'job_applications', 'job_postings', 'leaderboard_presence',
-    'manual_buyer_reminders', 'marketing_audiences', 'marketing_campaigns',
-    'marketing_clicks', 'marketing_messages', 'marketing_templates',
-    'marketing_unsubscribes', 'match_telemetry_events', 'menu_items',
-    'menus', 'message_reads', 'messages', 'mingla_revenue_log',
-    'muted_users', 'notification_categories', 'notification_channel_prefs',
+    'integrations', 'job_applications', 'job_postings',
+    'leaderboard_presence', 'manual_buyer_reminders', 'marketing_audiences',
+    'marketing_campaigns', 'marketing_clicks', 'marketing_messages',
+    'marketing_templates', 'marketing_unsubscribes',
+    'match_telemetry_events', 'menu_items', 'menus', 'message_reads',
+    'messages', 'mingla_revenue_log', 'muted_users',
+    'notification_categories', 'notification_channel_prefs',
     'notification_deliveries', 'notification_outbox',
     'notification_preferences', 'notifications', 'order_installments',
-    'order_line_items', 'orders', 'organiser_payout_debts',
-    'organisers_public_view', 'pair_requests', 'pairings',
-    'partner_brand_links', 'partner_paystack_accounts', 'partner_splits',
-    'partner_stripe_connect_accounts', 'payment_webhook_events',
-    'payout_debt_applications', 'payout_debt_events',
-    'payout_ledger_adjustments', 'payout_release_alert_outbox',
-    'payout_release_items', 'payout_source_fee_snapshots',
-    'payout_transfer_legs', 'payouts', 'pending_invites',
-    'pending_pair_invites', 'pending_session_invites',
+    'order_line_items', 'orders', 'organiser_payout_debts', 'pair_requests',
+    'pairings', 'partner_brand_links', 'partner_paystack_accounts',
+    'partner_splits', 'partner_stripe_connect_accounts',
+    'payment_webhook_events', 'payout_debt_applications',
+    'payout_debt_events', 'payout_ledger_adjustments',
+    'payout_release_alert_outbox', 'payout_release_items',
+    'payout_source_fee_snapshots', 'payout_transfer_legs', 'payouts',
+    'pending_invites', 'pending_pair_invites', 'pending_session_invites',
     'pending_trip_chat_claims', 'person_card_impressions',
     'photo_aesthetic_batches', 'photo_aesthetic_labels',
     'photo_aesthetic_runs', 'photo_backfill_batches', 'photo_backfill_runs',
@@ -368,8 +592,7 @@ AS $issue_1856_guard$
     'place_intelligence_runs', 'place_intelligence_trial_runs',
     'place_pool', 'place_reviews', 'place_scores',
     'platform_pricing_config', 'preference_history', 'preferences',
-    'profiles', 'profiles_with_segment', 'public_menus_view',
-    'referral_credits', 'refresh_batches', 'refresh_runs',
+    'profiles', 'referral_credits', 'refresh_batches', 'refresh_runs',
     'refund_line_items', 'refunds', 'reservation_checkout_sessions',
     'reservations', 'rsvp_notifications', 'rule_entries',
     'rule_set_versions', 'rule_sets', 'rules_run_results', 'rules_runs',
@@ -393,8 +616,7 @@ AS $issue_1856_guard$
     'user_preference_learning', 'user_push_tokens', 'user_reports',
     'user_sessions', 'user_taste_matches', 'user_visits',
     'venue_availability_config', 'venue_blackouts', 'venue_capacity_rules',
-    'venue_claim_active_feedback', 'venue_claim_feedback',
-    'venue_public_view', 'venue_reservation_settings', 'venue_sms_log',
+    'venue_claim_feedback', 'venue_reservation_settings', 'venue_sms_log',
     'venue_sms_opt_out', 'venue_tables', 'venue_waitlist',
     'waitlist_entries'
     ]::text[])
@@ -415,38 +637,64 @@ AS $issue_1856_guard$
     -- ST_Transform reads it. Recorded, not blessed — Seth triages whether the
     -- PUBLIC grant should become an explicit anon/authenticated SELECT.
     SELECT 'spatial_ref_sys', 'PUBLIC'
+  ),
+  classified AS (
+    SELECT
+      o.*,
+      (o.writes_run_as_owner AND o.privilege_type IN ('INSERT', 'UPDATE', 'DELETE'))
+        AS is_rls_bypass
+    FROM offending o
   )
   SELECT
-    o.relname,
-    o.kind,
-    o.grantee,
-    o.privilege_type,
-    EXISTS (
+    c.relname,
+    c.kind,
+    c.grantee,
+    c.privilege_type,
+    CASE WHEN c.is_rls_bypass THEN 'rls_bypass_view_write' ELSE 'overbroad_grant' END,
+    -- The RLS-bypass class is NEVER baselined, whatever the frozen list says.
+    -- It is not a backlog item: it is an anonymous write that skips row
+    -- security, and the only acceptable count is zero.
+    NOT c.is_rls_bypass
+    AND EXISTS (
       SELECT 1 FROM baseline b
-      WHERE b.relation_name = o.relname AND b.grantee = o.grantee
+      WHERE b.relation_name = c.relname AND b.grantee = c.grantee
     )
     -- A baselined relation is grandfathered only for the privilege types that
     -- existed in Supabase's default set when the baseline was taken. A future
     -- PostgreSQL privilege type arriving by default grant is NEW, and reds.
-    AND o.privilege_type IN (
+    AND c.privilege_type IN (
       'SELECT', 'INSERT', 'UPDATE', 'DELETE',
       'TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN'
     ),
     CASE
-      WHEN o.grantee = 'PUBLIC' THEN
-        'REVOKE ' || o.privilege_type || ' ON public.' || quote_ident(o.relname) || ' FROM PUBLIC;'
-      WHEN o.relkind IN ('r', 'p') AND o.grantee = 'anon' THEN
-        'REVOKE ALL ON public.' || quote_ident(o.relname) || ' FROM anon;'
+      WHEN c.is_rls_bypass THEN
+        'RLS BYPASS. public.' || quote_ident(c.relname) || ' is auto-updatable and NOT ' ||
+        'security_invoker, so a write through it runs as owner ' || c.owner ||
+        ' and the base table''s RLS never evaluates. Fix: REVOKE ' ||
+        c.privilege_type || ' ON public.' || quote_ident(c.relname) || ' FROM ' ||
+        c.grantee || ';'
+      WHEN c.grantee = 'PUBLIC' THEN
+        'REVOKE ' || c.privilege_type || ' ON public.' || quote_ident(c.relname) || ' FROM PUBLIC;'
+      WHEN c.relkind IN ('r', 'p') AND c.grantee = 'anon' THEN
+        'REVOKE ALL ON public.' || quote_ident(c.relname) || ' FROM anon;'
       ELSE
-        'REVOKE ' || o.privilege_type || ' ON public.' || quote_ident(o.relname) ||
-        ' FROM ' || o.grantee || ';'
+        'REVOKE ' || c.privilege_type || ' ON public.' || quote_ident(c.relname) ||
+        ' FROM ' || c.grantee || ';'
     END
-  FROM offending o
+  FROM classified c
   WHERE NOT EXISTS (
     SELECT 1 FROM allowlist w
-    WHERE w.relation_name  = o.relname
-      AND w.grantee        = o.grantee
-      AND w.privilege_type = o.privilege_type
+    WHERE w.relation_name  = c.relname
+      AND w.grantee        = c.grantee
+      AND w.privilege_type = c.privilege_type
+  )
+  -- Stated exceptions drop out ONLY while the fact that justifies them holds:
+  -- the relation must still be owned by a role this project cannot act as.
+  -- The moment we own it, the exemption evaporates and the guard reds.
+  AND NOT EXISTS (
+    SELECT 1 FROM unmanageable u
+    WHERE u.relation_name = c.relname
+      AND NOT pg_catalog.pg_has_role(current_user, c.owner, 'USAGE')
   )
   ORDER BY 1, 3, 4;
 $issue_1856_guard$;
@@ -468,9 +716,15 @@ COMMENT ON FUNCTION public.audit_overbroad_table_grants() IS
   'LIVE ACL — because the class is created by ALTER DEFAULT PRIVILEGES and no '
   'source line ever writes it. information_schema.role_table_grants is '
   'unusable here: it is role-filtered (blind when called as service_role) and '
-  'has no concept of PG17 MAINTAIN. `WHERE NOT is_baselined` MUST be empty — '
-  'that is the CI gate. `WHERE is_baselined` is the standing triage backlog '
-  'frozen on 2026-08-11. Read-only.';
+  'has no concept of PG17 MAINTAIN. '
+  'TWO SEVERITIES. finding_class = ''rls_bypass_view_write'' is a view that is '
+  'auto-updatable and NOT security_invoker holding INSERT/UPDATE/DELETE — '
+  'writes run as the VIEW OWNER and the base table''s RLS is never consulted. '
+  'That class is NEVER baselined and MUST be zero. '
+  'finding_class = ''overbroad_grant'' is everything else, carried by the '
+  'frozen 2026-08-11 baseline. '
+  'CI gate: `WHERE NOT is_baselined` MUST be empty (which subsumes the bypass '
+  'class). Standing worklist: `WHERE is_baselined`. Read-only.';
 
 -- ===========================================================================
 -- PART 3 — SELF-CHECK. This migration proves its own fix against the LIVE ACL,
@@ -549,6 +803,49 @@ BEGIN
      OR NOT has_table_privilege('service_role', 'public.venue_ordering_settings', 'UPDATE') THEN
     RAISE EXCEPTION 'issue_1856: service_role cannot write the ordering tables';
   END IF;
+
+  -- 3b  THE RLS-BYPASS CLASS IS HARD. Unlike the sweep below, this one aborts
+  --     the apply. A view that writes as its owner, reachable by anon, is an
+  --     anonymous write with row security switched off — there is no version
+  --     of "land this anyway" that is correct, and Part 1b is right here in
+  --     the same transaction to fix any that this file is responsible for.
+  SELECT string_agg(
+           relation_name || ' -> ' || grantee || ' holds ' || privilege_type,
+           E'\n  ' ORDER BY relation_name, grantee, privilege_type)
+    INTO v_new
+  FROM public.audit_overbroad_table_grants()
+  WHERE finding_class = 'rls_bypass_view_write';
+
+  IF v_new IS NOT NULL THEN
+    RAISE EXCEPTION 'issue_1856_rls_bypass_view_writes_remain:%', E'\n  ' || v_new;
+  END IF;
+
+  -- 3c  The thirteen views Part 1b revoked hold SELECT and nothing else, and
+  --     still hold the SELECT — a public read model that lost its read is an
+  --     outage, and every one of these is on a guest-facing path.
+  FOREACH v_tbl IN ARRAY ARRAY[
+    'business_public_brands_view', 'business_public_events_view',
+    'claimed_venues_public_view', 'public_menus_view', 'venue_public_view',
+    'ad_public_stay_destinations_view', 'brands_public_view',
+    'events_public_view', 'events_with_master_date_view',
+    'organisers_public_view', 'profiles_with_segment',
+    'venue_claim_active_feedback', 'business_management_events_view'
+  ] LOOP
+    IF to_regclass('public.' || v_tbl) IS NULL THEN
+      RAISE EXCEPTION 'issue_1856 VACUITY: view public.% does not exist', v_tbl;
+    END IF;
+    FOREACH v_priv IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'] LOOP
+      IF has_table_privilege('anon', 'public.' || v_tbl, v_priv)
+         OR has_table_privilege('authenticated', 'public.' || v_tbl, v_priv) THEN
+        RAISE EXCEPTION
+          'issue_1856: public.% still carries % for anon/authenticated', v_tbl, v_priv;
+      END IF;
+    END LOOP;
+    IF NOT has_table_privilege('authenticated', 'public.' || v_tbl, 'SELECT') THEN
+      RAISE EXCEPTION
+        'issue_1856: public.% lost its authenticated SELECT — the read model went dark', v_tbl;
+    END IF;
+  END LOOP;
 
   -- 4  The guard must actually see the class it was built for. If the frozen
   --    baseline matches nothing, the recorded set is wrong and every future
