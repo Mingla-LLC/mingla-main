@@ -2,20 +2,26 @@
  * Issue #1792 (#1767 Phase 3b) — the order pad's rules, and the ONE promise the
  * kitchen depends on (DESIGN D-11, D-2 AMENDED, D-3, D-3a, D-9).
  *
+ * EVERY assertion here EXECUTES the rule it names. The four claims that can
+ * only be made by looking at what is NOT there — no `source` branch in the
+ * queue's rendering surfaces, one shared spot list, no client-side money
+ * arithmetic, one keyboard-aware scroll — live in the strict-grep gate
+ * `.github/scripts/strict-grep/issue-1792-waiter-mode-structural.mjs`, which is
+ * where I-PROPOSED-1047 says a genuine structural rule belongs and which runs
+ * repo-wide rather than only when this file does.
+ *
  * # Fails-on-revert
  * Let `orderPadSubmitLines` emit a price → T-P20 goes RED (the P-20 boundary).
- * Let the pad build its own spot list instead of the printed `qr_spots` rows →
- * T-SPOT1/T-SPOT2 go RED. Drop a modifier group's `minSelect` check → T-MOD1
- * goes RED and the server starts answering `modifier_selection_invalid` at a
- * waiter. Enable `charge_to_room` without building it → T-SETTLE2 goes RED.
- * Add ANY branch on `order.source` to the queue's card, its detail sheet, or its
- * pure view logic → T-SAME1/T-SAME2 go RED, which is D-11's flat requirement
- * that the kitchen cannot tell how a ticket arrived.
+ * Offer an inactive spot → T-SPOT1 goes RED and the pad starts proposing tables
+ * the server answers `spot_unknown` for. Drop a modifier group's `minSelect`
+ * check → T-MOD1 goes RED and the server starts answering
+ * `modifier_selection_invalid` at a waiter. Enable `charge_to_room` without
+ * building it → T-SETTLE2 goes RED. Make ANY queue derivation depend on
+ * `source` → T-SAME1 goes RED, which is D-11's flat requirement that the
+ * kitchen cannot tell how a ticket arrived.
  *
  * New sibling file (append-only safe).
  */
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { describe, expect, test } from "@jest/globals";
 
 import {
@@ -46,6 +52,7 @@ import {
   type OrderPadSpot,
   type OrderPadTab,
 } from "../orderPad/venueOrderPad";
+import { groupSpotsByVenue, isPrintable } from "../qrSpots";
 import {
   VENUE_ORDER_STATUS_PRESENTATION,
   escalationNotice,
@@ -229,29 +236,6 @@ describe("issue #1792 — a staff ticket is indistinguishable from a scanned one
     expect(mixed.map((o) => o.id)).toEqual(["s2", "g1", "s1"]);
   });
 
-  test("T-SAME2 — the queue's card and detail sheet contain no `source` branch at all", () => {
-    // The behavioural test above can only prove the derivations we thought to
-    // call. This proves the ABSENCE: no rendering path may consult `source`,
-    // so a future "Taken by a waiter" badge cannot be added without turning
-    // this red and forcing the decision back into the open.
-    const dir = path.join(__dirname, "..");
-    for (
-      const file of [
-        "VenueOrderCard.tsx",
-        "VenueOrderDetailSheet.tsx",
-        "VenueOrdersModule.tsx",
-      ]
-    ) {
-      const src = readFileSync(path.join(dir, file), "utf8");
-      expect(src.includes("order.source")).toBe(false);
-      expect(src.includes("\"staff\"")).toBe(false);
-      expect(src.includes("guest_qr")).toBe(false);
-    }
-    // The TYPE still carries `source` — the row has it, the metrics need it,
-    // and hiding it from the model would be a different kind of lie.
-    const views = readFileSync(path.join(dir, "venueOrderViews.ts"), "utf8");
-    expect(views.includes("source: VenueOrderSource")).toBe(true);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -276,17 +260,43 @@ describe("issue #1792 — the pad orders against the PRINTED spots", () => {
     expect(groups[0].spots.map((s) => s.id)).toEqual(["a"]);
   });
 
-  test("T-SPOT2 — the pad uses the SHIPPED grouping, so it cannot drift from Spots", () => {
-    // Not a behavioural claim: the source imports the Spots inventory's own
-    // functions. Two implementations of "which table is 12" is exactly the
-    // disagreement D-11 exists to prevent.
-    const src = readFileSync(
-      path.join(__dirname, "..", "orderPad", "venueOrderPad.ts"),
-      "utf8",
+  test("T-SPOT4 — the pad's ordering IS the Spots list's ordering, executed", () => {
+    // The pad cannot import `groupSpotsByVenue` at runtime: a value edge from
+    // the Orders chunk to the Spots module hoists that module into the EAGER
+    // `__common` boot payload (measured +1,972 B against the ORCH-1083 cap).
+    // So the two implementations are compared HERE, where an import is free —
+    // same venues in the same order, same spots in the same order, every time.
+    // Drift in either one turns this red.
+    const spots = [
+      spot({ id: "c", label: "Table 9", sortOrder: 2 }),
+      spot({ id: "a", label: "Table 12", sortOrder: 1 }),
+      spot({ id: "d", label: "Table 1", sortOrder: 2 }),
+      spot({ id: "e", venueId: "venue-2", label: "Rooftop", sortOrder: 1 }),
+      spot({ id: "f", venueId: "venue-2", label: "Dead spot", isActive: false }),
+    ];
+    const venues = [
+      { id: "venue-1", name: "The Brasserie", slug: "brasserie" },
+      { id: "venue-2", name: "A Roof", slug: "roof" },
+    ];
+    const mine = orderableSpotGroups(spots, venues);
+    const shipped = groupSpotsByVenue([...spots], [...venues])
+      .map((g) => ({
+        venueId: g.venueId,
+        venueName: g.venueName,
+        spots: g.spots.filter(isPrintable),
+      }))
+      .filter((g) => g.spots.length > 0);
+
+    expect(mine.map((g) => g.venueId)).toEqual(shipped.map((g) => g.venueId));
+    expect(mine.map((g) => g.venueName)).toEqual(shipped.map((g) => g.venueName));
+    expect(mine.map((g) => g.spots.map((s) => s.id))).toEqual(
+      shipped.map((g) => g.spots.map((s) => s.id)),
     );
-    expect(src).toContain('from "../qrSpots"');
-    expect(src).toContain("groupSpotsByVenue");
-    expect(src).toContain("isPrintable");
+    // Vacuity guard: the fixture must actually exercise BOTH tie-breakers and
+    // the inactive filter, or "they agree" is a claim about an empty list.
+    expect(mine).toHaveLength(2);
+    expect(mine[0].venueName).toBe("A Roof");
+    expect(mine[1].spots.map((s) => s.id)).toEqual(["a", "d", "c"]);
   });
 
   test("T-SPOT3 — search matches a label or a venue name, and keeps the grouping", () => {
@@ -641,60 +651,4 @@ describe("issue #1792 — waiter-opened tabs", () => {
     expect(tabRoundsLabel(tab({ roundCount: 4 }))).toBe("4 rounds");
   });
 
-  test("T-TAB3 — the pad NEVER sums a tab itself", () => {
-    // The outstanding total is `biz_venue_tab_summaries`' number, carried
-    // through verbatim. If this module ever started adding rounds up, the card
-    // and the bill could disagree — and a tab with a settlement row already on
-    // it would be counted twice.
-    const src = readFileSync(
-      path.join(__dirname, "..", "orderPad", "venueOrderPad.ts"),
-      "utf8",
-    );
-    expect(src.includes("outstandingSubtotalCents +")).toBe(false);
-    expect(src.includes("reduce((sum, t)")).toBe(false);
-    const card = readFileSync(
-      path.join(__dirname, "..", "orderPad", "VenueTabsCard.tsx"),
-      "utf8",
-    );
-    expect(card.includes("outstandingTotalCents")).toBe(true);
-    expect(card.includes("outstandingSubtotalCents +")).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// The keyboard never blocks the control that submits.
-// ---------------------------------------------------------------------------
-describe("issue #1792 — the pad's keyboard contract", () => {
-  const padDir = path.join(__dirname, "..", "orderPad");
-  const sheet = readFileSync(
-    path.join(padDir, "VenueOrderPadSheet.tsx"),
-    "utf8",
-  );
-  const card = readFileSync(path.join(padDir, "VenueTabsCard.tsx"), "utf8");
-
-  test("T-KB1 — the pad's body scroll routes through SmartScrollView", () => {
-    // ORCH-0892-B v2: the Sheet primitive owns NO keyboard logic, so a consumer
-    // with TextInputs must supply a keyboard-aware scroll of its own. The pad
-    // has five inputs and the SEND button sits under all of them.
-    expect(sheet).toContain('from "../../../wrappers/SmartScrollView"');
-    // ...and it must not ALSO pull RN's ScrollView, which is how a file ends up
-    // with one aware scroll and three unaware ones.
-    expect(/import \{[^}]*ScrollView[^}]*\} from "react-native"/s.test(sheet))
-      .toBe(false);
-  });
-
-  test("T-KB2 — exactly ONE scrollable in the sheet (no nested same-axis scroll)", () => {
-    // Two same-axis scrollables inside one sheet compete for the gesture, and
-    // the inner one also defeats the keyboard lift.
-    expect(sheet.split("<ScrollView").length - 1).toBe(1);
-  });
-
-  test("T-KB3 — the tab card collects NO text, it hands the bill to the sheet", () => {
-    // The card renders inside the venue hub's PLAIN ScrollView, which does not
-    // lift a focused field above the keyboard. Cash is one tap and asks for
-    // nothing; the bill needs three fields, so it goes where the lift is.
-    expect(card.includes("<TextInput")).toBe(false);
-    expect(card.includes("react-native").valueOf()).toBe(true);
-    expect(card).toContain("onBillTab");
-  });
 });

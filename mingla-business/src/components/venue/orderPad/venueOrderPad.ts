@@ -26,13 +26,15 @@
  *     once and gets nothing stops trusting the pad.
  */
 
-import {
-  groupSpotsByVenue,
-  isPrintable,
-  type QrSpot,
-  type SpotVenueGroup,
-  type VenueRef,
-} from "../qrSpots";
+// TYPE-ONLY, and that is a measured decision rather than a style one. A VALUE
+// import of `../qrSpots` puts that module in BOTH the Spots chunk and the
+// Orders chunk, so Metro hoists it into the EAGER `__common` boot payload —
+// measured at +1,972 B against the ORCH-1083 cap, for a twenty-line sort. The
+// types are erased at build time and cost nothing, so the pad still speaks in
+// the shipped `QrSpot` shape (it cannot invent its own idea of what a table
+// is), and `T-SPOT4` asserts this module's ordering matches `groupSpotsByVenue`
+// EXACTLY — at test time, where an import is free.
+import type { QrSpot, VenueRef } from "../qrSpots";
 
 export type OrderPadSettlementMethod =
   | "bill_to_phone"
@@ -48,7 +50,18 @@ export type OrderPadSettlementMethod =
  */
 export type OrderPadSpot = QrSpot;
 export type OrderPadVenueRef = VenueRef;
-export type OrderPadSpotGroup = SpotVenueGroup;
+
+/**
+ * The pad's own group shape — a NARROWING of the Spots list's `SpotVenueGroup`,
+ * not a rival to it. The Spots screen's `activeCount` / `needsAttentionCount`
+ * are inventory to-do counters; on a pad every spot shown is already orderable,
+ * so reporting them here would be reporting a number nobody computed.
+ */
+export interface OrderPadSpotGroup {
+  venueId: string;
+  venueName: string;
+  spots: OrderPadSpot[];
+}
 
 /** A modifier option, as the pad reads it off the menu. */
 export interface OrderPadModifier {
@@ -137,9 +150,23 @@ export function orderableSpotGroups(
   spots: readonly OrderPadSpot[],
   venues: readonly OrderPadVenueRef[],
 ): OrderPadSpotGroup[] {
-  return groupSpotsByVenue([...spots], [...venues])
-    .map((group) => ({ ...group, spots: group.spots.filter(isPrintable) }))
-    .filter((group) => group.spots.length > 0);
+  const nameById = new Map(venues.map((v) => [v.id, v.name]));
+  const byVenue = new Map<string, OrderPadSpot[]>();
+  for (const spot of spots) {
+    if (!spot.isActive) continue;
+    const bucket = byVenue.get(spot.venueId);
+    if (bucket === undefined) byVenue.set(spot.venueId, [spot]);
+    else bucket.push(spot);
+  }
+  return [...byVenue.entries()]
+    .map(([venueId, list]) => ({
+      venueId,
+      venueName: nameById.get(venueId) ?? "This venue",
+      spots: [...list].sort(
+        (a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label),
+      ),
+    }))
+    .sort((a, b) => a.venueName.localeCompare(b.venueName));
 }
 
 /** Free-text spot search — the fastest control at a busy pass is typing "12". */
