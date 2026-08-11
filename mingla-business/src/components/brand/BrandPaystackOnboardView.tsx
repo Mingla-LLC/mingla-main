@@ -34,9 +34,6 @@ import {
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Input } from "../ui/Input";
-// ORCH-0892 library primitive (web stub → false; native → useKeyboardState):
-// keyboard visibility WITHOUT bespoke Keyboard.addListener plumbing.
-import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import {
   useBrandBanks,
   useCreatePaystackRecipient,
@@ -79,17 +76,6 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
     : createRecipientMutation;
 
   const [pickerOpen, setPickerOpen] = useState(false);
-  // ORCH-1165 REWORK loop 2 (DISC-1165-T3) — the bank-picker KAV's
-  // keyboardVerticalOffset={42} is a no-op on Android because the
-  // KeyboardAvoidingView behavior is undefined there. Switching to
-  // behavior="height" would shrink the KAV frame and squash the fixed 64%-tall
-  // sheet (clipping its bottom rows rather than lifting them). Instead, on
-  // Android only, pad the bank LIST by the 42dp Done-bar clearance while the
-  // keyboard is open — keyed on keyboard-open so there is no permanent dead gap.
-  // Keyboard visibility via the ORCH-0892 library primitive (NOT bespoke
-  // Keyboard.addListener plumbing): native → useKeyboardState; web → false.
-  const keyboardVisible = useKeyboardIsVisible();
-  const androidKbOpen = Platform.OS === "android" && keyboardVisible;
   const [bankSearch, setBankSearch] = useState("");
   const [bankCode, setBankCode] = useState<string | null>(null);
   const [bankName, setBankName] = useState<string | null>(null);
@@ -310,12 +296,11 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
             ) : (
               <ScrollView
                 style={styles.bankList}
-                // ORCH-1165 REWORK loop 2 (DISC-1165-T3) — Android-only 42dp
-                // Done-bar clearance, keyed on keyboard-open (no permanent gap).
-                // iOS clears via the KAV behavior="padding" + keyboardVerticalOffset.
-                contentContainerStyle={
-                  androidKbOpen ? styles.bankListKbPad : undefined
-                }
+                // #1834 — no Done bar in this raw Modal window (nothing renders
+                // <KeyboardToolbarRoot/> here, and the app-root provider does
+                // not propagate into an RN Modal window), so there is nothing
+                // to pad for. The ORCH-1165 Android 42dp compensator that used
+                // to sit here was padding for a bar that is not there.
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
               >
@@ -413,8 +398,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   bankList: { flex: 1, marginTop: spacing.md },
-  // ORCH-1165 REWORK loop 2 (DISC-1165-T3) — Android Done-bar clearance.
-  bankListKbPad: { paddingBottom: 42 },
   bankRow: {
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
