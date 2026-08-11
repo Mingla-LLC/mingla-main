@@ -36,6 +36,13 @@ interface MockOptions {
   brands: Record<string, BrandState>;
   stampReject?: boolean;
   rollbackReject?: boolean;
+  /**
+   * Ledger inserts whose `result` is in this set REJECT (transport-level
+   * failure) instead of returning `{ error }`. Used to reach the fn's outer
+   * unexpected-error catch — the only place `flip_failed` can still be
+   * recorded for a brand that has no Stripe account.
+   */
+  rejectLedgerFor?: Set<string>;
 }
 
 interface SelectCall {
@@ -107,6 +114,9 @@ function buildMock(opts: MockOptions) {
           return Promise.resolve({ data: null, error: null });
         },
         insert: (row: Record<string, unknown>) => {
+          if (opts.rejectLedgerFor?.has(row.result as string)) {
+            return Promise.reject(new Error("ledger transport failure"));
+          }
           inserts.push({ table, ...row });
           return Promise.resolve({ error: null });
         },
@@ -407,13 +417,16 @@ Deno.test("#1807 hold: a failed stamp on the Paystack lane leaves the brand unto
     mock.deps,
   );
   const body = await res.json();
-  assertEquals(body.counts.flip_failed, 1);
+  // stamp_failed, NOT stamp_failed_rolled_back (nothing was rolled back) and
+  // NOT flip_failed (there is no schedule flip on this rail).
+  assertEquals(body.counts.stamp_failed, 1);
   assertEquals(body.counts.stamp_failed_rolled_back, 0);
+  assertEquals(body.counts.flip_failed, 0);
   assertEquals(mock.restoreCalls.length, 0); // nothing to compensate
   assertEquals(brands[NG].cutover_at, null); // unchanged
   const rows = ledgerRows(mock.inserts);
   assertEquals(rows.length, 1);
-  assertEquals(rows[0].result, "flip_failed");
+  assertEquals(rows[0].result, "stamp_failed");
   assertEquals(rows[0].stripe_account_id, null);
   assertEquals(rows[0].prior_interval, null);
   assertEquals(rows[0].new_interval, null);
@@ -465,4 +478,96 @@ Deno.test("#1807 batch: Paystack, Stripe and no-rail brands are each isolated in
     .filter((c) => c.name === "stamp_payout_hold_cutover")
     .map((c) => c.args.p_stripe_account_id);
   assertEquals(stampAccounts, [null, "acct_1"]);
+});
+
+Deno.test("#1807 hold: an UNEXPECTED failure on the Paystack lane records stamp_failed, never flip_failed", async () => {
+  // Already stamped → takes the idempotent-skip path, whose ledger insert is
+  // rigged to reject at transport level. That lands in the fn's outer catch,
+  // which is the last place a non-Stripe brand could have been recorded as a
+  // failed schedule flip.
+  const brands: Record<string, BrandState> = {
+    [NG]: {
+      stripe_account_id: null,
+      paystack_active: true,
+      cutover_at: "2026-08-01T00:00:00Z",
+    },
+  };
+  const mock = buildMock({
+    user: ADMIN,
+    isAdmin: true,
+    brands,
+    rejectLedgerFor: new Set(["skipped_already_stamped"]),
+  });
+  const res = await handleAdminPayoutHoldMigrate(
+    post({ brand_ids: [NG], reason: "transport failure" }),
+    mock.deps,
+  );
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.counts.stamp_failed, 1);
+  assertEquals(body.counts.flip_failed, 0);
+  assertEquals(mock.flipCalls.length, 0);
+  assertEquals(mock.restoreCalls.length, 0);
+  const rows = ledgerRows(mock.inserts);
+  assertEquals(rows.length, 1); // the catch's own ledger row
+  assertEquals(rows[0].result, "stamp_failed");
+  assertEquals(rows[0].stripe_account_id, null);
+});
+
+Deno.test("#1807: the same UNEXPECTED failure on a STRIPE brand still records flip_failed — outer catch unchanged", async () => {
+  const brands: Record<string, BrandState> = {
+    [US]: {
+      stripe_account_id: "acct_1",
+      paystack_active: false,
+      cutover_at: "2026-08-01T00:00:00Z",
+    },
+  };
+  const mock = buildMock({
+    user: ADMIN,
+    isAdmin: true,
+    brands,
+    rejectLedgerFor: new Set(["skipped_already_stamped"]),
+  });
+  const res = await handleAdminPayoutHoldMigrate(
+    post({ brand_ids: [US], reason: "transport failure" }),
+    mock.deps,
+  );
+  const body = await res.json();
+  assertEquals(body.counts.flip_failed, 1);
+  assertEquals(body.counts.stamp_failed, 0);
+  const rows = ledgerRows(mock.inserts);
+  assertEquals(rows.length, 1);
+  assertEquals(rows[0].result, "flip_failed");
+});
+
+Deno.test("#1807: stamp_failed is an additive counter — zero on an all-Stripe batch", async () => {
+  const brands: Record<string, BrandState> = {
+    [US]: {
+      stripe_account_id: "acct_1",
+      paystack_active: false,
+      cutover_at: null,
+    },
+  };
+  const mock = buildMock({ user: ADMIN, isAdmin: true, brands });
+  const res = await handleAdminPayoutHoldMigrate(
+    post({ brand_ids: [US], reason: "counter shape" }),
+    mock.deps,
+  );
+  const body = await res.json();
+  assertEquals(body.counts.stamp_failed, 0);
+  assertEquals(body.counts.flipped, 1);
+  // Every pre-existing counter key is still present and untouched.
+  for (
+    const key of [
+      "flipped",
+      "skipped_already_stamped",
+      "skipped_no_account",
+      "flip_failed",
+      "stamp_failed_rolled_back",
+      "rolled_back",
+      "rollback_failed",
+    ]
+  ) {
+    assert(key in body.counts, `counts lost the ${key} key`);
+  }
 });

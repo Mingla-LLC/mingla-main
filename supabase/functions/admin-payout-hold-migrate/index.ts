@@ -38,6 +38,13 @@
  * same ledger + admin-audit trails. Idempotency, dry-run, the admin gate,
  * batch limits and per-brand isolation are identical across both lanes.
  *
+ * A failed stamp on the Paystack lane records the #1807 result 'stamp_failed'
+ * — NOT 'stamp_failed_rolled_back' (nothing was rolled back) and NOT
+ * 'flip_failed' (there is no schedule flip on this rail). The ledger CHECK is
+ * widened for it, and both RPCs are made rail-aware so the interval columns
+ * are NULL rather than fabricated 'daily'/'manual', by
+ * 20270317001807_issue_1807_paystack_cutover_ledger_truth.sql.
+ *
  * Audit (two trails): (1) one payout_hold_cutover_migrations row per per-brand
  * attempt (written inside the stamp/rollback RPC for mutating cases, directly
  * for skip/fail cases); (2) one admin_write_audit row per mutating/failed brand
@@ -83,6 +90,10 @@ type MigrateResult =
   | "skipped_already_stamped"
   | "skipped_no_account"
   | "flip_failed"
+  // #1807 — the stamp failed and there was NO provider mutation to compensate.
+  // Reachable only from the Paystack lane; the Stripe lane has a flip to undo
+  // and therefore records stamp_failed_rolled_back instead.
+  | "stamp_failed"
   | "stamp_failed_rolled_back"
   | "rolled_back"
   | "rollback_failed";
@@ -125,6 +136,7 @@ const EMPTY_COUNTS: Record<MigrateResult, number> = {
   skipped_already_stamped: 0,
   skipped_no_account: 0,
   flip_failed: 0,
+  stamp_failed: 0,
   stamp_failed_rolled_back: 0,
   rolled_back: 0,
   rollback_failed: 0,
@@ -295,6 +307,10 @@ export async function handleAdminPayoutHoldMigrate(
 
   // ── Per brand, sequential, each isolated (one failure never aborts others). ──
   for (const brandId of brandIds) {
+    // #1807 — declared OUTSIDE the try so the unexpected-error catch at the
+    // bottom knows which rail it was on. ALWAYS false for a brand that has a
+    // Stripe connected account, so the Stripe outcome there is unchanged.
+    let paystackLane = false;
     try {
       // Resolve the connected account + current stamp state.
       const { data: scaRow, error: scaError } = await supabase
@@ -318,7 +334,6 @@ export async function handleAdminPayoutHoldMigrate(
       // Stripe row. Stripe wins when both exist (a brand should not have both;
       // no merge policy is invented here), and a Stripe brand issues exactly
       // the same reads it always did — this query never runs for it.
-      let hasPaystackRecipient = false;
       if (!stripeAccountId) {
         const { data: recipientRow, error: recipientError } = await supabase
           .from("brand_paystack_recipients")
@@ -327,10 +342,10 @@ export async function handleAdminPayoutHoldMigrate(
           .eq("is_active", true)
           .maybeSingle();
         if (recipientError) throw recipientError;
-        hasPaystackRecipient = recipientRow != null;
+        paystackLane = recipientRow != null;
       }
 
-      if (!stripeAccountId && !hasPaystackRecipient) {
+      if (!stripeAccountId && !paystackLane) {
         if (!dryRun) {
           await recordLedger(
             brandId,
@@ -399,14 +414,16 @@ export async function handleAdminPayoutHoldMigrate(
             if (stampError) throw stampError;
           } catch (stampErr) {
             // Nothing was mutated on the provider, so the brand is already in
-            // the state we found it (unstamped). NO compensation call.
+            // the state we found it (unstamped). NO compensation call, and so
+            // NOT stamp_failed_rolled_back — nothing was rolled back. Not
+            // flip_failed either: there is no schedule flip on this rail.
             const message = stampErr instanceof Error
               ? stampErr.message
               : String(stampErr);
             await recordLedger(
               brandId,
               null,
-              "flip_failed",
+              "stamp_failed",
               null,
               null,
               null,
@@ -416,11 +433,11 @@ export async function handleAdminPayoutHoldMigrate(
             await recordAdminAudit(
               brandId,
               null,
-              "flip_failed",
+              "stamp_failed",
               { cutover_at: null },
               { cutover_at: null, error: message },
             );
-            push(brandId, "flip_failed", message);
+            push(brandId, "stamp_failed", message);
             continue;
           }
 
@@ -704,9 +721,17 @@ export async function handleAdminPayoutHoldMigrate(
         `[admin-payout-hold-migrate] brand ${brandId} unexpected error:`,
         message,
       );
-      const failResult: MigrateResult = direction === "hold"
-        ? "flip_failed"
-        : "rollback_failed";
+      // #1807 — flip_failed claims a payout-schedule flip was attempted, which
+      // is only ever true on the Stripe rail. paystackLane is ALWAYS false for
+      // a brand with a Stripe account, so this is identical for Stripe. It is
+      // also false when the rail was never determined (an error thrown by the
+      // account-resolution reads themselves), which is the honest reading:
+      // the hold attempt failed before a rail was known.
+      const failResult: MigrateResult = direction === "rollback"
+        ? "rollback_failed"
+        : paystackLane
+        ? "stamp_failed"
+        : "flip_failed";
       if (!dryRun) {
         await recordLedger(
           brandId,
