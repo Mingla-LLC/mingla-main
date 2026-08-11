@@ -38,7 +38,10 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - run: deno test --allow-env --allow-read supabase/functions/guest-roster-actions/issue_0873_guest_roster_actions.test.ts
+      - run: >-
+          deno test --allow-env --allow-read
+          supabase/functions/guest-roster-actions/issue_0873_guest_roster_actions.test.ts
+          supabase/functions/guest-roster-actions/issue_873_actions.tester_adversarial.test.ts
 
   business-render:
     name: "Issue 873 Business shared roster render"
@@ -99,6 +102,12 @@ jobs:
             | while IFS= read -r -d '' migration; do
                 psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
               done
+      - name: Match hosted Supabase Auth user shape
+        env:
+          PGPASSWORD: ${{ format('issue-873-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS banned_until timestamptz"
       - name: Prove roster status, precedence, privacy, and rollout
         env:
           PGPASSWORD: ${{ format('issue-873-ci-{0}', github.run_id) }}

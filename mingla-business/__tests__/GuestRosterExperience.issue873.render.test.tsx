@@ -11,10 +11,10 @@ interface TestInstance {
   findAll(predicate: (node: TestInstance) => boolean): TestInstance[];
   findByProps(props: Record<string, unknown>): TestInstance;
 }
-interface TestTree { root: TestInstance; unmount: () => void }
+interface TestTree { root: TestInstance; unmount: () => void; update: (element: React.ReactElement) => void }
 const testRenderer = require("react-test-renderer") as {
   create: (element: React.ReactElement) => TestTree;
-  act: (callback: () => void) => void;
+  act: (callback: () => void | Promise<void>) => void | Promise<void>;
 };
 const { act } = testRenderer;
 
@@ -53,6 +53,8 @@ const mockQuery: Record<string, unknown> = {};
 const resetMockQuery = (): void => {
   Object.assign(mockQuery, { data: mockRoster, isLoading: false, isError: false, isFetching: false,
     isRefetching: false, isRefetchError: false, isStaleTruth: false, isOffline: false, refetch: jest.fn() });
+  Object.assign(mockQuery, { refreshFromFirstPage: jest.fn(), fetchNextPage: jest.fn(), hasNextPage: false,
+    isFetchingNextPage: false, isFetchNextPageError: false });
 };
 resetMockQuery();
 
@@ -164,5 +166,19 @@ describe("#873 GuestRosterExperience rendered status truth", () => {
     const stale = renderRoster();
     expect(visibleTexts(stale)).toContain("Guest list may be out of date");
     expect(stale.root.findAll((node) => node.props.accessibilityLabel === "Export current guest roster")).toHaveLength(0);
+  });
+
+  test("rendered stale and load-more recovery discard retained page cursors", () => {
+    Object.assign(mockQuery, { isStaleTruth: true });
+    const stale = renderRoster();
+    act(() => stale.root.findAll((node) => typeof node.props.onPress === "function" && textOf(node) === "Refresh")[0]?.props.onPress?.());
+    expect(mockQuery.refreshFromFirstPage).toHaveBeenCalledTimes(1);
+    expect(mockQuery.refetch).not.toHaveBeenCalled();
+
+    Object.assign(mockQuery, { isStaleTruth: false, isFetchNextPageError: true });
+    const loadFailure = renderRoster();
+    act(() => loadFailure.root.findAll((node) => typeof node.props.onPress === "function" && textOf(node) === "Refresh list")[0]?.props.onPress?.());
+    expect(mockQuery.refreshFromFirstPage).toHaveBeenCalledTimes(2);
+    expect(mockQuery.fetchNextPage).not.toHaveBeenCalled();
   });
 });
