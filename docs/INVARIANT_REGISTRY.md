@@ -7977,3 +7977,60 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   returns the full 92/92 suite to green.
 - **Established:** DRAFT at issue #1815 IMPLEMENT 2026-08-10. Flips ACTIVE only after
   independent tester PASS and CLOSE.
+
+## I-1807-PAYOUT-HOLD-LEDGER-APPEND-ONLY-AND-RAIL-TRUTHFUL — ACTIVE
+
+- **Rule:** `public.payout_hold_cutover_migrations` is the append-only audit trail for
+  every payout-hold cutover decision. Two properties must always hold. (1) **Append-only,
+  enforced not assumed:** `service_role` holds exactly `SELECT, INSERT`; `authenticated`
+  holds exactly `SELECT` (load-bearing — the `payout_hold_cutover_migrations_admin_read`
+  RLS policy is `FOR SELECT TO authenticated` and an RLS policy still requires the
+  underlying table GRANT, so revoking it silently breaks Admin's ledger view); `anon`
+  holds nothing. RLS alone is insufficient: `service_role` bypasses RLS. (2) **Rail
+  truthful:** no row may name a provider artefact that does not exist for that brand.
+  `prior_interval`/`new_interval` are Stripe payout-schedule concepts and MUST be NULL
+  when `p_stripe_account_id IS NULL`, on the flip, rollback AND idempotent-skip paths;
+  a Paystack stamp failure records `stamp_failed`, never `flip_failed`, which stays
+  reachable only from the Stripe lane; and the recorded outcome is the value the RPC
+  actually returned, so a concurrency loser is audited as a skip, not a flip.
+- **Why it is not merely hygiene:** the ledger is append-only, so a wrong row is
+  permanent and uncorrectable. It is the audit of a switch that changes when a real
+  business receives its money.
+- **Enforcement:** `supabase/migrations/20270317001807_issue_1807_paystack_cutover_ledger_truth.sql`
+  carries in-transaction self-asserts (exactly ONE `result` CHECK — the #1173 constraint
+  was created inline and unnamed, so an auto-name mismatch would have made the
+  `DROP … IF EXISTS` a silent no-op and left a stale constraint still rejecting
+  `stamp_failed`; every prior `result` value retained; `service_role` retains SELECT;
+  `authenticated` retains SELECT), so a failed assertion rolls the whole migration back.
+  Regression suites, all registered in `.github/workflows/issue-1173-stripe-schedule-flip-tests.yml`
+  and run against a clean PostgreSQL 17 container with the full migration chain applied:
+  implementor `supabase/migrations/__tests__/issue_1807_paystack_ledger_truth.test.sql`
+  and `supabase/functions/admin-payout-hold-migrate/__tests__/issue_1807_paystack_lane.test.ts`;
+  independent tester `…/issue_1807_paystack_ledger_truth.tester_adversarial.test.sql`
+  (A1–A9) and `…/issue_1807_paystack_lane.tester_adversarial.test.ts`. The concurrency
+  proof uses two genuinely concurrent psql processes driven by the workflow
+  (`issue_1807_tester_adversarial_race_{setup,a,b}.sql`) — NOT dblink: `dblink_connect`
+  and `dblink_connect_u` are the same C function differing only in `SECURITY DEFINER`,
+  it gates on `superuser()`, and `supabase/postgres` de-superusers `postgres`, which
+  also owns the extension, so the bypass is inert. Three vacuity guards fail the build
+  if fixtures are absent, if the race produced no ledger rows, or if the running user
+  cannot actually assume `service_role` (an unprivileged UPDATE under RLS affects zero
+  rows silently rather than erroring, so the runtime refusal check would otherwise pass
+  without ever attempting the UPDATE).
+- **Fails on revert:** restoring `GRANT ALL` fails the catalog assertion, the runtime
+  `service_role` UPDATE-refused assertion and tester A6 independently; revoking
+  `authenticated`'s SELECT fails with `#1807(e): authenticated lost SELECT — the
+  admin_read RLS policy needs the table GRANT`; restoring the hardcoded
+  `'daily','manual'` literals fails A1 with `prior=manual, new=manual`; narrowing the
+  `result` CHECK fails with `result CHECK rejected the allowed value stamp_failed`;
+  deleting the `FOR UPDATE` lock fails with `the race produced 2 flipped ledger rows for
+  one brand`. Verified at `809a1ef98`.
+- **Adjacent, deliberately NOT fixed here:** the same schema-default widening applies to
+  every table in `public` — a migration can write a narrow GRANT that is inert while
+  reading as protective in review. Tracked as #1827; #1807 fixed only the table its own
+  correctness claim depends on.
+- **Established:** ACTIVE at #1807 CLOSE 2026-08-10 — full-chain CI pass (SQL + Deno),
+  merged as `5fb06dd77`, migration applied to production via the Management API surgical
+  lane and the resulting grant matrix verified in production
+  (`authenticated|SELECT`, `service_role|INSERT,SELECT`, `anon` absent, `postgres`
+  untouched), `admin-payout-hold-migrate` redeployed as v96 with `verify_jwt = true`.
