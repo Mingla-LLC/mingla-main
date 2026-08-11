@@ -201,13 +201,57 @@ describe("ORCH-1083 T-03 — useThemeFont loader is idempotent", () => {
 });
 
 describe("ORCH-1083 T-02 — M-3 budget guard exists and grep-the-entry passes self-test", () => {
-  it("the budget script exists and asserts the deferred specifiers + chunk count + ceiling", () => {
-    const script = read("scripts/ci/orch-1083-initial-bundle-budget.mjs");
-    expect(script).toMatch(/@stripe\/connect-js/);
-    expect(script).toMatch(/@stripe\/react-connect-js/);
-    expect(script).toMatch(/react-native-qrcode-svg/);
-    expect(script).toMatch(/@expo-google-fonts\//);
-    expect(script).toMatch(/CEILING_RAW_BYTES/);
-    expect(script).toMatch(/>= 3|< 3|length < 3/);
+  // REPOINTED by issue #1509 [TEST-MOD-APPROVED #1509].
+  //
+  // This block used to grep the guard script for four literal specifier strings,
+  // the identifier `CEILING_RAW_BYTES`, and the text `>= 3`. #1509 rebuilt the
+  // guard — the specifier list moved to `scripts/ci/bundle-budget-lib.mjs` (one
+  // measurement definition now shared by the gate, the post-merge ratchet and the
+  // attribution tool), and the single hand-edited cap became a measured baseline
+  // plus a per-PR delta allowance plus a product ceiling.
+  //
+  // The old assertions were therefore pinning SPELLING, not behaviour: every one
+  // of them would have gone green against a guard that had been gutted, so long
+  // as the words survived somewhere in the file. The intent — "the budget guard
+  // really does enforce the deferred specifiers, a chunk-split floor and a
+  // ceiling" — is unchanged and is asserted below across the new file layout,
+  // plus one thing the old block never did: actually RUN the guard.
+  const guardRel = "scripts/ci/orch-1083-initial-bundle-budget.mjs";
+
+  it("the guard and its shared measurement library still name every deferred specifier", () => {
+    const combined = read(guardRel) + read("scripts/ci/bundle-budget-lib.mjs");
+    expect(combined).toMatch(/@stripe\/connect-js/);
+    expect(combined).toMatch(/@stripe\/react-connect-js/);
+    expect(combined).toMatch(/react-native-qrcode-svg/);
+    expect(combined).toMatch(/@expo-google-fonts\//);
+  });
+
+  it("the guard enforces a product ceiling, a per-PR allowance and a chunk-split floor", () => {
+    const script = read(guardRel);
+    expect(script).toMatch(/HARD_CEILING/);
+    expect(script).toMatch(/PR_DELTA_ALLOWANCE/);
+    expect(script).toMatch(/MIN_CHUNKS/);
+    // The ceiling is the one number a human owns. If automation can read it from
+    // a file, the ratchet can move it, and #1509's whole point is that it cannot.
+    expect(script).not.toMatch(/HARD_CEILING\s*=\s*JSON\.parse|HARD_CEILING\s*=\s*require/);
+  });
+
+  it("the committed baseline exists and records a measured boot payload", () => {
+    const baseline = JSON.parse(read("scripts/ci/bundle-baseline.json"));
+    for (const scope of ["common", "eager"] as const) {
+      for (const unit of ["raw", "gzip", "brotli"] as const) {
+        expect(typeof baseline[scope][unit]).toBe("number");
+        expect(baseline[scope][unit]).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("the guard's self-test actually passes when run", () => {
+    // Behaviour, not spelling — this is what the describe title always claimed.
+    const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
+    const out = execFileSync(process.execPath, [path.join(businessRoot, guardRel), "--self-test"], {
+      encoding: "utf8",
+    });
+    expect(out).toMatch(/self-test PASS/);
   });
 });
