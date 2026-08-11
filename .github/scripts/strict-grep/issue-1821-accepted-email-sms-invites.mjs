@@ -48,7 +48,7 @@ export function violations(files) {
     "RAISE EXCEPTION 'offering_marketing_message_attempt_ambiguous'",
     "RAISE EXCEPTION 'offering_marketing_message_tuple_mismatch'",
     "RAISE EXCEPTION 'offering_marketing_message_provider_mismatch'",
-    "OR btrim(NEW.provider_message_id)=''",
+    "IF NEW.provider_message_id IS NOT NULL\n    AND btrim(NEW.provider_message_id)=''",
     "provider_accepted_at=COALESCE(",
     "WHEN status='delivered' OR NEW.status='delivered' THEN 'delivered'",
     "ELSE 'sent'",
@@ -72,6 +72,13 @@ export function violations(files) {
   );
   if (projectorStart < 0 || groupLock < projectorStart || recount < 0 || groupLock > recount) {
     failures.push("serialization: group row lock must precede the all-attempt recount");
+  }
+  const matchedTupleCheck = migration.indexOf(
+    "IF v_attempt.provider_message_id IS NOT NULL\n    AND NEW.provider_message_id IS NOT NULL\n    AND v_attempt.provider_message_id IS DISTINCT FROM NEW.provider_message_id",
+  );
+  const stateBranch = migration.indexOf("IF NEW.status IN ('sent','delivered') THEN");
+  if (matchedTupleCheck < 0 || stateBranch < 0 || matchedTupleCheck > stateBranch) {
+    failures.push("provider identity: cross-state tuple check must precede every matched state branch");
   }
   forbid(
     migration,
@@ -113,6 +120,11 @@ export function violations(files) {
     "T-1821-01 FAIL: email accepted did not settle Sent/group completion",
     "T-1821-02 FAIL: SMS provider % did not settle Sent",
     "T-1821-03 FAIL: conflicting provider tuple was accepted",
+    "T-1821-03 FAIL: failed provider tuple conflict was accepted",
+    "T-1821-03 FAIL: bounced provider tuple conflict was accepted",
+    "T-1821-03 FAIL: failed provider conflict did not roll back all rows",
+    "T-1821-03 FAIL: bounced provider conflict did not roll back all rows",
+    "T-1821-03 FAIL: present blank provider id was accepted",
     "T-1821-04 FAIL: accepted then failed downgraded Sent",
     "T-1821-05 FAIL: post-claim ambiguity fabricated acceptance or retry",
     "T-1821-06 FAIL: accepted + failed was not partial",
@@ -174,6 +186,12 @@ function selfTest() {
     ],
     [
       "migration",
+      "IF v_attempt.provider_message_id IS NOT NULL\n    AND NEW.provider_message_id IS NOT NULL\n    AND v_attempt.provider_message_id IS DISTINCT FROM NEW.provider_message_id",
+      "IF v_attempt.provider_message_id IS NOT NULL\n    AND NEW.status IN ('sent','delivered')\n    AND v_attempt.provider_message_id IS DISTINCT FROM NEW.provider_message_id",
+      "cross-state provider tuple check narrowed back to accepted states",
+    ],
+    [
+      "migration",
       "FOR UPDATE;",
       ";",
       "group row lock removed",
@@ -208,7 +226,7 @@ function selfTest() {
     const broken = { ...clean, [key]: clean[key].replace(before, after) };
     if (violations(broken).length === 0) throw new Error(`mutation survived: ${label}`);
   }
-  console.log("#1821 accepted email/SMS invite self-test PASS (6 true mutations)");
+  console.log("#1821 accepted email/SMS invite self-test PASS (7 true mutations)");
 }
 
 if (process.argv.includes("--self-test")) selfTest();

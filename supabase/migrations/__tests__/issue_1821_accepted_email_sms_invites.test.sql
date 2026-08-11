@@ -166,7 +166,9 @@ DECLARE
   v_attempt uuid := '18210000-0000-4000-8000-000000000103';
   v_message uuid := '18210000-0000-4000-8000-000000000104';
   v_completed timestamptz;
-  v_before jsonb;
+  v_attempt_before jsonb;
+  v_group_before jsonb;
+  v_message_before jsonb;
 BEGIN
   PERFORM pg_temp.issue_1821_campaign(v_campaign,'email');
   PERFORM pg_temp.issue_1821_group(
@@ -213,7 +215,7 @@ BEGIN
     RAISE EXCEPTION 'T-1821-03 FAIL: exact accepted replay moved identity/timestamps';
   END IF;
 
-  SELECT to_jsonb(a) INTO v_before
+  SELECT to_jsonb(a) INTO v_attempt_before
   FROM public.brand_offering_invite_delivery_attempts a WHERE id=v_attempt;
   BEGIN
     UPDATE public.marketing_messages
@@ -222,11 +224,77 @@ BEGIN
     RAISE EXCEPTION 'T-1821-03 FAIL: conflicting provider tuple was accepted';
   EXCEPTION WHEN check_violation THEN NULL; END;
   IF (SELECT to_jsonb(a) FROM public.brand_offering_invite_delivery_attempts a
-      WHERE id=v_attempt) IS DISTINCT FROM v_before
+      WHERE id=v_attempt) IS DISTINCT FROM v_attempt_before
   THEN
     RAISE EXCEPTION 'T-1821-03 FAIL: provider conflict mutated the attempt';
   END IF;
   RAISE NOTICE 'T-1821-03 PASS: replay is stable and provider tuple conflict fails atomically';
+
+  SELECT to_jsonb(m) INTO v_message_before
+  FROM public.marketing_messages m WHERE id=v_message;
+  SELECT to_jsonb(a) INTO v_attempt_before
+  FROM public.brand_offering_invite_delivery_attempts a WHERE id=v_attempt;
+  SELECT to_jsonb(g) INTO v_group_before
+  FROM public.marketing_send_groups g WHERE id=v_group;
+  BEGIN
+    UPDATE public.marketing_messages SET
+      status='failed',provider_message_id='resend-failed-conflict-1821'
+    WHERE id=v_message;
+    RAISE EXCEPTION 'T-1821-03 FAIL: failed provider tuple conflict was accepted';
+  EXCEPTION WHEN check_violation THEN
+    IF SQLERRM <> 'offering_marketing_message_provider_mismatch' THEN
+      RAISE;
+    END IF;
+  END;
+  IF (SELECT to_jsonb(m) FROM public.marketing_messages m WHERE id=v_message)
+      IS DISTINCT FROM v_message_before
+    OR (SELECT to_jsonb(a) FROM public.brand_offering_invite_delivery_attempts a
+        WHERE id=v_attempt) IS DISTINCT FROM v_attempt_before
+    OR (SELECT to_jsonb(g) FROM public.marketing_send_groups g WHERE id=v_group)
+        IS DISTINCT FROM v_group_before
+  THEN
+    RAISE EXCEPTION 'T-1821-03 FAIL: failed provider conflict did not roll back all rows';
+  END IF;
+
+  BEGIN
+    UPDATE public.marketing_messages SET
+      status='bounced',provider_message_id='resend-bounced-conflict-1821'
+    WHERE id=v_message;
+    RAISE EXCEPTION 'T-1821-03 FAIL: bounced provider tuple conflict was accepted';
+  EXCEPTION WHEN check_violation THEN
+    IF SQLERRM <> 'offering_marketing_message_provider_mismatch' THEN
+      RAISE;
+    END IF;
+  END;
+  IF (SELECT to_jsonb(m) FROM public.marketing_messages m WHERE id=v_message)
+      IS DISTINCT FROM v_message_before
+    OR (SELECT to_jsonb(a) FROM public.brand_offering_invite_delivery_attempts a
+        WHERE id=v_attempt) IS DISTINCT FROM v_attempt_before
+    OR (SELECT to_jsonb(g) FROM public.marketing_send_groups g WHERE id=v_group)
+        IS DISTINCT FROM v_group_before
+  THEN
+    RAISE EXCEPTION 'T-1821-03 FAIL: bounced provider conflict did not roll back all rows';
+  END IF;
+
+  BEGIN
+    UPDATE public.marketing_messages SET provider_message_id='   '
+    WHERE id=v_message;
+    RAISE EXCEPTION 'T-1821-03 FAIL: present blank provider id was accepted';
+  EXCEPTION WHEN check_violation THEN
+    IF SQLERRM <> 'offering_marketing_message_provider_missing' THEN
+      RAISE;
+    END IF;
+  END;
+  IF (SELECT to_jsonb(m) FROM public.marketing_messages m WHERE id=v_message)
+      IS DISTINCT FROM v_message_before
+    OR (SELECT to_jsonb(a) FROM public.brand_offering_invite_delivery_attempts a
+        WHERE id=v_attempt) IS DISTINCT FROM v_attempt_before
+    OR (SELECT to_jsonb(g) FROM public.marketing_send_groups g WHERE id=v_group)
+        IS DISTINCT FROM v_group_before
+  THEN
+    RAISE EXCEPTION 'T-1821-03 FAIL: blank provider id did not roll back all rows';
+  END IF;
+  RAISE NOTICE 'T-1821-03 PASS: failed/bounced/blank cross-state tuple conflicts roll back all rows';
 
   UPDATE public.marketing_messages SET status='failed' WHERE id=v_message;
   IF NOT EXISTS(

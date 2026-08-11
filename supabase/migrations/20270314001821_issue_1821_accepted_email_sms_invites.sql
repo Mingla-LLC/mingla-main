@@ -180,17 +180,24 @@ BEGIN
       USING ERRCODE='23514';
   END IF;
 
+  IF NEW.provider_message_id IS NOT NULL
+    AND btrim(NEW.provider_message_id)=''
+  THEN
+    RAISE EXCEPTION 'offering_marketing_message_provider_missing'
+      USING ERRCODE='23514';
+  END IF;
+  IF v_attempt.provider_message_id IS NOT NULL
+    AND NEW.provider_message_id IS NOT NULL
+    AND v_attempt.provider_message_id IS DISTINCT FROM NEW.provider_message_id
+  THEN
+    RAISE EXCEPTION 'offering_marketing_message_provider_mismatch'
+      USING ERRCODE='23514';
+  END IF;
+
   IF NEW.status IN ('sent','delivered') THEN
     IF NEW.provider_message_id IS NULL
-      OR btrim(NEW.provider_message_id)=''
     THEN
       RAISE EXCEPTION 'offering_marketing_message_provider_missing'
-        USING ERRCODE='23514';
-    END IF;
-    IF v_attempt.provider_message_id IS NOT NULL
-      AND v_attempt.provider_message_id IS DISTINCT FROM NEW.provider_message_id
-    THEN
-      RAISE EXCEPTION 'offering_marketing_message_provider_mismatch'
         USING ERRCODE='23514';
     END IF;
 
