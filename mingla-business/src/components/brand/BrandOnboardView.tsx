@@ -57,8 +57,9 @@ import {
 } from "react-native";
 // #1834 [keyboard-blocks-bank-field] — the body ScrollView routes through the
 // canonical SmartScrollView wrapper (ORCH-0892-B: native = the keyboard
-// library's KeyboardAwareScrollView with the inherited DEFAULT_BOTTOM_OFFSET=54
-// — 42 Done bar + 12 visible clearance; web = plain RN ScrollView, a no-op).
+// library's KeyboardAwareScrollView with the inherited DEFAULT_BOTTOM_OFFSET —
+// Done bar + Input chrome + 12 visible clearance, derived per platform in the
+// wrapper; web = plain RN ScrollView, a no-op).
 // Plain react-native ScrollView subscribes to nothing, so the Nigerian bank
 // form's account-number Input sat under the keyboard + Done bar with zero
 // scroll on focus. Focused-field avoidance is owned by the wrapper — no
