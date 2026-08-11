@@ -15,7 +15,9 @@ import {
 // orch-strict-grep-allow orch-0892 — chat composer needs sticky-above-keyboard lift
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ScrollView } from "../../wrappers/SmartScrollView";
+// #1850 — the composer's lift is budgeted against the DERIVED Done-bar cost, not
+// a hand-typed number. See the comment at the KeyboardAvoidingView below.
+import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";
 import { useRouter } from "expo-router";
 
 import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
@@ -226,8 +228,18 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
             })}
           </ScrollView>
 
-          {/* ORCH-1165: lift the composer 42pt so the Done bar sits above it. */}
-          <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={42}>
+          {/* ORCH-1165: lift the composer so the Done bar sits above it.
+              #1850 — the literal 42 that used to sit here was KEYBOARD_TOOLBAR_HEIGHT,
+              which is the bar's own height, NOT what it occupies above the keyboard.
+              #1834 measured the difference on glass: on iOS 26+ the library floats
+              the bar 11pt clear of the keyboard's rounded corners, so it occupies 53
+              and a 42pt lift left this composer 11pt behind it. DONE_BAR_OCCUPIED is
+              derived from the same inputs the library uses, so an OS or library bump
+              moves it without anyone editing this line. */}
+          <KeyboardAvoidingView
+            behavior="padding"
+            keyboardVerticalOffset={DONE_BAR_OCCUPIED}
+          >
             {attachment ? (
               <View style={styles.attachmentPreview}>
                 <Image
