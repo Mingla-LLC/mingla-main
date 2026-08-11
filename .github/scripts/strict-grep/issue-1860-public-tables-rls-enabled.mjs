@@ -7,11 +7,21 @@
  * SCHEMA public GRANT ALL ON TABLES` for the standard roles (#1827), so a
  * table's own GRANT lines cannot narrow what it already holds. A table with RLS
  * off carries no constraint at all — which is why this is a gate and not a
- * convention. Convention already failed here once: tables accumulated in that
- * state over months and nothing said a word.
+ * convention. Convention already failed here: tables accumulated in that state
+ * over months and nothing said a word.
  *
- * WHAT THIS GATE PROVES, AND WHAT IT CANNOT
- * -----------------------------------------
+ * ── WHAT THIS GATE GUARANTEES, AND WHAT IT DOES NOT ────────────────────────
+ * It guarantees RLS is **PRESENT**. It does NOT guarantee RLS **CONSTRAINS**.
+ * A table with RLS enabled and a permissive `USING (true)` policy reads exactly
+ * like an open table to `anon`, while `pg_class.relrowsecurity` still reports
+ * true — proved at runtime by the #1860 tester. Nothing here models policy
+ * contents, and it deliberately should not: plenty of tables legitimately carry
+ * public-read policies, and deciding which are legitimate is a different piece
+ * of work. **A green run here is not a proof of access control.** The twelve
+ * tables this issue fixed are additionally asserted to carry ZERO policies, but
+ * that assertion lives in the live half and covers only those twelve.
+ *
+ * ── TWO HALVES, EACH OF WHICH FAILS IF THE OTHER IS REMOVED ────────────────
  * This half is STATIC: it replays the migration chain in filename order and
  * asserts every table it leaves alive in `public` has an RLS enable. That is
  * the half that can run on every PR with no database.
@@ -21,41 +31,82 @@
  * run by the containerised Postgres job in
  * `.github/workflows/supabase-migrations-and-stripe-deno.yml`. Neither half is
  * sufficient alone: source can lie about what the catalog holds, and a catalog
- * assertion cannot run on a PR that never reaches the container. So C5 below
- * asserts the live half is still WIRED. Deleting it fails this gate.
+ * assertion cannot run on a PR that never reaches the container. C5 asserts the
+ * live half is still WIRED; deleting it fails this gate.
  *
- * THE EXEMPTION IS EXACTLY ONE TABLE
- * ----------------------------------
+ * A third file is load-bearing and is guarded the same way: the tester-owned
+ * `scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs`,
+ * which is the only suite anchoring this gate to the REAL chain. It sits outside
+ * the strict-grep directory, so MANIFEST.json does not sweep it and
+ * run-batch.mjs does not run it — C8 asserts it exists and is invoked by
+ * executable (comment-stripped) yaml in
+ * `.github/workflows/issue-1860-rls-coverage-tests.yml`.
+ *
+ * There is deliberately NO second, weaker audit of this ground.
+ * `scripts/audit/rls-coverage.mjs` was retired and deleted at #1860 — it matched
+ * only the double-quoted dump style, so every table created since the baseline
+ * was invisible to it, and it was green because it barely looked. C6 fails if it
+ * comes back. Two audits of unequal strength claiming the same ground is the
+ * condition that produced this issue.
+ *
+ * ── THE EXEMPTION IS EXACTLY ONE TABLE ─────────────────────────────────────
  * `public.spatial_ref_sys` is owned by the PostGIS extension, not by us, and
- * holds published coordinate-system reference data. It is the only exemption,
- * it lives in exactly one reviewed place (`scripts/audit/rls-allowlist.json`),
- * and C2 pins that file to that one name. Adding a second entry fails the gate;
- * the only way to add one is to edit this file, in a reviewed diff, on purpose.
- * That list previously held nine names and every one of them was a real hole.
+ * holds published coordinate-system reference data. It is the only exemption
+ * and it lives in exactly one reviewed place (`scripts/audit/rls-allowlist.json`),
+ * which C2 pins to that one name. The allowlist is compared for EQUALITY only —
+ * it is never consulted when deciding whether a table is in violation, so
+ * writing a name into it cannot excuse anything. That list previously held nine
+ * names and every one of them was a real hole.
  *
- * THE TWO PARSING TRAPS THIS GATE EXISTS BECAUSE OF
- * -------------------------------------------------
- *  1. A `DROP TABLE public.x;` sentence inside a COMMENT string body is not a
- *     drop. The predecessor audit (`scripts/audit/rls-coverage.mjs`) matched one
- *     and silently classified a live table as dropped, which removed it from
- *     scrutiny entirely. String literals and comments are masked before any
- *     DDL regex runs.
- *  2. Roughly a third of this schema enables RLS from inside a `DO $block$`
- *     with `FOREACH v IN ARRAY ARRAY[…] LOOP EXECUTE format('ALTER TABLE
- *     public.%I ENABLE ROW LEVEL SECURITY', v)`. A gate that only reads literal
- *     `ALTER TABLE` statements reports ~45 false positives, gets muted, and is
- *     then worth nothing. Those loops are resolved.
- *     The mirror hazard is resolved in the other direction: the same `format()`
- *     text inside a `CREATE FUNCTION` body is NOT executed by the migration, so
- *     only `DO` blocks are treated as executed DDL.
+ * ── PARSING: WHERE DDL MAY BE READ FROM, AND WHERE IT MAY NOT ──────────────
+ * Every trap below is a real defect this file has already had, found either in
+ * the predecessor audit or by the #1860 tester against an earlier revision of
+ * this gate. They are listed as rules because a rule survives a refactor.
  *
- * Deliberately NOT resolved: dynamic `format('DROP TABLE public.%I', …)`. A
- * mis-resolved drop makes a live table invisible to this gate, so drops are
- * counted only in their literal, statement-level form. Erring toward "still
- * live" is the safe direction.
+ *  R1  COMMENTS ARE NEVER DDL. A `DROP TABLE public.x;` sentence inside a
+ *      `COMMENT ON TABLE … IS '…'` body is prose. The predecessor audit matched
+ *      one and silently classified a live table as dropped, removing it from
+ *      scrutiny entirely — half the reason an archive table sat unprotected.
  *
- * Supports `--self-test` (no repo scan; GOOD plus one BAD fixture per rule,
- * including a fixture that proves the gate FAILS when a table has RLS off).
+ *  R2  STRING LITERALS ARE NEVER DDL — INCLUDING INSIDE `DO` BODIES. An earlier
+ *      revision of this file masked literals at statement level only and handed
+ *      `DO` bodies to the DDL regexes raw. That failed BOTH ways: a bare
+ *      `RAISE NOTICE 'ALTER TABLE public.x ENABLE ROW LEVEL SECURITY'` laundered
+ *      an unprotected table green, and a drop sentence inside a `DO`-body string
+ *      hid a live table — R1's bug relocated rather than closed. Literals are
+ *      now masked inside `DO` bodies too, in BOTH forms: `'…'` and dollar-quoted
+ *      `$tag$…$tag$` (the chain really does use `EXECUTE $convert$ … $convert$`).
+ *
+ *  R3  DYNAMIC DDL IS READ ONLY FROM AN `EXECUTE` ARGUMENT POSITION. A string is
+ *      DDL when Postgres is told to run it, and at no other time. Roughly a
+ *      third of this schema enables RLS through
+ *      `FOREACH v IN ARRAY ARRAY[…] LOOP EXECUTE format('ALTER TABLE public.%I
+ *      ENABLE ROW LEVEL SECURITY', v)`. A gate that only reads literal
+ *      `ALTER TABLE` statements reports ~45 false positives, gets muted, and is
+ *      then worth nothing — so these are resolved, from the `EXECUTE` position
+ *      only, against the enclosing loop's array.
+ *
+ *  R4  ONLY `DO` BLOCKS ARE EXECUTED. The same `format()` text inside a
+ *      `CREATE FUNCTION` body is stored, not run, and must not count.
+ *
+ *  R5  UNRESOLVABLE DYNAMIC DDL FAILS CLOSED — except drops. C7 reds on a
+ *      dynamic `CREATE` / `ENABLE` / `DISABLE` whose table cannot be resolved,
+ *      and on an `EXECUTE` whose argument holds no literal at all (a built-up
+ *      variable). The asymmetry is deliberate and is the whole of R5: an
+ *      unresolved DROP leaves a table in scope, which merely risks a false RED;
+ *      an unresolved CREATE makes a table INVISIBLE, which is a false GREEN on a
+ *      genuinely unprotected schema. Ignoring the unsafe direction quietly is
+ *      exactly the silence that let this bug class live, so it is refused
+ *      loudly instead. Today's chain contains zero of either.
+ *
+ *  R6  RLS CAN BE TURNED BACK OFF. `DISABLE ROW LEVEL SECURITY` and a
+ *      drop-then-recreate both clear the enabled state; the replay is ordered by
+ *      event, not a set union, so a later disable wins over an earlier enable.
+ *
+ * Supports `--self-test`: GOOD plus one BAD fixture per rule, AND — since the
+ * #1860 tester proved a fixture-only suite stays green when the real fix is
+ * deleted — two cases anchored to the REAL migration chain, so this suite fails
+ * on revert on its own.
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -67,15 +118,17 @@ const root = process.cwd().endsWith("mingla-business")
 
 const MIGRATIONS_DIR = "supabase/migrations";
 const ALLOWLIST_PATH = "scripts/audit/rls-allowlist.json";
-const COVERAGE_AUDIT_PATH = "scripts/audit/rls-coverage.mjs";
+const RETIRED_AUDIT_PATH = "scripts/audit/rls-coverage.mjs";
 const LIVE_TEST_PATH = "supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql";
 const LIVE_TEST_WORKFLOW = ".github/workflows/supabase-migrations-and-stripe-deno.yml";
+const ADVERSARIAL_SUITE_PATH = "scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs";
+const ADVERSARIAL_WORKFLOW = ".github/workflows/issue-1860-rls-coverage-tests.yml";
+const FIX_MIGRATION_MARKER = "_issue_1860_enable_rls_on_unprotected_public_tables.sql";
 
 /**
  * The ONE reviewed exemption. Changing this constant is the only way to change
  * the exemption set, and it is a visible diff in a reviewed file — which is the
- * entire point. See the header for why `spatial_ref_sys` qualifies and why
- * nothing else does.
+ * entire point. See the header for why `spatial_ref_sys` qualifies.
  */
 const EXEMPT = ["spatial_ref_sys"];
 
@@ -93,24 +146,36 @@ const MIN_LIVE_TABLES = 300;
 
 const DOLLAR_TAG_RE = /^\$[A-Za-z_0-9]*\$/;
 
+function blankRange(chars, from, to) {
+  for (let k = from; k < to; k++) if (chars[k] !== "\n") chars[k] = " ";
+}
+
+/** End offset (exclusive) of the `'…'` literal starting at `start`. */
+function endOfSingleQuoted(sql, start) {
+  let j = start + 1;
+  while (j < sql.length) {
+    if (sql[j] === "'" && sql[j + 1] === "'") { j += 2; continue; }
+    if (sql[j] === "'") return j + 1;
+    j++;
+  }
+  return sql.length;
+}
+
 /**
- * Replace `--` line comments and C-style block comments with spaces,
- * preserving byte offsets so later match positions stay meaningful. String
- * literals and dollar-quoted bodies are left intact here; `segment()` handles
- * them, because a dollar-quoted body may be executable DDL.
+ * R1. Replace `--` line comments and C-style block comments with spaces,
+ * preserving byte offsets so later match positions stay meaningful. Literals and
+ * dollar-quoted bodies are stepped OVER, not removed — a `DO` body is executable
+ * DDL and `segment()` decides what to do with it.
  */
 export function maskComments(sql) {
   const out = Array.from(sql);
   let i = 0;
-  const blank = (from, to) => {
-    for (let k = from; k < to; k++) if (out[k] !== "\n") out[k] = " ";
-  };
   while (i < sql.length) {
     const two = sql.slice(i, i + 2);
     if (two === "--") {
       const nl = sql.indexOf("\n", i);
       const end = nl === -1 ? sql.length : nl;
-      blank(i, end);
+      blankRange(out, i, end);
       i = end;
     } else if (two === "/*") {
       let depth = 1;
@@ -120,10 +185,10 @@ export function maskComments(sql) {
         else if (sql.slice(j, j + 2) === "*/") { depth--; j += 2; }
         else j++;
       }
-      blank(i, j);
+      blankRange(out, i, j);
       i = j;
     } else if (sql[i] === "'") {
-      i = skipSingleQuoted(sql, i);
+      i = endOfSingleQuoted(sql, i);
     } else if (sql[i] === "$") {
       const m = DOLLAR_TAG_RE.exec(sql.slice(i));
       if (!m) { i++; continue; }
@@ -136,35 +201,62 @@ export function maskComments(sql) {
   return out.join("");
 }
 
-function skipSingleQuoted(sql, start) {
-  let j = start + 1;
-  while (j < sql.length) {
-    if (sql[j] === "'" && sql[j + 1] === "'") { j += 2; continue; }
-    if (sql[j] === "'") return j + 1;
-    j++;
+/**
+ * Every string-literal span in `text`, in both spellings Postgres accepts:
+ * `'…'` and dollar-quoted `$tag$…$tag$`. Returned as
+ * `{ start, end, inner }` where `inner` is the literal's CONTENT.
+ * R2 depends on this being complete — a form it misses is a form that can carry
+ * DDL past the masker.
+ */
+export function stringLiterals(text) {
+  const out = [];
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === "'") {
+      const end = endOfSingleQuoted(text, i);
+      out.push({ start: i, end, inner: text.slice(i + 1, end - 1).replace(/''/g, "'") });
+      i = end;
+      continue;
+    }
+    if (text[i] === "$") {
+      const m = DOLLAR_TAG_RE.exec(text.slice(i));
+      if (m) {
+        const tag = m[0];
+        const close = text.indexOf(tag, i + tag.length);
+        const end = close === -1 ? text.length : close + tag.length;
+        out.push({ start: i, end, inner: text.slice(i + tag.length, close === -1 ? text.length : close) });
+        i = end;
+        continue;
+      }
+    }
+    i++;
   }
-  return sql.length;
+  return out;
+}
+
+/** `text` with every string-literal span blanked, offsets preserved. */
+export function maskStringLiterals(text) {
+  const chars = Array.from(text);
+  for (const lit of stringLiterals(text)) blankRange(chars, lit.start, lit.end);
+  return chars.join("");
 }
 
 /**
  * Split comment-masked SQL into:
  *   - `top`: the same string with every string literal and every dollar-quoted
- *     body blanked out (offsets preserved). This is statement-level DDL only.
+ *     body blanked out (offsets preserved). Statement-level DDL only. (R1, R2)
  *   - `doBodies`: the bodies of `DO $tag$ … $tag$` blocks, which Postgres
  *     EXECUTES at migration time. Function bodies are NOT included — a
- *     `CREATE FUNCTION` body is stored, not run.
+ *     `CREATE FUNCTION` body is stored, not run. (R4)
  */
 export function segment(sql) {
   const top = Array.from(sql);
   const doBodies = [];
-  const blank = (from, to) => {
-    for (let k = from; k < to; k++) if (top[k] !== "\n") top[k] = " ";
-  };
   let i = 0;
   while (i < sql.length) {
     if (sql[i] === "'") {
-      const end = skipSingleQuoted(sql, i);
-      blank(i, end);
+      const end = endOfSingleQuoted(sql, i);
+      blankRange(top, i, end);
       i = end;
       continue;
     }
@@ -178,11 +270,10 @@ export function segment(sql) {
       // the already-emitted top text to the previous statement boundary.
       const before = top.slice(0, i).join("");
       const boundary = Math.max(before.lastIndexOf(";"), before.lastIndexOf("$"));
-      const head = before.slice(boundary + 1);
-      if (/(^|[\s)])DO\s*$/i.test(head)) {
+      if (/(^|[\s)])DO\s*$/i.test(before.slice(boundary + 1))) {
         doBodies.push({ start: bodyStart, text: sql.slice(bodyStart, bodyEnd) });
       }
-      blank(i, close === -1 ? sql.length : close + tag.length);
+      blankRange(top, i, close === -1 ? sql.length : close + tag.length);
       i = close === -1 ? sql.length : close + tag.length;
       continue;
     }
@@ -195,19 +286,47 @@ export function segment(sql) {
 // DDL extraction.
 // ---------------------------------------------------------------------------
 
-const CREATE_RE =
-  /CREATE\s+(?:UNLOGGED\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"?public"?\s*\.\s*"?([A-Za-z0-9_]+)"?/gi;
-const DROP_RE =
-  /DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?"?public"?\s*\.\s*"?([A-Za-z0-9_]+)"?/gi;
-const ENABLE_RE =
-  /ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?"?public"?\s*\.\s*"?([A-Za-z0-9_]+)"?\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/gi;
-const FOREACH_RE =
-  /FOREACH\s+(\w+)\s+IN\s+ARRAY\s+ARRAY\s*\[([^\]]*)\]\s*LOOP([\s\S]*?)END\s+LOOP/gi;
+// A schema-qualified table name, OR a `format()` placeholder standing in for one
+// (`%I`, `%s`, `%L`, `%1$I`). The placeholder branch is what R3/R5 act on.
+const QUALIFIED = `"?public"?\\s*\\.\\s*(%(?:\\d+\\$)?[IsL]|"?[A-Za-z0-9_]+"?)`;
 
-/** Blank out `//` line comments and C-style block comments in JS source. */
-export function stripJsComments(src) {
-  return src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+const DDL_PATTERNS = [
+  { kind: "create", re: new RegExp(`CREATE\\s+(?:UNLOGGED\\s+)?TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?${QUALIFIED}`, "gi") },
+  { kind: "drop", re: new RegExp(`DROP\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?${QUALIFIED}`, "gi") },
+  { kind: "enable", re: new RegExp(`ALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?${QUALIFIED}\\s+ENABLE\\s+ROW\\s+LEVEL\\s+SECURITY`, "gi") },
+  { kind: "disable", re: new RegExp(`ALTER\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?(?:ONLY\\s+)?${QUALIFIED}\\s+DISABLE\\s+ROW\\s+LEVEL\\s+SECURITY`, "gi") },
+];
+
+const FOREACH_RE = /FOREACH\s+(\w+)\s+IN\s+ARRAY\s+ARRAY\s*\[/gi;
+
+/**
+ * Strip `#` comments from YAML so a WIRED check cannot be satisfied by a
+ * workflow that merely TALKS about the file it is supposed to run. Both C5 and
+ * C8 name a path that also appears in this repo's workflow prose, and
+ * "commented-out step still reads as wired" is a failure mode issue #1607 had
+ * to close in this same directory. Quoted `#` is preserved.
+ */
+export function stripYamlComments(text) {
+  return text
+    .split("\n")
+    .map((line) => {
+      let quote = null;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (quote) {
+          if (ch === quote) quote = null;
+        } else if (ch === '"' || ch === "'") {
+          quote = ch;
+        } else if (ch === "#" && (i === 0 || /\s/.test(line[i - 1]))) {
+          return line.slice(0, i);
+        }
+      }
+      return line;
+    })
+    .join("\n");
 }
+
+const isPlaceholder = (name) => name.startsWith("%");
 
 function matches(re, text) {
   re.lastIndex = 0;
@@ -217,70 +336,160 @@ function matches(re, text) {
   return out;
 }
 
-/** Ordered create/drop/enable events for ONE migration file. */
-export function eventsForFile(rawSql) {
-  const clean = maskComments(rawSql);
-  const { top, doBodies } = segment(clean);
-  const events = [];
+/** Table-level DDL found in `text`, each as `{ kind, name, at }`. */
+function ddlIn(text, offset = 0) {
+  const out = [];
+  for (const { kind, re } of DDL_PATTERNS) {
+    for (const m of matches(re, text)) {
+      out.push({ kind, name: m[1].replace(/"/g, ""), at: offset + m.index });
+    }
+  }
+  return out;
+}
 
-  for (const m of matches(CREATE_RE, top)) events.push({ at: m.index, kind: "create", table: m[1] });
-  for (const m of matches(DROP_RE, top)) events.push({ at: m.index, kind: "drop", table: m[1] });
-  for (const m of matches(ENABLE_RE, top)) events.push({ at: m.index, kind: "enable", table: m[1] });
+/**
+ * `FOREACH v IN ARRAY ARRAY[…] LOOP … END LOOP` bindings inside one `DO` body.
+ * Structure is located on the MASKED text so a `LOOP` inside a string cannot
+ * move the boundary; the array's NAMES are then read from the raw text, because
+ * the array literal is the loop's variable binding, not DDL.
+ */
+export function foreachBindings(body, masked) {
+  const out = [];
+  for (const m of matches(FOREACH_RE, masked)) {
+    const openBracket = masked.indexOf("[", m.index);
+    if (openBracket === -1) continue;
+    const closeBracket = masked.indexOf("]", openBracket);
+    if (closeBracket === -1) continue;
+    const loopKeyword = masked.slice(closeBracket).search(/\bLOOP\b/i);
+    if (loopKeyword === -1) continue;
+    const bodyStart = closeBracket + loopKeyword + 4;
+    const endLoop = masked.slice(bodyStart).search(/\bEND\s+LOOP\b/i);
+    const bodyEnd = endLoop === -1 ? masked.length : bodyStart + endLoop;
+    const names = (body.slice(openBracket, closeBracket).match(/'([^']*)'/g) ?? []).map((s) => s.slice(1, -1));
+    out.push({ variable: m[1], names, start: bodyStart, end: bodyEnd });
+  }
+  return out;
+}
 
-  for (const body of doBodies) {
-    for (const m of matches(CREATE_RE, body.text)) {
-      events.push({ at: body.start + m.index, kind: "create", table: m[1] });
+/**
+ * R3 + R5. Analyse ONE executed `DO` body.
+ * Returns `{ events, unresolved }`. Literal DDL comes from the masked text;
+ * dynamic DDL comes ONLY from `EXECUTE` argument positions.
+ */
+export function analyzeDoBody(body, offset = 0) {
+  const masked = maskStringLiterals(body);
+  const literals = stringLiterals(body);
+  const events = ddlIn(masked, offset);
+  const unresolved = [];
+  const loops = foreachBindings(body, masked);
+
+  const resolve = (at) => loops.filter((l) => at >= l.start && at < l.end);
+
+  for (const m of matches(/\bEXECUTE\b/gi, masked)) {
+    const semi = masked.indexOf(";", m.index);
+    const stmtEnd = semi === -1 ? masked.length : semi;
+    const inRange = literals.filter((l) => l.start >= m.index && l.end <= stmtEnd + 1);
+
+    if (inRange.length === 0) {
+      // R5. `EXECUTE v_sql` where the statement was built up in a variable. The
+      // DDL is genuinely unreadable from here; refuse rather than assume it is
+      // harmless, because the harmless assumption is the one that hides a table.
+      unresolved.push({
+        kind: "opaque",
+        at: offset + m.index,
+        excerpt: body.slice(m.index, Math.min(stmtEnd + 1, m.index + 90)).replace(/\s+/g, " "),
+      });
+      continue;
     }
-    for (const m of matches(DROP_RE, body.text)) {
-      events.push({ at: body.start + m.index, kind: "drop", table: m[1] });
+
+    // Maximal runs of ADJACENT literals (separated only by whitespace) are how
+    // plpgsql spells a long format template across several lines. An argument
+    // like `v_table || '_team_read'` is a separate, non-adjacent run and cannot
+    // graft itself onto the template.
+    const runs = [];
+    for (const lit of inRange) {
+      const prev = runs[runs.length - 1];
+      if (prev && /^\s*$/.test(body.slice(prev.end, lit.start))) {
+        prev.text += lit.inner;
+        prev.end = lit.end;
+      } else {
+        runs.push({ text: lit.inner, start: lit.start, end: lit.end });
+      }
     }
-    for (const m of matches(ENABLE_RE, body.text)) {
-      events.push({ at: body.start + m.index, kind: "enable", table: m[1] });
-    }
-    // The dynamic form: FOREACH over a literal array, enabling RLS by %I.
-    for (const m of matches(FOREACH_RE, body.text)) {
-      const [, loopVar, arrayLiteral, loopBody] = m;
-      const dynamicEnable = new RegExp(
-        `ALTER\\s+TABLE\\s+public\\.%I\\s+ENABLE\\s+ROW\\s+LEVEL\\s+SECURITY[\\s\\S]{0,120}?\\b${loopVar}\\b`,
-        "i",
-      );
-      if (!dynamicEnable.test(loopBody)) continue;
-      for (const lit of arrayLiteral.match(/'([^']*)'/g) ?? []) {
-        events.push({ at: body.start + m.index, kind: "enable", table: lit.slice(1, -1) });
+
+    for (const run of runs) {
+      for (const found of ddlIn(run.text)) {
+        if (!isPlaceholder(found.name)) {
+          events.push({ kind: found.kind, name: found.name, at: offset + run.start });
+          continue;
+        }
+        const bound = resolve(m.index);
+        const names = bound.flatMap((l) => l.names);
+        if (names.length > 0) {
+          for (const name of names) events.push({ kind: found.kind, name, at: offset + run.start });
+          continue;
+        }
+        if (found.kind === "drop") continue; // R5: safe direction, left in scope.
+        unresolved.push({
+          kind: found.kind,
+          at: offset + run.start,
+          excerpt: run.text.replace(/\s+/g, " ").slice(0, 120),
+        });
       }
     }
   }
 
+  return { events, unresolved };
+}
+
+/** Ordered create/drop/enable/disable events for ONE migration file. */
+export function eventsForFile(rawSql) {
+  const clean = maskComments(rawSql);
+  const { top, doBodies } = segment(clean);
+  const events = ddlIn(top);
+  const unresolved = [];
+
+  for (const body of doBodies) {
+    const analysed = analyzeDoBody(body.text, body.start);
+    events.push(...analysed.events);
+    unresolved.push(...analysed.unresolved);
+  }
+
   events.sort((a, b) => a.at - b.at);
-  return events;
+  return { events, unresolved };
 }
 
 /**
  * Replay the whole chain in filename order.
- * A re-CREATE resets the table's RLS state — a fresh table starts with RLS off,
- * so a drop-then-recreate must re-enable or it is a hole.
+ * R6: a re-CREATE resets the table's RLS state (a fresh table starts with RLS
+ * off) and a DISABLE clears it, so a later event always wins over an earlier one.
  */
 export function replayChain(files) {
   const live = new Set();
   const rlsOn = new Set();
+  const unresolved = [];
   let createCount = 0;
   let enableCount = 0;
   for (const file of [...files].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
-    for (const ev of eventsForFile(file.sql)) {
+    const parsed = eventsForFile(file.sql);
+    for (const u of parsed.unresolved) unresolved.push({ ...u, file: file.name });
+    for (const ev of parsed.events) {
       if (ev.kind === "create") {
-        live.add(ev.table);
-        rlsOn.delete(ev.table);
+        live.add(ev.name);
+        rlsOn.delete(ev.name);
         createCount++;
       } else if (ev.kind === "drop") {
-        live.delete(ev.table);
-        rlsOn.delete(ev.table);
-      } else {
-        rlsOn.add(ev.table);
+        live.delete(ev.name);
+        rlsOn.delete(ev.name);
+      } else if (ev.kind === "enable") {
+        rlsOn.add(ev.name);
         enableCount++;
+      } else {
+        rlsOn.delete(ev.name);
       }
     }
   }
-  return { live, rlsOn, createCount, enableCount };
+  return { live, rlsOn, unresolved, createCount, enableCount };
 }
 
 // ---------------------------------------------------------------------------
@@ -294,11 +503,23 @@ export function replayChain(files) {
  * @param {{name:string, sql:string}[]} a.files          migration files
  * @param {unknown}                     a.allowlistJson  parsed rls-allowlist.json
  * @param {string|null}                 a.workflowText   the live-half workflow, or null
- * @param {string|null}                 a.coverageSource scripts/audit/rls-coverage.mjs, or null
- * @param {boolean}                     [a.enforceFloor] apply MIN_LIVE_TABLES (real repo only)
+ * @param {string|null}                 a.retiredAuditSource  source of the RETIRED
+ *        predecessor audit if it has reappeared on disk, else null (C6)
+ * @param {string|null}    [a.adversarialWorkflowText] the workflow that runs the
+ *        tester-owned adversarial suite, or null if it is missing (C8)
+ * @param {boolean}        [a.adversarialSuiteExists]  whether that suite is on disk (C8)
+ * @param {boolean}                     [a.enforceFloor] apply MIN_LIVE_TABLES
  * @returns {string[]} failures
  */
-export function runChecks({ files, allowlistJson, workflowText, coverageSource, enforceFloor = true }) {
+export function runChecks({
+  files,
+  allowlistJson,
+  workflowText,
+  retiredAuditSource = null,
+  adversarialWorkflowText = undefined,
+  adversarialSuiteExists = undefined,
+  enforceFloor = true,
+}) {
   const failures = [];
 
   // C4 — anti-vacuity. Discovering nothing is a FAILURE, never a pass.
@@ -310,7 +531,7 @@ export function runChecks({ files, allowlistJson, workflowText, coverageSource, 
     return failures;
   }
 
-  const { live, rlsOn, createCount, enableCount } = replayChain(files);
+  const { live, rlsOn, unresolved, createCount, enableCount } = replayChain(files);
 
   if (createCount === 0) {
     failures.push(
@@ -336,7 +557,24 @@ export function runChecks({ files, allowlistJson, workflowText, coverageSource, 
     return failures;
   }
 
-  // C2 — the exemption list is EXACTLY the reviewed one.
+  // C7 — R5. Fail closed on dynamic DDL this parser cannot resolve. Reported
+  // BEFORE C1 because an unresolved create means the C1 answer is incomplete.
+  for (const u of unresolved) {
+    failures.push(
+      u.kind === "opaque"
+        ? `C7: ${u.file} runs EXECUTE on a statement with no literal argument, so its DDL ` +
+          `cannot be read: "${u.excerpt}". A statement built up in a variable could create a ` +
+          `table this gate would never see. Inline the DDL, or drive it from a FOREACH-bound ` +
+          `format() template. Refusing is deliberate — ignoring it is how a table goes missing.`
+        : `C7: ${u.file} runs a dynamic ${u.kind.toUpperCase()} whose table cannot be resolved: ` +
+          `"${u.excerpt}". It is not inside a FOREACH … ARRAY[…] loop this gate can read, so the ` +
+          `table names are unknown. A dynamic CREATE that cannot be resolved makes a table ` +
+          `INVISIBLE here — a false green on a genuinely unprotected schema.`,
+    );
+  }
+
+  // C2 — the exemption list is EXACTLY the reviewed one. Equality only: this
+  // file is never consulted when deciding violations, so it can fail but never excuse.
   const declared = Array.isArray(allowlistJson?.tables) ? allowlistJson.tables : null;
   if (declared === null) {
     failures.push(`C2: ${ALLOWLIST_PATH} has no "tables" array. It is the only exemption list; it must exist.`);
@@ -347,7 +585,7 @@ export function runChecks({ files, allowlistJson, workflowText, coverageSource, 
       failures.push(
         `C2: ${ALLOWLIST_PATH} lists [${got.join(", ")}] but the reviewed exemption set is ` +
           `[${want.join(", ")}]. Every extra name is a table nobody is constraining. ` +
-          `Widening this list means editing EXEMPT in ${"issue-1860-public-tables-rls-enabled.mjs"} ` +
+          `Widening this list means editing EXEMPT in issue-1860-public-tables-rls-enabled.mjs ` +
           `too — deliberately, in a reviewed diff, with a reason.`,
       );
     }
@@ -379,7 +617,7 @@ export function runChecks({ files, allowlistJson, workflowText, coverageSource, 
   // C5 — the live half must stay wired, or this static half is all that is left.
   if (workflowText === null) {
     failures.push(`C5: ${LIVE_TEST_WORKFLOW} is missing. The live catalog half of #1860 runs there.`);
-  } else if (!workflowText.includes(LIVE_TEST_PATH)) {
+  } else if (!stripYamlComments(workflowText).includes(LIVE_TEST_PATH)) {
     failures.push(
       `C5: ${LIVE_TEST_WORKFLOW} no longer invokes ${LIVE_TEST_PATH}. Source parsing ` +
         `cannot see pg_class; that file is the only thing asserting the REAL applied ` +
@@ -387,25 +625,86 @@ export function runChecks({ files, allowlistJson, workflowText, coverageSource, 
     );
   }
 
-  // C6 — no blanket prefix laundering in the predecessor audit. The nine-name
-  // allowlist was only half the hole; the other half was `if
-  // (table.startsWith("_archive_")) continue;`, an exemption channel with no
-  // list, no review and no record.
-  // Comments are stripped first: a comment SAYING `.startsWith(` (this rule is
-  // documented at the removal site) is not a code path, and a gate that cannot
-  // tell the two apart is a gate nobody can explain themselves to.
-  if (coverageSource === null) {
-    failures.push(`C6: ${COVERAGE_AUDIT_PATH} is missing; it is the predecessor audit C2 pins the allowlist for.`);
-  } else if (/\.startsWith\(/.test(stripJsComments(coverageSource))) {
+  // C6 — the retired predecessor audit must stay retired.
+  //
+  // It was deleted at #1860 TEST, on the tester's recommendation and the
+  // orchestrator's approval, for reasons that cannot be patched: its CREATE and
+  // DROP patterns matched only the double-quoted dump style, so every table
+  // created since the baseline was invisible to it — it was green because it
+  // barely looked — while presenting as a second independent audit of this
+  // ground. Two audits of unequal strength claiming the same ground is the
+  // condition that produced this issue.
+  //
+  // This rule replaces an earlier one that banned a single `.startsWith(`
+  // spelling of its prefix-skip laundering channel; a regex spelling walked
+  // straight past that. Policing spellings of a hazard inside a file is a losing
+  // game — the file is gone, and this keeps it gone.
+  if (retiredAuditSource !== null) {
     failures.push(
-      `C6: ${COVERAGE_AUDIT_PATH} contains a .startsWith( prefix test. A prefix skip is ` +
-        `an unbounded, unreviewed exemption list — exactly how two archive tables sat ` +
-        `outside RLS without ever appearing on one. Exemptions go in ${ALLOWLIST_PATH}.`,
+      `C6: ${RETIRED_AUDIT_PATH} is back on disk. It was retired at #1860 because it was ` +
+        `near-vacuous (dump-style patterns only) while reading as a second audit of the same ` +
+        `ground. Restoring it re-creates the "two audits of unequal strength" condition this ` +
+        `issue came from. If a second audit is genuinely wanted, it needs its own review, not ` +
+        `a resurrection.`,
     );
+  }
+
+  // C8 — the tester-owned adversarial suite must stay on disk AND stay wired.
+  //
+  // It lives outside `.github/scripts/strict-grep/`, so MANIFEST.json does not
+  // sweep it and run-batch.mjs does not run it — it has no ORCH-1383 protection
+  // of its own. It is also the only suite that anchors this gate to the REAL
+  // chain (replay without the #1860 migration and require the answer to change),
+  // so losing it would leave a fixture-only proof of a repo-wide claim. Checked
+  // on COMMENT-STRIPPED yaml: a commented-out step reads as wired to a plain
+  // substring match, which is a mistake this directory has already made once.
+  //
+  // Skipped when the caller does not supply the inputs, so fixture-driven
+  // callers (the self-test, the adversarial suite itself) are not forced to
+  // model CI wiring that is not what they are testing.
+  if (adversarialSuiteExists !== undefined || adversarialWorkflowText !== undefined) {
+    if (adversarialSuiteExists === false) {
+      failures.push(
+        `C8: ${ADVERSARIAL_SUITE_PATH} does not exist. It is the only suite anchoring this ` +
+          `gate to the real migration chain; without it, "zero violations" is equally ` +
+          `consistent with a parser that has stopped seeing tables.`,
+      );
+    }
+    if (adversarialWorkflowText == null) {
+      failures.push(
+        `C8: ${ADVERSARIAL_WORKFLOW} is missing. Nothing in MANIFEST.json sweeps ` +
+          `${ADVERSARIAL_SUITE_PATH}, so that workflow is the only thing running it.`,
+      );
+    } else if (!stripYamlComments(adversarialWorkflowText).includes(ADVERSARIAL_SUITE_PATH)) {
+      failures.push(
+        `C8: ${ADVERSARIAL_WORKFLOW} no longer invokes ${ADVERSARIAL_SUITE_PATH} in executable ` +
+          `(non-comment) yaml. A gate on disk that no job runs is the dark-gate shape this repo ` +
+          `has produced six times.`,
+      );
+    }
   }
 
   return failures;
 }
+
+// ---------------------------------------------------------------------------
+// Real-chain loading, shared by the repo scan and by the anchored self-tests.
+// ---------------------------------------------------------------------------
+
+export function loadChain({ includeFix = true } = {}) {
+  const abs = join(root, MIGRATIONS_DIR);
+  if (!existsSync(abs)) return [];
+  return readdirSync(abs)
+    .filter((f) => f.endsWith(".sql"))
+    .filter((f) => (includeFix ? true : !f.endsWith(FIX_MIGRATION_MARKER)))
+    .sort()
+    .map((f) => ({ name: f, sql: readFileSync(join(abs, f), "utf8") }));
+}
+
+const readOrNull = (rel) => {
+  const abs = join(root, rel);
+  return existsSync(abs) ? readFileSync(abs, "utf8") : null;
+};
 
 // ---------------------------------------------------------------------------
 // Self-test.
@@ -419,10 +718,6 @@ function selfTest() {
     results.push({ label, ok, failures });
   };
 
-  const GOOD_ALLOWLIST = { tables: ["spatial_ref_sys"] };
-  const GOOD_WORKFLOW = `        run: |\n          psql -f ${LIVE_TEST_PATH}\n`;
-  const GOOD_COVERAGE = `const allow = JSON.parse(readFileSync("${ALLOWLIST_PATH}"));\n`;
-
   const base = (over = {}) => ({
     files: [
       {
@@ -435,85 +730,115 @@ ALTER TABLE public.ok_unquoted ENABLE ROW LEVEL SECURITY;
 `,
       },
     ],
-    allowlistJson: GOOD_ALLOWLIST,
-    workflowText: GOOD_WORKFLOW,
-    coverageSource: GOOD_COVERAGE,
+    allowlistJson: { tables: ["spatial_ref_sys"] },
+    workflowText: `        run: |\n          psql -f ${LIVE_TEST_PATH}\n`,
+    retiredAuditSource: null,
     enforceFloor: false,
     ...over,
   });
 
-  // T-1 GOOD — a clean chain passes.
+  const one = (sql) => base({ files: [{ name: "001.sql", sql: `CREATE TABLE "public"."anchor" (id uuid);\nALTER TABLE "public"."anchor" ENABLE ROW LEVEL SECURITY;\n${sql}` }] });
+
+  // ---- the rule ----------------------------------------------------------
   check("T-1 clean chain passes", runChecks(base()), false);
 
-  // T-2 THE CORE. A table created without RLS must FAIL. A gate that passes on a
+  // THE CORE. A table created without RLS must FAIL. A gate that passes on a
   // broken schema is worse than no gate, and this repo has shipped that before.
-  check(
-    "T-2 a table with RLS off FAILS",
-    runChecks(
-      base({
-        files: [
-          {
-            name: "001.sql",
-            sql: `CREATE TABLE "public"."ok" (id uuid);
-ALTER TABLE "public"."ok" ENABLE ROW LEVEL SECURITY;
-CREATE TABLE "public"."naked" (id uuid);`,
-          },
-        ],
-      }),
-    ),
-    true,
-    "C1: public.naked",
-  );
+  check("T-2 a table with RLS off FAILS", runChecks(one(`CREATE TABLE "public"."naked" (id uuid);`)), true, "C1: public.naked");
 
-  // T-3 The comment-poisoning trap: a DROP inside a COMMENT body is not a drop,
-  // so the table stays in scope and its missing RLS is still reported.
+  // ---- R1: comments are never DDL ---------------------------------------
   check(
     "T-3 a DROP inside a COMMENT string does not hide a table",
     runChecks(
-      base({
-        files: [
-          {
-            name: "001.sql",
-            sql: `CREATE TABLE "public"."ok" (id uuid);
-ALTER TABLE "public"."ok" ENABLE ROW LEVEL SECURITY;
-CREATE TABLE "public"."ghost" (id uuid);
-COMMENT ON TABLE "public"."ghost" IS 'after this date the operator runs: DROP TABLE public.ghost;';`,
-          },
-        ],
-      }),
+      one(`CREATE TABLE "public"."ghost" (id uuid);
+COMMENT ON TABLE "public"."ghost" IS 'after this date the operator runs: DROP TABLE public.ghost;';`),
     ),
     true,
     "C1: public.ghost",
   );
-
-  // T-4 A real statement-level DROP does remove the table from scope.
   check(
-    "T-4 a real DROP removes the table from scope",
+    "T-4 an ENABLE written as prose does not launder a table green",
     runChecks(
-      base({
-        files: [
-          {
-            name: "001.sql",
-            sql: `CREATE TABLE "public"."ok" (id uuid);
-ALTER TABLE "public"."ok" ENABLE ROW LEVEL SECURITY;
-CREATE TABLE "public"."temp_thing" (id uuid);
-DROP TABLE "public"."temp_thing";`,
-          },
-        ],
-      }),
+      one(`CREATE TABLE "public"."prose" (id uuid);
+-- ALTER TABLE public.prose ENABLE ROW LEVEL SECURITY;
+COMMENT ON TABLE "public"."prose" IS 'ALTER TABLE public.prose ENABLE ROW LEVEL SECURITY';`),
+    ),
+    true,
+    "C1: public.prose",
+  );
+
+  // ---- R2: literals inside DO bodies are never DDL (the F-1 regression) --
+  check(
+    "T-5 [F-1] a RAISE NOTICE inside a DO block cannot fake an ENABLE",
+    runChecks(
+      one(`CREATE TABLE public.notice_laundered (id uuid);
+DO $b$ BEGIN
+  RAISE NOTICE 'ALTER TABLE public.notice_laundered ENABLE ROW LEVEL SECURITY';
+END $b$;`),
+    ),
+    true,
+    "C1: public.notice_laundered",
+  );
+  check(
+    "T-6 [F-1] a variable assignment inside a DO block cannot fake an ENABLE",
+    runChecks(
+      one(`CREATE TABLE public.assigned (id uuid);
+DO $b$ DECLARE v text; BEGIN
+  v := 'ALTER TABLE public.assigned ENABLE ROW LEVEL SECURITY';
+END $b$;`),
+    ),
+    true,
+    "C1: public.assigned",
+  );
+  check(
+    "T-7 [F-1] a RAISE EXCEPTION inside a DO block cannot fake an ENABLE",
+    runChecks(
+      one(`CREATE TABLE public.raised (id uuid);
+DO $b$ BEGIN
+  IF false THEN RAISE EXCEPTION 'ALTER TABLE public.raised ENABLE ROW LEVEL SECURITY'; END IF;
+END $b$;`),
+    ),
+    true,
+    "C1: public.raised",
+  );
+  check(
+    "T-8 [F-1] a DROP inside a DO-body string does NOT hide a live table",
+    runChecks(
+      one(`CREATE TABLE public.hidden_by_do (id uuid);
+DO $b$ BEGIN
+  RAISE NOTICE 'housekeeping: DROP TABLE public.hidden_by_do;';
+END $b$;`),
+    ),
+    true,
+    "C1: public.hidden_by_do",
+  );
+  check(
+    "T-9 [F-1] a dollar-quoted literal inside a DO block cannot fake an ENABLE",
+    runChecks(
+      one(`CREATE TABLE public.dollar_laundered (id uuid);
+DO $b$ DECLARE v text; BEGIN
+  v := $q$ALTER TABLE public.dollar_laundered ENABLE ROW LEVEL SECURITY$q$;
+END $b$;`),
+    ),
+    true,
+    "C1: public.dollar_laundered",
+  );
+
+  // ---- R3: genuine DDL still counts, in every shape the chain uses -------
+  check(
+    "T-10 literal DDL inside a DO block counts",
+    runChecks(
+      one(`CREATE TABLE public.in_do (id uuid);
+DO $b$ BEGIN
+  ALTER TABLE public.in_do ENABLE ROW LEVEL SECURITY;
+END $b$;`),
     ),
     false,
   );
-
-  // T-5 The DO-block FOREACH loop counts as enabling RLS (else ~45 false positives).
   check(
-    "T-5 a DO-block FOREACH loop enables RLS",
+    "T-11 a DO-block FOREACH loop enables RLS",
     runChecks(
-      base({
-        files: [
-          {
-            name: "001.sql",
-            sql: `CREATE TABLE public.loop_a (id uuid);
+      one(`CREATE TABLE public.loop_a (id uuid);
 CREATE TABLE public.loop_b (id uuid);
 DO $block$
 DECLARE v_table text;
@@ -529,26 +854,24 @@ BEGIN
     );
   END LOOP;
 END;
-$block$;`,
-          },
-        ],
-      }),
+$block$;`),
     ),
     false,
   );
-
-  // T-6 The mirror: the SAME text inside a CREATE FUNCTION body is stored, not
-  // executed, and must NOT count.
   check(
-    "T-6 the same loop inside a CREATE FUNCTION body does NOT count",
+    "T-12 an EXECUTE of a literal DDL string counts",
     runChecks(
-      base({
-        files: [
-          {
-            name: "001.sql",
-            sql: `CREATE TABLE "public"."ok" (id uuid);
-ALTER TABLE "public"."ok" ENABLE ROW LEVEL SECURITY;
-CREATE TABLE public.dormant (id uuid);
+      one(`CREATE TABLE public.exec_literal (id uuid);
+DO $b$ BEGIN
+  EXECUTE 'ALTER TABLE public.exec_literal ENABLE ROW LEVEL SECURITY';
+END $b$;`),
+    ),
+    false,
+  );
+  check(
+    "T-13 [R4] the same loop inside a CREATE FUNCTION body does NOT count",
+    runChecks(
+      one(`CREATE TABLE public.dormant (id uuid);
 CREATE OR REPLACE FUNCTION public.someday() RETURNS void LANGUAGE plpgsql AS $function$
 DECLARE v_table text;
 BEGIN
@@ -556,103 +879,218 @@ BEGIN
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v_table);
   END LOOP;
 END;
-$function$;`,
-          },
-        ],
-      }),
+$function$;`),
     ),
     true,
     "C1: public.dormant",
   );
 
-  // T-7 Drop-then-recreate resets RLS; the second table must re-enable.
+  // ---- F-2 + R5: dynamic creates ----------------------------------------
   check(
-    "T-7 a re-CREATE after a DROP resets RLS state",
+    "T-14 [F-2] a table CREATEd by a FOREACH format() loop is visible and its missing RLS FAILS",
+    runChecks(
+      one(`DO $block$
+DECLARE v_table text;
+BEGIN
+  FOREACH v_table IN ARRAY ARRAY['dynamic_naked'] LOOP
+    EXECUTE format('CREATE TABLE public.%I (id uuid)', v_table);
+  END LOOP;
+END;
+$block$;`),
+    ),
+    true,
+    "C1: public.dynamic_naked",
+  );
+  check(
+    "T-15 [F-2] a FOREACH-created table WITH an enable in the same loop passes",
+    runChecks(
+      one(`DO $block$
+DECLARE v_table text;
+BEGIN
+  FOREACH v_table IN ARRAY ARRAY['dynamic_ok'] LOOP
+    EXECUTE format('CREATE TABLE public.%I (id uuid)', v_table);
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', v_table);
+  END LOOP;
+END;
+$block$;`),
+    ),
+    false,
+  );
+  check(
+    "T-16 [F-2/R5] an UNRESOLVABLE dynamic CREATE fails CLOSED",
+    runChecks(
+      one(`DO $b$ DECLARE v text; BEGIN
+  v := 'orphan';
+  EXECUTE format('CREATE TABLE public.%I (id uuid)', v);
+END $b$;`),
+    ),
+    true,
+    "C7:",
+  );
+  check(
+    "T-17 [R5] an EXECUTE with no literal argument fails CLOSED",
+    runChecks(
+      one(`DO $b$ DECLARE v_sql text; BEGIN
+  v_sql := 'something';
+  EXECUTE v_sql;
+END $b$;`),
+    ),
+    true,
+    "C7:",
+  );
+  check(
+    "T-18 [R5] an unresolvable dynamic DROP is the SAFE direction and is NOT a failure",
+    runChecks(
+      one(`DO $b$ DECLARE v text; BEGIN
+  v := 'anchor';
+  EXECUTE format('DROP TABLE public.%I', v);
+END $b$;`),
+    ),
+    false,
+  );
+
+  // ---- F-3 + R6: RLS can be turned back off -----------------------------
+  check(
+    "T-19 [F-3] a later DISABLE clears an earlier ENABLE",
+    runChecks(
+      one(`CREATE TABLE public.reopened (id uuid);
+ALTER TABLE public.reopened ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reopened DISABLE ROW LEVEL SECURITY;`),
+    ),
+    true,
+    "C1: public.reopened",
+  );
+  check(
+    "T-20 [F-3] a DISABLE in a LATER migration file also counts",
     runChecks(
       base({
         files: [
-          {
-            name: "001.sql",
-            sql: `CREATE TABLE "public"."recycled" (id uuid);
-ALTER TABLE "public"."recycled" ENABLE ROW LEVEL SECURITY;`,
-          },
-          {
-            name: "002.sql",
-            sql: `DROP TABLE "public"."recycled";
-CREATE TABLE "public"."recycled" (id uuid, extra text);`,
-          },
+          { name: "001.sql", sql: `CREATE TABLE public.later (id uuid);\nALTER TABLE public.later ENABLE ROW LEVEL SECURITY;` },
+          { name: "002.sql", sql: `ALTER TABLE public.later DISABLE ROW LEVEL SECURITY;` },
+        ],
+      }),
+      ),
+    true,
+    "C1: public.later",
+  );
+  check(
+    "T-21 [F-3] a DISABLE inside a DO-body STRING is prose and does not re-open a table",
+    runChecks(
+      one(`CREATE TABLE public.safe (id uuid);
+ALTER TABLE public.safe ENABLE ROW LEVEL SECURITY;
+DO $b$ BEGIN RAISE NOTICE 'never do: ALTER TABLE public.safe DISABLE ROW LEVEL SECURITY'; END $b$;`),
+    ),
+    false,
+  );
+  check(
+    "T-22 [R6] a re-CREATE after a DROP resets RLS state",
+    runChecks(
+      base({
+        files: [
+          { name: "001.sql", sql: `CREATE TABLE "public"."recycled" (id uuid);\nALTER TABLE "public"."recycled" ENABLE ROW LEVEL SECURITY;` },
+          { name: "002.sql", sql: `DROP TABLE "public"."recycled";\nCREATE TABLE "public"."recycled" (id uuid, extra text);` },
         ],
       }),
     ),
     true,
     "C1: public.recycled",
   );
+  check("T-23 a real DROP removes the table from scope", runChecks(one(`CREATE TABLE "public"."temp_thing" (id uuid);\nDROP TABLE "public"."temp_thing";`)), false);
 
-  // T-8 Growing the exemption list FAILS.
+  // ---- exemption + wiring ------------------------------------------------
+  check("T-24 a second exemption FAILS", runChecks(base({ allowlistJson: { tables: ["spatial_ref_sys", "seed_map_presence"] } })), true, "C2:");
+  check("T-25 an empty exemption list FAILS", runChecks(base({ allowlistJson: { tables: [] } })), true, "C2:");
   check(
-    "T-8 a second exemption FAILS",
-    runChecks(base({ allowlistJson: { tables: ["spatial_ref_sys", "seed_map_presence"] } })),
-    true,
-    "C2:",
-  );
-
-  // T-9 Emptying the exemption list also FAILS — it must be exactly the reviewed set.
-  check("T-9 an empty exemption list FAILS", runChecks(base({ allowlistJson: { tables: [] } })), true, "C2:");
-
-  // T-10 An exemption for a table WE create is meaningless and FAILS.
-  check(
-    "T-10 exempting a table this repo creates FAILS",
-    runChecks(
-      base({
-        files: [
-          {
-            name: "001.sql",
-            sql: `CREATE TABLE "public"."ok" (id uuid);
-ALTER TABLE "public"."ok" ENABLE ROW LEVEL SECURITY;
-CREATE TABLE "public"."spatial_ref_sys" (srid integer);
-ALTER TABLE "public"."spatial_ref_sys" ENABLE ROW LEVEL SECURITY;`,
-          },
-        ],
-      }),
-    ),
+    "T-26 exempting a table this repo creates FAILS",
+    runChecks(one(`CREATE TABLE "public"."spatial_ref_sys" (srid integer);\nALTER TABLE "public"."spatial_ref_sys" ENABLE ROW LEVEL SECURITY;`)),
     true,
     "C3:",
   );
-
-  // T-11 Un-wiring the live catalog half FAILS.
+  check("T-27 un-wiring the live SQL test FAILS", runChecks(base({ workflowText: "jobs:\n  migrations:\n    steps: []\n" })), true, "C5:");
   check(
-    "T-11 un-wiring the live SQL test FAILS",
-    runChecks(base({ workflowText: "jobs:\n  migrations:\n    steps: []\n" })),
+    "T-27b [C5] a COMMENTED-OUT live-test line does not count as wired",
+    runChecks(base({ workflowText: `jobs:\n  migrations:\n    steps:\n      # - run: psql -f ${LIVE_TEST_PATH}\n` })),
     true,
     "C5:",
   );
-
-  // T-12 Re-adding a blanket prefix skip to the predecessor audit FAILS.
   check(
-    "T-12 a .startsWith( prefix skip in the audit FAILS",
-    runChecks(base({ coverageSource: `if (table.startsWith("_archive_")) continue;` })),
+    "T-28 [F-4] resurrecting the retired predecessor audit FAILS, whatever it contains",
+    runChecks(base({ retiredAuditSource: `if (/^_archive_/.test(table)) continue;` })),
     true,
     "C6:",
   );
 
-  // T-13 Vacuity: zero files must FAIL.
-  check("T-13 zero migration files FAILS", runChecks(base({ files: [] })), true, "C4 [vacuity]");
-
-  // T-14 Vacuity: files with no CREATE TABLE must FAIL.
+  // ---- C8: the tester-owned adversarial suite cannot go dark -------------
+  const wiredAdversarial = `      - run: node --test ${ADVERSARIAL_SUITE_PATH}\n`;
   check(
-    "T-14 a chain with no CREATE TABLE FAILS",
-    runChecks(base({ files: [{ name: "001.sql", sql: "SELECT 1;" }] })),
+    "T-28b [C8] a properly wired adversarial suite passes",
+    runChecks(base({ adversarialSuiteExists: true, adversarialWorkflowText: wiredAdversarial })),
+    false,
+  );
+  check(
+    "T-28c [C8] deleting the adversarial suite FAILS",
+    runChecks(base({ adversarialSuiteExists: false, adversarialWorkflowText: wiredAdversarial })),
     true,
-    "C4 [vacuity]",
+    "C8:",
+  );
+  check(
+    "T-28d [C8] a workflow that only MENTIONS the suite in a comment FAILS",
+    runChecks(
+      base({
+        adversarialSuiteExists: true,
+        adversarialWorkflowText: `      # runs ${ADVERSARIAL_SUITE_PATH} one day\n      - run: echo skip\n`,
+      }),
+    ),
+    true,
+    "C8:",
+  );
+  check(
+    "T-28e [C8] deleting the adversarial workflow FAILS",
+    runChecks(base({ adversarialSuiteExists: true, adversarialWorkflowText: null })),
+    true,
+    "C8:",
   );
 
-  // T-15 Vacuity: the live-table floor fires when enforced.
-  check(
-    "T-15 the live-table floor FAILS a tiny chain",
-    runChecks(base({ enforceFloor: true })),
-    true,
-    "C4 [vacuity]",
-  );
+  // ---- vacuity -----------------------------------------------------------
+  check("T-29 zero migration files FAILS", runChecks(base({ files: [] })), true, "C4 [vacuity]");
+  check("T-30 a chain with no CREATE TABLE FAILS", runChecks(base({ files: [{ name: "001.sql", sql: "SELECT 1;" }] })), true, "C4 [vacuity]");
+  check("T-31 the live-table floor FAILS a tiny chain", runChecks(base({ enforceFloor: true })), true, "C4 [vacuity]");
+
+  // ---- ANCHORED TO THE REAL CHAIN ---------------------------------------
+  // The #1860 tester proved the previous fixture-only suite stayed 15/15 green
+  // when the real migration was deleted line by line. A suite that can only ever
+  // be asked questions it ships the answers to cannot tell a working gate from a
+  // deleted fix. These two read the chain on disk.
+  const realChain = loadChain();
+  const realInputs = {
+    allowlistJson: { tables: [...EXEMPT] },
+    workflowText: `psql -f ${LIVE_TEST_PATH}`,
+    retiredAuditSource: null,
+    enforceFloor: true,
+  };
+  {
+    const failures = runChecks({ ...realInputs, files: realChain });
+    results.push({
+      label: "T-32 [ANCHOR] the REAL migration chain leaves no public table without RLS",
+      ok: realChain.length > 400 && failures.length === 0,
+      failures: realChain.length > 400 ? failures : [`read only ${realChain.length} migrations — not the real chain`],
+    });
+  }
+  {
+    const withoutFix = loadChain({ includeFix: false });
+    const failures = runChecks({ ...realInputs, files: withoutFix });
+    const c1 = failures.filter((f) => f.startsWith("C1:"));
+    results.push({
+      label: "T-33 [ANCHOR] removing the #1860 migration makes the REAL chain FAIL",
+      ok: realChain.length - withoutFix.length === 1 && c1.length >= 10,
+      failures:
+        realChain.length - withoutFix.length === 1
+          ? c1.length >= 10
+            ? []
+            : [`only ${c1.length} C1 violations with the fix removed; the fix is not load-bearing, so T-32 proves nothing`]
+          : [`expected exactly one migration matching ${FIX_MIGRATION_MARKER}`],
+    });
+  }
 
   const failed = results.filter((r) => !r.ok);
   for (const r of results) {
@@ -672,18 +1110,7 @@ ALTER TABLE "public"."spatial_ref_sys" ENABLE ROW LEVEL SECURITY;`,
 // ---------------------------------------------------------------------------
 
 function main() {
-  const migrationsAbs = join(root, MIGRATIONS_DIR);
-  const files = existsSync(migrationsAbs)
-    ? readdirSync(migrationsAbs)
-        .filter((f) => f.endsWith(".sql"))
-        .sort()
-        .map((f) => ({ name: f, sql: readFileSync(join(migrationsAbs, f), "utf8") }))
-    : [];
-
-  const readOrNull = (rel) => {
-    const abs = join(root, rel);
-    return existsSync(abs) ? readFileSync(abs, "utf8") : null;
-  };
+  const files = loadChain();
 
   let allowlistJson = null;
   const allowlistRaw = readOrNull(ALLOWLIST_PATH);
@@ -708,7 +1135,9 @@ function main() {
     files,
     allowlistJson,
     workflowText: readOrNull(LIVE_TEST_WORKFLOW),
-    coverageSource: readOrNull(COVERAGE_AUDIT_PATH),
+    retiredAuditSource: readOrNull(RETIRED_AUDIT_PATH),
+    adversarialWorkflowText: readOrNull(ADVERSARIAL_WORKFLOW),
+    adversarialSuiteExists: existsSync(join(root, ADVERSARIAL_SUITE_PATH)),
     enforceFloor: true,
   });
 
@@ -721,7 +1150,8 @@ function main() {
   const { live } = replayChain(files);
   console.log(
     `issue-1860 public-tables-RLS gate passed (${files.length} migrations, ${live.size} live public ` +
-      `tables, ${EXEMPT.length} reviewed exemption: ${EXEMPT.join(", ")}).`,
+      `tables, ${EXEMPT.length} reviewed exemption: ${EXEMPT.join(", ")}). ` +
+      `Scope: RLS is PRESENT on all of them — not that it constrains.`,
   );
 }
 

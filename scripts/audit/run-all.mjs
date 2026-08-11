@@ -13,8 +13,13 @@ import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// `rls-coverage.mjs` was RETIRED and deleted at issue #1860 — near-vacuous
+// (dump-style patterns only) and carrying an unbounded `_archive_` prefix skip,
+// while reading as a real audit of RLS coverage. Its ground is now held by
+// `.github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs` plus the
+// live catalog test. Do not re-add it here; the #1860 gate's C6 rule fails if the
+// file reappears at all.
 const AUDITS = [
-  "rls-coverage.mjs",
   "secrets-scan.mjs",
   "swallowed-errors.mjs",
   "n-plus-one-heuristic.mjs",

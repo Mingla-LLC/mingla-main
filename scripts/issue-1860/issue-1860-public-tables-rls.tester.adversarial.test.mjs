@@ -32,7 +32,7 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -44,7 +44,22 @@ import {
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const MIGRATIONS_DIR = join(ROOT, "supabase", "migrations");
 const ALLOWLIST_PATH = join(ROOT, "scripts", "audit", "rls-allowlist.json");
-const COVERAGE_AUDIT_PATH = join(ROOT, "scripts", "audit", "rls-coverage.mjs");
+/**
+ * #1860 REWORK, [TEST-MOD-APPROVED #1860] — INVERTED PIN, not a weakened one.
+ *
+ * This suite was written against a gate whose C6 rule policed the CONTENTS of
+ * the predecessor audit for one spelling of its prefix-skip laundering channel
+ * (finding F-4: a regex spelling walked straight past it). On this suite's own
+ * recommendation, and with the orchestrator's approval, that file was RETIRED
+ * AND DELETED at REWORK, and C6 was restated as "it must not come back."
+ *
+ * So the pin flips with it: where this suite required the audit's source to be
+ * READ and to be load-bearing, it now requires the file to be ABSENT and its
+ * RESURRECTION to fail the gate. That is strictly stronger — no spelling can
+ * walk past a file that does not exist — and it is the same assertion pointed
+ * the other way, not a removed one.
+ */
+const RETIRED_AUDIT_PATH = join(ROOT, "scripts", "audit", "rls-coverage.mjs");
 const WORKFLOW_PATH = join(
   ROOT,
   ".github",
@@ -73,7 +88,10 @@ function realInputs(over = {}) {
     files: loadMigrations(),
     allowlistJson: JSON.parse(readFileSync(ALLOWLIST_PATH, "utf8")),
     workflowText: readFileSync(WORKFLOW_PATH, "utf8"),
-    coverageSource: readFileSync(COVERAGE_AUDIT_PATH, "utf8"),
+    // null is the CORRECT state: the retired audit is gone (see the note above).
+    retiredAuditSource: existsSync(RETIRED_AUDIT_PATH)
+      ? readFileSync(RETIRED_AUDIT_PATH, "utf8")
+      : null,
     enforceFloor: true,
     ...over,
   };
@@ -101,7 +119,7 @@ function carrier(extraSql) {
 const FIXTURE_INPUTS = {
   allowlistJson: { tables: ["spatial_ref_sys"] },
   workflowText: "supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql",
-  coverageSource: "const allow = readAllowlist();",
+  retiredAuditSource: null,
   enforceFloor: false,
 };
 
@@ -311,12 +329,25 @@ test("#1860 adversarial D2 [VACUITY]: the real-input harness is wired to real fi
   const inputs = realInputs();
   assert.ok(inputs.files.length >= MIN_MIGRATION_FILES);
   assert.ok(inputs.workflowText.includes("issue_1860_public_rls_coverage.test.sql"), "live half not wired");
-  assert.ok(inputs.coverageSource.length > 0, "predecessor audit source not read");
   assert.equal(typeof inputs.allowlistJson, "object");
 
-  // And prove each real input is load-bearing: nulling any one of them must
-  // produce a failure, so a future refactor cannot quietly stop reading one.
-  for (const key of ["workflowText", "coverageSource"]) {
+  // INVERTED at #1860 REWORK, [TEST-MOD-APPROVED #1860]. The retired audit must
+  // be ABSENT, and its return must fail the gate. Previously this required the
+  // file to be READ and nulling it to fail — the exact opposite, because C6 then
+  // policed one spelling inside a file that has since been deleted (F-4).
+  assert.equal(
+    inputs.retiredAuditSource,
+    null,
+    "scripts/audit/rls-coverage.mjs is back on disk; it was retired at #1860 and must stay retired",
+  );
+  assert.ok(
+    runChecks(realInputs({ retiredAuditSource: "anything at all" })).some((f) => f.startsWith("C6:")),
+    "resurrecting the retired audit does not fail the gate; C6 is not actually enforced",
+  );
+
+  // And prove the remaining real input is load-bearing: nulling it must produce
+  // a failure, so a future refactor cannot quietly stop reading it.
+  for (const key of ["workflowText"]) {
     assert.ok(
       runChecks(realInputs({ [key]: null })).length > 0,
       `${key} can be null without failing the gate; it is not actually enforced`,
