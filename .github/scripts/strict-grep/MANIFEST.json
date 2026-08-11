@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 497,
-  "selfTestWiredFloor": 307,
+  "expectedStrictGrepMjsFiles": 498,
+  "selfTestWiredFloor": 308,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -7680,6 +7680,18 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-1792-waiter-mode-structural.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",

@@ -1,14 +1,6 @@
 {
-  "_comment": "Tables intentionally without RLS (service-role-only, archive, or extension-owned). Issue #426 foundation audit.",
+  "_comment": "Issue #1860 — the ONLY table in `public` permitted to run without RLS. It is owned by the PostGIS extension, not by us, and holds published coordinate-system reference data. Nine other names sat here from the #426 audit; every one of them was a real hole, and all nine now have RLS enabled by migration 20270321001860. Adding a name here fails .github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs (C2) unless its EXEMPT constant is changed in the same reviewed diff. That friction is the point.",
   "tables": [
-    "_backup_friends",
-    "_backup_messages",
-    "_backup_profiles",
-    "_backup_user_sessions",
-    "_orch_0588_dead_cards_backup",
-    "_orch_0588_dead_stops_backup",
-    "spatial_ref_sys",
-    "seed_map_presence",
-    "used_trial_phones"
+    "spatial_ref_sys"
   ]
 }

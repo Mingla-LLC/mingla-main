@@ -420,6 +420,19 @@ jobs:
           # for cash while a live bill is out is refused.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1792_waiter_mode_tabs.test.sql
+          # Issue #1860 — every table in `public` has row-level security, bar the
+          # one extension-owned exemption. This is the LIVE half: it reads
+          # pg_class.relrowsecurity on the applied schema, which no grep over
+          # supabase/migrations can do (a third of this schema enables RLS from
+          # inside a DO block, and a DROP sentence inside a COMMENT body already
+          # fooled one static audit into treating a live table as dropped). The
+          # static half is .github/scripts/strict-grep/issue-1860-public-tables-
+          # rls-enabled.mjs, which fails if this line is ever removed. T-05
+          # BECOMES anon, reads, then turns RLS back off inside a savepoint and
+          # reads again — a catalog assertion proves a switch is flipped, not
+          # that anything is refused.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql
 
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"

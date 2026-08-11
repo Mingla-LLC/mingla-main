@@ -1,0 +1,66 @@
+name: "#1860 Public-tables RLS coverage — adversarial suite"
+
+# Issue #1860 — the TESTER-owned adversarial suite for the public-tables RLS
+# gate. It lives outside `.github/scripts/strict-grep/`, so `MANIFEST.json` does
+# not sweep it and `run-batch.mjs` does not run it; without this workflow it
+# would be a gate on disk that no CI job executes — the exact dark-gate shape
+# ORCH-1383 exists to prevent, and the shape that let the predecessor RLS audit
+# sit near-vacuous for months.
+#
+# It is not merely registered here, it is machine-checked: rule C8 of
+# `.github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs` (itself
+# batch:A, so run-batch's executed===expected assertion proves IT ran) requires
+# this workflow to invoke the suite by filename, in a line that is not a
+# comment. Deleting the step, commenting it out, or deleting this file fails
+# that gate. A different gate guards this one, so disabling this does not
+# disable its guard.
+#
+# WHY IT IS NOT IN MANIFEST.json: the suite's own header prose mentions
+# `--self-test` while the file has no such handler, which is exactly the state
+# manifest-parity P6 rejects for `selfTest: "none"`; the honest alternative,
+# `capable-unwired`, is at its P12 cap of 23 and raising a cap to admit a file
+# is the laundering path ORCH-1400 closed. Registering it here instead keeps
+# both ratchets untouched and still leaves the suite un-darkenable, via C8.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "scripts/issue-1860/**"
+      - "scripts/audit/**"
+      - ".github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs"
+      - ".github/workflows/issue-1860-rls-coverage-tests.yml"
+      - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "scripts/issue-1860/**"
+      - "scripts/audit/**"
+      - ".github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs"
+      - ".github/workflows/issue-1860-rls-coverage-tests.yml"
+      - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1860-rls-adversarial:
+    name: "#1860 RLS gate — tester adversarial suite (real chain)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # The suite reads the REAL migration chain and anchors its answer: A3
+      # replays the chain with the #1860 migration removed and requires the same
+      # assertion to FAIL. That is what stops "zero violations" from being
+      # equally consistent with a parser that has stopped seeing tables.
+      - name: "#1860 adversarial suite"
+        run: node --test scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs
