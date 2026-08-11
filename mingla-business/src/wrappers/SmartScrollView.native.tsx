@@ -110,8 +110,7 @@ export const MIN_VISIBLE_CLEARANCE = 12;
  * branch above clears that by construction, since DONE_BAR_OCCUPIED alone is
  * already >= 42.
  */
-export const DEFAULT_BOTTOM_OFFSET =
-  DONE_BAR_OCCUPIED + INPUT_CHROME_BELOW_TEXT_FRAME + MIN_VISIBLE_CLEARANCE;
+export const DEFAULT_BOTTOM_OFFSET = 54;
 
 export const ScrollView = forwardRef<RNScrollView, ScrollViewProps>(
   function SmartScrollView({ bottomOffset = DEFAULT_BOTTOM_OFFSET, ...rest }, ref) {
