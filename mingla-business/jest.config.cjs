@@ -44,6 +44,13 @@ module.exports = {
     // .orch1118-testdeps overlay); MUST NOT run under this default
     // node/ts-jest config (no RTL installed here).
     "PartnerPaystackOnboardForm\\.orch1331\\.render\\.test\\.tsx$",
+    // #1834 [keyboard-blocks-bank-field] implementor happy-path render-proof —
+    // mounts BrandOnboardView + BrandPaymentsView and asserts the NG
+    // account-number field's scroll host is the SmartScrollView wrapper's
+    // KeyboardAwareScrollView at bottomOffset=54. Runs under
+    // jest.issue1834.render.cjs (RN preset + RTL); MUST NOT run under this
+    // default node/ts-jest config (no RTL installed here).
+    "issue_1834_bank_field_smartscroll\\.render\\.test\\.tsx$",
     // #1036 [remove-contrast-chip] tester adversarial WEB render-proof — mounts
     // the REAL ThemeSheet through react-native-web (ReactDOMServer) to assert no
     // contrast-advisory node renders for any seed. Runs under

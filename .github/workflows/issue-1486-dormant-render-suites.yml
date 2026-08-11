@@ -102,6 +102,15 @@ jobs:
       - name: "ORCH-1331 — NG partner Paystack onboarding state machine"
         if: always()
         run: npx jest --config jest.orch1331.render.cjs --runInBand --ci
+      # #1834 guards the OTHER Nigerian bank form — the brand payout rail. The
+      # account-number field sat under the keyboard + Done bar on both entry
+      # routes because the screen owners wrapped it in a plain react-native
+      # ScrollView. This suite mounts both screens and reads the scroll host
+      # that actually owns the field off the mounted tree, so a revert of
+      # either migration turns it red instead of passing on a source string.
+      - name: "#1834 — NG brand bank field SmartScrollView host"
+        if: always()
+        run: npx jest --config jest.issue1834.render.cjs --runInBand --ci
 
       # ---- WEB render proofs -------------------------------------------------
       # react-test-renderer is structurally blind to react-native-web's atomic
