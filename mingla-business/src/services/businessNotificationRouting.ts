@@ -21,6 +21,10 @@
  *                                         payout_paid, account_status_changed
  *   mingla-business://brand/{brandId}/listing   new_review, claim_decision
  *   mingla-business://brand/{brandId}/team      team_member_joined
+ *
+ * Issue #1791 (#1767 Phase 3) adds the venue head:
+ *   mingla-business://venue/{venueId}/orders    venue_order_placed,
+ *                                               venue_order_unacknowledged
  */
 
 import { useRouter } from "expo-router";
@@ -107,6 +111,19 @@ export function parseBusinessDeepLink(deepLink: string): BusinessNavTarget | nul
       const ticketId = rest[0];
       return ticketId ? `/support/${ticketId}` : null;
     }
+    // Issue #1791 (#1767 Phase 3, SPEC #1788 P-54): the venue head. BEFORE this
+    // case existed, `mingla-business://venue/{id}/orders` returned null and fell
+    // through to the ACCOUNT TAB — so an order-arrived push would have dumped a
+    // chef on the settings screen while a guest waited. `.../orders` selects the
+    // Orders module via `?module=orders` (whitelisted in the venue route); a
+    // bare `venue/{id}` lands on the venue page's default Overview.
+    case "venue": {
+      const venueId = rest[0];
+      if (!venueId) return null;
+      return rest[1] === "orders"
+        ? `/venue/${venueId}?module=orders`
+        : `/venue/${venueId}`;
+    }
     case "(tabs)": {
       // e.g. mingla-business://(tabs)/marketing
       return `/(tabs)/${rest.join("/")}`;
@@ -166,6 +183,17 @@ export function resolveBusinessNavTarget(data: BusinessPushData): BusinessNavTar
     case "business.support_new_ticket": {
       const ticketId = (data.ticketId ?? data.relatedId) as string | undefined;
       return ticketId ? `/support/${ticketId}` : ACCOUNT_FALLBACK;
+    }
+
+    // Issue #1791 (SPEC #1788 P-54): the two venue-order types. Both carry a
+    // `deepLink` today, so branch 1 above normally wins — this is the fallback
+    // for a push that arrives without one (an older sender, a stripped
+    // payload), and it must still land on the QUEUE. A staff member woken by
+    // "nobody has picked this up" needs one tap to the ticket, not a hunt.
+    case "business.venue_order_placed":
+    case "business.venue_order_unacknowledged": {
+      const venueId = (data.venueId ?? data.relatedId) as string | undefined;
+      return venueId ? `/venue/${venueId}?module=orders` : ACCOUNT_FALLBACK;
     }
 
     default:

@@ -102,7 +102,17 @@ describe("ORCH-1148 TESTER — toggle-OFF booking leak (angle A)", () => {
       // invariant is unchanged (OFF still contains NO booking module).
       // Issue #1735 [TEST-MOD-APPROVED #1735] — OFF also shows the command-band
       // "insights" module (same precedent); still zero booking modules.
-      expect(visibleModules).toEqual(["overview", "menu", "insights", "settings"]);
+      // Issue #1791 [TEST-MOD-APPROVED #1791] — OFF also shows the command-band
+      // "orders" module (same precedent). The booking-leak invariant this
+      // suite exists for is UNTOUCHED: the `not.toContain(booking)` assertion
+      // below is unchanged, and OFF still contains zero booking modules.
+      expect(visibleModules).toEqual([
+        "overview",
+        "menu",
+        "insights",
+        "orders",
+        "settings",
+      ]);
       expect(visibleModules).not.toContain(booking);
 
       // And the shell's snap-back guard evicts it back to overview.
@@ -117,7 +127,10 @@ describe("ORCH-1148 TESTER — toggle-OFF booking leak (angle A)", () => {
     // booking module ever appears in the OFF array).
     // Issue #1735 [TEST-MOD-APPROVED #1735] — OFF gains the command-band
     // "insights" module; the booking-leak invariant is untouched.
-    expect(off).toEqual(["overview", "menu", "insights", "settings"]);
+    // Issue #1791 [TEST-MOD-APPROVED #1791] — OFF gains the command-band
+    // "orders" module; the booking-leak loop below is unchanged and still
+    // proves no booking module ever appears in the OFF array.
+    expect(off).toEqual(["overview", "menu", "insights", "orders", "settings"]);
     for (const b of VENUE_BOOKING_MODULES) {
       expect(off).not.toContain(b);
     }

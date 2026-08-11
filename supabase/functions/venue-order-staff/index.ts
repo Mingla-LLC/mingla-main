@@ -1,16 +1,26 @@
 // ===========================================================================
-// Issue #1790 (SPEC #1788 P-26, P-2a) — venue-order-staff: the STAFF order path
-// and the SETTLEMENT paths.
+// Issue #1790 + #1791 (SPEC #1788 P-26, P-2a, P-15, P-16) — venue-order-staff:
+// the STAFF order path, the SETTLEMENT paths, and the Orders queue's mutations.
 //
-// Phase 2 ships the money-bearing actions only:
+// Phase 2 (#1790) shipped the money-bearing actions:
 //   create      — the waiter's order pad (same spots, same menu, same modifiers,
 //                 same SERVER-SIDE pricing as the guest path; not one number is
 //                 computed differently).
 //   settle      — { bill_to_phone | venue_collected } for ONE order.
 //   tab_open    — open a staff tab on a sitting.
 //   tab_close   — { bill_to_phone | venue_collected } for a whole tab (P-2a).
-// `transition`, `item_availability` and `pause` belong to #1791/#1789 and are
-// deliberately ABSENT here rather than half-built.
+//
+// Phase 3 (#1791) adds the queue's mutations, all of which run as the CALLING
+// USER because each RPC behind them reads auth.uid() and enforces its own rank:
+//   transition           — the ack state machine. `acknowledged` writes a human
+//                          user id taken from the JWT, never from the body.
+//   refund_decision      — the venue's approve-or-explain on a guest request.
+//   item_availability    — one-tap 86 from the queue (same write as the menu).
+//   pause                — the venue's OWN pause switch (D-7b). Mingla never
+//                          writes it for them.
+//   set_ordering_enabled — ruling OQ-7's gate: the ONLY route to
+//                          ordering_enabled = true, shipped with the queue that
+//                          watches what it lets in.
 //
 // verify_jwt = false with a Bearer REQUIRED IN-CODE (the §S6 table): the token is
 // verified via auth.getUser, then the brand-membership floor is checked, and the
@@ -120,6 +130,17 @@ serve(wrapEdgeHandler("venue-order-staff", async (req) => {
       return await handleTabOpen(req, body);
     case "tab_close":
       return await handleTabClose(supabase, req, body, userId);
+    // ---- Issue #1791 (Phase 3) — the QUEUE's mutations. -------------------
+    case "transition":
+      return await handleTransition(req, body);
+    case "refund_decision":
+      return await handleRefundDecision(req, body);
+    case "item_availability":
+      return await handleItemAvailability(req, body);
+    case "pause":
+      return await handlePause(req, body);
+    case "set_ordering_enabled":
+      return await handleSetOrderingEnabled(req, body);
     default:
       return jsonResponse({ error: "unknown_action" }, 400);
   }
@@ -756,4 +777,198 @@ function mapTabRpcError(message: string): Response {
   }
   console.error("[venue-order-staff] tab rpc failed", message);
   return fail("internal_error");
+}
+
+// ===========================================================================
+// Issue #1791 (SPEC #1788 P-26, P-15, P-16; rulings OQ-4, OQ-7) — the Orders
+// queue's mutations. Every one of them runs as the CALLING USER
+// (`userClient(req)`) rather than as service_role, because every one of the
+// RPCs behind them reads `auth.uid()` and enforces its own rank floor inside
+// the database. Calling them with the service key would hand the database a
+// caller with no identity and no rank — and, for `transition`, would make the
+// human tap unattributable, which is the whole point of the ack contract.
+// ===========================================================================
+
+/** The five states a human may drive an order into (P-26). */
+const TRANSITION_TARGETS = [
+  "acknowledged",
+  "in_progress",
+  "ready",
+  "delivered",
+  "cancelled",
+] as const;
+
+function mapQueueRpcError(message: string): Response {
+  if (message.includes("not_authorized")) {
+    return jsonResponse({ error: "not_authorized" }, 403);
+  }
+  if (message.includes("transition_not_allowed")) return fail("transition_not_allowed");
+  if (message.includes("refund_window_closed")) return fail("refund_window_closed");
+  if (message.includes("venue_not_orderable")) return fail("venue_not_orderable");
+  if (
+    message.includes("order_not_found") || message.includes("venue_not_found")
+  ) {
+    return jsonResponse({ error: "not_found" }, 404);
+  }
+  if (
+    message.includes("invalid_decision") ||
+    message.includes("decline_reason_required") ||
+    message.includes("paused_required") ||
+    message.includes("enabled_required")
+  ) {
+    return jsonResponse({
+      error: "invalid_request",
+      message: message.includes("decline_reason_required")
+        ? "Tell the guest why — they read this."
+        : venueOrderErrorCopy("invalid_json", "staff"),
+    }, 400);
+  }
+  console.error("[venue-order-staff] queue rpc failed", message);
+  return fail("internal_error");
+}
+
+/**
+ * ACK / ADVANCE. `to: "acknowledged"` is the ONLY way an order gets an
+ * `acknowledged_at`, and the user id on the row comes from the verified JWT
+ * inside the RPC — never from this request body. A render can therefore never
+ * imply that somebody saw a ticket (I-PROPOSED-1767-ACK-IS-A-HUMAN-TAP).
+ */
+async function handleTransition(
+  req: Request,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const orderId = typeof body.orderId === "string" && UUID_RE.test(body.orderId)
+    ? body.orderId
+    : null;
+  const to = typeof body.to === "string" ? body.to : "";
+  const reason = typeof body.reason === "string" ? body.reason.slice(0, 280) : null;
+  if (orderId === null) return jsonResponse({ error: "not_found" }, 404);
+  if (!(TRANSITION_TARGETS as readonly string[]).includes(to)) {
+    return fail("transition_not_allowed");
+  }
+
+  const asUser = userClient(req);
+  const { data, error } = await asUser.rpc("biz_venue_order_transition", {
+    p_order_id: orderId,
+    p_to: to,
+    p_reason: reason,
+  });
+  if (error) return mapQueueRpcError(error.message);
+  return jsonResponse({ kind: "transitioned", ...(data as Record<string, unknown>) });
+}
+
+/**
+ * The venue's approve-or-explain decision on a guest refund request (P-25).
+ * Approve mints the `source_refunds` row on the shipped rail; decline records
+ * the reason the guest will read. Either way a PERSON decided.
+ */
+async function handleRefundDecision(
+  req: Request,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const orderId = typeof body.orderId === "string" && UUID_RE.test(body.orderId)
+    ? body.orderId
+    : null;
+  const decision = body.decision === "approved" || body.decision === "declined"
+    ? body.decision
+    : null;
+  const note = typeof body.note === "string" ? body.note.slice(0, 280) : null;
+  if (orderId === null) return jsonResponse({ error: "not_found" }, 404);
+  if (decision === null) return jsonResponse({ error: "invalid_request" }, 400);
+
+  const asUser = userClient(req);
+  const { data, error } = await asUser.rpc("biz_venue_order_refund_decision", {
+    p_order_id: orderId,
+    p_decision: decision,
+    p_note: note,
+  });
+  if (error) return mapQueueRpcError(error.message);
+  return jsonResponse({ kind: "refund_decided", ...(data as Record<string, unknown>) });
+}
+
+/**
+ * One-tap 86 from the QUEUE (P-15/P-26). Identical RLS floor to the menu
+ * builder's row toggle — this is the same write, reachable from where the
+ * person actually is when the kitchen runs out.
+ */
+async function handleItemAvailability(
+  req: Request,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const menuItemId = typeof body.menuItemId === "string" && UUID_RE.test(body.menuItemId)
+    ? body.menuItemId
+    : null;
+  const isAvailable = typeof body.isAvailable === "boolean" ? body.isAvailable : null;
+  if (menuItemId === null) return jsonResponse({ error: "not_found" }, 404);
+  if (isAvailable === null) return jsonResponse({ error: "invalid_request" }, 400);
+
+  const asUser = userClient(req);
+  const { data, error } = await asUser
+    .from("menu_items")
+    .update({ is_available: isAvailable })
+    .eq("id", menuItemId)
+    .select("id, is_available");
+  if (error) return mapQueueRpcError(error.message);
+  // RLS returns zero rows rather than an error when the caller lacks the write
+  // grant. Reporting that as success would be the RLS-RETURNING-OWNER-GAP.
+  const rows = (data ?? []) as Array<Record<string, unknown>>;
+  if (rows.length !== 1) return jsonResponse({ error: "not_authorized" }, 403);
+  return jsonResponse({
+    kind: "item_availability_set",
+    menuItemId,
+    isAvailable: rows[0].is_available === true,
+  });
+}
+
+/**
+ * D-7b — the venue's OWN pause switch, and the only writer of
+ * `venue_ordering_settings.paused_at` in the system. Mingla never pauses a
+ * venue's ordering for them: a slow venue is a service problem for that venue
+ * to answer, not a reason for the platform to switch off their takings.
+ */
+async function handlePause(
+  req: Request,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const venueId = typeof body.venueId === "string" && UUID_RE.test(body.venueId)
+    ? body.venueId
+    : null;
+  const paused = typeof body.paused === "boolean" ? body.paused : null;
+  if (venueId === null) return jsonResponse({ error: "not_found" }, 404);
+  if (paused === null) return jsonResponse({ error: "invalid_request" }, 400);
+
+  const asUser = userClient(req);
+  const { data, error } = await asUser.rpc("biz_venue_ordering_pause", {
+    p_venue_id: venueId,
+    p_paused: paused,
+  });
+  if (error) return mapQueueRpcError(error.message);
+  return jsonResponse({ kind: "pause_set", ...(data as Record<string, unknown>) });
+}
+
+/**
+ * Ruling OQ-7 — the Phase-3 -> Phase-4 gate. This is the only route to
+ * `ordering_enabled = true` anywhere in the product, and it ships in the same
+ * change as the queue that watches the orders it lets in. Before this, no code
+ * path existed to switch a venue on: money could not arrive unwatched by
+ * absence, not by policy.
+ */
+async function handleSetOrderingEnabled(
+  req: Request,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const venueId = typeof body.venueId === "string" && UUID_RE.test(body.venueId)
+    ? body.venueId
+    : null;
+  const enabled = typeof body.enabled === "boolean" ? body.enabled : null;
+  if (venueId === null) return jsonResponse({ error: "not_found" }, 404);
+  if (enabled === null) return jsonResponse({ error: "invalid_request" }, 400);
+
+  const asUser = userClient(req);
+  const { data, error } = await asUser.rpc("biz_venue_ordering_set_enabled", {
+    p_venue_id: venueId,
+    p_enabled: enabled,
+  });
+  if (error) return mapQueueRpcError(error.message);
+  return jsonResponse({ kind: "ordering_enabled_set", ...(data as Record<string, unknown>) });
 }

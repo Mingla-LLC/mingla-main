@@ -54,6 +54,17 @@ export async function notifyBrandRoles(
     relatedType?: string | null;
     idempotencyKey: string;
     deepLink?: string | null;
+    /**
+     * Issue #1791 — passed straight through to notify-dispatch's existing
+     * `pushOverrides` reader. The venue-order ladder sets `collapseId` so a
+     * re-push REPLACES the previous alert for that order instead of stacking a
+     * new one (SPEC #1788 P-55).
+     */
+    pushOverrides?: {
+      collapseId?: string;
+      threadId?: string;
+      buttons?: Array<{ id: string; text: string }>;
+    };
   },
 ): Promise<void> {
   const userIds = await getBrandTeamUserIdsByRoles(
@@ -73,6 +84,7 @@ export async function notifyBrandRoles(
       relatedType: input.relatedType,
       idempotencyKey: `${input.idempotencyKey}:${userId}`,
       deepLink: input.deepLink,
+      pushOverrides: input.pushOverrides,
     });
   }
 }

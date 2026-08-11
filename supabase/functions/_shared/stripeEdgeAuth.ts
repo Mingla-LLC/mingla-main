@@ -191,6 +191,19 @@ export async function dispatchNotification(
     idempotencyKey?: string | null;
     deepLink?: string | null;
     skipPush?: boolean;
+    /**
+     * Issue #1791 — notify-dispatch has always read `pushOverrides` off the
+     * request body (notify-dispatch/index.ts:591, applied at :1004-1012) but no
+     * TypeScript caller could reach it, so `collapseId` was dead capability.
+     * The venue-order escalation ladder needs it: every rung re-pushes with the
+     * SAME collapse id so a waiting order shows as ONE alert that gets louder,
+     * not four unread badges for one ticket (SPEC #1788 P-55).
+     */
+    pushOverrides?: {
+      collapseId?: string;
+      threadId?: string;
+      buttons?: Array<{ id: string; text: string }>;
+    };
     // ORCH-0785: opt into Mingla brand shell for email path.
     emailVariant?: "generic_notification";
     emailCta?: { label: string; url: string };

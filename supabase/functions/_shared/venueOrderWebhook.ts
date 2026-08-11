@@ -20,6 +20,13 @@
 // ===========================================================================
 
 // deno-lint-ignore-file no-explicit-any
+
+// Issue #1791 — the moment a venue order becomes REAL is the moment staff must
+// be told, and this is the only place in the codebase that knows it. `status`
+// discriminates the real flip ('finalized') from a webhook replay ('replayed'),
+// so a retried delivery cannot re-ring the pass.
+import { fireVenueOrderPlacedForOrder } from "./venueOrderNotify.ts";
+
 type ServiceClient = any;
 
 export interface VenueOrderStripeEvent {
@@ -161,6 +168,12 @@ export async function handleVenueOrderStripeEvent(
     throw new Error(`venue_order_finalize_failed: ${error.message}`);
   }
   const result = (data ?? {}) as VenueOrderFinalizeResult;
+  // Issue #1791 (P-53/P-54) — T0 of the alerting ladder. ONLY on the real flip:
+  // 'replayed' means a webhook we already processed came back, and a second
+  // "new order" push for one order is how staff learn to ignore them.
+  if (result.status === "finalized") {
+    await fireVenueOrderPlacedForOrder(client, orderId);
+  }
   return typeof result.brandId === "string" ? result.brandId : null;
 }
 
@@ -232,6 +245,11 @@ export async function handleVenueOrderPaystackCharge(
     throw new Error(`venue_order_finalize_failed: ${error.message}`);
   }
   const result = (data ?? {}) as VenueOrderFinalizeResult;
+  // Issue #1791 — same T0 alert on the Paystack rail, same replay guard. A
+  // venue in Lagos must not be the one venue whose queue stays silent.
+  if (result.status === "finalized") {
+    await fireVenueOrderPlacedForOrder(client, order.id);
+  }
   return {
     matched: true,
     status: String(result.status ?? "unknown"),

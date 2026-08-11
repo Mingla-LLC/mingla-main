@@ -20,12 +20,17 @@ describe("deriveVenueModules", () => {
     // OFF branch flips this → FAIL (dead-tap / missing-module regression).
     // Issue #1735 [TEST-MOD-APPROVED #1735]: the pinned array gains "insights"
     // (command-band, both branches — the exact ORCH-1186-C menu precedent).
+    // Issue #1791 [TEST-MOD-APPROVED #1791]: it gains "orders" the same way —
+    // the live Orders queue is command-band in BOTH branches, because a venue
+    // can take orders without taking reservations and the surface that watches
+    // money must not hide behind the bookings toggle.
     // The invariant under test (booking band gated SOLELY on the toggle) is
     // UNCHANGED: OFF still contains zero booking modules.
     expect(deriveVenueModules(false)).toEqual([
       "overview",
       "menu",
       "insights",
+      "orders",
       "settings",
     ]);
   });
@@ -34,6 +39,8 @@ describe("deriveVenueModules", () => {
     // ORCH-1186-C T-MOD-2: menu sits between the booking band and settings.
     // Issue #1735 [TEST-MOD-APPROVED #1735]: insights sits after menu, before
     // settings (the "newest command capability after menu" rule).
+    // Issue #1791 [TEST-MOD-APPROVED #1791]: orders sits after insights, still
+    // before settings — same rule, newest command capability last.
     const mods = deriveVenueModules(true);
     expect(mods).toEqual([
       "overview",
@@ -43,6 +50,7 @@ describe("deriveVenueModules", () => {
       "waitlist",
       "menu",
       "insights",
+      "orders",
       "settings",
     ]);
     // booking modules present
