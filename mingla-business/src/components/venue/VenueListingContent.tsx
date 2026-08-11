@@ -38,13 +38,21 @@ import React, {
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+// #1841 [keyboard-guard-blind-spots] — this scroll hosts VenuePitchField, a
+// multiline TextInput rendered through the `Input` primitive, so the bare
+// react-native ScrollView left the focused pitch box behind the keyboard's Done
+// bar. SmartScrollView resolves to react-native-keyboard-controller's
+// KeyboardAwareScrollView on native at the wrapper's DERIVED
+// DEFAULT_BOTTOM_OFFSET, and to a plain RN ScrollView on web. Never pass
+// `bottomOffset` from a call site (I-PROPOSED-1834-…-DONE-BAR).
+import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import { VenueClaimFeedbackSheet } from "../brand/VenueClaimFeedbackSheet";
 import { VenueClaimStatusBanner } from "../brand/VenueClaimStatusBanner";
@@ -346,6 +354,7 @@ export function VenueListingContent({
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPad }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {!hasVenue ? (
           <GlassCard variant="elevated" padding={spacing.lg}>

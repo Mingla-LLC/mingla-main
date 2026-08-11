@@ -44,18 +44,32 @@ import React, {
   useState,
 } from "react";
 import {
-  Keyboard,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import type { KeyboardEvent } from "react-native";
+// Type-only: the imperative scroll handle the SmartScrollView wrapper forwards
+// is still RN's ScrollView instance. `import type` never reaches the bundle and
+// is deliberately invisible to orch-0892's container rule (#1841 B1-6).
+import type { ScrollView as RNScrollView } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
+
+// #1841 [keyboard-guard-blind-spots] — focused-field scrolling is delegated
+// entirely to SmartScrollView (native = react-native-keyboard-controller's
+// KeyboardAwareScrollView at the wrapper's DERIVED DEFAULT_BOTTOM_OFFSET; web =
+// plain RN ScrollView). The prior manual Keyboard.addListener + dynamic
+// paddingBottom compensated by hand for a keyboard the wrapper now owns, and
+// hand-typed the Done bar's height as a bare `42`.
+//
+// The offset is DERIVED in src/wrappers/SmartScrollView.native.tsx from three
+// named terms — DONE_BAR_OCCUPIED + INPUT_CHROME_BELOW_TEXT_FRAME +
+// MIN_VISIBLE_CLEARANCE. Read the wrapper; never re-type a total, and never
+// pass `bottomOffset` from a call site (I-PROPOSED-1834-…-DONE-BAR).
+import { ScrollView } from "../../../src/wrappers/SmartScrollView";
+import { useKeyboardIsVisible } from "../../../src/wrappers/useKeyboardIsVisible";
 
 import {
   accent,
@@ -232,25 +246,10 @@ export default function TripIntakeScreen(): React.ReactElement {
   }, [tiersWithSchemas, tripEventId, buyer.email]);
 
   // ---- Keyboard pattern -------------------------------------------------
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
-  const scrollViewRef = useRef<ScrollView | null>(null);
-
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(showEvent, (e: KeyboardEvent): void => {
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener(hideEvent, (): void => {
-      setKeyboardHeight(0);
-    });
-    return (): void => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
+  // #1841 — the wrapper owns focused-field clearance. All that survives is a
+  // visibility boolean, used ONLY to hide the sticky dock while typing.
+  const keyboardVisible = useKeyboardIsVisible();
+  const scrollViewRef = useRef<RNScrollView | null>(null);
 
   // ---- Defensive guard: cart empty / no tiers with schemas --------------
   useEffect(() => {
@@ -464,9 +463,7 @@ export default function TripIntakeScreen(): React.ReactElement {
         style={styles.body}
         contentContainerStyle={[
           styles.bodyContent,
-          keyboardHeight > 0
-            ? { paddingBottom: keyboardHeight + spacing.xl + 42 }
-            : { paddingBottom: insets.bottom + 120 },
+          { paddingBottom: insets.bottom + 120 },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -561,7 +558,7 @@ export default function TripIntakeScreen(): React.ReactElement {
       </ScrollView>
 
       {/* Sticky dock with Continue (and Back when multi-tier intermediate) */}
-      {keyboardHeight === 0 ? (
+      {!keyboardVisible ? (
         <GlassCard
           variant="elevated"
           padding={6}
