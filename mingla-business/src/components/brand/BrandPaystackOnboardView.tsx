@@ -34,9 +34,6 @@ import {
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Input } from "../ui/Input";
-// ORCH-0892 library primitive (web stub → false; native → useKeyboardState):
-// keyboard visibility WITHOUT bespoke Keyboard.addListener plumbing.
-import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import {
   useBrandBanks,
   useCreatePaystackRecipient,
@@ -79,23 +76,33 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
     : createRecipientMutation;
 
   const [pickerOpen, setPickerOpen] = useState(false);
-  // ORCH-1165 REWORK loop 2 (DISC-1165-T3) — the bank-picker KAV's
-  // keyboardVerticalOffset={42} is a no-op on Android because the
-  // KeyboardAvoidingView behavior is undefined there. Switching to
-  // behavior="height" would shrink the KAV frame and squash the fixed 64%-tall
-  // sheet (clipping its bottom rows rather than lifting them). Instead, on
-  // Android only, pad the bank LIST by the 42dp Done-bar clearance while the
-  // keyboard is open — keyed on keyboard-open so there is no permanent dead gap.
-  // Keyboard visibility via the ORCH-0892 library primitive (NOT bespoke
-  // Keyboard.addListener plumbing): native → useKeyboardState; web → false.
-  const keyboardVisible = useKeyboardIsVisible();
-  const androidKbOpen = Platform.OS === "android" && keyboardVisible;
+  // #1834 D2 — on Android an RN <Modal> is a separate Dialog window. At the
+  // moment the sheet's children mount that window has not yet been shown, so
+  // RN's mount-time autoFocus fires against a window that cannot take focus:
+  // the field lights up but no IME appears and the user has to tap the
+  // already-focused input a second time. `onShow` is a Modal lifecycle prop
+  // (NOT a keyboard API — I-PROPOSED-KEYBOARD-LIBRARY-ONLY is untouched); it
+  // fires once the dialog is actually on screen, and flipping this flag
+  // changes the Input's `key`, remounting it once so autoFocus re-fires
+  // against a focusable window.
+  const [pickerShown, setPickerShown] = useState(false);
   const [bankSearch, setBankSearch] = useState("");
   const [bankCode, setBankCode] = useState<string | null>(null);
   const [bankName, setBankName] = useState<string | null>(null);
   const [accountNumber, setAccountNumber] = useState("");
   const [resolvedName, setResolvedName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // #1834 D2 — iOS is the constant `true`, so the Input's key never changes,
+  // no remount ever happens there, and today's immediate mount-time focus is
+  // bit-identical. Gating iOS on onShow would delay its keyboard by the sheet
+  // slide animation, regressing a cell that already passes.
+  const searchAutoFocus = Platform.OS === "android" ? pickerShown : true;
+  /** Every close path must disarm, or the next open remounts nothing. */
+  const closePicker = (): void => {
+    setPickerOpen(false);
+    setPickerShown(false);
+  };
 
   // Paystack's /bank list can return multiple entries that share a `code`
   // (same settlement code listed under different slugs). Dedupe by code so the
@@ -134,7 +141,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   const onPickBank = (code: string, name: string): void => {
     setBankCode(code);
     setBankName(name);
-    setPickerOpen(false);
+    closePicker();
     setBankSearch("");
     if (resolvedName !== null) setResolvedName(null);
     setError(null);
@@ -281,7 +288,13 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
         visible={pickerOpen}
         transparent
         animationType="slide"
-        onRequestClose={() => setPickerOpen(false)}
+        onRequestClose={closePicker}
+        // #1834 D2 — fires once the Android Dialog window is actually on
+        // screen and focusable; flipping this remounts the search Input via
+        // its key so RN's mount-time autoFocus raises the IME on the first
+        // open (no second tap). No-op on iOS: searchAutoFocus is constant true
+        // there, so the key never changes.
+        onShow={() => setPickerShown(true)}
       >
         <KeyboardAvoidingView
           style={styles.modalRoot}
@@ -292,17 +305,24 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
             style={styles.backdrop}
             accessibilityRole="button"
             accessibilityLabel="Close bank picker"
-            onPress={() => setPickerOpen(false)}
+            onPress={closePicker}
           />
           <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>Choose your bank</Text>
             <Input
+              // #1834 D2 — Input is a plain React.FC, not forwardRef, so there
+              // is no ref-based .focus() available and converting the shared
+              // primitive is out of scope. The key is what re-arms autoFocus:
+              // on Android it changes exactly once per open (false -> true on
+              // the Modal's onShow), remounting the field against a focusable
+              // window; on iOS it is constant, so nothing remounts.
+              key={`bank-search-${searchAutoFocus}`}
               variant="search"
               value={bankSearch}
               onChangeText={setBankSearch}
               placeholder="Search banks"
               clearable
-              autoFocus
+              autoFocus={searchAutoFocus}
               accessibilityLabel="Search banks"
             />
             {banksQuery.isLoading ? (
@@ -310,12 +330,11 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
             ) : (
               <ScrollView
                 style={styles.bankList}
-                // ORCH-1165 REWORK loop 2 (DISC-1165-T3) — Android-only 42dp
-                // Done-bar clearance, keyed on keyboard-open (no permanent gap).
-                // iOS clears via the KAV behavior="padding" + keyboardVerticalOffset.
-                contentContainerStyle={
-                  androidKbOpen ? styles.bankListKbPad : undefined
-                }
+                // #1834 — no Done bar in this raw Modal window (nothing renders
+                // <KeyboardToolbarRoot/> here, and the app-root provider does
+                // not propagate into an RN Modal window), so there is nothing
+                // to pad for. The ORCH-1165 Android 42dp compensator that used
+                // to sit here was padding for a bar that is not there.
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
               >
@@ -413,8 +432,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   bankList: { flex: 1, marginTop: spacing.md },
-  // ORCH-1165 REWORK loop 2 (DISC-1165-T3) — Android Done-bar clearance.
-  bankListKbPad: { paddingBottom: 42 },
   bankRow: {
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,

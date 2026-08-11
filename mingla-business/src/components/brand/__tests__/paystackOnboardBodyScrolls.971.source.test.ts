@@ -64,9 +64,15 @@ function styleBlock(name: string): string {
 }
 
 describe("#971 — Paystack onboard body scrolls (no heading-over-top-bar overlap on the NG path)", () => {
-  it("1. imports ScrollView from react-native", () => {
+  it("1. imports ScrollView from the SmartScrollView wrapper", () => {
+    // #1834 [keyboard-blocks-bank-field] — this assertion used to pin the
+    // import SOURCE to react-native. That pin was incidental to #971 (which is
+    // about the body being scroll-WRAPPED) and it pinned the defect: a plain RN
+    // ScrollView subscribes to no keyboard frames, so the NG account-number
+    // Input sat under the keyboard + Done bar. The binding is now the canonical
+    // wrapper; assertions 2-5 below are untouched.
     expect(SRC).toMatch(
-      /import\s*\{[^}]*\bScrollView\b[^}]*\}\s*from\s*["']react-native["']/,
+      /import\s*\{\s*ScrollView\s*\}\s*from\s*["'][^"']*wrappers\/SmartScrollView["']/,
     );
   });
 

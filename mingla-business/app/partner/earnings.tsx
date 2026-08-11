@@ -32,10 +32,20 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // ORCH-1331 — the screen gains its first text input (the NG bank form), so the
 // body ScrollView routes through the canonical SmartScrollView wrapper
 // (ORCH-0892-B: native = react-native-keyboard-controller's
-// KeyboardAwareScrollView, bottomOffset=54 incl. the Done-bar clearance;
+// KeyboardAwareScrollView at the wrapper's DERIVED DEFAULT_BOTTOM_OFFSET;
 // web = plain RN ScrollView). Focused-field keyboard avoidance is owned by
 // the wrapper — no bespoke KAV plumbing, and the boot-fragile library import
 // stays inside the SAFELISTED .native wrapper (ORCH-1296).
+//
+// #1834 [keyboard-blocks-bank-field] — that offset was documented here as a
+// flat `bottomOffset=54` until it was measured on glass. It is now DERIVED in
+// src/wrappers/SmartScrollView.native.tsx from three named terms:
+//   DONE_BAR_OCCUPIED (KEYBOARD_TOOLBAR_HEIGHT - the library's OPENED_OFFSET —
+//   53 on iOS 26+, 42 elsewhere) + INPUT_CHROME_BELOW_TEXT_FRAME (iOS 13.5 /
+//   Android 3.16, measured) + MIN_VISIBLE_CLEARANCE (12)
+//   => 78.5 iOS 26+ / 67.5 iOS <26 / 57.16 Android.
+// 54 budgeted 1pt of visible clearance on iOS 26+, not 12, which put the
+// focused field BEHIND the Done bar. Read the wrapper; never re-type a total.
 import { ScrollView } from "../../src/wrappers/SmartScrollView";
 // ORCH-1331 — success haptic on Paystack connect (native only).
 import * as Haptics from "expo-haptics";

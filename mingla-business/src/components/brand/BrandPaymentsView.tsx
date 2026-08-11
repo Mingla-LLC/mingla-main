@@ -19,7 +19,18 @@
  */
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, StyleSheet, Text, View } from "react-native";
+// #1834 [keyboard-blocks-bank-field] — the body ScrollViews route through the
+// canonical SmartScrollView wrapper (ORCH-0892-B: native = the keyboard
+// library's KeyboardAwareScrollView with the inherited DEFAULT_BOTTOM_OFFSET —
+// Done bar + Input chrome + 12 visible clearance, derived per platform in the
+// wrapper; web = plain RN ScrollView, a no-op).
+// Plain react-native ScrollView subscribes to nothing, so the Nigerian bank
+// form's account-number Input sat under the keyboard + Done bar with zero
+// scroll on focus. Focused-field avoidance is owned by the wrapper — no
+// bespoke KAV plumbing here, and no explicit bottomOffset (forking the
+// constant is what breaks the ORCH-1165 clearance invariant).
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 
@@ -317,6 +328,10 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
             styles.scroll,
             { paddingBottom: spacing.xl + Math.max(insets.bottom, spacing.md) },
           ]}
+          // #1834 — the Verify/Connect CTAs must fire on the FIRST tap with the
+          // keyboard up; without this the tap is consumed dismissing it (a dead
+          // tap, Constitution rule 1). Same reason as app/partner/earnings.tsx.
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           {connected && !paystackEditing
