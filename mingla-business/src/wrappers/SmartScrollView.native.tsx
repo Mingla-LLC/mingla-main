@@ -95,7 +95,7 @@ export const INPUT_CHROME_BELOW_TEXT_FRAME = Platform.select({
 });
 
 /** The visible gap the wrapper contract promises ABOVE the Done bar. */
-export const MIN_VISIBLE_CLEARANCE = 12;
+export const MIN_VISIBLE_CLEARANCE = 0;
 
 /**
  * bar height + input chrome + visible clearance.
