@@ -36,6 +36,7 @@ export type VenueModule =
   | "settings"
   | "menu"
   | "insights"
+  | "orders"
   | "tables"
   | "availability"
   | "reservations"
@@ -44,7 +45,7 @@ export type VenueModule =
 /** The booking-band modules (gated on the toggle; ComingSoon in 2.0). */
 export type VenueBookingModule = Exclude<
   VenueModule,
-  "overview" | "settings" | "menu" | "insights"
+  "overview" | "settings" | "menu" | "insights" | "orders"
 >;
 
 /** No-show fee policy (enforcement is 2.2; 2.0 stores the policy only). */

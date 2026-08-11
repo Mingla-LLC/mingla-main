@@ -73,6 +73,19 @@ export const VENUE_MODULES: Readonly<Record<VenueModule, VenueModuleMeta>> = {
     band: "command",
     summary: "Your site, your pricing, your competition.",
   },
+  // Issue #1791 (#1767 Phase 3) — the live Orders queue. COMMAND band, present
+  // in BOTH derivation branches unconditionally, exactly like `menu` and
+  // `insights`: a venue can take orders without taking reservations, so gating
+  // this on the reservations toggle would hide the surface that watches money
+  // from the venues most likely to be using it. Ordering has its own master
+  // switch (`venue_ordering_settings.ordering_enabled`, default OFF) INSIDE the
+  // module — the module is always reachable, the ordering is opt-in.
+  orders: {
+    id: "orders",
+    label: "Orders",
+    band: "command",
+    summary: "Live tickets from every table, room, and counter.",
+  },
   settings: {
     id: "settings",
     label: "Settings",
@@ -107,15 +120,28 @@ export const VENUE_BOOKING_MODULES: readonly VenueModule[] = [
  * with Settings STILL LAST. Dropping it from either branch, gating it on the
  * toggle, or ordering it after Settings flips the #1735 registry tests → FAIL.
  *
+ * Issue #1791 (#1767 Phase 3) — `orders` follows the same rule: COMMAND band,
+ * present in BOTH branches unconditionally, ordered after `insights` (newest
+ * command capability last before Settings), Settings STILL LAST. Gating it on
+ * the reservations toggle would hide the queue that watches money from a venue
+ * that takes orders but not bookings.
+ *
  * Pure; unit-tested (mirrors `deriveHubVisibleTabs`).
  */
 export function deriveVenueModules(
   reservationsEnabled: boolean,
 ): readonly VenueModule[] {
   if (!reservationsEnabled) {
-    return ["overview", "menu", "insights", "settings"];
+    return ["overview", "menu", "insights", "orders", "settings"];
   }
-  return ["overview", ...VENUE_BOOKING_MODULES, "menu", "insights", "settings"];
+  return [
+    "overview",
+    ...VENUE_BOOKING_MODULES,
+    "menu",
+    "insights",
+    "orders",
+    "settings",
+  ];
 }
 
 /** True for the Band-B booking modules (which render ComingSoon in 2.0). */

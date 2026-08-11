@@ -101,8 +101,17 @@ export default function VenueManagementPage(): React.ReactElement {
   // nudges). Whitelist the literal "insights" ONLY: it is command-band, so it
   // is always in `visibleModules` and can never select a hidden module. Any
   // other value is ignored (the default Overview stands).
-  const initialModule =
-    paramValue(params.module) === "insights" ? ("insights" as const) : undefined;
+  //
+  // Issue #1791 — `?module=orders` joins it, and this is the landing point of
+  // every `mingla-business://venue/{id}/orders` push the alerting spine sends.
+  // Same whitelist reasoning: `orders` is command-band and therefore always
+  // visible, so a tapped notification can never select a hidden module.
+  const requestedModule = paramValue(params.module);
+  const initialModule = requestedModule === "insights"
+    ? ("insights" as const)
+    : requestedModule === "orders"
+    ? ("orders" as const)
+    : undefined;
 
   const venueQuery = useVenueListing(venueId);
   const venue = venueQuery.data ?? null;

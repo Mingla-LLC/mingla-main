@@ -86,6 +86,7 @@ const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 //   ChevronUp        src/components/venue/* (ORCH-1196)
 //   Circle           src/components/stay/StaySuiteShell.tsx
 //   Clock            src/components/venue/* (ORCH-1196)
+//   ClipboardList    src/components/venue/VenueOrdersModule.tsx (#1791)
 //   CreditCard       src/components/stay/StaySuiteShell.tsx
 //   FileCheck2       src/components/stay/StaySuiteShell.tsx
 //   Flag             src/components/venue/* (ORCH-1196)
@@ -117,6 +118,8 @@ const USED_ICONS = {
   ChevronDown: iconOf(require("lucide-react/dist/esm/icons/chevron-down.js")),
   ChevronRight: iconOf(require("lucide-react/dist/esm/icons/chevron-right.js")),
   ChevronUp: iconOf(require("lucide-react/dist/esm/icons/chevron-up.js")),
+  // Issue #1791 — the Orders queue's empty state (VenueOrdersModule).
+  ClipboardList: iconOf(require("lucide-react/dist/esm/icons/clipboard-list.js")),
   Clock: iconOf(require("lucide-react/dist/esm/icons/clock.js")),
   Flag: iconOf(require("lucide-react/dist/esm/icons/flag.js")),
   LayoutGrid: iconOf(require("lucide-react/dist/esm/icons/layout-grid.js")),

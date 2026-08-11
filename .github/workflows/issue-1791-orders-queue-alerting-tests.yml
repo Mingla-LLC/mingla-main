@@ -1,0 +1,112 @@
+name: "Issue #1791 orders queue + alerting spine"
+
+# #1767 Phase 3. Three proofs, each fails-on-revert:
+#   1. the alerting spine (deno) — the ladder's three rungs, the stable collapse
+#      id, the destination label, and the absences that keep D-7a/D-7b/D-7c true.
+#   2. the queue's client logic (jest, mingla-business) — the ack state-machine
+#      mirror, the brand-scoped filters, and BOTH client legs of the
+#      notification triple (realtime filter + the 30-second poll floor).
+#   3. the single-writer gate's self-test + live run.
+# The SQL behavioural suite runs in supabase-migrations-and-stripe-deno.yml,
+# which is the only job with a real Postgres carrying every migration.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/venue-order-escalation-sweep/**"
+      - "supabase/functions/venue-order-guest-action/**"
+      - "supabase/functions/venue-order-staff/**"
+      - "supabase/functions/_shared/venueOrderNotify.ts"
+      - "supabase/functions/_shared/venueOrderWebhook.ts"
+      - "supabase/functions/_shared/businessNotifyTriggers.ts"
+      - "supabase/functions/_shared/stripeEdgeAuth.ts"
+      - "supabase/migrations/20270315001791_issue_1791_venue_order_queue_and_alerting.sql"
+      - "supabase/migrations/20270316001791_issue_1791_venue_order_escalation_cron.sql"
+      - "supabase/migrations/__tests__/issue_1791_venue_order_queue_and_alerting.test.sql"
+      - "mingla-business/src/hooks/useVenueOrders.ts"
+      - "mingla-business/src/hooks/useVenueOrderingSettings.ts"
+      - "mingla-business/src/services/businessNotificationRouting.ts"
+      - "mingla-business/src/components/venue/**"
+      - ".github/scripts/strict-grep/issue-1791-pause-and-escalation-single-writer.mjs"
+      - ".github/workflows/issue-1791-orders-queue-alerting-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/functions/venue-order-escalation-sweep/**"
+      - "supabase/functions/venue-order-guest-action/**"
+      - "supabase/functions/venue-order-staff/**"
+      - "supabase/functions/_shared/venueOrderNotify.ts"
+      - "supabase/functions/_shared/venueOrderWebhook.ts"
+      - "supabase/functions/_shared/businessNotifyTriggers.ts"
+      - "supabase/functions/_shared/stripeEdgeAuth.ts"
+      - "supabase/migrations/20270315001791_issue_1791_venue_order_queue_and_alerting.sql"
+      - "supabase/migrations/20270316001791_issue_1791_venue_order_escalation_cron.sql"
+      - "supabase/migrations/__tests__/issue_1791_venue_order_queue_and_alerting.test.sql"
+      - "mingla-business/src/hooks/useVenueOrders.ts"
+      - "mingla-business/src/hooks/useVenueOrderingSettings.ts"
+      - "mingla-business/src/services/businessNotificationRouting.ts"
+      - "mingla-business/src/components/venue/**"
+      - ".github/scripts/strict-grep/issue-1791-pause-and-escalation-single-writer.mjs"
+      - ".github/workflows/issue-1791-orders-queue-alerting-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  alerting-spine:
+    name: "Alerting spine: rungs, collapse id, and the three absences"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Prove the ladder notifies PEOPLE and does nothing else
+        run: >
+          deno test --allow-env --allow-net --allow-read --no-check
+          supabase/functions/_shared/__tests__/issue_1791_venue_order_alerting.test.ts
+
+  single-writer-gate:
+    name: "Pause + escalation single-writer gate (D-7a/D-7b/D-7c)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test proves the GOOD/BAD split for every rule
+        run: node .github/scripts/strict-grep/issue-1791-pause-and-escalation-single-writer.mjs --self-test
+      - name: Plain run against the working tree
+        run: node .github/scripts/strict-grep/issue-1791-pause-and-escalation-single-writer.mjs
+
+  business-client:
+    name: "Orders queue client logic + the notification triple's two client legs"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Prove the state machine, the brand queue, the poll floor, and the deep link
+        run: >
+          npx jest
+          src/components/venue/__tests__/venueOrders.issue1791.test.ts
+          src/hooks/__tests__/useVenueOrders.issue1791.test.ts
+          src/services/__tests__/businessNotificationRouting.venueOrders.issue1791.test.ts
+          src/components/venue/__tests__/venueModules.test.ts
+          src/components/venue/__tests__/venueModulesInsights.issue1735.happy.test.ts
+          src/components/venue/__tests__/venueSuiteLeakAndExit.tester.adversarial.test.ts
+          --runInBand

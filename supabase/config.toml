@@ -708,3 +708,21 @@ verify_jwt = false
 # inside their SECURITY DEFINER RPCs.
 [functions.venue-order-staff]
 verify_jwt = false
+
+# Issue #1791 (SPEC #1788 §S6, P-25) — venue-order-guest-action. verify_jwt=false
+# because it serves BOTH an anonymous web guest holding a `guestCancelToken` and
+# a signed-in app user who owns the order. Both proofs are checked IN-CODE: the
+# token by a sha256 hash-match inside the RPC, the user by auth.getUser followed
+# by a buyer_user_id comparison. A cancel before acknowledgement is an instant
+# full refund; afterwards it becomes a request the VENUE decides (D-7a).
+[functions.venue-order-guest-action]
+verify_jwt = false
+
+# Issue #1791 (SPEC #1788 P-55) — venue-order-escalation-sweep. Called ONLY by
+# pg_cron every minute with the service-role key, which the function compares
+# in-code before doing anything. verify_jwt=false is the sweeper posture
+# (notification-retry-sweeper / reconcile-stuck-checkouts). Its entire output is
+# push notifications and durable in-app rows: it never refunds, never cancels,
+# never pauses a venue's ordering, and never sends an SMS (D-7a/D-7b/D-7c).
+[functions.venue-order-escalation-sweep]
+verify_jwt = false

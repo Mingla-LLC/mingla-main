@@ -75,16 +75,23 @@ import {
 
 describe("issue #1735 — Insights module registration (T-G1/T-G2)", () => {
   it("OFF branch carries insights unconditionally, Settings last", () => {
+    // Issue #1791 [TEST-MOD-APPROVED #1791] — the pinned array gains "orders"
+    // (command-band, both branches). #1735's own invariant is UNTOUCHED:
+    // `insights` is still present, still after `menu`, still before Settings.
     expect(deriveVenueModules(false)).toEqual([
       "overview",
       "menu",
       "insights",
+      "orders",
       "settings",
     ]);
   });
 
   it("ON branch carries insights after menu, Settings last, booking band intact", () => {
     const mods = deriveVenueModules(true);
+    // Issue #1791 [TEST-MOD-APPROVED #1791] — "orders" appended after
+    // "insights"; the insights-after-menu and Settings-last assertions below
+    // are unchanged and still enforce #1735's contract.
     expect(mods).toEqual([
       "overview",
       "tables",
@@ -93,6 +100,7 @@ describe("issue #1735 — Insights module registration (T-G1/T-G2)", () => {
       "waitlist",
       "menu",
       "insights",
+      "orders",
       "settings",
     ]);
     expect(mods.indexOf("insights")).toBeGreaterThan(mods.indexOf("menu"));

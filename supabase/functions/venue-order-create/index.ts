@@ -58,6 +58,9 @@ import {
   resolveOrderContext,
 } from "../_shared/venueOrderCore.ts";
 import { venueOrderPaystackReference } from "../_shared/venueOrderWebhook.ts";
+// Issue #1791 — the T0 leg of the notification triple for the one order shape
+// that never reaches a webhook: a zero-total (free) round.
+import { fireVenueOrderPlacedForOrder } from "../_shared/venueOrderNotify.ts";
 import { venueOrderSplitFields } from "./ngPaystackSplit.ts";
 
 const ENABLED_PRICING_REGIONS = ["GB", "US", "EU", "CH"] as const;
@@ -511,6 +514,11 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
   }
 
   if (!movesMoney) {
+    // Issue #1791 (P-53) — a zero-total order is complete on arrival, so its T0
+    // alert fires HERE: there is no webhook coming for it. A free round still
+    // has a guest standing at a table waiting for something, and "no money
+    // moved" is not a reason for the pass to stay silent.
+    await fireVenueOrderPlacedForOrder(supabase, orderId);
     return jsonResponse({
       kind: "free_completed",
       orderId,

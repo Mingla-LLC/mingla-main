@@ -126,6 +126,14 @@ const AUTH_SCOPED_HOOK_FILES = [
   //    reads as "you have no spots". Both fold isAuthReady into enabled.
   "useQrSpots.ts",
   "useMenuModifiers.ts",
+  // ── #1791 (#1767 Phase 3) — the Orders queue and the venue's ordering
+  //    switches. Both read brand-member-RLS-gated tables (venue_orders /
+  //    venue_order_items / venue_ordering_settings), so a pre-auth fire would
+  //    cache the RLS-empty 200 that a chef then reads as "no orders" while a
+  //    guest is waiting for food they already paid for. Both fold isAuthReady
+  //    into enabled.
+  "useVenueOrders.ts",
+  "useVenueOrderingSettings.ts",
   // ── ORCH-1331 [partner Paystack payout rail] — reads the caller's OWN
   //    partner_paystack_accounts (auth.uid()-scoped via the partner-gated
   //    edge fn); the status hook folds isAuthReady into enabled

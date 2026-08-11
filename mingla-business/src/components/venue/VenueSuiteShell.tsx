@@ -88,6 +88,22 @@ const LazyVenueInsightsModule = React.lazy(async () => {
   return { default: mod.VenueInsightsModule };
 });
 
+/**
+ * Issue #1791 (#1767 Phase 3) — the Orders queue loads behind the SAME
+ * host-owned lazy boundary, and this is not decoration. Phase 1 hit a
+ * web-render import-chain bug for exactly this reason: the module pulls in the
+ * bottom-sheet primitive (`Sheet` -> `SheetMobile` -> @gorhom/bottom-sheet) and
+ * `lucide-react-native`, both of which are native-only chains that throw at
+ * MODULE SCOPE under the stay/venue web render configs. An eager import here
+ * would drag them into every one of those configs whether the Orders branch
+ * ever renders or not. The factory runs only when the branch first RENDERS.
+ * (The #1550 rule: hosts own code-splitting.)
+ */
+const LazyVenueOrdersModule = React.lazy(async () => {
+  const mod = await import("./VenueOrdersModule");
+  return { default: mod.VenueOrdersModule };
+});
+
 export interface VenueSuiteShellProps {
   brandId: string | null;
   /** META-ORCH-1255 — the venue every module is scoped to. */
@@ -237,6 +253,24 @@ export function VenueSuiteShell({
           }
         >
           <LazyVenueInsightsModule brandId={brandId} venueId={venueId} />
+        </React.Suspense>
+      );
+    }
+    // Issue #1791 — the live Orders queue. Command band, both derivation
+    // branches. Renders inside the shell's ScrollView
+    // (moduleSelfScrolls("orders") === false), like Settings and Menu. Lazy
+    // behind the host boundary (see LazyVenueOrdersModule above); the fallback
+    // is a centered spinner, never a blank frame.
+    if (activeModule === "orders") {
+      return (
+        <React.Suspense
+          fallback={
+            <View style={styles.lazyModuleFallback}>
+              <ActivityIndicator />
+            </View>
+          }
+        >
+          <LazyVenueOrdersModule brandId={brandId} venueId={venueId} />
         </React.Suspense>
       );
     }
