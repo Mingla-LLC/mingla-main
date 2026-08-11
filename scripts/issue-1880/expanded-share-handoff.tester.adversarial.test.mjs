@@ -371,8 +371,12 @@ test('T6 modal lifecycle is platform-specific, cycle-guarded, and post-commit on
     /showDeliveredRef\.current/,
     'a later native onShow callback must be deduplicated against the post-commit Android acknowledgement',
   );
+  const latchAssignmentIndex = showDelivery.indexOf('showDeliveredRef.current = true');
+  const nativeShowCallbackIndex = showDelivery.indexOf('onNativeShow?.()');
+  assert.notEqual(latchAssignmentIndex, -1, 'native-show delivery must close the per-cycle latch');
+  assert.notEqual(nativeShowCallbackIndex, -1, 'native-show delivery must invoke the captured callback');
   assert.ok(
-    showDelivery.indexOf('showDeliveredRef.current = true') < showDelivery.indexOf('onNativeShow?.()'),
+    latchAssignmentIndex < nativeShowCallbackIndex,
     'the per-cycle show latch must close before invoking the native-show callback',
   );
 });
