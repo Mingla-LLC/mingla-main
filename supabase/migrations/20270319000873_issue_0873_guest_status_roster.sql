@@ -30,6 +30,7 @@ CREATE TABLE public.guest_roster_action_previews (
   actor_id uuid NOT NULL,
   action text NOT NULL CHECK (action IN ('reminder','retry_delivery')),
   selection jsonb NOT NULL,
+  selected_count integer NOT NULL CHECK (selected_count BETWEEN 1 AND 500),
   channels text[] NOT NULL CHECK (channels <@ ARRAY['email','sms','push']::text[]),
   quote_hash text NOT NULL CHECK (quote_hash~'^[0-9a-f]{64}$'),
   estimated_cost_minor bigint NOT NULL CHECK (estimated_cost_minor>=0),
@@ -261,7 +262,7 @@ WITH event_row AS (
       count(t.id) FILTER (WHERE t.status='used' OR t.used_at IS NOT NULL)::integer AS checked_in,
       count(DISTINCT o.id)>0 AS has_buyer,
       bool_or(o.payment_status IN ('refunded','partial_refund') OR t.status='refunded') AS has_refund,
-      bool_or(t.status='void') AS has_cancel,
+      bool_or(o.payment_status='cancelled' OR t.status='void') AS has_cancel,
       bool_or(t.status='transferred') AS has_transfer,
       max(GREATEST(o.updated_at,t.created_at,COALESCE(t.used_at,t.created_at))) AS activity_at
     FROM person_orders o LEFT JOIN public.tickets t ON t.order_id=o.id
@@ -302,6 +303,7 @@ WITH event_row AS (
       WHEN x.rsvp_status='going' AND x.approval_status='pending' THEN 'awaiting_approval'
       WHEN x.approval_status='denied' THEN 'denied'
       WHEN x.rsvp_status='waitlisted' THEN 'waitlisted'
+      WHEN x.rsvp_status='maybe' THEN 'maybe'
       WHEN x.rsvp_status='not_going' THEN 'declined'
       WHEN x.has_refund THEN 'refunded'
       WHEN x.has_cancel THEN 'cancelled'
@@ -335,7 +337,8 @@ WITH event_row AS (
     'party',jsonb_build_object('size',GREATEST(1,c.rsvp_party_size,c.active_tickets+c.refunded_tickets+c.transferred_tickets),
       'activeTickets',c.active_tickets,'refundedTickets',c.refunded_tickets,
       'transferredTickets',c.transferred_tickets,'checkedIn',c.checked_in),
-    'rsvpId',c.rsvp_id,'orderIds',to_jsonb(c.order_ids),
+    'rsvpId',c.rsvp_id,'rsvpStatus',c.rsvp_status,'rsvpApprovalStatus',c.approval_status,
+    'orderIds',to_jsonb(c.order_ids),
     'latestActivityAt',COALESCE(c.activity_at,now()),'checkedIn',c.checked_in>0,
     'canRemind',c.primary_status='not_responded'
       AND (c.last_reminder_at IS NULL OR c.last_reminder_at<=now()-interval '24 hours'),
@@ -349,7 +352,8 @@ WITH event_row AS (
     'avatarUrl',NULL,'contactLabel',NULL,
     'primaryStatus','unlinked_guest','invitationStatus','none','invitationLabel',NULL,'attempts','[]'::jsonb,
     'party',jsonb_build_object('size',1+r.plus_count,'activeTickets',0,'refundedTickets',0,'transferredTickets',0,'checkedIn',0),
-    'rsvpId',r.id,'orderIds','[]'::jsonb,'latestActivityAt',r.updated_at,'checkedIn',false,
+    'rsvpId',r.id,'rsvpStatus',r.rsvp_status,'rsvpApprovalStatus',r.approval_status,
+    'orderIds','[]'::jsonb,'latestActivityAt',r.updated_at,'checkedIn',false,
     'canRemind',false,'canRetry',false,'canApprove',false,'canDeny',false,'isExportable',false
   ) AS row_data
   FROM public.event_rsvps r WHERE r.event_id=p_event_id AND NOT EXISTS (
@@ -364,7 +368,8 @@ WITH event_row AS (
     'party',jsonb_build_object('size',GREATEST(1,count(t.id)),'activeTickets',count(t.id) FILTER (WHERE t.status IN ('valid','used')),
       'refundedTickets',count(t.id) FILTER (WHERE t.status='refunded'),'transferredTickets',count(t.id) FILTER (WHERE t.status='transferred'),
       'checkedIn',count(t.id) FILTER (WHERE t.status='used' OR t.used_at IS NOT NULL)),
-    'rsvpId',NULL,'orderIds',jsonb_build_array(o.id),'latestActivityAt',o.updated_at,
+    'rsvpId',NULL,'rsvpStatus',NULL,'rsvpApprovalStatus',NULL,
+    'orderIds',jsonb_build_array(o.id),'latestActivityAt',o.updated_at,
     'checkedIn',bool_or(t.status='used' OR t.used_at IS NOT NULL),
     'canRemind',false,'canRetry',false,'canApprove',false,'canDeny',false,'isExportable',false
   ) AS row_data
@@ -444,7 +449,7 @@ $function$;
 
 CREATE OR REPLACE FUNCTION public.biz_guest_roster_store_preview(
   p_actor_id uuid,p_event_id uuid,p_action text,p_selection jsonb,p_channels text[],
-  p_quote_hash text,p_estimated_cost_minor bigint,p_currency text
+  p_selected_count integer,p_quote_hash text,p_estimated_cost_minor bigint,p_currency text
 ) RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
 AS $function$
@@ -452,14 +457,15 @@ DECLARE v_brand uuid; v_id uuid;
 BEGIN
   v_brand:=public.issue_1770_offering_actor_brand(p_actor_id,p_event_id,false);
   IF p_action NOT IN ('reminder','retry_delivery') OR p_selection->>'source'<>'guest_roster_actions'
+     OR p_selected_count NOT BETWEEN 1 AND 500
      OR p_quote_hash!~'^[0-9a-f]{64}$' OR p_estimated_cost_minor<0
      OR (p_currency IS NOT NULL AND p_currency!~'^[A-Z]{3}$') THEN
     RAISE EXCEPTION 'guest_roster_preview_invalid' USING ERRCODE='22023';
   END IF;
   INSERT INTO public.guest_roster_action_previews(
-    brand_id,event_id,actor_id,action,selection,channels,quote_hash,
+    brand_id,event_id,actor_id,action,selection,selected_count,channels,quote_hash,
     estimated_cost_minor,currency,expires_at
-  ) VALUES(v_brand,p_event_id,p_actor_id,p_action,p_selection,p_channels,p_quote_hash,
+  ) VALUES(v_brand,p_event_id,p_actor_id,p_action,p_selection,p_selected_count,p_channels,p_quote_hash,
     p_estimated_cost_minor,p_currency,now()+interval '5 minutes') RETURNING id INTO v_id;
   RETURN v_id;
 END;
@@ -470,7 +476,7 @@ CREATE OR REPLACE FUNCTION public.biz_guest_roster_get_preview(
 ) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
 AS $function$
-DECLARE v public.guest_roster_action_previews%ROWTYPE;
+DECLARE v public.guest_roster_action_previews%ROWTYPE; v_rollout jsonb;
 BEGIN
   SELECT * INTO v FROM public.guest_roster_action_previews WHERE id=p_preview_id FOR UPDATE;
   IF NOT FOUND OR v.actor_id<>p_actor_id
@@ -482,6 +488,11 @@ BEGIN
   END IF;
   IF v.expires_at<now() AND v.consumed_at IS NULL THEN
     RAISE EXCEPTION 'guest_roster_preview_expired' USING ERRCODE='40001';
+  END IF;
+  v_rollout:=public.biz_guest_roster_rollout(v.brand_id);
+  IF NOT COALESCE((v_rollout->>CASE WHEN v.selected_count>1
+    THEN 'bulkActionsEnabled' ELSE 'singleActionsEnabled' END)::boolean,false) THEN
+    RAISE EXCEPTION 'guest_roster_action_disabled' USING ERRCODE='42501';
   END IF;
   IF v.consumed_at IS NULL AND v.action='reminder' AND EXISTS (
     SELECT 1 FROM jsonb_array_elements_text(v.selection->'brandPersonIds') person_id
@@ -518,7 +529,8 @@ CREATE OR REPLACE FUNCTION public.biz_guest_roster_list(
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp
 AS $function$
 DECLARE v_brand uuid; v_rollout jsonb; v_search text; v_rows jsonb; v_all jsonb;
-  v_count integer; v_filtered_count integer; v_offset integer:=0; v_rank integer;
+  v_count integer; v_rank integer; v_watermark bigint; v_query_hash text; v_last jsonb;
+  v_cursor_rank integer; v_cursor_name text; v_cursor_activity timestamptz; v_cursor_key text;
 BEGIN
   SELECT e.brand_id INTO v_brand FROM public.events e WHERE e.id=p_event_id AND e.deleted_at IS NULL;
   IF auth.uid() IS NULL OR v_brand IS NULL THEN
@@ -538,56 +550,95 @@ BEGIN
     OR p_sort NOT IN ('action_priority','name_asc','name_desc','recent_first')
     OR p_limit NOT BETWEEN 1 AND 100
     OR (p_cursor IS NOT NULL AND (jsonb_typeof(p_cursor)<>'object'
-      OR public.issue_1770_json_keys(p_cursor)<>ARRAY['offset']::text[])) THEN
+      OR public.issue_1770_json_keys(p_cursor)<>
+        ARRAY['activityAt','name','queryHash','rank','rosterKey','watermark']::text[])) THEN
     RAISE EXCEPTION 'guest_roster_filter_invalid' USING ERRCODE='22023';
   END IF;
-  BEGIN v_offset:=COALESCE((p_cursor->>'offset')::integer,0);
-    EXCEPTION WHEN OTHERS THEN RAISE EXCEPTION 'guest_roster_filter_invalid' USING ERRCODE='22023'; END;
-  IF v_offset<0 OR v_offset>100000 THEN RAISE EXCEPTION 'guest_roster_filter_invalid' USING ERRCODE='22023'; END IF;
   v_search:=lower(regexp_replace(btrim(COALESCE(p_search,'')),'\s+',' ','g'));
   IF length(v_search)>200 OR v_search~E'[\\x00-\\x1F\\x7F]' THEN RAISE EXCEPTION 'guest_roster_search_invalid' USING ERRCODE='22023'; END IF;
+  v_query_hash:=encode(extensions.digest(convert_to(
+    p_event_id::text||':'||p_filter||':'||v_search||':'||p_sort,'UTF8'
+  ),'sha256'),'hex');
+  SELECT COALESCE(max(id),0) INTO v_watermark FROM public.guest_roster_change_events
+  WHERE event_id=p_event_id;
+  BEGIN
+    IF p_cursor IS NOT NULL AND (
+      (p_cursor->>'watermark')::bigint<>v_watermark
+      OR p_cursor->>'queryHash'<>v_query_hash
+    ) THEN RAISE EXCEPTION 'guest_roster_cursor_stale' USING ERRCODE='40001'; END IF;
+    IF p_cursor IS NOT NULL THEN
+      v_cursor_rank:=(p_cursor->>'rank')::integer;
+      v_cursor_name:=p_cursor->>'name';
+      v_cursor_activity:=(p_cursor->>'activityAt')::timestamptz;
+      v_cursor_key:=p_cursor->>'rosterKey';
+      IF v_cursor_name IS NULL OR v_cursor_key IS NULL OR v_cursor_activity IS NULL
+         OR v_cursor_rank NOT BETWEEN 0 AND 9 THEN
+        RAISE EXCEPTION 'guest_roster_filter_invalid' USING ERRCODE='22023';
+      END IF;
+    END IF;
+  EXCEPTION WHEN serialization_failure THEN RAISE;
+    WHEN OTHERS THEN RAISE EXCEPTION 'guest_roster_filter_invalid' USING ERRCODE='22023';
+  END;
   WITH all_rows AS MATERIALIZED (SELECT row_data r FROM public.biz_guest_roster_project(p_event_id)),
   filtered AS (
     SELECT r FROM all_rows WHERE
-      (v_search='' OR strpos(lower(r->>'displayName'),v_search)>0 OR strpos(lower(COALESCE(r->>'contactLabel','')),v_search)>0)
+      (v_search='' OR strpos(lower(r->>'displayName'),v_search)>0
+        OR strpos(lower(COALESCE(r->>'contactLabel','')),v_search)>0
+        OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(r->'orderIds') order_id WHERE lower(order_id)=v_search)
+        OR EXISTS (
+          SELECT 1 FROM public.brand_person_contact_methods contact
+          WHERE contact.brand_person_id=(r->>'personId')::uuid
+            AND contact.record_state='active' AND contact.provenance_scope='brand_owned'
+            AND contact.is_exportable AND strpos(lower(contact.normalized_value),v_search)>0
+        ))
       AND CASE p_filter
         WHEN 'all' THEN true WHEN 'no_response' THEN r->>'primaryStatus'='not_responded'
         WHEN 'confirmed' THEN r->>'primaryStatus' IN ('bought_ticket','going')
         WHEN 'needs_attention' THEN r->>'primaryStatus' IN ('not_responded','invite_failed','awaiting_approval','waitlisted')
         WHEN 'not_yet' THEN r->>'primaryStatus' IN ('not_responded','not_sent','sending','invite_failed','suppressed_or_skipped')
-        WHEN 'delivery_failed' THEN r->>'primaryStatus'='invite_failed'
-        WHEN 'suppressed' THEN r->>'primaryStatus'='suppressed_or_skipped'
+        WHEN 'delivery_failed' THEN r->>'invitationStatus'='failed'
+        WHEN 'suppressed' THEN r->>'invitationStatus'='suppressed_or_skipped'
         WHEN 'checked_in' THEN (r->>'checkedIn')::boolean
         WHEN 'not_checked_in' THEN NOT (r->>'checkedIn')::boolean
         WHEN 'rsvpd' THEN r->>'rsvpId' IS NOT NULL
-        WHEN 'ticketed' THEN jsonb_array_length(r->'orderIds')>0
-        WHEN 'maybe' THEN false ELSE r->>'primaryStatus'=p_filter END
-  ), ordered AS (
-    SELECT CASE WHEN COALESCE((v_rollout->>'singleActionsEnabled')::boolean,false)
-      THEN r ELSE r||jsonb_build_object('canRemind',false,'canRetry',false,'canApprove',false,'canDeny',false) END AS r
-    FROM filtered ORDER BY
-      CASE WHEN p_sort='action_priority' THEN CASE r->>'primaryStatus'
-        WHEN 'invite_failed' THEN 0 WHEN 'awaiting_approval' THEN 1 WHEN 'not_responded' THEN 2 WHEN 'waitlisted' THEN 3 ELSE 9 END END,
-      CASE WHEN p_sort='recent_first' THEN (r->>'latestActivityAt')::timestamptz END DESC NULLS LAST,
-      CASE WHEN p_sort IN ('action_priority','name_asc') THEN lower(r->>'displayName') END ASC,
-      CASE WHEN p_sort='name_desc' THEN lower(r->>'displayName') END DESC,r->>'rosterKey'
-      OFFSET v_offset LIMIT p_limit
-  ) SELECT COALESCE(jsonb_agg(r),'[]'::jsonb) INTO v_rows FROM ordered;
-  WITH all_rows AS MATERIALIZED (SELECT row_data r FROM public.biz_guest_roster_project(p_event_id))
-  SELECT COALESCE(jsonb_agg(r),'[]'::jsonb),count(*) INTO v_all,v_count FROM all_rows;
-  WITH all_rows AS MATERIALIZED (SELECT row_data r FROM public.biz_guest_roster_project(p_event_id))
-  SELECT count(*) INTO v_filtered_count FROM all_rows WHERE
-    (v_search='' OR strpos(lower(r->>'displayName'),v_search)>0 OR strpos(lower(COALESCE(r->>'contactLabel','')),v_search)>0)
-    AND CASE p_filter
-      WHEN 'all' THEN true WHEN 'no_response' THEN r->>'primaryStatus'='not_responded'
-      WHEN 'confirmed' THEN r->>'primaryStatus' IN ('bought_ticket','going')
-      WHEN 'needs_attention' THEN r->>'primaryStatus' IN ('not_responded','invite_failed','awaiting_approval','waitlisted')
-      WHEN 'not_yet' THEN r->>'primaryStatus' IN ('not_responded','not_sent','sending','invite_failed','suppressed_or_skipped')
-      WHEN 'delivery_failed' THEN r->>'primaryStatus'='invite_failed'
-      WHEN 'suppressed' THEN r->>'primaryStatus'='suppressed_or_skipped'
-      WHEN 'checked_in' THEN (r->>'checkedIn')::boolean WHEN 'not_checked_in' THEN NOT (r->>'checkedIn')::boolean
-      WHEN 'rsvpd' THEN r->>'rsvpId' IS NOT NULL WHEN 'ticketed' THEN jsonb_array_length(r->'orderIds')>0
-      WHEN 'maybe' THEN false ELSE r->>'primaryStatus'=p_filter END;
+        WHEN 'ticketed' THEN (r->'party'->>'activeTickets')::integer>0
+        ELSE r->>'primaryStatus'=p_filter END
+  ), enriched AS (
+    SELECT r,
+      CASE r->>'primaryStatus' WHEN 'invite_failed' THEN 0 WHEN 'awaiting_approval' THEN 1
+        WHEN 'not_responded' THEN 2 WHEN 'waitlisted' THEN 3 ELSE 9 END AS sort_rank,
+      lower(r->>'displayName') AS sort_name,
+      (r->>'latestActivityAt')::timestamptz AS sort_activity,
+      r->>'rosterKey' AS sort_key
+    FROM filtered
+  ), after_cursor AS (
+    SELECT * FROM enriched e WHERE p_cursor IS NULL OR CASE p_sort
+      WHEN 'action_priority' THEN (e.sort_rank,e.sort_name,e.sort_key)>(v_cursor_rank,v_cursor_name,v_cursor_key)
+      WHEN 'name_asc' THEN (e.sort_name,e.sort_key)>(v_cursor_name,v_cursor_key)
+      WHEN 'name_desc' THEN e.sort_name<v_cursor_name OR (e.sort_name=v_cursor_name AND e.sort_key>v_cursor_key)
+      WHEN 'recent_first' THEN e.sort_activity<v_cursor_activity OR (e.sort_activity=v_cursor_activity AND e.sort_key>v_cursor_key)
+      ELSE false END
+  ), page_rows AS (
+    SELECT * FROM after_cursor ORDER BY
+      CASE WHEN p_sort='action_priority' THEN sort_rank END,
+      CASE WHEN p_sort='recent_first' THEN sort_activity END DESC,
+      CASE WHEN p_sort IN ('action_priority','name_asc') THEN sort_name END,
+      CASE WHEN p_sort='name_desc' THEN sort_name END DESC,
+      sort_key LIMIT p_limit
+  )
+  SELECT
+    COALESCE((SELECT jsonb_agg(
+      CASE WHEN COALESCE((v_rollout->>'singleActionsEnabled')::boolean,false)
+        THEN r ELSE r||jsonb_build_object('canRemind',false,'canRetry',false,'canApprove',false,'canDeny',false) END
+      ORDER BY CASE WHEN p_sort='action_priority' THEN sort_rank END,
+        CASE WHEN p_sort='recent_first' THEN sort_activity END DESC,
+        CASE WHEN p_sort IN ('action_priority','name_asc') THEN sort_name END,
+        CASE WHEN p_sort='name_desc' THEN sort_name END DESC,sort_key
+    ) FROM page_rows),'[]'::jsonb),
+    COALESCE((SELECT jsonb_agg(r) FROM all_rows),'[]'::jsonb),
+    (SELECT count(*) FROM all_rows)
+  INTO v_rows,v_all,v_count;
+  IF jsonb_array_length(v_rows)>0 THEN v_last:=v_rows->(jsonb_array_length(v_rows)-1); END IF;
   RETURN jsonb_build_object('rows',v_rows,'summary',jsonb_build_object(
     'all',v_count,
     'notResponded',(SELECT count(*) FROM jsonb_array_elements(v_all) x WHERE x->>'primaryStatus'='not_responded'),
@@ -597,9 +648,14 @@ BEGIN
     'notSent',(SELECT count(*) FROM jsonb_array_elements(v_all) x WHERE x->>'invitationStatus'='not_sent'),
     'sending',(SELECT count(*) FROM jsonb_array_elements(v_all) x WHERE x->>'invitationStatus'='sending'),
     'inviteFailed',(SELECT count(*) FROM jsonb_array_elements(v_all) x WHERE x->>'invitationStatus'='failed'),
-    'watermark',(SELECT COALESCE(max(id),0) FROM public.guest_roster_change_events WHERE event_id=p_event_id),
-    'generatedAt',now()),'nextCursor',CASE WHEN v_offset+p_limit<v_filtered_count
-      THEN jsonb_build_object('offset',v_offset+p_limit) ELSE NULL END,
+    'watermark',v_watermark,
+    'generatedAt',now()),'nextCursor',CASE WHEN jsonb_array_length(v_rows)=p_limit
+      THEN jsonb_build_object(
+        'rank',CASE v_last->>'primaryStatus' WHEN 'invite_failed' THEN 0 WHEN 'awaiting_approval' THEN 1
+          WHEN 'not_responded' THEN 2 WHEN 'waitlisted' THEN 3 ELSE 9 END,
+        'name',lower(v_last->>'displayName'),'activityAt',v_last->>'latestActivityAt',
+        'rosterKey',v_last->>'rosterKey','queryHash',v_query_hash,'watermark',v_watermark
+      ) ELSE NULL END,
     'staleAfter',now()+interval '30 seconds',
     'canBulkActions',COALESCE((v_rollout->>'bulkActionsEnabled')::boolean,false),
     'canExport',COALESCE((v_rollout->>'exportEnabled')::boolean,false)
@@ -656,6 +712,57 @@ BEGIN
   SELECT row_data INTO v_row FROM public.biz_guest_roster_project(p_event_id)
   WHERE row_data->>'rosterKey'=p_roster_key;
   RETURN v_row;
+END;
+$function$;
+
+-- Retry confirmation has a dedicated, locked execution boundary. Locking the
+-- predecessor attempts first makes a concurrent second confirmation wait; the
+-- fresh statement below then sees the first retry and fails closed.
+CREATE OR REPLACE FUNCTION public.biz_execute_offering_delivery_retry(
+  p_actor_id uuid,p_event_id uuid,p_failed_attempt_ids uuid[],p_channels text[],
+  p_client_request_id uuid,p_execution_snapshot jsonb
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
+AS $function$
+DECLARE v_selection jsonb; v_locked_count integer;
+BEGIN
+  IF p_failed_attempt_ids IS NULL OR cardinality(p_failed_attempt_ids) NOT BETWEEN 1 AND 500
+     OR cardinality(p_failed_attempt_ids)<>cardinality(ARRAY(SELECT DISTINCT unnest(p_failed_attempt_ids))) THEN
+    RAISE EXCEPTION 'retry_attempt_selection_mismatch' USING ERRCODE='22023';
+  END IF;
+  PERFORM a.id FROM public.brand_offering_invite_delivery_attempts a
+  WHERE a.id=ANY(p_failed_attempt_ids) ORDER BY a.id FOR UPDATE;
+  SELECT count(*) INTO v_locked_count FROM public.brand_offering_invite_delivery_attempts a
+  WHERE a.id=ANY(p_failed_attempt_ids);
+  IF v_locked_count<>cardinality(p_failed_attempt_ids)
+     OR EXISTS (
+       SELECT 1 FROM public.brand_offering_invite_delivery_attempts a
+       JOIN public.brand_offering_invites i ON i.id=a.invite_id
+       WHERE a.id=ANY(p_failed_attempt_ids)
+         AND (i.event_id<>p_event_id OR a.status<>'failed' OR NOT a.is_retryable
+           OR NOT (a.channel=ANY(p_channels))
+           OR EXISTS (
+             SELECT 1 FROM public.brand_offering_invite_delivery_attempts later
+             WHERE later.invite_id=a.invite_id AND later.channel=a.channel
+               AND later.attempt_ordinal>a.attempt_ordinal
+           ))
+     ) THEN
+    RAISE EXCEPTION 'guest_roster_status_changed' USING ERRCODE='40001';
+  END IF;
+  IF p_failed_attempt_ids IS DISTINCT FROM ARRAY(
+    SELECT DISTINCT (x->>'predecessorAttemptId')::uuid
+    FROM jsonb_array_elements(p_execution_snapshot->'candidates') x ORDER BY 1
+  ) THEN
+    RAISE EXCEPTION 'retry_attempt_selection_mismatch' USING ERRCODE='22023';
+  END IF;
+  v_selection:=jsonb_build_object(
+    'kind','failed_attempts_v1','failedAttemptIds',to_jsonb(p_failed_attempt_ids),
+    'selectionHash',p_execution_snapshot->>'selectionHash','source','guest_roster_actions'
+  );
+  RETURN public.biz_execute_offering_send_group(
+    p_actor_id,p_event_id,'retry_delivery',v_selection,p_channels,
+    p_client_request_id,p_execution_snapshot
+  );
 END;
 $function$;
 
@@ -745,19 +852,28 @@ BEGIN
   ) FROM public.biz_guest_roster_project(v_job.scope_id) r
   WHERE (r.row_data->>'isExportable')::boolean
     AND (v_job.filter_json->>'search'='' OR strpos(lower(r.row_data->>'displayName'),v_job.filter_json->>'search')>0
-      OR strpos(lower(COALESCE(r.row_data->>'contactLabel','')),v_job.filter_json->>'search')>0)
+      OR strpos(lower(COALESCE(r.row_data->>'contactLabel','')),v_job.filter_json->>'search')>0
+      OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(r.row_data->'orderIds') order_id
+        WHERE lower(order_id)=v_job.filter_json->>'search')
+      OR EXISTS (
+        SELECT 1 FROM public.brand_person_contact_methods contact
+        WHERE contact.brand_person_id=(r.row_data->>'personId')::uuid
+          AND contact.record_state='active' AND contact.provenance_scope='brand_owned'
+          AND contact.is_exportable
+          AND strpos(lower(contact.normalized_value),v_job.filter_json->>'search')>0
+      ))
     AND CASE v_job.filter_json->>'filter'
       WHEN 'all' THEN true WHEN 'no_response' THEN r.row_data->>'primaryStatus'='not_responded'
       WHEN 'confirmed' THEN r.row_data->>'primaryStatus' IN ('bought_ticket','going')
       WHEN 'needs_attention' THEN r.row_data->>'primaryStatus' IN ('not_responded','invite_failed','awaiting_approval','waitlisted')
-      WHEN 'delivery_failed' THEN r.row_data->>'primaryStatus'='invite_failed'
-      WHEN 'suppressed' THEN r.row_data->>'primaryStatus'='suppressed_or_skipped'
+      WHEN 'delivery_failed' THEN r.row_data->>'invitationStatus'='failed'
+      WHEN 'suppressed' THEN r.row_data->>'invitationStatus'='suppressed_or_skipped'
       WHEN 'checked_in' THEN (r.row_data->>'checkedIn')::boolean
       WHEN 'not_checked_in' THEN NOT (r.row_data->>'checkedIn')::boolean
       WHEN 'not_yet' THEN r.row_data->>'primaryStatus' IN ('not_responded','not_sent','sending','invite_failed','suppressed_or_skipped')
       WHEN 'rsvpd' THEN r.row_data->>'rsvpId' IS NOT NULL
-      WHEN 'ticketed' THEN jsonb_array_length(r.row_data->'orderIds')>0
-      WHEN 'maybe' THEN false ELSE r.row_data->>'primaryStatus'=v_job.filter_json->>'filter' END
+      WHEN 'ticketed' THEN (r.row_data->'party'->>'activeTickets')::integer>0
+      ELSE r.row_data->>'primaryStatus'=v_job.filter_json->>'filter' END
   ORDER BY
     CASE WHEN v_job.filter_json->>'sort'='action_priority' THEN
       CASE r.row_data->>'primaryStatus'
@@ -845,7 +961,7 @@ REVOKE ALL ON FUNCTION public.biz_guest_roster_phase_rank(text) FROM PUBLIC,anon
 REVOKE ALL ON FUNCTION public.biz_guest_roster_rollout(uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.biz_guest_roster_project(uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.biz_guest_roster_resolve_action(uuid,uuid,text,text[],text[]) FROM PUBLIC,anon,authenticated;
-REVOKE ALL ON FUNCTION public.biz_guest_roster_store_preview(uuid,uuid,text,jsonb,text[],text,bigint,text) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.biz_guest_roster_store_preview(uuid,uuid,text,jsonb,text[],integer,text,bigint,text) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.biz_guest_roster_get_preview(uuid,uuid,uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.biz_guest_roster_consume_preview(uuid,uuid,uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_0873_emit_roster_change() FROM PUBLIC,anon,authenticated;
@@ -853,7 +969,7 @@ GRANT EXECUTE ON FUNCTION public.biz_guest_roster_phase_rank(text) TO service_ro
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_rollout(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_project(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_resolve_action(uuid,uuid,text,text[],text[]) TO service_role;
-GRANT EXECUTE ON FUNCTION public.biz_guest_roster_store_preview(uuid,uuid,text,jsonb,text[],text,bigint,text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.biz_guest_roster_store_preview(uuid,uuid,text,jsonb,text[],integer,text,bigint,text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_get_preview(uuid,uuid,uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_consume_preview(uuid,uuid,uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_0873_emit_roster_change() TO service_role;

@@ -3,6 +3,7 @@ export type GuestRosterPrimaryStatus =
   | "going"
   | "awaiting_approval"
   | "waitlisted"
+  | "maybe"
   | "declined"
   | "denied"
   | "refunded"
@@ -82,6 +83,8 @@ export interface GuestRosterRow {
   attempts: GuestRosterChannelAttempt[];
   party: GuestRosterPartySummary;
   rsvpId: string | null;
+  rsvpStatus: "going" | "not_going" | "waitlisted" | "maybe" | null;
+  rsvpApprovalStatus: "pending" | "approved" | "denied" | null;
   orderIds: string[];
   latestActivityAt: string;
   checkedIn: boolean;
@@ -130,6 +133,7 @@ export const GUEST_ROSTER_PRIMARY_LABELS: Readonly<Record<GuestRosterPrimaryStat
   going: "Going",
   awaiting_approval: "Awaiting approval",
   waitlisted: "Waitlisted",
+  maybe: "Maybe",
   declined: "Declined",
   denied: "Denied",
   refunded: "Refunded",

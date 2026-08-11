@@ -304,9 +304,19 @@ export async function handler(request: Request): Promise<Response> {
       : "offering_invite_crypto_unavailable";
     return json({ error: code, providerIo: false }, 503);
   }
-  const { data: execution, error: executionError } = await service.rpc(
-    "biz_execute_offering_send_group",
-    {
+  const executionRpc = body.purpose === "retry_delivery"
+    ? "biz_execute_offering_delivery_retry"
+    : "biz_execute_offering_send_group";
+  const executionArgs = body.purpose === "retry_delivery"
+    ? {
+      p_actor_id: actorId,
+      p_event_id: body.eventId,
+      p_failed_attempt_ids: body.selection.failedAttemptIds,
+      p_channels: channels,
+      p_client_request_id: body.clientRequestId,
+      p_execution_snapshot: quoted.snapshot,
+    }
+    : {
       p_actor_id: actorId,
       p_event_id: body.eventId,
       p_purpose: body.purpose,
@@ -314,7 +324,10 @@ export async function handler(request: Request): Promise<Response> {
       p_channels: channels,
       p_client_request_id: body.clientRequestId,
       p_execution_snapshot: quoted.snapshot,
-    },
+    };
+  const { data: execution, error: executionError } = await service.rpc(
+    executionRpc,
+    executionArgs,
   );
   if (executionError) {
     const forbidden = executionError.message.includes("actor_forbidden");

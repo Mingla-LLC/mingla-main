@@ -75,7 +75,7 @@ UPDATE public.guest_roster_brand_rollouts SET phase='single_actions'
 WHERE brand_id='87300000-0000-4000-8000-000000000010';
 
 DO $accepted$
-DECLARE v jsonb; v_item jsonb; v_action jsonb;
+DECLARE v jsonb; v_item jsonb; v_action jsonb; v_preview uuid;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub','87300000-0000-4000-8000-000000000001',true);
   v:=public.biz_guest_roster_list('87300000-0000-4000-8000-000000000020','all',NULL,'action_priority',NULL,50);
@@ -98,6 +98,29 @@ BEGIN
      OR jsonb_array_length(v_action->'selection'->'brandPersonIds')<>1 THEN
     RAISE EXCEPTION 'T-873-01B FAIL: eligible reminder selection wrong: %',v_action;
   END IF;
+  BEGIN
+    PERFORM public.biz_guest_roster_list(
+      '87300000-0000-4000-8000-000000000020','all',NULL,'action_priority',
+      jsonb_build_object('rank',2,'name','casey guest','activityAt',now(),
+        'rosterKey','person:87300000-0000-4000-8000-000000000030',
+        'queryHash',repeat('0',64),'watermark',(v->'summary'->>'watermark')::bigint),50
+    );
+    RAISE EXCEPTION 'T-873-01C FAIL: cursor was not bound to its query';
+  EXCEPTION WHEN serialization_failure THEN NULL;
+  END;
+  v_preview:=public.biz_guest_roster_store_preview(
+    '87300000-0000-4000-8000-000000000001','87300000-0000-4000-8000-000000000020',
+    'reminder',v_action->'selection',ARRAY['email'],1,repeat('4',64),0,NULL
+  );
+  BEGIN
+    UPDATE public.feature_flags SET is_enabled=false WHERE flag_key='guest_roster_single_actions_enabled';
+    PERFORM public.biz_guest_roster_get_preview(
+      '87300000-0000-4000-8000-000000000001',v_preview,
+      '87300000-0000-4000-8000-000000000059'
+    );
+    RAISE EXCEPTION 'T-873-01D FAIL: execute survived action kill switch';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
 END;
 $accepted$;
 
@@ -196,13 +219,75 @@ BEGIN
   IF v->'rows'->0->>'primaryStatus'<>'going' THEN
     RAISE EXCEPTION 'T-873-04 FAIL: current RSVP should remain above terminal commerce: %',v;
   END IF;
-  UPDATE public.event_rsvps SET rsvp_status='not_going' WHERE id='87300000-0000-4000-8000-000000000060';
+  UPDATE public.event_rsvps SET rsvp_status='maybe',approval_status='approved'
+  WHERE id='87300000-0000-4000-8000-000000000060';
+  v:=public.biz_guest_roster_list('87300000-0000-4000-8000-000000000020','maybe',NULL,'action_priority',NULL,50);
+  IF v->'rows'->0->>'primaryStatus'<>'maybe' OR v->'rows'->0->>'rsvpStatus'<>'maybe' THEN
+    RAISE EXCEPTION 'T-873-04B FAIL: Maybe RSVP fact/filter disappeared: %',v;
+  END IF;
+  UPDATE public.event_rsvps SET rsvp_status='waitlisted',approval_status='approved'
+  WHERE id='87300000-0000-4000-8000-000000000060';
+  v:=public.biz_guest_roster_list('87300000-0000-4000-8000-000000000020','all',NULL,'action_priority',NULL,50);
+  IF v->'rows'->0->>'primaryStatus'<>'waitlisted' THEN RAISE EXCEPTION 'T-873-04C FAIL: waitlist missing: %',v; END IF;
+  UPDATE public.event_rsvps SET approval_status='denied'
+  WHERE id='87300000-0000-4000-8000-000000000060';
+  v:=public.biz_guest_roster_list('87300000-0000-4000-8000-000000000020','all',NULL,'action_priority',NULL,50);
+  IF v->'rows'->0->>'primaryStatus'<>'denied' THEN RAISE EXCEPTION 'T-873-04D FAIL: denied missing: %',v; END IF;
+  UPDATE public.event_rsvps SET rsvp_status='not_going',approval_status='approved'
+  WHERE id='87300000-0000-4000-8000-000000000060';
   v:=public.biz_guest_roster_list('87300000-0000-4000-8000-000000000020','all',NULL,'action_priority',NULL,50);
   IF v->'rows'->0->>'primaryStatus'<>'declined' THEN
     RAISE EXCEPTION 'T-873-05 FAIL: decline regressed to invite/commerce: %',v;
   END IF;
+  UPDATE public.brand_person_source_links SET detached_at=now()
+  WHERE id='87300000-0000-4000-8000-000000000061';
+  UPDATE public.orders SET payment_status='cancelled'
+  WHERE id='87300000-0000-4000-8000-000000000071';
+  UPDATE public.tickets SET status='valid'
+  WHERE id='87300000-0000-4000-8000-000000000072';
+  v:=public.biz_guest_roster_list('87300000-0000-4000-8000-000000000020','all',NULL,'action_priority',NULL,50);
+  IF v->'rows'->0->>'primaryStatus'<>'cancelled' THEN
+    RAISE EXCEPTION 'T-873-05A FAIL: authoritative cancelled order missing: %',v;
+  END IF;
+  UPDATE public.orders SET payment_status='paid'
+  WHERE id='87300000-0000-4000-8000-000000000071';
+  UPDATE public.tickets SET status='transferred'
+  WHERE id='87300000-0000-4000-8000-000000000072';
+  v:=public.biz_guest_roster_list('87300000-0000-4000-8000-000000000020','all',NULL,'action_priority',NULL,50);
+  IF v->'rows'->0->>'primaryStatus'<>'transferred' THEN
+    RAISE EXCEPTION 'T-873-05B FAIL: transfer history missing: %',v;
+  END IF;
 END;
 $commerce$;
+
+INSERT INTO public.brand_offering_invite_delivery_attempts(
+  id,invite_id,send_group_id,campaign_id,contact_method_id,channel,attempt_kind,
+  attempt_ordinal,retry_of_attempt_id,status,is_retryable,safe_reason_code,failed_at
+) VALUES(
+  '87300000-0000-4000-8000-000000000080','87300000-0000-4000-8000-000000000040',
+  '87300000-0000-4000-8000-000000000051','87300000-0000-4000-8000-000000000052',
+  '87300000-0000-4000-8000-000000000031','email','retry',2,
+  '87300000-0000-4000-8000-000000000053','failed',true,'provider_transient',now()
+),(
+  '87300000-0000-4000-8000-000000000081','87300000-0000-4000-8000-000000000040',
+  '87300000-0000-4000-8000-000000000051','87300000-0000-4000-8000-000000000052',
+  '87300000-0000-4000-8000-000000000031','email','retry',3,
+  '87300000-0000-4000-8000-000000000080','queued',false,NULL,now()
+);
+
+DO $stale_retry$
+BEGIN
+  BEGIN
+    PERFORM public.biz_execute_offering_delivery_retry(
+      '87300000-0000-4000-8000-000000000001','87300000-0000-4000-8000-000000000020',
+      ARRAY['87300000-0000-4000-8000-000000000080'::uuid],ARRAY['email'],
+      '87300000-0000-4000-8000-000000000082','{}'::jsonb
+    );
+    RAISE EXCEPTION 'T-873-05B FAIL: stale failed attempt was retried after a newer attempt existed';
+  EXCEPTION WHEN serialization_failure THEN NULL;
+  END;
+END;
+$stale_retry$;
 
 DO $forbidden$
 BEGIN

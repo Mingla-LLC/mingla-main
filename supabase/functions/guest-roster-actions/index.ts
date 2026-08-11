@@ -100,7 +100,8 @@ export async function handler(request: Request): Promise<Response> {
     if (!dispatchResponse.ok) return json({ ok: false, code: preview.error ?? "preview_failed" }, dispatchResponse.status);
     const { data: previewId, error: storeError } = await service.rpc("biz_guest_roster_store_preview", {
       p_actor_id: actorId, p_event_id: body.eventId, p_action: body.action,
-      p_selection: resolution.selection, p_channels: channels, p_quote_hash: preview.quoteHash,
+      p_selection: resolution.selection, p_channels: channels, p_selected_count: resolution.selectedCount,
+      p_quote_hash: preview.quoteHash,
       p_estimated_cost_minor: preview.estimatedCostMinor, p_currency: preview.currency,
     });
     if (storeError || typeof previewId !== "string") return json({ ok: false, code: "preview_persistence_failed" }, 500);

@@ -487,6 +487,36 @@ export default function EventGuestsListRoute(): React.ReactElement {
 
   const totalCount = merged.length;
 
+  if (guestRosterAccess.isLoading) {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <View style={styles.chromeRow}>
+          <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
+          <Text style={styles.chromeTitle}>Guests</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost} accessibilityRole="progressbar">
+          <Text style={styles.emptyLoadingText}>Loading guest status…</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (guestRosterAccess.isError) {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <View style={styles.chromeRow}>
+          <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
+          <Text style={styles.chromeTitle}>Guests</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <EmptyState illustration="ticket" title="Couldn't load guest status" description="No guest view is shown until access is confirmed." cta={{ label: "Try again", onPress: () => { void guestRosterAccess.refetch(); }, variant: "primary" }} />
+        </View>
+      </View>
+    );
+  }
+
   if (guestRosterAccess.data?.enabled === true) {
     return (
       <>

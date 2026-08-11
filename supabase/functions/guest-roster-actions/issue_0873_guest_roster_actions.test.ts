@@ -25,6 +25,9 @@ Deno.test("#873 action edge owns validation, preview persistence, and shared dis
   if (!dispatchSource.includes('body.purpose === "retry_delivery"')) {
     throw new Error("shared dispatch rejects the retry_delivery purpose delegated by the roster action edge");
   }
+  if (!dispatchSource.includes('"biz_execute_offering_delivery_retry"')) {
+    throw new Error("retry delivery bypasses the latest-attempt execution guard");
+  }
 });
 
 Deno.test("#873 audited export status returns only a short-lived authorized signed URL", () => {

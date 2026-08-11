@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
   Pressable,
@@ -53,6 +53,7 @@ const FILTERS: ReadonlyArray<{ key: GuestRosterFilter; label: string }> = [
   { key: "needs_attention", label: "Needs attention" },
   { key: "delivery_failed", label: "Invite failed" },
   { key: "awaiting_approval", label: "Awaiting approval" },
+  { key: "maybe", label: "Maybe" },
   { key: "checked_in", label: "Checked in" },
   { key: "removed", label: "Removed" },
 ];
@@ -204,6 +205,12 @@ const GuestDetailSheet: React.FC<{
           </View>
         ))}
         <Text style={styles.sectionTitle}>Party and admission</Text>
+        {row.rsvpStatus !== null ? (
+          <Text style={styles.detailBody}>
+            RSVP: {row.rsvpStatus.replaceAll("_", " ")}
+            {row.rsvpApprovalStatus !== null ? ` · ${row.rsvpApprovalStatus.replaceAll("_", " ")}` : ""}
+          </Text>
+        ) : null}
         <Text style={styles.detailBody}>
           {row.party.size} {row.party.size === 1 ? "person" : "people"} · {row.party.activeTickets} active tickets · {row.party.checkedIn} checked in
         </Text>
@@ -257,6 +264,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
   const [actionPreview, setActionPreview] = useState<GuestRosterActionPreview | null>(null);
   const [actionPending, setActionPending] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const executeRequest = useRef<{ previewId: string; clientRequestId: string } | null>(null);
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim().length > 0 ? search : ""), 300);
     return () => clearTimeout(timer);
@@ -298,6 +306,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
       .map((attempt) => attempt.channel)));
     try {
       const preview = await previewGuestRosterAction({ eventId, action, rosterKeys: targets.map((target) => target.rosterKey), channels: channels.length > 0 ? channels : ["email"] });
+      executeRequest.current = { previewId: preview.previewId, clientRequestId: createGuestRosterRequestId() };
       setActionPreview(preview);
     } catch {
       setActionMessage("This guest's status changed or the action is no longer available. Refresh and try again.");
@@ -318,17 +327,33 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
   }, [bulkAction]);
 
   const executeAction = useCallback(async () => {
-    if (actionPreview === null) return;
+    if (actionPreview === null || query.isStaleTruth || query.isOffline) return;
     setActionPending(true); setActionMessage(null);
+    const request = executeRequest.current?.previewId === actionPreview.previewId
+      ? executeRequest.current
+      : { previewId: actionPreview.previewId, clientRequestId: createGuestRosterRequestId() };
+    executeRequest.current = request;
     try {
-      await executeGuestRosterAction({ previewId: actionPreview.previewId, clientRequestId: createGuestRosterRequestId() });
+      await executeGuestRosterAction(request);
       setActionMessage("Queued. The guest's status will update when provider evidence arrives.");
+      executeRequest.current = null;
       setActionPreview(null);
       setSelectedKeys(new Set()); setBulkAction(null); setSelectionMode(false);
       void query.refetch();
-    } catch { setActionMessage("Nothing was queued. Refresh and try again."); }
+    } catch { setActionMessage("We couldn't confirm the queue result. Retry to check safely without creating a second send."); }
     finally { setActionPending(false); }
   }, [actionPreview, query]);
+
+  const closePreview = useCallback(() => {
+    executeRequest.current = null;
+    setActionPreview(null);
+  }, []);
+
+  useEffect(() => {
+    if (!query.isStaleTruth && !query.isOffline) return;
+    executeRequest.current = null;
+    setActionPreview(null);
+  }, [query.isOffline, query.isStaleTruth]);
 
   const setApproval = useCallback(async (decision: "approve" | "deny") => {
     if (selected === null || query.isStaleTruth || query.isOffline) return;
@@ -448,13 +473,13 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
             onPress={() => { const rows = data?.rows.filter((row) => selectedKeys.has(row.rosterKey)) ?? []; void previewAction(bulkAction, rows); }} />
         </View>
       ) : null}
-      <Sheet visible={actionPreview !== null} onClose={() => setActionPreview(null)} snapPoint="half">
+      <Sheet visible={actionPreview !== null} onClose={closePreview} snapPoint="half">
         {actionPreview !== null ? <View style={styles.filterSheet}>
           <Text style={styles.sheetTitle}>Confirm guest action</Text>
           <Text style={styles.detailBody}>{actionPreview.reachableCount} reachable · {actionPreview.suppressedCount} suppressed · {actionPreview.skippedCount} skipped</Text>
           <Text style={styles.detailBody}>Estimated cost: {actionPreview.currency === null ? "No paid channel cost" : `${actionPreview.currency} ${(actionPreview.estimatedCostMinor/100).toFixed(2)}`}</Text>
-          <Button variant="primary" label={actionPending ? "Queueing…" : "Queue action"} disabled={actionPending} onPress={() => { void executeAction(); }} />
-          <Button variant="secondary" label="Cancel" disabled={actionPending} onPress={() => setActionPreview(null)} />
+          <Button variant="primary" label={actionPending ? "Queueing…" : "Queue action"} disabled={actionPending || query.isStaleTruth || query.isOffline} onPress={() => { void executeAction(); }} />
+          <Button variant="secondary" label="Cancel" disabled={actionPending} onPress={closePreview} />
         </View> : null}
       </Sheet>
       {actionMessage !== null ? <View style={styles.actionNotice} accessibilityRole="alert"><Text style={styles.detailBody}>{actionMessage}</Text></View> : null}
