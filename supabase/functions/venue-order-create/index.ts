@@ -310,8 +310,23 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       feeBasisCents: money.feeBasisCents,
       buyerSubtotalCents: money.buyerSubtotalCents,
       taxAmountCents: money.taxAmountCents,
+      // Issue #1793 — the ONE combined "Fees & tax" line, computed by the
+      // server. The cart renders four lines (items, the venue's own service
+      // charge, this, the tip) and adds none of them up: a client that
+      // subtracted server numbers to draw this line would be doing money math,
+      // which is what P-20 forbids however small the sum.
+      feesAndTaxCents: money.feesAndTaxCents,
       tipCents: money.tipCents,
       totalCents: money.totalCents,
+      // The venue's own charge, ALWAYS its own labelled line and never folded
+      // into the combined one (D-9 / P-19,
+      // I-PROPOSED-1767-EVERY-CHARGE-IS-VISIBLE).
+      serviceChargeBps: money.serviceChargeBps,
+      // What the guest may be asked, so the tip row can render itself without
+      // guessing: where a service charge is set the selector defaults to NONE
+      // rather than stacking (D-9).
+      tipsEnabled: ctx.settings.tips_enabled === true,
+      counterPickupEnabled: ctx.settings.counter_pickup_enabled === true,
       pricingBreakdown: money.pricingBreakdown,
       lines: cart.lines,
     });
@@ -544,11 +559,27 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       await markVenueOrderFailed(supabase, orderId, refError.message);
       return fail("payment_intent_create_failed");
     }
-    const callbackBase = Deno.env.get("PAYSTACK_CALLBACK_BASE") ??
-      "https://business.usemingla.com/pay/callback";
-    const callbackUrl = `${callbackBase}?vo=${encodeURIComponent(orderId)}&bst=${
-      encodeURIComponent(buyerStatusToken)
-    }`;
+    // Issue #1793 — the return leg, made REAL.
+    //
+    // Phase 2 pointed this at `/pay/callback`, which is the sentinel the NATIVE
+    // in-app browser watches for and then closes on. On buyer web, though,
+    // nothing serves that path: the SPA catch-all rewrites it to the app shell,
+    // the client router matches nothing, and a guest who has just paid lands on
+    // "Hmm, that's not a real page" with their status token discarded in a
+    // query string. Phase 4 is the phase that puts a guest on the other end of
+    // this redirect, so it is the phase that has to fix it.
+    //
+    // It now points at the order's own live status page, which is the same
+    // place the hosted-checkout `success_url` goes — ONE landing surface for
+    // both providers. The native client passes `${origin}/o/venue/` as its own
+    // interception sentinel, so the in-app browser still closes on arrival and
+    // the page is never actually fetched there.
+    const callbackOrigin = Deno.env.get("BUSINESS_WEB_ORIGIN") ??
+      Deno.env.get("MINGLA_PUBLIC_WEB_BASE_URL") ??
+      "https://business.usemingla.com";
+    const callbackUrl = `${callbackOrigin}/o/venue/${
+      encodeURIComponent(orderId)
+    }?bst=${encodeURIComponent(buyerStatusToken)}`;
     try {
       const init = await paystackInitializeTransaction({
         email: buyerEmail,

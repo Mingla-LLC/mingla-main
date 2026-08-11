@@ -167,6 +167,13 @@ export interface PublicMenuItem {
   description: string | null;
   priceCents: number | null;
   currency: string;
+  // Issue #1789 (SPEC #1788 P-14) appended these to `public_menus_view`; #1793
+  // is the first surface to read them. OPTIONAL on purpose: a client running
+  // against a deployment whose view predates the migration receives no such key
+  // at all, and that must read as "no notes allowed" rather than throw.
+  /** May a guest attach "no ice" to this line at order time? (D-6) */
+  allowsNotes?: boolean;
+  photoUrl?: string | null;
 }
 
 export interface PublicMenuGroup {

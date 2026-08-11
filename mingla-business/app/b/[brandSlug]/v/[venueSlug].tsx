@@ -45,9 +45,13 @@ import {
   publicVenueMeta,
   type PublicVenueAnalyticsEvent,
   type PublicVenueBookingSlotContext,
+  type PublicVenueOrderingSlotContext,
   type PublicVenueReservationSheetContext,
   type PublicVenueViewModel,
 } from "@mingla/brand-rendering/PublicVenueScreen";
+// TYPE-ONLY off the barrel — a value import here re-hoists PublicBrandPage and
+// the eager lucide shim into __common (i-1047-biz-bundle-budget-deferral).
+import type { PublicMenuGroup } from "@mingla/brand-rendering";
 
 import {
   spacing,
@@ -64,7 +68,14 @@ import {
   usePublicVenueDiscoveryPrice,
   usePublicVenueReservable,
 } from "../../../../src/hooks/usePublicEvents";
-import { usePublicMenus } from "../../../../src/hooks/useMenus";
+// #1793 — the bundle hook replaces `usePublicMenus`: ONE query, now also
+// carrying each menu's service window (the columns #1789 appended to
+// `public_menus_view`), and living in a module that does NOT import
+// AuthContext — which `useMenus.ts` does, at module scope, for the brand-side
+// hooks that share it. This is an anon buyer route; the fewer things it can
+// wake up, the better.
+import { usePublicMenuBundle } from "../../../../src/hooks/usePublicMenuBundle";
+import { useBuyerVenueOrdering } from "../../../../src/components/venueOrdering/useBuyerVenueOrdering";
 import { usePublicStayDetail } from "../../../../src/hooks/usePublicStayDetail";
 import { PublicVenueNotFound } from "../../../../src/components/venue/PublicVenueNotFound";
 import { PublicVenueReservationSheet } from "../../../../src/components/venue/PublicVenueReservationSheet";
@@ -97,6 +108,32 @@ const BuyerStayGuestExperience = React.lazy(() =>
 );
 
 /**
+ * #1793 (#1767 Phase 4) — the ordering renderers, behind a lazy boundary that
+ * lives HERE, in the host.
+ *
+ * The rule `i-1047-biz-bundle-budget-deferral` enforces and #1550 wrote: the
+ * shared screen may not contain `React.lazy`, because code-splitting belongs
+ * where the bundle is measured. A value import of a cart, a review pane and a
+ * status card at this module's scope would put all three in the venue route's
+ * eager chunk for every visitor to every venue page — including the
+ * overwhelming majority whose venue has ordering switched OFF, which is the
+ * default and will stay the default for most venues. Each factory runs the
+ * first time a guest can actually order.
+ */
+const LazyOrderingNotice = React.lazy(() =>
+  import("../../../../src/components/venueOrdering/BuyerVenueOrderingSlots")
+    .then((module) => ({ default: module.BuyerVenueOrderingNotice })),
+);
+const LazyOrderingMenu = React.lazy(() =>
+  import("../../../../src/components/venueOrdering/BuyerVenueOrderingSlots")
+    .then((module) => ({ default: module.BuyerVenueOrderingMenu })),
+);
+const LazyOrderingBar = React.lazy(() =>
+  import("../../../../src/components/venueOrdering/BuyerVenueOrderingSlots")
+    .then((module) => ({ default: module.BuyerVenueOrderingBar })),
+);
+
+/**
  * #1421 — this route is the ONLY mount of the public venue page in this app,
  * and it is always the real buyer web. Naming the surface here (rather than
  * defaulting it inside a component that several callers might reach) is what
@@ -105,6 +142,13 @@ const BuyerStayGuestExperience = React.lazy(() =>
  * analytics import at all, so nothing downstream can bypass that policy.
  */
 const analyticsSurface: VenueOrganicAnalyticsSurface = "buyer_web";
+
+/** #1793 — stable empties, so the ordering hook's deps do not churn. */
+const EMPTY_MENU_GROUPS: PublicMenuGroup[] = [];
+const EMPTY_MENU_WINDOWS: Record<
+  string,
+  { start: string | null; end: string | null; days: number[] | null }
+> = {};
 
 /** `PublicVenue` (this app's read model) → the shared screen's view model. */
 const toVenueViewModel = (venue: PublicVenue): PublicVenueViewModel => ({
@@ -138,6 +182,8 @@ export default function PublicVenueRoute(): React.ReactElement {
     brandSlug: string | string[];
     venueSlug: string | string[];
     tab?: string | string[];
+    spot?: string | string[];
+    src?: string | string[];
   }>();
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
@@ -146,6 +192,19 @@ export default function PublicVenueRoute(): React.ReactElement {
     ? params.venueSlug[0]
     : params.venueSlug;
   const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
+  // #1793 (SPEC #1788 P-10) — the printed QR carries
+  // `?tab=menu&spot={code}&src=qr`. `spot` is WHERE they are sitting; `src` is
+  // HOW they arrived. D-3a keeps the two apart on purpose: one is a recorded
+  // fact about a table, the other is attribution, and conflating them is how a
+  // venue's zone revenue comes to include people who were never in the zone.
+  const rawSpot = Array.isArray(params.spot) ? params.spot[0] : params.spot;
+  const spotCode = typeof rawSpot === "string" && rawSpot.trim() !== ""
+    ? rawSpot.trim()
+    : null;
+  const rawSrc = Array.isArray(params.src) ? params.src[0] : params.src;
+  const entrySource = typeof rawSrc === "string" && rawSrc.trim() !== ""
+    ? rawSrc.trim()
+    : null;
 
   const venueQuery = usePublicVenueBySlug(
     typeof brandSlug === "string" ? brandSlug : null,
@@ -159,7 +218,7 @@ export default function PublicVenueRoute(): React.ReactElement {
 
   // Exact venue-owned menu — fetched only once the venue resolves (a
   // not-found page needs no menu round-trip).
-  const menusQuery = usePublicMenus(
+  const menusQuery = usePublicMenuBundle(
     venue !== null &&
         venue.venueCategory !== "stay" &&
         typeof brandSlug === "string"
@@ -180,6 +239,36 @@ export default function PublicVenueRoute(): React.ReactElement {
   const discoveryPriceQuery = usePublicVenueDiscoveryPrice(
     venue?.venueCategory === "stay" ? null : venue?.placePoolId ?? null,
   );
+
+  const menuGroups = menusQuery.data?.groups ?? EMPTY_MENU_GROUPS;
+  const menuWindows = menusQuery.data?.windows ?? EMPTY_MENU_WINDOWS;
+  const notesAllowedByItemId = useMemo<Record<string, boolean | undefined>>(
+    () => {
+      const map: Record<string, boolean | undefined> = {};
+      for (const group of menuGroups) {
+        for (const item of group.items) map[item.id] = item.allowsNotes === true;
+      }
+      return map;
+    },
+    [menuGroups],
+  );
+
+  /**
+   * #1793 — guest ordering. Unconditional (hooks are) and INERT until the
+   * venue's own state says otherwise: with ordering switched off it fires one
+   * cached read and renders nothing at all, so a venue that has not opted in is
+   * byte-for-byte the page it was.
+   */
+  const ordering = useBuyerVenueOrdering({
+    brandSlug: typeof brandSlug === "string" ? brandSlug : "",
+    venueSlug: typeof venueSlug === "string" ? venueSlug : "",
+    spotCode,
+    entrySource,
+    menu: menuGroups,
+    // Someone who scanned the card on their table is owed an explanation when
+    // they cannot order. Someone reading the menu out of curiosity is not.
+    scanned: spotCode !== null || entrySource === "qr",
+  });
 
   // §6.8 — the secondary "See {brand} →" link renders only when the PARENT
   // brand resolves publicly. Fetched ONLY on the not-found path.
@@ -383,7 +472,7 @@ export default function PublicVenueRoute(): React.ReactElement {
       venue={venueViewModel}
       useDirectionCIdentity
       discoveryPrice={discoveryPriceQuery.data ?? null}
-      menu={menusQuery.data ?? []}
+      menu={menuGroups}
       reservable={reservableQuery.data ?? null}
       reservabilityState={
         reservableQuery.isError
@@ -452,6 +541,44 @@ export default function PublicVenueRoute(): React.ReactElement {
       }
       bookingBody={renderBookingBody}
       reservationSheet={renderReservationSheet}
+      // #1793 — the three ordering slots. Each renders nothing unless this
+      // venue can actually take an order from this guest right now.
+      ordering={{
+        notice: (context: PublicVenueOrderingSlotContext) => (
+          <React.Suspense fallback={null}>
+            <LazyOrderingNotice
+              ordering={ordering}
+              palette={context.palette}
+              surface={context.surface}
+              theme={context.theme}
+            />
+          </React.Suspense>
+        ),
+        menuBody: (context: PublicVenueOrderingSlotContext) => (
+          <React.Suspense fallback={null}>
+            <LazyOrderingMenu
+              ordering={ordering}
+              palette={context.palette}
+              surface={context.surface}
+              theme={context.theme}
+              menu={context.menu}
+              menuWindows={menuWindows}
+              timezone={venue.timezone}
+              notesAllowedByItemId={notesAllowedByItemId}
+            />
+          </React.Suspense>
+        ),
+        stickyBar: (context: PublicVenueOrderingSlotContext) => (
+          <React.Suspense fallback={null}>
+            <LazyOrderingBar
+              ordering={ordering}
+              palette={context.palette}
+              surface={context.surface}
+              theme={context.theme}
+            />
+          </React.Suspense>
+        ),
+      }}
       overlays={
         <ShareModal
           visible={shareModalVisible}

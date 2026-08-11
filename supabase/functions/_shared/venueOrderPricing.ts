@@ -483,6 +483,33 @@ export interface VenueOrderMoney {
   platformServiceFeeCents: number;
   buyerSubtotalCents: number;
   taxAmountCents: number;
+  /**
+   * Issue #1793 (SPEC #1788 P-19, P-20) — the ONE combined "Fees & tax" line the
+   * cart renders, computed HERE.
+   *
+   * The guest checkout shows four money lines and nothing else: the items'
+   * subtotal, the venue's own service charge (its own label, never merged), ONE
+   * combined "Fees & tax" line that is Mingla's fees plus any additive tax, and
+   * the tip. Before this field existed the only way for a cart to draw that
+   * combined line was to subtract server numbers from each other on the client —
+   * which is client-side money math wearing a display costume, and precisely
+   * what P-20 forbids. So the server states it.
+   *
+   * The identity that makes the cart unfalsifiable, asserted in the tests:
+   *
+   *     subtotal + serviceCharge + feesAndTax + tip === total
+   *
+   * It holds by construction: feesAndTax is `buyerSubtotal - feeBasis + tax`,
+   * and feeBasis is `subtotal + serviceCharge`, so the two service-charge terms
+   * cancel and what is left is `buyerSubtotal + tax + tip` — the definition of
+   * `totalCents`. A surface that renders these four lines therefore cannot show
+   * a total that disagrees with what the provider is asked to charge.
+   *
+   * The TIP IS NOT IN IT. That is the visible half of P-18: Mingla's fee is a
+   * function of the fee basis, the fee basis cannot contain a tip, and the line
+   * that carries Mingla's fee therefore cannot either.
+   */
+  feesAndTaxCents: number;
   tipCents: number;
   totalCents: number;
   taxBasis: TaxBasis;
@@ -571,6 +598,11 @@ export function computeVenueOrderMoney(
   );
   const totalCents = buyerSubtotalCents + taxAmountCents + tipCents;
 
+  // (8) Issue #1793 — the ONE combined "Fees & tax" line, stated by the server
+  // so no cart has to subtract one server number from another to draw it. The
+  // tip is deliberately outside it: it is not a fee, and Mingla takes none of it.
+  const feesAndTaxCents = buyerSubtotalCents - feeBasisCents + taxAmountCents;
+
   return {
     subtotalCents: input.subtotalCents,
     serviceChargeBps: input.serviceChargeBps,
@@ -580,6 +612,7 @@ export function computeVenueOrderMoney(
     platformServiceFeeCents: engine.serviceFeeCents,
     buyerSubtotalCents,
     taxAmountCents,
+    feesAndTaxCents,
     tipCents,
     totalCents,
     taxBasis,

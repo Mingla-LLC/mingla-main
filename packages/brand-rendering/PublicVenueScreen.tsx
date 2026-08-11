@@ -279,6 +279,72 @@ export interface PublicVenueReservationSheetContext
   children: BrandRenderingReactNode;
 }
 
+/**
+ * Issue #1793 (#1767 Phase 4) — the GUEST ORDERING slots.
+ *
+ * Three injected render slots, in the exact grammar `bookingBody` already
+ * established on this screen, and for the same reason: the ordering rail forks
+ * on PAYMENT (a native payment sheet on the consumer app, a hosted redirect on
+ * buyer web), not on pixels. Everything a guest sees is the shared renderers
+ * under `venueOrdering/`; the money step is host-owned and this file never
+ * imports it.
+ *
+ * WHY SLOTS AND NOT AN IMPORT. This module may not contain `React.lazy` — the
+ * `i-1047-biz-bundle-budget-deferral` gate asserts it, because code-splitting
+ * belongs where the bundle is measured, in the host. A value import of the
+ * ordering renderers HERE would hoist a cart, a review pane and a status card
+ * into the eager chunk of every venue page on the web, ordering venue or not.
+ * With slots this file gains exactly one type import, which is erased.
+ */
+export interface PublicVenueOrderingSlotContext
+  extends PublicVenueThemedContext {
+  /** The venue's menu, so the ordering renderer draws from the SAME payload. */
+  menu: PublicMenuGroup[];
+}
+
+export interface PublicVenueOrderingSlots {
+  /**
+   * Rendered at the TOP of the Menu pane. The spot chip when a guest can order,
+   * the honest "ordering is switched off / paused here" card when they cannot
+   * (the orchestrator amendment registered against #1793). Returning null is a
+   * first-class answer: a venue that has never switched ordering on says
+   * nothing at all to a casual reader, because there is nothing to say.
+   */
+  notice?: (context: PublicVenueOrderingSlotContext) => BrandRenderingReactNode;
+  /**
+   * Replaces the DISPLAY-ONLY menu list when it returns non-null. The two
+   * renderers are alternatives, never layers: `PublicMenuSections` is a list of
+   * static rows with no press target (pinned), and the ordering list is the same
+   * data with a way to buy it.
+   */
+  menuBody?: (
+    context: PublicVenueOrderingSlotContext,
+  ) => BrandRenderingReactNode | null;
+  /**
+   * The bottom bar, which OWNS the bottom of the screen while the guest is on
+   * the Menu tab with something in their basket. It displaces the reserve CTA
+   * rather than stacking on it — two competing sticky bars is how a guest taps
+   * the wrong one.
+   */
+  stickyBar?: (
+    context: PublicVenueOrderingSlotContext,
+  ) => BrandRenderingReactNode | null;
+  /**
+   * Host chrome rendered LAST, in the page frame — the review step and the live
+   * order card, which are a sheet on the consumer app and an inline pane on
+   * buyer web.
+   *
+   * It is a FUNCTION rather than a node (unlike `overlays`) for one reason: it
+   * needs the resolved palette, surface and theme, and this screen is the single
+   * owner of those. A host that resolved its own theme to paint its sheet would
+   * be a second owner of the venue's colours, and the sheet would drift from the
+   * page the first time a brand changed its accent.
+   */
+  overlay?: (
+    context: PublicVenueOrderingSlotContext,
+  ) => BrandRenderingReactNode | null;
+}
+
 /** The three events this page emits. The host adds its own surface tag. */
 export type PublicVenueAnalyticsEvent =
   | "public_venue_overview_viewed"
@@ -321,6 +387,8 @@ export interface PublicVenueScreenProps {
   reservationSheet: (
     context: PublicVenueReservationSheetContext,
   ) => BrandRenderingReactNode;
+  /** Issue #1793 — guest ordering. Absent ⇒ this page is exactly as it was. */
+  ordering?: PublicVenueOrderingSlots;
   /** Host chrome rendered last, in the page frame (business: ShareModal). */
   overlays?: BrandRenderingReactNode;
   onAnalytics: (
@@ -853,6 +921,7 @@ export const PublicVenueScreen = ({
   loadThemeFont,
   bookingBody,
   reservationSheet,
+  ordering,
   overlays,
   onAnalytics,
   onShare,
@@ -1027,10 +1096,30 @@ export const PublicVenueScreen = ({
     [reservationUiContext],
   );
 
+  // ── Issue #1793 — the guest-ordering slots, resolved ONCE. ───────────────
+  //
+  // Resolved here, above the reserve gate, because one of the three answers it
+  // produces changes that gate: while a guest is on the Menu tab with something
+  // in their basket, the ordering bar OWNS the bottom of the screen. Two sticky
+  // bars stacked on one thumb is how somebody books a table when they meant to
+  // pay for their food.
+  const orderingSlotContext: PublicVenueOrderingSlotContext = {
+    palette,
+    surface,
+    theme: resolvedTheme,
+    menu,
+  };
+  const orderingNotice = ordering?.notice?.(orderingSlotContext) ?? null;
+  const orderingMenuBody = ordering?.menuBody?.(orderingSlotContext) ?? null;
+  const orderingStickyBar = ordering?.stickyBar?.(orderingSlotContext) ?? null;
+  const orderingBarOwnsBottom = orderingStickyBar !== null &&
+    normalizedReservationUiState.activeTab === "menu";
+
   // ── §6.7 reserve display gate — fail closed. ─────────────────────────────
   const showReserveCta =
     canOpenReservationSheet &&
-    normalizedReservationUiState.activeTab !== "reservations";
+    normalizedReservationUiState.activeTab !== "reservations" &&
+    !orderingBarOwnsBottom;
 
   // ── #1562 §6.5 the venue's own clock, resolved ONCE ──────────────────────
   //
@@ -1267,18 +1356,34 @@ export const PublicVenueScreen = ({
   );
 
   // ── §6.6 menu (shared renderer) ───────────────────────────────────────────
+  //
+  // Issue #1793 — the pane now has an ordering half. The two menu renderers are
+  // ALTERNATIVES: `PublicMenuSections` is the display-only list whose rows carry
+  // no press target at all (pinned by publicMenu.render.test.tsx, because a
+  // venue with ordering off — which is every venue by default — must never grow
+  // a tappable-looking dead row), and `ordering.menuBody` is the same data with
+  // a way to buy it. The notice renders above whichever one mounts, so a guest
+  // who scanned a code at a paused venue reads the honest reason FIRST and the
+  // menu underneath it.
   const menuBlock =
-    menuItemCount > 0 ? (
+    menuItemCount > 0 || orderingNotice !== null ? (
       <View style={styles.menuWrap}>
-        <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
-          MENU
-        </Text>
-        <PublicMenuSections
-          groups={menu}
-          palette={palette}
-          surface={surface}
-          theme={resolvedTheme}
-        />
+        {orderingNotice}
+        {menuItemCount === 0 ? null : orderingMenuBody !== null ? (
+          orderingMenuBody
+        ) : (
+          <React.Fragment>
+            <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
+              MENU
+            </Text>
+            <PublicMenuSections
+              groups={menu}
+              palette={palette}
+              surface={surface}
+              theme={resolvedTheme}
+            />
+          </React.Fragment>
+        )}
       </View>
     ) : null;
 
@@ -1397,10 +1502,26 @@ export const PublicVenueScreen = ({
       </View>
     ) : null;
 
-  const reserveBarClearance =
-    showReserveCta && !isDesktop
-      ? 52 + 16 + insets.bottom + 8
-      : insets.bottom + 24;
+  // Issue #1793 — the ordering bar renders at EVERY width, unlike the reserve
+  // bar (which is phone-only because desktop has the sticky panel). A basket is
+  // the primary action of the page it is on, and a desktop guest with three
+  // things in theirs should not have to scroll to find the way to pay for them.
+  const orderingBar = orderingBarOwnsBottom ? (
+    <View
+      style={[
+        styles.reserveBarWrap,
+        { backgroundColor: palette.page, paddingBottom: insets.bottom + 8 },
+      ]}
+    >
+      {orderingStickyBar}
+    </View>
+  ) : null;
+
+  const reserveBarClearance = orderingBarOwnsBottom
+    ? 52 + 16 + insets.bottom + 8
+    : showReserveCta && !isDesktop
+    ? 52 + 16 + insets.bottom + 8
+    : insets.bottom + 24;
 
   // ── §6.10 desktop sticky panel ────────────────────────────────────────────
   const stickyPanel = isDesktop ? (
@@ -1607,7 +1728,10 @@ export const PublicVenueScreen = ({
       >
         {bodyContent}
       </ParallaxCoverShell>
-      {reserveBar}
+      {/* Exactly ONE bottom bar, ever. `orderingBarOwnsBottom` already forces
+          `showReserveCta` false, so this is belt-and-braces on a promise the
+          gate above makes — but it is the promise a thumb depends on. */}
+      {orderingBar ?? reserveBar}
       {reservationSheet({
         ...themedSlotContext,
         visible: normalizedReservationUiState.reservationSheetOpen,
@@ -1619,6 +1743,7 @@ export const PublicVenueScreen = ({
         title: profile.reserveAction,
         children: reservationsBlock,
       })}
+      {ordering?.overlay?.(orderingSlotContext) ?? null}
       {overlays}
     </View>
   );

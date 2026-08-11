@@ -69,9 +69,11 @@ import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
 import type {
   PublicVenueAnalyticsEvent,
   PublicVenueBookingSlotContext,
+  PublicVenueOrderingSlotContext,
   PublicVenueReservationSheetContext,
   PublicVenueViewModel,
 } from "@mingla/brand-rendering/PublicVenueScreen";
+import { useConsumerVenueOrdering } from "../../../../src/components/venueOrdering/useConsumerVenueOrdering";
 
 import { VenueReserveSheet } from "../../../../src/components/expandedCard/VenueReserveSheet";
 import { ConsumerStayGuestExperience } from "../../../../src/components/stay/ConsumerStayGuestExperience";
@@ -87,6 +89,9 @@ import type { ConsumerPublicVenue } from "../../../../src/services/publicVenueSe
 /** This app's ONE analytics surface tag for the public venue page. */
 const ANALYTICS_SURFACE = "consumer_native";
 
+/** #1793 — a stable empty menu, so the ordering hook's deps do not churn. */
+const EMPTY_MENU: ConsumerPublicVenue["menu"] = [];
+
 /**
  * [TRANSITIONAL] The buyer-web origin, hand-built here as every other consumer
  * share surface does (ConsumerBrandProfileScreen, ConsumerTripDetailScreen,
@@ -97,6 +102,43 @@ const ANALYTICS_SURFACE = "consumer_native";
  * consumer share surface adopts it together.
  */
 const BUYER_WEB_ORIGIN = "https://business.usemingla.com";
+
+/**
+ * Issue #1793 (#1767 Phase 4) — the ordering RENDERERS, behind a lazy boundary
+ * that lives HERE, in the host.
+ *
+ * The rule is the one #1550 wrote and #1791 paid for twice: code-splitting
+ * belongs where the bundle is measured, never inside the shared screen. A value
+ * import of a cart, a review pane and a status card at this module's scope would
+ * put all three in front of every visitor to every venue page — including the
+ * overwhelming majority whose venue has ordering switched off, which is the
+ * default and will be for most venues most of the time. The factory below runs
+ * the first time a guest can actually order.
+ */
+const LazyOrderingNotice = React.lazy(async () => {
+  const mod = await import(
+    "../../../../src/components/venueOrdering/ConsumerVenueOrderingSlots"
+  );
+  return { default: mod.ConsumerVenueOrderingNotice };
+});
+const LazyOrderingMenu = React.lazy(async () => {
+  const mod = await import(
+    "../../../../src/components/venueOrdering/ConsumerVenueOrderingSlots"
+  );
+  return { default: mod.ConsumerVenueOrderingMenu };
+});
+const LazyOrderingBar = React.lazy(async () => {
+  const mod = await import(
+    "../../../../src/components/venueOrdering/ConsumerVenueOrderingSlots"
+  );
+  return { default: mod.ConsumerVenueOrderingBar };
+});
+const LazyOrderingSheet = React.lazy(async () => {
+  const mod = await import(
+    "../../../../src/components/venueOrdering/ConsumerVenueOrderingSlots"
+  );
+  return { default: mod.ConsumerVenueOrderingSheet };
+});
 
 /** `ConsumerPublicVenue` (this app's read model) → the shared view model. */
 const toVenueViewModel = (
@@ -131,6 +173,8 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     brandSlug: string | string[];
     venueSlug: string | string[];
     tab?: string | string[];
+    spot?: string | string[];
+    src?: string | string[];
   }>();
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
@@ -139,6 +183,19 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     ? params.venueSlug[0]
     : params.venueSlug;
   const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
+  // #1793 (SPEC #1788 P-10) — the printed QR carries
+  // `?tab=menu&spot={code}&src=qr`. `spot` is WHERE they are sitting; `src` is
+  // HOW they arrived. D-3a keeps them apart on purpose: one is a recorded fact
+  // about a table, the other is attribution, and conflating them is how a
+  // venue's zone revenue comes to include people who were never in the zone.
+  const rawSpot = Array.isArray(params.spot) ? params.spot[0] : params.spot;
+  const spotCode = typeof rawSpot === "string" && rawSpot.trim() !== ""
+    ? rawSpot.trim()
+    : null;
+  const rawSrc = Array.isArray(params.src) ? params.src[0] : params.src;
+  const entrySource = typeof rawSrc === "string" && rawSrc.trim() !== ""
+    ? rawSrc.trim()
+    : null;
 
   const query = usePublicVenue(
     typeof brandSlug === "string" ? brandSlug : null,
@@ -381,6 +438,33 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     [onAvailabilityResultViewed, onReservationFailed, onSlotSelected, venue],
   );
 
+  /**
+   * #1793 — guest ordering. The hook is unconditional (hooks are), and it is
+   * INERT until the venue's own state says otherwise: with no menu, no slugs or
+   * ordering switched off it fires one cached read and renders nothing at all.
+   */
+  const ordering = useConsumerVenueOrdering({
+    brandSlug: typeof brandSlug === "string" ? brandSlug : "",
+    venueSlug: typeof venueSlug === "string" ? venueSlug : "",
+    spotCode,
+    entrySource,
+    menu: venue?.menu ?? EMPTY_MENU,
+    // Someone who scanned the card on their table is owed an explanation when
+    // they cannot order. Someone reading the menu out of curiosity is not, so
+    // the honest-state banner is shown to the first and never to the second.
+    scanned: spotCode !== null || entrySource === "qr",
+  });
+  const notesAllowedByItemId = useMemo<Record<string, boolean | undefined>>(
+    () => {
+      const map: Record<string, boolean | undefined> = {};
+      for (const group of venue?.menu ?? []) {
+        for (const item of group.items) map[item.id] = item.allowsNotes === true;
+      }
+      return map;
+    },
+    [venue?.menu],
+  );
+
   if (query.isLoading || query.isFetching) {
     return <StateView title="Loading venue…" loading />;
   }
@@ -448,6 +532,55 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       loadThemeFont={useConsumerThemeFont}
       bookingBody={renderBookingBody}
       reservationSheet={renderReservationSheet}
+      // #1793 — the three ordering slots. Each renders nothing at all unless
+      // this venue can actually take an order from this guest right now, so a
+      // venue with ordering off is byte-for-byte the page it was before.
+      ordering={{
+        notice: (context: PublicVenueOrderingSlotContext) => (
+          <React.Suspense fallback={null}>
+            <LazyOrderingNotice
+              ordering={ordering}
+              palette={context.palette}
+              surface={context.surface}
+              theme={context.theme}
+            />
+          </React.Suspense>
+        ),
+        menuBody: (context: PublicVenueOrderingSlotContext) => (
+          <React.Suspense fallback={<ActivityIndicator />}>
+            <LazyOrderingMenu
+              ordering={ordering}
+              palette={context.palette}
+              surface={context.surface}
+              theme={context.theme}
+              menu={context.menu}
+              menuWindows={venue.menuWindows}
+              timezone={venue.timezone}
+            />
+          </React.Suspense>
+        ),
+        stickyBar: (context: PublicVenueOrderingSlotContext) => (
+          <React.Suspense fallback={null}>
+            <LazyOrderingBar
+              ordering={ordering}
+              palette={context.palette}
+              surface={context.surface}
+              theme={context.theme}
+            />
+          </React.Suspense>
+        ),
+        overlay: (context: PublicVenueOrderingSlotContext) => (
+          <React.Suspense fallback={null}>
+            <LazyOrderingSheet
+              ordering={ordering}
+              palette={context.palette}
+              surface={context.surface}
+              theme={context.theme}
+              notesAllowedByItemId={notesAllowedByItemId}
+            />
+          </React.Suspense>
+        ),
+      }}
       onAnalytics={handleAnalytics}
       onShare={handleShare}
       onClose={handleClose}

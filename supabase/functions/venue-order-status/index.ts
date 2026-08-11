@@ -136,6 +136,14 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
       serviceChargeCents: Number(order.service_charge_cents),
       buyerSubtotalCents: Number(order.buyer_subtotal_cents),
       taxAmountCents: Number(order.tax_amount_cents),
+      // Issue #1793 — the ONE combined "Fees & tax" line, computed HERE from
+      // the row rather than by the receipt that renders it. The status card
+      // shows the same four lines as the cart did, and neither of them adds a
+      // single number up (P-20). Identity, from the persisted row:
+      //   subtotal + serviceCharge + feesAndTax + tip === total
+      feesAndTaxCents: Number(order.buyer_subtotal_cents) -
+        Number(order.subtotal_cents) - Number(order.service_charge_cents) +
+        Number(order.tax_amount_cents),
       tipCents: Number(order.tip_cents),
       totalCents: Number(order.total_cents),
       refundedAmountCents: Number(order.refunded_amount_cents),
