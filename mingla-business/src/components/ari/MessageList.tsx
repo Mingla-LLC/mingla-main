@@ -220,6 +220,33 @@ export const MessageList: React.FC<MessageListProps> = ({
   }, [items.length, pendingAction?.pending_action_id, isThinking]);
 
   return (
+    /*
+     * #1841 [keyboard-guard-blind-spots] — the ONE new allowlist entry this
+     * issue was authorised to grant, and the reason is a MISSING DESTINATION,
+     * not a deferral.
+     *
+     * What was tried first, per the review gate's instruction: on a chat surface
+     * the keyboard concern belongs to the composer, and it does here — the
+     * composer lift lives in AriChatScreen and now runs on a
+     * react-native-keyboard-controller-backed hook rather than bespoke
+     * Keyboard.addListener plumbing. What remains is a field INSIDE a
+     * virtualised row: ToolProposalCard renders an editable-args TextInput
+     * (ToolProposalCard.tsx) as a chat row, which is what puts an input in this
+     * FlatList's span.
+     *
+     * There is no container to migrate to. react-native-keyboard-controller
+     * exports exactly one keyboard-aware container, KeyboardAwareScrollView;
+     * there is no KeyboardAware FlatList or SectionList, and a virtualised chat
+     * list must not become a ScrollView. Inverting the FlatList — the
+     * conventional chat shape — changes real behaviour on a live tab and
+     * changes this gate's verdict not at all, because the container is still a
+     * bare FlatList whose span renders an input.
+     *
+     * Follow-up: #1873 (move the proposal card's edit affordance into the Sheet
+     * primitive, which owns its own KeyboardAwareScrollView). Delete this marker
+     * and its EXPECTED_ALLOWLISTED_FILES registration when that lands.
+     */
+    // orch-strict-grep-allow orch-0892 — no keyboard-aware virtualised container exists: the library ships KeyboardAwareScrollView only, and a chat thread must stay a FlatList. The composer's keyboard handling lives in AriChatScreen; the residual in-row edit field is tracked by #1873.
     <FlatList
       ref={listRef}
       data={items}

@@ -684,6 +684,11 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         <Stepper steps={stepperVariant} currentIndex={currentIndex} />
       </View>
 
+      {/* #1841 re-cover, NOT a new grant: the identical approved reason, moved
+          from the file head to the occurrence it was always meant to cover.
+          Allowlisting is per-occurrence since #1841 — one marker no longer
+          immunises a whole file. */}
+      {/* orch-strict-grep-allow orch-0892 — META-ORCH-0972 Sub-B BrandCreationFlow is a 4-step universal brand creation flow; keyboard-input fields (brand name, bio, address) sit at top of viewport and are not scroll-occluded by the on-screen keyboard. SmartScrollView migration deferred to a dedicated keyboard-hygiene follow-up ORCH. */}
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,

@@ -61,6 +61,17 @@ const ALLOWLIST = new Set([
   // react-native-keyboard-controller — canonical keyboard lib (ORCH-0892),
   // imported as JSX components across boot-safe native wrappers/components.
   "mingla-business/src/wrappers/useKeyboardIsVisible.native.ts",
+  // #1841 — useKeyboardHeight.native.ts is the same class as its sibling
+  // useKeyboardIsVisible.native.ts one line above, and audited on the same
+  // grounds: a React hook cannot `await import(...)` its dependency, and this
+  // package is ALREADY evaluated at boot regardless — app/_layout.tsx mounts
+  // KeyboardRoot.native.tsx, which top-level-imports KeyboardProvider from it.
+  // A second top-level import of a package the boot path already loads cannot
+  // make boot any more fragile than it is. It exists so a platform-agnostic
+  // screen can read the keyboard's HEIGHT without importing the library
+  // directly (which would leak it into the web bundle) and without a bespoke
+  // Keyboard.addListener (which orch-0892 pattern 1 forbids).
+  "mingla-business/src/wrappers/useKeyboardHeight.native.ts",
   "mingla-business/src/wrappers/KeyboardRoot.native.tsx",
   "mingla-business/src/wrappers/SmartScrollView.native.tsx",
   "mingla-business/src/wrappers/KeyboardToolbarRoot.native.tsx",
