@@ -306,6 +306,8 @@ export async function handler(request: Request): Promise<Response> {
   }
   const executionRpc = body.purpose === "retry_delivery"
     ? "biz_execute_offering_delivery_retry"
+    : "source" in body.selection && body.selection.source === "guest_roster_actions"
+    ? "biz_execute_guest_roster_send_group"
     : "biz_execute_offering_send_group";
   const executionArgs = body.purpose === "retry_delivery"
     ? {

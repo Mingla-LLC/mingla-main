@@ -12,7 +12,9 @@ BEGIN
   IF has_function_privilege('anon','public.biz_guest_roster_list(uuid,text,text,text,jsonb,integer)','EXECUTE')
      OR NOT has_function_privilege('authenticated','public.biz_guest_roster_list(uuid,text,text,text,jsonb,integer)','EXECUTE')
      OR has_function_privilege('authenticated','public.biz_guest_roster_project(uuid)','EXECUTE')
-     OR has_function_privilege('authenticated','public.biz_offering_guest_roster_export_rows(uuid)','EXECUTE') THEN
+     OR has_function_privilege('authenticated','public.biz_offering_guest_roster_export_rows(uuid)','EXECUTE')
+     OR has_function_privilege('authenticated','public.biz_execute_guest_roster_send_group(uuid,uuid,text,jsonb,text[],uuid,jsonb)','EXECUTE')
+     OR has_function_privilege('authenticated','public.biz_execute_offering_delivery_retry(uuid,uuid,uuid[],text[],uuid,jsonb)','EXECUTE') THEN
     RAISE EXCEPTION 'T-873-00 FAIL: read/provider ACL drift';
   END IF;
   IF (SELECT array_agg(column_name::text ORDER BY ordinal_position) FROM information_schema.columns
@@ -98,12 +100,20 @@ BEGIN
      OR jsonb_array_length(v_action->'selection'->'brandPersonIds')<>1 THEN
     RAISE EXCEPTION 'T-873-01B FAIL: eligible reminder selection wrong: %',v_action;
   END IF;
+  v:=public.biz_guest_roster_list('87300000-0000-4000-8000-000000000020','all',NULL,'action_priority',NULL,1);
   BEGIN
     PERFORM public.biz_guest_roster_list(
       '87300000-0000-4000-8000-000000000020','all',NULL,'action_priority',
-      jsonb_build_object('rank',2,'name','casey guest','activityAt',now(),
-        'rosterKey','person:87300000-0000-4000-8000-000000000030',
-        'queryHash',repeat('0',64),'watermark',(v->'summary'->>'watermark')::bigint),50
+      (v->'nextCursor')||jsonb_build_object('name','forged guest'),50
+    );
+    RAISE EXCEPTION 'T-873-01C FAIL: signed cursor tuple was forgeable';
+  EXCEPTION WHEN invalid_parameter_value THEN
+    IF SQLERRM NOT LIKE '%guest_roster_cursor_forged%' THEN RAISE; END IF;
+  END;
+  BEGIN
+    PERFORM public.biz_guest_roster_list(
+      '87300000-0000-4000-8000-000000000020','needs_attention',NULL,'action_priority',
+      v->'nextCursor',50
     );
     RAISE EXCEPTION 'T-873-01C FAIL: cursor was not bound to its query';
   EXCEPTION WHEN serialization_failure THEN NULL;
@@ -121,6 +131,33 @@ BEGIN
     RAISE EXCEPTION 'T-873-01D FAIL: execute survived action kill switch';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
+  UPDATE public.feature_flags SET is_enabled=true WHERE flag_key='guest_roster_single_actions_enabled';
+  PERFORM public.biz_guest_roster_get_preview(
+    '87300000-0000-4000-8000-000000000001',v_preview,v_preview
+  );
+  IF NOT EXISTS (SELECT 1 FROM public.guest_roster_action_previews
+    WHERE id=v_preview AND consumed_at IS NOT NULL AND execute_client_request_id=v_preview) THEN
+    RAISE EXCEPTION 'T-873-01E FAIL: preview was not durably claimed before provider I/O';
+  END IF;
+  BEGIN
+    PERFORM public.biz_guest_roster_get_preview(
+      '87300000-0000-4000-8000-000000000001',v_preview,
+      '87300000-0000-4000-8000-000000000058'
+    );
+    RAISE EXCEPTION 'T-873-01E FAIL: claimed preview accepted a second execution identity';
+  EXCEPTION WHEN unique_violation THEN NULL;
+  END;
+  UPDATE public.feature_flags SET is_enabled=false WHERE flag_key='guest_roster_single_actions_enabled';
+  BEGIN
+    PERFORM public.biz_execute_guest_roster_send_group(
+      '87300000-0000-4000-8000-000000000001','87300000-0000-4000-8000-000000000020',
+      'reminder',v_action->'selection',ARRAY['email'],
+      '87300000-0000-4000-8000-000000000057','{}'::jsonb
+    );
+    RAISE EXCEPTION 'T-873-01F FAIL: final reminder transaction survived rollout kill switch';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  UPDATE public.feature_flags SET is_enabled=true WHERE flag_key='guest_roster_single_actions_enabled';
 END;
 $accepted$;
 
@@ -180,6 +217,19 @@ BEGIN
     RAISE EXCEPTION 'T-873-02B FAIL: responded guest stayed reminder-eligible';
   EXCEPTION WHEN serialization_failure THEN NULL;
   END;
+  BEGIN
+    PERFORM public.biz_execute_guest_roster_send_group(
+      '87300000-0000-4000-8000-000000000001','87300000-0000-4000-8000-000000000020',
+      'reminder',jsonb_build_object(
+        'kind','resolved_brand_people_v1',
+        'brandPersonIds',jsonb_build_array('87300000-0000-4000-8000-000000000030'),
+        'selectionHash',repeat('5',64),'source','guest_roster_actions'
+      ),ARRAY['email'],'87300000-0000-4000-8000-000000000056','{}'::jsonb
+    );
+    RAISE EXCEPTION 'T-873-02B FAIL: final reminder transaction ignored changed RSVP';
+  EXCEPTION WHEN serialization_failure THEN
+    IF SQLERRM NOT LIKE '%guest_roster_status_changed%' THEN RAISE; END IF;
+  END;
   v:=public.biz_guest_roster_set_rsvp_approval(
     '87300000-0000-4000-8000-000000000020','person:87300000-0000-4000-8000-000000000030',
     'approve','87300000-0000-4000-8000-000000000062'
@@ -204,6 +254,11 @@ INSERT INTO public.brand_person_source_links(id,brand_id,brand_person_id,source_
 VALUES('87300000-0000-4000-8000-000000000073','87300000-0000-4000-8000-000000000010',
   '87300000-0000-4000-8000-000000000030','order','87300000-0000-4000-8000-000000000071',
   '87300000-0000-4000-8000-000000000040','invite_token',now());
+INSERT INTO public.brand_person_source_links(id,brand_id,brand_person_id,source_kind,source_id,
+  offering_invite_id,link_method,source_occurred_at)
+VALUES('87300000-0000-4000-8000-000000000074','87300000-0000-4000-8000-000000000010',
+  '87300000-0000-4000-8000-000000000030','ticket_holder','87300000-0000-4000-8000-000000000072',
+  '87300000-0000-4000-8000-000000000040','invite_token',now());
 
 DO $commerce$
 DECLARE v jsonb;
@@ -222,7 +277,8 @@ BEGIN
   UPDATE public.event_rsvps SET rsvp_status='maybe',approval_status='approved'
   WHERE id='87300000-0000-4000-8000-000000000060';
   v:=public.biz_guest_roster_list('87300000-0000-4000-8000-000000000020','maybe',NULL,'action_priority',NULL,50);
-  IF v->'rows'->0->>'primaryStatus'<>'maybe' OR v->'rows'->0->>'rsvpStatus'<>'maybe' THEN
+  IF v->'rows'->0->>'primaryStatus'<>'maybe' OR v->'rows'->0->>'rsvpStatus'<>'maybe'
+     OR NOT (v->'rows'->0->>'canRemind')::boolean THEN
     RAISE EXCEPTION 'T-873-04B FAIL: Maybe RSVP fact/filter disappeared: %',v;
   END IF;
   UPDATE public.event_rsvps SET rsvp_status='waitlisted',approval_status='approved'
@@ -268,7 +324,22 @@ INSERT INTO public.brand_offering_invite_delivery_attempts(
   '87300000-0000-4000-8000-000000000051','87300000-0000-4000-8000-000000000052',
   '87300000-0000-4000-8000-000000000031','email','retry',2,
   '87300000-0000-4000-8000-000000000053','failed',true,'provider_transient',now()
-),(
+);
+
+DO $latest_failure$
+DECLARE v jsonb;
+BEGIN
+  v:=public.biz_guest_roster_list('87300000-0000-4000-8000-000000000020','needs_attention',NULL,'action_priority',NULL,50);
+  IF jsonb_array_length(v->'rows')<>1 OR NOT (v->'rows'->0->>'canRetry')::boolean THEN
+    RAISE EXCEPTION 'T-873-05C FAIL: latest retryable failure was hidden by primary status: %',v;
+  END IF;
+END;
+$latest_failure$;
+
+INSERT INTO public.brand_offering_invite_delivery_attempts(
+  id,invite_id,send_group_id,campaign_id,contact_method_id,channel,attempt_kind,
+  attempt_ordinal,retry_of_attempt_id,status,is_retryable,safe_reason_code,queued_at
+) VALUES(
   '87300000-0000-4000-8000-000000000081','87300000-0000-4000-8000-000000000040',
   '87300000-0000-4000-8000-000000000051','87300000-0000-4000-8000-000000000052',
   '87300000-0000-4000-8000-000000000031','email','retry',3,
@@ -276,7 +347,12 @@ INSERT INTO public.brand_offering_invite_delivery_attempts(
 );
 
 DO $stale_retry$
+DECLARE v jsonb;
 BEGIN
+  v:=public.biz_guest_roster_list('87300000-0000-4000-8000-000000000020','needs_attention',NULL,'action_priority',NULL,50);
+  IF jsonb_array_length(v->'rows')<>0 THEN
+    RAISE EXCEPTION 'T-873-05D FAIL: historical failure stayed retryable after a newer attempt: %',v;
+  END IF;
   BEGIN
     PERFORM public.biz_execute_offering_delivery_retry(
       '87300000-0000-4000-8000-000000000001','87300000-0000-4000-8000-000000000020',

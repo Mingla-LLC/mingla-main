@@ -114,7 +114,7 @@ export async function handler(request: Request): Promise<Response> {
   }
 
   const { data: stored, error: previewError } = await service.rpc("biz_guest_roster_get_preview", {
-    p_actor_id: actorId, p_preview_id: body.previewId, p_client_request_id: body.clientRequestId,
+    p_actor_id: actorId, p_preview_id: body.previewId, p_client_request_id: body.previewId,
   });
   if (previewError || stored === null) {
     const forbidden = previewError?.message.includes("forbidden") ?? false;
@@ -127,13 +127,13 @@ export async function handler(request: Request): Promise<Response> {
     method: "POST",
     headers: { authorization, "content-type": "application/json", "x-mingla-internal-service-key": serviceKey },
     body: JSON.stringify({ eventId: preview.eventId, purpose: preview.action, selection: preview.selection,
-      channels: preview.channels, clientRequestId: body.clientRequestId, mode: "confirm",
+      channels: preview.channels, clientRequestId: body.previewId, mode: "confirm",
       quoteHash: preview.quoteHash, expectedCostMinor: preview.estimatedCostMinor, currency: preview.currency }),
   }));
   const result = await parseDispatch(dispatchResponse);
   if (!dispatchResponse.ok) return json({ ok: false, code: result.error ?? "execute_failed", providerIo: result.providerIo ?? false }, dispatchResponse.status);
   const { error: consumeError } = await service.rpc("biz_guest_roster_consume_preview", {
-    p_actor_id: actorId, p_preview_id: body.previewId, p_client_request_id: body.clientRequestId,
+    p_actor_id: actorId, p_preview_id: body.previewId, p_client_request_id: body.previewId,
   });
   if (consumeError) return json({ ok: false, code: "preview_consume_failed", providerIo: result.providerIo ?? false }, 502);
   return json({ ok: true, status: "queued", groupId: result.groupId, selectedCount: result.selectedCount,

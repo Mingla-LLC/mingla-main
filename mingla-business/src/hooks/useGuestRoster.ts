@@ -65,9 +65,9 @@ export function useGuestRoster(input: {
     enabled,
     initialPageParam: null as Record<string, unknown> | null,
     staleTime: 15_000,
-    refetchInterval: enabled ? 15_000 : false,
-    refetchOnReconnect: true,
-    refetchOnWindowFocus: true,
+    refetchInterval: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
     queryFn: ({ pageParam }) => {
       if (input.eventId === null) throw new Error("guest_roster_event_required");
       return fetchGuestRoster({
@@ -80,17 +80,31 @@ export function useGuestRoster(input: {
     },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
-  const invalidateEvent = useCallback(() => {
+  const refreshFromFirstPage = useCallback(() => {
     if (!enabled || input.eventId === null) return;
-    void queryClient.invalidateQueries({
-      predicate: (candidate) => candidate.queryKey[0] === "guest-roster" && candidate.queryKey[1] === input.eventId,
+    void queryClient.resetQueries({
+      predicate: (candidate) => candidate.queryKey[0] === "guest-roster" &&
+        candidate.queryKey[1] === input.eventId && candidate.queryKey[2] !== "access",
     });
   }, [enabled, input.eventId, queryClient]);
+
+  const invalidateEvent = useCallback(() => {
+    refreshFromFirstPage();
+    if (input.eventId !== null) {
+      void queryClient.invalidateQueries({ queryKey: guestRosterKeys.access(input.eventId), exact: true });
+    }
+  }, [input.eventId, queryClient, refreshFromFirstPage]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const timer = setInterval(refreshFromFirstPage, 15_000);
+    return () => clearInterval(timer);
+  }, [enabled, refreshFromFirstPage]);
 
   useFocusEffect(useCallback(() => { invalidateEvent(); }, [invalidateEvent]));
 
@@ -121,11 +135,7 @@ export function useGuestRoster(input: {
           filter: `event_id=eq.${input.eventId}`,
         },
         () => {
-          void queryClient.invalidateQueries({
-            predicate: (candidate) =>
-              candidate.queryKey[0] === "guest-roster" &&
-              candidate.queryKey[1] === input.eventId,
-          });
+          invalidateEvent();
         },
       )
       .subscribe((status) => {
@@ -149,5 +159,6 @@ export function useGuestRoster(input: {
     lastSuccessfulSyncAt,
     isStaleTruth: lastSuccessfulSyncAt === null || now - lastSuccessfulSyncAt > 30_000,
     isOffline,
+    refreshFromFirstPage,
   };
 }

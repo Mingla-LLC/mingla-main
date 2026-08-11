@@ -219,7 +219,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const { user } = useAuth();
+  const { isAuthReady, user } = useAuth();
   const operatorAccountId = user?.id ?? "anonymous";
 
   const routeEvent = useManagedEventRoute(
@@ -487,22 +487,7 @@ export default function EventGuestsListRoute(): React.ReactElement {
 
   const totalCount = merged.length;
 
-  if (guestRosterAccess.isLoading) {
-    return (
-      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
-        <View style={styles.chromeRow}>
-          <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
-          <Text style={styles.chromeTitle}>Guests</Text>
-          <View style={styles.chromeRightSlot} />
-        </View>
-        <View style={styles.emptyHost} accessibilityRole="progressbar">
-          <Text style={styles.emptyLoadingText}>Loading guest status…</Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (guestRosterAccess.isError) {
+  if (guestRosterAccess.isError || (isAuthReady && user === null)) {
     return (
       <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
         <View style={styles.chromeRow}>
@@ -512,6 +497,21 @@ export default function EventGuestsListRoute(): React.ReactElement {
         </View>
         <View style={styles.emptyHost}>
           <EmptyState illustration="ticket" title="Couldn't load guest status" description="No guest view is shown until access is confirmed." cta={{ label: "Try again", onPress: () => { void guestRosterAccess.refetch(); }, variant: "primary" }} />
+        </View>
+      </View>
+    );
+  }
+
+  if (guestRosterAccess.isPending || guestRosterAccess.data === undefined) {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <View style={styles.chromeRow}>
+          <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
+          <Text style={styles.chromeTitle}>Guests</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost} accessibilityRole="progressbar">
+          <Text style={styles.emptyLoadingText}>Loading guest status…</Text>
         </View>
       </View>
     );

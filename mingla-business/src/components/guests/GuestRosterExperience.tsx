@@ -296,7 +296,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
     { key: "needs_attention" as const, label: "Needs attention", count: summary?.needsAttention ?? 0 },
   ], [summary]);
 
-  const refresh = useCallback(() => { void query.refetch(); }, [query]);
+  const refresh = useCallback(() => { query.refreshFromFirstPage(); }, [query]);
   const loadMore = useCallback(() => { void query.fetchNextPage(); }, [query]);
   const previewAction = useCallback(async (action: "reminder" | "retry_delivery", rows?: GuestRosterRow[]) => {
     const targets = rows ?? (selected === null ? [] : [selected]);
@@ -311,7 +311,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
       setActionPreview(preview);
     } catch {
       setActionMessage("This guest's status changed or the action is no longer available. Refresh and try again.");
-      void query.refetch();
+      query.refreshFromFirstPage();
     } finally { setActionPending(false); }
   }, [eventId, query, selected]);
 
@@ -340,7 +340,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
       executeRequest.current = null;
       setActionPreview(null);
       setSelectedKeys(new Set()); setBulkAction(null); setSelectionMode(false);
-      void query.refetch();
+      query.refreshFromFirstPage();
     } catch { setActionMessage("We couldn't confirm the queue result. Retry to check safely without creating a second send."); }
     finally { setActionPending(false); }
   }, [actionPreview, query]);
@@ -362,8 +362,8 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
     try {
       await setGuestRosterRsvpApproval({ eventId, rosterKey: selected.rosterKey, decision, clientRequestId: createGuestRosterRequestId() });
       setActionMessage(decision === "approve" ? "RSVP approved." : "RSVP denied.");
-      setSelected(null); void query.refetch();
-    } catch { setActionMessage("The RSVP changed before this action. Refresh and try again."); void query.refetch(); }
+      setSelected(null); query.refreshFromFirstPage();
+    } catch { setActionMessage("The RSVP changed before this action. Refresh and try again."); query.refreshFromFirstPage(); }
     finally { setActionPending(false); }
   }, [eventId, query, selected]);
 
@@ -441,7 +441,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
             {query.isFetchNextPageError ? (
               <View style={styles.loadMoreState} accessibilityRole="alert">
                 <Text style={styles.detailMuted}>Couldn't load more guests.</Text>
-                <Button variant="secondary" label="Try again" onPress={loadMore} />
+                <Button variant="secondary" label="Refresh list" onPress={refresh} />
               </View>
             ) : query.hasNextPage ? (
               <View style={styles.loadMoreState}>
