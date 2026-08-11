@@ -12,6 +12,7 @@ describe("shouldEnableBrandStripeStatusQuery", () => {
         authLoading: true,
         user,
         session,
+        canManagePayments: true,
       }),
     ).toBe(false);
   });
@@ -23,6 +24,7 @@ describe("shouldEnableBrandStripeStatusQuery", () => {
         authLoading: false,
         user: null,
         session,
+        canManagePayments: true,
       }),
     ).toBe(false);
   });
@@ -34,6 +36,7 @@ describe("shouldEnableBrandStripeStatusQuery", () => {
         authLoading: false,
         user,
         session: null,
+        canManagePayments: true,
       }),
     ).toBe(false);
   });
@@ -45,6 +48,7 @@ describe("shouldEnableBrandStripeStatusQuery", () => {
         authLoading: false,
         user,
         session,
+        canManagePayments: true,
       }),
     ).toBe(true);
   });
@@ -56,6 +60,36 @@ describe("shouldEnableBrandStripeStatusQuery", () => {
         authLoading: false,
         user,
         session,
+        canManagePayments: true,
+      }),
+    ).toBe(false);
+  });
+
+  // #1863 [error-toast-covers-bank-field] — the added conjunct. Both
+  // `brand-stripe-refresh-status` and `brand-stripe-balances` return
+  // 403 permission_denied at `requirePaymentsManager` for any role outside
+  // {brand_owner, brand_admin, finance_manager}; firing the query anyway
+  // produced ~2,650 unanswerable edge invocations in eight idle hours.
+  it("#1863 does not enable when the caller cannot manage payments", () => {
+    expect(
+      shouldEnableBrandStripeStatusQuery({
+        brandId,
+        authLoading: false,
+        user,
+        session,
+        canManagePayments: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("#1863 the payments conjunct cannot rescue a failing auth conjunct", () => {
+    expect(
+      shouldEnableBrandStripeStatusQuery({
+        brandId: null,
+        authLoading: false,
+        user,
+        session,
+        canManagePayments: true,
       }),
     ).toBe(false);
   });

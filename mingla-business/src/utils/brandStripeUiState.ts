@@ -1,6 +1,32 @@
 import type { BrandStripeStatus } from "../store/currentBrandStore";
+import { isPermissionDeniedError } from "./edgeFunctionErrors";
 
 export const ACTIVE_STRIPE_BANNER_TITLE = "You're connected to Stripe";
+
+/** The two ViewStates a failed `useBrandStripeStatus` may resolve to. */
+export type BrandStripeStatusErrorViewState =
+  | "permission-denied"
+  | "failed-network";
+
+/**
+ * #1863 §4.6 — maps a status-query error to the onboarding ViewState.
+ *
+ * `BrandOnboardView` used to map ANY `statusQuery.isError` to `failed-network`
+ * and tell the user "Check your connection and try again." Their connection was
+ * fine; their ROLE was the problem, so they retried forever. Meanwhile the
+ * `permission-denied` ViewState existed with a renderer and was DEAD CODE —
+ * nothing anywhere set it.
+ *
+ * Lives here, as a pure exported function, so the classification is executable
+ * in a plain node/ts-jest test without mounting anything: the regression suites
+ * feed it the REAL error objects the REAL service functions produce, rather
+ * than a hand-built fixture that could agree with a broken implementation.
+ */
+export function mapStripeStatusErrorToViewState(
+  error: unknown,
+): BrandStripeStatusErrorViewState {
+  return isPermissionDeniedError(error) ? "permission-denied" : "failed-network";
+}
 
 export interface BrandProfileStripeBannerCopy {
   title: string;

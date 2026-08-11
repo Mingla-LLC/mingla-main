@@ -125,6 +125,17 @@ jobs:
       - name: "#1834 — NG brand bank field SmartScrollView host"
         if: always()
         run: npx jest --config jest.issue1834.render.cjs --runInBand --ci
+      # #1863 guards the brand payments ROLE GATE on a money surface. An
+      # under-privileged team member was shown balances, the tax tools, the
+      # export and the Danger Zone "Disconnect Stripe" control, and the server
+      # refused every call behind them with 403. This suite mounts the three
+      # real ROUTE components (not the views — a view-only mount goes green with
+      # all three routes unwrapped) and asserts, on the mounted tree, that a
+      # denied role sees the explanation card and fires ZERO edge invocations
+      # while an allowed role's surface is unchanged.
+      - name: "#1863 — brand payments permission gate (routes, both rails)"
+        if: always()
+        run: npx jest --config jest.issue1863.render.cjs --runInBand --ci
 
       # ---- WEB render proofs -------------------------------------------------
       # react-test-renderer is structurally blind to react-native-web's atomic

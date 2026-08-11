@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 498,
-  "selfTestWiredFloor": 309,
+  "expectedStrictGrepMjsFiles": 499,
+  "selfTestWiredFloor": 310,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -7702,6 +7702,20 @@
       ],
       "selfTest": "wired",
       "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1863-payments-permission-gate.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1863-payments-permission-gate"
+      ]
     }
   ]
 }

@@ -81,6 +81,14 @@ import { useBrandStripeTaxAccountSession } from "../../hooks/useBrandStripeTaxAc
 import { useBrandStripeAccountSession } from "../../hooks/useBrandStripeAccountSession";
 import { getEffectiveBrandStripeStatus } from "../../utils/stripeOnboardingOutcome";
 import { ACTIVE_STRIPE_BANNER_TITLE } from "../../utils/brandStripeUiState";
+// #1863 §4.10 — defence in depth for the 30s stale-role window. The primary
+// gate is the route wrapper (BrandPaymentsPermissionGate); this catches the
+// case where the client gate said ALLOW and the server said 403.
+import { isPermissionDeniedError } from "../../utils/edgeFunctionErrors";
+import {
+  BRAND_PAYMENTS_DENIED_BODY,
+  BRAND_PAYMENTS_DENIED_TITLE,
+} from "../../utils/brandPaymentsPermission";
 import { majorFromMinor } from "../../utils/currency";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
@@ -234,6 +242,15 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
 
   const bannerConfig = BANNER_CONFIG[stripeStatus];
 
+  // #1863 §4.10 — the server has refused this caller. Derived once, from the
+  // real classified errors, for BOTH twins. When true the whole body is
+  // replaced by the same explanation card the route gate renders — and
+  // specifically NOT by the two "Couldn’t refresh…" warning cards plus a live
+  // Danger Zone, which is what a demoted user saw for the length of the 30s
+  // role-cache window.
+  const deniedByServer = isPermissionDeniedError(stripeStatusQuery.error) ||
+    isPermissionDeniedError(stripeBalancesQuery.error);
+
   // ORCH-0796 — `brand.payouts` and `brand.refunds` are intentionally unpopulated
   // by mapBrandRowToUi today (ORCH-0742 collapsed the persist payload to currentBrandId
   // only). This screen renders the empty state. Real per-brand payout/refund listing
@@ -271,6 +288,43 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                 variant="secondary"
                 size="md"
                 leadingIcon="arrowL"
+              />
+            </View>
+          </GlassCard>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ----- Server-refused state (#1863 §4.10) -----
+  // Placed ABOVE the Paystack fork on purpose: a gate that sat below it would
+  // leave the entire Nigerian bank-connect journey unprotected. One decision,
+  // both rails — the same reason the route wrapper sits above this component.
+  if (deniedByServer) {
+    return (
+      <View style={styles.host}>
+        <View style={styles.barWrap}>
+          <TopBar
+            leftKind="back"
+            title="Payments"
+            onBack={onBack}
+            rightSlot={<View />}
+          />
+        </View>
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <GlassCard variant="elevated" padding={spacing.lg}>
+            <Text style={styles.notFoundTitle} accessibilityRole="header">
+              {BRAND_PAYMENTS_DENIED_TITLE}
+            </Text>
+            <Text style={styles.notFoundBody}>{BRAND_PAYMENTS_DENIED_BODY}</Text>
+            <View style={styles.notFoundBtnRow}>
+              <Button
+                label="Back"
+                onPress={onBack}
+                variant="secondary"
+                size="md"
+                leadingIcon="arrowL"
+                accessibilityLabel="Back"
               />
             </View>
           </GlassCard>

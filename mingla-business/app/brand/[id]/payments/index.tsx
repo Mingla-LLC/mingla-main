@@ -20,6 +20,9 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandPaymentsView } from "../../../../src/components/brand/BrandPaymentsView";
+// #1863 [error-toast-covers-bank-field] — role gate at the ROUTE, above the
+// view's Paystack fork, so both rails are covered by one decision.
+import { BrandPaymentsPermissionGate } from "../../../../src/components/brand/BrandPaymentsPermissionGate";
 import { canvas } from "../../../../src/constants/designSystem";
 import { useBrand } from "../../../../src/hooks/useBrands";
 
@@ -60,12 +63,18 @@ export default function BrandPaymentsRoute(): React.ReactElement {
         backgroundColor: canvas.discover, // I-12
       }}
     >
-      <BrandPaymentsView
-        brand={brand}
+      <BrandPaymentsPermissionGate
+        brandId={brandId}
+        title="Payments"
         onBack={handleBack}
-        onOpenOnboard={handleOpenOnboard}
-        onOpenReports={handleOpenReports}
-      />
+      >
+        <BrandPaymentsView
+          brand={brand}
+          onBack={handleBack}
+          onOpenOnboard={handleOpenOnboard}
+          onOpenReports={handleOpenReports}
+        />
+      </BrandPaymentsPermissionGate>
     </View>
   );
 }
