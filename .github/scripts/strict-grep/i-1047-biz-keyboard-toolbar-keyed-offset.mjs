@@ -69,6 +69,14 @@ import { fileURLToPath } from "node:url";
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const BIZ = path.join(REPO, "mingla-business");
 const SELF_TEST = process.argv.includes("--self-test");
+/**
+ * Only scan when invoked directly. `run` is imported by
+ * `__tests__/issue-1850-quarantine-invariant-handoff.happy.test.mjs`, which drives it
+ * with a mutated file map; without this guard the import alone would scan and exit.
+ */
+const IS_MAIN =
+  typeof process.argv[1] === "string" &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 const stripImports = (s) => s.split("\n").filter((l) => !/^\s*import\b/.test(l)).join("\n");
 /** Comments never satisfy — and never violate — a source rule. */
@@ -221,7 +229,7 @@ export function run({ files, mountHosts, keyed, nestedHosts, derivedHosts }) {
 }
 
 // ───────────────────────────── self-test ──────────────────────────────────
-if (SELF_TEST) {
+if (IS_MAIN && SELF_TEST) {
   const CLEAN = new Map([
     ["app/_layout.tsx", `import { KeyboardToolbarRoot } from "x";\n<KeyboardRoot><App/><KeyboardToolbarRoot/></KeyboardRoot>`],
     [
@@ -368,36 +376,40 @@ if (SELF_TEST) {
 }
 
 // ───────────────────────────── live run ───────────────────────────────────
-const files = new Map();
-for (const rel of new Set([
-  ...MOUNT_HOSTS,
-  ...KEYED.map(([r]) => r),
-  ...NESTED_PROVIDER_HOSTS,
-  ...DERIVED_CLEARANCE,
-])) {
-  try {
-    files.set(rel, fs.readFileSync(path.join(BIZ, rel), "utf8"));
-  } catch {
-    files.set(rel, null);
+function main() {
+  const files = new Map();
+  for (const rel of new Set([
+    ...MOUNT_HOSTS,
+    ...KEYED.map(([r]) => r),
+    ...NESTED_PROVIDER_HOSTS,
+    ...DERIVED_CLEARANCE,
+  ])) {
+    try {
+      files.set(rel, fs.readFileSync(path.join(BIZ, rel), "utf8"));
+    } catch {
+      files.set(rel, null);
+    }
   }
+
+  const result = run({
+    files,
+    mountHosts: MOUNT_HOSTS,
+    keyed: KEYED,
+    nestedHosts: NESTED_PROVIDER_HOSTS,
+    derivedHosts: DERIVED_CLEARANCE,
+  });
+
+  if (result.code !== 0) {
+    console.error("\nFAIL [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET]:");
+    for (const v of result.failures) console.error(`  x ${v}`);
+    console.error("");
+    process.exit(result.code);
+  }
+  console.log(
+    `OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET]: ${MOUNT_HOSTS.length} mount hosts render the toolbar; ` +
+      `${KEYED.length} offsets stay keyboard-keyed; ${NESTED_PROVIDER_HOSTS.length} Modal windows nest it in their ` +
+      `own provider; ${DERIVED_CLEARANCE.length} surfaces derive clearance from DONE_BAR_OCCUPIED.`,
+  );
 }
 
-const result = run({
-  files,
-  mountHosts: MOUNT_HOSTS,
-  keyed: KEYED,
-  nestedHosts: NESTED_PROVIDER_HOSTS,
-  derivedHosts: DERIVED_CLEARANCE,
-});
-
-if (result.code !== 0) {
-  console.error("\nFAIL [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET]:");
-  for (const v of result.failures) console.error(`  x ${v}`);
-  console.error("");
-  process.exit(result.code);
-}
-console.log(
-  `OK [I-1047-BIZ-KEYBOARD-TOOLBAR-KEYED-OFFSET]: ${MOUNT_HOSTS.length} mount hosts render the toolbar; ` +
-    `${KEYED.length} offsets stay keyboard-keyed; ${NESTED_PROVIDER_HOSTS.length} Modal windows nest it in their ` +
-    `own provider; ${DERIVED_CLEARANCE.length} surfaces derive clearance from DONE_BAR_OCCUPIED.`,
-);
+if (IS_MAIN) main();
