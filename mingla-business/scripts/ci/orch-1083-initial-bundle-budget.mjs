@@ -111,7 +111,49 @@ const CEILING_RAW_BYTES = Number(process.env.ORCH_1083_CEILING ?? 9_405_478);
 // Raising by the established 10 KB increment restores ~9.9 KB of live headroom
 // without relaxing the 9.4 MB total-payload ceiling or any deferred-dependency
 // detector.
-const COMMON_CAP_BYTES = Number(process.env.ORCH_1083_COMMON_CAP ?? 2_340_000);
+// #1835 rebaseline 2026-08-11 (brand delete is owner-only + failures say why):
+// MEASURED, not estimated. Fresh `expo export -p web --clear` of both source
+// states on the same macOS machine:
+//   origin/main @ 57cbe2016 ....... __common = 2,338,318 B  (1,682 B headroom)
+//   this branch @ 3b9a599fb ....... __common = 2,341,978 B  (1,978 B over cap)
+//   delta ......................... +3,660 B
+// GitHub's Linux runner measured this branch at 2,341,922 B — a 56 B platform
+// variance, consistent with the ±149 B variance recorded in the #871 note above.
+//
+// WHAT the delta is: the eager brand surfaces now import three small pure
+// modules — `utils/brandDeletePermission.ts` (the owner-only predicate),
+// `utils/supabaseErrorMessage.ts` (PostgREST error normalisation), and
+// `utils/brandDeleteError.ts` (three vetted user-facing strings) — plus the
+// owner-only panel in BrandDeleteSheet and two `captureException` call sites.
+// Metro hoists the utils into __common because the eager brands service and
+// several brand chunks all import them.
+//
+// WHY it is NOT the regression this tripwire targets: the guard fails fast
+// (`fail()` → `process.exit(1)`), so reaching this check proves checks 1–3
+// PASSED on the branch build — zero deferred specifiers in the main entry chunk
+// (@stripe/connect-js, react-native-qrcode-svg, @expo-google-fonts/* all still
+// deferred) and total initial payload 3,346,310 B against the 9,405,478 B
+// ceiling. Nothing heavy re-entered the boot path; this is organic growth on a
+// cap that main was already sitting 0.07% under.
+//
+// WHY the modules are not deferred to dodge the cap: TRIED AND MEASURED. Putting
+// BrandDeleteSheet behind React.lazy at the two remaining eager call sites
+// (app/(tabs)/home.tsx, app/brand/[id]/index.tsx — mirroring account.tsx and
+// hub/_layout.tsx) produced a BYTE-IDENTICAL __common of 2,341,978 B. Metro
+// hoists modules shared across multiple chunks into __common, so deferring a
+// component into a 4th chunk keeps it shared and it lands right back. That
+// attempt was reverted rather than kept for zero measured benefit.
+//
+// Cap raised by the established 10 KB increment to 2,350,000 B, preserving
+// ~8 KB of live tripwire headroom. The 9.4 MB total-payload ceiling and every
+// deferred-dependency detector are UNCHANGED.
+//
+// STANDING NOTE for whoever trips this next: main has now arrived at this cap
+// within ~1.7 KB on four of the last five rebaselines. A budget with 0.07%
+// headroom stops functioning as a budget and becomes a blocker on unrelated
+// work. The real fix is the __common tightening tracked as its own ORCH per the
+// note above — not a fifth increment.
+const COMMON_CAP_BYTES = Number(process.env.ORCH_1083_COMMON_CAP ?? 2_350_000);
 
 // The four deferred specifiers (must NOT appear in the initial-payload scripts).
 const DEFERRED_SPECIFIERS = [

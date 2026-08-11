@@ -74,6 +74,10 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Toast } from "../ui/Toast";
 import { TopBar } from "../ui/TopBar";
+// Issue #1835 — brand deletion is owner-only; the danger zone is hidden for
+// everyone else rather than offered and then refused by the database. Uses the
+// existing `accountId` prop (the signed-in operator) — no new auth dependency.
+import { canDeleteBrand } from "../../utils/brandDeletePermission";
 import { BrandAvatarPickerSheet } from "./BrandAvatarPickerSheet";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
@@ -890,8 +894,11 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             </View>
           </GlassCard>
 
-          {/* Cycle 17e-A — Danger zone */}
-          {onRequestDelete !== undefined ? (
+          {/* Cycle 17e-A — Danger zone.
+              Issue #1835 — owner-only: a brand_admin's delete is refused by the
+              `brands` RLS policy, so the affordance is hidden rather than shown
+              and then rejected. */}
+          {onRequestDelete !== undefined && canDeleteBrand(brand, accountId) ? (
             <View style={styles.dangerZone}>
               <Text style={styles.dangerLabel}>Danger zone</Text>
               <Text style={styles.dangerHelper}>

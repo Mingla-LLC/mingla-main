@@ -21,6 +21,8 @@
  */
 
 import { supabase } from "./supabase";
+// Issue #1835 — every error leaving this service must be a real Error.
+import { normalizeSupabaseError } from "../utils/supabaseErrorMessage";
 import {
   mapBrandRowToUi,
   mapUiToBrandInsert,
@@ -913,7 +915,16 @@ export async function softDeleteBrand(brandId: string): Promise<SoftDeleteResult
     .is("deleted_at", null)
     .gt("event_dates.end_at", nowIso);
 
-  if (countError) throw countError;
+  // Issue #1835 — normalise BEFORE throwing. supabase-js hands back a PLAIN
+  // OBJECT here, not an Error, so a bare `throw countError` made every
+  // downstream `error instanceof Error` check false and the real reason was
+  // discarded. Callers now always receive a real Error carrying `code`.
+  if (countError) {
+    throw normalizeSupabaseError(
+      countError,
+      "softDeleteBrand: failed to count blocking events",
+    );
+  }
 
   if (count !== null && count > 0) {
     // Workflow rejection — NOT thrown; UI handles via modal
@@ -940,7 +951,15 @@ export async function softDeleteBrand(brandId: string): Promise<SoftDeleteResult
     .is("deleted_at", null) // defensive idempotency
     .select("id");
 
-  if (updateError) throw updateError;
+  // Issue #1835 — same normalisation as Step 1. This is the throw that carried
+  // the "new row violates row-level security policy for table \"brands\"" /
+  // code 42501 the operator never got to see.
+  if (updateError) {
+    throw normalizeSupabaseError(
+      updateError,
+      "softDeleteBrand: update rejected",
+    );
+  }
   if (data === null || data.length === 0) {
     throw new Error(
       "softDeleteBrand: 0 rows updated — brand may not exist, may already be soft-deleted, or RLS denied. brandId=" +

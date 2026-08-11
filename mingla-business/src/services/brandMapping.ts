@@ -269,6 +269,11 @@ export function mapBrandRowToUi(row: BrandRow, options: MapBrandRowToUiOptions):
     coverMediaType: row.cover_media_type ?? undefined,
     profilePhotoType: row.profile_photo_type ?? undefined,
     photo: row.profile_photo_url ?? undefined,
+    // Issue #1835 — carry the deed holder through to the UI. The delete
+    // affordance is gated on this (NOT on `role`, which is a lossy two-value
+    // collapse of `brand_team_members.role` and can disagree with the account
+    // that the `brands` RLS policy actually checks).
+    accountId: row.account_id,
     role: options.role,
     stats: options.stats ?? { ...EMPTY_BRAND_STATS },
     currentLiveEvent: options.currentLiveEvent ?? null,

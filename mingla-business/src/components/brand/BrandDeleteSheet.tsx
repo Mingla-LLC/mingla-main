@@ -56,6 +56,13 @@ import {
   type SoftDeleteResult,
 } from "../../hooks/useBrands";
 import type { Brand } from "../../store/currentBrandStore";
+// Issue #1835 — owner-only deletion + honest failure copy.
+import { canDeleteBrand } from "../../utils/brandDeletePermission";
+import {
+  BRAND_DELETE_OWNER_ONLY_MESSAGE,
+  brandDeleteErrorMessage,
+} from "../../utils/brandDeleteError";
+import { captureException } from "../../diagnostics/sentry";
 
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -106,6 +113,15 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
     }
   }, [visible, brand?.id]);
 
+  // Issue #1835 — owner-only deletion. `accountId` is the SIGNED-IN user's id
+  // (every call site passes `user?.id ?? null`); `brand.accountId` is the deed.
+  // Same predicate the `brands` RLS policy uses, so the button and the database
+  // can never disagree.
+  const isOwner = useMemo(
+    () => canDeleteBrand(brand, accountId),
+    [brand, accountId],
+  );
+
   // Type-to-confirm gating: case-insensitive trim match
   const canConfirm = useMemo(() => {
     if (brand === null) return false;
@@ -141,6 +157,13 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
     ) {
       return;
     }
+    // Issue #1835 — belt-and-braces. The affordance is already hidden for
+    // non-owners; if one still reaches here, say why instead of firing a
+    // request the database will refuse.
+    if (!isOwner) {
+      setSubmitError(BRAND_DELETE_OWNER_ONLY_MESSAGE);
+      return;
+    }
     setStep("submitting");
     setSubmitError(null);
     try {
@@ -159,15 +182,59 @@ export const BrandDeleteSheet: React.FC<BrandDeleteSheetProps> = ({
       onClose();
     } catch (error) {
       setStep("confirm");
-      setSubmitError(
-        error instanceof Error
-          ? `Couldn't delete: ${error.message}`
-          : "Couldn't delete. Tap Delete to try again.",
-      );
+      // Issue #1835 — was `error instanceof Error ? error.message : "<generic>"`.
+      // That test is FALSE for every PostgREST error (they arrive as plain
+      // objects), so the real reason was discarded and replaced with a retry
+      // prompt the code had no basis for. `brandDeleteErrorMessage` names the
+      // reason when the server gave one and never invents retryability.
+      captureException(error, {
+        tags: { feature: "brand-delete", issue: "1835" },
+        extra: { brandId: brand.id },
+      });
+      setSubmitError(brandDeleteErrorMessage(error));
     }
-  }, [canConfirm, brand, accountId, softDeleteMutation, onDeleted, onClose, step]);
+  }, [canConfirm, brand, accountId, softDeleteMutation, onDeleted, onClose, step, isOwner]);
 
   if (brand === null) return null;
+
+  // Issue #1835 — a non-owner should never have been offered this sheet. If one
+  // opens it anyway (deep link, stale cache, a caller that forgot to gate), say
+  // plainly why it can't proceed rather than walking them through three steps
+  // into a 403.
+  if (!isOwner) {
+    return (
+      <Sheet visible={visible} onClose={onClose} snapPoint="full">
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.title}>Only the owner can delete this brand</Text>
+          <Text style={styles.brandLabel}>{brand.displayName}</Text>
+          <View style={[styles.warnCard, styles.warnCardDanger]}>
+            <Icon name="flag" size={18} color={semantic.error} />
+            <View style={styles.warnTextCol}>
+              <Text style={styles.warnTitleDanger}>You&apos;re not the owner</Text>
+              <Text style={styles.warnBody}>
+                {BRAND_DELETE_OWNER_ONLY_MESSAGE}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.actionRow}>
+            <View style={styles.actionCell}>
+              <Button
+                label="Close"
+                variant="primary"
+                size="md"
+                onPress={onClose}
+                fullWidth
+              />
+            </View>
+          </View>
+        </ScrollView>
+      </Sheet>
+    );
+  }
 
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="full">
