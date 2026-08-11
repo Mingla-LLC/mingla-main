@@ -484,6 +484,17 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql
 
+          # Issue #1793 (#1767 Phase 4) — the HONEST public ordering state. The
+          # orchestrator amendment registered against this phase: a guest at a
+          # paused or unswitched venue must be able to be TOLD which, rather
+          # than shown a card that reads as broken. #1789's fail-closed resolver
+          # answers NULL to every one of those cases, so this proves the new
+          # read tells them apart, still resolves a printed code while the venue
+          # is paused, leaks no id, authorises nothing — and that #1789's
+          # resolver is unchanged beside it.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1793_guest_ordering_public_state.test.sql
+
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"
     runs-on: ubuntu-latest
@@ -591,6 +602,12 @@ jobs:
             # both reads, so "gate 2 passed before gate 3 refused" is a fact
             # about the queries rather than a stub's say-so.
             supabase/functions/_shared/__tests__/issue_1848_order_gate_codes.test.ts
+            # Issue #1793 (#1767 Phase 4) — the money proofs for the phase in
+            # which a guest pays real money: the four lines a guest reads sum to
+            # what they are charged, a tip is outside Mingla's fee while a
+            # service charge is inside it, a price sent by a client is ignored
+            # AND rejected, and the honest paused/off copy has one owner.
+            supabase/functions/_shared/__tests__/issue_1793_guest_ordering.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

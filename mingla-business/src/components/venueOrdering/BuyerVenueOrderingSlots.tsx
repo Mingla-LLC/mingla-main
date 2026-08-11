@@ -39,6 +39,7 @@ import { VenueOrderingStickyBar } from "@mingla/brand-rendering/venueOrdering/Ve
 import { VenueOrderReviewPane } from "@mingla/brand-rendering/venueOrdering/VenueOrderReviewPane";
 import { VenueOrderStatusPane } from "@mingla/brand-rendering/venueOrdering/VenueOrderStatusPane";
 
+import { useBuyerVenueOrdering } from "./useBuyerVenueOrdering";
 import type { BuyerVenueOrdering } from "./useBuyerVenueOrdering";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
@@ -202,7 +203,111 @@ export const BuyerVenueOrderingMenu: React.FC<
   );
 };
 
-/** The bottom bar. Null unless there is a basket to look at, on the browse step. */
+/**
+ * THE ONE ENTRY POINT buyer web mounts.
+ *
+ * Why one component rather than the three slots the consumer app uses: on web
+ * the boot payload is MEASURED, and `useBuyerVenueOrdering` is a hook — a hook
+ * cannot be lazily imported, so a route that calls it drags the cart reducer,
+ * the rules and the sitting into that route's chunk at module scope. The venue
+ * page and the order page are two chunks, both would carry them, and Metro
+ * hoists anything two chunks share into `__common` — the bundle every visitor
+ * downloads before anything renders, ordering venue or not. Measured: +31 KB,
+ * over the 12 KB a single PR may add (ORCH-1083).
+ *
+ * So the hook lives HERE, inside the one lazily-imported module, and the route
+ * imports nothing of ordering at module scope. The bar that carries a guest
+ * from browsing to paying rides at the top of the pane instead of the bottom of
+ * the viewport, which is the one visible difference from the native surface and
+ * a cheap price for a boot payload that does not grow for people who will never
+ * order anything.
+ */
+export const BuyerVenueOrderingSurface: React.FC<{
+  palette: ThemePalette;
+  surface: Surface;
+  theme: ResolvedTheme;
+  brandSlug: string;
+  venueSlug: string;
+  spotCode: string | null;
+  entrySource: string | null;
+  menu: PublicMenuGroup[];
+  menuWindows: Record<
+    string,
+    { start: string | null; end: string | null; days: number[] | null }
+  >;
+  timezone: string | null;
+  notesAllowedByItemId: Record<string, boolean | undefined>;
+}> = ({
+  palette,
+  surface,
+  theme,
+  brandSlug,
+  venueSlug,
+  spotCode,
+  entrySource,
+  menu,
+  menuWindows,
+  timezone,
+  notesAllowedByItemId,
+}) => {
+  const ordering = useBuyerVenueOrdering({
+    brandSlug,
+    venueSlug,
+    spotCode,
+    entrySource,
+    menu,
+    // Someone who scanned the card on their table is owed an explanation when
+    // they cannot order. Someone reading the menu out of curiosity is not.
+    scanned: spotCode !== null || entrySource === "qr",
+  });
+  const slotProps = { ordering, palette, surface, theme };
+  return (
+    <View style={styles.surface}>
+      <BuyerVenueOrderingNotice {...slotProps} />
+      <BuyerVenueOrderingBar {...slotProps} />
+      <BuyerVenueOrderingMenu
+        {...slotProps}
+        menu={menu}
+        menuWindows={menuWindows}
+        timezone={timezone}
+        notesAllowedByItemId={notesAllowedByItemId}
+      />
+    </View>
+  );
+};
+
+/**
+ * The order page's body, exported from THIS module on purpose.
+ *
+ * `/o/venue/[orderId]` and the venue page are different routes, so a status
+ * card imported by both from two different modules is a module two chunks
+ * share — and a module two chunks share is a module in `__common`. Pointing
+ * both at one lazily-imported module keeps the whole ordering surface in one
+ * async chunk that only a guest who is actually ordering ever downloads.
+ */
+export const BuyerVenueOrderStatusView: React.FC<{
+  palette: ThemePalette;
+  surface: Surface;
+  live: import("@mingla/brand-rendering/venueOrdering").VenueOrderLiveStatus;
+  actionPending: boolean;
+  actionError: string | null;
+  onCancel: () => void;
+  onRequestRefund: () => void;
+}> = ({ palette, surface, live, actionPending, actionError, onCancel, onRequestRefund }) => (
+  <VenueOrderStatusPane
+    palette={palette}
+    surface={surface}
+    live={live}
+    buyerName=""
+    actionPending={actionPending}
+    actionError={actionError}
+    onCancel={onCancel}
+    onRequestRefund={onRequestRefund}
+    onOrderMore={null}
+  />
+);
+
+/** The action bar. Null unless there is a basket to look at, on the browse step. */
 export const BuyerVenueOrderingBar: React.FC<BuyerVenueOrderingSlotProps> = ({
   ordering,
   palette,
@@ -223,5 +328,6 @@ export const BuyerVenueOrderingBar: React.FC<BuyerVenueOrderingSlotProps> = ({
 };
 
 const styles = StyleSheet.create({
+  surface: { gap: 16 },
   menuWrap: { gap: 24 },
 });

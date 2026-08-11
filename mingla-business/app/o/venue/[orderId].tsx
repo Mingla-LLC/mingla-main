@@ -42,13 +42,24 @@ import {
   resolveTheme,
 } from "@mingla/offering-rendering";
 import type { VenueOrderLiveStatus } from "@mingla/brand-rendering/venueOrdering";
-import { VenueOrderStatusPane } from "@mingla/brand-rendering/venueOrdering/VenueOrderStatusPane";
 
-import {
-  fetchVenueOrderStatus,
-  VenueOrderError,
-  venueOrderGuestAction,
-} from "../../../src/services/venueOrderingService";
+/**
+ * The status card, and the transport it needs, behind a LAZY boundary — and
+ * pointed at the SAME module the venue page's ordering surface uses.
+ *
+ * Two routes importing one status card from two modules is a module two chunks
+ * share, and Metro hoists anything two chunks share into `__common` — the
+ * payload every visitor downloads before anything renders, ordering venue or
+ * not. Measured at +31 KB before this was collapsed, against a 12 KB per-PR
+ * allowance (ORCH-1083). One module, one async chunk, downloaded only by
+ * someone who has actually ordered something.
+ */
+const LazyOrderStatusView = React.lazy(() =>
+  import("../../../src/components/venueOrdering/BuyerVenueOrderingSlots")
+    .then((module) => ({ default: module.BuyerVenueOrderStatusView })),
+);
+const orderingTransport = () =>
+  import("../../../src/services/venueOrderingService");
 
 /** The webhook is the truth; this is how long the page waits politely for it. */
 const POLL_INTERVAL_MS = 3000;
@@ -77,6 +88,7 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
 
   const refresh = useCallback(async (): Promise<VenueOrderLiveStatus | null> => {
     if (typeof orderId !== "string" || token === "") return null;
+    const { fetchVenueOrderStatus } = await orderingTransport();
     const status = await fetchVenueOrderStatus(orderId, token);
     if (status !== null) setLive(status);
     setLoaded(true);
@@ -141,18 +153,22 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
       }
       setActionError(null);
       setActionPending(true);
-      void venueOrderGuestAction({
-        orderId,
-        guestCancelToken: cancelToken,
-        action,
-      })
+      void orderingTransport()
+        .then(({ venueOrderGuestAction }) =>
+          venueOrderGuestAction({
+            orderId,
+            guestCancelToken: cancelToken,
+            action,
+          })
+        )
         .then(() => refresh())
         .catch((error: unknown) => {
-          setActionError(
-            error instanceof VenueOrderError
-              ? error.message
-              : "That didn't go through. Try again.",
-          );
+          // The rail's own failures already carry the exact sentence a guest
+          // should read (P-29); anything else gets an honest generic.
+          const message = error instanceof Error && error.name === "VenueOrderError"
+            ? error.message
+            : "That didn't go through. Try again.";
+          setActionError(message);
         })
         .finally(() => setActionPending(false));
     },
@@ -189,17 +205,23 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
       );
     }
     return (
-      <VenueOrderStatusPane
-        palette={palette}
-        surface={surface}
-        live={live}
-        buyerName=""
-        actionPending={actionPending}
-        actionError={actionError}
-        onCancel={() => guestAction("cancel")}
-        onRequestRefund={() => guestAction("request_refund")}
-        onOrderMore={null}
-      />
+      <React.Suspense
+        fallback={
+          <View style={styles.loading}>
+            <ActivityIndicator />
+          </View>
+        }
+      >
+        <LazyOrderStatusView
+          palette={palette}
+          surface={surface}
+          live={live}
+          actionPending={actionPending}
+          actionError={actionError}
+          onCancel={() => guestAction("cancel")}
+          onRequestRefund={() => guestAction("request_refund")}
+        />
+      </React.Suspense>
     );
   };
 

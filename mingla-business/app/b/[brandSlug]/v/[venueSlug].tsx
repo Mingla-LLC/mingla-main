@@ -75,7 +75,6 @@ import {
 // hooks that share it. This is an anon buyer route; the fewer things it can
 // wake up, the better.
 import { usePublicMenuBundle } from "../../../../src/hooks/usePublicMenuBundle";
-import { useBuyerVenueOrdering } from "../../../../src/components/venueOrdering/useBuyerVenueOrdering";
 import { usePublicStayDetail } from "../../../../src/hooks/usePublicStayDetail";
 import { PublicVenueNotFound } from "../../../../src/components/venue/PublicVenueNotFound";
 import { PublicVenueReservationSheet } from "../../../../src/components/venue/PublicVenueReservationSheet";
@@ -120,17 +119,9 @@ const BuyerStayGuestExperience = React.lazy(() =>
  * default and will stay the default for most venues. Each factory runs the
  * first time a guest can actually order.
  */
-const LazyOrderingNotice = React.lazy(() =>
+const LazyOrderingSurface = React.lazy(() =>
   import("../../../../src/components/venueOrdering/BuyerVenueOrderingSlots")
-    .then((module) => ({ default: module.BuyerVenueOrderingNotice })),
-);
-const LazyOrderingMenu = React.lazy(() =>
-  import("../../../../src/components/venueOrdering/BuyerVenueOrderingSlots")
-    .then((module) => ({ default: module.BuyerVenueOrderingMenu })),
-);
-const LazyOrderingBar = React.lazy(() =>
-  import("../../../../src/components/venueOrdering/BuyerVenueOrderingSlots")
-    .then((module) => ({ default: module.BuyerVenueOrderingBar })),
+    .then((module) => ({ default: module.BuyerVenueOrderingSurface })),
 );
 
 /**
@@ -253,22 +244,6 @@ export default function PublicVenueRoute(): React.ReactElement {
     [menuGroups],
   );
 
-  /**
-   * #1793 — guest ordering. Unconditional (hooks are) and INERT until the
-   * venue's own state says otherwise: with ordering switched off it fires one
-   * cached read and renders nothing at all, so a venue that has not opted in is
-   * byte-for-byte the page it was.
-   */
-  const ordering = useBuyerVenueOrdering({
-    brandSlug: typeof brandSlug === "string" ? brandSlug : "",
-    venueSlug: typeof venueSlug === "string" ? venueSlug : "",
-    spotCode,
-    entrySource,
-    menu: menuGroups,
-    // Someone who scanned the card on their table is owed an explanation when
-    // they cannot order. Someone reading the menu out of curiosity is not.
-    scanned: spotCode !== null || entrySource === "qr",
-  });
 
   // §6.8 — the secondary "See {brand} →" link renders only when the PARENT
   // brand resolves publicly. Fetched ONLY on the not-found path.
@@ -541,40 +516,26 @@ export default function PublicVenueRoute(): React.ReactElement {
       }
       bookingBody={renderBookingBody}
       reservationSheet={renderReservationSheet}
-      // #1793 — the three ordering slots. Each renders nothing unless this
-      // venue can actually take an order from this guest right now.
+      // #1793 — ONE ordering slot, one lazy chunk. The surface owns its own
+      // state, so this route imports nothing of ordering at module scope and a
+      // visitor to a venue that has never switched ordering on downloads none
+      // of it (ORCH-1083: the boot payload is measured, and it is measured for
+      // everyone).
       ordering={{
-        notice: (context: PublicVenueOrderingSlotContext) => (
-          <React.Suspense fallback={null}>
-            <LazyOrderingNotice
-              ordering={ordering}
-              palette={context.palette}
-              surface={context.surface}
-              theme={context.theme}
-            />
-          </React.Suspense>
-        ),
         menuBody: (context: PublicVenueOrderingSlotContext) => (
           <React.Suspense fallback={null}>
-            <LazyOrderingMenu
-              ordering={ordering}
+            <LazyOrderingSurface
               palette={context.palette}
               surface={context.surface}
               theme={context.theme}
+              brandSlug={typeof brandSlug === "string" ? brandSlug : ""}
+              venueSlug={typeof venueSlug === "string" ? venueSlug : ""}
+              spotCode={spotCode}
+              entrySource={entrySource}
               menu={context.menu}
               menuWindows={menuWindows}
               timezone={venue.timezone}
               notesAllowedByItemId={notesAllowedByItemId}
-            />
-          </React.Suspense>
-        ),
-        stickyBar: (context: PublicVenueOrderingSlotContext) => (
-          <React.Suspense fallback={null}>
-            <LazyOrderingBar
-              ordering={ordering}
-              palette={context.palette}
-              surface={context.surface}
-              theme={context.theme}
             />
           </React.Suspense>
         ),
