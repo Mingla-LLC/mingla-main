@@ -34,7 +34,6 @@ import {
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Input } from "../ui/Input";
-import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import {
   useBrandBanks,
   useCreatePaystackRecipient,
@@ -87,8 +86,6 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   // changes the Input's `key`, remounting it once so autoFocus re-fires
   // against a focusable window.
   const [pickerShown, setPickerShown] = useState(false);
-  const keyboardVisible = useKeyboardIsVisible();
-  const androidKbOpen = Platform.OS === "android" && keyboardVisible;
   const [bankSearch, setBankSearch] = useState("");
   const [bankCode, setBankCode] = useState<string | null>(null);
   const [bankName, setBankName] = useState<string | null>(null);
@@ -333,9 +330,6 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
             ) : (
               <ScrollView
                 style={styles.bankList}
-                contentContainerStyle={
-                  androidKbOpen ? styles.bankListKbPad : undefined
-                }
                 // #1834 — no Done bar in this raw Modal window (nothing renders
                 // <KeyboardToolbarRoot/> here, and the app-root provider does
                 // not propagate into an RN Modal window), so there is nothing
@@ -438,7 +432,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   bankList: { flex: 1, marginTop: spacing.md },
-  bankListKbPad: { paddingBottom: 42 },
   bankRow: {
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
