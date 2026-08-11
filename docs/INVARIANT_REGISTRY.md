@@ -7941,9 +7941,9 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ---
 
-## DRAFT — issue #1815 (canonical current-issue approval-token grammar)
+## ACTIVE — issue #1815 (canonical current-issue approval-token grammar)
 
-### I-1815-CANONICAL-ISSUE-TOKEN-GRAMMAR (DRAFT)
+### I-1815-CANONICAL-ISSUE-TOKEN-GRAMMAR (ACTIVE)
 - **Rule:** The current GitHub-issue citation branch in both append-only override
   tokens is exactly `#[1-9][0-9]*`: one or more decimal digits, first digit 1–9,
   with no leading zero and no suffix. The independent legacy citation branch remains
