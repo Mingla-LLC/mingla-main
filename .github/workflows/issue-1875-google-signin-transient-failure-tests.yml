@@ -1,0 +1,111 @@
+name: Issue 1875 Transient Sign-In Failure Tests
+
+# #1875 [transient-signin-failure] — the consumer native sign-in path now
+# CLASSIFIES a caught failure (`classifyAuthFailure`), retries the SUPABASE TOKEN
+# EXCHANGE ONLY on a transient transport failure (bounded by a counter against a
+# frozen constant), and renders the user-facing Alert from fixed i18n keys.
+#
+# WHY THIS GATE EXISTS:
+#  · F-3 — a one-second connectivity blip during "Continue with Google" was
+#    handled exactly like a permanent authentication fault. No retry, no
+#    offline-aware copy. The user was dead-ended by something a second tap would
+#    have cleared.
+#  · F-4 — the failure modal rendered `error.message` verbatim. For a 502/503/504,
+#    @supabase/auth-js's `_getErrorMessage` falls through to `JSON.stringify(err)`
+#    on a `Response`, so the modal contained our Supabase project URL and a blob
+#    id. Same string, three destinations: Sentry title, Mixpanel property, Alert
+#    body.
+#  · The classifier MUST NOT key on `statusCodes.INTERNAL_ERROR` / `.NETWORK_ERROR`
+#    / `.TIMEOUT`. The installed google-signin 16.0.0 freezes `statusCodes` to
+#    exactly SIGN_IN_CANCELLED, IN_PROGRESS, PLAY_SERVICES_NOT_AVAILABLE and
+#    SIGN_IN_REQUIRED, so those three names are `undefined` and the comparison
+#    would match EVERY codeless error — recreating the #1038 blind spot that
+#    #1044 exists to close, inside its own fix. The suites pin the numeric-string
+#    keying the native ErrorDto.kt bridge actually emits ("7"/"8"/"15").
+#
+# WITHOUT THIS WORKFLOW BOTH SUITES WOULD BE DARK (the ORCH-1383 dark-test-surface
+# trap): app-mobile has NO jest at all — its .test.ts files run under Node's
+# built-in runner with type-stripping, and no workflow sweeps
+# src/hooks/__tests__/. Same shape and rationale as
+# issue-1044-auth-failure-capture-tests.yml, which is deliberately NOT modified
+# here — its existing `app-mobile/src/hooks/useAuthSimple.ts` path gate already
+# fires the (amended) #1044 suites on any change to this file.
+#
+# Both suites SLICE and EXECUTE the REAL shipped source via `new Function` rather
+# than a retyped copy — ORCH-1373 P2-2 proved a replica test stays green while the
+# real guard is deleted.
+#
+# The tester's adversarial suite path is registered BELOW BEFORE IT EXISTS, on
+# purpose, so it is not dark on the day it lands.
+#
+# EXPLICIT registry (never a glob) — add a suite by appending its path below.
+# Invokes no .mjs under .github/scripts/strict-grep/, so MANIFEST.json totality,
+# `expectedStrictGrepMjsFiles` and `selfTestWiredFloor` are untouched.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/src/hooks/useAuthSimple.ts"
+      - "app-mobile/src/i18n/locales/en/auth.json"
+      - "app-mobile/src/hooks/__tests__/useAuthSimple.transientSignInFailure.issue1875.test.ts"
+      - "app-mobile/src/hooks/__tests__/useAuthSimple.transientSignInFailure.adversarial.issue1875.test.ts"
+      - ".github/workflows/issue-1875-google-signin-transient-failure-tests.yml"
+  pull_request:
+    paths:
+      - "app-mobile/src/hooks/useAuthSimple.ts"
+      - "app-mobile/src/i18n/locales/en/auth.json"
+      - "app-mobile/src/hooks/__tests__/useAuthSimple.transientSignInFailure.issue1875.test.ts"
+      - "app-mobile/src/hooks/__tests__/useAuthSimple.transientSignInFailure.adversarial.issue1875.test.ts"
+      - ".github/workflows/issue-1875-google-signin-transient-failure-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1875-consumer-node-test:
+    name: "#1875 CONS: transient sign-in failures retry and never leak raw errors (fails-on-revert)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app-mobile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # FULL history is required. The tester adversarial suite's AX-F1..AX-F3
+          # differential resolves the PINNED pre-#1875 baseline of
+          # useAuthSimple.ts (commit fcb78cfac, verified by sha256) and proves
+          # the shipped sign-in functions are byte-identical to it once the
+          # declared #1875 regions are excised. A shallow checkout cannot see
+          # that commit and the gate fails closed with a re-baseline message.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          # Node 22 — `--experimental-strip-types` is how EVERY .test.ts in this
+          # app runs (there is no jest here). See useLaunchCityGate.test.ts.
+          node-version: "22"
+      # Both suites import ONLY node builtins (node:test/assert/crypto/fs/path/url)
+      # and compile source TEXT, so no npm ci is required.
+      - name: Run issue-1875 consumer suite (implementor happy-path, T1-T16)
+        run: >
+          node --experimental-strip-types --test
+          src/hooks/__tests__/useAuthSimple.transientSignInFailure.issue1875.test.ts
+      # TESTER ADVERSARIAL suite — UNCONDITIONAL.
+      #
+      # This step was previously wrapped in a `Check for the tester adversarial
+      # suite` guard with an `if:` condition, so the job stayed green while the
+      # suite did not exist. That guard was correct for exactly one window — the
+      # gap between the implementor landing the workflow and the tester landing
+      # the suite — and it is DELETED now that the suite is committed.
+      #
+      # ┌── DO NOT ── re-introduce a file-existence guard, a `continue-on-error`,
+      # or any `if:` on this step. A gate that can silently skip its own test is
+      # worse than no gate: it reports green for an absent proof. If the file is
+      # missing, this job MUST fail.
+      # └──
+      - name: Run issue-1875 consumer TESTER ADVERSARIAL suite
+        run: >
+          node --experimental-strip-types --test
+          src/hooks/__tests__/useAuthSimple.transientSignInFailure.adversarial.issue1875.test.ts

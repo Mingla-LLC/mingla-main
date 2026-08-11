@@ -151,6 +151,44 @@ const compilePredicate = (statusCodes: StatusCodesShape): ((code: unknown) => bo
   return make(statusCodes)
 }
 
+/**
+ * [TEST-MOD-APPROVED #1875] — SPEC §9.2, dependency-map amendment ONLY.
+ *
+ * #1875 added a second module-level predicate, `classifyAuthFailure`, which both
+ * catch bodies now call. A free identifier in a sliced body is a `ReferenceError`
+ * under `new Function`, so it has to be injected — and it is injected as the REAL
+ * COMPILED SHIPPED BODY, never a retyped copy (ORCH-1373 P2-2). Nothing about the
+ * #1044 capture contract is touched by this helper.
+ */
+const compileClassifier = (): ((
+  errName: unknown,
+  errCode: unknown,
+  errStatus: unknown,
+  errMessage: unknown,
+  platformOS: string,
+) => string) => {
+  const m = HOOK_SOURCE.match(
+    /const classifyAuthFailure = \([\s\S]*?\): AuthFailureClass => \{\n([\s\S]*?)\n\};/,
+  )
+  assert.ok(m, 'classifyAuthFailure not found in useAuthSimple.ts')
+  return new Function(
+    `"use strict"; return function (errName, errCode, errStatus, errMessage, platformOS) {\n${m[1]}\n};`,
+  )() as (
+    errName: unknown,
+    errCode: unknown,
+    errStatus: unknown,
+    errMessage: unknown,
+    platformOS: string,
+  ) => string
+}
+
+/**
+ * [TEST-MOD-APPROVED #1875] — SPEC §9.2, dependency-map amendment ONLY.
+ * `t(k) => k` on purpose: this suite asserts WHICH key the catch selected, not
+ * what English it renders. The rendered copy is pinned by the #1875 suite.
+ */
+const I18N_STUB = { t: (k: string): string => k }
+
 const compileCatch = (
   body: string,
   deps: Record<string, unknown>,
@@ -237,6 +275,16 @@ const harness = (opts: {
     console: { error: () => {}, warn: () => {}, log: () => {} },
     mixpanelService: { trackLoginFailed: spy() },
     __DEV__: false,
+    // [TEST-MOD-APPROVED #1875] — SPEC §9.2 dep-map entries. `classifyAuthFailure`
+    // is the REAL compiled shipped body; `i18n` is the key-echoing stub;
+    // `transportRetryAttempts` / `retryAbandoned` are declared before `try {` in
+    // the shipped functions and so are free identifiers in a CATCH-ONLY slice.
+    // Defaults model "the failure was not preceded by any retry", which is the
+    // situation every #1044 test constructs.
+    classifyAuthFailure: compileClassifier(),
+    i18n: I18N_STUB,
+    transportRetryAttempts: 0,
+    retryAbandoned: false,
   }
   return {
     deps,
@@ -245,6 +293,27 @@ const harness = (opts: {
     run: (body: string, err: unknown) => compileCatch(body, deps)(err),
   }
 }
+
+/**
+ * [TEST-MOD-APPROVED #1875] — SPEC §9.2, expected-Alert-copy amendment ONLY.
+ *
+ * Every error this suite injects (`"10"`, `"ERR_INVALID_RESPONSE"`, codeless
+ * `Failed to create session`, …) classifies **permanent** under
+ * `classifyAuthFailure`'s R6 default, and none of them is preceded by a retry —
+ * so all of them render #1875's State 4. The pre-#1875 expectation was
+ * `['<Provider> Sign-In Failed', error.message]`; F-4 exists precisely to stop
+ * `error.message` reaching a user, so pinning it is no longer correct. Provider
+ * neutrality is deliberate: Google and Apple now share one copy set.
+ *
+ * NOTHING about the capture is rebaselined by this constant — the
+ * `reportNonFatal` call count, scope, `extra` key set, `extra` values, fingerprint
+ * and failure-safety assertions in every test below are byte-identical to before.
+ */
+const STATE_4_PERMANENT_ALERT = [
+  'auth:welcome.sign_in_failed_title',
+  'auth:welcome.sign_in_permanent_body',
+  [{ text: 'auth:welcome.sign_in_failed_ok' }],
+]
 
 const errWith = (code: unknown, message: string): Error => {
   const e = new Error(message)
@@ -281,9 +350,11 @@ test('T1 — P3 Google DEVELOPER_ERROR ("10") is REPORTED with provider/code/fin
   })
   assert.deepEqual(fingerprint, ['auth-signin', 'google', '10'])
 
-  // T11 — Alert parity: exactly the pre-change Alert, unchanged.
+  // T11 — Alert parity. [TEST-MOD-APPROVED #1875] SPEC §9.2: rebaselined from
+  // ['Google Sign-In Failed', 'DEVELOPER_ERROR'] to State 4's key set. The
+  // *number* of alerts (1) and the return value are unchanged.
   assert.equal(h.alert.calls.length, 1)
-  assert.deepEqual(h.alert.calls[0], ['Google Sign-In Failed', 'DEVELOPER_ERROR'])
+  assert.deepEqual(h.alert.calls[0], STATE_4_PERMANENT_ALERT)
   assert.deepEqual(ret, { data: null, error: err })
 })
 
@@ -297,10 +368,10 @@ test('T7 — P3 CODELESS error is REPORTED with code "none" (the #1038 class)', 
   assert.equal(extra.code, 'none')
   assert.deepEqual(h.report.calls[0][3], ['auth-signin', 'google', 'none'])
   assert.equal(h.alert.calls.length, 1)
-  assert.deepEqual(h.alert.calls[0], [
-    'Google Sign-In Failed',
-    'Failed to create session',
-  ])
+  // [TEST-MOD-APPROVED #1875] SPEC §9.2 — was ['Google Sign-In Failed',
+  // 'Failed to create session']. A codeless error still classifies permanent
+  // (R6), so State 4. The capture assertions above are untouched.
+  assert.deepEqual(h.alert.calls[0], STATE_4_PERMANENT_ALERT)
   assert.deepEqual(ret, { data: null, error: err })
 })
 
@@ -414,7 +485,10 @@ test('T6 — P4 Apple config failure is REPORTED with provider "apple"', () => {
   assert.deepEqual(fingerprint, ['auth-signin', 'apple', 'ERR_INVALID_RESPONSE'])
 
   assert.equal(h.alert.calls.length, 1)
-  assert.deepEqual(h.alert.calls[0], ['Apple Sign-In Failed', 'Invalid response'])
+  // [TEST-MOD-APPROVED #1875] SPEC §9.2 — was ['Apple Sign-In Failed',
+  // 'Invalid response']. Copy is now provider-neutral and key-driven; the
+  // Apple-specific `extra` (FOUR keys, no webClientIdSuffix) above is untouched.
+  assert.deepEqual(h.alert.calls[0], STATE_4_PERMANENT_ALERT)
   assert.deepEqual(ret, { data: null, error: err })
 })
 
@@ -544,7 +618,10 @@ test('T9 — the REAL catch block still Alerts and returns the same value when S
     ret = h.run(googleCatch(), err)
   })
   assert.equal(h.alert.calls.length, 1)
-  assert.deepEqual(h.alert.calls[0], ['Google Sign-In Failed', 'DEVELOPER_ERROR'])
+  // [TEST-MOD-APPROVED #1875] SPEC §9.2 — expected-copy rebaseline only. The
+  // point of T9 is that a THROWING Sentry does not change the user-visible
+  // outcome or the return value; that is still exactly what is asserted.
+  assert.deepEqual(h.alert.calls[0], STATE_4_PERMANENT_ALERT)
   assert.deepEqual(ret, { data: null, error: err })
 })
 
@@ -752,6 +829,19 @@ const makeFnDeps = (signInResult: unknown, getTokensImpl?: () => unknown) => {
     statusCodes: ANDROID_STATUS_CODES,
     shouldReportAuthFailure: compilePredicate(ANDROID_STATUS_CODES),
     reportNonFatal: report,
+    // [TEST-MOD-APPROVED #1875] — SPEC §9.2 dep-map entries for the WHOLE-function
+    // slice. #1875 added a bounded transport-retry loop inside the `try`, so the
+    // sliced body now also references the classifier, the two frozen retry
+    // constants and the two cancellation inputs. `isMountedRef.current = true` and
+    // AppState "active" model the ordinary foreground case, which is what every
+    // #1044 test here exercises; the retry loop is never entered by these tests
+    // because their `signInWithIdToken` stub returns `error: null`.
+    classifyAuthFailure: compileClassifier(),
+    i18n: I18N_STUB,
+    AppState: { currentState: 'active' },
+    isMountedRef: { current: true },
+    TRANSPORT_RETRY_MAX_ATTEMPTS: 2,
+    TRANSPORT_RETRY_DELAYS_MS: [400, 1200],
   }
   return { deps, report, alert, trackLoginFailed, getTokens, signIn, signInWithIdToken }
 }
