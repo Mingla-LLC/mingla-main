@@ -68,7 +68,7 @@ export const KEYBOARD_TOOLBAR_HEIGHT = 42;
 
 /** The library's own rule, evaluated on the same inputs it evaluates. */
 const KEYBOARD_HAS_ROUNDED_CORNERS =
-  Platform.OS === "ios" && parseInt(String(Platform.Version), 10) >= 27;
+  Platform.OS === "ios" && parseInt(String(Platform.Version), 10) >= 26;
 
 /** The library's own OPENED_OFFSET: the bar floats this far above the keyboard. */
 const OPENED_OFFSET = KEYBOARD_HAS_ROUNDED_CORNERS ? -11 : 0;
