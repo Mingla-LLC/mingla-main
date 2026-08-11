@@ -16,7 +16,7 @@
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
   "expectedStrictGrepMjsFiles": 498,
-  "selfTestWiredFloor": 308,
+  "selfTestWiredFloor": 309,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -3503,9 +3503,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0892-no-bespoke-keyboard-plumbing"
       ]

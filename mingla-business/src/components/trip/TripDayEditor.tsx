@@ -1,4 +1,3 @@
-// orch-strict-grep-allow orch-0892 — the only react-native ScrollView here is the ORCH-1119 HORIZONTAL media-thumbnail strip (gallery), not a keyboard-avoiding vertical scroll; SmartScrollView/KeyboardAwareScrollView would wrongly hijack focus/scroll. No TextInput lives inside that ScrollView. (multiline import → gate matches file-top)
 /**
  * TripDayEditor — single day card used inside TripCreatorStep2Itinerary.
  * Tr2 (ORCH-0859).
@@ -11,6 +10,12 @@
  */
 
 import React from "react";
+// #1841 re-cover, NOT a new grant: the identical approved reason, moved off the
+// file's first line and onto the import it covers. The old placement was forced
+// by a defect — the gate's line-finder could not match a MULTI-LINE import, so
+// it reported line 0 and put the allowlist window on lines 0-2. That is fixed,
+// and allowlisting is per-occurrence now, so the marker sits at the occurrence.
+// orch-strict-grep-allow orch-0892 — the only react-native ScrollView here is the ORCH-1119 HORIZONTAL media-thumbnail strip (gallery), not a keyboard-avoiding vertical scroll; SmartScrollView/KeyboardAwareScrollView would wrongly hijack focus/scroll. No TextInput lives inside that ScrollView.
 import {
   Image,
   Platform,

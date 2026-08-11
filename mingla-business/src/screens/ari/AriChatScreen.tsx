@@ -12,7 +12,7 @@
  *   - Toast (canonical app-wide toast — supports tap, close button, swipe-up to dismiss)
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Keyboard,
   Platform,
@@ -21,7 +21,7 @@ import {
   Text,
   View,
 } from "react-native";
-import type { KeyboardEvent, LayoutChangeEvent } from "react-native";
+import type { LayoutChangeEvent } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Menu, Settings } from "lucide-react-native";
@@ -50,6 +50,14 @@ import { useConfirmPendingAction } from "../../hooks/useConfirmPendingAction";
 import { useConversationList } from "../../hooks/useConversationList";
 import { useBrands } from "../../hooks/useBrands";
 import { useAuth } from "../../context/AuthContext";
+// #1841 [keyboard-guard-blind-spots] — the composer's keyboard height now comes
+// from a react-native-keyboard-controller-backed wrapper instead of a bespoke
+// Keyboard.addListener pair. See src/wrappers/useKeyboardHeight.native.ts for
+// why `useGenericKeyboardHandler` + `onStart` is the frame-timing equivalent of
+// the iOS `keyboardWillShow` listener it replaces. `Keyboard` stays imported for
+// `Keyboard.dismiss()`, which is not a listener and is not in scope for
+// orch-0892.
+import { useKeyboardHeight } from "../../wrappers/useKeyboardHeight";
 
 // Height the floating BottomNav capsule occupies above the safe-area bottom.
 // Matches NAV_HEIGHT (64) + paddingTop (8) + paddingBottom (≥8) in
@@ -78,7 +86,9 @@ export const AriChatScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  // #1841 — library-backed; 0 on web and while the keyboard is closed. Same
+  // value, same timing as the deleted listener pair; no bespoke plumbing.
+  const keyboardHeight = useKeyboardHeight();
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   // ORCH-1165 REWORK loop 2 — the keyboard-open lift must clear the ENTIRE
   // composer pill above the 42dp Done bar, not just its bottom edge. The pill
@@ -112,25 +122,13 @@ export const AriChatScreen: React.FC = () => {
     Record<string, { url: string | null; type: string | null }>
   >({});
 
-  // Cycle 3 wizard pattern — manual keyboard listeners so we can tighten
-  // the bottom padding when the keyboard is up. KeyboardAvoidingView's
-  // padding behaviour stacks ON TOP of our BottomNav clearance, leaving
-  // an awkward gap above the keyboard. Listening directly lets us swap
-  // in keyboardHeight when up and BOTTOM_NAV_CLEARANCE_PX when down.
-  useEffect(() => {
-    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const show = Keyboard.addListener(showEvent, (e: KeyboardEvent) => {
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hide = Keyboard.addListener(hideEvent, () => {
-      setKeyboardHeight(0);
-    });
-    return (): void => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
+  // The composer swaps in `keyboardHeight` when the keyboard is up and
+  // BOTTOM_NAV_CLEARANCE_PX when it is down; a plain KeyboardAvoidingView
+  // cannot express that because its padding stacks ON TOP of the BottomNav
+  // clearance, leaving an awkward gap above the keyboard. The height itself now
+  // comes from `useKeyboardHeight` (library-backed) — see the import comment.
+  // The bespoke Keyboard.addListener pair that used to live here was deleted
+  // by #1841; do not reinstate it.
 
   const prefs = useAriPreferences();
   const conversations = useConversationList();

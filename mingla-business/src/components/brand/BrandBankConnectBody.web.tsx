@@ -15,12 +15,21 @@ import {
 import {
   Linking,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+
+// #1841 [keyboard-guard-blind-spots] — this scroll wraps
+// BrandPaystackOnboardView, whose account-number / bank fields are real
+// TextInputs behind the `Input` primitive. On WEB this import is a behavioural
+// no-op — src/wrappers/SmartScrollView.tsx is `export { ScrollView } from
+// "react-native"` — but it satisfies I-PROPOSED-SMART-SCROLLVIEW-WRAPPER-ONLY
+// without an allowlist and future-proofs a money surface: the day a `.native`
+// sibling appears it inherits the derived Done-bar clearance for free rather
+// than repeating #1834's bug. #1834 §2 named this file and deferred it here.
+import { ScrollView } from "../../wrappers/SmartScrollView";
 
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
 import { BrandStripeCountryPicker } from "./BrandStripeCountryPicker";
@@ -377,6 +386,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
           <View style={styles.heroIcon}>

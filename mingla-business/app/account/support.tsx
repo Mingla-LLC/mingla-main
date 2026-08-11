@@ -135,6 +135,12 @@ export default function SupportRoute(): React.ReactElement {
         <View style={styles.chromeRightSlot} />
       </View>
 
+      {/* #1841 re-cover, NOT a new grant: the identical approved reason, moved
+          to the occurrence it was always meant to cover. Before #1841 the gate
+          only ever examined a file's FIRST match line, so the marker at the
+          import silently immunised every container in the file; allowlisting is
+          now per-occurrence, so the approval is stated where it applies. */}
+      {/* orch-strict-grep-allow orch-0892 — web-exported requester screen; plain ScrollView over a short ticket list, single subject input sits above the fold (no focused-input keyboard scroll). The chat-thread keyboard handling lives in the quarantined SupportThread.native (keyboard-controller), not here. */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[

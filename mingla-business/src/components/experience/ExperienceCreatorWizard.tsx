@@ -901,6 +901,14 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         </Pressable>
         <Stepper steps={STEPS} currentIndex={step - 1} />
       </View>
+      {/* #1841 re-cover, NOT a new grant: the identical approved reason, moved
+          from the file head to the occurrence it was always meant to cover.
+          The old marker sat in the first three lines for a REASON — the gate's
+          multi-line-import line-finder returned -1 and reported line 0, so the
+          allowlist window landed on lines 0-2. #1841 fixed that line-finder and
+          made allowlisting per-occurrence, so the marker now lives where the
+          approval actually applies. */}
+      {/* orch-strict-grep-allow orch-0892 — META-ORCH-1059 Sub-A: the wizard uses a single ScrollView + keyboardShouldPersistTaps, with the ORCH-1165 +42pt Done-bar clearance applied on keyboard-open; SmartScrollView migration deferred to a dedicated keyboard-hygiene follow-up. */}
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={[

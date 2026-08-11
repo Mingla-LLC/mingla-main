@@ -14,9 +14,16 @@
  */
 
 import React, { useCallback, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { Redirect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+// #1841 [keyboard-guard-blind-spots] — the styleguide renders the whole kit,
+// `Input` (and therefore a real TextInput) included, inside this one scroll.
+// Dev-only route, but it is the reference implementation the kit is read from,
+// so it uses the canonical container. Never pass `bottomOffset` from a call
+// site (I-PROPOSED-1834-…-DONE-BAR).
+import { ScrollView } from "../src/wrappers/SmartScrollView";
 
 import { ActionTile } from "../src/components/ui/ActionTile";
 import { BottomNav } from "../src/components/ui/BottomNav";
@@ -199,7 +206,11 @@ export default function StyleguideScreen(): React.ReactElement {
         <Text style={styles.pageTitle}>Styleguide</Text>
         <View style={styles.backButton} />
       </View>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator
+        keyboardShouldPersistTaps="handled"
+      >
         {/* ============== 1. TOKENS ============== */}
         <Section title="1. Tokens" subtitle="Colour swatches, shadows, spacing, radius">
           <Text style={sectionStyles.label}>Accent</Text>

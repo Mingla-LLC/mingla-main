@@ -78,9 +78,19 @@ jobs:
           npx jest --config jest.issue1501.tester.cjs --runInBand
 
       # I-PROPOSED-SMART-SCROLLVIEW-WRAPPER-ONLY. `StayChipRow` imports a BARE
-      # `react-native` ScrollView and holds zero text inputs, which is legal
-      # exactly as this gate is written — no allowlist entry, no amendment. This
-      # job proves that claim rather than asserting it.
+      # `react-native` ScrollView, and that is legal because no focusable field
+      # appears anywhere inside its scroll span — it is chrome that renders
+      # whatever chips its caller passes. #1841 corrected the gate's pattern 4
+      # from "the file contains the token TextInput" to "the file contains that
+      # token OR the container's span renders an input-bearing component,
+      # derived over the import graph", so this claim is now checked against the
+      # thing it actually asserts. Re-verified under the corrected gate: still
+      # legal, still no allowlist entry, still no amendment.
+      #
+      # `--self-test` below became REAL in #1841 — the script had zero
+      # process.argv handling before, so this line had never once done anything.
+      # It now drives ten in-memory fixtures (one per closed hole plus the legal
+      # controls) and fails if any of them stops going red.
       - name: Keyboard-plumbing gate (no amendment needed)
         working-directory: .
         run: |

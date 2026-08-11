@@ -90,6 +90,7 @@ export const JoinWaitlistSheet: React.FC<JoinWaitlistSheetProps> = ({
     const show = Keyboard.addListener("keyboardDidShow", (event) => {
       setKeyboardPadding(event.endCoordinates.height);
     });
+    // orch-strict-grep-allow orch-0892 — SPEC §8.3 mandated Cycle 3 wizard pattern (Keyboard.addListener + dynamic paddingBottom) per memory rule feedback_keyboard_never_blocks_input.md; SmartScrollView migration belongs in a follow-up ORCH covering all bespoke-keyboard sites uniformly.
     const hide = Keyboard.addListener("keyboardDidHide", () => {
       setKeyboardPadding(0);
     });

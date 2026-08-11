@@ -20,11 +20,14 @@
  * both off screen.
  *
  * THE GATE NEEDS NO AMENDMENT, AND THIS FILE IS THE PROOF.
- * `orch-0892-no-bespoke-keyboard-plumbing.mjs:146-148` is FILE-scoped: it fires
- * only when a file holds BOTH a bare `react-native` `ScrollView` import AND a
- * text-input element. This file holds ZERO text inputs — it is chrome, it
- * renders whatever chips its caller passes — so the bare import is legal
- * exactly as the gate is written today. No allowlist entry, no inline
+ * `orch-0892-no-bespoke-keyboard-plumbing.mjs` pattern 4 fires on a bare
+ * `react-native` container ONLY when that container hosts a focusable field —
+ * either the file carries the `TextInput` identifier, or an input-bearing
+ * component appears inside the container's own span (derived over the import
+ * graph, #1841). This file holds ZERO text inputs and renders whatever chips
+ * its caller passes, so its bare import is legal, and it stays legal under
+ * #1841's corrected rule for a better-stated reason than before: there is no
+ * in-flow input inside its scroll span. No allowlist entry, no inline
  * exemption, no invariant change. `VenueModulePillRow.tsx:17` already ships
  * this exact shape, which is precisely why the restaurant suite never had this
  * bug and the Stay suite did.

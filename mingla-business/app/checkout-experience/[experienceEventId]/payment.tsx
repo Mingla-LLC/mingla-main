@@ -29,14 +29,12 @@ import React, {
   useState,
 } from "react";
 import {
-  Keyboard,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import type { KeyboardEvent } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
@@ -196,28 +194,16 @@ function CheckoutExperiencePaymentScreenContent({
     router,
   ]);
 
-  // ----- Keyboard pattern -----
-  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  // #1841 [keyboard-guard-blind-spots] — the keyboard listener, the
+  // `keyboardHeight` state and the padding/bottom-bar compensation that read it
+  // were DELETED, not migrated. No focusable input exists anywhere in this
+  // route's module closure (verified by transitive closure over the orch-0892
+  // scan domain, re-run after this edit); card entry is the native Stripe
+  // PaymentSheet, which is a separate window. The keyboard cannot appear here,
+  // so there is nothing to compensate. Do not re-add keyboard plumbing without
+  // first adding a field — and if you add a field, migrate the container to
+  // src/wrappers/SmartScrollView instead of reinstating a listener.
   const scrollViewRef = useRef<ScrollView | null>(null);
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent =
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSub = Keyboard.addListener(
-      showEvent,
-      (e: KeyboardEvent): void => {
-        setKeyboardHeight(e.endCoordinates.height);
-      },
-    );
-    const hideSub = Keyboard.addListener(hideEvent, (): void => {
-      setKeyboardHeight(0);
-    });
-    return (): void => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
 
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) {
@@ -555,7 +541,6 @@ function CheckoutExperiencePaymentScreenContent({
         contentContainerStyle={[
           styles.scrollContent,
           { paddingBottom: insets.bottom + 140 },
-          keyboardHeight > 0 ? { paddingBottom: keyboardHeight + 140 + 42 } : null,
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -628,7 +613,6 @@ function CheckoutExperiencePaymentScreenContent({
         style={[
           styles.bottomBar,
           { paddingBottom: insets.bottom + spacing.md },
-          keyboardHeight > 0 ? styles.bottomBarHidden : null,
         ]}
       >
         <View style={styles.totalRow}>
@@ -762,7 +746,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "rgba(255, 255, 255, 0.06)",
   },
-  bottomBarHidden: { transform: [{ translateY: 200 }] },
+  // #1841 — `bottomBarHidden` deleted with the keyboard plumbing that was its
+  // only consumer. A style whose sole purpose was hiding the bar behind a
+  // keyboard that cannot appear on this route is dead code, and leaving it is
+  // an invitation to re-wire the listener.
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
