@@ -8077,3 +8077,21 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Enforcement:** four default-OFF flags, per-brand rollout phase, guard-first RPCs, `guest-roster-actions`, the #1770 send owner, five-minute previews, 24-hour reminder cooldown, and the audited #1770 export worker.
 - **Regression:** fresh-PG17 #873 suite, action-edge Deno suite, rendered stale/action locks, and cross-brand denial T-873-06.
 - **Established:** ACTIVE at #873 CLOSE 2026-08-11 after independent action-edge and fresh-PG17 QA passed; production readback proved the controlled brand is `internal_read`, reminder/retry/bulk/export all fail closed, every other brand remains legacy, and unauthenticated calls to all three deployed Edge Functions return 401.
+
+---
+
+## DRAFT — issue #1834 (the keyboard covers the field you are typing in when adding a Nigerian bank account)
+
+> Registered DRAFT at issue #1834 SPEC. The orchestrator flips these entries to ACTIVE only after independent tester PASS on a physical Android device AND a 375x667 iOS geometry.
+
+### I-PROPOSED-1834-FOCUSED-FIELD-CLEARS-THE-DONE-BAR-NOT-THE-KEYBOARD (DRAFT)
+- **Rule:** On every native `mingla-business` surface that renders the app-wide ORCH-1165 Done bar, the acceptance test for keyboard occlusion is clearance of the **Done bar's top edge**, never the OS keyboard's top edge. With `DONE_BAR = 42` and the `SmartScrollView` contract clearance of `12`, a focused input passes only when `fieldBottom <= keyboardTop - 54`. Clearing the keyboard alone is explicitly NOT a pass: issue #1834 cell Android/R2 cleared the keyboard by 5.7dp and sat 36.3dp under the bar, and cell iOS/R2 cleared the bar by 10pt on an iPhone 17 Pro and failed by 40pt on an iPhone SE3. A cell may not be declared healthy on large-device evidence alone — every cell is verified on a 375x667-class geometry, and any screen with a mode-dependent card height is verified in every mode.
+- **Enforcement:** `mingla-business/src/components/brand/__tests__/issue_1834_bank_field_smartscroll.render.test.tsx` (mounted-tree proof that the scroll host resolves to the wrapper with `bottomOffset >= 54`) + `issue_1834_paystack_host_completeness.adversarial.tester.test.ts` TA-2 (the criterion table, which fails if the constant is weakened from `keyboardTop - 54` to `keyboardTop`). Both carry vacuity guards that FAIL on an empty scan rather than skip.
+- **Established:** DRAFT at issue #1834 SPEC 2026-08-11.
+
+### I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE — AMENDMENT (DRAFT, issue #1834)
+- **Amendment:** the ACTIVE rule names "Paystack bank-picker" among the bespoke-keyboard-padding surfaces that must add >=42dp keyed clearance. That listing is **withdrawn**. A 42dp Done-bar compensator is required ONLY in a native window that actually renders `<KeyboardToolbarRoot/>` — which, by the gate's own rule (A) in `.github/scripts/strict-grep/i-1047-biz-keyboard-toolbar-keyed-offset.mjs`, is exactly `app/_layout.tsx`, `src/components/ui/SheetMobile.tsx` and `src/components/ui/Modal.tsx`. The bank picker in `BrandPaystackOnboardView.tsx` is a raw `react-native` `<Modal>` — a separate native window that renders no toolbar — so its Android-only `bankListKbPad` compensates for a bar that is not present and is dead space (Constitution rule 8, subtract before adding).
+- **Generalised rule:** compensating padding for the Done bar is forbidden in any native window that does not render the bar.
+- **Enforcement:** `issue_1834_paystack_host_completeness.adversarial.tester.test.ts` TA-3 — the set of files carrying an Android-keyed 42 compensator inside a toolbar-less raw `<Modal>` must equal the declared set exactly; an empty scan FAILS.
+- **Known remaining member of that set:** `mingla-business/src/components/partner/PartnerPaystackOnboardForm.tsx` (L133 / L386-387 / L527) carries the identical dead compensator. Out of scope for #1834 by orchestrator scoping; TA-3 pins it as a declared, visible exception rather than letting it pass silently.
+- **Established:** DRAFT amendment at issue #1834 SPEC 2026-08-11.
