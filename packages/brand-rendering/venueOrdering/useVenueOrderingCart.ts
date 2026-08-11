@@ -28,6 +28,7 @@ import type {
   VenueOrderTipChoice,
 } from "./venueOrderingTypes";
 import {
+  VENUE_ORDER_MAX_LINE_QUANTITY,
   type VenueOrderCartAction,
   venueOrderCartCount,
   venueOrderCartLineKey,
@@ -87,7 +88,13 @@ function reducer(state: State, action: Action): State {
           ...state,
           lines: rest.map((line) =>
             line.key === nextKey
-              ? { ...line, quantity: Math.min(99, line.quantity + target.quantity) }
+              ? {
+                ...line,
+                quantity: Math.min(
+                  VENUE_ORDER_MAX_LINE_QUANTITY,
+                  line.quantity + target.quantity,
+                ),
+              }
               : line
           ),
         };
