@@ -51,6 +51,7 @@ import {
   BaseBottomSheet,
   BottomSheetTextInput,
 } from "../ui/BaseBottomSheet";
+import { useConsumerVenueOrdering } from "./useConsumerVenueOrdering";
 import type { ConsumerVenueOrdering } from "./useConsumerVenueOrdering";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
@@ -74,6 +75,105 @@ function localClock(timezone: string | null): {
     minutesSinceMidnight: clock.minutes,
   };
 }
+
+/**
+ * THE ONE ENTRY POINT this app mounts, and the reason it is one.
+ *
+ * `useConsumerVenueOrdering` reaches `@mingla/payments-native` →
+ * `@stripe/stripe-react-native` — a NATIVE-ONLY module. A hook cannot be lazily
+ * imported, so a ROUTE that calls it drags that chain into its own module
+ * scope, and the venue route is mounted by web render suites that resolve
+ * modules through a web sandbox where the native package does not exist. The
+ * whole route then fails to load and every assertion in those suites reports
+ * zero calls — which is the exact web-render regression #1789 already paid for
+ * once in this programme.
+ *
+ * So the hook lives HERE, behind the host's lazy boundary, and the route imports
+ * nothing of ordering at module scope. Buyer web collapsed to one component for
+ * a different reason (its boot payload is measured); the two surfaces ending up
+ * the same shape is a good sign rather than a coincidence.
+ */
+export const ConsumerVenueOrderingSurface: React.FC<{
+  palette: ThemePalette;
+  surface: Surface;
+  theme: ResolvedTheme;
+  brandSlug: string;
+  venueSlug: string;
+  spotCode: string | null;
+  entrySource: string | null;
+  menu: PublicMenuGroup[];
+  menuWindows: Record<
+    string,
+    { start: string | null; end: string | null; days: number[] | null }
+  >;
+  timezone: string | null;
+}> = ({
+  palette,
+  surface,
+  theme,
+  brandSlug,
+  venueSlug,
+  spotCode,
+  entrySource,
+  menu,
+  menuWindows,
+  timezone,
+}) => {
+  const ordering = useConsumerVenueOrdering({
+    brandSlug,
+    venueSlug,
+    spotCode,
+    entrySource,
+    menu,
+    // Someone who scanned the card on their table is owed an explanation when
+    // they cannot order. Someone reading the menu out of curiosity is not.
+    scanned: spotCode !== null || entrySource === "qr",
+  });
+  const notesAllowedByItemId = React.useMemo<
+    Record<string, boolean | undefined>
+  >(() => {
+    const map: Record<string, boolean | undefined> = {};
+    for (const group of menu) {
+      for (const item of group.items) map[item.id] = item.allowsNotes === true;
+    }
+    return map;
+  }, [menu]);
+  const slotProps = { ordering, palette, surface, theme };
+
+  const notice = venueOrderingNotice(ordering.config, {
+    scanned: ordering.scanned,
+  });
+  const canOrder = venueOrderingCanOrder(ordering.config);
+  // Nothing honest to say and nothing to sell: hand the pane back to the shared
+  // screen's display-only renderer, which is the page this venue already had.
+  if (notice === null && !canOrder) return null;
+
+  return (
+    <View style={styles.surface}>
+      <ConsumerVenueOrderingNotice {...slotProps} />
+      <ConsumerVenueOrderingBar {...slotProps} />
+      {canOrder ? (
+        <ConsumerVenueOrderingMenu
+          {...slotProps}
+          menu={menu}
+          menuWindows={menuWindows}
+          timezone={timezone}
+        />
+      ) : (
+        <PublicMenuSections
+          groups={menu}
+          palette={palette}
+          surface={surface}
+          theme={theme}
+        />
+      )}
+      <ConsumerVenueOrderingSheet
+        {...slotProps}
+        notesAllowedByItemId={notesAllowedByItemId}
+      />
+    </View>
+  );
+};
 
 /** The honest state, or the spot chip. Null when there is nothing honest to say. */
 export const ConsumerVenueOrderingNotice: React.FC<
@@ -262,6 +362,7 @@ export const ConsumerVenueOrderingSheet: React.FC<
 };
 
 const styles = StyleSheet.create({
+  surface: { gap: 16 },
   sheetBody: { paddingHorizontal: 16, paddingBottom: 40, paddingTop: 8 },
   pending: { alignItems: "center", gap: 12, paddingVertical: 48 },
   pendingText: { fontSize: 15 },

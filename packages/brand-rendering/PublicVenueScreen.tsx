@@ -304,43 +304,23 @@ export interface PublicVenueOrderingSlotContext
 
 export interface PublicVenueOrderingSlots {
   /**
-   * Rendered at the TOP of the Menu pane. The spot chip when a guest can order,
-   * the honest "ordering is switched off / paused here" card when they cannot
-   * (the orchestrator amendment registered against #1793). Returning null is a
-   * first-class answer: a venue that has never switched ordering on says
-   * nothing at all to a casual reader, because there is nothing to say.
-   */
-  notice?: (context: PublicVenueOrderingSlotContext) => BrandRenderingReactNode;
-  /**
-   * Replaces the DISPLAY-ONLY menu list when it returns non-null. The two
-   * renderers are alternatives, never layers: `PublicMenuSections` is a list of
-   * static rows with no press target (pinned), and the ordering list is the same
-   * data with a way to buy it.
+   * The ONE ordering slot. It replaces the display-only menu list when it
+   * returns non-null, and hands the pane back when it returns null — which is
+   * what a venue with ordering switched off gets: the page it already had.
+   *
+   * ONE slot rather than four, and the reason is worth keeping. The first cut
+   * had separate notice / menu / sticky-bar / overlay slots so the bar could
+   * own the bottom of the viewport. But the ordering STATE is a hook, a hook
+   * cannot be lazily imported, and four slots meant the route calling it at
+   * module scope — which on buyer web put the cart and the rules into the boot
+   * payload every visitor downloads (+31 KB against a 12 KB allowance,
+   * ORCH-1083) and on the consumer app dragged the NATIVE payment SDK into a
+   * route the web render suites mount, so the whole page failed to load there.
+   * One slot lets each host lazily mount a single component that owns its own
+   * state, and costs exactly one thing: the basket's action bar rides at the top
+   * of the pane instead of the bottom of the screen.
    */
   menuBody?: (
-    context: PublicVenueOrderingSlotContext,
-  ) => BrandRenderingReactNode | null;
-  /**
-   * The bottom bar, which OWNS the bottom of the screen while the guest is on
-   * the Menu tab with something in their basket. It displaces the reserve CTA
-   * rather than stacking on it — two competing sticky bars is how a guest taps
-   * the wrong one.
-   */
-  stickyBar?: (
-    context: PublicVenueOrderingSlotContext,
-  ) => BrandRenderingReactNode | null;
-  /**
-   * Host chrome rendered LAST, in the page frame — the review step and the live
-   * order card, which are a sheet on the consumer app and an inline pane on
-   * buyer web.
-   *
-   * It is a FUNCTION rather than a node (unlike `overlays`) for one reason: it
-   * needs the resolved palette, surface and theme, and this screen is the single
-   * owner of those. A host that resolved its own theme to paint its sheet would
-   * be a second owner of the venue's colours, and the sheet would drift from the
-   * page the first time a brand changed its accent.
-   */
-  overlay?: (
     context: PublicVenueOrderingSlotContext,
   ) => BrandRenderingReactNode | null;
 }
@@ -1096,30 +1076,19 @@ export const PublicVenueScreen = ({
     [reservationUiContext],
   );
 
-  // ── Issue #1793 — the guest-ordering slots, resolved ONCE. ───────────────
-  //
-  // Resolved here, above the reserve gate, because one of the three answers it
-  // produces changes that gate: while a guest is on the Menu tab with something
-  // in their basket, the ordering bar OWNS the bottom of the screen. Two sticky
-  // bars stacked on one thumb is how somebody books a table when they meant to
-  // pay for their food.
+  // ── Issue #1793 — the guest-ordering slot, resolved ONCE. ────────────────
   const orderingSlotContext: PublicVenueOrderingSlotContext = {
     palette,
     surface,
     theme: resolvedTheme,
     menu,
   };
-  const orderingNotice = ordering?.notice?.(orderingSlotContext) ?? null;
   const orderingMenuBody = ordering?.menuBody?.(orderingSlotContext) ?? null;
-  const orderingStickyBar = ordering?.stickyBar?.(orderingSlotContext) ?? null;
-  const orderingBarOwnsBottom = orderingStickyBar !== null &&
-    normalizedReservationUiState.activeTab === "menu";
 
   // ── §6.7 reserve display gate — fail closed. ─────────────────────────────
   const showReserveCta =
     canOpenReservationSheet &&
-    normalizedReservationUiState.activeTab !== "reservations" &&
-    !orderingBarOwnsBottom;
+    normalizedReservationUiState.activeTab !== "reservations";
 
   // ── #1562 §6.5 the venue's own clock, resolved ONCE ──────────────────────
   //
@@ -1365,27 +1334,27 @@ export const PublicVenueScreen = ({
   // a way to buy it. The notice renders above whichever one mounts, so a guest
   // who scanned a code at a paused venue reads the honest reason FIRST and the
   // menu underneath it.
-  const menuBlock =
-    menuItemCount > 0 || orderingNotice !== null ? (
-      <View style={styles.menuWrap}>
-        {orderingNotice}
-        {menuItemCount === 0 ? null : orderingMenuBody !== null ? (
-          orderingMenuBody
-        ) : (
-          <React.Fragment>
-            <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
-              MENU
-            </Text>
-            <PublicMenuSections
-              groups={menu}
-              palette={palette}
-              surface={surface}
-              theme={resolvedTheme}
-            />
-          </React.Fragment>
-        )}
-      </View>
-    ) : null;
+  // The label is OUTSIDE the branch on purpose. A slot that returns a
+  // `<Suspense>` wrapper is non-null even while its lazy child has resolved to
+  // nothing, so a screen that chose its branch on the slot's nullness would drop
+  // the section heading — and, at a venue with ordering off, the menu with it.
+  // The slot renders the LIST (orderable or display-only); the heading is the
+  // page's, always.
+  const menuBlock = menuItemCount === 0 ? null : (
+    <View style={styles.menuWrap}>
+      <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
+        MENU
+      </Text>
+      {orderingMenuBody !== null ? orderingMenuBody : (
+        <PublicMenuSections
+          groups={menu}
+          palette={palette}
+          surface={surface}
+          theme={resolvedTheme}
+        />
+      )}
+    </View>
+  );
 
   // #1558 — which booking body the Reservations tab mounts is DATA
   // (`profile.bookingBody`), resolved through a total record. #1559 turns the
@@ -1502,24 +1471,7 @@ export const PublicVenueScreen = ({
       </View>
     ) : null;
 
-  // Issue #1793 — the ordering bar renders at EVERY width, unlike the reserve
-  // bar (which is phone-only because desktop has the sticky panel). A basket is
-  // the primary action of the page it is on, and a desktop guest with three
-  // things in theirs should not have to scroll to find the way to pay for them.
-  const orderingBar = orderingBarOwnsBottom ? (
-    <View
-      style={[
-        styles.reserveBarWrap,
-        { backgroundColor: palette.page, paddingBottom: insets.bottom + 8 },
-      ]}
-    >
-      {orderingStickyBar}
-    </View>
-  ) : null;
-
-  const reserveBarClearance = orderingBarOwnsBottom
-    ? 52 + 16 + insets.bottom + 8
-    : showReserveCta && !isDesktop
+  const reserveBarClearance = showReserveCta && !isDesktop
     ? 52 + 16 + insets.bottom + 8
     : insets.bottom + 24;
 
@@ -1728,10 +1680,7 @@ export const PublicVenueScreen = ({
       >
         {bodyContent}
       </ParallaxCoverShell>
-      {/* Exactly ONE bottom bar, ever. `orderingBarOwnsBottom` already forces
-          `showReserveCta` false, so this is belt-and-braces on a promise the
-          gate above makes — but it is the promise a thumb depends on. */}
-      {orderingBar ?? reserveBar}
+      {reserveBar}
       {reservationSheet({
         ...themedSlotContext,
         visible: normalizedReservationUiState.reservationSheetOpen,
@@ -1743,7 +1692,6 @@ export const PublicVenueScreen = ({
         title: profile.reserveAction,
         children: reservationsBlock,
       })}
-      {ordering?.overlay?.(orderingSlotContext) ?? null}
       {overlays}
     </View>
   );

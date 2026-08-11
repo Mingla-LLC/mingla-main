@@ -66,6 +66,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // lucide-react-native at module scope. Enforced on BOTH venue routes by
 // .github/scripts/strict-grep/issue-1550-venue-page-single-owner.mjs.
 import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
+import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
 import type {
   PublicVenueAnalyticsEvent,
   PublicVenueBookingSlotContext,
@@ -73,7 +74,6 @@ import type {
   PublicVenueReservationSheetContext,
   PublicVenueViewModel,
 } from "@mingla/brand-rendering/PublicVenueScreen";
-import { useConsumerVenueOrdering } from "../../../../src/components/venueOrdering/useConsumerVenueOrdering";
 
 import { VenueReserveSheet } from "../../../../src/components/expandedCard/VenueReserveSheet";
 import { ConsumerStayGuestExperience } from "../../../../src/components/stay/ConsumerStayGuestExperience";
@@ -88,9 +88,6 @@ import type { ConsumerPublicVenue } from "../../../../src/services/publicVenueSe
 
 /** This app's ONE analytics surface tag for the public venue page. */
 const ANALYTICS_SURFACE = "consumer_native";
-
-/** #1793 — a stable empty menu, so the ordering hook's deps do not churn. */
-const EMPTY_MENU: ConsumerPublicVenue["menu"] = [];
 
 /**
  * [TRANSITIONAL] The buyer-web origin, hand-built here as every other consumer
@@ -115,29 +112,11 @@ const BUYER_WEB_ORIGIN = "https://business.usemingla.com";
  * default and will be for most venues most of the time. The factory below runs
  * the first time a guest can actually order.
  */
-const LazyOrderingNotice = React.lazy(async () => {
+const LazyOrderingSurface = React.lazy(async () => {
   const mod = await import(
     "../../../../src/components/venueOrdering/ConsumerVenueOrderingSlots"
   );
-  return { default: mod.ConsumerVenueOrderingNotice };
-});
-const LazyOrderingMenu = React.lazy(async () => {
-  const mod = await import(
-    "../../../../src/components/venueOrdering/ConsumerVenueOrderingSlots"
-  );
-  return { default: mod.ConsumerVenueOrderingMenu };
-});
-const LazyOrderingBar = React.lazy(async () => {
-  const mod = await import(
-    "../../../../src/components/venueOrdering/ConsumerVenueOrderingSlots"
-  );
-  return { default: mod.ConsumerVenueOrderingBar };
-});
-const LazyOrderingSheet = React.lazy(async () => {
-  const mod = await import(
-    "../../../../src/components/venueOrdering/ConsumerVenueOrderingSlots"
-  );
-  return { default: mod.ConsumerVenueOrderingSheet };
+  return { default: mod.ConsumerVenueOrderingSurface };
 });
 
 /** `ConsumerPublicVenue` (this app's read model) → the shared view model. */
@@ -438,48 +417,6 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     [onAvailabilityResultViewed, onReservationFailed, onSlotSelected, venue],
   );
 
-  /**
-   * #1793 — guest ordering. The hook is unconditional (hooks are), and it is
-   * INERT until the venue's own state says otherwise: with no menu, no slugs or
-   * ordering switched off it fires one cached read and renders nothing at all.
-   */
-  const ordering = useConsumerVenueOrdering({
-    brandSlug: typeof brandSlug === "string" ? brandSlug : "",
-    venueSlug: typeof venueSlug === "string" ? venueSlug : "",
-    spotCode,
-    entrySource,
-    menu: venue?.menu ?? EMPTY_MENU,
-    // Someone who scanned the card on their table is owed an explanation when
-    // they cannot order. Someone reading the menu out of curiosity is not, so
-    // the honest-state banner is shown to the first and never to the second.
-    scanned: spotCode !== null || entrySource === "qr",
-  });
-  /**
-   * #1793 — the ordering chunk loads only when there is ordering to do.
-   *
-   * `React.lazy` fires on MOUNT, so a slot that always renders its lazy child
-   * downloads the cart, the review pane and the status card for every visitor to
-   * every venue page — and ordering is switched OFF for every venue by default.
-   * These two flags keep the whole surface unmounted until the venue's own state
-   * says otherwise: `off`/`unavailable` mounts nothing at all, and a guest who
-   * scanned a code at a paused venue mounts only the one card that tells them so.
-   */
-  const orderingState = ordering.config.state;
-  const orderingActive = orderingState === "on";
-  const orderingNoticeActive = orderingActive ||
-    ((spotCode !== null || entrySource === "qr") &&
-      (orderingState === "paused" || orderingState === "off"));
-
-  const notesAllowedByItemId = useMemo<Record<string, boolean | undefined>>(
-    () => {
-      const map: Record<string, boolean | undefined> = {};
-      for (const group of venue?.menu ?? []) {
-        for (const item of group.items) map[item.id] = item.allowsNotes === true;
-      }
-      return map;
-    },
-    [venue?.menu],
-  );
 
   if (query.isLoading || query.isFetching) {
     return <StateView title="Loading venue…" loading />;
@@ -548,55 +485,36 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       loadThemeFont={useConsumerThemeFont}
       bookingBody={renderBookingBody}
       reservationSheet={renderReservationSheet}
-      // #1793 — the three ordering slots. Each renders nothing at all unless
-      // this venue can actually take an order from this guest right now, so a
-      // venue with ordering off is byte-for-byte the page it was before.
+      // #1793 — ONE ordering slot, one lazy chunk. The surface owns its own
+      // state, so this route imports nothing of ordering at module scope — which
+      // matters because that state reaches the native payment SDK, and a route
+      // that pulls a native-only chain at module scope cannot be mounted by the
+      // web render suites at all.
       ordering={{
-        notice: (context: PublicVenueOrderingSlotContext) =>
-          !orderingNoticeActive ? null : (
-          <React.Suspense fallback={null}>
-            <LazyOrderingNotice
-              ordering={ordering}
+        menuBody: (context: PublicVenueOrderingSlotContext) => (
+          <React.Suspense
+            fallback={
+              /* Never a blank menu pane while the ordering chunk loads —
+                 the display-only list IS the honest thing to show. */
+              <PublicMenuSections
+                groups={context.menu}
+                palette={context.palette}
+                surface={context.surface}
+                theme={context.theme}
+              />
+            }
+          >
+            <LazyOrderingSurface
               palette={context.palette}
               surface={context.surface}
               theme={context.theme}
-            />
-          </React.Suspense>
-        ),
-        menuBody: (context: PublicVenueOrderingSlotContext) =>
-          !orderingActive ? null : (
-          <React.Suspense fallback={<ActivityIndicator />}>
-            <LazyOrderingMenu
-              ordering={ordering}
-              palette={context.palette}
-              surface={context.surface}
-              theme={context.theme}
+              brandSlug={typeof brandSlug === "string" ? brandSlug : ""}
+              venueSlug={typeof venueSlug === "string" ? venueSlug : ""}
+              spotCode={spotCode}
+              entrySource={entrySource}
               menu={context.menu}
               menuWindows={venue.menuWindows}
               timezone={venue.timezone}
-            />
-          </React.Suspense>
-        ),
-        stickyBar: (context: PublicVenueOrderingSlotContext) =>
-          !orderingActive ? null : (
-          <React.Suspense fallback={null}>
-            <LazyOrderingBar
-              ordering={ordering}
-              palette={context.palette}
-              surface={context.surface}
-              theme={context.theme}
-            />
-          </React.Suspense>
-        ),
-        overlay: (context: PublicVenueOrderingSlotContext) =>
-          !orderingActive ? null : (
-          <React.Suspense fallback={null}>
-            <LazyOrderingSheet
-              ordering={ordering}
-              palette={context.palette}
-              surface={context.surface}
-              theme={context.theme}
-              notesAllowedByItemId={notesAllowedByItemId}
             />
           </React.Suspense>
         ),

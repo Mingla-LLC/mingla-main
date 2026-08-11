@@ -41,6 +41,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // lucide shim's module-scope icon requires into the EAGER __common boot chunk
 // (ORCH-1083 bundle-budget breach). Enforced by i-1047-biz-bundle-budget-deferral.
 import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
+import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
 import {
   publicVenueMeta,
   type PublicVenueAnalyticsEvent,
@@ -502,7 +503,18 @@ export default function PublicVenueRoute(): React.ReactElement {
       // everyone).
       ordering={{
         menuBody: (context: PublicVenueOrderingSlotContext) => (
-          <React.Suspense fallback={null}>
+          <React.Suspense
+            fallback={
+              /* Never a blank menu pane while the ordering chunk loads —
+                 the display-only list IS the honest thing to show. */
+              <PublicMenuSections
+                groups={context.menu}
+                palette={context.palette}
+                surface={context.surface}
+                theme={context.theme}
+              />
+            }
+          >
             <LazyOrderingSurface
               palette={context.palette}
               surface={context.surface}

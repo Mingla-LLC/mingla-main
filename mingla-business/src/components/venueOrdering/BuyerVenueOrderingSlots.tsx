@@ -304,17 +304,34 @@ export const BuyerVenueOrderingSurface: React.FC<{
     scanned: spotCode !== null || entrySource === "qr",
   });
   const slotProps = { ordering, palette, surface, theme };
+  const notice = venueOrderingNotice(ordering.config, {
+    scanned: ordering.scanned,
+  });
+  const canOrder = venueOrderingCanOrder(ordering.config);
+  // Nothing honest to say and nothing to sell: hand the pane back to the shared
+  // screen's display-only renderer, which is the page this venue already had.
+  if (notice === null && !canOrder) return null;
+
   return (
     <View style={styles.surface}>
       <BuyerVenueOrderingNotice {...slotProps} />
       <BuyerVenueOrderingBar {...slotProps} />
-      <BuyerVenueOrderingMenu
-        {...slotProps}
-        menu={menu}
-        menuWindows={menuWindows}
-        timezone={timezone}
-        notesAllowedByItemId={notesAllowedByItemId}
-      />
+      {canOrder ? (
+        <BuyerVenueOrderingMenu
+          {...slotProps}
+          menu={menu}
+          menuWindows={menuWindows}
+          timezone={timezone}
+          notesAllowedByItemId={notesAllowedByItemId}
+        />
+      ) : (
+        <PublicMenuSections
+          groups={menu}
+          palette={palette}
+          surface={surface}
+          theme={theme}
+        />
+      )}
     </View>
   );
 };
