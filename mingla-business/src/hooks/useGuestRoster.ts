@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
 import {
@@ -41,19 +41,13 @@ export function useGuestRosterAccess(eventId: string | null): UseQueryResult<Gue
   });
 }
 
-export type GuestRosterQueryResult = UseQueryResult<GuestRosterPage> & {
-  lastSuccessfulSyncAt: number | null;
-  isStaleTruth: boolean;
-  isOffline: boolean;
-};
-
 export function useGuestRoster(input: {
   eventId: string | null;
   enabled: boolean;
   filter: GuestRosterFilter;
   search: string;
   sort: GuestRosterSort;
-}): GuestRosterQueryResult {
+}) {
   const { isAuthReady, user } = useAuth();
   const queryClient = useQueryClient();
   const network = useNetInfoSafe();
@@ -66,22 +60,25 @@ export function useGuestRoster(input: {
     ? guestRosterKeys.list(input.eventId, input.filter, input.search, input.sort)
     : (["guest-roster", "disabled"] as const);
 
-  const query = useQuery<GuestRosterPage>({
+  const query = useInfiniteQuery({
     queryKey,
     enabled,
+    initialPageParam: null as Record<string, unknown> | null,
     staleTime: 15_000,
     refetchInterval: enabled ? 15_000 : false,
     refetchOnReconnect: true,
     refetchOnWindowFocus: true,
-    queryFn: () => {
+    queryFn: ({ pageParam }) => {
       if (input.eventId === null) throw new Error("guest_roster_event_required");
       return fetchGuestRoster({
         eventId: input.eventId,
         filter: input.filter,
         search: input.search,
         sort: input.sort,
+        cursor: pageParam,
       });
     },
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
   const invalidateEvent = useCallback(() => {
     if (!enabled || input.eventId === null) return;
@@ -139,9 +136,16 @@ export function useGuestRoster(input: {
     };
   }, [enabled, input.eventId, invalidateEvent, queryClient]);
 
+  const pages = query.data?.pages;
+  const data = pages === undefined || pages.length === 0 ? undefined : {
+    ...pages[0],
+    rows: pages.flatMap((page) => page.rows),
+    nextCursor: pages.at(-1)?.nextCursor ?? null,
+  };
   const lastSuccessfulSyncAt = query.dataUpdatedAt > 0 ? query.dataUpdatedAt : null;
   return {
     ...query,
+    data,
     lastSuccessfulSyncAt,
     isStaleTruth: lastSuccessfulSyncAt === null || now - lastSuccessfulSyncAt > 30_000,
     isOffline,

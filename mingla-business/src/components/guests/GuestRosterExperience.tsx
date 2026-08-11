@@ -297,6 +297,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
   ], [summary]);
 
   const refresh = useCallback(() => { void query.refetch(); }, [query]);
+  const loadMore = useCallback(() => { void query.fetchNextPage(); }, [query]);
   const previewAction = useCallback(async (action: "reminder" | "retry_delivery", rows?: GuestRosterRow[]) => {
     const targets = rows ?? (selected === null ? [] : [selected]);
     if (targets.length === 0 || query.isStaleTruth || query.isOffline) return;
@@ -437,6 +438,17 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
           <View style={[styles.list, isWideDesktop && styles.listDesktop]}>
             {data.rows.map((row) => <RosterRow key={row.rosterKey} row={row} selectionMode={selectionMode} selected={selectedKeys.has(row.rosterKey)}
               onPress={() => { if (selectionMode) toggleSelected(row); else setSelected(row); }} />)}
+            {query.isFetchNextPageError ? (
+              <View style={styles.loadMoreState} accessibilityRole="alert">
+                <Text style={styles.detailMuted}>Couldn't load more guests.</Text>
+                <Button variant="secondary" label="Try again" onPress={loadMore} />
+              </View>
+            ) : query.hasNextPage ? (
+              <View style={styles.loadMoreState}>
+                <Button variant="secondary" label={query.isFetchingNextPage ? "Loading more guests" : "Load more guests"}
+                  disabled={query.isFetchingNextPage} onPress={loadMore} />
+              </View>
+            ) : null}
           </View>
         )}
       </ScrollView>
@@ -513,6 +525,7 @@ const styles = StyleSheet.create({
   summaryLabel: { color: textTokens.secondary, fontSize: 13, fontWeight: "700" },
   list: { gap: spacing.sm },
   listDesktop: { gap: spacing.sm },
+  loadMoreState: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.md },
   rowPressable: { width: "100%" },
   rowCard: { minHeight: 104 },
   rowContent: { padding: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.md },

@@ -893,69 +893,93 @@ DECLARE v_event uuid; v_person uuid; v_kind text:=TG_ARGV[0];
 BEGIN
   IF TG_TABLE_NAME='brand_people' THEN
     INSERT INTO public.guest_roster_change_events(event_id,roster_key,fact_kind)
-    SELECT DISTINCT event_id,'person:'||NEW.id::text,'identity' FROM (
-      SELECT i.event_id FROM public.brand_offering_invites i WHERE i.brand_person_id=NEW.id
+    SELECT DISTINCT event_id,'person:'||(CASE WHEN TG_OP='DELETE' THEN OLD.id ELSE NEW.id END)::text,'identity' FROM (
+      SELECT i.event_id FROM public.brand_offering_invites i WHERE i.brand_person_id=(CASE WHEN TG_OP='DELETE' THEN OLD.id ELSE NEW.id END)
       UNION ALL SELECT r.event_id FROM public.brand_person_source_links l JOIN public.event_rsvps r
-        ON l.source_kind='event_rsvp' AND r.id=l.source_id WHERE l.brand_person_id=NEW.id AND l.detached_at IS NULL
+        ON l.source_kind='event_rsvp' AND r.id=l.source_id WHERE l.brand_person_id=(CASE WHEN TG_OP='DELETE' THEN OLD.id ELSE NEW.id END) AND l.detached_at IS NULL
       UNION ALL SELECT o.event_id FROM public.brand_person_source_links l JOIN public.orders o
-        ON l.source_kind='order' AND o.id=l.source_id WHERE l.brand_person_id=NEW.id AND l.detached_at IS NULL
+        ON l.source_kind='order' AND o.id=l.source_id WHERE l.brand_person_id=(CASE WHEN TG_OP='DELETE' THEN OLD.id ELSE NEW.id END) AND l.detached_at IS NULL
     ) affected;
-    RETURN NEW;
+    IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
   ELSIF TG_TABLE_NAME='brand_person_contact_methods' THEN
     INSERT INTO public.guest_roster_change_events(event_id,roster_key,fact_kind)
-    SELECT DISTINCT event_id,'person:'||NEW.brand_person_id::text,'identity' FROM (
-      SELECT i.event_id FROM public.brand_offering_invites i WHERE i.brand_person_id=NEW.brand_person_id
+    SELECT DISTINCT event_id,'person:'||(CASE WHEN TG_OP='DELETE' THEN OLD.brand_person_id ELSE NEW.brand_person_id END)::text,'identity' FROM (
+      SELECT i.event_id FROM public.brand_offering_invites i WHERE i.brand_person_id=(CASE WHEN TG_OP='DELETE' THEN OLD.brand_person_id ELSE NEW.brand_person_id END)
       UNION ALL SELECT r.event_id FROM public.brand_person_source_links l JOIN public.event_rsvps r
-        ON l.source_kind='event_rsvp' AND r.id=l.source_id WHERE l.brand_person_id=NEW.brand_person_id AND l.detached_at IS NULL
+        ON l.source_kind='event_rsvp' AND r.id=l.source_id WHERE l.brand_person_id=(CASE WHEN TG_OP='DELETE' THEN OLD.brand_person_id ELSE NEW.brand_person_id END) AND l.detached_at IS NULL
       UNION ALL SELECT o.event_id FROM public.brand_person_source_links l JOIN public.orders o
-        ON l.source_kind='order' AND o.id=l.source_id WHERE l.brand_person_id=NEW.brand_person_id AND l.detached_at IS NULL
+        ON l.source_kind='order' AND o.id=l.source_id WHERE l.brand_person_id=(CASE WHEN TG_OP='DELETE' THEN OLD.brand_person_id ELSE NEW.brand_person_id END) AND l.detached_at IS NULL
     ) affected;
-    RETURN NEW;
+    IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
   ELSIF TG_TABLE_NAME='brand_person_source_links' THEN
-    v_person:=NEW.brand_person_id;
-    IF NEW.source_kind='event_rsvp' THEN SELECT r.event_id INTO v_event FROM public.event_rsvps r WHERE r.id=NEW.source_id;
-    ELSIF NEW.source_kind='order' THEN SELECT o.event_id INTO v_event FROM public.orders o WHERE o.id=NEW.source_id;
+    v_person:=CASE WHEN TG_OP='DELETE' THEN OLD.brand_person_id ELSE NEW.brand_person_id END;
+    IF (CASE WHEN TG_OP='DELETE' THEN OLD.source_kind ELSE NEW.source_kind END)='event_rsvp' THEN SELECT r.event_id INTO v_event FROM public.event_rsvps r WHERE r.id=(CASE WHEN TG_OP='DELETE' THEN OLD.source_id ELSE NEW.source_id END);
+    ELSIF (CASE WHEN TG_OP='DELETE' THEN OLD.source_kind ELSE NEW.source_kind END)='order' THEN SELECT o.event_id INTO v_event FROM public.orders o WHERE o.id=(CASE WHEN TG_OP='DELETE' THEN OLD.source_id ELSE NEW.source_id END);
     END IF;
   ELSIF TG_TABLE_NAME='guest_roster_brand_rollouts' THEN
     INSERT INTO public.guest_roster_change_events(event_id,roster_key,fact_kind)
-    SELECT e.id,NULL,'rollout' FROM public.events e WHERE e.brand_id=NEW.brand_id AND e.deleted_at IS NULL;
-    RETURN NEW;
-  ELSIF TG_TABLE_NAME='brand_offering_invites' THEN v_event:=NEW.event_id; v_person:=NEW.brand_person_id;
+    SELECT e.id,NULL,'rollout' FROM public.events e WHERE e.brand_id=(CASE WHEN TG_OP='DELETE' THEN OLD.brand_id ELSE NEW.brand_id END) AND e.deleted_at IS NULL;
+    IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+  ELSIF TG_TABLE_NAME='brand_offering_invites' THEN v_event:=CASE WHEN TG_OP='DELETE' THEN OLD.event_id ELSE NEW.event_id END; v_person:=CASE WHEN TG_OP='DELETE' THEN OLD.brand_person_id ELSE NEW.brand_person_id END;
   ELSIF TG_TABLE_NAME='brand_offering_invite_delivery_attempts' THEN
-    SELECT i.event_id,i.brand_person_id INTO v_event,v_person FROM public.brand_offering_invites i WHERE i.id=NEW.invite_id;
-  ELSIF TG_TABLE_NAME='event_rsvps' THEN v_event:=NEW.event_id;
-  ELSIF TG_TABLE_NAME='event_rsvp_guests' THEN SELECT r.event_id INTO v_event FROM public.event_rsvps r WHERE r.id=NEW.rsvp_id;
-  ELSIF TG_TABLE_NAME='orders' THEN v_event:=NEW.event_id;
-  ELSIF TG_TABLE_NAME='tickets' THEN v_event:=NEW.event_id;
+    SELECT i.event_id,i.brand_person_id INTO v_event,v_person FROM public.brand_offering_invites i WHERE i.id=(CASE WHEN TG_OP='DELETE' THEN OLD.invite_id ELSE NEW.invite_id END);
+  ELSIF TG_TABLE_NAME='event_rsvps' THEN v_event:=CASE WHEN TG_OP='DELETE' THEN OLD.event_id ELSE NEW.event_id END;
+  ELSIF TG_TABLE_NAME='event_rsvp_guests' THEN SELECT r.event_id INTO v_event FROM public.event_rsvps r WHERE r.id=(CASE WHEN TG_OP='DELETE' THEN OLD.rsvp_id ELSE NEW.rsvp_id END);
+  ELSIF TG_TABLE_NAME='orders' THEN v_event:=CASE WHEN TG_OP='DELETE' THEN OLD.event_id ELSE NEW.event_id END;
+  ELSIF TG_TABLE_NAME='tickets' THEN v_event:=CASE WHEN TG_OP='DELETE' THEN OLD.event_id ELSE NEW.event_id END;
   END IF;
   IF v_event IS NOT NULL THEN
     INSERT INTO public.guest_roster_change_events(event_id,roster_key,fact_kind)
     VALUES(v_event,CASE WHEN v_person IS NULL THEN NULL ELSE 'person:'||v_person::text END,v_kind);
   END IF;
-  RETURN NEW;
+  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'issue_0873_roster_invalidation_failed table=% operation=% state=%',TG_TABLE_NAME,TG_OP,SQLSTATE;
+  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
 END;
 $function$;
 
-CREATE TRIGGER issue_0873_invite_change AFTER INSERT OR UPDATE ON public.brand_offering_invites
+CREATE TRIGGER issue_0873_invite_change AFTER INSERT OR UPDATE OR DELETE ON public.brand_offering_invites
 FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('invitation');
-CREATE TRIGGER issue_0873_delivery_change AFTER INSERT OR UPDATE ON public.brand_offering_invite_delivery_attempts
+CREATE TRIGGER issue_0873_delivery_change AFTER INSERT OR UPDATE OR DELETE ON public.brand_offering_invite_delivery_attempts
 FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('delivery');
-CREATE TRIGGER issue_0873_rsvp_change AFTER INSERT OR UPDATE ON public.event_rsvps
+CREATE TRIGGER issue_0873_rsvp_change AFTER INSERT OR UPDATE OR DELETE ON public.event_rsvps
 FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('rsvp');
-CREATE TRIGGER issue_0873_party_change AFTER INSERT OR UPDATE ON public.event_rsvp_guests
+CREATE TRIGGER issue_0873_party_change AFTER INSERT OR UPDATE OR DELETE ON public.event_rsvp_guests
 FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('party');
-CREATE TRIGGER issue_0873_order_change AFTER INSERT OR UPDATE ON public.orders
+CREATE TRIGGER issue_0873_order_change AFTER INSERT OR UPDATE OR DELETE ON public.orders
 FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('order');
-CREATE TRIGGER issue_0873_ticket_change AFTER INSERT OR UPDATE ON public.tickets
+CREATE TRIGGER issue_0873_ticket_change AFTER INSERT OR UPDATE OR DELETE ON public.tickets
 FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('ticket');
-CREATE TRIGGER issue_0873_person_change AFTER UPDATE OF display_name,avatar_url,record_status,merged_into_person_id ON public.brand_people
+CREATE TRIGGER issue_0873_person_change AFTER UPDATE OF display_name,avatar_url,record_status,merged_into_person_id OR DELETE ON public.brand_people
 FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('identity');
-CREATE TRIGGER issue_0873_contact_change AFTER INSERT OR UPDATE OF normalized_value,record_state,is_exportable,provenance_scope ON public.brand_person_contact_methods
+CREATE TRIGGER issue_0873_contact_change AFTER INSERT OR UPDATE OF normalized_value,record_state,is_exportable,provenance_scope OR DELETE ON public.brand_person_contact_methods
 FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('identity');
-CREATE TRIGGER issue_0873_source_link_change AFTER INSERT OR UPDATE OF brand_person_id,detached_at ON public.brand_person_source_links
+CREATE TRIGGER issue_0873_source_link_change AFTER INSERT OR UPDATE OF brand_person_id,detached_at OR DELETE ON public.brand_person_source_links
 FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('identity');
-CREATE TRIGGER issue_0873_rollout_change AFTER INSERT OR UPDATE OF phase ON public.guest_roster_brand_rollouts
+CREATE TRIGGER issue_0873_rollout_change AFTER INSERT OR UPDATE OF phase OR DELETE ON public.guest_roster_brand_rollouts
 FOR EACH ROW EXECUTE FUNCTION public.issue_0873_emit_roster_change('rollout');
+
+CREATE OR REPLACE FUNCTION public.issue_0873_purge_roster_changes(p_limit integer DEFAULT 10000)
+RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
+AS $function$
+DECLARE v_deleted integer;
+BEGIN
+  IF p_limit NOT BETWEEN 1 AND 10000 THEN RAISE EXCEPTION 'guest_roster_retention_limit_invalid' USING ERRCODE='22023'; END IF;
+  WITH doomed AS (
+    SELECT id FROM public.guest_roster_change_events
+    WHERE occurred_at<now()-interval '7 days' ORDER BY id LIMIT p_limit
+  ) DELETE FROM public.guest_roster_change_events e USING doomed d WHERE e.id=d.id;
+  GET DIAGNOSTICS v_deleted=ROW_COUNT;
+  RETURN v_deleted;
+END;
+$function$;
+
+SELECT cron.schedule(
+  'issue-0873-guest-roster-change-retention',
+  '17 3 * * *',
+  $$SELECT public.issue_0873_purge_roster_changes(10000);$$
+);
 
 REVOKE ALL ON FUNCTION public.biz_guest_roster_phase_rank(text) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.biz_guest_roster_rollout(uuid) FROM PUBLIC,anon,authenticated;
@@ -965,6 +989,7 @@ REVOKE ALL ON FUNCTION public.biz_guest_roster_store_preview(uuid,uuid,text,json
 REVOKE ALL ON FUNCTION public.biz_guest_roster_get_preview(uuid,uuid,uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.biz_guest_roster_consume_preview(uuid,uuid,uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_0873_emit_roster_change() FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.issue_0873_purge_roster_changes(integer) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_phase_rank(text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_rollout(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_project(uuid) TO service_role;
@@ -973,6 +998,7 @@ GRANT EXECUTE ON FUNCTION public.biz_guest_roster_store_preview(uuid,uuid,text,j
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_get_preview(uuid,uuid,uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.biz_guest_roster_consume_preview(uuid,uuid,uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_0873_emit_roster_change() TO service_role;
+GRANT EXECUTE ON FUNCTION public.issue_0873_purge_roster_changes(integer) TO service_role;
 
 REVOKE ALL ON FUNCTION public.biz_guest_roster_access(uuid) FROM PUBLIC,anon;
 REVOKE ALL ON FUNCTION public.biz_guest_roster_list(uuid,text,text,text,jsonb,integer) FROM PUBLIC,anon;
