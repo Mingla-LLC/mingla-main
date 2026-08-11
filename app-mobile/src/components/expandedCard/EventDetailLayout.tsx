@@ -29,6 +29,7 @@ interface EventDetailLayoutProps {
   onSave: (card: ExpandedCardData) => Promise<void> | void;
   onShare?: (card: ExpandedCardData) => void;
   shareBusy?: boolean;
+  shareControlRef?: React.Ref<View>;
   onClose: () => void;
   onOpenBrowser: (url: string, title: string) => void;
   accountPreferences?: {
@@ -63,6 +64,7 @@ export default function EventDetailLayout({
   onSave,
   onShare,
   shareBusy = false,
+  shareControlRef = undefined,
   onClose,
   onOpenBrowser,
   accountPreferences,
@@ -292,6 +294,7 @@ export default function EventDetailLayout({
         </TouchableOpacity>
 
         <TouchableOpacity
+          ref={shareControlRef}
           style={styles.secondaryChip}
           activeOpacity={0.7}
           onPress={handleSharePress}

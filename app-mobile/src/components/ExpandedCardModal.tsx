@@ -257,6 +257,71 @@ function waitUntilAppActive(signal: AbortSignal): Promise<void> {
   });
 }
 
+type ExpandedShareRecoveryDependencies = {
+  isCurrent: () => boolean;
+  failureClass: SharePresentationFailureClass;
+  cancelObservation: (failureClass: SharePresentationFailureClass) => void;
+  waitForDismissal: () => Promise<void>;
+  waitForActive: () => Promise<void>;
+  releaseObservation: () => void;
+  showFailure: () => void;
+  restore: () => Promise<void>;
+};
+
+function isExpectedShareHandoffCancellation(error: unknown): boolean {
+  return error instanceof Error && error.message === 'handoff_cancelled';
+}
+
+/**
+ * #1880: the recovery transaction is dependency-injected so every async
+ * boundary can re-check the exact admitted generation before side effects.
+ */
+async function runExpandedShareRecovery({
+  isCurrent,
+  failureClass,
+  cancelObservation,
+  waitForDismissal,
+  waitForActive,
+  releaseObservation,
+  showFailure,
+  restore,
+}: ExpandedShareRecoveryDependencies): Promise<'cancelled' | 'recovered'> {
+  if (!isCurrent()) return 'cancelled';
+  cancelObservation(failureClass);
+  try {
+    await waitForDismissal();
+  } catch (error: unknown) {
+    if (!isCurrent() || isExpectedShareHandoffCancellation(error)) return 'cancelled';
+    // A bounded native-dismiss timeout is itself the presentation failure;
+    // continue only while this exact caller still owns recovery.
+  }
+  if (!isCurrent()) return 'cancelled';
+  try {
+    await waitForActive();
+  } catch (error: unknown) {
+    if (!isCurrent() || isExpectedShareHandoffCancellation(error)) return 'cancelled';
+    throw error;
+  }
+  if (!isCurrent()) return 'cancelled';
+  releaseObservation();
+  if (!isCurrent()) return 'cancelled';
+  showFailure();
+  if (!isCurrent()) return 'cancelled';
+  await restore();
+  return isCurrent() ? 'recovered' : 'cancelled';
+}
+
+function observeExpandedShareTask(
+  task: Promise<void>,
+  isCurrent: () => boolean,
+  recordUnexpected: (error: unknown) => void,
+): Promise<void> {
+  return task.catch((error: unknown) => {
+    if (isExpectedShareHandoffCancellation(error) || !isCurrent()) return;
+    recordUnexpected(error);
+  });
+}
+
 // ============================================================================
 // ORCH-0908 — LockedInBanner: shown at top of ExpandedCardModal when a card
 // was shared via lock-and-schedule. Renders the scheduled date/time + an
@@ -744,50 +809,52 @@ export default function ExpandedCardModal({
     });
     AccessibilityInfo.announceForAccessibility('Opening sharing.');
 
-    void (async (): Promise<void> => {
+    const isCurrentHandoffTask = (): boolean =>
+      shareHandoffMounted.current &&
+      shareHandoffGeneration.current === generation &&
+      !abortController.signal.aborted &&
+      visibleRef.current &&
+      currentCardIdRef.current === captured.id &&
+      capturedShareCard.current === captured;
+
+    const handoffTask = (async (): Promise<void> => {
       let observation: SharePresentationObservation | null = null;
       let parentDismissed = false;
       try {
         await withActiveForegroundWatchdog(dismissed.promise);
         parentDismissed = true;
-        if (shareHandoffGeneration.current !== generation || abortController.signal.aborted) return;
-        rootDismissedAcknowledgement.current = null;
+        if (!isCurrentHandoffTask()) return;
+        if (rootDismissedAcknowledgement.current === dismissed) {
+          rootDismissedAcknowledgement.current = null;
+        }
         await waitUntilAppActive(abortController.signal);
-        if (
-          shareHandoffGeneration.current !== generation ||
-          abortController.signal.aborted ||
-          !visibleRef.current ||
-          currentCardIdRef.current !== captured.id
-        ) return;
+        if (!isCurrentHandoffTask()) return;
 
         observation = beginExpandedPresentation(shareProducerSurface);
         sharePresentationObservation.current = observation;
         setShareHandoffPhase('provider_presenting');
         onShare(captured);
         await withActiveForegroundWatchdog(observation.presented);
-        if (shareHandoffGeneration.current !== generation || abortController.signal.aborted) return;
+        if (!isCurrentHandoffTask()) return;
         setShareHandoffPhase('provider_visible');
 
         await observation.dismissalRequested;
+        if (!isCurrentHandoffTask()) return;
         // Lifecycle contract: `await observation.dismissed` is deliberately
         // watchdog-bounded below so a missing native callback recovers visibly.
         await withActiveForegroundWatchdog(observation.dismissed);
+        if (!isCurrentHandoffTask()) return;
         await waitUntilAppActive(abortController.signal);
-        if (
-          shareHandoffGeneration.current !== generation ||
-          abortController.signal.aborted ||
-          !visibleRef.current ||
-          currentCardIdRef.current !== captured.id
-        ) return;
-        sharePresentationObservation.current = null;
+        // Revalidate the mounted generation, visible caller, and captured card
+        // after foreground ownership returns and before expanded_restoring.
+        if (!isCurrentHandoffTask()) return;
+        if (sharePresentationObservation.current === observation) {
+          sharePresentationObservation.current = null;
+        }
         // The foreground and caller checks above gate the expanded_restoring transition.
         await restoreExpandedAfterShare(generation);
       } catch (error: unknown) {
-        if (
-          shareHandoffGeneration.current !== generation ||
-          abortController.signal.aborted ||
-          error instanceof Error && error.message === 'handoff_cancelled'
-        ) return;
+        if (!isCurrentHandoffTask() || isExpectedShareHandoffCancellation(error)) return;
         const failureClass: SharePresentationFailureClass =
           observation === null
             ? parentDismissed
@@ -798,21 +865,40 @@ export default function ExpandedCardModal({
               : 'presentation_rejected';
         if (observation === null) {
           emitParentPresentationFailure(captured, failureClass, startedAt, parentCorrelationId);
-        } else {
-          observation.cancel(failureClass);
-          try {
-            await withActiveForegroundWatchdog(observation.dismissed);
-          } catch {
-            // The recovery boundary is already bounded; restoration below is
-            // the only safe interactive surface left after the provider cancel.
-          }
         }
-        sharePresentationObservation.current = null;
-        toastManager.show("Couldn't open sharing. Please try again.", 'error');
-        AccessibilityInfo.announceForAccessibility("Couldn't open sharing. Please try again.");
-        await waitUntilAppActive(abortController.signal);
-        await restoreExpandedAfterShare(generation, true);
+        const recoveryObservation = observation;
+        await runExpandedShareRecovery({
+          isCurrent: isCurrentHandoffTask,
+          failureClass,
+          cancelObservation: (classification) => recoveryObservation?.cancel(classification),
+          waitForDismissal: () => recoveryObservation === null
+            ? Promise.resolve()
+            : withActiveForegroundWatchdog(recoveryObservation.dismissed),
+          waitForActive: () => waitUntilAppActive(abortController.signal),
+          releaseObservation: () => {
+            if (
+              shareHandoffGeneration.current === generation &&
+              sharePresentationObservation.current === recoveryObservation
+            ) sharePresentationObservation.current = null;
+          },
+          showFailure: () => {
+            toastManager.show("Couldn't open sharing. Please try again.", 'error');
+            AccessibilityInfo.announceForAccessibility("Couldn't open sharing. Please try again.");
+          },
+          restore: () => restoreExpandedAfterShare(generation, true),
+        });
       }
+    })();
+    void (async (): Promise<void> => {
+      await observeExpandedShareTask(
+        handoffTask,
+        isCurrentHandoffTask,
+        (error) => {
+          console.info('[content-share] expanded handoff task failed', {
+            reason: error instanceof Error ? error.name : 'unknown',
+          });
+        },
+      );
     })();
   }, [
     beginExpandedPresentation,
@@ -1868,6 +1954,7 @@ export default function ExpandedCardModal({
                   onSave={onSave}
                   onShare={admitExpandedShare}
                   shareBusy={shareHandoffBusy}
+                  shareControlRef={shareControlRef}
                   onClose={onClose}
                   onOpenBrowser={(url, title) => {
                     setBrowserUrl(url);
