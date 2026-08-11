@@ -332,7 +332,16 @@ BEGIN
   END IF;
 
   -- T+6 → rung 2, once.
-  UPDATE public.venue_orders SET created_at = now() - interval '6 minutes' WHERE id = v_o;
+  -- #1846 M-1 [TEST-MOD-APPROVED #1846] — the ladder is clocked from PAYMENT
+  -- (confirmed_at), not from when the guest opened checkout, so walking the
+  -- rungs means moving the clock the ladder actually reads. Moving created_at
+  -- alone was pinning the very bug #1846 fixed: an order whose checkout took
+  -- eleven minutes used to arrive already past every threshold. Both columns
+  -- move together here so the fixture stays a coherent order.
+  UPDATE public.venue_orders
+     SET created_at = now() - interval '6 minutes',
+         confirmed_at = now() - interval '6 minutes'
+   WHERE id = v_o;
   SELECT count(*), max(s.rung) INTO v_rows, v_rung
     FROM public.pg_venue_order_escalation_scan(now(), 50) s WHERE s.order_id = v_o;
   IF v_rows <> 1 OR v_rung <> 2 THEN
@@ -345,7 +354,10 @@ BEGIN
   END IF;
 
   -- T+11 → rung 3, once.
-  UPDATE public.venue_orders SET created_at = now() - interval '11 minutes' WHERE id = v_o;
+  UPDATE public.venue_orders
+     SET created_at = now() - interval '11 minutes',
+         confirmed_at = now() - interval '11 minutes'
+   WHERE id = v_o;
   SELECT count(*), max(s.rung) INTO v_rows, v_rung
     FROM public.pg_venue_order_escalation_scan(now(), 50) s WHERE s.order_id = v_o;
   IF v_rows <> 1 OR v_rung <> 3 THEN
@@ -353,7 +365,10 @@ BEGIN
   END IF;
 
   -- ...AND THEN IT STOPS. Not "slows down" — stops. An hour later, silence.
-  UPDATE public.venue_orders SET created_at = now() - interval '3 hours' WHERE id = v_o;
+  UPDATE public.venue_orders
+     SET created_at = now() - interval '3 hours',
+         confirmed_at = now() - interval '3 hours'
+   WHERE id = v_o;
   SELECT count(*) INTO v_rows FROM public.pg_venue_order_escalation_scan(now(), 50) s
    WHERE s.order_id = v_o;
   IF v_rows <> 0 THEN
