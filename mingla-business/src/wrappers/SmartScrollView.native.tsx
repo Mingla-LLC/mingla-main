@@ -16,7 +16,6 @@ import {
   KeyboardAwareScrollView,
   type KeyboardAwareScrollViewProps,
 } from "react-native-keyboard-controller";
-import { Platform } from "react-native";
 import type { ScrollView as RNScrollView } from "react-native";
 
 export type ScrollViewProps = KeyboardAwareScrollViewProps;
@@ -63,55 +62,7 @@ export type ScrollViewProps = KeyboardAwareScrollViewProps;
 // `keyboardDidShow`'s `endCoordinates.screenY` overstates clearance by 30.58dp.
 // ===========================================================================
 
-/** The bar's own height. Mirrors the library's KEYBOARD_TOOLBAR_HEIGHT. */
-export const KEYBOARD_TOOLBAR_HEIGHT = 42;
-
-/** The library's own rule, evaluated on the same inputs it evaluates. */
-const KEYBOARD_HAS_ROUNDED_CORNERS =
-  Platform.OS === "ios" && parseInt(String(Platform.Version), 10) >= 26;
-
-/** The library's own OPENED_OFFSET: the bar floats this far above the keyboard. */
-const OPENED_OFFSET = KEYBOARD_HAS_ROUNDED_CORNERS ? -11 : 0;
-
-/**
- * What the Done bar actually COSTS above the keyboard's top edge: its height
- * plus however far it floats. 53 on iOS 26+, 42 everywhere else — derived, so
- * an OS bump or a library change to OPENED_OFFSET moves it automatically.
- */
-export const DONE_BAR_OCCUPIED = KEYBOARD_TOOLBAR_HEIGHT - OPENED_OFFSET;
-
-/**
- * Distance from the library's scroll target (the focused TextInput's text
- * frame bottom) down to the `Input` primitive's visible bottom border. Measured
- * on glass at #1834 TEST; never inferred. `default` is 0 because this module is
- * the `.native` variant — only iOS and Android ever load it — and fabricating
- * an unmeasured correction for a platform we have not measured would be
- * inventing data (Constitution rule 9).
- */
-export const INPUT_CHROME_BELOW_TEXT_FRAME = Platform.select({
-  ios: 13.5,
-  android: 3.16,
-  default: 0,
-});
-
-/** The visible gap the wrapper contract promises ABOVE the Done bar. */
-export const MIN_VISIBLE_CLEARANCE = 12;
-
-/**
- * bar height + input chrome + visible clearance.
- *
- *   iOS 26+   53   + 13.5 + 12 = 78.5
- *   iOS < 26  42   + 13.5 + 12 = 67.5
- *   Android   42   + 3.16 + 12 = 57.16
- *
- * Consumers may still override per-instance, but no call site in
- * `mingla-business` does — the budget is one app-wide fact with one owner.
- * I-PROPOSED-KEYBOARD-TOOLBAR-CLEARANCE requires this to stay >= 42; every
- * branch above clears that by construction, since DONE_BAR_OCCUPIED alone is
- * already >= 42.
- */
-export const DEFAULT_BOTTOM_OFFSET =
-  DONE_BAR_OCCUPIED + INPUT_CHROME_BELOW_TEXT_FRAME + MIN_VISIBLE_CLEARANCE;
+export const DEFAULT_BOTTOM_OFFSET = 54;
 
 export const ScrollView = forwardRef<RNScrollView, ScrollViewProps>(
   function SmartScrollView({ bottomOffset = DEFAULT_BOTTOM_OFFSET, ...rest }, ref) {
