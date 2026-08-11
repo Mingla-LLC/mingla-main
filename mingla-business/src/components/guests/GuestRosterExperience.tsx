@@ -458,7 +458,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
           <Text style={styles.sheetTitle}>Filter guests</Text>
           <View style={styles.optionWrap}>
             {FILTERS.map((item) => (
-              <Pressable key={item.key} accessibilityRole="button" accessibilityState={{ selected: filter === item.key }} onPress={() => { setFilter(item.key); setFiltersOpen(false); }} style={[styles.option, filter === item.key && styles.optionSelected]}>
+              <Pressable key={item.key} accessibilityRole="button" accessibilityLabel={`Filter guests by ${item.label}`} accessibilityState={{ selected: filter === item.key }} onPress={() => { setFilter(item.key); setFiltersOpen(false); }} style={[styles.option, filter === item.key && styles.optionSelected]}>
                 <Text style={styles.optionText}>{item.label}</Text>
               </Pressable>
             ))}
@@ -466,7 +466,7 @@ export const GuestRosterExperience: React.FC<GuestRosterExperienceProps> = ({
           <Text style={styles.sheetTitle}>Sort</Text>
           <View style={styles.optionWrap}>
             {SORTS.map((item) => (
-              <Pressable key={item.key} accessibilityRole="button" accessibilityState={{ selected: sort === item.key }} onPress={() => { setSort(item.key); setFiltersOpen(false); }} style={[styles.option, sort === item.key && styles.optionSelected]}>
+              <Pressable key={item.key} accessibilityRole="button" accessibilityLabel={`Sort guests by ${item.label}`} accessibilityState={{ selected: sort === item.key }} onPress={() => { setSort(item.key); setFiltersOpen(false); }} style={[styles.option, sort === item.key && styles.optionSelected]}>
                 <Text style={styles.optionText}>{item.label}</Text>
               </Pressable>
             ))}
