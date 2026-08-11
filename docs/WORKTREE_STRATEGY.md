@@ -222,7 +222,7 @@ Every CLOSE opens its own PR from its per-ORCH branch to `main`. Bundling two or
 - Clean revert (`git revert <merge-sha>` removes exactly one ORCH)
 - Trivial `git bisect` when main breaks
 - 1-to-1 regression-test traceability (the ORCH-0840 Step 0.5 gate's two regression tests map to one PR diff)
-- Unambiguous `[TEST-MOD-APPROVED #NNNN]` override-token grammar (legacy `ORCH-NNNN` still accepted)
+- Unambiguous canonical current-issue override-token grammar (`#` plus one or more digits, first digit 1–9, no leading zero or suffix; legacy `ORCH-NNNN` still accepted)
 - Focused CODEOWNERS review per ORCH
 - Parallel close-ability between Claude and Codex orchestrators without convoy merge-conflict cascades
 

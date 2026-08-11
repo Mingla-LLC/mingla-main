@@ -2406,7 +2406,7 @@ Both tests must be visible in `git diff origin/main...HEAD --name-only` for the 
 1. **Skill-layer mandate** in `.claude/skills/mingla-orchestrator/SKILL.md` Step 0.5 (CLOSE protocol) — REJECT CLOSE without both test citations.
 2. **Skill-layer mandate** in `.claude/skills/mingla-tester/SKILL.md` verdict gate — MAXIMUM CONDITIONAL PASS without all three sub-requirements.
 3. **Skill-layer mandate** in `.claude/skills/mingla-implementor/SKILL.md` Post-Flight — 6-step regression-test procedure including `fails-on-revert` verification.
-4. **CI gate (NEW):** `.github/workflows/tests-append-only.yml` runs `.github/scripts/test-append-only-check.js` on every PR. Blocks test-file deletions unconditionally. Blocks test-file modifications-with-deleted-lines unless commit body cites `[TEST-MOD-APPROVED #NNNN]`. Blocks renames unless commit body cites `[TEST-RENAME-APPROVED #NNNN]`. The legacy `ORCH-NNNN` / `META-ORCH-NNNN` lineage forms remain permanently accepted for both tokens (#1495). New test files always allowed. Additions-only modifications always allowed.
+4. **CI gate (NEW):** `.github/workflows/tests-append-only.yml` runs `.github/scripts/test-append-only-check.js` on every PR. Blocks test-file deletions unconditionally. Blocks test-file modifications-with-deleted-lines unless an attributable PR-range commit cites the canonical current GitHub issue token. Blocks renames unless an attributable PR-range commit cites the equivalent rename token. A current citation is `#` plus one or more decimal digits with first digit 1–9 and no leading zero or suffix; the legacy `ORCH-NNNN` / `META-ORCH-NNNN` lineage forms remain permanently accepted for both tokens (#1495, superseded for the current branch by #1815). New test files always allowed. Additions-only modifications always allowed.
 5. **CODEOWNERS (NEW):** `.github/CODEOWNERS` auto-requests Seth's review on every PR touching `**/*.test.*`, `**/*.spec.*`, or `**/__tests__/**`, AND on the append-only gate infrastructure itself.
 6. **Informational warning gate (NEW):** `.github/scripts/strict-grep/regression-test-backfill-warning.mjs` registered as `I-REGRESSION-TEST-BACKFILL-WARN` in the strict-grep workflow — prints a warning listing modified source files without sibling tests; always exits 0 (never blocks). Drives Forward + Opportunistic Backfill.
 
@@ -2418,11 +2418,11 @@ Both tests must be visible in `git diff origin/main...HEAD --name-only` for the 
 
 ### I-TESTS-APPEND-ONLY — test files are append-only at the CI layer (ACTIVE — ratified by ORCH-0840 CLOSE 2026-05-14)
 
-**Rule.** Once a test file lands in the repo, it is immutable. New test files may be added freely. Existing test files may be MODIFIED only if the modification adds lines without deleting any — OR if the latest commit body cites `[TEST-MOD-APPROVED #NNNN]` naming this work's GitHub issue number, or a legacy `[TEST-MOD-APPROVED ORCH-NNNN]` / `META-ORCH-NNNN` lineage id (both four or more digits, optional `-[A-Z]` leg suffix). The `#` sigil is REQUIRED on the issue form — a bare number is rejected (#1495). Existing test files may be RENAMED only if the latest commit body cites `[TEST-RENAME-APPROVED #NNNN]`, or the equivalent legacy `ORCH-NNNN` / `META-ORCH-NNNN` form. Existing test files may NEVER be DELETED — there is no override token for deletion.
+**Rule.** Once a test file lands in the repo, it is immutable. New test files may be added freely. Existing test files may be MODIFIED only if the modification adds lines without deleting any — OR if a commit in the PR's whole base-to-head range that touches that file cites the canonical current GitHub issue token, or a legacy `ORCH-NNNN` / `META-ORCH-NNNN` lineage id (both four or more digits, optional `-[A-Z]` leg suffix). A current citation is `#` plus one or more decimal digits, first digit 1–9, with no leading zero or suffix; a bare number is rejected. Existing test files may be RENAMED under the equivalent per-file, whole-range rename-token rule. Existing test files may NEVER be DELETED — there is no override token for deletion.
 
 **Why.** Pragmatic Append-Only stance per operator directive 2026-05-14: a regression test once written is the codebase's proof that a class of bug can't recur. Allowing silent modification or deletion lets the proof evaporate. The override-token grammar exists for the legitimate case where a prior assertion turned out to be wrong — in which case it costs nothing to open a follow-up ORCH explaining why, satisfying audit trail requirements.
 
-**Enforcement.** `.github/workflows/tests-append-only.yml` (required check on PR to `main` and `Seth`). Implementation: `.github/scripts/test-append-only-check.js`. Override grammar (case-sensitive, must appear verbatim in the HEAD commit body): `[TEST-MOD-APPROVED #NNNN]` (modifications with deletions), `[TEST-RENAME-APPROVED #NNNN]` (renames), each citing this work's GitHub issue number with the REQUIRED `#` sigil — a bare number is rejected. The legacy `ORCH-NNNN` / `META-ORCH-NNNN` lineage forms (optional `-[A-Z]` suffix) are accepted permanently for both tokens (#1495). Adv 3 design behavior: tokens in EARLIER commits do not count — they must be in the HEAD commit body so they cannot be smuggled in via merge or rebase from an unreviewed source.
+**Enforcement.** `.github/workflows/tests-append-only.yml` (required check on PR to `main` and `Seth`). Implementation: `.github/scripts/test-append-only-check.js`. Current override citations are case-sensitive and use `#[1-9][0-9]*` with no suffix; the modification and rename wrappers remain exact. The legacy `ORCH-NNNN` / `META-ORCH-NNNN` lineage citations (optional `-[A-Z]` suffix) are accepted permanently for both tokens. Authorization is attributed per file across the whole PR range: the token may be in any PR commit that actually touches that file, not only `HEAD`; a token on one file never authorizes another. Whole-file deletion remains absolute.
 
 **Source:** Operator directive 2026-05-14, ORCH-0840 dispatch + 11-scenario adversarial QA verification, DEC-153.
 
@@ -7070,24 +7070,30 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ### I-1495-TESTMOD-TOKEN-DUAL-GRAMMAR (ACTIVE)
 - **Rule:** The append-only override tokens accept TWO permanently-valid citation
-  grammars and no others: the current `#NNNN` GitHub issue number, and the legacy
+  grammars and no others: the current canonical GitHub issue citation, and the legacy
   `ORCH-NNNN` / `META-ORCH-NNNN` lineage id (both four-or-more digits, optional
-  `-[A-Z]` leg suffix). The `#` sigil is REQUIRED on the issue form — a bare number
+  `-[A-Z]` leg suffix). As superseded by #1815 for the current branch only, a current
+  citation is `#` plus one or more decimal digits, first digit 1–9, with no leading
+  zero or suffix. The `#` sigil is REQUIRED on the issue form — a bare number
   is rejected, because the ORCH and issue id spaces overlap in the 1000-1405 band
   without corresponding, so an unsigilled number cannot be attributed. Legacy
   acceptance may NEVER be removed: those tokens are embedded in historical commit
   bodies and history replay must keep working. Every operator-facing message emitted
-  by the gate must spell its placeholder with NON-DIGIT characters (`NNNN`), so
+  by the gate must spell its current placeholder with NON-DIGIT characters (`ISSUE`),
+  while legacy placeholders remain visibly inert as `ORCH-NNNN` / `META-ORCH-NNNN`, so
   pasting CI output into a commit body can never self-authorize a deletion. Whole-file
   test deletion (status D) remains unconditionally unoverridable by either grammar.
 - **Enforcement:** `.github/workflows/tests-append-only.yml` step "Append-only gate
   self-test (regression guard)" (no `paths:` filter — runs on every PR) executing
   `node .github/scripts/test-append-only-check.js --self-test`. No strict-grep gate
   and no `MANIFEST.json` change (COMMS-0125 / COMMS-0126 rebase hazard).
-- **Regression test:** 43 cases in `selfTest()` — 35 grammar cases (6 pre-existing
-  legacy cases byte-unchanged + implementor G-1..G-8 + tester adversarial A-1..A-21)
+- **Regression test:** the current `selfTest()` is **92 cases — 39 grammar cases and
+  53 git scenarios**. The original #1495 landing was 43 cases: 35 grammar cases
+  (6 pre-existing legacy cases + implementor G-1..G-8 + tester adversarial A-1..A-21)
   and 8 git scenarios (T1..T3 pre-existing, implementor T4, tester adversarial
-  T5..T8). Mutation-verified, each mutation applied to the real script and the whole
+  T5..T8); later append-only hardening accumulated the remaining cases, and #1815
+  adds the short-current-issue happy paths while retaining that history. Mutation-
+  verified, each mutation applied to the real script and the whole
   suite re-run: reverting either regex to the `ORCH-`-only form turns
   G-1/G-2/G-6/A-19/A-21 and T4/T6 RED; accepting the bare form turns G-3 RED; dropping
   `META-ORCH` turns A-20 RED; making either regex case-insensitive turns A-11/A-18 RED;
@@ -7103,7 +7109,9 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   untouched. Replayed against real history: all 194 `TEST-MOD-APPROVED` and 6
   `TEST-RENAME-APPROVED` tokens across 193 historical commits in this repo are still
   accepted — zero legacy regressions.
-- **Established:** DRAFT at issue #1495 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
+- **Established:** DRAFT at issue #1495 SPEC 2026-08-03. Flips ACTIVE at CLOSE. The
+  legacy contract remains historical authority; issue #1815 supersedes only the
+  current GitHub-issue citation branch.
 
 ## ACTIVE — issue #1505 (append-only gate fails closed on typechange + unmodelled statuses)
 
@@ -7930,3 +7938,33 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Enforcement:** `public.pg_issue_1789_qr_spot_code()` is the ONLY generator, is `SECURITY DEFINER`, and is revoked from `anon` and `authenticated`; the `qr_spots_mint_code` BEFORE INSERT trigger overwrites any client-supplied value unconditionally, so "never client-composed" is a property of the schema rather than of a code review; `qr_spots_code_immutable` BEFORE UPDATE raises `qr_spot_code_immutable` on any change; the auto-provision triggers propagate `NEW.name` into `label` ONLY (and only while the spot is still `auto_provisioned` and the operator has not overridden the label); `mingla-business/src/hooks/useQrSpots.ts`'s update type omits `code` entirely, so no client path even implies it is writable.
 - **Regression:** `supabase/migrations/__tests__/issue_1789_qr_spots_menu_depth.test.sql` T-2 (format + no confusable glyphs), T-2b (a client-chosen code is discarded), T-3 (rename a table twice, re-zone it, re-point its serving venue → the same code still resolves to the same spot, and a direct `UPDATE qr_spots SET code` raises). Deleting the mint trigger, the immutability trigger, or the label-only propagation turns each red.
 - **Established:** DRAFT at #1789 IMPLEMENT 2026-08-10 (stanza pre-staged in SPEC #1788 §4 at #1788 SPEC 2026-08-10).
+
+---
+
+## DRAFT — issue #1815 (canonical current-issue approval-token grammar)
+
+### I-1815-CANONICAL-ISSUE-TOKEN-GRAMMAR (DRAFT)
+- **Rule:** The current GitHub-issue citation branch in both append-only override
+  tokens is exactly `#[1-9][0-9]*`: one or more decimal digits, first digit 1–9,
+  with no leading zero and no suffix. The independent legacy citation branch remains
+  exactly `(?:META-)?ORCH-[0-9]{4,}(?:-[A-Z])?` and remains permanently accepted.
+  The token wrapper, case, single-space separator, closing bracket, per-file
+  whole-range commit attribution, absolute deletion refusal, and status dispatch are
+  unchanged. No GitHub existence lookup is performed.
+- **Output safety:** Operator-facing current-issue examples use the inert `#ISSUE`
+  placeholder. Legacy examples remain visibly inert as `ORCH-NNNN` or
+  `META-ORCH-NNNN` (an optional leg suffix may remain visible). Redaction is global
+  and covers both current short issue citations and legacy lineage citations.
+- **Enforcement:** `.github/scripts/test-append-only-check.js`, wired unchanged by
+  `.github/workflows/tests-append-only.yml`. The embedded self-test is 92/92: direct
+  current modification citations include `#1`, `#27`, `#922`, four digits and five
+  digits; direct rename citations include `#1` and `#922`; T52 proves a same-file
+  `#922` modification token remains valid beneath a later docs-only tip; T53 proves
+  a `#922` rename end to end. Representative legacy scenarios and all prior guard
+  behavior remain green.
+- **Fails on revert:** Restoring only the current citation branch to its old
+  four-or-more-digit minimum turns the new direct short-issue cases and T52/T53 red,
+  while the representative legacy cases remain green; restoring the canonical branch
+  returns the full 92/92 suite to green.
+- **Established:** DRAFT at issue #1815 IMPLEMENT 2026-08-10. Flips ACTIVE only after
+  independent tester PASS and CLOSE.
