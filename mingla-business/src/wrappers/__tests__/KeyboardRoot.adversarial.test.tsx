@@ -435,6 +435,62 @@ describe("ORCH-0892-A adversarial regression (tester)", () => {
     fs.rmSync(path.dirname(outside), { recursive: true, force: true });
   });
 
+  // --- TA-1-WEB-SHIM-FLEX: the web shims must be boxes, not Fragments ---
+  //
+  // The bundle contract (TA-1 / T2) is satisfied by ANY web variant that does
+  // not import the library — including one that renders nothing. That is how a
+  // pure bundle fix becomes a visual regression, so the LAYOUT contribution is
+  // pinned separately from the byte contract.
+  //
+  // The library's KeyboardProvider renders its children inside a `flex: 1`
+  // container (react-native-keyboard-controller/src/animated.tsx:41-44,
+  // 241-249). In `CountryPickerModal.tsx` that element is the ONLY thing
+  // between a `presentationStyle="fullScreen"` <Modal> and <SafeAreaProvider>,
+  // and in the two mingla-business call sites the KeyboardAvoidingView is a
+  // flex sibling. Collapse either to a Fragment and the node the surrounding
+  // flex arithmetic depends on disappears.
+  //
+  // A protective comment alone is not enforcement — a future reader WILL try to
+  // simplify these, because they look like pointless wrappers.
+  it("TA-1-WEB-SHIM-FLEX: web keyboard shims render a real flex box, not a Fragment", () => {
+    const shim = fs.readFileSync(
+      path.join(repoRoot, "packages/phone-input/keyboardPrimitives.web.tsx"),
+      "utf8",
+    );
+    // Renders a View, carries flex: 1, and never returns a bare Fragment.
+    expect(shim).toMatch(/<View\s+style=\{styles\.container\}>\{children\}<\/View>/);
+    expect(shim).toMatch(/container:\s*\{\s*flex:\s*1\s*\}/);
+    expect(stripComments(shim)).not.toMatch(/return\s*\(?\s*<>\s*\{\s*children/);
+
+    // Same contract for the mingla-business web variant.
+    const kav = read("src/wrappers/SmartKeyboardAvoidingView.tsx");
+    expect(kav).toMatch(/<View\s+style=\{style\}>\{children\}<\/View>/);
+    expect(stripComments(kav)).not.toMatch(/return\s*\(?\s*<>\s*\{\s*children/);
+    // It must not reach for the library, nor for react-native's own KAV — the
+    // latter trips orch-0892 pattern 2 (RE_KAV_FROM_RN_NAMED).
+    expect(stripComments(kav)).not.toContain(LIBRARY_SPECIFIER);
+    expect(stripComments(kav)).not.toMatch(
+      /import\s*\{[^}]*\bKeyboardAvoidingView\b[^}]*\}\s*from\s*["']react-native["']/,
+    );
+
+    // And the native halves must still be the library, or the split has
+    // silently changed native behaviour to buy bytes — which #1834 forbids.
+    expect(
+      read("src/wrappers/SmartKeyboardAvoidingView.native.tsx"),
+    ).toMatch(
+      new RegExp(
+        `export\\s*\\{\\s*KeyboardAvoidingView\\s*\\}\\s*from\\s*["']${LIBRARY_SPECIFIER}["']`,
+      ),
+    );
+    const nativePrimitives = fs.readFileSync(
+      path.join(repoRoot, "packages/phone-input/keyboardPrimitives.tsx"),
+      "utf8",
+    );
+    expect(nativePrimitives).toContain("KeyboardProvider");
+    expect(nativePrimitives).toContain("KeyboardToolbar");
+    expect(RE_LIBRARY_FROM.test(stripComments(nativePrimitives))).toBe(true);
+  });
+
   // --- TA-2: AST mount-position assertion ---
   it("TA-2: _layout.tsx mounts KeyboardRoot OUTSIDE RootLayoutInner and keeps StripeProviderWrapper route-scoped", () => {
     const source = read("app/_layout.tsx");
