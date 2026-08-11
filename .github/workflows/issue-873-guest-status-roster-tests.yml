@@ -105,9 +105,14 @@ jobs:
       - name: Match hosted Supabase Auth user shape
         env:
           PGPASSWORD: ${{ format('issue-873-ci-{0}', github.run_id) }}
-        run: >-
-          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
-          -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS banned_until timestamptz"
+        run: |
+          set -euo pipefail
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS banned_until timestamptz"
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \
+            "SELECT 1 FROM information_schema.columns
+             WHERE table_schema='auth' AND table_name='users'
+               AND column_name='banned_until'" | grep -qx 1
       - name: Prove roster status, precedence, privacy, and rollout
         env:
           PGPASSWORD: ${{ format('issue-873-ci-{0}', github.run_id) }}
