@@ -24,6 +24,18 @@
  * rank-10 scanner, and if the person holding the ticket cannot say they have
  * it, the acknowledgement means nothing. Money actions (cancel, refund
  * decision) and the two switches are event_manager+.
+ *
+ * Issue #1792 (#1767 Phase 3b) adds WAITER MODE to this same module rather than
+ * a module of its own, and that is a product decision, not a shortcut. A waiter
+ * taking an order and a waiter watching the queue are the same person at the
+ * same moment of the same service; a second tab to switch to is a second thing
+ * to miss. So: "New order" sits in this header, open tabs sit above the queue,
+ * and the ticket a waiter sends lands in the list right beneath — on the same
+ * card, in the same view, indistinguishable from a scanned one (D-11).
+ *
+ * Opening a tab and closing one are event_manager+ — a tab is the venue
+ * extending credit. Taking an order is not, so `New order` is open to any brand
+ * member, exactly like the ack.
  */
 
 import React, { useCallback, useMemo, useState } from "react";
@@ -39,12 +51,13 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
-import { useQrSpotVenues } from "../../hooks/useQrSpots";
+import { useQrSpotVenues, useQrSpots } from "../../hooks/useQrSpots";
 import {
   useDecideVenueOrderRefund,
   useTransitionVenueOrder,
   useVenueOrders,
 } from "../../hooks/useVenueOrders";
+import { useVenueTabs } from "../../hooks/useVenueOrderTabs";
 import {
   useSetVenueOrderingEnabled,
   useSetVenueOrderingPaused,
@@ -56,6 +69,9 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueOrderCard } from "./VenueOrderCard";
 import { VenueOrderDetailSheet } from "./VenueOrderDetailSheet";
+import { VenueOrderPadSheet } from "./orderPad/VenueOrderPadSheet";
+import { VenueTabsCard } from "./orderPad/VenueTabsCard";
+import type { OrderPadTab } from "./orderPad/venueOrderPad";
 import {
   VENUE_ORDER_VIEWS,
   availableZones,
@@ -97,6 +113,11 @@ export function VenueOrdersModule({
 
   const ordersQuery = useVenueOrders(brandId);
   const venuesQuery = useQrSpotVenues(brandId);
+  // Issue #1792 — the SAME `qr_spots` rows the printed codes come from. There is
+  // no second table list for waiters, which is what makes a laminate and a pad
+  // structurally unable to disagree about which one is table 12.
+  const spotsQuery = useQrSpots(brandId);
+  const tabsQuery = useVenueTabs(brandId);
   const settingsQuery = useVenueOrderingSettings(venueId);
   const transition = useTransitionVenueOrder(brandId);
   const refundDecision = useDecideVenueOrderRefund(brandId);
@@ -109,6 +130,14 @@ export function VenueOrdersModule({
   const [venueFilter, setVenueFilter] = useState<string | null>(venueId);
   const [zoneFilter, setZoneFilter] = useState<string | null>(null);
   const [selected, setSelected] = useState<VenueOrder | null>(null);
+  // Issue #1792 — the pad. `resumeTab` non-null means "another round on this
+  // tab", which skips the spot step and reuses the sitting.
+  const [padOpen, setPadOpen] = useState(false);
+  const [resumeTab, setResumeTab] = useState<OrderPadTab | null>(null);
+  // Billing a whole tab also opens the pad — the three contact fields belong
+  // inside a keyboard-aware scroll, and this module renders inside the hub's
+  // plain one.
+  const [billTab, setBillTab] = useState<OrderPadTab | null>(null);
 
   const allOrders = ordersQuery.data ?? [];
   const venueNameById = useMemo(() => {
@@ -170,7 +199,40 @@ export function VenueOrdersModule({
               : `${live} order${live === 1 ? "" : "s"} on the go.`}
           </Text>
         </View>
+        {/* D-11 — waiter mode. Taking an order is not a money act, so the floor
+            here is the ack's floor: any active brand member. */}
+        {canWorkQueue ? (
+          <Button
+            label="New order"
+            onPress={() => {
+              setResumeTab(null);
+              setBillTab(null);
+              setPadOpen(true);
+            }}
+            variant="primary"
+            size="md"
+            testID="venue-orders-new-order"
+          />
+        ) : null}
       </View>
+
+      {/* D-2 AMENDED — tabs a waiter opened and is still serving. */}
+      <VenueTabsCard
+        brandId={brandId}
+        venueId={venueFilter}
+        tabs={tabsQuery.data ?? []}
+        canCloseTabs={canDecideMoney}
+        onAddRound={(tab) => {
+          setBillTab(null);
+          setResumeTab(tab);
+          setPadOpen(true);
+        }}
+        onBillTab={(tab) => {
+          setResumeTab(null);
+          setBillTab(tab);
+          setPadOpen(true);
+        }}
+      />
 
       {/* ---- The venue's own switches. Ordering is OFF until they say so. ---- */}
       {venueId !== null ? (
@@ -371,6 +433,26 @@ export function VenueOrdersModule({
         onRefundDecision={handleRefundDecision}
         acting={transition.isPending || refundDecision.isPending}
         canDecideMoney={canDecideMoney}
+      />
+
+      {/* Issue #1792 — the order pad. Keyed on the tab it is resuming so the
+          sheet remounts clean between "new order" and "another round on 12"
+          rather than carrying the previous cart across. */}
+      <VenueOrderPadSheet
+        key={`${resumeTab?.sessionId ?? "new"}:${billTab?.sessionId ?? ""}`}
+        visible={padOpen && canWorkQueue}
+        onClose={() => {
+          setPadOpen(false);
+          setResumeTab(null);
+          setBillTab(null);
+        }}
+        brandId={brandId}
+        venueId={venueFilter ?? venueId}
+        spots={spotsQuery.data ?? []}
+        venues={venuesQuery.data ?? []}
+        resumeTab={resumeTab}
+        billTab={billTab}
+        canOpenTabs={canDecideMoney}
       />
     </View>
   );

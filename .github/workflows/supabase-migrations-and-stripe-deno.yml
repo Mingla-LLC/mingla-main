@@ -405,6 +405,21 @@ jobs:
           # two broken shapes are caught and the three safe ones are not.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1828_extension_call_qualification.test.sql
+          # Issue #1792 (#1767 Phase 3b) — WAITER MODE, against the REAL applied
+          # schema. Behavioural: it opens and closes real tabs through the real
+          # SECURITY DEFINER RPCs as a real auth.uid() with a real rank, runs
+          # the real payout sweep, and DROPS the new marker trigger to prove the
+          # bug it prevents really returns without it — the settlement marker is
+          # erased and the tab becomes permanently unclosable. It also pins the
+          # two promises Phase 3b is judged on: a venue_collected order produces
+          # no fee snapshot and no payout release (beside a Mingla-path positive
+          # control that DOES attach, so the zeroes cannot pass on a sweep that
+          # never ran), and a tab's rounds and its own bill can never both be
+          # counted — the outstanding sum excludes the bill, a stranded bill is
+          # cancelled rather than paid beside the rounds it copies, and closing
+          # for cash while a live bill is out is refused.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1792_waiter_mode_tabs.test.sql
 
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"
@@ -491,6 +506,14 @@ jobs:
             # client that really applies the filters, so a foreign-brand row is
             # excluded by the QUERY rather than by a stub's say-so.
             supabase/functions/_shared/__tests__/issue_1819_order_idempotency_scope.test.ts
+            # Issue #1792 — waiter mode's server hardening. The sharpest case is
+            # the metadata MERGE: `update({ metadata: {...} })` replaces the
+            # whole jsonb column through PostgREST, and one such line erased the
+            # `tab_settlement` marker off the settlement order it had just been
+            # written onto — which left the tab stuck at `settling` forever, its
+            # rounds stuck at `pending`, the tab permanently unclosable, and a
+            # Phase-6 revenue query counting the tab twice.
+            supabase/functions/_shared/__tests__/issue_1792_waiter_mode.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

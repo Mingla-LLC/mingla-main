@@ -138,6 +138,14 @@ const AUTH_SCOPED_HOOK_FILES = [
   //    into enabled.
   "useVenueOrders.ts",
   "useVenueOrderingSettings.ts",
+  // ── #1792 (#1767 Phase 3b) — waiter mode. The pad reads the venue's own
+  //    menus/menu_items/menu_modifier_groups and the open-tab summaries, all
+  //    brand-member-RLS-gated. A pre-auth fire caches an RLS-empty 200, which a
+  //    waiter standing at a table reads as "this venue has no menu" and "this
+  //    table has no tab" — and then opens a SECOND tab on a table that already
+  //    has one. Both fold isAuthReady into enabled.
+  "useVenueOrderPad.ts",
+  "useVenueOrderTabs.ts",
   // ── ORCH-1331 [partner Paystack payout rail] — reads the caller's OWN
   //    partner_paystack_accounts (auth.uid()-scoped via the partner-gated
   //    edge fn); the status hook folds isAuthReady into enabled

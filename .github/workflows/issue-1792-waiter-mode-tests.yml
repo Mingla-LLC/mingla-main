@@ -1,0 +1,88 @@
+name: "Issue #1792 waiter mode (the order pad)"
+
+# #1767 Phase 3b. Two proofs here, each fails-on-revert:
+#   1. the server's hardening (deno) — a metadata patch MERGES so the tab
+#      settlement marker survives, a staff round joins only its OWN live
+#      sitting, a replayed round resumes the same sitting, and the three new
+#      P-29 codes are staff-only.
+#   2. the pad's client logic (jest, mingla-business) — ONE spot list shared with
+#      the printed codes, modifier groups satisfied before a line exists, the
+#      P-20 boundary (nothing with a price in it ever leaves the pad, asserted
+#      on the wire), charge-to-room visibly disabled, and the flat D-11
+#      requirement that a staff ticket is indistinguishable from a scanned one
+#      in every queue derivation AND in the queue's own source.
+# The SQL behavioural suite runs in supabase-migrations-and-stripe-deno.yml,
+# which is the only job with a real Postgres carrying every migration.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/venue-order-staff/**"
+      - "supabase/functions/_shared/venueOrderCore.ts"
+      - "supabase/functions/_shared/venueOrderPricing.ts"
+      - "supabase/migrations/20270318001792_issue_1792_waiter_mode_tabs.sql"
+      - "supabase/migrations/__tests__/issue_1792_waiter_mode_tabs.test.sql"
+      - "mingla-business/src/components/venue/**"
+      - "mingla-business/src/hooks/useVenueOrderPad.ts"
+      - "mingla-business/src/hooks/useVenueOrderTabs.ts"
+      - ".github/workflows/issue-1792-waiter-mode-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/functions/venue-order-staff/**"
+      - "supabase/functions/_shared/venueOrderCore.ts"
+      - "supabase/functions/_shared/venueOrderPricing.ts"
+      - "supabase/migrations/20270318001792_issue_1792_waiter_mode_tabs.sql"
+      - "supabase/migrations/__tests__/issue_1792_waiter_mode_tabs.test.sql"
+      - "mingla-business/src/components/venue/**"
+      - "mingla-business/src/hooks/useVenueOrderPad.ts"
+      - "mingla-business/src/hooks/useVenueOrderTabs.ts"
+      - ".github/workflows/issue-1792-waiter-mode-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  waiter-mode-server:
+    name: "Server: the metadata merge, the session guard, the replay"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Prove the settlement marker cannot be lost and a round cannot stray
+        run: >
+          deno test --allow-env --allow-net --allow-read --no-check
+          supabase/functions/_shared/__tests__/issue_1792_waiter_mode.test.ts
+
+  waiter-mode-client:
+    name: "Client: the pad's rules, and the ticket the kitchen cannot tell apart"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Prove the pad's rules and the queue's indifference to provenance
+        run: >
+          npx jest
+          src/components/venue/__tests__/venueOrderPad.issue1792.test.ts
+          src/hooks/__tests__/useVenueOrderPad.issue1792.test.ts
+          src/components/venue/__tests__/venueOrders.issue1791.test.ts
+          src/hooks/__tests__/useVenueOrders.issue1791.test.ts
+          src/components/venue/__tests__/venueModules.test.ts
+          src/components/venue/__tests__/venueSuiteLeakAndExit.tester.adversarial.test.ts
+          --runInBand

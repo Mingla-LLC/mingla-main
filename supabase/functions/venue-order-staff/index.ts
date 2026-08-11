@@ -27,6 +27,19 @@
 // rank-gated mutations enforce their own floor INSIDE the SECURITY DEFINER RPC
 // (biz_venue_tab_open / biz_venue_tab_close require >= event_manager).
 //
+// Phase 3b (#1792) builds the surface a waiter actually touches, and hardens the
+// four Phase-2 actions against what a real service does to them:
+//   create   — gains `mode: "preview"` (the pad's running total is a SERVER
+//              number, P-20), a checked `sessionId` (a foreign or closed sitting
+//              is refused, not silently joined), and replay safety (a double-tap
+//              at the pass returns the ticket that already exists).
+//   settle   — refuses a round that belongs to an OPEN tab. A tab settles as a
+//              tab; settling one round of one would bill it twice.
+//   metadata — every write MERGES. `metadata.tab_settlement` is read by three
+//              separate mechanisms and PostgREST jsonb writes replace the whole
+//              column; the one line that forgot is the reason a tab could never
+//              close (see billToPhone below).
+//
 // MONEY-PATH NOTE, stated rather than buried. P-26 says "money_path is chosen at
 // SETTLE, not at create", and P-3 CHECK 4 says money_path='mingla' REQUIRES a
 // provider. Those two cannot both be satisfied by writing 'mingla' at create.
@@ -67,10 +80,12 @@ import {
   venueOrderErrorStatus,
 } from "../_shared/venueOrderPricing.ts";
 import {
+  assertSessionAcceptsRound,
   findReplayableVenueOrder,
   insertVenueOrderRow,
   loadMenuSnapshot,
   markVenueOrderFailed,
+  mergedVenueOrderMetadata,
   resolveOrderContext,
 } from "../_shared/venueOrderCore.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
@@ -222,6 +237,14 @@ async function handleStaffCreate(
   }
   if (requested.length === 0) return fail("order_total_invalid");
 
+  // Issue #1792 — `preview` is how the pad shows a running total. P-20 says the
+  // client never does money math, and a waiter still needs to read the table
+  // what they are about to send, so the number comes back from HERE, priced by
+  // the same `priceCart` the real create uses. Nothing is written and no
+  // provider is touched: the two paths share one arithmetic by construction,
+  // which is the only way a preview can be trusted.
+  const previewOnly = body.mode === "preview";
+
   const resolved = await resolveOrderContext(supabase, { spotCode, venueId });
   if (!resolved.ok) {
     return fail(resolved.failure.code, { venue: resolved.failure.venue });
@@ -260,8 +283,73 @@ async function handleStaffCreate(
     (cart.subtotalCents * ctx.settings.service_charge_bps) / 10000,
   );
 
+  if (previewOnly) {
+    // Priced, not persisted. The pad renders these numbers verbatim; it never
+    // adds anything up itself. `serviceChargeLabel` rides along because D-9's
+    // rule is that the venue's own charge is ALWAYS its own visible line, and a
+    // label the surface invents is a different promise from the one configured.
+    return jsonResponse({
+      kind: "staff_order_preview",
+      currency: cart.currency,
+      subtotalCents: cart.subtotalCents,
+      serviceChargeBps: ctx.settings.service_charge_bps,
+      serviceChargeCents,
+      serviceChargeLabel: ctx.settings.service_charge_label,
+      totalCents: cart.subtotalCents + serviceChargeCents,
+      spotLabel: ctx.spotLabel,
+      venueName: ctx.venueName,
+      staffTabsEnabled: ctx.settings.staff_tabs_enabled === true,
+      lines: cart.lines.map((line) => ({
+        lineNo: line.lineNo,
+        menuItemId: line.menuItemId,
+        name: line.itemNameAtOrder,
+        quantity: line.quantity,
+        unitPriceCents: line.unitPriceCents,
+        modifiersTotalCents: line.modifiersTotalCents,
+        lineTotalCents: line.lineTotalCents,
+        modifiers: line.modifiers.map((m) => m.modifierNameAtOrder),
+        notes: line.notes,
+      })),
+    });
+  }
+
   if (ctx.spotId === null && buyerName.length < 2) {
     return fail("buyer_name_required");
+  }
+
+  // Issue #1792 — a waiter's second round joins the first, so the pad sends the
+  // sitting's id back. It is checked, not trusted: a foreign session would
+  // silently fold this round into a stranger's tab, and a CLOSED tab would take
+  // a round nobody will ever be billed for.
+  if (sessionId !== null) {
+    const addable = await assertSessionAcceptsRound(supabase, {
+      sessionId,
+      brandId: ctx.brandId,
+      venueId: ctx.servingVenueId,
+    });
+    if (!addable.ok) return fail(addable.code);
+  }
+
+  // Issue #1792 — a double-tap on "Send to kitchen" at a busy pass, or a retry
+  // over a hotel wifi that dropped the response, must not fire two tickets. The
+  // pad mints one key per gesture; a replay returns the ticket that already
+  // exists. Tenant-scoped like every other read of this column (#1819 H-2).
+  if (idempotencyKey !== null) {
+    const existing = await findReplayableVenueOrder(supabase, {
+      brandId: ctx.brandId,
+      venueId: ctx.servingVenueId,
+      idempotencyKey,
+    });
+    if (existing !== null) {
+      return jsonResponse({
+        kind: "staff_order_created",
+        orderId: existing.id,
+        sessionId: existing.session_id,
+        replayed: true,
+        currency: existing.currency,
+        totalCents: existing.total_cents,
+      });
+    }
   }
 
   let effectiveSessionId = sessionId;
@@ -377,6 +465,24 @@ async function handleSettle(
     return fail("transition_not_allowed");
   }
 
+  // Issue #1792 — ONE round of an OPEN tab may not be settled on its own.
+  // `biz_venue_tab_close` bills every pending venue_collected round of the
+  // sitting; a round already settled here would be billed a second time, and a
+  // round moved onto the Mingla rail here would trip `tab_has_mingla_orders` and
+  // wedge the tab shut. A tab settles as a tab. The pad says so, and so does
+  // this, because the pad is not the only caller this function will ever have.
+  const { data: session } = await supabase
+    .from("venue_order_sessions")
+    .select("tab_state")
+    .eq("id", String(order.session_id))
+    .maybeSingle();
+  const tabState = String(
+    (session as { tab_state?: string } | null)?.tab_state ?? "none",
+  );
+  if (tabState === "open" || tabState === "settling") {
+    return fail("order_on_open_tab");
+  }
+
   if (method === "venue_collected") {
     // NO provider call, NO fee, NO payout row, NO refund rail. The row is
     // already in that shape; this only records that the guest has paid the
@@ -386,7 +492,9 @@ async function handleSettle(
       .update({
         payment_status: "paid",
         confirmed_at: new Date().toISOString(),
-        metadata: { settlement_method: "venue_collected" },
+        metadata: await mergedVenueOrderMetadata(supabase, orderId, {
+          settlement_method: "venue_collected",
+        }),
       })
       .eq("id", orderId)
       .eq("payment_status", "pending");
@@ -534,7 +642,17 @@ async function billToPhone(
       buyer_email: buyerEmail,
       buyer_phone_e164: buyerPhone,
       buyer_status_token_hash: await sha256Hex(buyerStatusToken),
-      metadata: { settlement_method: "bill_to_phone" },
+      // Issue #1792 — MERGED, never replaced. This single line used to erase
+      // `metadata.tab_settlement` from the settlement order it had just been
+      // written onto, which meant `pg_venue_order_finalize_payment` never
+      // recognised the paid bill as a tab close: the tab stayed at `settling`
+      // forever, its rounds stayed `pending` forever, a retried close raised
+      // `tab_has_mingla_orders`, and Phase 6 would have counted the tab twice.
+      // A `BEFORE UPDATE` trigger now carries the same promise independently
+      // (20270318001792).
+      metadata: await mergedVenueOrderMetadata(supabase, input.orderId, {
+        settlement_method: "bill_to_phone",
+      }),
     })
     .eq("id", input.orderId)
     .eq("payment_status", "pending");
@@ -769,7 +887,12 @@ function mapTabRpcError(message: string): Response {
   if (message.includes("not_authorized")) {
     return jsonResponse({ error: "not_authorized" }, 403);
   }
+  if (message.includes("staff_tabs_disabled")) return fail("staff_tabs_disabled");
   if (message.includes("tab_not_open")) return fail("tab_not_open");
+  // Issue #1792 — a bill already out on the guest's phone is its own answer,
+  // not "that order has moved on": the venue has to finish it or let it lapse
+  // before taking cash, and the copy has to say which.
+  if (message.includes("tab_bill_already_sent")) return fail("tab_bill_already_sent");
   if (message.includes("tab_has_mingla_orders")) return fail("transition_not_allowed");
   if (message.includes("invalid_settlement_method")) return fail("invalid_json");
   if (message.includes("session_not_found")) {
