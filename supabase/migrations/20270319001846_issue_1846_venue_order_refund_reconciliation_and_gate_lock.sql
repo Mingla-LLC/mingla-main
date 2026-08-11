@@ -313,13 +313,21 @@ BEGIN
     RETURN jsonb_build_object('refundId', NULL, 'reason', 'no_mingla_money_to_return');
   END IF;
 
-  -- ONE ORDER, ONE LIVE REFUND. Any kind, any non-terminal state. A caller
-  -- asking for a second refund on a charge that already has one gets the
-  -- FIRST one back — the honest answer, and the one that cannot double a
-  -- guest's money.
+  -- ONE ORDER, ONE LIVE REFUND — deduped on the ORDER, not the refund_kind,
+  -- because `venue_order_guest_cancel` and `venue_order_venue_approved` were
+  -- otherwise two doors onto one charge. A caller asking for a second refund
+  -- while one is IN FLIGHT gets the first one back: the honest answer, and the
+  -- one that cannot double a guest's money.
+  --
+  -- `processed` is excluded from the block on purpose. A refund that has fully
+  -- settled is not a reason to refuse forever — a partially-refunded order with
+  -- money still on it may legitimately be refunded again, and the amount guard
+  -- below is what keeps that honest. A FULLY refunded order never reaches here
+  -- at all: `payment_status` is 'refunded' and the money check above returned
+  -- already.
   SELECT * INTO v_refund FROM public.source_refunds
    WHERE source_type = 'venue_menu_order' AND source_id = p_order_id
-     AND buyer_state <> 'failed_terminal'
+     AND buyer_state NOT IN ('failed_terminal', 'processed')
    ORDER BY created_at
    LIMIT 1;
   IF FOUND THEN
@@ -494,9 +502,13 @@ BEGIN
   IF v_order.payment_status IN ('refunded', 'cancelled')
      OR v_order.refunded_amount_cents >= v_order.total_cents
      OR EXISTS (
+       -- A refund already IN FLIGHT on this charge. A settled one is covered
+       -- by the payment_status / refunded_amount_cents clauses above, so this
+       -- clause does not have to (and must not) block a legitimate follow-up
+       -- on an order that still has money on it.
        SELECT 1 FROM public.source_refunds sr
         WHERE sr.source_type = 'venue_menu_order' AND sr.source_id = p_order_id
-          AND sr.buyer_state <> 'failed_terminal') THEN
+          AND sr.buyer_state NOT IN ('failed_terminal', 'processed')) THEN
     RAISE EXCEPTION 'already_refunded' USING ERRCODE = 'P0001';
   END IF;
 
