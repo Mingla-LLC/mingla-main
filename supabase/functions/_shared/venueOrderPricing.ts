@@ -133,6 +133,25 @@ export const VENUE_ORDER_ERRORS = {
     guest: null,
     staff: "That tab is already closed.",
   },
+  // ---- Issue #1792 (#1767 Phase 3b, D-11) — waiter mode. Three codes the
+  // order pad can actually reach, each naming the ONE thing to do next. All
+  // staff-only: a guest never takes a staff-taken order or closes a tab.
+  session_not_addable: {
+    status: 409,
+    guest: null,
+    staff: "That tab has been closed. Start a new order for this table.",
+  },
+  order_on_open_tab: {
+    status: 409,
+    guest: null,
+    staff: "This round is on an open tab. Close the tab to settle it.",
+  },
+  tab_bill_already_sent: {
+    status: 409,
+    guest: null,
+    staff:
+      "You've already sent this tab's bill to their phone. Finish that, or wait for it to lapse, before taking cash.",
+  },
   order_total_invalid: {
     status: 422,
     guest: "We couldn't price that order. Nothing has been charged.",

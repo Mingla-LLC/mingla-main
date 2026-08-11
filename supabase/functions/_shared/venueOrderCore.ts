@@ -347,12 +347,14 @@ export async function findReplayableVenueOrder(
     total_cents: number;
     currency: string;
     payment_status: string;
+    /** Issue #1792 — a replayed staff round must resume the SAME sitting. */
+    session_id: string;
   }
   | null
 > {
   const { data, error } = await supabase
     .from("venue_orders")
-    .select("id, total_cents, currency, payment_status")
+    .select("id, total_cents, currency, payment_status, session_id")
     .eq("brand_id", input.brandId)
     .eq("venue_id", input.venueId)
     .eq("idempotency_key", input.idempotencyKey)
@@ -369,6 +371,7 @@ export async function findReplayableVenueOrder(
     total_cents: Number(row.total_cents),
     currency: String(row.currency),
     payment_status: String(row.payment_status),
+    session_id: String(row.session_id),
   };
 }
 
@@ -453,8 +456,93 @@ export async function markVenueOrderFailed(
     .update({
       payment_status: "failed",
       failed_at: new Date().toISOString(),
-      metadata: { failure_reason: reason.slice(0, 500) },
+      metadata: await mergedVenueOrderMetadata(supabase, orderId, {
+        failure_reason: reason.slice(0, 500),
+      }),
     })
     .eq("id", orderId)
     .eq("payment_status", "pending");
+}
+
+/**
+ * Issue #1792 — `metadata` is a WHOLE-COLUMN write through PostgREST.
+ *
+ * `update({ metadata: { … } })` REPLACES the jsonb object; it does not merge.
+ * That is not a style point on this table: `metadata.tab_settlement` is read by
+ * `pg_venue_order_finalize_payment` (it is what closes a tab and settles its
+ * children), by `biz_venue_tab_close`'s own mingla-order guard, and by Phase 6's
+ * revenue exclusion. A single forgetful whole-column write therefore strands a
+ * tab at `settling` forever AND makes the tab count twice.
+ *
+ * So no caller in this codebase composes a metadata object by hand any more:
+ * they compose a PATCH and this reads the current value to merge it. The
+ * database carries the same promise independently
+ * (`trg_venue_orders_settlement_marker_permanent`, 20270318001792) — two owners,
+ * because one of them is a convention and conventions are what erode.
+ *
+ * Fails toward keeping the patch: an unreadable row yields the patch alone,
+ * which is exactly today's behaviour, never worse.
+ */
+export async function mergedVenueOrderMetadata(
+  supabase: ServiceClient,
+  orderId: string,
+  patch: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const { data, error } = await supabase
+    .from("venue_orders")
+    .select("metadata")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (error || !data) return { ...patch };
+  const current = (data as Record<string, unknown>).metadata;
+  const base = current !== null && typeof current === "object" && !Array.isArray(current)
+    ? current as Record<string, unknown>
+    : {};
+  return { ...base, ...patch };
+}
+
+/**
+ * Issue #1792 (D-11 / D-2 AMENDED) — may this sitting take another round?
+ *
+ * A staff `create` accepts a `sessionId` so a waiter's second round joins the
+ * first, and until now it was trusted verbatim. Two things follow from that,
+ * both real:
+ *
+ *  1. TENANCY. A session id from another brand would have been stamped onto the
+ *     order. The brand<->venue trigger only checks that the ORDER's own brand
+ *     owns its venue, so nothing downstream would have noticed — the round would
+ *     simply have joined a stranger's sitting, and their tab total with it.
+ *  2. A CLOSED TAB IS CLOSED. Adding a round to a settled tab produces an
+ *     unbilled `venue_collected` order on a session nobody will ever close
+ *     again: food goes out, no one pays for it.
+ *
+ * `settling` is refused too — the bill is already out on the guest's phone, and
+ * a round added after it was totalled is a round the guest was never shown.
+ */
+export async function assertSessionAcceptsRound(
+  supabase: ServiceClient,
+  input: { sessionId: string; brandId: string; venueId: string },
+): Promise<{ ok: true } | { ok: false; code: VenueOrderErrorCode }> {
+  const { data, error } = await supabase
+    .from("venue_order_sessions")
+    .select("id, brand_id, venue_id, tab_state")
+    .eq("id", input.sessionId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`venue_order_session_lookup_failed: ${error.message}`);
+  }
+  // Unknown and foreign are the SAME answer, for the same reason an unknown
+  // spot code is: distinguishing them tells a caller which ids exist.
+  if (
+    !data ||
+    String((data as Record<string, unknown>).brand_id) !== input.brandId ||
+    String((data as Record<string, unknown>).venue_id) !== input.venueId
+  ) {
+    return { ok: false, code: "session_not_addable" };
+  }
+  const tabState = String((data as Record<string, unknown>).tab_state ?? "none");
+  if (tabState !== "none" && tabState !== "open") {
+    return { ok: false, code: "session_not_addable" };
+  }
+  return { ok: true };
 }
