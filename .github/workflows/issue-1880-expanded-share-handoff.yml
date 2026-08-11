@@ -13,10 +13,12 @@ on:
       - "app-mobile/src/components/activity/SavedTab.tsx"
       - "app-mobile/src/components/chat/CollabSessionChatBanners.tsx"
       - "app-mobile/src/components/deckCardPlate.tsx"
+      - "app-mobile/src/components/expandedCard/EventDetailLayout.tsx"
       - "app-mobile/src/components/expandedCard/ExpandedCardHero.tsx"
       - "app-mobile/src/components/profile/ViewFriendProfileScreen.tsx"
       - "app-mobile/src/components/share/UnifiedShareProvider.tsx"
       - "app-mobile/src/components/ui/BaseBottomSheet.tsx"
+      - "app-mobile/src/components/utils/savedCardToExpandedCardData.ts"
       - "app-mobile/src/services/contentShareAdapter.ts"
       - "app-mobile/src/services/contentShareController.ts"
       - "app-mobile/src/types/expandedCardTypes.ts"
@@ -33,10 +35,12 @@ on:
       - "app-mobile/src/components/activity/SavedTab.tsx"
       - "app-mobile/src/components/chat/CollabSessionChatBanners.tsx"
       - "app-mobile/src/components/deckCardPlate.tsx"
+      - "app-mobile/src/components/expandedCard/EventDetailLayout.tsx"
       - "app-mobile/src/components/expandedCard/ExpandedCardHero.tsx"
       - "app-mobile/src/components/profile/ViewFriendProfileScreen.tsx"
       - "app-mobile/src/components/share/UnifiedShareProvider.tsx"
       - "app-mobile/src/components/ui/BaseBottomSheet.tsx"
+      - "app-mobile/src/components/utils/savedCardToExpandedCardData.ts"
       - "app-mobile/src/services/contentShareAdapter.ts"
       - "app-mobile/src/services/contentShareController.ts"
       - "app-mobile/src/types/expandedCardTypes.ts"
@@ -59,5 +63,7 @@ jobs:
           node-version: "22"
       - name: Require the implementor guard
         run: test -f scripts/issue-1880/expanded-share-handoff.implementor.happy.test.mjs
-      - name: Run lifecycle, topology, inventory, recovery, and privacy guard
-        run: node --test scripts/issue-1880/expanded-share-handoff.implementor.happy.test.mjs
+      - name: Require the tester adversarial guard
+        run: test -f scripts/issue-1880/expanded-share-handoff.tester.adversarial.test.mjs
+      - name: Run lifecycle, topology, inventory, recovery, privacy, and adversarial guards
+        run: node --test scripts/issue-1880/*.test.mjs
