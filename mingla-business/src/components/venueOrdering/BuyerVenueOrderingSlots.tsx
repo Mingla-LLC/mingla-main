@@ -42,6 +42,22 @@ import { VenueOrderStatusPane } from "@mingla/brand-rendering/venueOrdering/Venu
 import { useBuyerVenueOrdering } from "./useBuyerVenueOrdering";
 import type { BuyerVenueOrdering } from "./useBuyerVenueOrdering";
 
+/**
+ * The transport, RE-EXPORTED from this module on purpose.
+ *
+ * `/o/venue/[orderId]` needs exactly two of these functions, and it must reach
+ * them through the SAME dynamic-import specifier the venue page uses. Two
+ * different dynamic imports produce two async chunks, and a module two async
+ * chunks share is hoisted straight into `__common` — the payload every visitor
+ * downloads before anything renders. That is not a theory here: it is the
+ * measured difference between +18 KB and this file (ORCH-1083, 12 KB per PR).
+ * One specifier, one chunk, downloaded only by someone actually ordering.
+ */
+export {
+  fetchVenueOrderStatus,
+  venueOrderGuestAction,
+} from "../../services/venueOrderingService";
+
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
 export interface BuyerVenueOrderingSlotProps {

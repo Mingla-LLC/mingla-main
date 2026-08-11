@@ -23,6 +23,7 @@
 BEGIN;
 
 CREATE TEMP TABLE t1793_fx (k text PRIMARY KEY, v uuid);
+CREATE TEMP TABLE t1793_code (code text);
 
 DO $seed$
 DECLARE
@@ -62,12 +63,16 @@ BEGIN
   SELECT id INTO v_spot FROM public.qr_spots WHERE venue_table_id = v_table;
   IF v_spot IS NULL THEN
     INSERT INTO public.qr_spots (brand_id, venue_id, kind, venue_table_id, label,
-                                 serving_venue_id, code)
-    VALUES (v_brand, v_venue, 'table', v_table, 'Table 12', v_venue, 'kq7m3pd2xw')
+                                 serving_venue_id)
+    VALUES (v_brand, v_venue, 'table', v_table, 'Table 12', v_venue)
     RETURNING id INTO v_spot;
   END IF;
-  UPDATE public.qr_spots SET code = 'kq7m3pd2xw', label = 'Table 12'
-   WHERE id = v_spot;
+  -- The code is NEVER written here: `qr_spots_mint_code` generates it and
+  -- `qr_spots_code_immutable` raises on any attempt to change it — which is
+  -- I-PROPOSED-1767-PRINTED-CODE-SURVIVES-A-RENAME working exactly as intended.
+  -- The fixture READS the code the schema chose. Only the label is ours.
+  UPDATE public.qr_spots SET label = 'Table 12' WHERE id = v_spot;
+  INSERT INTO t1793_code SELECT code FROM public.qr_spots WHERE id = v_spot;
 
   INSERT INTO t1793_fx VALUES
     ('brand', v_brand), ('venue', v_venue), ('other', v_other),
@@ -88,6 +93,8 @@ CREATE OR REPLACE FUNCTION pg_temp.fx_owner() RETURNS uuid LANGUAGE sql STABLE
 AS $$ SELECT v FROM t1793_fx WHERE k = 'owner' $$;
 CREATE OR REPLACE FUNCTION pg_temp.fx_spot() RETURNS uuid LANGUAGE sql STABLE
 AS $$ SELECT v FROM t1793_fx WHERE k = 'spot' $$;
+CREATE OR REPLACE FUNCTION pg_temp.fx_code() RETURNS text LANGUAGE sql STABLE
+AS $$ SELECT code FROM t1793_code LIMIT 1 $$;
 
 -- ---------------------------------------------------------------------------
 -- A. The four states are real, and they move when the venue moves them.
@@ -167,7 +174,7 @@ END $a$;
 DO $b$
 DECLARE v jsonb;
 BEGIN
-  v := pg_temp.state('kq7m3pd2xw');
+  v := pg_temp.state(pg_temp.fx_code());
   IF v->>'spot_state' <> 'ok' THEN
     RAISE EXCEPTION 'issue_1793 B1: a live code must resolve, got %', v->>'spot_state';
   END IF;
@@ -178,7 +185,7 @@ BEGIN
   UPDATE public.venue_ordering_settings
      SET paused_at = now(), paused_by_user_id = pg_temp.fx_owner()
    WHERE venue_id = pg_temp.fx_venue();
-  v := pg_temp.state('kq7m3pd2xw');
+  v := pg_temp.state(pg_temp.fx_code());
   IF v->>'state' <> 'paused' OR v->>'spot_state' <> 'ok' THEN
     RAISE EXCEPTION 'issue_1793 B2: a paused venue must still resolve its OWN printed code (state=%, spot=%)',
       v->>'state', v->>'spot_state';
@@ -197,7 +204,7 @@ BEGIN
   UPDATE public.venue_ordering_settings SET paused_at = now(),
          paused_by_user_id = pg_temp.fx_owner()
    WHERE venue_id = pg_temp.fx_venue();
-  IF public.pg_public_qr_spot_resolve('kq7m3pd2xw') IS NOT NULL THEN
+  IF public.pg_public_qr_spot_resolve(pg_temp.fx_code()) IS NOT NULL THEN
     RAISE EXCEPTION 'issue_1793 B3: #1789''s resolver must STAY fail-closed — it is green and pinned';
   END IF;
   UPDATE public.venue_ordering_settings SET paused_at = NULL,
@@ -211,7 +218,7 @@ END $b$;
 DO $c$
 DECLARE v jsonb;
 BEGIN
-  v := pg_temp.state('kq7m3pd2xw');
+  v := pg_temp.state(pg_temp.fx_code());
   -- No id a guest could enumerate. `venue_id` is the ONE exception and it is
   -- already published to anon by `venue_public_view` (a counter-pickup order
   -- must send it), so it adds no reachable surface.
@@ -226,7 +233,7 @@ BEGIN
   --      Collapsed with "unknown" on purpose: telling them apart says which
   --      codes exist.
   IF public.pg_public_venue_ordering_state('issue1793brand', 'roofbar1793',
-       'kq7m3pd2xw')->>'spot_state' <> 'unknown' THEN
+       pg_temp.fx_code())->>'spot_state' <> 'unknown' THEN
     RAISE EXCEPTION 'issue_1793 C2: a foreign venue''s code must read `unknown` here';
   END IF;
   IF pg_temp.state('nosuchcode')->>'spot_state' <> 'unknown' THEN
@@ -238,7 +245,7 @@ BEGIN
 
   -- C3 — a DEACTIVATED code stops resolving, which is what deactivation means.
   UPDATE public.qr_spots SET is_active = false WHERE id = pg_temp.fx_spot();
-  IF pg_temp.state('kq7m3pd2xw')->>'spot_state' <> 'unknown' THEN
+  IF pg_temp.state(pg_temp.fx_code())->>'spot_state' <> 'unknown' THEN
     RAISE EXCEPTION 'issue_1793 C3: a deactivated code must stop resolving';
   END IF;
   UPDATE public.qr_spots SET is_active = true WHERE id = pg_temp.fx_spot();

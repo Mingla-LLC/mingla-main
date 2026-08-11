@@ -58,8 +58,13 @@ const LazyOrderStatusView = React.lazy(() =>
   import("../../../src/components/venueOrdering/BuyerVenueOrderingSlots")
     .then((module) => ({ default: module.BuyerVenueOrderStatusView })),
 );
+/**
+ * The SAME specifier the status card is lazily loaded from — deliberately, and
+ * see that comment. A second dynamic import of the transport module would make
+ * it a module two async chunks share, which Metro hoists into `__common`.
+ */
 const orderingTransport = () =>
-  import("../../../src/services/venueOrderingService");
+  import("../../../src/components/venueOrdering/BuyerVenueOrderingSlots");
 
 /** The webhook is the truth; this is how long the page waits politely for it. */
 const POLL_INTERVAL_MS = 3000;

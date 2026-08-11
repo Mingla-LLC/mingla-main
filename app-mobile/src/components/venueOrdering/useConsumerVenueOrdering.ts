@@ -42,6 +42,7 @@ import {
   venueOrderShouldAskPartySize,
   venueOrderSittingKey,
 } from "@mingla/brand-rendering/venueOrdering";
+import { VENUE_ORDERING_UNAVAILABLE } from "@mingla/brand-rendering/venueOrdering/venueOrderingWire";
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
 
 import {
@@ -130,19 +131,10 @@ export function useConsumerVenueOrdering(
       }),
     staleTime: 60_000,
   });
-  const config: VenueOrderingConfig = configQuery.data ?? {
-    state: "unavailable",
-    venueId: null,
-    venueName: "",
-    spotState: "none",
-    spot: null,
-    serviceChargeBps: 0,
-    serviceChargeLabel: "Service charge",
-    tipsEnabled: false,
-    tipPresetsBps: null,
-    counterPickupEnabled: false,
-    prepTimeMinutes: null,
-  };
+  // ONE owner for "we could not resolve this venue's ordering", shared with
+  // buyer web: an unresolved state renders no ordering affordance and makes no
+  // claim, which is the page exactly as it was before Phase 4.
+  const config: VenueOrderingConfig = configQuery.data ?? VENUE_ORDERING_UNAVAILABLE;
 
   const menuItemIds = useMemo(
     () => input.menu.flatMap((group) => group.items.map((item) => item.id)),
