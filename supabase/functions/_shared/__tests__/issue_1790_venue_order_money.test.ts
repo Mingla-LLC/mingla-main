@@ -237,6 +237,19 @@ Deno.test("P-29: the error table is verbatim, with its exact statuses", () => {
     ["tab_not_open", 409, null, "That tab is already closed."],
     ["too_many_orders", 429, "That's a lot of orders very quickly. Give it a moment.", null],
     ["pdf_render_failed", 502, null, "The sheet didn't render. Try again."],
+    // [TEST-MOD-APPROVED #1848] APPENDED, nothing removed. These two codes were
+    // the hole this "verbatim" table left: `venue_not_orderable` never appeared
+    // in it, so its staff sentence was the one string on the rail that no
+    // assertion held — which is how it survived saying "This venue isn't
+    // verified for ordering." to a VERIFIED venue whose only problem was an
+    // unflipped `ordering_enabled`. #1848 split that single code into the two
+    // causes it always had; both are now pinned here, in this same table, by
+    // this same loop, against the same three assertions per row.
+    // The loop below passes no vars, so `{Venue}` resolves to its "This venue"
+    // fallback — these three rows therefore pin that fallback too.
+    ["venue_not_orderable", 409, "This venue isn't taking orders through Mingla yet.", "This venue isn't verified yet. Ordering opens once its claim is approved."],
+    ["ordering_disabled", 409, "This venue isn't taking orders through Mingla yet.", "Ordering is switched off for this venue. Turn it on from Orders."],
+    ["ordering_paused", 409, "This venue has paused ordering right now. Try again shortly.", "Ordering is paused. Turn it back on from Orders."],
   ];
   for (const [code, status, guest, staff] of expected) {
     const key = code as keyof typeof VENUE_ORDER_ERRORS;

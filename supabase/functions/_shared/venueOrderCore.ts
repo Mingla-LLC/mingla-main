@@ -121,6 +121,12 @@ export async function resolveOrderContext(
 
   // Gate 3 — ordering_enabled AND not paused. Default is OFF: no settings row
   // means no ordering, which is the correct answer while this phase is dark.
+  //
+  // Issue #1848 — this gate answers `ordering_disabled`, NOT the gate-2 code.
+  // The two failures are one line apart and used to share `venue_not_orderable`,
+  // so a venue that had passed gate 2 a microsecond earlier — verified, claim
+  // approved, badge and all — was handed the sentence for an unverified venue.
+  // Gate 2 is the ONLY owner of that code from here on.
   const { data: settingsRow, error: settingsError } = await supabase
     .from("venue_ordering_settings")
     .select(
@@ -132,7 +138,7 @@ export async function resolveOrderContext(
     throw new Error(`ordering_settings_lookup_failed: ${settingsError.message}`);
   }
   if (!settingsRow || settingsRow.ordering_enabled !== true) {
-    return { ok: false, failure: { code: "venue_not_orderable", venue: venueName } };
+    return { ok: false, failure: { code: "ordering_disabled", venue: venueName } };
   }
   if (settingsRow.paused_at !== null) {
     return { ok: false, failure: { code: "ordering_paused", venue: venueName } };
