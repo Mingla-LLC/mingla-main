@@ -343,6 +343,17 @@ test('T6 modal lifecycle is platform-specific, cycle-guarded, and post-commit on
     'show/dismiss delivery must be latched per genuine visible cycle');
   assert.doesNotMatch(base, /setTimeout\([^)]*onNativeDismiss|requestAnimationFrame\([^)]*onNativeDismiss/s,
     'the lifecycle boundary cannot be guessed with a timer or frame delay');
+  const lifecycleEffect = sliceBetween(base, 'useLayoutEffect(() => {', 'return <>{children({');
+  assert.match(
+    lifecycleEffect,
+    /if \(visible && !wasVisible\)[\s\S]*Platform\.OS === 'android'[\s\S]*deliverNativeShow\(\)/,
+    'Android must acknowledge a restored visible=true host after commit because RN Modal.onShow may not fire again',
+  );
+  assert.match(
+    base,
+    /showDeliveredRef\.current[\s\S]*deliverNativeShow/,
+    'a later native onShow callback must be deduplicated against the post-commit Android acknowledgement',
+  );
 });
 
 test('T7 provider dismissal finalization supports Android direct reopen and ignores stale callbacks', () => {

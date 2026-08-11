@@ -371,6 +371,14 @@ function NativeModalLifecycleAdapter({
       dismissRequestedRef.current = false;
       dismissDeliveredRef.current = false;
       cycleCallbacksRef.current = { onNativeShow, onNativeDismiss };
+      // Android does not reliably emit RN Modal.onShow again when the same
+      // Modal is hidden and then restored. The visible=true host mutation has
+      // already committed at this layout-effect boundary, so acknowledge that
+      // committed cycle here. The later native onShow callback is harmlessly
+      // deduplicated by showDeliveredRef. Without this acknowledgement an
+      // expanded card restored after Share stays permanently "busy" even
+      // though it is visibly back on screen.
+      if (Platform.OS === 'android') deliverNativeShow();
     } else if (!visible && wasVisible) {
       dismissRequestedRef.current = true;
       if (Platform.OS === 'android') deliverNativeDismiss();
