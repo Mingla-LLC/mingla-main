@@ -58,8 +58,12 @@ BEGIN
 
   SELECT pg_get_functiondef('public.biz_offering_guest_roster_export_rows(uuid)'::regprocedure)
     INTO v_definition;
-  IF position('export_provider_not_ready' IN v_definition)=0 THEN
-    RAISE EXCEPTION 'issue_1810_provider_hook_was_implemented_upstream';
+  -- [TEST-MOD-APPROVED #1858] #873 replaced the retired provider stub. Preserve
+  -- this boundary as a positive assertion over its projected, exportable rows.
+  IF position('biz_guest_roster_project' IN v_definition)=0
+     OR position('isExportable' IN v_definition)=0
+     OR position('export_provider_not_ready' IN v_definition)>0 THEN
+    RAISE EXCEPTION 'issue_1810_effective_export_provider_boundary_failed';
   END IF;
 
   -- [TEST-MOD-APPROVED #1858] Exact privilege signature follows the sole replacement RPC.

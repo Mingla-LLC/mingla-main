@@ -28,6 +28,13 @@ BEGIN
     v_event,v_brand,v_owner,'rsvp','Issue 1812 Event','issue-1812-event','fixture',
     'scheduled','private','USD','UTC',ARRAY['house-party'],'auto',false,now(),now(),'{}'::jsonb
   );
+  -- [TEST-MOD-APPROVED #1858] Preserve the successful roster-normalization
+  -- scenario under #873's later export rollout owner.
+  UPDATE public.feature_flags SET is_enabled=true
+  WHERE flag_key='guest_roster_export_enabled';
+  INSERT INTO public.guest_roster_brand_rollouts(brand_id,phase)
+  VALUES(v_brand,'bulk_actions')
+  ON CONFLICT (brand_id) DO UPDATE SET phase=EXCLUDED.phase;
 
   PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
   -- [TEST-MOD-APPROVED #1858] Preserve this scenario against the explicit-brand replacement identity.
