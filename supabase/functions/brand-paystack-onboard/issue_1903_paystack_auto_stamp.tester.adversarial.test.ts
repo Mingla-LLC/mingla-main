@@ -15,14 +15,26 @@ import {
 import { attemptPaystackOnboardStamp } from "./index.ts";
 
 type CommittedOutcome = "flipped" | "skipped_already_stamped";
-type Outcome = "dark_skip" | CommittedOutcome | "stamp_failed";
+type Outcome =
+  | "dark_skip"
+  | CommittedOutcome
+  | "stamp_failed"
+  | "stamp_outcome_unknown";
+
+type FixtureOptions = {
+  stampResponse?: "resolved_database_error";
+  reconciliation?: "scheduled_empty";
+};
 
 type LedgerRow = {
   batchId: string;
   result: CommittedOutcome | "stamp_failed";
 };
 
-function lostResponseFixture(committed: CommittedOutcome | null) {
+function lostResponseFixture(
+  committed: CommittedOutcome | null,
+  options: FixtureOptions = {},
+) {
   const calls: string[] = [];
   const ledger: LedgerRow[] = [];
   const audits: Array<{ outcome: Outcome; attemptId: string | null }> = [];
@@ -33,6 +45,7 @@ function lostResponseFixture(committed: CommittedOutcome | null) {
     errorCode?: string;
   }> = [];
   const attemptId = "19030000-0000-4000-8000-000000000001";
+  let elapsedOffset = 0;
 
   const deps = {
     resolveEnabled: (): boolean => true,
@@ -42,6 +55,17 @@ function lostResponseFixture(committed: CommittedOutcome | null) {
     },
     stamp: async (batchId: string): Promise<CommittedOutcome> => {
       calls.push("stamp");
+      if (options.stampResponse === "resolved_database_error") {
+        return {
+          data: null,
+          error: {
+            name: "PostgrestError",
+            code: "P0001",
+            message:
+              "resolved database error with forbidden detail 0123456789 RCP_secret",
+          },
+        } as unknown as CommittedOutcome;
+      }
       if (committed) ledger.push({ batchId, result: committed });
       throw {
         name: "TransportError",
@@ -53,11 +77,21 @@ function lostResponseFixture(committed: CommittedOutcome | null) {
     // This dependency is deliberately part of the tester contract. A correct
     // implementation must call it after an ambiguous RPC error and before any
     // append-only failure write.
-    reconcileAttempt: async (batchId: string): Promise<CommittedOutcome | null> => {
-      calls.push("reconcile");
+    reconcileAttempt: async (
+      batchId: string,
+    ): Promise<CommittedOutcome | null> => {
+      calls.push(
+        options.reconciliation === "scheduled_empty"
+          ? `reconcile:${elapsedOffset}`
+          : "reconcile",
+      );
       return ledger.find((row) =>
         row.batchId === batchId && row.result !== "stamp_failed"
       )?.result as CommittedOutcome | undefined ?? null;
+    },
+    delayUntil: async (offsetMs: number): Promise<void> => {
+      elapsedOffset = offsetMs;
+      calls.push(`delay:${offsetMs}`);
     },
     recordFailure: async (batchId: string): Promise<void> => {
       calls.push("record_failure");
@@ -112,9 +146,55 @@ for (const committed of ["flipped", "skipped_already_stamped"] as const) {
 }
 
 Deno.test(
-  "#1903 A-genuine-failure: reconcile precedes one bounded stamp_failed append",
+  "#1903 A-ambiguous-empty: transport loss exhausts visibility schedule without fabricating failure",
   async () => {
-    const f = lostResponseFixture(null);
+    const f = lostResponseFixture(null, { reconciliation: "scheduled_empty" });
+    const outcome = await attemptPaystackOnboardStamp(f.deps);
+
+    assertEquals(outcome, "stamp_outcome_unknown");
+    assertEquals(f.calls, [
+      "uuid",
+      "stamp",
+      "reconcile:0",
+      "delay:100",
+      "reconcile:100",
+      "delay:250",
+      "reconcile:250",
+      "delay:500",
+      "reconcile:500",
+      "delay:1000",
+      "reconcile:1000",
+      "delay:2000",
+      "reconcile:2000",
+      "audit:stamp_outcome_unknown",
+      "log:stamp_outcome_unknown",
+    ]);
+    assertEquals(f.calls.filter((call) => call === "stamp").length, 1);
+    assertEquals(f.calls.filter((call) => call === "record_failure").length, 0);
+    assertEquals(f.ledger, []);
+    assertEquals(f.audits, [{
+      outcome: "stamp_outcome_unknown",
+      attemptId: f.attemptId,
+    }]);
+    assertEquals(f.logs, [{
+      outcome: "stamp_outcome_unknown",
+      attemptId: f.attemptId,
+      errorClass: "TransportError",
+      errorCode: "ECONNRESET",
+    }]);
+    const emitted = JSON.stringify({ audits: f.audits, logs: f.logs });
+    assert(!emitted.includes("0123456789"));
+    assert(!emitted.includes("RCP_secret"));
+    assert(!emitted.includes("lost response"));
+  },
+);
+
+Deno.test(
+  "#1903 A-definite-no-commit: resolved database error permits one reconciled failure append",
+  async () => {
+    const f = lostResponseFixture(null, {
+      stampResponse: "resolved_database_error",
+    });
     const outcome = await attemptPaystackOnboardStamp(f.deps);
 
     assertEquals(outcome, "stamp_failed");
@@ -126,18 +206,24 @@ Deno.test(
       "audit:stamp_failed",
       "log:stamp_failed",
     ]);
+    assertEquals(f.calls.filter((call) => call === "stamp").length, 1);
+    assertEquals(f.calls.filter((call) => call.startsWith("delay:")).length, 0);
+    assertEquals(f.calls.filter((call) => call === "record_failure").length, 1);
     assertEquals(f.ledger, [{ batchId: f.attemptId, result: "stamp_failed" }]);
-    assertEquals(f.audits, [{ outcome: "stamp_failed", attemptId: f.attemptId }]);
+    assertEquals(f.audits, [{
+      outcome: "stamp_failed",
+      attemptId: f.attemptId,
+    }]);
     assertEquals(f.logs, [{
       outcome: "stamp_failed",
       attemptId: f.attemptId,
-      errorClass: "TransportError",
-      errorCode: "ECONNRESET",
+      errorClass: "PostgrestError",
+      errorCode: "P0001",
     }]);
     const emitted = JSON.stringify({ audits: f.audits, logs: f.logs });
     assert(!emitted.includes("0123456789"));
     assert(!emitted.includes("RCP_secret"));
-    assert(!emitted.includes("lost response"));
+    assert(!emitted.includes("resolved database error"));
   },
 );
 
