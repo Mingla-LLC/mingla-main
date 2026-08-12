@@ -30,6 +30,10 @@ ON CONFLICT (app_key,os) DO UPDATE SET
   active=excluded.active,
   updated_at=now();
 
+INSERT INTO public.admin_config(key,value)
+VALUES ('enable_app_download_readiness','false'::jsonb)
+ON CONFLICT (key) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS public.ad_app_provider_bindings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   app_key text NOT NULL,

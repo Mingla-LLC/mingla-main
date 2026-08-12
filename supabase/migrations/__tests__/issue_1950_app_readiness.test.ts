@@ -43,6 +43,25 @@ Deno.test("#1950 migration creates four targets and seeds all twenty isolated bi
   );
 });
 
+Deno.test("#1950 app-download readiness flag is seeded OFF without overwriting operator truth", () => {
+  assertStringIncludes(
+    sql,
+    "VALUES ('enable_app_download_readiness','false'::jsonb)",
+  );
+  assertMatch(
+    sql,
+    /VALUES \('enable_app_download_readiness','false'::jsonb\)\s+ON CONFLICT \(key\) DO NOTHING;/,
+  );
+  assertEquals(
+    sql.includes("VALUES ('enable_app_download_readiness','true'::jsonb)"),
+    false,
+  );
+  assertEquals(
+    /enable_app_download_readiness[\s\S]{0,120}DO UPDATE/.test(sql),
+    false,
+  );
+});
+
 Deno.test("#1950 migration keeps evidence immutable and persistence atomic/service-only", () => {
   assert(sql.includes("readiness_evidence_immutable"));
   assertEquals(

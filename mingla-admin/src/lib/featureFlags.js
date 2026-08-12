@@ -1,7 +1,11 @@
 import { supabase } from './supabase';
 
 // ORCH-0553: added 'enable_refresh_tab' — gates Refresh tab + (on AIValidation) extracted Seeding tab.
-const KNOWN_FLAGS = ['enable_rules_filter_tab', 'enable_refresh_tab'];
+const KNOWN_FLAGS = [
+  'enable_rules_filter_tab',
+  'enable_refresh_tab',
+  'enable_app_download_readiness',
+];
 
 let cache = null;
 let inflight = null;
@@ -24,7 +28,12 @@ export async function loadFeatureFlags() {
       cache = Object.fromEntries(
         KNOWN_FLAGS.map((k) => {
           const v = flags[k];
-          return [k, v === true || v === 'true' || v === '"true"'];
+          return [
+            k,
+            k === 'enable_app_download_readiness'
+              ? v === true
+              : v === true || v === 'true' || v === '"true"',
+          ];
         })
       );
       return cache;
