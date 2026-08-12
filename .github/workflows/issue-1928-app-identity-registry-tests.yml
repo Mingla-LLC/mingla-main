@@ -71,7 +71,7 @@ jobs:
           test -f supabase/functions/_shared/__tests__/issue1928_app_identity_registry.test.ts
           test -f supabase/functions/_shared/__tests__/issue1928_app_identity_registry.adversarial.tester.test.ts
       - name: Run migration and endpoint contracts
-        run: deno test --allow-read supabase/migrations/__tests__/issue_1928_app_identity_registry.test.ts supabase/functions/admin-ad-app-identity-preflight/__tests__/issue1928_contract.test.ts
+        run: deno test --allow-read supabase/migrations/__tests__/issue_1928_app_identity_registry.test.ts supabase/functions/admin-ad-app-identity-preflight/__tests__/issue1928_contract.test.ts supabase/functions/admin-ad-app-identity-preflight/__tests__/issue1942_meta_identity_authority.test.ts
       - name: Run exact identity and sibling provider suites
         run: deno test --allow-env --allow-read supabase/functions/_shared/__tests__/issue1928_app_identity_registry.test.ts supabase/functions/_shared/__tests__/issue1928_app_identity_registry.adversarial.tester.test.ts supabase/functions/_shared/__tests__/tiktok.test.ts supabase/functions/_shared/__tests__/meta.test.ts supabase/functions/_shared/__tests__/meta_issue939_ig_delivery.test.ts
       - name: Reject provider-first import cycles

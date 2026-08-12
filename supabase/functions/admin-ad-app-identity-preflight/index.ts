@@ -34,6 +34,7 @@ import {
   tiktokFetchAdvertiser,
   tiktokFetchIdentities,
 } from "../_shared/tiktok.ts";
+import { evaluateMetaIdentityAuthority } from "./metaIdentityAuthority.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -160,11 +161,18 @@ async function runMeta(
         checks,
       );
     }
-    const page = await metaCheckPageAdvertiseTaskForIdentity(
-      client,
-      identity.meta_page_id,
-    );
-    if (!page.ok) {
+    const authority = await evaluateMetaIdentityAuthority({
+      pageId: identity.meta_page_id,
+      instagramUserId: identity.meta_instagram_user_id,
+    }, {
+      checkPageAuthorization: (pageId) =>
+        metaCheckPageAdvertiseTaskForIdentity(client, pageId),
+      fetchPageLinkedInstagram: (pageId) =>
+        metaFetchIgBusinessAccountForIdentity(client, pageId),
+      validateExactIdentity: (exactIdentity) =>
+        metaValidateOnlyCreativeProbeForIdentity(client, exactIdentity),
+    });
+    if (authority.reason === "meta_page_not_authorized") {
       return blocked(
         "meta",
         "meta_page_not_authorized",
@@ -178,29 +186,13 @@ async function runMeta(
       status: "pass",
       reason_code: null,
     });
-    const instagramId = await metaFetchIgBusinessAccountForIdentity(
-      client,
-      identity.meta_page_id,
-    );
-    if (instagramId !== identity.meta_instagram_user_id) {
-      return blocked(
-        "meta",
-        "meta_instagram_mismatch",
-        identity,
-        connection,
-        checks,
-      );
+    if (authority.pageLinkDiagnostic !== "match") {
+      console.info(JSON.stringify({
+        event: "meta_page_link_diagnostic",
+        status: authority.pageLinkDiagnostic,
+      }));
     }
-    checks.push({
-      code: "identity_authorized",
-      status: "pass",
-      reason_code: null,
-    });
-    const probe = await metaValidateOnlyCreativeProbeForIdentity(client, {
-      pageId: identity.meta_page_id,
-      instagramUserId: identity.meta_instagram_user_id,
-    });
-    if (!probe.ok || probe.createdObject) {
+    if (authority.verdict === "blocked") {
       return blocked(
         "meta",
         "meta_validate_only_failed",
@@ -209,11 +201,10 @@ async function runMeta(
         checks,
       );
     }
-    checks.push({
-      code: "identity_available",
-      status: "pass",
-      reason_code: null,
-    });
+    checks.push(
+      { code: "identity_authorized", status: "pass", reason_code: null },
+      { code: "identity_available", status: "pass", reason_code: null },
+    );
     return {
       provider: "meta",
       verdict: "ready",
