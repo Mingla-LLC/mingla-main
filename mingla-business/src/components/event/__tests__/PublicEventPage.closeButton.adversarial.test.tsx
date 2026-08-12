@@ -351,6 +351,12 @@ const renderPublicEventPage = (
         };
       case "../../utils/eventCoverMediaRules":
         return { isLegacyUnsafeEventCoverVideoUrl: () => false };
+      // [TEST-MOD-APPROVED #1968] Public web sharing is outside this close-only
+      // harness; register its dependency so the navigation callbacks can run.
+      case "../../utils/shareCanonicalPublicPageOnWeb":
+        return {
+          shareCanonicalPublicPageOnWeb: () => Promise.resolve("shared"),
+        };
       case "../../types/eventCoverProvider":
         return { eventCoverProviderCreditLabel: () => null };
       case "../ui/ShareModal":
