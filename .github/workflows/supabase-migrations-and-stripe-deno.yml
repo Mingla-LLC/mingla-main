@@ -443,6 +443,8 @@ jobs:
           # Fixtures are synthetic and the suite owns its rollback.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1919_provider_neutral_paid_readiness.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1919_provider_neutral_paid_readiness.tester_adversarial.test.sql
           # Issue #1856 — tester-owned adversarial guard. This does not trust
           # the classifier alone: it performs a real anonymous INSERT through
           # an owner-executed view over a deny-all RLS table and proves the row
