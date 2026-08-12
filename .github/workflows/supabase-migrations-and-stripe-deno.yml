@@ -611,6 +611,7 @@ jobs:
             # Issue #1793 rework — cancellation resumes the same live provider
             # object and rejects terminal, mismatched, or hostile continuations.
             supabase/functions/_shared/__tests__/issue_1793_payment_continuation.test.ts
+            supabase/functions/_shared/__tests__/issue_1793_payment_continuation_tester_adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
