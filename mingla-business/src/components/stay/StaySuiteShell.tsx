@@ -236,6 +236,47 @@ function ChecklistRow({
   );
 }
 
+interface ManagementRowProps {
+  title: string;
+  detail: string;
+  onPress: () => void;
+  icon: IconName;
+  testID: string;
+  wide?: boolean;
+}
+
+function ManagementRow({
+  title,
+  detail,
+  onPress,
+  icon,
+  testID,
+  wide = false,
+}: ManagementRowProps): React.ReactElement {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${title}. ${detail}`}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.checkRow,
+        wide ? styles.checkRowDesktop : null,
+        pressed && styles.pressed,
+      ]}
+      testID={testID}
+    >
+      <View style={styles.rowIcon}>
+        <Icon name={icon} size={18} color={textTokens.secondary} />
+      </View>
+      <View style={styles.rowCopy}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        <Text style={styles.rowDetail}>{detail}</Text>
+      </View>
+      <Icon name="chevR" size={18} color={textTokens.tertiary} />
+    </Pressable>
+  );
+}
+
 interface StayOverviewProps {
   brandId: string;
   venueId: string;
@@ -424,6 +465,43 @@ function StayOverview({
     </>
   );
 
+  const managementRows = (
+    <>
+      <ManagementRow
+        title="Rooms & Places"
+        detail="Manage what guests can reserve"
+        onPress={() => onSelect("rooms_places")}
+        icon="grid"
+        testID="stay-manage-inventory"
+        wide={isWideDesktop}
+      />
+      <ManagementRow
+        title="Availability & pricing"
+        detail="Keep dates, prices and policies current"
+        onPress={() => onSelect("availability_pricing")}
+        icon="calendar"
+        testID="stay-manage-availability"
+        wide={isWideDesktop}
+      />
+      <ManagementRow
+        title="Reservations"
+        detail="Review and manage guest bookings"
+        onPress={() => onSelect("reservations")}
+        icon="notebook"
+        testID="stay-manage-reservations"
+        wide={isWideDesktop}
+      />
+      <ManagementRow
+        title="Stay settings"
+        detail="Update property details and guest information"
+        onPress={() => onSelect("settings")}
+        icon="settings"
+        testID="stay-manage-settings"
+        wide={isWideDesktop}
+      />
+    </>
+  );
+
   return (
     <View style={styles.moduleRoot}>
     <ScrollView
@@ -452,9 +530,29 @@ function StayOverview({
         </View>
       </View>
 
-      {/* #1532 §4 — `contentStyle`, not `style`. The gap was declared on the
-          card's CHROME node, whose only in-flow child is the clip view, so it
-          spaced nothing. See `GlassCard.contentStyle`. */}
+      {isActive ? (
+        <GlassCard
+          variant="elevated"
+          contentStyle={styles.readinessCard}
+          testID="stay-live-management"
+        >
+          <View style={styles.readinessHead}>
+            <View style={styles.titleCopy}>
+              <Text style={styles.cardTitle}>Manage your live Stay</Text>
+              <Text style={styles.helper}>
+                Keep availability, reservations and property details up to date.
+              </Text>
+            </View>
+          </View>
+          {isWideDesktop ? (
+            <View style={styles.readinessGrid} testID="stay-management-grid">
+              {managementRows}
+            </View>
+          ) : (
+            managementRows
+          )}
+        </GlassCard>
+      ) : (
       <GlassCard variant="elevated" contentStyle={styles.readinessCard}>
         <View style={styles.readinessHead}>
           <View>
@@ -495,6 +593,7 @@ function StayOverview({
           readinessRows
         )}
       </GlassCard>
+      )}
 
       {publishBlocked && !isActive ? (
         <View style={styles.blocker}>
@@ -508,25 +607,42 @@ function StayOverview({
       {publish.isError ? (
         <Text style={styles.error}>{publishErrorCopy(publish.error)}</Text>
       ) : null}
+      {!isActive && isWideDesktop ? (
+        <Button
+          label="Publish Stay"
+          onPress={() => {
+            if (settings !== null) {
+              publish.mutate({ expectedVersion: settings.version });
+            }
+          }}
+          disabled={publishBlocked}
+          loading={publish.isPending}
+          fullWidth
+          size="lg"
+          testID="stay-publish"
+        />
+      ) : null}
     </ScrollView>
     {/* #1532 D5 — the module's primary action is PINNED, not buried at the
         bottom of a scroll under 144pt of dead padding. Hidden while the
         keyboard is up (Overview has no fields, but the rule is one rule). */}
+    {!isActive && !isWideDesktop ? (
     <StayActionBar testID="stay-overview-action-bar">
       <Button
-        label={isActive ? "Stay is live" : "Publish Stay"}
+        label="Publish Stay"
         onPress={() => {
           if (settings !== null) {
             publish.mutate({ expectedVersion: settings.version });
           }
         }}
-        disabled={isActive || publishBlocked}
+        disabled={publishBlocked}
         loading={publish.isPending}
         fullWidth
         size="lg"
         testID="stay-publish"
       />
     </StayActionBar>
+    ) : null}
     </View>
   );
 }
@@ -787,10 +903,22 @@ function StaySettings({ venueId }: StaySettingsProps): React.ReactElement {
           We couldn’t save these settings. Reload and try again.
         </Text>
       ) : null}
+      {isWideDesktop ? (
+        <Button
+          label={saved ? "Saved" : "Save Stay settings"}
+          onPress={submit}
+          disabled={!valid}
+          loading={save.isPending}
+          fullWidth
+          size="lg"
+          testID="stay-settings-save"
+        />
+      ) : null}
     </ScrollView>
     {/* #1532 D5 — pinned, and HIDDEN while the keyboard is up: the
         `KeyboardToolbar` already owns the band above the keyboard, and two
         stacked bars would eat ~160pt of a ~470pt visible band. */}
+    {!isWideDesktop ? (
     <StayActionBar testID="stay-settings-action-bar">
       <Button
         label={saved ? "Saved" : "Save Stay settings"}
@@ -802,6 +930,7 @@ function StaySettings({ venueId }: StaySettingsProps): React.ReactElement {
         testID="stay-settings-save"
       />
     </StayActionBar>
+    ) : null}
     </View>
   );
 }
