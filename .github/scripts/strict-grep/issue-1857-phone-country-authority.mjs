@@ -99,7 +99,7 @@ export function violations(files) {
   }
   forbidPattern(migration, /^CREATE TRIGGER\s/m, "migration zero trigger changes", failures);
   forbid(migration, "UPDATE public.event_rsvps SET guest_phone_country_iso", "migration no backfill", failures);
-  need(files.invariant, "I-PROPOSED-PHONE-COUNTRY-AUTHORITY-1 (DRAFT)", "invariant", failures);
+  need(files.invariant, "I-PROPOSED-PHONE-COUNTRY-AUTHORITY-1 (ACTIVE)", "invariant", failures);
   need(files.workflow, "issue-1857-phone-country-authority.mjs --self-test", "CI self-test", failures);
   need(files.workflow, "issue_1857_phone_country_authority.pg17.test.sql", "CI SQL test", failures);
   return failures;
@@ -128,7 +128,7 @@ function selfTest() {
     ["pickerBehavior", 'return platform !== "web"', "return true"],
     ["pickerBehavior", 'if (input.key === "Escape") return "close"', "if (false) return null"],
     ["rsvp", "markRsvpPhoneTouchedById(rows, g.id)", "rows"],
-    ["invariant", "I-PROPOSED-PHONE-COUNTRY-AUTHORITY-1 (DRAFT)", "REMOVED"],
+    ["invariant", "I-PROPOSED-PHONE-COUNTRY-AUTHORITY-1 (ACTIVE)", "I-PROPOSED-PHONE-COUNTRY-AUTHORITY-1 (DRAFT)"],
   ];
   for (const fingerprint of [
     "787eae74cc2b878be905899915ceeb53", "1c69cfda97aedfc8ba846f6e6193c5c2",
