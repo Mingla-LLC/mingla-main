@@ -269,6 +269,25 @@ export function filterVenueOrdersByScope(
   );
 }
 
+/**
+ * Issue #1943 — a Venue -> Orders route has one immutable queue owner.
+ *
+ * Unlike the legacy brand-queue helper above, a missing venue is fail-closed:
+ * this screen must never turn an absent route id into "show every venue".
+ */
+export function filterVenueOrdersForVenue(
+  orders: readonly VenueOrder[],
+  venueId: string | null,
+  zone: string | null,
+): VenueOrder[] {
+  if (venueId === null || venueId.length === 0) return [];
+  return orders.filter(
+    (order) =>
+      order.venueId === venueId &&
+      (zone === null || (order.zone ?? "") === zone),
+  );
+}
+
 /** The zone filter's options, derived from what is actually in the queue. */
 export function availableZones(orders: readonly VenueOrder[]): string[] {
   const seen = new Set<string>();

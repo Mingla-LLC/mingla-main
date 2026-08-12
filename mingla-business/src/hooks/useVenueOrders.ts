@@ -150,22 +150,30 @@ const mapRow = (row: OrderRow): VenueOrder => {
 };
 
 export const venueOrdersKeys = {
-  /** BRAND-scoped (D-3b): one queue per brand, filtered client-side by venue. */
+  /** Prefix retained so one invalidation refreshes every venue-local queue. */
   list: (brandId: string): readonly ["venueOrders", string] =>
     ["venueOrders", brandId] as const,
+  venue: (
+    brandId: string,
+    venueId: string,
+  ): readonly ["venueOrders", string, string] =>
+    ["venueOrders", brandId, venueId] as const,
 };
 
 export const fetchVenueOrders = async (
   brandId: string,
+  venueId: string | null = null,
 ): Promise<VenueOrder[]> => {
   const since = new Date(
     Date.now() - VENUE_ORDERS_WINDOW_HOURS * 60 * 60 * 1000,
   ).toISOString();
-  const { data, error } = await supabase
+  let query = supabase
     .from("venue_orders")
     .select(ORDER_COLUMNS)
     .eq("brand_id", brandId)
-    .gte("created_at", since)
+    .gte("created_at", since);
+  if (venueId !== null) query = query.eq("venue_id", venueId);
+  const { data, error } = await query
     .order("created_at", { ascending: false })
     .limit(VENUE_ORDERS_MAX_ROWS)
     .returns<OrderRow[]>();
@@ -179,25 +187,31 @@ export const fetchVenueOrders = async (
  * "assert refetchInterval is 30s" a real regression guard rather than a
  * comment that agrees with itself.
  */
-export function venueOrdersQueryOptions(brandId: string): {
+export function venueOrdersQueryOptions(
+  brandId: string,
+  venueId: string | null = null,
+): {
   queryKey: readonly unknown[];
   staleTime: number;
   refetchInterval: number;
   queryFn: () => Promise<VenueOrder[]>;
 } {
   return {
-    queryKey: venueOrdersKeys.list(brandId),
+    queryKey: venueId === null
+      ? venueOrdersKeys.list(brandId)
+      : venueOrdersKeys.venue(brandId, venueId),
     staleTime: VENUE_ORDERS_STALE_MS,
     // LEG (b) OF THE TRIPLE. Do not remove: without it a silently dropped
     // realtime channel freezes the queue with money already taken, which is
     // exactly the shipped Reservations bug this phase must not repeat.
     refetchInterval: VENUE_ORDERS_POLL_MS,
-    queryFn: () => fetchVenueOrders(brandId),
+    queryFn: () => fetchVenueOrders(brandId, venueId),
   };
 }
 
 export function useVenueOrders(
   brandId: string | null,
+  venueId: string | null = null,
 ): UseQueryResult<VenueOrder[]> {
   const { isAuthReady } = useAuth();
   const queryClient = useQueryClient();
@@ -205,7 +219,7 @@ export function useVenueOrders(
 
   const query = useQuery<VenueOrder[]>({
     ...(enabled
-      ? venueOrdersQueryOptions(brandId)
+      ? venueOrdersQueryOptions(brandId, venueId)
       : {
         queryKey: ["venueOrders", "disabled"] as const,
         staleTime: VENUE_ORDERS_STALE_MS,
@@ -220,29 +234,29 @@ export function useVenueOrders(
   // so the ORCH-0854 paired gate is satisfied — a subscription on an
   // unpublished table is a silent no-op, and that has shipped twice before.
   //
-  // FILTERED ON `brand_id`, and that is a DELIBERATE widening of SPEC P-53's
-  // "filter on venue_id": D-3b made the queue BRAND-scoped, because a hotel's
-  // room-service tickets and its restaurant's table tickets are one kitchen. A
-  // venue filter would silently drop exactly the cross-venue tickets the design
-  // put in one list. `brand_id` is equally a NON-PK column, so the ORCH-0931
-  // PK-filter silent-drop rule — the actual technical requirement in P-53 — is
-  // satisfied. Delivery is RLS-evaluated per subscriber against the brand-member
-  // SELECT policy, so this never reaches a non-member.
+  // Issue #1943: the Venue -> Orders route supplies venueId, so realtime and
+  // polling share the exact same immutable owner predicate. Legacy callers that
+  // omit it retain the brand prefix for their own non-route use.
   useEffect(() => {
     if (!enabled) return;
+    const realtimeFilter = venueId === null
+      ? `brand_id=eq.${brandId}`
+      : `venue_id=eq.${venueId}`;
     const channel = supabase
-      .channel(`brand:venue-orders:${brandId}`)
+      .channel(`venue-orders:${brandId}:${venueId ?? "brand"}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "venue_orders",
-          filter: `brand_id=eq.${brandId}`,
+          filter: realtimeFilter,
         },
         () => {
           void queryClient.invalidateQueries({
-            queryKey: venueOrdersKeys.list(brandId),
+            queryKey: venueId === null
+              ? venueOrdersKeys.list(brandId)
+              : venueOrdersKeys.venue(brandId, venueId),
           });
         },
       )
@@ -250,7 +264,7 @@ export function useVenueOrders(
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [enabled, brandId, queryClient]);
+  }, [enabled, brandId, venueId, queryClient]);
 
   return query;
 }

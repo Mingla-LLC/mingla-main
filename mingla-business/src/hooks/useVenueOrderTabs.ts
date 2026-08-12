@@ -46,10 +46,16 @@ export const VENUE_TABS_STALE_MS = 10_000;
 export const venueTabKeys = {
   list: (brandId: string): readonly ["venueTabs", string] =>
     ["venueTabs", brandId] as const,
+  venue: (
+    brandId: string,
+    venueId: string,
+  ): readonly ["venueTabs", string, string] =>
+    ["venueTabs", brandId, venueId] as const,
 };
 
 export const fetchVenueTabs = async (
   brandId: string,
+  venueId: string | null = null,
 ): Promise<OrderPadTab[]> => {
   const { data, error } = await supabase.rpc("biz_venue_tab_summaries", {
     p_brand_id: brandId,
@@ -77,32 +83,38 @@ export const fetchVenueTabs = async (
       openedAt: String(row.openedAt ?? ""),
       lastOrderAt: typeof row.lastOrderAt === "string" ? row.lastOrderAt : null,
     };
-  });
+  }).filter((tab) => venueId === null || tab.venueId === venueId);
 };
 
 /** Exported as data so the poll floor is provable without a React tree. */
-export function venueTabsQueryOptions(brandId: string): {
+export function venueTabsQueryOptions(
+  brandId: string,
+  venueId: string | null = null,
+): {
   queryKey: readonly unknown[];
   staleTime: number;
   refetchInterval: number;
   queryFn: () => Promise<OrderPadTab[]>;
 } {
   return {
-    queryKey: venueTabKeys.list(brandId),
+    queryKey: venueId === null
+      ? venueTabKeys.list(brandId)
+      : venueTabKeys.venue(brandId, venueId),
     staleTime: VENUE_TABS_STALE_MS,
     refetchInterval: VENUE_TABS_POLL_MS,
-    queryFn: () => fetchVenueTabs(brandId),
+    queryFn: () => fetchVenueTabs(brandId, venueId),
   };
 }
 
 export function useVenueTabs(
   brandId: string | null,
+  venueId: string | null = null,
 ): UseQueryResult<OrderPadTab[]> {
   const { isAuthReady } = useAuth();
   const enabled = isAuthReady && brandId !== null && brandId.length > 0;
   return useQuery<OrderPadTab[]>({
     ...(enabled
-      ? venueTabsQueryOptions(brandId)
+      ? venueTabsQueryOptions(brandId, venueId)
       : {
         queryKey: ["venueTabs", "disabled"] as const,
         staleTime: VENUE_TABS_STALE_MS,

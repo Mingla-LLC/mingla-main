@@ -104,6 +104,8 @@ jobs:
         run: >
           npx jest
           src/components/venue/__tests__/venueOrders.issue1791.test.ts
+          src/components/venue/__tests__/venueLocalOrders.issue1943.test.ts
+          src/components/venue/__tests__/venueLocalOrders.issue1943.tester.test.ts
           src/hooks/__tests__/useVenueOrders.issue1791.test.ts
           src/services/__tests__/businessNotificationRouting.venueOrders.issue1791.test.ts
           src/components/venue/__tests__/venueModules.test.ts

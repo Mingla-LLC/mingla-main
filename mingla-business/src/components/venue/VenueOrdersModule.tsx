@@ -4,10 +4,9 @@
  *
  * THE SHAPE, and why (DESIGN D-3b, D-7; SPEC #1788 P-53, P-55, P-16):
  *
- *  * ONE QUEUE PER BRAND, filterable by venue and by zone. A hotel's
- *    room-service tickets and its restaurant's table tickets belong in one list
- *    because they are one kitchen. Every ticket therefore names its
- *    destination — table, room, zone, or `COLLECT · 42 · Amara`.
+ *  * ONE QUEUE PER VENUE, optionally filterable by local zone. A room-service
+ *    destination may belong to another property when this venue is its serving
+ *    kitchen, but the order owner and every queue action stay route-venue local.
  *  * THE NOTIFICATION TRIPLE. Realtime + a 30-second poll floor (both in
  *    `useVenueOrders`) + push (server-side). The poll floor is the leg the
  *    shipped Reservations module does not have, and its absence there is the
@@ -38,7 +37,7 @@
  * member, exactly like the ack.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { ClipboardList } from "lucide-react-native";
 
@@ -75,7 +74,7 @@ import type { OrderPadTab } from "./orderPad/venueOrderPad";
 import {
   VENUE_ORDER_VIEWS,
   availableZones,
-  filterVenueOrdersByScope,
+  filterVenueOrdersForVenue,
   filterVenueOrdersForView,
   liveOrderCount,
   sortForQueue,
@@ -96,7 +95,7 @@ const VIEW_EMPTY: Record<VenueOrderView, string> = {
 
 export interface VenueOrdersModuleProps {
   brandId: string | null;
-  /** The venue this module was opened from — the default filter, not a cage. */
+  /** The venue this module was opened from — its immutable operational scope. */
   venueId?: string | null;
   testID?: string;
 }
@@ -110,26 +109,25 @@ export function VenueOrdersModule({
   // OQ-4: acknowledging is not a money act, so ANY active member may do it.
   const canWorkQueue = rank > 0;
   const canDecideMoney = rank >= MANAGER_PLUS_RANK;
+  const scopedBrandId = venueId === null ? null : brandId;
 
-  const ordersQuery = useVenueOrders(brandId);
-  const venuesQuery = useQrSpotVenues(brandId);
+  const ordersQuery = useVenueOrders(scopedBrandId, venueId);
+  const venuesQuery = useQrSpotVenues(scopedBrandId);
   // Issue #1792 — the SAME `qr_spots` rows the printed codes come from. There is
   // no second table list for waiters, which is what makes a laminate and a pad
   // structurally unable to disagree about which one is table 12.
-  const spotsQuery = useQrSpots(brandId);
-  const tabsQuery = useVenueTabs(brandId);
+  const spotsQuery = useQrSpots(scopedBrandId, venueId);
+  const tabsQuery = useVenueTabs(scopedBrandId, venueId);
   const settingsQuery = useVenueOrderingSettings(venueId);
-  const transition = useTransitionVenueOrder(brandId);
-  const refundDecision = useDecideVenueOrderRefund(brandId);
+  const transition = useTransitionVenueOrder(scopedBrandId);
+  const refundDecision = useDecideVenueOrderRefund(scopedBrandId);
   const setPaused = useSetVenueOrderingPaused(venueId);
   const setEnabled = useSetVenueOrderingEnabled(venueId);
 
   const [view, setView] = useState<VenueOrderView>("new");
-  // Default to the venue the operator opened, because that is where they are.
-  // "All venues" is one tap away — the queue is brand-wide by design (D-3b).
-  const [venueFilter, setVenueFilter] = useState<string | null>(venueId);
   const [zoneFilter, setZoneFilter] = useState<string | null>(null);
   const [selected, setSelected] = useState<VenueOrder | null>(null);
+  const [scopeError, setScopeError] = useState<string | null>(null);
   // Issue #1792 — the pad. `resumeTab` non-null means "another round on this
   // tab", which skips the spot step and reuses the sitting.
   const [padOpen, setPadOpen] = useState(false);
@@ -139,20 +137,14 @@ export function VenueOrdersModule({
   // plain one.
   const [billTab, setBillTab] = useState<OrderPadTab | null>(null);
 
-  const allOrders = ordersQuery.data ?? [];
-  const venueNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const v of venuesQuery.data ?? []) map.set(v.id, v.name);
-    return map;
-  }, [venuesQuery.data]);
-
+  const allOrders = useMemo(() => ordersQuery.data ?? [], [ordersQuery.data]);
   const scoped = useMemo(
-    () => filterVenueOrdersByScope(allOrders, venueFilter, zoneFilter),
-    [allOrders, venueFilter, zoneFilter],
+    () => filterVenueOrdersForVenue(allOrders, venueId, zoneFilter),
+    [allOrders, venueId, zoneFilter],
   );
   const zones = useMemo(
-    () => availableZones(filterVenueOrdersByScope(allOrders, venueFilter, null)),
-    [allOrders, venueFilter],
+    () => availableZones(filterVenueOrdersForVenue(allOrders, venueId, null)),
+    [allOrders, venueId],
   );
   const visible = useMemo(
     () => sortForQueue(filterVenueOrdersForView(scoped, view)),
@@ -160,14 +152,32 @@ export function VenueOrdersModule({
   );
   const live = liveOrderCount(scoped);
 
+  useEffect(() => {
+    if (zoneFilter !== null && !zones.includes(zoneFilter)) {
+      setZoneFilter(null);
+    }
+  }, [zoneFilter, zones]);
+
+  useEffect(() => {
+    if (selected !== null && selected.venueId !== venueId) {
+      setSelected(null);
+    }
+  }, [selected, venueId]);
+
   const handleAction = useCallback(
     (order: VenueOrder, action: VenueOrderAction): void => {
+      if (venueId === null || order.venueId !== venueId) {
+        setSelected(null);
+        setScopeError("That order belongs to another venue, so nothing changed.");
+        return;
+      }
+      setScopeError(null);
       transition.mutate(
         { orderId: order.id, action },
         { onSuccess: () => setSelected(null) },
       );
     },
-    [transition],
+    [transition, venueId],
   );
 
   const handleRefundDecision = useCallback(
@@ -176,12 +186,18 @@ export function VenueOrdersModule({
       decision: "approved" | "declined",
       note: string | null,
     ): void => {
+      if (venueId === null || order.venueId !== venueId) {
+        setSelected(null);
+        setScopeError("That order belongs to another venue, so nothing changed.");
+        return;
+      }
+      setScopeError(null);
       refundDecision.mutate(
         { orderId: order.id, decision, note },
         { onSuccess: () => setSelected(null) },
       );
     },
-    [refundDecision],
+    [refundDecision, venueId],
   );
 
   const settings = settingsQuery.data ?? null;
@@ -195,13 +211,13 @@ export function VenueOrdersModule({
           <Text style={styles.title}>Orders</Text>
           <Text style={styles.subtitle}>
             {live === 0
-              ? "Every order across your venues, live."
+              ? "Every order at this venue, live."
               : `${live} order${live === 1 ? "" : "s"} on the go.`}
           </Text>
         </View>
         {/* D-11 — waiter mode. Taking an order is not a money act, so the floor
             here is the ack's floor: any active brand member. */}
-        {canWorkQueue ? (
+        {canWorkQueue && venueId !== null ? (
           <Button
             label="New order"
             onPress={() => {
@@ -218,16 +234,26 @@ export function VenueOrdersModule({
 
       {/* D-2 AMENDED — tabs a waiter opened and is still serving. */}
       <VenueTabsCard
-        brandId={brandId}
-        venueId={venueFilter}
+        brandId={scopedBrandId}
+        venueId={venueId}
         tabs={tabsQuery.data ?? []}
         canCloseTabs={canDecideMoney}
         onAddRound={(tab) => {
+          if (tab.venueId !== venueId) {
+            setScopeError("That tab belongs to another venue, so nothing changed.");
+            return;
+          }
+          setScopeError(null);
           setBillTab(null);
           setResumeTab(tab);
           setPadOpen(true);
         }}
         onBillTab={(tab) => {
+          if (tab.venueId !== venueId) {
+            setScopeError("That tab belongs to another venue, so nothing changed.");
+            return;
+          }
+          setScopeError(null);
           setResumeTab(null);
           setBillTab(tab);
           setPadOpen(true);
@@ -311,56 +337,39 @@ export function VenueOrdersModule({
         })}
       </ScrollView>
 
-      {/* ---- D-3b: the brand queue's two filters. ---- */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.segRow}
-        accessibilityRole="tablist"
-      >
-        <Pressable
-          onPress={() => {
-            setVenueFilter(null);
-            setZoneFilter(null);
-          }}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: venueFilter === null }}
-          accessibilityLabel="All venues"
-          style={[styles.chip, venueFilter === null ? styles.chipActive : null]}
-          testID="venue-orders-filter-venue-all"
+      {/* Issue #1943 — the only optional filter is local area. */}
+      {zones.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.segRow}
+          accessibilityRole="tablist"
         >
-          <Text style={styles.chipLabel}>All venues</Text>
-        </Pressable>
-        {(venuesQuery.data ?? []).map((v) => (
           <Pressable
-            key={v.id}
-            onPress={() => {
-              setVenueFilter(v.id);
-              setZoneFilter(null);
-            }}
+            onPress={() => setZoneFilter(null)}
             accessibilityRole="tab"
-            accessibilityState={{ selected: venueFilter === v.id }}
-            accessibilityLabel={`${v.name} orders`}
-            style={[styles.chip, venueFilter === v.id ? styles.chipActive : null]}
-            testID={`venue-orders-filter-venue-${v.id}`}
+            accessibilityState={{ selected: zoneFilter === null }}
+            accessibilityLabel="All areas"
+            style={[styles.chip, zoneFilter === null ? styles.chipActive : null]}
+            testID="venue-orders-filter-area-all"
           >
-            <Text style={styles.chipLabel}>{v.name}</Text>
+            <Text style={styles.chipLabel}>All areas</Text>
           </Pressable>
-        ))}
-        {zones.map((zone) => (
-          <Pressable
-            key={zone}
-            onPress={() => setZoneFilter(zoneFilter === zone ? null : zone)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: zoneFilter === zone }}
-            accessibilityLabel={`${zone} zone`}
-            style={[styles.chip, zoneFilter === zone ? styles.chipActive : null]}
-            testID={`venue-orders-filter-zone-${zone}`}
-          >
-            <Text style={styles.chipLabel}>{zone}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+          {zones.map((zone) => (
+            <Pressable
+              key={zone}
+              onPress={() => setZoneFilter(zoneFilter === zone ? null : zone)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: zoneFilter === zone }}
+              accessibilityLabel={`${zone} area`}
+              style={[styles.chip, zoneFilter === zone ? styles.chipActive : null]}
+              testID={`venue-orders-filter-zone-${zone}`}
+            >
+              <Text style={styles.chipLabel}>{zone}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      ) : null}
 
       {ordersQuery.isLoading ? (
         <Text style={styles.helper}>Loading orders…</Text>
@@ -383,11 +392,7 @@ export function VenueOrdersModule({
             <VenueOrderCard
               key={order.id}
               order={order}
-              venueName={
-                venueFilter === null
-                  ? (venueNameById.get(order.venueId) ?? null)
-                  : null
-              }
+              venueName={null}
               onPress={setSelected}
             />
           ))}
@@ -414,6 +419,12 @@ export function VenueOrdersModule({
         </GlassCard>
       ) : null}
 
+      {scopeError !== null ? (
+        <Text style={styles.errorNote} testID="venue-orders-scope-error">
+          {scopeError}
+        </Text>
+      ) : null}
+
       {transition.isError || refundDecision.isError ? (
         <Text style={styles.errorNote} testID="venue-orders-mutation-error">
           That didn&apos;t go through. Nothing changed — try it again.
@@ -424,11 +435,7 @@ export function VenueOrdersModule({
         visible={selected !== null && canWorkQueue}
         onClose={() => setSelected(null)}
         order={selected}
-        venueName={
-          selected !== null
-            ? (venueNameById.get(selected.venueId) ?? null)
-            : null
-        }
+        venueName={null}
         onAction={handleAction}
         onRefundDecision={handleRefundDecision}
         acting={transition.isPending || refundDecision.isPending}
@@ -446,8 +453,8 @@ export function VenueOrdersModule({
           setResumeTab(null);
           setBillTab(null);
         }}
-        brandId={brandId}
-        venueId={venueFilter ?? venueId}
+        brandId={scopedBrandId}
+        venueId={venueId}
         spots={spotsQuery.data ?? []}
         venues={venuesQuery.data ?? []}
         resumeTab={resumeTab}

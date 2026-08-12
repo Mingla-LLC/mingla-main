@@ -149,24 +149,44 @@ export const ORDER_PAD_MAX_NOTE_CHARS = 140;
 export function orderableSpotGroups(
   spots: readonly OrderPadSpot[],
   venues: readonly OrderPadVenueRef[],
+  servingVenueId: string | null = null,
 ): OrderPadSpotGroup[] {
   const nameById = new Map(venues.map((v) => [v.id, v.name]));
   const byVenue = new Map<string, OrderPadSpot[]>();
   for (const spot of spots) {
     if (!spot.isActive) continue;
-    const bucket = byVenue.get(spot.venueId);
-    if (bucket === undefined) byVenue.set(spot.venueId, [spot]);
+    if (servingVenueId !== null && spot.servingVenueId !== servingVenueId) continue;
+    const groupKey = servingVenueId === null
+      ? spot.venueId
+      : spot.kind === "table"
+      ? "table"
+      : spot.kind === "room_unit"
+      ? "room_unit"
+      : "other";
+    const bucket = byVenue.get(groupKey);
+    if (bucket === undefined) byVenue.set(groupKey, [spot]);
     else bucket.push(spot);
   }
   return [...byVenue.entries()]
-    .map(([venueId, list]) => ({
-      venueId,
-      venueName: nameById.get(venueId) ?? "This venue",
+    .map(([groupKey, list]) => ({
+      venueId: groupKey,
+      venueName: servingVenueId === null
+        ? (nameById.get(groupKey) ?? "This venue")
+        : groupKey === "table"
+        ? "Tables"
+        : groupKey === "room_unit"
+        ? "Rooms"
+        : "Other pickup spots",
       spots: [...list].sort(
         (a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label),
       ),
     }))
-    .sort((a, b) => a.venueName.localeCompare(b.venueName));
+    .sort((a, b) => {
+      if (servingVenueId === null) return a.venueName.localeCompare(b.venueName);
+      const rank = (key: string): number =>
+        key === "table" ? 0 : key === "room_unit" ? 1 : 2;
+      return rank(a.venueId) - rank(b.venueId);
+    });
 }
 
 /** Free-text spot search — the fastest control at a busy pass is typing "12". */
@@ -606,6 +626,15 @@ export function tabsForVenue(
   return tabs
     .filter((t) => venueId === null || t.venueId === venueId)
     .sort((a, b) => new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime());
+}
+
+/** Issue #1943 — venue routes fail closed instead of treating null as all tabs. */
+export function venueLocalTabs(
+  tabs: readonly OrderPadTab[],
+  venueId: string | null,
+): OrderPadTab[] {
+  if (venueId === null || venueId.length === 0) return [];
+  return tabsForVenue(tabs, venueId);
 }
 
 /** How a tab reads on the card: where it is, and how much is on it. */

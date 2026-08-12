@@ -68,13 +68,27 @@ export const qrSpotKeys = {
     ["qrSpots", brandId] as const,
   venues: (brandId: string): readonly ["qrSpotVenues", string] =>
     ["qrSpotVenues", brandId] as const,
+  served: (
+    brandId: string,
+    venueId: string,
+  ): readonly ["qrSpots", string, "served", string] =>
+    ["qrSpots", brandId, "served", venueId] as const,
 };
 
-export const fetchQrSpots = async (brandId: string): Promise<QrSpot[]> => {
-  const { data, error } = await supabase
+export const fetchQrSpots = async (
+  brandId: string,
+  servingVenueId: string | null = null,
+): Promise<QrSpot[]> => {
+  let query = supabase
     .from("qr_spots")
     .select(SPOT_COLUMNS)
-    .eq("brand_id", brandId)
+    .eq("brand_id", brandId);
+  if (servingVenueId !== null) {
+    query = query
+      .eq("serving_venue_id", servingVenueId)
+      .eq("is_active", true);
+  }
+  const { data, error } = await query
     .order("venue_id", { ascending: true })
     .order("sort_order", { ascending: true })
     .order("label", { ascending: true })
@@ -83,14 +97,22 @@ export const fetchQrSpots = async (brandId: string): Promise<QrSpot[]> => {
   return (data ?? []).map(mapRow);
 };
 
-export function useQrSpots(brandId: string | null): UseQueryResult<QrSpot[]> {
+export function useQrSpots(
+  brandId: string | null,
+  servingVenueId: string | null = null,
+): UseQueryResult<QrSpot[]> {
   const { isAuthReady } = useAuth();
   const enabled = isAuthReady && brandId !== null && brandId.length > 0;
   return useQuery<QrSpot[]>({
-    queryKey: enabled ? qrSpotKeys.list(brandId) : (["qrSpots", "disabled"] as const),
+    queryKey: enabled
+      ? servingVenueId === null
+        ? qrSpotKeys.list(brandId)
+        : qrSpotKeys.served(brandId, servingVenueId)
+      : (["qrSpots", "disabled"] as const),
     enabled,
     staleTime: 30_000,
-    queryFn: () => (enabled ? fetchQrSpots(brandId) : Promise.resolve([])),
+    queryFn: () =>
+      enabled ? fetchQrSpots(brandId, servingVenueId) : Promise.resolve([]),
   });
 }
 
