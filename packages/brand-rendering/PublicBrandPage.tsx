@@ -333,7 +333,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       document.addEventListener("visibilitychange", onVisibility);
     return () => {
       if (timer !== null) clearTimeout(timer);
-      subscription.remove();
+      subscription?.remove();
       if (typeof document !== "undefined")
         document.removeEventListener("visibilitychange", onVisibility);
     };
