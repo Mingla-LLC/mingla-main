@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-12 — Business web now returns honest 404s for missing build assets instead of serving the homepage as JavaScript, and a failed stale-chunk recovery shows a visible Reload card that disappears if the app finishes loading late. (#1876, PR #1933)
 - 2026-08-12 — Public brand pages now show only current ticketed and RSVP events; direct links to ended or cancelled events remain readable but clearly say they are over and no longer expose ticket, RSVP, contribution, waitlist, or guest-list actions. (#1902, PR #1924)
 - 2026-08-11 — RSVP events now appear in a brand's public Upcoming feed, and attempts to RSVP after an event ends are refused before creating a guest, pass, notification, or delivery record. (#1914, PR #1917)
 - 2026-08-11 — New Nigerian businesses are now ready for automatic event-anchored payout stamping behind an independent dark Paystack switch; ambiguous database responses reconcile exact ledger truth, all 16 bundle consumers are deployed from one verified source, and activation remains off until the parent real-payout proof completes. (#1903, PR #1915)
