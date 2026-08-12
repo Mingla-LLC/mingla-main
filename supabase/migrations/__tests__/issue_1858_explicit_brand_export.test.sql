@@ -40,7 +40,7 @@ UPDATE public.feature_flags SET is_enabled=true WHERE flag_key='guest_roster_exp
 
 DO $test$
 DECLARE v_a uuid; v_b uuid; v_replay uuid; v_admin uuid; v_roster uuid; v_before bigint;
-  v_audit_before bigint; v_rows jsonb; v_status jsonb;
+  v_audit_before bigint; v_rows jsonb; v_status jsonb; v_null_selector text;
   v_request uuid := '18580000-0000-4000-8000-000000000050';
 BEGIN
   IF to_regprocedure('public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid)') IS NOT NULL
@@ -49,6 +49,24 @@ BEGIN
      OR NOT has_function_privilege('authenticated','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid,uuid)','EXECUTE')
      OR NOT has_function_privilege('service_role','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid,uuid)','EXECUTE') THEN
     RAISE EXCEPTION 'T-1858-06 signature or ACL drift';
+  END IF;
+
+  SELECT count(*) INTO v_before FROM public.brand_people_export_jobs;
+  FOREACH v_null_selector IN ARRAY ARRAY['scope','filter','sort'] LOOP
+    BEGIN
+      PERFORM public.biz_export_brand_people(
+        CASE WHEN v_null_selector='scope' THEN NULL ELSE 'offering_guest_roster' END,
+        '18580000-0000-4000-8000-000000000040',
+        CASE WHEN v_null_selector='filter' THEN NULL ELSE 'all' END,
+        NULL,
+        CASE WHEN v_null_selector='sort' THEN NULL ELSE 'action_priority' END,
+        '{}'::jsonb,gen_random_uuid()
+      );
+      RAISE EXCEPTION 'T-1858-00 null selector accepted: %',v_null_selector;
+    EXCEPTION WHEN invalid_parameter_value THEN NULL; END;
+  END LOOP;
+  IF (SELECT count(*) FROM public.brand_people_export_jobs)<>v_before THEN
+    RAISE EXCEPTION 'T-1858-00 null selector reached mutation';
   END IF;
 
   PERFORM set_config('request.jwt.claim.sub','18580000-0000-4000-8000-000000000001',true);

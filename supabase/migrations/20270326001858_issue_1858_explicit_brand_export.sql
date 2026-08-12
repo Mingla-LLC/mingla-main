@@ -12,7 +12,8 @@ DECLARE v_brand uuid; v_actor uuid:=auth.uid(); v_job public.brand_people_export
   v_snapshot jsonb; v_hash text; v_search text;
 BEGIN
   v_search:=lower(regexp_replace(btrim(COALESCE(p_search,'')),'[[:space:]]+',' ','g'));
-  IF p_scope NOT IN ('brand_book','offering_guest_roster')
+  IF p_scope IS NULL OR p_filter IS NULL OR p_sort IS NULL
+     OR p_scope NOT IN ('brand_book','offering_guest_roster')
      OR (p_scope='brand_book' AND (p_brand_id IS NULL OR p_event_id IS NOT NULL
        OR p_filter NOT IN ('all','reachable','suppressed')))
      OR (p_scope='offering_guest_roster' AND (p_event_id IS NULL OR p_brand_id IS NOT NULL

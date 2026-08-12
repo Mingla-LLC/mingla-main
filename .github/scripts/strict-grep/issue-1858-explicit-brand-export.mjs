@@ -15,6 +15,7 @@ export function inspect(source) {
   const failures = [];
   const need = (where, token, label) => { if (!source[where]?.includes(token)) failures.push(`missing ${label}`); };
   need("migration", "p_brand_id uuid DEFAULT NULL", "final brand parameter");
+  need("migration", "IF p_scope IS NULL OR p_filter IS NULL OR p_sort IS NULL", "explicit null-selector guard");
   need("migration", "WHERE b.id=p_brand_id AND b.deleted_at IS NULL", "exact brand lookup");
   need("migration", "biz_brand_effective_rank(v_brand,v_actor)<public.biz_role_rank('brand_admin')", "effective-rank authorization");
   need("migration", "DROP FUNCTION public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid);", "old identity removal");
@@ -39,6 +40,7 @@ function readSources() {
 function selfTest(source) {
   const mutations = [
     ["brand parameter", { ...source, migration: source.migration.replace("p_brand_id uuid DEFAULT NULL", "p_brand_id uuid") }],
+    ["null selectors", { ...source, migration: source.migration.replace("IF p_scope IS NULL OR p_filter IS NULL OR p_sort IS NULL", "IF") }],
     ["fallback", { ...source, migration: source.migration.replace("WHERE b.id=p_brand_id AND b.deleted_at IS NULL", "WHERE b.account_id=v_actor ORDER BY b.created_at LIMIT 1") }],
     ["rank", { ...source, migration: source.migration.replace("biz_brand_effective_rank(v_brand,v_actor)<public.biz_role_rank('brand_admin')", "false") }],
     ["edge forwarding", { ...source, edge: source.edge.replace("p_brand_id: input.brandId ?? null", "p_brand_id: null") }],
@@ -53,7 +55,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const source = readSources();
   if (process.argv.includes("--self-test")) {
     selfTest(source);
-    console.log("#1858 explicit brand export self-test PASS (5 true mutations)");
+    console.log("#1858 explicit brand export self-test PASS (6 true mutations)");
   } else {
     const failures = inspect(source);
     if (failures.length) { console.error(failures.join("\n")); process.exit(1); }
