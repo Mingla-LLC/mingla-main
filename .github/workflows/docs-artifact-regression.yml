@@ -57,5 +57,10 @@ jobs:
       - name: Check artifact placement
         run: python3 scripts/docs/check_artifact_placement.py
 
+      - name: Check COMMS integrity
+        run: |
+          python3 scripts/docs/check_comms_integrity.py --self-test
+          python3 scripts/docs/check_comms_integrity.py
+
       - name: Check README snapshot
         run: python3 scripts/docs/check_readme_snapshot.py

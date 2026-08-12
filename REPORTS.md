@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-12 — Mingla's coordination record now states the real OTA boundary per platform and runtime instead of a blanket ban: Android 1.1.4 users can receive safe pure-JS updates, iOS remains on 1.1.2 publicly, native changes still require a build, and CI now rejects duplicate COMMS IDs. (#1940, PR #1941)
 - 2026-08-12 — Direct imports of every ad-provider module now start safely instead of crashing the app-identity preflight worker; the corrected production endpoint returns structured Explorer and Business results and is guarded by fresh-process tests for all five providers. (#1937, PR #1938)
 - 2026-08-12 — Business web now returns honest 404s for missing build assets instead of serving the homepage as JavaScript, and a failed stale-chunk recovery shows a visible Reload card that disappears if the app finishes loading late. (#1876, PR #1933)
 - 2026-08-12 — Public brand pages now show only current ticketed and RSVP events; direct links to ended or cancelled events remain readable but clearly say they are over and no longer expose ticket, RSVP, contribution, waitlist, or guest-list actions. (#1902, PR #1924)
