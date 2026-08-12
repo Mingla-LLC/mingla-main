@@ -405,6 +405,49 @@ jobs:
           # two broken shapes are caught and the three safe ones are not.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1828_extension_call_qualification.test.sql
+          # Issue #1856 — TRUNCATE on the four ordering tables, and the CLASS
+          # guard for the grant family. `authenticated` held TRUNCATE on
+          # qr_spots, menu_modifier_groups, menu_modifiers and
+          # venue_ordering_settings, and RLS does not gate TRUNCATE — so any
+          # signed-in user, member of no brand at all, could empty every
+          # venue's QR spots platform-wide (and `qr_spots.code` IS the printed
+          # code laminated onto the furniture). Nobody wrote that grant: it
+          # comes from Supabase's `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON
+          # TABLES TO anon, authenticated`, which is why three reviews missed
+          # it and why no grep over supabase/migrations could ever find it.
+          # This suite reads the LIVE ACL (pg_class.relacl via aclexplode —
+          # information_schema.role_table_grants is role-filtered AND blind to
+          # PG17's MAINTAIN), executes the TRUNCATE as a real `authenticated`
+          # session and requires 42501, then gates the whole schema: no
+          # relation in `public` may hold a privilege for anon/PUBLIC on a base
+          # table, or anything past SELECT for anyone, outside the reasoned
+          # allowlist and the 2026-08-11 baseline. Its vacuity guard plants a
+          # table with NO grant statement at all and asserts it arrives holding
+          # TRUNCATE — the root cause, reproduced live — and its fails-on-revert
+          # group re-grants TRUNCATE and proves an `authenticated` session then
+          # actually empties the table.
+          # Group G is the half the guard found on its own and matters more: a
+          # VIEW that is auto-updatable and NOT `security_invoker` executes its
+          # writes as the VIEW OWNER, so the base table's RLS is never
+          # consulted. `business_public_brands_view` was exactly that over
+          # `public.brands` with anon holding INSERT/UPDATE/DELETE — an
+          # anonymous write with row security switched off. Thirteen views are
+          # now SELECT-only in Part 1b of the migration, and that class is
+          # reported at its own severity, can never be baselined, and must be
+          # zero. E-10..E-14 prove the split is real: three views, all carrying
+          # anon INSERT, and exactly ONE of them is a bypass.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1856_ordering_table_grants_and_grant_class.test.sql
+          # Issue #1856 — tester-owned adversarial guard. This does not trust
+          # the classifier alone: it performs a real anonymous INSERT through
+          # an owner-executed view over a deny-all RLS table and proves the row
+          # lands, then makes that same view security_invoker and requires the
+          # same write to fail with 42501. It also calls the catalog audit as a
+          # real authenticated role (must be denied), pins service_role-only
+          # execution, and independently checks the four tables plus thirteen
+          # repaired views from the live effective ACL.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1856_grant_guard.tester_adversarial.test.sql
           # Issue #1792 (#1767 Phase 3b) — WAITER MODE, against the REAL applied
           # schema. Behavioural: it opens and closes real tabs through the real
           # SECURITY DEFINER RPCs as a real auth.uid() with a real rank, runs
