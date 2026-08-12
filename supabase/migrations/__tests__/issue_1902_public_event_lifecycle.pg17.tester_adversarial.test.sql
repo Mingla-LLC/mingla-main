@@ -4,6 +4,7 @@ BEGIN;
 
 DO $test$
 DECLARE
+  v_account uuid := gen_random_uuid();
   v_brand uuid := gen_random_uuid();
   v_user uuid := gen_random_uuid();
   v_missing uuid := gen_random_uuid();
@@ -22,40 +23,52 @@ DECLARE
   v_limit_count integer;
   v_function text;
 BEGIN
+  INSERT INTO auth.users (
+    id, instance_id, aud, role, email, created_at, updated_at
+  ) VALUES
+    (v_account, '00000000-0000-0000-0000-000000000000',
+     'authenticated', 'authenticated', 'issue1902-owner-adv@example.test',
+     clock_timestamp(), clock_timestamp()),
+    (v_user, '00000000-0000-0000-0000-000000000000',
+     'authenticated', 'authenticated', 'issue1902-user-adv@example.test',
+     clock_timestamp(), clock_timestamp());
+  INSERT INTO public.creator_accounts (id, email, created_at)
+  VALUES (v_account, 'issue1902-owner-adv@example.test', clock_timestamp());
+
   INSERT INTO public.brands (
-    id, slug, name, default_currency, created_at, updated_at
+    id, account_id, slug, name, default_currency, created_at, updated_at
   ) VALUES (
-    v_brand, 'issue-1902-tester-adversarial', 'Issue 1902 Tester',
+    v_brand, v_account, 'issue-1902-tester-adversarial', 'Issue 1902 Tester',
     'USD', clock_timestamp(), clock_timestamp()
   );
 
   INSERT INTO public.events (
-    id, brand_id, event_type, title, slug, description, status, visibility,
+    id, brand_id, created_by, event_type, title, slug, description, status, visibility,
     published_at, currency, timezone, rsvp_approval_mode,
     rsvp_allow_plus_ones, rsvp_plus_ones_max, created_at, updated_at
   ) VALUES
-    (v_missing, v_brand, 'rsvp', 'Missing master', 'missing-master-1902', '',
+    (v_missing, v_brand, v_account, 'rsvp', 'Missing master', 'missing-master-1902', '',
      'scheduled', 'public', clock_timestamp(), 'USD', 'UTC', 'auto', false, 0,
      clock_timestamp(), clock_timestamp()),
-    (v_null, v_brand, 'rsvp', 'Null master', 'null-master-1902', '',
+    (v_null, v_brand, v_account, 'rsvp', 'Null master', 'null-master-1902', '',
      'scheduled', 'public', clock_timestamp(), 'USD', 'UTC', 'auto', false, 0,
      clock_timestamp(), clock_timestamp()),
-    (v_after, v_brand, 'rsvp', 'After end', 'after-end-1902', '',
+    (v_after, v_brand, v_account, 'rsvp', 'After end', 'after-end-1902', '',
      'scheduled', 'public', clock_timestamp(), 'USD', 'UTC', 'auto', false, 0,
      clock_timestamp(), clock_timestamp()),
-    (v_boundary, v_brand, 'rsvp', 'Boundary race', 'boundary-race-1902', '',
+    (v_boundary, v_brand, v_account, 'rsvp', 'Boundary race', 'boundary-race-1902', '',
      'scheduled', 'public', clock_timestamp(), 'USD', 'UTC', 'auto', false, 0,
      clock_timestamp(), clock_timestamp()),
-    (v_hidden, v_brand, 'rsvp', 'Hidden future', 'hidden-future-1902', '',
+    (v_hidden, v_brand, v_account, 'rsvp', 'Hidden future', 'hidden-future-1902', '',
      'scheduled', 'hidden', clock_timestamp(), 'USD', 'UTC', 'auto', false, 0,
      clock_timestamp(), clock_timestamp()),
-    (v_unpublished, v_brand, 'rsvp', 'Unpublished future', 'unpublished-future-1902', '',
+    (v_unpublished, v_brand, v_account, 'rsvp', 'Unpublished future', 'unpublished-future-1902', '',
      'scheduled', 'public', NULL, 'USD', 'UTC', 'auto', false, 0,
      clock_timestamp(), clock_timestamp()),
-    (v_order_a, v_brand, 'rsvp', 'Earlier future', 'earlier-future-1902', '',
+    (v_order_a, v_brand, v_account, 'rsvp', 'Earlier future', 'earlier-future-1902', '',
      'scheduled', 'public', clock_timestamp() - interval '1 minute', 'USD', 'UTC', 'auto', false, 0,
      clock_timestamp(), clock_timestamp()),
-    (v_order_b, v_brand, 'rsvp', 'Later future', 'later-future-1902', '',
+    (v_order_b, v_brand, v_account, 'rsvp', 'Later future', 'later-future-1902', '',
      'scheduled', 'public', clock_timestamp(), 'USD', 'UTC', 'auto', false, 0,
      clock_timestamp(), clock_timestamp());
 

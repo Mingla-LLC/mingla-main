@@ -4,6 +4,7 @@ BEGIN;
 
 DO $test$
 DECLARE
+  v_account uuid := gen_random_uuid();
   v_brand uuid := gen_random_uuid();
   v_future uuid := gen_random_uuid();
   v_equal uuid := gen_random_uuid();
@@ -13,25 +14,35 @@ DECLARE
   v_message text;
   v_count integer;
 BEGIN
-  INSERT INTO public.brands (
-    id, slug, name, default_currency, created_at, updated_at
+  INSERT INTO auth.users (
+    id, instance_id, aud, role, email, created_at, updated_at
   ) VALUES (
-    v_brand, 'issue-1902-rsvp-backend', 'Issue 1902 RSVP Backend',
+    v_account, '00000000-0000-0000-0000-000000000000',
+    'authenticated', 'authenticated', 'issue1902-owner@example.test',
+    clock_timestamp(), clock_timestamp()
+  );
+  INSERT INTO public.creator_accounts (id, email, created_at)
+  VALUES (v_account, 'issue1902-owner@example.test', clock_timestamp());
+
+  INSERT INTO public.brands (
+    id, account_id, slug, name, default_currency, created_at, updated_at
+  ) VALUES (
+    v_brand, v_account, 'issue-1902-rsvp-backend', 'Issue 1902 RSVP Backend',
     'USD', clock_timestamp(), clock_timestamp()
   );
 
   INSERT INTO public.events (
-    id, brand_id, event_type, title, slug, description, status, visibility,
+    id, brand_id, created_by, event_type, title, slug, description, status, visibility,
     published_at, currency, timezone, rsvp_approval_mode,
     rsvp_allow_plus_ones, rsvp_plus_ones_max, created_at, updated_at
   ) VALUES
-    (v_future, v_brand, 'rsvp', 'Future RSVP', 'future-rsvp-1902', 'future',
+    (v_future, v_brand, v_account, 'rsvp', 'Future RSVP', 'future-rsvp-1902', 'future',
      'scheduled', 'public', clock_timestamp(), 'USD', 'UTC', 'auto',
      false, 0, clock_timestamp(), clock_timestamp()),
-    (v_equal, v_brand, 'rsvp', 'Boundary RSVP', 'boundary-rsvp-1902', 'boundary',
+    (v_equal, v_brand, v_account, 'rsvp', 'Boundary RSVP', 'boundary-rsvp-1902', 'boundary',
      'scheduled', 'public', clock_timestamp(), 'USD', 'UTC', 'auto',
      false, 0, clock_timestamp(), clock_timestamp()),
-    (v_missing, v_brand, 'rsvp', 'Missing RSVP', 'missing-rsvp-1902', 'missing',
+    (v_missing, v_brand, v_account, 'rsvp', 'Missing RSVP', 'missing-rsvp-1902', 'missing',
      'scheduled', 'public', clock_timestamp(), 'USD', 'UTC', 'auto',
      false, 0, clock_timestamp(), clock_timestamp());
 
