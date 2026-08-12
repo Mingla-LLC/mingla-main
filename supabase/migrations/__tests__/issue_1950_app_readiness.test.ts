@@ -142,4 +142,14 @@ Deno.test("#1950 current attestations have exact provenance, fifteen-minute expi
     sql,
     "GRANT EXECUTE ON FUNCTION public.attest_ad_app_readiness_dimension(text,text,text,text,text,uuid) TO service_role",
   );
+  assertStringIncludes(
+    sql,
+    "JOIN public.admin_users au ON lower(au.email)=lower(u.email)",
+  );
+  assertStringIncludes(sql, "au.status='active'");
+  assertStringIncludes(sql, "au.role IN ('owner','admin')");
+  assertEquals(
+    sql.includes("SELECT 1 FROM auth.users WHERE id=p_attested_by"),
+    false,
+  );
 });

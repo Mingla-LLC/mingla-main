@@ -17,10 +17,11 @@ interface SnapMobileApp {
   iosAppId: string | null;
   iosVerified: boolean;
   androidAppId: string | null;
+  androidVerified: boolean;
   measurementPartners: string[];
 }
 
-function parseMobileApps(payload: unknown): SnapMobileApp[] {
+export function parseMobileApps(payload: unknown): SnapMobileApp[] {
   if (!payload || typeof payload !== "object") return [];
   const collection = (payload as Record<string, unknown>).mobile_apps;
   if (!Array.isArray(collection)) return [];
@@ -41,6 +42,7 @@ function parseMobileApps(payload: unknown): SnapMobileApp[] {
       androidAppId: typeof app.android_app_url === "string"
         ? app.android_app_url
         : null,
+      androidVerified: app.android_app_url_verified === true,
       measurementPartners: Array.isArray(app.mobile_measurement_partners)
         ? app.mobile_measurement_partners.filter((value) =>
           typeof value === "string"
@@ -49,6 +51,21 @@ function parseMobileApps(payload: unknown): SnapMobileApp[] {
     }];
   });
 }
+
+export function findVerifiedMobileApp(
+  apps: SnapMobileApp[],
+  providerAppId: string | null,
+  os: "ios" | "android",
+  storeIdentifier: string,
+): SnapMobileApp | undefined {
+  return apps.find((app) =>
+    app.id === providerAppId &&
+    (os === "ios"
+      ? app.iosAppId === storeIdentifier && app.iosVerified
+      : app.androidAppId === storeIdentifier && app.androidVerified)
+  );
+}
+
 export async function verify(ctx: VerifyContext) {
   const base = verifyCanonicalBinding("snapchat", ctx);
   if (!ctx.connection) return base;
@@ -114,13 +131,15 @@ export async function verify(ctx: VerifyContext) {
         ),
       ),
   );
-  const exactApp = mobileApps.find((app) =>
-    app.id === ctx.binding.provider_app_id &&
-    (ctx.target.os === "ios"
-      ? app.iosAppId === ctx.target.store_identifier && app.iosVerified
-      : app.androidAppId === ctx.target.store_identifier)
+  const exactApp = findVerifiedMobileApp(
+    mobileApps,
+    ctx.binding.provider_app_id,
+    ctx.target.os,
+    ctx.target.store_identifier,
   );
-  base.dimensions.binding = exactApp
+  base.dimensions.binding = base.dimensions.binding.status === "proven"
+    ? base.dimensions.binding
+    : exactApp
     ? evidence(
       "proven",
       `Snap API returned the exact ${ctx.target.display_name} ${ctx.target.os} app binding.`,

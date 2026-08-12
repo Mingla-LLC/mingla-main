@@ -246,7 +246,14 @@ BEGIN
      OR p_provider NOT IN ('meta','tiktok','snapchat','google','reddit')
      OR p_dimension NOT IN ('native_binding','measurement')
      OR p_safe_id IS NULL OR p_safe_id !~ '^[A-Za-z0-9._:@/-]{1,160}$'
-     OR p_attested_by IS NULL OR NOT EXISTS (SELECT 1 FROM auth.users WHERE id=p_attested_by) THEN
+     OR p_attested_by IS NULL OR NOT EXISTS (
+       SELECT 1
+       FROM auth.users u
+       JOIN public.admin_users au ON lower(au.email)=lower(u.email)
+       WHERE u.id=p_attested_by
+         AND au.status='active'
+         AND au.role IN ('owner','admin')
+     ) THEN
     RAISE EXCEPTION 'invalid_readiness_attestation';
   END IF;
   IF p_dimension='native_binding' THEN

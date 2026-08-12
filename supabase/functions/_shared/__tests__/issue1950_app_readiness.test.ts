@@ -22,6 +22,10 @@ import {
   createAppsFlyerMeasurementReader,
   verifyAppsflyer,
 } from "../adAppReadinessProviders/appsflyer.ts";
+import {
+  findVerifiedMobileApp,
+  parseMobileApps,
+} from "../adAppReadinessProviders/snapchat.ts";
 
 function all(
   status: "proven" | "action_required" | "blocked",
@@ -231,6 +235,37 @@ Deno.test("#1950 production AppsFlyer reader uses one bounded GET and never the 
     installEventMapped: true,
   });
   assertEquals(snapshot?.tiktok?.partnerActive, false);
+});
+
+Deno.test("#1950 Snap Android binding requires the exact provider-verified store URL", () => {
+  const parse = (androidAppUrl: string, verified?: boolean) =>
+    parseMobileApps({
+      mobile_apps: [{
+        sub_request_status: "SUCCESS",
+        mobile_app: {
+          id: "snap-business-android",
+          android_app_url: androidAppUrl,
+          ...(verified === undefined
+            ? {}
+            : { android_app_url_verified: verified }),
+        },
+      }],
+    });
+  const find = (apps: ReturnType<typeof parse>) =>
+    findVerifiedMobileApp(
+      apps,
+      "snap-business-android",
+      "android",
+      "com.mingla.business",
+    );
+
+  assertEquals(
+    find(parse("com.mingla.business", true))?.id,
+    "snap-business-android",
+  );
+  assertEquals(find(parse("com.mingla.business", false)), undefined);
+  assertEquals(find(parse("com.mingla.business")), undefined);
+  assertEquals(find(parse("com.mingla.explorer", true)), undefined);
 });
 
 Deno.test("#1950 operation guard is on the execution path and rejects method/path drift", async () => {
