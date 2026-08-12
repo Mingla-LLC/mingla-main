@@ -7,7 +7,8 @@ on:
       - "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql"
       - "supabase/migrations/__tests__/issue_1773_reservation_stay_ingest.test.sql"
       - "supabase/functions/brand-person-ingest-worker/**"
-      - "packages/card-identity/package.json"
+      - "packages/card-identity/phone.cjs"
+      - "packages/card-identity/phone.js"
       - ".github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-1773-reservation-stay-ingest-tests.yml"
@@ -35,7 +36,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          deno-version: v2.9.5
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.98.2
+      - name: Record pinned packaging tools
+        run: |
+          deno --version
+          supabase --version
       - name: Run strict contract and true-mutation proof
         run: |
           node .github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs --self-test

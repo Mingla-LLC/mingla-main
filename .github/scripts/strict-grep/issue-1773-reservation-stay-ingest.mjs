@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const files = {
   migration: "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql",
   worker: "supabase/functions/brand-person-ingest-worker/index.ts",
-  package: "packages/card-identity/package.json",
+  adapter: "packages/card-identity/phone.cjs",
+  canonicalAdapter: "packages/card-identity/phone.js",
   sqlTest: "supabase/migrations/__tests__/issue_1773_reservation_stay_ingest.test.sql",
   artifactTest: "supabase/functions/brand-person-ingest-worker/issue_1773_worker_cjs_artifact.test.ts",
   workflow: ".github/workflows/issue-1773-reservation-stay-ingest-tests.yml",
@@ -34,14 +36,26 @@ export function inspect(source) {
   need("migration", "FROM public.stay_reservation_groups g", "Stay backfill");
   need("migration", "REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source_derived(text,uuid,text) FROM PUBLIC,anon,authenticated", "service-only overload");
   if (/CREATE\s+TRIGGER[\s\S]{0,120}ON\s+public\.stay_reservation_groups/i.test(source.migration ?? "")) failures.push("Stay group trigger is forbidden");
-  need("worker", 'import "../../../packages/card-identity/package.json" with { type: "json" };\nimport phoneAdapter from "../../../packages/card-identity/phone.js"', "ordered CommonJS manifest and adapter imports");
+  need("worker", 'import phoneAdapter from "../../../packages/card-identity/phone.cjs";', "exact CommonJS adapter import");
   need("worker", "resolveUserPhoneE164(", "single canonical adapter call");
   need("worker", '"phone:guest_snapshot->>phone,phoneCountryIso:guest_snapshot->>phoneCountryIso"', "phone-only Stay projection");
   need("worker", '| "reservation"', "reservation worker kind");
   need("worker", '| "stay_reservation"', "Stay worker kind");
-  if (/PHONE_PLANS|dial:\s*['"]|defaultCountry|DEFAULT_COUNTRY/.test(source.worker ?? "")) failures.push("copied or default phone plan in worker");
-  need("package", '"type": "commonjs"', "CommonJS package type");
-  need("artifactTest", '"packages/card-identity/package.json"', "deployment artifact manifest assertion");
+  if (/PHONE_PLANS|dial:\s*['"]|defaultCountry|DEFAULT_COUNTRY|createRequire|module\.exports|require\s*\(/.test(source.worker ?? "")) failures.push("copied phone logic or CommonJS wrapper in worker");
+  if ((source.worker ?? "").includes('packages/card-identity/package.json')) failures.push("worker relies on JSON side-effect import");
+  if ((source.worker ?? "").includes('from "../../../packages/card-identity/phone.js"')) failures.push("worker bypasses the .cjs adapter boundary");
+  if (source.adapterKind !== "symlink") failures.push("phone.cjs is not a real filesystem symlink");
+  if (source.adapterTarget !== "phone.js") failures.push("phone.cjs symlink target is not exactly phone.js");
+  if (source.adapterMode !== "120000") failures.push("phone.cjs Git mode is not 120000");
+  if (source.adapterBytes !== source.canonicalAdapter) failures.push("phone.cjs does not resolve to canonical phone.js bytes");
+  need("artifactTest", 'const expectedUploadedFiles = [', "exact upload allowlist");
+  need("artifactTest", 'if (!adapterInfo.isSymlink)', "source symlink assertion");
+  need("artifactTest", 'gitMode.output.startsWith("120000 ")', "Git symlink-mode assertion");
+  need("artifactTest", 'if (!stagedInfo.isFile || stagedInfo.isSymlink)', "regular staged .cjs assertion");
+  need("artifactTest", 'packages/card-identity/package.json', "staged package.json absence assertion");
+  need("artifactTest", 'Supabase CLI did not upload canonical phone.js bytes as phone.cjs', "CLI dereference-byte assertion");
+  need("artifactTest", 'decode(version.stdout).trim() !== "2.98.2"', "Supabase CLI version assertion");
+  need("artifactTest", 'denoVersion.output.startsWith("deno 2.9.5 ")', "Deno version assertion");
   need("artifactTest", '["check", entrypoint]', "plain artifact check");
   need("artifactTest", 'worker did not load', "worker module load proof");
   need("artifactTest", '"+2348034821689"', "canonical adapter execution proof");
@@ -56,13 +70,22 @@ export function inspect(source) {
   need("workflow", "issue_1773_reservation_stay_ingest.test.sql", "SQL workflow registration");
   need("workflow", "issue_1773_worker_cjs_artifact.test.ts", "deployment artifact regression wiring");
   if ((source.workflow ?? "").includes("--unstable-detect-cjs")) failures.push("workflow relies on unstable CommonJS detection");
+  need("workflow", "deno-version: v2.9.5", "Deno 2.9.5 workflow pin");
+  need("workflow", "supabase/setup-cli@v1", "Supabase CLI setup");
+  need("workflow", "version: 2.98.2", "Supabase CLI 2.98.2 workflow pin");
   need("workflow", "issue-1773-reservation-stay-ingest.mjs --self-test", "gate self-test wiring");
   need("invariant", "#1773 DRAFT extension", "DRAFT invariant extension");
   return failures;
 }
 
 function readSources() {
-  return Object.fromEntries(Object.entries(files).map(([key, file]) => [key, fs.readFileSync(path.join(root, file), "utf8")]));
+  const source = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, fs.readFileSync(path.join(root, file), "utf8")]));
+  const adapterPath = path.join(root, files.adapter);
+  source.adapterKind = fs.lstatSync(adapterPath).isSymbolicLink() ? "symlink" : "regular";
+  source.adapterTarget = fs.readlinkSync(adapterPath);
+  source.adapterMode = execFileSync("git", ["ls-files", "-s", files.adapter], { cwd: root, encoding: "utf8" }).trim().split(/\s+/)[0];
+  source.adapterBytes = fs.readFileSync(adapterPath, "utf8");
+  return source;
 }
 
 function selfTest(source) {
@@ -75,7 +98,13 @@ function selfTest(source) {
     ["suppression", { ...source, migration: source.migration.replaceAll("biz_record_brand_person_suppression", "removed_suppression_owner") }],
     ["ACL", { ...source, migration: source.migration.replace("REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source_derived(text,uuid,text) FROM PUBLIC,anon,authenticated", "REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source_derived(text,uuid,text) FROM PUBLIC,anon") }],
     ["adapter", { ...source, worker: source.worker.replaceAll("resolveUserPhoneE164(", "copiedPhoneConverter(") }],
-    ["manifest import", { ...source, worker: source.worker.replace('import "../../../packages/card-identity/package.json" with { type: "json" };\n', "") }],
+    ["adapter import", { ...source, worker: source.worker.replace('import phoneAdapter from "../../../packages/card-identity/phone.cjs";', 'import phoneAdapter from "../../../packages/card-identity/phone.js";') }],
+    ["JSON workaround", { ...source, worker: 'import "../../../packages/card-identity/package.json" with { type: "json" };\n' + source.worker }],
+    ["symlink kind", { ...source, adapterKind: "regular" }],
+    ["symlink target", { ...source, adapterTarget: "copied-phone.js" }],
+    ["Git mode", { ...source, adapterMode: "100644" }],
+    ["adapter bytes", { ...source, adapterBytes: source.adapterBytes + "\n// drift" }],
+    ["CLI upload proof", { ...source, artifactTest: source.artifactTest.replace("Supabase CLI did not upload canonical phone.js bytes as phone.cjs", "unverified upload bytes") }],
     ["union", { ...source, worker: source.worker.replace('| "stay_reservation"', '| "reservation"') }],
     ["revision", { ...source, migration: source.migration.replace("'phoneCountryIso',NEW.guest_phone_country_iso", "'status',NEW.status") }],
     ["backfill", { ...source, migration: source.migration.replace("FROM public.reservations r ON CONFLICT DO NOTHING", "FROM public.reservations r WHERE false ON CONFLICT DO NOTHING") }],
@@ -89,7 +118,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const source = readSources();
   if (process.argv.includes("--self-test")) {
     selfTest(source);
-    console.log("#1773 reservation/Stay ingest self-test PASS (12 true mutations)");
+    console.log("#1773 reservation/Stay ingest self-test PASS (18 true mutations)");
   } else {
     const failures = inspect(source);
     if (failures.length) { console.error(failures.join("\n")); process.exit(1); }
