@@ -9,7 +9,12 @@ const repoRoot = resolve(packageRoot, "..");
 const buildDir = resolve(packageRoot, process.env.ISSUE_922_WEB_BUILD ?? "dist");
 const INVITE_SOURCE = "/accept-brand-invitation";
 const INVITE_DESTINATION = "/accept-brand-invitation-entry";
-const SPA_CATCHALL = "/((?!_expo/static/|accept-brand-invitation-entry$).*)";
+// #1876 F-2: `assets/` joined the alternation. This guard hard-pins the shipped
+// catch-all string, so the literal has to track `vercel.json` or the #922 gate
+// reds on an unrelated change. The property #922 owns — the exact invitation
+// entry is excluded and nothing else about the SPA fallback moved — is asserted
+// by the matrix below and is unchanged.
+const SPA_CATCHALL = "/((?!_expo/static/|assets/|accept-brand-invitation-entry$).*)";
 const eagerRolePatterns = [
   ["Metro runtime", /^(?:__expo-metro-)?runtime(?:-.+)?\.js$/],
   ["common", /^(?:__)?common(?:-.+)?\.js$/],
@@ -37,6 +42,9 @@ function validateCatchallMatcher(source) {
   const matrix = [
     ["/_expo/static/a.js", false],
     ["/_expo/staticish/a.js", true],
+    // #1876 F-2 — the second machine-fetched build-output tree.
+    ["/assets/a.png", false],
+    ["/assetsish/a.png", true],
     [INVITE_DESTINATION, false],
     [`${INVITE_DESTINATION}/`, true],
     [`${INVITE_DESTINATION}-evil`, true],

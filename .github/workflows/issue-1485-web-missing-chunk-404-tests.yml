@@ -18,6 +18,16 @@ name: "Issue #1485 web missing chunk 404"
 # too: the "one decision record, never a navigation" contract has to break the
 # PR, not production.
 #
+# ISSUE #1876 EXTENSION. #1485 fixed `/_expo/static/` and filed the rest as
+# discovery D-1. Eight days later `/assets/**` was still answering `200
+# text/html · x-vercel-cache: HIT` for a missing file on production, and the
+# recovery script's cooldown-suppression branch was still a bare `console.warn`
+# that leaves the user on a blank page when the entry bundle is the missing
+# file (no React, therefore no ErrorBoundary behind it). The two #1876 suites
+# below guard both: the widened catch-all exclusion, and the terminal
+# `#mingla-boot-error` card plus the false-positive guard that stops it
+# appearing over a working app. Same two files, same gate.
+#
 # WHY NOT THE STRICT-GREP BATCH. The #1485 SPEC holds
 # `.github/scripts/strict-grep/**` and `MANIFEST.json` on the DO-NOT-TOUCH list:
 # adding a gate would put this PR in the `expectedStrictGrepMjsFiles` /
@@ -43,6 +53,9 @@ on:
       - "mingla-business/__tests__/issue1485_deep_links_never_404.tester.adversarial.test.ts"
       - "mingla-business/__tests__/issue1485_p2_1_one_chunk_recovery_owner.test.ts"
       - "mingla-business/__tests__/issue1485_p2_1_recovery_never_navigates.tester.adversarial.test.ts"
+      - "mingla-business/__tests__/issue1876_assets_excluded_from_catch_all.test.ts"
+      - "mingla-business/__tests__/issue1876_terminal_recovery_ui.test.ts"
+      - "mingla-business/__tests__/issue1876_false_positive_and_reachability.tester.adversarial.test.ts"
       - "mingla-business/src/diagnostics/__tests__/chunkReloadGuard.issue1485.test.ts"
       - "mingla-business/__tests__/orch1003.assetCaching.adversarial.test.ts"
       - "mingla-business/__tests__/authCallbackStatic.test.ts"
@@ -61,6 +74,9 @@ on:
       - "mingla-business/__tests__/issue1485_deep_links_never_404.tester.adversarial.test.ts"
       - "mingla-business/__tests__/issue1485_p2_1_one_chunk_recovery_owner.test.ts"
       - "mingla-business/__tests__/issue1485_p2_1_recovery_never_navigates.tester.adversarial.test.ts"
+      - "mingla-business/__tests__/issue1876_assets_excluded_from_catch_all.test.ts"
+      - "mingla-business/__tests__/issue1876_terminal_recovery_ui.test.ts"
+      - "mingla-business/__tests__/issue1876_false_positive_and_reachability.tester.adversarial.test.ts"
       - "mingla-business/src/diagnostics/__tests__/chunkReloadGuard.issue1485.test.ts"
       - "mingla-business/__tests__/orch1003.assetCaching.adversarial.test.ts"
       - "mingla-business/__tests__/authCallbackStatic.test.ts"
@@ -106,6 +122,9 @@ jobs:
           __tests__/issue1485_deep_links_never_404.tester.adversarial.test.ts
           __tests__/issue1485_p2_1_one_chunk_recovery_owner.test.ts
           __tests__/issue1485_p2_1_recovery_never_navigates.tester.adversarial.test.ts
+          __tests__/issue1876_assets_excluded_from_catch_all.test.ts
+          __tests__/issue1876_terminal_recovery_ui.test.ts
+          __tests__/issue1876_false_positive_and_reachability.tester.adversarial.test.ts
           src/diagnostics/__tests__/chunkReloadGuard.issue1485.test.ts
           __tests__/orch1003.assetCaching.adversarial.test.ts
           __tests__/authCallbackStatic.test.ts

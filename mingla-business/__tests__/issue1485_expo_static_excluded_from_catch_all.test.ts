@@ -47,16 +47,24 @@ const vercel = JSON.parse(
 // [TEST-MOD-APPROVED #922] The prior literal encoded superseded routing truth.
 // The protected #1485 asset boundary is unchanged, and the additional exact
 // entry exclusion prevents the later SPA rewrite from consuming #922's file.
+// [TEST-MOD-APPROVED #1876] The literal moves again: #1876 F-2 extends the SAME
+// exclusion to `/assets/`, which was #1485's own deferred discovery D-1 and was
+// still answering `200 text/html` for a missing file on production on
+// 2026-08-11. Only the alternation grew — `_expo/static/` is still the FIRST
+// alternate, the form is still the bare (non-`^`-anchored) one, the catch-all is
+// still LAST, the destination is still "/", and every assertion below is
+// unchanged in strength. Nothing this suite protects was weakened.
 const CATCH_ALL_SOURCE =
-  "/((?!_expo/static/|accept-brand-invitation-entry$).*)";
+  "/((?!_expo/static/|assets/|accept-brand-invitation-entry$).*)";
 
 /**
  * The exact regex `@vercel/routing-utils@6.4.0` (path-to-regexp@6.1.0) compiles
  * `CATCH_ALL_SOURCE` to. Verified in the #1485 INVESTIGATION by running the real
  * compiler over the real config.
  */
+// [TEST-MOD-APPROVED #1876] Same one-literal move as CATCH_ALL_SOURCE above.
 const COMPILED_CATCH_ALL_SOURCE =
-  "^(?:/((?!_expo/static/|accept-brand-invitation-entry$).*))$";
+  "^(?:/((?!_expo/static/|assets/|accept-brand-invitation-entry$).*))$";
 
 const shippedCatchAll = vercel.rewrites[vercel.rewrites.length - 1];
 

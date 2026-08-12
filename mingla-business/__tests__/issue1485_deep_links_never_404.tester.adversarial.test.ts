@@ -120,8 +120,13 @@ const COMPILED_SRC: Record<string, string> = {
   // truth. The exhaustive #1485 oracle now preserves the exact invitation
   // owner while retaining the original static-asset exclusion unchanged.
   "/accept-brand-invitation": "^/accept-brand-invitation$",
-  "/((?!_expo/static/|accept-brand-invitation-entry$).*)":
-    "^(?:/((?!_expo/static/|accept-brand-invitation-entry$).*))$",
+  // [TEST-MOD-APPROVED #1876] #1876 F-2 adds `assets/` to the same alternation
+  // (#1485's deferred discovery D-1). This table is a lookup keyed by the
+  // SHIPPED source, so the key has to track it or `resolveForBrowser` stops
+  // finding the catch-all and A.3 reports every route as a 404. The compiled
+  // form is the same `^(?:…)$` wrapper with the same bare alternation.
+  "/((?!_expo/static/|assets/|accept-brand-invitation-entry$).*)":
+    "^(?:/((?!_expo/static/|assets/|accept-brand-invitation-entry$).*))$",
 };
 
 /**
@@ -236,8 +241,9 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
     // getTransformedRoutes from @vercel/routing-utils) or the chain simulation
     // below would silently stop covering it.
     expect(unmapped).toEqual([]);
+    // [TEST-MOD-APPROVED #1876] Literal tracks the shipped alternation (F-2).
     expect(COMPILED_SRC[catchAll.source]).toBe(
-      "^(?:/((?!_expo/static/|accept-brand-invitation-entry$).*))$",
+      "^(?:/((?!_expo/static/|assets/|accept-brand-invitation-entry$).*))$",
     );
   });
 
@@ -258,8 +264,9 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
       source: "/og/s/:code/v:version-r2.jpg",
       destination: "/api/content-share-image?code=:code&version=:version",
     });
+    // [TEST-MOD-APPROVED #1876] Literal tracks the shipped alternation (F-2).
     expect(catchAll.source).toBe(
-      "/((?!_expo/static/|accept-brand-invitation-entry$).*)",
+      "/((?!_expo/static/|assets/|accept-brand-invitation-entry$).*)",
     );
   });
 
@@ -343,11 +350,37 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
 
   it("A.6 — no route in app/ can ever be shadowed by the exclusion", () => {
     // The exclusion is a prefix rule. If a route file ever produced a URL under
-    // `/_expo/static/`, that route would 404 in production. Derived, so a future
-    // `app/_expo/...` directory fails here instead of in production.
-    const shadowed = DERIVED_URLS.filter((u) => u.startsWith("/_expo/static/"));
+    // an excluded prefix, that route would 404 in production. Derived, so a
+    // future `app/_expo/...` directory fails here instead of in production.
+    //
+    // [TEST-MOD-APPROVED #1876] WIDENED. This used to hard-code the single
+    // literal `/_expo/static/`, so when `assets/` joined the alternation in
+    // #1876 the guard's coverage silently NARROWED in relative terms: a future
+    // `app/assets/…` route would have 404'd in production with this suite green.
+    // The alternates are now read out of the SHIPPED alternation itself, so
+    // alternate number four is covered the day it lands rather than the day it
+    // breaks. No assertion was weakened — the original `_expo/static/` case is
+    // still checked, now as one member of a derived set.
+    const alternates = (/\(\?!([^)]+)\)/.exec(catchAll.source)?.[1] ?? "").split("|");
+    expect(alternates.length).toBeGreaterThanOrEqual(3); // never silently empty
+    expect(alternates).toContain("_expo/static/"); // the original guard, intact
+
+    const shadowed: string[] = [];
+    for (const alternate of alternates) {
+      // `foo/` is a DIRECTORY PREFIX and swallows the whole subtree under it.
+      // `foo$` is an EXACT match and can only ever collide with that one URL.
+      const exact = alternate.endsWith("$");
+      const bare = alternate.replace(/\$$/, "");
+      const hits = (value: string): boolean =>
+        exact ? value === bare : value.startsWith(bare);
+      shadowed.push(
+        ...DERIVED_URLS.filter((u) => hits(u.replace(/^\//, ""))).map(
+          (u) => `${alternate} shadows ${u}`,
+        ),
+        ...ROUTE_FILES.filter((f) => hits(f)).map((f) => `${alternate} shadows app/${f}`),
+      );
+    }
     expect(shadowed).toEqual([]);
-    expect(ROUTE_FILES.filter((f) => f.startsWith("_expo/"))).toEqual([]);
   });
 });
 
@@ -469,9 +502,17 @@ const BOUNDARY_ROWS: { pathname: string; caught: boolean; why: string }[] = [
     why: "a fragment never reaches the server, but must not 404 even if it did",
   },
   {
+    // [TEST-MOD-APPROVED #1876] This row is the DEFECT #1876 F-2 fixes, and it
+    // flips from `caught: true` to `caught: false`. #1485 recorded it as
+    // discovery D-1 and deliberately left the /assets tree shell-served; it was
+    // still returning `200 text/html · x-vercel-cache: HIT` for a missing file
+    // on production on 2026-08-11 — an edge-cached lie about a missing font or
+    // image. #1876 excludes `assets/` from the catch-all so it 404s honestly.
+    // The row is retained, inverted, NOT deleted: its coverage is strictly
+    // stronger now, because a revert of the exclusion re-reds this suite.
     pathname: "/assets/assets/google_icon.abc123.png",
-    caught: true,
-    why: "INVESTIGATION D-1 — the /assets tree is deliberately still shell-served; out of scope for #1485",
+    caught: false,
+    why: "#1876 F-2 (= #1485 discovery D-1) — the /assets tree is now excluded, so a missing file returns a real 404 instead of the SPA shell",
   },
 ];
 
@@ -512,15 +553,20 @@ describe("#1485 T2/B — boundary and near-miss paths behave exactly as intended
     expect(catchAll.source).toContain("_expo/static/");
     const excluded = /\(\?!([^)]+)\)/.exec(catchAll.source)?.[1];
     const alternatives = excluded?.split("|");
+    // [TEST-MOD-APPROVED #1876] `assets/` joins the alternation (F-2 = #1485's
+    // deferred D-1). `_expo/static/` remains the FIRST alternate, which is what
+    // the prefix-drift assertion below is actually keyed on, and the exhaustive
+    // list is still exhaustive — it grew by exactly one known entry.
     expect(alternatives).toEqual([
       "_expo/static/",
+      "assets/",
       "accept-brand-invitation-entry$",
     ]);
     expect(alternatives?.[0]).toBe(
       vercel.headers.find((header) => header.source === "/_expo/static/(.*)")
         ?.source.replace(/^\//, "").replace("(.*)", ""),
     );
-    expect(alternatives).toHaveLength(2);
+    expect(alternatives).toHaveLength(3);
     expect(headerSources.every((s) => s === s.toLowerCase())).toBe(true);
   });
 
