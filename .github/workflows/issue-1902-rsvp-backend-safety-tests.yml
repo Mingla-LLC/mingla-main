@@ -49,7 +49,14 @@ jobs:
       - name: Run independent tester Edge proof when present
         run: |
           test_file="supabase/functions/public-submit-rsvp/__tests__/issue_1902_rsvp_end_guard.tester_adversarial.test.ts"
-          if test -f "$test_file"; then deno test --allow-read "$test_file"; fi
+          if test -f "$test_file"; then
+            deno test --allow-env --allow-net --allow-read --allow-run "$test_file"
+          fi
+          # This invokes the actual public-submit-rsvp HTTP handler in a child
+          # Deno process against a disposable Supabase-compatible HTTP upstream.
+          # The named Deno test must remain present so source-only mapping proof
+          # can never substitute for the required real-handler boundary.
+          grep -Fq "actual public-submit-rsvp HTTP handler" "$test_file"
       - name: Type-check the deployed handler
         run: deno check supabase/functions/public-submit-rsvp/index.ts
 

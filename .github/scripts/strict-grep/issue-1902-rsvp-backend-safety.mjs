@@ -166,6 +166,9 @@ export function violations(files, migrationNames = []) {
       "issue-1902-rsvp-backend-safety.mjs",
       "deno check supabase/functions/public-submit-rsvp/index.ts",
       "Apply every migration in timestamp order",
+      "--allow-run",
+      "--allow-net",
+      'grep -Fq "actual public-submit-rsvp HTTP handler" "$test_file"',
     ]
   ) need(files.workflow ?? "", token, "dedicated blocking workflow", failures);
   forbid(
@@ -264,6 +267,12 @@ function selfTest() {
       "issue_1902_public_event_lifecycle.pg17.test.sql",
       "disabled.sql",
       "pg17",
+    ],
+    [
+      "workflow",
+      'grep -Fq "actual public-submit-rsvp HTTP handler" "$test_file"',
+      'grep -Fq "source-only handler mapping" "$test_file"',
+      "actual public-submit-rsvp HTTP handler",
     ],
   ];
   for (const [key, before, after, expected] of reversions) {
