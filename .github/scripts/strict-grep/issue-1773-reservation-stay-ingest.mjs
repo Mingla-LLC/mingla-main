@@ -41,6 +41,12 @@ export function inspect(source) {
   need("package", '"type": "commonjs"', "CommonJS package type");
   need("sqlTest", "operational update enqueued", "operational no-op regression");
   need("sqlTest", "strict phone spoof was accepted", "anti-spoof regression");
+  need("sqlTest", "unsupported ISO phone spoof was accepted", "unsupported-ISO regression");
+  need("sqlTest", "lowercase ISO phone spoof was accepted", "lowercase-ISO regression");
+  need("sqlTest", "twelfth failure did not become dead", "retry/dead regression");
+  need("sqlTest", "suppression retry/replay failed", "suppression retry regression");
+  need("sqlTest", "old source path % regressed", "four-kind legacy resolver regression");
+  need("sqlTest", "backfill replay duplicated work", "behavioral backfill regression");
   need("workflow", "issue_1773_reservation_stay_ingest.test.sql", "SQL workflow registration");
   need("workflow", "--unstable-detect-cjs", "CommonJS runtime graph flag");
   need("workflow", "issue-1773-reservation-stay-ingest.mjs --self-test", "gate self-test wiring");
