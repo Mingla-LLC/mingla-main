@@ -62,9 +62,10 @@ BEGIN
     RAISE EXCEPTION 'issue_1810_provider_hook_was_implemented_upstream';
   END IF;
 
-  IF has_function_privilege('anon','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid)','EXECUTE')
-     OR NOT has_function_privilege('authenticated','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid)','EXECUTE')
-     OR NOT has_function_privilege('service_role','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid)','EXECUTE')
+  -- [TEST-MOD-APPROVED #1858] Exact privilege signature follows the sole replacement RPC.
+  IF has_function_privilege('anon','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid,uuid)','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid,uuid)','EXECUTE')
+     OR NOT has_function_privilege('service_role','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid,uuid)','EXECUTE')
      OR has_function_privilege('authenticated','public.biz_offering_guest_roster_export_rows(uuid)','EXECUTE')
      OR NOT has_function_privilege('service_role','public.biz_offering_guest_roster_export_rows(uuid)','EXECUTE') THEN
     RAISE EXCEPTION 'issue_1810_export_grant_boundary_failed';

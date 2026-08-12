@@ -8368,6 +8368,14 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ---
 
+## DRAFT — issue #1858 (explicit Brand People export target)
+
+### I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 (DRAFT)
+
+- A brand-book export request must carry one explicit active brand ID; the database must authorize that exact brand through `biz_brand_effective_rank >= brand_admin` before any job/audit mutation; ownership-order fallback and brandless brand-book overloads are forbidden.
+- **Enforced by:** `20270326001858_issue_1858_explicit_brand_export.sql`, the Brand People export Edge request boundary, its PostgreSQL and Deno regressions, and `.github/scripts/strict-grep/issue-1858-explicit-brand-export.mjs`.
+- **Established:** DRAFT at issue #1858 IMPLEMENT. The orchestrator may activate it only after independent tester PASS, merge, and production migration/Edge verification.
+
 # I-PROPOSED-1950-APP-READINESS-ISOLATED-NO-WRITE (DRAFT)
 
 App-download readiness is server-owned by the exact `(app_key, os, provider)` cell across all twenty cells. Evidence at or beyond its 15-minute `stale_at` boundary can never be Ready; readiness checks may use only allowlisted read operations (plus Meta's named no-object validate-only authority); and native campaign creation remains programmatically disabled while the existing web campaign path remains unchanged. Enforced by the issue #1950 migration/shared/edge/Admin suites and `.github/workflows/issue-1950-app-readiness-tests.yml`; activate only after independent verification at CLOSE.

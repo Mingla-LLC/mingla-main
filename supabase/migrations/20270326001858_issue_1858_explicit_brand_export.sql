@@ -1,0 +1,80 @@
+-- Issue #1858: make brand-book exports target an explicit brand.
+DROP FUNCTION public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid);
+
+CREATE FUNCTION public.biz_export_brand_people(
+  p_scope text,p_event_id uuid DEFAULT NULL,p_filter text DEFAULT 'all',p_search text DEFAULT NULL,
+  p_sort text DEFAULT 'action_priority',p_filter_snapshot jsonb DEFAULT '{}'::jsonb,
+  p_client_request_id uuid DEFAULT gen_random_uuid(),p_brand_id uuid DEFAULT NULL
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,extensions,pg_temp
+AS $function$
+DECLARE v_brand uuid; v_actor uuid:=auth.uid(); v_job public.brand_people_export_jobs%ROWTYPE;
+  v_snapshot jsonb; v_hash text; v_search text;
+BEGIN
+  v_search:=lower(regexp_replace(btrim(COALESCE(p_search,'')),'[[:space:]]+',' ','g'));
+  IF p_scope NOT IN ('brand_book','offering_guest_roster')
+     OR (p_scope='brand_book' AND (p_brand_id IS NULL OR p_event_id IS NOT NULL
+       OR p_filter NOT IN ('all','reachable','suppressed')))
+     OR (p_scope='offering_guest_roster' AND (p_event_id IS NULL OR p_brand_id IS NOT NULL
+       OR p_filter NOT IN ('all','rsvpd','ticketed','not_yet','suppressed','needs_attention',
+       'no_response','confirmed','checked_in','not_checked_in','delivery_failed','removed',
+       'going','maybe','awaiting_approval','waitlisted','declined','denied','bought_ticket',
+       'refunded','cancelled','transferred')))
+     OR p_sort NOT IN ('action_priority','name_asc','name_desc','recent_first')
+     OR length(v_search)>200 OR v_search~E'[\\x00-\\x1F\\x7F]'
+     OR p_filter_snapshot IS NULL OR jsonb_typeof(p_filter_snapshot)<>'object'
+     OR p_filter_snapshot<>'{}'::jsonb THEN
+    RAISE EXCEPTION 'export_filter_invalid' USING ERRCODE='22023';
+  END IF;
+
+  IF p_scope='offering_guest_roster' THEN
+    SELECT brand_id INTO v_brand FROM public.events WHERE id=p_event_id AND deleted_at IS NULL;
+  ELSE
+    SELECT b.id INTO v_brand FROM public.brands b WHERE b.id=p_brand_id AND b.deleted_at IS NULL;
+  END IF;
+  IF v_actor IS NULL OR v_brand IS NULL
+     OR public.biz_brand_effective_rank(v_brand,v_actor)<public.biz_role_rank('brand_admin') THEN
+    RAISE EXCEPTION 'brand_people_export_forbidden' USING ERRCODE='42501';
+  END IF;
+  IF p_scope='offering_guest_roster'
+     AND NOT COALESCE((public.biz_guest_roster_rollout(v_brand)->>'exportEnabled')::boolean,false) THEN
+    RAISE EXCEPTION 'guest_roster_export_disabled' USING ERRCODE='42501';
+  END IF;
+
+  v_snapshot:=jsonb_build_object('filter',p_filter,'search',v_search,'sort',p_sort);
+  v_hash:=encode(extensions.digest(convert_to(v_snapshot::text,'UTF8'),'sha256'),'hex');
+  SELECT * INTO v_job FROM public.brand_people_export_jobs
+  WHERE brand_id=v_brand AND client_request_id=p_client_request_id;
+  IF FOUND THEN
+    IF v_job.filter_hash<>v_hash OR v_job.export_kind<>p_scope
+       OR v_job.scope_id IS DISTINCT FROM p_event_id THEN
+      RAISE EXCEPTION 'idempotency_key_reused' USING ERRCODE='23505';
+    END IF;
+  ELSE
+    INSERT INTO public.brand_people_export_jobs(
+      brand_id,export_kind,scope_id,filter_json,filter_hash,client_request_id,requested_by
+    ) VALUES(v_brand,p_scope,p_event_id,v_snapshot,v_hash,p_client_request_id,v_actor)
+    RETURNING * INTO v_job;
+  END IF;
+  RETURN jsonb_build_object('jobId',v_job.id,'status',v_job.status,'exportableCount',v_job.row_count,
+    'omittedPersonCount',v_job.omitted_person_count,'omittedFieldCount',v_job.omitted_field_count,
+    'result',CASE WHEN v_job.status='ready' THEN jsonb_build_object(
+      'fileName',regexp_replace(v_job.storage_path,'^.*/',''),'expiresAt',v_job.expires_at
+    ) ELSE NULL END);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid,uuid) TO authenticated,service_role;
+
+DO $postcondition$
+BEGIN
+  IF to_regprocedure('public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid)') IS NOT NULL
+     OR to_regprocedure('public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid,uuid)') IS NULL
+     OR has_function_privilege('anon','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid,uuid)','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid,uuid)','EXECUTE')
+     OR NOT has_function_privilege('service_role','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid,uuid)','EXECUTE') THEN
+    RAISE EXCEPTION 'issue_1858_signature_or_acl_postcondition_failed';
+  END IF;
+END;
+$postcondition$;

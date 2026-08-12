@@ -8,6 +8,8 @@ const headers = {
   "content-type": "application/json",
   "cache-control": "no-store",
 };
+const CANONICAL_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function json(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers });
 }
@@ -91,16 +93,60 @@ export async function handler(request: Request): Promise<Response> {
   }
   const input = body as Record<string, unknown>;
   if (input.operation === "status") {
-    if (typeof input.jobId !== "string") return json({ error: "job_id_required" }, 400);
-    const { data, error } = await user.rpc("biz_get_brand_people_export_job", { p_job_id: input.jobId });
+    if (typeof input.jobId !== "string") {
+      return json({ error: "job_id_required" }, 400);
+    }
+    const { data, error } = await user.rpc("biz_get_brand_people_export_job", {
+      p_job_id: input.jobId,
+    });
     if (error) return json({ error: "forbidden" }, 403);
-    const job = data as { jobId: string; status: string; result: { fileName: string; expiresAt: string } | null; safeErrorCode: string | null };
-    if (job.result === null) return json(job as unknown as Record<string, unknown>);
-    const { data: storagePath, error: storageError } = await service.rpc("biz_get_brand_people_export_storage", { p_job_id: job.jobId });
-    if (storageError || typeof storagePath !== "string") return json({ error: "export_storage_unavailable" }, 500);
-    const { data: signed, error: signedError } = await service.storage.from("brand-people-exports").createSignedUrl(storagePath, 60);
-    if (signedError || signed === null) return json({ error: "signed_url_failed" }, 500);
-    return json({ ...job, signedUrl: signed.signedUrl, signedUrlExpiresInSeconds: 60 });
+    const job = data as {
+      jobId: string;
+      status: string;
+      result: { fileName: string; expiresAt: string } | null;
+      safeErrorCode: string | null;
+    };
+    if (job.result === null) {
+      return json(job as unknown as Record<string, unknown>);
+    }
+    const { data: storagePath, error: storageError } = await service.rpc(
+      "biz_get_brand_people_export_storage",
+      { p_job_id: job.jobId },
+    );
+    if (storageError || typeof storagePath !== "string") {
+      return json({ error: "export_storage_unavailable" }, 500);
+    }
+    const { data: signed, error: signedError } = await service.storage.from(
+      "brand-people-exports",
+    ).createSignedUrl(storagePath, 60);
+    if (signedError || signed === null) {
+      return json({ error: "signed_url_failed" }, 500);
+    }
+    return json({
+      ...job,
+      signedUrl: signed.signedUrl,
+      signedUrlExpiresInSeconds: 60,
+    });
+  }
+  if (input.scope === "brand_book") {
+    if (input.brandId === undefined || input.brandId === null) {
+      return json({ error: "brand_id_required" }, 400);
+    }
+    if (
+      typeof input.brandId !== "string" || !CANONICAL_UUID.test(input.brandId)
+    ) {
+      return json({ error: "brand_id_invalid" }, 400);
+    }
+    if (input.eventId !== undefined && input.eventId !== null) {
+      return json({ error: "export_request_invalid" }, 400);
+    }
+  } else if (input.scope === "offering_guest_roster") {
+    if (
+      typeof input.eventId !== "string" ||
+      (input.brandId !== undefined && input.brandId !== null)
+    ) {
+      return json({ error: "export_request_invalid" }, 400);
+    }
   }
   const { data: jobData, error: jobError } = await user.rpc(
     "biz_export_brand_people",
@@ -112,6 +158,7 @@ export async function handler(request: Request): Promise<Response> {
       p_sort: input.sort ?? "action_priority",
       p_filter_snapshot: input.filterSnapshot ?? {},
       p_client_request_id: input.clientRequestId,
+      p_brand_id: input.brandId ?? null,
     },
   );
   if (jobError) {
