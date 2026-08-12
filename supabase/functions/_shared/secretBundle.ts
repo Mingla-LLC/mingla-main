@@ -17,7 +17,12 @@ export type DeliveryFlagField =
 export type PaymentOperationFlagField =
   | "payout_hold_onboard_flip"
   | "payout_release_execute"
-  | "source_refunds_post_disabled";
+  | "source_refunds_post_disabled"
+  | "paystack_payout_hold_onboard_flip";
+type LegacyPaymentOperationFlagField = Exclude<
+  PaymentOperationFlagField,
+  "paystack_payout_hold_onboard_flip"
+>;
 export type AlertRecipientField =
   | "api_health"
   | "stripe_disputes"
@@ -67,7 +72,7 @@ const DELIVERY_FLAG_LEGACY_NAMES: Record<DeliveryFlagField, string> = {
   "sms_live_enabled.us": "SMS_LIVE_ENABLED_US",
 };
 const PAYMENT_OPERATION_FLAG_LEGACY_NAMES: Record<
-  PaymentOperationFlagField,
+  LegacyPaymentOperationFlagField,
   string
 > = {
   payout_hold_onboard_flip: "PAYOUT_HOLD_ONBOARD_FLIP",
@@ -227,10 +232,20 @@ function parseSenderBundle(
 }
 
 type DeliveryFlags = {
-  schema_version: 1 | 2;
+  schema_version: 1;
   marketing_send_live_enabled: boolean;
   sms_live_enabled: { ng: boolean; us: boolean };
-  payment_operations?: Record<PaymentOperationFlagField, boolean>;
+  payment_operations?: undefined;
+} | {
+  schema_version: 2;
+  marketing_send_live_enabled: boolean;
+  sms_live_enabled: { ng: boolean; us: boolean };
+  payment_operations: Record<LegacyPaymentOperationFlagField, boolean>;
+} | {
+  schema_version: 3;
+  marketing_send_live_enabled: boolean;
+  sms_live_enabled: { ng: boolean; us: boolean };
+  payment_operations: Record<PaymentOperationFlagField, boolean>;
 };
 
 function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
@@ -245,7 +260,7 @@ function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
   }
   if (!isRecord(parsed)) return { ok: false, reason: "not_object" };
   const version = parsed.schema_version;
-  if (version !== 1 && version !== 2) {
+  if (version !== 1 && version !== 2 && version !== 3) {
     return {
       ok: false,
       reason: "schema_version",
@@ -256,7 +271,7 @@ function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
     "schema_version",
     "marketing_send_live_enabled",
     "sms_live_enabled",
-    ...(version === 2 ? ["payment_operations"] : []),
+    ...(version === 2 || version === 3 ? ["payment_operations"] : []),
   ]);
   if (Object.keys(parsed).some((field) => !allowed.has(field))) {
     return { ok: false, reason: "unknown_field", field: "unknown" };
@@ -265,7 +280,7 @@ function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
     const field of [
       "marketing_send_live_enabled",
       "sms_live_enabled",
-      ...(version === 2 ? ["payment_operations"] : []),
+      ...(version === 2 || version === 3 ? ["payment_operations"] : []),
     ]
   ) {
     if (!Object.hasOwn(parsed, field)) {
@@ -294,9 +309,10 @@ function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
     return { ok: false, reason: "wrong_type", field: "sms_live_enabled" };
   }
   let paymentOperations:
+    | Record<LegacyPaymentOperationFlagField, boolean>
     | Record<PaymentOperationFlagField, boolean>
     | undefined;
-  if (version === 2) {
+  if (version === 2 || version === 3) {
     const operations = parsed.payment_operations;
     if (!isRecord(operations)) {
       return {
@@ -309,6 +325,9 @@ function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
       "payout_hold_onboard_flip",
       "payout_release_execute",
       "source_refunds_post_disabled",
+      ...(version === 3
+        ? ["paystack_payout_hold_onboard_flip" as const]
+        : []),
     ] as const;
     if (
       Object.keys(operations).some((field) =>
@@ -342,15 +361,39 @@ function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
       payout_release_execute: operations.payout_release_execute as boolean,
       source_refunds_post_disabled: operations
         .source_refunds_post_disabled as boolean,
+      ...(version === 3
+        ? {
+          paystack_payout_hold_onboard_flip:
+            operations.paystack_payout_hold_onboard_flip as boolean,
+        }
+        : {}),
+    };
+  }
+  const deliveryValues = {
+    marketing_send_live_enabled: parsed.marketing_send_live_enabled,
+    sms_live_enabled: { ng: sms.ng, us: sms.us },
+  };
+  if (version === 1) {
+    return { ok: true, value: { schema_version: 1, ...deliveryValues } };
+  }
+  if (version === 2) {
+    return {
+      ok: true,
+      value: {
+        schema_version: 2,
+        ...deliveryValues,
+        payment_operations:
+          paymentOperations as Record<LegacyPaymentOperationFlagField, boolean>,
+      },
     };
   }
   return {
     ok: true,
     value: {
-      schema_version: version,
-      marketing_send_live_enabled: parsed.marketing_send_live_enabled,
-      sms_live_enabled: { ng: sms.ng, us: sms.us },
-      payment_operations: paymentOperations,
+      schema_version: 3,
+      ...deliveryValues,
+      payment_operations:
+        paymentOperations as Record<PaymentOperationFlagField, boolean>,
     },
   };
 }
@@ -500,7 +543,7 @@ function parseLegacyBoolean(value: string | undefined): boolean | undefined {
 }
 
 export function resolvePaymentOperationFlagValue(
-  field: PaymentOperationFlagField,
+  field: LegacyPaymentOperationFlagField,
   legacyName: string,
   getEnv: SecretEnvGetter = defaultGetEnv,
 ): boolean | undefined {
@@ -512,11 +555,42 @@ export function resolvePaymentOperationFlagValue(
   const bundle = "MINGLA_DELIVERY_FLAGS_JSON";
   const raw = getEnv(bundle);
   const result = raw ? parseDeliveryBundle(raw) : null;
-  if (result?.ok && result.value.schema_version === 2) {
-    return result.value.payment_operations?.[field];
+  if (
+    result?.ok &&
+    (result.value.schema_version === 2 || result.value.schema_version === 3)
+  ) {
+    return result.value.payment_operations[field];
   }
   const legacy = fallback(bundle, field, legacyName, result, getEnv);
   return parseLegacyBoolean(legacy);
+}
+
+/**
+ * Bundle-only Paystack onboarding authority. Deliberately has no legacy-name
+ * parameter: a direct fallback could couple a new Nigerian brand to Stripe's
+ * already-live onboarding switch and stamp the merchant prematurely.
+ */
+export function resolvePaystackPayoutHoldOnboardFlip(
+  getEnv: SecretEnvGetter = defaultGetEnv,
+): boolean {
+  const bundle = "MINGLA_DELIVERY_FLAGS_JSON";
+  const raw = getEnv(bundle);
+  const result = raw ? parseDeliveryBundle(raw) : null;
+  if (result?.ok) {
+    return result.value.schema_version === 3
+      ? result.value.payment_operations.paystack_payout_hold_onboard_flip
+      : false;
+  }
+  if (result && !result.ok) {
+    emitDiagnostic(
+      "secret_bundle_invalid",
+      bundle,
+      result.reason,
+      result.field,
+      result.schemaVersion,
+    );
+  }
+  return false;
 }
 
 export function resolveAlertRecipientValue(

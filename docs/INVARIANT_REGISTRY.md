@@ -8108,6 +8108,26 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Established:** DRAFT at issue #1815 IMPLEMENT 2026-08-10. Flips ACTIVE only after
   independent tester PASS and CLOSE.
 
+## DRAFT — issue #1903 (Paystack onboarding auto-stamp remains independently dark)
+
+### I-PROPOSED-1903-PAYSTACK-ONBOARD-STAMP-DARK-SEPARATION (DRAFT)
+
+- **Rule:** Paystack onboarding auto-stamp has an independent bundle-only strict boolean;
+  compatibility is deployed before schema-v3 false is installed; activation is a separate
+  post-#1845 operation. The only automatic stamp boundary is successful brand
+  `create_subaccount` after the rail-defining brand write.
+- **Enforcement:** the #1903 resolver and onboarding tests, the #1203/#1437 strict gates, the
+  blocking compatibility workflow, the graph-derived exact 16-function deploy/source/JWT
+  proof, and the value-blind post-mutation comparison.
+- **Regression:** implementor `issue_1903_delivery_bundle_v3.test.ts` and
+  `issue_1903_paystack_auto_stamp.test.ts`, plus the independent tester guard added during
+  TEST. Sharing Stripe authority, accepting direct Paystack authority, moving the stamp before
+  the brand write, losing failure truth, or omitting a recursive consumer makes blocking CI
+  fail.
+- **Established:** DRAFT at #1903 IMPLEMENT. The orchestrator flips this invariant ACTIVE only
+  at CLOSE after independent tester PASS, exact compatibility rollout proof, and a verified
+  schema-v3 value-blind mutation that leaves Paystack authority false.
+
 ## I-1807-PAYOUT-HOLD-LEDGER-APPEND-ONLY-AND-RAIL-TRUTHFUL — ACTIVE
 
 - **Rule:** `public.payout_hold_cutover_migrations` is the append-only audit trail for
