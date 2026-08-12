@@ -2,9 +2,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const APPROVED_PHONE_JS_GIT_BLOB = "b39b337f1f6d7db400e1c14f783ac4e99a1470bb";
+const APPROVED_PHONE_JS_SHA256 = "455644c187c718a3e61cc38972d3aa90d0d16596f3a2e59b20348eb2ff421e4e";
+const APPROVED_PHONE_JS_BYTES = 7420;
 const files = {
   migration: "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql",
   worker: "supabase/functions/brand-person-ingest-worker/index.ts",
@@ -48,6 +52,9 @@ export function inspect(source) {
   if (source.adapterTarget !== "phone.js") failures.push("phone.cjs symlink target is not exactly phone.js");
   if (source.adapterMode !== "120000") failures.push("phone.cjs Git mode is not 120000");
   if (source.adapterBytes !== source.canonicalAdapter) failures.push("phone.cjs does not resolve to canonical phone.js bytes");
+  if (source.canonicalBlob !== APPROVED_PHONE_JS_GIT_BLOB) failures.push("canonical phone.js Git blob drifted from approved main");
+  if (source.canonicalSha256 !== APPROVED_PHONE_JS_SHA256) failures.push("canonical phone.js byte hash drifted from approved main");
+  if (source.canonicalByteLength !== APPROVED_PHONE_JS_BYTES) failures.push("canonical phone.js byte length drifted from approved main");
   need("artifactTest", 'const expectedUploadedFiles = [', "exact upload allowlist");
   need("artifactTest", 'if (!adapterInfo.isSymlink)', "source symlink assertion");
   need("artifactTest", 'gitMode.output.startsWith("120000 ")', "Git symlink-mode assertion");
@@ -85,10 +92,19 @@ function readSources() {
   source.adapterTarget = fs.readlinkSync(adapterPath);
   source.adapterMode = execFileSync("git", ["ls-files", "-s", files.adapter], { cwd: root, encoding: "utf8" }).trim().split(/\s+/)[0];
   source.adapterBytes = fs.readFileSync(adapterPath, "utf8");
+  source.canonicalBlob = execFileSync("git", ["hash-object", files.canonicalAdapter], { cwd: root, encoding: "utf8" }).trim();
+  source.canonicalSha256 = createHash("sha256").update(source.canonicalAdapter).digest("hex");
+  source.canonicalByteLength = Buffer.byteLength(source.canonicalAdapter);
   return source;
 }
 
+function gitBlobForText(value) {
+  const bytes = Buffer.from(value);
+  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
+}
+
 function selfTest(source) {
+  const driftedCanonical = `${source.canonicalAdapter}\n// one-byte-equivalent packaging drift`;
   const mutations = [
     ["Stay kind", { ...source, migration: source.migration.replaceAll("'reservation','stay_reservation'", "'reservation','reservation'") }],
     ["confirmation", { ...source, migration: source.migration.replaceAll("e.event_type='stay_reservation_confirmed'", "g.state='confirmed'") }],
@@ -104,6 +120,14 @@ function selfTest(source) {
     ["symlink target", { ...source, adapterTarget: "copied-phone.js" }],
     ["Git mode", { ...source, adapterMode: "100644" }],
     ["adapter bytes", { ...source, adapterBytes: source.adapterBytes + "\n// drift" }],
+    ["canonical blob/hash", {
+      ...source,
+      canonicalAdapter: driftedCanonical,
+      adapterBytes: driftedCanonical,
+      canonicalBlob: gitBlobForText(driftedCanonical),
+      canonicalSha256: createHash("sha256").update(driftedCanonical).digest("hex"),
+      canonicalByteLength: Buffer.byteLength(driftedCanonical),
+    }],
     ["CLI upload proof", { ...source, artifactTest: source.artifactTest.replace("Supabase CLI did not upload canonical phone.js bytes as phone.cjs", "unverified upload bytes") }],
     ["union", { ...source, worker: source.worker.replace('| "stay_reservation"', '| "reservation"') }],
     ["revision", { ...source, migration: source.migration.replace("'phoneCountryIso',NEW.guest_phone_country_iso", "'status',NEW.status") }],
@@ -118,7 +142,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const source = readSources();
   if (process.argv.includes("--self-test")) {
     selfTest(source);
-    console.log("#1773 reservation/Stay ingest self-test PASS (18 true mutations)");
+    console.log("#1773 reservation/Stay ingest self-test PASS (19 true mutations)");
   } else {
     const failures = inspect(source);
     if (failures.length) { console.error(failures.join("\n")); process.exit(1); }
