@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 503,
-  "selfTestWiredFloor": 312,
+  "expectedStrictGrepMjsFiles": 504,
+  "selfTestWiredFloor": 313,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -7341,6 +7341,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "issue-1447-rsvp-admission"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1902-rsvp-backend-safety.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-1902-rsvp-backend-safety-tests.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "rsvp-backend-contract"
       ]
     },
     {

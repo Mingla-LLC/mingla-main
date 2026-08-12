@@ -7,6 +7,26 @@
 
 ---
 
+## DRAFT — issue #1914 (elapsed RSVP writes fail closed and RSVP appears in brand Upcoming)
+
+> Registered DRAFT at issue #1914 IMPLEMENT. The orchestrator flips these invariants to ACTIVE only after independent tester PASS, the all-green merge, surgical production migration apply, exact merged Edge deployment, and read-only production verification.
+
+### I-RSVP-WRITE-MASTER-END-GATED (DRAFT)
+
+- **Rule:** Every call to the nine-argument `public.submit_event_rsvp` resolves exactly one canonical master `event_dates` row inside the transaction before capacity, RSVP identity/upsert, guest, QR/pass, acknowledgement, outbox, or delivery work. Missing or invalid master data raises exact SQLSTATE `P1902` with message `rsvp_date_unavailable`; `master end_at <= clock_timestamp()` raises exact SQLSTATE `P1901` with message `rsvp_event_ended`. `submit_event_rsvp_with_delivery` remains the sole Edge-called wrapper and cannot enqueue anything when the guarded base RPC raises. `public-submit-rsvp` maps only `error.code`: P1901 to HTTP 410 and P1902 to HTTP 409; raw database messages/details/hints and PII never enter the new response or structured rejection log.
+- **Enforcement:** Forward migration `20270322001902_issue_1902_public_event_lifecycle.sql`, the unchanged delivery-wrapper dependency, service-role-only base-RPC grant, `.github/scripts/strict-grep/issue-1902-rsvp-backend-safety.mjs`, and `.github/workflows/issue-1902-rsvp-backend-safety-tests.yml`.
+- **Regression:** Implementor Deno and PostgreSQL 17 suites pin guard ordering, exact SQLSTATE/message pairs, equality/after-end rejection, missing-master rejection, pre-end success, wrapper reachability, grant posture, and zero rejected-write deltas across RSVP, guest/pass, notification/outbox, and delivery tables. The independent tester adds distinct duplicate/ambiguous-master, auth-mode, race, and real-handler HTTP attacks before activation. Every proof is append-only and CI-wired.
+- **Scope:** Backend prerequisite serving Consumer iOS, Consumer Android, buyer/anonymous web, Business iOS/Android public preview, and Business web preview. No client renderer, Business Hub management, Admin UI, ticket checkout, production fixture, deploy, or OTA behavior is changed by this invariant.
+
+### I-PUBLIC-BRAND-UPCOMING-INCLUDES-RSVP (DRAFT)
+
+- **Rule:** `public.pg_public_brand_upcoming(text,timestamptz,integer)` includes public future `event_type='rsvp'` offerings through the canonical master `event_dates.start_at`. RSVP admission must preserve every existing visibility, deletion, publication, operator-status, paid-supply readiness, stable ordering, cursor, limit-plus-one pagination, `SECURITY DEFINER`, fixed search path, and anon/authenticated grant rule. RSVP rows have no fabricated ticket price; absent ticket tiers remain `price_from_cents IS NULL`.
+- **Enforcement:** The same #1914 migration, strict gate, dedicated workflow, and PostgreSQL 17 behavioral probe.
+- **Regression:** The implementor source/PG17 suites prove a future RSVP is returned once with `offering_type='rsvp'`, canonical start, and NULL price while the existing RPC clauses remain present. Independent tester coverage must attack visibility/readiness/pagination/order and duplicate/missing master cases before activation.
+- **Scope:** Public brand Upcoming data only; it does not change brand Events rendering, direct event detail, client routing, Business Hub management, Admin UI, or any release channel.
+
+---
+
 ## ACTIVE — issue #1881 (business native sign-in failures are classified, bounded-retried, and never render raw error values)
 
 > ACTIVE at #1881 CLOSE. This is the `mingla-business` parity contract for the already-ACTIVE `I-PROPOSED-1875-SIGNIN-FAILURE-CLASSIFIED-AND-OPAQUE`; activation followed independent runtime-visible TEST evidence, two different fails-on-revert guards, all-green PR #1908, and merged-main verification at `330414a9dc7990337f0cc29bd629a4ea09a566e5`.
