@@ -160,7 +160,13 @@ BEGIN
      OR NOT has_function_privilege('service_role', 'public.pg_brands_can_collect(uuid[])', 'EXECUTE') THEN
     RAISE EXCEPTION 'I1919-T07: helper ACL is not explicit least privilege: %', v_acl;
   END IF;
-  IF v_config IS DISTINCT FROM ARRAY['search_path='] THEN
+  IF cardinality(v_config) IS DISTINCT FROM 1
+     OR NOT EXISTS (
+       SELECT 1
+       FROM pg_catalog.pg_options_to_table(v_config) AS option
+       WHERE option.option_name = 'search_path'
+         AND option.option_value IN ('', '""')
+     ) THEN
     RAISE EXCEPTION 'I1919-T08: helper search_path is not exactly empty: %', v_config;
   END IF;
 END
