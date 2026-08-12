@@ -50,7 +50,7 @@ jobs:
           deno test --allow-read packages/offering-rendering/__tests__/issue_1857_rsvp_phone_country.happy.test.tsx
           deno test --allow-read packages/brand-rendering/__tests__/issue_1857_stay_phone_country.happy.test.tsx
           deno test --allow-read app-mobile/src/services/__tests__/issue_1857_phone_country_transport.happy.test.ts
-          deno test --allow-read mingla-business/src/services/__tests__/issue_1857_phone_country_transport.happy.test.ts
+          (cd mingla-business && npx jest src/services/__tests__/issue_1857_phone_country_transport.happy.test.ts --runInBand)
           deno test --allow-read supabase/functions/public-submit-rsvp/issue_1857_phone_country.happy.test.ts
           deno test --allow-read supabase/functions/stay-reservations/issue_1857_phone_country.happy.test.ts
           deno test --allow-read supabase/functions/venue-reservation-create/issue_1857_phone_country.happy.test.ts

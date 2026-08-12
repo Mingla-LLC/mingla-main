@@ -1,21 +1,19 @@
-import { assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { describe, expect, test } from "@jest/globals";
+import { readFileSync } from "fs";
+import { join } from "path";
 
-const rsvp = await Deno.readTextFile(
-  new URL("../rsvpEvents.ts", import.meta.url),
-);
-const reserve = await Deno.readTextFile(
-  new URL("../venueGuestReservationService.ts", import.meta.url),
-);
-const stay = await Deno.readTextFile(
-  new URL("../stayGuestService.ts", import.meta.url),
-);
+const readService = (name: string): string =>
+  readFileSync(join(__dirname, "..", name), "utf8");
 
-Deno.test("#1857 Buyer services preserve selected ISO on every changed envelope", () => {
-  assertStringIncludes(rsvp, "guestPhoneCountryIso?: string | null");
-  assertStringIncludes(
-    rsvp,
-    "guestPhoneCountryIso: input.guestPhoneCountryIso",
-  );
-  assertStringIncludes(reserve, "phoneCountryIso?: string | null");
-  assertStringIncludes(stay, "guest,");
+describe("#1857 business transport country authority", () => {
+  test("Buyer services preserve selected ISO on every changed envelope", () => {
+    const rsvp = readService("rsvpEvents.ts");
+    const reserve = readService("venueGuestReservationService.ts");
+    const stay = readService("stayGuestService.ts");
+
+    expect(rsvp).toContain("guestPhoneCountryIso?: string | null");
+    expect(rsvp).toContain("guestPhoneCountryIso: input.guestPhoneCountryIso");
+    expect(reserve).toContain("phoneCountryIso?: string | null");
+    expect(stay).toContain("guest,");
+  });
 });

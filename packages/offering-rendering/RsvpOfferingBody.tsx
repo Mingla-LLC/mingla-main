@@ -977,12 +977,12 @@ export const useRsvpOfferingState = (
             countryCode: g.phoneCountryIso,
             rawValue: g.rawPhone,
             onChangeCountry: (isoCode, resolvedE164) => {
-              setGuests((rows) => rows.map((row) => row.id === g.id
+              setGuests((rows: RsvpGuestDraft[]) => rows.map((row: RsvpGuestDraft) => row.id === g.id
                 ? { ...row, phoneCountryIso: isoCode, phone: resolvedE164 ?? "" }
                 : row));
             },
             onChangeRawValue: (raw, resolvedE164) => {
-              setGuests((rows) => rows.map((row) => row.id === g.id
+              setGuests((rows: RsvpGuestDraft[]) => rows.map((row: RsvpGuestDraft) => row.id === g.id
                 ? { ...row, rawPhone: raw, phone: resolvedE164 ?? "" }
                 : row));
             },
@@ -992,7 +992,7 @@ export const useRsvpOfferingState = (
             required: true,
             emptyRequired: (showValidationErrors || g.phoneTouched) && g.rawPhone.trim().length === 0,
             onBlur: () => {
-              setGuests((rows) => markRsvpPhoneTouchedById(rows, g.id));
+              setGuests((rows: RsvpGuestDraft[]) => markRsvpPhoneTouchedById(rows, g.id));
             },
           }) : (
             <RsvpField

@@ -244,6 +244,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
           onOpenMaps={onOpenMaps}
           staticMapUrl={staticMapUrl}
           state={state}
+          renderPhoneField={renderPhoneField}
+          defaultPhoneCountry={defaultPhoneCountry}
           // ORCH-1163-R2 — desktop relocates the inline box to the sticky panel
           // (PARITY with FoundationEventPreview's hideTicketBox).
           hideDecisionBox={isDesktop || acquisitionClosed}

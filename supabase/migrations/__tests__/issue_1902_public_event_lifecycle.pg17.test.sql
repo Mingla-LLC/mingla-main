@@ -146,17 +146,17 @@ BEGIN
 
   IF has_function_privilege(
        'anon',
-       'public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text)',
+       'public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)',
        'EXECUTE'
      )
      OR has_function_privilege(
        'authenticated',
-       'public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text)',
+       'public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)',
        'EXECUTE'
      )
      OR NOT has_function_privilege(
        'service_role',
-       'public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text)',
+       'public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)',
        'EXECUTE'
      ) THEN
     RAISE EXCEPTION 'submit_event_rsvp grant posture widened or service grant lost';

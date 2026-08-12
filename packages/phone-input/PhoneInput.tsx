@@ -92,7 +92,7 @@ export interface PhoneInputProps {
   onBlur?: () => void;
 }
 
-export const PhoneInput: React.FC<PhoneInputProps> = ({
+export const PhoneInput = ({
   value,
   countryCode,
   onChangePhone,
@@ -110,7 +110,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
   required = false,
   maxLength = 15,
   onBlur,
-}) => {
+}: PhoneInputProps): React.ReactElement => {
   const [focused, setFocused] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
