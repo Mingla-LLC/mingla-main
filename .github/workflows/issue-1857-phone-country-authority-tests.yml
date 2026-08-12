@@ -42,7 +42,9 @@ jobs:
           node .github/scripts/strict-grep/issue-1857-phone-country-authority.mjs --self-test
           node .github/scripts/strict-grep/issue-1857-phone-country-authority.mjs
       - name: Canonical phone adapter
-        run: node --test packages/card-identity/__tests__/issue_1857_phone_country_authority.happy.test.mjs
+        run: |
+          node --test packages/card-identity/__tests__/issue_1857_phone_country_authority.happy.test.mjs
+          node --test packages/card-identity/__tests__/issue_1857_phone_country_authority.tester.adversarial.test.mjs
       - name: Shared, service, and Edge contracts
         run: |
           deno test --allow-read packages/offering-rendering/__tests__/issue_1857_rsvp_phone_country.happy.test.tsx
@@ -52,6 +54,7 @@ jobs:
           deno test --allow-read supabase/functions/public-submit-rsvp/issue_1857_phone_country.happy.test.ts
           deno test --allow-read supabase/functions/stay-reservations/issue_1857_phone_country.happy.test.ts
           deno test --allow-read supabase/functions/venue-reservation-create/issue_1857_phone_country.happy.test.ts
+          deno test --allow-read supabase/functions/venue-reservation-create/issue_1857_phone_country.tester.adversarial.test.ts
       - name: PostgreSQL 17 migration contract is registered
         run: test -s supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql
 
