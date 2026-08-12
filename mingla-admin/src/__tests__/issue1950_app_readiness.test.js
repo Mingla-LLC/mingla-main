@@ -53,3 +53,42 @@ test("#1950 Admin IA, a11y, responsive, disabled boundary, and web behavior stay
   for (const name of ["loadAppReadiness","checkAppReadiness","recordAppReadinessEvent"]) assert.match(service,new RegExp(`export async function ${name}`));
   for (const unchanged of ["createCampaign","campaignAction","syncCampaigns"]) assert.match(service,new RegExp(`export async function ${unchanged}`));
 });
+
+test("#1950 provider corrective links use the Admin external-navigation owner", () => {
+  const row = read("src/components/app-readiness/ProviderReadinessRow.jsx");
+  assert.match(row, /import \{ openExternal \} from "\.\.\/\.\.\/lib\/openExternal";/);
+  assert.match(row, /openExternal\(result\.action_href\)/);
+  assert.doesNotMatch(row, /window\.open\(/);
+});
+
+test("#1950 CI lints its exact Admin ownership surface without inheriting unrelated baseline debt", () => {
+  const workflow = read("../.github/workflows/issue-1950-app-readiness-tests.yml");
+  const owned = [
+    "src/services/adEngineService.js",
+    "src/lib/adAppReadiness.js",
+    "src/lib/featureFlags.js",
+    "src/components/AdConnectionsPanel.jsx",
+    "src/components/app-readiness/AppDownloadReadinessPanel.jsx",
+    "src/components/app-readiness/FutureAppCampaignBoundary.jsx",
+    "src/components/app-readiness/ProviderReadinessList.jsx",
+    "src/components/app-readiness/ProviderReadinessRow.jsx",
+    "src/components/app-readiness/ReadinessEvidence.jsx",
+    "src/components/app-readiness/SelectedTargetSummary.jsx",
+    "src/components/app-readiness/TargetOverview.jsx",
+    "src/components/app-readiness/TargetSelector.jsx",
+    "src/components/campaign-builder/StepLane.jsx",
+    "src/components/layout/AppShell.jsx",
+    "src/components/ui/Card.jsx",
+    "src/pages/AdEnginePage.jsx",
+    "src/__tests__/fixtures/issue1950Readiness.js",
+    "src/__tests__/issue1928_app_identity_focus_rework.test.js",
+    "src/__tests__/issue1928_app_identity_readiness.test.js",
+    "src/__tests__/issue1950_app_readiness.adversarial.tester.test.js",
+    "src/__tests__/issue1950_app_readiness.test.js",
+    "src/__tests__/issue1950_app_readiness_gate.test.js",
+  ];
+  assert.doesNotMatch(workflow, /npm run lint/);
+  assert.match(workflow, /node --test src\/__tests__\/issue1950\*\.test\.js/);
+  assert.match(workflow, /npm run build/);
+  for (const relative of owned) assert.match(workflow, new RegExp(`\\s${relative.replaceAll(".", "\\.")}\\s`));
+});

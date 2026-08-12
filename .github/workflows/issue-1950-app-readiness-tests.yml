@@ -1,4 +1,4 @@
-name: Issue #1950 app-download readiness
+name: "Issue #1950 app-download readiness"
 
 on:
   pull_request:
@@ -36,7 +36,40 @@ jobs:
       - run: deno test --allow-read supabase/migrations/__tests__/issue_1950_app_readiness.test.ts
       - run: deno test --allow-read supabase/functions/_shared/__tests__/issue1950_app_readiness.test.ts supabase/functions/admin-ad-app-readiness/__tests__/*.test.ts
       - run: deno check supabase/functions/_shared/adAppReadiness.ts supabase/functions/_shared/adAppReadinessProviders/*.ts supabase/functions/admin-ad-app-readiness/index.ts supabase/functions/admin-ad-app-readiness-event/index.ts
-      - working-directory: mingla-admin
-        run: npm ci && node --test src/__tests__/issue1950*.test.js && npm run lint && npm run build
+      - name: Install Admin dependencies
+        working-directory: mingla-admin
+        run: npm ci
+      - name: "Run exact #1950 Admin contracts"
+        working-directory: mingla-admin
+        run: node --test src/__tests__/issue1950*.test.js
+      - name: "Lint exact #1950 Admin ownership surface"
+        working-directory: mingla-admin
+        run: >-
+          npx eslint
+          src/services/adEngineService.js
+          src/lib/adAppReadiness.js
+          src/lib/featureFlags.js
+          src/components/AdConnectionsPanel.jsx
+          src/components/app-readiness/AppDownloadReadinessPanel.jsx
+          src/components/app-readiness/FutureAppCampaignBoundary.jsx
+          src/components/app-readiness/ProviderReadinessList.jsx
+          src/components/app-readiness/ProviderReadinessRow.jsx
+          src/components/app-readiness/ReadinessEvidence.jsx
+          src/components/app-readiness/SelectedTargetSummary.jsx
+          src/components/app-readiness/TargetOverview.jsx
+          src/components/app-readiness/TargetSelector.jsx
+          src/components/campaign-builder/StepLane.jsx
+          src/components/layout/AppShell.jsx
+          src/components/ui/Card.jsx
+          src/pages/AdEnginePage.jsx
+          src/__tests__/fixtures/issue1950Readiness.js
+          src/__tests__/issue1928_app_identity_focus_rework.test.js
+          src/__tests__/issue1928_app_identity_readiness.test.js
+          src/__tests__/issue1950_app_readiness.adversarial.tester.test.js
+          src/__tests__/issue1950_app_readiness.test.js
+          src/__tests__/issue1950_app_readiness_gate.test.js
+      - name: Build Admin production bundle
+        working-directory: mingla-admin
+        run: npm run build
       - name: Independent tester guard must exist before close
         run: test -f mingla-admin/src/__tests__/issue1950_app_readiness.adversarial.tester.test.js
