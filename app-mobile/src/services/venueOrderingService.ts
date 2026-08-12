@@ -52,7 +52,8 @@ export type { VenueOrderRequest };
 async function readFailure(error: unknown): Promise<VenueOrderFailure> {
   const context = (error as { context?: unknown } | null)?.context;
   if (
-    context !== null && typeof context === "object" &&
+    context !== null &&
+    typeof context === "object" &&
     typeof (context as { text?: unknown }).text === "function"
   ) {
     try {
@@ -93,14 +94,11 @@ export async function fetchVenueOrderingState(input: {
   venueSlug: string;
   spotCode: string | null;
 }): Promise<VenueOrderingConfig> {
-  const { data, error } = await supabase.rpc(
-    "pg_public_venue_ordering_state",
-    {
-      p_brand_slug: input.brandSlug,
-      p_venue_slug: input.venueSlug,
-      p_spot_code: input.spotCode,
-    },
-  );
+  const { data, error } = await supabase.rpc("pg_public_venue_ordering_state", {
+    p_brand_slug: input.brandSlug,
+    p_venue_slug: input.venueSlug,
+    p_spot_code: input.spotCode,
+  });
   if (error !== null) return VENUE_ORDERING_UNAVAILABLE;
   return parseVenueOrderingConfig(data);
 }
@@ -155,49 +153,53 @@ export async function previewVenueOrder(
  */
 export type VenueOrderCreated =
   | {
-    kind: "free_completed";
-    orderId: string;
-    sessionId: string;
-    buyerStatusToken: string;
-    guestCancelToken: string;
-    pickupCode: string | null;
-  }
+      kind: "free_completed";
+      orderId: string;
+      sessionId: string;
+      buyerStatusToken: string;
+      guestCancelToken: string;
+      pickupCode: string | null;
+    }
   | {
-    kind: "requires_payment";
-    orderId: string;
-    sessionId: string;
-    buyerStatusToken: string;
-    guestCancelToken: string;
-    clientSecret: string;
-    publishableKey: string;
-    connectedAccountId: string | null;
-    totalCents: number;
-    currency: string;
-  }
+      kind: "requires_payment";
+      resumed: boolean;
+      paymentIntentId: string;
+      orderId: string;
+      sessionId: string;
+      buyerStatusToken: string;
+      guestCancelToken: string;
+      clientSecret: string;
+      publishableKey: string;
+      connectedAccountId: string | null;
+      totalCents: number;
+      currency: string;
+    }
   | {
-    kind: "requires_paystack_redirect";
-    orderId: string;
-    sessionId: string;
-    buyerStatusToken: string;
-    guestCancelToken: string;
-    authorizationUrl: string;
-  }
+      kind: "requires_paystack_redirect";
+      resumed: boolean;
+      orderId: string;
+      sessionId: string;
+      buyerStatusToken: string;
+      guestCancelToken: string;
+      authorizationUrl: string;
+    }
   | {
-    kind: "requires_web_redirect";
-    orderId: string;
-    sessionId: string;
-    buyerStatusToken: string;
-    guestCancelToken: string;
-    url: string;
-  }
+      kind: "requires_web_redirect";
+      resumed: boolean;
+      orderId: string;
+      sessionId: string;
+      buyerStatusToken: string;
+      guestCancelToken: string;
+      url: string;
+    }
   | {
-    /** P-23 — a replayed submit returns the EXISTING order, never a second one. */
-    kind: "already_created";
-    orderId: string;
-    totalCents: number;
-    currency: string;
-    paymentStatus: string;
-  };
+      /** P-23 — a replayed submit returns the EXISTING order, never a second one. */
+      kind: "already_created";
+      orderId: string;
+      totalCents: number;
+      currency: string;
+      paymentStatus: string;
+    };
 
 export async function createVenueOrder(
   request: VenueOrderRequest,
@@ -224,6 +226,7 @@ export async function createVenueOrder(
     sessionId: String(data.sessionId ?? ""),
     buyerStatusToken: String(data.buyerStatusToken ?? ""),
     guestCancelToken: String(data.guestCancelToken ?? ""),
+    resumed: data.resumed === true,
   };
   if (kind === "free_completed") {
     return {
@@ -236,11 +239,11 @@ export async function createVenueOrder(
     return {
       kind,
       ...common,
+      paymentIntentId: String(data.paymentIntentId ?? ""),
       clientSecret: String(data.clientSecret ?? ""),
       publishableKey: String(data.publishableKey ?? ""),
-      connectedAccountId: typeof data.stripeAccountId === "string"
-        ? data.stripeAccountId
-        : null,
+      connectedAccountId:
+        typeof data.stripeAccountId === "string" ? data.stripeAccountId : null,
       totalCents: Number(data.totalCents ?? 0),
       currency: String(data.currency ?? ""),
     };
@@ -280,6 +283,26 @@ export async function fetchVenueOrderStatus(
   >(VENUE_ORDER_FUNCTIONS.status, { body: { orderId, buyerStatusToken } });
   if (error !== null || data === null) return null;
   return parseVenueOrderStatus(data, orderId);
+}
+
+/** Resume the SAME Paystack transaction after its hosted browser was closed. */
+export async function resumeVenueOrderPayment(
+  orderId: string,
+  buyerStatusToken: string,
+): Promise<string | null> {
+  const { data, error } = await supabase.functions.invoke<
+    Record<string, unknown>
+  >(VENUE_ORDER_FUNCTIONS.status, {
+    body: { orderId, buyerStatusToken, includePaymentContinuation: true },
+  });
+  if (error !== null || data === null) return null;
+  const continuation = data.paymentContinuation;
+  if (continuation === null || typeof continuation !== "object") return null;
+  const value = continuation as Record<string, unknown>;
+  return value.kind === "requires_paystack_redirect" &&
+    typeof value.authorizationUrl === "string"
+    ? value.authorizationUrl
+    : null;
 }
 
 /**

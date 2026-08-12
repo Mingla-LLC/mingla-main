@@ -34,7 +34,10 @@ import type {
 
 import { formatMenuPrice } from "../PublicMenuSections";
 import type { VenueOrderLiveStatus } from "./venueOrderingTypes";
-import { venueOrderHandover, venueOrderProgressCopy } from "./venueOrderingRules";
+import {
+  venueOrderHandover,
+  venueOrderProgressCopy,
+} from "./venueOrderingRules";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -49,6 +52,8 @@ export interface VenueOrderStatusPaneProps {
   onRequestRefund: () => void;
   /** Another round on the SAME sitting — the tip is not asked again (OQ-2). */
   onOrderMore: (() => void) | null;
+  onRetryPayment?: (() => void) | null;
+  retryPaymentPending?: boolean;
 }
 
 export const VenueOrderStatusPane: React.FC<VenueOrderStatusPaneProps> = ({
@@ -61,6 +66,8 @@ export const VenueOrderStatusPane: React.FC<VenueOrderStatusPaneProps> = ({
   onCancel,
   onRequestRefund,
   onOrderMore,
+  onRetryPayment = null,
+  retryPaymentPending = false,
 }) => {
   const handover = venueOrderHandover(live, buyerName);
   const copy = venueOrderProgressCopy(live.fulfillmentStatus, handover);
@@ -82,26 +89,25 @@ export const VenueOrderStatusPane: React.FC<VenueOrderStatusPaneProps> = ({
           </View>
         ) : null}
         <Text style={[styles.heroTitle, { color: palette.primaryText }]}>
-          {awaitingPayment ? "Finishing your payment…" : copy.title}
+          {awaitingPayment ? "Payment isn't finished" : copy.title}
         </Text>
         <Text style={[styles.heroBody, { color: palette.secondaryText }]}>
           {awaitingPayment
-            ? "We're confirming with your bank. This card updates itself."
+            ? "Your order is saved, but payment is still incomplete. You can safely try the same payment again."
             : copy.body}
         </Text>
         {/* D-7 escalation honesty: the guest is TOLD, and the way out is in
             their hands the whole time. Never a countdown to an automatic
             reversal — money moves only when a person decides
             (I-PROPOSED-1767-NO-MONEY-ON-A-TIMER). */}
-        {live.escalationLevel > 0 && live.acknowledgedAt === null &&
-            !awaitingPayment
-          ? (
-            <Text style={[styles.heroNote, { color: palette.secondaryText }]}>
-              Nobody at the venue has picked this up yet. We've told them again —
-              and you can cancel for a full refund whenever you like.
-            </Text>
-          )
-          : null}
+        {live.escalationLevel > 0 &&
+        live.acknowledgedAt === null &&
+        !awaitingPayment ? (
+          <Text style={[styles.heroNote, { color: palette.secondaryText }]}>
+            Nobody at the venue has picked this up yet. We've told them again —
+            and you can cancel for a full refund whenever you like.
+          </Text>
+        ) : null}
       </View>
 
       <View style={[styles.card, surface.card, styles.block]}>
@@ -131,7 +137,7 @@ export const VenueOrderStatusPane: React.FC<VenueOrderStatusPaneProps> = ({
         ) : null}
         <View style={[styles.rule, { backgroundColor: palette.panelBorder }]} />
         <MoneyLine
-          label="Paid"
+          label={awaitingPayment ? "Total" : "Paid"}
           value={money(live.totals.totalCents)}
           palette={palette}
           strong
@@ -158,6 +164,20 @@ export const VenueOrderStatusPane: React.FC<VenueOrderStatusPaneProps> = ({
       )}
 
       <View style={styles.actions}>
+        {awaitingPayment && onRetryPayment !== null ? (
+          <Pressable
+            onPress={onRetryPayment}
+            disabled={retryPaymentPending}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: retryPaymentPending }}
+            accessibilityLabel="Try payment again"
+            style={[styles.action, { backgroundColor: palette.accent }]}
+          >
+            <Text style={[styles.actionLabel, { color: palette.accentText }]}>
+              {retryPaymentPending ? "Opening payment…" : "Try payment again"}
+            </Text>
+          </Pressable>
+        ) : null}
         {live.canCancel ? (
           <Pressable
             onPress={onCancel}
@@ -240,7 +260,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginBottom: 4,
   },
-  codeLabel: { fontSize: 18, lineHeight: 22, fontWeight: "900", letterSpacing: 1 },
+  codeLabel: {
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: "900",
+    letterSpacing: 1,
+  },
   heroTitle: { fontSize: 22, lineHeight: 27, fontWeight: "900" },
   heroBody: { fontSize: 15, lineHeight: 21 },
   heroNote: { fontSize: 13, lineHeight: 19, marginTop: 4 },

@@ -608,6 +608,9 @@ jobs:
             # service charge is inside it, a price sent by a client is ignored
             # AND rejected, and the honest paused/off copy has one owner.
             supabase/functions/_shared/__tests__/issue_1793_guest_ordering.test.ts
+            # Issue #1793 rework — cancellation resumes the same live provider
+            # object and rejects terminal, mismatched, or hostile continuations.
+            supabase/functions/_shared/__tests__/issue_1793_payment_continuation.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

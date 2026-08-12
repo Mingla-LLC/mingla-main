@@ -56,6 +56,7 @@ import type { BuyerVenueOrdering } from "./useBuyerVenueOrdering";
  */
 export {
   fetchVenueOrderStatus,
+  resumeVenueOrderPayment,
   venueOrderGuestAction,
 } from "../../services/venueOrderingService";
 
@@ -88,11 +89,9 @@ function localClock(timezone: string | null): {
 }
 
 /** The honest state, or the spot chip. Null when there is nothing honest to say. */
-export const BuyerVenueOrderingNotice: React.FC<BuyerVenueOrderingSlotProps> = ({
-  ordering,
-  palette,
-  surface,
-}) => {
+export const BuyerVenueOrderingNotice: React.FC<
+  BuyerVenueOrderingSlotProps
+> = ({ ordering, palette, surface }) => {
   const notice = venueOrderingNotice(ordering.config, {
     scanned: ordering.scanned,
   });
@@ -106,11 +105,12 @@ export const BuyerVenueOrderingNotice: React.FC<BuyerVenueOrderingSlotProps> = (
     );
   }
   if (!venueOrderingCanOrder(ordering.config)) return null;
-  const label = ordering.config.spotState === "ok" &&
-      ordering.config.spot?.label !== null &&
-      ordering.config.spot?.label !== undefined
-    ? `Ordering for ${ordering.config.spot.label}`
-    : "Order & collect from the counter";
+  const label =
+    ordering.config.spotState === "ok" &&
+    ordering.config.spot?.label !== null &&
+    ordering.config.spot?.label !== undefined
+      ? `Ordering for ${ordering.config.spot.label}`
+      : "Order & collect from the counter";
   return <VenueOrderingSpotChip label={label} palette={palette} />;
 };
 
@@ -353,7 +353,19 @@ export const BuyerVenueOrderStatusView: React.FC<{
   actionError: string | null;
   onCancel: () => void;
   onRequestRefund: () => void;
-}> = ({ palette, surface, live, actionPending, actionError, onCancel, onRequestRefund }) => (
+  onRetryPayment?: () => void;
+  retryPaymentPending?: boolean;
+}> = ({
+  palette,
+  surface,
+  live,
+  actionPending,
+  actionError,
+  onCancel,
+  onRequestRefund,
+  onRetryPayment,
+  retryPaymentPending,
+}) => (
   <VenueOrderStatusPane
     palette={palette}
     surface={surface}
@@ -364,6 +376,8 @@ export const BuyerVenueOrderStatusView: React.FC<{
     onCancel={onCancel}
     onRequestRefund={onRequestRefund}
     onOrderMore={null}
+    onRetryPayment={onRetryPayment}
+    retryPaymentPending={retryPaymentPending}
   />
 );
 
@@ -377,9 +391,11 @@ export const BuyerVenueOrderingBar: React.FC<BuyerVenueOrderingSlotProps> = ({
   return (
     <VenueOrderingStickyBar
       count={ordering.cart.count}
-      totalCents={ordering.previewStatus === "ready" && ordering.preview !== null
-        ? ordering.preview.totalCents
-        : null}
+      totalCents={
+        ordering.previewStatus === "ready" && ordering.preview !== null
+          ? ordering.preview.totalCents
+          : null
+      }
       currency={ordering.preview?.currency ?? null}
       palette={palette}
       onPress={() => ordering.cart.setView("review")}

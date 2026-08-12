@@ -55,8 +55,9 @@ import type { VenueOrderLiveStatus } from "@mingla/brand-rendering/venueOrdering
  * someone who has actually ordered something.
  */
 const LazyOrderStatusView = React.lazy(() =>
-  import("../../../src/components/venueOrdering/BuyerVenueOrderingSlots")
-    .then((module) => ({ default: module.BuyerVenueOrderStatusView })),
+  import("../../../src/components/venueOrdering/BuyerVenueOrderingSlots").then(
+    (module) => ({ default: module.BuyerVenueOrderStatusView }),
+  ),
 );
 /**
  * The SAME specifier the status card is lazily loaded from — deliberately, and
@@ -91,14 +92,15 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
   const palette = useMemo(() => createThemePalette(theme), [theme]);
   const surface = useMemo(() => offeringSurfaceStyles(palette), [palette]);
 
-  const refresh = useCallback(async (): Promise<VenueOrderLiveStatus | null> => {
-    if (typeof orderId !== "string" || token === "") return null;
-    const { fetchVenueOrderStatus } = await orderingTransport();
-    const status = await fetchVenueOrderStatus(orderId, token);
-    if (status !== null) setLive(status);
-    setLoaded(true);
-    return status;
-  }, [orderId, token]);
+  const refresh =
+    useCallback(async (): Promise<VenueOrderLiveStatus | null> => {
+      if (typeof orderId !== "string" || token === "") return null;
+      const { fetchVenueOrderStatus } = await orderingTransport();
+      const status = await fetchVenueOrderStatus(orderId, token);
+      if (status !== null) setLive(status);
+      setLoaded(true);
+      return status;
+    }, [orderId, token]);
 
   useEffect(() => {
     void refresh();
@@ -106,7 +108,8 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
 
   useEffect(() => {
     if (live === null) return () => undefined;
-    const settled = live.paymentStatus !== "pending" &&
+    const settled =
+      live.paymentStatus !== "pending" &&
       (live.fulfillmentStatus === "delivered" ||
         live.fulfillmentStatus === "cancelled" ||
         live.fulfillmentStatus === "refunded");
@@ -137,8 +140,10 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
         const raw = window.localStorage.getItem(key);
         if (raw === null) continue;
         const parsed = JSON.parse(raw) as Record<string, unknown>;
-        if (parsed.orderId === orderId &&
-          typeof parsed.guestCancelToken === "string") {
+        if (
+          parsed.orderId === orderId &&
+          typeof parsed.guestCancelToken === "string"
+        ) {
           return parsed.guestCancelToken;
         }
       }
@@ -164,21 +169,45 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
             orderId,
             guestCancelToken: cancelToken,
             action,
-          })
+          }),
         )
         .then(() => refresh())
         .catch((error: unknown) => {
           // The rail's own failures already carry the exact sentence a guest
           // should read (P-29); anything else gets an honest generic.
-          const message = error instanceof Error && error.name === "VenueOrderError"
-            ? error.message
-            : "That didn't go through. Try again.";
+          const message =
+            error instanceof Error && error.name === "VenueOrderError"
+              ? error.message
+              : "That didn't go through. Try again.";
           setActionError(message);
         })
         .finally(() => setActionPending(false));
     },
     [cancelToken, orderId, refresh],
   );
+
+  const retryPayment = useCallback((): void => {
+    if (typeof orderId !== "string" || token === "") return;
+    setActionError(null);
+    setActionPending(true);
+    void orderingTransport()
+      .then(({ resumeVenueOrderPayment }) =>
+        resumeVenueOrderPayment(orderId, token),
+      )
+      .then((url) => {
+        if (url === null) {
+          setActionError(
+            "This payment can no longer be reopened. Ask a member of staff.",
+          );
+          return;
+        }
+        if (Platform.OS === "web" && typeof window !== "undefined") {
+          window.location.assign(url);
+        }
+      })
+      .catch(() => setActionError("Payment couldn't be opened. Try again."))
+      .finally(() => setActionPending(false));
+  }, [orderId, token]);
 
   const body = (): React.ReactElement => {
     if (typeof orderId !== "string" || token === "") {
@@ -225,6 +254,8 @@ export default function BuyerVenueOrderRoute(): React.ReactElement {
           actionError={actionError}
           onCancel={() => guestAction("cancel")}
           onRequestRefund={() => guestAction("request_refund")}
+          onRetryPayment={retryPayment}
+          retryPaymentPending={actionPending}
         />
       </React.Suspense>
     );

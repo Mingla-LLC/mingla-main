@@ -44,7 +44,8 @@ export type { VenueOrderRequest };
 async function readFailure(error: unknown): Promise<VenueOrderFailure> {
   const context = (error as { context?: unknown } | null)?.context;
   if (
-    context !== null && typeof context === "object" &&
+    context !== null &&
+    typeof context === "object" &&
     typeof (context as { text?: unknown }).text === "function"
   ) {
     try {
@@ -124,29 +125,30 @@ export async function previewVenueOrder(
  */
 export type VenueOrderCreated =
   | {
-    kind: "free_completed";
-    orderId: string;
-    sessionId: string;
-    buyerStatusToken: string;
-    guestCancelToken: string;
-    pickupCode: string | null;
-  }
+      kind: "free_completed";
+      orderId: string;
+      sessionId: string;
+      buyerStatusToken: string;
+      guestCancelToken: string;
+      pickupCode: string | null;
+    }
   | {
-    kind: "requires_web_redirect" | "requires_paystack_redirect";
-    orderId: string;
-    sessionId: string;
-    buyerStatusToken: string;
-    guestCancelToken: string;
-    hostedUrl: string;
-  }
+      kind: "requires_web_redirect" | "requires_paystack_redirect";
+      resumed: boolean;
+      orderId: string;
+      sessionId: string;
+      buyerStatusToken: string;
+      guestCancelToken: string;
+      hostedUrl: string;
+    }
   | {
-    /** P-23 — a replayed submit returns the EXISTING order, never a second one. */
-    kind: "already_created";
-    orderId: string;
-    totalCents: number;
-    currency: string;
-    paymentStatus: string;
-  };
+      /** P-23 — a replayed submit returns the EXISTING order, never a second one. */
+      kind: "already_created";
+      orderId: string;
+      totalCents: number;
+      currency: string;
+      paymentStatus: string;
+    };
 
 export async function createVenueOrder(
   request: VenueOrderRequest,
@@ -170,6 +172,7 @@ export async function createVenueOrder(
     sessionId: String(data.sessionId ?? ""),
     buyerStatusToken: String(data.buyerStatusToken ?? ""),
     guestCancelToken: String(data.guestCancelToken ?? ""),
+    resumed: data.resumed === true,
   };
   if (kind === "free_completed") {
     return {
@@ -209,6 +212,29 @@ export async function fetchVenueOrderStatus(
   >(VENUE_ORDER_FUNCTIONS.status, { body: { orderId, buyerStatusToken } });
   if (error !== null || data === null) return null;
   return parseVenueOrderStatus(data, orderId);
+}
+
+/** Reopen the SAME hosted provider object behind the possession token. */
+export async function resumeVenueOrderPayment(
+  orderId: string,
+  buyerStatusToken: string,
+): Promise<string | null> {
+  const { data, error } = await supabase.functions.invoke<
+    Record<string, unknown>
+  >(VENUE_ORDER_FUNCTIONS.status, {
+    body: { orderId, buyerStatusToken, includePaymentContinuation: true },
+  });
+  if (error !== null || data === null) return null;
+  const continuation = data.paymentContinuation;
+  if (continuation === null || typeof continuation !== "object") return null;
+  const value = continuation as Record<string, unknown>;
+  if (value.kind === "requires_web_redirect" && typeof value.url === "string") {
+    return value.url;
+  }
+  return value.kind === "requires_paystack_redirect" &&
+    typeof value.authorizationUrl === "string"
+    ? value.authorizationUrl
+    : null;
 }
 
 /**

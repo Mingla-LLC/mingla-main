@@ -69,7 +69,9 @@ export type ContextFailure = { code: VenueOrderErrorCode; venue?: string };
 export async function resolveOrderContext(
   supabase: ServiceClient,
   input: { spotCode: string | null; venueId: string | null },
-): Promise<{ ok: true; context: OrderContext } | { ok: false; failure: ContextFailure }> {
+): Promise<
+  { ok: true; context: OrderContext } | { ok: false; failure: ContextFailure }
+> {
   let spotId: string | null = null;
   let spotLabel: string | null = null;
   let venueTableId: string | null = null;
@@ -94,11 +96,15 @@ export async function resolveOrderContext(
     }
     spotId = String(spot.id);
     spotLabel = spot.label === null ? null : String(spot.label);
-    venueTableId = spot.venue_table_id === null ? null : String(spot.venue_table_id);
+    venueTableId = spot.venue_table_id === null
+      ? null
+      : String(spot.venue_table_id);
     stayUnitId = spot.stay_unit_id === null ? null : String(spot.stay_unit_id);
     zone = spot.zone === null ? null : String(spot.zone);
     servingVenueId = String(spot.serving_venue_id);
-    servingMenuId = spot.serving_menu_id === null ? null : String(spot.serving_menu_id);
+    servingMenuId = spot.serving_menu_id === null
+      ? null
+      : String(spot.serving_menu_id);
   } else if (input.venueId !== null) {
     servingVenueId = input.venueId;
   } else {
@@ -116,7 +122,10 @@ export async function resolveOrderContext(
     ? venue.name.trim()
     : "This venue";
   if (!venue || venue.claim_status !== "verified") {
-    return { ok: false, failure: { code: "venue_not_orderable", venue: venueName } };
+    return {
+      ok: false,
+      failure: { code: "venue_not_orderable", venue: venueName },
+    };
   }
 
   // Gate 3 — ordering_enabled AND not paused. Default is OFF: no settings row
@@ -135,13 +144,21 @@ export async function resolveOrderContext(
     .eq("venue_id", servingVenueId)
     .maybeSingle();
   if (settingsError) {
-    throw new Error(`ordering_settings_lookup_failed: ${settingsError.message}`);
+    throw new Error(
+      `ordering_settings_lookup_failed: ${settingsError.message}`,
+    );
   }
   if (!settingsRow || settingsRow.ordering_enabled !== true) {
-    return { ok: false, failure: { code: "ordering_disabled", venue: venueName } };
+    return {
+      ok: false,
+      failure: { code: "ordering_disabled", venue: venueName },
+    };
   }
   if (settingsRow.paused_at !== null) {
-    return { ok: false, failure: { code: "ordering_paused", venue: venueName } };
+    return {
+      ok: false,
+      failure: { code: "ordering_paused", venue: venueName },
+    };
   }
 
   return {
@@ -196,14 +213,19 @@ export async function loadMenuSnapshot(
     .from("menu_items")
     .select("id, menu_id, brand_id, name, price_cents, currency, is_available")
     .in("id", input.menuItemIds);
-  if (itemsError) throw new Error(`menu_items_lookup_failed: ${itemsError.message}`);
+  if (itemsError) {
+    throw new Error(`menu_items_lookup_failed: ${itemsError.message}`);
+  }
 
   const menuIds = new Set<string>();
   for (const row of (items ?? []) as MenuItemRow[]) {
     // A cart may never reach across brands, and a spot pinned to ONE menu may
     // never order off another.
     if (String(row.brand_id) !== input.brandId) continue;
-    if (input.servingMenuId !== null && String(row.menu_id) !== input.servingMenuId) {
+    if (
+      input.servingMenuId !== null &&
+      String(row.menu_id) !== input.servingMenuId
+    ) {
       continue;
     }
     itemsById.set(String(row.id), row);
@@ -218,7 +240,11 @@ export async function loadMenuSnapshot(
     .in("id", [...menuIds]);
   if (menusError) throw new Error(`menus_lookup_failed: ${menusError.message}`);
 
-  const localNow = await venueLocalNow(supabase, input.brandId, input.servingVenueId);
+  const localNow = await venueLocalNow(
+    supabase,
+    input.brandId,
+    input.servingVenueId,
+  );
   const openMenuIds = new Set<string>();
   for (const menu of (menus ?? []) as Array<Record<string, unknown>>) {
     if (menu.is_active !== true) continue;
@@ -229,7 +255,9 @@ export async function loadMenuSnapshot(
       start: menu.service_window_start === null
         ? null
         : String(menu.service_window_start),
-      end: menu.service_window_end === null ? null : String(menu.service_window_end),
+      end: menu.service_window_end === null
+        ? null
+        : String(menu.service_window_end),
       days: Array.isArray(menu.service_days)
         ? (menu.service_days as number[]).map(Number)
         : null,
@@ -244,10 +272,14 @@ export async function loadMenuSnapshot(
 
   const { data: groups, error: groupsError } = await supabase
     .from("menu_modifier_groups")
-    .select("id, menu_item_id, name, selection_mode, min_select, max_select, is_active")
+    .select(
+      "id, menu_item_id, name, selection_mode, min_select, max_select, is_active",
+    )
     .in("menu_item_id", [...itemsById.keys()]);
   if (groupsError) {
-    throw new Error(`menu_modifier_groups_lookup_failed: ${groupsError.message}`);
+    throw new Error(
+      `menu_modifier_groups_lookup_failed: ${groupsError.message}`,
+    );
   }
   const groupIds: string[] = [];
   for (const group of (groups ?? []) as MenuModifierGroupRow[]) {
@@ -264,7 +296,9 @@ export async function loadMenuSnapshot(
       .select("id, group_id, name, price_delta_cents, currency, is_available")
       .in("group_id", groupIds);
     if (modifiersError) {
-      throw new Error(`menu_modifiers_lookup_failed: ${modifiersError.message}`);
+      throw new Error(
+        `menu_modifiers_lookup_failed: ${modifiersError.message}`,
+      );
     }
     for (const modifier of (modifiers ?? []) as MenuModifierRow[]) {
       modifiersById.set(String(modifier.id), modifier);
@@ -314,10 +348,13 @@ export async function checkOrderRateLimit(
   limit = 10,
 ): Promise<boolean> {
   try {
-    const { data, error } = await supabase.rpc("pg_venue_order_rate_limit_hit", {
-      p_scope_key: scopeKey,
-      p_limit: limit,
-    });
+    const { data, error } = await supabase.rpc(
+      "pg_venue_order_rate_limit_hit",
+      {
+        p_scope_key: scopeKey,
+        p_limit: limit,
+      },
+    );
     if (error) throw new Error(error.message);
     return (data as { allowed?: boolean } | null)?.allowed !== false;
   } catch (err) {
@@ -350,9 +387,17 @@ export async function findReplayableVenueOrder(
 ): Promise<
   | {
     id: string;
+    brand_id: string;
+    provider: string | null;
     total_cents: number;
     currency: string;
     payment_status: string;
+    expires_at: string | null;
+    stripe_payment_intent_id: string | null;
+    stripe_checkout_session_id: string | null;
+    stripe_account_id: string | null;
+    paystack_reference: string | null;
+    metadata: Record<string, unknown> | null;
     /** Issue #1792 — a replayed staff round must resume the SAME sitting. */
     session_id: string;
   }
@@ -360,7 +405,11 @@ export async function findReplayableVenueOrder(
 > {
   const { data, error } = await supabase
     .from("venue_orders")
-    .select("id, total_cents, currency, payment_status, session_id")
+    .select(
+      "id, brand_id, provider, total_cents, currency, payment_status, session_id, " +
+        "expires_at, stripe_payment_intent_id, stripe_checkout_session_id, " +
+        "stripe_account_id, paystack_reference, metadata",
+    )
     .eq("brand_id", input.brandId)
     .eq("venue_id", input.venueId)
     .eq("idempotency_key", input.idempotencyKey)
@@ -374,10 +423,29 @@ export async function findReplayableVenueOrder(
   const row = data as Record<string, unknown>;
   return {
     id: String(row.id),
+    brand_id: String(row.brand_id ?? input.brandId),
+    provider: typeof row.provider === "string" ? row.provider : null,
     total_cents: Number(row.total_cents),
     currency: String(row.currency),
     payment_status: String(row.payment_status),
     session_id: String(row.session_id),
+    expires_at: typeof row.expires_at === "string" ? row.expires_at : null,
+    stripe_payment_intent_id: typeof row.stripe_payment_intent_id === "string"
+      ? row.stripe_payment_intent_id
+      : null,
+    stripe_checkout_session_id:
+      typeof row.stripe_checkout_session_id === "string"
+        ? row.stripe_checkout_session_id
+        : null,
+    stripe_account_id: typeof row.stripe_account_id === "string"
+      ? row.stripe_account_id
+      : null,
+    paystack_reference: typeof row.paystack_reference === "string"
+      ? row.paystack_reference
+      : null,
+    metadata: row.metadata !== null && typeof row.metadata === "object"
+      ? row.metadata as Record<string, unknown>
+      : null,
   };
 }
 
@@ -501,9 +569,10 @@ export async function mergedVenueOrderMetadata(
     .maybeSingle();
   if (error || !data) return { ...patch };
   const current = (data as Record<string, unknown>).metadata;
-  const base = current !== null && typeof current === "object" && !Array.isArray(current)
-    ? current as Record<string, unknown>
-    : {};
+  const base =
+    current !== null && typeof current === "object" && !Array.isArray(current)
+      ? current as Record<string, unknown>
+      : {};
   return { ...base, ...patch };
 }
 
@@ -546,7 +615,9 @@ export async function assertSessionAcceptsRound(
   ) {
     return { ok: false, code: "session_not_addable" };
   }
-  const tabState = String((data as Record<string, unknown>).tab_state ?? "none");
+  const tabState = String(
+    (data as Record<string, unknown>).tab_state ?? "none",
+  );
   if (tabState !== "none" && tabState !== "open") {
     return { ok: false, code: "session_not_addable" };
   }

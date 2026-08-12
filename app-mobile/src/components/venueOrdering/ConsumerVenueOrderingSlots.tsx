@@ -47,10 +47,7 @@ import { VenueOrderingStickyBar } from "@mingla/brand-rendering/venueOrdering/Ve
 import { VenueOrderReviewPane } from "@mingla/brand-rendering/venueOrdering/VenueOrderReviewPane";
 import { VenueOrderStatusPane } from "@mingla/brand-rendering/venueOrdering/VenueOrderStatusPane";
 
-import {
-  BaseBottomSheet,
-  BottomSheetTextInput,
-} from "../ui/BaseBottomSheet";
+import { BaseBottomSheet, BottomSheetTextInput } from "../ui/BaseBottomSheet";
 import { useConsumerVenueOrdering } from "./useConsumerVenueOrdering";
 import type { ConsumerVenueOrdering } from "./useConsumerVenueOrdering";
 
@@ -194,11 +191,13 @@ export const ConsumerVenueOrderingNotice: React.FC<
   if (!venueOrderingCanOrder(ordering.config)) return null;
   return (
     <VenueOrderingSpotChip
-      label={ordering.config.spotState === "ok" &&
-          ordering.config.spot?.label !== null &&
-          ordering.config.spot?.label !== undefined
-        ? `Ordering for ${ordering.config.spot.label}`
-        : "Order & collect from the counter"}
+      label={
+        ordering.config.spotState === "ok" &&
+        ordering.config.spot?.label !== null &&
+        ordering.config.spot?.label !== undefined
+          ? `Ordering for ${ordering.config.spot.label}`
+          : "Order & collect from the counter"
+      }
       palette={palette}
     />
   );
@@ -218,15 +217,7 @@ export const ConsumerVenueOrderingMenu: React.FC<
     >;
     timezone: string | null;
   }
-> = ({
-  ordering,
-  palette,
-  surface,
-  theme,
-  menu,
-  menuWindows,
-  timezone,
-}) => {
+> = ({ ordering, palette, surface, theme, menu, menuWindows, timezone }) => {
   if (!venueOrderingCanOrder(ordering.config)) return null;
   const groups = venueOrderingMenuGroups({
     groups: menu,
@@ -272,9 +263,11 @@ export const ConsumerVenueOrderingBar: React.FC<
   return (
     <VenueOrderingStickyBar
       count={ordering.cart.count}
-      totalCents={ordering.previewStatus === "ready" && ordering.preview !== null
-        ? ordering.preview.totalCents
-        : null}
+      totalCents={
+        ordering.previewStatus === "ready" && ordering.preview !== null
+          ? ordering.preview.totalCents
+          : null
+      }
       currency={ordering.preview?.currency ?? null}
       palette={palette}
       onPress={() => ordering.cart.setView("review")}
@@ -308,7 +301,9 @@ export const ConsumerVenueOrderingSheet: React.FC<
       hidesBottomNav
       keyboardBehavior="interactive"
       backgroundStyle={{ backgroundColor: palette.page }}
-      accessibilityLabel={view === "status" ? "Your order" : "Review your order"}
+      accessibilityLabel={
+        view === "status" ? "Your order" : "Review your order"
+      }
       scrollProps={{ contentContainerStyle: styles.sheetBody }}
     >
       {view === "status" && ordering.live !== null ? (
@@ -322,6 +317,8 @@ export const ConsumerVenueOrderingSheet: React.FC<
           onCancel={ordering.cancelOrder}
           onRequestRefund={ordering.requestRefund}
           onOrderMore={ordering.orderMore}
+          onRetryPayment={ordering.retryPayment}
+          retryPaymentPending={ordering.actionPending}
         />
       ) : view === "status" ? (
         <View style={styles.pending}>

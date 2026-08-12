@@ -39,13 +39,17 @@ import {
   resolveProviderRouting,
 } from "../_shared/paymentProvider.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
-import { MINGLA_SERVICE_FEE_BPS, type PricingRegion, type PricingSwitches } from "../_shared/allInPricingEngine.ts";
+import {
+  MINGLA_SERVICE_FEE_BPS,
+  type PricingRegion,
+  type PricingSwitches,
+} from "../_shared/allInPricingEngine.ts";
 import {
   computeVenueOrderMoney,
   priceCart,
   type RequestedLine,
-  venueOrderErrorCopy,
   type VenueOrderErrorCode,
+  venueOrderErrorCopy,
   venueOrderErrorStatus,
   venueOrderIdempotencyKey,
 } from "../_shared/venueOrderPricing.ts";
@@ -62,9 +66,14 @@ import { venueOrderPaystackReference } from "../_shared/venueOrderWebhook.ts";
 // that never reaches a webhook: a zero-total (free) round.
 import { fireVenueOrderPlacedForOrder } from "../_shared/venueOrderNotify.ts";
 import { venueOrderSplitFields } from "./ngPaystackSplit.ts";
+import {
+  resolveVenueOrderPaymentContinuation,
+  stripeVenueOrderContinuationDependencies,
+} from "../_shared/venueOrderPaymentContinuation.ts";
 
 const ENABLED_PRICING_REGIONS = ["GB", "US", "EU", "CH"] as const;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** P-29 — the machine code AND the exact user-visible copy, together. */
 function fail(
@@ -95,9 +104,10 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
   const spotCode = typeof body.spotCode === "string" && body.spotCode.trim()
     ? body.spotCode.trim()
     : null;
-  const bodyVenueId = typeof body.venueId === "string" && UUID_RE.test(body.venueId)
-    ? body.venueId
-    : null;
+  const bodyVenueId =
+    typeof body.venueId === "string" && UUID_RE.test(body.venueId)
+      ? body.venueId
+      : null;
   const bodySessionId =
     typeof body.sessionId === "string" && UUID_RE.test(body.sessionId)
       ? body.sessionId
@@ -152,9 +162,13 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
 
   const requested: RequestedLine[] = [];
   for (const raw of rawLines as Array<Record<string, unknown>>) {
-    const menuItemId = typeof raw?.menuItemId === "string" ? raw.menuItemId : "";
+    const menuItemId = typeof raw?.menuItemId === "string"
+      ? raw.menuItemId
+      : "";
     if (!UUID_RE.test(menuItemId)) return fail("order_total_invalid");
-    const quantity = Number.isInteger(raw?.quantity) ? Number(raw.quantity) : NaN;
+    const quantity = Number.isInteger(raw?.quantity)
+      ? Number(raw.quantity)
+      : NaN;
     const modifierIds = Array.isArray(raw?.modifierIds)
       ? (raw.modifierIds as unknown[]).filter((m): m is string =>
         typeof m === "string" && UUID_RE.test(m)
@@ -185,7 +199,9 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
   const rateScope = ctx.spotId !== null
     ? `spot:${ctx.spotId}`
     : `venue-counter:${ctx.servingVenueId}`;
-  if (mode === "create" && !(await checkOrderRateLimit(supabase, rateScope, 10))) {
+  if (
+    mode === "create" && !(await checkOrderRateLimit(supabase, rateScope, 10))
+  ) {
     return fail("too_many_orders");
   }
 
@@ -229,7 +245,10 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     { p_brand_id: ctx.brandId, p_venue_id: ctx.servingVenueId },
   );
   if (pricingError || !Array.isArray(pricingRows) || pricingRows.length === 0) {
-    console.error("[venue-order-create] resolve_brand_pricing_inputs failed", pricingError);
+    console.error(
+      "[venue-order-create] resolve_brand_pricing_inputs failed",
+      pricingError,
+    );
     return fail("order_total_invalid");
   }
   const pricing = pricingRows[0] as Record<string, unknown>;
@@ -267,7 +286,9 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
   if (bodySessionId !== null) {
     const { data } = await supabase
       .from("venue_order_sessions")
-      .select("id, brand_id, venue_id, qr_spot_id, currency, tip_bps_choice, reservation_id, tab_state")
+      .select(
+        "id, brand_id, venue_id, qr_spot_id, currency, tip_bps_choice, reservation_id, tab_state",
+      )
       .eq("id", bodySessionId)
       .maybeSingle();
     if (data && String(data.venue_id) === ctx.servingVenueId) {
@@ -295,7 +316,9 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       (pricing.take_rate_source as "brand_override" | "platform_default") ??
         "platform_default",
     serviceFeeBps: MINGLA_SERVICE_FEE_BPS,
-    vatRateBps: pricing.vat_rate_bps === null ? 0 : Number(pricing.vat_rate_bps),
+    vatRateBps: pricing.vat_rate_bps === null
+      ? 0
+      : Number(pricing.vat_rate_bps),
   });
 
   // ── mode:"preview" — the cart's totals come from the SERVER. No row, no
@@ -352,9 +375,10 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
   const stripeAccountId = typeof pricing.stripe_account_id === "string"
     ? pricing.stripe_account_id
     : null;
-  const paystackSubaccount = typeof pricing.paystack_subaccount_code === "string"
-    ? pricing.paystack_subaccount_code
-    : null;
+  const paystackSubaccount =
+    typeof pricing.paystack_subaccount_code === "string"
+      ? pricing.paystack_subaccount_code
+      : null;
   const { data: cutoverRow } = await supabase
     .from("brands")
     .select("payout_hold_cutover_at")
@@ -403,6 +427,22 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       idempotencyKey,
     });
     if (existing) {
+      const continuation = await resolveVenueOrderPaymentContinuation(
+        existing,
+        surface,
+        stripeVenueOrderContinuationDependencies(
+          stripeTicketCheckout,
+          resolvePublishableKey,
+        ),
+      );
+      if (continuation) {
+        return jsonResponse({
+          ...continuation,
+          orderId: existing.id,
+          sessionId: existing.session_id,
+          resumed: true,
+        });
+      }
       // A replayed submit returns the EXISTING order, never a second one. The
       // plaintext status token is held only by the first response — a replay
       // legitimately cannot re-mint it, and saying so is honest.
@@ -426,7 +466,10 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     }
     if (tipBps !== null) sessionUpdate.tip_bps_choice = tipBps;
     if (Object.keys(sessionUpdate).length > 0) {
-      await supabase.from("venue_order_sessions").update(sessionUpdate).eq("id", sessionId);
+      await supabase.from("venue_order_sessions").update(sessionUpdate).eq(
+        "id",
+        sessionId,
+      );
     }
   } else {
     const { data: created, error: sessionError } = await supabase
@@ -435,10 +478,11 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         brand_id: ctx.brandId,
         venue_id: ctx.servingVenueId,
         qr_spot_id: ctx.spotId,
-        party_size_claimed: partySizeClaimed !== null && partySizeClaimed >= 1 &&
+        party_size_claimed:
+          partySizeClaimed !== null && partySizeClaimed >= 1 &&
             partySizeClaimed <= 100
-          ? partySizeClaimed
-          : null,
+            ? partySizeClaimed
+            : null,
         currency: settlementCurrency,
         tip_bps_choice: tipBps,
       })
@@ -595,8 +639,49 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         },
         // P-50 — NG partner share is ZERO at launch, so nothing partner-shaped
         // rides here; the subaccount split is the shipped unstamped-brand rail.
-        ...venueOrderSplitFields(isCutover, paystackSubaccount, money.minglaFeeCents),
+        ...venueOrderSplitFields(
+          isCutover,
+          paystackSubaccount,
+          money.minglaFeeCents,
+        ),
       });
+      const { data: persistedOrder, error: metadataReadError } = await supabase
+        .from("venue_orders")
+        .select("metadata")
+        .eq("id", orderId)
+        .single();
+      if (metadataReadError || !persistedOrder) {
+        await markVenueOrderFailed(
+          supabase,
+          orderId,
+          metadataReadError?.message ?? "order_metadata_missing",
+        );
+        return fail("payment_intent_create_failed");
+      }
+      const persistedMetadata = persistedOrder.metadata !== null &&
+          typeof persistedOrder.metadata === "object"
+        ? persistedOrder.metadata as Record<string, unknown>
+        : {};
+      const { error: continuationError } = await supabase
+        .from("venue_orders")
+        .update({
+          metadata: {
+            ...persistedMetadata,
+            payment_continuation: {
+              authorization_url: init.authorization_url,
+              reference: init.reference,
+            },
+          },
+        })
+        .eq("id", orderId);
+      if (continuationError) {
+        await markVenueOrderFailed(
+          supabase,
+          orderId,
+          continuationError.message,
+        );
+        return fail("payment_intent_create_failed");
+      }
       return jsonResponse({
         kind: "requires_paystack_redirect",
         orderId,
@@ -610,7 +695,11 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         pricingBreakdown: money.pricingBreakdown,
       });
     } catch (err) {
-      await markVenueOrderFailed(supabase, orderId, String((err as Error)?.message ?? err));
+      await markVenueOrderFailed(
+        supabase,
+        orderId,
+        String((err as Error)?.message ?? err),
+      );
       return fail("payment_intent_create_failed");
     }
   }
@@ -651,7 +740,8 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         customer_email: buyerEmail,
         success_url:
           `${baseUrl}/o/venue/${orderId}?bst=${buyerStatusToken}&cs={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/b`,
+        cancel_url:
+          `${baseUrl}/o/venue/${orderId}?bst=${buyerStatusToken}&payment=cancelled`,
         metadata: {
           mingla_venue_order_id: orderId,
           mingla_brand_id: ctx.brandId,
@@ -661,7 +751,11 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
         stripeAccount: stripeAccountId!,
       });
       if (!checkoutSession.url) {
-        await markVenueOrderFailed(supabase, orderId, "checkout_session_url_missing");
+        await markVenueOrderFailed(
+          supabase,
+          orderId,
+          "checkout_session_url_missing",
+        );
         return fail("payment_intent_create_failed");
       }
       await supabase

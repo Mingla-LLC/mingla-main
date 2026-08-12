@@ -22,8 +22,16 @@ import {
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
 import { venueOrderErrorCopy } from "../_shared/venueOrderPricing.ts";
+import { stripeTicketCheckout } from "../_shared/stripe.ts";
+import { resolvePublishableKey } from "../_shared/stripeMode.ts";
+import {
+  resolveVenueOrderPaymentContinuation,
+  stripeVenueOrderContinuationDependencies,
+  type VenueOrderContinuationRow,
+} from "../_shared/venueOrderPaymentContinuation.ts";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Length-independent, byte-wise comparison. A naive `===` on hex digests leaks
@@ -62,6 +70,7 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
   const token = typeof body.buyerStatusToken === "string"
     ? body.buyerStatusToken
     : "";
+  const includePaymentContinuation = body.includePaymentContinuation === true;
   if (!UUID_RE.test(orderId) || token.length === 0) {
     return jsonResponse({ error: "not_authorized" }, 403);
   }
@@ -74,7 +83,9 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
         "acknowledged_at, ready_at, delivered_at, cancelled_at, refund_requested_at, " +
         "refund_decision, escalation_level, pickup_code, spot_label_at_order, " +
         "currency, subtotal_cents, service_charge_cents, buyer_subtotal_cents, " +
-        "tax_amount_cents, tip_cents, total_cents, refunded_amount_cents, money_path",
+        "tax_amount_cents, tip_cents, total_cents, refunded_amount_cents, money_path, " +
+        "brand_id, provider, expires_at, stripe_payment_intent_id, " +
+        "stripe_checkout_session_id, stripe_account_id, paystack_reference, metadata",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -106,10 +117,20 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
     order.acknowledged_at === null &&
     order.payment_status !== "refunded" &&
     order.payment_status !== "cancelled";
-  const canRequestRefund =
-    ["acknowledged", "in_progress", "ready"].includes(
-      String(order.fulfillment_status),
-    ) && order.refund_requested_at === null && order.money_path === "mingla";
+  const canRequestRefund = ["acknowledged", "in_progress", "ready"].includes(
+    String(order.fulfillment_status),
+  ) && order.refund_requested_at === null && order.money_path === "mingla";
+
+  const paymentContinuation = includePaymentContinuation
+    ? await resolveVenueOrderPaymentContinuation(
+      order as unknown as VenueOrderContinuationRow,
+      "web",
+      stripeVenueOrderContinuationDependencies(
+        stripeTicketCheckout,
+        resolvePublishableKey,
+      ),
+    )
+    : undefined;
 
   return jsonResponse({
     orderId: String(order.id),
@@ -127,6 +148,7 @@ serve(wrapEdgeHandler("venue-order-status", async (req) => {
     spotLabel: order.spot_label_at_order,
     canCancel,
     canRequestRefund,
+    ...(includePaymentContinuation ? { paymentContinuation } : {}),
     // Every charge the guest paid, itemised — the venue's service charge stays
     // its own line and the tip stays outside every fee
     // (I-PROPOSED-1767-EVERY-CHARGE-IS-VISIBLE).

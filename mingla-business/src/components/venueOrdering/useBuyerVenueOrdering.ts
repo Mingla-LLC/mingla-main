@@ -235,12 +235,12 @@ export function useBuyerVenueOrdering(
     cart.state.lines.length === 0
       ? "idle"
       : previewQuery.isPending || previewQuery.isFetching
-      ? "loading"
-      : previewQuery.isError
-      ? "error"
-      : previewQuery.data !== undefined
-      ? "ready"
-      : "loading";
+        ? "loading"
+        : previewQuery.isError
+          ? "error"
+          : previewQuery.data !== undefined
+            ? "ready"
+            : "loading";
 
   const [live, setLive] = useState<VenueOrderLiveStatus | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -278,7 +278,8 @@ export function useBuyerVenueOrdering(
 
   useEffect(() => {
     if (live === null) return () => undefined;
-    const settled = live.fulfillmentStatus === "delivered" ||
+    const settled =
+      live.fulfillmentStatus === "delivered" ||
       live.fulfillmentStatus === "cancelled" ||
       live.fulfillmentStatus === "refunded";
     const token = sitting?.buyerStatusToken ?? null;
@@ -300,9 +301,9 @@ export function useBuyerVenueOrdering(
     if (keyRef.current !== null && keyRef.current.signature === signature) {
       return keyRef.current.key;
     }
-    const key = `vo-${Date.now().toString(36)}-${
-      Math.random().toString(36).slice(2, 12)
-    }`;
+    const key = `vo-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 12)}`;
     keyRef.current = { signature, key };
     return key;
   }, []);
@@ -328,15 +329,17 @@ export function useBuyerVenueOrdering(
         // sitting handle and the tokens have to survive that, or a guest who
         // reopens the venue page mid-meal starts a second sitting and is asked
         // to tip all over again.
-        persistSitting({
-          sessionId: created.sessionId,
-          orderId: created.orderId,
-          buyerStatusToken: created.buyerStatusToken,
-          guestCancelToken: created.guestCancelToken,
-          tip: cart.state.tip,
-          partySizeClaimed: cart.state.partySize,
-          buyerName: cart.state.buyer.name.trim(),
-        });
+        if (created.kind === "free_completed" || !created.resumed) {
+          persistSitting({
+            sessionId: created.sessionId,
+            orderId: created.orderId,
+            buyerStatusToken: created.buyerStatusToken,
+            guestCancelToken: created.guestCancelToken,
+            tip: cart.state.tip,
+            partySizeClaimed: cart.state.partySize,
+            buyerName: cart.state.buyer.name.trim(),
+          });
+        }
 
         if (created.kind === "free_completed") {
           cart.roundSettled();
@@ -422,11 +425,12 @@ export function useBuyerVenueOrdering(
     cart,
     preview: previewQuery.data ?? null,
     previewStatus,
-    previewError: previewQuery.error instanceof VenueOrderError
-      ? previewQuery.error.message
-      : previewQuery.isError
-      ? "We couldn't price that order. Nothing has been charged."
-      : null,
+    previewError:
+      previewQuery.error instanceof VenueOrderError
+        ? previewQuery.error.message
+        : previewQuery.isError
+          ? "We couldn't price that order. Nothing has been charged."
+          : null,
     submitting,
     submitError,
     submit,

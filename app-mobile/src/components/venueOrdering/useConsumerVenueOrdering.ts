@@ -52,11 +52,13 @@ import {
   fetchVenueOrderStatus,
   fetchVenueOrderingState,
   previewVenueOrder,
+  resumeVenueOrderPayment,
   type VenueOrderRequest,
   VenueOrderError,
   venueOrderGuestAction,
 } from "../../services/venueOrderingService";
 import { buildApplePayCartItems } from "../../payments/applePayCartItem";
+import { presentVenueOrderPayment } from "./venueOrderPaymentPresentation";
 
 const MERCHANT_DISPLAY_NAME = "Mingla";
 const MERCHANT_IDENTIFIER = "merchant.com.mingla.app.v2";
@@ -105,6 +107,7 @@ export interface ConsumerVenueOrdering {
   actionError: string | null;
   cancelOrder: () => void;
   requestRefund: () => void;
+  retryPayment: () => void;
   orderMore: () => void;
   askPartySize: boolean;
   tipRemembered: boolean;
@@ -134,7 +137,8 @@ export function useConsumerVenueOrdering(
   // ONE owner for "we could not resolve this venue's ordering", shared with
   // buyer web: an unresolved state renders no ordering affordance and makes no
   // claim, which is the page exactly as it was before Phase 4.
-  const config: VenueOrderingConfig = configQuery.data ?? VENUE_ORDERING_UNAVAILABLE;
+  const config: VenueOrderingConfig =
+    configQuery.data ?? VENUE_ORDERING_UNAVAILABLE;
 
   const menuItemIds = useMemo(
     () => input.menu.flatMap((group) => group.items.map((item) => item.id)),
@@ -267,12 +271,12 @@ export function useConsumerVenueOrdering(
     cart.state.lines.length === 0
       ? "idle"
       : previewQuery.isPending || previewQuery.isFetching
-      ? "loading"
-      : previewQuery.isError
-      ? "error"
-      : previewQuery.data !== undefined
-      ? "ready"
-      : "loading";
+        ? "loading"
+        : previewQuery.isError
+          ? "error"
+          : previewQuery.data !== undefined
+            ? "ready"
+            : "loading";
 
   // ── the live order ────────────────────────────────────────────────────────
   const [live, setLive] = useState<VenueOrderLiveStatus | null>(null);
@@ -314,7 +318,8 @@ export function useConsumerVenueOrdering(
   /** While an order is unserved its card updates itself. */
   useEffect(() => {
     if (live === null) return () => undefined;
-    const settled = live.fulfillmentStatus === "delivered" ||
+    const settled =
+      live.fulfillmentStatus === "delivered" ||
       live.fulfillmentStatus === "cancelled" ||
       live.fulfillmentStatus === "refunded";
     if (settled) return () => undefined;
@@ -338,7 +343,7 @@ export function useConsumerVenueOrdering(
           if (status.paymentStatus !== "pending") return;
         }
         await new Promise((resolve) =>
-          setTimeout(resolve, SETTLE_POLL_INTERVAL_MS)
+          setTimeout(resolve, SETTLE_POLL_INTERVAL_MS),
         );
       }
     },
@@ -354,9 +359,9 @@ export function useConsumerVenueOrdering(
     if (keyRef.current !== null && keyRef.current.signature === signature) {
       return keyRef.current.key;
     }
-    const key = `vo-${Date.now().toString(36)}-${
-      Math.random().toString(36).slice(2, 12)
-    }`;
+    const key = `vo-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 12)}`;
     keyRef.current = { signature, key };
     return key;
   }, []);
@@ -377,15 +382,21 @@ export function useConsumerVenueOrdering(
           );
           return;
         }
-        persistSitting({
-          sessionId: created.sessionId,
-          orderId: created.orderId,
-          buyerStatusToken: created.buyerStatusToken,
-          guestCancelToken: created.guestCancelToken,
-          tip: cart.state.tip,
-          partySizeClaimed: cart.state.partySize,
-          buyerName: cart.state.buyer.name.trim(),
-        });
+        if (created.kind === "free_completed" || !created.resumed) {
+          persistSitting({
+            sessionId: created.sessionId,
+            orderId: created.orderId,
+            buyerStatusToken: created.buyerStatusToken,
+            guestCancelToken: created.guestCancelToken,
+            tip: cart.state.tip,
+            partySizeClaimed: cart.state.partySize,
+            buyerName: cart.state.buyer.name.trim(),
+          });
+        }
+        const statusToken =
+          created.kind !== "free_completed" && created.resumed
+            ? (sitting?.buyerStatusToken ?? "")
+            : created.buyerStatusToken;
 
         if (created.kind === "free_completed") {
           cart.roundSettled();
@@ -409,7 +420,7 @@ export function useConsumerVenueOrdering(
             // the truth either way, so poll regardless rather than declaring a
             // failure we cannot prove.
           }
-          await pollUntilPaid(created.orderId, created.buyerStatusToken);
+          await pollUntilPaid(created.orderId, statusToken);
           return;
         }
 
@@ -428,7 +439,10 @@ export function useConsumerVenueOrdering(
         // Connect direct charge: the SDK is re-initialised for THIS order's
         // connected account, or the confirm hits the platform context and the
         // connected-account secret is rejected (ORCH-0844).
-        if (created.publishableKey !== "" && created.connectedAccountId !== null) {
+        if (
+          created.publishableKey !== "" &&
+          created.connectedAccountId !== null
+        ) {
           await initStripe({
             publishableKey: created.publishableKey,
             stripeAccountId: created.connectedAccountId,
@@ -462,17 +476,22 @@ export function useConsumerVenueOrdering(
         });
         if (initResult.error) {
           setSubmitError(
-            initResult.error.localizedMessage ?? initResult.error.message ??
+            initResult.error.localizedMessage ??
+              initResult.error.message ??
               "Your card wasn't charged. Try again.",
           );
           return;
         }
-        const presentResult = await presentPaymentSheet();
-        if (presentResult.error) {
-          if (presentResult.error.code !== "Canceled") {
+        const presentation = await presentVenueOrderPayment({
+          orderId: created.orderId,
+          paymentIntentId: created.paymentIntentId,
+          present: presentPaymentSheet,
+        });
+        if (presentation.status !== "completed") {
+          if (presentation.status === "failed") {
             setSubmitError(
-              presentResult.error.localizedMessage ??
-                presentResult.error.message ??
+              presentation.error?.localizedMessage ??
+                presentation.error?.message ??
                 "Your card wasn't charged. Try again.",
             );
           }
@@ -481,7 +500,7 @@ export function useConsumerVenueOrdering(
           return;
         }
         cart.roundSettled();
-        await pollUntilPaid(created.orderId, created.buyerStatusToken);
+        await pollUntilPaid(created.orderId, statusToken);
       } catch (error) {
         setSubmitError(
           error instanceof VenueOrderError
@@ -503,6 +522,7 @@ export function useConsumerVenueOrdering(
     presentPaymentSheet,
     priceSignature,
     request,
+    sitting?.buyerStatusToken,
     submitting,
   ]);
 
@@ -533,6 +553,34 @@ export function useConsumerVenueOrdering(
     [live?.orderId, sitting?.buyerStatusToken, sitting?.guestCancelToken],
   );
 
+  const retryPayment = useCallback((): void => {
+    const orderId = live?.orderId ?? null;
+    const token = sitting?.buyerStatusToken ?? null;
+    if (orderId === null || token === null) return;
+    setActionError(null);
+    setActionPending(true);
+    void (async () => {
+      const authorizationUrl = await resumeVenueOrderPayment(orderId, token);
+      if (authorizationUrl === null) {
+        setActionError(
+          "This payment can no longer be reopened. Ask a member of staff.",
+        );
+        return;
+      }
+      try {
+        await WebBrowser.openAuthSessionAsync(
+          authorizationUrl,
+          NG_RETURN_PREFIX,
+        );
+      } catch {
+        // The webhook is still the truth after an in-app browser cancellation.
+      }
+      await pollUntilPaid(orderId, token);
+    })()
+      .catch(() => setActionError("Payment couldn't be opened. Try again."))
+      .finally(() => setActionPending(false));
+  }, [live?.orderId, pollUntilPaid, sitting?.buyerStatusToken]);
+
   const orderMore = useCallback((): void => {
     // Another round on the SAME sitting. The tip is NOT re-asked (OQ-2) — the
     // session already carries it — and the party size is not asked again either.
@@ -548,11 +596,12 @@ export function useConsumerVenueOrdering(
     cart,
     preview: previewQuery.data ?? null,
     previewStatus,
-    previewError: previewQuery.error instanceof VenueOrderError
-      ? previewQuery.error.message
-      : previewQuery.isError
-      ? "We couldn't price that order. Nothing has been charged."
-      : null,
+    previewError:
+      previewQuery.error instanceof VenueOrderError
+        ? previewQuery.error.message
+        : previewQuery.isError
+          ? "We couldn't price that order. Nothing has been charged."
+          : null,
     submitting,
     submitError,
     submit,
@@ -561,6 +610,7 @@ export function useConsumerVenueOrdering(
     actionError,
     cancelOrder: () => guestAction("cancel"),
     requestRefund: () => guestAction("request_refund"),
+    retryPayment,
     orderMore,
     askPartySize: venueOrderShouldAskPartySize(sitting),
     tipRemembered: sitting !== null,
