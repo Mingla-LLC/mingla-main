@@ -36,6 +36,7 @@ interface PhoneInputProps {
   phoneInputAccessibilityLabel?: string;
   required?: boolean;
   maxLength?: number;
+  onBlur?: () => void;
 }
 
 export const PhoneInput: React.FC<PhoneInputProps> = (props) => {

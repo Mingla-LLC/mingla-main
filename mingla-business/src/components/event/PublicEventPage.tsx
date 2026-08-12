@@ -954,7 +954,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [palette, resolvedTheme],
   );
   const renderRsvpPhoneField = useCallback<RsvpPhoneFieldRenderer>(
-    ({ countryCode, rawValue, onChangeCountry, onChangeRawValue, invalid, disabled, label, testID, required, emptyRequired }) => (
+    ({ countryCode, rawValue, onChangeCountry, onChangeRawValue, onBlur, invalid, disabled, label, testID, required, emptyRequired }) => (
       <View style={styles.rsvpPhoneFieldWrap}>
         <Text style={[styles.rsvpPhoneFieldLabel, { color: palette.tertiaryText }]}>
           {label}
@@ -981,6 +981,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             ? "Select country"
             : `${label} country, ${getCountryByCode(countryCode)?.name ?? countryCode}, tap to change`}
           phoneInputAccessibilityLabel={`${label} phone number`}
+          onBlur={onBlur}
           iconRenderer={(name: PhoneInputIconName, iconProps: { size: number; color: string }) => {
             const iconName =
               name === "chevronDown"

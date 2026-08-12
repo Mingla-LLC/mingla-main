@@ -2,8 +2,17 @@
 -- Prefix is monotonic above local/remote/sibling max 20270322001856.
 BEGIN;
 
+CREATE TEMP TABLE issue_1857_definition_snapshot (
+  object_kind text NOT NULL,
+  object_name text PRIMARY KEY,
+  definition text NOT NULL
+) ON COMMIT DROP;
+
 DO $guard$
-DECLARE v_missing text[] := '{}'::text[];
+DECLARE
+  v_missing text[] := '{}'::text[];
+  v_drift text[] := '{}'::text[];
+  v_expected record;
 BEGIN
   IF to_regprocedure('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text)') IS NULL THEN v_missing:=array_append(v_missing,'submit_event_rsvp'); END IF;
   IF to_regprocedure('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text)') IS NULL THEN v_missing:=array_append(v_missing,'submit_event_rsvp_with_delivery'); END IF;
@@ -14,13 +23,46 @@ BEGIN
   IF to_regprocedure('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)') IS NULL THEN v_missing:=array_append(v_missing,'biz_resolve_brand_person_source'); END IF;
   IF to_regprocedure('public.issue_1770_enqueue_source()') IS NULL THEN v_missing:=array_append(v_missing,'issue_1770_enqueue_source'); END IF;
   IF cardinality(v_missing)>0 THEN RAISE EXCEPTION 'issue_1857_source_drift_missing:%',array_to_string(v_missing,','); END IF;
-  IF position('pg_advisory_xact_lock' in pg_get_functiondef('public.pg_finalize_guest_reservation(uuid,text)'::regprocedure))=0
-     OR position('EXCEPTION WHEN unique_violation' in pg_get_functiondef('public.pg_finalize_guest_reservation(uuid,text)'::regprocedure))=0
-     OR position('linkOutcome' in pg_get_functiondef('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)'::regprocedure))=0 THEN
-    RAISE EXCEPTION 'issue_1857_source_drift_body';
+
+  FOR v_expected IN SELECT * FROM (VALUES
+    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text)', '370ddf66e6a324dfc6dbc65f07c29ae1'),
+    ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text)', '1c69cfda97aedfc8ba846f6e6193c5c2'),
+    ('public.issue_1388_create_stay_group(uuid,text,jsonb,bigint,uuid)', 'e83d8deb8b6e2f55517e29fb7b7f67c0'),
+    ('public.biz_reservation_create(uuid,timestamp with time zone,integer,text,text,text,text,uuid,text,text,text[],text)', 'dd09169aa2385b711fc5c54cf7039940'),
+    ('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text)', 'd014cc5dff178ad164e9c556c4f75c9b'),
+    ('public.pg_finalize_guest_reservation(uuid,text)', '327b12492edb0402c28547ec06bfb52d'),
+    ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)', '6c7beaa8437fac93cfd75f37528598e4'),
+    ('public.issue_1770_enqueue_source()', 'f24e11a15a1a692f0a0b4f3559264826')
+  ) AS expected(signature, definition_md5) LOOP
+    IF md5(pg_get_functiondef(to_regprocedure(v_expected.signature))) <> v_expected.definition_md5 THEN
+      v_drift := array_append(v_drift, v_expected.signature);
+    END IF;
+  END LOOP;
+  IF cardinality(v_drift)>0 THEN
+    RAISE EXCEPTION 'issue_1857_source_drift_fingerprint:%',array_to_string(v_drift,',');
   END IF;
+  INSERT INTO issue_1857_definition_snapshot(object_kind,object_name,definition) VALUES
+    ('acl','issue_1388_create_stay_group_service_role',has_function_privilege('service_role','public.issue_1388_create_stay_group(uuid,text,jsonb,bigint,uuid)','EXECUTE')::text),
+    ('acl','biz_reservation_create_service_role',has_function_privilege('service_role','public.biz_reservation_create(uuid,timestamptz,integer,text,text,text,text,uuid,text,text,text[],text)','EXECUTE')::text);
   IF to_regprocedure('public.biz_resolve_brand_person_source_derived(text,uuid)') IS NULL THEN RAISE EXCEPTION 'issue_1857_derived_missing'; END IF;
-  IF (SELECT count(*) FROM pg_trigger WHERE tgname IN ('issue_1770_event_rsvp_ingest','issue_1770_rsvp_plus_one_ingest','issue_1770_order_ingest','issue_1770_ticket_ingest') AND NOT tgisinternal)<>4 THEN RAISE EXCEPTION 'issue_1857_trigger_drift'; END IF;
+  IF md5(pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure)) <> '498565615bd834f1d3efa95fb3d4552c' THEN
+    RAISE EXCEPTION 'issue_1857_derived_drift_fingerprint';
+  END IF;
+  INSERT INTO issue_1857_definition_snapshot(object_kind,object_name,definition)
+  VALUES ('function','biz_resolve_brand_person_source_derived',pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure));
+
+  INSERT INTO issue_1857_definition_snapshot(object_kind,object_name,definition)
+  SELECT 'trigger',tgname,pg_get_triggerdef(oid,true)
+  FROM pg_trigger
+  WHERE tgname IN ('issue_1770_event_rsvp_ingest','issue_1770_rsvp_plus_one_ingest','issue_1770_order_ingest','issue_1770_ticket_ingest')
+    AND NOT tgisinternal;
+  IF (SELECT count(*) FROM issue_1857_definition_snapshot WHERE object_kind='trigger')<>4
+     OR NOT EXISTS (SELECT 1 FROM issue_1857_definition_snapshot WHERE object_name='issue_1770_event_rsvp_ingest' AND definition='CREATE TRIGGER issue_1770_event_rsvp_ingest AFTER INSERT OR DELETE OR UPDATE ON event_rsvps FOR EACH ROW EXECUTE FUNCTION issue_1770_enqueue_source(''event_rsvp'')')
+     OR NOT EXISTS (SELECT 1 FROM issue_1857_definition_snapshot WHERE object_name='issue_1770_rsvp_plus_one_ingest' AND definition='CREATE TRIGGER issue_1770_rsvp_plus_one_ingest AFTER INSERT OR DELETE OR UPDATE ON event_rsvp_guests FOR EACH ROW EXECUTE FUNCTION issue_1770_enqueue_source(''rsvp_plus_one'')')
+     OR NOT EXISTS (SELECT 1 FROM issue_1857_definition_snapshot WHERE object_name='issue_1770_order_ingest' AND definition='CREATE TRIGGER issue_1770_order_ingest AFTER INSERT OR DELETE OR UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION issue_1770_enqueue_source(''order'')')
+     OR NOT EXISTS (SELECT 1 FROM issue_1857_definition_snapshot WHERE object_name='issue_1770_ticket_ingest' AND definition='CREATE TRIGGER issue_1770_ticket_ingest AFTER INSERT OR DELETE OR UPDATE ON tickets FOR EACH ROW EXECUTE FUNCTION issue_1770_enqueue_source(''ticket_holder'')') THEN
+    RAISE EXCEPTION 'issue_1857_trigger_drift_definition';
+  END IF;
 END $guard$;
 
 ALTER TABLE public.event_rsvps ADD COLUMN IF NOT EXISTS guest_phone_country_iso text;
@@ -1754,9 +1796,93 @@ REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source_derived(text,uuid)
 GRANT EXECUTE ON FUNCTION public.biz_resolve_brand_person_source_derived(text,uuid) TO service_role;
 
 DO $post$
+DECLARE
+  v_expected record;
+  v_drift text[] := '{}'::text[];
 BEGIN
-  IF position('phoneCountryIso' in pg_get_functiondef('public.issue_1770_enqueue_source()'::regprocedure))=0 THEN RAISE EXCEPTION 'issue_1857_revision_missing_iso'; END IF;
-  IF (SELECT count(*) FROM pg_trigger WHERE tgname IN ('issue_1770_event_rsvp_ingest','issue_1770_rsvp_plus_one_ingest','issue_1770_order_ingest','issue_1770_ticket_ingest') AND NOT tgisinternal)<>4 THEN RAISE EXCEPTION 'issue_1857_trigger_changed'; END IF;
+  FOR v_expected IN SELECT * FROM (VALUES
+    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '85b354da8fbc858e0b2e0aed6167982c'),
+    ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '9fe5e36dee2bd3bdc8ed26e2081716fb'),
+    ('public.issue_1388_create_stay_group(uuid,text,jsonb,bigint,uuid)', 'eec5f6a9750eb113d3c75c027455a704'),
+    ('public.biz_reservation_create(uuid,timestamp with time zone,integer,text,text,text,text,uuid,text,text,text[],text)', '49ffd0c7006d839ca41fbcf0a082d643'),
+    ('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)', '97adc49789e7e254744ff9b60efbe9ba'),
+    ('public.pg_finalize_guest_reservation(uuid,text)', '51b79bcbec509bfd5f3a115f87af472d'),
+    ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)', 'eaa44b5386a7a6a668e69ce769cdd6d8'),
+    ('public.issue_1770_enqueue_source()', '82f95d2c7440945e43df55948c164f1f')
+  ) AS expected(signature, definition_md5) LOOP
+    IF to_regprocedure(v_expected.signature) IS NULL
+       OR md5(pg_get_functiondef(to_regprocedure(v_expected.signature))) <> v_expected.definition_md5 THEN
+      v_drift := array_append(v_drift, v_expected.signature);
+    END IF;
+  END LOOP;
+  IF cardinality(v_drift)>0 THEN
+    RAISE EXCEPTION 'issue_1857_post_definition_drift:%',array_to_string(v_drift,',');
+  END IF;
+  IF to_regprocedure('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text)') IS NOT NULL
+     OR to_regprocedure('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text)') IS NOT NULL
+     OR to_regprocedure('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text)') IS NOT NULL THEN
+    RAISE EXCEPTION 'issue_1857_old_signature_survived';
+  END IF;
+
+  IF pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure) IS DISTINCT FROM
+       (SELECT definition FROM issue_1857_definition_snapshot WHERE object_name='biz_resolve_brand_person_source_derived') THEN
+    RAISE EXCEPTION 'issue_1857_derived_definition_changed';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM issue_1857_definition_snapshot snapshot
+    LEFT JOIN pg_trigger current_trigger
+      ON current_trigger.tgname=snapshot.object_name AND NOT current_trigger.tgisinternal
+    WHERE snapshot.object_kind='trigger'
+      AND pg_get_triggerdef(current_trigger.oid,true) IS DISTINCT FROM snapshot.definition
+  ) OR (SELECT count(*) FROM pg_trigger WHERE tgname IN ('issue_1770_event_rsvp_ingest','issue_1770_rsvp_plus_one_ingest','issue_1770_order_ingest','issue_1770_ticket_ingest') AND NOT tgisinternal)<>4 THEN
+    RAISE EXCEPTION 'issue_1857_trigger_definition_changed';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM (VALUES
+      ('event_rsvps','guest_phone_country_iso','event_rsvps_guest_phone_country_iso_check'),
+      ('event_rsvp_guests','phone_country_iso','event_rsvp_guests_phone_country_iso_check'),
+      ('reservations','guest_phone_country_iso','reservations_guest_phone_country_iso_check'),
+      ('reservation_checkout_sessions','buyer_phone_country_iso','reservation_checkout_sessions_buyer_phone_country_iso_check'),
+      ('brand_person_contact_method_sources','phone_country_iso','brand_person_contact_method_sources_phone_country_iso_check')
+    ) AS expected(table_name,column_name,constraint_name)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM information_schema.columns c
+      WHERE c.table_schema='public' AND c.table_name=expected.table_name
+        AND c.column_name=expected.column_name AND c.is_nullable='YES' AND c.data_type='text'
+    ) OR NOT EXISTS (
+      SELECT 1 FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace
+      WHERE n.nspname='public' AND r.relname=expected.table_name AND c.conname=expected.constraint_name
+        AND pg_get_constraintdef(c.oid,true)=format('CHECK (%I IS NULL OR %I ~ ''^[A-Z]{2}$''::text)',expected.column_name,expected.column_name)
+    )
+  ) THEN RAISE EXCEPTION 'issue_1857_schema_postcondition_failed'; END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM (VALUES
+      ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', false, true),
+      ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', false, true),
+      ('public.issue_1388_create_stay_group(uuid,text,jsonb,bigint,uuid)', false, (SELECT definition::boolean FROM issue_1857_definition_snapshot WHERE object_name='issue_1388_create_stay_group_service_role')),
+      ('public.biz_reservation_create(uuid,timestamptz,integer,text,text,text,text,uuid,text,text,text[],text)', true, (SELECT definition::boolean FROM issue_1857_definition_snapshot WHERE object_name='biz_reservation_create_service_role')),
+      ('public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)', false, true),
+      ('public.pg_finalize_guest_reservation(uuid,text)', false, true),
+      ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamptz)', false, true),
+      ('public.issue_1770_enqueue_source()', false, true),
+      ('public.biz_resolve_brand_person_source_derived(text,uuid)', false, true)
+    ) AS expected(signature,authenticated_execute,service_role_execute)
+    WHERE has_function_privilege('anon',expected.signature,'EXECUTE')
+       OR has_function_privilege('authenticated',expected.signature,'EXECUTE') IS DISTINCT FROM expected.authenticated_execute
+       OR has_function_privilege('service_role',expected.signature,'EXECUTE') IS DISTINCT FROM expected.service_role_execute
+  ) THEN
+    RAISE EXCEPTION 'issue_1857_acl_postcondition_failed';
+  END IF;
+
+  IF position('''phoneCountryIso''' in pg_get_functiondef('public.issue_1770_enqueue_source()'::regprocedure))=0
+     OR position('guest_phone_country_iso' in pg_get_functiondef('public.issue_1770_enqueue_source()'::regprocedure))=0
+     OR position('phone_country_iso' in pg_get_functiondef('public.issue_1770_enqueue_source()'::regprocedure))=0
+     OR position('reservation' in pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure))>0
+     OR position('stay_' in pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure))>0 THEN
+    RAISE EXCEPTION 'issue_1857_revision_or_source_scope_postcondition_failed';
+  END IF;
 END $post$;
 
 COMMIT;

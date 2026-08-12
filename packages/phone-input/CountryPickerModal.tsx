@@ -17,7 +17,7 @@
  *     appear inside an EXISTING Modal (e.g., bottom-sheet contexts).
  */
 
-import React, { useState, useCallback, useMemo, useRef } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   KeyboardProvider,
   KeyboardToolbar,
@@ -61,6 +61,10 @@ import {
   touchTargets,
   typography,
 } from "./tokens";
+import {
+  shouldHapticCountrySelection,
+  webOverlayFocusAction,
+} from "./pickerPresentation";
 
 interface CountryPickerContentProps {
   selectedCode: string | null;
@@ -151,7 +155,9 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
 
   const handleSelect = useCallback(
     (code: string): void => {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (shouldHapticCountrySelection(Platform.OS)) {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
       onSelect(code);
       onClose();
       setSearch("");
@@ -356,6 +362,35 @@ export const CountryPickerOverlay: React.FC<CountryPickerContentProps> = (
     backgroundColor: t.backgroundPrimary,
     position: Platform.OS === "web" ? "fixed" : "absolute",
   };
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      const overlay = document.querySelector<HTMLElement>(
+        '[data-testid="phone-country-picker-overlay"]',
+      );
+      if (!overlay) return;
+      const focusables = Array.from(overlay.querySelectorAll<HTMLElement>(
+        'button, input, [role="button"], [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => !element.hasAttribute("disabled"));
+      const action = webOverlayFocusAction({
+        key: event.key,
+        shiftKey: event.shiftKey,
+        activeIndex: focusables.indexOf(document.activeElement as HTMLElement),
+        focusableCount: focusables.length,
+      });
+      if (action === null) return;
+      event.preventDefault();
+      if (action === "close") {
+        props.onClose();
+      } else if (action === "first") {
+        focusables[0]?.focus();
+      } else {
+        focusables.at(-1)?.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [props.onClose]);
   // ORCH-1300 — `position:'fixed'` alone is NOT enough on mobile WebKit: the RSVP
   // page nests the phone field inside `Animated`/transform ancestors, and `fixed`
   // resolves against the nearest TRANSFORMED ancestor (not the viewport), landing
@@ -366,7 +401,11 @@ export const CountryPickerOverlay: React.FC<CountryPickerContentProps> = (
   // onSelect/onClose working unchanged.
   return (
     <WebOverlayPortal>
-      <View style={overlayStyle as StyleProp<ViewStyle>}>
+      <View
+        style={overlayStyle as StyleProp<ViewStyle>}
+        testID="phone-country-picker-overlay"
+        accessibilityViewIsModal
+      >
         <SafeAreaProvider>
           <CountryPickerContent {...props} />
         </SafeAreaProvider>

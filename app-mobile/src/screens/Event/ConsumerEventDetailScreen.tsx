@@ -562,6 +562,7 @@ export default function ConsumerEventDetailScreen({
           ? "Select country"
           : `${args.label} country, ${getCountryByCode(args.countryCode)?.name ?? args.countryCode}, tap to change`}
         phoneInputAccessibilityLabel={`${args.label} phone number`}
+        onBlur={args.onBlur}
       />
     </View>
   ), [palette.tertiaryText, rsvpPhoneTheme]);

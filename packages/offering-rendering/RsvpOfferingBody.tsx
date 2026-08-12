@@ -77,6 +77,7 @@ import { type PublicBrandProps, type PublicEventProps } from "./types";
 import { type ResolvedTheme } from "./designTokens";
 import { normalizeCityCountry } from "./normalizeCityCountry";
 import { RsvpMomentumDecision } from "./RsvpMomentumDecision";
+import { markRsvpPhoneTouchedById } from "./rsvpPhoneValidation";
 import type {
   RsvpAnonymousRecovery,
   RsvpConfirmationDetails,
@@ -196,6 +197,7 @@ export interface RsvpPhoneFieldRenderArgs {
   disabled: boolean;
   required: boolean;
   emptyRequired: boolean;
+  onBlur: () => void;
 }
 export type RsvpPhoneFieldRenderer = (
   args: RsvpPhoneFieldRenderArgs,
@@ -212,6 +214,7 @@ interface RsvpGuestDraft extends RsvpGuestContact {
   id: string;
   rawPhone: string;
   phoneCountryIso: string | null;
+  phoneTouched: boolean;
 }
 
 export interface RsvpSubmitResult {
@@ -380,6 +383,7 @@ export const useRsvpOfferingState = (
   const [guests, setGuests] = useState<RsvpGuestDraft[]>([]);
   const nextGuestId = useRef(0);
   const [showValidationErrors, setShowValidationErrors] = useState(false);
+  const [primaryPhoneTouched, setPrimaryPhoneTouched] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -794,6 +798,7 @@ export const useRsvpOfferingState = (
             phone: "",
             rawPhone: "",
             phoneCountryIso: null,
+            phoneTouched: false,
           }]
         : g,
     );
@@ -864,7 +869,8 @@ export const useRsvpOfferingState = (
             palette,
             disabled: submitting,
             required: true,
-            emptyRequired: showValidationErrors && phoneRawValue.trim().length === 0,
+            emptyRequired: (showValidationErrors || primaryPhoneTouched) && phoneRawValue.trim().length === 0,
+            onBlur: () => setPrimaryPhoneTouched(true),
           })
         : (
           <RsvpField
@@ -984,7 +990,10 @@ export const useRsvpOfferingState = (
             palette,
             disabled: submitting,
             required: true,
-            emptyRequired: showValidationErrors && g.rawPhone.trim().length === 0,
+            emptyRequired: (showValidationErrors || g.phoneTouched) && g.rawPhone.trim().length === 0,
+            onBlur: () => {
+              setGuests((rows) => markRsvpPhoneTouchedById(rows, g.id));
+            },
           }) : (
             <RsvpField
               label="Phone"

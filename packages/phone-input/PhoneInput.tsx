@@ -37,6 +37,7 @@ import {
 import { CountryPickerModal, CountryPickerOverlay } from "./CountryPickerModal";
 import { getCountryByCode } from "./countries";
 import {
+  pickerCloseFocusTarget,
   resolvePickerPresentation,
   type PhoneInputPickerPresentation,
 } from "./pickerPresentation";
@@ -88,6 +89,7 @@ export interface PhoneInputProps {
   phoneInputAccessibilityLabel?: string;
   required?: boolean;
   maxLength?: number;
+  onBlur?: () => void;
 }
 
 export const PhoneInput: React.FC<PhoneInputProps> = ({
@@ -107,6 +109,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
   phoneInputAccessibilityLabel,
   required = false,
   maxLength = 15,
+  onBlur,
 }) => {
   const [focused, setFocused] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -185,7 +188,8 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
 
   const handlePickerClose = useCallback((): void => {
     setPickerVisible(false);
-    const target = countryWasSelected.current
+    const focusTarget = pickerCloseFocusTarget(countryWasSelected.current);
+    const target = focusTarget === "phone"
       ? phoneInputRef.current
       : countryTriggerRef.current;
     countryWasSelected.current = false;
@@ -297,7 +301,10 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
           placeholderTextColor={t.textTertiary}
           editable={!disabled}
           onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onBlur={() => {
+            setFocused(false);
+            onBlur?.();
+          }}
           onSubmitEditing={Keyboard.dismiss}
           blurOnSubmit
           inputAccessoryViewID={
