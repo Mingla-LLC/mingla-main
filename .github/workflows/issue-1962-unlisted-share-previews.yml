@@ -1,0 +1,22 @@
+name: Issue 1962 Unlisted Share Previews
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/contentShare.ts"
+      - "mingla-business/server/socialPreview.js"
+      - "scripts/issue-1962/**"
+      - ".github/scripts/strict-grep/issue-1962-unlisted-share-previews.mjs"
+      - ".github/workflows/issue-1962-unlisted-share-previews.yml"
+  push:
+    branches: [main]
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm ci --ignore-scripts
+        working-directory: mingla-business
+      - run: node --experimental-strip-types --test scripts/issue-1962/unlisted-share-previews.implementor.happy.test.mjs

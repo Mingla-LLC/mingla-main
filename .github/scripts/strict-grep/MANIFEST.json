@@ -7914,6 +7914,20 @@
       ],
       "selfTest": "wired",
       "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1962-unlisted-share-previews.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1962-unlisted-share-previews"
+      ]
     }
   ]
 }

@@ -220,6 +220,24 @@ const requestJson = async (pathname, searchParams) => {
   return response.json();
 };
 
+const requestRpcJson = async (functionName, body) => {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${functionName}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Supabase public preview RPC failed: ${response.status}`);
+  }
+
+  return response.json();
+};
+
 const fetchSharedCardSnapshot = async (shareId) => {
   if (!/^[a-f0-9]{36}$/.test(asText(shareId))) return { status: 404, snapshot: null };
   const proxySecret = process.env.SHARED_CARD_PROXY_SECRET;
@@ -238,6 +256,37 @@ const fetchSharedCardSnapshot = async (shareId) => {
   if (!response.ok) return { status: response.status, snapshot: null };
   const body = await response.json();
   return { status: 200, snapshot: body?.snapshot ?? null, appUrl: body?.appUrl ?? null, canonicalUrl: body?.canonicalUrl ?? null };
+};
+
+const localDateFromInstant = (instant, timeZone) => {
+  const parsed = new Date(asText(instant));
+  if (Number.isNaN(parsed.getTime())) return "";
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: asText(timeZone, "UTC"),
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(parsed);
+    const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+    return values.year && values.month && values.day
+      ? `${values.year}-${values.month}-${values.day}`
+      : "";
+  } catch {
+    return "";
+  }
+};
+
+const galleryPreviewImage = (gallery) => {
+  if (!Array.isArray(gallery)) return null;
+  for (const item of gallery) {
+    if (item === null || typeof item !== "object" || Array.isArray(item)) continue;
+    const mediaType = asText(item.type || item.kind || item.mediaType || item.media_type).toLowerCase();
+    const url = asText(item.url);
+    if (["video", "gif", "animated"].includes(mediaType) || !isAbsoluteHttpUrl(url)) continue;
+    if (["image", "photo"].includes(mediaType) || /\.(?:avif|jpe?g|png|webp)(?:$|\?)/i.test(url)) return url;
+  }
+  return null;
 };
 
 const fetchContentShare = async (code) => {
@@ -352,23 +401,81 @@ const renderContentShareHtml = (contentShare, installAttribution = null) => {
     body: `<style>.page{max-width:1120px;padding:32px}.content-share{display:grid;grid-template-columns:${portrait ? "min(432px,40vw) minmax(0,560px)" : "minmax(0,720px)"};gap:48px;align-items:start}.portrait{position:relative;width:100%;aspect-ratio:4/5;border-radius:32px;overflow:hidden;background:#0C0E12}.portrait-poster,.share-motion,.portrait-identity-overlay{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.share-motion{z-index:1}.portrait-identity-overlay{z-index:2;pointer-events:none}.identity-wordmark{clip-path:inset(0 55% 80% 0)}.identity-bottom{clip-path:inset(48% 0 0 0)}.media-control{position:absolute;z-index:3;top:24px;min-width:44px;height:44px;border:2px solid #FFF7EF;border-radius:22px;background:#0C0E12;color:#FFF7EF;font-size:14px}.play-control{right:24px;width:44px;font-size:18px}.sound-control{right:76px;padding:0 12px}.eyebrow{font-size:14px;text-transform:none;color:#FFF7EF}.status{display:inline-block;margin-left:8px;padding:4px 9px;border-radius:99px;background:#FFF7EF;color:#0C0E12;font-weight:700}.facts{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px}.facts li{padding:7px 10px;border:1px solid rgba(255,255,255,.42);border-radius:99px}.actions,.detail-actions{display:flex;flex-wrap:wrap;gap:12px}.detail-link{display:inline-flex;min-height:44px;align-items:center;color:#FFF7EF}.detail-list li{margin:10px 0}.detail-list li span{display:block;color:rgba(255,255,255,.72)}.secondary{background:transparent;color:#FFF7EF;border:2px solid #FFF7EF}.hours{list-style:none;padding:0}.hours li{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:8px 0}.hours .today{font-weight:800}.hours em{grid-column:2;font-size:14px}.content-share h1{font-size:clamp(36px,6vw,64px);line-height:1}.content-share h2{margin-top:32px}@media(max-width:759px){.page{padding:16px}.content-share{grid-template-columns:1fr;gap:24px}.portrait{max-width:432px;margin:auto}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}</style><section class="content-share">${portrait}<div><p class="eyebrow">${escapeHtml(({place:"Place",curated:"Curated plan",event:"Event",rsvp_event:"RSVP event",trip:"Trip",experience:"Experience",venue:"Venue",brand:"Brand"})[facts.kind] || "Mingla")}${status ? `<span class="status">● ${escapeHtml(status)}</span>`:""}</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p><ul class="facts">${previewFacts.map((fact)=>`<li>${escapeHtml(fact)}</li>`).join("")}</ul><div class="actions">${action ? `<a class="cta" data-share-destination="${actionCodes[action.label]}" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>`:""}<a class="cta secondary" data-share-install href="${escapeHtml(contentShareOneLink(code,installReferralCode))}">Open or get Mingla</a></div>${renderContentShareDetails(contentShare)}${hoursHtml}</div></section>${script}${analyticsScript}` });
 };
 
-const fetchPublicEventBySlug = async (brandSlug, eventSlug) => {
+const directEventBundleToPreviewRow = (payload) => {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const brand = payload.brand !== null && typeof payload.brand === "object" && !Array.isArray(payload.brand)
+    ? payload.brand : {};
+  const id = asText(payload.id);
+  const eventSlug = asText(payload.eventSlug);
+  const brandSlugValue = asText(payload.brandSlug);
+  const title = asText(payload.name);
+  const coverGallery = Array.isArray(payload.coverGallery) ? payload.coverGallery : [];
+  const primaryCoverType = asText(payload.coverMediaType).toLowerCase();
+  const primaryCoverUrl = asText(payload.coverMediaUrl);
+  const previewCoverUrl = primaryCoverType === "video"
+    ? galleryPreviewImage(coverGallery)
+    : primaryCoverUrl;
+  const previewCoverType = primaryCoverType === "video" && previewCoverUrl ? "image" : primaryCoverType;
+  const eventLocalDate = localDateFromInstant(payload.masterStartAt, payload.timezone);
+  if (!id || !eventSlug || !brandSlugValue || !title) return null;
+  return {
+    id,
+    brand_id: asText(payload.brandId),
+    brand_slug: brandSlugValue,
+    brand_name: asText(brand.name, "Mingla Business"),
+    brand_description: "",
+    brand_profile_photo_url: asText(brand.profilePhotoUrl) || null,
+    title,
+    description: asText(payload.description),
+    slug: eventSlug,
+    event_type: "event",
+    location_text: asText(payload.venueName),
+    is_online: payload.isOnline === true,
+    cover_media_url: previewCoverUrl || null,
+    cover_media_type: previewCoverType || null,
+    cover_media_credit: asText(payload.coverMediaCredit) || null,
+    cover_media_gallery: coverGallery,
+    status: asText(payload.status),
+    master_start_at: asText(payload.masterStartAt) || null,
+    master_end_at: asText(payload.masterEndAt) || null,
+    master_timezone: asText(payload.timezone) || null,
+    city: asText(payload.city) || null,
+    public_theme: {
+      business_event: {
+        when: { date: eventLocalDate },
+      },
+    },
+  };
+};
+
+const fetchRsvpFallback = async (searchParams) => {
   const rows = await requestJson("business_public_events_view", {
     select: "*",
-    brand_slug: `eq.${brandSlug}`,
-    slug: `eq.${eventSlug}`,
+    ...searchParams,
+    event_type: "eq.rsvp",
     limit: "1",
   });
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 };
 
+const fetchPublicEventBySlug = async (brandSlug, eventSlug) => {
+  const direct = directEventBundleToPreviewRow(await requestRpcJson("pg_direct_event_checkout_bundle", {
+    p_event_id: null,
+    p_brand_slug: brandSlug,
+    p_event_slug: eventSlug,
+  }));
+  if (direct) return direct;
+  return fetchRsvpFallback({ brand_slug: `eq.${brandSlug}`, slug: `eq.${eventSlug}` });
+};
+
 const fetchPublicEventById = async (eventId) => {
-  const rows = await requestJson("business_public_events_view", {
-    select: "*",
-    id: `eq.${eventId}`,
-    limit: "1",
-  });
-  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+  const direct = directEventBundleToPreviewRow(await requestRpcJson("pg_direct_event_checkout_bundle", {
+    p_event_id: eventId,
+    p_brand_slug: null,
+    p_event_slug: null,
+  }));
+  if (direct) return direct;
+  return fetchRsvpFallback({ id: `eq.${eventId}` });
 };
 
 const fetchPublicBrandEvents = async (brandSlug) => {
@@ -1310,6 +1417,7 @@ module.exports = {
   buildEventOgCardProps,
   buildTripOgCardProps,
   buildOgTextFit,
+  directEventBundleToPreviewRow,
   escapeHtml,
   eventDescription,
   eventImageUrl,
