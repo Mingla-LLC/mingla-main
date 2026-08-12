@@ -20,3 +20,4 @@ jobs:
       - run: npm ci --ignore-scripts
         working-directory: mingla-business
       - run: node --experimental-strip-types --test scripts/issue-1962/unlisted-share-previews.implementor.happy.test.mjs
+      - run: node --test scripts/issue-1962/unlisted-share-previews.tester.adversarial.test.mjs
