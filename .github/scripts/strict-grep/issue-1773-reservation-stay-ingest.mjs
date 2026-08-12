@@ -23,6 +23,7 @@ export function inspect(source) {
   need("migration", "AFTER INSERT ON public.stay_reservation_events", "confirmation event trigger");
   need("migration", "p_normalized_phone_e164 text", "three-argument phone seam");
   need("migration", "v_phone_country_iso !~ '^[A-Z]{2}$'", "explicit uppercase ISO guard");
+  need("migration", "v_phone_country_iso NOT IN ('US','CA','GB','NG','FR','DE','BE','ES','PT')", "canonical supported-country boundary");
   need("migration", "'rawPhone',NULLIF(btrim(NEW.guest_phone_e164),'')", "reservation raw-phone revision");
   need("migration", "'phoneCountryIso',NEW.guest_phone_country_iso", "reservation ISO revision");
   need("migration", "EXCEPTION WHEN OTHERS", "fail-open exception handling");
@@ -63,6 +64,7 @@ function selfTest(source) {
     ["Stay kind", { ...source, migration: source.migration.replaceAll("'reservation','stay_reservation'", "'reservation','reservation'") }],
     ["confirmation", { ...source, migration: source.migration.replaceAll("e.event_type='stay_reservation_confirmed'", "g.state='confirmed'") }],
     ["ISO", { ...source, migration: source.migration.replace("v_phone_country_iso !~ '^[A-Z]{2}$'", "false") }],
+    ["supported ISO", { ...source, migration: source.migration.replace("v_phone_country_iso NOT IN ('US','CA','GB','NG','FR','DE','BE','ES','PT')", "false") }],
     ["fail-open", { ...source, migration: source.migration.replaceAll("EXCEPTION WHEN OTHERS", "") }],
     ["suppression", { ...source, migration: source.migration.replaceAll("biz_record_brand_person_suppression", "removed_suppression_owner") }],
     ["ACL", { ...source, migration: source.migration.replace("REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source_derived(text,uuid,text) FROM PUBLIC,anon,authenticated", "REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source_derived(text,uuid,text) FROM PUBLIC,anon") }],
@@ -80,7 +82,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const source = readSources();
   if (process.argv.includes("--self-test")) {
     selfTest(source);
-    console.log("#1773 reservation/Stay ingest self-test PASS (10 true mutations)");
+    console.log("#1773 reservation/Stay ingest self-test PASS (11 true mutations)");
   } else {
     const failures = inspect(source);
     if (failures.length) { console.error(failures.join("\n")); process.exit(1); }

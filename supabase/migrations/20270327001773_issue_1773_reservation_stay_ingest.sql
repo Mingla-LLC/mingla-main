@@ -159,6 +159,7 @@ BEGIN
     ELSE
       IF p_normalized_phone_e164 IS NOT NULL AND
          (v_phone_country_iso IS NULL OR v_phone_country_iso !~ '^[A-Z]{2}$'
+          OR v_phone_country_iso NOT IN ('US','CA','GB','NG','FR','DE','BE','ES','PT')
           OR public.issue_1770_normalize_phone(p_normalized_phone_e164) IS DISTINCT FROM p_normalized_phone_e164) THEN
         RETURN jsonb_build_object('personId',NULL,'sourceLinkId',NULL,'linkOutcome','unlinked','conflictId',NULL);
       END IF;
