@@ -767,11 +767,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       hideCloseOnWeb
       heroEyebrow={heroEyebrow}
       heroTitle={heroTitle}
-      directionCIdentity={
-        useDirectionCIdentity
-          ? { title: brand.displayName, meta: address }
-          : undefined
-      }
+      directionCIdentity={useDirectionCIdentity ? { title: brand.displayName, meta: address } : undefined}
       stickyPanel={stickyPanel}
       safeAreaTop={chromeTopOffset ?? 0}
       contentBottomInset={contentBottomInset}
@@ -886,7 +882,9 @@ const FollowButton: React.FC<BrandFollowButtonProps> = ({
       disabled={followPending === true}
       accessibilityRole="button"
       accessibilityLabel={
-        active ? `Unfollow ${brand.displayName}` : `Follow ${brand.displayName}`
+        active
+          ? `Unfollow ${brand.displayName}`
+          : `Follow ${brand.displayName}`
       }
       accessibilityState={{
         selected: isFollowing === true,

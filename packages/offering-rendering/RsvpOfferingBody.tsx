@@ -50,13 +50,7 @@
  * bar never diverge. The decision LOGIC stays in RsvpMomentumDecision (single owner).
  */
 
-import React, {
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
   LayoutAnimation,
@@ -72,11 +66,7 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 
-import {
-  boldFontFamily,
-  offeringSurfaceStyles,
-  type ThemePalette,
-} from "./themePalette";
+import { boldFontFamily, offeringSurfaceStyles, type ThemePalette } from "./themePalette";
 import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
 // ORCH-1292 — resolve party/vibe/music slugs to canonical labels at the pills row.
 import { taxonomyLabel } from "./taxonomyLabels";
@@ -114,9 +104,7 @@ export const rsvpErrorMessageForCode = (code: string): string => {
     return "That phone number looks off.";
   return "Couldn't save your RSVP. Try again.";
 };
-const RsvpGoingConfirmDialog = React.lazy(
-  () => import("./RsvpGoingConfirmDialog"),
-);
+const RsvpGoingConfirmDialog = React.lazy(() => import("./RsvpGoingConfirmDialog"));
 const RsvpDetailsModal = React.lazy(() => import("./RsvpDetailsModal"));
 const RsvpChipInPanel = React.lazy(() => import("./RsvpChipInPanel"));
 const RsvpSuccessPopup = React.lazy(() => import("./RsvpSuccessPopup"));
@@ -213,8 +201,7 @@ export interface RsvpSubmitResult {
   approvalStatus: "pending" | "approved";
   rsvpId: string;
   confirmationToken: string | null;
-  acknowledgement?:
-    "accepted" | "pending_approval" | "waitlisted" | "maybe" | "not_going";
+  acknowledgement?: "accepted" | "pending_approval" | "waitlisted" | "maybe" | "not_going";
   credentials?: RsvpPassCredential[];
   anonymousRecovery?: RsvpAnonymousRecovery[];
 }
@@ -370,19 +357,13 @@ export const useRsvpOfferingState = (
   // replacement; once the three fields are complete the completion form folds
   // away and the existing RSVP shape remains unchanged.
   useEffect(() => {
-    setGuestName(
-      (current: string) => current.trim() || props.initialGuestName || "",
-    );
+    setGuestName((current: string) => current.trim() || props.initialGuestName || "");
   }, [props.initialGuestName]);
   useEffect(() => {
-    setGuestEmail(
-      (current: string) => current.trim() || props.initialGuestEmail || "",
-    );
+    setGuestEmail((current: string) => current.trim() || props.initialGuestEmail || "");
   }, [props.initialGuestEmail]);
   useEffect(() => {
-    setGuestPhone(
-      (current: string) => current.trim() || props.initialGuestPhone || "",
-    );
+    setGuestPhone((current: string) => current.trim() || props.initialGuestPhone || "");
   }, [props.initialGuestPhone]);
   // ORCH-1295 — country + local-digits state for the injected picker (unused when
   // renderPhoneField is absent). Lifted here so the field stays controlled across
@@ -398,15 +379,16 @@ export const useRsvpOfferingState = (
   const [guestStatus, setGuestStatus] = useState<
     "going" | "not_going" | "waitlisted" | "maybe" | null
   >(null);
-  const [guestApproval, setGuestApproval] = useState<
-    "pending" | "approved" | null
-  >(null);
+  const [guestApproval, setGuestApproval] = useState<"pending" | "approved" | null>(
+    null,
+  );
 
   // FLOW A — Going confirmation dialog + success popup state (body-owned).
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
-  const [successDetails, setSuccessDetails] =
-    useState<RsvpConfirmationDetails | null>(null);
+  const [successDetails, setSuccessDetails] = useState<RsvpConfirmationDetails | null>(
+    null,
+  );
 
   // ORCH-1163-R3 — floating-bar details modal. The floating bar has no form host,
   // so when a guest taps a floating decision with no contact details, we open this
@@ -434,8 +416,7 @@ export const useRsvpOfferingState = (
       ? Math.max(preselect, chipMinCents)
       : preselect;
   })();
-  const [chipAmountCents, setChipAmountCents] =
-    useState<number>(chipDefaultAmount);
+  const [chipAmountCents, setChipAmountCents] = useState<number>(chipDefaultAmount);
   const [chipInState, setChipInState] = useState<ChipInPanelState>(
     contributionState === "paid" ? "success" : "idle",
   );
@@ -692,20 +673,17 @@ export const useRsvpOfferingState = (
   ]);
 
   // ── ORCH-1291 — server-code → gift-framed copy (DESIGN §4.7). ──
-  const fmtChipWhole = useCallback(
-    (cents: number): string => {
-      try {
-        return new Intl.NumberFormat(undefined, {
-          style: "currency",
-          currency: chipCurrency || "USD",
-          maximumFractionDigits: 0,
-        }).format(cents / 100);
-      } catch {
-        return `${Math.round(cents / 100)} ${chipCurrency}`;
-      }
-    },
-    [chipCurrency],
-  );
+  const fmtChipWhole = useCallback((cents: number): string => {
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: chipCurrency || "USD",
+        maximumFractionDigits: 0,
+      }).format(cents / 100);
+    } catch {
+      return `${Math.round(cents / 100)} ${chipCurrency}`;
+    }
+  }, [chipCurrency]);
 
   const runChipIn = useCallback(async (): Promise<void> => {
     if (onChipIn == null) return;
@@ -815,10 +793,7 @@ export const useRsvpOfferingState = (
   );
 
   const contactForm = showContactForm ? (
-    <View
-      style={[styles.formCard, surface.card]}
-      testID="orch-1157-rsvp-contact"
-    >
+    <View style={[styles.formCard, surface.card]} testID="orch-1157-rsvp-contact">
       <Text style={[styles.formMicro, surface.tertiaryText]}>
         We'll only use this to update you about this event.
       </Text>
@@ -882,10 +857,7 @@ export const useRsvpOfferingState = (
   ) : null;
 
   const guestForms = showGuestStepper ? (
-    <View
-      style={[styles.guestBlock, surface.card]}
-      testID="orch-1163-rsvp-guests"
-    >
+    <View style={[styles.guestBlock, surface.card]} testID="orch-1163-rsvp-guests">
       <View style={styles.guestHeaderRow}>
         <Text style={[styles.guestHeaderLabel, surface.secondaryText]}>
           Bringing extras?
@@ -1279,9 +1251,13 @@ export interface RsvpOfferingFloatingBarProps {
   testID?: string;
 }
 
-export const RsvpOfferingFloatingBar: React.FC<
-  RsvpOfferingFloatingBarProps
-> = ({ palette, theme, config, state, testID }) => (
+export const RsvpOfferingFloatingBar: React.FC<RsvpOfferingFloatingBarProps> = ({
+  palette,
+  theme,
+  config,
+  state,
+  testID,
+}) => (
   // ORCH-1163-R3 — the floating bar is SELF-SUFFICIENT: force contactReady so
   // Going/Maybe are never disabled into a dead end, and route through the floating
   // entry handlers (which open the details modal when contact info is missing).

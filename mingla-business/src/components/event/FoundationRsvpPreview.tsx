@@ -90,9 +90,7 @@ export interface FoundationRsvpPreviewProps {
   onAcquisitionClosed?: (kind: "ended" | "unavailable") => void;
 }
 
-export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
-  props,
-) => {
+export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (props) => {
   const {
     event,
     brand,
@@ -182,27 +180,21 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
   // box (RsvpDecisionBox) in the STICKY right panel (PARITY with the event page's
   // EventTicketBox in deskPanel). The phone keeps the inline box in the body and
   // pins the separate floating bar below.
-  const stickyPanel =
-    isDesktop && !acquisitionClosed ? (
-      <View
-        style={[
-          styles.deskPanel,
-          { backgroundColor: palette.card, borderColor: palette.panelBorder },
-        ]}
-      >
-        <View
-          style={[styles.deskAccent, { backgroundColor: palette.accent }]}
+  const stickyPanel = isDesktop && !acquisitionClosed ? (
+    <View
+      style={[styles.deskPanel, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}
+    >
+      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
+      <View style={styles.deskInner}>
+        <RsvpDecisionBox
+          palette={palette}
+          theme={theme}
+          config={config}
+          state={state}
         />
-        <View style={styles.deskInner}>
-          <RsvpDecisionBox
-            palette={palette}
-            theme={theme}
-            config={config}
-            state={state}
-          />
-        </View>
       </View>
-    ) : undefined;
+    </View>
+  ) : undefined;
 
   return (
     <View style={[styles.host, { backgroundColor: palette.page }]}>

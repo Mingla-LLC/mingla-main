@@ -70,6 +70,27 @@ function enforce(s) {
     "ticket control suppression",
   );
   requireText(
+    s.eventBody,
+    "!acquisitionClosed && ticketsLeftLabel",
+    "ended ticket inventory suppression",
+  );
+  requireText(
+    s.eventBody,
+    "capacity: null, hideRemainingCount: true",
+    "read-only historical social proof",
+  );
+  requireText(
+    s.eventBody,
+    "acquisitionClosed ? undefined : onSeeWhosGoing",
+    "ended guest-action suppression",
+  );
+  requireText(s.direct, "setGateVisible(false)", "guest gate transition closure");
+  requireText(
+    s.direct,
+    "setWaitlistTicketId(null)",
+    "waitlist transition closure",
+  );
+  requireText(
     s.rsvpBody,
     "acquisitionClosed || hideDecisionBox",
     "RSVP control suppression",
@@ -142,6 +163,7 @@ function enforce(s) {
     "packages/brand-rendering/__tests__/issue_1902_public_brand_events.test.tsx",
     "mingla-business/src/services/__tests__/issue_1902_public_brand_events.test.ts",
     "mingla-business/src/components/event/__tests__/issue_1902_public_event_acquisition.test.tsx",
+    "mingla-business/src/components/event/__tests__/issue_1902_public_event_transition_overlays.test.tsx",
     "app-mobile/src/hooks/__tests__/issue_1902_public_brand_events.test.ts",
     "app-mobile/src/screens/__tests__/issue_1902_brand_event_routing.test.tsx",
     ".github/workflows/issue-1902-public-event-lifecycle-tests.yml",
@@ -164,6 +186,11 @@ if (process.argv.includes("--self-test")) {
     ["teaser", 'rsvp: "RSVP"'],
     ["historical", "computeMasterEndAtUtc"],
     ["eventBody", "acquisitionClosed || hideTicketBox"],
+    ["eventBody", "!acquisitionClosed && ticketsLeftLabel"],
+    ["eventBody", "capacity: null, hideRemainingCount: true"],
+    ["eventBody", "acquisitionClosed ? undefined : onSeeWhosGoing"],
+    ["direct", "setGateVisible(false)"],
+    ["direct", "setWaitlistTicketId(null)"],
     ["rsvpBody", "acquisitionClosed || hideDecisionBox"],
     ["rsvpBody", "!acquisitionClosed && state.chipInInlinePanel"],
     ["eventFoundation", 'animation: "none"'],

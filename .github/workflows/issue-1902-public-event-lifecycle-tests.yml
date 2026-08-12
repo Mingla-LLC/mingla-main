@@ -30,7 +30,7 @@ jobs:
       - run: node .github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs
       - run: npm ci
         working-directory: mingla-business
-      - run: npx jest --runInBand src/services/__tests__/issue_1902_public_brand_events.test.ts src/components/event/__tests__/issue_1902_public_event_acquisition.test.tsx
+      - run: npx jest --runInBand src/services/__tests__/issue_1902_public_brand_events.test.ts src/components/event/__tests__/issue_1902_public_event_acquisition.test.tsx src/components/event/__tests__/issue_1902_public_event_transition_overlays.test.tsx
         working-directory: mingla-business
         env:
           NODE_PATH: ./node_modules

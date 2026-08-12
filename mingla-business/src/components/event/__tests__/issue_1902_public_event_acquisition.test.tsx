@@ -316,3 +316,47 @@ test("a stale ended write transitions the mounted RSVP page to its notice and re
     tree.root.findAllByProps({ testID: "orch-1163-rsvp-inline-box" }),
   ).toHaveLength(0);
 });
+
+test("ended ticket history keeps attendee proof read-only without inventory or guest actions", async () => {
+  const onSeeWhosGoing = jest.fn();
+  let tree!: Renderer;
+  await act(async () => {
+    tree = TestRenderer.create(
+      <EventOfferingBody
+        event={baseEvent}
+        brand={brand}
+        variant="past"
+        bookable
+        palette={palette}
+        theme={theme}
+        ticketQuantities={{}}
+        onChangeTicketQuantity={() => undefined}
+        onProceedToCart={() => undefined}
+        socialProof={{
+          eventId: "e",
+          entityType: "event",
+          goingCount: 28,
+          capacity: 56,
+          privateGuestList: false,
+          hideRemainingCount: false,
+          sample: [],
+        }}
+        onSeeWhosGoing={onSeeWhosGoing}
+      />,
+    );
+  });
+  const rendered = text(tree);
+  expect(rendered).toContain("28");
+  for (const forbidden of [
+    "tickets left",
+    "spots left",
+    "filling up",
+    "filling fast",
+    "General",
+    "$10",
+    "See who's going",
+  ])
+    expect(rendered).not.toContain(forbidden);
+  expect(tree.root.findAllByProps({ testID: "orch-1167-ticket-box" })).toHaveLength(0);
+  expect(onSeeWhosGoing).not.toHaveBeenCalled();
+});

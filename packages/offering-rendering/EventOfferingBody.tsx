@@ -313,6 +313,10 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
     kind: "current" as const,
   };
   const acquisitionClosed = acquisitionState.kind !== "current";
+  const renderedSocialProof =
+    acquisitionClosed && socialProof !== null
+      ? { ...socialProof, capacity: null, hideRemainingCount: true }
+      : socialProof;
 
   const toggleAbout = useCallback((): void => {
     LayoutAnimation.configureNext(
@@ -494,7 +498,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             {taxonomyLabel(tag)}
           </Pill>
         ))}
-        {ticketsLeftLabel !== null ? (
+        {!acquisitionClosed && ticketsLeftLabel !== null ? (
           <Pill palette={palette} surface={surface} font={boldFamily}>
             {ticketsLeftLabel}
           </Pill>
@@ -505,12 +509,12 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           (D2); cluster is GLYPH-only until ORCH-1340. Mounts BETWEEN §4 pills
           and the §5 ticket box (social proof feeds the decision; the decision
           stays the hero). null payload → nothing renders (honest absence). */}
-      {socialProof ? (
+      {renderedSocialProof ? (
         <OfferingMomentum
           palette={palette}
           theme={theme}
-          socialProof={socialProof}
-          onSeeWhosGoing={onSeeWhosGoing}
+          socialProof={renderedSocialProof}
+          onSeeWhosGoing={acquisitionClosed ? undefined : onSeeWhosGoing}
           testID="orch-1339-momentum-event"
         />
       ) : null}
