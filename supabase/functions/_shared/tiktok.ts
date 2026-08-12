@@ -2090,30 +2090,43 @@ export interface TikTokIdentitySnapshot {
   availableStatus: string | null;
 }
 
-/** identity/get — find the TT_USER identity (@usemingla) required by ad_create. */
-export async function tiktokFetchIdentity(
+/** Read-only identity/get discovery. Preserves every normalized row and provider order. */
+export async function tiktokFetchIdentities(
   client: TikTokClient,
-): Promise<TikTokIdentitySnapshot | null> {
+): Promise<TikTokIdentitySnapshot[]> {
   const data = await tiktokApi(client, "GET", "identity/get/", {
     advertiser_id: client.advertiserId,
   });
+  if (!Array.isArray(data.identity_list) && !Array.isArray(data.list)) {
+    throw new AdApiError({
+      platform: "tiktok",
+      code: "provider_response_invalid",
+      message: "TikTok returned an invalid identity discovery response.",
+    });
+  }
   const list = Array.isArray(data.identity_list)
     ? data.identity_list as Record<string, unknown>[]
     : Array.isArray(data.list)
     ? data.list as Record<string, unknown>[]
     : [];
-  const ttUsers = list.filter((row) => row.identity_type === "TT_USER");
-  const preferred = ttUsers.find((row) => row.available_status === "AVAILABLE") ?? ttUsers[0];
-  if (!preferred || typeof preferred.identity_id !== "string") return null;
-  return {
-    identityId: preferred.identity_id,
-    identityType: "TT_USER",
-    username: typeof preferred.username === "string" ? preferred.username : null,
-    displayName: typeof preferred.display_name === "string" ? preferred.display_name : null,
-    availableStatus: typeof preferred.available_status === "string"
-      ? preferred.available_status
-      : null,
-  };
+  return list
+    .filter((row) => typeof row.identity_id === "string" && typeof row.identity_type === "string")
+    .map((row) => ({
+      identityId: row.identity_id as string,
+      identityType: row.identity_type as string,
+      username: typeof row.username === "string" ? row.username : null,
+      displayName: typeof row.display_name === "string" ? row.display_name : null,
+      availableStatus: typeof row.available_status === "string" ? row.available_status : null,
+    }));
+}
+
+/** identity/get — find the TT_USER identity (@usemingla) required by ad_create. */
+export async function tiktokFetchIdentity(
+  client: TikTokClient,
+): Promise<TikTokIdentitySnapshot | null> {
+  const identities = await tiktokFetchIdentities(client);
+  const ttUsers = identities.filter((row) => row.identityType === "TT_USER");
+  return ttUsers.find((row) => row.availableStatus === "AVAILABLE") ?? ttUsers[0] ?? null;
 }
 
 export interface TikTokPixelSnapshot {

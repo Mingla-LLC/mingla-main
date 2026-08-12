@@ -524,6 +524,11 @@ verify_jwt = true
 [functions.admin-ad-preflight]
 verify_jwt = true
 
+# Issue #1928 — exact Explorer/Business public-identity readiness. Read-only
+# provider discovery plus Meta validate_only; never creates or persists objects.
+[functions.admin-ad-app-identity-preflight]
+verify_jwt = true
+
 [functions.admin-ad-create-campaign]
 verify_jwt = true
 

@@ -20,6 +20,7 @@ import { Input, Textarea, Toggle } from "../components/ui/Input";
 import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../context/ToastContext";
 import { AdConnectionsPanel } from "../components/AdConnectionsPanel";
+import { AppIdentityReadinessPanel } from "../components/AppIdentityReadinessPanel";
 import {
   campaignAction,
   connectMeta,
@@ -131,7 +132,10 @@ export function AdEnginePage() {
     setCampaignsLoading(false);
   }, [addToast]);
 
+  // These callbacks own the paired loading/error transitions for the initial
+  // provider snapshot; invoking them together is intentional on mount.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadConnection();
     loadCampaigns();
   }, [loadConnection, loadCampaigns]);
@@ -303,6 +307,8 @@ export function AdEnginePage() {
           drives the Create-campaign gate; this panel is the missing all-5
           operator overview. ── */}
       <AdConnectionsPanel />
+
+      <AppIdentityReadinessPanel />
 
       {/* ── SC-1…SC-4: Meta connection detail (floors, billing, IG link) ── */}
       <SectionCard

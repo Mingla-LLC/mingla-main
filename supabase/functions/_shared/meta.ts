@@ -680,12 +680,26 @@ export async function metaFetchAccount(client: MetaClient): Promise<MetaAccountS
 export async function metaCheckPageAdvertiseTask(
   client: MetaClient,
 ): Promise<{ ok: boolean; pageName: string | null; tasks: string[] }> {
+  return metaCheckPageAdvertiseTaskForIdentity(client, client.config.pageId);
+}
+
+export async function metaCheckPageAdvertiseTaskForIdentity(
+  client: MetaClient,
+  pageId: string,
+): Promise<{ ok: boolean; pageName: string | null; tasks: string[] }> {
   const payload = await metaGraph(client, "GET", "me/accounts", {
     fields: "id,name,tasks",
     limit: "100",
   });
-  const rows = Array.isArray(payload.data) ? payload.data as Record<string, unknown>[] : [];
-  const page = rows.find((row) => String(row.id) === client.config.pageId);
+  if (!Array.isArray(payload.data)) {
+    throw new AdApiError({
+      platform: "meta",
+      code: "provider_response_invalid",
+      message: "Meta returned an invalid Page authorization response.",
+    });
+  }
+  const rows = payload.data as Record<string, unknown>[];
+  const page = rows.find((row) => String(row.id) === pageId);
   if (!page) return { ok: false, pageName: null, tasks: [] };
   const tasks = Array.isArray(page.tasks) ? (page.tasks as string[]) : [];
   return {
@@ -704,23 +718,34 @@ export async function metaCheckPageAdvertiseTask(
 export async function metaValidateOnlyCreativeProbe(
   client: MetaClient,
 ): Promise<{ appLive: boolean; ok: boolean; detail: string | null }> {
-  const body = buildMetaCreativeBody(client.config.pageId, {
+  return metaValidateOnlyCreativeProbeForIdentity(client, {
+    pageId: client.config.pageId,
+    instagramUserId: client.config.igUserId,
+  });
+}
+
+export async function metaValidateOnlyCreativeProbeForIdentity(
+  client: MetaClient,
+  identity: { pageId: string; instagramUserId: string | null },
+): Promise<{ appLive: boolean; ok: boolean; detail: string | null; createdObject: boolean }> {
+  const body = buildMetaCreativeBody(identity.pageId, {
     destUrl: "https://usemingla.com",
     message: "connect-probe (validate-only; never created)",
     campaignName: "connect-probe",
     validateOnly: true,
-  }, client.config.igUserId);
+  }, identity.instagramUserId);
   try {
-    await metaGraph(client, "POST", `act_${client.config.adAccountId}/adcreatives`, body);
-    return { appLive: true, ok: true, detail: null };
+    const payload = await metaGraph(client, "POST", `act_${client.config.adAccountId}/adcreatives`, body);
+    const createdObject = typeof payload.id === "string" && payload.id.length > 0;
+    return { appLive: true, ok: !createdObject, detail: createdObject ? "validate_only_returned_object" : null, createdObject };
   } catch (err) {
     if (err instanceof AdApiError) {
       const numericCode = typeof err.code === "number" ? err.code : Number(err.code);
       const numericSub = typeof err.subcode === "number" ? err.subcode : Number(err.subcode);
       if (numericCode === META_ERROR_APP_NOT_LIVE || numericSub === META_ERROR_APP_NOT_LIVE) {
-        return { appLive: false, ok: false, detail: err.message };
+        return { appLive: false, ok: false, detail: err.message, createdObject: false };
       }
-      return { appLive: true, ok: false, detail: err.message };
+      return { appLive: true, ok: false, detail: err.message, createdObject: false };
     }
     throw err;
   }
@@ -777,7 +802,14 @@ export async function metaFetchPixelLastFired(
 
 /** A4.e.7 (PROOF M-P10): resolve the Page-linked IG business account (absent today → Facebook-only). */
 export async function metaFetchIgBusinessAccount(client: MetaClient): Promise<string | null> {
-  const payload = await metaGraph(client, "GET", client.config.pageId, {
+  return metaFetchIgBusinessAccountForIdentity(client, client.config.pageId);
+}
+
+export async function metaFetchIgBusinessAccountForIdentity(
+  client: MetaClient,
+  pageId: string,
+): Promise<string | null> {
+  const payload = await metaGraph(client, "GET", pageId, {
     fields: "instagram_business_account",
   });
   const ig = payload.instagram_business_account as Record<string, unknown> | undefined;
