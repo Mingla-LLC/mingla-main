@@ -80,7 +80,7 @@ export function inspect(source) {
   need("phoneAuthoritySuccessor", "guest_phone_country_iso='CA'", "RSVP ISO-only correction");
   need("phoneAuthoritySuccessor", "count(DISTINCT revision_key)", "distinct ISO revision proof");
   need("phoneAuthoritySuccessor", "c.normalized_value='+19194199222'", "strict E.164 identity proof");
-  need("phoneAuthoritySuccessor", "issue_1773_1857_national_without_country_became_identity", "national-number refusal proof");
+  need("phoneAuthoritySuccessor", "issue_1773_1857_national_phone_was_guessed_or_stored", "national-number refusal proof");
   need("phoneAuthoritySuccessor", "issue_1773_1857_invalid_country_was_accepted", "invalid-country refusal proof");
   need("phoneAuthoritySuccessor", "'event_rsvp','rsvp_plus_one','order','ticket_holder','reservation','stay_reservation'", "six source domains coexistence");
   need("phoneAuthoritySuccessor", "p.prosecdef", "SECURITY DEFINER proof");

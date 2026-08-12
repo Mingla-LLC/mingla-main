@@ -63,6 +63,7 @@ DECLARE
   v_first jsonb;
   v_second jsonb;
   v_match jsonb;
+  v_national_result jsonb;
   v_person uuid;
   v_contact uuid;
   v_revision_count integer;
@@ -121,19 +122,29 @@ BEGIN
     rsvp_status,approval_status,plus_count,created_at
   ) VALUES(v_national,v_event,NULL,'National Only','national-only@example.test','(919) 419-9222',NULL,
     'going','approved',0,now());
-  IF public.biz_resolve_brand_person_source_derived('event_rsvp',v_national)->>'linkOutcome'<>'linked'
-     OR NOT EXISTS(
+  v_national_result:=public.biz_resolve_brand_person_source_derived('event_rsvp',v_national);
+  IF v_national_result->>'linkOutcome'<>'linked' THEN
+    RAISE EXCEPTION 'issue_1773_1857_national_email_path_did_not_link:%',v_national_result->>'linkOutcome';
+  END IF;
+  IF NOT EXISTS(
        SELECT 1 FROM public.brand_person_source_links l
        JOIN public.brand_person_contact_method_sources s ON s.source_link_id=l.id AND s.active
        JOIN public.brand_person_contact_methods c ON c.id=s.contact_method_id
-       WHERE l.source_kind='event_rsvp' AND l.source_id=v_national AND c.channel='email'
-     ) OR EXISTS(
-       SELECT 1 FROM public.brand_person_source_links l
-       JOIN public.brand_person_contact_method_sources s ON s.source_link_id=l.id AND s.active
-       JOIN public.brand_person_contact_methods c ON c.id=s.contact_method_id
-       WHERE l.source_kind='event_rsvp' AND l.source_id=v_national AND c.channel='phone'
+       WHERE l.id=(v_national_result->>'sourceLinkId')::uuid
+         AND l.source_kind='event_rsvp' AND l.source_id=v_national
+         AND l.detached_at IS NULL AND c.channel='email'
      ) THEN
-    RAISE EXCEPTION 'issue_1773_1857_national_without_country_became_identity';
+    RAISE EXCEPTION 'issue_1773_1857_national_email_source_missing';
+  END IF;
+  IF EXISTS(
+       SELECT 1 FROM public.brand_person_source_links l
+       JOIN public.brand_person_contact_method_sources s ON s.source_link_id=l.id AND s.active
+       JOIN public.brand_person_contact_methods c ON c.id=s.contact_method_id
+       WHERE l.id=(v_national_result->>'sourceLinkId')::uuid
+         AND l.source_kind='event_rsvp' AND l.source_id=v_national
+         AND l.detached_at IS NULL AND c.channel='phone'
+     ) THEN
+    RAISE EXCEPTION 'issue_1773_1857_national_phone_was_guessed_or_stored';
   END IF;
   BEGIN
     UPDATE public.event_rsvps SET guest_phone_country_iso='ZZ' WHERE id=v_national;
