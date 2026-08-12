@@ -260,3 +260,49 @@ Deno.test(
     assertEquals(new Set(attempts).size, 2);
   },
 );
+
+Deno.test(
+  "#1903 A-missing-reconciler: ambiguous transport failure cannot fabricate stamp_failed",
+  async () => {
+    const calls: string[] = [];
+    const attemptId = "19030000-0000-4000-8000-000000000099";
+    const outcome = await attemptPaystackOnboardStamp({
+      resolveEnabled: (): boolean => true,
+      randomUuid: (): string => {
+        calls.push("uuid");
+        return attemptId;
+      },
+      stamp: async (): Promise<never> => {
+        calls.push("stamp");
+        throw {
+          name: "TransportError",
+          code: "ECONNRESET",
+          message:
+            "missing reconciler with forbidden bank/provider detail 0123456789 RCP_secret",
+        };
+      },
+      recordFailure: async (): Promise<void> => {
+        calls.push("record_failure");
+      },
+      recordApplicationOutcome: async (decided): Promise<void> => {
+        calls.push(`audit:${decided}`);
+      },
+      log: (decided, _batchId, errorClass, errorCode): void => {
+        calls.push(`log:${decided}:${errorClass}:${errorCode}`);
+      },
+    });
+
+    assertEquals(outcome, "stamp_outcome_unknown");
+    assertEquals(calls, [
+      "uuid",
+      "stamp",
+      "audit:stamp_outcome_unknown",
+      "log:stamp_outcome_unknown:TransportError:ECONNRESET",
+    ]);
+    assertEquals(calls.filter((call) => call === "record_failure").length, 0);
+    const emitted = JSON.stringify({ outcome, calls, attemptId });
+    assert(!emitted.includes("0123456789"));
+    assert(!emitted.includes("RCP_secret"));
+    assert(!emitted.includes("missing reconciler"));
+  },
+);
