@@ -2,6 +2,7 @@
   "name": "@mingla/card-identity",
   "version": "0.0.0",
   "private": true,
+  "type": "commonjs",
   "main": "index.js",
   "types": "index.d.ts",
   "react-native": "index.js",

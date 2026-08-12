@@ -135,12 +135,14 @@
 
 ### I-PROPOSED-PERSON-SUPPRESSION-1 (ACTIVE)
 - **Rule:** A person suppressed for marketing or all messaging remains suppressed across every linked source and contact method; a new order, RSVP, ticket, merge, or re-ingest can never silently reactivate marketing eligibility.
+- **#1773 DRAFT extension:** Venue reservations and historically confirmed Stay reservations are sources under the same rule; a newly linked reservation source must re-project matching pre-existing suppression ledgers before async ingest succeeds.
 - **Enforcement:** Brand-person suppression rows, legacy-ledger projection triggers, source-derived resolution, and offering audience selection.
 - **Regression:** The #1770 SQL contract and strict guard require suppression projection and exclusion before attempts are queued.
 - **Established:** ACTIVE at #1770 CLOSE after PostgreSQL state, merge, re-ingest, and offering-audience exclusion proofs passed independently.
 
 ### I-PROPOSED-SOURCE-FAILOPEN-1 (ACTIVE)
 - **Rule:** Existing RSVP, order, and ticket writes remain authoritative if Brand People ingestion is unavailable; source writes enqueue work, the worker retries with bounded backoff, and only aggregate safe codes leave the boundary.
+- **#1773 DRAFT extension:** Venue reservation writes and Stay confirmation-event writes remain authoritative under the same fail-open queue contract; only identity changes or immutable confirmation evidence enqueue, never operational status/state churn.
 - **Enforcement:** Four after-write outbox triggers, claim/finish RPCs, and `brand-person-ingest-worker` with service-only authorization.
 - **Regression:** The #1770 worker test and strict guard pin enqueue-only source triggers, a 100-row claim limit, bounded retry/dead-letter behavior, and PII-free responses.
 - **Established:** ACTIVE at #1770 CLOSE after PostgreSQL proofs covered inserts, material RSVP/approval revisions, exact no-ops, replay, and injected ingest failure without blocking the authoritative source write.
