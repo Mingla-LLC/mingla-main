@@ -1324,7 +1324,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
         }
       }
     },
-    [router, showToast],
+    [router, showToast, trip.brandId],
   );
 
   const handleConfirmSave = useCallback(
