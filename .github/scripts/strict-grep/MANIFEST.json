@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 512,
+  "expectedStrictGrepMjsFiles": 513,
   "selfTestWiredFloor": 320,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -41,6 +41,19 @@
     },
     {
       "script": ".github/scripts/strict-grep/__tests__/issue-1858-explicit-brand-export.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-1858-explicit-brand-export"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-1858-explicit-brand-export.tester.adversarial.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node --test",
