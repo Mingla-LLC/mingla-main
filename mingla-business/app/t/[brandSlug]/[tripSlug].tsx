@@ -561,7 +561,6 @@ const ResolvedTripPage: React.FC<{
     <View style={[styles.host, { backgroundColor: palette.page }]}>
       <TripPreview
         trip={trip}
-        useDirectionCIdentity
         brand={payload.brand}
         offeringData={data}
         offeringBrand={offeringBrand}
