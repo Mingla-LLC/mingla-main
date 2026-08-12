@@ -529,6 +529,12 @@ verify_jwt = true
 [functions.admin-ad-app-identity-preflight]
 verify_jwt = true
 
+[functions.admin-ad-app-readiness]
+verify_jwt = true
+
+[functions.admin-ad-app-readiness-event]
+verify_jwt = true
+
 [functions.admin-ad-create-campaign]
 verify_jwt = true
 

@@ -89,6 +89,26 @@ export async function runAppIdentityPreflight(appKey, { signal } = {}) {
   });
 }
 
+// ── Issue #1950: server-owned app-download readiness ────────────────────────
+
+export async function loadAppReadiness(appKey, os, { signal } = {}) {
+  return invokeWithRefresh("admin-ad-app-readiness", {
+    body: { action: "load", app_key: appKey, os },
+    ...(signal ? { signal } : {}),
+  });
+}
+
+export async function checkAppReadiness(appKey, os, { signal } = {}) {
+  return invokeWithRefresh("admin-ad-app-readiness", {
+    body: { action: "check", app_key: appKey, os },
+    ...(signal ? { signal } : {}),
+  });
+}
+
+export async function recordAppReadinessEvent(event) {
+  return invokeWithRefresh("admin-ad-app-readiness-event", { body: event });
+}
+
 // ── Campaigns ─────────────────────────────────────────────────────────────────
 
 export async function listCampaigns() {

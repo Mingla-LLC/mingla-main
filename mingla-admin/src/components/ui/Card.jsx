@@ -36,16 +36,16 @@ export function SectionCard({ title, subtitle, badge, action, children, classNam
       ].join(" ")}
     >
       {title && (
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[var(--gray-200)]">
-          <div className="flex items-center gap-2.5">
-            <h3 className="text-[15px] font-semibold text-[var(--color-text-primary)]">{title}</h3>
+        <div className="flex flex-col items-stretch gap-3 px-4 py-3.5 sm:px-5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between border-b border-[var(--gray-200)]">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1">
+            <h3 className="break-words text-[15px] font-semibold text-[var(--color-text-primary)]">{title}</h3>
             {badge}
             {subtitle && <span className="text-xs text-[var(--color-text-tertiary)]">{subtitle}</span>}
           </div>
-          {action}
+          {action && <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 sm:justify-end">{action}</div>}
         </div>
       )}
-      <div className={noPadding ? "" : "p-5"}>{children}</div>
+      <div className={noPadding ? "" : "p-4 sm:p-5"}>{children}</div>
     </div>
   );
 }

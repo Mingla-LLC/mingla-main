@@ -3,64 +3,20 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { shouldRestoreCompletionFocus } from "../lib/adAppIdentityReadiness.js";
+import { acceptRequest, shouldRestoreCompletionFocus } from "../lib/adAppReadiness.js";
+const here=path.dirname(fileURLToPath(import.meta.url));const panel=fs.readFileSync(path.resolve(here,"../components/app-readiness/AppDownloadReadinessPanel.jsx"),"utf8");
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const panel = fs.readFileSync(
-  path.resolve(here, "../components/AppIdentityReadinessPanel.jsx"),
-  "utf8",
-);
-
-const base = {
-  pending: { appKey: "explorer", requestId: 7 },
-  appKey: "explorer",
-  currentRequestId: 7,
-  phase: "ready",
-  state: "ready",
-  online: true,
-  errorStatus: undefined,
-  buttonDisabled: false,
-};
-
-test("#1928 rework restores focus only for the matching completed request", () => {
-  for (const appKey of ["explorer", "business"]) {
-    for (const phase of ["ready", "blocked", "error"]) {
-      assert.equal(shouldRestoreCompletionFocus({
-        ...base,
-        pending: { appKey, requestId: 11 },
-        appKey,
-        currentRequestId: 11,
-        phase,
-        state: phase,
-        errorStatus: phase === "error" ? 500 : undefined,
-      }), true, `${appKey}/${phase} should restore focus`);
-    }
-  }
+test("#1928 exact target and monotonic request guard reject switched aborted superseded and late responses",()=>{
+  const base={selectedKey:"business:android",capturedKey:"business:android",currentRequestId:7,capturedRequestId:7,mounted:true,aborted:false};assert.equal(acceptRequest(base),true);
+  for(const mutation of [{selectedKey:"business:ios"},{capturedKey:"explorer:android"},{currentRequestId:8},{mounted:false},{aborted:true}])assert.equal(acceptRequest({...base,...mutation}),false);
 });
 
-test("#1928 rework never focuses for stale, offline, forbidden, aborted, switched, loading, disabled, or absent completions", () => {
-  const blocked = [
-    { pending: null },
-    { pending: { appKey: "business", requestId: 7 } },
-    { currentRequestId: 8 },
-    { phase: "loading", state: "loading" },
-    { phase: "not_checked", state: "not_checked" },
-    { state: "stale" },
-    { online: false, state: "offline" },
-    { phase: "error", state: "error", errorStatus: 403 },
-    { buttonDisabled: true },
-  ];
-  for (const input of blocked) {
-    assert.equal(shouldRestoreCompletionFocus({ ...base, ...input }), false);
-  }
+test("#1928 completion focus returns only to useful control for matching selected request",()=>{
+  const base={pending:{targetKey:"business:android",requestId:7},selectedKey:"business:android",currentRequestId:7,phase:"idle",online:true,buttonDisabled:false};assert.equal(shouldRestoreCompletionFocus(base),true);assert.equal(shouldRestoreCompletionFocus({...base,phase:"error"}),true);
+  for(const mutation of [{pending:null},{selectedKey:"explorer:android"},{currentRequestId:8},{phase:"checking"},{online:false},{buttonDisabled:true}])assert.equal(shouldRestoreCompletionFocus({...base,...mutation}),false);
 });
 
-test("#1928 rework consumes a one-shot completion token in a post-render effect", () => {
-  const completionEffect = panel.indexOf("const pending = completionFocus.current;");
-  const handler = panel.indexOf("const runCheck = async () =>");
-  assert.ok(completionEffect > 0 && completionEffect < handler);
-  assert.match(panel, /buttonDisabled: !action \|\| action\.disabled/);
-  assert.match(panel, /completionFocus\.current = null;\s*if \(canFocus\) action\.focus\(\);/);
-  assert.doesNotMatch(panel.slice(handler), /actionRef\.current\?\.focus\(\)/);
-  assert.match(panel, /completionFocus\.current = \{ appKey: requestedAppKey, requestId \};/);
+test("#1928 completion token remains one-shot post-render with accessible states",()=>{
+  const effect=panel.indexOf("const pending=completionFocus.current");const handler=panel.indexOf("const runCheck=async");assert.ok(effect>0&&effect<handler);assert.match(panel,/completionFocus\.current=null/);assert.match(panel,/if\(restore\)action\.focus\(\)/);assert.doesNotMatch(panel.slice(handler),/requestAnimationFrame\(\(\)=>actionRef\.current\?\.focus/);
+  for(const contract of [/aria-live="polite"/,/aria-busy=/,/role="alert"/,/targetKey\(appKey,os\)/])assert.match(panel,contract);
 });
