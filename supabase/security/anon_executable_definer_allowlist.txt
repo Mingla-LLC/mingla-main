@@ -14,9 +14,9 @@
 # INVESTIGATION_ORCH-1392 bucket (definer_privilege_gate_inventory.csv). Format:
 # `proname(identity_args)` exactly as pg_get_function_identity_arguments renders.
 #
-# Signature count: 193 (intended-public 24, internally-gated 109, predicate/read-helper 57, PostGIS 3).
+# Signature count: 194 (intended-public 25, internally-gated 109, predicate/read-helper 57, PostGIS 3).
 # (#1789 added pg_public_qr_spot_resolve + pg_public_menu_modifiers to intended-public;
-#  #1793 added pg_public_venue_ordering_state.)
+#  #1793 added pg_public_venue_ordering_state; #1929 added pg_direct_event_checkout_bundle.)
 
 # === INTENDED-PUBLIC READS (power anonymous public pages / checkout / signup) — INVESTIGATION F-8 / SPEC §4.4 ===
 biz_ticket_checkout_create_session(p_event_id uuid, p_buyer_user_id uuid, p_buyer_name text, p_buyer_email text, p_buyer_phone_e164 text, p_marketing_opt_in boolean, p_lines jsonb, p_idempotency_key text, p_expires_at timestamp with time zone, p_application_fee_amount_cents integer, p_payment_plan_choice text)
@@ -25,6 +25,8 @@ is_username_available(p_username text)
 # #1384: static active currency metadata is required before sign-in and carries no user or brand data.
 issue_1384_supported_currencies()
 pg_discover_business_events(p_cities text[], p_lower_bound timestamp with time zone, p_upper_start timestamp with time zone, p_party_types text[], p_vibe_tags text[], p_music_genres text[], p_offset integer, p_limit integer, p_center_lng double precision, p_center_lat double precision, p_radius_km double precision)
+# #1929: exact-key public/hidden standard-event bundle; non-enumerable, NULL on denial, and contains no authoring/management fields.
+pg_direct_event_checkout_bundle(p_event_id uuid, p_brand_slug text, p_event_slug text)
 pg_public_brand_upcoming(p_brand_slug text, p_cursor_at timestamp with time zone, p_limit integer)
 pg_public_event_by_slug(p_brand_slug text, p_event_slug text)
 pg_public_event_tier_allin(p_event_id uuid)

@@ -200,7 +200,21 @@ function isIntakeAnswerEmpty(type: string, answer: unknown): boolean {
   }
 }
 
-serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
+export interface TicketCheckoutCreateDeps {
+  userIdFromAuthHeader: typeof userIdFromAuthHeader;
+  serviceClient: typeof serviceClient;
+  paystackInitializeTransaction: typeof paystackInitializeTransaction;
+}
+
+const defaultDeps: TicketCheckoutCreateDeps = {
+  userIdFromAuthHeader,
+  serviceClient,
+  paystackInitializeTransaction,
+};
+
+export const createTicketCheckoutCreateHandler = (
+  deps: TicketCheckoutCreateDeps = defaultDeps,
+): ((req: Request) => Promise<Response>) => wrapEdgeHandler("ticket-checkout-create", async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: ticketCorsHeaders });
   }
@@ -278,8 +292,8 @@ serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
   // buyer address. The address-required + address-invalid gates are DELETED —
   // tax is sourced at the venue, so the buyer never supplies an address.
 
-  const userId = await userIdFromAuthHeader(req);
-  const supabase = serviceClient();
+  const userId = await deps.userIdFromAuthHeader(req);
+  const supabase = deps.serviceClient();
 
   // ORCH-0792: reject checkout against events with no current/future date.
   // Pairs with the publish-RPC fix that writes event_dates and the
@@ -817,7 +831,7 @@ serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
     //   https://paystack.com/docs/api/transaction/#initialize
     let psInit: { authorization_url: string; reference: string; access_code: string };
     try {
-      psInit = await paystackInitializeTransaction({
+      psInit = await deps.paystackInitializeTransaction({
         email: buyerEmail,
         amountSubunits: psBuyerTotalCents,
         currency: "NGN",
@@ -1822,4 +1836,8 @@ serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
 }, {
   onError: (_err, requestId) =>
     jsonResponse({ error: "internal_error", requestId }, 500),
-}));
+});
+
+if (import.meta.main) {
+  serve(createTicketCheckoutCreateHandler());
+}

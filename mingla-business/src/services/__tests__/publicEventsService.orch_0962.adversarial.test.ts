@@ -219,14 +219,42 @@ describe("ORCH-0962 adversarial regressions", () => {
   });
 
   test("A-04 viewRowToBrand keeps address/cover truth without brand-kind fields", async () => {
-    const detail = await resolveEventBrandFromRow({
-      brand_address: "12 Old St",
-      brand_cover_media_url: "https://cdn.example/cover.jpg",
-    });
+    mockRpc.mockResolvedValue({
+      data: {
+        id: "event-0962-adv",
+        brandId: "brand-0962-adv",
+        brandSlug: "orch-0962-brand-adv",
+        eventSlug: "orch-0962-event-adv",
+        name: "ORCH 0962 Adversarial Event",
+        status: "scheduled",
+        currency: "GBP",
+        tickets: [],
+        brand: {
+          id: "brand-0962-adv",
+          slug: "orch-0962-brand-adv",
+          name: "ORCH 0962 Adversarial Brand",
+          address: "12 Bundle St",
+          coverMediaUrl: "https://cdn.example/bundle-cover.jpg",
+        },
+      },
+      error: null,
+    } as never);
+    const detail = await getPublicEventBySlug(
+      "orch-0962-brand-adv",
+      "orch-0962-event-adv",
+    );
 
     expect(detail).not.toBeNull();
-    expect(detail?.brand.address).toBe("12 Old St");
-    expect(detail?.brand.coverMediaUrl).toBe("https://cdn.example/cover.jpg");
+    expect(detail?.brand.address).toBe("12 Bundle St");
+    expect(detail?.brand.coverMediaUrl).toBe(
+      "https://cdn.example/bundle-cover.jpg",
+    );
+    expect(mockRpc).toHaveBeenCalledWith("pg_direct_event_checkout_bundle", {
+      p_event_id: null,
+      p_brand_slug: "orch-0962-brand-adv",
+      p_event_slug: "orch-0962-event-adv",
+    });
+    expect(mockFrom).not.toHaveBeenCalled();
   });
 
   test("A-05 social chips use normalizeSocialUrl URL builder for facebook + linkedin", () => {

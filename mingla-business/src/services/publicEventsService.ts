@@ -1502,10 +1502,176 @@ const detailFromRow = async (
   };
 };
 
+const isDirectEventBundle = (value: unknown): value is JsonRecord => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const payload = value as JsonRecord;
+  const brand = payload.brand;
+  return (
+    typeof payload.id === "string" &&
+    typeof payload.brandId === "string" &&
+    typeof payload.brandSlug === "string" &&
+    typeof payload.eventSlug === "string" &&
+    typeof payload.name === "string" &&
+    Array.isArray(payload.tickets) &&
+    brand !== null &&
+    typeof brand === "object" &&
+    !Array.isArray(brand) &&
+    typeof (brand as JsonRecord).id === "string" &&
+    typeof (brand as JsonRecord).slug === "string" &&
+    typeof (brand as JsonRecord).name === "string"
+  );
+};
+
+const directBundleTicketToStub = (
+  value: unknown,
+  fallbackCurrency: string,
+): PublicTicketTypeRecord => {
+  const ticket = asRecord(value);
+  const isFree = ticket.isFree === true;
+  const priceCents = typeof ticket.priceCents === "number" ? ticket.priceCents : 0;
+  const allInCents = typeof ticket.allInCents === "number" ? ticket.allInCents : priceCents;
+  return {
+    id: String(ticket.id ?? ""),
+    name: String(ticket.name ?? ""),
+    description: asStringOrNull(ticket.description),
+    priceGbp: isFree ? null : priceCents / 100,
+    priceAllInGbp: isFree ? null : allInCents / 100,
+    currency: asStringOrNull(ticket.currency) ?? fallbackCurrency,
+    capacity:
+      ticket.isUnlimited === true
+        ? null
+        : typeof ticket.remaining === "number"
+          ? ticket.remaining
+          : typeof ticket.capacity === "number"
+            ? ticket.capacity
+            : null,
+    isFree,
+    isUnlimited: ticket.isUnlimited === true,
+    visibility:
+      ticket.isHidden === true
+        ? "hidden"
+        : ticket.isDisabled === true
+          ? "disabled"
+          : "public",
+    displayOrder: typeof ticket.displayOrder === "number" ? ticket.displayOrder : 0,
+    approvalRequired: ticket.requiresApproval === true,
+    passwordProtected: ticket.passwordProtected === true,
+    password: null,
+    passwordConfigured: ticket.passwordProtected === true,
+    waitlistEnabled: ticket.waitlistEnabled === true,
+    minPurchaseQty: 1,
+    maxPurchaseQty: null,
+    allowTransfers: true,
+    saleStartAt: asStringOrNull(ticket.saleStartAt),
+    saleEndAt: asStringOrNull(ticket.saleEndAt),
+    availableAt:
+      ticket.availableOnline === true && ticket.availableInPerson === true
+        ? "both"
+        : ticket.availableOnline === true
+          ? "online"
+          : "door",
+  };
+};
+
+const detailFromDirectBundle = async (payload: JsonRecord): Promise<PublicEventDetail> => {
+  const brand = payload.brand as JsonRecord;
+  const currency = asStringOrNull(payload.currency) ?? "USD";
+  const tickets = (payload.tickets as unknown[]).map((ticket) =>
+    directBundleTicketToStub(ticket, currency),
+  );
+  const geo = asLatLng(payload.locationGeo);
+  const publicTheme: JsonRecord = {
+    business_event: {
+      format: payload.format,
+      location: { venueName: payload.venueName, address: payload.address },
+      hideAddressUntilTicket: payload.hideAddressUntilTicket === true,
+    },
+  };
+  const row = {
+    id: payload.id,
+    brand_id: payload.brandId,
+    brand_slug: payload.brandSlug,
+    brand_name: brand.name,
+    brand_description: null,
+    brand_profile_photo_url: asStringOrNull(brand.profilePhotoUrl),
+    brand_display_attendee_count: false,
+    brand_address: asStringOrNull(brand.address),
+    brand_cover_media_url: asStringOrNull(brand.coverMediaUrl),
+    brand_theme_color: asStringOrNull(brand.themeColor),
+    brand_theme_font: asStringOrNull(brand.themeFont),
+    brand_theme_animation: asStringOrNull(brand.themeAnimation),
+    title: payload.name,
+    description: asStringOrNull(payload.description),
+    slug: payload.eventSlug,
+    event_type: "event",
+    location_text: asStringOrNull(payload.venueName),
+    location_geo: geo === null ? null : `(${geo.lng},${geo.lat})`,
+    online_url: asStringOrNull(payload.onlineUrl),
+    is_online: payload.isOnline === true,
+    is_recurring: false,
+    is_multi_date: false,
+    recurrence_rules: null,
+    cover_media_url: asStringOrNull(payload.coverMediaUrl),
+    cover_media_type: payload.coverMediaType,
+    cover_media_gallery: Array.isArray(payload.coverGallery) ? payload.coverGallery : [],
+    cover_media_provider: payload.coverMediaProvider,
+    cover_media_source_url: null,
+    cover_media_credit: asStringOrNull(payload.coverMediaCredit),
+    cover_media_credit_url: null,
+    cover_media_alt: null,
+    currency,
+    visibility: "public",
+    show_on_discover: false,
+    status: payload.status,
+    published_at: null,
+    timezone: asStringOrNull(payload.timezone) ?? "UTC",
+    created_at: asStringOrNull(payload.masterStartAt) ?? "",
+    updated_at: asStringOrNull(payload.masterEndAt) ?? "",
+    public_theme: publicTheme,
+    theme_color_override: asStringOrNull(payload.themeColorOverride),
+    theme_font_override: asStringOrNull(payload.themeFontOverride),
+    theme_animation_override: asStringOrNull(payload.themeAnimationOverride),
+    master_start_at: asStringOrNull(payload.masterStartAt),
+    master_end_at: asStringOrNull(payload.masterEndAt),
+    master_timezone: asStringOrNull(payload.timezone),
+    master_event_date_id: null,
+    display_price_cents: null,
+    pricing_currency: currency,
+    party_types: asStringArray(payload.partyTypes),
+    vibe_tags: asStringArray(payload.vibeTags),
+    music_genres: asStringArray(payload.musicGenres),
+  } as unknown as BusinessPublicEventViewRow;
+  const event = publicEventViewRowToEvent(row, tickets);
+  event.cityGeo = asLatLng(payload.cityGeo);
+  const bookable = await resolveEventBookable(
+    String(payload.brandId),
+    ticketsArePaidOnline(tickets),
+  );
+  return { event, brand: viewRowToBrand(row), tickets, bookable };
+};
+
+const readDirectEventBundle = async (
+  args: { p_event_id: string | null; p_brand_slug: string | null; p_event_slug: string | null },
+): Promise<PublicEventDetail | null | "fallback"> => {
+  const { data, error } = await supabase.rpc("pg_direct_event_checkout_bundle", args);
+  if (error !== null) throw error;
+  if (data === null) return "fallback";
+  if (!isDirectEventBundle(data)) {
+    throw new Error("invalid_direct_event_checkout_bundle");
+  }
+  return detailFromDirectBundle(data);
+};
+
 export const getPublicEventBySlug = async (
   brandSlug: string,
   eventSlug: string,
 ): Promise<PublicEventDetail | null> => {
+  const direct = await readDirectEventBundle({
+    p_event_id: null,
+    p_brand_slug: brandSlug,
+    p_event_slug: eventSlug,
+  });
+  if (direct !== "fallback") return direct;
   // ORCH-0859 REWORK 3 + META-ORCH-0972: anon buyer landing on
   // `/e/{brandSlug}/{slug}` MUST resolve only to event offerings. Trips
   // and experiences have their own public surfaces.
@@ -1525,7 +1691,7 @@ export const getPublicEventBySlug = async (
   }
   // ORCH-1150 — the /e/ public page now renders BOTH ticketed events AND RSVP
   // events (Going/Not-going). Experiences keep their own /exp/ surface.
-  if (row.event_type !== "event" && row.event_type !== "rsvp") {
+  if (row.event_type !== "rsvp") {
     return null;
   }
   return detailFromRow(row);
@@ -1534,6 +1700,12 @@ export const getPublicEventBySlug = async (
 export const getPublicEventById = async (
   eventId: string,
 ): Promise<PublicEventDetail | null> => {
+  const direct = await readDirectEventBundle({
+    p_event_id: eventId,
+    p_brand_slug: null,
+    p_event_slug: null,
+  });
+  if (direct !== "fallback") return direct;
   // orch-strict-grep-allow events-type-filter — META-ORCH-0972 Sub-C: lookup by id then filter row.event_type at JS layer (lines 853 + 856).
   const { data, error } = await supabase
     .from("business_public_events_view")
@@ -1547,10 +1719,8 @@ export const getPublicEventById = async (
   if (row.event_type === "trip") {
     return null;
   }
-  // ORCH-1150 — admit RSVP rows (Going/Not-going page) alongside ticketed events.
-  return row.event_type === "event" || row.event_type === "rsvp"
-    ? detailFromRow(row)
-    : null;
+  // ORCH-1150 compatibility is deliberately RSVP-only after bundle SQL NULL.
+  return row.event_type === "rsvp" ? detailFromRow(row) : null;
 };
 
 // Exported for the ORCH-1076 regression test (buyer-supply readiness drop).

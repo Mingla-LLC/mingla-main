@@ -8303,6 +8303,16 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ---
 
+## DRAFT — issue #1929 (hidden exact-link hydration and fresh checkout)
+
+### I-PROPOSED-1929-HIDDEN-IS-EXACT-LINK-NOT-ENUMERABLE (DRAFT)
+
+- **Rule:** A standard hidden event may be read only through the exact-key direct bundle across scheduled, live, ended, and cancelled lifecycle states, and may create a fresh checkout only while scheduled or live. Hidden must never enter an enumeration source. Private/draft/deleted/unknown inputs return indistinguishable absence. The bundle preserves non-deleted online ticket tiers, including hidden/disabled tiers with truthful flags; checkout, not hydration, remains the sale authority.
+- **Enforcement:** the #1929 SQL/client/Edge regression suites and `.github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs` (wired self-test + plain).
+- **Established:** DRAFT at issue #1929 IMPLEMENT 2026-08-12. The orchestrator flips DRAFT → ACTIVE only at CLOSE after independent tester PASS, merge, surgical migration apply, and no-provider verification.
+
+---
+
 ## ACTIVE — issue #1902 (public event acquisition lifecycle; ratified 2026-08-12)
 
 ### I-PROPOSED-1902-PUBLIC-ACQUISITION-LIFECYCLE-SINGLE-OWNER (ACTIVE)

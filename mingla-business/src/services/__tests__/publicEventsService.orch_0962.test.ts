@@ -185,7 +185,7 @@ describe("ORCH-0962 public brand mapper happy paths", () => {
     expect(brand.displayAttendeeCount).toBe(true);
   });
 
-  test("T-05 event-detail brand context reads address from the view row", async () => {
+  test("T-05 event-detail brand context reads address from the direct bundle", async () => {
     const detail = await resolvePublicEventBrand({
       brand_address: "12 Old St",
     });
@@ -193,7 +193,7 @@ describe("ORCH-0962 public brand mapper happy paths", () => {
     expect(detail?.brand.address).toBe("12 Old St");
   });
 
-  test("T-06 event-detail brand context reads cover media from the view row", async () => {
+  test("T-06 event-detail brand context reads cover media from the direct bundle", async () => {
     const detail = await resolvePublicEventBrand({
       brand_cover_media_url: "https://cdn.example/cover.jpg",
     });
@@ -203,8 +203,9 @@ describe("ORCH-0962 public brand mapper happy paths", () => {
 });
 
 async function resolvePublicEventBrand(patch: Record<string, unknown>) {
+  const row = eventRow(patch);
   const eventQuery = queryBuilder("maybeSingle", {
-    data: eventRow(patch),
+    data: row,
     error: null,
   });
   const typeQuery = queryBuilder("maybeSingle", {
@@ -223,5 +224,33 @@ async function resolvePublicEventBrand(patch: Record<string, unknown>) {
     throw new Error(`Unexpected table ${String(table)}`);
   });
 
-  return getPublicEventBySlug("orch-0962-brand", "orch-0962-event");
+  mockRpc.mockImplementation((name) => {
+    if (name !== "pg_direct_event_checkout_bundle") {
+      throw new Error(`Unexpected RPC ${String(name)}`);
+    }
+    return Promise.resolve({
+      data: {
+        id: row.id,
+        brandId: row.brand_id,
+        brandSlug: row.brand_slug,
+        eventSlug: row.slug,
+        name: row.title,
+        description: row.description,
+        status: row.status,
+        tickets: [],
+        brand: {
+          id: row.brand_id,
+          slug: row.brand_slug,
+          name: row.brand_name,
+          address: row.brand_address,
+          coverMediaUrl: row.brand_cover_media_url,
+        },
+      },
+      error: null,
+    });
+  });
+
+  const detail = await getPublicEventBySlug("orch-0962-brand", "orch-0962-event");
+  expect(mockFrom).not.toHaveBeenCalled();
+  return detail;
 }

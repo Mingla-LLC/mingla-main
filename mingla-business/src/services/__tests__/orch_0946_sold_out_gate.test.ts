@@ -226,84 +226,69 @@ describe("ORCH-0946 sold-out gate (adversarial)", () => {
       master_event_date_id: "date-1",
     };
 
-    const ticketRow = (
-      patch: Record<string, unknown>,
-    ): Record<string, unknown> => ({
-      id: "tt",
-      event_id: EVENT_ID,
-      name: "Ticket",
-      description: null,
-      price_cents: 0,
-      currency: "USD",
-      quantity_total: 55,
-      is_unlimited: false,
-      is_free: true,
-      sale_start_at: null,
-      sale_end_at: null,
-      min_purchase_qty: 1,
-      max_purchase_qty: null,
-      is_hidden: false,
-      is_disabled: false,
-      requires_approval: false,
-      allow_transfers: true,
-      password_protected: false,
-      available_online: true,
-      available_in_person: false,
-      waitlist_enabled: false,
-      display_order: 0,
-      ...patch,
-    });
-
-    const ticketRows = [
-      ticketRow({ id: "tt-limited", quantity_total: 55, is_unlimited: false }),
-      ticketRow({
-        id: "tt-unlimited",
-        quantity_total: null,
-        is_unlimited: true,
-        display_order: 1,
-      }),
-    ];
-
     fromMock.mockReset();
     rpcMock.mockReset();
     fromMock.mockImplementation((table: string) => {
-      if (table === "business_public_events_view") {
-        return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: () =>
-                Promise.resolve({ data: eventRow, error: null }),
-            }),
-          }),
-        };
-      }
-      if (table === "ticket_types") {
-        return {
-          select: () => ({
-            eq: () => ({
-              eq: () => ({
-                is: () => ({
-                  order: () =>
-                    Promise.resolve({ data: ticketRows, error: null }),
-                }),
-              }),
-            }),
-          }),
-        };
-      }
       throw new Error(`unexpected from(${table}) in ORCH-0946 behavioral test`);
     });
-    // pg_public_ticket_types_remaining → the limited tier has 3 bookable left;
-    // every other RPC (all-in, canonical body) returns benign empty/null so the
-    // getter never blanks and no bookable RPC fires (free tickets).
+    // #1929 moves standard exact hydration to the canonical direct bundle. The
+    // limited tier carries remaining=3 while the unlimited tier stays unbounded.
     rpcMock.mockImplementation((name: string) => {
-      if (name === "pg_public_ticket_types_remaining") {
-        return Promise.resolve({
-          data: [{ ticket_type_id: "tt-limited", sold: 52, remaining: 3 }],
-          error: null,
-        });
+      if (name !== "pg_direct_event_checkout_bundle") {
+        throw new Error(`unexpected RPC ${name} in ORCH-0946 behavioral test`);
       }
-      return Promise.resolve({ data: null, error: null });
+      return Promise.resolve({
+        data: {
+          id: eventRow.id,
+          brandId: eventRow.brand_id,
+          brandSlug: eventRow.brand_slug,
+          eventSlug: eventRow.slug,
+          name: eventRow.title,
+          description: eventRow.description,
+          status: eventRow.status,
+          currency: "USD",
+          brand: {
+            id: eventRow.brand_id,
+            slug: eventRow.brand_slug,
+            name: eventRow.brand_name,
+          },
+          tickets: [
+            {
+              id: "tt-limited",
+              name: "Limited",
+              priceCents: 0,
+              allInCents: 0,
+              currency: "USD",
+              capacity: 55,
+              remaining: 3,
+              isUnlimited: false,
+              isFree: true,
+              isHidden: false,
+              isDisabled: false,
+              availableOnline: true,
+              availableInPerson: false,
+              displayOrder: 0,
+            },
+            {
+              id: "tt-unlimited",
+              name: "Unlimited",
+              priceCents: 0,
+              allInCents: 0,
+              currency: "USD",
+              capacity: null,
+              remaining: null,
+              isUnlimited: true,
+              isFree: true,
+              isHidden: false,
+              isDisabled: false,
+              availableOnline: true,
+              availableInPerson: false,
+              displayOrder: 1,
+            },
+          ],
+        },
+        error: null,
+      });
     });
 
     const detail = await getPublicEventById(EVENT_ID);
@@ -321,5 +306,7 @@ describe("ORCH-0946 sold-out gate (adversarial)", () => {
     // Unlimited tier: capacity untouched (null), never overwritten with remaining.
     expect(unlimited!.isUnlimited).toBe(true);
     expect(unlimited!.capacity).toBeNull();
+    expect(fromMock).not.toHaveBeenCalled();
+    expect(rpcMock).toHaveBeenCalledTimes(1);
   });
 });

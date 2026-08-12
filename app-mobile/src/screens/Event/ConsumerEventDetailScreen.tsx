@@ -121,6 +121,12 @@ import {
 } from "../../services/rsvpDeckService";
 import { useConsumerThemeFont } from "../../theme/useConsumerThemeFont";
 import { usePublicEventTickets } from "../../hooks/usePublicEventTickets";
+import {
+  acceptRsvpLegacySeed,
+  directEventColdReadPlan,
+  usePublicEventBySlug,
+  type CanonicalPublicEvent,
+} from "../../hooks/usePublicEventBySlug";
 import { useTripIntakeSchemas } from "../../hooks/useTripIntakeSchemas";
 import { useEventTheme } from "../../hooks/useEventTheme";
 import {
@@ -235,6 +241,60 @@ const cardToPublicEvent = (
   };
 };
 
+const canonicalToTransientCard = (
+  canonical: CanonicalPublicEvent,
+): BusinessEventCard => {
+  const { event, brand } = canonical;
+  const paid = event.tickets
+    .filter((ticket) => !ticket.isFree && ticket.priceGbp !== null)
+    .map((ticket) => ticket.priceGbp as number);
+  return {
+    eventId: event.id,
+    brandId: event.brandId,
+    brandSlug: event.brandSlug,
+    brandName: brand?.displayName ?? "",
+    brandProfilePhotoUrl: brand?.photo ?? null,
+    eventSlug: event.eventSlug,
+    title: event.name,
+    description: event.description,
+    coverMediaUrl: event.coverMediaUrl,
+    coverMediaType: event.coverMediaType,
+    coverGallery: canonical.coverGallery,
+    coverHue: event.coverHue,
+    masterDateUtc: canonical.masterStartAt,
+    masterEndAtUtc: canonical.masterEndAt,
+    doorsOpenLocal: null,
+    endsAtLocal: null,
+    timezone: canonical.timezone,
+    venueName: event.venueName,
+    city: canonical.city,
+    address: event.address,
+    hideAddressUntilTicket: event.hideAddressUntilTicket,
+    format: event.format,
+    locationGeo: event.locationGeo ?? null,
+    partyTypes: event.partyTypes,
+    vibeTags: event.vibeTags ?? [],
+    musicGenres: event.musicGenres ?? [],
+    priceMin: paid.length === 0 ? null : Math.min(...paid),
+    priceMax: paid.length === 0 ? null : Math.max(...paid),
+    displayPriceCents: null,
+    displayCurrency: event.currency,
+    currency: event.currency ?? "USD",
+    publicBuyerUrl: `/e/${event.brandSlug}/${event.eventSlug}`,
+    eventType: "event",
+    brandTheme: brand?.theme
+      ? {
+          color: brand.theme.color ?? null,
+          font: brand.theme.font ?? null,
+          animation: brand.theme.animation ?? null,
+          color_override: null,
+          font_override: null,
+          animation_override: null,
+        }
+      : null,
+  };
+};
+
 const openMapsForQuery = (query: string): void => {
   const encoded = encodeURIComponent(query);
   const googleUrl = `https://www.google.com/maps/search/?api=1&query=${encoded}`;
@@ -268,16 +328,33 @@ export default function ConsumerEventDetailScreen({
   // seed by slug from the anon public view so the FULL page (RSVP branch
   // included) renders cold. Deck path (seedProp present) → query disabled,
   // byte-identical behavior. In-file sibling key convention (rsvpMomentum).
+  const canonicalQuery = usePublicEventBySlug(
+    seedProp == null ? (brandSlug ?? null) : null,
+    seedProp == null ? (eventSlug ?? null) : null,
+  );
+  const coldReadPlan = directEventColdReadPlan(
+    seedProp !== null,
+    canonicalQuery,
+    !!brandSlug && !!eventSlug,
+  );
   const coldSeedQuery = useQuery({
     queryKey: ["publicEventSeed", brandSlug, eventSlug],
-    enabled: seedProp == null && !!brandSlug && !!eventSlug,
+    enabled:
+      coldReadPlan.allowLegacySeedRead,
     staleTime: 60_000,
-    queryFn: () =>
-      fetchPublicEventSeedBySlug(brandSlug as string, eventSlug as string),
+    queryFn: async () => {
+      const candidate = await fetchPublicEventSeedBySlug(
+        brandSlug as string,
+        eventSlug as string,
+      );
+      return acceptRsvpLegacySeed(candidate);
+    },
   });
   // THE seed every read below consumes — deck seed first, cold-resolved second
   // (all existing `seed?.…` reads, both branches, both mounts now work cold).
-  const seed = seedProp ?? coldSeedQuery.data ?? null;
+  const canonical = coldReadPlan.canonical;
+  const canonicalSeed = canonical === null ? null : canonicalToTransientCard(canonical);
+  const seed = seedProp ?? canonicalSeed ?? coldSeedQuery.data ?? null;
 
   const [cartVisible, setCartVisible] = useState<boolean>(false);
   const [initialTicketTypeId, setInitialTicketTypeId] = useState<string | null>(
@@ -355,9 +432,11 @@ export default function ConsumerEventDetailScreen({
   }, []);
 
   const eventId = seed?.eventId ?? null;
-  const ticketsQuery = usePublicEventTickets(eventId);
+  const ticketsQuery = usePublicEventTickets(
+    coldReadPlan.allowLegacyTicketRead ? eventId : null,
+  );
   const intakeSchemasQuery = useTripIntakeSchemas(eventId);
-  const themeQuery = useEventTheme(seed);
+  const themeQuery = useEventTheme(canonical === null ? seed : null);
   const runNativeCheckout = useNativeCheckoutFlow();
 
   // ORCH-1157 [rsvp-public-redesign] OQ-1 (option a) — fetch the live RSVP
@@ -432,7 +511,10 @@ export default function ConsumerEventDetailScreen({
     handleSeeWhosGoing,
   ]);
 
-  const theme = themeQuery.data ?? resolveTheme(null, null);
+  const theme =
+    canonical?.brand?.theme !== undefined
+      ? resolveTheme(canonical.brand.theme, null)
+      : (themeQuery.data ?? resolveTheme(null, null));
   const palette = useMemo(() => createThemePalette(theme), [theme]);
   const boldFamily = boldFontFamily(theme);
   useConsumerThemeFont(theme.fontFamilyValue);
@@ -451,7 +533,7 @@ export default function ConsumerEventDetailScreen({
     }
   }, [seed?.brandSlug, seed?.eventSlug, brandSlug, eventSlug, isRsvp]);
 
-  const tickets = ticketsQuery.data ?? [];
+  const tickets = canonical?.event.tickets ?? ticketsQuery.data ?? [];
 
   // ORCH-1167 — inline ticket-box quantity setter + proceed-to-cart. The box
   // lifts its quantities here; Proceed (in-box) + the floating bar both open the
@@ -914,7 +996,11 @@ export default function ConsumerEventDetailScreen({
 
   // ── ORCH-1342 (D6) — cold seed resolving: the EXISTING loading sheet while
   //    the by-slug read is in flight (never a blank screen, never the cap). ──
-  if (seedProp == null && coldSeedQuery.isLoading) {
+  if (
+    seedProp == null &&
+    (canonicalQuery.isLoading ||
+      (canonicalQuery.isSuccess && canonicalQuery.data === null && coldSeedQuery.isLoading))
+  ) {
     return (
       <BaseBottomSheet
         visible
@@ -964,7 +1050,7 @@ export default function ConsumerEventDetailScreen({
   }
 
   // ── Loading tickets ──
-  if (ticketsQuery.isLoading) {
+  if (canonical === null && ticketsQuery.isLoading) {
     return (
       <BaseBottomSheet
         visible
@@ -1033,7 +1119,11 @@ export default function ConsumerEventDetailScreen({
   // this (their body is the separate RsvpPublicBody section sequence). The static
   // map URL is privacy-gated: exact pin when the street is public, else null on the
   // warm path (no city centroid on the deck seed) → text venue card (rule 9).
-  const publicEventForBody: PublicEventProps = cardToPublicEvent(seed, tickets);
+  const seededPublicEvent = cardToPublicEvent(seed, tickets);
+  const publicEventForBody: PublicEventProps =
+    canonical === null
+      ? seededPublicEvent
+      : { ...canonical.event, dateLine: seededPublicEvent.dateLine };
   const bodyStaticMapUrl: string | null = (() => {
     if (publicEventForBody.format === "online") return null;
     if (publicEventForBody.hideAddressUntilTicket) return null;
