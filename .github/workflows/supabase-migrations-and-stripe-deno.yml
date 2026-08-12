@@ -438,6 +438,16 @@ jobs:
           # anon INSERT, and exactly ONE of them is a bypass.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1856_ordering_table_grants_and_grant_class.test.sql
+          # Issue #1856 — tester-owned adversarial guard. This does not trust
+          # the classifier alone: it performs a real anonymous INSERT through
+          # an owner-executed view over a deny-all RLS table and proves the row
+          # lands, then makes that same view security_invoker and requires the
+          # same write to fail with 42501. It also calls the catalog audit as a
+          # real authenticated role (must be denied), pins service_role-only
+          # execution, and independently checks the four tables plus thirteen
+          # repaired views from the live effective ACL.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1856_grant_guard.tester_adversarial.test.sql
           # Issue #1792 (#1767 Phase 3b) — WAITER MODE, against the REAL applied
           # schema. Behavioural: it opens and closes real tabs through the real
           # SECURITY DEFINER RPCs as a real auth.uid() with a real rank, runs
