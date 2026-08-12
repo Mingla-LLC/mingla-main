@@ -3472,7 +3472,7 @@ END;
 $function$
 ;
 
--- Latest effective definition copied from 20260917000000_orch_1076_paid_supply_requires_charges_enabled.sql.
+-- Latest effective definition copied from 20270322001902_issue_1902_public_event_lifecycle.sql.
 CREATE OR REPLACE FUNCTION public.pg_public_brand_upcoming(
   p_brand_slug text,
   p_cursor_at timestamptz DEFAULT now(),
@@ -3500,7 +3500,7 @@ LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public, pg_temp
-AS $$
+AS $function$
   WITH offerings AS (
     SELECT
       e.id AS offering_id,
@@ -3516,6 +3516,7 @@ AS $$
       e.theme,
       CASE e.event_type
         WHEN 'event' THEN ed.start_at
+        WHEN 'rsvp' THEN ed.start_at
         WHEN 'trip' THEN ed.start_at
         WHEN 'experience' THEN NULLIF(e.theme->'experience_meta'->>'next_occurrence_at', '')::timestamptz
       END AS starts_at,
@@ -3547,7 +3548,6 @@ AS $$
       AND e.visibility = 'public'
       AND e.published_at IS NOT NULL
       AND e.status IN ('scheduled', 'live')
-      -- ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED: paid-only Stripe-readiness gate (mirror of checkout 409 + ORCH-1075 publish guard). FREE + in-person-only-paid exempt. Buyer-facing only — owners read events directly.
       AND (
         NOT EXISTS (
           SELECT 1 FROM public.ticket_types tt
@@ -3581,7 +3581,10 @@ AS $$
     AND o.starts_at > COALESCE(p_cursor_at, now())
   ORDER BY o.starts_at ASC, o.published_at DESC
   LIMIT (LEAST(GREATEST(COALESCE(p_limit, 30), 1), 100) + 1);
-$$;
+$function$;
+
+REVOKE ALL ON FUNCTION public.pg_public_brand_upcoming(text, timestamptz, integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.pg_public_brand_upcoming(text, timestamptz, integer) TO anon, authenticated;
 
 -- Latest effective definition copied from 20270117001020_issue_1020_discover_city_geo_fallback.sql.
 CREATE OR REPLACE FUNCTION public.pg_discover_business_events(

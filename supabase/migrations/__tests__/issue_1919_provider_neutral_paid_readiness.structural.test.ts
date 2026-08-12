@@ -46,6 +46,19 @@ Deno.test("#1919 structural: all 13 boundaries use collect authority only", () =
   }
 });
 
+Deno.test("#1919 structural: Upcoming preserves the #1902 RSVP contract", () => {
+  const upcoming = body("pg_public_brand_upcoming");
+  assertMatch(upcoming, /WHEN 'rsvp' THEN ed\.start_at/);
+  assertMatch(
+    upcoming,
+    /REVOKE ALL ON FUNCTION public\.pg_public_brand_upcoming\(text, timestamptz, integer\) FROM PUBLIC;/,
+  );
+  assertMatch(
+    upcoming,
+    /GRANT EXECUTE ON FUNCTION public\.pg_public_brand_upcoming\(text, timestamptz, integer\) TO anon, authenticated;/,
+  );
+});
+
 Deno.test("#1919 structural: six writes retain only the #1922 transitional alias", () => {
   let aliases = 0;
   for (const name of writeFunctions) {
