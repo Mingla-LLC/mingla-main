@@ -10,6 +10,7 @@ on:
       - "supabase/functions/brand-people-export/**"
       - ".github/scripts/strict-grep/issue-1858-explicit-brand-export.mjs"
       - ".github/scripts/strict-grep/__tests__/issue-1858-explicit-brand-export.test.mjs"
+      - ".github/scripts/strict-grep/__tests__/issue-1858-explicit-brand-export.tester.adversarial.test.mjs"
       - ".github/workflows/issue-1858-explicit-brand-export-tests.yml"
   pull_request:
     paths:
@@ -19,6 +20,7 @@ on:
       - "supabase/functions/brand-people-export/**"
       - ".github/scripts/strict-grep/issue-1858-explicit-brand-export.mjs"
       - ".github/scripts/strict-grep/__tests__/issue-1858-explicit-brand-export.test.mjs"
+      - ".github/scripts/strict-grep/__tests__/issue-1858-explicit-brand-export.tester.adversarial.test.mjs"
       - ".github/workflows/issue-1858-explicit-brand-export-tests.yml"
 
 permissions:
@@ -47,6 +49,7 @@ jobs:
           node .github/scripts/strict-grep/issue-1858-explicit-brand-export.mjs --self-test
           node .github/scripts/strict-grep/issue-1858-explicit-brand-export.mjs
           node --test .github/scripts/strict-grep/__tests__/issue-1858-explicit-brand-export.test.mjs
+          node --test .github/scripts/strict-grep/__tests__/issue-1858-explicit-brand-export.tester.adversarial.test.mjs
       - name: Run Edge request-boundary regressions
         run: deno test --allow-env --allow-read supabase/functions/brand-people-export/issue_1770_export.happy.test.ts supabase/functions/brand-people-export/issue_1858_explicit_brand_export.test.ts
       - name: Wait for PostgreSQL 17 and apply every migration
