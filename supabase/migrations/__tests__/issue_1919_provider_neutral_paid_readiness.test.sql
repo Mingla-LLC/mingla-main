@@ -6,6 +6,7 @@ BEGIN;
 
 DO $test$
 DECLARE
+  v_account uuid := gen_random_uuid();
   v_stripe uuid := gen_random_uuid();
   v_paystack uuid := gen_random_uuid();
   v_unready uuid := gen_random_uuid();
@@ -16,14 +17,17 @@ DECLARE
   v_def text;
   v_sig text;
 BEGIN
+  INSERT INTO auth.users (id) VALUES (v_account);
+  INSERT INTO public.creator_accounts (id) VALUES (v_account);
+
   INSERT INTO public.brands (
-    id, slug, name, default_currency, paystack_subaccount_code,
+    id, account_id, slug, name, default_currency, paystack_subaccount_code,
     created_at, updated_at
   ) VALUES
-    (v_stripe, 'i1919-stripe-' || v_suffix, 'I1919 Stripe', 'USD', NULL, now(), now()),
-    (v_paystack, 'i1919-paystack-' || v_suffix, 'I1919 Paystack', 'NGN', 'ACCT_i1919_paystack', now(), now()),
-    (v_unready, 'i1919-unready-' || v_suffix, 'I1919 Unready', 'USD', NULL, now(), now()),
-    (v_pending, 'i1919-pending-' || v_suffix, 'I1919 Pending', 'NGN', 'ACCT_i1919_pending', now(), now());
+    (v_stripe, v_account, 'i1919-stripe-' || v_suffix, 'I1919 Stripe', 'USD', NULL, now(), now()),
+    (v_paystack, v_account, 'i1919-paystack-' || v_suffix, 'I1919 Paystack', 'NGN', 'ACCT_i1919_paystack', now(), now()),
+    (v_unready, v_account, 'i1919-unready-' || v_suffix, 'I1919 Unready', 'USD', NULL, now(), now()),
+    (v_pending, v_account, 'i1919-pending-' || v_suffix, 'I1919 Pending', 'NGN', 'ACCT_i1919_pending', now(), now());
 
   INSERT INTO public.stripe_connect_accounts (
     brand_id, stripe_account_id, charges_enabled, detached_at,

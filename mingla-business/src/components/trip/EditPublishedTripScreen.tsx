@@ -1164,25 +1164,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
           "Trip orders ledger is coming soon. Refund existing buyers via your Stripe dashboard first.",
         );
       };
-      const paymentCopy = resolveProviderNeutralPaidPublishGuardCopy(
-        result.reason,
-      );
-      if (paymentCopy?.reason === "payment_collection_unavailable") {
-        return {
-          title: paymentCopy.title,
-          body: paymentCopy.body,
-          primaryLabel: paymentCopy.actionLabel,
-          primaryAction: () => {
-            setRejectDialog(null);
-            router.push(brandPaymentOnboardingRoute(trip.brandId) as never);
-          },
-        };
-      }
-      const nonPaymentReason = result.reason as Exclude<
-        typeof result.reason,
-        "stripe_charges_disabled" | "payment_collection_unavailable"
-      >;
-      switch (nonPaymentReason) {
+      switch (result.reason) {
         case "missing_edit_reason":
         case "invalid_edit_reason":
           return {
@@ -1272,6 +1254,21 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             primaryAction: closeAndOpenOrders,
           };
         }
+        case "stripe_charges_disabled":
+        case "payment_collection_unavailable": {
+          const paymentCopy = resolveProviderNeutralPaidPublishGuardCopy(
+            result.reason,
+          )!;
+          return {
+            title: paymentCopy.title,
+            body: paymentCopy.body,
+            primaryLabel: paymentCopy.actionLabel,
+            primaryAction: () => {
+              setRejectDialog(null);
+              router.push(brandPaymentOnboardingRoute(trip.brandId) as never);
+            },
+          };
+        }
         case "offering_date_past":
           return {
             title: "Pick a future date",
@@ -1322,12 +1319,12 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
           };
         }
         default: {
-          const _exhaust: never = nonPaymentReason;
+          const _exhaust: never = result.reason;
           return _exhaust;
         }
       }
     },
-    [router, showToast, trip.brandId],
+    [router, showToast],
   );
 
   const handleConfirmSave = useCallback(
