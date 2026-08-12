@@ -42,12 +42,15 @@ jobs:
           node .github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs
       - name: Prove canonical CommonJS adapter in worker graph
         run: |
-          deno check --unstable-detect-cjs supabase/functions/brand-person-ingest-worker/index.ts
-          deno bundle --unstable-detect-cjs supabase/functions/brand-person-ingest-worker/index.ts >/tmp/issue-1773-worker.js
-          deno test --unstable-detect-cjs --allow-env --allow-net --allow-read \
-            supabase/functions/brand-person-ingest-worker/issue_1770_ingest_worker.happy.test.ts \
-            supabase/functions/brand-person-ingest-worker/issue_1773_reservation_stay.happy.test.ts \
-            supabase/functions/brand-person-ingest-worker/issue_1773_reservation_stay.tester.adversarial.test.ts
+          deno check supabase/functions/brand-person-ingest-worker/index.ts
+          deno bundle supabase/functions/brand-person-ingest-worker/index.ts >/tmp/issue-1773-worker.js
+          deno bundle supabase/functions/brand-person-ingest-worker/issue_1773_reservation_stay.happy.test.ts >/tmp/issue-1773-worker-happy.test.js
+          deno bundle supabase/functions/brand-person-ingest-worker/issue_1773_reservation_stay.tester.adversarial.test.ts >/tmp/issue-1773-worker-adversarial.test.js
+          deno test --allow-read \
+            supabase/functions/brand-person-ingest-worker/issue_1770_ingest_worker.happy.test.ts
+          deno test /tmp/issue-1773-worker-happy.test.js /tmp/issue-1773-worker-adversarial.test.js
+          deno test --allow-env --allow-net --allow-read --allow-run --allow-write \
+            supabase/functions/brand-person-ingest-worker/issue_1773_worker_cjs_artifact.test.ts
           node --test \
             packages/card-identity/__tests__/issue_1857_phone_country_authority.happy.test.mjs \
             packages/card-identity/__tests__/issue_1857_phone_country_authority.tester.adversarial.test.mjs

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { safeBrandPersonResolution } from "../_shared/brandPeople.ts";
+import "../../../packages/card-identity/package.json" with { type: "json" };
 import phoneAdapter from "../../../packages/card-identity/phone.js";
 
 const { resolveUserPhoneE164 } = phoneAdapter as {
