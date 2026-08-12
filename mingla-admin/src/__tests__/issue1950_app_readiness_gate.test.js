@@ -122,12 +122,16 @@ test("#1950 flag-ON ephemeral interceptor admits only readiness reads, checks, a
     os: "android",
   });
   for (const result of [loaded, checked]) {
-    const accepted = validateReadinessResponse(result.data, "business", "android");
-    assert.equal(accepted.targets.length, 4);
-    assert.deepEqual(
-      accepted.selected.latest.results.map((row) => row.provider),
-      ["meta", "tiktok", "snapchat", "google", "reddit"],
-    );
+    for (const target of result.data.targets) {
+      const accepted = validateReadinessResponse(result.data, target.app_key, target.os);
+      assert.equal(accepted.targets.length, 4);
+      assert.equal(accepted.selected.app_key, target.app_key);
+      assert.equal(accepted.selected.os, target.os);
+      assert.deepEqual(
+        accepted.selected.latest.results.map((row) => row.provider),
+        ["meta", "tiktok", "snapchat", "google", "reddit"],
+      );
+    }
   }
   await assert.rejects(
     () => interceptor.request("admin-ad-create-campaign"),
