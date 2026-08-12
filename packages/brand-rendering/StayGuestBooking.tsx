@@ -71,6 +71,16 @@ export interface StayGuestBookingProps {
   quote?: StayQuote | null;
   onRetry?: () => void;
   onSubmit: (input: StayGuestCheckoutInput) => void | Promise<void>;
+  renderPhoneField?: (args: {
+    label: string;
+    testID: string;
+    rawValue: string;
+    countryCode: string | null;
+    onChangeRawValue: (raw: string, resolvedE164: string | null) => void;
+    onChangeCountry: (iso: string, resolvedE164: string | null) => void;
+    invalid: boolean;
+    disabled: boolean;
+  }) => BrandRenderingReactElement;
   onConfirmQuote?: () => void | Promise<void>;
   onEditQuote?: () => void;
   onAnalytics?: (
@@ -102,6 +112,7 @@ export function StayGuestBooking({
   quote = null,
   onRetry,
   onSubmit,
+  renderPhoneField,
   onConfirmQuote,
   onEditQuote,
   onAnalytics,
@@ -122,6 +133,8 @@ export function StayGuestBooking({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneRawValue, setPhoneRawValue] = useState("");
+  const [phoneCountryIso, setPhoneCountryIso] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   // Issue #1563 — the band the guest is standing in, held as the band's own
   // VALUE (`"lt:30000"`), never its index. A refetch can drop a room that has
@@ -421,6 +434,10 @@ export function StayGuestBooking({
       setValidationError(cartError);
       return;
     }
+    if (phoneRawValue.trim().length > 0 && cleanPhone.length === 0) {
+      setValidationError("Select a country and enter a valid phone number.");
+      return;
+    }
     if (cleanName.length < 1 || (cleanEmail.length < 3 && cleanPhone.length < 3)) {
       setValidationError("Add your name and an email address or phone number.");
       return;
@@ -438,6 +455,7 @@ export function StayGuestBooking({
         name: cleanName,
         ...(cleanEmail ? { email: cleanEmail } : {}),
         ...(cleanPhone ? { phone: cleanPhone } : {}),
+        ...(cleanPhone && phoneCountryIso ? { phoneCountryIso } : {}),
       },
     });
   };
@@ -655,13 +673,33 @@ export function StayGuestBooking({
             palette={palette}
             placeholder="you@example.com"
           />
-          <Field
-            label="Phone (optional if email is provided)"
-            value={phone}
-            onChange={setPhone}
-            palette={palette}
-            placeholder="+1 555 000 0000"
-          />
+          {renderPhoneField ? renderPhoneField({
+            label: "Phone (optional if email is provided)",
+            testID: "issue-1857-stay-phone",
+            rawValue: phoneRawValue,
+            countryCode: phoneCountryIso,
+            onChangeRawValue: (raw, resolvedE164) => {
+              setPhoneRawValue(raw);
+              setPhone(resolvedE164 ?? "");
+              if (validationError === "Select a country and enter a valid phone number.") {
+                setValidationError(null);
+              }
+            },
+            onChangeCountry: (iso, resolvedE164) => {
+              setPhoneCountryIso(iso);
+              setPhone(resolvedE164 ?? "");
+            },
+            invalid: phoneRawValue.trim().length > 0 && phone.trim().length === 0,
+            disabled: submitting,
+          }) : (
+            <Field
+              label="Phone (optional if email is provided)"
+              value={phone}
+              onChange={setPhone}
+              palette={palette}
+              placeholder="+1 555 000 0000"
+            />
+          )}
           {validationError ?? roomAllocationError ?? errorMessage ? (
             <Text accessibilityRole="alert" style={styles.errorText}>
               {validationError ?? roomAllocationError ?? errorMessage}

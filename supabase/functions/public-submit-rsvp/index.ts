@@ -40,6 +40,7 @@ interface RsvpGuestInput {
   name?: string;
   email?: string;
   phone?: string;
+  phoneCountryIso?: string | null;
 }
 
 interface SubmitRsvpRequest {
@@ -47,6 +48,7 @@ interface SubmitRsvpRequest {
   guestName?: string;
   guestEmail?: string;
   guestPhone?: string;
+  guestPhoneCountryIso?: string | null;
   rsvpStatus?: "going" | "not_going" | "maybe";
   plusCount?: number;
   // ORCH-1163 [rsvp-shared-body] — one CONTACT record per plus-one (name/email/
@@ -55,8 +57,8 @@ interface SubmitRsvpRequest {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-// E.164-ish: optional +, 7–15 digits.
-const PHONE_RE = /^\+?[0-9]{7,15}$/;
+const PHONE_RE = /^\+[1-9][0-9]{7,14}$/;
+const COUNTRY_ISO_RE = /^[A-Z]{2}$/;
 
 // Naive in-memory per-IP rate limit (best-effort; resets on cold start). The DB
 // unique indexes + the RPC are the real guard; this just blunts burst spam.
@@ -76,9 +78,15 @@ function rateLimited(ip: string): boolean {
 }
 
 function normalizePhone(raw: string): string | null {
-  const trimmed = raw.replace(/[\s()-]/g, "");
-  if (!PHONE_RE.test(trimmed)) return null;
-  return trimmed.startsWith("+") ? trimmed : `+${trimmed}`;
+  const trimmed = raw.trim();
+  return PHONE_RE.test(trimmed) ? trimmed : null;
+}
+
+function optionalCountryIso(value: unknown): string | null | undefined {
+  if (value === undefined || value === null || value === "") return null;
+  return typeof value === "string" && COUNTRY_ISO_RE.test(value)
+    ? value
+    : undefined;
 }
 
 function json(status: number, body: Record<string, unknown>): Response {
@@ -115,10 +123,17 @@ serve(async (req: Request): Promise<Response> => {
   } catch {
     return json(400, { error: "invalid_json" });
   }
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+      Object.keys(body).some((key) => ![
+        "eventId", "guestName", "guestEmail", "guestPhone",
+        "guestPhoneCountryIso", "rsvpStatus", "plusCount", "guests",
+      ].includes(key))) {
+    return json(400, { error: "rsvp_payload_invalid" });
+  }
 
   const eventId = typeof body.eventId === "string" ? body.eventId.trim() : "";
   const rsvpStatus = body.rsvpStatus;
-  if (eventId.length === 0) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId)) {
     return json(400, { error: "event_id_required" });
   }
   // ORCH-1150 R2 D-10: 'maybe' is an accepted RSVP status (cap-neutral, auto-
@@ -162,8 +177,15 @@ serve(async (req: Request): Promise<Response> => {
     typeof body.guestEmail === "string" ? body.guestEmail.trim() : "";
   let rawPhone =
     typeof body.guestPhone === "string" ? body.guestPhone.trim() : "";
+  if (guestName.length > 120 || guestEmail.length > 254 || rawPhone.length > 40) {
+    return json(400, { error: "rsvp_payload_invalid" });
+  }
 
   let normalizedPhone: string | null = null;
+  const guestPhoneCountryIso = optionalCountryIso(body.guestPhoneCountryIso);
+  if (guestPhoneCountryIso === undefined) {
+    return json(400, { error: "rsvp_phone_country_invalid" });
+  }
 
   // A4-NEW: link guest (anon) must carry name + email + phone, all valid.
   if (userId === null) {
@@ -217,7 +239,7 @@ serve(async (req: Request): Promise<Response> => {
   // name/email/phone (same EMAIL_RE / normalizePhone gates as the primary).
   // The RPC re-validates server-side; this is the friendly 400 contract.
   const rawGuests = Array.isArray(body.guests) ? body.guests : [];
-  let normalizedGuests: Array<{ name: string; email: string; phone: string }> =
+  let normalizedGuests: Array<{ name: string; email: string; phone: string; phoneCountryIso: string | null }> =
     [];
   if (rsvpStatus === "going" || rsvpStatus === "maybe") {
     if (plusCount > 0) {
@@ -225,9 +247,19 @@ serve(async (req: Request): Promise<Response> => {
         return json(400, { error: "rsvp_guest_count_mismatch" });
       }
       for (const g of rawGuests) {
+        if (!g || typeof g !== "object" || Array.isArray(g) ||
+            Object.keys(g).some((key) =>
+              !["name", "email", "phone", "phoneCountryIso"].includes(key)
+            )) {
+          return json(400, { error: "rsvp_guest_keys_invalid" });
+        }
         const gName = typeof g?.name === "string" ? g.name.trim() : "";
         const gEmail = typeof g?.email === "string" ? g.email.trim() : "";
         const gRawPhone = typeof g?.phone === "string" ? g.phone.trim() : "";
+        const gPhoneCountryIso = optionalCountryIso(g?.phoneCountryIso);
+        if (gName.length > 120 || gEmail.length > 254 || gRawPhone.length > 40) {
+          return json(400, { error: "rsvp_guest_payload_invalid" });
+        }
         if (
           gName.length === 0 ||
           gEmail.length === 0 ||
@@ -236,11 +268,19 @@ serve(async (req: Request): Promise<Response> => {
         ) {
           return json(400, { error: "rsvp_guest_contact_required" });
         }
+        if (gPhoneCountryIso === undefined) {
+          return json(400, { error: "rsvp_guest_phone_country_invalid" });
+        }
         const gPhone = normalizePhone(gRawPhone);
         if (gPhone === null) {
           return json(400, { error: "rsvp_guest_phone_invalid" });
         }
-        normalizedGuests.push({ name: gName, email: gEmail, phone: gPhone });
+        normalizedGuests.push({
+          name: gName,
+          email: gEmail,
+          phone: gPhone,
+          phoneCountryIso: gPhoneCountryIso,
+        });
       }
     }
     // plusCount === 0 → no guests required; ignore any stray array.
@@ -308,6 +348,7 @@ serve(async (req: Request): Promise<Response> => {
     p_plus_count: plusCount,
     p_guests: normalizedGuests,
     p_qr_token_pepper: qrPepper,
+    p_guest_phone_country_iso: guestPhoneCountryIso,
   });
 
   if (error !== null) {

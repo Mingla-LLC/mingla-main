@@ -90,7 +90,7 @@ import {
   type PhoneInputTheme,
   type PhoneInputIconName,
 } from "@mingla/phone-input";
-import { composeE164 } from "../../utils/phone";
+import { resolveUserPhoneE164 } from "@mingla/card-identity/phone";
 import { Icon } from "../ui/Icon";
 
 import { FoundationEventPreview } from "./FoundationEventPreview";
@@ -776,6 +776,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       guestName: string;
       guestEmail: string;
       guestPhone: string;
+      guestPhoneCountryIso?: string | null;
       plusCount: number;
       guests: Array<{ name: string; email: string; phone: string }>;
     }): Promise<{
@@ -801,6 +802,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         guestName: input.guestName,
         guestEmail: input.guestEmail,
         guestPhone: input.guestPhone,
+        guestPhoneCountryIso: input.guestPhoneCountryIso,
         plusCount: input.plusCount,
         guests: input.guests,
       });
@@ -947,33 +949,38 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       accessoryBackground: palette.page,
       accessoryBorder: palette.panelBorder,
       accent: palette.accent,
-      errorText: "#ef4444",
+      errorText: resolvedTheme.foregroundColor === "#ffffff" ? "#f87171" : "#b91c1c",
     }),
-    [palette],
+    [palette, resolvedTheme],
   );
   const renderRsvpPhoneField = useCallback<RsvpPhoneFieldRenderer>(
-    ({ countryCode, localDigits, onChangeCountry, onChangeLocalDigits, invalid, disabled }) => (
+    ({ countryCode, rawValue, onChangeCountry, onChangeRawValue, invalid, disabled, label, testID, required, emptyRequired }) => (
       <View style={styles.rsvpPhoneFieldWrap}>
         <Text style={[styles.rsvpPhoneFieldLabel, { color: palette.tertiaryText }]}>
-          Phone
+          {label}
         </Text>
         <PhoneInput
           // ORCH-1299 — this RSVP phone field renders inside RsvpDetailsModal (a
           // portal <Modal>). The default nested-<Modal> country picker freezes on
           // web, so use the in-place overlay picker (web-only; native keeps modal).
           pickerPresentation="overlay"
-          value={localDigits}
+          value={rawValue}
           countryCode={countryCode}
           onChangePhone={(next: string) => {
-            const dial = getCountryByCode(countryCode)?.dialCode ?? "+1";
-            onChangeLocalDigits(next, composeE164(dial, next) ?? "");
+            onChangeRawValue(next, resolveUserPhoneE164(next, countryCode));
           }}
           onChangeCountry={(nextIso: string) => {
-            const dial = getCountryByCode(nextIso)?.dialCode ?? "+1";
-            onChangeCountry(nextIso, composeE164(dial, localDigits) ?? "");
+            onChangeCountry(nextIso, resolveUserPhoneE164(rawValue, nextIso));
           }}
-          error={invalid ? "Enter a valid phone number" : null}
+          error={emptyRequired ? "Required" : invalid ? "Select a country and enter a valid phone number." : null}
           disabled={disabled}
+          required={required}
+          maxLength={40}
+          testID={testID}
+          countryButtonAccessibilityLabel={countryCode === null
+            ? "Select country"
+            : `${label} country, ${getCountryByCode(countryCode)?.name ?? countryCode}, tap to change`}
+          phoneInputAccessibilityLabel={`${label} phone number`}
           iconRenderer={(name: PhoneInputIconName, iconProps: { size: number; color: string }) => {
             const iconName =
               name === "chevronDown"
@@ -994,6 +1001,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             pickerTitle: "Select Country",
             pickerSearchPlaceholder: "Search country or dial code",
             pickerCloseAccessibilityLabel: "Close country picker",
+            pickerNoResults: "No countries found",
           }}
           theme={phoneFieldTheme}
         />

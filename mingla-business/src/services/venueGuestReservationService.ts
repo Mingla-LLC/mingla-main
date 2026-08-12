@@ -42,6 +42,7 @@ export interface GuestReservationBuyer {
   name: string;
   email: string;
   phone: string;
+  phoneCountryIso?: string | null;
   marketingOptIn: boolean;
 }
 

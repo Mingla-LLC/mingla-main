@@ -110,6 +110,7 @@ export interface RsvpGuestContactInput {
   name: string;
   email: string;
   phone: string;
+  phoneCountryIso?: string | null;
 }
 
 export interface SubmitPublicRsvpInput {
@@ -119,6 +120,7 @@ export interface SubmitPublicRsvpInput {
   guestName?: string;
   guestEmail?: string;
   guestPhone?: string;
+  guestPhoneCountryIso?: string | null;
   plusCount?: number;
   /** ORCH-1163 §H — per-plus-one contacts; length must equal plusCount. */
   guests?: RsvpGuestContactInput[];
@@ -146,6 +148,7 @@ export const submitPublicRsvp = async (
       guestName: input.guestName,
       guestEmail: input.guestEmail,
       guestPhone: input.guestPhone,
+      guestPhoneCountryIso: input.guestPhoneCountryIso,
       plusCount: input.plusCount ?? 0,
       guests: input.guests ?? [],
     },

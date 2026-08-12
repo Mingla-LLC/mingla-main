@@ -144,4 +144,29 @@ function supportedDialCountries() {
   return Object.keys(PLANS).sort();
 }
 
-module.exports = { dialablePhone, supportedDialCountries, PHONE_PLANS: PLANS };
+const STRICT_E164 = /^\+[1-9][0-9]{7,14}$/;
+
+/**
+ * Resolve user-entered phone evidence without guessing a handset country.
+ * Strict E.164 always wins and is preserved byte-for-byte. National input is
+ * accepted only when the explicit ISO country lets the existing plan owner
+ * prove a strict E.164 result.
+ */
+function resolveUserPhoneE164(raw, countryIso) {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (STRICT_E164.test(trimmed)) return trimmed;
+  if (typeof countryIso !== 'string' || !/^[A-Z]{2}$/.test(countryIso)) return null;
+  const resolved = dialablePhone(trimmed, countryIso);
+  if (!resolved || resolved.international !== true || !STRICT_E164.test(resolved.tel)) {
+    return null;
+  }
+  return resolved.tel;
+}
+
+module.exports = {
+  dialablePhone,
+  resolveUserPhoneE164,
+  supportedDialCountries,
+  PHONE_PLANS: PLANS,
+};

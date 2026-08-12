@@ -63,13 +63,13 @@ import {
 } from "./tokens";
 
 interface CountryPickerContentProps {
-  selectedCode: string;
+  selectedCode: string | null;
   onSelect: (code: string) => void;
   onClose: () => void;
   iconRenderer: IconRenderer;
   labels: Pick<
     PhoneInputLabels,
-    "pickerTitle" | "pickerSearchPlaceholder" | "pickerCloseAccessibilityLabel"
+    "pickerTitle" | "pickerSearchPlaceholder" | "pickerCloseAccessibilityLabel" | "pickerNoResults"
   >;
   /** Optional theme overrides matching PhoneInput's theme prop. */
   theme?: PhoneInputTheme;
@@ -84,7 +84,7 @@ interface CountryPickerModalProps extends CountryPickerContentProps {
  * Single sanctioned widening (mirrors packages/offering-rendering ParallaxCoverShell
  * `webStyle`) — NOT an `as unknown as` cast. Used only for the web overlay pin.
  */
-type WebViewStyle = ViewStyle & {
+type WebViewStyle = Omit<ViewStyle, "position"> & {
   position?: ViewStyle["position"] | "fixed";
 };
 
@@ -212,6 +212,7 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
           android_ripple={{ color: t.divider, borderless: false }}
           accessibilityRole="button"
           accessibilityLabel={`${item.name} ${item.dialCode}`}
+          accessibilityState={{ selected: isSelected }}
         >
           <Text style={styles.flag}>{item.flag}</Text>
           <Text style={countryNameStyle} numberOfLines={1}>
@@ -266,8 +267,19 @@ const CountryPickerContent: React.FC<CountryPickerContentProps> = ({
           autoCorrect={false}
           autoCapitalize="none"
           returnKeyType="search"
+          accessibilityLabel={labels.pickerSearchPlaceholder}
+          autoFocus
         />
       </View>
+
+      {filteredCountries.length === 0 ? (
+        <Text
+          style={[styles.emptyText, { color: t.textTertiary }]}
+          accessibilityLiveRegion="polite"
+        >
+          {labels.pickerNoResults ?? "No countries found"}
+        </Text>
+      ) : null}
 
       <FlatList
         ref={listRef}
@@ -304,6 +316,7 @@ export const CountryPickerModal: React.FC<CountryPickerModalProps> = ({
       animationType={Platform.OS === "ios" ? "slide" : "fade"}
       presentationStyle="fullScreen"
       statusBarTranslucent
+      onRequestClose={onClose}
     >
       <KeyboardProvider>
         <SafeAreaProvider>
@@ -411,6 +424,11 @@ const styles = StyleSheet.create({
   },
   list: {
     flex: 1,
+  },
+  emptyText: {
+    ...typography.sm,
+    textAlign: "center",
+    padding: spacing.lg,
   },
   row: {
     flexDirection: "row",

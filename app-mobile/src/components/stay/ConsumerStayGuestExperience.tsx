@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
 import { initStripe } from "@stripe/stripe-react-native";
 import { useStripePaymentSheet } from "@mingla/payments-native";
-import { StayGuestBooking } from "@mingla/brand-rendering/StayGuestBooking";
+import { StayGuestBooking, type StayGuestBookingProps } from "@mingla/brand-rendering/StayGuestBooking";
 import {
   type StayGuestCheckoutInput,
   type StayQuote,
@@ -13,13 +14,17 @@ import type {
 } from "@mingla/offering-rendering";
 import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
+import { getCountryByCode, type PhoneInputTheme } from "@mingla/phone-input";
+import { resolveUserPhoneE164 } from "@mingla/card-identity/phone";
 
 import { usePublicStayDetail } from "../../hooks/useStayGuest";
 import { postHogService } from "../../services/postHogService";
 import { stayGuestService } from "../../services/stayGuestService";
 import { supabase } from "../../services/supabase";
+import { PhoneInput } from "../onboarding/PhoneInput";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
+type StayPhoneRenderer = NonNullable<StayGuestBookingProps["renderPhoneField"]>;
 
 const applePayItems = (
   title: string,
@@ -82,6 +87,40 @@ export function ConsumerStayGuestExperience({
   const [quote, setQuote] = useState<StayQuote | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const phoneTheme = useMemo<PhoneInputTheme>(() => ({
+    backgroundPrimary: palette.page,
+    textPrimary: palette.primaryText,
+    textTertiary: palette.tertiaryText,
+    borderDefault: palette.panelBorder,
+    borderFocused: palette.accent,
+    borderError: "#ef4444",
+    searchBackground: palette.card,
+    rowPressedBackground: palette.accentWash,
+    divider: palette.panelBorder,
+    accessoryBackground: palette.page,
+    accessoryBorder: palette.panelBorder,
+    accent: palette.accent,
+    errorText: theme.foregroundColor === "#ffffff" ? "#f87171" : "#b91c1c",
+  }), [palette, theme.foregroundColor]);
+  const renderPhoneField = useCallback<StayPhoneRenderer>((args) => (
+    <View style={styles.phoneField}>
+      <Text style={[styles.phoneLabel, { color: palette.tertiaryText }]}>{args.label}</Text>
+      <PhoneInput
+        pickerPresentation="overlay"
+        value={args.rawValue}
+        countryCode={args.countryCode}
+        onChangePhone={(raw: string) => args.onChangeRawValue(raw, resolveUserPhoneE164(raw, args.countryCode))}
+        onChangeCountry={(iso: string) => args.onChangeCountry(iso, resolveUserPhoneE164(args.rawValue, iso))}
+        error={args.invalid ? "Select a country and enter a valid phone number." : null}
+        disabled={args.disabled}
+        theme={phoneTheme}
+        maxLength={40}
+        testID={args.testID}
+        countryButtonAccessibilityLabel={args.countryCode === null ? "Select country" : `${args.label} country, ${getCountryByCode(args.countryCode)?.name ?? args.countryCode}, tap to change`}
+        phoneInputAccessibilityLabel={`${args.label} phone number`}
+      />
+    </View>
+  ), [palette.tertiaryText, phoneTheme]);
 
   // issue #1562 — publish the quoted total to the page's first screen. Runs on
   // every quote transition INCLUDING back to null (a cleared or expired quote
@@ -253,6 +292,7 @@ export function ConsumerStayGuestExperience({
         void detailQuery.refetch();
       }}
       onSubmit={prepareQuote}
+      renderPhoneField={renderPhoneField}
       onConfirmQuote={confirm}
       onEditQuote={() => {
         setQuote(null);
@@ -269,3 +309,8 @@ export function ConsumerStayGuestExperience({
     />
   );
 }
+
+const styles = StyleSheet.create({
+  phoneField: { marginBottom: 16 },
+  phoneLabel: { fontSize: 12, fontWeight: "700", marginBottom: 6 },
+});

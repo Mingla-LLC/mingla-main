@@ -66,6 +66,7 @@ export interface FoundationRsvpPreviewProps {
     guestName: string;
     guestEmail: string;
     guestPhone: string;
+    guestPhoneCountryIso?: string | null;
     plusCount: number;
     guests: RsvpGuestContact[];
   }) => Promise<RsvpSubmitResult>;

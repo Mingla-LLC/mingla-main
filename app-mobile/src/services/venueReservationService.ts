@@ -27,6 +27,7 @@ export interface VenueReservationBuyer {
   name: string;
   email: string;
   phone: string;
+  phoneCountryIso?: string | null;
   marketingOptIn?: boolean;
 }
 
@@ -147,6 +148,7 @@ export async function createVenueReservation(
           name: input.buyer.name,
           email: input.buyer.email,
           phone: input.buyer.phone,
+          phoneCountryIso: input.buyer.phoneCountryIso,
           marketingOptIn: input.buyer.marketingOptIn === true,
         },
         ...(input.occasion ? { occasion: input.occasion } : {}),

@@ -1,0 +1,56 @@
+name: Issue 1857 phone-country authority
+
+on:
+  pull_request:
+    paths:
+      - "packages/card-identity/**"
+      - "packages/phone-input/**"
+      - "packages/offering-rendering/**"
+      - "packages/brand-rendering/**"
+      - "app-mobile/src/components/onboarding/PhoneInput.tsx"
+      - "app-mobile/src/components/stay/ConsumerStayGuestExperience.tsx"
+      - "app-mobile/src/components/expandedCard/VenueReserveSheet.tsx"
+      - "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx"
+      - "app-mobile/src/services/rsvpDeckService.ts"
+      - "app-mobile/src/services/venueReservationService.ts"
+      - "mingla-business/src/components/event/**"
+      - "mingla-business/src/components/stay/BuyerStayGuestExperience.tsx"
+      - "mingla-business/src/components/venue/GuestVenueReservation.tsx"
+      - "mingla-business/src/services/**"
+      - "supabase/functions/public-submit-rsvp/**"
+      - "supabase/functions/stay-reservations/**"
+      - "supabase/functions/venue-reservation-create/**"
+      - "supabase/migrations/20270323001857_issue_1857_phone_country_authority.sql"
+      - "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql"
+      - "docs/INVARIANT_REGISTRY.md"
+      - ".github/scripts/strict-grep/issue-1857-phone-country-authority.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-1857-phone-country-authority-tests.yml"
+  push:
+    branches: [main]
+
+jobs:
+  issue-1857-phone-country-authority:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Strict structural gate and mutation self-test
+        run: |
+          node .github/scripts/strict-grep/issue-1857-phone-country-authority.mjs --self-test
+          node .github/scripts/strict-grep/issue-1857-phone-country-authority.mjs
+      - name: Canonical phone adapter
+        run: node --test packages/card-identity/__tests__/issue_1857_phone_country_authority.happy.test.mjs
+      - name: Shared, service, and Edge contracts
+        run: |
+          deno test --allow-read packages/offering-rendering/__tests__/issue_1857_rsvp_phone_country.happy.test.tsx
+          deno test --allow-read packages/brand-rendering/__tests__/issue_1857_stay_phone_country.happy.test.tsx
+          deno test --allow-read app-mobile/src/services/__tests__/issue_1857_phone_country_transport.happy.test.ts
+          deno test --allow-read mingla-business/src/services/__tests__/issue_1857_phone_country_transport.happy.test.ts
+          deno test --allow-read supabase/functions/public-submit-rsvp/issue_1857_phone_country.happy.test.ts
+          deno test --allow-read supabase/functions/stay-reservations/issue_1857_phone_country.happy.test.ts
+          deno test --allow-read supabase/functions/venue-reservation-create/issue_1857_phone_country.happy.test.ts
+      - name: PostgreSQL 17 migration contract is registered
+        run: test -s supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql

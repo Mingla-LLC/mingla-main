@@ -8354,3 +8354,15 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Regression test:** `mingla-business/__tests__/issue1876_terminal_recovery_ui.test.ts`, `mingla-business/__tests__/issue1876_false_positive_and_reachability.tester.adversarial.test.ts`, and `mingla-business/playwright/issue1876/boot-error-reachability.spec.ts` evaluate the exact shipped bytes and jointly guard the known-defect visibility-oracle vacuity, late-mount removal, supported polling fallback, pending-latch reset, generic rewrite-shadowing protection, and real Chromium visibility/tappability. The synthetic suites prove exact copy, blocked-storage recovery, no false card before the 1500 ms boundary, observer and fallback cleanup, later recovery after a survivable failure, no app-DOM or navigation mutation, and generic derivation of every shipped catch-all alternate; the real-browser suite proves a genuine blank boot is in-viewport, topmost, and clickable, proves a late healthy mount removes the card, and proves a pre-guard mount never paints it. Presence-only synthetic DOM evidence cannot satisfy this invariant.
 - **Evidence:** the pre-fix deployment had no terminal UI. After PR #1933 deployed, production HTML contained `mingla-boot-error`, `watchBootRoot`, `bootErrorPending`, and `position:fixed`; Chromium at an iPhone 13 viewport proved the deployed card had non-zero in-viewport area, was topmost and tappable, disappeared after a late healthy mount, and never rendered when the app mounted before the guard.
 - **Established:** DRAFT 2026-08-11 at issue #1876 SPEC; activated after independent tester PASS and production verification of PR #1933 merge `bd38a0ee6` on 2026-08-12.
+
+---
+
+## DRAFT — issue #1857 (explicit handset-country authority for national phone input)
+
+> Registered DRAFT at issue #1857 IMPLEMENT. The orchestrator flips this entry to ACTIVE at CLOSE after independent tester PASS, all-green merge, and migration verification.
+
+### I-PROPOSED-PHONE-COUNTRY-AUTHORITY-1 (DRAFT)
+
+- A national-format phone may enter identity matching only after conversion by the single country-aware owner using explicit handset-country evidence. Strict E.164 is preserved exactly. Country evidence is provenance, never an identity, matching, suppression, routing, invite, reconciliation, or export-selection key. Missing or conflicting country metadata cannot rewrite an E.164 address, and historical ambiguous values are never guessed or backfilled.
+- **Enforced by:** `packages/card-identity/phone.js`; the shared RSVP and Stay render seams; the public RSVP, Stay, and reservation Edge boundaries; strict SQL writers and provenance refresh in `20270323001857_issue_1857_phone_country_authority.sql`; `.github/scripts/strict-grep/issue-1857-phone-country-authority.mjs`.
+- **Established:** DRAFT at issue #1857 IMPLEMENT 2026-08-11.

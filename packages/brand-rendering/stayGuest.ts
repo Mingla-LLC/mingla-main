@@ -126,6 +126,7 @@ export interface StayGuestCheckoutInput {
     name: string;
     email?: string;
     phone?: string;
+    phoneCountryIso?: string | null;
   };
 }
 
@@ -171,7 +172,7 @@ export interface StayReservationGroup {
     | "reconciliation_required";
   requestDeadline: string | null;
   paymentDeadline: string | null;
-  guest: { name: string; email?: string; phone?: string };
+  guest: { name: string; email?: string; phone?: string; phoneCountryIso?: string | null };
   sourceSubtotalMinor: string;
   feeTotalMinor: string;
   taxTotalMinor: string;

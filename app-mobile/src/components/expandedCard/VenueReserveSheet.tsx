@@ -229,6 +229,7 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
           name: buyerName,
           email: buyerEmail,
           phone: composedPhoneE164,
+          phoneCountryIso: needsPhone ? countryCode : null,
         },
       },
       // ORCH-1244 (Apple 4.9) — the on-screen venue name becomes the Apple Pay

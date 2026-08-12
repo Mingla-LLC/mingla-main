@@ -92,9 +92,12 @@ import {
   useRsvpOfferingState,
   type RsvpOfferingConfig,
   type RsvpGuestContact,
+  type RsvpPhoneFieldRenderer,
   type RsvpSubmitResult,
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
+import { getCountryByCode, type PhoneInputTheme } from "@mingla/phone-input";
+import { resolveUserPhoneE164 } from "@mingla/card-identity/phone";
 
 import {
   BaseBottomSheet,
@@ -106,6 +109,7 @@ import TicketCartSheet, {
 // ORCH-1341 [guest-list-sheet-consumer] — the "Who's going" roster sheet, the
 // destination of the ORCH-1340 onSeeWhosGoing affordance on BOTH branches.
 import EventGuestListSheet from "../../components/EventGuestListSheet";
+import { PhoneInput } from "../../components/onboarding/PhoneInput";
 // ORCH-1359 (d) — detail-local peer-profile overlay opened by tapping a named
 // guest's name in the sheet (D-B). Reuses the existing ViewFriendProfileScreen
 // + the sanctioned in-app open-DM rail (never Linking.openURL — COMMS-0093).
@@ -516,6 +520,51 @@ export default function ConsumerEventDetailScreen({
       ? resolveTheme(canonical.brand.theme, null)
       : (themeQuery.data ?? resolveTheme(null, null));
   const palette = useMemo(() => createThemePalette(theme), [theme]);
+  const rsvpPhoneTheme = useMemo<PhoneInputTheme>(() => ({
+    backgroundPrimary: palette.page,
+    textPrimary: palette.primaryText,
+    textTertiary: palette.tertiaryText,
+    borderDefault: palette.panelBorder,
+    borderFocused: palette.accent,
+    borderError: "#ef4444",
+    searchBackground: palette.card,
+    rowPressedBackground: palette.accentWash,
+    divider: palette.panelBorder,
+    accessoryBackground: palette.page,
+    accessoryBorder: palette.panelBorder,
+    accent: palette.accent,
+    errorText: theme.foregroundColor === "#ffffff" ? "#f87171" : "#b91c1c",
+  }), [palette, theme.foregroundColor]);
+  const renderRsvpPhoneField = useCallback<RsvpPhoneFieldRenderer>((args) => (
+    <View style={styles.issue1857PhoneField}>
+      <Text style={[styles.issue1857PhoneLabel, { color: palette.tertiaryText }]}>
+        {args.label}
+      </Text>
+      <PhoneInput
+        pickerPresentation="overlay"
+        value={args.rawValue}
+        countryCode={args.countryCode}
+        onChangePhone={(raw: string) =>
+          args.onChangeRawValue(raw, resolveUserPhoneE164(raw, args.countryCode))}
+        onChangeCountry={(iso: string) =>
+          args.onChangeCountry(iso, resolveUserPhoneE164(args.rawValue, iso))}
+        error={args.emptyRequired
+          ? "Required"
+          : args.invalid
+            ? "Select a country and enter a valid phone number."
+            : null}
+        disabled={args.disabled}
+        theme={rsvpPhoneTheme}
+        required={args.required}
+        maxLength={40}
+        testID={args.testID}
+        countryButtonAccessibilityLabel={args.countryCode === null
+          ? "Select country"
+          : `${args.label} country, ${getCountryByCode(args.countryCode)?.name ?? args.countryCode}, tap to change`}
+        phoneInputAccessibilityLabel={`${args.label} phone number`}
+      />
+    </View>
+  ), [palette.tertiaryText, rsvpPhoneTheme]);
   const boldFamily = boldFontFamily(theme);
   useConsumerThemeFont(theme.fontFamilyValue);
   useConsumerThemeFont(boldFamily);
@@ -590,6 +639,7 @@ export default function ConsumerEventDetailScreen({
       guestName: string;
       guestEmail: string;
       guestPhone: string;
+      guestPhoneCountryIso?: string | null;
       plusCount: number;
       guests: RsvpGuestContact[];
     }): Promise<RsvpSubmitResult> => {
@@ -603,6 +653,7 @@ export default function ConsumerEventDetailScreen({
           name: input.guestName,
           email: input.guestEmail,
           phone: input.guestPhone,
+          phoneCountryIso: input.guestPhoneCountryIso,
         },
       );
       // Refresh the live going-count after a successful own-submit.
@@ -968,6 +1019,7 @@ export default function ConsumerEventDetailScreen({
     initialGuestEmail: user?.email ?? profile?.email ?? "",
     initialGuestPhone: profile?.phone ?? "",
     requirePrimaryContact: user !== null,
+    renderPhoneField: renderRsvpPhoneField,
     onDownloadPass: handleDownloadRsvpPass,
     onSubmit: rsvpOnSubmit,
     onChipIn: handleChipIn,
@@ -1469,6 +1521,8 @@ export default function ConsumerEventDetailScreen({
 const SEAM = 28;
 
 const styles = StyleSheet.create({
+  issue1857PhoneField: { marginBottom: 12 },
+  issue1857PhoneLabel: { fontSize: 12, fontWeight: "700", marginBottom: 5 },
   // ORCH-1359 (d) — the detail-local peer-profile overlay wrapper: absolute-fill
   // above the detail chrome (zIndex 100 > chrome 70) so the profile fully covers
   // the event detail while it is open. Opaque so nothing bleeds through.

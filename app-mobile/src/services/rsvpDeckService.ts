@@ -118,8 +118,8 @@ export const submitDeckRsvp = async (
   // ORCH-1163 [rsvp-shared-body] — optional per-guest plus-one contacts (FLOW B).
   // Passed straight through to the edge fn body; omitted (empty) keeps the call
   // byte-identical to the prior no-guests path.
-  guests?: Array<{ name: string; email: string; phone: string }>,
-  primary?: { name: string; email: string; phone: string },
+  guests?: Array<{ name: string; email: string; phone: string; phoneCountryIso?: string | null }>,
+  primary?: { name: string; email: string; phone: string; phoneCountryIso?: string | null },
 ): Promise<SubmitDeckRsvpResult> => {
   const { data, error } = await supabase.functions.invoke("public-submit-rsvp", {
     body: {
@@ -130,6 +130,7 @@ export const submitDeckRsvp = async (
       guestName: primary?.name,
       guestEmail: primary?.email,
       guestPhone: primary?.phone,
+      guestPhoneCountryIso: primary?.phoneCountryIso,
     },
   });
   if (error !== null) {

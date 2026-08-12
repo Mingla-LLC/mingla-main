@@ -7733,6 +7733,20 @@
       "jobKeys": []
     },
     {
+      "script": ".github/scripts/strict-grep/issue-1857-phone-country-authority.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1857-phone-country-authority"
+      ]
+    },
+    {
       "script": ".github/scripts/strict-grep/issue-1863-payments-permission-gate.mjs",
       "kind": "file",
       "enforcement": "batch:A",

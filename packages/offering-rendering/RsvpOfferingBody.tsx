@@ -50,7 +50,7 @@
  * bar never diverge. The decision LOGIC stays in RsvpMomentumDecision (single owner).
  */
 
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
   LayoutAnimation,
@@ -175,20 +175,27 @@ export type ChipInResult = { kind: "paid" } | { kind: "redirecting" };
 // absent (native surfaces today) the body renders the existing plain phone
 // field — ZERO regression.
 export interface RsvpPhoneFieldRenderArgs {
+  role: "primary" | "plus_one";
+  guestId: string | null;
+  index: number | null;
+  label: string;
+  testID: string;
   /** ISO 3166-1 alpha-2 country code (controlled by the hook). */
-  countryCode: string;
-  /** National digits only (controlled by the hook). */
-  localDigits: string;
+  countryCode: string | null;
+  /** Raw value as typed; canonical E.164 is owned separately. */
+  rawValue: string;
   /** New country picked → surface passes the freshly-composed E.164 too. */
-  onChangeCountry: (isoCode: string, composedE164: string) => void;
+  onChangeCountry: (isoCode: string, resolvedE164: string | null) => void;
   /** Digits edited → surface passes the freshly-composed E.164 too. */
-  onChangeLocalDigits: (digits: string, composedE164: string) => void;
+  onChangeRawValue: (raw: string, resolvedE164: string | null) => void;
   /** True when the composed value is present but not a valid phone number. */
   invalid: boolean;
   /** Brand palette so the injected field matches the themed RSVP form. */
   palette: ThemePalette;
   /** Disable while a submit is in flight. */
   disabled: boolean;
+  required: boolean;
+  emptyRequired: boolean;
 }
 export type RsvpPhoneFieldRenderer = (
   args: RsvpPhoneFieldRenderArgs,
@@ -198,6 +205,13 @@ export interface RsvpGuestContact {
   name: string;
   email: string;
   phone: string;
+  phoneCountryIso?: string | null;
+}
+
+interface RsvpGuestDraft extends RsvpGuestContact {
+  id: string;
+  rawPhone: string;
+  phoneCountryIso: string | null;
 }
 
 export interface RsvpSubmitResult {
@@ -231,6 +245,7 @@ export interface RsvpOfferingBodyProps {
     guestName: string;
     guestEmail: string;
     guestPhone: string;
+    guestPhoneCountryIso?: string | null;
     plusCount: number;
     guests: RsvpGuestContact[];
   }) => Promise<RsvpSubmitResult>;
@@ -358,11 +373,13 @@ export const useRsvpOfferingState = (
   // ORCH-1295 — country + local-digits state for the injected picker (unused when
   // renderPhoneField is absent). Lifted here so the field stays controlled across
   // BOTH contact-form mounts (inline body + details modal) without divergence.
-  const [phoneCountry, setPhoneCountry] = useState<string>(
-    defaultPhoneCountry ?? "US",
+  const [phoneCountry, setPhoneCountry] = useState<string | null>(
+    defaultPhoneCountry ?? null,
   );
-  const [phoneLocalDigits, setPhoneLocalDigits] = useState("");
-  const [guests, setGuests] = useState<RsvpGuestContact[]>([]);
+  const [phoneRawValue, setPhoneRawValue] = useState(props.initialGuestPhone ?? "");
+  const [guests, setGuests] = useState<RsvpGuestDraft[]>([]);
+  const nextGuestId = useRef(0);
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -500,18 +517,20 @@ export const useRsvpOfferingState = (
         guestName: guestName.trim(),
         guestEmail: guestEmail.trim(),
         guestPhone: guestPhone.trim(),
+        guestPhoneCountryIso: guestPhone.trim() ? phoneCountry : null,
         plusCount: rsvpStatus === "not_going" ? 0 : plusCount,
         guests: submittedGuests.map((g) => ({
           name: g.name.trim(),
           email: g.email.trim(),
           phone: g.phone.trim(),
+          phoneCountryIso: g.phoneCountryIso,
         })),
       });
       setGuestStatus(result.status);
       setGuestApproval(result.approvalStatus);
       return result;
     },
-    [guests, onSubmit, guestName, guestEmail, guestPhone, plusCount],
+    [guests, onSubmit, guestName, guestEmail, guestPhone, phoneCountry, plusCount],
   );
 
   // Maybe / Not-going → record DIRECTLY (no dialog).
@@ -519,6 +538,7 @@ export const useRsvpOfferingState = (
     async (rsvpStatus: "not_going" | "maybe"): Promise<void> => {
       if (submitting) return;
       if (rsvpStatus === "maybe" && !contactReady) {
+        setShowValidationErrors(true);
         setErrorMsg("Add your name, email, and phone to RSVP.");
         return;
       }
@@ -541,6 +561,7 @@ export const useRsvpOfferingState = (
   const onGoingTap = useCallback((): void => {
     if (submitting) return;
     if (!contactReady) {
+      setShowValidationErrors(true);
       setErrorMsg("Add your name, email, and phone to RSVP.");
       return;
     }
@@ -766,7 +787,14 @@ export const useRsvpOfferingState = (
   const addGuest = useCallback(() => {
     setGuests((g) =>
       g.length < config.plusOnesMax
-        ? [...g, { name: "", email: "", phone: "" }]
+        ? [...g, {
+            id: `guest-${nextGuestId.current++}`,
+            name: "",
+            email: "",
+            phone: "",
+            rawPhone: "",
+            phoneCountryIso: null,
+          }]
         : g,
     );
   }, [config.plusOnesMax]);
@@ -797,6 +825,7 @@ export const useRsvpOfferingState = (
         invalidMsg="Required"
         autoCapitalize="words"
         testID="orch-1150-rsvp-name"
+        disabled={submitting}
       />
       <RsvpField
         label="Email"
@@ -809,40 +838,48 @@ export const useRsvpOfferingState = (
         keyboardType="email-address"
         autoCapitalize="none"
         testID="orch-1150-rsvp-email"
+        disabled={submitting}
       />
       {/* ORCH-1295 [chip-in-post-payment-polish] — BUG 2: the surface may inject a
           country-code-aware phone field (@mingla/phone-input). Absent → the plain
           text field (native fallback, unchanged). */}
-      {renderPhoneField ? (
-        renderPhoneField({
-          countryCode: phoneCountry,
-          localDigits: phoneLocalDigits,
-          onChangeCountry: (isoCode, composedE164) => {
-            setPhoneCountry(isoCode);
-            setGuestPhone(composedE164);
-          },
-          onChangeLocalDigits: (digits, composedE164) => {
-            setPhoneLocalDigits(digits);
-            setGuestPhone(composedE164);
-          },
-          invalid: guestPhone.length > 0 && !PHONE_RE.test(guestPhone.trim()),
-          palette,
-          disabled: submitting,
-        })
-      ) : (
-        <RsvpField
-          label="Phone"
-          value={guestPhone}
-          onChangeText={setGuestPhone}
-          placeholder="+1 555 123 4567"
-          palette={palette}
-          invalid={guestPhone.length > 0 && !PHONE_RE.test(guestPhone.trim())}
-          invalidMsg="Enter a valid phone number"
-          keyboardType="phone-pad"
-          autoCapitalize="none"
-          testID="orch-1150-rsvp-phone"
-        />
-      )}
+      {renderPhoneField
+        ? renderPhoneField({
+            countryCode: phoneCountry,
+            rawValue: phoneRawValue,
+            role: "primary",
+            guestId: null,
+            index: null,
+            label: "Phone",
+            testID: "issue-1857-rsvp-primary-phone",
+            onChangeCountry: (isoCode, composedE164) => {
+              setPhoneCountry(isoCode);
+              setGuestPhone(composedE164 ?? "");
+            },
+            onChangeRawValue: (raw, composedE164) => {
+              setPhoneRawValue(raw);
+              setGuestPhone(composedE164 ?? "");
+            },
+            invalid: phoneRawValue.trim().length > 0 && !PHONE_RE.test(guestPhone.trim()),
+            palette,
+            disabled: submitting,
+            required: true,
+            emptyRequired: showValidationErrors && phoneRawValue.trim().length === 0,
+          })
+        : (
+          <RsvpField
+            label="Phone"
+            value={guestPhone}
+            onChangeText={setGuestPhone}
+            placeholder="+1 555 123 4567"
+            palette={palette}
+            invalid={guestPhone.length > 0 && !PHONE_RE.test(guestPhone.trim())}
+            invalidMsg="Enter a valid phone number"
+            keyboardType="phone-pad"
+            autoCapitalize="none"
+            testID="orch-1150-rsvp-phone"
+          />
+        )}
     </View>
   ) : null;
 
@@ -855,7 +892,7 @@ export const useRsvpOfferingState = (
         <View style={styles.stepperRow}>
           <Pressable
             onPress={removeGuest}
-            disabled={guests.length <= 0}
+            disabled={submitting || guests.length <= 0}
             accessibilityRole="button"
             accessibilityLabel="Remove one extra guest"
             style={[
@@ -879,7 +916,7 @@ export const useRsvpOfferingState = (
           </Text>
           <Pressable
             onPress={addGuest}
-            disabled={guests.length >= config.plusOnesMax}
+            disabled={submitting || guests.length >= config.plusOnesMax}
             accessibilityRole="button"
             accessibilityLabel="Add one extra guest"
             style={[
@@ -896,7 +933,7 @@ export const useRsvpOfferingState = (
         </View>
       </View>
       {guests.map((g, i) => (
-        <View key={`guest-${i}`} style={styles.guestRow}>
+        <View key={g.id} style={styles.guestRow}>
           <Text style={[styles.guestRowTitle, surface.tertiaryText]}>
             Guest {i + 1}
           </Text>
@@ -910,6 +947,7 @@ export const useRsvpOfferingState = (
             invalidMsg="Required"
             autoCapitalize="words"
             testID={`orch-1163-rsvp-guest-${i}-name`}
+            disabled={submitting}
           />
           <RsvpField
             label="Email"
@@ -922,19 +960,45 @@ export const useRsvpOfferingState = (
             keyboardType="email-address"
             autoCapitalize="none"
             testID={`orch-1163-rsvp-guest-${i}-email`}
+            disabled={submitting}
           />
-          <RsvpField
-            label="Phone"
-            value={g.phone}
-            onChangeText={(v) => updateGuest(i, "phone", v)}
-            placeholder="+1 555 123 4567"
-            palette={palette}
-            invalid={g.phone.length > 0 && !PHONE_RE.test(g.phone.trim())}
-            invalidMsg="Enter a valid phone number"
-            keyboardType="phone-pad"
-            autoCapitalize="none"
-            testID={`orch-1163-rsvp-guest-${i}-phone`}
-          />
+          {renderPhoneField ? renderPhoneField({
+            role: "plus_one",
+            guestId: g.id,
+            index: i,
+            label: `Guest ${i + 1} phone`,
+            testID: `issue-1857-rsvp-${g.id}-phone`,
+            countryCode: g.phoneCountryIso,
+            rawValue: g.rawPhone,
+            onChangeCountry: (isoCode, resolvedE164) => {
+              setGuests((rows) => rows.map((row) => row.id === g.id
+                ? { ...row, phoneCountryIso: isoCode, phone: resolvedE164 ?? "" }
+                : row));
+            },
+            onChangeRawValue: (raw, resolvedE164) => {
+              setGuests((rows) => rows.map((row) => row.id === g.id
+                ? { ...row, rawPhone: raw, phone: resolvedE164 ?? "" }
+                : row));
+            },
+            invalid: g.rawPhone.trim().length > 0 && !PHONE_RE.test(g.phone.trim()),
+            palette,
+            disabled: submitting,
+            required: true,
+            emptyRequired: showValidationErrors && g.rawPhone.trim().length === 0,
+          }) : (
+            <RsvpField
+              label="Phone"
+              value={g.phone}
+              onChangeText={(v) => updateGuest(i, "phone", v)}
+              placeholder="+1 555 123 4567"
+              palette={palette}
+              invalid={g.phone.length > 0 && !PHONE_RE.test(g.phone.trim())}
+              invalidMsg="Enter a valid phone number"
+              keyboardType="phone-pad"
+              autoCapitalize="none"
+              testID={`orch-1163-rsvp-guest-${i}-phone`}
+            />
+          )}
         </View>
       ))}
     </View>
@@ -1735,6 +1799,7 @@ const RsvpField: React.FC<{
   keyboardType?: "default" | "email-address" | "phone-pad";
   autoCapitalize?: "none" | "words";
   testID?: string;
+  disabled?: boolean;
 }> = ({
   label,
   value,
@@ -1746,6 +1811,7 @@ const RsvpField: React.FC<{
   keyboardType = "default",
   autoCapitalize = "none",
   testID,
+  disabled = false,
 }) => {
   const surface = offeringSurfaceStyles(palette);
   return (
@@ -1759,6 +1825,8 @@ const RsvpField: React.FC<{
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}
         accessibilityLabel={label}
+        editable={!disabled}
+        accessibilityState={{ disabled }}
         style={[
           styles.fieldInput,
           {
