@@ -1,12 +1,56 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { safeBrandPersonResolution } from "../_shared/brandPeople.ts";
+import phoneAdapter from "../../../packages/card-identity/phone.js";
+
+const { resolveUserPhoneE164 } = phoneAdapter as {
+  resolveUserPhoneE164: (raw: unknown, countryIso: unknown) => string | null;
+};
 
 interface IngestRow {
   id: string;
-  source_kind: "event_rsvp" | "rsvp_plus_one" | "order" | "ticket_holder";
+  source_kind:
+    | "event_rsvp"
+    | "rsvp_plus_one"
+    | "order"
+    | "ticket_holder"
+    | "reservation"
+    | "stay_reservation";
   source_id: string;
   operation: "upsert" | "retire";
+}
+
+type SourcePhoneClient = {
+  from: (table: string) => {
+    select: (columns: string) => {
+      eq: (column: string, value: string) => {
+        maybeSingle: () => PromiseLike<{ data: Record<string, unknown> | null; error: unknown }>;
+      };
+    };
+  };
+};
+
+export async function normalizedPhoneForIngest(
+  client: SourcePhoneClient,
+  row: Pick<IngestRow, "source_kind" | "source_id" | "operation">,
+): Promise<string | null> {
+  if (row.operation === "retire" ||
+    (row.source_kind !== "reservation" && row.source_kind !== "stay_reservation")) {
+    return null;
+  }
+  const table = row.source_kind === "reservation"
+    ? "reservations"
+    : "stay_reservation_groups";
+  const columns = row.source_kind === "reservation"
+    ? "phone:guest_phone_e164,phoneCountryIso:guest_phone_country_iso"
+    : "phone:guest_snapshot->>phone,phoneCountryIso:guest_snapshot->>phoneCountryIso";
+  const { data, error } = await client.from(table).select(columns).eq(
+    "id",
+    row.source_id,
+  ).maybeSingle();
+  if (error) throw new Error("source_fetch_failed");
+  if (data === null) return null;
+  return resolveUserPhoneE164(data.phone, data.phoneCountryIso);
 }
 
 function json(body: Record<string, unknown>, status = 200): Response {
@@ -19,7 +63,7 @@ function json(body: Record<string, unknown>, status = 200): Response {
   });
 }
 
-serve(async (request) => {
+export async function handler(request: Request): Promise<Response> {
   if (request.method !== "POST") {
     return json({ error: "method_not_allowed" }, 405);
   }
@@ -54,9 +98,21 @@ serve(async (request) => {
   };
   for (const row of rows) {
     try {
+      const normalizedPhone = await normalizedPhoneForIngest(
+        client as unknown as SourcePhoneClient,
+        row,
+      );
+      const parameters = row.source_kind === "reservation" ||
+          row.source_kind === "stay_reservation"
+        ? {
+          p_source_kind: row.source_kind,
+          p_source_id: row.source_id,
+          p_normalized_phone_e164: normalizedPhone,
+        }
+        : { p_source_kind: row.source_kind, p_source_id: row.source_id };
       const { data: outcome, error: resolutionError } = await client.rpc(
         "biz_resolve_brand_person_source_derived",
-        { p_source_kind: row.source_kind, p_source_id: row.source_id },
+        parameters,
       );
       if (resolutionError) throw new Error("resolver_failed");
       const label = safeBrandPersonResolution(outcome).linkOutcome;
@@ -76,6 +132,8 @@ serve(async (request) => {
     } catch (error) {
       const code = error instanceof Error && error.message === "finish_failed"
         ? "ingest_finish_failed"
+        : error instanceof Error && error.message === "source_fetch_failed"
+        ? "ingest_source_fetch_failed"
         : "ingest_resolver_failed";
       const { error: finishError } = await client.rpc(
         "biz_finish_brand_person_ingest",
@@ -98,4 +156,6 @@ serve(async (request) => {
     }
   }
   return json(counts);
-});
+}
+
+if (import.meta.main) serve(handler);
