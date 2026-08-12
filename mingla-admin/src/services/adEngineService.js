@@ -81,6 +81,14 @@ export async function runPreflight(platform) {
   });
 }
 
+/** Issue #1928: exact app/public-identity check. Mutation-free by contract. */
+export async function runAppIdentityPreflight(appKey, { signal } = {}) {
+  return invokeWithRefresh("admin-ad-app-identity-preflight", {
+    body: { app_key: appKey, providers: ["meta", "tiktok"] },
+    ...(signal ? { signal } : {}),
+  });
+}
+
 // ── Campaigns ─────────────────────────────────────────────────────────────────
 
 export async function listCampaigns() {
