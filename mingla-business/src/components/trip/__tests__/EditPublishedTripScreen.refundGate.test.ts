@@ -27,11 +27,18 @@ describe("ORCH-0876 — EditPublishedTripScreen refund-gate dialog mapping", () 
 
   // Isolate the buildRejectDialog function body so the case-coverage assertions
   // can't accidentally match content elsewhere in the file.
+  // [TEST-MOD-APPROVED ORCH-1919] trip.brandId is load-bearing because the
+  // payment rejection action routes to that brand's onboarding surface.
   const fnMatch = SRC.match(
-    /const buildRejectDialog = useCallback\([\s\S]*?\[router,\s*showToast\],\s*\);/,
+    /const buildRejectDialog = useCallback\([\s\S]*?\[\s*router\s*,\s*showToast\s*,\s*trip\.brandId\s*,?\s*\]\s*,\s*\);/,
   );
   test("buildRejectDialog is present as a useCallback returning RejectDialogContent", () => {
     expect(fnMatch).not.toBeNull();
+  });
+  test("buildRejectDialog tracks trip.brandId exactly once in its dependency list", () => {
+    expect(fnMatch?.[0]).toMatch(
+      /\[\s*router\s*,\s*showToast\s*,\s*trip\.brandId\s*,?\s*\]/,
+    );
   });
   const FN = fnMatch?.[0] ?? "";
 
