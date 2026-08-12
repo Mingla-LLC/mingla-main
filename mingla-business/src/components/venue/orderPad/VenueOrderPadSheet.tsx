@@ -90,7 +90,7 @@ export interface VenueOrderPadSheetProps {
   visible: boolean;
   onClose: () => void;
   brandId: string | null;
-  /** The venue the pad was opened from — the default filter, not a cage. */
+  /** The venue the pad was opened from — its immutable serving scope. */
   venueId: string | null;
   spots: readonly OrderPadSpot[];
   venues: readonly OrderPadVenueRef[];
@@ -150,9 +150,18 @@ export function VenueOrderPadSheet({
   // after a dropped response resolves to the ticket that already exists.
   const [submitKey, setSubmitKey] = useState<string>(() => newSubmitKey());
 
+  const eligibleSpots = useMemo(
+    () =>
+      venueId === null
+        ? []
+        : spots.filter(
+          (spot) => spot.isActive && spot.servingVenueId === venueId,
+        ),
+    [spots, venueId],
+  );
   const spotById = useMemo(
-    () => new Map(spots.map((s) => [s.id, s])),
-    [spots],
+    () => new Map(eligibleSpots.map((s) => [s.id, s])),
+    [eligibleSpots],
   );
   const selectedSpot = spotId === null ? null : (spotById.get(spotId) ?? null);
   // D-3b — the menu comes from the SERVING venue, which for Room 204 is the
@@ -168,8 +177,16 @@ export function VenueOrderPadSheet({
   const closeTab = useCloseVenueTab(brandId);
 
   const spotGroups = useMemo(
-    () => filterSpotGroups(orderableSpotGroups(spots, venues), spotQuery),
-    [spots, venues, spotQuery],
+    () =>
+      filterSpotGroups(
+        orderableSpotGroups(eligibleSpots, venues, venueId),
+        spotQuery,
+      ),
+    [eligibleSpots, venues, venueId, spotQuery],
+  );
+  const venueNameById = useMemo(
+    () => new Map(venues.map((venue) => [venue.id, venue.name])),
+    [venues],
   );
   const sections = useMemo(
     () =>
@@ -566,6 +583,11 @@ export function VenueOrderPadSheet({
                         testID={`venue-order-pad-spot-${spot.id}`}
                       >
                         <Text style={styles.chipLabel}>{spot.label}</Text>
+                        {spot.venueId !== venueId ? (
+                          <Text style={styles.chipMeta}>
+                            {venueNameById.get(spot.venueId) ?? "Another property"}
+                          </Text>
+                        ) : null}
                       </Pressable>
                     ))}
                   </View>
@@ -1122,6 +1144,10 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: textTokens.primary,
     fontWeight: "600",
+  },
+  chipMeta: {
+    ...typography.caption,
+    color: textTokens.tertiary,
   },
   counterRow: {
     gap: spacing.xxs,

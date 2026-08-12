@@ -35,7 +35,7 @@ import {
   tabAcceptsRounds,
   tabDestinationLabel,
   tabRoundsLabel,
-  tabsForVenue,
+  venueLocalTabs,
   type OrderPadTab,
 } from "./venueOrderPad";
 
@@ -71,7 +71,7 @@ export function VenueTabsCard({
   const closeTab = useCloseVenueTab(brandId);
   const [closing, setClosing] = useState<string | null>(null);
 
-  const visible = tabsForVenue(tabs, venueId);
+  const visible = venueLocalTabs(tabs, venueId);
 
   const resetChooser = useCallback((): void => {
     setClosing(null);
