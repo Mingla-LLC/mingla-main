@@ -11,6 +11,7 @@ import {
   deriveReadinessState,
   formatFreshness,
   reasonCopy,
+  shouldRestoreCompletionFocus,
   transportErrorCopy,
   validateIdentityPreflightResponse,
 } from "../lib/adAppIdentityReadiness";
@@ -71,6 +72,7 @@ export function AppIdentityReadinessPanel() {
   const requestIds = useRef({ explorer: 0, business: 0 });
   const mounted = useRef(true);
   const actionRef = useRef(null);
+  const completionFocus = useRef(null);
 
   const entry = entries[appKey];
   const state = deriveReadinessState(entry, { online, nowMs });
@@ -81,6 +83,7 @@ export function AppIdentityReadinessPanel() {
     const activeControllers = controllers.current;
     return () => {
       mounted.current = false;
+      completionFocus.current = null;
       Object.values(activeControllers).forEach((controller) => controller?.abort());
     };
   }, []);
@@ -107,9 +110,28 @@ export function AppIdentityReadinessPanel() {
     return () => window.clearTimeout(timer);
   }, [appKey, entry.result]);
 
+  useEffect(() => {
+    const pending = completionFocus.current;
+    if (!pending) return;
+    const action = actionRef.current;
+    const canFocus = shouldRestoreCompletionFocus({
+      pending,
+      appKey,
+      currentRequestId: requestIds.current[appKey],
+      phase: entry.phase,
+      state,
+      online,
+      errorStatus: entry.error?.status,
+      buttonDisabled: !action || action.disabled,
+    });
+    completionFocus.current = null;
+    if (canFocus) action.focus();
+  }, [appKey, entry.error?.status, entry.phase, online, state]);
+
   const handleTabChange = (next) => {
     if (next === appKey) return;
     const outgoing = appKey;
+    if (completionFocus.current?.appKey === outgoing) completionFocus.current = null;
     if (entries[outgoing].phase === "loading") {
       controllers.current[outgoing]?.abort();
       requestIds.current[outgoing] += 1;
@@ -126,6 +148,7 @@ export function AppIdentityReadinessPanel() {
   const runCheck = async () => {
     if (!navigator.onLine) { setOnline(false); return; }
     const requestedAppKey = appKey;
+    if (completionFocus.current?.appKey === requestedAppKey) completionFocus.current = null;
     controllers.current[requestedAppKey]?.abort();
     const controller = new AbortController();
     controllers.current[requestedAppKey] = controller;
@@ -136,20 +159,22 @@ export function AppIdentityReadinessPanel() {
     if (error) {
       const parsed = await parseEdgeError(error);
       if (!mounted.current || requestIds.current[requestedAppKey] !== requestId) return;
+      completionFocus.current = { appKey: requestedAppKey, requestId };
       setEntries((current) => ({ ...current, [requestedAppKey]: { ...current[requestedAppKey], phase: "error", error: { status: parsed?.status }, stopped: false } }));
       setAnnouncement(`${APP_IDENTITY_PRESENTATION[requestedAppKey].shortLabel} identity check failed.`);
       return;
     }
     const accepted = validateIdentityPreflightResponse(data, requestedAppKey);
     if (!accepted) {
+      completionFocus.current = { appKey: requestedAppKey, requestId };
       setEntries((current) => ({ ...current, [requestedAppKey]: { ...current[requestedAppKey], phase: "error", error: { status: 500 }, stopped: false } }));
       setAnnouncement(`${APP_IDENTITY_PRESENTATION[requestedAppKey].shortLabel} identity check failed.`);
       return;
     }
     setNowMs(Date.now());
+    completionFocus.current = { appKey: requestedAppKey, requestId };
     setEntries((current) => ({ ...current, [requestedAppKey]: { phase: accepted.overall, result: accepted, error: null, stopped: false } }));
     setAnnouncement(`${APP_IDENTITY_PRESENTATION[requestedAppKey].shortLabel} identity check ${accepted.overall === "ready" ? "is ready" : "is blocked"}.`);
-    actionRef.current?.focus();
   };
 
   const support = useMemo(() => {

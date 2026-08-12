@@ -76,6 +76,22 @@ export function deriveReadinessState(entry, { online = true, nowMs = Date.now() 
   return entry.phase;
 }
 
+export function shouldRestoreCompletionFocus({
+  pending,
+  appKey,
+  currentRequestId,
+  phase,
+  state,
+  online,
+  errorStatus,
+  buttonDisabled,
+}) {
+  if (!pending || pending.appKey !== appKey || pending.requestId !== currentRequestId) return false;
+  if (!online || state === "offline" || state === "stale" || buttonDisabled) return false;
+  if (phase === "error" && errorStatus === 403) return false;
+  return phase === "ready" || phase === "blocked" || phase === "error";
+}
+
 export function formatFreshness(checkedAt, { nowMs = Date.now(), mode = "current", locale } = {}) {
   const checkedMs = Date.parse(checkedAt);
   if (Number.isNaN(checkedMs)) return null;

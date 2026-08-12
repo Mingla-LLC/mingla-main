@@ -18,6 +18,7 @@ on:
       - "mingla-admin/src/components/AppIdentityReadinessPanel.jsx"
       - "mingla-admin/src/pages/AdEnginePage.jsx"
       - "mingla-admin/src/__tests__/issue1928_app_identity_readiness.test.js"
+      - "mingla-admin/src/__tests__/issue1928_app_identity_focus_rework.test.js"
       - ".github/workflows/issue-1928-app-identity-registry-tests.yml"
   pull_request:
     paths:
@@ -35,6 +36,7 @@ on:
       - "mingla-admin/src/components/AppIdentityReadinessPanel.jsx"
       - "mingla-admin/src/pages/AdEnginePage.jsx"
       - "mingla-admin/src/__tests__/issue1928_app_identity_readiness.test.js"
+      - "mingla-admin/src/__tests__/issue1928_app_identity_focus_rework.test.js"
       - ".github/workflows/issue-1928-app-identity-registry-tests.yml"
 
 permissions:
@@ -63,7 +65,7 @@ jobs:
       - name: Type-check Edge contracts
         run: deno check supabase/functions/_shared/adAppIdentityRegistry.ts supabase/functions/_shared/meta.ts supabase/functions/_shared/tiktok.ts supabase/functions/admin-ad-app-identity-preflight/index.ts
       - name: Run Admin identity suite
-        run: node --test mingla-admin/src/__tests__/issue1928_app_identity_readiness.test.js mingla-admin/src/__tests__/issue978_ad_connections_panel.test.js mingla-admin/src/__tests__/orch1008_adversarial_tabs_keyboard.test.js
+        run: node --test mingla-admin/src/__tests__/issue1928_app_identity_readiness.test.js mingla-admin/src/__tests__/issue1928_app_identity_focus_rework.test.js mingla-admin/src/__tests__/issue978_ad_connections_panel.test.js mingla-admin/src/__tests__/orch1008_adversarial_tabs_keyboard.test.js
 
   admin-build:
     runs-on: ubuntu-latest
@@ -79,5 +81,5 @@ jobs:
           cache: npm
           cache-dependency-path: mingla-admin/package-lock.json
       - run: npm ci
-      - run: npx eslint src/services/adEngineService.js src/lib/adAppIdentityReadiness.js src/components/AppIdentityReadinessPanel.jsx src/pages/AdEnginePage.jsx src/__tests__/issue1928_app_identity_readiness.test.js
+      - run: npx eslint src/services/adEngineService.js src/lib/adAppIdentityReadiness.js src/components/AppIdentityReadinessPanel.jsx src/pages/AdEnginePage.jsx src/__tests__/issue1928_app_identity_readiness.test.js src/__tests__/issue1928_app_identity_focus_rework.test.js
       - run: npm run build
