@@ -147,7 +147,7 @@ BEGIN
     RAISE EXCEPTION 'issue_1773_1857_national_phone_was_guessed_or_stored';
   END IF;
   BEGIN
-    UPDATE public.event_rsvps SET guest_phone_country_iso='ZZ' WHERE id=v_national;
+    UPDATE public.event_rsvps SET guest_phone_country_iso='us' WHERE id=v_national;
     RAISE EXCEPTION 'issue_1773_1857_invalid_country_was_accepted';
   EXCEPTION WHEN check_violation THEN NULL;
   END;
