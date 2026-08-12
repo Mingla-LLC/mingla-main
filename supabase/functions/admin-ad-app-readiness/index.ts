@@ -3,11 +3,23 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore Deno URL import.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { handleAppReadinessRequest, type ReadinessDb } from "./handler.ts";
+import {
+  ADAPTERS,
+  handleAppReadinessRequest,
+  type ReadinessDb,
+} from "./handler.ts";
+import {
+  createAppsFlyerMeasurementReader,
+  verifyAppsflyer,
+} from "../_shared/adAppReadinessProviders/appsflyer.ts";
+import { resolveCapiToken } from "../_shared/capiTokens.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const readAppsFlyerMeasurement = createAppsFlyerMeasurementReader(() =>
+  resolveCapiToken("APPSFLYER_API_V2_TOKEN")
+);
 
 function requireData<T>(
   result: { data: T | null; error: { message: string } | null },
@@ -130,5 +142,15 @@ serve((request: Request) =>
       };
     },
     now: () => new Date().toISOString(),
+    checks: {
+      verifyAppsflyer: (target, signal, checkedAt) =>
+        verifyAppsflyer(
+          target,
+          signal,
+          checkedAt,
+          readAppsFlyerMeasurement,
+        ),
+      adapters: ADAPTERS,
+    },
   })
 );

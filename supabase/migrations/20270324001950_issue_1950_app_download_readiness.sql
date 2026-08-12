@@ -39,6 +39,16 @@ CREATE TABLE IF NOT EXISTS public.ad_app_provider_bindings (
   public_identity_required boolean NOT NULL,
   provider_app_id text NULL,
   provider_measurement_id text NULL,
+  native_binding_attested_at timestamptz NULL,
+  native_binding_attestation_expires_at timestamptz NULL,
+  native_binding_attestation_safe_id text NULL,
+  native_binding_attestation_provenance text NULL CHECK (native_binding_attestation_provenance IS NULL OR native_binding_attestation_provenance='provider_dashboard'),
+  native_binding_attested_by uuid NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
+  measurement_attested_at timestamptz NULL,
+  measurement_attestation_expires_at timestamptz NULL,
+  measurement_attestation_safe_id text NULL,
+  measurement_attestation_provenance text NULL CHECK (measurement_attestation_provenance IS NULL OR measurement_attestation_provenance='appsflyer_dashboard'),
+  measurement_attested_by uuid NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
   measurement_partner text NOT NULL DEFAULT 'appsflyer' CHECK (measurement_partner='appsflyer'),
   active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -48,6 +58,29 @@ CREATE TABLE IF NOT EXISTS public.ad_app_provider_bindings (
   CONSTRAINT provider_app_id_clean CHECK (provider_app_id IS NULL OR (provider_app_id=btrim(provider_app_id) AND provider_app_id<>'')),
   CONSTRAINT provider_measurement_id_clean CHECK (provider_measurement_id IS NULL OR (provider_measurement_id=btrim(provider_measurement_id) AND provider_measurement_id<>''))
 );
+ALTER TABLE public.ad_app_provider_bindings
+  ADD COLUMN IF NOT EXISTS native_binding_attested_at timestamptz NULL,
+  ADD COLUMN IF NOT EXISTS native_binding_attestation_expires_at timestamptz NULL,
+  ADD COLUMN IF NOT EXISTS native_binding_attestation_safe_id text NULL,
+  ADD COLUMN IF NOT EXISTS native_binding_attestation_provenance text NULL,
+  ADD COLUMN IF NOT EXISTS native_binding_attested_by uuid NULL,
+  ADD COLUMN IF NOT EXISTS measurement_attested_at timestamptz NULL,
+  ADD COLUMN IF NOT EXISTS measurement_attestation_expires_at timestamptz NULL,
+  ADD COLUMN IF NOT EXISTS measurement_attestation_safe_id text NULL,
+  ADD COLUMN IF NOT EXISTS measurement_attestation_provenance text NULL,
+  ADD COLUMN IF NOT EXISTS measurement_attested_by uuid NULL;
+DO $block$ BEGIN
+  ALTER TABLE public.ad_app_provider_bindings ADD CONSTRAINT ad_app_native_binding_attestation_complete CHECK (
+    (native_binding_attested_at IS NULL AND native_binding_attestation_expires_at IS NULL AND native_binding_attestation_safe_id IS NULL AND native_binding_attestation_provenance IS NULL AND native_binding_attested_by IS NULL)
+    OR (native_binding_attested_at IS NOT NULL AND native_binding_attestation_expires_at=native_binding_attested_at+interval '15 minutes' AND native_binding_attestation_safe_id=provider_app_id AND native_binding_attestation_safe_id ~ '^[A-Za-z0-9._:@/-]{1,160}$' AND native_binding_attestation_provenance='provider_dashboard' AND native_binding_attested_by IS NOT NULL)
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $block$;
+DO $block$ BEGIN
+  ALTER TABLE public.ad_app_provider_bindings ADD CONSTRAINT ad_app_measurement_attestation_complete CHECK (
+    (measurement_attested_at IS NULL AND measurement_attestation_expires_at IS NULL AND measurement_attestation_safe_id IS NULL AND measurement_attestation_provenance IS NULL AND measurement_attested_by IS NULL)
+    OR (measurement_attested_at IS NOT NULL AND measurement_attestation_expires_at=measurement_attested_at+interval '15 minutes' AND measurement_attestation_safe_id=provider_measurement_id AND measurement_attestation_safe_id ~ '^[A-Za-z0-9._:@/-]{1,160}$' AND measurement_attestation_provenance='appsflyer_dashboard' AND measurement_attested_by IS NOT NULL)
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $block$;
 CREATE INDEX IF NOT EXISTS ad_app_provider_bindings_payer_idx ON public.ad_app_provider_bindings(payer_connection_id);
 
 INSERT INTO public.ad_app_provider_bindings
@@ -197,6 +230,50 @@ END;
 $function$;
 REVOKE ALL ON FUNCTION public.normalize_ad_app_readiness_evidence(jsonb) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.normalize_ad_app_readiness_evidence(jsonb) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.attest_ad_app_readiness_dimension(
+  p_app_key text,
+  p_os text,
+  p_provider text,
+  p_dimension text,
+  p_safe_id text,
+  p_attested_by uuid
+)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $function$
+DECLARE v_now timestamptz := clock_timestamp(); v_count integer;
+BEGIN
+  IF p_app_key NOT IN ('explorer','business') OR p_os NOT IN ('ios','android')
+     OR p_provider NOT IN ('meta','tiktok','snapchat','google','reddit')
+     OR p_dimension NOT IN ('native_binding','measurement')
+     OR p_safe_id IS NULL OR p_safe_id !~ '^[A-Za-z0-9._:@/-]{1,160}$'
+     OR p_attested_by IS NULL OR NOT EXISTS (SELECT 1 FROM auth.users WHERE id=p_attested_by) THEN
+    RAISE EXCEPTION 'invalid_readiness_attestation';
+  END IF;
+  IF p_dimension='native_binding' THEN
+    UPDATE public.ad_app_provider_bindings SET
+      native_binding_attested_at=v_now,
+      native_binding_attestation_expires_at=v_now+interval '15 minutes',
+      native_binding_attestation_safe_id=p_safe_id,
+      native_binding_attestation_provenance='provider_dashboard',
+      native_binding_attested_by=p_attested_by
+    WHERE app_key=p_app_key AND os=p_os AND provider=p_provider AND active=true
+      AND provider_app_id=p_safe_id;
+  ELSE
+    UPDATE public.ad_app_provider_bindings SET
+      measurement_attested_at=v_now,
+      measurement_attestation_expires_at=v_now+interval '15 minutes',
+      measurement_attestation_safe_id=p_safe_id,
+      measurement_attestation_provenance='appsflyer_dashboard',
+      measurement_attested_by=p_attested_by
+    WHERE app_key=p_app_key AND os=p_os AND provider=p_provider AND active=true
+      AND provider_measurement_id=p_safe_id;
+  END IF;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  IF v_count<>1 THEN RAISE EXCEPTION 'readiness_attestation_target_mismatch'; END IF;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.attest_ad_app_readiness_dimension(text,text,text,text,text,uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.attest_ad_app_readiness_dimension(text,text,text,text,text,uuid) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.persist_ad_app_readiness_run(p_run jsonb,p_results jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $function$

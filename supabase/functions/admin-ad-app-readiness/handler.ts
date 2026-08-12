@@ -25,7 +25,7 @@ import { verifyAppsflyer } from "../_shared/adAppReadinessProviders/appsflyer.ts
 
 const PROVIDER_TIMEOUT_MS = 8_000;
 const OVERALL_TIMEOUT_MS = 30_000;
-const ADAPTERS = {
+export const ADAPTERS = {
   meta: verifyMeta,
   tiktok: verifyTikTok,
   snapchat: verifySnapchat,
@@ -265,15 +265,15 @@ export async function runSelectedCheck(
   const target = storedTarget ?? CANONICAL_TARGETS[`${appKey}:${os}`];
   if (!target) throw new Error("target_contract_missing");
   const appsFlyerController = new AbortController();
-  let appsFlyerMeasurement;
+  let appsFlyerMeasurements;
   try {
-    appsFlyerMeasurement = await timeout(
+    appsFlyerMeasurements = await timeout(
       checks.verifyAppsflyer(target, appsFlyerController.signal, checkedAt),
       PROVIDER_TIMEOUT_MS,
       appsFlyerController,
     );
   } catch (error) {
-    appsFlyerMeasurement = evidence(
+    const blocked = evidence(
       "blocked",
       error instanceof Error && error.message === "provider_timeout"
         ? "AppsFlyer verification timed out."
@@ -281,6 +281,9 @@ export async function runSelectedCheck(
       checkedAt,
       "appsflyer_api",
     );
+    appsFlyerMeasurements = Object.fromEntries(
+      READINESS_PROVIDERS.map((provider) => [provider, blocked]),
+    ) as Record<ReadinessProvider, typeof blocked>;
   }
   const jobs = READINESS_PROVIDERS.map(async (provider) => {
     if (!storedTarget?.active) {
@@ -355,13 +358,20 @@ export async function runSelectedCheck(
         PROVIDER_TIMEOUT_MS,
         controller,
       );
+      const liveMeasurement = appsFlyerMeasurements[provider];
+      const measurement = result.dimensions.measurement.status === "proven" &&
+          result.dimensions.measurement.source_class ===
+            "dashboard_attestation"
+        ? result.dimensions.measurement
+        : liveMeasurement;
       const dimensions = {
         ...result.dimensions,
-        measurement: appsFlyerMeasurement,
+        measurement,
       };
-      const reasonCode = appsFlyerMeasurement.status === "blocked"
+      const reasonCode = measurement.status === "blocked"
         ? "provider_unreachable"
-        : result.reason_code === "all_required_dimensions_proven"
+        : measurement.status !== "proven" &&
+            result.reason_code === "all_required_dimensions_proven"
         ? "measurement_missing"
         : result.reason_code;
       return safeProviderResult(provider, reasonCode, dimensions, checkedAt);
@@ -415,6 +425,10 @@ export async function handleAppReadinessRequest(
     >;
     createDb(): ReadinessDb;
     now(): string;
+    checks?: {
+      verifyAppsflyer: typeof verifyAppsflyer;
+      adapters: typeof ADAPTERS;
+    };
   },
 ): Promise<Response> {
   if (request.method === "OPTIONS") {
@@ -445,7 +459,13 @@ export async function handleAppReadinessRequest(
   const db = dependencies.createDb();
   try {
     if (parsed.action === "check") {
-      await runSelectedCheck(db, auth.actor, parsed.appKey, parsed.os);
+      await runSelectedCheck(
+        db,
+        auth.actor,
+        parsed.appKey,
+        parsed.os,
+        dependencies.checks,
+      );
     }
     const now = dependencies.now();
     const targets = normalizeLatest(await db.loadLatest(), now);

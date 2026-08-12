@@ -2,6 +2,7 @@ import {
   assert,
   assertEquals,
   assertMatch,
+  assertStringIncludes,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 
 const sql = await Deno.readTextFile(
@@ -106,4 +107,39 @@ Deno.test("#1950 persistence strips unknown evidence keys and enforces exact saf
     /target_missing_or_inactive'.*binding_missing'.*payer_missing/s,
   );
   assertMatch(sql, /regexp_replace\(v_safe_url,'\[\?#\]\.\*\$',''\)/);
+});
+
+Deno.test("#1950 current attestations have exact provenance, fifteen-minute expiry, and a service-only writer", () => {
+  assertStringIncludes(
+    sql,
+    "native_binding_attestation_expires_at=native_binding_attested_at+interval '15 minutes'",
+  );
+  assertStringIncludes(
+    sql,
+    "native_binding_attestation_safe_id=provider_app_id",
+  );
+  assertStringIncludes(
+    sql,
+    "measurement_attestation_safe_id=provider_measurement_id",
+  );
+  assertStringIncludes(
+    sql,
+    "native_binding_attestation_provenance='provider_dashboard'",
+  );
+  assertStringIncludes(
+    sql,
+    "measurement_attestation_provenance='appsflyer_dashboard'",
+  );
+  assertStringIncludes(
+    sql,
+    "CREATE OR REPLACE FUNCTION public.attest_ad_app_readiness_dimension",
+  );
+  assertStringIncludes(
+    sql,
+    "REVOKE ALL ON FUNCTION public.attest_ad_app_readiness_dimension(text,text,text,text,text,uuid) FROM PUBLIC,anon,authenticated",
+  );
+  assertStringIncludes(
+    sql,
+    "GRANT EXECUTE ON FUNCTION public.attest_ad_app_readiness_dimension(text,text,text,text,text,uuid) TO service_role",
+  );
 });

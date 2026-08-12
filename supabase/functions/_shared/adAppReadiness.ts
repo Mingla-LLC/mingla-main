@@ -85,6 +85,16 @@ export interface BindingRow {
   public_identity_required: boolean;
   provider_app_id: string | null;
   provider_measurement_id: string | null;
+  native_binding_attested_at?: string | null;
+  native_binding_attestation_expires_at?: string | null;
+  native_binding_attestation_safe_id?: string | null;
+  native_binding_attestation_provenance?: "provider_dashboard" | null;
+  native_binding_attested_by?: string | null;
+  measurement_attested_at?: string | null;
+  measurement_attestation_expires_at?: string | null;
+  measurement_attestation_safe_id?: string | null;
+  measurement_attestation_provenance?: "appsflyer_dashboard" | null;
+  measurement_attested_by?: string | null;
   active: boolean;
 }
 
