@@ -42,11 +42,8 @@ serve((request: Request) =>
         loadRegistry: async () => {
           const [targets, bindings, connections, identities] = await Promise
             .all([
-              db.from("ad_app_targets").select("*").eq("active", true),
-              db.from("ad_app_provider_bindings").select("*").eq(
-                "active",
-                true,
-              ),
+              db.from("ad_app_targets").select("*"),
+              db.from("ad_app_provider_bindings").select("*"),
               db.from("ad_connections").select(
                 "id,platform,lane,display_name,external_account_id,external_org_id,auth_kind,token_env_var,connected,status,account_status,currency,timezone,min_daily_budget_cents,token_last_verified_at,extra",
               ).eq("lane", "consumer"),

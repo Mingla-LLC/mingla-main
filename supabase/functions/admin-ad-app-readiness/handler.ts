@@ -1,7 +1,11 @@
 import {
   APP_KEYS,
   type AppKey,
+  type BindingRow,
   deriveFreshVerdict,
+  type DimensionEvidence,
+  evidence,
+  normalizeDimensions,
   OPERATING_SYSTEMS,
   type OperatingSystem,
   READINESS_PROVIDERS,
@@ -27,6 +31,45 @@ const ADAPTERS = {
   snapchat: verifySnapchat,
   google: verifyGoogle,
   reddit: verifyReddit,
+};
+
+const CANONICAL_TARGETS: Record<string, TargetRow> = {
+  "explorer:ios": {
+    app_key: "explorer",
+    os: "ios",
+    display_name: "Mingla Explorer",
+    store_identifier: "6760440898",
+    appsflyer_app_id: "id6760440898",
+    onelink_url: "https://go.usemingla.com/w36m",
+    active: false,
+  },
+  "explorer:android": {
+    app_key: "explorer",
+    os: "android",
+    display_name: "Mingla Explorer",
+    store_identifier: "com.mingla.app.v2",
+    appsflyer_app_id: "com.mingla.app.v2",
+    onelink_url: "https://go.usemingla.com/w36m",
+    active: false,
+  },
+  "business:ios": {
+    app_key: "business",
+    os: "ios",
+    display_name: "Mingla Business",
+    store_identifier: "6768737367",
+    appsflyer_app_id: "id6768737367",
+    onelink_url: "https://biz.usemingla.com/ZSCW",
+    active: false,
+  },
+  "business:android": {
+    app_key: "business",
+    os: "android",
+    display_name: "Mingla Business",
+    store_identifier: "com.sethogieva.minglabusiness",
+    appsflyer_app_id: "com.sethogieva.minglabusiness",
+    onelink_url: "https://biz.usemingla.com/ZSCW",
+    active: false,
+  },
 };
 
 export const responseHeaders = {
@@ -157,33 +200,136 @@ function normalizeLatest(latest: Array<Record<string, unknown>>, now: string) {
   });
 }
 
+function failClosedDimensions(
+  provider: ReadinessProvider,
+  checkedAt: string,
+  status: "action_required" | "blocked",
+  summary: string,
+  sourceClass: "canonical_registry" | "provider_api" | "appsflyer_api" =
+    "canonical_registry",
+): DimensionEvidence {
+  const item = evidence(status, summary, checkedAt, sourceClass);
+  return {
+    payer: item,
+    identity: provider === "meta" || provider === "tiktok" ? item : evidence(
+      "not_applicable",
+      "Not applicable — this provider does not show a Mingla social profile.",
+      checkedAt,
+    ),
+    binding: item,
+    measurement: item,
+    funding: item,
+  };
+}
+
+function safeProviderResult(
+  provider: ReadinessProvider,
+  reasonCode: string,
+  dimensions: unknown,
+  checkedAt: string,
+) {
+  const safe = normalizeDimensions(dimensions);
+  if (safe) return { provider, reason_code: reasonCode, ...safe };
+  return {
+    provider,
+    reason_code: "provider_response_invalid",
+    ...failClosedDimensions(
+      provider,
+      checkedAt,
+      "blocked",
+      "Provider verification returned an invalid result.",
+      "provider_api",
+    ),
+  };
+}
+
 export async function runSelectedCheck(
   db: ReadinessDb,
   actor: string,
   appKey: AppKey,
   os: OperatingSystem,
+  checks: {
+    verifyAppsflyer: typeof verifyAppsflyer;
+    adapters: typeof ADAPTERS;
+  } = {
+    verifyAppsflyer,
+    adapters: ADAPTERS,
+  },
 ): Promise<Record<string, unknown>> {
   const started = Date.now();
   const checkedAt = new Date().toISOString();
   const registry = await db.loadRegistry();
-  const target = registry.targets.find((row) =>
+  const storedTarget = registry.targets.find((row) =>
     row.app_key === appKey && row.os === os
   );
-  if (!target) throw new Error("target_missing_or_inactive");
+  const target = storedTarget ?? CANONICAL_TARGETS[`${appKey}:${os}`];
+  if (!target) throw new Error("target_contract_missing");
   const appsFlyerController = new AbortController();
-  await timeout(
-    verifyAppsflyer(target, appsFlyerController.signal, checkedAt),
-    PROVIDER_TIMEOUT_MS,
-    appsFlyerController,
-  );
+  let appsFlyerMeasurement;
+  try {
+    appsFlyerMeasurement = await timeout(
+      checks.verifyAppsflyer(target, appsFlyerController.signal, checkedAt),
+      PROVIDER_TIMEOUT_MS,
+      appsFlyerController,
+    );
+  } catch (error) {
+    appsFlyerMeasurement = evidence(
+      "blocked",
+      error instanceof Error && error.message === "provider_timeout"
+        ? "AppsFlyer verification timed out."
+        : "AppsFlyer verification was unavailable.",
+      checkedAt,
+      "appsflyer_api",
+    );
+  }
   const jobs = READINESS_PROVIDERS.map(async (provider) => {
+    if (!storedTarget?.active) {
+      return safeProviderResult(
+        provider,
+        "target_missing_or_inactive",
+        failClosedDimensions(
+          provider,
+          checkedAt,
+          "blocked",
+          "The selected app target is missing or inactive.",
+        ),
+        checkedAt,
+      );
+    }
     const binding = registry.bindings.find((row) =>
       row.app_key === appKey && row.os === os && row.provider === provider
-    );
-    if (!binding) throw new Error("binding_missing");
+    ) as BindingRow | undefined;
+    if (!binding?.active) {
+      return safeProviderResult(
+        provider,
+        "binding_missing",
+        failClosedDimensions(
+          provider,
+          checkedAt,
+          "action_required",
+          "The exact provider binding is missing or inactive.",
+        ),
+        checkedAt,
+      );
+    }
     const connection = registry.connections.find((row) =>
       row.id === binding.payer_connection_id
     ) ?? null;
+    if (
+      !connection || !connection.connected || connection.status !== "connected"
+    ) {
+      return safeProviderResult(
+        provider,
+        "payer_missing",
+        failClosedDimensions(
+          provider,
+          checkedAt,
+          "action_required",
+          "The exact corporate payer is missing or inactive.",
+        ),
+        checkedAt,
+      );
+    }
     const controller = new AbortController();
     const context: VerifyContext = {
       target,
@@ -205,15 +351,20 @@ export async function runSelectedCheck(
     };
     try {
       const result = await timeout(
-        ADAPTERS[provider](context),
+        checks.adapters[provider](context),
         PROVIDER_TIMEOUT_MS,
         controller,
       );
-      return {
-        provider,
-        reason_code: result.reason_code,
+      const dimensions = {
         ...result.dimensions,
+        measurement: appsFlyerMeasurement,
       };
+      const reasonCode = appsFlyerMeasurement.status === "blocked"
+        ? "provider_unreachable"
+        : result.reason_code === "all_required_dimensions_proven"
+        ? "measurement_missing"
+        : result.reason_code;
+      return safeProviderResult(provider, reasonCode, dimensions, checkedAt);
     } catch (error) {
       const summary =
         error instanceof Error && error.message === "provider_timeout"

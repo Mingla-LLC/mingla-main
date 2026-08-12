@@ -45,6 +45,29 @@ export interface ProviderEvidence {
 
 export const READ_ONLY_METHODS = ["GET"] as const;
 export const META_VALIDATE_ONLY_OPERATION = "meta_exact_identity_validate_only";
+export const PROVIDER_READ_OPERATIONS = {
+  meta: {
+    account: ["GET", "ad_account"],
+    page_authorization: ["GET", "me/accounts"],
+    page_instagram: ["GET", "page/instagram_business_account"],
+    exact_identity_validate_only: [
+      "POST",
+      "ad_account/adcreatives:validate_only",
+    ],
+  },
+  tiktok: {
+    advertiser: ["GET", "advertiser/info/"],
+    identities: ["GET", "identity/get/"],
+  },
+  snapchat: {
+    account: ["GET", "adaccounts/{id}"],
+    funding: ["GET", "organizations/{id}/fundingsources"],
+  },
+  google: {},
+  reddit: {
+    preflight: ["GET", "read_only_preflight"],
+  },
+} as const;
 
 export function asAdConnectionRow(
   connection: ReadinessConnection,
@@ -79,6 +102,30 @@ export function assertReadOnlyProviderRequest(
   throw new Error("provider_write_forbidden");
 }
 
+export async function runAllowedProviderOperation<T>(
+  provider: ReadinessProvider,
+  operation: string,
+  method: string,
+  path: string,
+  read: () => Promise<T>,
+): Promise<T> {
+  const configured = PROVIDER_READ_OPERATIONS[provider] as Record<
+    string,
+    readonly [string, string]
+  >;
+  const expected = configured[operation];
+  if (!expected || expected[0] !== method || expected[1] !== path) {
+    throw new Error("provider_operation_forbidden");
+  }
+  assertReadOnlyProviderRequest(
+    method,
+    provider === "meta" && operation === "exact_identity_validate_only"
+      ? META_VALIDATE_ONLY_OPERATION
+      : undefined,
+  );
+  return await read();
+}
+
 function notApplicable(checkedAt: string) {
   return evidence(
     "not_applicable",
@@ -100,8 +147,8 @@ export function verifyCanonicalBinding(
   );
   const payer = payerOk
     ? evidence(
-      "proven",
-      "Exact corporate payer configuration is active.",
+      "action_required",
+      "The exact corporate payer is configured but needs a current provider read.",
       checkedAt,
       "canonical_registry",
       connection?.external_account_id,
@@ -114,10 +161,10 @@ export function verifyCanonicalBinding(
   const identity = binding.public_identity_required
     ? ctx.identitySafeId
       ? evidence(
-        "proven",
-        "Exact registered public identity is selected.",
+        "action_required",
+        "The exact public identity is registered but needs a current provider read.",
         checkedAt,
-        "provider_api",
+        "canonical_registry",
         ctx.identitySafeId,
       )
       : evidence(
@@ -128,10 +175,10 @@ export function verifyCanonicalBinding(
     : notApplicable(checkedAt);
   const nativeBinding = binding.provider_app_id
     ? evidence(
-      "proven",
-      `Exact ${target.display_name} ${target.os} app binding is registered.`,
+      "action_required",
+      `A ${provider} app ID is registered for ${target.display_name} ${target.os}, but no current provider-native binding proof is available.`,
       checkedAt,
-      "provider_api",
+      "canonical_registry",
       binding.provider_app_id,
     )
     : evidence(
@@ -143,10 +190,10 @@ export function verifyCanonicalBinding(
     );
   const measurement = binding.provider_measurement_id
     ? evidence(
-      "proven",
-      "AppsFlyer and provider measurement mapping is registered.",
+      "action_required",
+      "A measurement ID is registered, but AppsFlyer partner and install-event proof is not current.",
       checkedAt,
-      "appsflyer_api",
+      "canonical_registry",
       binding.provider_measurement_id,
     )
     : evidence(
@@ -173,9 +220,9 @@ export function verifyCanonicalBinding(
   };
   const reason_code = !payerOk
     ? "payer_missing"
-    : !binding.provider_app_id
+    : nativeBinding.status !== "proven"
     ? "native_binding_missing"
-    : !binding.provider_measurement_id
+    : measurement.status !== "proven"
     ? "measurement_missing"
     : !billing
     ? "funding_missing"

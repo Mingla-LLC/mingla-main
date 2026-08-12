@@ -25,6 +25,32 @@ export type DimensionStatus =
   | "blocked"
   | "not_applicable";
 export type Verdict = "ready" | "action_required" | "blocked" | "stale";
+export const REASON_CODES = [
+  "target_missing_or_inactive",
+  "binding_missing",
+  "payer_missing",
+  "provider_timeout",
+  "provider_unreachable",
+  "provider_response_invalid",
+  "permission_missing",
+  "capability_unsupported",
+  "native_binding_missing",
+  "measurement_missing",
+  "event_mapping_missing",
+  "funding_missing",
+  "billing_inactive",
+  "oauth_scope_missing",
+  "public_identity_missing",
+  "payer_mismatch",
+  "public_identity_mismatch",
+  "native_binding_mismatch",
+  "measurement_mismatch",
+  "provider_permission_blocked",
+  "incomplete_provider_result",
+  "unknown_verification_failure",
+  "all_required_dimensions_proven",
+] as const;
+export type ReadinessReason = typeof REASON_CODES[number];
 
 export interface SafeEvidence {
   status: DimensionStatus;
@@ -147,6 +173,17 @@ export function normalizeEvidence(input: unknown): SafeEvidence | null {
       ? { safe_url: sanitizeUrl(row.safe_url) }
       : {}),
   };
+}
+
+export function normalizeDimensions(input: unknown): DimensionEvidence | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const row = input as Record<string, unknown>;
+  const normalized = Object.fromEntries(
+    DIMENSIONS.map((name) => [name, normalizeEvidence(row[name])]),
+  );
+  return DIMENSIONS.every((name) => normalized[name])
+    ? normalized as DimensionEvidence
+    : null;
 }
 
 export function reduceVerdict(

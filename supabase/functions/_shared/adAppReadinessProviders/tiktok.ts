@@ -6,14 +6,30 @@ import {
   tiktokFetchIdentities,
 } from "../tiktok.ts";
 import type { VerifyContext } from "./common.ts";
-import { asAdConnectionRow, verifyCanonicalBinding } from "./common.ts";
+import {
+  asAdConnectionRow,
+  runAllowedProviderOperation,
+  verifyCanonicalBinding,
+} from "./common.ts";
 export async function verify(ctx: VerifyContext) {
   const base = verifyCanonicalBinding("tiktok", ctx);
   if (!ctx.connection) return base;
   const client = resolveTikTokClient(asAdConnectionRow(ctx.connection));
   const [advertiser, identities] = await Promise.all([
-    tiktokFetchAdvertiser(client),
-    tiktokFetchIdentities(client),
+    runAllowedProviderOperation(
+      "tiktok",
+      "advertiser",
+      "GET",
+      "advertiser/info/",
+      () => tiktokFetchAdvertiser(client),
+    ),
+    runAllowedProviderOperation(
+      "tiktok",
+      "identities",
+      "GET",
+      "identity/get/",
+      () => tiktokFetchIdentities(client),
+    ),
   ]);
   const payerMatches =
     advertiser.advertiserId === ctx.connection.external_account_id;
@@ -81,15 +97,13 @@ export async function verify(ctx: VerifyContext) {
         "provider_api",
       );
   base.reason_code = !payerMatches
-    ? "payer_account_mismatch"
+    ? "payer_mismatch"
     : !identityReady
-    ? "identity_not_verified"
-    : !ctx.binding.provider_app_id
+    ? "public_identity_mismatch"
+    : base.dimensions.binding.status !== "proven"
     ? "native_binding_missing"
-    : !ctx.binding.provider_measurement_id
-    ? "measurement_missing"
     : base.dimensions.funding.status !== "proven"
     ? "funding_missing"
-    : "all_required_dimensions_proven";
+    : "measurement_missing";
   return base;
 }

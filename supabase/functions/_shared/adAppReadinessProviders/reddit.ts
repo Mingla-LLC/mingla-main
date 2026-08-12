@@ -1,16 +1,23 @@
 import { evidence } from "../adAppReadiness.ts";
 import { redditConnectPreflight } from "../reddit.ts";
 import type { VerifyContext } from "./common.ts";
-import { asAdConnectionRow, verifyCanonicalBinding } from "./common.ts";
+import {
+  asAdConnectionRow,
+  runAllowedProviderOperation,
+  verifyCanonicalBinding,
+} from "./common.ts";
 export async function verify(ctx: VerifyContext) {
   const base = verifyCanonicalBinding("reddit", ctx);
   if (!ctx.connection) return base;
-  const snapshot = await redditConnectPreflight(
-    asAdConnectionRow(ctx.connection),
-    "consumer",
+  const connection = ctx.connection;
+  const snapshot = await runAllowedProviderOperation(
+    "reddit",
+    "preflight",
+    "GET",
+    "read_only_preflight",
+    () => redditConnectPreflight(asAdConnectionRow(connection), "consumer"),
   );
-  const payerMatches =
-    snapshot.account.id === ctx.connection.external_account_id;
+  const payerMatches = snapshot.account.id === connection.external_account_id;
   base.dimensions.payer = payerMatches
     ? evidence(
       "proven",
@@ -40,13 +47,11 @@ export async function verify(ctx: VerifyContext) {
       "provider_api",
     );
   base.reason_code = !payerMatches
-    ? "payer_account_mismatch"
-    : !ctx.binding.provider_app_id
+    ? "payer_mismatch"
+    : base.dimensions.binding.status !== "proven"
     ? "native_binding_missing"
-    : !ctx.binding.provider_measurement_id
-    ? "measurement_missing"
     : !snapshot.fundingInstrumentId
     ? "funding_missing"
-    : "all_required_dimensions_proven";
+    : "measurement_missing";
   return base;
 }

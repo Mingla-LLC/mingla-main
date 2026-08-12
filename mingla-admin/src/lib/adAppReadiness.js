@@ -64,6 +64,26 @@ export function missingResult(provider) {
   return { provider, verdict: "blocked", reason_code: "incomplete_provider_result", owner_label: "Engineering", action_code: "retry_check", action_href: null, evidence: Object.fromEntries(DIMENSION_ORDER.map((name) => [name, name === "identity" && !["meta","tiktok"].includes(provider) ? { ...item, status: "not_applicable", summary: "Not applicable — this provider does not show a Mingla social profile." } : item])) };
 }
 
+export function uncheckedResult(provider) {
+  return {
+    provider,
+    verdict: "needs_check",
+    reason_code: "needs_check",
+    owner_label: null,
+    action_code: null,
+    action_href: null,
+    evidence: null,
+  };
+}
+
+export function primaryEvidenceName(reasonCode) {
+  if (/funding|billing/.test(reasonCode)) return "funding";
+  if (/measurement|event_mapping/.test(reasonCode)) return "measurement";
+  if (/identity/.test(reasonCode)) return "identity";
+  if (/payer|permission|oauth/.test(reasonCode)) return "payer";
+  return "binding";
+}
+
 export function safeActionHref(value) {
   if (typeof value !== "string") return null;
   try {

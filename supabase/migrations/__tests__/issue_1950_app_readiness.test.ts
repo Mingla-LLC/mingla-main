@@ -1,6 +1,7 @@
 import {
   assert,
   assertEquals,
+  assertMatch,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 
 const sql = await Deno.readTextFile(
@@ -83,4 +84,26 @@ Deno.test("#1950 authenticated users can only read registries and evidence", () 
       "GRANT UPDATE ON public.ad_app_readiness_results TO authenticated",
     ),
   );
+});
+
+Deno.test("#1950 persistence strips unknown evidence keys and enforces exact safe registries", () => {
+  assertMatch(sql, /normalize_ad_app_readiness_evidence/);
+  assertMatch(sql, /jsonb_strip_nulls\(jsonb_build_object/);
+  assertMatch(
+    sql,
+    /provider_api','appsflyer_api','canonical_registry','dashboard_attestation/,
+  );
+  assertMatch(
+    sql,
+    /p_evidence \?& ARRAY\['status','summary','source_class','source_checked_at'\]/,
+  );
+  assertMatch(
+    sql,
+    /r - ARRAY\['provider','reason_code','payer','identity','binding','measurement','funding'\]/,
+  );
+  assertMatch(
+    sql,
+    /target_missing_or_inactive'.*binding_missing'.*payer_missing/s,
+  );
+  assertMatch(sql, /regexp_replace\(v_safe_url,'\[\?#\]\.\*\$',''\)/);
 });

@@ -8,12 +8,22 @@ import {
 } from "../meta.ts";
 import { evaluateMetaIdentityAuthority } from "../../admin-ad-app-identity-preflight/metaIdentityAuthority.ts";
 import type { VerifyContext } from "./common.ts";
-import { asAdConnectionRow, verifyCanonicalBinding } from "./common.ts";
+import {
+  asAdConnectionRow,
+  runAllowedProviderOperation,
+  verifyCanonicalBinding,
+} from "./common.ts";
 export async function verify(ctx: VerifyContext) {
   const base = verifyCanonicalBinding("meta", ctx);
   if (!ctx.connection) return base;
   const client = resolveMetaClient(asAdConnectionRow(ctx.connection));
-  const account = await metaFetchAccount(client);
+  const account = await runAllowedProviderOperation(
+    "meta",
+    "account",
+    "GET",
+    "ad_account",
+    () => metaFetchAccount(client),
+  );
   const payerMatches = account.id.replace(/^act_/, "") ===
     ctx.connection.external_account_id.replace(/^act_/, "");
   base.dimensions.payer = payerMatches
@@ -56,11 +66,29 @@ export async function verify(ctx: VerifyContext) {
       instagramUserId,
     }, {
       checkPageAuthorization: (id) =>
-        metaCheckPageAdvertiseTaskForIdentity(client, id),
+        runAllowedProviderOperation(
+          "meta",
+          "page_authorization",
+          "GET",
+          "me/accounts",
+          () => metaCheckPageAdvertiseTaskForIdentity(client, id),
+        ),
       fetchPageLinkedInstagram: (id) =>
-        metaFetchIgBusinessAccountForIdentity(client, id),
+        runAllowedProviderOperation(
+          "meta",
+          "page_instagram",
+          "GET",
+          "page/instagram_business_account",
+          () => metaFetchIgBusinessAccountForIdentity(client, id),
+        ),
       validateExactIdentity: (exact) =>
-        metaValidateOnlyCreativeProbeForIdentity(client, exact),
+        runAllowedProviderOperation(
+          "meta",
+          "exact_identity_validate_only",
+          "POST",
+          "ad_account/adcreatives:validate_only",
+          () => metaValidateOnlyCreativeProbeForIdentity(client, exact),
+        ),
     });
     base.dimensions.identity = authority.verdict === "ready"
       ? evidence(
@@ -85,15 +113,13 @@ export async function verify(ctx: VerifyContext) {
     );
   }
   base.reason_code = !payerMatches
-    ? "payer_account_mismatch"
+    ? "payer_mismatch"
     : base.dimensions.identity.status !== "proven"
-    ? "identity_not_verified"
-    : !ctx.binding.provider_app_id
+    ? "public_identity_mismatch"
+    : base.dimensions.binding.status !== "proven"
     ? "native_binding_missing"
-    : !ctx.binding.provider_measurement_id
-    ? "measurement_missing"
     : !account.hasPaymentMethod
     ? "funding_missing"
-    : "all_required_dimensions_proven";
+    : "measurement_missing";
   return base;
 }

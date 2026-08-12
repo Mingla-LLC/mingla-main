@@ -1,5 +1,6 @@
 import {
   assertEquals,
+  assertRejects,
   assertThrows,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
@@ -14,8 +15,10 @@ import {
 } from "../adAppReadiness.ts";
 import {
   assertReadOnlyProviderRequest,
+  runAllowedProviderOperation,
   verifyCanonicalBinding,
 } from "../adAppReadinessProviders/common.ts";
+import { verifyAppsflyer } from "../adAppReadinessProviders/appsflyer.ts";
 
 function all(
   status: "proven" | "action_required" | "blocked",
@@ -109,7 +112,14 @@ Deno.test("#1950 canonical verifier cannot manufacture Ready from stored setup",
     deadlineMs: 8000,
     checkedAt: "2026-08-12T12:00:00.000Z",
   });
-  assertEquals(result.reason_code, "funding_missing");
+  assertEquals(result.reason_code, "native_binding_missing");
+  assertEquals(result.dimensions.binding.status, "action_required");
+  assertEquals(result.dimensions.binding.source_class, "canonical_registry");
+  assertEquals(result.dimensions.measurement.status, "action_required");
+  assertEquals(
+    result.dimensions.measurement.source_class,
+    "canonical_registry",
+  );
   assertEquals(result.dimensions.funding.status, "action_required");
 });
 
@@ -141,4 +151,63 @@ Deno.test("#1950 action URLs strip query/fragment and reject unsafe hosts", () =
   assertEquals(sanitizeUrl("javascript:alert(1)"), undefined);
   assertEquals(sanitizeUrl("http://ads.google.com/billing"), undefined);
   assertEquals(sanitizeUrl("https://evil.example/billing"), undefined);
+});
+
+Deno.test("#1950 AppsFlyer defaults non-ready and only an injected read authority can prove measurement", async () => {
+  const target = {
+    app_key: "business",
+    os: "ios",
+    display_name: "Mingla Business",
+    store_identifier: "6768737367",
+    appsflyer_app_id: "id6768737367",
+    onelink_url: "https://biz.usemingla.com/ZSCW",
+    active: true,
+  } as const;
+  const signal = new AbortController().signal;
+  const missing = await verifyAppsflyer(
+    target,
+    signal,
+    "2026-08-12T12:00:00.000Z",
+  );
+  assertEquals(missing.status, "action_required");
+  assertEquals(missing.source_class, "canonical_registry");
+  const proven = await verifyAppsflyer(
+    target,
+    signal,
+    "2026-08-12T12:00:00.000Z",
+    () => Promise.resolve({ partnerActive: true, installEventMapped: true }),
+  );
+  assertEquals(proven.status, "proven");
+  assertEquals(proven.source_class, "appsflyer_api");
+});
+
+Deno.test("#1950 operation guard is on the execution path and rejects method/path drift", async () => {
+  let calls = 0;
+  await runAllowedProviderOperation(
+    "tiktok",
+    "advertiser",
+    "GET",
+    "advertiser/info/",
+    () => {
+      calls += 1;
+      return Promise.resolve("ok");
+    },
+  );
+  assertEquals(calls, 1);
+  await assertRejects(
+    () =>
+      runAllowedProviderOperation(
+        "tiktok",
+        "advertiser",
+        "POST",
+        "advertiser/info/",
+        () => {
+          calls += 1;
+          return Promise.resolve("bad");
+        },
+      ),
+    Error,
+    "provider_operation_forbidden",
+  );
+  assertEquals(calls, 1);
 });

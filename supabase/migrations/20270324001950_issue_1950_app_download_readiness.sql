@@ -165,6 +165,39 @@ END $block$;
 REVOKE ALL ON public.ad_app_readiness_events FROM anon, authenticated;
 GRANT SELECT, INSERT ON public.ad_app_readiness_events TO service_role;
 
+CREATE OR REPLACE FUNCTION public.normalize_ad_app_readiness_evidence(p_evidence jsonb)
+RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path='' AS $function$
+DECLARE
+  v_status text := p_evidence->>'status';
+  v_summary text := p_evidence->>'summary';
+  v_source text := p_evidence->>'source_class';
+  v_checked text := p_evidence->>'source_checked_at';
+  v_safe_id text := p_evidence->>'safe_id';
+  v_safe_url text := p_evidence->>'safe_url';
+BEGIN
+  IF jsonb_typeof(p_evidence)<>'object'
+     OR (p_evidence ?& ARRAY['status','summary','source_class','source_checked_at']) IS NOT TRUE
+     OR v_status NOT IN ('proven','action_required','blocked','not_applicable')
+     OR v_source NOT IN ('provider_api','appsflyer_api','canonical_registry','dashboard_attestation')
+     OR v_summary IS NULL OR length(btrim(v_summary)) NOT BETWEEN 1 AND 240 OR v_summary ~ '[[:cntrl:]]'
+     OR v_checked IS NULL OR v_checked::timestamptz IS NULL
+     OR (v_safe_id IS NOT NULL AND (length(v_safe_id) NOT BETWEEN 1 AND 160 OR v_safe_id !~ '^[A-Za-z0-9._:@/-]+$'))
+     OR (v_safe_url IS NOT NULL AND v_safe_url !~ '^https://(business\.facebook\.com|ads\.tiktok\.com|ads\.snapchat\.com|ads\.google\.com|ads\.reddit\.com|www\.facebook\.com|www\.tiktok\.com|support\.google\.com|businesshelp\.snapchat\.com|business\.reddithelp\.com|go\.usemingla\.com|biz\.usemingla\.com)(/[^?#]*)?([?#].*)?$') THEN
+    RAISE EXCEPTION 'invalid_readiness_evidence';
+  END IF;
+  RETURN jsonb_strip_nulls(jsonb_build_object(
+    'status',v_status,
+    'summary',btrim(v_summary),
+    'source_class',v_source,
+    'source_checked_at',v_checked,
+    'safe_id',v_safe_id,
+    'safe_url',CASE WHEN v_safe_url IS NULL THEN NULL ELSE regexp_replace(v_safe_url,'[?#].*$','') END
+  ));
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.normalize_ad_app_readiness_evidence(jsonb) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.normalize_ad_app_readiness_evidence(jsonb) TO service_role;
+
 CREATE OR REPLACE FUNCTION public.persist_ad_app_readiness_run(p_run jsonb,p_results jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $function$
 DECLARE
@@ -174,7 +207,8 @@ DECLARE
   r jsonb; v_provider text; v_statuses text[]; v_verdict text; v_reason text; v_owner text; v_action text;
   v_output jsonb := '[]'::jsonb;
 BEGIN
-  IF v_app NOT IN ('explorer','business') OR v_os NOT IN ('ios','android') OR v_duration NOT BETWEEN 0 AND 60000
+  IF jsonb_typeof(p_run)<>'object' OR (p_run - ARRAY['app_key','os','requested_by','duration_ms'])<>'{}'::jsonb
+     OR v_app NOT IN ('explorer','business') OR v_os NOT IN ('ios','android') OR v_duration NOT BETWEEN 0 AND 60000
      OR jsonb_typeof(p_results)<>'array' OR jsonb_array_length(p_results)<>5
      OR (SELECT count(DISTINCT x.value->>'provider') FROM jsonb_array_elements(p_results) x(value))<>5
      OR (SELECT array_agg(x.value->>'provider' ORDER BY x.ordinality) FROM jsonb_array_elements(p_results) WITH ORDINALITY x(value,ordinality))<>ARRAY['meta','tiktok','snapchat','google','reddit'] THEN
@@ -183,24 +217,51 @@ BEGIN
   INSERT INTO public.ad_app_readiness_runs(id,app_key,os,requested_by,checked_at,stale_at,duration_ms,provider_count)
   VALUES(v_id,v_app,v_os,v_requested,v_checked,v_checked+interval '15 minutes',v_duration,5);
   FOR r IN SELECT value FROM jsonb_array_elements(p_results) LOOP
+    IF jsonb_typeof(r)<>'object' OR (r - ARRAY['provider','reason_code','payer','identity','binding','measurement','funding'])<>'{}'::jsonb THEN
+      RAISE EXCEPTION 'invalid_readiness_result';
+    END IF;
     v_provider := r->>'provider';
+    r := jsonb_build_object(
+      'provider',v_provider,
+      'reason_code',r->>'reason_code',
+      'payer',public.normalize_ad_app_readiness_evidence(r->'payer'),
+      'identity',public.normalize_ad_app_readiness_evidence(r->'identity'),
+      'binding',public.normalize_ad_app_readiness_evidence(r->'binding'),
+      'measurement',public.normalize_ad_app_readiness_evidence(r->'measurement'),
+      'funding',public.normalize_ad_app_readiness_evidence(r->'funding')
+    );
     v_statuses := ARRAY[r#>>'{payer,status}',r#>>'{identity,status}',r#>>'{binding,status}',r#>>'{measurement,status}',r#>>'{funding,status}'];
     IF array_position(v_statuses,NULL) IS NOT NULL
        OR NOT (v_statuses <@ ARRAY['proven','action_required','blocked','not_applicable']::text[])
        OR (v_provider IN ('meta','tiktok') AND v_statuses[2]='not_applicable')
        OR (v_provider NOT IN ('meta','tiktok') AND v_statuses[2]<>'not_applicable')
-       OR COALESCE(r->>'reason_code','') !~ '^[a-z0-9_]{1,64}$' THEN
+       OR COALESCE(r->>'reason_code','') NOT IN (
+         'target_missing_or_inactive','binding_missing','payer_missing','provider_timeout','provider_unreachable',
+         'provider_response_invalid','permission_missing','capability_unsupported','native_binding_missing',
+         'measurement_missing','event_mapping_missing','funding_missing','billing_inactive','oauth_scope_missing',
+         'public_identity_missing','payer_mismatch','public_identity_mismatch','native_binding_mismatch',
+         'measurement_mismatch','provider_permission_blocked','incomplete_provider_result',
+         'unknown_verification_failure','all_required_dimensions_proven'
+       ) THEN
       RAISE EXCEPTION 'invalid_readiness_evidence';
     END IF;
     IF v_statuses <@ ARRAY['proven','not_applicable']::text[] AND NOT ('not_applicable'=ANY(v_statuses) AND v_provider IN ('meta','tiktok')) THEN
       v_verdict:='ready'; v_reason:='all_required_dimensions_proven'; v_owner:=NULL; v_action:=NULL;
     ELSIF 'blocked'=ANY(v_statuses) THEN
       v_verdict:='blocked'; v_reason:=COALESCE(r->>'reason_code','unknown_verification_failure');
-      v_owner:=CASE WHEN v_reason LIKE '%mismatch%' THEN 'Growth operations' WHEN v_reason LIKE 'provider_%' OR v_reason='capability_unsupported' THEN 'Provider support' ELSE 'Engineering' END;
-      v_action:=CASE WHEN v_owner='Growth operations' THEN 'review_blocker' WHEN v_owner='Provider support' THEN 'contact_provider_support' ELSE 'retry_check' END;
+      v_owner:=CASE
+        WHEN v_reason IN ('payer_mismatch','public_identity_mismatch','native_binding_mismatch','measurement_mismatch') THEN 'Growth operations'
+        WHEN v_reason IN ('permission_missing','oauth_scope_missing','provider_permission_blocked') THEN 'Mingla Admin'
+        WHEN v_reason='capability_unsupported' THEN 'Provider support'
+        ELSE 'Engineering' END;
+      v_action:=CASE
+        WHEN v_owner='Growth operations' THEN 'review_blocker'
+        WHEN v_owner='Mingla Admin' THEN 'reauthorize_provider'
+        WHEN v_owner='Provider support' THEN 'contact_provider_support'
+        ELSE 'retry_check' END;
     ELSE
       v_verdict:='action_required'; v_reason:=COALESCE(r->>'reason_code','binding_missing');
-      v_owner:=CASE WHEN v_reason LIKE '%funding%' OR v_reason='billing_inactive' THEN 'Finance' WHEN v_reason LIKE '%oauth%' OR v_reason='permission_missing' THEN 'Mingla Admin' ELSE 'Engineering' END;
+      v_owner:=CASE WHEN v_reason='funding_missing' OR v_reason='billing_inactive' THEN 'Finance' WHEN v_reason='oauth_scope_missing' OR v_reason='permission_missing' THEN 'Mingla Admin' ELSE 'Engineering' END;
       v_action:=CASE WHEN v_owner='Finance' THEN 'review_provider_billing' WHEN v_owner='Mingla Admin' THEN 'reauthorize_provider' ELSE 'review_mingla_configuration' END;
     END IF;
     INSERT INTO public.ad_app_readiness_results(run_id,app_key,os,provider,verdict,reason_code,owner_label,action_code,action_href,payer_evidence,identity_evidence,binding_evidence,measurement_evidence,funding_evidence)

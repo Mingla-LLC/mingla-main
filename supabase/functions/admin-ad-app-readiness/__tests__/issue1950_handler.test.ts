@@ -179,3 +179,125 @@ Deno.test("#1950 analytics accepts only the safe allowlist and fails soft withou
     console.warn = originalWarn;
   }
 });
+
+Deno.test("#1950 missing bindings persist five controlled non-ready results instead of aborting", async () => {
+  let persisted: unknown[] = [];
+  const db: ReadinessDb = {
+    loadRegistry: () =>
+      Promise.resolve({
+        targets: [{
+          app_key: "explorer",
+          os: "ios",
+          display_name: "Mingla Explorer",
+          store_identifier: "6760440898",
+          appsflyer_app_id: "id6760440898",
+          onelink_url: "https://go.usemingla.com/w36m",
+          active: true,
+        }],
+        bindings: [],
+        connections: [],
+        identities: [],
+      }),
+    loadLatest: () => Promise.resolve([]),
+    persist: (_run, results) => {
+      persisted = results;
+      return Promise.resolve({ run_id: "run" });
+    },
+  };
+  await runSelectedCheck(db, "actor", "explorer", "ios");
+  assertEquals(persisted.length, 5);
+  assertEquals(
+    persisted.every((row) =>
+      (row as Record<string, unknown>).reason_code === "binding_missing"
+    ),
+    true,
+  );
+});
+
+Deno.test("#1950 AppsFlyer failure is consumed as blocked measurement in all five results", async () => {
+  let persisted: Array<Record<string, unknown>> = [];
+  const providers = ["meta", "tiktok", "snapchat", "google", "reddit"] as const;
+  const db: ReadinessDb = {
+    loadRegistry: () =>
+      Promise.resolve({
+        targets: [{
+          app_key: "business",
+          os: "android",
+          display_name: "Mingla Business",
+          store_identifier: "com.sethogieva.minglabusiness",
+          appsflyer_app_id: "com.sethogieva.minglabusiness",
+          onelink_url: "https://biz.usemingla.com/ZSCW",
+          active: true,
+        }],
+        bindings: providers.map((provider) => ({
+          app_key: "business",
+          os: "android",
+          provider,
+          payer_connection_id: provider,
+          public_identity_required: provider === "meta" ||
+            provider === "tiktok",
+          provider_app_id: null,
+          provider_measurement_id: null,
+          active: true,
+        })),
+        connections: providers.map((provider) => ({
+          id: provider,
+          platform: provider,
+          lane: "consumer",
+          display_name: provider,
+          external_account_id: "account",
+          connected: true,
+          status: "connected",
+          account_status: "ACTIVE",
+          extra: {},
+        })),
+        identities: [],
+      } as never),
+    loadLatest: () => Promise.resolve([]),
+    persist: (_run, results) => {
+      persisted = results as Array<Record<string, unknown>>;
+      return Promise.resolve({ run_id: "run" });
+    },
+  };
+  const proven = {
+    status: "proven",
+    summary: "Current provider read.",
+    source_class: "provider_api",
+    source_checked_at: "2026-08-12T12:00:00.000Z",
+  } as const;
+  const adapters = Object.fromEntries(
+    providers.map((provider) => [provider, () =>
+      Promise.resolve({
+        provider,
+        reason_code: "all_required_dimensions_proven",
+        dimensions: {
+          payer: proven,
+          identity: provider === "meta" || provider === "tiktok"
+            ? proven
+            : { ...proven, status: "not_applicable" },
+          binding: proven,
+          measurement: proven,
+          funding: proven,
+        },
+      })]
+    ),
+  ) as never;
+  await runSelectedCheck(db, "actor", "business", "android", {
+    verifyAppsflyer: () => Promise.reject(new Error("unavailable")),
+    adapters,
+  });
+  assertEquals(persisted.length, 5);
+  assertEquals(
+    persisted.every((row) =>
+      (row.measurement as Record<string, unknown>).status === "blocked"
+    ),
+    true,
+  );
+  assertEquals(
+    persisted.every((row) =>
+      (row.measurement as Record<string, unknown>).source_class ===
+        "appsflyer_api"
+    ),
+    true,
+  );
+});
