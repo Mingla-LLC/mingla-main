@@ -31,9 +31,10 @@ BEGIN
 
   INSERT INTO public.stripe_connect_accounts (
     brand_id, stripe_account_id, charges_enabled, detached_at,
-    created_at, updated_at
+    country, default_currency, created_at, updated_at
   ) VALUES (
-    v_stripe, 'acct_i1919_ready', true, NULL, now(), now()
+    v_stripe, 'acct_i1919_ready', true, NULL,
+    'US', 'USD', now(), now()
   );
 
   INSERT INTO public.brand_currency_reconciliations (
