@@ -311,6 +311,30 @@ serve(async (req: Request): Promise<Response> => {
   });
 
   if (error !== null) {
+    switch (error.code) {
+      case "P1901":
+        console.warn(
+          "[public-submit-rsvp] RSVP rejected",
+          JSON.stringify({
+            event_id: eventId,
+            reason: "rsvp_event_ended",
+            authenticated: userId !== null,
+            server_timestamp: new Date().toISOString(),
+          }),
+        );
+        return json(410, { error: "rsvp_event_ended" });
+      case "P1902":
+        console.warn(
+          "[public-submit-rsvp] RSVP rejected",
+          JSON.stringify({
+            event_id: eventId,
+            reason: "rsvp_date_unavailable",
+            authenticated: userId !== null,
+            server_timestamp: new Date().toISOString(),
+          }),
+        );
+        return json(409, { error: "rsvp_date_unavailable" });
+    }
     const code = error.message ?? "";
     if (code.includes("rsvp_not_open")) return json(404, { error: "rsvp_not_open" });
     if (code.includes("rsvp_full")) return json(409, { error: "rsvp_full" });
