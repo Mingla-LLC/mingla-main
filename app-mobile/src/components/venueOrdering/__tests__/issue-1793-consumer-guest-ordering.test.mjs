@@ -111,7 +111,10 @@ test("T-1793-N3 — the Pay button is dead until the SERVER has priced this bask
 test("T-1793-N3b — the price is re-fetched whenever anything that moves a number moves", () => {
   const hook = stripComments(read(HOOK));
   assert.match(hook, /priceSignature/);
-  assert.match(hook, /queryKey: \["venueOrderPreview", priceSignature\]/);
+  assert.match(
+    hook,
+    /queryKey: venueOrderingQueryKeys\.preview\(priceSignature\)/,
+  );
   // Never served stale to a different basket.
   assert.match(hook, /staleTime: 0/);
   assert.match(hook, /gcTime: 0/);

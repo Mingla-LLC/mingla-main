@@ -41,6 +41,7 @@ import {
   useVenueOrderingCart,
   venueOrderShouldAskPartySize,
   venueOrderSittingKey,
+  venueOrderingQueryKeys,
 } from "@mingla/brand-rendering/venueOrdering";
 import { VENUE_ORDERING_UNAVAILABLE } from "@mingla/brand-rendering/venueOrdering/venueOrderingWire";
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
@@ -117,12 +118,11 @@ export function useConsumerVenueOrdering(
 
   // ── the honest public state (this issue's migration) ──────────────────────
   const configQuery = useQuery({
-    queryKey: [
-      "venueOrderingState",
+    queryKey: venueOrderingQueryKeys.state(
       input.brandSlug,
       input.venueSlug,
       input.spotCode,
-    ],
+    ),
     queryFn: () =>
       fetchVenueOrderingState({
         brandSlug: input.brandSlug,
@@ -141,7 +141,7 @@ export function useConsumerVenueOrdering(
     [input.menu],
   );
   const modifiersQuery = useQuery({
-    queryKey: ["venueOrderingModifiers", input.venueSlug, menuItemIds.length],
+    queryKey: venueOrderingQueryKeys.modifiers(input.venueSlug, menuItemIds),
     queryFn: () => fetchVenueMenuModifiers(menuItemIds),
     enabled: config.state === "on" && menuItemIds.length > 0,
     staleTime: 300_000,
@@ -253,7 +253,7 @@ export function useConsumerVenueOrdering(
   );
 
   const previewQuery = useQuery({
-    queryKey: ["venueOrderPreview", priceSignature],
+    queryKey: venueOrderingQueryKeys.preview(priceSignature),
     queryFn: () => previewVenueOrder(request),
     enabled: cart.state.lines.length > 0 && config.state === "on",
     // A price is a claim about right now. Never served from cache to a

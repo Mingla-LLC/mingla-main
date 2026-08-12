@@ -49,6 +49,7 @@ import {
   venueOrderTipAfterHydration,
 } from "../venueOrdering/venueOrderingSitting";
 import { venueOrderCreateBody } from "../venueOrdering/venueOrderingWire";
+import { venueOrderingQueryKeys } from "../venueOrdering/venueOrderingQueryKeys";
 import type {
   VenueOrderCartLine,
   VenueOrderingConfig,
@@ -104,6 +105,22 @@ const ALL_STATUSES: VenueOrderLiveStatus["fulfillmentStatus"][] = [
   "cancelled",
   "refunded",
 ];
+
+describe("T-1793-C0 — one query-key owner follows the ordering entity identity", () => {
+  test("same-sized menus with different items cannot share modifier cache", () => {
+    expect(venueOrderingQueryKeys.modifiers("venue-1", ["item-a", "item-b"]))
+      .not.toEqual(
+        venueOrderingQueryKeys.modifiers("venue-1", ["item-c", "item-d"]),
+      );
+  });
+
+  test("modifier identity is stable when the same item set arrives reordered", () => {
+    expect(venueOrderingQueryKeys.modifiers("venue-1", ["item-b", "item-a"]))
+      .toEqual(
+        venueOrderingQueryKeys.modifiers("venue-1", ["item-a", "item-b"]),
+      );
+  });
+});
 
 // ---------------------------------------------------------------------------
 // T-1793-C1 — D-3a. A no-spot order is never promised delivery.
