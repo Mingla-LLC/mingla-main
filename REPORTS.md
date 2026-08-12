@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-11 — RSVP events now appear in a brand's public Upcoming feed, and attempts to RSVP after an event ends are refused before creating a guest, pass, notification, or delivery record. (#1914, PR #1917)
 - 2026-08-11 — New Nigerian businesses are now ready for automatic event-anchored payout stamping behind an independent dark Paystack switch; ambiguous database responses reconcile exact ledger truth, all 16 bundle consumers are deployed from one verified source, and activation remains off until the parent real-payout proof completes. (#1903, PR #1915)
 - 2026-08-11 — Mingla Business now quietly retries temporary Google or Apple token-exchange failures without reopening the provider picker, cancels retries when the app backgrounds, and always shows fixed friendly copy instead of raw technical errors. (#1881, PR #1908)
 - 2026-08-11 — Ordering tables can no longer be emptied through a database privilege that row-level security cannot stop, and a standing audit now blocks that grant class from silently returning. (#1856, PR #1864)
