@@ -211,10 +211,6 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
           {event.name.length > 0 ? event.name : "Untitled event"}
         </Text>
       }
-      directionCIdentity={{
-        title: event.name,
-        meta: [event.dateLine, event.venueName].filter(Boolean).join(" · "),
-      }}
       stateBanner={stateBanner}
       stickyPanel={stickyPanel}
       contentBottomInset={contentBottomInset}

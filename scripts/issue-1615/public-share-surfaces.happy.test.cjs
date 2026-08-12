@@ -213,19 +213,27 @@ test("H19 Explorer payload is canonical S5/S6 URL while CTA remains attributed w
   assert.match(route, /AsyncStorage\.setItem\('@mingla_referral_code', referralCode\)/);
 });
 
-test("H20 existing business human pages and bot S5 share Direction C identity", () => {
+test("H20 share identity stays isolated from ordinary Business destination pages", () => {
+  // [TEST-MOD-APPROVED #1960] The old assertions required share artwork on the
+  // destination cover itself, causing duplicate titles and a gray identity plate.
+  // Share renderers remain protected below; ordinary human routes must not opt in.
   const shell = read("packages/offering-rendering/ParallaxCoverShell.tsx");
   for (const needle of ["S6_PHONE", "S6_PLATE_BOUNDARY", "S6_PLATE.fallbackSolid", "DirectionCIdentityOverlay"]) assert.ok(shell.includes(needle), needle);
   const s6Runtime = read("packages/card-identity/s6.js");
   for (const needle of ["rgba(255,255,255,0.38)", "rgb(53,56,63)", "S6_PHONE"]) assert.ok(s6Runtime.includes(needle), needle);
   assert.match(read("packages/offering-rendering/PublicEventPage.tsx"), /<DirectionCIdentityOverlay/);
-  assert.match(read("mingla-business/src/components/event/FoundationEventPreview.tsx"), /directionCIdentity=\{\{/);
-  assert.match(read("packages/brand-rendering/PublicBrandPage.tsx"), /directionCIdentity=\{useDirectionCIdentity/);
-  assert.match(read("packages/brand-rendering/PublicVenueScreen.tsx"), /directionCIdentity=\{useDirectionCIdentity/);
-  assert.match(read("mingla-business/src/components/trip/TripPreview.tsx"), /directionCIdentity=\{useDirectionCIdentity/);
+  for (const file of [
+    "mingla-business/src/components/event/FoundationEventPreview.tsx",
+    "mingla-business/src/components/event/PublicEventPage.tsx",
+    "mingla-business/app/t/[brandSlug]/[tripSlug].tsx",
+    "mingla-business/app/b/[brandSlug]/index.tsx",
+    "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
+  ]) assert.doesNotMatch(read(file), /(?:useDirectionCIdentity\b|directionCIdentity=)/, file);
   for (const file of ["mingla-business/api/og-event.js", "mingla-business/api/og-trip.js", "mingla-business/api/og-brand.js", "mingla-business/api/og-venue.js"]) {
     assert.match(read(file), /renderCardIdentityPng/);
   }
+  const explorer = read("app-mobile/app/s/[code].tsx");
+  for (const needle of ["readContentShare", "buildSharePortraitUrl", "destinationPath"]) assert.ok(explorer.includes(needle), needle);
   assert.match(read("mingla-business/server/socialPreview.js"), /\/og\/venue\/\$\{encodeURIComponent\(canonicalBrandSlug\)\}/);
 });
 
