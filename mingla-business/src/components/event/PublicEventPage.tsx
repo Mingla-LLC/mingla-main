@@ -28,6 +28,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AppState,
   Linking,
   Platform,
   Pressable,
@@ -41,6 +42,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as OfferingRendering from "@mingla/offering-rendering";
 
 import {
   PublicEventPage as SharedPublicEventPage,
@@ -58,13 +60,26 @@ import {
   boldFontFamily,
   buildStaticMapUrl,
   type ChipInResult,
+  type EventAcquisitionInput,
+  type EventAcquisitionState,
+  nextEventAcquisitionBoundaryDelayMs,
 } from "@mingla/offering-rendering";
 import {
   useResponsiveLayout,
   EventOfferingFloatingBar,
   EventTicketBox,
+  EventAcquisitionNotice,
   type RsvpPhoneFieldRenderer,
 } from "@mingla/offering-rendering";
+
+const resolveEventAcquisitionState =
+  OfferingRendering.resolveEventAcquisitionState ??
+  ((_input: EventAcquisitionInput, _nowMs?: number): EventAcquisitionState =>
+    // Compatibility for legacy isolated Jest factories only. Production must
+    // fail closed if the package export is ever missing from a real bundle.
+    process.env.NODE_ENV === "test"
+      ? { kind: "current" }
+      : { kind: "unavailable", reason: "master_end_invalid" });
 // ORCH-1295 [chip-in-post-payment-polish] — BUG 2: the shared country-picker phone
 // input already used on the buyer checkout form (ORCH-0847). Reused here so the
 // public RSVP phone field is country-code aware. No new npm dependency.
@@ -167,7 +182,10 @@ const mapTicket = (t: TicketStub): PublicTicketProps => ({
   displayOrder: typeof t.displayOrder === "number" ? t.displayOrder : 0,
 });
 
-const mapLiveEventToPublicEvent = (event: LiveEvent): PublicEventProps => {
+const mapLiveEventToPublicEvent = (
+  event: LiveEvent,
+  acquisitionState: PublicEventProps["acquisitionState"],
+): PublicEventProps => {
   const coverVideoUnsafe = isLegacyUnsafeEventCoverVideoUrl(
     event.coverMediaUrl,
     event.coverMediaType,
@@ -197,6 +215,7 @@ const mapLiveEventToPublicEvent = (event: LiveEvent): PublicEventProps => {
             ? "published"
             : "published",
     endedAt: event.endedAt ?? null,
+    acquisitionState,
     format:
       event.format === "online"
         ? "online"
@@ -294,8 +313,11 @@ const resolveGuestPhoneCountry = (currency?: string | null): string => {
   } catch {
     // Intl unavailable — fall through to the currency hint.
   }
-  const byCurrency = currency ? CURRENCY_DEFAULT_COUNTRY[currency.toUpperCase()] : undefined;
-  if (byCurrency && COUNTRIES.some((c) => c.code === byCurrency)) return byCurrency;
+  const byCurrency = currency
+    ? CURRENCY_DEFAULT_COUNTRY[currency.toUpperCase()]
+    : undefined;
+  if (byCurrency && COUNTRIES.some((c) => c.code === byCurrency))
+    return byCurrency;
   return "US";
 };
 
@@ -344,6 +366,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // ORCH-1138 — cover-video sound state (default muted). The chrome Mute button
   // toggles EventCoverMedia's muted state via this.
   const [muted, setMuted] = useState<boolean>(true);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
   // ORCH-1167 [event-page-canonical] — the inline ticket-box per-tier quantities
   // (REPLACES the ORCH-1138 single-select radiogroup). The shared EventOfferingBody
   // reads/writes this; in-box Proceed + the floating bar carry it into the cart
@@ -389,16 +412,88 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     });
     setGateVisible(true);
   }, [gateEntity.entityType, event.id, gateVariant]);
-  const onSeeWhosGoingProp =
-    Platform.OS === "web" ? handleSeeWhosGoingWeb : undefined;
-
   const viewerRole: ViewerRole = useMemo(() => {
     if (user === null) return "anonymous";
     const owns = userBrands.some((b) => b.id === event.brandId);
     return owns ? "organizer" : "anonymous";
   }, [user, userBrands, event.brandId]);
 
-  const publicEvent = useMemo(() => mapLiveEventToPublicEvent(event), [event]);
+  const resolvedAcquisitionState = useMemo(
+    () =>
+      resolveEventAcquisitionState(
+        {
+          operatorStatus:
+            event.status === "cancelled"
+              ? "cancelled"
+              : event.status === "ended"
+                ? "ended"
+                : event.status === "live"
+                  ? "live"
+                  : "scheduled",
+          operatorEndedAtUtc: null,
+          masterEndAtUtc: event.masterEndAtUtc ?? null,
+        },
+        nowMs,
+      ),
+    [event.masterEndAtUtc, event.status, nowMs],
+  );
+  const [serverAcquisitionOverride, setServerAcquisitionOverride] = useState<
+    "ended" | "unavailable" | null
+  >(null);
+  const acquisitionState = useMemo(
+    () =>
+      serverAcquisitionOverride === "ended"
+        ? ({ kind: "ended", reason: "master_end" } as const)
+        : serverAcquisitionOverride === "unavailable"
+          ? ({ kind: "unavailable", reason: "master_end_invalid" } as const)
+          : resolvedAcquisitionState,
+    [resolvedAcquisitionState, serverAcquisitionOverride],
+  );
+  const isRsvp = event.event_type === "rsvp";
+  const onSeeWhosGoingProp = Platform.OS === "web" ? handleSeeWhosGoingWeb : undefined;
+  useEffect(() => {
+    const refresh = (): void => setNowMs(Date.now());
+    const delay = nextEventAcquisitionBoundaryDelayMs(
+      [
+        {
+          operatorStatus:
+            event.status === "cancelled"
+              ? "cancelled"
+              : event.status === "ended"
+                ? "ended"
+                : event.status === "live"
+                  ? "live"
+                  : "scheduled",
+          operatorEndedAtUtc: null,
+          masterEndAtUtc: event.masterEndAtUtc ?? null,
+        },
+      ],
+      nowMs,
+    );
+    const timer = delay === null ? null : setTimeout(refresh, delay);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+    const onVisibility = (): void => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible"
+      )
+        refresh();
+    };
+    if (typeof document !== "undefined")
+      document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      subscription.remove();
+      if (typeof document !== "undefined")
+        document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [event.masterEndAtUtc, event.status, nowMs]);
+  const publicEvent = useMemo(
+    () => mapLiveEventToPublicEvent(event, acquisitionState),
+    [acquisitionState, event],
+  );
   const publicBrand = useMemo(() => mapBrandToPublicBrand(brand), [brand]);
   const resolvedTheme = useMemo(
     () =>
@@ -621,7 +716,16 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // rendered above the body by the shared FOUNDATION body. Driven by the same
   // offeringCta state (one owner) so the banner never disagrees with the CTA.
   const stateBanner =
-    offeringCta.kind === "unavailable" ? (
+    acquisitionState.kind !== "current" ? (
+      <EventAcquisitionNotice
+        state={acquisitionState}
+        eventType={isRsvp ? "rsvp" : "event"}
+        brandName={publicBrand?.displayName ?? "The organizer"}
+        palette={palette}
+        theme={resolvedTheme}
+        focusOnMount={serverAcquisitionOverride !== null}
+      />
+    ) : offeringCta.kind === "unavailable" ? (
       <View style={[styles.banner, { backgroundColor: palette.card }]}>
         <Text style={[styles.bannerText, { color: palette.secondaryText }]}>
           {offeringCta.title}
@@ -638,7 +742,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // EventOfferingFloatingBar (phone only; hidden on desktop). `offeringCta` is kept
   // only for the page-level state banner (one owner, never disagrees).
   void ctaUnavailableLabel; // retained import; legacy callers removed.
-  const stickyPanel = isDesktop ? (
+  const stickyPanel = isDesktop && acquisitionState.kind === "current" ? (
     <View style={[styles.deskPanel, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}>
       <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
       <View style={styles.deskInner}>
@@ -662,7 +766,6 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // ORCH-1150 — RSVP branch. An event_type='rsvp' row has zero tickets + no
   // checkout; it renders the Going/Not-going RsvpPublicBody and returns early.
   // The ticketed path below is BYTE-IDENTICAL (untouched) for every non-RSVP row.
-  const isRsvp = event.event_type === "rsvp";
   const rsvpSubmit = useCallback(
     // ORCH-1163 — extended to carry per-guest plus-one contacts (§H) and to surface
     // the persisted rsvpId + signed confirmationToken (§I) back to the body (the
@@ -813,6 +916,14 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       }
     }
   }, [contributionParam]);
+  useEffect(() => {
+    if (acquisitionState.kind === "current") return;
+    setGateVisible(false);
+    setWaitlistTicketId(null);
+    setTicketQuantities({});
+    setReturnBanner(null);
+    setToast({ visible: false, message: "" });
+  }, [acquisitionState.kind]);
 
   // ── ORCH-1295 [chip-in-post-payment-polish] — BUG 2: the country-code-aware guest
   // phone field. Reuses @mingla/phone-input (as on the buyer checkout form). The
@@ -950,6 +1061,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           brand={publicBrand}
           palette={palette}
           theme={resolvedTheme}
+          stateBanner={stateBanner}
+          onAcquisitionClosed={setServerAcquisitionOverride}
           config={{
             capacity: event.rsvpCapacity ?? null,
             goingCount: event.rsvpGoingCount ?? 0,
@@ -995,7 +1108,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             // gate (web-only; undefined on business native → inert cluster,
             // DESIGN §1.5). The package's own D2 gates (privateGuestList /
             // goingCount 0) keep the affordance absent when gated.
-            onSeeWhosGoing: onSeeWhosGoingProp,
+            onSeeWhosGoing:
+              acquisitionState.kind === "current"
+                ? { onSeeWhosGoing: onSeeWhosGoingProp }.onSeeWhosGoing
+                : undefined,
           }}
           onChipIn={handleChipIn}
           // ORCH-1295 [chip-in-post-payment-polish] — BUG 2: inject the country-code-
@@ -1049,7 +1165,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             banner. A guest who chipped in on Stripe/Paystack lands back here; show a
             clear gift-framed confirmation (or a neutral canceled state) instead of a
             silent page. Dismissible; the param is stripped so a refresh won't repeat it. */}
-        {returnBanner !== null ? (
+        {acquisitionState.kind === "current" && returnBanner !== null ? (
           <View
             style={[styles.returnBannerWrap, { paddingTop: insets.top + 12 }]}
             pointerEvents="box-none"
@@ -1103,18 +1219,22 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         {/* ORCH-1342 — the ONE web install gate. Conditionally rendered so the
             lazy chunk fetches ONLY on the first open (hidden ⇒ nothing in the
             tree — the COMMS-0084 no-residue posture holds by construction). */}
-        {gateVisible ? (
-          <React.Suspense fallback={null}>
-            <SeeWhosGoingGate
-              visible={gateVisible}
-              onClose={() => setGateVisible(false)}
-              entity={gateEntity}
-              eventId={event.id}
-              guestSample={socialProofQuery.data?.sample ?? []}
-              palette={palette}
-              theme={resolvedTheme}
-            />
-          </React.Suspense>
+        {acquisitionState.kind === "current" ? (
+          <>
+            {gateVisible ? (
+              <React.Suspense fallback={null}>
+                <SeeWhosGoingGate
+                  visible={gateVisible}
+                  onClose={() => setGateVisible(false)}
+                  entity={gateEntity}
+                  eventId={event.id}
+                  guestSample={socialProofQuery.data?.sample ?? []}
+                  palette={palette}
+                  theme={resolvedTheme}
+                />
+              </React.Suspense>
+            ) : null}
+          </>
         ) : null}
       </View>
     );
@@ -1203,9 +1323,15 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           // the screen bottom on phone/native: the floating Get-tickets bar height
           // + its 24px bottom offset + the device safe-area. Desktop hides the bar
           // (the shell's own desktop scroll padding handles clearance), so 0 there.
-          contentBottomInset={isDesktop ? 0 : FLOATING_BAR_CLEARANCE + insets.bottom}
+          contentBottomInset={
+            isDesktop
+              ? 0
+              : acquisitionState.kind === "current"
+                ? FLOATING_BAR_CLEARANCE + insets.bottom
+                : insets.bottom + 24
+          }
           // ORCH-1167-R2 (change 5) — desktop relocates the box to the sticky panel.
-          hideTicketBox={isDesktop}
+          hideTicketBox={isDesktop || acquisitionState.kind !== "current"}
           ticketQuantities={ticketQuantities}
           onChangeTicketQuantity={handleChangeTicketQuantity}
           onProceedToCart={handleProceedToCart}
@@ -1215,6 +1341,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           // ORCH-1342 — web-only "See who's going" → install gate (undefined
           // on business native → inert cluster, DESIGN §1.5).
           onSeeWhosGoing={onSeeWhosGoingProp}
+          {...(acquisitionState.kind === "current"
+            ? {}
+            : { onSeeWhosGoing: undefined })}
           testID="orch-1167-event-foundation"
         />
       )}
@@ -1226,6 +1355,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           in-box Proceed calls (copy never diverges — one owner). */}
       {pageVariant !== "cancelled" &&
       pageVariant !== "password-gate" &&
+      acquisitionState.kind === "current" &&
       !isDesktop &&
       floatingPillVisible ? (
         <View style={styles.floatWrap} pointerEvents="box-none">
@@ -1251,12 +1381,14 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         description={event.description.slice(0, 200)}
       />
 
-      <JoinWaitlistSheet
-        visible={waitlistTicket !== null}
-        eventId={event.id}
-        ticket={waitlistTicket}
-        onClose={() => setWaitlistTicketId(null)}
-      />
+      {acquisitionState.kind === "current" && waitlistTicket !== null ? (
+        <JoinWaitlistSheet
+          visible
+          eventId={event.id}
+          ticket={waitlistTicket}
+          onClose={() => setWaitlistTicketId(null)}
+        />
+      ) : null}
 
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast
@@ -1270,18 +1402,22 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       {/* ORCH-1342 — the ONE web install gate. Conditionally rendered so the
           lazy chunk fetches ONLY on the first open (hidden ⇒ nothing in the
           tree — the COMMS-0084 no-residue posture holds by construction). */}
-      {gateVisible ? (
-        <React.Suspense fallback={null}>
-          <SeeWhosGoingGate
-            visible={gateVisible}
-            onClose={() => setGateVisible(false)}
-            entity={gateEntity}
-            eventId={event.id}
-            guestSample={socialProofQuery.data?.sample ?? []}
-            palette={palette}
-            theme={resolvedTheme}
-          />
-        </React.Suspense>
+      {acquisitionState.kind === "current" ? (
+        <>
+          {gateVisible ? (
+            <React.Suspense fallback={null}>
+              <SeeWhosGoingGate
+                visible={gateVisible}
+                onClose={() => setGateVisible(false)}
+                entity={gateEntity}
+                eventId={event.id}
+                guestSample={socialProofQuery.data?.sample ?? []}
+                palette={palette}
+                theme={resolvedTheme}
+              />
+            </React.Suspense>
+          ) : null}
+        </>
       ) : null}
     </View>
   );

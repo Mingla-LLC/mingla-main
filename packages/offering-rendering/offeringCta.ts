@@ -47,11 +47,19 @@ export const computeOfferingVariant = (
   event: PublicEventProps,
   passwordUnlocked: boolean,
 ): OfferingVariant => {
-  if (event.status === "cancelled") return "cancelled";
-  const isPast =
-    event.status === "ended" ||
-    (event.endedAt !== null && new Date(event.endedAt).getTime() < Date.now());
-  if (isPast) return "past";
+  if (
+    event.acquisitionState?.kind === "cancelled" ||
+    event.status === "cancelled"
+  ) {
+    return "cancelled";
+  }
+  if (
+    event.acquisitionState?.kind === "ended" ||
+    event.acquisitionState?.kind === "unavailable" ||
+    event.status === "ended"
+  ) {
+    return "past";
+  }
   const visibleTickets = event.tickets.filter((t) => t.visibility !== "hidden");
   const requiresPassword = visibleTickets.some((t) => t.passwordProtected);
   if (requiresPassword && !passwordUnlocked) return "password-gate";

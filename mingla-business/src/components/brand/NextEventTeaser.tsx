@@ -13,6 +13,7 @@ interface NextEventTeaserProps {
 
 const TYPE_LABEL: Record<PublicUpcomingRow["offeringType"], string> = {
   event: "Event",
+  rsvp: "RSVP",
   trip: "Trip",
   experience: "Experience",
 };

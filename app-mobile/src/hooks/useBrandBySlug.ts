@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import {
   resolveTheme,
+  resolveEventAcquisitionState,
   isThemeAnimationSlug,
   isThemeColor,
   isThemeFontSlug,
@@ -29,6 +30,8 @@ export const consumerBrandKeys = {
   venuesBySlug: (slug: string) =>
     [...consumerBrandKeys.all, "venues", slug] as const,
 };
+export const consumerBrandEventUrl = (event: PublicBrandEvent): string =>
+  `https://business.usemingla.com/e/${event.brandSlug}/${event.eventSlug}`;
 
 interface PublicBrandRow {
   id: string;
@@ -55,7 +58,7 @@ interface PublicEventRow {
   brand_slug: string;
   title: string;
   slug: string;
-  event_type: "event" | "trip" | "experience" | null;
+  event_type: "event" | "rsvp" | "trip" | "experience" | null;
   location_text: string | null;
   is_online: boolean;
   cover_media_url: string | null;
@@ -64,6 +67,7 @@ interface PublicEventRow {
   public_theme: Record<string, unknown> | null;
   currency: string | null;
   master_start_at: string | null;
+  master_end_at: string | null;
   master_timezone: string | null;
 }
 
@@ -121,7 +125,7 @@ interface PublicUpcomingRow {
   brand_id: string;
   brand_slug: string;
   brand_name: string;
-  offering_type: "event" | "trip" | "experience";
+  offering_type: "event" | "rsvp" | "trip" | "experience";
   offering_slug: string;
   title: string;
   description: string | null;
@@ -253,6 +257,11 @@ const mapEvent = (
     brandSlug: row.brand_slug,
     eventSlug: row.slug,
     status: row.status,
+    eventType: row.event_type === "rsvp" ? "rsvp" : "event",
+    operatorEndedAtUtc: null,
+    masterStartAtUtc: row.master_start_at,
+    masterEndAtUtc: row.master_end_at,
+    masterTimezone: row.master_timezone,
     dateLine: formatDateLine(row.master_start_at, row.master_timezone),
     venueName: row.location_text,
     format: row.is_online ? "online" : "in_person",
@@ -327,7 +336,7 @@ const mapUpcoming = (row: PublicUpcomingRow): PublicBrandUpcoming => ({
   publishedAt: row.published_at,
 });
 
-const getBrandBySlug = async (
+export const fetchConsumerBrandBySlug = async (
   slug: string,
 ): Promise<ConsumerBrandDetail | null> => {
   const { data: brandData, error: brandError } = await supabase
@@ -358,10 +367,24 @@ const getBrandBySlug = async (
   if (experienceResult.error !== null) throw experienceResult.error;
   if (upcomingResult.error !== null) throw upcomingResult.error;
 
+  const nowMs = Date.now();
   const allEventRows = ((eventResult.data ?? []) as PublicEventRow[]).filter(
-    (row) => row.event_type === "event",
+    (row) =>
+      (row.event_type === "event" || row.event_type === "rsvp") &&
+      resolveEventAcquisitionState(
+        {
+          operatorStatus: row.status,
+          operatorEndedAtUtc: null,
+          masterEndAtUtc: row.master_end_at,
+        },
+        nowMs,
+      ).kind === "current",
   );
-  const ticketMap = await fetchTickets(allEventRows.map((row) => row.id));
+  const ticketMap = await fetchTickets(
+    allEventRows
+      .filter((row) => row.event_type === "event")
+      .map((row) => row.id),
+  );
 
   // ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — drop PAID events from a
   // brand that can't charge from the consumer brand-page flat-events feed. The
@@ -377,6 +400,7 @@ const getBrandBySlug = async (
   const paidBrandIds = Array.from(
     new Set(
       allEventRows
+        .filter((row) => row.event_type === "event")
         .filter((row) => isPaidOnline(ticketMap.get(row.id) ?? []))
         .map((row) => row.brand_id)
         .filter((id): id is string => typeof id === "string"),
@@ -399,6 +423,7 @@ const getBrandBySlug = async (
   }
   const rows = allEventRows.filter(
     (row) =>
+      row.event_type === "rsvp" ||
       !isPaidOnline(ticketMap.get(row.id) ?? []) ||
       readyBrandIds.has(row.brand_id),
   );
@@ -463,7 +488,7 @@ export const useBrandBySlug = (
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       if (!enabled || slug === null) return null;
-      return getBrandBySlug(slug);
+      return fetchConsumerBrandBySlug(slug);
     },
   });
 };

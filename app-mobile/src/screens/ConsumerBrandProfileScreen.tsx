@@ -12,7 +12,11 @@ import {
   type PublicBrandVenueSummary,
 } from "@mingla/brand-rendering";
 
-import { useBrandBySlug, usePublicBrandVenues } from "../hooks/useBrandBySlug";
+import {
+  consumerBrandEventUrl,
+  useBrandBySlug,
+  usePublicBrandVenues,
+} from "../hooks/useBrandBySlug";
 import { useBrandFollow } from "../hooks/useBrandFollow";
 import { useAppStore } from "../store/appStore";
 import { postHogService } from "../services/postHogService";
@@ -142,9 +146,7 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
           onShare: handleShare,
           onToggleFollow: handleToggleFollow,
           onOpenEvent: (event: PublicBrandEvent) => {
-            void WebBrowser.openBrowserAsync(
-              `https://business.usemingla.com/e/${event.brandSlug}/${event.eventSlug}`,
-            );
+            void WebBrowser.openBrowserAsync(consumerBrandEventUrl(event));
           },
           onOpenTrip: (trip: PublicBrandTrip) => {
             // ORCH-1016 — open the in-app trip detail (deep-link re-export route),

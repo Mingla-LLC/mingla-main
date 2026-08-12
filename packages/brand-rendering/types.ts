@@ -53,6 +53,11 @@ export interface PublicBrandEvent {
   brandSlug: string;
   eventSlug: string;
   status: "scheduled" | "live" | "ended" | "cancelled";
+  eventType: "event" | "rsvp";
+  operatorEndedAtUtc: string | null;
+  masterStartAtUtc: string | null;
+  masterEndAtUtc: string | null;
+  masterTimezone: string | null;
   dateLine: string;
   venueName: string | null;
   format: "in_person" | "in-person" | "online" | "hybrid";
@@ -117,7 +122,7 @@ export interface PublicBrandUpcoming {
   brandId: string;
   brandSlug: string;
   brandName: string;
-  offeringType: "event" | "trip" | "experience";
+  offeringType: "event" | "rsvp" | "trip" | "experience";
   offeringSlug: string;
   name: string;
   bio: string | null;

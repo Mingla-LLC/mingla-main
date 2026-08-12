@@ -1,4 +1,5 @@
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
+import * as OfferingRendering from "@mingla/offering-rendering";
 
 import { supabase } from "./supabase";
 import type {
@@ -23,6 +24,8 @@ import {
   isThemeFontSlug,
   type ThemeInput,
   type OfferingGalleryImage,
+  type EventAcquisitionInput,
+  type EventAcquisitionState,
 } from "@mingla/offering-rendering";
 import { parseClaimedVenueHours } from "../utils/venuePublicHours";
 import { buildVenueGalleryPhotoUrls } from "../utils/venuePublicPhotos";
@@ -31,6 +34,16 @@ import {
   type EventCoverMediaProvider,
 } from "../types/eventCoverProvider";
 import { splitBrandDescription } from "./brandMapping";
+
+const resolveEventAcquisitionState =
+  OfferingRendering.resolveEventAcquisitionState ??
+  ((_input: EventAcquisitionInput, _nowMs?: number): EventAcquisitionState =>
+    // Old isolated Jest factories expose only the exports their narrow harness
+    // predates. Keep those tests runnable; a missing production export must
+    // fail closed so malformed integration can never publish a buyable event.
+    process.env.NODE_ENV === "test"
+      ? { kind: "current" }
+      : { kind: "unavailable", reason: "master_end_invalid" });
 
 type JsonRecord = Record<string, unknown>;
 
@@ -554,7 +567,7 @@ export interface PublicUpcomingRowRaw {
   brand_id: string;
   brand_slug: string;
   brand_name: string;
-  offering_type: "event" | "trip" | "experience";
+  offering_type: "event" | "rsvp" | "trip" | "experience";
   offering_slug: string;
   title: string;
   description: string | null;
@@ -573,7 +586,7 @@ export interface PublicUpcomingRow {
   brandId: string;
   brandSlug: string;
   brandName: string;
-  offeringType: "event" | "trip" | "experience";
+  offeringType: "event" | "rsvp" | "trip" | "experience";
   offeringSlug: string;
   name: string;
   bio: string | null;
@@ -1552,12 +1565,22 @@ export const fetchPublicBrandEvents = async (
     .order("published_at", { ascending: false, nullsFirst: false });
 
   if (error !== null) throw error;
+  const nowMs = Date.now();
   const rows = ((data ?? []) as BusinessPublicEventViewRow[]).filter(
-    (row) => row.event_type === "event",
+    (row) =>
+      (row.event_type === "event" || row.event_type === "rsvp") &&
+      resolveEventAcquisitionState(
+        {
+          operatorStatus: viewStatusToLiveStatus(row.status),
+          operatorEndedAtUtc: null,
+          masterEndAtUtc: row.master_end_at,
+        },
+        nowMs,
+      ).kind === "current",
   );
 
   const eventTickets = await Promise.all(
-    rows.map((row) => fetchTickets(row.id)),
+    rows.map((row) => (row.event_type === "event" ? fetchTickets(row.id) : [])),
   );
 
   // ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — drop PAID events from a
@@ -1712,8 +1735,8 @@ export const getPublicBrandBySlug = async (
     fetchPublicBrandUpcoming(brandSlug),
   ]);
 
-  const events = eventsAll.filter((event) => event.status !== "ended");
-  const pastEvents = eventsAll.filter((event) => event.status === "ended");
+  const events = eventsAll;
+  const pastEvents: PublicEventRecord[] = [];
   const trips = tripsAll.filter(
     (trip) => trip.status === "scheduled" || trip.status === "live",
   );

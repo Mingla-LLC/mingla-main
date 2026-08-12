@@ -1,0 +1,59 @@
+name: Issue 1902 public event lifecycle
+
+on:
+  pull_request:
+    paths:
+      - "packages/offering-rendering/**"
+      - "packages/brand-rendering/**"
+      - "mingla-business/src/services/publicEventsService.ts"
+      - "mingla-business/src/components/event/**"
+      - "mingla-business/src/components/brand/PublicBrandPage.tsx"
+      - "mingla-business/src/components/brand/NextEventTeaser.tsx"
+      - "app-mobile/src/hooks/useBrandBySlug.ts"
+      - "app-mobile/src/screens/ConsumerBrandProfileScreen.tsx"
+      - ".github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs"
+      - ".github/workflows/issue-1902-public-event-lifecycle-tests.yml"
+      - "docs/INVARIANT_REGISTRY.md"
+
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: node .github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs
+      - run: npm ci
+        working-directory: mingla-business
+      - run: npx jest --runInBand src/services/__tests__/issue_1902_public_brand_events.test.ts src/components/event/__tests__/issue_1902_public_event_acquisition.test.tsx src/components/event/__tests__/issue_1902_public_event_transition_overlays.test.tsx
+        working-directory: mingla-business
+        env:
+          NODE_PATH: ./node_modules
+      - run: deno test --allow-read packages/offering-rendering/__tests__/issue_1902_event_acquisition_lifecycle.test.ts
+      - run: NODE_PATH=./node_modules npx jest --config jest.issue679.cfg.cjs --runInBand --testMatch '**/__tests__/issue_1902_public_brand_events.test.tsx'
+        working-directory: mingla-business
+      - run: npm ci
+        working-directory: app-mobile
+      - run: npx jest --runInBand src/hooks/__tests__/issue_1902_public_brand_events.test.ts src/screens/__tests__/issue_1902_brand_event_routing.test.tsx
+        working-directory: app-mobile
+      - name: Run independent client tester proofs when present
+        run: |
+          offering="packages/offering-rendering/__tests__/issue_1902_event_acquisition_lifecycle.tester_adversarial.test.ts"
+          if test -f "$offering"; then deno test --allow-read "$offering"; fi
+          brand="packages/brand-rendering/__tests__/issue_1902_public_brand_events.tester_adversarial.test.tsx"
+          if test -f "$brand"; then
+            (cd mingla-business && NODE_PATH=./node_modules npx jest --config jest.issue679.cfg.cjs --runInBand --testMatch '**/__tests__/issue_1902_public_brand_events.tester_adversarial.test.tsx')
+          fi
+          business="mingla-business/src/components/event/__tests__/issue_1902_public_event_acquisition.tester_adversarial.test.tsx"
+          if test -f "$business"; then (cd mingla-business && NODE_PATH=./node_modules npx jest --runInBand src/components/event/__tests__/issue_1902_public_event_acquisition.tester_adversarial.test.tsx); fi
+          consumer="app-mobile/src/hooks/__tests__/issue_1902_public_brand_events.tester_adversarial.test.ts"
+          if test -f "$consumer"; then (cd app-mobile && npx jest --runInBand src/hooks/__tests__/issue_1902_public_brand_events.tester_adversarial.test.ts); fi
+      - run: deno test --allow-read supabase/functions/public-submit-rsvp/__tests__/issue_1902_rsvp_end_guard.test.ts
+      - run: deno test --allow-read supabase/migrations/__tests__/issue_1902_public_event_lifecycle.test.ts
+      - run: deno test --allow-env --allow-net --allow-read --allow-run supabase/functions/public-submit-rsvp/__tests__/issue_1902_rsvp_end_guard.tester_adversarial.test.ts
+      - run: deno test --allow-read supabase/migrations/__tests__/issue_1902_public_event_lifecycle.tester_adversarial.test.ts

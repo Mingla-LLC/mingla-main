@@ -8275,3 +8275,25 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Scope:** `mingla-business` client only. Zero migrations, zero edge-function changes, zero edge deploys.
 - **Explicitly NOT in scope:** the missing rail gate on `useBrandStripeStatus` (a Paystack-only NG brand still polls a Stripe endpoint every 30s); the `src/lib/search/registry.ts` `minRank: 30` payments entries, which are wrong against the server predicate and cannot be fixed by changing the number because 30 and 50 are both wrong; brand-state-derived payments CTAs; the `deleted_at` asymmetry on the server predicate's `finance_manager` branch (issue #1872); and the `appreview@usemingla.com` membership rank, which is a production database write and Seth's call.
 - **Established:** DRAFT at issue #1863 IMPLEMENT 2026-08-11.
+
+---
+
+## DRAFT — issue #1902 (public event acquisition lifecycle)
+
+### I-PROPOSED-1902-PUBLIC-ACQUISITION-LIFECYCLE-SINGLE-OWNER (DRAFT)
+
+- **Rule:** Every public client decides whether ticket or RSVP acquisition is current, ended, cancelled, or unavailable through `packages/offering-rendering/eventAcquisitionLifecycle.ts::resolveEventAcquisitionState`. Adapters and renderers may consume the resolved state but may not parse or compare lifecycle timestamps independently.
+- **Enforcement:** `.github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs` and the issue #1902 lifecycle transition suite.
+- **Established:** DRAFT at issue #1902 IMPLEMENT 2026-08-11; activation requires independent tester PASS and merge.
+
+### I-PUBLIC-BRAND-EVENTS-CURRENT-TICKETED-AND-RSVP (DRAFT)
+
+- **Rule:** A public brand Events tab contains only current public ticketed events and current public RSVP events. Ended, cancelled, missing-end, and invalid-end rows are absent; RSVP rows never trigger ticket-tier or paid-readiness reads; every visible card is one complete navigation target with an honest type and action.
+- **Enforcement:** both public brand adapters, the shared brand renderer, `.github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs`, and the issue #1902 business/consumer/shared regression suites.
+- **Established:** DRAFT at issue #1902 IMPLEMENT 2026-08-11; activation requires independent tester PASS and merge.
+
+### I-PUBLIC-PAGE-DATA-DRIVEN-TABS — AMENDMENT (DRAFT, issue #1902)
+
+- **Amendment:** The public brand Events tab is data-driven by the non-empty current acquisition set only. A historical event may remain reachable by direct URL with descriptive history, but it never keeps the Events tab visible and never exposes ticket, RSVP, or contribution controls.
+- **Enforcement:** the shared renderer current-only filter, wake/boundary re-evaluation, and the issue #1902 brand/direct-page regression suites.
+- **Established:** DRAFT amendment at issue #1902 IMPLEMENT 2026-08-11.

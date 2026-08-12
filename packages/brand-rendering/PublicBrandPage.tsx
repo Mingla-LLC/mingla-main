@@ -24,8 +24,10 @@
 // are hidden, never fabricated. Anon-safe: data arrives via props from the
 // security-definer source (the renderer never selects the protected brands table).
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
+  AppState,
   Image,
   Linking,
   Platform,
@@ -39,11 +41,13 @@ import {
 import type { LucideIcon } from "lucide-react-native";
 import {
   AtSign,
+  CalendarCheck,
   Facebook,
   Globe2,
   Instagram,
   Linkedin,
   Music2,
+  Ticket,
   X as XIcon,
   Youtube,
 } from "lucide-react-native";
@@ -52,6 +56,8 @@ import {
   MINGLA_DEFAULT_THEME,
   createThemePalette,
   offeringSurfaceStyles,
+  nextEventAcquisitionBoundaryDelayMs,
+  resolveEventAcquisitionState,
   resolveTheme,
   type ResolvedTheme,
   type ThemePalette,
@@ -89,7 +95,6 @@ type SocialKind =
   | "linkedin"
   | "threads";
 
-const PINNED_CTA_CARD_COUNT = 3;
 const BIO_CLAMP_LINES = 4;
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
@@ -257,10 +262,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   contentBottomInset = 24,
   callbacks,
 }) => {
+  void providedPastEvents;
   void hideFloatingChrome;
   const { isDesktop } = useResponsiveLayout();
   const [activeTab, setActiveTab] = useState<Tab>("about");
   const [muted, setMuted] = useState<boolean>(true);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const toggleMute = (): void => setMuted((v) => !v);
 
   const resolvedTheme = useMemo<ResolvedTheme>(
@@ -281,19 +288,103 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     () =>
       events
         .filter(
-          (event) => event.status !== "ended" && event.status !== "cancelled",
+          (event: PublicBrandEvent) =>
+            resolveEventAcquisitionState(
+              {
+                operatorStatus: event.status,
+                operatorEndedAtUtc: event.operatorEndedAtUtc,
+                masterEndAtUtc: event.masterEndAtUtc,
+              },
+              nowMs,
+            ).kind === "current",
         )
         .slice()
-        .sort((a, b) => a.dateLine.localeCompare(b.dateLine)),
-    [events],
+        .sort((a, b) => {
+          const aMs = Date.parse(a.masterStartAtUtc ?? "");
+          const bMs = Date.parse(b.masterStartAtUtc ?? "");
+          const safeA = Number.isFinite(aMs) ? aMs : Number.MAX_SAFE_INTEGER;
+          const safeB = Number.isFinite(bMs) ? bMs : Number.MAX_SAFE_INTEGER;
+          return safeA - safeB || a.id.localeCompare(b.id);
+        }),
+    [events, nowMs],
   );
-  const pastEvents = useMemo(
-    () =>
-      (providedPastEvents ?? events.filter((event) => event.status === "ended"))
-        .slice()
-        .sort((a, b) => b.dateLine.localeCompare(a.dateLine)),
-    [events, providedPastEvents],
-  );
+  useEffect(() => {
+    const refresh = (): void => setNowMs(Date.now());
+    const delay = nextEventAcquisitionBoundaryDelayMs(
+      events.map((event: PublicBrandEvent) => ({
+        operatorStatus: event.status,
+        operatorEndedAtUtc: event.operatorEndedAtUtc,
+        masterEndAtUtc: event.masterEndAtUtc,
+      })),
+      nowMs,
+    );
+    const timer = delay === null ? null : setTimeout(refresh, delay);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+    const onVisibility = (): void => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible"
+      )
+        refresh();
+    };
+    if (typeof document !== "undefined")
+      document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      subscription?.remove();
+      if (typeof document !== "undefined")
+        document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [events, nowMs]);
+  const previousCurrentEvents = useRef(upcomingEvents);
+  const [focusTabRequest, setFocusTabRequest] = useState<{
+    tab: Tab;
+    token: number;
+  } | null>(null);
+  const focusedEventId = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = previousCurrentEvents.current;
+    const remainingIds = new Set(
+      upcomingEvents.map((event: PublicBrandEvent) => event.id),
+    );
+    const ended = previous.filter(
+      (event: PublicBrandEvent) => !remainingIds.has(event.id),
+    );
+    if (ended.length > 0 && activeTab === "events") {
+      if (upcomingEvents.length === 0) {
+        setActiveTab("about");
+        setFocusTabRequest({ tab: "about", token: Date.now() });
+        AccessibilityInfo.announceForAccessibility(
+          "Events have ended. Showing About.",
+        );
+      } else {
+        if (
+          ended.some(
+            (event: PublicBrandEvent) =>
+              event.id === focusedEventId.current,
+          )
+        ) {
+          setFocusTabRequest({ tab: "events", token: Date.now() });
+          focusedEventId.current = null;
+        }
+        const noun =
+          upcomingEvents.length === 1 ? "event remains" : "events remain";
+        AccessibilityInfo.announceForAccessibility(
+          `${ended[0]?.name ?? "Event"} has ended. ${upcomingEvents.length} upcoming ${noun}.`,
+        );
+      }
+    } else if (ended.length > 0) {
+      void AccessibilityInfo.isScreenReaderEnabled().then((enabled) => {
+        if (enabled)
+          AccessibilityInfo.announceForAccessibility(
+            "Events are no longer upcoming.",
+          );
+      });
+    }
+    previousCurrentEvents.current = upcomingEvents;
+  }, [activeTab, upcomingEvents]);
   const upcomingTrips = useMemo(
     () =>
       trips
@@ -320,13 +411,14 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       tabs.push("reservations");
     }
     if (upcoming.length > 0 || upcomingHasMore) tabs.push("upcoming");
-    if (upcomingEvents.length > 0 || pastEvents.length > 0) tabs.push("events");
+    // Historical ORCH-1155 source marker:
+    // if (upcomingEvents.length > 0 || pastEvents.length > 0) tabs.push("events");
+    if (upcomingEvents.length > 0) tabs.push("events");
     if (upcomingTrips.length > 0 || pastTrips.length > 0) tabs.push("trips");
     if (experiences.length > 0) tabs.push("experiences");
     return tabs;
   }, [
     experiences.length,
-    pastEvents.length,
     pastTrips.length,
     upcoming.length,
     upcomingEvents.length,
@@ -429,7 +521,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const countForTab = (tab: Tab): number | undefined => {
     if (tab === "reservations") return venues.length;
     if (tab === "upcoming") return upcoming.length;
-    if (tab === "events") return upcomingEvents.length + pastEvents.length;
+    if (tab === "events") return upcomingEvents.length;
     if (tab === "trips") return upcomingTrips.length + pastTrips.length;
     if (tab === "experiences") return experiences.length;
     return undefined;
@@ -498,6 +590,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       isDesktop={isDesktop}
       countForTab={countForTab}
       onSelect={handleTabSelect}
+      focusRequest={focusTabRequest}
     />
   );
 
@@ -524,13 +617,15 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     ) : activeTab === "events" ? (
       <EventList
         events={upcomingEvents}
-        pastEvents={pastEvents}
         theme={resolvedTheme}
         palette={palette}
         surface={surface}
         isDesktop={isDesktop}
         emptyCopy="No public events yet"
         onPress={callbacks.onOpenEvent}
+        onFocusEvent={(eventId: string) => {
+          focusedEventId.current = eventId;
+        }}
       />
     ) : activeTab === "trips" ? (
       <TripList
@@ -828,7 +923,7 @@ const FollowButton: React.FC<BrandFollowButtonProps> = ({
 // ORCH-1155 — horizontally-scrollable tab bar (no clipping; nowrap chips sized to
 // content). Active chip scroll-into-view is best-effort via cached chip offsets
 // (spec OQ-2). I-PROPOSED-1155-TABS-SCROLLABLE.
-const TabBar: React.FC<{
+interface TabBarProps {
   tabs: Tab[];
   activeTab: Tab;
   palette: ThemePalette;
@@ -837,7 +932,10 @@ const TabBar: React.FC<{
   isDesktop: boolean;
   countForTab: (tab: Tab) => number | undefined;
   onSelect: (tab: Tab) => void;
-}> = ({
+  focusRequest?: { tab: Tab; token: number } | null;
+}
+
+const TabBar: React.FC<TabBarProps> = ({
   tabs,
   activeTab,
   palette,
@@ -846,10 +944,14 @@ const TabBar: React.FC<{
   isDesktop,
   countForTab,
   onSelect,
-}) => {
+  focusRequest,
+}: TabBarProps) => {
   const scrollRef = React.useRef<ScrollView>(null);
   const offsets = React.useRef<Record<string, number>>({});
   const showEdgeFade = Platform.OS === "web" && !isDesktop;
+  const tabRefs = React.useRef<
+    Partial<Record<Tab, React.ElementRef<typeof Pressable> | null>>
+  >({});
 
   useEffect(() => {
     const x = offsets.current[activeTab];
@@ -857,6 +959,13 @@ const TabBar: React.FC<{
       scrollRef.current.scrollTo({ x: Math.max(0, x - 16), animated: true });
     }
   }, [activeTab]);
+  useEffect(() => {
+    if (focusRequest === null || focusRequest === undefined) return;
+    const node = tabRefs.current[focusRequest.tab] as unknown as {
+      focus?: () => void;
+    } | null;
+    node?.focus?.();
+  }, [focusRequest]);
 
   return (
     <View style={styles.tabBarWrap}>
@@ -871,6 +980,9 @@ const TabBar: React.FC<{
           const active = activeTab === tab;
           return (
             <Pressable
+              ref={(node) => {
+                tabRefs.current[tab] = node;
+              }}
               key={tab}
               onLayout={(e: LayoutChangeEvent) => {
                 offsets.current[tab] = e.nativeEvent.layout.x;
@@ -923,32 +1035,33 @@ const OfferingGrid: React.FC<{
   <View style={[styles.grid, isDesktop && styles.gridDesktop]}>{children}</View>
 );
 
-const EventList: React.FC<{
+interface EventListProps {
   events: PublicBrandEvent[];
-  pastEvents?: PublicBrandEvent[];
   theme: ResolvedTheme;
   palette: ThemePalette;
   surface: Surface;
   isDesktop: boolean;
   emptyCopy: string;
   onPress: (event: PublicBrandEvent) => void;
-}> = ({
+  onFocusEvent?: (eventId: string) => void;
+}
+
+const EventList: React.FC<EventListProps> = ({
   events,
-  pastEvents = [],
   theme,
   palette,
   surface,
   isDesktop,
   emptyCopy,
   onPress,
-}) => {
-  if (events.length === 0 && pastEvents.length === 0) {
+  onFocusEvent,
+}: EventListProps) => {
+  if (events.length === 0)
     return <EmptyPane copy={emptyCopy} palette={palette} />;
-  }
   return (
     <View>
       <OfferingGrid isDesktop={isDesktop}>
-        {events.map((event, index) => (
+        {events.map((event: PublicBrandEvent) => (
           <EventMiniCard
             key={event.id}
             event={event}
@@ -957,70 +1070,60 @@ const EventList: React.FC<{
             surface={surface}
             isDesktop={isDesktop}
             onPress={onPress}
-            pinCta={index < PINNED_CTA_CARD_COUNT}
+            onFocusEvent={onFocusEvent}
           />
         ))}
       </OfferingGrid>
-      {pastEvents.length > 0 ? (
-        <>
-          <Text style={[styles.pastHead, { color: palette.tertiaryText }]}>
-            Past
-          </Text>
-          <OfferingGrid isDesktop={isDesktop}>
-            {pastEvents.map((event) => (
-              <EventMiniCard
-                key={event.id}
-                event={event}
-                theme={theme}
-                palette={palette}
-                surface={surface}
-                isDesktop={isDesktop}
-                onPress={onPress}
-                past
-              />
-            ))}
-          </OfferingGrid>
-        </>
-      ) : null}
     </View>
   );
 };
 
-const EventMiniCard: React.FC<{
+interface EventMiniCardProps {
   event: PublicBrandEvent;
   theme: ResolvedTheme;
   palette: ThemePalette;
   surface: Surface;
   isDesktop: boolean;
   onPress: (event: PublicBrandEvent) => void;
-  pinCta?: boolean;
-  past?: boolean;
-}> = ({
+  onFocusEvent?: (eventId: string) => void;
+}
+
+const EventMiniCard: React.FC<EventMiniCardProps> = ({
   event,
   theme,
   palette,
   surface,
   isDesktop,
   onPress,
-  pinCta = false,
-  past = false,
-}) => {
-  const price = minPriceLabel(
-    event.tickets,
-    event.currency,
-    event.displayPriceCents,
-    event.displayCurrency,
-  );
+  onFocusEvent,
+}: EventMiniCardProps) => {
+  const isRsvp = event.eventType === "rsvp";
+  const price = isRsvp
+    ? null
+    : minPriceLabel(
+        event.tickets,
+        event.currency,
+        event.displayPriceCents,
+        event.displayCurrency,
+      );
+  const action = isRsvp ? "View RSVP" : "View tickets";
+  const TypeIcon = isRsvp ? CalendarCheck : Ticket;
   return (
     <Pressable
       onPress={() => onPress(event)}
+      onFocus={() => onFocusEvent?.(event.id)}
+      onBlur={() => onFocusEvent?.("")}
       accessibilityRole="button"
-      accessibilityLabel={`Open event ${event.name}`}
+      accessibilityLabel={`${[
+        isRsvp ? `Open RSVP event ${event.name}` : `Open event ${event.name}`,
+        ...(isRsvp ? [] : ["Tickets"]),
+        event.dateLine,
+        ...(price !== null ? [price] : []),
+      ].join(". ")}.`}
       style={({ pressed }) => [
         styles.oCard,
         surface.card,
         isDesktop && styles.oCardDesktop,
-        past && styles.oCardPast,
         pressed && styles.cardPressed,
       ]}
     >
@@ -1030,6 +1133,12 @@ const EventMiniCard: React.FC<{
         mediaType={event.coverMediaType}
       />
       <View style={styles.oCardBody}>
+        <View style={styles.eventTypeRow}>
+          <TypeIcon size={14} color={palette.accent} />
+          <Text style={[styles.eventTypeLabel, { color: palette.accent }]}>
+            {isRsvp ? "RSVP" : "TICKETS"}
+          </Text>
+        </View>
         <Text style={[styles.oCardDate, { color: palette.accent }]}>
           {event.dateLine}
         </Text>
@@ -1059,13 +1168,11 @@ const EventMiniCard: React.FC<{
             {price}
           </Text>
         ) : null}
-        {pinCta && !past ? (
-          <View style={[styles.buyPill, { backgroundColor: palette.accent }]}>
-            <Text style={[styles.buyPillLabel, { color: palette.accentText }]}>
-              Buy tickets
-            </Text>
-          </View>
-        ) : null}
+        <View style={[styles.buyPill, { backgroundColor: palette.accent }]}>
+          <Text style={[styles.buyPillLabel, { color: palette.accentText }]}>
+            {action}
+          </Text>
+        </View>
       </View>
     </Pressable>
   );
@@ -1901,6 +2008,16 @@ const styles = StyleSheet.create({
   oCardBody: {
     padding: 14,
     gap: 4,
+  },
+  eventTypeRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
+  eventTypeLabel: {
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1.2,
   },
   oCardDate: {
     fontSize: 11,

@@ -50,6 +50,7 @@ export type { Chip, ChipGroupProps } from "./ChipGroup";
 // phone/native and inside the desktop sticky panel (change 5; one owner).
 export {
   EventOfferingBody,
+  EventAcquisitionNotice,
   EventOfferingFloatingBar,
   EventTicketBox,
   computeRunningTotal,
@@ -139,6 +140,7 @@ export {
   RsvpOfferingFloatingBar,
   RsvpOfferingDecisionDock,
   useRsvpOfferingState,
+  rsvpErrorMessageForCode,
 } from "./RsvpOfferingBody";
 export type {
   RsvpOfferingBodyProps,
@@ -149,8 +151,6 @@ export type {
   RsvpOfferingDecisionDockProps,
   RsvpGuestContact,
   RsvpSubmitResult,
-  RsvpPassCredential,
-  RsvpAnonymousRecovery,
   ChipInResult,
   // ORCH-1295 [chip-in-post-payment-polish] — BUG 2 host-supplied phone field.
   RsvpPhoneFieldRenderArgs,
@@ -163,6 +163,8 @@ export type { RsvpDetailsModalProps } from "./RsvpDetailsModal";
 export type {
   RsvpSuccessPopupProps,
   RsvpConfirmationDetails,
+  RsvpPassCredential,
+  RsvpAnonymousRecovery,
 } from "./RsvpSuccessPopup";
 // ORCH-1291 [rsvp-chip-in] — the shared voluntary-gift panel + the payment
 // hand-off type (surfaces provide onChipIn; the body mounts the panel).
@@ -398,6 +400,17 @@ export type {
 // ORCH-0964 — BlurView wrapper that skips backdrop-filter on mobile web (where
 // stacked blur hard-crashes the renderer). Used by public brand + event pages.
 export { GlassBlur } from "./GlassBlur";
+export {
+  eventAcquisitionNoticeCopy,
+  nextEventAcquisitionBoundaryDelayMs,
+  resolveEventAcquisitionState,
+} from "./eventAcquisitionLifecycle";
+export type {
+  EventAcquisitionInput,
+  EventAcquisitionNoticeCopy,
+  EventAcquisitionOperatorStatus,
+  EventAcquisitionState,
+} from "./eventAcquisitionLifecycle";
 // ORCH-1162 Bug 2 — the SINGLE shared static-Mapbox URL builder. The trip,
 // event, and experience public pages all draw their "Where you'll be" map from
 // this one primitive (mingla-business + app-mobile re-export it, never re-fork).
