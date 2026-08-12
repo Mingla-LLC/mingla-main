@@ -20,7 +20,19 @@ DECLARE
   v_ids uuid[];
   v_acl aclitem[];
   v_config text[];
+  v_definition text;
 BEGIN
+  -- #1902 is the latest prior writer of this shared feed. #1919 may replace
+  -- only its payment predicate; RSVP lifecycle support is explicitly excluded.
+  SELECT pg_catalog.pg_get_functiondef(
+    'public.pg_public_brand_upcoming(text,timestamptz,integer)'::regprocedure
+  ) INTO v_definition;
+  IF position('WHEN ''rsvp''::text THEN ed.start_at' IN v_definition) = 0
+     AND position('WHEN ''rsvp'' THEN ed.start_at' IN v_definition) = 0 THEN
+    RAISE EXCEPTION
+      'I1919-T00: pg_public_brand_upcoming reverted #1902 RSVP admission';
+  END IF;
+
   INSERT INTO auth.users (id) VALUES (v_user);
   INSERT INTO public.creator_accounts (id) VALUES (v_user);
   INSERT INTO public.brands (
