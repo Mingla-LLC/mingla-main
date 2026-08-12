@@ -19,8 +19,9 @@ import { Badge } from "../components/ui/Badge";
 import { Input, Textarea, Toggle } from "../components/ui/Input";
 import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../context/ToastContext";
+import { loadFeatureFlags } from "../lib/featureFlags";
 import { AdConnectionsPanel } from "../components/AdConnectionsPanel";
-import { AppIdentityReadinessPanel } from "../components/AppIdentityReadinessPanel";
+import { AppDownloadReadinessPanel } from "../components/app-readiness/AppDownloadReadinessPanel";
 import {
   campaignAction,
   connectMeta,
@@ -83,6 +84,7 @@ export function AdEnginePage() {
   const [campaignsLoading, setCampaignsLoading] = useState(true);
   const [rowBusy, setRowBusy] = useState({});
   const [rowWarning, setRowWarning] = useState({});
+  const [appDownloadReadinessEnabled, setAppDownloadReadinessEnabled] = useState(false);
 
   // ── Create form ──
   const [form, setForm] = useState({
@@ -139,6 +141,18 @@ export function AdEnginePage() {
     loadConnection();
     loadCampaigns();
   }, [loadConnection, loadCampaigns]);
+
+  useEffect(() => {
+    let mounted = true;
+    loadFeatureFlags().then((flags) => {
+      if (mounted) {
+        setAppDownloadReadinessEnabled(flags.enable_app_download_readiness === true);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleConnect = async () => {
     setConnecting(true);
@@ -308,7 +322,21 @@ export function AdEnginePage() {
           operator overview. ── */}
       <AdConnectionsPanel />
 
-      <AppIdentityReadinessPanel />
+      {appDownloadReadinessEnabled ? (
+        <AppDownloadReadinessPanel />
+      ) : (
+        <section
+          aria-label="App-download readiness"
+          className="rounded-xl border border-[var(--gray-200)] bg-[var(--color-background-primary)] p-4 text-sm text-[var(--color-text-secondary)]"
+        >
+          App-download readiness is being connected. No campaigns can be created here.
+        </section>
+      )}
+
+      <section aria-labelledby="web-traffic-campaigns-heading" className="space-y-1">
+        <h2 id="web-traffic-campaigns-heading" className="text-lg font-semibold">Web traffic campaigns</h2>
+        <p className="text-sm text-[var(--color-text-secondary)]">Create and manage ads that send people to Mingla public web pages.</p>
+      </section>
 
       {/* ── SC-1…SC-4: Meta connection detail (floors, billing, IG link) ── */}
       <SectionCard
@@ -374,7 +402,7 @@ export function AdEnginePage() {
 
       {/* ── Preflight (blueprint §1.0) ── */}
       <SectionCard
-        title="Channel preflight"
+        title="Web traffic preflight"
         subtitle="If I launch right now, will an ad actually run? Meta is live; the other four channels fail-close until their work packages land."
         action={
           <Button variant="secondary" size="sm" icon={Megaphone} loading={preflightRunning} onClick={handlePreflight}>
@@ -414,7 +442,7 @@ export function AdEnginePage() {
 
       {/* ── SC-5: create ── */}
       <SectionCard
-        title="Create campaign"
+        title="Create web traffic campaign"
         subtitle="Everything is created PAUSED. The ad-visible destination is the canonical public page (never the OneLink)."
       >
         {!isConnected ? (

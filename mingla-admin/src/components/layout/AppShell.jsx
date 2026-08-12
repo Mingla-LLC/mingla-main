@@ -36,7 +36,7 @@ export function AppShell({ activeTab, onTabChange, children }) {
         <Header title={currentTitle} onMobileMenuOpen={handleMobileOpen} onNavigate={onTabChange} />
 
         <main className="flex-1 overflow-y-auto">
-          <div className="w-full max-w-[--content-max-width] mx-auto px-16">
+          <div className="w-full min-w-0 max-w-[--content-max-width] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
             {children}
           </div>
         </main>

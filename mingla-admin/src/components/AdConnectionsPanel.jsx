@@ -93,7 +93,7 @@ export function AdConnectionsPanel() {
   return (
     <SectionCard
       title="Ad Connections"
-      subtitle="Live status across all 5 ad channels — one-click Connect/Reconnect. The token never reaches this browser."
+      subtitle="Corporate accounts that pay for ads. A connection alone does not prove app-download readiness."
       action={
         <Button variant="secondary" size="sm" icon={RefreshCw} loading={loading} onClick={load}>
           Refresh

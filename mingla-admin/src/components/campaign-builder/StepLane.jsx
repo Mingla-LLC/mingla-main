@@ -19,7 +19,7 @@ const LANES = [
     label: "Businesses",
     description: "Ads drive businesses to the Mingla Business signup/claim flow.",
     disabled: true,
-    disabledReason: "The business lane isn't provisioned yet — its ad connections land later.",
+    disabledReason: "Business web traffic campaigns are not enabled in this builder yet.",
   },
 ];
 

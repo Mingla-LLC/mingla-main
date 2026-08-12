@@ -3,61 +3,31 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import {
-  FRESHNESS_MS,
-  deriveReadinessState,
-  isIdentityResultStale,
-  reasonCopy,
-  validateIdentityPreflightResponse,
-} from "../lib/adAppIdentityReadiness.js";
+import { countsFor, demoteLatest, validateReadinessResponse } from "../lib/adAppReadiness.js";
+import { response } from "./fixtures/issue1950Readiness.js";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(here, "../..");
-const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+const here=path.dirname(fileURLToPath(import.meta.url));const root=path.resolve(here,"../..");const read=(relative)=>fs.readFileSync(path.join(root,relative),"utf8");
 
-const response = { app_key: "explorer", checked_at: "2026-08-12T01:55:00.000Z", overall: "ready", providers: [
-  { provider: "meta", verdict: "ready", payer: { external_account_id: "2393570861066813" }, expected_identity: { username: "usemingla" }, matched_identity: { username: "usemingla" }, checks: [] },
-  { provider: "tiktok", verdict: "ready", payer: { external_account_id: "7627974536397766673" }, expected_identity: { username: "usemingla" }, matched_identity: { username: "usemingla" }, checks: [] },
-] };
-
-test("#1928 accepts only exact app/provider order and fail-closed overall", () => {
-  assert.equal(validateIdentityPreflightResponse(response, "explorer"), response);
-  assert.equal(validateIdentityPreflightResponse({ ...response, app_key: "business" }, "explorer"), null);
-  assert.equal(validateIdentityPreflightResponse({ ...response, providers: [...response.providers].reverse() }, "explorer"), null);
-  const mixed = { ...response, overall: "ready", providers: [response.providers[0], { ...response.providers[1], verdict: "blocked" }] };
-  assert.equal(validateIdentityPreflightResponse(mixed, "explorer"), null);
+test("#1928 consolidated authority accepts exact app OS and five-provider order only",()=>{
+  assert.ok(validateReadinessResponse(response,"explorer","ios"));
+  const wrong=structuredClone(response);wrong.targets[0].app_key="business";assert.equal(validateReadinessResponse(wrong,"explorer","ios"),null);
+  const reordered=structuredClone(response);reordered.targets[0].latest.results.reverse();const accepted=validateReadinessResponse(reordered,"explorer","ios");assert.equal(countsFor(accepted.selected.latest).blocked,5);
+  const missing=structuredClone(response);missing.targets[0].latest.results.pop();assert.equal(countsFor(validateReadinessResponse(missing,"explorer","ios").selected.latest).blocked,5);
 });
 
-test("#1928 stale boundary is strict greater-than 15 minutes and never remains ready offline", () => {
-  const checked = Date.parse(response.checked_at);
-  assert.equal(FRESHNESS_MS, 900000);
-  assert.equal(isIdentityResultStale(response.checked_at, checked + FRESHNESS_MS), false);
-  assert.equal(isIdentityResultStale(response.checked_at, checked + FRESHNESS_MS + 1), true);
-  assert.equal(deriveReadinessState({ phase: "ready", result: response }, { nowMs: checked + FRESHNESS_MS + 1 }), "stale");
-  assert.equal(deriveReadinessState({ phase: "ready", result: response }, { online: false, nowMs: checked }), "offline");
+test("#1928 consolidated authority keeps sibling identities isolated and nonready sets cannot become Ready",()=>{
+  const mixed=structuredClone(response);mixed.targets[2].latest.results[0].verdict="action_required";mixed.targets[2].latest.results[0].owner_label="Engineering";mixed.targets[2].latest.results[0].action_code="review_mingla_configuration";
+  const accepted=validateReadinessResponse(mixed,"business","ios");assert.equal(countsFor(accepted.selected.latest).ready,4);assert.equal(countsFor(accepted.selected.latest).action_required,1);assert.equal(countsFor(accepted.targets[0].latest).ready,5);
+  const duplicate=structuredClone(response);duplicate.targets[2].latest.results[1]={...duplicate.targets[2].latest.results[0]};assert.equal(countsFor(validateReadinessResponse(duplicate,"business","ios").selected.latest).blocked,5);
 });
 
-test("#1928 maps every stable reason and keeps unknown reasons blocked", () => {
-  const codes = ["app_registry_missing", "app_registry_inactive", "identity_registry_missing", "identity_registry_inactive", "identity_registry_invalid", "payer_connection_missing", "payer_connection_inactive", "payer_account_mismatch", "provider_unreachable", "provider_response_invalid", "identity_not_found", "identity_type_mismatch", "identity_username_mismatch", "identity_unavailable", "meta_page_not_authorized", "meta_instagram_mismatch", "meta_validate_only_failed"];
-  for (const code of codes) assert.notEqual(reasonCopy(code, { appKey: "business", provider: "tiktok", username: "minglahost", expectedType: "BC_AUTH_TT" }).title, "Identity check blocked");
-  assert.equal(reasonCopy("new_future_reason").title, "Identity check blocked");
+test("#1928 server freshness and immediate recheck demotion never preserve green",()=>{
+  const boundary=structuredClone(response);boundary.server_now=boundary.targets[0].latest.stale_at;const accepted=validateReadinessResponse(boundary,"explorer","ios");assert.equal(countsFor(accepted.selected.latest).stale,5);assert.equal(countsFor(demoteLatest(response.targets[0].latest)).stale,5);
 });
 
-test("#1928 panel implements all seven states, keyed cancellation, exact copy, and no persistence", () => {
-  const panel = read("src/components/AppIdentityReadinessPanel.jsx");
-  const page = read("src/pages/AdEnginePage.jsx");
-  const service = read("src/services/adEngineService.js");
-  for (const state of ["not_checked", "loading", "ready", "blocked", "error", "offline", "stale"]) assert.match(panel, new RegExp(`\\b${state}\\b`));
-  assert.match(panel, /requestIds\.current\[requestedAppKey\]/);
-  assert.match(panel, /controllers\.current\[outgoing\]\?\.abort\(\)/);
-  assert.match(panel, /response app_key|validateIdentityPreflightResponse/);
-  assert.match(panel, /This checks the public identity and shared payer only\. Native app campaigns are not enabled yet\./);
-  assert.match(panel, /role="tabpanel"/);
-  assert.match(panel, /aria-live="polite"/);
-  assert.match(panel, /min-h-11/);
-  assert.ok(page.indexOf("<AdConnectionsPanel />") < page.indexOf("<AppIdentityReadinessPanel />"));
-  assert.ok(page.indexOf("<AppIdentityReadinessPanel />") < page.indexOf('title="Meta connection — detail"'));
-  assert.match(service, /admin-ad-app-identity-preflight/);
-  assert.doesNotMatch(panel, /localStorage|sessionStorage|indexedDB/i);
-  assert.doesNotMatch(panel, /Campaign ready|App install ready|Growth ready|Ready to launch/);
+test("#1928 consolidated IA removes competing card while preserving exact backend evidence",()=>{
+  const page=read("src/pages/AdEnginePage.jsx"),panel=read("src/components/app-readiness/AppDownloadReadinessPanel.jsx"),service=read("src/services/adEngineService.js");
+  assert.ok(page.indexOf("<AdConnectionsPanel />")<page.indexOf("<AppDownloadReadinessPanel />"));assert.ok(page.indexOf("<AppDownloadReadinessPanel />")<page.indexOf("Web traffic campaigns"));assert.doesNotMatch(page,/<AppIdentityReadinessPanel/);
+  assert.match(panel,/targetKey\(appKey,os\)/);assert.match(panel,/controllers\.current\[outgoing\]\?\.abort\(\)/);assert.match(service,/admin-ad-app-readiness/);assert.match(service,/admin-ad-app-identity-preflight/);
+  assert.doesNotMatch(panel,/localStorage|sessionStorage|indexedDB|Campaign ready|App install ready|Growth ready|Ready to launch/i);
 });
