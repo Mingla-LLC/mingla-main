@@ -8278,22 +8278,22 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ---
 
-## DRAFT — issue #1902 (public event acquisition lifecycle)
+## ACTIVE — issue #1902 (public event acquisition lifecycle; ratified 2026-08-12)
 
-### I-PROPOSED-1902-PUBLIC-ACQUISITION-LIFECYCLE-SINGLE-OWNER (DRAFT)
+### I-PROPOSED-1902-PUBLIC-ACQUISITION-LIFECYCLE-SINGLE-OWNER (ACTIVE)
 
 - **Rule:** Every public client decides whether ticket or RSVP acquisition is current, ended, cancelled, or unavailable through `packages/offering-rendering/eventAcquisitionLifecycle.ts::resolveEventAcquisitionState`. Adapters and renderers may consume the resolved state but may not parse or compare lifecycle timestamps independently.
 - **Enforcement:** `.github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs` and the issue #1902 lifecycle transition suite.
-- **Established:** DRAFT at issue #1902 IMPLEMENT 2026-08-11; activation requires independent tester PASS and merge.
+- **Established:** DRAFT at issue #1902 IMPLEMENT 2026-08-11; activated after independent tester PASS and PR #1924 merge `14d7df15f` on 2026-08-12.
 
-### I-PUBLIC-BRAND-EVENTS-CURRENT-TICKETED-AND-RSVP (DRAFT)
+### I-PUBLIC-BRAND-EVENTS-CURRENT-TICKETED-AND-RSVP (ACTIVE)
 
 - **Rule:** A public brand Events tab contains only current public ticketed events and current public RSVP events. Ended, cancelled, missing-end, and invalid-end rows are absent; RSVP rows never trigger ticket-tier or paid-readiness reads; every visible card is one complete navigation target with an honest type and action.
 - **Enforcement:** both public brand adapters, the shared brand renderer, `.github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs`, and the issue #1902 business/consumer/shared regression suites.
-- **Established:** DRAFT at issue #1902 IMPLEMENT 2026-08-11; activation requires independent tester PASS and merge.
+- **Established:** DRAFT at issue #1902 IMPLEMENT 2026-08-11; activated after independent tester PASS and PR #1924 merge `14d7df15f` on 2026-08-12.
 
-### I-PUBLIC-PAGE-DATA-DRIVEN-TABS — AMENDMENT (DRAFT, issue #1902)
+### I-PUBLIC-PAGE-DATA-DRIVEN-TABS — AMENDMENT (ACTIVE, issue #1902)
 
 - **Amendment:** The public brand Events tab is data-driven by the non-empty current acquisition set only. A historical event may remain reachable by direct URL with descriptive history, but it never keeps the Events tab visible and never exposes ticket, RSVP, or contribution controls.
 - **Enforcement:** the shared renderer current-only filter, wake/boundary re-evaluation, and the issue #1902 brand/direct-page regression suites.
-- **Established:** DRAFT amendment at issue #1902 IMPLEMENT 2026-08-11.
+- **Established:** DRAFT amendment at issue #1902 IMPLEMENT 2026-08-11; activated after independent tester PASS and PR #1924 merge `14d7df15f` on 2026-08-12.
