@@ -774,7 +774,11 @@ export async function loadAuthoritativeContentShare(
     const { data: row, error: rowError } = await query.maybeSingle();
     if (rowError) throw new Error("db_error");
     if (!row || row.deleted_at || (Array.isArray(row.brands) ? row.brands[0]?.deleted_at : row.brands?.deleted_at)) throw new Error("gone");
-    if (!["public", "discover"].includes(row.visibility) || !row.published_at || !["scheduled", "live", "ended", "cancelled"].includes(row.status)) throw new Error("not_public");
+    // Exact-link content sharing follows the same visibility contract as the
+    // exact buyer-page reader: `hidden` is the stored form of Unlisted, so it
+    // is shareable by this complete event identity without becoming eligible
+    // for any discovery/list query. Private and draft rows still fail closed.
+    if ((!["public", "discover"].includes(row.visibility) && row.visibility !== "hidden") || !row.published_at || !["scheduled", "live", "ended", "cancelled"].includes(row.status)) throw new Error("not_public");
     const [datesResult, ticketsResult, remainingResult, allInResult, rsvpResult] = await Promise.all([
       db.from("event_dates").select("start_at,end_at,timezone,is_master").eq("event_id", row.id).order("start_at", { ascending: true }),
       db.from("ticket_types").select("id,price_cents,currency,is_free,is_hidden,is_disabled,available_online,is_unlimited,sale_start_at,sale_end_at,display_order").eq("event_id", row.id).is("deleted_at", null).order("display_order", { ascending: true }),
