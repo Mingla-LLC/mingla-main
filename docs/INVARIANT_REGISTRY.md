@@ -8368,13 +8368,13 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ---
 
-## DRAFT — issue #1858 (explicit Brand People export target)
+## ACTIVE — issue #1858 (explicit Brand People export target)
 
-### I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 (DRAFT)
+### I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 (ACTIVE)
 
 - A brand-book export request must carry one explicit active brand ID; the database must authorize that exact brand through `biz_brand_effective_rank >= brand_admin` before any job/audit mutation; ownership-order fallback and brandless brand-book overloads are forbidden.
 - **Enforced by:** `20270326001858_issue_1858_explicit_brand_export.sql`, the Brand People export Edge request boundary, its PostgreSQL and Deno regressions, and `.github/scripts/strict-grep/issue-1858-explicit-brand-export.mjs`.
-- **Established:** DRAFT at issue #1858 IMPLEMENT. The orchestrator may activate it only after independent tester PASS, merge, and production migration/Edge verification.
+- **Established:** DRAFT at issue #1858 IMPLEMENT; ACTIVE after independent tester PASS, all-green PR #1961 merge, and production migration/Edge verification on 2026-08-12.
 
 # I-PROPOSED-1950-APP-READINESS-ISOLATED-NO-WRITE (DRAFT)
 
