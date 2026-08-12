@@ -938,77 +938,79 @@ export const useRsvpOfferingState = (
           </Pressable>
         </View>
       </View>
-      {guests.map((g, i) => (
-        <View key={g.id} style={styles.guestRow}>
-          <Text style={[styles.guestRowTitle, surface.tertiaryText]}>
-            Guest {i + 1}
-          </Text>
-          <RsvpField
-            label="Name"
-            value={g.name}
-            onChangeText={(v) => updateGuest(i, "name", v)}
-            placeholder="First and last name"
-            palette={palette}
-            invalid={g.name.length > 0 && g.name.trim().length === 0}
-            invalidMsg="Required"
-            autoCapitalize="words"
-            testID={`orch-1163-rsvp-guest-${i}-name`}
-            disabled={submitting}
-          />
-          <RsvpField
-            label="Email"
-            value={g.email}
-            onChangeText={(v) => updateGuest(i, "email", v)}
-            placeholder="guest@email.com"
-            palette={palette}
-            invalid={g.email.length > 0 && !EMAIL_RE.test(g.email.trim())}
-            invalidMsg="Enter a valid email"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            testID={`orch-1163-rsvp-guest-${i}-email`}
-            disabled={submitting}
-          />
-          {renderPhoneField ? renderPhoneField({
-            role: "plus_one",
-            guestId: g.id,
-            index: i,
-            label: `Guest ${i + 1} phone`,
-            testID: `issue-1857-rsvp-${g.id}-phone`,
-            countryCode: g.phoneCountryIso,
-            rawValue: g.rawPhone,
-            onChangeCountry: (isoCode, resolvedE164) => {
-              setGuests((rows: RsvpGuestDraft[]) => rows.map((row: RsvpGuestDraft) => row.id === g.id
-                ? { ...row, phoneCountryIso: isoCode, phone: resolvedE164 ?? "" }
-                : row));
-            },
-            onChangeRawValue: (raw, resolvedE164) => {
-              setGuests((rows: RsvpGuestDraft[]) => rows.map((row: RsvpGuestDraft) => row.id === g.id
-                ? { ...row, rawPhone: raw, phone: resolvedE164 ?? "" }
-                : row));
-            },
-            invalid: g.rawPhone.trim().length > 0 && !PHONE_RE.test(g.phone.trim()),
-            palette,
-            disabled: submitting,
-            required: true,
-            emptyRequired: (showValidationErrors || g.phoneTouched) && g.rawPhone.trim().length === 0,
-            onBlur: () => {
-              setGuests((rows: RsvpGuestDraft[]) => markRsvpPhoneTouchedById(rows, g.id));
-            },
-          }) : (
+      {guests.map((g: RsvpGuestDraft, i: number) => (
+        <React.Fragment key={g.id}>
+          <View style={styles.guestRow}>
+            <Text style={[styles.guestRowTitle, surface.tertiaryText]}>
+              Guest {i + 1}
+            </Text>
             <RsvpField
-              label="Phone"
-              value={g.phone}
-              onChangeText={(v) => updateGuest(i, "phone", v)}
-              placeholder="+1 555 123 4567"
+              label="Name"
+              value={g.name}
+              onChangeText={(v) => updateGuest(i, "name", v)}
+              placeholder="First and last name"
               palette={palette}
-              invalid={g.phone.length > 0 && !PHONE_RE.test(g.phone.trim())}
-              invalidMsg="Enter a valid phone number"
-              keyboardType="phone-pad"
-              autoCapitalize="none"
-              testID={`orch-1163-rsvp-guest-${i}-phone`}
+              invalid={g.name.length > 0 && g.name.trim().length === 0}
+              invalidMsg="Required"
+              autoCapitalize="words"
+              testID={`orch-1163-rsvp-guest-${i}-name`}
+              disabled={submitting}
             />
-          )}
-        </View>
+            <RsvpField
+              label="Email"
+              value={g.email}
+              onChangeText={(v) => updateGuest(i, "email", v)}
+              placeholder="guest@email.com"
+              palette={palette}
+              invalid={g.email.length > 0 && !EMAIL_RE.test(g.email.trim())}
+              invalidMsg="Enter a valid email"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              testID={`orch-1163-rsvp-guest-${i}-email`}
+              disabled={submitting}
+            />
+            {renderPhoneField ? renderPhoneField({
+              role: "plus_one",
+              guestId: g.id,
+              index: i,
+              label: `Guest ${i + 1} phone`,
+              testID: `issue-1857-rsvp-${g.id}-phone`,
+              countryCode: g.phoneCountryIso,
+              rawValue: g.rawPhone,
+              onChangeCountry: (isoCode, resolvedE164) => {
+                setGuests((rows: RsvpGuestDraft[]) => rows.map((row: RsvpGuestDraft) => row.id === g.id
+                  ? { ...row, phoneCountryIso: isoCode, phone: resolvedE164 ?? "" }
+                  : row));
+              },
+              onChangeRawValue: (raw, resolvedE164) => {
+                setGuests((rows: RsvpGuestDraft[]) => rows.map((row: RsvpGuestDraft) => row.id === g.id
+                  ? { ...row, rawPhone: raw, phone: resolvedE164 ?? "" }
+                  : row));
+              },
+              invalid: g.rawPhone.trim().length > 0 && !PHONE_RE.test(g.phone.trim()),
+              palette,
+              disabled: submitting,
+              required: true,
+              emptyRequired: (showValidationErrors || g.phoneTouched) && g.rawPhone.trim().length === 0,
+              onBlur: () => {
+                setGuests((rows: RsvpGuestDraft[]) => markRsvpPhoneTouchedById(rows, g.id));
+              },
+            }) : (
+              <RsvpField
+                label="Phone"
+                value={g.phone}
+                onChangeText={(v) => updateGuest(i, "phone", v)}
+                placeholder="+1 555 123 4567"
+                palette={palette}
+                invalid={g.phone.length > 0 && !PHONE_RE.test(g.phone.trim())}
+                invalidMsg="Enter a valid phone number"
+                keyboardType="phone-pad"
+                autoCapitalize="none"
+                testID={`orch-1163-rsvp-guest-${i}-phone`}
+              />
+            )}
+          </View>
+        </React.Fragment>
       ))}
     </View>
   ) : null;

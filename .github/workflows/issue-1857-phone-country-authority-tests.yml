@@ -37,6 +37,14 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - name: Install pinned Business test dependencies
+        working-directory: mingla-business
+        run: npm ci
       - name: Strict structural gate and mutation self-test
         run: |
           node .github/scripts/strict-grep/issue-1857-phone-country-authority.mjs --self-test
@@ -50,7 +58,7 @@ jobs:
           deno test --allow-read packages/offering-rendering/__tests__/issue_1857_rsvp_phone_country.happy.test.tsx
           deno test --allow-read packages/brand-rendering/__tests__/issue_1857_stay_phone_country.happy.test.tsx
           deno test --allow-read app-mobile/src/services/__tests__/issue_1857_phone_country_transport.happy.test.ts
-          (cd mingla-business && npx jest src/services/__tests__/issue_1857_phone_country_transport.happy.test.ts --runInBand)
+          (cd mingla-business && npx --no-install jest src/services/__tests__/issue_1857_phone_country_transport.happy.test.ts src/components/event/__tests__/issue_1857_business_rsvp_preview_phone.happy.test.ts --runInBand)
           deno test --allow-read supabase/functions/public-submit-rsvp/issue_1857_phone_country.happy.test.ts
           deno test --allow-read supabase/functions/stay-reservations/issue_1857_phone_country.happy.test.ts
           deno test --allow-read supabase/functions/venue-reservation-create/issue_1857_phone_country.happy.test.ts

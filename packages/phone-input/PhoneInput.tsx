@@ -30,6 +30,7 @@ import {
   InputAccessoryView,
   InteractionManager,
   AccessibilityInfo,
+  type TextInputProps,
   type TextStyle,
   type ViewStyle,
 } from "react-native";
@@ -56,6 +57,26 @@ import {
 } from "./tokens";
 
 const PHONE_ACCESSORY_ID = "phoneInputDone";
+
+// The shared package resolves React from the repository root while each host
+// resolves its own react-native declaration graph. Re-state the native class as
+// a ref-capable component in this package's React graph, then forward the ref
+// through one typed boundary. This keeps picker-close focus restoration without
+// leaking either host's React types into the public PhoneInput props.
+const NativeTextInput: React.ComponentType<
+  TextInputProps & React.RefAttributes<TextInput>
+> = TextInput;
+
+const RefForwardingTextInput: React.ForwardRefExoticComponent<
+  TextInputProps & React.RefAttributes<TextInput>
+> = React.forwardRef(
+  function RefForwardingTextInput(
+    props: TextInputProps,
+    ref: React.ForwardedRef<TextInput>,
+  ): React.ReactElement {
+    return <NativeTextInput {...props} ref={ref} />;
+  },
+);
 
 export interface PhoneInputProps {
   value: string;
@@ -289,7 +310,7 @@ export const PhoneInput = ({
 
         <View style={dividerStyle} />
 
-        <TextInput
+        <RefForwardingTextInput
           ref={phoneInputRef}
           style={textInputStyle}
           value={value}
