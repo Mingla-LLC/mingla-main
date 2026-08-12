@@ -5,7 +5,8 @@
 // exercised the resolver in isolation, this suite:
 //
 //   Bug 1 — parses the REAL META_OBJECTIVE_GOAL_MATRIX out of the deployed edge
-//           function (_shared/adChannel.ts) and validates the pair END-TO-END
+//           provider-neutral contract (_shared/adChannelCore.ts) and validates
+//           the pair END-TO-END
 //           through buildCreatePayload (resolver → payload → server contract),
 //           then attacks the inputs the implementor never fed the resolver:
 //           empty / duplicate / unknown / hidden-goal ids, and the crucial
@@ -57,7 +58,7 @@ const REPO_ROOT = path.resolve(ADMIN_SRC, "../..");
 const read = (p) => fs.readFileSync(p, "utf8");
 
 // ── Parse the ACTUAL server matrix (never a hand-copied mirror). If the real
-//    contract in adChannel.ts drifts, this test moves with it. ────────────────
+//    contract in adChannelCore.ts drifts, this test moves with it. ────────────
 function parseMetaMatrix(src) {
   const start = src.indexOf("META_OBJECTIVE_GOAL_MATRIX");
   const braceStart = src.indexOf("{", start);
@@ -77,7 +78,7 @@ function parseMetaMatrix(src) {
 }
 
 const REAL_META_MATRIX = parseMetaMatrix(
-  read(path.join(REPO_ROOT, "supabase/functions/_shared/adChannel.ts")),
+  read(path.join(REPO_ROOT, "supabase/functions/_shared/adChannelCore.ts")),
 );
 
 // A full wizard state so we can build the ACTUAL Meta payload end-to-end.

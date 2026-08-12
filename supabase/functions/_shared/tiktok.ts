@@ -79,7 +79,7 @@ import {
   type CreateCampaignInput,
   type EntityLevel,
   TIKTOK_CTA_MAP,
-} from "./adChannel.ts";
+} from "./adChannelCore.ts";
 
 // ── Env config (NAMES per SPEC §7 — values live in Function Secrets) ──────────
 
