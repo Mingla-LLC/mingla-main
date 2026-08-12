@@ -9,10 +9,11 @@
 
 import type { Brand, BrandStripeStatus } from "../types/brand";
 
-type PayoutBrand = Pick<
-  Brand,
-  "stripeStatus" | "paymentProvider" | "paystackSubaccountCode"
->;
+type PayoutBrand = {
+  stripeStatus?: Brand["stripeStatus"] | null;
+  paymentProvider?: Brand["paymentProvider"];
+  paystackSubaccountCode?: Brand["paystackSubaccountCode"] | null;
+};
 
 export function isBrandPayoutReady(
   brand: PayoutBrand | null | undefined,

@@ -4,8 +4,8 @@
  * ORCH-1076 strict-grep gate — paid buyer-supply suppression.
  *
  * Enforces invariant I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED: every buyer-facing
- * SUPPLY RPC body MUST gate paid offerings on Stripe readiness via the canonical
- * `pg_brand_can_charge(` predicate. This is the serve-time mirror of ORCH-1075's
+ * SUPPLY RPC body MUST gate paid offerings on provider-neutral readiness via
+ * `pg_brand_can_collect(`. This is the serve-time mirror of ORCH-1075's
  * publish-time guards (I-PAID-PUBLISH-REQUIRES-CHARGES-ENABLED) and the checkout
  * 409 (ticket-checkout-create:607) — all three layers enforce the identical
  * rule (Constitution #13: the same rules in generation and serving).
@@ -35,16 +35,20 @@ const root = process.cwd().endsWith("mingla-business")
 
 const migrationsDir = path.join(root, "supabase/migrations");
 
-// The five buyer-facing supply RPCs that must carry the readiness marker.
+// [TEST-MOD-APPROVED #1919] The original five-RPC Stripe-only census omitted
+// two live buyer readers and encoded the defect fixed by #1919.
 const SUPPLY_RPCS = [
   "pg_eligible_experiences_for_deck",
   "pg_brand_experiences_for_place",
   "pg_public_experiences_by_brand",
   "pg_public_brand_upcoming",
   "pg_public_trips_by_brand",
+  "pg_discover_business_events",
+  "pg_public_experience_by_slug",
 ];
 
-const READINESS_MARKER = "pg_brand_can_charge(";
+const READINESS_MARKER = "pg_brand_can_collect(";
+const OBSOLETE_READINESS_MARKER = "pg_brand_can_charge(";
 
 /**
  * Find the latest migration body that defines `public.<name>` (descending sort,
@@ -102,7 +106,13 @@ function checkRpc(files, fnName) {
   }
   if (!fnBody.includes(READINESS_MARKER)) {
     console.error(
-      `ORCH-1076 FAIL: latest definition of \`${fnName}\` (${latest.name}) is missing the readiness marker \`${READINESS_MARKER}\`. A paid buyer-supply path must gate on Stripe readiness (pg_brand_can_charge). Restore the ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED gate or update this gate if the architecture intentionally changed.`,
+      `ORCH-1076 FAIL: latest definition of \`${fnName}\` (${latest.name}) is missing provider-neutral readiness marker \`${READINESS_MARKER}\`.`,
+    );
+    return false;
+  }
+  if (fnBody.includes(OBSOLETE_READINESS_MARKER)) {
+    console.error(
+      `ORCH-1076 FAIL: latest definition of \`${fnName}\` (${latest.name}) still contains obsolete Stripe-only admission marker \`${OBSOLETE_READINESS_MARKER}\`.`,
     );
     return false;
   }
@@ -131,7 +141,7 @@ function run() {
     process.exit(1);
   }
   console.log(
-    "ORCH-1076 paid-supply-requires-charges-enabled gate passed (all five buyer-supply RPCs carry the pg_brand_can_charge readiness marker).",
+    "ORCH-1076 paid-supply gate passed (all seven buyer-read RPCs carry provider-neutral readiness and reject Stripe-only admission).",
   );
   process.exit(0);
 }
@@ -150,7 +160,7 @@ function runSelfTest() {
 
   // sliceFunctionBody isolates the named function within a multi-RPC file.
   const multi =
-    "CREATE OR REPLACE FUNCTION public.foo()\nBEGIN pg_brand_can_charge( END\n" +
+    "CREATE OR REPLACE FUNCTION public.foo()\nBEGIN pg_brand_can_collect( END\n" +
     "CREATE OR REPLACE FUNCTION public.bar()\nBEGIN nothing END\n";
   const fooBody = sliceFunctionBody(multi, "foo");
   const barBody = sliceFunctionBody(multi, "bar");
@@ -165,7 +175,7 @@ function runSelfTest() {
 
   // A body WITH the marker passes; a body WITHOUT it fails.
   const bodyWith =
-    "CREATE OR REPLACE FUNCTION public.x()\n ... OR public.pg_brand_can_charge(e.brand_id) ...\n";
+    "CREATE OR REPLACE FUNCTION public.x()\n ... OR public.pg_brand_can_collect(e.brand_id) ...\n";
   const bodyWithout =
     "CREATE OR REPLACE FUNCTION public.x()\n ... no readiness gate here ...\n";
   expect(
@@ -175,6 +185,10 @@ function runSelfTest() {
   expect(
     !bodyWithout.includes(READINESS_MARKER),
     "without-marker fixture lacks the readiness marker",
+  );
+  expect(
+    !bodyWith.includes(OBSOLETE_READINESS_MARKER),
+    "with-marker fixture excludes Stripe-only admission",
   );
 
   if (selfFails > 0) {

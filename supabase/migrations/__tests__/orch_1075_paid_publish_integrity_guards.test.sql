@@ -71,6 +71,8 @@ BEGIN
 END$$;
 ROLLBACK;
 
+-- [TEST-MOD-APPROVED #1919] M-02 retains all six/date assertions while replacing
+-- the obsolete Stripe-only admission assertion with provider-neutral authority.
 -- ─── M-02: each money RPC body carries the required guard markers (fails-on-revert) ──
 DO $$
 DECLARE
@@ -87,8 +89,9 @@ DECLARE
 BEGIN
   FOREACH v_name IN ARRAY v_both LOOP
     v_def := pg_get_functiondef(v_name::regprocedure);
-    IF position('pg_brand_can_charge(' IN v_def) = 0 THEN
-      RAISE EXCEPTION 'M-02 FAIL: % missing Guard A (pg_brand_can_charge)', v_name;
+    IF position('pg_brand_can_collect(' IN v_def) = 0
+       OR position('pg_brand_can_charge(' IN v_def) <> 0 THEN
+      RAISE EXCEPTION 'M-02 FAIL: % must use pg_brand_can_collect and reject pg_brand_can_charge', v_name;
     END IF;
     IF position('offering_date_past' IN v_def) = 0 THEN
       RAISE EXCEPTION 'M-02 FAIL: % missing Guard B (offering_date_past)', v_name;

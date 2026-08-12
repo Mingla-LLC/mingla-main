@@ -28,6 +28,7 @@ import {
 import type { Trip } from "../../services/tripsService";
 import { StripeBlockedCard } from "../offering/StripeBlockedCard";
 import { TripPreview, type TripPreviewBrand } from "./TripPreview";
+import { resolveProviderNeutralPaidPublishGuardCopy } from "../../utils/paidPublishGuards";
 
 export interface TripCreatorStep5ReviewProps {
   trip: Trip;
@@ -168,6 +169,14 @@ export function mapPublishErrorToState(
   code: string,
   rawMessage: string,
 ): PublishErrorState {
+  const paymentGuard = resolveProviderNeutralPaidPublishGuardCopy(rawMessage);
+  if (paymentGuard?.reason === "payment_collection_unavailable") {
+    return {
+      code: paymentGuard.reason,
+      message: paymentGuard.body,
+      pointsToStep: 5,
+    };
+  }
   // Discriminator is `rawMessage`, NOT `code`. Supabase Postgrest returns
   // `code = "P0001"` (SQLSTATE) for unqualified `RAISE EXCEPTION 'foo'`
   // statements; the literal name lives in `message`. The trip publish RPC
@@ -231,16 +240,7 @@ export function mapPublishErrorToState(
         message: "This trip is no longer in draft state. Refresh and try again.",
         pointsToStep: 5,
       };
-    // ORCH-1075 — paid-publish integrity guards (locked copy, SPEC §3.7). The
-    // wizard's catch ALSO routes stripe_charges_disabled to Stripe onboarding;
-    // offering_date_past points back to the dates step.
-    case "stripe_charges_disabled":
-      return {
-        code,
-        message:
-          "You can't publish a paid listing until your Stripe payouts are switched on. It takes a couple of minutes.",
-        pointsToStep: 5,
-      };
+    // ORCH-1075 — the payment guard is normalized above; date stays local.
     case "offering_date_past":
       return {
         code,

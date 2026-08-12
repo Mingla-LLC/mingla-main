@@ -62,7 +62,10 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { brandStripeOnboardingRoute } from "../../utils/paidPublishGuards";
+import {
+  brandPaymentOnboardingRoute,
+  resolveProviderNeutralPaidPublishGuardCopy,
+} from "../../utils/paidPublishGuards";
 
 import {
   accent,
@@ -1161,7 +1164,25 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
           "Trip orders ledger is coming soon. Refund existing buyers via your Stripe dashboard first.",
         );
       };
-      switch (result.reason) {
+      const paymentCopy = resolveProviderNeutralPaidPublishGuardCopy(
+        result.reason,
+      );
+      if (paymentCopy?.reason === "payment_collection_unavailable") {
+        return {
+          title: paymentCopy.title,
+          body: paymentCopy.body,
+          primaryLabel: paymentCopy.actionLabel,
+          primaryAction: () => {
+            setRejectDialog(null);
+            router.push(brandPaymentOnboardingRoute(trip.brandId) as never);
+          },
+        };
+      }
+      const nonPaymentReason = result.reason as Exclude<
+        typeof result.reason,
+        "stripe_charges_disabled" | "payment_collection_unavailable"
+      >;
+      switch (nonPaymentReason) {
         case "missing_edit_reason":
         case "invalid_edit_reason":
           return {
@@ -1251,17 +1272,6 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             primaryAction: closeAndOpenOrders,
           };
         }
-        // ORCH-1075 — paid-edit integrity guards (locked copy, SPEC §3.7).
-        case "stripe_charges_disabled":
-          return {
-            title: "Finish your payment setup",
-            body: "You can't publish a paid listing until your Stripe payouts are switched on. It takes a couple of minutes.",
-            primaryLabel: "Finish Stripe setup",
-            primaryAction: () => {
-              setRejectDialog(null);
-              router.push(brandStripeOnboardingRoute(trip.brandId) as never);
-            },
-          };
         case "offering_date_past":
           return {
             title: "Pick a future date",
@@ -1312,12 +1322,12 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
           };
         }
         default: {
-          const _exhaust: never = result.reason;
+          const _exhaust: never = nonPaymentReason;
           return _exhaust;
         }
       }
     },
-    [router, showToast],
+    [router, showToast, trip.brandId],
   );
 
   const handleConfirmSave = useCallback(

@@ -391,7 +391,7 @@ export const fetchConsumerBrandBySlug = async (
   // view (business_public_events_view) is NOT gated (it also serves keyed
   // enrich), so we filter here, buyer-only. trips/experiences/upcoming come from
   // the server RPCs (A-3/A-4/A-5) and are already gated. One batched
-  // pg_brands_can_charge round-trip over the distinct paid brand ids; free
+  // pg_brands_can_collect round-trip over the distinct paid brand ids; free
   // events are never dropped. mirrors fetchPublicBrandEvents (mingla-business).
   const isPaidOnline = (tickets: TicketTypeRow[]): boolean =>
     tickets.some(
@@ -409,7 +409,7 @@ export const fetchConsumerBrandBySlug = async (
   let readyBrandIds = new Set<string>();
   if (paidBrandIds.length > 0) {
     const { data: readyData, error: readyError } = await supabase.rpc(
-      "pg_brands_can_charge",
+      "pg_brands_can_collect",
       { p_brand_ids: paidBrandIds },
     );
     // Fail closed for paid rows on error (empty set ⇒ all paid rows dropped).

@@ -210,18 +210,17 @@ interface PublicTripPayload {
 
 // ORCH-1117 — mirror resolveEventBookable (publicEventsService.ts) /
 // resolveBookable (publicExperienceService.ts): a PAID trip is bookable iff its
-// brand can charge (anon-granted pg_brand_can_charge RPC). FREE ⇒ true. On RPC
-// error fail OPEN (page stays bookable; the checkout 409 is the backstop) so a
-// transient error never wrongly hides a bookable listing.
+// brand can collect (anon-granted pg_brand_can_collect RPC). FREE ⇒ true. On RPC
+// error fail CLOSED for paid supply; free never reaches this RPC.
 const resolveTripBookable = async (
   brandId: string,
   isPaid: boolean,
 ): Promise<boolean> => {
   if (!isPaid) return true;
-  const { data, error } = await supabase.rpc("pg_brand_can_charge", {
+  const { data, error } = await supabase.rpc("pg_brand_can_collect", {
     p_brand_id: brandId,
   });
-  if (error !== null) return true;
+  if (error !== null) return false;
   return data === true;
 };
 

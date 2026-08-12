@@ -40,8 +40,14 @@ const root = process.cwd().endsWith("mingla-business")
 
 const migrationsDir = path.join(root, "supabase/migrations");
 
-// The two buyer-readiness predicates that must stay SECURITY DEFINER.
-const READINESS_PREDICATES = ["pg_brand_can_charge", "pg_brands_can_charge"];
+// [TEST-MOD-APPROVED #1919] Preserve both legacy Stripe predicates and add
+// their provider-neutral single/batch counterparts.
+const READINESS_PREDICATES = [
+  "pg_brand_can_charge",
+  "pg_brands_can_charge",
+  "pg_brand_can_collect",
+  "pg_brands_can_collect",
+];
 
 const SECURITY_DEFINER_MARKER = "security definer"; // case-insensitive compare
 const SEARCH_PATH_MARKER = "search_path"; // case-insensitive compare
@@ -123,6 +129,27 @@ function checkPredicate(files, fnName) {
     );
     return false;
   }
+  if (fnName === "pg_brands_can_collect") {
+    if (!/SET\s+search_path\s*=\s*''/i.test(fnBody)) {
+      console.error(
+        "ORCH-1116 FAIL: pg_brands_can_collect must use the exact empty search_path.",
+      );
+      return false;
+    }
+    if (
+      !fnBody.includes(
+        "REVOKE ALL ON FUNCTION public.pg_brands_can_collect(uuid[]) FROM PUBLIC;",
+      ) ||
+      !/GRANT EXECUTE ON FUNCTION public\.pg_brands_can_collect\(uuid\[\]\)\s+TO anon, authenticated, service_role;/m.test(
+        fnBody,
+      )
+    ) {
+      console.error(
+        "ORCH-1116 FAIL: pg_brands_can_collect must revoke PUBLIC and grant only anon/authenticated/service_role.",
+      );
+      return false;
+    }
+  }
   console.log(
     `OK   [${fnName}] SECURITY DEFINER + search_path present in ${latest.name}`,
   );
@@ -150,7 +177,7 @@ function run() {
     process.exit(1);
   }
   console.log(
-    "ORCH-1116 booking-gate-security-definer gate passed (both buyer-readiness predicates are SECURITY DEFINER with a locked search_path).",
+    "ORCH-1116 booking-gate-security-definer gate passed (all four legacy/provider-neutral predicates are hardened).",
   );
   process.exit(0);
 }

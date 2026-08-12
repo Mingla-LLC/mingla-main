@@ -5,8 +5,8 @@
  *
  * Enforces invariants I-PAID-PUBLISH-REQUIRES-CHARGES-ENABLED +
  * I-PAID-PUBLISH-REJECTS-PAST-DATE: every paid-publish / paid-live-edit RPC
- * body MUST gate paid offerings on (a) Stripe readiness via the canonical
- * `pg_brand_can_charge(` helper (Guard A) and (b) the offering's latest date
+ * body MUST gate paid offerings on (a) provider-neutral readiness via the
+ * canonical `pg_brand_can_collect(` helper (Guard A) and (b) the latest date
  * via the `offering_date_past` rejection reason (Guard B). For
  * `business_patch_event_when` ONLY Guard B applies (the RPC never writes
  * price/availability, so a paid<->free transition is impossible there — see
@@ -50,8 +50,13 @@ const BOTH_GUARD_RPCS = [
 // RPC that must carry ONLY Guard B (no Stripe guard — N/A by construction).
 const GUARD_B_ONLY_RPCS = ["business_patch_event_when"];
 
-const GUARD_A_MARKER = "pg_brand_can_charge(";
+// [TEST-MOD-APPROVED #1919] Preserve the same six write/date boundaries while
+// replacing only the obsolete Stripe-only admission assertion.
+const GUARD_A_MARKER = "pg_brand_can_collect(";
+const OBSOLETE_GUARD_A_MARKER = "pg_brand_can_charge(";
 const GUARD_B_MARKER = "offering_date_past";
+const TRANSITIONAL_WIRE_REASON = "stripe_charges_disabled";
+const PREMATURE_CANONICAL_WIRE_REASON = "payment_collection_unavailable";
 
 /**
  * Find the latest migration body that defines `public.<name>` (descending sort,
@@ -110,7 +115,25 @@ function checkRpc(files, fnName, requireGuardA) {
   let ok = true;
   if (requireGuardA && !fnBody.includes(GUARD_A_MARKER)) {
     console.error(
-      `ORCH-1075 FAIL: latest definition of \`${fnName}\` (${latest.name}) is missing Guard A marker \`${GUARD_A_MARKER}\`. A paid publish/edit must gate on Stripe readiness (pg_brand_can_charge). Restore the ORCH-1075 guard or update this gate if the architecture intentionally changed.`,
+      `ORCH-1075 FAIL: latest definition of \`${fnName}\` (${latest.name}) is missing provider-neutral Guard A marker \`${GUARD_A_MARKER}\`.`,
+    );
+    ok = false;
+  }
+  if (requireGuardA && fnBody.includes(OBSOLETE_GUARD_A_MARKER)) {
+    console.error(
+      `ORCH-1075 FAIL: latest definition of \`${fnName}\` (${latest.name}) still contains obsolete Stripe-only admission marker \`${OBSOLETE_GUARD_A_MARKER}\`.`,
+    );
+    ok = false;
+  }
+  if (requireGuardA && !fnBody.includes(TRANSITIONAL_WIRE_REASON)) {
+    console.error(
+      `ORCH-1075 FAIL: \`${fnName}\` dropped the exact transitional wire alias owned by cleanup issue #1922.`,
+    );
+    ok = false;
+  }
+  if (requireGuardA && fnBody.includes(PREMATURE_CANONICAL_WIRE_REASON)) {
+    console.error(
+      `ORCH-1075 FAIL: \`${fnName}\` emits the canonical token before cleanup issue #1922's native-adoption exit condition.`,
     );
     ok = false;
   }
@@ -187,7 +210,7 @@ function runSelfTest() {
 
   // A body missing Guard A is caught; a body with both passes.
   const bodyBoth =
-    "CREATE OR REPLACE FUNCTION public.x()\n pg_brand_can_charge( offering_date_past \n";
+    "CREATE OR REPLACE FUNCTION public.x()\n pg_brand_can_collect( offering_date_past stripe_charges_disabled \n";
   const bodyNoA =
     "CREATE OR REPLACE FUNCTION public.x()\n offering_date_past only \n";
   expect(
@@ -197,6 +220,10 @@ function runSelfTest() {
   expect(
     !bodyNoA.includes(GUARD_A_MARKER) && bodyNoA.includes(GUARD_B_MARKER),
     "missing-Guard-A fixture lacks Guard A marker",
+  );
+  expect(
+    !bodyBoth.includes(OBSOLETE_GUARD_A_MARKER),
+    "both-guards fixture rejects the obsolete Stripe-only marker",
   );
 
   if (selfFails > 0) {

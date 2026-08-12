@@ -57,6 +57,7 @@ import {
   experienceDraftIsPaid,
   offeringNeedsStripeToPublish,
 } from "../offering/publishStripeReadiness";
+import { payoutGateStatus } from "../../utils/brandPayout";
 import {
   emptyStop,
   stopHasValidatedLocation,
@@ -78,8 +79,8 @@ import {
   type UpdateLiveExperienceRejectReason,
 } from "../../utils/publishedExperienceEditGuards";
 import {
-  brandStripeOnboardingRoute,
-  resolvePaidPublishGuardCopy,
+  brandPaymentOnboardingRoute,
+  resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 import type { ExperienceDetail } from "../../services/experienceDetailService";
 import type { ThemeInput } from "@mingla/offering-rendering";
@@ -432,14 +433,14 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       !isLiveEdit &&
       offeringNeedsStripeToPublish({
         isPaid: experienceDraftIsPaid({ isFree, resolvedTotalMajor }),
-        stripeStatus: brand?.stripeStatus ?? null,
+        stripeStatus: payoutGateStatus(brand),
       }),
-    [isLiveEdit, isFree, resolvedTotalMajor, brand?.stripeStatus],
+    [isLiveEdit, isFree, resolvedTotalMajor, brand],
   );
 
   const handleConnectStripe = useCallback((): void => {
     if (brand !== null) {
-      router.push(brandStripeOnboardingRoute(brand.id) as never);
+      router.push(brandPaymentOnboardingRoute(brand.id) as never);
     }
   }, [brand, router]);
 
@@ -620,12 +621,12 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   // skips its generic error copy); false otherwise.
   const handlePaidPublishGuard = useCallback(
     (raw: string | null | undefined): boolean => {
-      const copy = resolvePaidPublishGuardCopy(raw);
+      const copy = resolveProviderNeutralPaidPublishGuardCopy(raw);
       if (copy === null) return false;
       setToast(copy.body);
-      if (copy.action === "stripe_onboarding") {
+      if (copy.action === "payment_onboarding") {
         if (brand !== null) {
-          router.push(brandStripeOnboardingRoute(brand.id) as never);
+          router.push(brandPaymentOnboardingRoute(brand.id) as never);
         }
       } else {
         // Guard B — jump to the When step (step 3) and reveal its errors.

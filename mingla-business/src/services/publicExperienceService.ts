@@ -302,24 +302,19 @@ function ticketsArePaidOnline(tickets: any[]): boolean {
 
 /**
  * ORCH-1076 — resolve whether a PAID offering's brand can charge via the
- * canonical pg_brand_can_charge RPC (anon-granted by the Stream A migration).
+ * canonical pg_brand_can_collect RPC (anon-granted by the #1919 migration).
  * Returns true (bookable) immediately when the offering is FREE. On RPC error
- * we fail OPEN here (render the page bookable) because the checkout 409 is still
- * the terminal guard — a graceful banner that wrongly hides a bookable listing
- * would be worse than the existing terminal 409 for the rare resolver error.
+ * fail CLOSED for paid supply; free never reaches this RPC.
  */
 async function resolveBookable(
   brandId: string,
   isPaid: boolean,
 ): Promise<boolean> {
   if (!isPaid) return true;
-  const { data, error } = await supabase.rpc("pg_brand_can_charge", {
+  const { data, error } = await supabase.rpc("pg_brand_can_collect", {
     p_brand_id: brandId,
   });
-  if (error !== null) {
-    // Non-fatal: keep the page bookable; the checkout 409 remains the backstop.
-    return true;
-  }
+  if (error !== null) return false;
   return data === true;
 }
 

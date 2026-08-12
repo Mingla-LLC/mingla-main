@@ -20,7 +20,10 @@
 
 \set ON_ERROR_STOP on
 
--- ─── G-00: all five supply RPCs carry the readiness marker (text probe) ───────
+-- [TEST-MOD-APPROVED #1919] G-00 preserves the original five boundaries and
+-- expands to all seven current buyer reads while replacing only the obsolete
+-- Stripe-only admission marker.
+-- ─── G-00: all seven supply RPCs carry the readiness marker (text probe) ──────
 DO $$
 DECLARE
   v_fns text[] := ARRAY[
@@ -28,24 +31,27 @@ DECLARE
     'public.pg_brand_experiences_for_place(uuid)',
     'public.pg_public_experiences_by_brand(text)',
     'public.pg_public_brand_upcoming(text, timestamptz, integer)',
-    'public.pg_public_trips_by_brand(text)'
+    'public.pg_public_trips_by_brand(text)',
+    'public.pg_discover_business_events(text[],timestamp with time zone,timestamp with time zone,text[],text[],text[],integer,integer,double precision,double precision,double precision)',
+    'public.pg_public_experience_by_slug(text,text)'
   ];
   v_sig text;
   v_def text;
 BEGIN
   FOREACH v_sig IN ARRAY v_fns LOOP
     v_def := pg_get_functiondef(v_sig::regprocedure);
-    IF position('pg_brand_can_charge(' IN v_def) = 0 THEN
-      RAISE EXCEPTION 'G-00 FAIL: % is missing the pg_brand_can_charge readiness gate', v_sig;
+    IF position('pg_brand_can_collect(' IN v_def) = 0
+       OR position('pg_brand_can_charge(' IN v_def) <> 0 THEN
+      RAISE EXCEPTION 'G-00 FAIL: % must use pg_brand_can_collect and reject pg_brand_can_charge', v_sig;
     END IF;
   END LOOP;
-  -- The batched helper + anon grant must exist.
-  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'pg_brands_can_charge'
+  -- The provider-neutral batched helper + anon grant must exist.
+  IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'pg_brands_can_collect'
                  AND pronamespace = 'public'::regnamespace) THEN
-    RAISE EXCEPTION 'G-00 FAIL: pg_brands_can_charge(uuid[]) helper missing';
+    RAISE EXCEPTION 'G-00 FAIL: pg_brands_can_collect(uuid[]) helper missing';
   END IF;
-  IF NOT has_function_privilege('anon', 'public.pg_brand_can_charge(uuid)', 'EXECUTE') THEN
-    RAISE EXCEPTION 'G-00 FAIL: anon lacks EXECUTE on pg_brand_can_charge(uuid)';
+  IF NOT has_function_privilege('anon', 'public.pg_brand_can_collect(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'G-00 FAIL: anon lacks EXECUTE on pg_brand_can_collect(uuid)';
   END IF;
   RAISE NOTICE 'G-00 PASS: all five supply RPCs gated + batched helper + anon grant present';
 END$$;
