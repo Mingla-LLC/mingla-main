@@ -119,10 +119,15 @@ BEGIN
   INSERT INTO public.event_rsvps(
     id,event_id,user_id,guest_name,guest_email,guest_phone,guest_phone_country_iso,
     rsvp_status,approval_status,plus_count,created_at
-  ) VALUES(v_national,v_event,NULL,'National Only',NULL,'(919) 419-9222',NULL,
+  ) VALUES(v_national,v_event,NULL,'National Only','national-only@example.test','(919) 419-9222',NULL,
     'going','approved',0,now());
-  IF public.biz_resolve_brand_person_source_derived('event_rsvp',v_national)->>'linkOutcome'<>'unlinked'
-     OR EXISTS(
+  IF public.biz_resolve_brand_person_source_derived('event_rsvp',v_national)->>'linkOutcome'<>'linked'
+     OR NOT EXISTS(
+       SELECT 1 FROM public.brand_person_source_links l
+       JOIN public.brand_person_contact_method_sources s ON s.source_link_id=l.id AND s.active
+       JOIN public.brand_person_contact_methods c ON c.id=s.contact_method_id
+       WHERE l.source_kind='event_rsvp' AND l.source_id=v_national AND c.channel='email'
+     ) OR EXISTS(
        SELECT 1 FROM public.brand_person_source_links l
        JOIN public.brand_person_contact_method_sources s ON s.source_link_id=l.id AND s.active
        JOIN public.brand_person_contact_methods c ON c.id=s.contact_method_id
