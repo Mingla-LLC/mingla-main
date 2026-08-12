@@ -8364,5 +8364,5 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 ### I-PROPOSED-PHONE-COUNTRY-AUTHORITY-1 (DRAFT)
 
 - A national-format phone may enter identity matching only after conversion by the single country-aware owner using explicit handset-country evidence. Strict E.164 is preserved exactly. Country evidence is provenance, never an identity, matching, suppression, routing, invite, reconciliation, or export-selection key. Missing or conflicting country metadata cannot rewrite an E.164 address, and historical ambiguous values are never guessed or backfilled.
-- **Enforced by:** `packages/card-identity/phone.js`; the shared RSVP and Stay render seams; the public RSVP, Stay, and reservation Edge boundaries; strict SQL writers and provenance refresh in `20270323001857_issue_1857_phone_country_authority.sql`; `.github/scripts/strict-grep/issue-1857-phone-country-authority.mjs`.
+- **Enforced by:** `packages/card-identity/phone.js`; the shared RSVP and Stay render seams; the public RSVP, Stay, and reservation Edge boundaries; strict SQL writers and provenance refresh in `20270325001857_issue_1857_phone_country_authority.sql`; `.github/scripts/strict-grep/issue-1857-phone-country-authority.mjs`.
 - **Established:** DRAFT at issue #1857 IMPLEMENT 2026-08-11.

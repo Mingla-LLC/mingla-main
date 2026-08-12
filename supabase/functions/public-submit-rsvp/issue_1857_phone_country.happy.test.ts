@@ -6,7 +6,7 @@ import {
 const source = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 const migration = await Deno.readTextFile(
   new URL(
-    "../../migrations/20270323001857_issue_1857_phone_country_authority.sql",
+    "../../migrations/20270325001857_issue_1857_phone_country_authority.sql",
     import.meta.url,
   ),
 );

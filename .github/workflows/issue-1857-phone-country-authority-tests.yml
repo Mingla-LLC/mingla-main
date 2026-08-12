@@ -20,7 +20,7 @@ on:
       - "supabase/functions/public-submit-rsvp/**"
       - "supabase/functions/stay-reservations/**"
       - "supabase/functions/venue-reservation-create/**"
-      - "supabase/migrations/20270323001857_issue_1857_phone_country_authority.sql"
+      - "supabase/migrations/20270325001857_issue_1857_phone_country_authority.sql"
       - "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql"
       - "docs/INVARIANT_REGISTRY.md"
       - ".github/scripts/strict-grep/issue-1857-phone-country-authority.mjs"
@@ -106,7 +106,7 @@ jobs:
           find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
             | sort -z \
             | while IFS= read -r -d '' migration; do
-                if [[ "$(basename "$migration")" == "20270323001857_issue_1857_phone_country_authority.sql" ]]; then
+                if [[ "$(basename "$migration")" == "20270325001857_issue_1857_phone_country_authority.sql" ]]; then
                   psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
                     "DO \$\$ BEGIN IF to_regprocedure('public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text)') IS NULL THEN RAISE EXCEPTION 'issue_1857_old_guest_reservation_signature_missing_before_migration'; END IF; IF to_regprocedure('public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)') IS NOT NULL THEN RAISE EXCEPTION 'issue_1857_new_guest_reservation_signature_exists_before_migration'; END IF; END \$\$;"
                 fi

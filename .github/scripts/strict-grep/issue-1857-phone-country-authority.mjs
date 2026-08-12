@@ -17,7 +17,7 @@ const PATHS = {
   reservationEdge: "supabase/functions/venue-reservation-create/index.ts",
   nativeReservation: "app-mobile/src/services/venueReservationService.ts",
   webReservation: "mingla-business/src/services/venueGuestReservationService.ts",
-  migration: "supabase/migrations/20270323001857_issue_1857_phone_country_authority.sql",
+  migration: "supabase/migrations/20270325001857_issue_1857_phone_country_authority.sql",
   invariant: "docs/INVARIANT_REGISTRY.md",
   workflow: ".github/workflows/issue-1857-phone-country-authority-tests.yml",
 };

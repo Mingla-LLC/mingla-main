@@ -1,5 +1,5 @@
 -- Issue #1857 — explicit handset-country authority for national phone input.
--- Prefix is monotonic above local/remote/sibling max 20270322001856.
+-- Prefix is monotonic above local/remote/sibling max 20270324001929.
 BEGIN;
 
 CREATE TEMP TABLE issue_1857_definition_snapshot (
