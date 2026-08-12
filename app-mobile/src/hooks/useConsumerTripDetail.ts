@@ -225,19 +225,19 @@ export interface ConsumerTripDetail {
   hasPlan: boolean;
 }
 
-// ORCH-1117 (OQ-C) — the native trip-detail hook gains the SAME pg_brand_can_charge
+// #1919 — the native trip-detail hook uses the SAME pg_brand_can_collect
 // gate the web trip/event/experience resolvers have. PAID ⇒ gated; FREE ⇒ true;
-// RPC error ⇒ true (fail-open). Uses ev.brand_id from the anon-direct events read
+// RPC error ⇒ false (fail-closed). Uses ev.brand_id from the anon-direct events read
 // (NOT the discover-cards supply — that stays out of scope per OQ-B).
 async function resolveTripBookable(
   brandId: string | null,
   isPaid: boolean,
 ): Promise<boolean> {
   if (!isPaid || brandId === null) return true;
-  const { data, error } = await supabase.rpc("pg_brand_can_charge", {
+  const { data, error } = await supabase.rpc("pg_brand_can_collect", {
     p_brand_id: brandId,
   });
-  if (error !== null) return true;
+  if (error !== null) return false;
   return data === true;
 }
 

@@ -438,6 +438,13 @@ jobs:
           # anon INSERT, and exactly ONE of them is a bypass.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1856_ordering_table_grants_and_grant_class.test.sql
+          # Issue #1919 — provider-neutral paid readiness across all six write
+          # and seven buyer-read boundaries, plus the hardened batch helper.
+          # Fixtures are synthetic and the suite owns its rollback.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1919_provider_neutral_paid_readiness.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1919_provider_neutral_paid_readiness.tester_adversarial.test.sql
           # Issue #1856 — tester-owned adversarial guard. This does not trust
           # the classifier alone: it performs a real anonymous INSERT through
           # an owner-executed view over a deny-all RLS table and proves the row
@@ -562,6 +569,9 @@ jobs:
             # client that really applies the filters, so a foreign-brand row is
             # excluded by the QUERY rather than by a stub's say-so.
             supabase/functions/_shared/__tests__/issue_1819_order_idempotency_scope.test.ts
+            # Issue #1919 — structural last-writer, transitional-wire, and ACL
+            # contract for the provider-neutral readiness migration.
+            supabase/migrations/__tests__/issue_1919_provider_neutral_paid_readiness.structural.test.ts
             # Issue #1792 — waiter mode's server hardening. The sharpest case is
             # the metadata MERGE: `update({ metadata: {...} })` replaces the
             # whole jsonb column through PostgREST, and one such line erased the

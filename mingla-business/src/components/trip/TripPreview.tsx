@@ -111,6 +111,9 @@ export interface TripPreviewBrand {
    * keeps TripPreviewBrand anon-tolerant.
    */
   stripeStatus?: BrandStripeStatus | null;
+  /** #1919 provider-neutral payout fields used only by authenticated authoring. */
+  paymentProvider?: "stripe" | "paystack";
+  paystackSubaccountCode?: string | null;
 }
 
 export interface TripPreviewProps {

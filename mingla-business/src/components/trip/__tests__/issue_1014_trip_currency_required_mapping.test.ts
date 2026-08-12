@@ -47,8 +47,10 @@ describe("issue #1014 — trip publish error mapping for event_currency_required
     expect(SOURCE).toContain("switch (rawMessage) {");
   });
 
-  test("the pre-existing ORCH-1075 cases are untouched", () => {
-    expect(SOURCE).toContain('case "stripe_charges_disabled":');
+  test("the ORCH-1075 payment guard is normalized and date case remains untouched", () => {
+    expect(SOURCE).toContain(
+      "resolveProviderNeutralPaidPublishGuardCopy(rawMessage)",
+    );
     expect(SOURCE).toContain('case "offering_date_past":');
   });
 });
@@ -78,28 +80,30 @@ const WIZARD_SOURCE = readFileSync(
 );
 
 describe("issue #1014 rework — autosave catches map money-setup guards (F-1)", () => {
+  // [TEST-MOD-APPROVED #1919] Same currency-required autosave scenario, now
+  // routed through the standard Trip provider-neutral adapter/action.
   test("the wizard imports the guard resolver alongside the onboarding route", () => {
-    expect(WIZARD_SOURCE).toContain("resolvePaidPublishGuardCopy");
-    expect(WIZARD_SOURCE).toContain("brandStripeOnboardingRoute");
+    expect(WIZARD_SOURCE).toContain("resolveProviderNeutralPaidPublishGuardCopy");
+    expect(WIZARD_SOURCE).toContain("brandPaymentOnboardingRoute");
   });
 
   test("BOTH autosave catches (handleNext + handleStepBack) run the resolver", () => {
     const calls = WIZARD_SOURCE.split(
-      "resolvePaidPublishGuardCopy(autosaveErrCode)",
+      "resolveProviderNeutralPaidPublishGuardCopy(autosaveErrCode)",
     ).length - 1;
     expect(calls).toBe(2);
   });
 
-  test("the stripe_onboarding branch surfaces the locked copy and routes to payments", () => {
+  test("the payment_onboarding branch surfaces the locked copy and routes to payments", () => {
     const firstCatch = WIZARD_SOURCE.indexOf(
-      "resolvePaidPublishGuardCopy(autosaveErrCode)",
+      "resolveProviderNeutralPaidPublishGuardCopy(autosaveErrCode)",
     );
     expect(firstCatch).toBeGreaterThan(-1);
     const branch = WIZARD_SOURCE.slice(firstCatch, firstCatch + 700);
-    expect(branch).toContain('guardCopy.action === "stripe_onboarding"');
+    expect(branch).toContain('guardCopy.action === "payment_onboarding"');
     expect(branch).toContain("message: guardCopy.body");
     expect(branch).toContain(
-      "router.push(brandStripeOnboardingRoute(trip.brandId)",
+      "router.push(brandPaymentOnboardingRoute(trip.brandId)",
     );
   });
 

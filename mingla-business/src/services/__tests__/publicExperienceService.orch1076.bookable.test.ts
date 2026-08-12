@@ -6,7 +6,7 @@
  *   - PAID experience (online ticket, price>0) + brand CANNOT charge -> bookable:false
  *   - same PAID experience + brand CAN charge                        -> bookable:true (self-heal)
  *   - FREE experience                                                -> bookable:true
- *     (pg_brand_can_charge is NEVER consulted for free)
+ *     (pg_brand_can_collect is NEVER consulted for free)
  *   - in-person-only PAID                                            -> bookable:true
  *
  * The experience page (/exp/[brandSlug]/[experienceSlug].tsx) renders the
@@ -95,7 +95,9 @@ const builderFor = (result: { data: unknown; error: unknown }) => {
 // longer runs resolveBookable for the by-slug deep link — it surfaces the
 // server's decision verbatim. So the four buyer-supply resolveBookable scenarios
 // (ORCH-1076) now live under the ById resolver below (which STILL owns that
-// client-side logic via pg_brand_can_charge), and BySlug gets passthrough tests.
+// client-side logic via pg_brand_can_collect), and BySlug gets passthrough tests.
+// [TEST-MOD-APPROVED #1919] The scenarios are unchanged; provider-neutral
+// readiness replaces only the obsolete Stripe-only authority.
 
 // Route .from by table for the ById resolver: events (with embedded brands) +
 // ticket_types carry the scenario; experience_stops / event_dates / the theme
@@ -119,11 +121,11 @@ const setupById = (tickets: Record<string, unknown>[]): void => {
   });
 };
 
-const routeRpc = (canCharge: boolean): void => {
+const routeRpc = (canCollect: boolean): void => {
   mockRpc.mockImplementation((...a: unknown[]) => {
     const fn = a[0] as string;
-    if (fn === "pg_brand_can_charge") {
-      return Promise.resolve({ data: canCharge, error: null });
+    if (fn === "pg_brand_can_collect") {
+      return Promise.resolve({ data: canCollect, error: null });
     }
     return Promise.resolve({ data: [], error: null });
   });
@@ -218,7 +220,7 @@ describe("ORCH-1076 — experience deep-link bookable flag (ById resolver — cl
     const payload = await getPublicExperienceById("exp-1");
     expect(payload).not.toBeNull();
     expect(payload?.experience.bookable).toBe(false);
-    expect(mockRpc).toHaveBeenCalledWith("pg_brand_can_charge", {
+    expect(mockRpc).toHaveBeenCalledWith("pg_brand_can_collect", {
       p_brand_id: "brand-1",
     });
   });
@@ -230,13 +232,13 @@ describe("ORCH-1076 — experience deep-link bookable flag (ById resolver — cl
     expect(payload?.experience.bookable).toBe(true);
   });
 
-  test("FREE experience -> bookable:true; pg_brand_can_charge NOT consulted", async () => {
+  test("FREE experience -> bookable:true; pg_brand_can_collect NOT consulted", async () => {
     routeRpc(false);
     setupById([ttRow({ price_cents: 0, is_free: true })]);
     const payload = await getPublicExperienceById("exp-1");
     expect(payload?.experience.bookable).toBe(true);
     expect(mockRpc).not.toHaveBeenCalledWith(
-      "pg_brand_can_charge",
+      "pg_brand_can_collect",
       expect.anything(),
     );
   });
@@ -247,7 +249,7 @@ describe("ORCH-1076 — experience deep-link bookable flag (ById resolver — cl
     const payload = await getPublicExperienceById("exp-1");
     expect(payload?.experience.bookable).toBe(true);
     expect(mockRpc).not.toHaveBeenCalledWith(
-      "pg_brand_can_charge",
+      "pg_brand_can_collect",
       expect.anything(),
     );
   });

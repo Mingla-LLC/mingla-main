@@ -681,6 +681,12 @@ jobs:
       - name: Install mingla-business deps
         working-directory: mingla-business
         run: npm install --no-save
+      - name: "Issue #1919: Business provider-neutral readiness"
+        working-directory: mingla-business
+        run: >-
+          npx jest --runInBand
+          src/utils/__tests__/issue_1919_provider_neutral_paid_readiness.test.ts
+          src/utils/__tests__/issue_1919_provider_neutral_paid_readiness.tester_adversarial.test.ts
       - name: "Issue #1384: Business authoring and buyer rendering suite"
         working-directory: mingla-business
         run: |
@@ -722,6 +728,12 @@ jobs:
       - name: Install app-mobile test dependencies
         working-directory: app-mobile
         run: npm install --no-save
+      - name: "Issue #1919: Consumer provider-neutral readiness"
+        working-directory: app-mobile
+        run: >-
+          npx jest --runInBand
+          src/hooks/__tests__/issue_1919_provider_neutral_paid_readiness.test.ts
+          src/hooks/__tests__/issue_1919_provider_neutral_paid_readiness.tester_adversarial.test.ts
       - name: "Issue #1384: consumer carrier and runtime-parity suites"
         working-directory: app-mobile
         run: |

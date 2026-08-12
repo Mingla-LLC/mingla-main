@@ -122,13 +122,14 @@ import {
   mapPublishErrorToState,
 } from "./TripCreatorStep5Review";
 import {
-  brandStripeOnboardingRoute,
-  resolvePaidPublishGuardCopy,
+  brandPaymentOnboardingRoute,
+  resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 import {
   offeringNeedsStripeToPublish,
   tripDraftIsPaid,
 } from "../offering/publishStripeReadiness";
+import { payoutGateStatus } from "../../utils/brandPayout";
 // ORCH-0880 [Tr5 Traveler Intake Forms] — NEW Step 6 component (intake
 // schema builder + live preview, per-tier scope).
 import { TripCreatorStep6Intake } from "./TripCreatorStep6Intake";
@@ -516,9 +517,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     () =>
       offeringNeedsStripeToPublish({
         isPaid: tripDraftIsPaid(step4Draft),
-        stripeStatus: brand.stripeStatus ?? null,
+        stripeStatus: payoutGateStatus(brand),
       }),
-    [step4Draft, brand.stripeStatus],
+    [step4Draft, brand],
   );
 
   // META-ORCH-1174 Leg B2 — publish gate: every authored package must be valid
@@ -562,7 +563,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
     useState<boolean>(false);
 
   const handleConnectStripe = useCallback((): void => {
-    router.push(brandStripeOnboardingRoute(trip.brandId) as never);
+    router.push(brandPaymentOnboardingRoute(trip.brandId) as never);
   }, [router, trip.brandId]);
 
   // ORCH-0892-B v2: keyboard listener + keyboardVisible/keyboardHeight state
@@ -1007,14 +1008,14 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       // handleConfirmPublish); only unrecognized errors keep the connection
       // toast.
       const autosaveErrCode = e instanceof Error ? e.message : String(e ?? "");
-      const guardCopy = resolvePaidPublishGuardCopy(autosaveErrCode);
-      if (guardCopy !== null && guardCopy.action === "stripe_onboarding") {
+      const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(autosaveErrCode);
+      if (guardCopy !== null && guardCopy.action === "payment_onboarding") {
         setPublishError({
           code: guardCopy.reason,
           message: guardCopy.body,
           pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
         });
-        router.push(brandStripeOnboardingRoute(trip.brandId) as never);
+        router.push(brandPaymentOnboardingRoute(trip.brandId) as never);
         return;
       }
       setPublishError({
@@ -1043,14 +1044,14 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       // handleNext's catch: locked copy + payments-onboard route first;
       // only unrecognized errors keep the connection toast.
       const autosaveErrCode = e instanceof Error ? e.message : String(e ?? "");
-      const guardCopy = resolvePaidPublishGuardCopy(autosaveErrCode);
-      if (guardCopy !== null && guardCopy.action === "stripe_onboarding") {
+      const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(autosaveErrCode);
+      if (guardCopy !== null && guardCopy.action === "payment_onboarding") {
         setPublishError({
           code: guardCopy.reason,
           message: guardCopy.body,
           pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
         });
-        router.push(brandStripeOnboardingRoute(trip.brandId) as never);
+        router.push(brandPaymentOnboardingRoute(trip.brandId) as never);
         return;
       }
       setPublishError({
@@ -1244,8 +1245,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       setPublishError(mapPublishErrorToState(err.code ?? "publish_failed", err.message));
       // ORCH-1075 — a paid trip on a Stripe-unready brand can't publish; route
       // the operator to the brand's Stripe Connect onboarding to finish setup.
-      if ((err.message ?? "").includes("stripe_charges_disabled")) {
-        router.push(brandStripeOnboardingRoute(trip.brandId) as never);
+      const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(err.message);
+      if (guardCopy?.action === "payment_onboarding") {
+        router.push(brandPaymentOnboardingRoute(trip.brandId) as never);
       }
     }
   }, [publishMutation, router, step1Draft, step5Draft, trip.id, trip.brandId, trip.timezone, onPublished, showToast]);

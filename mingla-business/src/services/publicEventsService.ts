@@ -1427,17 +1427,17 @@ const ticketsArePaidOnline = (tickets: PublicTicketTypeRecord[]): boolean =>
   );
 
 // Resolve whether a PAID offering's brand can charge via the canonical
-// pg_brand_can_charge RPC (anon-granted by the Stream A migration). FREE ⇒ true.
-// On RPC error fail OPEN (page stays bookable; the checkout 409 is the backstop).
+// pg_brand_can_collect RPC (anon-granted by the #1919 migration). FREE ⇒ true.
+// On RPC error fail CLOSED for paid supply; free never reaches this RPC.
 const resolveEventBookable = async (
   brandId: string,
   isPaid: boolean,
 ): Promise<boolean> => {
   if (!isPaid) return true;
-  const { data, error } = await supabase.rpc("pg_brand_can_charge", {
+  const { data, error } = await supabase.rpc("pg_brand_can_collect", {
     p_brand_id: brandId,
   });
-  if (error !== null) return true;
+  if (error !== null) return false;
   return data === true;
 };
 
@@ -1446,7 +1446,7 @@ const resolveEventBookable = async (
 // caller can fail closed for paid rows.
 const fetchReadyBrandIds = async (brandIds: string[]): Promise<Set<string>> => {
   if (brandIds.length === 0) return new Set<string>();
-  const { data, error } = await supabase.rpc("pg_brands_can_charge", {
+  const { data, error } = await supabase.rpc("pg_brands_can_collect", {
     p_brand_ids: brandIds,
   });
   if (error !== null) return new Set<string>();
@@ -1586,7 +1586,7 @@ export const fetchPublicBrandEvents = async (
   // ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — drop PAID events from a
   // brand that can't charge from the public brand-page event feed (the view is
   // NOT gated — it also serves keyed enrich — so we filter here, buyer-only).
-  // The owner never reads fetchPublicBrandEvents. One batched pg_brands_can_charge
+  // The owner never reads fetchPublicBrandEvents. One batched pg_brands_can_collect
   // round-trip over the distinct paid brand ids; free events are never dropped.
   const paidBrandIds = Array.from(
     new Set(

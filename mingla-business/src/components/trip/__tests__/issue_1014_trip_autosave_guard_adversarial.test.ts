@@ -27,7 +27,9 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
-import { resolvePaidPublishGuardCopy } from "../../../utils/paidPublishGuards";
+// [TEST-MOD-APPROVED #1919] Preserve the #1014 currency/date scenarios while
+// asserting the standard Trip caller's new provider-neutral adapter/action.
+import { resolveProviderNeutralPaidPublishGuardCopy } from "../../../utils/paidPublishGuards";
 
 const WIZARD_SOURCE = readFileSync(
   join(__dirname, "..", "TripCreatorWizard.tsx"),
@@ -36,30 +38,30 @@ const WIZARD_SOURCE = readFileSync(
 
 describe("issue #1014 RETEST — runtime resolver contract for the autosave catch inputs", () => {
   it("unrecognized autosave errors resolve null → the connection toast stays reachable", () => {
-    expect(resolvePaidPublishGuardCopy("Network request failed")).toBeNull();
+    expect(resolveProviderNeutralPaidPublishGuardCopy("Network request failed")).toBeNull();
     expect(
-      resolvePaidPublishGuardCopy("updateTripPricing: event not found for id=x"),
+      resolveProviderNeutralPaidPublishGuardCopy("updateTripPricing: event not found for id=x"),
     ).toBeNull();
-    expect(resolvePaidPublishGuardCopy("tier_price_change_with_sales")).toBeNull();
-    expect(resolvePaidPublishGuardCopy("")).toBeNull();
+    expect(resolveProviderNeutralPaidPublishGuardCopy("tier_price_change_with_sales")).toBeNull();
+    expect(resolveProviderNeutralPaidPublishGuardCopy("")).toBeNull();
   });
 
   it("a decorated trigger raise (the real Step-4 shape) maps to the payments action", () => {
-    const copy = resolvePaidPublishGuardCopy("P0001: event_currency_required");
-    expect(copy?.action).toBe("stripe_onboarding");
+    const copy = resolveProviderNeutralPaidPublishGuardCopy("P0001: event_currency_required");
+    expect(copy?.action).toBe("payment_onboarding");
     expect(copy?.body).toContain("Free listings publish any time.");
   });
 
   it("offering_date_past resolves edit_date — the catch gate must not send it to payments", () => {
-    const copy = resolvePaidPublishGuardCopy("offering_date_past");
+    const copy = resolveProviderNeutralPaidPublishGuardCopy("offering_date_past");
     expect(copy).not.toBeNull();
     expect(copy?.action).toBe("edit_date");
-    expect(copy?.action).not.toBe("stripe_onboarding");
+    expect(copy?.action).not.toBe("payment_onboarding");
   });
 });
 
 describe("issue #1014 RETEST — catch structure pins (order + gate, BOTH catches)", () => {
-  const resolverToken = "resolvePaidPublishGuardCopy(autosaveErrCode)";
+  const resolverToken = "resolveProviderNeutralPaidPublishGuardCopy(autosaveErrCode)";
   const toastToken =
     "Couldn't save your changes. Check your connection and try again.";
 
@@ -79,7 +81,7 @@ describe("issue #1014 RETEST — catch structure pins (order + gate, BOTH catche
 
   it("ORDER: in each catch the guard branch precedes the connection-toast fallback", () => {
     for (const w of catchWindows()) {
-      const gate = w.indexOf('guardCopy.action === "stripe_onboarding"');
+      const gate = w.indexOf('guardCopy.action === "payment_onboarding"');
       const toast = w.indexOf(toastToken);
       expect(gate).toBeGreaterThan(-1);
       expect(toast).toBeGreaterThan(-1);
@@ -89,9 +91,9 @@ describe("issue #1014 RETEST — catch structure pins (order + gate, BOTH catche
 
   it("GATE: each catch routes ONLY stripe_onboarding-action copies, with the guard reason as banner code", () => {
     for (const w of catchWindows()) {
-      expect(w).toContain('guardCopy.action === "stripe_onboarding"');
+      expect(w).toContain('guardCopy.action === "payment_onboarding"');
       expect(w).toContain("code: guardCopy.reason");
-      expect(w).toContain("router.push(brandStripeOnboardingRoute(trip.brandId)");
+      expect(w).toContain("router.push(brandPaymentOnboardingRoute(trip.brandId)");
     }
   });
 });

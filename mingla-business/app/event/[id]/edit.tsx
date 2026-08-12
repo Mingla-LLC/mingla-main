@@ -70,6 +70,7 @@ import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
 // the migration from a client `d_<ts36>` id to a server-issued id is now
 // triggered by the first dirty autosave, not on route mount. Pure helper.
 import { isDraftDirty } from "../../../src/utils/draftDirtyCheck";
+import { brandPaymentOnboardingRoute } from "../../../src/utils/paidPublishGuards";
 
 const isLocalOnlyDraft = (draft: DraftEvent): boolean =>
   draft.id.startsWith("d_") || draft.serverSlug === null;
@@ -470,9 +471,9 @@ export default function EventEditRoute(): React.ReactElement {
     router.push(`/event/${draft.id}/preview` as never);
   }, [draft, router]);
 
-  const handleOpenStripe = React.useCallback((): void => {
+  const handleOpenPaymentOnboarding = React.useCallback((): void => {
     if (draft === null) return;
-    router.push(`/brand/${draft.brandId}/payments/onboard` as never);
+    router.push(brandPaymentOnboardingRoute(draft.brandId) as never);
   }, [draft, router]);
 
   const handleDiscardDraft = React.useCallback(
@@ -720,7 +721,7 @@ export default function EventEditRoute(): React.ReactElement {
       isCreateMode={isCreateMode}
       onExit={handleExit}
       onOpenPreview={handleOpenPreview}
-      onOpenStripeOnboard={handleOpenStripe}
+      onOpenPaymentOnboarding={handleOpenPaymentOnboarding}
       onAutosaveDraft={handleAutosaveDraft}
       onDiscardServerDraft={handleDiscardDraft}
       onPublishDraft={async (draftToPublish) => {

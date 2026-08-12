@@ -213,6 +213,8 @@ export default function TripEditRoute(): React.ReactElement {
         // proactively gate a paid trip's Publish (the narrow TripPreviewBrand
         // dropped it before).
         stripeStatus: currentBrand.stripeStatus ?? null,
+        paymentProvider: currentBrand.paymentProvider,
+        paystackSubaccountCode: currentBrand.paystackSubaccountCode ?? null,
       }}
       isCreateMode={isCreateMode}
       onDiscardTrip={async () => {

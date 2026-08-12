@@ -1,5 +1,5 @@
 /**
- * ORCH-1076 Stream B — experience proactive Stripe banner + disabled Publish +
+ * ORCH-1076 Stream B — experience proactive payout banner + disabled Publish +
  * pre-check toast (SPEC §9 T-20/T-21/T-22) and regression T-23 (no banner on
  * the live-edit branch).
  *
@@ -24,7 +24,9 @@ const wizardSource = (): string =>
   );
 
 describe("ORCH-1076 — experience gate compute", () => {
-  test("experienceNeedsStripe mirrors the paid resolver + brand.stripeStatus, NOT in live-edit", () => {
+  // [TEST-MOD-APPROVED #1919] Same paid/live-edit scenario; the assertion now
+  // pins the provider-neutral readiness carrier instead of raw Stripe state.
+  test("experienceNeedsStripe mirrors the paid resolver + payoutGateStatus, NOT in live-edit", () => {
     const src = wizardSource();
     expect(src).toContain("const experienceNeedsStripe");
     expect(src).toContain("!isLiveEdit");
@@ -32,7 +34,7 @@ describe("ORCH-1076 — experience gate compute", () => {
     expect(src).toContain(
       "experienceDraftIsPaid({ isFree, resolvedTotalMajor })",
     );
-    expect(src).toContain("stripeStatus: brand?.stripeStatus ?? null");
+    expect(src).toContain("stripeStatus: payoutGateStatus(brand)");
   });
 });
 
@@ -57,7 +59,7 @@ describe("ORCH-1076 — T-6 banner mounts (Pricing + Cover)", () => {
     );
     expect(src).toContain('ctaLabel="Connect bank"');
     expect(src).toContain("onConnectStripe={handleConnectStripe}");
-    expect(src).toContain("brandStripeOnboardingRoute(brand.id)");
+    expect(src).toContain("brandPaymentOnboardingRoute(brand.id)");
   });
 });
 
@@ -122,7 +124,7 @@ describe("ORCH-1076 — T-23 live-edit (edit-to-paid) has NO proactive banner", 
   test("the reactive ORCH-1075 catch (handlePaidPublishGuard) is intact", () => {
     const src = wizardSource();
     expect(src).toContain("handlePaidPublishGuard");
-    expect(src).toContain("resolvePaidPublishGuardCopy");
-    expect(src).toContain("brandStripeOnboardingRoute(brand.id)");
+    expect(src).toContain("resolveProviderNeutralPaidPublishGuardCopy");
+    expect(src).toContain("brandPaymentOnboardingRoute(brand.id)");
   });
 });

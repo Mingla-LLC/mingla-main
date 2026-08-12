@@ -79,7 +79,7 @@ import {
 } from "../../utils/draftEventValidation";
 import { isDraftEventPristine } from "../../utils/draftEventPristine";
 import { payoutGateStatus } from "../../utils/brandPayout";
-import { resolvePaidPublishGuardCopy } from "../../utils/paidPublishGuards";
+import { resolveProviderNeutralPaidPublishGuardCopy } from "../../utils/paidPublishGuards";
 import { expandRecurrenceToDates } from "../../utils/recurrenceRule";
 
 import { Button } from "../ui/Button";
@@ -180,7 +180,7 @@ export interface EventCreatorWizardProps {
   /** Push to /event/[id]/preview when user taps mini-card or Preview button. */
   onOpenPreview: () => void;
   /** Push to /brand/[brandId]/payments/onboard when J-E3 path hit. */
-  onOpenStripeOnboard: () => void;
+  onOpenPaymentOnboarding: () => void;
   onAutosaveDraft?: (draft: DraftEvent) => void;
   onDiscardServerDraft?: (draft: DraftEvent) => Promise<void>;
   onPublishDraft?: (draft: DraftEvent) => Promise<PublishedEventSlug>;
@@ -203,7 +203,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   isCreateMode,
   onExit,
   onOpenPreview,
-  onOpenStripeOnboard,
+  onOpenPaymentOnboarding,
   onAutosaveDraft,
   onDiscardServerDraft,
   onPublishDraft,
@@ -654,11 +654,11 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       // for the two money-setup reasons, When step for the date) instead of a
       // generic failure.
       const code = error instanceof Error ? error.message : String(error ?? "");
-      const guardCopy = resolvePaidPublishGuardCopy(code);
+      const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(code);
       if (guardCopy !== null) {
         handleShowToast(guardCopy.body);
-        if (guardCopy.action === "stripe_onboarding") {
-          onOpenStripeOnboard();
+        if (guardCopy.action === "payment_onboarding") {
+          onOpenPaymentOnboarding();
         } else {
           // Guard B — jump to the When step (index 1) and reveal step errors.
           setShowStepErrors(true);
@@ -675,7 +675,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     onPublishDraft,
     deleteDraft,
     handleShowToast,
-    onOpenStripeOnboard,
+    onOpenPaymentOnboarding,
   ]);
 
   const handleFixJump = useCallback((step: number): void => {
@@ -685,8 +685,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   }, []);
 
   const handleConnectStripe = useCallback((): void => {
-    onOpenStripeOnboard();
-  }, [onOpenStripeOnboard]);
+    onOpenPaymentOnboarding();
+  }, [onOpenPaymentOnboarding]);
 
   // Step 7 publishability — drives StripeBlockedCard visibility (in body)
   // and Publish button disabled state (in dock).

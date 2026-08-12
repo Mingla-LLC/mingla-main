@@ -54,11 +54,13 @@ describe("ORCH-1076 — trip review banner (T-17 / T-18)", () => {
 });
 
 describe("ORCH-1076 — trip wizard gate + disabled Publish + toast (T-19)", () => {
-  test("computes tripNeedsStripe from the paid resolver + brand.stripeStatus", () => {
+  // [TEST-MOD-APPROVED #1919] Preserve the paid-gate scenario while replacing
+  // the obsolete raw Stripe carrier with provider-neutral payout readiness.
+  test("computes tripNeedsStripe from the paid resolver + payoutGateStatus", () => {
     const src = wizardSource();
     expect(src).toContain("offeringNeedsStripeToPublish");
     expect(src).toContain("tripDraftIsPaid(step4Draft)");
-    expect(src).toContain("stripeStatus: brand.stripeStatus ?? null");
+    expect(src).toContain("stripeStatus: payoutGateStatus(brand)");
   });
 
   test("dock Publish is disabled when tripNeedsStripe", () => {
@@ -93,16 +95,18 @@ describe("ORCH-1076 — trip wizard gate + disabled Publish + toast (T-19)", () 
     expect(confirmIdx).toBeGreaterThan(returnIdx);
   });
 
-  test("onConnectStripe routes to the brand Stripe onboarding builder", () => {
+  test("onConnectStripe routes to the provider-neutral payment onboarding builder", () => {
     const src = wizardSource();
     expect(src).toContain("const handleConnectStripe");
-    expect(src).toContain("brandStripeOnboardingRoute(trip.brandId)");
+    expect(src).toContain("brandPaymentOnboardingRoute(trip.brandId)");
     expect(src).toContain("onConnectStripe={handleConnectStripe}");
   });
 
-  test("the edit route threads stripeStatus into the wizard brand prop", () => {
+  test("the edit route threads both rail carriers into the wizard brand prop", () => {
     const src = read("app/trip/[id]/edit.tsx");
     expect(src).toContain("stripeStatus: currentBrand.stripeStatus ?? null");
+    expect(src).toContain("paymentProvider: currentBrand.paymentProvider");
+    expect(src).toContain("paystackSubaccountCode: currentBrand.paystackSubaccountCode ?? null");
   });
 });
 
@@ -116,13 +120,13 @@ describe("ORCH-1076 — regressions", () => {
   test("T-24 reactive ORCH-1075 catch still wired in the wizard", () => {
     const src = wizardSource();
     expect(src).toContain("mapPublishErrorToState");
-    expect(src).toContain("stripe_charges_disabled");
-    expect(src).toContain("brandStripeOnboardingRoute(trip.brandId)");
+    expect(src).toContain("resolveProviderNeutralPaidPublishGuardCopy");
+    expect(src).toContain("brandPaymentOnboardingRoute(trip.brandId)");
   });
 
   test("edit-to-paid reactive catch on EditPublishedTripScreen is unchanged", () => {
     const src = editSource();
-    expect(src).toContain("stripe_charges_disabled");
-    expect(src).toContain("brandStripeOnboardingRoute");
+    expect(src).toContain("resolveProviderNeutralPaidPublishGuardCopy");
+    expect(src).toContain("brandPaymentOnboardingRoute");
   });
 });

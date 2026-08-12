@@ -1600,6 +1600,7 @@ export type UpdateLiveTripRejectReason =
   | "inclusions_removed_with_sales"
   // ORCH-1075 — paid-edit integrity guards.
   | "stripe_charges_disabled"
+  | "payment_collection_unavailable"
   | "offering_date_past"
   // ORCH-1120 — published-trip Settings buyer-protection gate. Buyer-unfavorable
   // refund/deadline/bookings-closed edits hard-block when paid orders exist.

@@ -34,6 +34,23 @@ export type PaidPublishGuardReason =
 
 export type PaidPublishGuardAction = "stripe_onboarding" | "edit_date";
 
+export type ProviderNeutralPaidPublishGuardReason =
+  | "payment_collection_unavailable"
+  | "offering_date_past"
+  | "event_currency_required";
+
+export type ProviderNeutralPaidPublishGuardAction =
+  | "payment_onboarding"
+  | "edit_date";
+
+export interface ProviderNeutralPaidPublishGuardCopy {
+  reason: ProviderNeutralPaidPublishGuardReason;
+  title: string;
+  body: string;
+  actionLabel: string;
+  action: ProviderNeutralPaidPublishGuardAction;
+}
+
 export interface PaidPublishGuardCopy {
   reason: PaidPublishGuardReason;
   /** Locked title (SPEC §3.7). */
@@ -120,9 +137,72 @@ export const resolvePaidPublishGuardCopy = (
 };
 
 /**
+ * #1919 transitional wire adapter for standard event/trip/experience writes.
+ * Installed clients still receive `stripe_charges_disabled` until cleanup
+ * issue #1922; updated clients immediately collapse both wire inputs into the
+ * provider-neutral semantic reason. RSVP, Stay, venue, and checkout retain
+ * their existing adapters and are deliberately outside this seam.
+ */
+export const normalizeProviderNeutralPaidPublishGuardReason = (
+  raw: string | null | undefined,
+): ProviderNeutralPaidPublishGuardReason | null => {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim();
+  if (s.length === 0) return null;
+  // Canonical-first when a decorated message contains both tokens.
+  if (s.includes("payment_collection_unavailable")) {
+    return "payment_collection_unavailable";
+  }
+  if (s.includes("stripe_charges_disabled")) {
+    return "payment_collection_unavailable";
+  }
+  if (s.includes("offering_date_past")) return "offering_date_past";
+  if (s.includes("event_currency_required")) return "event_currency_required";
+  return null;
+};
+
+const PROVIDER_NEUTRAL_PAID_PUBLISH_COPY: Record<
+  ProviderNeutralPaidPublishGuardReason,
+  ProviderNeutralPaidPublishGuardCopy
+> = {
+  payment_collection_unavailable: {
+    reason: "payment_collection_unavailable",
+    title: "Finish your payment setup",
+    body: "You can’t publish a paid listing until this brand’s payout account is ready. Finish payment setup, then try again.",
+    actionLabel: "Finish payment setup",
+    action: "payment_onboarding",
+  },
+  offering_date_past: {
+    reason: "offering_date_past",
+    title: PAID_PUBLISH_GUARD_COPY.offering_date_past.title,
+    body: PAID_PUBLISH_GUARD_COPY.offering_date_past.body,
+    actionLabel: PAID_PUBLISH_GUARD_COPY.offering_date_past.actionLabel,
+    action: "edit_date",
+  },
+  event_currency_required: {
+    reason: "event_currency_required",
+    title: PAID_PUBLISH_GUARD_COPY.event_currency_required.title,
+    body: PAID_PUBLISH_GUARD_COPY.event_currency_required.body,
+    actionLabel: PAID_PUBLISH_GUARD_COPY.event_currency_required.actionLabel,
+    action: "payment_onboarding",
+  },
+};
+
+export const resolveProviderNeutralPaidPublishGuardCopy = (
+  raw: string | null | undefined,
+): ProviderNeutralPaidPublishGuardCopy | null => {
+  const reason = normalizeProviderNeutralPaidPublishGuardReason(raw);
+  return reason === null ? null : PROVIDER_NEUTRAL_PAID_PUBLISH_COPY[reason];
+};
+
+/**
  * The canonical Stripe Connect onboarding route for a brand — the same entry
  * BrandOnboardView ("Set up payments") drives the brand to so its
  * charges_enabled flips true. Used by the `stripe_onboarding` action.
  */
 export const brandStripeOnboardingRoute = (brandId: string): string =>
+  `/brand/${brandId}/payments/onboard`;
+
+/** #1919 provider-neutral name for the existing Payments onboarding route. */
+export const brandPaymentOnboardingRoute = (brandId: string): string =>
   `/brand/${brandId}/payments/onboard`;
