@@ -1,6 +1,13 @@
 // SHARE-SEMANTIC-ROLE:content-transport
 import { Platform, Share } from "react-native";
-import * as Clipboard from "expo-clipboard";
+
+type ExpoClipboardModule = typeof import("expo-clipboard");
+
+// Keep the native-only dependency out of anonymous web-page import graphs.
+// Some web/Jest environments cannot parse Expo's ESM clipboard entry point;
+// native copy still loads the exact same module when that path is exercised.
+const loadExpoClipboard = (): ExpoClipboardModule =>
+  require("expo-clipboard") as ExpoClipboardModule;
 
 export interface SharePublicUrlInput {
   title: string;
@@ -74,7 +81,7 @@ export const copyPublicUrl = async (url: string): Promise<void> => {
     return;
   }
 
-  await Clipboard.setStringAsync(url);
+  await loadExpoClipboard().setStringAsync(url);
 };
 
 export const sharePublicUrl = async ({

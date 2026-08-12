@@ -111,6 +111,10 @@ const COMPILED_SRC: Record<string, string> = {
   "/og/venue/:brandSlug/:venueSlug.png":
     "^/og/venue(?:/([^/]+?))(?:/([^/]+?))\\.png$",
   "/e/:brandSlug/:eventSlug": "^/e(?:/([^/]+?))(?:/([^/]+?))$",
+  // [TEST-MOD-APPROVED #1968] Canonical experience pages now have their own
+  // crawler-only metadata handler so their ordinary browser route stays SPA-owned.
+  "/exp/:brandSlug/:experienceSlug":
+    "^/exp(?:/([^/]+?))(?:/([^/]+?))$",
   "/t/:brandSlug/:tripSlug": "^/t(?:/([^/]+?))(?:/([^/]+?))$",
   "/b/:brandSlug": "^/b(?:/([^/]+?))$",
   "/b/:brandSlug/v/:venueSlug": "^/b(?:/([^/]+?))/v(?:/([^/]+?))$",
@@ -322,7 +326,9 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
 
   it("A.5 — the bot/OG rewrites are bot-gated and cannot steal a browser request", () => {
     const botGated = vercel.rewrites.filter((r) => (r.has?.length ?? 0) > 0);
-    expect(botGated.length).toBe(4);
+    // [TEST-MOD-APPROVED #1968] The experience metadata handler is the fifth
+    // crawler-only rewrite; the browser-stealing invariant remains unchanged.
+    expect(botGated.length).toBe(5);
     for (const rewrite of botGated) {
       const ua = rewrite.has?.find((h) => h.type === "header" && h.key === "user-agent");
       expect([rewrite.source, Boolean(ua)]).toEqual([rewrite.source, true]);
@@ -332,6 +338,9 @@ describe("#1485 T2/A — every route in the real app/ tree still resolves", () =
     // because resolveForBrowser() deliberately skips them.
     for (const [pathname, expected] of [
       ["/e/acme/summer-party", "/api/public-event?brandSlug=:brandSlug&eventSlug=:eventSlug"],
+      // [TEST-MOD-APPROVED #1968] Experience chat snippets resolve through
+      // their canonical /exp URL without entering Explorer's /s share system.
+      ["/exp/acme/gallery-tour", "/api/public-experience?brandSlug=:brandSlug&experienceSlug=:experienceSlug"],
       // [TEST-MOD-APPROVED #1615] Venue crawlers now receive the venue's own
       // canonical metadata rather than the parent brand's generic metadata.
       ["/b/acme/v/rooftop", "/api/public-venue?brandSlug=:brandSlug&venueSlug=:venueSlug"],

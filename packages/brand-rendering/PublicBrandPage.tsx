@@ -749,6 +749,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     </View>
   ) : null;
 
+  // Desktop hero overlay intentionally removed: the cover artwork stays clean,
+  // while the page body remains the single owner of brand identity and details.
+
   return (
     <ParallaxCoverShell
       palette={palette}
