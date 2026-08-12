@@ -24,3 +24,8 @@ export function supportedDialCountries(): string[];
 export const PHONE_PLANS: Readonly<Record<string, {
   dial: string; trunk: string | null; nsnLengths: number[];
 }>>;
+
+export function resolveUserPhoneE164(
+  raw: string | null | undefined,
+  countryIso: string | null | undefined,
+): string | null;

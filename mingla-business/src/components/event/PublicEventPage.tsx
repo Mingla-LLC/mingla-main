@@ -69,7 +69,6 @@ import {
   EventOfferingFloatingBar,
   EventTicketBox,
   EventAcquisitionNotice,
-  type RsvpPhoneFieldRenderer,
 } from "@mingla/offering-rendering";
 
 const resolveEventAcquisitionState =
@@ -83,18 +82,12 @@ const resolveEventAcquisitionState =
 // ORCH-1295 [chip-in-post-payment-polish] — BUG 2: the shared country-picker phone
 // input already used on the buyer checkout form (ORCH-0847). Reused here so the
 // public RSVP phone field is country-code aware. No new npm dependency.
-import {
-  PhoneInput,
-  COUNTRIES,
-  getCountryByCode,
-  type PhoneInputTheme,
-  type PhoneInputIconName,
-} from "@mingla/phone-input";
-import { composeE164 } from "../../utils/phone";
-import { Icon } from "../ui/Icon";
-
 import { FoundationEventPreview } from "./FoundationEventPreview";
 import { FoundationRsvpPreview } from "./FoundationRsvpPreview";
+import {
+  resolvePrimaryRsvpPhoneCountry,
+  useBusinessRsvpPhoneField,
+} from "./useBusinessRsvpPhoneField";
 // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
 // §3) + its entity payload type; analytics ride the buyer-web PostHog facade
 // (captureWeb — postHogService is a deliberate no-op stub on web, I-1187).
@@ -288,37 +281,6 @@ const openMapsForQuery = (query: string): void => {
   void Linking.openURL(platformUrl).catch(() => {
     void Linking.openURL(googleUrl).catch(() => undefined);
   });
-};
-
-// ORCH-1295 [chip-in-post-payment-polish] — BUG 2: seed the guest phone picker's
-// initial country. Guest's device locale first (they enter their OWN number),
-// then a brand-currency hint (the brand's settlement currency is a country
-// proxy), then "US". Mirrors buyer.tsx's locale-first resolveInitialCountry.
-const CURRENCY_DEFAULT_COUNTRY: Record<string, string> = {
-  NGN: "NG",
-  GBP: "GB",
-  USD: "US",
-  CAD: "CA",
-  AUD: "AU",
-  EUR: "IE",
-  ZAR: "ZA",
-  KES: "KE",
-  GHS: "GH",
-};
-const resolveGuestPhoneCountry = (currency?: string | null): string => {
-  try {
-    const locale = Intl.DateTimeFormat().resolvedOptions().locale;
-    const region = locale.split("-")[1]?.toUpperCase();
-    if (region && COUNTRIES.some((c) => c.code === region)) return region;
-  } catch {
-    // Intl unavailable — fall through to the currency hint.
-  }
-  const byCurrency = currency
-    ? CURRENCY_DEFAULT_COUNTRY[currency.toUpperCase()]
-    : undefined;
-  if (byCurrency && COUNTRIES.some((c) => c.code === byCurrency))
-    return byCurrency;
-  return "US";
 };
 
 const canonicalUrl = (event: LiveEvent): string =>
@@ -776,6 +738,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       guestName: string;
       guestEmail: string;
       guestPhone: string;
+      guestPhoneCountryIso?: string | null;
       plusCount: number;
       guests: Array<{ name: string; email: string; phone: string }>;
     }): Promise<{
@@ -801,6 +764,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         guestName: input.guestName,
         guestEmail: input.guestEmail,
         guestPhone: input.guestPhone,
+        guestPhoneCountryIso: input.guestPhoneCountryIso,
         plusCount: input.plusCount,
         guests: input.guests,
       });
@@ -930,76 +894,12 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // hook owns country + local-digits state; here we render the picker + compose
   // the E.164 value the RSVP submit expects. ──
   const defaultPhoneCountry = useMemo(
-    () => resolveGuestPhoneCountry(event.currency ?? null),
+    () => resolvePrimaryRsvpPhoneCountry(event.currency ?? null),
     [event.currency],
   );
-  const phoneFieldTheme = useMemo<PhoneInputTheme>(
-    () => ({
-      backgroundPrimary: palette.page,
-      textPrimary: palette.primaryText,
-      textTertiary: palette.tertiaryText,
-      borderDefault: palette.panelBorder,
-      borderFocused: palette.accent,
-      borderError: "#ef4444",
-      searchBackground: palette.card,
-      rowPressedBackground: palette.accentWash,
-      divider: palette.panelBorder,
-      accessoryBackground: palette.page,
-      accessoryBorder: palette.panelBorder,
-      accent: palette.accent,
-      errorText: "#ef4444",
-    }),
-    [palette],
-  );
-  const renderRsvpPhoneField = useCallback<RsvpPhoneFieldRenderer>(
-    ({ countryCode, localDigits, onChangeCountry, onChangeLocalDigits, invalid, disabled }) => (
-      <View style={styles.rsvpPhoneFieldWrap}>
-        <Text style={[styles.rsvpPhoneFieldLabel, { color: palette.tertiaryText }]}>
-          Phone
-        </Text>
-        <PhoneInput
-          // ORCH-1299 — this RSVP phone field renders inside RsvpDetailsModal (a
-          // portal <Modal>). The default nested-<Modal> country picker freezes on
-          // web, so use the in-place overlay picker (web-only; native keeps modal).
-          pickerPresentation="overlay"
-          value={localDigits}
-          countryCode={countryCode}
-          onChangePhone={(next: string) => {
-            const dial = getCountryByCode(countryCode)?.dialCode ?? "+1";
-            onChangeLocalDigits(next, composeE164(dial, next) ?? "");
-          }}
-          onChangeCountry={(nextIso: string) => {
-            const dial = getCountryByCode(nextIso)?.dialCode ?? "+1";
-            onChangeCountry(nextIso, composeE164(dial, localDigits) ?? "");
-          }}
-          error={invalid ? "Enter a valid phone number" : null}
-          disabled={disabled}
-          iconRenderer={(name: PhoneInputIconName, iconProps: { size: number; color: string }) => {
-            const iconName =
-              name === "chevronDown"
-                ? "chevD"
-                : name === "checkmark"
-                  ? "check"
-                  : name === "close"
-                    ? "close"
-                    : "search";
-            return <Icon name={iconName} size={iconProps.size} color={iconProps.color} />;
-          }}
-          labels={{
-            phonePlaceholder: "Phone number",
-            countryButtonAccessibilityLabel: (name: string) =>
-              `Country code, ${name}, tap to change`,
-            phoneInputAccessibilityLabel: "Phone number",
-            doneButton: "Done",
-            pickerTitle: "Select Country",
-            pickerSearchPlaceholder: "Search country or dial code",
-            pickerCloseAccessibilityLabel: "Close country picker",
-          }}
-          theme={phoneFieldTheme}
-        />
-      </View>
-    ),
-    [palette, phoneFieldTheme],
+  const renderRsvpPhoneField = useBusinessRsvpPhoneField(
+    palette,
+    resolvedTheme,
   );
 
   // ORCH-1157 Issue 4 [doors] — derive the tz-aware doors labels from the live
@@ -1501,6 +1401,4 @@ const styles = StyleSheet.create({
   returnBannerCloseText: { fontSize: 16, fontWeight: "800" },
   // ORCH-1295 — BUG 2 injected phone field wrapper (matches the RSVP form's field
   // label spacing so the country-picker input aligns with the name/email fields).
-  rsvpPhoneFieldWrap: { marginBottom: 12 },
-  rsvpPhoneFieldLabel: { fontSize: 12, fontWeight: "700", marginBottom: 5 },
 });

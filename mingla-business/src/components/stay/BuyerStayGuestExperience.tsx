@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Linking, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { StayGuestBooking } from "@mingla/brand-rendering/StayGuestBooking";
+import { StayGuestBooking, type StayGuestBookingProps } from "@mingla/brand-rendering/StayGuestBooking";
 import {
   type PublicStayDetail,
   type StayGuestCheckoutInput,
@@ -9,6 +9,14 @@ import {
   type StayQuote,
 } from "@mingla/brand-rendering/stayGuest";
 import { formatStayMoney } from "@mingla/brand-rendering/stayGuestMoney";
+import {
+  PhoneInput,
+  getCountryByCode,
+  type PhoneInputIconName,
+  type PhoneInputTheme,
+} from "@mingla/phone-input";
+import { resolveUserPhoneE164 } from "@mingla/card-identity/phone";
+import { Icon } from "../ui/Icon";
 import type {
   offeringSurfaceStyles,
   ResolvedTheme,
@@ -29,6 +37,7 @@ const StayStripePayment = React.lazy(() =>
 );
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
+type StayPhoneRenderer = NonNullable<StayGuestBookingProps["renderPhoneField"]>;
 
 export function BuyerStayGuestExperience({
   venueId,
@@ -71,6 +80,53 @@ export function BuyerStayGuestExperience({
   const [groupId, setGroupId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const phoneTheme = React.useMemo<PhoneInputTheme>(() => ({
+    backgroundPrimary: palette.page,
+    textPrimary: palette.primaryText,
+    textTertiary: palette.tertiaryText,
+    borderDefault: palette.panelBorder,
+    borderFocused: palette.accent,
+    borderError: "#ef4444",
+    searchBackground: palette.card,
+    rowPressedBackground: palette.accentWash,
+    divider: palette.panelBorder,
+    accessoryBackground: palette.page,
+    accessoryBorder: palette.panelBorder,
+    accent: palette.accent,
+    errorText: theme.foregroundColor === "#ffffff" ? "#f87171" : "#b91c1c",
+  }), [palette, theme.foregroundColor]);
+  const renderPhoneField = React.useCallback<StayPhoneRenderer>((args) => (
+    <View style={styles.phoneField}>
+      <Text style={[styles.phoneLabel, { color: palette.tertiaryText }]}>{args.label}</Text>
+      <PhoneInput
+        pickerPresentation="overlay"
+        value={args.rawValue}
+        countryCode={args.countryCode}
+        onChangePhone={(raw: string) => args.onChangeRawValue(raw, resolveUserPhoneE164(raw, args.countryCode))}
+        onChangeCountry={(iso: string) => args.onChangeCountry(iso, resolveUserPhoneE164(args.rawValue, iso))}
+        error={args.invalid ? "Select a country and enter a valid phone number." : null}
+        disabled={args.disabled}
+        theme={phoneTheme}
+        maxLength={40}
+        testID={args.testID}
+        countryButtonAccessibilityLabel={args.countryCode === null ? "Select country" : `${args.label} country, ${getCountryByCode(args.countryCode)?.name ?? args.countryCode}, tap to change`}
+        phoneInputAccessibilityLabel={`${args.label} phone number`}
+        iconRenderer={(name: PhoneInputIconName, iconProps: { size: number; color: string }) => (
+          <Icon name={name === "chevronDown" ? "chevD" : name === "checkmark" ? "check" : name === "close" ? "close" : "search"} size={iconProps.size} color={iconProps.color} />
+        )}
+        labels={{
+          phonePlaceholder: "Phone number",
+          countryButtonAccessibilityLabel: (name: string) => `Country code, ${name}, tap to change`,
+          phoneInputAccessibilityLabel: "Phone number",
+          doneButton: "Done",
+          pickerTitle: "Select Country",
+          pickerSearchPlaceholder: "Search country or dial code",
+          pickerCloseAccessibilityLabel: "Close country picker",
+          pickerNoResults: "No countries found",
+        }}
+      />
+    </View>
+  ), [palette.tertiaryText, phoneTheme]);
 
   // issue #1562 — publish the quoted total to the page's first screen. Runs on
   // every quote transition INCLUDING back to null (a cleared or expired quote
@@ -219,6 +275,7 @@ export function BuyerStayGuestExperience({
         if (typeof window !== "undefined") window.location.reload();
       }}
       onSubmit={prepareQuote}
+      renderPhoneField={renderPhoneField}
       onConfirmQuote={confirm}
       onEditQuote={() => {
         setQuote(null);
@@ -237,6 +294,8 @@ export function BuyerStayGuestExperience({
 }
 
 const styles = StyleSheet.create({
+  phoneField: { marginBottom: 16 },
+  phoneLabel: { fontSize: 12, fontWeight: "700", marginBottom: 6 },
   paymentCard: { padding: 18, gap: 14 },
   heading: { fontSize: 22, lineHeight: 28, fontWeight: "900" },
   body: { fontSize: 14, lineHeight: 20 },

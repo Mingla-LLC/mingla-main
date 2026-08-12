@@ -39,7 +39,6 @@ import {
   classifyStripeCheckoutSessionCreateFailure,
   classifyStripePaymentIntentCreateFailure,
   jsonResponse,
-  normalizePhoneE164,
   randomBuyerStatusToken,
   serviceClient,
   sha256Hex,
@@ -122,6 +121,14 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   } catch {
     return jsonResponse({ error: "invalid_json" }, 400);
   }
+  if (!body || typeof body !== "object" || Array.isArray(body) ||
+      Object.keys(body).some((key) => ![
+        "venueId", "brandId", "surface", "reservedForUtc", "partySize",
+        "buyer", "occasion", "guestNotes", "attributionClickId",
+        "organicJourneyToken",
+      ].includes(key))) {
+    return jsonResponse({ error: "reservation_payload_invalid" }, 400);
+  }
 
   // ── Input validation (mirror ticket-checkout-create's buyer gates) ──────────
   // META-ORCH-1255: the reservation scope is the VENUE. New callers pass
@@ -139,11 +146,30 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     ? Number(body.partySize)
     : NaN;
   const buyer = (body.buyer ?? {}) as Record<string, unknown>;
+  if (!body.buyer || typeof body.buyer !== "object" || Array.isArray(body.buyer) ||
+      Object.keys(buyer).some((key) => ![
+        "name", "email", "phone", "phoneCountryIso", "marketingOptIn",
+      ].includes(key))) {
+    return jsonResponse({ error: "buyer_payload_invalid" }, 400);
+  }
   const buyerName = typeof buyer.name === "string" ? buyer.name.trim() : "";
   const buyerEmail = typeof buyer.email === "string"
     ? buyer.email.trim().toLowerCase()
     : "";
-  const buyerPhoneE164 = normalizePhoneE164(buyer.phone);
+  // #1857: changed reservation writers accept only an already-canonical phone.
+  // National conversion belongs to the explicit handset-country UI owner; this
+  // boundary must never infer US (or any other country) from digit shape.
+  const buyerPhoneE164 = typeof buyer.phone === "string" &&
+      /^\+[1-9][0-9]{7,14}$/.test(buyer.phone.trim())
+    ? buyer.phone.trim()
+    : null;
+  const buyerPhoneCountryIso = buyer.phoneCountryIso === undefined ||
+      buyer.phoneCountryIso === null || buyer.phoneCountryIso === ""
+    ? null
+    : typeof buyer.phoneCountryIso === "string" &&
+        /^[A-Z]{2}$/.test(buyer.phoneCountryIso)
+      ? buyer.phoneCountryIso
+      : undefined;
   const marketingOptIn = buyer.marketingOptIn === true;
   const occasion = typeof body.occasion === "string" && body.occasion.trim()
     ? body.occasion.trim()
@@ -181,6 +207,9 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   }
   if (buyerPhoneE164 === null) {
     return jsonResponse({ error: "buyer_phone_required" }, 400);
+  }
+  if (buyerPhoneCountryIso === undefined) {
+    return jsonResponse({ error: "buyer_phone_country_invalid" }, 400);
   }
   const reservedForMs = Date.parse(reservedForUtc);
   if (Number.isNaN(reservedForMs)) {
@@ -380,6 +409,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
         p_occasion: occasion,
         p_guest_notes: guestNotes,
         p_status: "confirmed",
+        p_guest_phone_country_iso: buyerPhoneCountryIso,
       },
     );
     if (createErr !== null || !created) {
@@ -401,6 +431,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
         buyer_name: buyerName,
         buyer_email: buyerEmail,
         buyer_phone_e164: buyerPhoneE164,
+        buyer_phone_country_iso: buyerPhoneCountryIso,
         occasion,
         guest_notes: guestNotes,
         marketing_opt_in: marketingOptIn,
@@ -619,6 +650,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       buyerName,
       buyerEmail,
       buyerPhoneE164,
+      buyerPhoneCountryIso,
       occasion,
       guestNotes,
       marketingOptIn,
@@ -784,6 +816,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     buyerName,
     buyerEmail,
     buyerPhoneE164,
+    buyerPhoneCountryIso,
     occasion,
     guestNotes,
     marketingOptIn,
@@ -1075,6 +1108,7 @@ interface SessionInsert {
   buyerName: string;
   buyerEmail: string;
   buyerPhoneE164: string;
+  buyerPhoneCountryIso: string | null;
   occasion: string | null;
   guestNotes: string | null;
   marketingOptIn: boolean;
@@ -1107,6 +1141,7 @@ async function insertReservationSession(
       buyer_name: s.buyerName,
       buyer_email: s.buyerEmail,
       buyer_phone_e164: s.buyerPhoneE164,
+      buyer_phone_country_iso: s.buyerPhoneCountryIso,
       occasion: s.occasion,
       guest_notes: s.guestNotes,
       marketing_opt_in: s.marketingOptIn,

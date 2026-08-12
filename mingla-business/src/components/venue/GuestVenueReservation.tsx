@@ -210,6 +210,7 @@ export function GuestVenueReservation({
           name: normalizedName,
           email: normalizedEmail,
           phone: normalizedPhone,
+          phoneCountryIso: phoneCountry,
           marketingOptIn,
         },
         occasion: occasion.trim() || null,

@@ -19,6 +19,33 @@
  */
 
 export type PhoneInputPickerPresentation = "modal" | "overlay";
+export type WebOverlayFocusAction = "close" | "first" | "last" | null;
+
+export function pickerCloseFocusTarget(
+  countryWasSelected: boolean,
+): "phone" | "country" {
+  return countryWasSelected ? "phone" : "country";
+}
+
+export function shouldHapticCountrySelection(platform: string): boolean {
+  return platform !== "web";
+}
+
+export function webOverlayFocusAction(input: {
+  key: string;
+  shiftKey: boolean;
+  activeIndex: number;
+  focusableCount: number;
+}): WebOverlayFocusAction {
+  if (input.key === "Escape") return "close";
+  if (input.key !== "Tab" || input.focusableCount < 1) return null;
+  if (input.shiftKey && input.activeIndex <= 0) return "last";
+  if (!input.shiftKey &&
+      (input.activeIndex < 0 || input.activeIndex >= input.focusableCount - 1)) {
+    return "first";
+  }
+  return null;
+}
 
 /**
  * Resolve the effective picker surface.

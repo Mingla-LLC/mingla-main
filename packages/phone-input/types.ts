@@ -63,6 +63,8 @@ export interface PhoneInputLabels {
   pickerSearchPlaceholder: string;
   /** Accessibility label for the close (×) button on the country picker. */
   pickerCloseAccessibilityLabel: string;
+  /** Empty-results copy announced by the country picker. */
+  pickerNoResults?: string;
 }
 
 /**

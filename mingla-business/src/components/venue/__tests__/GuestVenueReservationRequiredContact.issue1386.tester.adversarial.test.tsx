@@ -1,5 +1,4 @@
 import React from "react";
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
@@ -413,21 +412,26 @@ describe("issue #1386 tester adversarial reservation contact contract", () => {
     },
   );
 
-  test("pins the unchanged edge authority hash and contact-before-side-effects order", () => {
+  test("protects the edge authority contract and contact-before-side-effects order", () => {
     const edgePath = resolve(
       __dirname,
       "../../../../../supabase/functions/venue-reservation-create/index.ts",
     );
     const source = readFileSync(edgePath, "utf8");
 
-    expect(createHash("sha256").update(source).digest("hex")).toBe(
-      "a875199585a8614879cca120921fed36f08ca1ccc73e0458709f07c247856088",
+    expect(source).toContain(
+      '"name", "email", "phone", "phoneCountryIso", "marketingOptIn"',
     );
+    expect(source).toContain("/^\\+[1-9][0-9]{7,14}$/.test(buyer.phone.trim())");
+    expect(source).toContain("/^[A-Z]{2}$/.test(buyer.phoneCountryIso)");
+    expect(source).toContain("p_guest_phone_country_iso: buyerPhoneCountryIso");
+    expect(source).toContain("buyer_phone_country_iso: buyerPhoneCountryIso");
     const venueGate = source.indexOf('return jsonResponse({ error: "venue_id_required"');
     const partyGate = source.indexOf('return jsonResponse({ error: "party_size_invalid"');
     const nameGate = source.indexOf('return jsonResponse({ error: "buyer_name_required"');
     const emailGate = source.indexOf('return jsonResponse({ error: "buyer_email_invalid"');
     const phoneGate = source.indexOf('return jsonResponse({ error: "buyer_phone_required"');
+    const phoneCountryGate = source.indexOf('return jsonResponse({ error: "buyer_phone_country_invalid"');
     const timeParsing = source.indexOf("Date.parse(reservedForUtc)");
     const authResolution = source.indexOf("userIdFromAuthHeader(req)");
     const serviceClientCreation = source.indexOf("serviceClient()");
@@ -439,6 +443,7 @@ describe("issue #1386 tester adversarial reservation contact contract", () => {
       nameGate,
       emailGate,
       phoneGate,
+      phoneCountryGate,
       timeParsing,
       authResolution,
       serviceClientCreation,
@@ -450,7 +455,8 @@ describe("issue #1386 tester adversarial reservation contact contract", () => {
     expect(partyGate).toBeLessThan(nameGate);
     expect(nameGate).toBeLessThan(emailGate);
     expect(emailGate).toBeLessThan(phoneGate);
-    expect(phoneGate).toBeLessThan(timeParsing);
+    expect(phoneGate).toBeLessThan(phoneCountryGate);
+    expect(phoneCountryGate).toBeLessThan(timeParsing);
     expect(timeParsing).toBeLessThan(authResolution);
     expect(authResolution).toBeLessThan(serviceClientCreation);
     expect(serviceClientCreation).toBeLessThan(firstDatabaseRead);

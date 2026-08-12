@@ -27,6 +27,8 @@ const actions = new Set([
   "cancel",
 ]);
 const MAX_REQUEST_BYTES = 262_144;
+const STRICT_E164 = /^\+[1-9][0-9]{7,14}$/;
+const COUNTRY_ISO = /^[A-Z]{2}$/;
 
 type RequestBody = {
   action?: string;
@@ -133,6 +135,27 @@ function validKey(value: unknown): value is string {
   return typeof value === "string" && IDEMPOTENCY_KEY.test(value);
 }
 
+function validGuest(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const guest = value as Record<string, unknown>;
+  const keys = Object.keys(guest);
+  if (keys.some((key) => !["name", "email", "phone", "phoneCountryIso"].includes(key))) {
+    return false;
+  }
+  if (typeof guest.name !== "string" || guest.name.trim().length < 1) return false;
+  if (guest.email !== undefined && guest.email !== null && typeof guest.email !== "string") return false;
+  if (guest.phone !== undefined && guest.phone !== null && (
+    typeof guest.phone !== "string" || !STRICT_E164.test(guest.phone.trim())
+  )) return false;
+  if (guest.phoneCountryIso !== undefined && guest.phoneCountryIso !== null && (
+    typeof guest.phoneCountryIso !== "string" || !COUNTRY_ISO.test(guest.phoneCountryIso)
+  )) return false;
+  if (guest.phoneCountryIso != null && guest.phone == null) return false;
+  const hasEmail = typeof guest.email === "string" && guest.email.trim().length >= 3;
+  const hasPhone = typeof guest.phone === "string" && STRICT_E164.test(guest.phone.trim());
+  return hasEmail || hasPhone;
+}
+
 function validPayload(value: unknown): value is RequestBody {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return false;
@@ -180,9 +203,7 @@ function validPayload(value: unknown): value is RequestBody {
       ) &&
       body.expectedVersion !== undefined &&
       body.expectedVersion !== null &&
-      !!payload.guest &&
-      typeof payload.guest === "object" &&
-      !Array.isArray(payload.guest);
+      validGuest(payload.guest);
   }
   if (
     body.action === "approve_request" ||

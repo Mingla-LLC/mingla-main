@@ -31,6 +31,11 @@ import { Spinner } from "../../../src/components/ui/Spinner";
 import { Toast } from "../../../src/components/ui/Toast";
 import { FoundationRsvpPreview } from "../../../src/components/event/FoundationRsvpPreview";
 import {
+  BusinessRsvpPhoneField,
+  businessRsvpPhoneTheme,
+  resolvePrimaryRsvpPhoneCountry,
+} from "../../../src/components/event/useBusinessRsvpPhoneField";
+import {
   resolveTheme,
   createThemePalette,
   type PublicEventProps,
@@ -365,6 +370,7 @@ export default function RsvpPreviewRoute(): React.ReactElement {
     publicEvent.themeOverrides ?? null,
   );
   const palette = createThemePalette(resolvedTheme);
+  const phoneFieldTheme = businessRsvpPhoneTheme(palette, resolvedTheme);
 
   return (
     <View style={styles.host}>
@@ -394,6 +400,14 @@ export default function RsvpPreviewRoute(): React.ReactElement {
         onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
         onOpenMaps={openMapsForQuery}
         onSubmit={handlePreviewSubmit}
+        renderPhoneField={(args) => (
+          <BusinessRsvpPhoneField
+            args={args}
+            palette={palette}
+            phoneFieldTheme={phoneFieldTheme}
+          />
+        )}
+        defaultPhoneCountry={resolvePrimaryRsvpPhoneCountry(draft.currency)}
         safeAreaTop={insets.top}
         safeAreaBottom={insets.bottom}
         testID="orch-1150-rsvp-preview"

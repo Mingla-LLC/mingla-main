@@ -202,15 +202,15 @@ BEGIN
   END IF;
 
   SELECT pg_get_functiondef(
-    'public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text)'::regprocedure
+    'public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)'::regprocedure
   ) INTO v_function;
   IF position('SECURITY DEFINER' IN v_function) = 0
      OR position('SET search_path TO ''public'', ''pg_temp''' IN v_function) = 0 THEN
     RAISE EXCEPTION 'submit RSVP security posture drifted';
   END IF;
-  IF has_function_privilege('anon', 'public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text)', 'EXECUTE')
-     OR has_function_privilege('authenticated', 'public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text)', 'EXECUTE')
-     OR NOT has_function_privilege('service_role', 'public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text)', 'EXECUTE') THEN
+  IF has_function_privilege('anon', 'public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'EXECUTE')
+     OR NOT has_function_privilege('service_role', 'public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'submit RSVP grants drifted';
   END IF;
 

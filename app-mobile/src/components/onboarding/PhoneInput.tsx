@@ -23,13 +23,20 @@ import { Icon } from "../ui/Icon";
 
 interface PhoneInputProps {
   value: string;
-  countryCode: string;
+  countryCode: string | null;
   onChangePhone: (phone: string) => void;
   onChangeCountry: (code: string) => void;
   error: string | null;
   disabled: boolean;
   theme?: PhoneInputTheme;
   showDoneAccessory?: boolean;
+  pickerPresentation?: import("@mingla/phone-input").PhoneInputPickerPresentation;
+  testID?: string;
+  countryButtonAccessibilityLabel?: string;
+  phoneInputAccessibilityLabel?: string;
+  required?: boolean;
+  maxLength?: number;
+  onBlur?: () => void;
 }
 
 export const PhoneInput: React.FC<PhoneInputProps> = (props) => {
@@ -67,6 +74,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = (props) => {
     pickerCloseAccessibilityLabel: t(
       "onboarding:country_picker.close_accessibility",
     ),
+    pickerNoResults: "No countries found",
   };
 
   return (

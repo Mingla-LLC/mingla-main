@@ -275,6 +275,11 @@ const renderPublicEventPage = (
       // barrels. None affect the close-callback behavior under test.
       case "./FoundationRsvpPreview":
         return { FoundationRsvpPreview: "FoundationRsvpPreview" };
+      case "./useBusinessRsvpPhoneField":
+        return {
+          resolvePrimaryRsvpPhoneCountry: () => "US",
+          useBusinessRsvpPhoneField: () => () => null,
+        };
       case "@mingla/phone-input":
         return {
           PhoneInput: "PhoneInput",
@@ -283,6 +288,8 @@ const renderPublicEventPage = (
         };
       case "../../utils/phone":
         return { composeE164: () => "" };
+      case "@mingla/card-identity/phone":
+        return { resolveUserPhoneE164: () => null };
       case "../ui/Icon":
         return { Icon: "Icon" };
       case "../../analytics/webAnalytics":

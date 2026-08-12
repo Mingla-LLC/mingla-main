@@ -29,6 +29,8 @@ import {
   Platform,
   InputAccessoryView,
   InteractionManager,
+  AccessibilityInfo,
+  type TextInputProps,
   type TextStyle,
   type ViewStyle,
 } from "react-native";
@@ -36,6 +38,7 @@ import {
 import { CountryPickerModal, CountryPickerOverlay } from "./CountryPickerModal";
 import { getCountryByCode } from "./countries";
 import {
+  pickerCloseFocusTarget,
   resolvePickerPresentation,
   type PhoneInputPickerPresentation,
 } from "./pickerPresentation";
@@ -55,10 +58,30 @@ import {
 
 const PHONE_ACCESSORY_ID = "phoneInputDone";
 
+// The shared package resolves React from the repository root while each host
+// resolves its own react-native declaration graph. Re-state the native class as
+// a ref-capable component in this package's React graph, then forward the ref
+// through one typed boundary. This keeps picker-close focus restoration without
+// leaking either host's React types into the public PhoneInput props.
+const NativeTextInput: React.ComponentType<
+  TextInputProps & React.RefAttributes<TextInput>
+> = TextInput;
+
+const RefForwardingTextInput: React.ForwardRefExoticComponent<
+  TextInputProps & React.RefAttributes<TextInput>
+> = React.forwardRef(
+  function RefForwardingTextInput(
+    props: TextInputProps,
+    ref: React.ForwardedRef<TextInput>,
+  ): React.ReactElement {
+    return <NativeTextInput {...props} ref={ref} />;
+  },
+);
+
 export interface PhoneInputProps {
   value: string;
   /** ISO 3166-1 alpha-2 country code (e.g., 'US'). */
-  countryCode: string;
+  countryCode: string | null;
   onChangePhone: (phone: string) => void;
   onChangeCountry: (code: string) => void;
   error: string | null;
@@ -82,9 +105,15 @@ export interface PhoneInputProps {
    * Native keeps the modal either way (a nested <Modal> works on native RN).
    */
   pickerPresentation?: PhoneInputPickerPresentation;
+  testID?: string;
+  countryButtonAccessibilityLabel?: string;
+  phoneInputAccessibilityLabel?: string;
+  required?: boolean;
+  maxLength?: number;
+  onBlur?: () => void;
 }
 
-export const PhoneInput: React.FC<PhoneInputProps> = ({
+export const PhoneInput = ({
   value,
   countryCode,
   onChangePhone,
@@ -96,26 +125,46 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
   theme,
   showDoneAccessory = true,
   pickerPresentation = "modal",
-}) => {
+  testID,
+  countryButtonAccessibilityLabel,
+  phoneInputAccessibilityLabel,
+  required = false,
+  maxLength = 15,
+  onBlur,
+}: PhoneInputProps): React.ReactElement => {
   const [focused, setFocused] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
   // ORCH-1299 — resolve the effective picker surface once. `'overlay'` only
   // takes effect on web (nested-<Modal> freeze); native always keeps the modal.
   const usePickerOverlay =
     resolvePickerPresentation(pickerPresentation, Platform.OS) === "overlay";
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const prevError = useRef<string | null>(null);
+  const countryTriggerRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
+  const phoneInputRef = useRef<TextInput>(null);
+  const countryWasSelected = useRef(false);
 
   const t: Required<PhoneInputTheme> = useMemo(
     () => ({ ...DEFAULT_PHONE_INPUT_THEME, ...(theme ?? {}) }),
     [theme],
   );
 
-  const country = getCountryByCode(countryCode);
+  const country = getCountryByCode(countryCode ?? "");
 
-  // Trigger shake animation when error appears
   useEffect(() => {
-    if (error && error !== prevError.current) {
+    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+    const subscription = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged",
+      setReduceMotion,
+    );
+    return () => subscription.remove();
+  }, []);
+
+  // Trigger shake animation when error appears, unless the platform's reduced
+  // motion setting asks us to present the border and alert copy immediately.
+  useEffect(() => {
+    if (error && error !== prevError.current && !reduceMotion) {
       Animated.sequence([
         Animated.timing(shakeAnim, {
           toValue: -10,
@@ -143,16 +192,30 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
           useNativeDriver: true,
         }),
       ]).start();
+    } else if (reduceMotion) {
+      shakeAnim.stopAnimation();
+      shakeAnim.setValue(0);
     }
     prevError.current = error;
-  }, [error, shakeAnim]);
+  }, [error, reduceMotion, shakeAnim]);
 
   const handleCountrySelect = useCallback(
     (code: string): void => {
+      countryWasSelected.current = true;
       onChangeCountry(code);
     },
     [onChangeCountry],
   );
+
+  const handlePickerClose = useCallback((): void => {
+    setPickerVisible(false);
+    const focusTarget = pickerCloseFocusTarget(countryWasSelected.current);
+    const target = focusTarget === "phone"
+      ? phoneInputRef.current
+      : countryTriggerRef.current;
+    countryWasSelected.current = false;
+    setTimeout(() => target?.focus?.(), 0);
+  }, []);
 
   const handleOpenPicker = useCallback((): void => {
     if (disabled) return;
@@ -220,44 +283,70 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
         ]}
       >
         <TouchableOpacity
+          ref={countryTriggerRef}
           style={styles.countrySection}
           onPress={handleOpenPicker}
           activeOpacity={0.6}
           disabled={disabled}
           accessibilityRole="button"
-          accessibilityLabel={labels.countryButtonAccessibilityLabel(
-            country?.name ?? countryCode,
+          accessibilityLabel={countryButtonAccessibilityLabel ?? (
+            country === undefined
+              ? "Select country"
+              : labels.countryButtonAccessibilityLabel(country.name)
           )}
+          accessibilityState={{ disabled }}
+          testID={testID ? `${testID}-country` : undefined}
         >
-          <Text style={styles.flag}>{country?.flag ?? ""}</Text>
-          <Text style={dialCodeStyle}>{country?.dialCode ?? "+1"}</Text>
+          {country === undefined ? (
+            <Text style={dialCodeStyle}>Select country</Text>
+          ) : (
+            <>
+              <Text style={styles.flag}>{country.flag}</Text>
+              <Text style={dialCodeStyle}>{country.dialCode}</Text>
+            </>
+          )}
           {iconRenderer("chevronDown", { size: 16, color: t.textTertiary })}
         </TouchableOpacity>
 
         <View style={dividerStyle} />
 
-        <TextInput
+        <RefForwardingTextInput
+          ref={phoneInputRef}
           style={textInputStyle}
           value={value}
           onChangeText={onChangePhone}
           keyboardType="phone-pad"
           returnKeyType="done"
-          maxLength={15}
+          maxLength={maxLength}
           placeholder={labels.phonePlaceholder}
           placeholderTextColor={t.textTertiary}
           editable={!disabled}
           onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onBlur={() => {
+            setFocused(false);
+            onBlur?.();
+          }}
           onSubmitEditing={Keyboard.dismiss}
           blurOnSubmit
           inputAccessoryViewID={
             Platform.OS === "ios" && showDoneAccessory ? PHONE_ACCESSORY_ID : undefined
           }
-          accessibilityLabel={labels.phoneInputAccessibilityLabel}
+          accessibilityLabel={`${phoneInputAccessibilityLabel ?? labels.phoneInputAccessibilityLabel}${required ? ", required" : ""}`}
+          accessibilityState={{ disabled }}
+          testID={testID ? `${testID}-input` : undefined}
         />
       </Animated.View>
 
-      {error ? <Text style={errorTextStyle}>{error}</Text> : null}
+      {error ? (
+        <Text
+          style={errorTextStyle}
+          accessibilityRole="alert"
+          aria-live="polite"
+          testID={testID ? `${testID}-error` : undefined}
+        >
+          {error}
+        </Text>
+      ) : null}
 
       {pickerVisible ? (
         usePickerOverlay ? (
@@ -266,7 +355,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
           <CountryPickerOverlay
             selectedCode={countryCode}
             onSelect={handleCountrySelect}
-            onClose={() => setPickerVisible(false)}
+            onClose={handlePickerClose}
             iconRenderer={iconRenderer}
             labels={labels}
             theme={theme}
@@ -276,7 +365,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
             visible={pickerVisible}
             selectedCode={countryCode}
             onSelect={handleCountrySelect}
-            onClose={() => setPickerVisible(false)}
+            onClose={handlePickerClose}
             iconRenderer={iconRenderer}
             labels={labels}
             theme={theme}
@@ -306,7 +395,7 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",
-    height: 56,
+    minHeight: 56,
     borderRadius: radius.md,
     borderWidth: 2,
   },
@@ -315,7 +404,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingLeft: spacing.md,
     paddingRight: spacing.sm,
-    height: "100%",
+    minHeight: 56,
   },
   flag: {
     fontSize: 18,
@@ -333,7 +422,7 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    height: "100%",
+    minHeight: 56,
     paddingHorizontal: spacing.md,
     ...typography.md,
   },
