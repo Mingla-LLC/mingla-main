@@ -193,6 +193,7 @@ describe("ORCH-1120 — published-trip Settings editable refund/deadline/booking
   describe("buildRejectDialog exhaustively handles the 4 refund-class reasons", () => {
     // [TEST-MOD-APPROVED ORCH-1919] trip.brandId is load-bearing because the
     // payment rejection action routes to that brand's onboarding surface.
+    // The prior two-dependency anchor was wrong because this callback reads trip.brandId and would otherwise retain a stale brand closure.
     const fnMatch = SCREEN.match(
       /const buildRejectDialog = useCallback\([\s\S]*?\[\s*router\s*,\s*showToast\s*,\s*trip\.brandId\s*,?\s*\]\s*,\s*\);/,
     );
