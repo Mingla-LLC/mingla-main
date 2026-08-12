@@ -35,10 +35,39 @@ export interface MenuItemPublicRow {
   price_cents: number | null;
   currency: string;
   item_sort_order: number;
+  // Issue #1789 (SPEC #1788 P-14) appended these to the view; #1793 is the
+  // first reader. OPTIONAL, because a client running against a deployment whose
+  // view predates the migration receives no such key and must read that as "no
+  // note allowed" and "no window" rather than throw.
+  allows_notes?: boolean | null;
+  service_window_start?: string | null;
+  service_window_end?: string | null;
+  service_days?: number[] | null;
 }
 
 const PUBLIC_MENU_SELECT =
-  "id, menu_id, brand_id, brand_slug, venue_id, venue_slug, menu_name, menu_description, menu_sort_order, item_name, item_description, price_cents, currency, item_sort_order";
+  "id, menu_id, brand_id, brand_slug, venue_id, venue_slug, menu_name, menu_description, menu_sort_order, item_name, item_description, price_cents, currency, item_sort_order, allows_notes, service_window_start, service_window_end, service_days";
+
+/** Issue #1793 — a menu's service window, venue-local (SPEC #1788 P-13). */
+export interface PublicMenuWindow {
+  start: string | null;
+  end: string | null;
+  days: number[] | null;
+}
+
+/**
+ * Issue #1793 — the groups AND their windows, from ONE read.
+ *
+ * The window belongs to the MENU, not to the group of items a renderer draws,
+ * and the display-only pane has no use for it at all — so it travels beside the
+ * groups rather than inside them. Ordering needs it: a breakfast menu must stop
+ * offering an "Add" button at 11:01 in the VENUE's timezone, or a guest builds a
+ * basket the kitchen is going to refuse.
+ */
+export interface PublicMenuBundle {
+  groups: PublicMenuGroup[];
+  windows: Record<string, PublicMenuWindow>;
+}
 
 /**
  * Public read: all available items of a verified venue's active menus, grouped
@@ -49,7 +78,14 @@ const PUBLIC_MENU_SELECT =
 export const fetchPublicMenus = async (
   brandSlug: string,
   venueSlug: string,
-): Promise<PublicMenuGroup[]> => {
+): Promise<PublicMenuGroup[]> =>
+  (await fetchPublicMenuBundle(brandSlug, venueSlug)).groups;
+
+/** The ONE read. `fetchPublicMenus` is this, minus the windows. */
+export const fetchPublicMenuBundle = async (
+  brandSlug: string,
+  venueSlug: string,
+): Promise<PublicMenuBundle> => {
   const { data, error } = await supabase
     .from("public_menus_view")
     .select(PUBLIC_MENU_SELECT)
@@ -60,6 +96,7 @@ export const fetchPublicMenus = async (
   if (error !== null) throw error;
 
   const groups: PublicMenuGroup[] = [];
+  const windows: Record<string, PublicMenuWindow> = {};
   const byMenuId = new Map<string, PublicMenuGroup>();
   for (const row of (data ?? []) as MenuItemPublicRow[]) {
     let group = byMenuId.get(row.menu_id);
@@ -72,6 +109,13 @@ export const fetchPublicMenus = async (
       };
       byMenuId.set(row.menu_id, group);
       groups.push(group);
+      windows[row.menu_id] = {
+        start: row.service_window_start ?? null,
+        end: row.service_window_end ?? null,
+        days: Array.isArray(row.service_days)
+          ? row.service_days.map(Number)
+          : null,
+      };
     }
     group.items.push({
       id: row.id,
@@ -79,7 +123,10 @@ export const fetchPublicMenus = async (
       description: row.item_description,
       priceCents: row.price_cents,
       currency: row.currency,
+      // `=== true`, so a NULL from a pre-#1789 row reads as "no notes" rather
+      // than "notes, probably".
+      allowsNotes: row.allows_notes === true,
     });
   }
-  return groups;
+  return { groups, windows };
 };

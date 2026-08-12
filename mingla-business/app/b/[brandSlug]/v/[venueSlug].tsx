@@ -41,13 +41,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // lucide shim's module-scope icon requires into the EAGER __common boot chunk
 // (ORCH-1083 bundle-budget breach). Enforced by i-1047-biz-bundle-budget-deferral.
 import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
+import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
 import {
   publicVenueMeta,
   type PublicVenueAnalyticsEvent,
   type PublicVenueBookingSlotContext,
+  type PublicVenueOrderingSlotContext,
   type PublicVenueReservationSheetContext,
   type PublicVenueViewModel,
 } from "@mingla/brand-rendering/PublicVenueScreen";
+// TYPE-ONLY off the barrel — a value import here re-hoists PublicBrandPage and
+// the eager lucide shim into __common (i-1047-biz-bundle-budget-deferral).
+import type { PublicMenuGroup } from "@mingla/brand-rendering";
 
 import {
   spacing,
@@ -97,6 +102,24 @@ const BuyerStayGuestExperience = React.lazy(() =>
 );
 
 /**
+ * #1793 (#1767 Phase 4) — the ordering renderers, behind a lazy boundary that
+ * lives HERE, in the host.
+ *
+ * The rule `i-1047-biz-bundle-budget-deferral` enforces and #1550 wrote: the
+ * shared screen may not contain `React.lazy`, because code-splitting belongs
+ * where the bundle is measured. A value import of a cart, a review pane and a
+ * status card at this module's scope would put all three in the venue route's
+ * eager chunk for every visitor to every venue page — including the
+ * overwhelming majority whose venue has ordering switched OFF, which is the
+ * default and will stay the default for most venues. Each factory runs the
+ * first time a guest can actually order.
+ */
+const LazyOrderingSurface = React.lazy(() =>
+  import("../../../../src/components/venueOrdering/BuyerVenueOrderingSlots")
+    .then((module) => ({ default: module.BuyerVenueOrderingSurface })),
+);
+
+/**
  * #1421 — this route is the ONLY mount of the public venue page in this app,
  * and it is always the real buyer web. Naming the surface here (rather than
  * defaulting it inside a component that several callers might reach) is what
@@ -105,6 +128,9 @@ const BuyerStayGuestExperience = React.lazy(() =>
  * analytics import at all, so nothing downstream can bypass that policy.
  */
 const analyticsSurface: VenueOrganicAnalyticsSurface = "buyer_web";
+
+/** #1793 — a stable empty menu, so the ordering surface's deps do not churn. */
+const EMPTY_MENU_GROUPS: PublicMenuGroup[] = [];
 
 /** `PublicVenue` (this app's read model) → the shared screen's view model. */
 const toVenueViewModel = (venue: PublicVenue): PublicVenueViewModel => ({
@@ -138,6 +164,8 @@ export default function PublicVenueRoute(): React.ReactElement {
     brandSlug: string | string[];
     venueSlug: string | string[];
     tab?: string | string[];
+    spot?: string | string[];
+    src?: string | string[];
   }>();
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
@@ -146,6 +174,19 @@ export default function PublicVenueRoute(): React.ReactElement {
     ? params.venueSlug[0]
     : params.venueSlug;
   const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
+  // #1793 (SPEC #1788 P-10) — the printed QR carries
+  // `?tab=menu&spot={code}&src=qr`. `spot` is WHERE they are sitting; `src` is
+  // HOW they arrived. D-3a keeps the two apart on purpose: one is a recorded
+  // fact about a table, the other is attribution, and conflating them is how a
+  // venue's zone revenue comes to include people who were never in the zone.
+  const rawSpot = Array.isArray(params.spot) ? params.spot[0] : params.spot;
+  const spotCode = typeof rawSpot === "string" && rawSpot.trim() !== ""
+    ? rawSpot.trim()
+    : null;
+  const rawSrc = Array.isArray(params.src) ? params.src[0] : params.src;
+  const entrySource = typeof rawSrc === "string" && rawSrc.trim() !== ""
+    ? rawSrc.trim()
+    : null;
 
   const venueQuery = usePublicVenueBySlug(
     typeof brandSlug === "string" ? brandSlug : null,
@@ -180,6 +221,9 @@ export default function PublicVenueRoute(): React.ReactElement {
   const discoveryPriceQuery = usePublicVenueDiscoveryPrice(
     venue?.venueCategory === "stay" ? null : venue?.placePoolId ?? null,
   );
+
+  const menuGroups = menusQuery.data ?? EMPTY_MENU_GROUPS;
+
 
   // §6.8 — the secondary "See {brand} →" link renders only when the PARENT
   // brand resolves publicly. Fetched ONLY on the not-found path.
@@ -383,7 +427,7 @@ export default function PublicVenueRoute(): React.ReactElement {
       venue={venueViewModel}
       useDirectionCIdentity
       discoveryPrice={discoveryPriceQuery.data ?? null}
-      menu={menusQuery.data ?? []}
+      menu={menuGroups}
       reservable={reservableQuery.data ?? null}
       reservabilityState={
         reservableQuery.isError
@@ -452,6 +496,39 @@ export default function PublicVenueRoute(): React.ReactElement {
       }
       bookingBody={renderBookingBody}
       reservationSheet={renderReservationSheet}
+      // #1793 — ONE ordering slot, one lazy chunk. The surface owns its own
+      // state, so this route imports nothing of ordering at module scope and a
+      // visitor to a venue that has never switched ordering on downloads none
+      // of it (ORCH-1083: the boot payload is measured, and it is measured for
+      // everyone).
+      ordering={{
+        menuBody: (context: PublicVenueOrderingSlotContext) => (
+          <React.Suspense
+            fallback={
+              /* Never a blank menu pane while the ordering chunk loads —
+                 the display-only list IS the honest thing to show. */
+              <PublicMenuSections
+                groups={context.menu}
+                palette={context.palette}
+                surface={context.surface}
+                theme={context.theme}
+              />
+            }
+          >
+            <LazyOrderingSurface
+              palette={context.palette}
+              surface={context.surface}
+              theme={context.theme}
+              brandSlug={typeof brandSlug === "string" ? brandSlug : ""}
+              venueSlug={typeof venueSlug === "string" ? venueSlug : ""}
+              spotCode={spotCode}
+              entrySource={entrySource}
+              menu={context.menu}
+              timezone={venue.timezone}
+            />
+          </React.Suspense>
+        ),
+      }}
       overlays={
         <ShareModal
           visible={shareModalVisible}

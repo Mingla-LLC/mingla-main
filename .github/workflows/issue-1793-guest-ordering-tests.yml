@@ -1,0 +1,180 @@
+name: "Issue #1793 guest ordering (the launch)"
+
+# #1767 Phase 4 — the phase in which a guest pays real money. Four proofs, each
+# fails-on-revert, each in the job that can actually execute it:
+#
+#   1. THE RULES (jest, over packages/brand-rendering/venueOrdering) — a
+#      counter-pickup order is never promised delivery, a paused venue is told
+#      the truth, the tip is asked once per sitting and remembered, and nothing
+#      with a price in it ever leaves this surface. Run under three device
+#      timezones, because the service-window rule is resolved in the VENUE's
+#      zone and a bug that only appears in one zone is the historical failure
+#      mode on this page (#1503's lesson).
+#   2. BUYER WEB (jest, mingla-business) — EXECUTED against a fake Supabase
+#      client: nothing with a price in it leaves the surface, a guest reads the
+#      sentence rather than the machine code, both provider rails come back as
+#      one redirect, and the honest ordering state survives the wire and fails
+#      honest. The STRUCTURAL half — anon, the sitting before the redirect, the
+#      same-tab assignment, the single ordering chunk, no client money math — is
+#      a strict-grep gate, because asserting a code SHAPE from jest is the pure
+#      source-text pin I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN forbids.
+#   3. THE CONSUMER APP (node --test) — no auth on the guest rail, the payment
+#      step outside the shared renderers, the Pay button dead until the server
+#      has priced the basket, and the scanned spot kept apart from the entry
+#      source.
+#   4. THE MONEY (deno) and THE HONEST STATE (psql) run in
+#      supabase-migrations-and-stripe-deno.yml, which is the only workflow with
+#      a real Postgres carrying every migration.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/brand-rendering/venueOrdering/**"
+      - "packages/brand-rendering/PublicVenueScreen.tsx"
+      - "packages/brand-rendering/PublicMenuSections.tsx"
+      - "packages/brand-rendering/types.ts"
+      - "packages/brand-rendering/__tests__/venueOrdering.issue1793.test.ts"
+      - "mingla-business/src/components/venueOrdering/**"
+      - "mingla-business/src/services/venueOrderingService.ts"
+      - "mingla-business/src/services/publicMenusService.ts"
+      - "mingla-business/src/hooks/usePublicMenuBundle.ts"
+      - "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx"
+      - "mingla-business/app/o/venue/[orderId].tsx"
+      - "mingla-business/jest.issue1793.cfg.cjs"
+      - "app-mobile/src/components/venueOrdering/**"
+      - "app-mobile/src/services/venueOrderingService.ts"
+      - "app-mobile/src/services/publicVenueService.ts"
+      - "app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx"
+      - "app-mobile/package.json"
+      - "supabase/functions/venue-order-create/**"
+      - "supabase/functions/venue-order-status/**"
+      - "supabase/functions/_shared/venueOrderPricing.ts"
+      - ".github/scripts/strict-grep/issue-1793-guest-ordering-structure.mjs"
+      - ".github/workflows/issue-1793-guest-ordering-tests.yml"
+  pull_request:
+    paths:
+      - "packages/brand-rendering/venueOrdering/**"
+      - "packages/brand-rendering/PublicVenueScreen.tsx"
+      - "packages/brand-rendering/PublicMenuSections.tsx"
+      - "packages/brand-rendering/types.ts"
+      - "packages/brand-rendering/__tests__/venueOrdering.issue1793.test.ts"
+      - "mingla-business/src/components/venueOrdering/**"
+      - "mingla-business/src/services/venueOrderingService.ts"
+      - "mingla-business/src/services/publicMenusService.ts"
+      - "mingla-business/src/hooks/usePublicMenuBundle.ts"
+      - "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx"
+      - "mingla-business/app/o/venue/[orderId].tsx"
+      - "mingla-business/jest.issue1793.cfg.cjs"
+      - "app-mobile/src/components/venueOrdering/**"
+      - "app-mobile/src/services/venueOrderingService.ts"
+      - "app-mobile/src/services/publicVenueService.ts"
+      - "app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx"
+      - "app-mobile/package.json"
+      - "supabase/functions/venue-order-create/**"
+      - "supabase/functions/venue-order-status/**"
+      - "supabase/functions/_shared/venueOrderPricing.ts"
+      - ".github/scripts/strict-grep/issue-1793-guest-ordering-structure.mjs"
+      - ".github/workflows/issue-1793-guest-ordering-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  guest-ordering-rules:
+    name: "Rules: the promises the guest surface makes"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+
+      # The device's own clock must be irrelevant: a menu's service window is
+      # resolved where the VENUE is. A guest in Lagos ordering from a Miami
+      # kitchen must see exactly what a guest in Miami sees.
+      - name: "The rules — TZ=UTC"
+        env:
+          TZ: UTC
+        run: npx jest --config jest.issue1793.cfg.cjs --runInBand
+      - name: "The rules — TZ=America/New_York"
+        env:
+          TZ: America/New_York
+        run: npx jest --config jest.issue1793.cfg.cjs --runInBand
+      - name: "The rules — TZ=Pacific/Auckland"
+        env:
+          TZ: Pacific/Auckland
+        run: npx jest --config jest.issue1793.cfg.cjs --runInBand
+
+  guest-ordering-buyer-web:
+    name: "Buyer web: anon, the sitting, the redirect, the return leg"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # The sibling ordering suites run beside it: this PR touches the venue
+      # page, the public menu service and the shared money contract that the
+      # Orders queue and the waiter pad also read.
+      - name: Prove the guest rail, and that the venue-side suites still hold
+        run: >
+          npx jest
+          src/components/venueOrdering/__tests__/buyerVenueOrdering.issue1793.test.ts
+          src/components/venueOrdering/__tests__/paymentRetry.issue1793.test.ts
+          src/components/venueOrdering/__tests__/venueOrderReviewMoneyGate.issue1793.adversarial.test.tsx
+          src/components/venue/__tests__/venueOrders.issue1791.test.ts
+          src/components/venue/__tests__/venueOrderPad.issue1792.test.ts
+          src/components/venue/__tests__/qrSpots.issue1789.test.ts
+          --runInBand
+
+  guest-ordering-structure:
+    name: "Structure: the gate's own self-test (GOOD + BAD per rule)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # The gate itself runs in strict-grep batch A off its MANIFEST row; this
+      # job proves the gate can still FAIL, which is the half a green batch
+      # cannot tell you.
+      - name: The structure gate can still catch every shape it names
+        run: >
+          node .github/scripts/strict-grep/issue-1793-guest-ordering-structure.mjs
+          --self-test
+
+  guest-ordering-consumer:
+    name: "Consumer: no auth, host-owned payment, no price without the server"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Node 22 — the app-mobile convention (there is no jest in this app).
+          node-version: "22"
+      - name: Prove the consumer guest rail
+        run: npm run test:issue-1793

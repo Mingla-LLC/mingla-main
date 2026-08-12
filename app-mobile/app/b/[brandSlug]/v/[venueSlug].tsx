@@ -66,9 +66,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // lucide-react-native at module scope. Enforced on BOTH venue routes by
 // .github/scripts/strict-grep/issue-1550-venue-page-single-owner.mjs.
 import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
+import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
 import type {
   PublicVenueAnalyticsEvent,
   PublicVenueBookingSlotContext,
+  PublicVenueOrderingSlotContext,
   PublicVenueReservationSheetContext,
   PublicVenueViewModel,
 } from "@mingla/brand-rendering/PublicVenueScreen";
@@ -97,6 +99,25 @@ const ANALYTICS_SURFACE = "consumer_native";
  * consumer share surface adopts it together.
  */
 const BUYER_WEB_ORIGIN = "https://business.usemingla.com";
+
+/**
+ * Issue #1793 (#1767 Phase 4) — the ordering RENDERERS, behind a lazy boundary
+ * that lives HERE, in the host.
+ *
+ * The rule is the one #1550 wrote and #1791 paid for twice: code-splitting
+ * belongs where the bundle is measured, never inside the shared screen. A value
+ * import of a cart, a review pane and a status card at this module's scope would
+ * put all three in front of every visitor to every venue page — including the
+ * overwhelming majority whose venue has ordering switched off, which is the
+ * default and will be for most venues most of the time. The factory below runs
+ * the first time a guest can actually order.
+ */
+const LazyOrderingSurface = React.lazy(async () => {
+  const mod = await import(
+    "../../../../src/components/venueOrdering/ConsumerVenueOrderingSlots"
+  );
+  return { default: mod.ConsumerVenueOrderingSurface };
+});
 
 /** `ConsumerPublicVenue` (this app's read model) → the shared view model. */
 const toVenueViewModel = (
@@ -131,6 +152,8 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     brandSlug: string | string[];
     venueSlug: string | string[];
     tab?: string | string[];
+    spot?: string | string[];
+    src?: string | string[];
   }>();
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
@@ -139,6 +162,19 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     ? params.venueSlug[0]
     : params.venueSlug;
   const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
+  // #1793 (SPEC #1788 P-10) — the printed QR carries
+  // `?tab=menu&spot={code}&src=qr`. `spot` is WHERE they are sitting; `src` is
+  // HOW they arrived. D-3a keeps them apart on purpose: one is a recorded fact
+  // about a table, the other is attribution, and conflating them is how a
+  // venue's zone revenue comes to include people who were never in the zone.
+  const rawSpot = Array.isArray(params.spot) ? params.spot[0] : params.spot;
+  const spotCode = typeof rawSpot === "string" && rawSpot.trim() !== ""
+    ? rawSpot.trim()
+    : null;
+  const rawSrc = Array.isArray(params.src) ? params.src[0] : params.src;
+  const entrySource = typeof rawSrc === "string" && rawSrc.trim() !== ""
+    ? rawSrc.trim()
+    : null;
 
   const query = usePublicVenue(
     typeof brandSlug === "string" ? brandSlug : null,
@@ -381,6 +417,7 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     [onAvailabilityResultViewed, onReservationFailed, onSlotSelected, venue],
   );
 
+
   if (query.isLoading || query.isFetching) {
     return <StateView title="Loading venue…" loading />;
   }
@@ -448,6 +485,40 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       loadThemeFont={useConsumerThemeFont}
       bookingBody={renderBookingBody}
       reservationSheet={renderReservationSheet}
+      // #1793 — ONE ordering slot, one lazy chunk. The surface owns its own
+      // state, so this route imports nothing of ordering at module scope — which
+      // matters because that state reaches the native payment SDK, and a route
+      // that pulls a native-only chain at module scope cannot be mounted by the
+      // web render suites at all.
+      ordering={{
+        menuBody: (context: PublicVenueOrderingSlotContext) => (
+          <React.Suspense
+            fallback={
+              /* Never a blank menu pane while the ordering chunk loads —
+                 the display-only list IS the honest thing to show. */
+              <PublicMenuSections
+                groups={context.menu}
+                palette={context.palette}
+                surface={context.surface}
+                theme={context.theme}
+              />
+            }
+          >
+            <LazyOrderingSurface
+              palette={context.palette}
+              surface={context.surface}
+              theme={context.theme}
+              brandSlug={typeof brandSlug === "string" ? brandSlug : ""}
+              venueSlug={typeof venueSlug === "string" ? venueSlug : ""}
+              spotCode={spotCode}
+              entrySource={entrySource}
+              menu={context.menu}
+              menuWindows={venue.menuWindows}
+              timezone={venue.timezone}
+            />
+          </React.Suspense>
+        ),
+      }}
       onAnalytics={handleAnalytics}
       onShare={handleShare}
       onClose={handleClose}

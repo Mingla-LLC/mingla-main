@@ -279,6 +279,52 @@ export interface PublicVenueReservationSheetContext
   children: BrandRenderingReactNode;
 }
 
+/**
+ * Issue #1793 (#1767 Phase 4) — the GUEST ORDERING slots.
+ *
+ * Three injected render slots, in the exact grammar `bookingBody` already
+ * established on this screen, and for the same reason: the ordering rail forks
+ * on PAYMENT (a native payment sheet on the consumer app, a hosted redirect on
+ * buyer web), not on pixels. Everything a guest sees is the shared renderers
+ * under `venueOrdering/`; the money step is host-owned and this file never
+ * imports it.
+ *
+ * WHY SLOTS AND NOT AN IMPORT. This module may not contain `React.lazy` — the
+ * `i-1047-biz-bundle-budget-deferral` gate asserts it, because code-splitting
+ * belongs where the bundle is measured, in the host. A value import of the
+ * ordering renderers HERE would hoist a cart, a review pane and a status card
+ * into the eager chunk of every venue page on the web, ordering venue or not.
+ * With slots this file gains exactly one type import, which is erased.
+ */
+export interface PublicVenueOrderingSlotContext
+  extends PublicVenueThemedContext {
+  /** The venue's menu, so the ordering renderer draws from the SAME payload. */
+  menu: PublicMenuGroup[];
+}
+
+export interface PublicVenueOrderingSlots {
+  /**
+   * The ONE ordering slot. It replaces the display-only menu list when it
+   * returns non-null, and hands the pane back when it returns null — which is
+   * what a venue with ordering switched off gets: the page it already had.
+   *
+   * ONE slot rather than four, and the reason is worth keeping. The first cut
+   * had separate notice / menu / sticky-bar / overlay slots so the bar could
+   * own the bottom of the viewport. But the ordering STATE is a hook, a hook
+   * cannot be lazily imported, and four slots meant the route calling it at
+   * module scope — which on buyer web put the cart and the rules into the boot
+   * payload every visitor downloads (+31 KB against a 12 KB allowance,
+   * ORCH-1083) and on the consumer app dragged the NATIVE payment SDK into a
+   * route the web render suites mount, so the whole page failed to load there.
+   * One slot lets each host lazily mount a single component that owns its own
+   * state, and costs exactly one thing: the basket's action bar rides at the top
+   * of the pane instead of the bottom of the screen.
+   */
+  menuBody?: (
+    context: PublicVenueOrderingSlotContext,
+  ) => BrandRenderingReactNode | null;
+}
+
 /** The three events this page emits. The host adds its own surface tag. */
 export type PublicVenueAnalyticsEvent =
   | "public_venue_overview_viewed"
@@ -321,6 +367,8 @@ export interface PublicVenueScreenProps {
   reservationSheet: (
     context: PublicVenueReservationSheetContext,
   ) => BrandRenderingReactNode;
+  /** Issue #1793 — guest ordering. Absent ⇒ this page is exactly as it was. */
+  ordering?: PublicVenueOrderingSlots;
   /** Host chrome rendered last, in the page frame (business: ShareModal). */
   overlays?: BrandRenderingReactNode;
   onAnalytics: (
@@ -853,6 +901,7 @@ export const PublicVenueScreen = ({
   loadThemeFont,
   bookingBody,
   reservationSheet,
+  ordering,
   overlays,
   onAnalytics,
   onShare,
@@ -1026,6 +1075,15 @@ export const PublicVenueScreen = ({
     },
     [reservationUiContext],
   );
+
+  // ── Issue #1793 — the guest-ordering slot, resolved ONCE. ────────────────
+  const orderingSlotContext: PublicVenueOrderingSlotContext = {
+    palette,
+    surface,
+    theme: resolvedTheme,
+    menu,
+  };
+  const orderingMenuBody = ordering?.menuBody?.(orderingSlotContext) ?? null;
 
   // ── §6.7 reserve display gate — fail closed. ─────────────────────────────
   const showReserveCta =
@@ -1267,20 +1325,36 @@ export const PublicVenueScreen = ({
   );
 
   // ── §6.6 menu (shared renderer) ───────────────────────────────────────────
-  const menuBlock =
-    menuItemCount > 0 ? (
-      <View style={styles.menuWrap}>
-        <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
-          MENU
-        </Text>
+  //
+  // Issue #1793 — the pane now has an ordering half. The two menu renderers are
+  // ALTERNATIVES: `PublicMenuSections` is the display-only list whose rows carry
+  // no press target at all (pinned by publicMenu.render.test.tsx, because a
+  // venue with ordering off — which is every venue by default — must never grow
+  // a tappable-looking dead row), and `ordering.menuBody` is the same data with
+  // a way to buy it. The notice renders above whichever one mounts, so a guest
+  // who scanned a code at a paused venue reads the honest reason FIRST and the
+  // menu underneath it.
+  // The label is OUTSIDE the branch on purpose. A slot that returns a
+  // `<Suspense>` wrapper is non-null even while its lazy child has resolved to
+  // nothing, so a screen that chose its branch on the slot's nullness would drop
+  // the section heading — and, at a venue with ordering off, the menu with it.
+  // The slot renders the LIST (orderable or display-only); the heading is the
+  // page's, always.
+  const menuBlock = menuItemCount === 0 ? null : (
+    <View style={styles.menuWrap}>
+      <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
+        MENU
+      </Text>
+      {orderingMenuBody !== null ? orderingMenuBody : (
         <PublicMenuSections
           groups={menu}
           palette={palette}
           surface={surface}
           theme={resolvedTheme}
         />
-      </View>
-    ) : null;
+      )}
+    </View>
+  );
 
   // #1558 — which booking body the Reservations tab mounts is DATA
   // (`profile.bookingBody`), resolved through a total record. #1559 turns the
@@ -1397,10 +1471,9 @@ export const PublicVenueScreen = ({
       </View>
     ) : null;
 
-  const reserveBarClearance =
-    showReserveCta && !isDesktop
-      ? 52 + 16 + insets.bottom + 8
-      : insets.bottom + 24;
+  const reserveBarClearance = showReserveCta && !isDesktop
+    ? 52 + 16 + insets.bottom + 8
+    : insets.bottom + 24;
 
   // ── §6.10 desktop sticky panel ────────────────────────────────────────────
   const stickyPanel = isDesktop ? (

@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 505,
-  "selfTestWiredFloor": 314,
+  "expectedStrictGrepMjsFiles": 506,
+  "selfTestWiredFloor": 315,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -7798,6 +7798,18 @@
       "jobKeys": [
         "issue-1890-lift-singularity-tester-adversarial"
       ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1793-guest-ordering-structure.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
     }
   ]
 }

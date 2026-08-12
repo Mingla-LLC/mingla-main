@@ -46,7 +46,12 @@ const MENU_ZERO_DECIMAL_CURRENCIES = new Set([
 const menuMinorFactor = (currency: string): number =>
   MENU_ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase()) ? 1 : 100;
 
-const formatMenuPrice = (
+// Issue #1793 — EXPORTED (was file-local) so the #1767 Phase 4 ordering
+// renderers under `venueOrdering/` render money in exactly the formatter this
+// menu already uses. A second formatter is how a cart line comes to read
+// "¥13" beside a menu row reading "¥1,250" — the very bug the zero-decimal
+// factor above exists to prevent. The declaration is unchanged.
+export const formatMenuPrice = (
   priceCents: number | null,
   currency: string,
 ): string | null => {

@@ -71,6 +71,20 @@ export interface ConsumerPublicVenue {
   timezone: string | null;
   galleryPhotoUrls: string[];
   menu: PublicMenuGroup[];
+  /**
+   * Issue #1793 — each menu's SERVICE WINDOW, keyed by menu id, from the columns
+   * #1789 appended to `public_menus_view` (SPEC #1788 P-14).
+   *
+   * Kept beside the menu rather than inside `PublicMenuGroup` because it is a
+   * property of the MENU, not of the group of items a renderer draws, and
+   * because the display-only pane has no use for it at all. Ordering does: a
+   * breakfast menu must stop offering an "Add" button at 11:01 in the VENUE's
+   * timezone, or a guest builds a basket the kitchen will refuse.
+   */
+  menuWindows: Record<
+    string,
+    { start: string | null; end: string | null; days: number[] | null }
+  >;
   /** Null when unpriced, unknown, or not applicable — never a fabricated band. */
   discoveryPrice: ConsumerVenueDiscoveryPrice | null;
   reservability:
@@ -120,6 +134,14 @@ interface MenuRow {
   item_description: string | null;
   price_cents: number | null;
   currency: string;
+  // Issue #1789 (SPEC #1788 P-14) appended these; #1793 is the first reader.
+  // OPTIONAL, because a client running against a deployment whose view predates
+  // the migration receives no such key and must read that as "no note allowed"
+  // and "no window", never as a crash.
+  allows_notes?: boolean | null;
+  service_window_start?: string | null;
+  service_window_end?: string | null;
+  service_days?: number[] | null;
 }
 
 const asHours = (value: unknown): ConsumerPublicVenue["hours"] => {
@@ -160,9 +182,28 @@ const groupMenus = (rows: MenuRow[]): PublicMenuGroup[] => {
       description: row.item_description,
       priceCents: row.price_cents,
       currency: row.currency,
+      // Issue #1793 — `=== true` rather than a truthy read, so a NULL from a
+      // pre-#1789 row is "no notes" instead of "notes, probably".
+      allowsNotes: row.allows_notes === true,
     });
   }
   return groups;
+};
+
+/** Issue #1793 — one window per MENU, taken from the first row that carries it. */
+const collectMenuWindows = (
+  rows: MenuRow[],
+): ConsumerPublicVenue["menuWindows"] => {
+  const windows: ConsumerPublicVenue["menuWindows"] = {};
+  for (const row of rows) {
+    if (windows[row.menu_id] !== undefined) continue;
+    windows[row.menu_id] = {
+      start: row.service_window_start ?? null,
+      end: row.service_window_end ?? null,
+      days: Array.isArray(row.service_days) ? row.service_days.map(Number) : null,
+    };
+  }
+  return windows;
 };
 
 /**
@@ -238,7 +279,7 @@ export async function fetchConsumerPublicVenue(
         : supabase
           .from("public_menus_view")
           .select(
-            "id, menu_id, menu_name, menu_description, item_name, item_description, price_cents, currency, menu_sort_order, item_sort_order",
+            "id, menu_id, menu_name, menu_description, item_name, item_description, price_cents, currency, menu_sort_order, item_sort_order, allows_notes, service_window_start, service_window_end, service_days",
           )
           .eq("brand_slug", brandSlug)
           .eq("venue_slug", venueSlug)
@@ -325,6 +366,7 @@ export async function fetchConsumerPublicVenue(
       poolPhotoUrls: row.pool_photo_urls,
     }),
     menu: groupMenus((menuResult.data ?? []) as MenuRow[]),
+    menuWindows: collectMenuWindows((menuResult.data ?? []) as MenuRow[]),
     // A price RPC failure is NOT a page failure — the lede is omitted and the
     // rest of the venue renders (the buyer page throws here; on a native page
     // with one query that would blank the whole screen over a missing band).
