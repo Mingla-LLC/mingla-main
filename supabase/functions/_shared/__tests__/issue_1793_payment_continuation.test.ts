@@ -197,3 +197,58 @@ Deno.test("T-1793-R10 — create replay and possession-token status share the on
   );
   assertEquals(status.includes("includePaymentContinuation"), true);
 });
+
+Deno.test("T-1793-R12 — null, malformed, and expired order bounds fail before every provider read", async () => {
+  let providerReads = 0;
+  const dependencies = {
+    now: () => Date.parse("2029-01-01T00:00:00.000Z"),
+    publishableKey: () => "pk_live_same",
+    retrievePaymentIntent: async () => {
+      providerReads++;
+      return {};
+    },
+    retrieveCheckoutSession: async () => {
+      providerReads++;
+      return {};
+    },
+  };
+  const invalidExpiries = [
+    null,
+    "not-an-expiry",
+    "2029-01-01T00:00:00.000Z",
+    "2028-12-31T23:59:59.999Z",
+  ];
+  for (const expires_at of invalidExpiries) {
+    assertEquals(
+      await resolveVenueOrderPaymentContinuation(
+        row({ expires_at }),
+        "native",
+        dependencies,
+      ),
+      null,
+    );
+    assertEquals(
+      await resolveVenueOrderPaymentContinuation(
+        row({
+          provider: "paystack",
+          expires_at,
+          stripe_payment_intent_id: null,
+          stripe_checkout_session_id: null,
+          stripe_account_id: null,
+          paystack_reference: "mingla_venue_same",
+          metadata: {
+            payment_continuation: {
+              authorization_url:
+                "https://checkout.paystack.com/same-transaction",
+              reference: "mingla_venue_same",
+            },
+          },
+        }),
+        "web",
+        dependencies,
+      ),
+      null,
+    );
+  }
+  assertEquals(providerReads, 0);
+});

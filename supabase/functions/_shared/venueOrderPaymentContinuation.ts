@@ -77,7 +77,7 @@ export function stripeVenueOrderContinuationDependencies(
 
 function unexpired(row: VenueOrderContinuationRow, now: number): boolean {
   if (row.payment_status !== "pending") return false;
-  if (row.expires_at === null) return true;
+  if (row.expires_at === null) return false;
   const expiresAt = Date.parse(row.expires_at);
   return Number.isFinite(expiresAt) && expiresAt > now;
 }
