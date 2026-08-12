@@ -439,10 +439,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [resolvedAcquisitionState, serverAcquisitionOverride],
   );
   const isRsvp = event.event_type === "rsvp";
-  const onSeeWhosGoingProp =
-    acquisitionState.kind === "current" && Platform.OS === "web"
-      ? handleSeeWhosGoingWeb
-      : undefined;
+  const onSeeWhosGoingProp = Platform.OS === "web" ? handleSeeWhosGoingWeb : undefined;
   useEffect(() => {
     const refresh = (): void => setNowMs(Date.now());
     const delay = nextEventAcquisitionBoundaryDelayMs(
@@ -1100,7 +1097,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             // gate (web-only; undefined on business native → inert cluster,
             // DESIGN §1.5). The package's own D2 gates (privateGuestList /
             // goingCount 0) keep the affordance absent when gated.
-            onSeeWhosGoing: onSeeWhosGoingProp,
+            onSeeWhosGoing:
+              acquisitionState.kind === "current"
+                ? { onSeeWhosGoing: onSeeWhosGoingProp }.onSeeWhosGoing
+                : undefined,
           }}
           onChipIn={handleChipIn}
           // ORCH-1295 [chip-in-post-payment-polish] — BUG 2: inject the country-code-
@@ -1214,18 +1214,22 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         {/* ORCH-1342 — the ONE web install gate. Conditionally rendered so the
             lazy chunk fetches ONLY on the first open (hidden ⇒ nothing in the
             tree — the COMMS-0084 no-residue posture holds by construction). */}
-        {acquisitionState.kind === "current" && gateVisible ? (
-          <React.Suspense fallback={null}>
-            <SeeWhosGoingGate
-              visible={gateVisible}
-              onClose={() => setGateVisible(false)}
-              entity={gateEntity}
-              eventId={event.id}
-              guestSample={socialProofQuery.data?.sample ?? []}
-              palette={palette}
-              theme={resolvedTheme}
-            />
-          </React.Suspense>
+        {acquisitionState.kind === "current" ? (
+          <>
+            {gateVisible ? (
+              <React.Suspense fallback={null}>
+                <SeeWhosGoingGate
+                  visible={gateVisible}
+                  onClose={() => setGateVisible(false)}
+                  entity={gateEntity}
+                  eventId={event.id}
+                  guestSample={socialProofQuery.data?.sample ?? []}
+                  palette={palette}
+                  theme={resolvedTheme}
+                />
+              </React.Suspense>
+            ) : null}
+          </>
         ) : null}
       </View>
     );
@@ -1332,6 +1336,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           // ORCH-1342 — web-only "See who's going" → install gate (undefined
           // on business native → inert cluster, DESIGN §1.5).
           onSeeWhosGoing={onSeeWhosGoingProp}
+          {...(acquisitionState.kind === "current"
+            ? {}
+            : { onSeeWhosGoing: undefined })}
           testID="orch-1167-event-foundation"
         />
       )}
@@ -1390,18 +1397,22 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       {/* ORCH-1342 — the ONE web install gate. Conditionally rendered so the
           lazy chunk fetches ONLY on the first open (hidden ⇒ nothing in the
           tree — the COMMS-0084 no-residue posture holds by construction). */}
-      {acquisitionState.kind === "current" && gateVisible ? (
-        <React.Suspense fallback={null}>
-          <SeeWhosGoingGate
-            visible={gateVisible}
-            onClose={() => setGateVisible(false)}
-            entity={gateEntity}
-            eventId={event.id}
-            guestSample={socialProofQuery.data?.sample ?? []}
-            palette={palette}
-            theme={resolvedTheme}
-          />
-        </React.Suspense>
+      {acquisitionState.kind === "current" ? (
+        <>
+          {gateVisible ? (
+            <React.Suspense fallback={null}>
+              <SeeWhosGoingGate
+                visible={gateVisible}
+                onClose={() => setGateVisible(false)}
+                entity={gateEntity}
+                eventId={event.id}
+                guestSample={socialProofQuery.data?.sample ?? []}
+                palette={palette}
+                theme={resolvedTheme}
+              />
+            </React.Suspense>
+          ) : null}
+        </>
       ) : null}
     </View>
   );

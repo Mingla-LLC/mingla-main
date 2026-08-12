@@ -313,6 +313,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
     kind: "current" as const,
   };
   const acquisitionClosed = acquisitionState.kind !== "current";
+  const ticketBoxHidden = acquisitionClosed || hideTicketBox;
   const renderedSocialProof =
     acquisitionClosed && socialProof !== null
       ? { ...socialProof, capacity: null, hideRemainingCount: true }
@@ -509,11 +510,11 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           (D2); cluster is GLYPH-only until ORCH-1340. Mounts BETWEEN §4 pills
           and the §5 ticket box (social proof feeds the decision; the decision
           stays the hero). null payload → nothing renders (honest absence). */}
-      {renderedSocialProof ? (
+      {socialProof ? (
         <OfferingMomentum
           palette={palette}
           theme={theme}
-          socialProof={renderedSocialProof}
+          socialProof={renderedSocialProof ?? socialProof}
           onSeeWhosGoing={acquisitionClosed ? undefined : onSeeWhosGoing}
           testID="orch-1339-momentum-event"
         />
@@ -528,21 +529,25 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           relocated to the sticky right panel by the host (<EventTicketBox>), so it
           does not paint a second time inline. The `orch-1167-ticket-box` testID
           anchor below stays in source for the 9-section gate. */}
-      {acquisitionClosed || hideTicketBox ? null : (
-        <View style={styles.section} onLayout={onTicketBoxLayout}>
-          <EventTicketBox
-            event={event}
-            bookable={bookable}
-            palette={palette}
-            theme={theme}
-            ticketQuantities={ticketQuantities}
-            onChangeTicketQuantity={onChangeTicketQuantity}
-            onProceedToCart={onProceedToCart}
-            variant={variant}
-            submitting={submitting}
-            showHeading
-          />
-        </View>
+      {ticketBoxHidden && acquisitionClosed ? null : (
+        <>
+          {hideTicketBox ? null : (
+            <View style={styles.section} onLayout={onTicketBoxLayout}>
+              <EventTicketBox
+                event={event}
+                bookable={bookable}
+                palette={palette}
+                theme={theme}
+                ticketQuantities={ticketQuantities}
+                onChangeTicketQuantity={onChangeTicketQuantity}
+                onProceedToCart={onProceedToCart}
+                variant={variant}
+                submitting={submitting}
+                showHeading
+              />
+            </View>
+          )}
+        </>
       )}
       {/* testID="orch-1167-ticket-box" — gate anchor (rendered by EventTicketBox). */}
 
