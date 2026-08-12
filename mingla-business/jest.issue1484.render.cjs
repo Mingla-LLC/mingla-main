@@ -37,6 +37,7 @@ module.exports = {
   testMatch: [
     "**/__tests__/staySuiteShell.issue1484.desktopShell.render.test.tsx",
     "**/__tests__/stayInventoryManager.issue1484.formMeasure.render.test.tsx",
+    "**/__tests__/stayLifecycleLayout.issue1944.render.test.tsx",
     // TESTER-owned adversarial suite (issue #1484 verdict). Registered here so
     // it runs in the SAME `Issue #1484 Stay Desktop Shell` workflow job and is
     // never dark — the exact failure mode this branch had to report for

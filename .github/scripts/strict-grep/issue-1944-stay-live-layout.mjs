@@ -14,7 +14,7 @@ const paths = {
   actionBar: "mingla-business/src/components/stay/StayActionBar.tsx",
   renderTest:
     "mingla-business/src/components/stay/__tests__/stayLifecycleLayout.issue1944.render.test.tsx",
-  jestConfig: "mingla-business/jest.issue1944.render.cjs",
+  jestConfig: "mingla-business/jest.issue1484.render.cjs",
 };
 
 function need(source, token, label, failures) {
@@ -80,7 +80,7 @@ export function check(files) {
   need(
     jestConfig,
     "stayLifecycleLayout.issue1944.render.test.tsx",
-    "issue #1944 Jest registration",
+    "issue #1944 CI-wired Jest registration",
     failures,
   );
 
