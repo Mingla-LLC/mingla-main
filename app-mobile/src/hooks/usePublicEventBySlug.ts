@@ -17,10 +17,14 @@
  */
 
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import type {
-  PublicBrandProps,
-  PublicEventProps,
-  PublicTicketProps,
+import {
+  isThemeAnimationSlug,
+  isThemeColor,
+  isThemeFontSlug,
+  type PublicBrandProps,
+  type PublicEventProps,
+  type PublicTicketProps,
+  type OfferingGalleryImage,
 } from "@mingla/offering-rendering";
 
 import { supabase } from "../services/supabase";
@@ -28,6 +32,11 @@ import { supabase } from "../services/supabase";
 export interface CanonicalPublicEvent {
   event: PublicEventProps;
   brand: PublicBrandProps | null;
+  masterStartAt: string | null;
+  masterEndAt: string | null;
+  timezone: string;
+  city: string | null;
+  coverGallery: OfferingGalleryImage[];
 }
 
 export const publicEventBySlugKeys = {
@@ -35,6 +44,38 @@ export const publicEventBySlugKeys = {
   bySlug: (brandSlug: string, eventSlug: string) =>
     [...publicEventBySlugKeys.all, brandSlug, eventSlug] as const,
 };
+
+export interface DirectEventColdReadPlan {
+  canonical: CanonicalPublicEvent | null;
+  allowLegacySeedRead: boolean;
+  allowLegacyTicketRead: boolean;
+}
+
+/** Screen-level cold-read authority: a canonical standard event owns both the
+ * body and tickets. Only SQL NULL may open the RSVP-only legacy seed rail. */
+export const directEventColdReadPlan = (
+  seedPresent: boolean,
+  canonicalQuery: {
+    isSuccess: boolean;
+    data?: CanonicalPublicEvent | null;
+  },
+  hasExactSlugIdentity: boolean,
+): DirectEventColdReadPlan => {
+  const canonical = !seedPresent && canonicalQuery.data ? canonicalQuery.data : null;
+  return {
+    canonical,
+    allowLegacySeedRead:
+      !seedPresent &&
+      canonicalQuery.isSuccess &&
+      canonicalQuery.data === null &&
+      hasExactSlugIdentity,
+    allowLegacyTicketRead: canonical === null,
+  };
+};
+
+export const acceptRsvpLegacySeed = <T extends { eventType?: string }>(
+  candidate: T | null,
+): T | null => (candidate?.eventType === "rsvp" ? candidate : null);
 
 const asString = (v: unknown): string | null =>
   typeof v === "string" && v.length > 0 ? v : null;
@@ -61,6 +102,27 @@ const asFormat = (v: unknown): "in-person" | "online" | "hybrid" => {
 
 const asCoverType = (v: unknown): "image" | "video" | "gif" | null =>
   v === "image" || v === "video" || v === "gif" ? v : null;
+
+export const isDirectEventBundlePayload = (
+  value: unknown,
+): value is Record<string, unknown> => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return (
+    asString(row.id) !== null &&
+    asString(row.brandId) !== null &&
+    asString(row.brandSlug) !== null &&
+    asString(row.eventSlug) !== null &&
+    asString(row.name) !== null &&
+    (row.status === "scheduled" ||
+      row.status === "live" ||
+      row.status === "ended" ||
+      row.status === "cancelled") &&
+    Array.isArray(row.tickets) &&
+    (row.brand === null ||
+      (typeof row.brand === "object" && !Array.isArray(row.brand)))
+  );
+};
 
 const mapRpcTicket = (raw: unknown, fallbackCurrency: string): PublicTicketProps => {
   const t = (raw ?? {}) as Record<string, unknown>;
@@ -155,9 +217,29 @@ export const mapRpcPayloadToPublicEvent = (
           slug: String(brandRaw.slug ?? ""),
           displayName: String(brandRaw.name ?? "Brand"),
           photo: asString(brandRaw.profilePhotoUrl) ?? undefined,
-          theme: null,
+          theme: {
+            ...(isThemeColor(brandRaw.themeColor)
+              ? { color: brandRaw.themeColor }
+              : {}),
+            ...(isThemeFontSlug(brandRaw.themeFont)
+              ? { font: brandRaw.themeFont }
+              : {}),
+            ...(isThemeAnimationSlug(brandRaw.themeAnimation)
+              ? { animation: brandRaw.themeAnimation }
+              : {}),
+          },
         };
-  return { event, brand };
+  return {
+    event,
+    brand,
+    masterStartAt: asString(payload.masterStartAt),
+    masterEndAt: asString(payload.masterEndAt),
+    timezone: asString(payload.timezone) ?? "UTC",
+    city: asString(payload.city),
+    coverGallery: Array.isArray(payload.coverGallery)
+      ? (payload.coverGallery as OfferingGalleryImage[])
+      : [],
+  };
 };
 
 export const usePublicEventBySlug = (
@@ -173,13 +255,17 @@ export const usePublicEventBySlug = (
     staleTime: 60 * 1000,
     queryFn: async (): Promise<CanonicalPublicEvent | null> => {
       if (!enabled || brandSlug === null || eventSlug === null) return null;
-      const { data, error } = await supabase.rpc("pg_public_event_by_slug", {
+      const { data, error } = await supabase.rpc("pg_direct_event_checkout_bundle", {
+        p_event_id: null,
         p_brand_slug: brandSlug,
         p_event_slug: eventSlug,
       });
       if (error !== null) throw error;
-      if (data === null || typeof data !== "object") return null;
-      return mapRpcPayloadToPublicEvent(data as Record<string, unknown>);
+      // PostgREST RPCs may be mocked or misconfigured to return a JSON array.
+      // The bundle contract is exactly one object or SQL NULL; arrays and
+      // primitive values fail closed instead of fabricating an empty event.
+      if (!isDirectEventBundlePayload(data)) return null;
+      return mapRpcPayloadToPublicEvent(data);
     },
   });
 };

@@ -97,26 +97,44 @@ for (const [name, src] of routeCases) {
 
 // ── §4.7: cold seed resolution on the event screen ────────────────────────────
 
-Deno.test("ORCH-1342 T-07: event screen resolves the cold seed by slug (deck seed first)", () => {
-  assertStringIncludes(eventScreen, "fetchPublicEventSeedBySlug");
+Deno.test("ORCH-1342 T-07: deck-first canonical bundle owns cold standard events; legacy is RSVP-only after settled NULL", () => {
+  const compact = eventScreen.replace(/\s+/g, " ");
+  assertStringIncludes(
+    compact,
+    "const canonicalQuery = usePublicEventBySlug( seedProp == null ? (brandSlug ?? null) : null, seedProp == null ? (eventSlug ?? null) : null, );",
+  );
+  assertStringIncludes(
+    compact,
+    "const coldReadPlan = directEventColdReadPlan( seedProp !== null, canonicalQuery, !!brandSlug && !!eventSlug, );",
+  );
+  assertStringIncludes(
+    compact,
+    'queryKey: ["publicEventSeed", brandSlug, eventSlug], enabled: coldReadPlan.allowLegacySeedRead',
+  );
+  assertStringIncludes(
+    compact,
+    "const candidate = await fetchPublicEventSeedBySlug( brandSlug as string, eventSlug as string, ); return acceptRsvpLegacySeed(candidate);",
+  );
+  assertStringIncludes(eventScreen, "const canonical = coldReadPlan.canonical;");
   assertStringIncludes(
     eventScreen,
-    'queryKey: ["publicEventSeed", brandSlug, eventSlug]',
+    "const seed = seedProp ?? canonicalSeed ?? coldSeedQuery.data ?? null;",
   );
   assertStringIncludes(
     eventScreen,
-    "enabled: seedProp == null && !!brandSlug && !!eventSlug",
+    "coldReadPlan.allowLegacyTicketRead ? eventId : null",
   );
   assertStringIncludes(
     eventScreen,
-    "const seed = seedProp ?? coldSeedQuery.data ?? null;",
+    "const tickets = canonical?.event.tickets ?? ticketsQuery.data ?? [];",
   );
 });
 
 Deno.test("ORCH-1342 T-08: cold-resolving shows the EXISTING loading sheet; the cap is the terminal state", () => {
+  const compact = eventScreen.replace(/\s+/g, " ");
   assertStringIncludes(
-    eventScreen,
-    "if (seedProp == null && coldSeedQuery.isLoading)",
+    compact,
+    "seedProp == null && (canonicalQuery.isLoading || (canonicalQuery.isSuccess && canonicalQuery.data === null && coldSeedQuery.isLoading))",
   );
   // the cap early-return survives as the settled-null terminal state.
   assertStringIncludes(eventScreen, "if (seed === null)");

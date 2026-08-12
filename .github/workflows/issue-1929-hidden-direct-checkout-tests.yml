@@ -1,0 +1,91 @@
+name: "Issue #1929 hidden direct checkout"
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20270324001929_issue_1929_hidden_direct_checkout.sql"
+      - "supabase/migrations/__tests__/issue_1929_hidden_direct_checkout*"
+      - "supabase/functions/ticket-checkout-create/__tests__/issue_1929_hidden_checkout_edge*"
+      - "supabase/security/anon_executable_definer_allowlist.txt"
+      - "mingla-business/src/services/publicEventsService.ts"
+      - "mingla-business/src/services/__tests__/issue_1929_hidden_direct_checkout*"
+      - "app-mobile/src/hooks/usePublicEventBySlug.ts"
+      - "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx"
+      - "app-mobile/src/**/__tests__/issue_1929_hidden_direct_checkout*"
+      - ".github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-1929-hidden-direct-checkout-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270324001929_issue_1929_hidden_direct_checkout.sql"
+      - "supabase/migrations/__tests__/issue_1929_hidden_direct_checkout*"
+      - "supabase/functions/ticket-checkout-create/__tests__/issue_1929_hidden_checkout_edge*"
+      - "mingla-business/src/services/publicEventsService.ts"
+      - "app-mobile/src/hooks/usePublicEventBySlug.ts"
+      - "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx"
+      - ".github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-1929-hidden-direct-checkout-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.sha }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Canonical full migration replay and #1929 SQL suites
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for f in $(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$f"
+          done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1929_hidden_direct_checkout.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1929_hidden_direct_checkout.tester_adversarial.test.sql
+      - name: Anonymous SECURITY DEFINER allowlist
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: bash scripts/ci/security_definer_anon_gate.sh
+
+  structural-and-edge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: deno test --allow-read supabase/migrations/__tests__/issue_1929_hidden_direct_checkout.structural.test.ts supabase/migrations/__tests__/issue_1929_hidden_direct_checkout.structural.tester_adversarial.test.ts
+      - run: deno test --allow-env --allow-read supabase/functions/ticket-checkout-create/__tests__/issue_1929_hidden_checkout_edge.test.ts supabase/functions/ticket-checkout-create/__tests__/issue_1929_hidden_checkout_edge.tester_adversarial.test.ts
+      - run: node .github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs
+
+  clients:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm ci
+        working-directory: mingla-business
+      - run: npx jest --runInBand src/services/__tests__/issue_1929_hidden_direct_checkout.test.ts src/services/__tests__/issue_1929_hidden_direct_checkout.tester_adversarial.test.ts
+        working-directory: mingla-business
+      - run: npm ci
+        working-directory: app-mobile
+      - run: npx jest --runInBand src/hooks/__tests__/issue_1929_hidden_direct_checkout.test.ts src/hooks/__tests__/issue_1929_hidden_direct_checkout.tester_adversarial.test.ts src/screens/Event/__tests__/issue_1929_hidden_direct_checkout.test.tsx src/screens/Event/__tests__/issue_1929_hidden_direct_checkout.tester_adversarial.test.tsx
+        working-directory: app-mobile
