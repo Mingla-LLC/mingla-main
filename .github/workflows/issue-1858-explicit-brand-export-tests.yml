@@ -6,6 +6,7 @@ on:
     paths:
       - "supabase/migrations/20270326001858_issue_1858_explicit_brand_export.sql"
       - "supabase/migrations/__tests__/issue_1858_explicit_brand_export.test.sql"
+      - "supabase/migrations/__tests__/issue_1858_explicit_brand_export.tester.adversarial.test.sql"
       - "supabase/functions/brand-people-export/**"
       - ".github/scripts/strict-grep/issue-1858-explicit-brand-export.mjs"
       - ".github/scripts/strict-grep/__tests__/issue-1858-explicit-brand-export.test.mjs"
@@ -14,6 +15,7 @@ on:
     paths:
       - "supabase/migrations/20270326001858_issue_1858_explicit_brand_export.sql"
       - "supabase/migrations/__tests__/issue_1858_explicit_brand_export.test.sql"
+      - "supabase/migrations/__tests__/issue_1858_explicit_brand_export.tester.adversarial.test.sql"
       - "supabase/functions/brand-people-export/**"
       - ".github/scripts/strict-grep/issue-1858-explicit-brand-export.mjs"
       - ".github/scripts/strict-grep/__tests__/issue-1858-explicit-brand-export.test.mjs"
@@ -68,4 +70,6 @@ jobs:
       - name: Prove exact-brand SQL contract
         env:
           PGPASSWORD: ${{ format('issue-1858-ci-{0}', github.run_id) }}
-        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1858_explicit_brand_export.test.sql
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1858_explicit_brand_export.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1858_explicit_brand_export.tester.adversarial.test.sql
