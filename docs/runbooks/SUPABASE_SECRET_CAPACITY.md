@@ -53,11 +53,13 @@ These objects are permitted:
 
 - `MINGLA_PAYMENT_MODES_JSON`: independent `stripe_mode` and `paystack_mode`.
 - `MINGLA_EMAIL_SENDERS_JSON`: independent `admin_from`, `system_from`, and `ticket_from`.
-- `MINGLA_DELIVERY_FLAGS_JSON` schema v2: the original independent marketing, Nigeria SMS,
+- `MINGLA_DELIVERY_FLAGS_JSON` schema v3: the original independent marketing, Nigeria SMS,
   and US SMS booleans plus an exact `payment_operations` object containing independent
-  `payout_hold_onboard_flip`, `payout_release_execute`, and
-  `source_refunds_post_disabled` JSON booleans. Schema v1 remains readable for rollback, but
-  production authority is v2.
+  `payout_hold_onboard_flip`, `paystack_payout_hold_onboard_flip`,
+  `payout_release_execute`, and `source_refunds_post_disabled` JSON booleans. The Paystack
+  onboarding field is bundle-only and has no direct-name fallback. Schemas v1 and v2 remain
+  readable for compatibility; production stays v2 until the complete compatibility rollout
+  is verified, then moves to v3 with the Paystack field false.
 - `MINGLA_ALERT_RECIPIENTS_JSON`: independent API-health, Stripe-dispute, and
   Stripe-webhook-failure lists.
 - `MINGLA_RUNTIME_CONFIG_JSON`: eight required non-credential fields plus the optional
@@ -80,6 +82,19 @@ value. Missing/invalid onboarding and payout authority resolve false; missing/in
 source-refund authority resolves disabled=true. Content-share creation accepts only a bundled
 JSON boolean or, during the #1808 migration window, the exact legacy string `true`; once the
 direct name is retired, missing or invalid authority resolves false.
+
+For the #1903 schema-v3 compatibility rollout, derive the runtime import closure before any
+secret mutation. The reviewed closure is exactly: `brand-paystack-onboard`,
+`brand-stripe-onboard`, `payout-release-sweep`, `marketing-send`,
+`event-cancel-refund-fanout`, `rsvp-contribution-refund`, `source-refund-sweep`,
+`venue-reservation-cancel`, `send-pair-request`, `send-phone-invite`, `send-venue-sms`,
+`ticket-confirmation-dispatch`, `notify-dispatch`, `offering-invite-dispatch`, `rsvp-notify`,
+and `guest-roster-actions`. Deploy all 16 from one merged compatibility commit while production
+is still schema v2, preserve each function's reviewed JWT posture, and require exact deployed
+source parity. If the recursive guard derives any other set or count, stop for amendment. Only
+after all 16 pass may the bundle be transformed value-blindly to exact schema v3 with the new
+Paystack field false and all six pre-existing controls unchanged. Activation is a separate
+post-#1845 operation.
 
 ## No-downtime sequence
 

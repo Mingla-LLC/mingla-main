@@ -63,6 +63,7 @@ import {
   type BrandRecipientDeps,
   type BrandRecipientRow,
 } from "./recipient.ts";
+import { resolvePaystackPayoutHoldOnboardFlip } from "../_shared/secretBundle.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -107,7 +108,105 @@ interface OnboardBody {
   bank_code?: string;
 }
 
-serve(async (req) => {
+type PaystackOnboardStampOutcome =
+  | "dark_skip"
+  | "flipped"
+  | "skipped_already_stamped"
+  | "stamp_failed";
+
+type StampRpcOutcome = Exclude<
+  PaystackOnboardStampOutcome,
+  "dark_skip" | "stamp_failed"
+>;
+
+interface PaystackOnboardStampDeps {
+  resolveEnabled: () => boolean;
+  randomUuid: () => string;
+  stamp: (
+    attemptId: string,
+  ) => Promise<StampRpcOutcome>;
+  recordFailure: (
+    attemptId: string,
+    errorClass: string,
+    errorCode: string,
+  ) => Promise<void>;
+  recordApplicationOutcome: (
+    outcome: PaystackOnboardStampOutcome,
+    attemptId: string | null,
+  ) => Promise<void>;
+  log: (
+    outcome: PaystackOnboardStampOutcome,
+    attemptId: string | null,
+    errorClass?: string,
+    errorCode?: string,
+  ) => void;
+}
+
+function safeStampError(error: unknown): {
+  errorClass: string;
+  errorCode: string;
+} {
+  const candidate = typeof error === "object" && error !== null
+    ? error as { name?: unknown; code?: unknown }
+    : null;
+  const errorClass = typeof candidate?.name === "string" &&
+      /^[A-Za-z][A-Za-z0-9]{0,31}$/.test(candidate.name)
+    ? candidate.name
+    : "StampRpcError";
+  const errorCode = typeof candidate?.code === "string" &&
+      /^[A-Z0-9_]{1,32}$/.test(candidate.code)
+    ? candidate.code
+    : "STAMP_RPC_FAILED";
+  return { errorClass, errorCode };
+}
+
+/**
+ * The sole Paystack automatic-stamp decision boundary. It is invoked only
+ * after the rail-defining brand write. Sharing Stripe authority, accepting a
+ * direct legacy Paystack authority, or moving this before that write can put a
+ * real merchant onto event-anchored payouts prematurely.
+ */
+export async function attemptPaystackOnboardStamp(
+  deps: PaystackOnboardStampDeps,
+): Promise<PaystackOnboardStampOutcome> {
+  if (deps.resolveEnabled() !== true) {
+    deps.log("dark_skip", null);
+    return "dark_skip";
+  }
+
+  const attemptId = deps.randomUuid();
+  try {
+    const outcome = await deps.stamp(attemptId);
+    try {
+      await deps.recordApplicationOutcome(outcome, attemptId);
+    } catch (auditError) {
+      const safe = safeStampError(auditError);
+      deps.log(outcome, attemptId, safe.errorClass, safe.errorCode);
+      return outcome;
+    }
+    deps.log(outcome, attemptId);
+    return outcome;
+  } catch (stampError) {
+    const safe = safeStampError(stampError);
+    try {
+      await deps.recordFailure(attemptId, safe.errorClass, safe.errorCode);
+      await deps.recordApplicationOutcome("stamp_failed", attemptId);
+    } catch (recordError) {
+      const recordSafe = safeStampError(recordError);
+      deps.log(
+        "stamp_failed",
+        attemptId,
+        recordSafe.errorClass,
+        recordSafe.errorCode,
+      );
+      return "stamp_failed";
+    }
+    deps.log("stamp_failed", attemptId, safe.errorClass, safe.errorCode);
+    return "stamp_failed";
+  }
+}
+
+export const brandPaystackOnboardHandler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -621,6 +720,87 @@ serve(async (req) => {
       return jsonResponse({ error: "internal_error", detail: "brand_update_failed" }, 500);
     }
 
+    await attemptPaystackOnboardStamp(
+      {
+        resolveEnabled: resolvePaystackPayoutHoldOnboardFlip,
+        randomUuid: () => crypto.randomUUID(),
+        stamp: async (attemptId) => {
+          const { data, error } = await supabase.rpc(
+            "stamp_payout_hold_cutover",
+            {
+              p_brand_id: brandId,
+              p_stripe_account_id: null,
+              p_batch_id: attemptId,
+              p_actor_email: null,
+              p_actor_uid: userId,
+              p_reason: "paystack_onboarding_auto_stamp",
+            },
+          );
+          if (error) throw error;
+          if (data === "flipped" || data === "skipped_already_stamped") {
+            return data;
+          }
+          throw {
+            name: "StampRpcOutcomeError",
+            code: "STAMP_RPC_OUTCOME_INVALID",
+          };
+        },
+        recordFailure: async (attemptId, errorClass, errorCode) => {
+          const { error } = await supabase
+            .from("payout_hold_cutover_migrations")
+            .insert({
+              batch_id: attemptId,
+              brand_id: brandId,
+              stripe_account_id: null,
+              direction: "hold",
+              prior_interval: null,
+              new_interval: null,
+              cutover_before: null,
+              cutover_after: null,
+              result: "stamp_failed",
+              error_message:
+                `paystack_onboarding_auto_stamp:${errorClass}:${errorCode}`,
+              actor_email: null,
+              actor_uid: userId,
+              reason: "paystack_onboarding_auto_stamp",
+            });
+          if (error) {
+            throw {
+              name: "LedgerWriteError",
+              code: typeof error.code === "string" ? error.code : undefined,
+            };
+          }
+        },
+        recordApplicationOutcome: async (outcome, attemptId) => {
+          await writeAudit(supabase, {
+            user_id: userId,
+            brand_id: brandId,
+            action: `payout_hold.paystack_onboarding_${outcome}`,
+            target_type: "brand",
+            target_id: brandId,
+            after: {
+              outcome,
+              attempt_id: attemptId,
+              reason: "paystack_onboarding_auto_stamp",
+            },
+          });
+        },
+        log: (outcome, attemptId, errorClass, errorCode) => {
+          const event = {
+            event: "paystack_onboarding_auto_stamp",
+            outcome,
+            brand_id: brandId,
+            actor_uid: userId,
+            ...(attemptId ? { attempt_id: attemptId } : {}),
+            ...(errorClass ? { error_class: errorClass } : {}),
+            ...(errorCode ? { error_code: errorCode } : {}),
+          };
+          if (outcome === "stamp_failed") console.error(JSON.stringify(event));
+          else console.info(JSON.stringify(event));
+        },
+      },
+    );
+
     await writeAudit(supabase, {
       user_id: userId,
       brand_id: brandId,
@@ -648,4 +828,6 @@ serve(async (req) => {
       500,
     );
   }
-});
+};
+
+if (import.meta.main) serve(brandPaystackOnboardHandler);

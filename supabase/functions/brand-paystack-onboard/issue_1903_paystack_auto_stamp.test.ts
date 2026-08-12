@@ -1,0 +1,127 @@
+/**
+ * #1903 implementor regression: Paystack auto-stamping is bundle-dark and may
+ * run only after the rail-defining brand write. Sharing Stripe authority,
+ * accepting a direct Paystack authority, stamping earlier, or activating this
+ * compatibility rollout can convert a real merchant prematurely.
+ */
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { attemptPaystackOnboardStamp } from "./index.ts";
+
+type Outcome =
+  | "dark_skip"
+  | "flipped"
+  | "skipped_already_stamped"
+  | "stamp_failed";
+
+function fixture(options: {
+  enabled: boolean;
+  rpcOutcome?: "flipped" | "skipped_already_stamped";
+  rpcReject?: unknown;
+  ledgerReject?: unknown;
+}) {
+  const calls: string[] = [];
+  const attempts: string[] = [];
+  const audits: Outcome[] = [];
+  const logs: Outcome[] = [];
+  const deps = {
+    resolveEnabled: (): boolean => options.enabled,
+    randomUuid: (): string => {
+      calls.push("uuid");
+      return `00000000-0000-4000-8000-${
+        String(attempts.length + 1).padStart(12, "0")
+      }`;
+    },
+    stamp: async (attemptId: string) => {
+      calls.push("stamp");
+      attempts.push(attemptId);
+      if (options.rpcReject) throw options.rpcReject;
+      return options.rpcOutcome ?? "flipped";
+    },
+    recordFailure: async () => {
+      calls.push("record_failure");
+      if (options.ledgerReject) throw options.ledgerReject;
+    },
+    recordApplicationOutcome: async (outcome: Outcome) => {
+      calls.push(`audit:${outcome}`);
+      audits.push(outcome);
+    },
+    log: (outcome: Outcome) => {
+      calls.push(`log:${outcome}`);
+      logs.push(outcome);
+    },
+  };
+  return { calls, attempts, audits, logs, deps };
+}
+
+Deno.test("#1903 H-3: dark success makes zero stamp or cutover-row calls", async () => {
+  const f = fixture({ enabled: false });
+  const outcome = await attemptPaystackOnboardStamp(
+    f.deps,
+  );
+  assertEquals(outcome, "dark_skip");
+  assertEquals(f.calls, ["log:dark_skip"]);
+  assertEquals(f.attempts, []);
+  assertEquals(f.audits, []);
+});
+
+Deno.test("#1903 H-4/H-5: true calls once and preserves RPC concurrency truth", async () => {
+  for (const rpcOutcome of ["flipped", "skipped_already_stamped"] as const) {
+    const f = fixture({ enabled: true, rpcOutcome });
+    const outcome = await attemptPaystackOnboardStamp(
+      f.deps,
+    );
+    assertEquals(outcome, rpcOutcome);
+    assertEquals(f.calls, [
+      "uuid",
+      "stamp",
+      `audit:${rpcOutcome}`,
+      `log:${rpcOutcome}`,
+    ]);
+    assertEquals(f.attempts.length, 1);
+    assert(
+      /^[0-9a-f-]{36}$/.test(f.attempts[0]),
+      "stamp attempt must receive a fresh UUID-shaped id",
+    );
+  }
+});
+
+Deno.test("#1903 E-3/E-4: stamp failure is truthful and never escapes onboarding", async () => {
+  const rpcFailure = fixture({
+    enabled: true,
+    rpcReject: { name: "PostgrestError", code: "P0001", secret: "redacted" },
+  });
+  assertEquals(
+    await attemptPaystackOnboardStamp(
+      rpcFailure.deps,
+    ),
+    "stamp_failed",
+  );
+  assertEquals(rpcFailure.calls, [
+    "uuid",
+    "stamp",
+    "record_failure",
+    "audit:stamp_failed",
+    "log:stamp_failed",
+  ]);
+
+  const ledgerFailure = fixture({
+    enabled: true,
+    rpcReject: new Error("provider detail must not escape"),
+    ledgerReject: { name: "LedgerWriteError", code: "LEDGER_WRITE_FAILED" },
+  });
+  assertEquals(
+    await attemptPaystackOnboardStamp(
+      ledgerFailure.deps,
+    ),
+    "stamp_failed",
+  );
+  assertEquals(ledgerFailure.calls, [
+    "uuid",
+    "stamp",
+    "record_failure",
+    "log:stamp_failed",
+  ]);
+});

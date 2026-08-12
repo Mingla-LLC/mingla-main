@@ -15,6 +15,8 @@ const AUDIT = "scripts/secrets/audit-supabase-secret-budget.mjs";
 const MANIFEST = "supabase/secrets.manifest.json";
 const CLIENT_ROOTS = ["app-mobile/", "mingla-business/", "mingla-admin/"];
 const BACKEND_ROOT = "supabase/functions/";
+const FORBIDDEN_DIRECT_PAYSTACK_CONTROL =
+  "PAYSTACK_PAYOUT_HOLD_ONBOARD_FLIP";
 
 const APPROVED_RUNTIME_FIELDS = [
   "bunny_storage_cap_bytes",
@@ -82,6 +84,7 @@ const CONSUMER_CONTRACTS = [
   ["supabase/functions/marketing-send/index.ts", "resolveDeliveryFlagValue"],
   ["supabase/functions/_shared/adapters/smsAdapter.ts", "resolveDeliveryFlagValue"],
   ["supabase/functions/brand-stripe-onboard/index.ts", "resolvePaymentOperationFlagValue"],
+  ["supabase/functions/brand-paystack-onboard/index.ts", "resolvePaystackPayoutHoldOnboardFlip"],
   ["supabase/functions/payout-release-sweep/index.ts", "resolvePaymentOperationFlagValue"],
   ["supabase/functions/_shared/sourceRefundControlPlane.ts", "resolvePaymentOperationFlagValue"],
   ["supabase/functions/api-health-probe/index.ts", "resolveAlertRecipientValue"],
@@ -155,6 +158,21 @@ export function check({
     if (names.length !== 87 || new Set(names).size !== 87) {
       violations.push(`${MANIFEST}:target_must_be_87_unique_names`);
     }
+    if (names.includes(FORBIDDEN_DIRECT_PAYSTACK_CONTROL)) {
+      violations.push(`${MANIFEST}:standalone_paystack_control_forbidden`);
+    }
+    const deliveryBundle = manifest.secrets?.find((record) =>
+      record.name === "MINGLA_DELIVERY_FLAGS_JSON"
+    );
+    const paystackOnboardField = deliveryBundle?.bundle_fields?.find((field) =>
+      field.name === "paystack_payout_hold_onboard_flip"
+    );
+    if (
+      paystackOnboardField?.owner !== "Payments Engineering" ||
+      paystackOnboardField?.source_type !== "operating_record"
+    ) {
+      violations.push(`${MANIFEST}:paystack_onboard_bundle_field_invalid`);
+    }
     const offeringPepper = manifest.secrets?.find((record) =>
       record.name === "OFFERING_INVITE_TOKEN_PEPPER"
     );
@@ -225,6 +243,15 @@ export function check({
         }
       }
     }
+    for (const file of productionFiles) {
+      if (
+        executableSource(file.text).includes(
+          `Deno.env.get("${FORBIDDEN_DIRECT_PAYSTACK_CONTROL}")`,
+        )
+      ) {
+        violations.push(`${file.path}:standalone_paystack_control_forbidden`);
+      }
+    }
     for (const [path, resolver] of CONSUMER_CONTRACTS) {
       const source = byPath.get(path);
       const occurrences = source?.split(resolver).length ?? 0;
@@ -278,6 +305,14 @@ function selfTest() {
           }],
         },
         {
+          name: "MINGLA_DELIVERY_FLAGS_JSON",
+          bundle_fields: [{
+            name: "paystack_payout_hold_onboard_flip",
+            owner: "Payments Engineering",
+            source_type: "operating_record",
+          }],
+        },
+        {
           name: "OFFERING_INVITE_TOKEN_PEPPER",
           class: "cryptographic_secret",
           owner: "Platform Security",
@@ -289,7 +324,7 @@ function selfTest() {
             "supabase/functions/offering-invite-dispatch/index.ts",
           ],
         },
-        ...Array.from({ length: 85 }, (_, index) => ({ name: `SYNTH_${index}` })),
+        ...Array.from({ length: 84 }, (_, index) => ({ name: `SYNTH_${index}` })),
       ],
     }),
     clientFiles: [{ path: "app-mobile/src/ok.ts", text: "export const ok = true;" }],
@@ -370,7 +405,21 @@ function selfTest() {
       ],
     }).every((violation) => !violation.includes("legacy_direct_read"))
   ) throw new Error("active_direct_reader_fixture_passed");
-  console.log("issue-1203 secret-capacity self-test OK (9/9 cases).");
+  if (
+    check({
+      ...clean,
+      backendFiles: [
+        ...backendFiles,
+        {
+          path: "supabase/functions/activePaystackDirectReader.ts",
+          text: `Deno.env.get("${FORBIDDEN_DIRECT_PAYSTACK_CONTROL}")`,
+        },
+      ],
+    }).every((violation) =>
+      !violation.includes("standalone_paystack_control_forbidden")
+    )
+  ) throw new Error("paystack_direct_reader_fixture_passed");
+  console.log("issue-1203 secret-capacity self-test OK (10/10 cases).");
 }
 
 function trackedClientFiles() {
