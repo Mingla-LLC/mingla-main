@@ -81,8 +81,9 @@ BEGIN
     ('public.biz_reservation_create(uuid,timestamp with time zone,integer,text,text,text,text,uuid,text,text,text[],text)', '49ffd0c7006d839ca41fbcf0a082d643'),
     ('public.pg_create_guest_reservation(uuid,timestamp with time zone,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)', '97adc49789e7e254744ff9b60efbe9ba'),
     ('public.pg_finalize_guest_reservation(uuid,text)', '51b79bcbec509bfd5f3a115f87af472d'),
-    ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)', 'eaa44b5386a7a6a668e69ce769cdd6d8'),
-    ('public.issue_1770_enqueue_source()', '82f95d2c7440945e43df55948c164f1f')
+    -- 20270327001773_issue_1773_reservation_stay_ingest.sql is the legitimate current last writer of these two definitions.
+    ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)', 'eddd993b656af66cd75f588a5df64b5f'),
+    ('public.issue_1770_enqueue_source()', 'b6f76457afc333703f59d065cd4224ba')
   ) AS expected(signature,definition_md5) LOOP
     -- #1773 last-wrote biz_resolve_brand_person_source after #1857 (stay ingest).
     -- Skip that one 1857-era fingerprint when the 1773 body is live.

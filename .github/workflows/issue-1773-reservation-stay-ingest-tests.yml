@@ -6,6 +6,7 @@ on:
     paths: &paths
       - "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql"
       - "supabase/migrations/__tests__/issue_1773_reservation_stay_ingest.test.sql"
+      - "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql"
       - "supabase/functions/brand-person-ingest-worker/**"
       - "packages/card-identity/phone.cjs"
       - "packages/card-identity/phone.js"
@@ -81,3 +82,7 @@ jobs:
         env:
           PGPASSWORD: ${{ format('issue-1773-ci-{0}', github.run_id) }}
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1773_reservation_stay_ingest.test.sql
+      - name: Prove current writers preserve RSVP phone authority
+        env:
+          PGPASSWORD: ${{ format('issue-1773-ci-{0}', github.run_id) }}
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql

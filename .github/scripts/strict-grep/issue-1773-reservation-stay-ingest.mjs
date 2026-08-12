@@ -15,6 +15,7 @@ const files = {
   adapter: "packages/card-identity/phone.cjs",
   canonicalAdapter: "packages/card-identity/phone.js",
   sqlTest: "supabase/migrations/__tests__/issue_1773_reservation_stay_ingest.test.sql",
+  phoneAuthoritySuccessor: "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
   artifactTest: "supabase/functions/brand-person-ingest-worker/issue_1773_worker_cjs_artifact.test.ts",
   workflow: ".github/workflows/issue-1773-reservation-stay-ingest-tests.yml",
   invariant: "docs/INVARIANT_REGISTRY.md",
@@ -33,6 +34,8 @@ export function inspect(source) {
   need("migration", "v_phone_country_iso NOT IN ('US','CA','GB','NG','FR','DE','BE','ES','PT')", "canonical supported-country boundary");
   need("migration", "'rawPhone',NULLIF(btrim(NEW.guest_phone_e164),'')", "reservation raw-phone revision");
   need("migration", "'phoneCountryIso',NEW.guest_phone_country_iso", "reservation ISO revision");
+  need("migration", "r.guest_phone_country_iso,r.created_at", "retained RSVP ISO readback");
+  need("migration", "SET phone_country_iso=v_phone_country_iso", "retained phone provenance ISO refresh");
   need("migration", "EXCEPTION WHEN OTHERS", "fail-open exception handling");
   need("migration", "source=% table=%", "PII-free warning");
   need("migration", "biz_record_brand_person_suppression", "suppression reprojection");
@@ -74,8 +77,20 @@ export function inspect(source) {
   need("sqlTest", "suppression retry/replay failed", "suppression retry regression");
   need("sqlTest", "old source path % regressed", "four-kind legacy resolver regression");
   need("sqlTest", "backfill replay duplicated work", "behavioral backfill regression");
+  need("phoneAuthoritySuccessor", "guest_phone_country_iso='CA'", "RSVP ISO-only correction");
+  need("phoneAuthoritySuccessor", "count(DISTINCT revision_key)", "distinct ISO revision proof");
+  need("phoneAuthoritySuccessor", "c.normalized_value='+19194199222'", "strict E.164 identity proof");
+  need("phoneAuthoritySuccessor", "issue_1773_1857_national_without_country_became_identity", "national-number refusal proof");
+  need("phoneAuthoritySuccessor", "issue_1773_1857_invalid_country_was_accepted", "invalid-country refusal proof");
+  need("phoneAuthoritySuccessor", "'event_rsvp','rsvp_plus_one','order','ticket_holder','reservation','stay_reservation'", "six source domains coexistence");
+  need("phoneAuthoritySuccessor", "p.prosecdef", "SECURITY DEFINER proof");
+  need("phoneAuthoritySuccessor", "search_path=public, pg_temp", "pinned search path proof");
+  need("phoneAuthoritySuccessor", "issue_1773_1857_security_contract_drift", "service-only ACL proof");
+  need("phoneAuthoritySuccessor", "ALTER FUNCTION ", "two-function deliberate drift proof");
+  need("phoneAuthoritySuccessor", "ROLLBACK;", "rollback-only successor");
   need("workflow", "issue_1773_reservation_stay_ingest.test.sql", "SQL workflow registration");
   need("workflow", "issue_1773_worker_cjs_artifact.test.ts", "deployment artifact regression wiring");
+  need("workflow", "issue_1773_preserves_1857_phone_authority.pg17.test.sql", "phone-authority successor wiring");
   if ((source.workflow ?? "").includes("--unstable-detect-cjs")) failures.push("workflow relies on unstable CommonJS detection");
   need("workflow", "deno-version: v2.9.5", "Deno 2.9.5 workflow pin");
   need("workflow", "supabase/setup-cli@v1", "Supabase CLI setup");
@@ -129,6 +144,7 @@ function selfTest(source) {
       canonicalByteLength: Buffer.byteLength(driftedCanonical),
     }],
     ["CLI upload proof", { ...source, artifactTest: source.artifactTest.replace("Supabase CLI did not upload canonical phone.js bytes as phone.cjs", "unverified upload bytes") }],
+    ["phone authority successor", { ...source, phoneAuthoritySuccessor: source.phoneAuthoritySuccessor.replace("guest_phone_country_iso='CA'", "guest_phone_country_iso='US'") }],
     ["union", { ...source, worker: source.worker.replace('| "stay_reservation"', '| "reservation"') }],
     ["revision", { ...source, migration: source.migration.replace("'phoneCountryIso',NEW.guest_phone_country_iso", "'status',NEW.status") }],
     ["backfill", { ...source, migration: source.migration.replace("FROM public.reservations r ON CONFLICT DO NOTHING", "FROM public.reservations r WHERE false ON CONFLICT DO NOTHING") }],
@@ -142,7 +158,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const source = readSources();
   if (process.argv.includes("--self-test")) {
     selfTest(source);
-    console.log("#1773 reservation/Stay ingest self-test PASS (19 true mutations)");
+    console.log("#1773 reservation/Stay ingest self-test PASS (20 true mutations)");
   } else {
     const failures = inspect(source);
     if (failures.length) { console.error(failures.join("\n")); process.exit(1); }
