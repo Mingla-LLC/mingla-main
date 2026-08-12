@@ -44,7 +44,7 @@ BEGIN
   -- mutate search_path inside a subtransaction, prove the guard fails, then
   -- let the exception handler roll the mutation back before the next case.
   FOR v_expected IN SELECT * FROM (VALUES
-    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '85b354da8fbc858e0b2e0aed6167982c'),
+    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '3810b4f9ee2d8faeb9f2b373959b0756'),
     ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '9fe5e36dee2bd3bdc8ed26e2081716fb'),
     ('public.issue_1388_create_stay_group(uuid,text,jsonb,bigint,uuid)', 'eec5f6a9750eb113d3c75c027455a704'),
     ('public.biz_reservation_create(uuid,timestamp with time zone,integer,text,text,text,text,uuid,text,text,text[],text)', '49ffd0c7006d839ca41fbcf0a082d643'),

@@ -25,7 +25,7 @@ BEGIN
   IF cardinality(v_missing)>0 THEN RAISE EXCEPTION 'issue_1857_source_drift_missing:%',array_to_string(v_missing,','); END IF;
 
   FOR v_expected IN SELECT * FROM (VALUES
-    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text)', '370ddf66e6a324dfc6dbc65f07c29ae1'),
+    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text)', '787eae74cc2b878be905899915ceeb53'),
     ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text)', '1c69cfda97aedfc8ba846f6e6193c5c2'),
     ('public.issue_1388_create_stay_group(uuid,text,jsonb,bigint,uuid)', 'e83d8deb8b6e2f55517e29fb7b7f67c0'),
     ('public.biz_reservation_create(uuid,timestamp with time zone,integer,text,text,text,text,uuid,text,text,text[],text)', 'dd09169aa2385b711fc5c54cf7039940'),
@@ -102,6 +102,8 @@ SET search_path TO 'public', 'pg_temp'
 AS $$
 DECLARE
   v_event       public.events%ROWTYPE;
+  v_master_count integer;
+  v_master_end_at timestamptz;
   v_plus        integer;
   v_confirmed   integer;
   v_status      text;
@@ -114,7 +116,6 @@ DECLARE
   v_gemail      text;
   v_gphone      text;
   v_gphone_country_iso text;
-  v_token       text;
   v_token_hash  text;
   v_qr          text;
   v_primary_qr  text;
@@ -126,6 +127,26 @@ BEGIN
      OR v_event.status NOT IN ('scheduled', 'live')
      OR v_event.deleted_at IS NOT NULL THEN
     RAISE EXCEPTION 'rsvp_not_open';
+  END IF;
+
+  -- #1902: preserve the deployed authoritative acquisition boundary. This
+  -- precedes every validation, capacity, identity, guest, pass, and delivery write.
+  SELECT count(*)::integer, max(ed.end_at)
+    INTO v_master_count, v_master_end_at
+    FROM public.event_dates ed
+   WHERE ed.event_id = p_event_id
+     AND ed.is_master IS TRUE;
+
+  IF v_master_count <> 1 OR v_master_end_at IS NULL THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1902',
+      MESSAGE = 'rsvp_date_unavailable';
+  END IF;
+
+  IF v_master_end_at <= clock_timestamp() THEN
+    RAISE EXCEPTION USING
+      ERRCODE = 'P1901',
+      MESSAGE = 'rsvp_event_ended';
   END IF;
 
   IF p_rsvp_status NOT IN ('going', 'not_going', 'maybe') THEN
@@ -281,9 +302,8 @@ BEGIN
 
       -- Mint the per-guest signed pass ONLY on a going resolution.
       IF v_status = 'going' AND p_qr_token_pepper IS NOT NULL THEN
-        v_token := encode(extensions.gen_random_bytes(16), 'hex');
-        v_token_hash := public.biz_ticket_checkout_token_hash(v_token, p_qr_token_pepper);
-        v_qr := public.biz_rsvp_qr_payload(v_guest_id, v_token_hash, p_qr_token_pepper);
+        SELECT m.token_hash, m.qr_code INTO v_token_hash, v_qr
+          FROM public.biz_rsvp_mint_qr(v_guest_id, p_qr_token_pepper) m;
         UPDATE public.event_rsvp_guests
            SET qr_token_hash = v_token_hash, qr_code = v_qr
          WHERE id = v_guest_id;
@@ -297,9 +317,8 @@ BEGIN
     SELECT qr_code INTO v_primary_qr FROM public.event_rsvps
      WHERE id = v_existing_id AND qr_token_hash IS NOT NULL;
     IF v_primary_qr IS NULL THEN
-      v_token := encode(extensions.gen_random_bytes(16), 'hex');
-      v_token_hash := public.biz_ticket_checkout_token_hash(v_token, p_qr_token_pepper);
-      v_primary_qr := public.biz_rsvp_qr_payload(v_existing_id, v_token_hash, p_qr_token_pepper);
+      SELECT m.token_hash, m.qr_code INTO v_token_hash, v_primary_qr
+        FROM public.biz_rsvp_mint_qr(v_existing_id, p_qr_token_pepper) m;
       UPDATE public.event_rsvps
          SET qr_token_hash = v_token_hash, qr_code = v_primary_qr
        WHERE id = v_existing_id;
@@ -1801,7 +1820,7 @@ DECLARE
   v_drift text[] := '{}'::text[];
 BEGIN
   FOR v_expected IN SELECT * FROM (VALUES
-    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '85b354da8fbc858e0b2e0aed6167982c'),
+    ('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '3810b4f9ee2d8faeb9f2b373959b0756'),
     ('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)', '9fe5e36dee2bd3bdc8ed26e2081716fb'),
     ('public.issue_1388_create_stay_group(uuid,text,jsonb,bigint,uuid)', 'eec5f6a9750eb113d3c75c027455a704'),
     ('public.biz_reservation_create(uuid,timestamp with time zone,integer,text,text,text,text,uuid,text,text,text[],text)', '49ffd0c7006d839ca41fbcf0a082d643'),
@@ -1879,6 +1898,10 @@ BEGIN
   IF position('''phoneCountryIso''' in pg_get_functiondef('public.issue_1770_enqueue_source()'::regprocedure))=0
      OR position('guest_phone_country_iso' in pg_get_functiondef('public.issue_1770_enqueue_source()'::regprocedure))=0
      OR position('phone_country_iso' in pg_get_functiondef('public.issue_1770_enqueue_source()'::regprocedure))=0
+     OR position('P1901' in pg_get_functiondef('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)'::regprocedure))=0
+     OR position('rsvp_event_ended' in pg_get_functiondef('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)'::regprocedure))=0
+     OR position('P1902' in pg_get_functiondef('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)'::regprocedure))=0
+     OR position('rsvp_date_unavailable' in pg_get_functiondef('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)'::regprocedure))=0
      OR position('reservation' in pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure))>0
      OR position('stay_' in pg_get_functiondef('public.biz_resolve_brand_person_source_derived(text,uuid)'::regprocedure))>0 THEN
     RAISE EXCEPTION 'issue_1857_revision_or_source_scope_postcondition_failed';
