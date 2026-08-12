@@ -22,10 +22,15 @@ function fixture(options: {
   rpcReject?: unknown;
   ledgerReject?: unknown;
 }) {
+  // [TEST-MOD-APPROVED #1903] Orchestrator review 5260928043 requires every
+  // failure append to follow a real clean reconciliation. The original helper
+  // modeled a resolved database rejection as a thrown ambiguous response and
+  // treated a lost failure-insert response as proven failure without a read.
   const calls: string[] = [];
   const attempts: string[] = [];
   const audits: Outcome[] = [];
   const logs: Outcome[] = [];
+  let failureVisible = false;
   const deps = {
     resolveEnabled: (): boolean => options.enabled,
     randomUuid: (): string => {
@@ -37,12 +42,17 @@ function fixture(options: {
     stamp: async (attemptId: string) => {
       calls.push("stamp");
       attempts.push(attemptId);
-      if (options.rpcReject) throw options.rpcReject;
+      if (options.rpcReject) return { data: null, error: options.rpcReject };
       return options.rpcOutcome ?? "flipped";
     },
+    reconcileAttempt: async () =>
+      failureVisible ? { kind: "failure" as const } : null,
     recordFailure: async () => {
       calls.push("record_failure");
-      if (options.ledgerReject) throw options.ledgerReject;
+      if (options.ledgerReject) {
+        failureVisible = true;
+        throw options.ledgerReject;
+      }
     },
     recordApplicationOutcome: async (outcome: Outcome) => {
       calls.push(`audit:${outcome}`);
@@ -55,6 +65,65 @@ function fixture(options: {
   };
   return { calls, attempts, audits, logs, deps };
 }
+
+Deno.test(
+  "#1903 A2: missing reconciler leaves ambiguous transport outcome unknown",
+  async () => {
+    const calls: string[] = [];
+    const outcome = await attemptPaystackOnboardStamp({
+      resolveEnabled: () => true,
+      randomUuid: () => "19030000-0000-4000-8000-000000000020",
+      stamp: async () => {
+        throw { name: "TransportError", code: "ECONNRESET", message: "secret" };
+      },
+      recordFailure: async () => {
+        calls.push("record_failure");
+      },
+      recordApplicationOutcome: async (decided, _attemptId, reason) => {
+        calls.push(`audit:${decided}:${reason}`);
+      },
+      log: (decided, _attemptId, errorClass, errorCode, reason) => {
+        calls.push(`log:${decided}:${errorClass}:${errorCode}:${reason}`);
+      },
+    });
+
+    assertEquals(outcome, "stamp_outcome_unknown");
+    assertEquals(calls, [
+      "audit:stamp_outcome_unknown:RECONCILIATION_ERROR",
+      "log:stamp_outcome_unknown:TransportError:ECONNRESET:RECONCILIATION_ERROR",
+    ]);
+  },
+);
+
+Deno.test(
+  "#1903 A2: missing reconciler cannot authorize definite-error failure append",
+  async () => {
+    const calls: string[] = [];
+    const outcome = await attemptPaystackOnboardStamp({
+      resolveEnabled: () => true,
+      randomUuid: () => "19030000-0000-4000-8000-000000000021",
+      stamp: async () => ({
+        data: null,
+        error: { name: "PostgrestError", code: "P0001", message: "secret" },
+      }),
+      recordFailure: async () => {
+        calls.push("record_failure");
+      },
+      recordApplicationOutcome: async (decided, _attemptId, reason) => {
+        calls.push(`audit:${decided}:${reason}`);
+      },
+      log: (decided, _attemptId, errorClass, errorCode, reason) => {
+        calls.push(`log:${decided}:${errorClass}:${errorCode}:${reason}`);
+      },
+    });
+
+    assertEquals(outcome, "stamp_outcome_unknown");
+    assertEquals(calls, [
+      "audit:stamp_outcome_unknown:RECONCILIATION_ERROR",
+      "log:stamp_outcome_unknown:PostgrestError:P0001:RECONCILIATION_ERROR",
+    ]);
+  },
+);
 
 Deno.test("#1903 H-3: dark success makes zero stamp or cutover-row calls", async () => {
   const f = fixture({ enabled: false });
@@ -122,6 +191,7 @@ Deno.test("#1903 E-3/E-4: stamp failure is truthful and never escapes onboarding
     "uuid",
     "stamp",
     "record_failure",
+    "audit:stamp_failed",
     "log:stamp_failed",
   ]);
 });

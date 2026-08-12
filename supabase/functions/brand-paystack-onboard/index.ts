@@ -245,7 +245,9 @@ async function reconcileSafely(
   deps: PaystackOnboardStampDeps,
   attemptId: string,
 ): Promise<ReconciliationDecision> {
-  if (!deps.reconcileAttempt) return { kind: "not_visible" };
+  if (!deps.reconcileAttempt) {
+    return { kind: "unknown", reason: "RECONCILIATION_ERROR" };
+  }
   try {
     return normalizeReconciliation(await deps.reconcileAttempt(attemptId));
   } catch {
@@ -339,27 +341,14 @@ export async function attemptPaystackOnboardStamp(
 
   const safe = safeStampError(stampDecision.error);
   if (stampDecision.kind === "ambiguous") {
-    // Compatibility adapters that predate reconciliation retain their bounded
-    // failure behavior; every production adapter injects reconciliation.
     if (!deps.reconcileAttempt) {
-      try {
-        await deps.recordFailure(attemptId, safe.errorClass, safe.errorCode);
-        return await emitStampOutcome(
-          deps,
-          "stamp_failed",
-          attemptId,
-          safe,
-        );
-      } catch (recordError) {
-        const recordSafe = safeStampError(recordError);
-        deps.log(
-          "stamp_failed",
-          attemptId,
-          recordSafe.errorClass,
-          recordSafe.errorCode,
-        );
-        return "stamp_failed";
-      }
+      return await emitStampOutcome(
+        deps,
+        "stamp_outcome_unknown",
+        attemptId,
+        safe,
+        "RECONCILIATION_ERROR",
+      );
     }
 
     let reconciliationFailed = false;
