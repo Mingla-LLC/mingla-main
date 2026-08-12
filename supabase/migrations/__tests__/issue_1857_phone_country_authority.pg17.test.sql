@@ -5,6 +5,7 @@ DO $test$
 DECLARE
   v_definition text;
   v_expected record;
+  v_message text;
 BEGIN
   IF to_regprocedure('public.submit_event_rsvp(uuid,uuid,text,text,text,text,integer,jsonb,text,text)') IS NULL
      OR to_regprocedure('public.submit_event_rsvp_with_delivery(uuid,uuid,text,text,text,text,integer,jsonb,text,text)') IS NULL
@@ -12,6 +13,36 @@ BEGIN
      OR to_regprocedure('public.pg_finalize_guest_reservation(uuid,text)') IS NULL THEN
     RAISE EXCEPTION 'issue_1857_expected_signature_missing';
   END IF;
+  IF to_regprocedure('public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text)') IS NOT NULL THEN
+    RAISE EXCEPTION 'issue_1857_old_guest_reservation_signature_survived';
+  END IF;
+  IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname='pg_create_guest_reservation')<>1 THEN
+    RAISE EXCEPTION 'issue_1857_guest_reservation_overload_count_changed';
+  END IF;
+  IF has_function_privilege('anon','public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)','EXECUTE')
+     OR has_function_privilege('authenticated','public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)','EXECUTE')
+     OR NOT has_function_privilege('service_role','public.pg_create_guest_reservation(uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,text,text,text,text,text,text,text)','EXECUTE') THEN
+    RAISE EXCEPTION 'issue_1857_guest_reservation_acl_changed';
+  END IF;
+
+  -- A 17-value call must resolve to the sole 18-argument function through its
+  -- defaulted country argument. NULL required inputs then fail inside that
+  -- function with its stable validation error, proving dispatch reached it.
+  BEGIN
+    PERFORM public.pg_create_guest_reservation(
+      NULL::uuid,NULL::timestamptz,NULL::integer,NULL::text,NULL::text,
+      NULL::uuid,NULL::text,NULL::text,NULL::text,NULL::integer,
+      NULL::character,NULL::text,NULL::text,NULL::text,NULL::text,NULL::text,
+      NULL::text
+    );
+    RAISE EXCEPTION 'issue_1857_old_shape_call_unexpectedly_returned';
+  EXCEPTION WHEN SQLSTATE '22023' THEN
+    GET STACKED DIAGNOSTICS v_message=MESSAGE_TEXT;
+    IF v_message<>'invalid_input' THEN
+      RAISE EXCEPTION 'issue_1857_old_shape_call_wrong_error:%',v_message;
+    END IF;
+  END;
 
   IF EXISTS (
     SELECT 1 FROM (VALUES

@@ -74,6 +74,8 @@ export function violations(files) {
     "MESSAGE = 'rsvp_event_ended'",
     "ERRCODE = 'P1902'",
     "MESSAGE = 'rsvp_date_unavailable'",
+    "DROP FUNCTION public.pg_create_guest_reservation(",
+    "FROM PUBLIC,anon,authenticated,service_role",
   ]) need(migration, token, "migration", failures);
   for (const fingerprint of [
     "787eae74cc2b878be905899915ceeb53", "1c69cfda97aedfc8ba846f6e6193c5c2",
@@ -122,6 +124,7 @@ function selfTest() {
     ["migration", "v_session.buyer_phone_country_iso", "NULL::text"],
     ["migration", "MESSAGE = 'rsvp_event_ended'", "MESSAGE = 'rsvp_open'"],
     ["migration", "MESSAGE = 'rsvp_date_unavailable'", "MESSAGE = 'rsvp_open'"],
+    ["migration", "DROP FUNCTION public.pg_create_guest_reservation(", "-- old overload retained\n--"],
     ["pickerBehavior", 'return platform !== "web"', "return true"],
     ["pickerBehavior", 'if (input.key === "Escape") return "close"', "if (false) return null"],
     ["rsvp", "markRsvpPhoneTouchedById(rows, g.id)", "rows"],

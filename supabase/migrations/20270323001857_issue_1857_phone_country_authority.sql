@@ -1216,6 +1216,18 @@ BEGIN
 END;
 $function$;
 
+-- Replace the old 17-argument writer rather than leaving a competing overload.
+-- Revoke first so no caller can enter it while this transaction rewires the
+-- dependency chain; the widened writer's final country argument remains defaulted.
+REVOKE ALL ON FUNCTION public.pg_create_guest_reservation(
+  uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,
+  text,text,text,text,text,text
+) FROM PUBLIC,anon,authenticated,service_role;
+DROP FUNCTION public.pg_create_guest_reservation(
+  uuid,timestamptz,integer,text,text,uuid,text,text,text,integer,character,
+  text,text,text,text,text,text
+);
+
 CREATE OR REPLACE FUNCTION public.pg_create_guest_reservation(
   p_venue_id uuid,
   p_reserved_for timestamptz,
