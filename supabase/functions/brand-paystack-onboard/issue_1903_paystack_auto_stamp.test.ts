@@ -125,3 +125,118 @@ Deno.test("#1903 E-3/E-4: stamp failure is truthful and never escapes onboarding
     "log:stamp_failed",
   ]);
 });
+
+Deno.test(
+  "#1903 A2: committed reconciliation wins before definite-failure append",
+  async () => {
+    const calls: string[] = [];
+    const outcome = await attemptPaystackOnboardStamp({
+      resolveEnabled: () => true,
+      randomUuid: () => "19030000-0000-4000-8000-000000000010",
+      stamp: async () => ({
+        data: null,
+        error: { name: "PostgrestError", code: "P0001", message: "secret" },
+      }),
+      reconcileAttempt: async () => {
+        calls.push("reconcile");
+        return "flipped";
+      },
+      recordFailure: async () => {
+        calls.push("record_failure");
+      },
+      recordApplicationOutcome: async (decided) => {
+        calls.push(`audit:${decided}`);
+      },
+      log: (decided) => calls.push(`log:${decided}`),
+    });
+
+    assertEquals(outcome, "flipped");
+    assertEquals(calls, ["reconcile", "audit:flipped", "log:flipped"]);
+  },
+);
+
+Deno.test(
+  "#1903 A2: an unconfirmed failure append reconciles once and never retries the insert",
+  async () => {
+    const calls: string[] = [];
+    let reads = 0;
+    const outcome = await attemptPaystackOnboardStamp({
+      resolveEnabled: () => true,
+      randomUuid: () => "19030000-0000-4000-8000-000000000011",
+      stamp: async () => ({
+        data: null,
+        error: { name: "PostgrestError", code: "P0001", message: "secret" },
+      }),
+      reconcileAttempt: async () => {
+        reads += 1;
+        calls.push(`reconcile:${reads}`);
+        return reads === 1 ? null : { kind: "failure" };
+      },
+      recordFailure: async () => {
+        calls.push("record_failure");
+        throw {
+          name: "LedgerWriteError",
+          code: "LEDGER_WRITE_FAILED",
+          message: "secret",
+        };
+      },
+      recordApplicationOutcome: async (decided) => {
+        calls.push(`audit:${decided}`);
+      },
+      log: (decided) => calls.push(`log:${decided}`),
+    });
+
+    assertEquals(outcome, "stamp_failed");
+    assertEquals(calls, [
+      "reconcile:1",
+      "record_failure",
+      "reconcile:2",
+      "audit:stamp_failed",
+      "log:stamp_failed",
+    ]);
+    assertEquals(calls.filter((call) => call === "record_failure").length, 1);
+  },
+);
+
+for (
+  const [label, decision] of [
+    [
+      "identity mismatch",
+      { kind: "unknown", reason: "BATCH_IDENTITY_MISMATCH" },
+    ],
+    [
+      "result conflict",
+      { kind: "unknown", reason: "BATCH_RESULT_CONFLICT" },
+    ],
+  ] as const
+) {
+  Deno.test(`#1903 A2: ${label} never fabricates a failure row`, async () => {
+    const calls: string[] = [];
+    const outcome = await attemptPaystackOnboardStamp({
+      resolveEnabled: () => true,
+      randomUuid: () => "19030000-0000-4000-8000-000000000012",
+      stamp: async () => ({
+        data: null,
+        error: { name: "PostgrestError", code: "P0001", message: "secret" },
+      }),
+      reconcileAttempt: async () => {
+        calls.push("reconcile");
+        return decision;
+      },
+      recordFailure: async () => {
+        calls.push("record_failure");
+      },
+      recordApplicationOutcome: async (decided) => {
+        calls.push(`audit:${decided}`);
+      },
+      log: (decided) => calls.push(`log:${decided}`),
+    });
+
+    assertEquals(outcome, "stamp_outcome_unknown");
+    assertEquals(calls, [
+      "reconcile",
+      "audit:stamp_outcome_unknown",
+      "log:stamp_outcome_unknown",
+    ]);
+  });
+}

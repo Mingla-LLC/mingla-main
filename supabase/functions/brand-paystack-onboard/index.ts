@@ -112,34 +112,56 @@ type PaystackOnboardStampOutcome =
   | "dark_skip"
   | "flipped"
   | "skipped_already_stamped"
-  | "stamp_failed";
+  | "stamp_failed"
+  | "stamp_outcome_unknown";
 
 type StampRpcOutcome = Exclude<
   PaystackOnboardStampOutcome,
-  "dark_skip" | "stamp_failed"
+  "dark_skip" | "stamp_failed" | "stamp_outcome_unknown"
 >;
+
+type StampSafeReason =
+  | "RPC_RESPONSE_AMBIGUOUS"
+  | "VISIBILITY_NOT_PROVEN"
+  | "RECONCILIATION_ERROR"
+  | "BATCH_IDENTITY_MISMATCH"
+  | "BATCH_RESULT_CONFLICT"
+  | "FAILURE_WRITE_UNCONFIRMED"
+  | "BATCH_HAS_STALE_FAILURE";
+
+type ReconciliationDecision =
+  | { kind: "not_visible" }
+  | { kind: "committed"; outcome: StampRpcOutcome; reason?: StampSafeReason }
+  | { kind: "failure" }
+  | { kind: "unknown"; reason: StampSafeReason };
 
 interface PaystackOnboardStampDeps {
   resolveEnabled: () => boolean;
   randomUuid: () => string;
   stamp: (
     attemptId: string,
-  ) => Promise<StampRpcOutcome>;
+  ) => Promise<unknown>;
+  reconcileAttempt?: (
+    attemptId: string,
+  ) => Promise<StampRpcOutcome | ReconciliationDecision | null>;
+  delayUntil?: (offsetMs: number) => Promise<void>;
   recordFailure: (
     attemptId: string,
     errorClass: string,
     errorCode: string,
   ) => Promise<void>;
-  recordApplicationOutcome: (
+  recordApplicationOutcome(
     outcome: PaystackOnboardStampOutcome,
     attemptId: string | null,
-  ) => Promise<void>;
-  log: (
+    reason?: StampSafeReason,
+  ): Promise<void>;
+  log(
     outcome: PaystackOnboardStampOutcome,
     attemptId: string | null,
     errorClass?: string,
     errorCode?: string,
-  ) => void;
+    reason?: StampSafeReason,
+  ): void;
 }
 
 function safeStampError(error: unknown): {
@@ -160,6 +182,131 @@ function safeStampError(error: unknown): {
   return { errorClass, errorCode };
 }
 
+function classifyStampResponse(value: unknown):
+  | { kind: "committed"; outcome: StampRpcOutcome }
+  | { kind: "definite_no_commit"; error: unknown }
+  | { kind: "ambiguous"; error: unknown } {
+  if (value === "flipped" || value === "skipped_already_stamped") {
+    return { kind: "committed", outcome: value };
+  }
+  if (typeof value !== "object" || value === null) {
+    return { kind: "ambiguous", error: null };
+  }
+  const response = value as { data?: unknown; error?: unknown };
+  if (
+    (response.data === "flipped" ||
+      response.data === "skipped_already_stamped") &&
+    response.error == null
+  ) {
+    return { kind: "committed", outcome: response.data };
+  }
+  if (response.error != null && response.data == null) {
+    return { kind: "definite_no_commit", error: response.error };
+  }
+  return { kind: "ambiguous", error: response.error };
+}
+
+function normalizeReconciliation(
+  value: StampRpcOutcome | ReconciliationDecision | null,
+): ReconciliationDecision {
+  if (value === null) return { kind: "not_visible" };
+  if (value === "flipped" || value === "skipped_already_stamped") {
+    return { kind: "committed", outcome: value };
+  }
+  if (typeof value === "object" && value !== null) {
+    if (value.kind === "not_visible") return { kind: "not_visible" };
+    if (value.kind === "failure") return { kind: "failure" };
+    if (
+      value.kind === "committed" &&
+      (value.outcome === "flipped" ||
+        value.outcome === "skipped_already_stamped")
+    ) {
+      return value;
+    }
+    if (
+      value.kind === "unknown" &&
+      [
+        "RPC_RESPONSE_AMBIGUOUS",
+        "VISIBILITY_NOT_PROVEN",
+        "RECONCILIATION_ERROR",
+        "BATCH_IDENTITY_MISMATCH",
+        "BATCH_RESULT_CONFLICT",
+        "FAILURE_WRITE_UNCONFIRMED",
+        "BATCH_HAS_STALE_FAILURE",
+      ].includes(value.reason)
+    ) {
+      return value;
+    }
+  }
+  return { kind: "unknown", reason: "RECONCILIATION_ERROR" };
+}
+
+async function reconcileSafely(
+  deps: PaystackOnboardStampDeps,
+  attemptId: string,
+): Promise<ReconciliationDecision> {
+  if (!deps.reconcileAttempt) return { kind: "not_visible" };
+  try {
+    return normalizeReconciliation(await deps.reconcileAttempt(attemptId));
+  } catch {
+    return { kind: "unknown", reason: "RECONCILIATION_ERROR" };
+  }
+}
+
+async function emitStampOutcome(
+  deps: PaystackOnboardStampDeps,
+  outcome: PaystackOnboardStampOutcome,
+  attemptId: string | null,
+  safe?: { errorClass: string; errorCode: string },
+  reason?: StampSafeReason,
+): Promise<PaystackOnboardStampOutcome> {
+  try {
+    await deps.recordApplicationOutcome(outcome, attemptId, reason);
+  } catch (auditError) {
+    const auditSafe = safeStampError(auditError);
+    deps.log(
+      outcome,
+      attemptId,
+      auditSafe.errorClass,
+      auditSafe.errorCode,
+      reason,
+    );
+    return outcome;
+  }
+  deps.log(outcome, attemptId, safe?.errorClass, safe?.errorCode, reason);
+  return outcome;
+}
+
+async function emitReconciledDecision(
+  deps: PaystackOnboardStampDeps,
+  attemptId: string,
+  decision: ReconciliationDecision,
+  safe: { errorClass: string; errorCode: string },
+): Promise<PaystackOnboardStampOutcome | null> {
+  if (decision.kind === "committed") {
+    return await emitStampOutcome(
+      deps,
+      decision.outcome,
+      attemptId,
+      undefined,
+      decision.reason,
+    );
+  }
+  if (decision.kind === "failure") {
+    return await emitStampOutcome(deps, "stamp_failed", attemptId, safe);
+  }
+  if (decision.kind === "unknown") {
+    return await emitStampOutcome(
+      deps,
+      "stamp_outcome_unknown",
+      attemptId,
+      safe,
+      decision.reason,
+    );
+  }
+  return null;
+}
+
 /**
  * The sole Paystack automatic-stamp decision boundary. It is invoked only
  * after the rail-defining brand write. Sharing Stripe authority, accepting a
@@ -175,34 +322,103 @@ export async function attemptPaystackOnboardStamp(
   }
 
   const attemptId = deps.randomUuid();
+  let response: unknown;
+  let thrown: unknown = null;
   try {
-    const outcome = await deps.stamp(attemptId);
-    try {
-      await deps.recordApplicationOutcome(outcome, attemptId);
-    } catch (auditError) {
-      const safe = safeStampError(auditError);
-      deps.log(outcome, attemptId, safe.errorClass, safe.errorCode);
-      return outcome;
-    }
-    deps.log(outcome, attemptId);
-    return outcome;
+    response = await deps.stamp(attemptId);
   } catch (stampError) {
-    const safe = safeStampError(stampError);
-    try {
-      await deps.recordFailure(attemptId, safe.errorClass, safe.errorCode);
-      await deps.recordApplicationOutcome("stamp_failed", attemptId);
-    } catch (recordError) {
-      const recordSafe = safeStampError(recordError);
-      deps.log(
-        "stamp_failed",
-        attemptId,
-        recordSafe.errorClass,
-        recordSafe.errorCode,
-      );
-      return "stamp_failed";
+    thrown = stampError;
+  }
+
+  const stampDecision = thrown === null
+    ? classifyStampResponse(response)
+    : { kind: "ambiguous" as const, error: thrown };
+  if (stampDecision.kind === "committed") {
+    return await emitStampOutcome(deps, stampDecision.outcome, attemptId);
+  }
+
+  const safe = safeStampError(stampDecision.error);
+  if (stampDecision.kind === "ambiguous") {
+    // Compatibility adapters that predate reconciliation retain their bounded
+    // failure behavior; every production adapter injects reconciliation.
+    if (!deps.reconcileAttempt) {
+      try {
+        await deps.recordFailure(attemptId, safe.errorClass, safe.errorCode);
+        return await emitStampOutcome(
+          deps,
+          "stamp_failed",
+          attemptId,
+          safe,
+        );
+      } catch (recordError) {
+        const recordSafe = safeStampError(recordError);
+        deps.log(
+          "stamp_failed",
+          attemptId,
+          recordSafe.errorClass,
+          recordSafe.errorCode,
+        );
+        return "stamp_failed";
+      }
     }
-    deps.log("stamp_failed", attemptId, safe.errorClass, safe.errorCode);
-    return "stamp_failed";
+
+    let reconciliationFailed = false;
+    for (const offsetMs of [0, 100, 250, 500, 1000, 2000]) {
+      if (offsetMs > 0) await deps.delayUntil?.(offsetMs);
+      const decision = await reconcileSafely(deps, attemptId);
+      if (
+        decision.kind === "unknown" &&
+        decision.reason === "RECONCILIATION_ERROR"
+      ) {
+        reconciliationFailed = true;
+        continue;
+      }
+      const terminal = await emitReconciledDecision(
+        deps,
+        attemptId,
+        decision,
+        safe,
+      );
+      if (terminal !== null) return terminal;
+    }
+    return await emitStampOutcome(
+      deps,
+      "stamp_outcome_unknown",
+      attemptId,
+      safe,
+      reconciliationFailed ? "RECONCILIATION_ERROR" : "VISIBILITY_NOT_PROVEN",
+    );
+  }
+
+  const beforeInsert = await reconcileSafely(deps, attemptId);
+  const preexisting = await emitReconciledDecision(
+    deps,
+    attemptId,
+    beforeInsert,
+    safe,
+  );
+  if (preexisting !== null) return preexisting;
+
+  try {
+    await deps.recordFailure(attemptId, safe.errorClass, safe.errorCode);
+    return await emitStampOutcome(deps, "stamp_failed", attemptId, safe);
+  } catch (recordError) {
+    const recordSafe = safeStampError(recordError);
+    const afterInsert = await reconcileSafely(deps, attemptId);
+    const reconciled = await emitReconciledDecision(
+      deps,
+      attemptId,
+      afterInsert,
+      recordSafe,
+    );
+    if (reconciled !== null) return reconciled;
+    return await emitStampOutcome(
+      deps,
+      "stamp_outcome_unknown",
+      attemptId,
+      recordSafe,
+      "FAILURE_WRITE_UNCONFIRMED",
+    );
   }
 }
 
@@ -720,12 +936,13 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
       return jsonResponse({ error: "internal_error", detail: "brand_update_failed" }, 500);
     }
 
+    let stampReconciliationStartedAt: number | null = null;
     await attemptPaystackOnboardStamp(
       {
         resolveEnabled: resolvePaystackPayoutHoldOnboardFlip,
         randomUuid: () => crypto.randomUUID(),
         stamp: async (attemptId) => {
-          const { data, error } = await supabase.rpc(
+          return await supabase.rpc(
             "stamp_payout_hold_cutover",
             {
               p_brand_id: brandId,
@@ -736,14 +953,61 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
               p_reason: "paystack_onboarding_auto_stamp",
             },
           );
-          if (error) throw error;
-          if (data === "flipped" || data === "skipped_already_stamped") {
-            return data;
+        },
+        reconcileAttempt: async (attemptId) => {
+          stampReconciliationStartedAt ??= Date.now();
+          const { data, error } = await supabase
+            .from("payout_hold_cutover_migrations")
+            .select("batch_id, brand_id, direction, reason, result")
+            .eq("batch_id", attemptId);
+          if (error || !Array.isArray(data)) {
+            return { kind: "unknown", reason: "RECONCILIATION_ERROR" };
           }
-          throw {
-            name: "StampRpcOutcomeError",
-            code: "STAMP_RPC_OUTCOME_INVALID",
-          };
+          if (data.length === 0) return { kind: "not_visible" };
+
+          let hasFlip = false;
+          let hasSkip = false;
+          let hasFailure = false;
+          for (const row of data) {
+            if (
+              row?.batch_id !== attemptId || row?.brand_id !== brandId ||
+              row?.direction !== "hold" ||
+              row?.reason !== "paystack_onboarding_auto_stamp"
+            ) {
+              return {
+                kind: "unknown",
+                reason: "BATCH_IDENTITY_MISMATCH",
+              };
+            }
+            if (row.result === "flipped") hasFlip = true;
+            else if (row.result === "skipped_already_stamped") hasSkip = true;
+            else if (row.result === "stamp_failed") hasFailure = true;
+            else {
+              return { kind: "unknown", reason: "BATCH_RESULT_CONFLICT" };
+            }
+          }
+          if (hasFlip && hasSkip) {
+            return { kind: "unknown", reason: "BATCH_RESULT_CONFLICT" };
+          }
+          if (hasFlip || hasSkip) {
+            return {
+              kind: "committed",
+              outcome: hasFlip ? "flipped" : "skipped_already_stamped",
+              ...(hasFailure
+                ? { reason: "BATCH_HAS_STALE_FAILURE" as const }
+                : {}),
+            };
+          }
+          if (hasFailure) return { kind: "failure" };
+          return { kind: "unknown", reason: "BATCH_RESULT_CONFLICT" };
+        },
+        delayUntil: async (offsetMs) => {
+          stampReconciliationStartedAt ??= Date.now();
+          const remainingMs = stampReconciliationStartedAt + offsetMs -
+            Date.now();
+          if (remainingMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, remainingMs));
+          }
         },
         recordFailure: async (attemptId, errorClass, errorCode) => {
           const { error } = await supabase
@@ -771,7 +1035,7 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
             };
           }
         },
-        recordApplicationOutcome: async (outcome, attemptId) => {
+        recordApplicationOutcome: async (outcome, attemptId, safeReason) => {
           await writeAudit(supabase, {
             user_id: userId,
             brand_id: brandId,
@@ -782,10 +1046,11 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
               outcome,
               attempt_id: attemptId,
               reason: "paystack_onboarding_auto_stamp",
+              ...(safeReason ? { safe_reason: safeReason } : {}),
             },
           });
         },
-        log: (outcome, attemptId, errorClass, errorCode) => {
+        log: (outcome, attemptId, errorClass, errorCode, safeReason) => {
           const event = {
             event: "paystack_onboarding_auto_stamp",
             outcome,
@@ -794,8 +1059,11 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
             ...(attemptId ? { attempt_id: attemptId } : {}),
             ...(errorClass ? { error_class: errorClass } : {}),
             ...(errorCode ? { error_code: errorCode } : {}),
+            ...(safeReason ? { safe_reason: safeReason } : {}),
           };
-          if (outcome === "stamp_failed") console.error(JSON.stringify(event));
+          if (
+            outcome === "stamp_failed" || outcome === "stamp_outcome_unknown"
+          ) console.error(JSON.stringify(event));
           else console.info(JSON.stringify(event));
         },
       },
