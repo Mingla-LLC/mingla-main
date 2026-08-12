@@ -69,6 +69,20 @@ Deno.test("#1950 migration keeps evidence immutable and persistence atomic/servi
       .length,
     3,
   );
+  for (const table of ["runs", "results", "events"]) {
+    assertStringIncludes(
+      sql,
+      `DROP TRIGGER IF EXISTS trg_ad_app_readiness_${table}_immutable ON public.ad_app_readiness_${table};`,
+    );
+    assertStringIncludes(
+      sql,
+      `CREATE TRIGGER trg_ad_app_readiness_${table}_immutable BEFORE UPDATE OR DELETE ON public.ad_app_readiness_${table}`,
+    );
+  }
+  assertEquals(
+    /DO \$block\$ BEGIN\s+CREATE TRIGGER trg_ad_app_readiness_/.test(sql),
+    false,
+  );
   assert(
     sql.includes(
       "CREATE OR REPLACE FUNCTION public.persist_ad_app_readiness_run",

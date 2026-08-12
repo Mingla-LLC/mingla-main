@@ -174,15 +174,15 @@ BEGIN
 END;
 $function$;
 
-DO $block$ BEGIN
-  CREATE TRIGGER trg_ad_app_readiness_runs_immutable BEFORE UPDATE OR DELETE ON public.ad_app_readiness_runs FOR EACH ROW EXECUTE FUNCTION public.tg_ad_app_readiness_immutable();
-EXCEPTION WHEN duplicate_object THEN NULL; END $block$;
-DO $block$ BEGIN
-  CREATE TRIGGER trg_ad_app_readiness_results_immutable BEFORE UPDATE OR DELETE ON public.ad_app_readiness_results FOR EACH ROW EXECUTE FUNCTION public.tg_ad_app_readiness_immutable();
-EXCEPTION WHEN duplicate_object THEN NULL; END $block$;
-DO $block$ BEGIN
-  CREATE TRIGGER trg_ad_app_readiness_events_immutable BEFORE UPDATE OR DELETE ON public.ad_app_readiness_events FOR EACH ROW EXECUTE FUNCTION public.tg_ad_app_readiness_immutable();
-EXCEPTION WHEN duplicate_object THEN NULL; END $block$;
+DROP TRIGGER IF EXISTS trg_ad_app_readiness_runs_immutable ON public.ad_app_readiness_runs;
+CREATE TRIGGER trg_ad_app_readiness_runs_immutable BEFORE UPDATE OR DELETE ON public.ad_app_readiness_runs
+FOR EACH ROW EXECUTE FUNCTION public.tg_ad_app_readiness_immutable();
+DROP TRIGGER IF EXISTS trg_ad_app_readiness_results_immutable ON public.ad_app_readiness_results;
+CREATE TRIGGER trg_ad_app_readiness_results_immutable BEFORE UPDATE OR DELETE ON public.ad_app_readiness_results
+FOR EACH ROW EXECUTE FUNCTION public.tg_ad_app_readiness_immutable();
+DROP TRIGGER IF EXISTS trg_ad_app_readiness_events_immutable ON public.ad_app_readiness_events;
+CREATE TRIGGER trg_ad_app_readiness_events_immutable BEFORE UPDATE OR DELETE ON public.ad_app_readiness_events
+FOR EACH ROW EXECUTE FUNCTION public.tg_ad_app_readiness_immutable();
 
 ALTER TABLE public.ad_app_targets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ad_app_provider_bindings ENABLE ROW LEVEL SECURITY;
