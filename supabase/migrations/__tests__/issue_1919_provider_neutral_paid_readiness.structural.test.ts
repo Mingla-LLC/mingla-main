@@ -9,6 +9,12 @@ const migrationUrl = new URL(
   import.meta.url,
 );
 const migration = await Deno.readTextFile(migrationUrl);
+const anonDefinerAllowlist = await Deno.readTextFile(
+  new URL(
+    "../../security/anon_executable_definer_allowlist.txt",
+    import.meta.url,
+  ),
+);
 
 const writeFunctions = [
   "business_publish_event_draft",
@@ -94,6 +100,20 @@ Deno.test("#1919 structural: batch helper is exact, value-blind, and hardened", 
   ]) {
     assert(!helper.includes(forbidden), `helper leaked/duplicated ${forbidden}`);
   }
+});
+
+Deno.test("#1919 structural: public batch helper has one justified anon-definer exception", () => {
+  const signature = "pg_brands_can_collect(p_brand_ids uuid[])";
+  assert(
+    anonDefinerAllowlist.includes(
+      "# #1919: anonymous buyer feeds batch-check caller-supplied brand IDs; returns only distinct ready IDs and delegates to the hardened provider-neutral predicate.",
+    ),
+  );
+  assertEquals(
+    anonDefinerAllowlist.split("\n").filter((line) => line === signature)
+      .length,
+    1,
+  );
 });
 
 Deno.test("#1919 structural: migration is one transaction and contains no schema/data rewrite", () => {

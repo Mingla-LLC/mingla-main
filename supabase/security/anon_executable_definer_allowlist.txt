@@ -14,7 +14,7 @@
 # INVESTIGATION_ORCH-1392 bucket (definer_privilege_gate_inventory.csv). Format:
 # `proname(identity_args)` exactly as pg_get_function_identity_arguments renders.
 #
-# Signature count: 191 (intended-public 23, internally-gated 109, predicate/read-helper 56, PostGIS 3).
+# Signature count: 192 (intended-public 23, internally-gated 109, predicate/read-helper 57, PostGIS 3).
 # (#1789 added pg_public_qr_spot_resolve + pg_public_menu_modifiers to intended-public.)
 
 # === INTENDED-PUBLIC READS (power anonymous public pages / checkout / signup) — INVESTIGATION F-8 / SPEC §4.4 ===
@@ -203,6 +203,8 @@ pg_aggregate_collab_prefs(p_session_id uuid)
 pg_brand_can_charge(p_brand_id uuid)
 pg_brand_can_collect(p_brand_id uuid)
 pg_brand_experiences_for_place(p_place_pool_id uuid)
+# #1919: anonymous buyer feeds batch-check caller-supplied brand IDs; returns only distinct ready IDs and delegates to the hardened provider-neutral predicate.
+pg_brands_can_collect(p_brand_ids uuid[])
 pg_brands_can_charge(p_brand_ids uuid[])
 pg_eligible_experiences_for_deck(p_lat double precision, p_lng double precision, p_radius_m double precision, p_intents text[], p_now timestamp with time zone, p_exclude_ids uuid[], p_limit integer)
 pg_recurrence_is_terminated(p_rule jsonb, p_event_id uuid, p_now timestamp with time zone)
