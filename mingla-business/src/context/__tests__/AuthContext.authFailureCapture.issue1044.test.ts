@@ -51,6 +51,7 @@ jest.mock("../../diagnostics/sentry", () => ({
 
 import { captureException } from "../../diagnostics/sentry";
 import { reportNonFatal as realReportNonFatal } from "../../diagnostics/reportNonFatal";
+import { resolveAuthFailureCopy } from "../../constants/authFailureCopy";
 
 const AUTH_CONTEXT_SOURCE = fs.readFileSync(
   path.join(__dirname, "..", "AuthContext.tsx"),
@@ -136,6 +137,27 @@ const compilePredicate = (
   return make(statusCodes);
 };
 
+const compileClassifier = (): ((
+  errName: unknown,
+  errCode: unknown,
+  errStatus: unknown,
+  errMessage: unknown,
+  platformOS: string,
+) => string) => {
+  const m = AUTH_CONTEXT_SOURCE.match(
+    /const classifyAuthFailure = \([\s\S]*?\): AuthFailureClass => \{\n([\s\S]*?)\n\};/,
+  );
+  expect(m).not.toBeNull();
+  return new Function(
+    "errName",
+    "errCode",
+    "errStatus",
+    "errMessage",
+    "platformOS",
+    `"use strict";${m![1]}`,
+  ) as (...args: unknown[]) => string;
+};
+
 interface CatchDeps {
   Alert: { alert: jest.Mock };
   Platform: { OS: string; Version: string | number };
@@ -148,6 +170,10 @@ interface CatchDeps {
   ) => void;
   shouldReportAuthFailure: (code: unknown) => boolean;
   webClientId: unknown;
+  retryAbandoned: boolean;
+  transportRetryAttempts: number;
+  classifyAuthFailure: ReturnType<typeof compileClassifier>;
+  resolveAuthFailureCopy: typeof resolveAuthFailureCopy;
 }
 
 /** Compile a REAL catch body into a callable `(err) => returnValue`. */
@@ -195,6 +221,10 @@ const makeDeps = (
     reportNonFatal: report,
     shouldReportAuthFailure: compilePredicate(statusCodes),
     webClientId: WEB_CLIENT_ID,
+    retryAbandoned: false,
+    transportRetryAttempts: 0,
+    classifyAuthFailure: compileClassifier(),
+    resolveAuthFailureCopy,
     ...overrides,
   };
   // Keep the predicate consistent with any injected statusCodes override.
@@ -245,11 +275,12 @@ describe("#1044 P1 signInWithGoogle — capture (SC-1-BIZ)", () => {
     });
     expect(fingerprint).toEqual(["auth-signin", "google", "10"]);
 
-    // T11 — Alert parity: exactly the pre-change Alert, unchanged.
+    // [TEST-MOD-APPROVED #1881] Fixed-copy rebaseline; capture assertions above are unchanged.
     expect(d.Alert.alert).toHaveBeenCalledTimes(1);
     expect(d.Alert.alert).toHaveBeenCalledWith(
-      "Google Sign-In failed",
-      "DEVELOPER_ERROR",
+      "Couldn't sign you in",
+      "That didn't work this time. Give it another tap — if it keeps happening, reach us at support@usemingla.com.",
+      [{ text: "Got it" }],
     );
     expect(ret).toEqual({ error: err });
   });
@@ -266,8 +297,9 @@ describe("#1044 P1 signInWithGoogle — capture (SC-1-BIZ)", () => {
 
     expect(d.Alert.alert).toHaveBeenCalledTimes(1);
     expect(d.Alert.alert).toHaveBeenCalledWith(
-      "Google Sign-In failed",
-      "Failed to create session",
+      "Couldn't sign you in",
+      "That didn't work this time. Give it another tap — if it keeps happening, reach us at support@usemingla.com.",
+      [{ text: "Got it" }],
     );
     expect(ret).toEqual({ error: err });
   });
@@ -291,7 +323,7 @@ describe("#1044 P1 signInWithGoogle — capture (SC-1-BIZ)", () => {
     expect(d.report.mock.calls[0][2].code).toBe("none");
   });
 
-  it("T8 — 'Unacceptable audience' is REPORTED and the audienceHint Alert copy is verbatim", () => {
+  it("T8 — 'Unacceptable audience' is REPORTED while user copy stays opaque", () => {
     const d = makeDeps();
     const err = new Error("Unacceptable audience in id_token");
     compileCatch(googleCatch(), d)(err);
@@ -299,9 +331,9 @@ describe("#1044 P1 signInWithGoogle — capture (SC-1-BIZ)", () => {
     expect(d.report).toHaveBeenCalledTimes(1);
     expect(d.Alert.alert).toHaveBeenCalledTimes(1);
     expect(d.Alert.alert).toHaveBeenCalledWith(
-      "Google Sign-In failed",
-      "Unacceptable audience in id_token" +
-        "\n\nRegister every OAuth client this build uses (Web, iOS, Android) in Supabase → Authentication → Google → Client IDs, comma-separated, Web client first.",
+      "Couldn't sign you in",
+      "That didn't work this time. Give it another tap — if it keeps happening, reach us at support@usemingla.com.",
+      [{ text: "Got it" }],
     );
   });
 
@@ -367,14 +399,16 @@ describe("#1044 P1 signInWithGoogle — exclusions (SC-3-BIZ)", () => {
     expect(d.report).not.toHaveBeenCalled();
   });
 
-  it("a message merely CONTAINING 'cancel' still gets captured (the Alert guard must not suppress telemetry)", () => {
-    // Business P1 has a pre-existing `message.includes("cancel")` guard on the
-    // ALERT path. It must not also silence the CAPTURE — a real failure whose
-    // message happens to say "cancel" is still a real failure.
+  it("a message merely CONTAINING 'cancel' still gets captured and receives fixed copy", () => {
     const d = makeDeps();
     compileCatch(googleCatch(), d)(errWith("10", "operation was cancelled by GMS"));
     expect(d.report).toHaveBeenCalledTimes(1);
-    expect(d.Alert.alert).not.toHaveBeenCalled(); // pre-existing behaviour, unchanged
+    // [TEST-MOD-APPROVED #1881] The raw-message cancel heuristic was intentionally removed.
+    expect(d.Alert.alert).toHaveBeenCalledWith(
+      "Couldn't sign you in",
+      "That didn't work this time. Give it another tap — if it keeps happening, reach us at support@usemingla.com.",
+      [{ text: "Got it" }],
+    );
   });
 });
 
@@ -409,8 +443,9 @@ describe("#1044 P2 signInWithApple (SC-2-BIZ)", () => {
 
     expect(d.Alert.alert).toHaveBeenCalledTimes(1);
     expect(d.Alert.alert).toHaveBeenCalledWith(
-      "Apple Sign-In failed",
-      "Invalid response",
+      "Couldn't sign you in",
+      "That didn't work this time. Give it another tap — if it keeps happening, reach us at support@usemingla.com.",
+      [{ text: "Got it" }],
     );
     expect(ret).toEqual({ error: err });
   });
@@ -589,8 +624,9 @@ describe("#1044 T9 — failure safety (SC-6)", () => {
 
     expect(d.Alert.alert).toHaveBeenCalledTimes(1);
     expect(d.Alert.alert).toHaveBeenCalledWith(
-      "Google Sign-In failed",
-      "DEVELOPER_ERROR",
+      "Couldn't sign you in",
+      "That didn't work this time. Give it another tap — if it keeps happening, reach us at support@usemingla.com.",
+      [{ text: "Got it" }],
     );
     expect(ret).toEqual({ error: err });
     (captureException as jest.Mock).mockImplementation(() => "event-id");
@@ -816,6 +852,12 @@ describe("#1044 REWORK — P1: a RESOLVED cancel never reaches getTokens/Sentry"
       statusCodes: ANDROID_STATUS_CODES,
       shouldReportAuthFailure: compilePredicate(ANDROID_STATUS_CODES),
       reportNonFatal: report,
+      classifyAuthFailure: compileClassifier(),
+      TRANSPORT_RETRY_MAX_ATTEMPTS: 2,
+      TRANSPORT_RETRY_DELAYS_MS: Object.freeze([400, 1200]),
+      authLifetimeActiveRef: { current: true },
+      AppState: { currentState: "active" },
+      resolveAuthFailureCopy,
     };
     return { deps, report, alert, GoogleSignin, getTokens, supabase };
   };
