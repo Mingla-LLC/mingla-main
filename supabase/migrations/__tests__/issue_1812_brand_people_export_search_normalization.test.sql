@@ -28,11 +28,19 @@ BEGIN
     v_event,v_brand,v_owner,'rsvp','Issue 1812 Event','issue-1812-event','fixture',
     'scheduled','private','USD','UTC',ARRAY['house-party'],'auto',false,now(),now(),'{}'::jsonb
   );
+  -- [TEST-MOD-APPROVED #1858] Preserve the successful roster-normalization
+  -- scenario under #873's later export rollout owner.
+  UPDATE public.feature_flags SET is_enabled=true
+  WHERE flag_key='guest_roster_export_enabled';
+  INSERT INTO public.guest_roster_brand_rollouts(brand_id,phase)
+  VALUES(v_brand,'bulk_actions')
+  ON CONFLICT (brand_id) DO UPDATE SET phase=EXCLUDED.phase;
 
   PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
+  -- [TEST-MOD-APPROVED #1858] Preserve this scenario against the explicit-brand replacement identity.
   v_book_job := (public.biz_export_brand_people(
     'brand_book',NULL,'all',E'  ADA  \t\n LOVELACE  ','name_asc','{}'::jsonb,
-    '18120000-0000-4000-8000-000000000010'
+    '18120000-0000-4000-8000-000000000010',v_brand
   )->>'jobId')::uuid;
   v_roster_job := (public.biz_export_brand_people(
     'offering_guest_roster',v_event,'no_response','  Already Normalized  ','recent_first','{}'::jsonb,
@@ -40,7 +48,7 @@ BEGIN
   )->>'jobId')::uuid;
   v_empty_job := (public.biz_export_brand_people(
     'brand_book',NULL,'all',NULL,'action_priority','{}'::jsonb,
-    '18120000-0000-4000-8000-000000000012'
+    '18120000-0000-4000-8000-000000000012',v_brand
   )->>'jobId')::uuid;
 
   IF (SELECT filter_json->>'search' FROM public.brand_people_export_jobs WHERE id=v_book_job)<>'ada lovelace'
@@ -60,7 +68,7 @@ BEGIN
   BEGIN
     PERFORM public.biz_export_brand_people(
       'brand_book',NULL,'all',NULL,'action_priority','{"rawWhere":"true"}'::jsonb,
-      '18120000-0000-4000-8000-000000000014'
+      '18120000-0000-4000-8000-000000000014',v_brand
     );
     RAISE EXCEPTION 'issue_1812_arbitrary_snapshot_accepted';
   EXCEPTION WHEN invalid_parameter_value THEN NULL;
@@ -76,8 +84,9 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
 
-  IF has_function_privilege('anon','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid)','EXECUTE')
-     OR NOT has_function_privilege('authenticated','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid)','EXECUTE')
+  -- [TEST-MOD-APPROVED #1858] Exact privilege signature follows the sole replacement RPC.
+  IF has_function_privilege('anon','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid,uuid)','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.biz_export_brand_people(text,uuid,text,text,text,jsonb,uuid,uuid)','EXECUTE')
      OR has_function_privilege('authenticated','public.biz_offering_guest_roster_export_rows(uuid)','EXECUTE')
      OR NOT has_function_privilege('service_role','public.biz_offering_guest_roster_export_rows(uuid)','EXECUTE') THEN
     RAISE EXCEPTION 'issue_1812_source_or_grant_boundary_failed';

@@ -23,11 +23,13 @@ BEGIN
 
   PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
 
+  -- [TEST-MOD-APPROVED #1858] Preserve #1812's normalization/idempotency
+  -- scenarios against the explicit-brand replacement identity.
   v_first_job := (public.biz_export_brand_people(
-    'brand_book',NULL,'all',E'  Grace\r\n\f Hopper  ','name_asc','{}'::jsonb,v_request
+    'brand_book',NULL,'all',E'  Grace\r\n\f Hopper  ','name_asc','{}'::jsonb,v_request,v_brand
   )->>'jobId')::uuid;
   v_replay_job := (public.biz_export_brand_people(
-    'brand_book',NULL,'all','grace hopper','name_asc','{}'::jsonb,v_request
+    'brand_book',NULL,'all','grace hopper','name_asc','{}'::jsonb,v_request,v_brand
   )->>'jobId')::uuid;
 
   IF v_first_job IS DISTINCT FROM v_replay_job
@@ -39,7 +41,7 @@ BEGIN
 
   BEGIN
     PERFORM public.biz_export_brand_people(
-      'brand_book',NULL,'all','grace m hopper','name_asc','{}'::jsonb,v_request
+      'brand_book',NULL,'all','grace m hopper','name_asc','{}'::jsonb,v_request,v_brand
     );
     RAISE EXCEPTION 'issue_1812_distinct_search_reused_idempotency_key';
   EXCEPTION
