@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-12 — Brand People exports now require the exact active brand, so rank-50 membership admins and multi-brand owners export the intended contact book while unauthorized, deleted, missing, or ambiguous brand requests create nothing; existing offering guest-roster exports remain compatible. (#1858, PR #1961)
 - 2026-08-12 — Guests can enter a phone number in their own national format across RSVP plus-ones, Stay bookings, and venue reservations after explicitly choosing the handset country; strict international numbers remain authoritative, ambiguous historical phones are never guessed, and the same country evidence now survives every affected app, web, database, and backend path. (#1857, PR #1921)
 - 2026-08-12 — App-growth preflight now trusts Meta's exact no-spend creative validation instead of blocking a valid shared Business Instagram identity on a blank Page-link diagnostic; Explorer and Business are production-ready on both Meta and TikTok with their exact public profiles. (#1942, PR #1945)
 - 2026-08-12 — Venue Orders now stays inside the venue it was opened from: sibling venues, orders and tabs are absent, while rooms at another property remain valid destinations only when the current venue is their serving kitchen. (#1943, PR #1948)

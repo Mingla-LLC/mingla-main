@@ -29,7 +29,7 @@ export function inspect(source) {
   need("workflow", "issue_1858_explicit_brand_export.test.sql", "SQL workflow execution");
   need("workflow", "issue_1858_explicit_brand_export.test.ts", "Deno workflow execution");
   need("workflow", "issue-1858-explicit-brand-export.mjs --self-test", "guard self-test wiring");
-  need("invariant", "I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 (DRAFT)", "DRAFT invariant");
+  need("invariant", "I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 (ACTIVE)", "ACTIVE invariant");
   return failures;
 }
 
@@ -45,6 +45,7 @@ function selfTest(source) {
     ["rank", { ...source, migration: source.migration.replace("biz_brand_effective_rank(v_brand,v_actor)<public.biz_role_rank('brand_admin')", "false") }],
     ["edge forwarding", { ...source, edge: source.edge.replace("p_brand_id: input.brandId ?? null", "p_brand_id: null") }],
     ["workflow", { ...source, workflow: source.workflow.split("issue_1858_explicit_brand_export.test.sql").join("missing.sql") }],
+    ["invariant lifecycle", { ...source, invariant: source.invariant.replace("I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 (ACTIVE)", "I-PROPOSED-BRAND-EXPORT-EXPLICIT-TARGET-1 (DRAFT)") }],
   ];
   for (const [label, mutation] of mutations) {
     if (inspect(mutation).length === 0) throw new Error(`self-test did not catch ${label}`);
@@ -55,7 +56,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const source = readSources();
   if (process.argv.includes("--self-test")) {
     selfTest(source);
-    console.log("#1858 explicit brand export self-test PASS (6 true mutations)");
+    console.log("#1858 explicit brand export self-test PASS (7 true mutations)");
   } else {
     const failures = inspect(source);
     if (failures.length) { console.error(failures.join("\n")); process.exit(1); }
