@@ -34,6 +34,7 @@ DECLARE
   v_other_venue uuid := '00000000-1773-4000-8000-000000000005';
   v_id uuid := '00000000-1773-4000-8000-000000000010';
   v_other uuid := '00000000-1773-4000-8000-000000000011';
+  v_strict uuid := '00000000-1773-4000-8000-000000000018';
   v_unsupported uuid := '00000000-1773-4000-8000-000000000014';
   v_status text;
   v_status_id uuid;
@@ -82,7 +83,12 @@ BEGIN
   IF (SELECT count(*) FROM public.brand_person_ingest_outbox WHERE source_kind='reservation' AND source_id=v_id)<>v_before+1 THEN
     RAISE EXCEPTION 'T-1773-02 identity update did not enqueue one revision';
   END IF;
-  IF (public.biz_resolve_brand_person_source_derived('reservation',v_id,'+19999999999')->>'linkOutcome')<>'unlinked' THEN
+  INSERT INTO public.reservations(
+    id,brand_id,venue_id,reserved_for,party_size,status,source,created_via,
+    guest_name,guest_phone_e164,guest_phone_country_iso,guest_email
+  ) VALUES(v_strict,v_brand,v_venue,now()+interval '1 day',2,'confirmed','phone','operator',
+    'Strict Phone','+19194199222',NULL,'strict1773@example.test');
+  IF (public.biz_resolve_brand_person_source_derived('reservation',v_strict,'+19999999999')->>'linkOutcome')<>'unlinked' THEN
     RAISE EXCEPTION 'T-1773-03 strict phone spoof was accepted';
   END IF;
   INSERT INTO public.reservations(
