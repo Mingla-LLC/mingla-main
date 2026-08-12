@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 508,
-  "selfTestWiredFloor": 317,
+  "expectedStrictGrepMjsFiles": 510,
+  "selfTestWiredFloor": 319,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -7827,6 +7827,30 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1944-stay-live-layout.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1944-stay-lifecycle-adversarial.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",

@@ -105,7 +105,9 @@ export function check(files) {
     'currency.data?.authority === "settlement"',
     "canAcceptPaidReservations",
     "offering.hasOpenAvailability === true",
-    'label={isActive ? "Stay is live" : "Publish Stay"}',
+    "Manage your live Stay",
+    "!isActive && isWideDesktop",
+    "!isActive && !isWideDesktop",
     "isStaySettingsComplete",
     "isStaySettingsFormValid",
   ]) {
@@ -115,6 +117,12 @@ export function check(files) {
     files.shell ?? "",
     'currencyCode ?? "USD"',
     "brand currency authority",
+    failures,
+  );
+  forbid(
+    files.shell ?? "",
+    'label={isActive ? "Stay is live" : "Publish Stay"}',
+    "active Stay lifecycle honesty",
     failures,
   );
   forbid(
@@ -251,6 +259,12 @@ function selfTest() {
       'currency.data?.authority === "settlement"',
       "true",
       "settlement",
+    ],
+    [
+      "shell",
+      "Manage your live Stay",
+      "Ready to publish",
+      "Manage your live Stay",
     ],
     [
       "edge",
