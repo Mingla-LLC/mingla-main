@@ -35,7 +35,7 @@ import {
   type CreateCreativeInput,
   type EntityLevel,
   type MetaBudgetCategory,
-} from "./adChannel.ts";
+} from "./adChannelCore.ts";
 import { resolveRuntimeString } from "./runtimeConfig.ts";
 
 // ── Env config (NAMES only — values live in Supabase Edge Function Secrets) ───

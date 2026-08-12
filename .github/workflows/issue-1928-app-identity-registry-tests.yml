@@ -7,10 +7,16 @@ on:
       - "supabase/migrations/20270324001928_issue_1928_app_identity_registry.sql"
       - "supabase/migrations/__tests__/issue_1928_app_identity_registry.test.ts"
       - "supabase/functions/_shared/adAppIdentityRegistry.ts"
+      - "supabase/functions/_shared/adChannelCore.ts"
+      - "supabase/functions/_shared/adChannel.ts"
       - "supabase/functions/_shared/meta.ts"
       - "supabase/functions/_shared/tiktok.ts"
+      - "supabase/functions/_shared/google.ts"
+      - "supabase/functions/_shared/snapchat.ts"
+      - "supabase/functions/_shared/reddit.ts"
       - "supabase/functions/_shared/__tests__/issue1928_app_identity_registry.test.ts"
       - "supabase/functions/_shared/__tests__/issue1928_app_identity_registry.adversarial.tester.test.ts"
+      - "supabase/functions/_shared/__tests__/issue1937_provider_import_cycle.test.ts"
       - "supabase/functions/admin-ad-app-identity-preflight/**"
       - "supabase/config.toml"
       - "mingla-admin/src/services/adEngineService.js"
@@ -25,10 +31,16 @@ on:
       - "supabase/migrations/20270324001928_issue_1928_app_identity_registry.sql"
       - "supabase/migrations/__tests__/issue_1928_app_identity_registry.test.ts"
       - "supabase/functions/_shared/adAppIdentityRegistry.ts"
+      - "supabase/functions/_shared/adChannelCore.ts"
+      - "supabase/functions/_shared/adChannel.ts"
       - "supabase/functions/_shared/meta.ts"
       - "supabase/functions/_shared/tiktok.ts"
+      - "supabase/functions/_shared/google.ts"
+      - "supabase/functions/_shared/snapchat.ts"
+      - "supabase/functions/_shared/reddit.ts"
       - "supabase/functions/_shared/__tests__/issue1928_app_identity_registry.test.ts"
       - "supabase/functions/_shared/__tests__/issue1928_app_identity_registry.adversarial.tester.test.ts"
+      - "supabase/functions/_shared/__tests__/issue1937_provider_import_cycle.test.ts"
       - "supabase/functions/admin-ad-app-identity-preflight/**"
       - "supabase/config.toml"
       - "mingla-admin/src/services/adEngineService.js"
@@ -62,8 +74,10 @@ jobs:
         run: deno test --allow-read supabase/migrations/__tests__/issue_1928_app_identity_registry.test.ts supabase/functions/admin-ad-app-identity-preflight/__tests__/issue1928_contract.test.ts
       - name: Run exact identity and sibling provider suites
         run: deno test --allow-env --allow-read supabase/functions/_shared/__tests__/issue1928_app_identity_registry.test.ts supabase/functions/_shared/__tests__/issue1928_app_identity_registry.adversarial.tester.test.ts supabase/functions/_shared/__tests__/tiktok.test.ts supabase/functions/_shared/__tests__/meta.test.ts supabase/functions/_shared/__tests__/meta_issue939_ig_delivery.test.ts
+      - name: Reject provider-first import cycles
+        run: deno test --allow-run --allow-read supabase/functions/_shared/__tests__/issue1937_provider_import_cycle.test.ts
       - name: Type-check Edge contracts
-        run: deno check supabase/functions/_shared/adAppIdentityRegistry.ts supabase/functions/_shared/meta.ts supabase/functions/_shared/tiktok.ts supabase/functions/admin-ad-app-identity-preflight/index.ts
+        run: deno check supabase/functions/_shared/adChannelCore.ts supabase/functions/_shared/adChannel.ts supabase/functions/_shared/meta.ts supabase/functions/_shared/tiktok.ts supabase/functions/_shared/google.ts supabase/functions/_shared/snapchat.ts supabase/functions/_shared/reddit.ts supabase/functions/_shared/adAppIdentityRegistry.ts supabase/functions/admin-ad-app-identity-preflight/index.ts
       - name: Run Admin identity suite
         run: node --test mingla-admin/src/__tests__/issue1928_app_identity_readiness.test.js mingla-admin/src/__tests__/issue1928_app_identity_focus_rework.test.js mingla-admin/src/__tests__/issue978_ad_connections_panel.test.js mingla-admin/src/__tests__/orch1008_adversarial_tabs_keyboard.test.js
 

@@ -43,7 +43,7 @@ import {
   centsToPlatformBudget,
   type ChannelAdapter,
   type EntityLevel,
-} from "./adChannel.ts";
+} from "./adChannelCore.ts";
 import { resolveRuntimeString } from "./runtimeConfig.ts";
 
 // ── Env config (NAMES per §7 Google item 5 — values live in Function Secrets) ─

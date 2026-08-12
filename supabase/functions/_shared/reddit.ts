@@ -59,7 +59,7 @@ import {
   type CreateCreativeInput,
   type EntityLevel,
   REDDIT_CTA_MAP,
-} from "./adChannel.ts";
+} from "./adChannelCore.ts";
 
 // ── Env config (NAMES per SPEC §1.1 — values live in Function Secrets) ────────
 
