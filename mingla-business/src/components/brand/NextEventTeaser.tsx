@@ -1,7 +1,11 @@
 import React from "react";
 import { Pressable, StyleSheet, Text } from "react-native";
 
-import { accent, spacing, text as textTokens } from "../../constants/designSystem";
+import {
+  accent,
+  spacing,
+  text as textTokens,
+} from "../../constants/designSystem";
 import type { PublicUpcomingRow } from "../../services/publicEventsService";
 import { formatCurrencyRound } from "../../utils/currency";
 
@@ -13,6 +17,7 @@ interface NextEventTeaserProps {
 
 const TYPE_LABEL: Record<PublicUpcomingRow["offeringType"], string> = {
   event: "Event",
+  rsvp: "RSVP",
   trip: "Trip",
   experience: "Experience",
 };

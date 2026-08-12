@@ -86,9 +86,13 @@ export interface FoundationRsvpPreviewProps {
   safeAreaTop?: number;
   safeAreaBottom?: number;
   testID?: string;
+  stateBanner?: React.ReactNode;
+  onAcquisitionClosed?: (kind: "ended" | "unavailable") => void;
 }
 
-export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (props) => {
+export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (
+  props,
+) => {
   const {
     event,
     brand,
@@ -115,9 +119,17 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     safeAreaTop = 0,
     safeAreaBottom = 0,
     testID,
+    stateBanner,
+    onAcquisitionClosed,
   } = props;
   const { isDesktop } = useResponsiveLayout();
   const boldFamily = boldFontFamily(theme);
+  const acquisitionClosed =
+    event.acquisitionState?.kind !== undefined &&
+    event.acquisitionState.kind !== "current";
+  const shellTheme = acquisitionClosed
+    ? { ...theme, animation: "none" as const }
+    : theme;
 
   // ORCH-1163-R3 — the RSVP floating bar is TALLER + variable (3 glyph+label
   // buttons + a wrapping micro subcopy) vs the event page's ~56px single button, so
@@ -154,6 +166,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     onOpenBrand,
     onOpenMaps,
     staticMapUrl,
+    onAcquisitionClosed,
   });
 
   const coverType: "image" | "video" | "gif" | null =
@@ -169,27 +182,33 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
   // box (RsvpDecisionBox) in the STICKY right panel (PARITY with the event page's
   // EventTicketBox in deskPanel). The phone keeps the inline box in the body and
   // pins the separate floating bar below.
-  const stickyPanel = isDesktop ? (
-    <View
-      style={[styles.deskPanel, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}
-    >
-      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
-      <View style={styles.deskInner}>
-        <RsvpDecisionBox
-          palette={palette}
-          theme={theme}
-          config={config}
-          state={state}
+  const stickyPanel =
+    isDesktop && !acquisitionClosed ? (
+      <View
+        style={[
+          styles.deskPanel,
+          { backgroundColor: palette.card, borderColor: palette.panelBorder },
+        ]}
+      >
+        <View
+          style={[styles.deskAccent, { backgroundColor: palette.accent }]}
         />
+        <View style={styles.deskInner}>
+          <RsvpDecisionBox
+            palette={palette}
+            theme={theme}
+            config={config}
+            state={state}
+          />
+        </View>
       </View>
-    </View>
-  ) : undefined;
+    ) : undefined;
 
   return (
     <View style={[styles.host, { backgroundColor: palette.page }]}>
       <ParallaxCoverShell
         palette={palette}
-        theme={theme}
+        theme={shellTheme}
         coverMediaUrl={event.coverMediaUrl}
         coverMediaType={coverType}
         coverHue={event.coverHue}
@@ -212,6 +231,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
             {event.name.length > 0 ? event.name : "Untitled event"}
           </Text>
         }
+        stateBanner={stateBanner}
         stickyPanel={stickyPanel}
         contentBottomInset={resolvedBottomInset}
         safeAreaTop={safeAreaTop}
@@ -233,7 +253,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
           state={state}
           // ORCH-1163-R2 — desktop relocates the inline box to the sticky panel
           // (PARITY with FoundationEventPreview's hideTicketBox).
-          hideDecisionBox={isDesktop}
+          hideDecisionBox={isDesktop || acquisitionClosed}
           testID="orch-1163-rsvp-body"
         />
       </ParallaxCoverShell>
@@ -244,7 +264,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
           business-on-top / web-under layering: a positioned overlay below the chrome
           but ABOVE the scrolling body's content stacking context on BOTH surfaces.
           Hidden on desktop (the sticky panel carries the decision). */}
-      {!isDesktop ? (
+      {!isDesktop && !acquisitionClosed ? (
         <View
           style={styles.floatWrap}
           pointerEvents="box-none"

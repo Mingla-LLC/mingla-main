@@ -11,6 +11,7 @@ import type { ComponentType } from "react";
 import type { ScrollViewProps } from "react-native";
 
 import type { ResolvedTheme, ThemeInput } from "./designTokens";
+import type { EventAcquisitionState } from "./eventAcquisitionLifecycle";
 
 export type EventCoverMediaType = "image" | "video" | "gif";
 export type EventFormat = "in-person" | "online" | "hybrid";
@@ -80,6 +81,7 @@ export interface PublicEventProps {
   // Status
   status: EventStatus;
   endedAt: string | null;
+  acquisitionState?: EventAcquisitionState;
 
   // Location
   format: EventFormat;

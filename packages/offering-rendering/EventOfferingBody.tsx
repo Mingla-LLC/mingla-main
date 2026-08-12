@@ -41,9 +41,17 @@
  *   9. Floating button  (<EventOfferingFloatingBar>, surface-pinned)
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
+  AccessibilityInfo,
   Image,
+  findNodeHandle,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -54,7 +62,11 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 
-import { boldFontFamily, offeringSurfaceStyles, type ThemePalette } from "./themePalette";
+import {
+  boldFontFamily,
+  offeringSurfaceStyles,
+  type ThemePalette,
+} from "./themePalette";
 import { Calendar, Globe, MapPin, Minus, Plus } from "./LucideIcons";
 // ORCH-1292 — resolve party/vibe/music slugs to canonical labels at the pills row.
 import { taxonomyLabel } from "./taxonomyLabels";
@@ -76,17 +88,88 @@ import { type ResolvedTheme } from "./designTokens";
 // ORCH-1339 — cross-entity social-proof momentum (props-only; glyph cluster).
 import { OfferingMomentum } from "./OfferingMomentum";
 import { type SocialProofSummary } from "./socialProofTypes";
+import {
+  eventAcquisitionNoticeCopy,
+  type EventAcquisitionState,
+} from "./eventAcquisitionLifecycle";
 
 import { normalizeCityCountry } from "./normalizeCityCountry";
-import {
-  computeRunningTotal,
-  totalSelectedQuantity,
-} from "./eventBoxTotals";
+import { computeRunningTotal, totalSelectedQuantity } from "./eventBoxTotals";
 
 // Re-export the pure totals so a single import surface stays one place.
 export { computeRunningTotal, totalSelectedQuantity } from "./eventBoxTotals";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
+
+export const EventAcquisitionNotice: React.FC<{
+  state: Exclude<EventAcquisitionState, { kind: "current" }>;
+  eventType: "event" | "rsvp";
+  brandName: string;
+  palette: ThemePalette;
+  theme: ResolvedTheme;
+  focusOnMount?: boolean;
+}> = ({
+  state,
+  eventType,
+  brandName,
+  palette,
+  theme,
+  focusOnMount = false,
+}) => {
+  const copy = eventAcquisitionNoticeCopy(state, eventType, brandName);
+  const surface = offeringSurfaceStyles(palette);
+  const noticeRef = useRef<View>(null);
+  useEffect(() => {
+    if (!focusOnMount) return;
+    const node = noticeRef.current;
+    if (node === null) {
+      AccessibilityInfo?.announceForAccessibility?.(copy.announcement);
+      return;
+    }
+    const webNode = node as unknown as { focus?: () => void };
+    if (typeof webNode.focus === "function") webNode.focus();
+    else {
+      const handle = findNodeHandle(node);
+      if (handle !== null) AccessibilityInfo?.setAccessibilityFocus?.(handle);
+    }
+    AccessibilityInfo?.announceForAccessibility?.(copy.announcement);
+  }, [copy.announcement, focusOnMount]);
+  return (
+    <View
+      ref={noticeRef}
+      accessible
+      accessibilityLabel={copy.announcement}
+      {...(Platform.OS === "web"
+        ? ({
+            role: "status",
+            "aria-live": "polite",
+            "aria-atomic": true,
+          } as object)
+        : {
+            accessibilityRole: "summary" as const,
+            accessibilityLiveRegion: "polite" as const,
+          })}
+      style={[styles.acquisitionNotice, surface.card]}
+      testID={`issue-1902-${eventType}-acquisition-notice`}
+    >
+      <Text style={[styles.acquisitionEyebrow, { color: palette.accent }]}>
+        {copy.eyebrow}
+      </Text>
+      <Text
+        style={[
+          styles.acquisitionHeading,
+          surface.primaryText,
+          { fontFamily: boldFontFamily(theme) },
+        ]}
+      >
+        {copy.heading}
+      </Text>
+      <Text style={[styles.acquisitionBody, surface.secondaryText]}>
+        {copy.body}
+      </Text>
+    </View>
+  );
+};
 
 // Enable LayoutAnimation on Android once at module load (no-op on iOS/web).
 if (
@@ -226,6 +309,10 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   const surface = offeringSurfaceStyles(palette);
   const boldFamily = boldFontFamily(theme);
   const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
+  const acquisitionState = event.acquisitionState ?? {
+    kind: "current" as const,
+  };
+  const acquisitionClosed = acquisitionState.kind !== "current";
 
   const toggleAbout = useCallback((): void => {
     LayoutAnimation.configureNext(
@@ -258,7 +345,8 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   }, [visibleTickets]);
 
   const cityCountry =
-    normalizeCityCountry(event.venueName) ?? normalizeCityCountry(event.address);
+    normalizeCityCountry(event.venueName) ??
+    normalizeCityCountry(event.address);
 
   // Pills row (SPEC §4: format → vibes → party-types → music-genres → tickets-left).
   const formatLabel =
@@ -306,7 +394,11 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           section 3). Date/time now appears ONCE, as the meta chip below. */}
       <View style={styles.leadBlock}>
         <Text
-          style={[styles.title, surface.primaryText, { fontFamily: boldFamily }]}
+          style={[
+            styles.title,
+            surface.primaryText,
+            { fontFamily: boldFamily },
+          ]}
         >
           {event.name.length > 0 ? event.name : "Untitled event"}
         </Text>
@@ -323,14 +415,23 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
       {event.dateLine.length > 0 ||
       (event.dateSubline !== null && event.dateSubline.length > 0) ? (
         <View
-          style={[styles.dateRow, { backgroundColor: palette.accentWash, borderColor: palette.panelBorder }]}
+          style={[
+            styles.dateRow,
+            {
+              backgroundColor: palette.accentWash,
+              borderColor: palette.panelBorder,
+            },
+          ]}
           testID="orch-1167-date-row"
         >
           <Calendar size={18} color={palette.accent} />
           <View style={styles.dateTextCol}>
             {event.dateLine.length > 0 ? (
               <Text
-                style={[styles.dateLine, { color: palette.primaryText, fontFamily: boldFamily }]}
+                style={[
+                  styles.dateLine,
+                  { color: palette.primaryText, fontFamily: boldFamily },
+                ]}
                 testID="orch-1167-date-line"
               >
                 {event.dateLine}
@@ -338,7 +439,10 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             ) : null}
             {event.dateSubline !== null && event.dateSubline.length > 0 ? (
               <Text
-                style={[styles.dateSubline, { color: palette.secondaryText, fontFamily: boldFamily }]}
+                style={[
+                  styles.dateSubline,
+                  { color: palette.secondaryText, fontFamily: boldFamily },
+                ]}
               >
                 {event.dateSubline}
               </Text>
@@ -361,17 +465,32 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           {formatLabel}
         </Pill>
         {vibeTags.map((tag, i) => (
-          <Pill key={`vibe-${i}`} palette={palette} surface={surface} font={boldFamily}>
+          <Pill
+            key={`vibe-${i}`}
+            palette={palette}
+            surface={surface}
+            font={boldFamily}
+          >
             {taxonomyLabel(tag)}
           </Pill>
         ))}
         {partyTypes.map((tag, i) => (
-          <Pill key={`party-${i}`} palette={palette} surface={surface} font={boldFamily}>
+          <Pill
+            key={`party-${i}`}
+            palette={palette}
+            surface={surface}
+            font={boldFamily}
+          >
             {taxonomyLabel(tag)}
           </Pill>
         ))}
         {musicGenres.map((tag, i) => (
-          <Pill key={`music-${i}`} palette={palette} surface={surface} font={boldFamily}>
+          <Pill
+            key={`music-${i}`}
+            palette={palette}
+            surface={surface}
+            font={boldFamily}
+          >
             {taxonomyLabel(tag)}
           </Pill>
         ))}
@@ -405,7 +524,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           relocated to the sticky right panel by the host (<EventTicketBox>), so it
           does not paint a second time inline. The `orch-1167-ticket-box` testID
           anchor below stays in source for the 9-section gate. */}
-      {hideTicketBox ? null : (
+      {acquisitionClosed || hideTicketBox ? null : (
         <View style={styles.section} onLayout={onTicketBoxLayout}>
           <EventTicketBox
             event={event}
@@ -460,15 +579,23 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             )}
           </View>
           <View style={styles.brandTextCol}>
-            <Text style={[styles.brandKicker, surface.tertiaryText]}>Presented by</Text>
+            <Text style={[styles.brandKicker, surface.tertiaryText]}>
+              Presented by
+            </Text>
             <Text
-              style={[styles.brandName, surface.primaryText, { fontFamily: boldFamily }]}
+              style={[
+                styles.brandName,
+                surface.primaryText,
+                { fontFamily: boldFamily },
+              ]}
             >
               {brand?.displayName ?? "Brand"}
             </Text>
           </View>
           {onOpenBrand !== undefined ? (
-            <Text style={[styles.brandCta, { color: palette.accent }]}>View</Text>
+            <Text style={[styles.brandCta, { color: palette.accent }]}>
+              View
+            </Text>
           ) : null}
         </Pressable>
       </View>
@@ -476,7 +603,13 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
       {/* (7) About — collapsible. */}
       {aboutText.length > 0 ? (
         <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
             About
           </Text>
           <Text
@@ -505,16 +638,28 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
       {/* (8) Where you'll be — static map (city-level when hidden) + venue card. */}
       {event.format === "online" ? (
         <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
             Where you&rsquo;ll be
           </Text>
           <View style={[styles.venueCard, surface.card]}>
-            <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
+            <View
+              style={[styles.venueDisk, { backgroundColor: palette.accent }]}
+            >
               <Globe size={18} color={palette.accentText} />
             </View>
             <View style={styles.venueTextCol}>
               <Text
-                style={[styles.venueName, surface.primaryText, { fontFamily: boldFamily }]}
+                style={[
+                  styles.venueName,
+                  surface.primaryText,
+                  { fontFamily: boldFamily },
+                ]}
               >
                 Online
               </Text>
@@ -526,7 +671,13 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
         </View>
       ) : event.venueName !== null ? (
         <View style={styles.section}>
-          <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+          <Text
+            style={[
+              styles.secTitle,
+              surface.primaryText,
+              { fontFamily: boldFamily },
+            ]}
+          >
             Where you&rsquo;ll be
           </Text>
           {staticMapUrl !== null ? (
@@ -545,16 +696,24 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             disabled={!canOpenVenueMaps}
             accessibilityRole={canOpenVenueMaps ? "button" : undefined}
             accessibilityLabel={
-              canOpenVenueMaps ? `Open ${event.venueName} in maps` : event.venueName
+              canOpenVenueMaps
+                ? `Open ${event.venueName} in maps`
+                : event.venueName
             }
             style={[styles.venueCard, surface.card]}
           >
-            <View style={[styles.venueDisk, { backgroundColor: palette.accent }]}>
+            <View
+              style={[styles.venueDisk, { backgroundColor: palette.accent }]}
+            >
               <MapPin size={18} color={palette.accentText} />
             </View>
             <View style={styles.venueTextCol}>
               <Text
-                style={[styles.venueName, surface.primaryText, { fontFamily: boldFamily }]}
+                style={[
+                  styles.venueName,
+                  surface.primaryText,
+                  { fontFamily: boldFamily },
+                ]}
               >
                 {event.venueName}
               </Text>
@@ -571,8 +730,12 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
               ) : null}
             </View>
             {canOpenVenueMaps ? (
-              <View style={[styles.venuePill, { backgroundColor: palette.accent }]}>
-                <Text style={[styles.venuePillText, { color: palette.accentText }]}>
+              <View
+                style={[styles.venuePill, { backgroundColor: palette.accent }]}
+              >
+                <Text
+                  style={[styles.venuePillText, { color: palette.accentText }]}
+                >
                   Open maps
                 </Text>
               </View>
@@ -673,7 +836,13 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
   return (
     <View testID={testID}>
       {showHeading ? (
-        <Text style={[styles.secTitle, surface.primaryText, { fontFamily: boldFamily }]}>
+        <Text
+          style={[
+            styles.secTitle,
+            surface.primaryText,
+            { fontFamily: boldFamily },
+          ]}
+        >
           Tickets
         </Text>
       ) : null}
@@ -684,7 +853,10 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
           </Text>
         </View>
       ) : (
-        <View style={[styles.ticketBox, surface.card]} testID="orch-1167-ticket-box">
+        <View
+          style={[styles.ticketBox, surface.card]}
+          testID="orch-1167-ticket-box"
+        >
           {visibleTickets.map((t) => (
             <TicketStepperRow
               key={t.id}
@@ -700,10 +872,18 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
           ))}
 
           {/* live running total = Σ all-in (WYSIWYP) */}
-          <View style={[styles.totalRow, { borderTopColor: palette.panelBorder }]}>
-            <Text style={[styles.totalLabel, surface.secondaryText]}>Total</Text>
+          <View
+            style={[styles.totalRow, { borderTopColor: palette.panelBorder }]}
+          >
+            <Text style={[styles.totalLabel, surface.secondaryText]}>
+              Total
+            </Text>
             <Text
-              style={[styles.totalValue, surface.primaryText, { fontFamily: boldFamily }]}
+              style={[
+                styles.totalValue,
+                surface.primaryText,
+                { fontFamily: boldFamily },
+              ]}
               testID="orch-1167-running-total"
             >
               {totalLabel ?? "—"}
@@ -732,7 +912,9 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
               style={[
                 styles.boxProceedText,
                 {
-                  color: proceedEnabled ? palette.accentText : palette.tertiaryText,
+                  color: proceedEnabled
+                    ? palette.accentText
+                    : palette.tertiaryText,
                   fontFamily: boldFamily,
                 },
               ]}
@@ -770,7 +952,9 @@ export interface EventOfferingFloatingBarProps {
   testID?: string;
 }
 
-export const EventOfferingFloatingBar: React.FC<EventOfferingFloatingBarProps> = ({
+export const EventOfferingFloatingBar: React.FC<
+  EventOfferingFloatingBarProps
+> = ({
   event,
   variant,
   bookable,
@@ -834,14 +1018,21 @@ export const EventOfferingFloatingBar: React.FC<EventOfferingFloatingBarProps> =
         styles.floatBar,
         enabled
           ? { backgroundColor: palette.accent }
-          : { backgroundColor: palette.panelStrong, borderColor: palette.panelBorder, borderWidth: 1 },
+          : {
+              backgroundColor: palette.panelStrong,
+              borderColor: palette.panelBorder,
+              borderWidth: 1,
+            },
       ]}
       testID={testID}
     >
       <Text
         style={[
           styles.floatBarText,
-          { color: enabled ? palette.accentText : palette.tertiaryText, fontFamily: boldFamily },
+          {
+            color: enabled ? palette.accentText : palette.tertiaryText,
+            fontFamily: boldFamily,
+          },
         ]}
       >
         {label}
@@ -878,7 +1069,10 @@ const Pill: React.FC<{
     ]}
   >
     <Text
-      style={[styles.pillText, { color: palette.primaryText, fontFamily: font }]}
+      style={[
+        styles.pillText,
+        { color: palette.primaryText, fontFamily: font },
+      ]}
     >
       {children}
     </Text>
@@ -894,7 +1088,16 @@ const TicketStepperRow: React.FC<{
   quantity: number;
   disabled: boolean;
   onChange: (qty: number) => void;
-}> = ({ ticket, fallbackCurrency, palette, surface, boldFamily, quantity, disabled, onChange }) => {
+}> = ({
+  ticket,
+  fallbackCurrency,
+  palette,
+  surface,
+  boldFamily,
+  quantity,
+  disabled,
+  onChange,
+}) => {
   const sellable = ticketIsSellable(ticket);
   const isSoldOut = ticketIsSoldOut(ticket);
   const isDoorOnly = ticketIsDoorOnly(ticket);
@@ -934,7 +1137,13 @@ const TicketStepperRow: React.FC<{
       ]}
     >
       <View style={styles.stepperTextCol}>
-        <Text style={[styles.tierName, surface.primaryText, { fontFamily: boldFamily }]}>
+        <Text
+          style={[
+            styles.tierName,
+            surface.primaryText,
+            { fontFamily: boldFamily },
+          ]}
+        >
           {ticket.name}
         </Text>
         {ticket.description !== null && ticket.description.length > 0 ? (
@@ -948,7 +1157,13 @@ const TicketStepperRow: React.FC<{
       </View>
 
       <View style={styles.stepperRight}>
-        <Text style={[styles.tierPrice, surface.primaryText, { fontFamily: boldFamily }]}>
+        <Text
+          style={[
+            styles.tierPrice,
+            surface.primaryText,
+            { fontFamily: boldFamily },
+          ]}
+        >
           {ticket.isFree ? "Free" : priceLabel}
         </Text>
         {sellable ? (
@@ -967,7 +1182,11 @@ const TicketStepperRow: React.FC<{
               <Minus size={18} color={palette.primaryText} />
             </Pressable>
             <Text
-              style={[styles.stepQty, surface.primaryText, { fontFamily: boldFamily }]}
+              style={[
+                styles.stepQty,
+                surface.primaryText,
+                { fontFamily: boldFamily },
+              ]}
               accessibilityLabel={`${quantity} selected`}
             >
               {quantity}
@@ -988,9 +1207,17 @@ const TicketStepperRow: React.FC<{
           </View>
         ) : (
           <View
-            style={[styles.tierStatePill, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}
+            style={[
+              styles.tierStatePill,
+              {
+                backgroundColor: palette.card,
+                borderColor: palette.panelBorder,
+              },
+            ]}
           >
-            <Text style={[styles.tierStateText, { color: palette.tertiaryText }]}>
+            <Text
+              style={[styles.tierStateText, { color: palette.tertiaryText }]}
+            >
               {stateWord ?? "Unavailable"}
             </Text>
           </View>
@@ -1004,7 +1231,32 @@ const styles = StyleSheet.create({
   // ORCH-1167-R2 (change 1) — the `eyebrow` style was REMOVED with the date line
   // above the title (date now appears once, as the meta chip in section 3).
   leadBlock: { marginBottom: 4 },
-  title: { fontSize: 32, lineHeight: 35, fontWeight: "900", letterSpacing: -0.5 },
+  acquisitionNotice: { borderRadius: 16, marginTop: 12, padding: 16 },
+  acquisitionEyebrow: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    lineHeight: 14,
+  },
+  acquisitionHeading: {
+    fontSize: 24,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+    lineHeight: 30,
+    marginTop: 4,
+  },
+  acquisitionBody: {
+    fontSize: 15,
+    fontWeight: "400",
+    lineHeight: 22,
+    marginTop: 8,
+  },
+  title: {
+    fontSize: 32,
+    lineHeight: 35,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+  },
   // ORCH-1167-R3 (change 1) — date/time is its OWN FULL-WIDTH ROW (`dateRow`),
   // spanning the content column on mobile + desktop, styled like the solid-fill
   // pills (palette.accentWash + border) — just full width. The legacy compact
@@ -1037,7 +1289,12 @@ const styles = StyleSheet.create({
   },
   pillText: { fontSize: 13, fontWeight: "700" },
   section: { marginTop: 24 },
-  secTitle: { fontSize: 20, fontWeight: "900", letterSpacing: -0.3, marginBottom: 12 },
+  secTitle: {
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: -0.3,
+    marginBottom: 12,
+  },
   about: { fontSize: 16, lineHeight: 23 },
   aboutToggleRow: { flexDirection: "row", alignItems: "center", minHeight: 44 },
   aboutToggle: { fontSize: 14, fontWeight: "700" },
@@ -1068,7 +1325,12 @@ const styles = StyleSheet.create({
   },
   stepBtnDisabled: { opacity: 0.4 },
   stepGlyph: { fontSize: 20, fontWeight: "900", lineHeight: 22 },
-  stepQty: { fontSize: 16, fontWeight: "900", minWidth: 18, textAlign: "center" },
+  stepQty: {
+    fontSize: 16,
+    fontWeight: "900",
+    minWidth: 18,
+    textAlign: "center",
+  },
   tierStatePill: {
     borderRadius: 999,
     borderWidth: 1,
@@ -1095,7 +1357,12 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   boxProceedText: { fontSize: 16, fontWeight: "900" },
-  reassure: { fontSize: 12, marginTop: 12, lineHeight: 17, textAlign: "center" },
+  reassure: {
+    fontSize: 12,
+    marginTop: 12,
+    lineHeight: 17,
+    textAlign: "center",
+  },
   // ---- brand ----
   brandRow: {
     flexDirection: "row",

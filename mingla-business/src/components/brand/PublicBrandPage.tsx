@@ -83,6 +83,11 @@ const mapEvent = (event: LiveEvent): PublicBrandEvent => ({
   brandSlug: event.brandSlug,
   eventSlug: event.eventSlug,
   status: event.status,
+  eventType: event.event_type === "rsvp" ? "rsvp" : "event",
+  operatorEndedAtUtc: null,
+  masterStartAtUtc: event.masterStartAtUtc ?? null,
+  masterEndAtUtc: event.masterEndAtUtc ?? null,
+  masterTimezone: event.timezone,
   dateLine: formatDraftDateLine(event),
   venueName: event.venueName,
   format: event.format,
@@ -189,10 +194,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   useThemeFont(theme.fontFamilyValue);
   const sharedBrand = useMemo(() => mapBrand(brand), [brand]);
   const sharedEvents = useMemo(() => events.map(mapEvent), [events]);
-  const sharedPastEvents = useMemo(
-    () => pastEvents.map(mapEvent),
-    [pastEvents],
-  );
+  void pastEvents;
   const sharedTrips = useMemo(() => trips.map(mapTrip), [trips]);
   const sharedPastTrips = useMemo(() => pastTrips.map(mapTrip), [pastTrips]);
   const sharedExperiences = useMemo(
@@ -343,7 +345,6 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         brand={sharedBrand}
         useDirectionCIdentity={useDirectionCIdentity}
         events={sharedEvents}
-        pastEvents={sharedPastEvents}
         trips={sharedTrips}
         pastTrips={sharedPastTrips}
         experiences={sharedExperiences}

@@ -23,6 +23,7 @@ import {
   isThemeFontSlug,
   type ThemeInput,
   type OfferingGalleryImage,
+  resolveEventAcquisitionState,
 } from "@mingla/offering-rendering";
 import { parseClaimedVenueHours } from "../utils/venuePublicHours";
 import { buildVenueGalleryPhotoUrls } from "../utils/venuePublicPhotos";
@@ -322,29 +323,33 @@ export interface PublicVenueDiscoveryPrice {
 export async function getPublicVenueDiscoveryPrice(
   placePoolId: string,
 ): Promise<PublicVenueDiscoveryPrice | null> {
-  const [{ data: projected, error }, { data: currencies, error: currencyError }] =
-    await Promise.all([
-      supabase.rpc("place_discovery_range_for_viewer", {
-        p_place_pool_id: placePoolId,
-        p_display_currency: null,
-        p_snapshot: null,
-      }),
-      supabase.rpc("issue_1384_supported_currencies"),
-    ]);
+  const [
+    { data: projected, error },
+    { data: currencies, error: currencyError },
+  ] = await Promise.all([
+    supabase.rpc("place_discovery_range_for_viewer", {
+      p_place_pool_id: placePoolId,
+      p_display_currency: null,
+      p_snapshot: null,
+    }),
+    supabase.rpc("issue_1384_supported_currencies"),
+  ]);
   if (error || currencyError) throw error ?? currencyError;
   const row = Array.isArray(projected) ? projected[0] : projected;
   if (
     row?.price_range_status !== "active" ||
     !Number.isSafeInteger(Number(row.source_min_minor)) ||
     typeof row.source_currency_code !== "string"
-  ) return null;
+  )
+    return null;
   const metadata = Array.isArray(currencies)
     ? currencies.find((item) => item.code === row.source_currency_code)
     : null;
   if (!Number.isInteger(metadata?.minor_unit_exponent)) return null;
   return {
     minMinor: Number(row.source_min_minor),
-    maxMinor: row.source_max_minor === null ? null : Number(row.source_max_minor),
+    maxMinor:
+      row.source_max_minor === null ? null : Number(row.source_max_minor),
     currencyCode: row.source_currency_code,
     minorUnitExponent: metadata.minor_unit_exponent,
   };
@@ -554,7 +559,7 @@ export interface PublicUpcomingRowRaw {
   brand_id: string;
   brand_slug: string;
   brand_name: string;
-  offering_type: "event" | "trip" | "experience";
+  offering_type: "event" | "rsvp" | "trip" | "experience";
   offering_slug: string;
   title: string;
   description: string | null;
@@ -573,7 +578,7 @@ export interface PublicUpcomingRow {
   brandId: string;
   brandSlug: string;
   brandName: string;
-  offeringType: "event" | "trip" | "experience";
+  offeringType: "event" | "rsvp" | "trip" | "experience";
   offeringSlug: string;
   name: string;
   bio: string | null;
@@ -1552,12 +1557,22 @@ export const fetchPublicBrandEvents = async (
     .order("published_at", { ascending: false, nullsFirst: false });
 
   if (error !== null) throw error;
+  const nowMs = Date.now();
   const rows = ((data ?? []) as BusinessPublicEventViewRow[]).filter(
-    (row) => row.event_type === "event",
+    (row) =>
+      (row.event_type === "event" || row.event_type === "rsvp") &&
+      resolveEventAcquisitionState(
+        {
+          operatorStatus: viewStatusToLiveStatus(row.status),
+          operatorEndedAtUtc: null,
+          masterEndAtUtc: row.master_end_at,
+        },
+        nowMs,
+      ).kind === "current",
   );
 
   const eventTickets = await Promise.all(
-    rows.map((row) => fetchTickets(row.id)),
+    rows.map((row) => (row.event_type === "event" ? fetchTickets(row.id) : [])),
   );
 
   // ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — drop PAID events from a
@@ -1712,8 +1727,8 @@ export const getPublicBrandBySlug = async (
     fetchPublicBrandUpcoming(brandSlug),
   ]);
 
-  const events = eventsAll.filter((event) => event.status !== "ended");
-  const pastEvents = eventsAll.filter((event) => event.status === "ended");
+  const events = eventsAll;
+  const pastEvents: PublicEventRecord[] = [];
   const trips = tripsAll.filter(
     (trip) => trip.status === "scheduled" || trip.status === "live",
   );

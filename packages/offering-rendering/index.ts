@@ -8,7 +8,10 @@
 // same primitives in later legs (the page-specific booking/ticket/summary panel
 // is passed in as `stickyPanel` / children).
 
-export { DirectionCIdentityOverlay, ParallaxCoverShell } from "./ParallaxCoverShell";
+export {
+  DirectionCIdentityOverlay,
+  ParallaxCoverShell,
+} from "./ParallaxCoverShell";
 export type { ParallaxCoverShellProps } from "./ParallaxCoverShell";
 
 // issue #868 [cover-gallery] — the beneath-cover ordered card row over the full
@@ -50,6 +53,7 @@ export type { Chip, ChipGroupProps } from "./ChipGroup";
 // phone/native and inside the desktop sticky panel (change 5; one owner).
 export {
   EventOfferingBody,
+  EventAcquisitionNotice,
   EventOfferingFloatingBar,
   EventTicketBox,
   computeRunningTotal,
@@ -139,6 +143,7 @@ export {
   RsvpOfferingFloatingBar,
   RsvpOfferingDecisionDock,
   useRsvpOfferingState,
+  rsvpErrorMessageForCode,
 } from "./RsvpOfferingBody";
 export type {
   RsvpOfferingBodyProps,
@@ -214,7 +219,10 @@ export {
   experiencePriceLabel,
   experienceAvailabilityBanner,
 } from "./ExperienceOfferingBody";
-export type { ExperienceOfferingBodyProps, RightNowFacts } from "./ExperienceOfferingBody";
+export type {
+  ExperienceOfferingBodyProps,
+  RightNowFacts,
+} from "./ExperienceOfferingBody";
 export { StopSpine, stopLabelForIndex } from "./StopSpine";
 export type { StopSpineProps } from "./StopSpine";
 export type {
@@ -266,10 +274,7 @@ export {
   tripTierDepositTodayCents,
   formatTripTierInstallmentNote,
 } from "./tripBoxTotals";
-export type {
-  TripTierLike,
-  TripSelectedLine,
-} from "./tripBoxTotals";
+export type { TripTierLike, TripSelectedLine } from "./tripBoxTotals";
 export { TripReserveBar } from "./TripReserveBar";
 export type { TripReserveBarProps } from "./TripReserveBar";
 export { TripPaymentChoice as TripOfferingPaymentChoice } from "./TripPaymentChoice";
@@ -301,10 +306,7 @@ export type {
   ReserveSplitCtas,
 } from "./tripOfferingTypes";
 
-export {
-  useResponsiveLayout,
-  DESKTOP_BREAKPOINT,
-} from "./useResponsiveLayout";
+export { useResponsiveLayout, DESKTOP_BREAKPOINT } from "./useResponsiveLayout";
 export type { ResponsiveLayout } from "./useResponsiveLayout";
 
 // ===========================================================================
@@ -398,6 +400,17 @@ export type {
 // ORCH-0964 — BlurView wrapper that skips backdrop-filter on mobile web (where
 // stacked blur hard-crashes the renderer). Used by public brand + event pages.
 export { GlassBlur } from "./GlassBlur";
+export {
+  eventAcquisitionNoticeCopy,
+  nextEventAcquisitionBoundaryDelayMs,
+  resolveEventAcquisitionState,
+} from "./eventAcquisitionLifecycle";
+export type {
+  EventAcquisitionInput,
+  EventAcquisitionNoticeCopy,
+  EventAcquisitionOperatorStatus,
+  EventAcquisitionState,
+} from "./eventAcquisitionLifecycle";
 // ORCH-1162 Bug 2 — the SINGLE shared static-Mapbox URL builder. The trip,
 // event, and experience public pages all draw their "Where you'll be" map from
 // this one primitive (mingla-business + app-mobile re-export it, never re-fork).
@@ -407,7 +420,10 @@ export { GlassBlur } from "./GlassBlur";
 // base. getPublicMapboxToken stays exported (sourced from ./mapboxToken) for
 // backward-compat with existing import paths — it is no longer used by the static
 // map itself.
-export { buildStaticMapUrl, getSupabaseFunctionsBaseUrl } from "./mapboxStaticImage";
+export {
+  buildStaticMapUrl,
+  getSupabaseFunctionsBaseUrl,
+} from "./mapboxStaticImage";
 export { getPublicMapboxToken } from "./mapboxToken";
 export type { StaticMapParams } from "./mapboxStaticImage";
 // ORCH-1117 — the single buy/unavailable state machine consumed by BOTH the

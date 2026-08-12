@@ -136,6 +136,12 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   const { isDesktop } = useResponsiveLayout();
   void isDesktop; // ParallaxCoverShell owns the responsive two-column shell.
   const boldFamily = boldFontFamily(theme);
+  const acquisitionClosed =
+    event.acquisitionState?.kind !== undefined &&
+    event.acquisitionState.kind !== "current";
+  const shellTheme = acquisitionClosed
+    ? { ...theme, animation: "none" as const }
+    : theme;
 
   const coverType: "image" | "video" | "gif" | null =
     event.coverMediaType === "video"
@@ -181,7 +187,7 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   return (
     <ParallaxCoverShell
       palette={palette}
-      theme={theme}
+      theme={shellTheme}
       coverMediaUrl={event.coverMediaUrl}
       coverMediaType={coverType}
       coverHue={event.coverHue}

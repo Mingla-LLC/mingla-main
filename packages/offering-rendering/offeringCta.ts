@@ -47,11 +47,19 @@ export const computeOfferingVariant = (
   event: PublicEventProps,
   passwordUnlocked: boolean,
 ): OfferingVariant => {
-  if (event.status === "cancelled") return "cancelled";
-  const isPast =
-    event.status === "ended" ||
-    (event.endedAt !== null && new Date(event.endedAt).getTime() < Date.now());
-  if (isPast) return "past";
+  if (
+    event.acquisitionState?.kind === "cancelled" ||
+    event.status === "cancelled"
+  ) {
+    return "cancelled";
+  }
+  if (
+    event.acquisitionState?.kind === "ended" ||
+    event.acquisitionState?.kind === "unavailable" ||
+    event.status === "ended"
+  ) {
+    return "past";
+  }
   const visibleTickets = event.tickets.filter((t) => t.visibility !== "hidden");
   const requiresPassword = visibleTickets.some((t) => t.passwordProtected);
   if (requiresPassword && !passwordUnlocked) return "password-gate";
@@ -235,8 +243,7 @@ export const resolveOfferingCta = (
 
   // Sellable tickets = visible, not sold-out, not door-only, sale not ended.
   const sellable = visible.filter(
-    (t) =>
-      !ticketIsSoldOut(t) && !ticketIsDoorOnly(t) && !ticketSaleEnded(t),
+    (t) => !ticketIsSoldOut(t) && !ticketIsDoorOnly(t) && !ticketSaleEnded(t),
   );
   const considered = sellable.length > 0 ? sellable : visible;
 
@@ -317,16 +324,26 @@ export interface RsvpCtaDescriptor {
  *   cap full + waitlist off + auto → full
  *   else                           → open
  */
-export const resolveRsvpCta = (input: ResolveRsvpCtaInput): RsvpCtaDescriptor => {
-  const { capacityFull, waitlistEnabled, manualApproval, guestStatus, guestApproval } = input;
+export const resolveRsvpCta = (
+  input: ResolveRsvpCtaInput,
+): RsvpCtaDescriptor => {
+  const {
+    capacityFull,
+    waitlistEnabled,
+    manualApproval,
+    guestStatus,
+    guestApproval,
+  } = input;
 
   if (guestStatus != null) {
     if (guestApproval === "pending") return { kind: "rsvp", state: "pending" };
-    if (guestStatus === "waitlisted") return { kind: "rsvp", state: "waitlist" };
+    if (guestStatus === "waitlisted")
+      return { kind: "rsvp", state: "waitlist" };
     if (guestStatus === "going" && guestApproval === "approved") {
       return { kind: "rsvp", state: "going" };
     }
-    if (guestStatus === "not_going") return { kind: "rsvp", state: "not_going" };
+    if (guestStatus === "not_going")
+      return { kind: "rsvp", state: "not_going" };
     // ORCH-1150 R2 D-10: a resolved 'maybe' shows the non-binding maybe state.
     if (guestStatus === "maybe") return { kind: "rsvp", state: "maybe" };
   }
