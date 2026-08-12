@@ -749,17 +749,6 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     </View>
   ) : null;
 
-  // Desktop hero overlay (verified eyebrow + name + address).
-  const heroEyebrow = isVerified ? (
-    <Text style={styles.heroEyebrow}>Verified venue</Text>
-  ) : undefined;
-  const heroTitle = isDesktop ? (
-    <>
-      <Text style={[styles.heroTitle, themedFont]}>{brand.displayName}</Text>
-      {address !== null ? <Text style={styles.heroAddr}>{address}</Text> : null}
-    </>
-  ) : undefined;
-
   return (
     <ParallaxCoverShell
       palette={palette}
@@ -774,8 +763,6 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       onClose={callbacks.onClose}
       onShare={callbacks.onShare}
       hideCloseOnWeb
-      heroEyebrow={heroEyebrow}
-      heroTitle={heroTitle}
       directionCIdentity={useDirectionCIdentity ? { title: brand.displayName, meta: address } : undefined}
       stickyPanel={stickyPanel}
       safeAreaTop={chromeTopOffset ?? 0}
@@ -2264,31 +2251,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 1,
     textTransform: "uppercase",
-  },
-  // ---- hero overlay (desktop) ----
-  heroEyebrow: {
-    color: "#ffffff",
-    opacity: 0.95,
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    marginBottom: 8,
-  },
-  heroTitle: {
-    color: "#ffffff",
-    fontSize: 42,
-    lineHeight: 46,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-    textShadowColor: "rgba(0,0,0,0.5)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 24,
-  },
-  heroAddr: {
-    color: "rgba(255,255,255,0.86)",
-    fontSize: 14,
-    marginTop: 6,
   },
 });
 

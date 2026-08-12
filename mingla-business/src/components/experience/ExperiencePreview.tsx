@@ -319,9 +319,6 @@ const FoundationExperiencePreview: React.FC<{
           ? "image"
           : null;
 
-  const stopEyebrow =
-    experience.stops.length > 0 ? `${experience.stops.length}-stop experience` : null;
-
   // ---- brand chip (desktop sticky panel) ----
   const brandChip = (
     <View style={[styles.brandRow, surface.card]}>
@@ -384,16 +381,6 @@ const FoundationExperiencePreview: React.FC<{
       onShare={onShare}
       // ORCH-1159 — hide the floating X on web (public experience page). Native keeps it.
       hideCloseOnWeb
-      heroEyebrow={
-        stopEyebrow !== null ? (
-          <Text style={styles.heroEyebrow}>{stopEyebrow}</Text>
-        ) : undefined
-      }
-      heroTitle={
-        <Text style={[styles.heroTitle, { fontFamily: boldFamily }]}>
-          {experience.title}
-        </Text>
-      }
       stickyPanel={stickyPanel}
       contentBottomInset={contentBottomInset}
       safeAreaTop={safeAreaTop}
@@ -522,23 +509,6 @@ const LegacyExperiencePreview: React.FC<{
 
 const styles = StyleSheet.create({
   // ---- foundation: hero ----
-  heroEyebrow: {
-    color: "#ffffff",
-    opacity: 0.92,
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    marginBottom: 8,
-  },
-  heroTitle: {
-    color: "#ffffff",
-    fontSize: 46,
-    lineHeight: 50,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-    maxWidth: "72%",
-  },
   // ---- brand chip (desktop sticky panel) ----
   brandRow: {
     flexDirection: "row",

@@ -19,9 +19,7 @@
 
 import React, { useCallback, useState } from "react";
 import {
-  Platform,
   StyleSheet,
-  Text,
   View,
   type LayoutChangeEvent,
   type NativeScrollEvent,
@@ -35,7 +33,6 @@ import {
   RsvpOfferingFloatingBar,
   useResponsiveLayout,
   useRsvpOfferingState,
-  boldFontFamily,
   type PublicBrandProps,
   type PublicEventProps,
   type ResolvedTheme,
@@ -122,7 +119,6 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     onAcquisitionClosed,
   } = props;
   const { isDesktop } = useResponsiveLayout();
-  const boldFamily = boldFontFamily(theme);
   const acquisitionClosed =
     event.acquisitionState?.kind !== undefined &&
     event.acquisitionState.kind !== "current";
@@ -214,16 +210,6 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
         onClose={onClose}
         onShare={onShare}
         hideCloseOnWeb
-        heroEyebrow={
-          event.dateLine.length > 0 ? (
-            <Text style={styles.heroEyebrow}>{event.dateLine}</Text>
-          ) : undefined
-        }
-        heroTitle={
-          <Text style={[styles.heroTitle, { fontFamily: boldFamily }]}>
-            {event.name.length > 0 ? event.name : "Untitled event"}
-          </Text>
-        }
         stateBanner={stateBanner}
         stickyPanel={stickyPanel}
         contentBottomInset={resolvedBottomInset}
@@ -279,23 +265,6 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
 
 const styles = StyleSheet.create({
   host: { flex: 1, position: "relative" },
-  heroEyebrow: {
-    color: "#ffffff",
-    fontSize: 13,
-    fontWeight: "700",
-    letterSpacing: 0.4,
-    marginBottom: 6,
-    textShadowColor: "rgba(0,0,0,0.5)",
-    textShadowRadius: 8,
-  },
-  heroTitle: {
-    color: "#ffffff",
-    fontSize: 30,
-    fontWeight: "900",
-    lineHeight: 34,
-    textShadowColor: "rgba(0,0,0,0.5)",
-    textShadowRadius: 10,
-  },
   // ORCH-1163-R2 [floating-parity] — the floating decision-bar wrapper, BYTE-
   // IDENTICAL to the event page's floatWrap (PublicEventPage.styles.floatWrap):
   // absolute, left/right:16, bottom:24, zIndex:6. The zIndex:6 is the load-bearing

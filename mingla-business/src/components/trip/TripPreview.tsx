@@ -491,19 +491,6 @@ const FoundationTripPreview: React.FC<{
       onClose={onClose}
       onShare={onShare}
       hideCloseOnWeb
-      heroEyebrow={
-        duration !== null ? (
-          <Text style={styles.heroEyebrow}>
-            {duration}
-            {destinationCityCountry != null ? ` · ${destinationCityCountry}` : ""}
-          </Text>
-        ) : undefined
-      }
-      heroTitle={
-        <Text style={[styles.heroTitle, { fontFamily: boldFamily }]}>
-          {trip.title}
-        </Text>
-      }
       directionCIdentity={useDirectionCIdentity ? {
         title: trip.title,
         meta: [duration, destinationCityCountry].filter(Boolean).join(" · "),
@@ -833,23 +820,6 @@ const styles = StyleSheet.create({
     lineHeight: 35,
     fontWeight: "900",
     letterSpacing: -0.5,
-  },
-  heroEyebrow: {
-    color: "#ffffff",
-    opacity: 0.92,
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    marginBottom: 8,
-  },
-  heroTitle: {
-    color: "#ffffff",
-    fontSize: 46,
-    lineHeight: 50,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-    maxWidth: "72%",
   },
   // ---- meta chips ----
   metaRow: {

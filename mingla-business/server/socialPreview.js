@@ -189,10 +189,17 @@ const tripPublicPath = (row) =>
 
 const tripPublicUrl = (row) => `${PUBLIC_ORIGIN}${tripPublicPath(row)}`;
 
+const experiencePublicPath = (row) =>
+  `/exp/${encodeURIComponent(row.brand_slug)}/${encodeURIComponent(row.slug)}`;
+
+const experiencePublicUrl = (row) => `${PUBLIC_ORIGIN}${experiencePublicPath(row)}`;
+
 const tripOgFallbackUrl = (row) =>
   `${PUBLIC_ORIGIN}/og/trip/${encodeURIComponent(row.id)}.png`;
 
 const tripImageUrl = (row) => tripCoverUrl(row) ? tripOgFallbackUrl(row) : "";
+
+const experienceImageUrl = (row) => eventCoverUrl(row) || "";
 
 const eventImageUrl = (row) => eventCoverUrl(row) ? eventOgFallbackUrl(row) : "";
 
@@ -563,6 +570,18 @@ const fetchPublicTripById = async (tripId) => {
   return isTripRow(row) ? row : null;
 };
 
+const fetchPublicExperienceBySlug = async (brandSlug, experienceSlug) => {
+  const rows = await requestJson("business_public_events_view", {
+    select: "*",
+    brand_slug: `eq.${brandSlug}`,
+    slug: `eq.${experienceSlug}`,
+    event_type: "eq.experience",
+    limit: "1",
+  });
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return rows[0];
+};
+
 const eventDescription = (row) =>
   truncate(
     row.description ||
@@ -574,6 +593,13 @@ const tripDescription = (row) =>
   truncate(
     row.description ||
       `Reserve your spot on ${row.title} by ${row.brand_name} on Mingla.`,
+    200,
+  );
+
+const experienceDescription = (row) =>
+  truncate(
+    row.description ||
+      `Reserve ${row.title} by ${row.brand_name} on Mingla.`,
     200,
   );
 
@@ -961,6 +987,37 @@ const renderTripHtml = (row) => {
           ${location ? `<span class="pill">${escapeHtml(location)}</span>` : ""}
         </div>
         <a class="cta" href="${escapeHtml(canonicalUrl)}">View trip</a>
+      </div>
+      ${media}
+    </section>`,
+  });
+};
+
+const renderExperienceHtml = (row) => {
+  const title = `${row.title} by ${row.brand_name} | Mingla`;
+  const description = experienceDescription(row);
+  const canonicalUrl = experiencePublicUrl(row);
+  const imageUrl = experienceImageUrl(row);
+  const location = asText(row.location_text);
+  const media = imageUrl
+    ? `<img class="media" src="${escapeHtml(row.cover_media_url)}" alt="${escapeHtml(row.title)} experience cover" />`
+    : "";
+
+  return pageShell({
+    title,
+    description,
+    canonicalUrl,
+    imageUrl,
+    type: "website",
+    body: `<section class="hero${media ? " has-media" : ""}">
+      <div>
+        <h1>${escapeHtml(row.title)}</h1>
+        <p>${escapeHtml(description)}</p>
+        <div class="meta">
+          <span class="pill">${escapeHtml(row.brand_name)}</span>
+          ${location ? `<span class="pill">${escapeHtml(location)}</span>` : ""}
+        </div>
+        <a class="cta" href="${escapeHtml(canonicalUrl)}">View experience</a>
       </div>
       ${media}
     </section>`,
@@ -1422,9 +1479,13 @@ module.exports = {
   eventDescription,
   eventImageUrl,
   eventPublicUrl,
+  experienceDescription,
+  experienceImageUrl,
+  experiencePublicUrl,
   fetchPublicBrandBySlug,
   fetchPublicEventById,
   fetchPublicEventBySlug,
+  fetchPublicExperienceBySlug,
   fetchPublicTripById,
   fetchPublicTripBySlug,
   fetchPublicVenueBySlug,
@@ -1435,6 +1496,7 @@ module.exports = {
   firstQueryValue,
   renderBrandHtml,
   renderEventHtml,
+  renderExperienceHtml,
   renderTripHtml,
   renderVenueHtml,
   renderSharedCardHtml,

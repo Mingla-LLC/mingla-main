@@ -127,6 +127,7 @@ import {
 } from "../../utils/eventDateDisplay";
 import { isLegacyUnsafeEventCoverVideoUrl } from "../../utils/eventCoverMediaRules";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
+import { shareCanonicalPublicPageOnWeb } from "../../utils/shareCanonicalPublicPageOnWeb";
 import { useThemeFont } from "../../theme/useThemeFont";
 
 import { ShareModal } from "../ui/ShareModal";
@@ -615,8 +616,21 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   }, [router, brand?.slug, event.brandSlug]);
 
   const handleShare = useCallback((): void => {
+    if (Platform.OS === "web") {
+      void shareCanonicalPublicPageOnWeb({
+        url: canonicalUrl(event),
+        title: event.name,
+        description: event.description.slice(0, 200),
+      }).then((result) => {
+        if (result === "copied") showToast("Link copied");
+        if (result === "failed") {
+          showToast("The link could not be shared. Copy it from the address bar.");
+        }
+      });
+      return;
+    }
     setShareModalVisible(true);
-  }, []);
+  }, [event, showToast]);
 
   const handleToggleMute = useCallback((): void => {
     setMuted((m) => !m);

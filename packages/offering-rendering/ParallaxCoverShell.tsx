@@ -105,8 +105,6 @@ export interface ParallaxCoverShellProps {
   showMute: boolean;
   onClose: () => void;
   onShare: () => void;
-  heroEyebrow?: React.ReactNode;
-  heroTitle?: React.ReactNode;
   directionCIdentity?: { title: string; meta?: string | null };
   stateBanner?: React.ReactNode | null;
   children: React.ReactNode;
@@ -191,8 +189,6 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   showMute,
   onClose,
   onShare,
-  heroEyebrow,
-  heroTitle,
   directionCIdentity,
   stateBanner,
   children,
@@ -374,12 +370,6 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
               >
                 {chrome}
               </View>
-              {heroEyebrow !== undefined || heroTitle !== undefined ? (
-                <View style={styles.desktopHeroCaption} pointerEvents="none">
-                  {heroEyebrow}
-                  {heroTitle}
-                </View>
-              ) : null}
             </View>
 
             {stateBanner != null ? (
@@ -620,13 +610,6 @@ const styles = StyleSheet.create({
   desktopHeroOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.20)",
-  },
-  desktopHeroCaption: {
-    position: "absolute",
-    left: 36,
-    right: 36,
-    bottom: 30,
-    zIndex: 5,
   },
   desktopBannerWrap: {
     marginTop: 16,

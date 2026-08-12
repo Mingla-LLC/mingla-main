@@ -41,15 +41,12 @@ import {
   type ResolvedTheme,
   type SocialProofSummary,
   type ThemePalette,
-  boldFontFamily,
 } from "@mingla/offering-rendering";
 import {
   EventOfferingBody,
   ParallaxCoverShell,
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
-import { Text, StyleSheet, View } from "react-native";
-
 export interface FoundationEventPreviewProps {
   event: PublicEventProps;
   brand: PublicBrandProps | null;
@@ -135,7 +132,6 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
 }) => {
   const { isDesktop } = useResponsiveLayout();
   void isDesktop; // ParallaxCoverShell owns the responsive two-column shell.
-  const boldFamily = boldFontFamily(theme);
   const acquisitionClosed =
     event.acquisitionState?.kind !== undefined &&
     event.acquisitionState.kind !== "current";
@@ -201,16 +197,6 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
       onShare={onShare}
       // ORCH-1159 — hide the floating X on web (preserved). Native keeps it.
       hideCloseOnWeb
-      heroEyebrow={
-        event.dateLine.length > 0 ? (
-          <Text style={styles.heroEyebrow}>{event.dateLine}</Text>
-        ) : undefined
-      }
-      heroTitle={
-        <Text style={[styles.heroTitle, { fontFamily: boldFamily }]}>
-          {event.name.length > 0 ? event.name : "Untitled event"}
-        </Text>
-      }
       stateBanner={stateBanner}
       stickyPanel={stickyPanel}
       contentBottomInset={contentBottomInset}
@@ -223,23 +209,5 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
     </ParallaxCoverShell>
   );
 };
-
-const styles = StyleSheet.create({
-  heroEyebrow: {
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 1.8,
-    textTransform: "uppercase",
-    color: "#ffffff",
-    marginBottom: 10,
-  },
-  heroTitle: {
-    fontSize: 44,
-    lineHeight: 47,
-    fontWeight: "900",
-    letterSpacing: -1,
-    color: "#ffffff",
-  },
-});
 
 export default FoundationEventPreview;
