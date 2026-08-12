@@ -3586,7 +3586,8 @@ $function$;
 REVOKE ALL ON FUNCTION public.pg_public_brand_upcoming(text, timestamptz, integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.pg_public_brand_upcoming(text, timestamptz, integer) TO anon, authenticated;
 
--- Latest effective definition copied from 20270117001020_issue_1020_discover_city_geo_fallback.sql.
+-- End pg_public_brand_upcoming (latest effective definition copied from 20270322001902_issue_1902_public_event_lifecycle.sql).
+-- Latest effective definition copied from 20270117001020_issue_1020_discover_city_geo_fallback.sql for pg_discover_business_events below.
 CREATE OR REPLACE FUNCTION public.pg_discover_business_events(
   p_cities text[],
   p_lower_bound timestamptz,
