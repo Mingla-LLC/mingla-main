@@ -27,8 +27,10 @@
  *   F. PhoneInput.tsx::handleOpenPicker opens the picker immediately on web
  *      (Platform.OS === "web" → setPickerVisible(true)) and does NOT gate the web
  *      path solely behind InteractionManager.runAfterInteractions.
- *   C. PublicEventPage.tsx passes `pickerPresentation="overlay"` to the RSVP
- *      PhoneInput (the field that lives inside RsvpDetailsModal).
+ *   C1. PublicEventPage.tsx consumes useBusinessRsvpPhoneField and passes its
+ *       renderer into FoundationRsvpPreview (the callsite ownership chain).
+ *   C2. useBusinessRsvpPhoneField.tsx renders the RSVP PhoneInput with
+ *       `pickerPresentation="overlay"` (the field lives inside RsvpDetailsModal).
  *   D. The three buyer-CHECKOUT PhoneInput hosts do NOT pass
  *      pickerPresentation="overlay" — they are standalone pages (no enclosing
  *      <Modal>) and MUST keep the default nested-<Modal> picker.
@@ -51,6 +53,8 @@ const HELPER_REL = "packages/phone-input/pickerPresentation.ts";
 const PHONEINPUT_REL = "packages/phone-input/PhoneInput.tsx";
 const OVERLAY_REL = "packages/phone-input/CountryPickerModal.tsx";
 const RSVP_REL = "mingla-business/src/components/event/PublicEventPage.tsx";
+const RSVP_RENDERER_REL =
+  "mingla-business/src/components/event/useBusinessRsvpPhoneField.tsx";
 const CHECKOUT_RELS = [
   "mingla-business/app/checkout/[eventId]/buyer.tsx",
   "mingla-business/app/checkout-trip/[tripEventId]/buyer.tsx",
@@ -146,19 +150,41 @@ function rsvpPhoneInputElement(normalizedSrc) {
   return normalizedSrc.slice(open, end);
 }
 
-/** Scan the RSVP host (rule C). */
-function scanRsvp(src) {
+/** Scan the public RSVP callsite (rule C1). */
+function scanRsvpCallsite(src) {
+  const failures = [];
+  const s = normalize(src);
+  if (!/useBusinessRsvpPhoneField\s*\(/.test(s)) {
+    failures.push(
+      "C1: PublicEventPage no longer consumes useBusinessRsvpPhoneField(...). " +
+        "The country-aware RSVP renderer ownership chain is missing (ORCH-1299).",
+    );
+  }
+  if (!/renderPhoneField\s*=\s*\{\s*renderRsvpPhoneField\s*\}/.test(s)) {
+    failures.push(
+      "C1: PublicEventPage no longer passes the shared renderRsvpPhoneField into " +
+        "FoundationRsvpPreview. The modal RSVP field can silently fall back to the " +
+        "plain input even if the shared renderer remains correct (ORCH-1299).",
+    );
+  }
+  return failures;
+}
+
+/** Scan the shared Business RSVP phone renderer (rule C2). */
+function scanRsvpRenderer(src) {
   const failures = [];
   const s = normalize(src);
   const el = rsvpPhoneInputElement(s);
   if (el === null) {
     failures.push(
-      "C: could not locate the RSVP <PhoneInput ...> JSX element in " +
-        "PublicEventPage — the field moved or was removed (ORCH-1299).",
+      "C2: could not locate the RSVP <PhoneInput ...> JSX element in " +
+        "useBusinessRsvpPhoneField — the shared renderer moved or was removed " +
+        "(ORCH-1299).",
     );
   } else if (!/pickerPresentation\s*=\s*"overlay"/.test(el)) {
     failures.push(
-      "C: the RSVP <PhoneInput> no longer passes pickerPresentation=\"overlay\". " +
+      "C2: the shared RSVP <PhoneInput> no longer passes " +
+        "pickerPresentation=\"overlay\". " +
         "That field renders inside RsvpDetailsModal, where the default nested " +
         "<Modal> picker freezes on web (ORCH-1299).",
     );
@@ -237,8 +263,17 @@ if (process.argv.includes("--self-test")) {
       ) : null}</View>);`;
   // web-immediate open dropped (F fails) — overlay wiring intact.
   const PHONEINPUT_BAD_F = HANDLE_BAD_F + RENDER_OK;
-  const RSVP_OK = `<PhoneInput pickerPresentation="overlay" value={localDigits} countryCode={countryCode} theme={phoneFieldTheme} />`;
-  const RSVP_BAD = `<PhoneInput value={localDigits} countryCode={countryCode} theme={phoneFieldTheme} />`;
+  const RSVP_CALLSITE_OK = `
+    const renderRsvpPhoneField = useBusinessRsvpPhoneField(palette, resolvedTheme);
+    return <FoundationRsvpPreview renderPhoneField={renderRsvpPhoneField} />;`;
+  const RSVP_CALLSITE_BAD_HOOK = `
+    const renderRsvpPhoneField = legacyPhoneRenderer;
+    return <FoundationRsvpPreview renderPhoneField={renderRsvpPhoneField} />;`;
+  const RSVP_CALLSITE_BAD_PROP = `
+    const renderRsvpPhoneField = useBusinessRsvpPhoneField(palette, resolvedTheme);
+    return <FoundationRsvpPreview />;`;
+  const RSVP_RENDERER_OK = `<PhoneInput pickerPresentation="overlay" value={localDigits} countryCode={countryCode} theme={phoneFieldTheme} />`;
+  const RSVP_RENDERER_BAD = `<PhoneInput value={localDigits} countryCode={countryCode} theme={phoneFieldTheme} />`;
   const CHECKOUT_OK = `<PhoneInput value={digits} countryCode={code} theme={darkTheme} />`;
   const CHECKOUT_BAD = `<PhoneInput pickerPresentation="overlay" value={digits} countryCode={code} />`;
   const OVERLAY_OK = `const overlayStyle = { ...styles.overlayContainer, position: Platform.OS === "web" ? "fixed" : "absolute" };`;
@@ -261,7 +296,8 @@ if (process.argv.includes("--self-test")) {
   // GOOD shapes pass.
   check("helper GOOD", scanHelper(HELPER_OK), false);
   check("phoneinput GOOD", scanPhoneInput(PHONEINPUT_OK), false);
-  check("rsvp GOOD", scanRsvp(RSVP_OK), false);
+  check("rsvp callsite GOOD", scanRsvpCallsite(RSVP_CALLSITE_OK), false);
+  check("rsvp renderer GOOD", scanRsvpRenderer(RSVP_RENDERER_OK), false);
   check("checkout GOOD", scanCheckout(CHECKOUT_OK, "checkout"), false);
   check("overlay GOOD", scanOverlay(OVERLAY_OK), false);
 
@@ -269,12 +305,26 @@ if (process.argv.includes("--self-test")) {
   check("helper BAD (web gate dropped)", scanHelper(HELPER_BAD), true);
   check("phoneinput BAD (overlay branch dropped)", scanPhoneInput(PHONEINPUT_BAD), true);
   check("phoneinput BAD_F (web-immediate open dropped)", scanPhoneInput(PHONEINPUT_BAD_F), true);
-  check("rsvp BAD (overlay prop dropped)", scanRsvp(RSVP_BAD), true);
+  check(
+    "rsvp callsite BAD (shared hook dropped)",
+    scanRsvpCallsite(RSVP_CALLSITE_BAD_HOOK),
+    true,
+  );
+  check(
+    "rsvp callsite BAD (renderer prop dropped)",
+    scanRsvpCallsite(RSVP_CALLSITE_BAD_PROP),
+    true,
+  );
+  check(
+    "rsvp renderer BAD (overlay prop dropped)",
+    scanRsvpRenderer(RSVP_RENDERER_BAD),
+    true,
+  );
   check("checkout BAD (overlay leaked in)", scanCheckout(CHECKOUT_BAD, "checkout"), true);
   check("overlay BAD (web fixed dropped)", scanOverlay(OVERLAY_BAD), true);
 
   console.log(
-    "ORCH-1299 gate self-test PASS (11/11: 5 fixed shapes pass; 6 reverts fail).",
+    "ORCH-1299 gate self-test PASS (14/14: 6 fixed shapes pass; 8 reverts fail).",
   );
   process.exit(0);
 }
@@ -293,7 +343,8 @@ const failures = [
   ...scanHelper(read(HELPER_REL)),
   ...scanPhoneInput(read(PHONEINPUT_REL)),
   ...scanOverlay(read(OVERLAY_REL)),
-  ...scanRsvp(read(RSVP_REL)),
+  ...scanRsvpCallsite(read(RSVP_REL)),
+  ...scanRsvpRenderer(read(RSVP_RENDERER_REL)),
   ...CHECKOUT_RELS.flatMap((rel) => scanCheckout(read(rel), rel)),
 ];
 
@@ -312,6 +363,7 @@ if (failures.length > 0) {
 
 console.log(
   "ORCH-1299 gate PASS — resolvePickerPresentation web-gates overlay; PhoneInput " +
-    "renders both surfaces; RSVP field passes overlay; checkout fields keep modal; " +
-    "overlay pins web fixed.",
+    "renders both surfaces; PublicEventPage consumes the shared RSVP renderer; " +
+    "the shared RSVP field passes overlay; checkout fields keep modal; overlay " +
+    "pins web fixed.",
 );
