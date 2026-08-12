@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 504,
-  "selfTestWiredFloor": 313,
+  "expectedStrictGrepMjsFiles": 505,
+  "selfTestWiredFloor": 314,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -7355,6 +7355,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "rsvp-backend-contract"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-1902-public-event-lifecycle-tests.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "lifecycle"
       ]
     },
     {

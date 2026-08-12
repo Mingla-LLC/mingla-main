@@ -51,7 +51,6 @@ import React, {
 import {
   AccessibilityInfo,
   Image,
-  findNodeHandle,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -101,56 +100,70 @@ export { computeRunningTotal, totalSelectedQuantity } from "./eventBoxTotals";
 
 const ABOUT_COLLAPSE_THRESHOLD = 160;
 
-export const EventAcquisitionNotice: React.FC<{
+interface EventAcquisitionNoticeProps {
   state: Exclude<EventAcquisitionState, { kind: "current" }>;
   eventType: "event" | "rsvp";
   brandName: string;
   palette: ThemePalette;
   theme: ResolvedTheme;
   focusOnMount?: boolean;
-}> = ({
+}
+
+type WebStatusProps = {
+  role: "status";
+  "aria-live": "polite";
+  "aria-atomic": true;
+};
+
+type NativeStatusProps = {
+  accessibilityRole: "summary";
+  accessibilityLiveRegion: "polite";
+};
+
+export const EventAcquisitionNotice: React.FC<EventAcquisitionNoticeProps> = ({
   state,
   eventType,
   brandName,
   palette,
   theme,
   focusOnMount = false,
-}) => {
+}: EventAcquisitionNoticeProps) => {
   const copy = eventAcquisitionNoticeCopy(state, eventType, brandName);
   const surface = offeringSurfaceStyles(palette);
-  const noticeRef = useRef<View>(null);
+  const noticeId = `issue-1902-${eventType}-acquisition-notice`;
+  const nativeNoticeHandleRef = useRef<number | null>(null);
+  const statusProps: WebStatusProps | NativeStatusProps =
+    Platform.OS === "web"
+      ? {
+          role: "status",
+          "aria-live": "polite",
+          "aria-atomic": true,
+        }
+      : {
+          accessibilityRole: "summary",
+          accessibilityLiveRegion: "polite",
+        };
   useEffect(() => {
     if (!focusOnMount) return;
-    const node = noticeRef.current;
-    if (node === null) {
-      AccessibilityInfo?.announceForAccessibility?.(copy.announcement);
-      return;
-    }
-    const webNode = node as unknown as { focus?: () => void };
-    if (typeof webNode.focus === "function") webNode.focus();
-    else {
-      const handle = findNodeHandle(node);
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      document.getElementById(noticeId)?.focus();
+    } else {
+      const handle = nativeNoticeHandleRef.current;
       if (handle !== null) AccessibilityInfo?.setAccessibilityFocus?.(handle);
     }
     AccessibilityInfo?.announceForAccessibility?.(copy.announcement);
-  }, [copy.announcement, focusOnMount]);
+  }, [copy.announcement, focusOnMount, noticeId]);
   return (
     <View
-      ref={noticeRef}
+      nativeID={noticeId}
+      onLayout={(event: LayoutChangeEvent) => {
+        nativeNoticeHandleRef.current = event.target;
+      }}
       accessible
       accessibilityLabel={copy.announcement}
-      {...(Platform.OS === "web"
-        ? ({
-            role: "status",
-            "aria-live": "polite",
-            "aria-atomic": true,
-          } as object)
-        : {
-            accessibilityRole: "summary" as const,
-            accessibilityLiveRegion: "polite" as const,
-          })}
+      {...statusProps}
       style={[styles.acquisitionNotice, surface.card]}
-      testID={`issue-1902-${eventType}-acquisition-notice`}
+      testID={noticeId}
     >
       <Text style={[styles.acquisitionEyebrow, { color: palette.accent }]}>
         {copy.eyebrow}
@@ -305,7 +318,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   socialProof = null,
   onSeeWhosGoing,
   testID,
-}) => {
+}: EventOfferingBodyProps) => {
   const surface = offeringSurfaceStyles(palette);
   const boldFamily = boldFontFamily(theme);
   const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);

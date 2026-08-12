@@ -288,7 +288,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     () =>
       events
         .filter(
-          (event) =>
+          (event: PublicBrandEvent) =>
             resolveEventAcquisitionState(
               {
                 operatorStatus: event.status,
@@ -311,7 +311,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   useEffect(() => {
     const refresh = (): void => setNowMs(Date.now());
     const delay = nextEventAcquisitionBoundaryDelayMs(
-      events.map((event) => ({
+      events.map((event: PublicBrandEvent) => ({
         operatorStatus: event.status,
         operatorEndedAtUtc: event.operatorEndedAtUtc,
         masterEndAtUtc: event.masterEndAtUtc,
@@ -346,8 +346,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const focusedEventId = useRef<string | null>(null);
   useEffect(() => {
     const previous = previousCurrentEvents.current;
-    const remainingIds = new Set(upcomingEvents.map((event) => event.id));
-    const ended = previous.filter((event) => !remainingIds.has(event.id));
+    const remainingIds = new Set(
+      upcomingEvents.map((event: PublicBrandEvent) => event.id),
+    );
+    const ended = previous.filter(
+      (event: PublicBrandEvent) => !remainingIds.has(event.id),
+    );
     if (ended.length > 0 && activeTab === "events") {
       if (upcomingEvents.length === 0) {
         setActiveTab("about");
@@ -356,7 +360,12 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           "Events have ended. Showing About.",
         );
       } else {
-        if (ended.some((event) => event.id === focusedEventId.current)) {
+        if (
+          ended.some(
+            (event: PublicBrandEvent) =>
+              event.id === focusedEventId.current,
+          )
+        ) {
           setFocusTabRequest({ tab: "events", token: Date.now() });
           focusedEventId.current = null;
         }
@@ -614,7 +623,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         isDesktop={isDesktop}
         emptyCopy="No public events yet"
         onPress={callbacks.onOpenEvent}
-        onFocusEvent={(eventId) => {
+        onFocusEvent={(eventId: string) => {
           focusedEventId.current = eventId;
         }}
       />
@@ -914,7 +923,7 @@ const FollowButton: React.FC<BrandFollowButtonProps> = ({
 // ORCH-1155 — horizontally-scrollable tab bar (no clipping; nowrap chips sized to
 // content). Active chip scroll-into-view is best-effort via cached chip offsets
 // (spec OQ-2). I-PROPOSED-1155-TABS-SCROLLABLE.
-const TabBar: React.FC<{
+interface TabBarProps {
   tabs: Tab[];
   activeTab: Tab;
   palette: ThemePalette;
@@ -924,7 +933,9 @@ const TabBar: React.FC<{
   countForTab: (tab: Tab) => number | undefined;
   onSelect: (tab: Tab) => void;
   focusRequest?: { tab: Tab; token: number } | null;
-}> = ({
+}
+
+const TabBar: React.FC<TabBarProps> = ({
   tabs,
   activeTab,
   palette,
@@ -934,7 +945,7 @@ const TabBar: React.FC<{
   countForTab,
   onSelect,
   focusRequest,
-}) => {
+}: TabBarProps) => {
   const scrollRef = React.useRef<ScrollView>(null);
   const offsets = React.useRef<Record<string, number>>({});
   const showEdgeFade = Platform.OS === "web" && !isDesktop;
@@ -1024,7 +1035,7 @@ const OfferingGrid: React.FC<{
   <View style={[styles.grid, isDesktop && styles.gridDesktop]}>{children}</View>
 );
 
-const EventList: React.FC<{
+interface EventListProps {
   events: PublicBrandEvent[];
   theme: ResolvedTheme;
   palette: ThemePalette;
@@ -1033,7 +1044,9 @@ const EventList: React.FC<{
   emptyCopy: string;
   onPress: (event: PublicBrandEvent) => void;
   onFocusEvent?: (eventId: string) => void;
-}> = ({
+}
+
+const EventList: React.FC<EventListProps> = ({
   events,
   theme,
   palette,
@@ -1042,13 +1055,13 @@ const EventList: React.FC<{
   emptyCopy,
   onPress,
   onFocusEvent,
-}) => {
+}: EventListProps) => {
   if (events.length === 0)
     return <EmptyPane copy={emptyCopy} palette={palette} />;
   return (
     <View>
       <OfferingGrid isDesktop={isDesktop}>
-        {events.map((event) => (
+        {events.map((event: PublicBrandEvent) => (
           <EventMiniCard
             key={event.id}
             event={event}
@@ -1065,7 +1078,7 @@ const EventList: React.FC<{
   );
 };
 
-const EventMiniCard: React.FC<{
+interface EventMiniCardProps {
   event: PublicBrandEvent;
   theme: ResolvedTheme;
   palette: ThemePalette;
@@ -1073,7 +1086,17 @@ const EventMiniCard: React.FC<{
   isDesktop: boolean;
   onPress: (event: PublicBrandEvent) => void;
   onFocusEvent?: (eventId: string) => void;
-}> = ({ event, theme, palette, surface, isDesktop, onPress, onFocusEvent }) => {
+}
+
+const EventMiniCard: React.FC<EventMiniCardProps> = ({
+  event,
+  theme,
+  palette,
+  surface,
+  isDesktop,
+  onPress,
+  onFocusEvent,
+}: EventMiniCardProps) => {
   const isRsvp = event.eventType === "rsvp";
   const price = isRsvp
     ? null
