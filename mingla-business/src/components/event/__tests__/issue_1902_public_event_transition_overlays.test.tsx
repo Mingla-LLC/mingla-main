@@ -126,9 +126,17 @@ jest.mock("../FoundationEventPreview", () => ({
         {String(props.socialProof?.capacity ?? "none")}
       </Text>
       {props.onSeeWhosGoing ? (
-        <Pressable testID="open-ticket-gate" onPress={props.onSeeWhosGoing} />
+        <Pressable
+          testID="open-ticket-gate"
+          accessibilityLabel="See who's going"
+          onPress={props.onSeeWhosGoing}
+        />
       ) : null}
-      <Pressable testID="open-waitlist" onPress={props.onProceedToCart} />
+      <Pressable
+        testID="open-waitlist"
+        accessibilityLabel="Open waitlist"
+        onPress={props.onProceedToCart}
+      />
     </View>
   ),
 }));
@@ -142,10 +150,15 @@ jest.mock("../FoundationRsvpPreview", () => ({
     <View testID="rsvp-foundation">
       {props.stateBanner}
       {props.config.onSeeWhosGoing ? (
-        <Pressable testID="open-rsvp-gate" onPress={props.config.onSeeWhosGoing} />
+        <Pressable
+          testID="open-rsvp-gate"
+          accessibilityLabel="See who's going"
+          onPress={props.config.onSeeWhosGoing}
+        />
       ) : null}
       <Pressable
         testID="server-end-rsvp"
+        accessibilityLabel="End RSVP event"
         onPress={() => props.onAcquisitionClosed?.("ended")}
       />
     </View>

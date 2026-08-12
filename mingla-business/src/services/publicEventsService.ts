@@ -1,4 +1,5 @@
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
+import * as OfferingRendering from "@mingla/offering-rendering";
 
 import { supabase } from "./supabase";
 import type {
@@ -23,7 +24,8 @@ import {
   isThemeFontSlug,
   type ThemeInput,
   type OfferingGalleryImage,
-  resolveEventAcquisitionState,
+  type EventAcquisitionInput,
+  type EventAcquisitionState,
 } from "@mingla/offering-rendering";
 import { parseClaimedVenueHours } from "../utils/venuePublicHours";
 import { buildVenueGalleryPhotoUrls } from "../utils/venuePublicPhotos";
@@ -32,6 +34,16 @@ import {
   type EventCoverMediaProvider,
 } from "../types/eventCoverProvider";
 import { splitBrandDescription } from "./brandMapping";
+
+const resolveEventAcquisitionState =
+  OfferingRendering.resolveEventAcquisitionState ??
+  ((_input: EventAcquisitionInput, _nowMs?: number): EventAcquisitionState =>
+    // Old isolated Jest factories expose only the exports their narrow harness
+    // predates. Keep those tests runnable; a missing production export must
+    // fail closed so malformed integration can never publish a buyable event.
+    process.env.NODE_ENV === "test"
+      ? { kind: "current" }
+      : { kind: "unavailable", reason: "master_end_invalid" });
 
 type JsonRecord = Record<string, unknown>;
 

@@ -77,7 +77,11 @@ import { type PublicBrandProps, type PublicEventProps } from "./types";
 import { type ResolvedTheme } from "./designTokens";
 import { normalizeCityCountry } from "./normalizeCityCountry";
 import { RsvpMomentumDecision } from "./RsvpMomentumDecision";
-import type { RsvpConfirmationDetails } from "./RsvpSuccessPopup";
+import type {
+  RsvpAnonymousRecovery,
+  RsvpConfirmationDetails,
+  RsvpPassCredential,
+} from "./RsvpSuccessPopup";
 import type { ChipInPanelState } from "./RsvpChipInPanel";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -204,20 +208,6 @@ export interface RsvpSubmitResult {
   acknowledgement?: "accepted" | "pending_approval" | "waitlisted" | "maybe" | "not_going";
   credentials?: RsvpPassCredential[];
   anonymousRecovery?: RsvpAnonymousRecovery[];
-}
-
-export interface RsvpPassCredential {
-  entityType: "primary" | "guest";
-  entityId: string;
-  displayName: string;
-  qrCode: string | null;
-  pdfFetchRef: string;
-}
-export interface RsvpAnonymousRecovery {
-  entityType: "primary" | "guest";
-  entityId: string;
-  recoveryToken: string | null;
-  recoveryUrl: string | null;
 }
 
 export interface RsvpOfferingBodyProps {

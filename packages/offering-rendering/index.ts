@@ -151,8 +151,6 @@ export type {
   RsvpOfferingDecisionDockProps,
   RsvpGuestContact,
   RsvpSubmitResult,
-  RsvpPassCredential,
-  RsvpAnonymousRecovery,
   ChipInResult,
   // ORCH-1295 [chip-in-post-payment-polish] — BUG 2 host-supplied phone field.
   RsvpPhoneFieldRenderArgs,
@@ -165,6 +163,8 @@ export type { RsvpDetailsModalProps } from "./RsvpDetailsModal";
 export type {
   RsvpSuccessPopupProps,
   RsvpConfirmationDetails,
+  RsvpPassCredential,
+  RsvpAnonymousRecovery,
 } from "./RsvpSuccessPopup";
 // ORCH-1291 [rsvp-chip-in] — the shared voluntary-gift panel + the payment
 // hand-off type (surfaces provide onChipIn; the body mounts the panel).

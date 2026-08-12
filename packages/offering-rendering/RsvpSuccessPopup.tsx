@@ -24,11 +24,25 @@ import {
 
 import { boldFontFamily, type ThemePalette } from "./themePalette";
 import { type ResolvedTheme } from "./designTokens";
-import type { RsvpAnonymousRecovery, RsvpPassCredential } from "./RsvpOfferingBody";
 
 // Keep the sizeable SVG QR renderer out of the initial buyer-web bundle.
 // @ts-expect-error -- the host apps provide this workspace peer dependency.
 const QrCode = React.lazy(() => import("react-native-qrcode-svg"));
+
+export interface RsvpPassCredential {
+  entityType: "primary" | "guest";
+  entityId: string;
+  displayName: string;
+  qrCode: string | null;
+  pdfFetchRef: string;
+}
+
+export interface RsvpAnonymousRecovery {
+  entityType: "primary" | "guest";
+  entityId: string;
+  recoveryToken: string | null;
+  recoveryUrl: string | null;
+}
 
 /** Shared confirmation-details type (exported from the barrel). */
 export interface RsvpConfirmationDetails {

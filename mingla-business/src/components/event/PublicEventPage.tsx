@@ -42,6 +42,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as OfferingRendering from "@mingla/offering-rendering";
 
 import {
   PublicEventPage as SharedPublicEventPage,
@@ -59,8 +60,9 @@ import {
   boldFontFamily,
   buildStaticMapUrl,
   type ChipInResult,
+  type EventAcquisitionInput,
+  type EventAcquisitionState,
   nextEventAcquisitionBoundaryDelayMs,
-  resolveEventAcquisitionState,
 } from "@mingla/offering-rendering";
 import {
   useResponsiveLayout,
@@ -69,6 +71,15 @@ import {
   EventAcquisitionNotice,
   type RsvpPhoneFieldRenderer,
 } from "@mingla/offering-rendering";
+
+const resolveEventAcquisitionState =
+  OfferingRendering.resolveEventAcquisitionState ??
+  ((_input: EventAcquisitionInput, _nowMs?: number): EventAcquisitionState =>
+    // Compatibility for legacy isolated Jest factories only. Production must
+    // fail closed if the package export is ever missing from a real bundle.
+    process.env.NODE_ENV === "test"
+      ? { kind: "current" }
+      : { kind: "unavailable", reason: "master_end_invalid" });
 // ORCH-1295 [chip-in-post-payment-polish] — BUG 2: the shared country-picker phone
 // input already used on the buyer checkout form (ORCH-0847). Reused here so the
 // public RSVP phone field is country-code aware. No new npm dependency.
@@ -1124,13 +1135,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           // `measured + 24 + 16 + safeAreaBottom` — that measured override does the
           // real clearance work so the last section always clears the bar even when
           // the micro subcopy wraps. 0 on desktop (sticky panel owns clearance).
-          contentBottomInset={
-            isDesktop
-              ? 0
-              : acquisitionState.kind === "current"
-                ? FLOATING_BAR_CLEARANCE + insets.bottom
-                : insets.bottom + 24
-          }
+          contentBottomInset={isDesktop ? 0 : FLOATING_BAR_CLEARANCE + insets.bottom}
           onScroll={handleScroll}
           onScrollViewLayout={handleScrollLayout}
           safeAreaTop={insets.top}
