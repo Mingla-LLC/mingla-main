@@ -8,11 +8,11 @@
  *   1. It slices the REAL shipped catch body out of AuthContext.tsx.
  *   2. It PROGRAMMATICALLY EXCISES the inserted
  *      `if (shouldReportAuthFailure(code)) { … }` block from that slice.
- *   3. It asserts the residue is BYTE-IDENTICAL to the frozen `origin/main`
- *      body (embedded below verbatim from `git show origin/main:…`). That is a
- *      byte-level proof of "additive only" — strictly stronger than a `+N/−0`
- *      numstat, because numstat cannot see a line MOVED between a branch and
- *      its Alert, and this can.
+ *   3. [TEST-MOD-APPROVED #1881] It asserts the residue is BYTE-IDENTICAL to
+ *      the frozen, approved post-#1881 opaque-copy catch baseline embedded
+ *      below. That is a byte-level proof that #1044 capture remains additive
+ *      to the new catch behavior — strictly stronger than a `+N/−0` numstat,
+ *      because numstat cannot see a line MOVED between a branch and its Alert.
  *   4. It then EXECUTES both bodies over one input matrix and asserts the
  *      recorded `Alert.alert` argument arrays and the returned values are
  *      deep-equal, case by case.
@@ -25,7 +25,10 @@
  *     promise (hang), and returns a REJECTED promise (unhandled-rejection
  *     hazard). In every case sign-in must be untouched.
  *
- * Append-only. No product code was modified to make anything here pass.
+ * [TEST-MOD-APPROVED #1881] This suite's provenance/dependency baseline was
+ * rebaselined only because #1881 intentionally changed the product catch copy;
+ * no #1044 capture assertion, payload, fingerprint, ordering, or failure-safety
+ * behavior was weakened.
  */
 
 import fs from "node:fs";
@@ -37,6 +40,7 @@ jest.mock("../../diagnostics/sentry", () => ({
 
 import { captureException } from "../../diagnostics/sentry";
 import { reportNonFatal as realReportNonFatal } from "../../diagnostics/reportNonFatal";
+import { resolveAuthFailureCopy } from "../../constants/authFailureCopy";
 
 const SOURCE = fs.readFileSync(
   path.join(__dirname, "..", "AuthContext.tsx"),
@@ -46,11 +50,11 @@ const SOURCE = fs.readFileSync(
 jest.spyOn(console, "warn").mockImplementation(() => {});
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The frozen pre-change bodies, verbatim from
-//   git show origin/main:mingla-business/src/context/AuthContext.tsx
-// captured at origin/main = the PR's merge base. These are history, not shipped
-// code, so a frozen copy is legitimate here (the POST-change side is always
-// sliced live from the real file — delete the fix and this suite fails).
+// [TEST-MOD-APPROVED #1881] Frozen approved post-#1881 catch baselines after the
+// #1044 capture block is excised. They deliberately include #1881's opaque-copy
+// selection and are NOT the raw-alert body from origin/main/the PR merge base.
+// The shipped side is always sliced live from the real file; this differential
+// proves the #1044 capture block remains additive to the approved #1881 catch.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PRE_GOOGLE_CATCH = `      const e = err instanceof Error ? err : new Error(String(err));
@@ -67,14 +71,38 @@ const PRE_GOOGLE_CATCH = `      const e = err instanceof Error ? err : new Error
         return { error: e };
       }
 
-      if (!String(e.message).toLowerCase().includes("cancel")) {
-        const msg = e.message || "Please try again.";
-        const audienceHint =
-          msg.includes("Unacceptable audience") || msg.includes("audience in id_token")
-            ? "\\n\\nRegister every OAuth client this build uses (Web, iOS, Android) in Supabase → Authentication → Google → Client IDs, comma-separated, Web client first."
-            : "";
-        Alert.alert("Google Sign-In failed", \`\${msg}\${audienceHint}\`);
+      if (retryAbandoned) {
+        return { error: e };
       }
+
+      const failure = classifyAuthFailure(
+        e.name,
+        code,
+        (err as { status?: unknown })?.status,
+        e.message,
+        Platform.OS,
+      );
+      const titleKey =
+        failure === "permanent"
+          ? "auth:welcome.sign_in_failed_title"
+          : transportRetryAttempts > 0
+            ? "auth:welcome.sign_in_retry_exhausted_title"
+            : failure === "transient-transport-offline"
+              ? "auth:welcome.sign_in_offline_title"
+              : "auth:welcome.sign_in_failed_title";
+      const bodyKey =
+        failure === "permanent"
+          ? "auth:welcome.sign_in_permanent_body"
+          : transportRetryAttempts > 0
+            ? "auth:welcome.sign_in_retry_exhausted_body"
+            : failure === "transient-transport-offline"
+              ? "auth:welcome.sign_in_offline_body"
+              : "auth:welcome.sign_in_failed_body";
+      Alert.alert(
+        resolveAuthFailureCopy(titleKey),
+        resolveAuthFailureCopy(bodyKey),
+        [{ text: resolveAuthFailureCopy("auth:welcome.sign_in_failed_ok") }],
+      );
       return { error: e };`;
 
 const PRE_APPLE_CATCH = `      const e = err instanceof Error ? err : new Error(String(err));
@@ -82,7 +110,38 @@ const PRE_APPLE_CATCH = `      const e = err instanceof Error ? err : new Error(
       if (code === "ERR_REQUEST_CANCELED") {
         return { error: e };
       }
-      Alert.alert("Apple Sign-In failed", e.message || "Please try again.");
+      if (retryAbandoned) {
+        return { error: e };
+      }
+
+      const failure = classifyAuthFailure(
+        e.name,
+        code,
+        (err as { status?: unknown })?.status,
+        e.message,
+        Platform.OS,
+      );
+      const titleKey =
+        failure === "permanent"
+          ? "auth:welcome.sign_in_failed_title"
+          : transportRetryAttempts > 0
+            ? "auth:welcome.sign_in_retry_exhausted_title"
+            : failure === "transient-transport-offline"
+              ? "auth:welcome.sign_in_offline_title"
+              : "auth:welcome.sign_in_failed_title";
+      const bodyKey =
+        failure === "permanent"
+          ? "auth:welcome.sign_in_permanent_body"
+          : transportRetryAttempts > 0
+            ? "auth:welcome.sign_in_retry_exhausted_body"
+            : failure === "transient-transport-offline"
+              ? "auth:welcome.sign_in_offline_body"
+              : "auth:welcome.sign_in_failed_body";
+      Alert.alert(
+        resolveAuthFailureCopy(titleKey),
+        resolveAuthFailureCopy(bodyKey),
+        [{ text: resolveAuthFailureCopy("auth:welcome.sign_in_failed_ok") }],
+      );
       return { error: e };`;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,6 +230,10 @@ interface Deps {
   ) => void;
   Platform: { OS: string; Version: unknown };
   webClientId: unknown;
+  retryAbandoned: boolean;
+  transportRetryAttempts: number;
+  classifyAuthFailure: (...args: unknown[]) => string;
+  resolveAuthFailureCopy: typeof resolveAuthFailureCopy;
 }
 
 const compileCatch = (
@@ -184,6 +247,10 @@ const compileCatch = (
     "reportNonFatal",
     "Platform",
     "webClientId",
+    "retryAbandoned",
+    "transportRetryAttempts",
+    "classifyAuthFailure",
+    "resolveAuthFailureCopy",
     `"use strict";\n${eraseTypeAssertions(body)}`,
   ) as (...a: unknown[]) => unknown;
   return (err, d) =>
@@ -195,6 +262,10 @@ const compileCatch = (
       d.reportNonFatal,
       d.Platform,
       d.webClientId,
+      d.retryAbandoned,
+      d.transportRetryAttempts,
+      d.classifyAuthFailure,
+      d.resolveAuthFailureCopy,
     );
 };
 
@@ -213,6 +284,21 @@ const compilePredicate = (
     sc: Record<string, string | undefined>,
   ) => (code: unknown) => boolean;
   return make(statusCodes);
+};
+
+const compileClassifier = (): ((...args: unknown[]) => string) => {
+  const m = SOURCE.match(
+    /const classifyAuthFailure = \([\s\S]*?\): AuthFailureClass => \{\n([\s\S]*?)\n\};/,
+  );
+  expect(m).not.toBeNull();
+  return new Function(
+    "errName",
+    "errCode",
+    "errStatus",
+    "errMessage",
+    "platformOS",
+    `"use strict";${m![1]}`,
+  ) as (...args: unknown[]) => string;
 };
 
 /**
@@ -256,6 +342,10 @@ const makeDeps = (
       "webClientId" in overrides
         ? overrides.webClientId
         : "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com",
+    retryAbandoned: overrides.retryAbandoned ?? false,
+    transportRetryAttempts: overrides.transportRetryAttempts ?? 0,
+    classifyAuthFailure: overrides.classifyAuthFailure ?? compileClassifier(),
+    resolveAuthFailureCopy: overrides.resolveAuthFailureCopy ?? resolveAuthFailureCopy,
   };
 };
 
@@ -270,11 +360,13 @@ const withCode = (message: string, code: unknown): Error => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("#1044 ADVERSARIAL A — the change is provably additive (byte-level, not numstat-level)", () => {
-  it("A1 — excising the capture block from the SHIPPED Google catch reproduces origin/main byte-for-byte", () => {
+  it("A1 — excising capture from the shipped Google catch reproduces the approved post-#1881 baseline byte-for-byte", () => {
+    // [TEST-MOD-APPROVED #1881] Frozen baseline includes the approved opaque-copy catch.
     expect(exciseCaptureBlock(liveGoogleCatch())).toBe(PRE_GOOGLE_CATCH);
   });
 
-  it("A2 — excising the capture block from the SHIPPED Apple catch reproduces origin/main byte-for-byte", () => {
+  it("A2 — excising capture from the shipped Apple catch reproduces the approved post-#1881 baseline byte-for-byte", () => {
+    // [TEST-MOD-APPROVED #1881] Frozen baseline includes the approved opaque-copy catch.
     expect(exciseCaptureBlock(liveAppleCatch())).toBe(PRE_APPLE_CATCH);
   });
 
@@ -305,8 +397,9 @@ describe("#1044 ADVERSARIAL A — the change is provably additive (byte-level, n
 });
 
 /**
- * The differential matrix. Every entry is executed by BOTH the pre-change body
- * and the shipped body; the Alerts and the return value must match exactly.
+ * [TEST-MOD-APPROVED #1881] Every entry is executed by BOTH the frozen approved
+ * post-#1881 catch baseline and the shipped catch; Alert/return behavior must
+ * match exactly after capture is excised.
  */
 const MATRIX: Array<{ name: string; make: () => unknown }> = [
   { name: "Google DEVELOPER_ERROR (string code)", make: () => withCode("DEVELOPER_ERROR", "10") },
@@ -351,7 +444,7 @@ describe("#1044 ADVERSARIAL A — differential: sign-in behaviour is byte-identi
   void cases;
 
   it.each(MATRIX.map((c) => [c.name, c] as const))(
-    "A4 [Google] %s — same Alerts, same return value as origin/main",
+    "A4 [Google] %s — same Alerts/return as approved post-#1881 catch baseline",
     (_name, c) => {
       for (const sc of [ANDROID_STATUS_CODES, IOS_STATUS_CODES]) {
         const pre = makeDeps({ statusCodes: sc });
@@ -376,7 +469,7 @@ describe("#1044 ADVERSARIAL A — differential: sign-in behaviour is byte-identi
   );
 
   it.each(MATRIX.map((c) => [c.name, c] as const))(
-    "A5 [Apple] %s — same Alerts, same return value as origin/main",
+    "A5 [Apple] %s — same Alerts/return as approved post-#1881 catch baseline",
     (_name, c) => {
       const pre = makeDeps();
       const live = makeDeps();

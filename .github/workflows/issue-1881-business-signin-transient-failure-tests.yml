@@ -1,0 +1,61 @@
+name: Issue 1881 Business Transient Sign-In Failure Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-business/src/context/AuthContext.tsx"
+      - "mingla-business/src/constants/authFailureCopy.ts"
+      - "mingla-business/src/context/__tests__/AuthContext.transientSignInFailure.issue1881.test.ts"
+      - "mingla-business/src/context/__tests__/AuthContext.transientSignInFailure.adversarial.issue1881.test.ts"
+      - "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts"
+      - "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts"
+      - ".github/workflows/issue-1881-business-signin-transient-failure-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-business/src/context/AuthContext.tsx"
+      - "mingla-business/src/constants/authFailureCopy.ts"
+      - "mingla-business/src/context/__tests__/AuthContext.transientSignInFailure.issue1881.test.ts"
+      - "mingla-business/src/context/__tests__/AuthContext.transientSignInFailure.adversarial.issue1881.test.ts"
+      - "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts"
+      - "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts"
+      - ".github/workflows/issue-1881-business-signin-transient-failure-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1881-business-jest:
+    name: "#1881 BIZ: transient sign-in failures retry and stay opaque"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Run #1881 implementor happy-path suite
+        run: >
+          npx jest
+          src/context/__tests__/AuthContext.transientSignInFailure.issue1881.test.ts
+          --runInBand
+      - name: Run #1881 tester adversarial suite
+        run: >
+          npx jest
+          src/context/__tests__/AuthContext.transientSignInFailure.adversarial.issue1881.test.ts
+          --runInBand
+      - name: Preserve #1044 native failure reporting
+        run: >
+          npx jest
+          src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts
+          src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts
+          --runInBand

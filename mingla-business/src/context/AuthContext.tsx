@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Alert, Platform } from "react-native";
+import { Alert, AppState, Platform } from "react-native";
 import Constants from "expo-constants";
 import {
   GoogleSignin,
@@ -77,6 +77,7 @@ import { creatorAccountKeys } from "../hooks/creatorAccountKeys";
 // the full 7s ceiling; on timeout it throws → existing fail-OPEN catch keeps
 // the user signed in.
 import { withTimeout, AUTH_PROBE_TIMEOUT_MS } from "../utils/withTimeout";
+import { resolveAuthFailureCopy } from "../constants/authFailureCopy";
 
 // ORCH-0887-A [Auth getSession Promise.race timeout] — close indefinite
 // loader hang on business-web. SPEC §2.1: constant inline at top of
@@ -236,6 +237,42 @@ const shouldReportAuthFailure = (code: unknown): boolean => {
   return true;
 };
 
+type AuthFailureClass =
+  | "permanent"
+  | "transient-transport-offline"
+  | "transient-transport-remote"
+  | "transient-provider";
+
+/** Extra attempts beyond the first exchange, so three total. */
+const TRANSPORT_RETRY_MAX_ATTEMPTS = 2;
+const TRANSPORT_RETRY_DELAYS_MS = Object.freeze([400, 1200]);
+
+const classifyAuthFailure = (
+  errName: unknown,
+  errCode: unknown,
+  errStatus: unknown,
+  errMessage: unknown,
+  platformOS: string,
+): AuthFailureClass => {
+  if (errName === "AuthRetryableFetchError") {
+    if (errStatus === 0 || errStatus === undefined || errStatus === null) {
+      return "transient-transport-offline";
+    }
+    return "transient-transport-remote";
+  }
+  if (
+    platformOS === "android" &&
+    typeof errCode === "string" &&
+    (errCode === "7" || errCode === "8" || errCode === "15")
+  ) {
+    return "transient-provider";
+  }
+  if (typeof errMessage === "string" && errMessage === "Network request failed") {
+    return "transient-transport-offline";
+  }
+  return "permanent";
+};
+
 // Web auth uses Supabase OAuth-redirect (DEC-076 + DEC-081). The browser
 // is redirected to Google/Apple, then back to `${origin}/auth/callback`
 // where Supabase finalises the session via `detectSessionInUrl: true`.
@@ -359,9 +396,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // token for an already-reconciled session does NOT re-invalidate everything
   // (no refetch storm, no #185 re-render loop — matches the sibling ref-guards).
   const reconciledAuthScopedForUserRef = useRef<string | null>(null);
+  // #1881 [business transient sign-in failure] — bounds token-exchange retry
+  // work to this provider lifetime and suppresses only stale user Alerts.
+  const authLifetimeActiveRef = useRef(true);
 
   useEffect(() => {
     let mounted = true;
+    authLifetimeActiveRef.current = true;
 
     // ORCH-1102 Wave 2 — bounded-loading hard ceiling. Independent wall-clock
     // backstop: if neither the Promise.race timeout branch nor a resolved
@@ -908,6 +949,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       mounted = false;
+      authLifetimeActiveRef.current = false;
       // ORCH-1292 — the ceiling timer is now always armed (native + web), so it
       // is always a live handle; clear it unconditionally on unmount.
       clearTimeout(hardCeilingTimer);
@@ -931,6 +973,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Browser navigates away to Google — control does not return here.
       return { error: null };
     }
+
+    let transportRetryAttempts = 0;
+    let retryAbandoned = false;
+    const retryCancelled = () =>
+      !authLifetimeActiveRef.current || AppState.currentState === "background";
 
     try {
       if (!webClientId) {
@@ -983,6 +1030,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         provider: "google",
         token: tokens.idToken,
       });
+
+      while (
+        error &&
+        transportRetryAttempts < TRANSPORT_RETRY_MAX_ATTEMPTS &&
+        classifyAuthFailure(
+          error.name,
+          error.code,
+          error.status,
+          error.message,
+          Platform.OS,
+        ).startsWith("transient-transport")
+      ) {
+        if (retryCancelled()) {
+          retryAbandoned = true;
+          break;
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, TRANSPORT_RETRY_DELAYS_MS[transportRetryAttempts]),
+        );
+        if (retryCancelled()) {
+          retryAbandoned = true;
+          break;
+        }
+        transportRetryAttempts += 1;
+        ({ data, error } = await supabase.auth.signInWithIdToken({
+          provider: "google",
+          token: tokens.idToken,
+        }));
+      }
 
       const isExistingUserError =
         error &&
@@ -1093,14 +1169,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: e };
       }
 
-      if (!String(e.message).toLowerCase().includes("cancel")) {
-        const msg = e.message || "Please try again.";
-        const audienceHint =
-          msg.includes("Unacceptable audience") || msg.includes("audience in id_token")
-            ? "\n\nRegister every OAuth client this build uses (Web, iOS, Android) in Supabase → Authentication → Google → Client IDs, comma-separated, Web client first."
-            : "";
-        Alert.alert("Google Sign-In failed", `${msg}${audienceHint}`);
+      if (retryAbandoned) {
+        return { error: e };
       }
+
+      const failure = classifyAuthFailure(
+        e.name,
+        code,
+        (err as { status?: unknown })?.status,
+        e.message,
+        Platform.OS,
+      );
+      const titleKey =
+        failure === "permanent"
+          ? "auth:welcome.sign_in_failed_title"
+          : transportRetryAttempts > 0
+            ? "auth:welcome.sign_in_retry_exhausted_title"
+            : failure === "transient-transport-offline"
+              ? "auth:welcome.sign_in_offline_title"
+              : "auth:welcome.sign_in_failed_title";
+      const bodyKey =
+        failure === "permanent"
+          ? "auth:welcome.sign_in_permanent_body"
+          : transportRetryAttempts > 0
+            ? "auth:welcome.sign_in_retry_exhausted_body"
+            : failure === "transient-transport-offline"
+              ? "auth:welcome.sign_in_offline_body"
+              : "auth:welcome.sign_in_failed_body";
+      Alert.alert(
+        resolveAuthFailureCopy(titleKey),
+        resolveAuthFailureCopy(bodyKey),
+        [{ text: resolveAuthFailureCopy("auth:welcome.sign_in_failed_ok") }],
+      );
       return { error: e };
     }
   }, []);
@@ -1122,6 +1222,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return { error: null };
     }
+
+    let transportRetryAttempts = 0;
+    let retryAbandoned = false;
+    const retryCancelled = () =>
+      !authLifetimeActiveRef.current || AppState.currentState === "background";
 
     try {
       if (Platform.OS !== "ios") {
@@ -1146,10 +1251,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error("Failed to get identity token from Apple");
       }
 
-      const { data, error } = await supabase.auth.signInWithIdToken({
+      let { data, error } = await supabase.auth.signInWithIdToken({
         provider: "apple",
         token: credential.identityToken,
       });
+
+      while (
+        error &&
+        transportRetryAttempts < TRANSPORT_RETRY_MAX_ATTEMPTS &&
+        classifyAuthFailure(
+          error.name,
+          error.code,
+          error.status,
+          error.message,
+          Platform.OS,
+        ).startsWith("transient-transport")
+      ) {
+        if (retryCancelled()) {
+          retryAbandoned = true;
+          break;
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, TRANSPORT_RETRY_DELAYS_MS[transportRetryAttempts]),
+        );
+        if (retryCancelled()) {
+          retryAbandoned = true;
+          break;
+        }
+        transportRetryAttempts += 1;
+        ({ data, error } = await supabase.auth.signInWithIdToken({
+          provider: "apple",
+          token: credential.identityToken,
+        }));
+      }
 
       if (error) throw error;
       if (!data.session) throw new Error("Failed to create session");
@@ -1206,7 +1340,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (code === "ERR_REQUEST_CANCELED") {
         return { error: e };
       }
-      Alert.alert("Apple Sign-In failed", e.message || "Please try again.");
+      if (retryAbandoned) {
+        return { error: e };
+      }
+
+      const failure = classifyAuthFailure(
+        e.name,
+        code,
+        (err as { status?: unknown })?.status,
+        e.message,
+        Platform.OS,
+      );
+      const titleKey =
+        failure === "permanent"
+          ? "auth:welcome.sign_in_failed_title"
+          : transportRetryAttempts > 0
+            ? "auth:welcome.sign_in_retry_exhausted_title"
+            : failure === "transient-transport-offline"
+              ? "auth:welcome.sign_in_offline_title"
+              : "auth:welcome.sign_in_failed_title";
+      const bodyKey =
+        failure === "permanent"
+          ? "auth:welcome.sign_in_permanent_body"
+          : transportRetryAttempts > 0
+            ? "auth:welcome.sign_in_retry_exhausted_body"
+            : failure === "transient-transport-offline"
+              ? "auth:welcome.sign_in_offline_body"
+              : "auth:welcome.sign_in_failed_body";
+      Alert.alert(
+        resolveAuthFailureCopy(titleKey),
+        resolveAuthFailureCopy(bodyKey),
+        [{ text: resolveAuthFailureCopy("auth:welcome.sign_in_failed_ok") }],
+      );
       return { error: e };
     }
   }, []);
