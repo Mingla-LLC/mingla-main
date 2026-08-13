@@ -40,6 +40,10 @@
           {
             "/": "/exp/*",
             "comment": "Consumer app public experience deep links (ORCH-1318)"
+          },
+          {
+            "/": "/e/*",
+            "comment": "Consumer app public event and RSVP deep links (issue #1957)"
           }
         ]
       }

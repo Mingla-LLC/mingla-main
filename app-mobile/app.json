@@ -74,6 +74,11 @@
             },
             {
               "scheme": "https",
+              "host": "business.usemingla.com",
+              "pathPrefix": "/e"
+            },
+            {
+              "scheme": "https",
               "host": "usemingla.com",
               "pathPrefix": "/p"
             },
