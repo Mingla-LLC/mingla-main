@@ -4,7 +4,7 @@
  * sendMessage mutation, pending-action tracking.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -15,7 +15,8 @@ import {
 } from "../services/agentChatService";
 
 export const agentQueryKeys = {
-  conversations: () => ["ari", "conversations"] as const,
+  conversationsRoot: () => ["ari", "conversations"] as const,
+  conversations: (brandId: string | null = null) => ["ari", "conversations", brandId ?? "unscoped"] as const,
   messages: (conversationId: string | null) =>
     ["ari", "messages", conversationId ?? "new"] as const,
   profile: () => ["ari", "profile"] as const,
@@ -38,6 +39,7 @@ export interface UseAgentChatResult {
   setConversationId: (id: string | null) => void;
   brandId: string | null;
   errorMessage: string | null;
+  errorCode: string | null;
   clearErrorMessage: () => void;
 }
 
@@ -69,11 +71,30 @@ export function useAgentChat(
   const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
   const [pendingAction, setPendingAction] = useState<PendingActionView | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   // ORCH-1101 REWORK Bug #2 — optimistic user messages awaiting server echo.
   // Rendered immediately so the user's bubble appears the instant they hit send,
   // not after the edge round-trip. Reconciled (cleared) once the real thread
   // refetch lands, or dropped on send error.
   const [optimisticMessages, setOptimisticMessages] = useState<AgentMessage[]>([]);
+  const previousBrandId = useRef(brandId);
+  const [stateBrandId, setStateBrandId] = useState(brandId);
+  const brandEpoch = useRef(0);
+
+  useEffect(() => {
+    if (previousBrandId.current === brandId) return;
+    previousBrandId.current = brandId;
+    setStateBrandId(brandId);
+    brandEpoch.current += 1;
+    setConversationId(null);
+    setPendingAction(null);
+    setOptimisticMessages([]);
+    setErrorMessage(null);
+    setErrorCode(null);
+    sendMutation.reset();
+  // The mutation object is intentionally excluded: only a selected-brand change resets a thread.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brandId]);
 
   const messagesQuery = useQuery({
     queryKey: agentQueryKeys.messages(conversationId),
@@ -83,16 +104,19 @@ export function useAgentChat(
   });
 
   const sendMutation = useMutation({
-    mutationFn: (vars: { text: string; optimisticId: string }) =>
+    mutationFn: (vars: { text: string; optimisticId: string; epoch: number }) =>
       sendAgentMessage({
         conversation_id: conversationId,
         message: vars.text,
         brand_id: brandId,
       }),
     onSuccess: async (response, vars) => {
+      if (vars.epoch !== brandEpoch.current) return;
       setErrorMessage(null);
+      setErrorCode(null);
       if (response.kind === "error") {
         setErrorMessage(response.message);
+        setErrorCode(response.code);
         // Drop the optimistic bubble — the message never landed.
         setOptimisticMessages((prev) => prev.filter((m) => m.id !== vars.optimisticId));
         return;
@@ -100,7 +124,7 @@ export function useAgentChat(
       // Adopt the conversation id if the server created one
       if (response.conversation_id !== conversationId) {
         setConversationId(response.conversation_id);
-        void qc.invalidateQueries({ queryKey: agentQueryKeys.conversations() });
+        void qc.invalidateQueries({ queryKey: agentQueryKeys.conversations(brandId) });
       }
       if (response.kind === "pending_action") {
         setPendingAction({
@@ -117,8 +141,10 @@ export function useAgentChat(
       setOptimisticMessages((prev) => prev.filter((m) => m.id !== vars.optimisticId));
     },
     onError: (err: unknown, vars) => {
+      if (vars.epoch !== brandEpoch.current) return;
       const message = err instanceof Error ? err.message : "Couldn't send — try again";
       setErrorMessage(message);
+      setErrorCode("EDGE_ERROR");
       // The send failed — remove the optimistic bubble so the thread doesn't
       // strand a message that was never persisted.
       setOptimisticMessages((prev) => prev.filter((m) => m.id !== vars.optimisticId));
@@ -127,11 +153,13 @@ export function useAgentChat(
 
   const sendMessage = useCallback(
     async (text: string): Promise<AgentChatResponse> => {
+      setErrorMessage(null);
+      setErrorCode(null);
       // ORCH-1101 REWORK Bug #2 — insert the optimistic user bubble synchronously
       // so it renders this frame, before the edge round-trip.
       const optimistic = makeOptimisticMessage(text, conversationId);
       setOptimisticMessages((prev) => [...prev, optimistic]);
-      return sendMutation.mutateAsync({ text, optimisticId: optimistic.id });
+      return sendMutation.mutateAsync({ text, optimisticId: optimistic.id, epoch: brandEpoch.current });
     },
     [sendMutation, conversationId],
   );
@@ -147,16 +175,18 @@ export function useAgentChat(
   // re-mounting the toast. Both state sources MUST clear on dismiss.
   const clearErrorMessage = useCallback((): void => {
     setErrorMessage(null);
+    setErrorCode(null);
   }, []);
 
   // ORCH-1101 REWORK Bug #2 — render server thread + any not-yet-reconciled
   // optimistic bubbles. Defensive dedupe: if the refetched thread already
   // contains a user row with identical text (the real echo landed before the
   // optimistic clear ran), drop the placeholder so the bubble never doubles.
-  const serverMessages = messagesQuery.data ?? [];
+  const currentScope = stateBrandId === brandId;
+  const serverMessages = currentScope ? messagesQuery.data ?? [] : [];
   const liveOptimistic = optimisticMessages.filter(
     (o) =>
-      !serverMessages.some(
+      currentScope && !serverMessages.some(
         (s) => s.role === "user" && (s.content as { text?: string })?.text === (o.content as { text?: string })?.text,
       ),
   );
@@ -166,13 +196,14 @@ export function useAgentChat(
     messages: mergedMessages,
     isLoadingMessages: messagesQuery.isLoading,
     sendMessage,
-    isSending: sendMutation.isPending,
-    pendingAction,
+    isSending: currentScope ? sendMutation.isPending : false,
+    pendingAction: currentScope ? pendingAction : null,
     clearPendingAction,
-    conversationId,
+    conversationId: currentScope ? conversationId : null,
     setConversationId,
     brandId,
-    errorMessage,
+    errorMessage: currentScope ? errorMessage : null,
+    errorCode: currentScope ? errorCode : null,
     clearErrorMessage,
   };
 }

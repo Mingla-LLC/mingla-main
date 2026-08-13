@@ -14,6 +14,7 @@
 
 import React, { useCallback, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AlertTriangle } from "lucide-react-native";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -38,6 +39,11 @@ export interface ConversationDrawerProps {
   conversations: AgentConversation[];
   activeId: string | null;
   onSelect: (id: string | null) => void;
+  selectedBrandName: string;
+  hasSelectedBrand: boolean;
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
 }
 
 export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
@@ -46,6 +52,11 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
   conversations,
   activeId,
   onSelect,
+  selectedBrandName,
+  hasSelectedBrand,
+  isLoading,
+  isError,
+  onRetry,
 }) => {
   const qc = useQueryClient();
   const [selectMode, setSelectMode] = useState(false);
@@ -73,8 +84,8 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
       // Remove rows from the cache synchronously so the UI reflects the
       // deletion immediately. The subsequent invalidate triggers a refetch
       // that reconciles with the server.
-      qc.setQueryData<AgentConversation[]>(
-        agentQueryKeys.conversations(),
+      qc.setQueriesData<AgentConversation[]>(
+        { queryKey: agentQueryKeys.conversationsRoot() },
         (prev) => (prev ? prev.filter((c) => !ids.includes(c.id)) : prev),
       );
     },
@@ -101,14 +112,14 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
                 await deleteConversation(c.id);
               } catch (err) {
                 // Roll back optimistic removal by refetching the truth.
-                qc.invalidateQueries({ queryKey: agentQueryKeys.conversations() });
+                qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
                 Alert.alert(
                   "Couldn't delete",
                   err instanceof Error ? err.message : "Unknown error",
                 );
                 return;
               }
-              qc.invalidateQueries({ queryKey: agentQueryKeys.conversations() });
+              qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
               if (c.id === activeId) {
                 qc.invalidateQueries({ queryKey: agentQueryKeys.messages(c.id) });
                 onSelect(null);
@@ -140,7 +151,7 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
               ids.map((id) => deleteConversation(id)),
             );
             const failed = results.filter((r) => r.status === "rejected");
-            qc.invalidateQueries({ queryKey: agentQueryKeys.conversations() });
+            qc.invalidateQueries({ queryKey: agentQueryKeys.conversationsRoot() });
             if (deletedActive) {
               qc.invalidateQueries({ queryKey: agentQueryKeys.messages(activeId) });
               onSelect(null);
@@ -197,6 +208,34 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
         </Pressable>
       )
     : null;
+  const scoped = hasSelectedBrand ? conversations.filter((conversation) => conversation.brand_id !== null) : conversations;
+  const legacy = hasSelectedBrand ? conversations.filter((conversation) => conversation.brand_id === null) : [];
+
+  const renderRow = (c: AgentConversation, readOnly: boolean): React.ReactNode => {
+    const isActive = c.id === activeId;
+    const isSelected = selectedIds.has(c.id);
+    const date = new Date(c.updated_at).toLocaleDateString();
+    const title = c.title ?? "Untitled conversation";
+    return (
+      <Pressable
+        key={c.id}
+        onPress={() => handleRowPress(c)}
+        onLongPress={() => handleLongPressSingle(c)}
+        delayLongPress={400}
+        style={({ pressed }) => [styles.row, isActive && !selectMode && styles.rowActive, isSelected && styles.rowSelected, pressed && styles.btnPressed]}
+        accessibilityRole="button"
+        accessibilityLabel={readOnly ? `${title}, older read-only conversation, updated ${date}` : `${title}, updated ${date}`}
+        accessibilityHint={selectMode ? "Tap to toggle selection" : "Tap to open; long-press to delete"}
+        accessibilityState={{ selected: selectMode ? isSelected : isActive }}
+      >
+        {selectMode ? (
+          <View style={[styles.checkbox, isSelected && styles.checkboxOn]}>{isSelected ? <Text style={styles.checkboxTick}>✓</Text> : null}</View>
+        ) : readOnly ? <AlertTriangle size={16} color={textTokens.tertiary} accessibilityElementsHidden /> : null}
+        <Text style={styles.rowTitle} numberOfLines={2}>{title}</Text>
+        <Text style={styles.rowDate}>{date}</Text>
+      </Pressable>
+    );
+  };
 
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="half">
@@ -226,44 +265,21 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
           showsVerticalScrollIndicator
           keyboardShouldPersistTaps="handled"
         >
-          {conversations.length === 0 ? (
-            <Text style={styles.emptyHint}>No past conversations yet.</Text>
-          ) : (
-            conversations.map((c) => {
-              const isActive = c.id === activeId;
-              const isSelected = selectedIds.has(c.id);
-              return (
-                <Pressable
-                  key={c.id}
-                  onPress={() => handleRowPress(c)}
-                  onLongPress={() => handleLongPressSingle(c)}
-                  delayLongPress={400}
-                  style={({ pressed }) => [
-                    styles.row,
-                    isActive && !selectMode && styles.rowActive,
-                    isSelected && styles.rowSelected,
-                    pressed && styles.btnPressed,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={c.title ?? `Conversation from ${new Date(c.updated_at).toLocaleDateString()}`}
-                  accessibilityHint={selectMode ? "Tap to toggle selection" : "Tap to open; long-press to delete"}
-                  accessibilityState={{ selected: selectMode ? isSelected : isActive }}
-                >
-                  {selectMode ? (
-                    <View style={[styles.checkbox, isSelected && styles.checkboxOn]}>
-                      {isSelected ? <Text style={styles.checkboxTick}>✓</Text> : null}
-                    </View>
-                  ) : null}
-                  <Text style={styles.rowTitle} numberOfLines={1}>
-                    {c.title ?? "Untitled conversation"}
-                  </Text>
-                  <Text style={styles.rowDate}>
-                    {new Date(c.updated_at).toLocaleDateString()}
-                  </Text>
-                </Pressable>
-              );
-            })
-          )}
+          {isLoading ? [0, 1, 2].map((key) => <View key={key} style={styles.loadingRow} />) : null}
+          {!isLoading && isError ? (
+            <View accessibilityRole="alert" style={styles.errorState}>
+              <Text style={styles.emptyHint}>Could not load conversations.</Text>
+              <Pressable onPress={onRetry} style={styles.retryBtn} accessibilityRole="button"><Text style={styles.newBtnText}>Try again</Text></Pressable>
+            </View>
+          ) : null}
+          {!isLoading && !isError ? (
+            <>
+              <Text style={styles.sectionCaption}>{selectedBrandName} chats</Text>
+              {scoped.length ? scoped.map((c) => renderRow(c, false)) : <Text style={styles.emptyHint}>No chats for {selectedBrandName} yet.</Text>}
+              {legacy.length ? <Text style={styles.sectionCaption}>Older chats · Read-only</Text> : null}
+              {legacy.map((c) => renderRow(c, true))}
+            </>
+          ) : null}
         </ScrollView>
 
         {selectMode ? (
@@ -401,6 +417,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     textAlign: "center",
   },
+  sectionCaption: { fontSize: 12, color: textTokens.secondary, paddingHorizontal: spacing.sm, paddingTop: spacing.sm },
+  loadingRow: { minHeight: 44, borderRadius: radius.md, backgroundColor: glass.tint.profileBase, marginBottom: 4 },
+  errorState: { alignItems: "center", gap: spacing.sm },
+  retryBtn: { minHeight: 44, minWidth: 120, alignItems: "center", justifyContent: "center", borderRadius: radius.md, borderWidth: 1, borderColor: glass.border.profileBase },
   bulkBar: {
     flexDirection: "row",
     alignItems: "center",

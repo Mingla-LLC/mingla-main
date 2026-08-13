@@ -1,0 +1,65 @@
+name: Issue 2013 Ari tenant containment
+
+on:
+  push:
+    paths:
+      - "supabase/functions/_shared/agentTenantScope.ts"
+      - "supabase/functions/_shared/agentTools.ts"
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/agent-chat/**"
+      - "supabase/functions/agent-confirm-action/**"
+      - "supabase/migrations/20270402002013_issue_2013_agent_conversation_brand_immutable.sql"
+      - "supabase/migrations/__tests__/issue_2013_agent_conversation_brand_immutable.test.sql"
+      - "mingla-business/src/screens/ari/**"
+      - "mingla-business/src/hooks/useAgentChat.ts"
+      - "mingla-business/src/hooks/useConversationList.ts"
+      - "mingla-business/src/services/agentChatService.ts"
+      - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.tester_adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts"
+      - ".github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs"
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/agentTenantScope.ts"
+      - "supabase/functions/_shared/agentTools.ts"
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/agent-chat/**"
+      - "supabase/functions/agent-confirm-action/**"
+      - "supabase/migrations/20270402002013_issue_2013_agent_conversation_brand_immutable.sql"
+      - "supabase/migrations/__tests__/issue_2013_agent_conversation_brand_immutable.test.sql"
+      - "mingla-business/src/screens/ari/**"
+      - "mingla-business/src/hooks/useAgentChat.ts"
+      - "mingla-business/src/hooks/useConversationList.ts"
+      - "mingla-business/src/services/agentChatService.ts"
+      - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.tester_adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts"
+      - ".github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  tenant-containment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - run: deno test --allow-read supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.tester_adversarial.test.ts supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts
+      - run: deno check supabase/functions/agent-chat/index.ts supabase/functions/agent-confirm-action/index.ts supabase/functions/_shared/agentTools.ts supabase/functions/_shared/agentDomainTools.ts
+      - run: node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: mingla-business
+      - run: npx jest src/screens/ari/__tests__/issue_2013_ari_tenant_containment.test.ts --runInBand
+        working-directory: mingla-business

@@ -8520,3 +8520,8 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 ### I-PROPOSED-1995-BOOK-BLAST-ROLLBACK-NO-STRANDING (ACTIVE)
 - New discovery, preview, and confirmation require both rollout flags, while already-confirmed execution and retry remain available after either flag is disabled.
+
+### I-ARI-TENANT-CONTAINMENT (DRAFT)
+
+- **Rule:** Every private Ari prompt preload and inline read is limited to brands the authenticated operator owns or currently serves as an accepted, non-removed team member. Public brand/event visibility is never private-agent authorization, and a conversation's validated brand scope is immutable for its lifetime.
+- **Enforcement:** `agentTenantScope.ts`, the nine-entry read-tool scope registry, immutable conversation checks in `agent-chat`, shared Business brand-switch reset/read-only legacy behavior, and `.github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs` (including its two-account public-visibility and functional-revert self-test).
