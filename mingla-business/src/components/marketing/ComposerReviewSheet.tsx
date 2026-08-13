@@ -52,6 +52,16 @@ export interface ComposerReviewSheetProps {
   channelKind?: "email" | "sms";
   messagePreview?: string;
   hasMedia?: boolean;
+  estimatedCostLabel?: string;
+  selectedCount?: number;
+  suppressedCount?: number;
+  unavailableCount?: number;
+  quoteExpiresAt?: string;
+  staleWarning?: boolean;
+  disabledReason?: string | null;
+  onRetryPreview?: () => void;
+  retryDisabled?: boolean;
+  staleDetail?: string;
 }
 
 export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
@@ -71,6 +81,16 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
   channelKind,
   messagePreview,
   hasMedia,
+  estimatedCostLabel,
+  selectedCount,
+  suppressedCount,
+  unavailableCount,
+  quoteExpiresAt,
+  staleWarning,
+  disabledReason,
+  onRetryPreview,
+  retryDisabled,
+  staleDetail,
 }) => {
   const ctaLabel = isSendNow ? "Send now" : "Schedule";
   // ORCH-1270 F-1 — always show the SMS timing info note on an SMS Send-now
@@ -90,8 +110,51 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
           <Text style={styles.value}>{audienceName ?? "—"}</Text>
           {recipientCount !== null ? (
             <Text style={styles.metaText}>
-              {recipientCount} reachable {recipientCount === 1 ? "person" : "people"}
+              {recipientCount} reachable{" "}
+              {recipientCount === 1 ? "person" : "people"}
             </Text>
+          ) : null}
+          {estimatedCostLabel !== undefined ? (
+            <Text style={styles.metaText}>{estimatedCostLabel}</Text>
+          ) : null}
+          {selectedCount !== undefined ? (
+            <Text style={styles.metaText}>
+              {selectedCount} selected · {suppressedCount ?? 0} suppressed ·{" "}
+              {unavailableCount ?? 0} unavailable
+            </Text>
+          ) : null}
+          {quoteExpiresAt !== undefined ? (
+            <Text style={styles.metaText}>
+              Preview valid until{" "}
+              {new Date(quoteExpiresAt).toLocaleTimeString([], {
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </Text>
+          ) : null}
+          {staleWarning === true ? (
+            <Text
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
+              style={styles.errorText}
+            >
+              {staleDetail ?? "The audience or cost changed."} Review this
+              refreshed preview, then confirm again.
+            </Text>
+          ) : null}
+          {disabledReason ? (
+            <Text style={styles.errorText}>{disabledReason}</Text>
+          ) : null}
+          {disabledReason && onRetryPreview ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Refresh preview"
+              accessibilityState={{ disabled: retryDisabled === true }}
+              disabled={retryDisabled === true}
+              onPress={onRetryPreview}
+            >
+              <Text style={styles.scheduleForBtnLabel}>Refresh preview</Text>
+            </Pressable>
           ) : null}
         </View>
         {channelKind === "sms" ? (
@@ -117,14 +180,18 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
           </View>
         )}
         <View style={styles.section}>
-          <Text style={styles.label}>{isSendNow ? "DELIVERY" : "SCHEDULED FOR"}</Text>
+          <Text style={styles.label}>
+            {isSendNow ? "DELIVERY" : "SCHEDULED FOR"}
+          </Text>
           <Text style={styles.value}>{scheduledLabel}</Text>
         </View>
         {showSmsInfoNote ? (
           <View style={styles.infoSection}>
             <Text style={styles.infoTitle}>How SMS timing works</Text>
             <Text style={styles.infoBody}>
-              {"Texts only send during each recipient's local hours (8 AM–9 PM). Anyone outside that window right now is automatically held and sent in their next morning window — nothing is lost. You can also schedule the whole blast for "}
+              {
+                "Texts only send during each recipient's local hours (8 AM–9 PM). Anyone outside that window right now is automatically held and sent in their next morning window — nothing is lost. You can also schedule the whole blast for "
+              }
               {nextWindowLabel ?? ""}
               {"."}
             </Text>
@@ -139,7 +206,9 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
                   pressed && !submitting ? styles.ghostBtnPressed : null,
                 ]}
               >
-                <Text style={styles.scheduleForBtnLabel}>{scheduleForLabel}</Text>
+                <Text style={styles.scheduleForBtnLabel}>
+                  {scheduleForLabel}
+                </Text>
               </Pressable>
             ) : null}
           </View>
@@ -159,10 +228,16 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
           </Pressable>
           <Pressable
             onPress={onConfirm}
-            disabled={submitting}
+            disabled={submitting || disabledReason != null}
             accessibilityRole="button"
-            accessibilityLabel={ctaLabel}
-            accessibilityState={{ disabled: submitting }}
+            accessibilityLabel={
+              staleWarning
+                ? `Confirm updated ${isSendNow ? "send" : "schedule"}`
+                : ctaLabel
+            }
+            accessibilityState={{
+              disabled: submitting || disabledReason != null,
+            }}
             style={({ pressed }) => [
               styles.primaryBtn,
               pressed && !submitting ? styles.primaryBtnPressed : null,
@@ -170,7 +245,11 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
             ]}
           >
             <Text style={styles.primaryBtnLabel}>
-              {submitting ? "Working…" : ctaLabel}
+              {submitting
+                ? "Working…"
+                : staleWarning
+                  ? `Confirm updated ${isSendNow ? "send" : "schedule"}`
+                  : ctaLabel}
             </Text>
           </Pressable>
         </View>
@@ -216,6 +295,7 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: textTokens.secondary,
   },
+  errorText: { ...typography.bodySm, color: "#FFB4AB", fontWeight: "600" },
   // ORCH-1270 F-1 — neutral SMS-timing INFO note (not a warning). Reuses the
   // plain section container shape + neutral border (no accent, no new tokens)
   // so it reads as a helpful heads-up, not an error.

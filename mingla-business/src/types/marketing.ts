@@ -49,12 +49,37 @@ export interface AudienceQueryCustomSegment {
     value: unknown;
   }>;
 }
+export interface AudienceQueryAllBrandPeople {
+  kind: "all_brand_people";
+  brand_id: string;
+}
 
 export type AudienceQueryDefinition =
   | AudienceQueryBrandBuyers
   | AudienceQueryEventBuyers
   | AudienceQueryBrandFollowers
-  | AudienceQueryCustomSegment;
+  | AudienceQueryCustomSegment
+  | AudienceQueryAllBrandPeople;
+
+export interface MarketingBookQuote {
+  quoteVersion: 1;
+  quoteHash: string;
+  quotedAt: string;
+  expiresAt: string;
+  selectedCount: number;
+  reachableCount: number;
+  suppressedCount: number;
+  unavailableCount: number;
+  smsSegments: number;
+  costKind: "provider_estimate" | "not_metered";
+  estimatedCostMinor: number | null;
+  currency: string | null;
+}
+export type MarketingBookPreviewState =
+  | { kind: "idle" }
+  | { kind: "loading"; previous: MarketingBookQuote | null }
+  | { kind: "ready"; quote: MarketingBookQuote; staleWarning: boolean }
+  | { kind: "error"; code: string; message: string; retryable: boolean };
 
 // ---------------------------------------------------------------------------
 // Campaign channel_payload — discriminated union (I-PROPOSED-BQ)
@@ -83,9 +108,7 @@ export interface ChannelPayloadSms {
   media_urls?: string[];
 }
 
-export type CampaignChannelPayload =
-  | ChannelPayloadEmail
-  | ChannelPayloadSms;
+export type CampaignChannelPayload = ChannelPayloadEmail | ChannelPayloadSms;
 
 // ---------------------------------------------------------------------------
 // Row types — match table shapes
@@ -105,12 +128,7 @@ export interface MarketingTemplateRow {
 }
 
 export type CampaignStatus =
-  | "draft"
-  | "scheduled"
-  | "sending"
-  | "sent"
-  | "failed"
-  | "cancelled";
+  "draft" | "scheduled" | "sending" | "sent" | "failed" | "cancelled";
 
 export interface MarketingCampaignRow {
   id: string;
@@ -252,4 +270,3 @@ export interface AudienceListEntry {
   /** Most recent marketing_campaigns.created_at using this audience_id; null when never used or virtual. */
   last_used_at: string | null;
 }
-

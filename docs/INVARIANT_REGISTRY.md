@@ -8467,3 +8467,22 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 - **Rule:** People analytics may describe surface, dependency state, bounded result, and coarse bucket only. It may never carry a person's name, contact value, person ID, brand ID, search text, or other identity payload.
 - **Enforcement:** `peopleAnalytics.ts` property schema and `.github/scripts/strict-grep/issue-1774-people-page.mjs`.
+
+---
+
+## DRAFT — issue #1995 (sealed Your Book marketing blasts)
+
+### I-PROPOSED-1995-BOOK-BLAST-SEAL-ONLY (DRAFT)
+- A Your Book campaign can dispatch only from an immutable confirmed execution. Dispatch may recheck consent and shrink the sealed targets, but can never discover or add a person after confirmation.
+
+### I-PROPOSED-1995-BOOK-BLAST-QUOTE-EXACT (DRAFT)
+- Confirmation must exactly match an unexpired five-minute server quote for campaign content, recipients, SMS segments, rates, currency, and cost. A mismatch performs no provider I/O and requires explicit reconfirmation.
+
+### I-PROPOSED-1995-BOOK-BLAST-CONTACT-AUTHORITY (DRAFT)
+- Book blast targeting uses one active primary brand-owned contact per canonical active person and the `marketing_blast` communication category; alternatives and raw client-supplied contacts are forbidden.
+
+### I-PROPOSED-1995-BOOK-BLAST-COST-HONESTY (DRAFT)
+- SMS cost is available only from the current provider-grounded shared pricebook and exact wire segments. Email is `not_metered` with null cost/currency; missing or mixed SMS authority fails closed.
+
+### I-PROPOSED-1995-BOOK-BLAST-ROLLBACK-NO-STRANDING (DRAFT)
+- New discovery, preview, and confirmation require both rollout flags, while already-confirmed execution and retry remain available after either flag is disabled.

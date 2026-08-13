@@ -19,6 +19,7 @@ import type {
   CampaignChannelPayload,
   CampaignStatus,
   MarketingCampaignRow,
+  MarketingBookQuote,
 } from "../../types/marketing";
 
 const UUID_RE =
@@ -95,7 +96,9 @@ export async function updateDraft(input: {
   channel_payload?: CampaignChannelPayload;
 }): Promise<MarketingCampaignRow> {
   assertUuid(input.campaign_id, "updateDraft.campaign_id");
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const patch: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
   if (input.name !== undefined) patch.name = input.name;
   if (input.audience_id !== undefined) {
     assertUuid(input.audience_id, "updateDraft.audience_id");
@@ -116,7 +119,9 @@ export async function updateDraft(input: {
     .maybeSingle();
   if (error) throw error;
   if (data === null) {
-    throw new Error("updateDraft: no row updated (campaign not found or not draft)");
+    throw new Error(
+      "updateDraft: no row updated (campaign not found or not draft)",
+    );
   }
   return data as unknown as MarketingCampaignRow;
 }
@@ -166,7 +171,9 @@ export async function cancelScheduled(
     .maybeSingle();
   if (error) throw error;
   if (data === null) {
-    throw new Error("cancelScheduled: no row updated (already sent or not scheduled)");
+    throw new Error(
+      "cancelScheduled: no row updated (already sent or not scheduled)",
+    );
   }
   return data as unknown as MarketingCampaignRow;
 }
@@ -184,7 +191,9 @@ export async function deleteDraft(campaignId: string): Promise<void> {
     .select("id");
   if (error) throw error;
   if (!data || data.length === 0) {
-    throw new Error("Draft not found, already sent, or not eligible for deletion");
+    throw new Error(
+      "Draft not found, already sent, or not eligible for deletion",
+    );
   }
 }
 
@@ -205,7 +214,7 @@ export async function listCampaigns(input: {
   if (input.status !== undefined) query = query.eq("status", input.status);
   const { data, error } = await query;
   if (error) throw error;
-  return ((data ?? []) as unknown as MarketingCampaignRow[]);
+  return (data ?? []) as unknown as MarketingCampaignRow[];
 }
 
 export async function getCampaign(
@@ -234,6 +243,72 @@ export async function sendNow(campaignId: string): Promise<void> {
     body: { campaign_id: campaignId },
   });
   if (error) throw error;
+}
+export class MarketingBookSendError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly refreshedPreview: MarketingBookQuote | null,
+  ) {
+    super(code);
+    this.name = "MarketingBookSendError";
+  }
+}
+async function parseMarketingBookError(error: unknown): Promise<MarketingBookSendError> {
+  const context = (error as { context?: { json?: () => Promise<unknown> } })
+    .context;
+  const payload =
+    context?.json === undefined
+      ? null
+      : ((await context.json().catch(() => null)) as {
+          error?: string;
+          preview?: MarketingBookQuote;
+        } | null);
+  return new MarketingBookSendError(
+    payload?.error ?? "BOOK_BLAST_FAILED",
+    payload?.preview ?? null,
+  );
+}
+export async function getOrCreateMarketingBookAudience(input: {
+  actor_id: string;
+  brand_id: string;
+}): Promise<{ audienceId: string; activeBookTotal: number }> {
+  const { data, error } = await supabase.rpc(
+    "biz_get_or_create_marketing_book_audience",
+    { p_actor_id: input.actor_id, p_brand_id: input.brand_id },
+  );
+  if (error) throw error;
+  return data as { audienceId: string; activeBookTotal: number };
+}
+export async function previewMarketingBook(
+  campaignId: string,
+): Promise<MarketingBookQuote> {
+  const { data, error } = await supabase.functions.invoke("marketing-send", {
+    body: { action: "preview_book_v1", campaign_id: campaignId },
+  });
+  if (error) throw await parseMarketingBookError(error);
+  return data as MarketingBookQuote;
+}
+export async function confirmMarketingBook(input: {
+  campaign_id: string;
+  client_request_id: string;
+  quote: MarketingBookQuote;
+  scheduled_for: string | null;
+}): Promise<void> {
+  const { error } = await supabase.functions.invoke("marketing-send", {
+    body: {
+      action: "confirm_book_v1",
+      campaign_id: input.campaign_id,
+      client_request_id: input.client_request_id,
+      quoteHash: input.quote.quoteHash,
+      quotedAt: input.quote.quotedAt,
+      expectedCostMinor: input.quote.estimatedCostMinor,
+      currency: input.quote.currency,
+      scheduledFor: input.scheduled_for,
+    },
+  });
+  if (error) {
+    throw await parseMarketingBookError(error);
+  }
 }
 
 /**

@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 524,
-  "selfTestWiredFloor": 329,
+  "expectedStrictGrepMjsFiles": 525,
+  "selfTestWiredFloor": 330,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -25,6 +25,20 @@
     "scripts/ota"
   ],
   "gates": [
+    {
+      "script": ".github/scripts/strict-grep/issue-1995-contact-book-blast.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1995-contact-book-blast"
+      ]
+    },
     {
       "script": ".github/scripts/strict-grep/issue-1999-ari-provider-schema-ci-wiring.mjs",
       "kind": "file",

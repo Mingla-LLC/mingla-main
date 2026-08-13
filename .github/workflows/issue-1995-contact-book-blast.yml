@@ -1,0 +1,70 @@
+name: issue-1995-contact-book-blast
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20270401001995_issue_1995_contact_book_blast.sql"
+      - "supabase/functions/marketing-send/**"
+      - "supabase/functions/_shared/marketingAudience.ts"
+      - "supabase/functions/_shared/marketingBookQuote.ts"
+      - "supabase/functions/_shared/smsPriceBook.ts"
+      - "supabase/functions/_shared/offeringInviteQuote.ts"
+      - "mingla-business/**"
+      - ".github/scripts/strict-grep/issue-1995-contact-book-blast.mjs"
+      - ".github/workflows/issue-1995-contact-book-blast.yml"
+jobs:
+  issue-1995-contact-book-blast:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with: { deno-version: v2.x }
+      - uses: actions/setup-node@v4
+        with:
+          {
+            node-version: 20,
+            cache: npm,
+            cache-dependency-path: mingla-business/package-lock.json,
+          }
+      - run: node .github/scripts/strict-grep/issue-1995-contact-book-blast.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-1995-contact-book-blast.mjs
+      - run: deno test supabase/functions/marketing-send/issue_1995_contact_book_blast.happy.test.ts
+      - run: deno check supabase/functions/marketing-send/index.ts
+      - name: Apply full migration chain and prove PG17 contract
+        env:
+          PGPASSWORD: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..90}; do pg_isready -h localhost -U postgres && break; sleep 1; done
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 | sort -z | while IFS= read -r -d '' migration; do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
+          done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1995_contact_book_blast.happy.pg17.test.sql
+      - run: npm ci
+        working-directory: mingla-business
+      - run: npx jest src/components/marketing/__tests__/issue_1995_contact_book_blast.happy.test.tsx --runInBand
+        working-directory: mingla-business
+      - name: Type-check the #1995 changed Business files
+        run: |
+          set +e
+          npx tsc --noEmit --pretty false > /tmp/issue-1995-tsc.log 2>&1
+          tsc_status=$?
+          set -e
+          if [ "$tsc_status" -ne 0 ] && ! grep -q 'error TS' /tmp/issue-1995-tsc.log; then
+            cat /tmp/issue-1995-tsc.log
+            exit "$tsc_status"
+          fi
+          if grep -E 'compose\.tsx|AudiencePickerSheet\.tsx|ComposerReviewSheet\.tsx|marketingCampaignService\.ts|useBookBlastPreview\.ts|issue_1995_contact_book_blast\.happy\.test\.tsx|types/marketing\.ts' /tmp/issue-1995-tsc.log; then
+            cat /tmp/issue-1995-tsc.log
+            exit 1
+          fi
+          echo "No TypeScript diagnostics in #1995 changed Business files"
+        working-directory: mingla-business

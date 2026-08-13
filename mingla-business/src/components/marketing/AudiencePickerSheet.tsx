@@ -23,10 +23,18 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { Sheet } from "../ui/Sheet";
 import { supabase } from "../../services/supabase";
+import { getOrCreateMarketingBookAudience } from "../../services/marketing/marketingCampaignService";
 import {
   accent,
   glass,
@@ -36,7 +44,8 @@ import {
   typography,
 } from "../../constants/designSystem";
 
-export type AudienceOptionKind = "brand_buyers" | "event_buyers";
+export type AudienceOptionKind =
+  "brand_buyers" | "event_buyers" | "all_brand_people";
 
 export interface AudienceOption {
   /** Stable client-side key. NOT the marketing_audiences row id. */
@@ -59,6 +68,8 @@ export interface AudiencePickerSheetProps {
   selectedAudienceId: string | null;
   onClose: () => void;
   onSelect: (option: AudienceOption) => void;
+  actorId?: string | null;
+  bookBlastEnabled?: boolean;
 }
 
 interface OrderJoinRow {
@@ -82,10 +93,13 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
   selectedAudienceId,
   onClose,
   onSelect,
+  actorId,
+  bookBlastEnabled,
 }) => {
   const [options, setOptions] = useState<AudienceOption[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [bookError, setBookError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible || brandId === null) return;
@@ -94,6 +108,20 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
     setErrorMessage(null);
     (async () => {
       try {
+        let book: null | { audienceId: string; activeBookTotal: number } = null;
+        if (bookBlastEnabled === true && actorId != null) {
+          try {
+            book = await getOrCreateMarketingBookAudience({
+              actor_id: actorId,
+              brand_id: brandId,
+            });
+            setBookError(null);
+          } catch {
+            setBookError(
+              "Your Book is unavailable. Retry to load its people count.",
+            );
+          }
+        }
         // 1) Pull paid orders for this brand. Same join shape as the
         //    audience service uses — RLS-gated to the caller.
         const { data: orderData, error: orderErr } = await supabase
@@ -115,7 +143,8 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
         if (cancelled) return;
 
         const orders = (orderData ?? []) as unknown as OrderJoinRow[];
-        const audiences = (existingAudiences ?? []) as unknown as ExistingAudienceRow[];
+        const audiences = (existingAudiences ??
+          []) as unknown as ExistingAudienceRow[];
 
         // Aggregate: total brand buyers + per-event buyer counts.
         let brandBuyerCount = 0;
@@ -149,15 +178,28 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
           }
         }
 
-        const built: AudienceOption[] = [];
+        const built: AudienceOption[] =
+          book === null
+            ? []
+            : [
+                {
+                  key: `book:${brandId}`,
+                  name: "Your Book",
+                  kind: "all_brand_people",
+                  target_id: brandId,
+                  buyer_count: book.activeBookTotal,
+                  existing_audience_id: book.audienceId,
+                },
+              ];
 
         // Brand-buyers option (only when the brand has ≥1 paid order).
         if (brandBuyerCount > 0) {
           built.push({
             key: `brand:${brandId}`,
-            name: brandName !== null
-              ? `All buyers of ${brandName}`
-              : "All brand buyers",
+            name:
+              brandName !== null
+                ? `All buyers of ${brandName}`
+                : "All brand buyers",
             kind: "brand_buyers",
             target_id: brandId,
             buyer_count: brandBuyerCount,
@@ -178,7 +220,8 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
           });
         }
         eventOptions.sort((a, b) => {
-          if (b.buyer_count !== a.buyer_count) return b.buyer_count - a.buyer_count;
+          if (b.buyer_count !== a.buyer_count)
+            return b.buyer_count - a.buyer_count;
           return a.name.localeCompare(b.name);
         });
 
@@ -196,15 +239,21 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [visible, brandId, brandName]);
+  }, [visible, brandId, brandName, actorId, bookBlastEnabled]);
 
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="half">
       <View style={styles.host}>
         <Text style={styles.title}>Pick an audience</Text>
         <Text style={styles.subtitle}>
-          Pulled live from your paid orders.
+          Your Book shows active saved people; buyer lists come from paid
+          orders.
         </Text>
+        {bookError !== null ? (
+          <Text accessibilityRole="alert" style={styles.errorText}>
+            {bookError}
+          </Text>
+        ) : null}
         {isLoading ? (
           <View style={styles.centerHost}>
             <ActivityIndicator size="small" color={textTokens.secondary} />
@@ -214,7 +263,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
         ) : options === null || options.length === 0 ? (
           <View style={styles.emptyHost}>
             <Text style={styles.emptyText}>
-              No buyers yet. Audiences appear here as people purchase tickets to your events.
+              No audiences yet. Add people to Your Book or receive a paid order.
             </Text>
           </View>
         ) : (
@@ -247,9 +296,12 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
                     {option.name}
                   </Text>
                   <Text style={styles.rowMeta}>
-                    {option.buyer_count} {option.buyer_count === 1 ? "buyer" : "buyers"}
+                    {option.buyer_count}{" "}
+                    {option.buyer_count === 1 ? "buyer" : "buyers"}
                     {" · "}
-                    {option.kind === "brand_buyers" ? "Brand rollup" : "Event buyers"}
+                    {option.kind === "brand_buyers"
+                      ? "Brand rollup"
+                      : "Event buyers"}
                   </Text>
                 </Pressable>
               );
