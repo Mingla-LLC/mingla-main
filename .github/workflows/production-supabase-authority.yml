@@ -6,10 +6,15 @@ on:
       - "docs/contracts/production-supabase-authority.json"
       - "docs/runbooks/PRODUCTION_SUPABASE_AUTHORITY.md"
       - "docs/runbooks/DR_RESTORE.md"
+      - "docs/MINGLA_ENGINEERING_HANDBOOK.md"
+      - "docs/runbooks/B2_GO_LIVE_CHECKLIST.md"
+      - "docs/runbooks/B2_VERCEL_DEPLOY_RUNBOOK.md"
       - "docs/INVARIANT_REGISTRY.md"
       - "scripts/ops/verify-production-supabase-authority.mjs"
       - "scripts/ops/__tests__/issue_2016_*.test.mjs"
       - "scripts/deploy-supabase-functions.sh"
+      - "scripts/ops/deploy-g3-sentry.sh"
+      - "scripts/load/deploy-discover-staging.sh"
       - "scripts/rotate-apple-jwt.mjs"
       - "scripts/secrets/audit-supabase-secret-budget.mjs"
       - ".github/workflows/deploy-functions.yml"
@@ -22,6 +27,7 @@ on:
       - "app-mobile/eas.json"
       - "mingla-business/app.config.ts"
       - "mingla-business/src/services/supabase.ts"
+      - "mingla-business/public/auth/callback.html"
       - "mingla-business/eas.json"
       - "mingla-business/env.example"
       - "mingla-business/.env.example"
@@ -51,4 +57,7 @@ jobs:
           --target-ref gqnoajqerqhnvulmnyvv
           --check-sources
       - name: Verify deploy wrapper syntax
-        run: bash -n scripts/deploy-supabase-functions.sh
+        run: >-
+          bash -n scripts/deploy-supabase-functions.sh
+          scripts/ops/deploy-g3-sentry.sh
+          scripts/load/deploy-discover-staging.sh

@@ -18,6 +18,10 @@ cd "$ROOT"
 PROJECT_REF="${1:-gqnoajqerqhnvulmnyvv}"
 SENTRY_ENVIRONMENT="${SENTRY_ENVIRONMENT:-production}"
 
+node "$ROOT/scripts/ops/verify-production-supabase-authority.mjs" \
+  --mode=offline \
+  --target-ref "$PROJECT_REF"
+
 : "${SUPABASE_ACCESS_TOKEN:?Set SUPABASE_ACCESS_TOKEN}"
 : "${SENTRY_DSN:?Set SENTRY_DSN (mingla-business edge project DSN)}"
 

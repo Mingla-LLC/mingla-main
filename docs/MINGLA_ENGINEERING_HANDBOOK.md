@@ -322,16 +322,22 @@ When you add a migration:
 1. Add the file to `supabase/migrations/<timestamp>_<name>.sql`
 2. Test the migration against your local Supabase first (`supabase db reset` rebuilds from migrations)
 3. Commit + push
-4. **Notify Seth** that the milestone has a new migration to apply via `supabase db push --linked`
+4. **Notify Seth** that the milestone has a new migration. The approved operator lane must first
+   pass the production-authority verifier, then apply the reviewed migration through the verified
+   surgical lane in `docs/runbooks/PRODUCTION_SUPABASE_AUTHORITY.md`.
 5. Wait for confirmation before deploying edge functions that depend on the migration
 
 ### 7.5 Edge function deploys
 
-Seth handles deploys. After Seth confirms the migration is applied, he or the orchestrator will run:
+Seth handles deploys. After Seth confirms the migration is applied, he or the orchestrator uses the
+guarded repository wrapper from the repository root:
 
 ```bash
-supabase functions deploy <name> --project-ref gqnoajqerqhnvulmnyvv
+SUPABASE_PROJECT_ID=gqnoajqerqhnvulmnyvv scripts/deploy-supabase-functions.sh
 ```
+
+An issue-approved single-function surgical deployment must first pass the exact-target verifier and
+follow `docs/runbooks/PRODUCTION_SUPABASE_AUTHORITY.md`; never run a bare production deploy command.
 
 You do NOT run this yourself. If you need to test an edge function locally:
 

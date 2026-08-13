@@ -202,6 +202,98 @@ function assertNoAlternateSupabaseOrigins(source, authority, name, failures) {
   assertSource(refs.every((ref) => ref === authority.project_ref), name, failures);
 }
 
+export function validateAmendment2SourceOwners(
+  { businessAuthCallback, sentryDeploy, discoverDeploy },
+  authority = loadProductionAuthority(),
+) {
+  const failures = [];
+
+  assertSingleValue(
+    businessAuthCallback,
+    /var SUPABASE_URL = "([^"]+)";/g,
+    authority.origins.rest,
+    "business-auth-callback:canonical_url",
+    failures,
+  );
+  assertNoAlternateSupabaseOrigins(
+    businessAuthCallback,
+    authority,
+    "business-auth-callback:alternate_origin",
+    failures,
+  );
+
+  const callbackJwtValues = matchingValues(
+    businessAuthCallback,
+    /var SUPABASE_ANON_KEY\s*=\s*\n\s*"([^"]+)";/g,
+  );
+  let callbackJwtRef = "<malformed>";
+  if (callbackJwtValues.length === 1) {
+    try {
+      callbackJwtRef = extractProjectRefFromJwt(
+        callbackJwtValues[0],
+        "business-auth-callback:public-jwt",
+      );
+    } catch {
+      // The named failure below deliberately does not include key material.
+    }
+  }
+  assertSource(
+    callbackJwtValues.length === 1 && callbackJwtRef === authority.project_ref,
+    "business-auth-callback:public_jwt_ref",
+    failures,
+  );
+  assertSingleValue(
+    businessAuthCallback,
+    /var STORAGE_KEY = "([^"]+)";/g,
+    `sb-${authority.project_ref}-auth-token`,
+    "business-auth-callback:storage_key_ref",
+    failures,
+  );
+
+  const operationalOwners = [
+    {
+      name: "deploy-g3-sentry",
+      source: sentryDeploy,
+      targetPattern: /PROJECT_REF="\$\{1:-([a-z0-9]{20})\}"/g,
+      sideEffects: ["supabase link", "supabase secrets set"],
+    },
+    {
+      name: "deploy-discover-production",
+      source: discoverDeploy,
+      targetPattern:
+        /PROJECT_REF="\$\{SUPABASE_PROJECT_REF:-([a-z0-9]{20})\}"/g,
+      sideEffects: ["supabase link", "supabase db push", "supabase functions deploy"],
+    },
+  ];
+  for (const owner of operationalOwners) {
+    assertSingleValue(
+      owner.source,
+      owner.targetPattern,
+      authority.project_ref,
+      `${owner.name}:canonical_default`,
+      failures,
+    );
+    const verifierIndex = owner.source.indexOf(
+      "scripts/ops/verify-production-supabase-authority.mjs",
+    );
+    const targetArgumentIndex = owner.source.indexOf('--target-ref "$PROJECT_REF"');
+    assertSource(
+      verifierIndex >= 0 && targetArgumentIndex > verifierIndex,
+      `${owner.name}:authority_guard_missing`,
+      failures,
+    );
+    for (const sideEffect of owner.sideEffects) {
+      assertSource(
+        verifierIndex >= 0 && verifierIndex < owner.source.indexOf(sideEffect),
+        `${owner.name}:guard_after_${sideEffect.replaceAll(" ", "_")}`,
+        failures,
+      );
+    }
+  }
+
+  return [...new Set(failures)].sort();
+}
+
 export function validateRepositoryAuthority(repoRoot = REPO_ROOT) {
   const authority = loadProductionAuthority(
     resolve(repoRoot, "docs/contracts/production-supabase-authority.json"),
@@ -336,6 +428,17 @@ export function validateRepositoryAuthority(repoRoot = REPO_ROOT) {
     authority,
     "marketing:alternate_origin",
     failures,
+  );
+
+  failures.push(
+    ...validateAmendment2SourceOwners(
+      {
+        businessAuthCallback: read("mingla-business/public/auth/callback.html", repoRoot),
+        sentryDeploy: read("scripts/ops/deploy-g3-sentry.sh", repoRoot),
+        discoverDeploy: read("scripts/load/deploy-discover-staging.sh", repoRoot),
+      },
+      authority,
+    ),
   );
 
   const deployWorkflow = read(".github/workflows/deploy-functions.yml", repoRoot);
