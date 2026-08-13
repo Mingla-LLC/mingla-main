@@ -8470,13 +8470,12 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 ---
 
-## DRAFT — issue #2016 (one fail-closed Mingla production Supabase authority)
+## ACTIVE — issue #2016 (one fail-closed Mingla production Supabase authority)
 
-> Registered DRAFT at issue #2016 IMPLEMENT. The orchestrator flips these entries to ACTIVE only
-> after merge, approved external metadata reconciliation, independent production verification, and
-> zero-loss/cross-product-isolation evidence.
+> Activated after merge, approved external metadata reconciliation, independent production
+> verification, and zero-loss/cross-product-isolation evidence.
 
-### I-PROPOSED-2016-PRODUCTION-SUPABASE-AUTHORITY (DRAFT)
+### I-PROPOSED-2016-PRODUCTION-SUPABASE-AUTHORITY (ACTIVE)
 
 - **Rule:** Every Mingla production deploy, rotation, migration, audit, and shipping client must
   resolve exactly to `docs/contracts/production-supabase-authority.json` before network activity.
@@ -8484,24 +8483,24 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 - **Enforcement:** `scripts/ops/verify-production-supabase-authority.mjs`, the guarded Edge deploy,
   Apple JWT rotation and live secret-budget audit entry points, and
   `.github/workflows/production-supabase-authority.yml`.
-- **Established:** DRAFT at issue #2016 IMPLEMENT; activation requires the close gates above.
+- **Established:** issue #2016; activated after the production close gates passed on 2026-08-13.
 
-### I-PROPOSED-2016-CROSS-PRODUCT-ISOLATION (DRAFT)
+### I-PROPOSED-2016-CROSS-PRODUCT-ISOLATION (ACTIVE)
 
 - **Rule:** Every ref classified `unrelated_project_do_not_target` in the authority contract is
   forbidden to Mingla automation and runtime. Issue #2016 performs zero mutation against it.
 - **Enforcement:** exact-ref verification, the tracked-source denylist scan, zero-network regression
   proof, and independent read-only before/after identity evidence.
-- **Established:** DRAFT at issue #2016 IMPLEMENT; activation requires the close gates above.
+- **Established:** issue #2016; activated after the production close gates passed on 2026-08-13.
 
-### I-PROPOSED-2016-NO-SECRET-LOGGING (DRAFT)
+### I-PROPOSED-2016-NO-SECRET-LOGGING (ACTIVE)
 
 - **Rule:** Authority verification may emit only variable names, parsed project refs, presence, and
   approved one-way fingerprints. It may never emit raw credentials, JWTs, signed URLs, personal
   rows, or secret-bearing response bodies.
 - **Enforcement:** the verifier's redacted error contract, names-only secret audit, issue #2016
   regression suites, and the authority runbook.
-- **Established:** DRAFT at issue #2016 IMPLEMENT; activation requires the close gates above.
+- **Established:** issue #2016; activated after the production close gates passed on 2026-08-13.
 
 ---
 
