@@ -73,3 +73,13 @@ Deno.test("detectChoices: disambiguation caps at 8 chips", () => {
   assert(c);
   assertEquals(c!.options.length, 8);
 });
+
+Deno.test("#1970 detectChoices: missing-field ask → clarifying", () => {
+  const c = detectChoices(
+    "create an event",
+    "What date should we use?",
+    [brand("b1", "Lumen Coffee")],
+  );
+  assert(c);
+  assertEquals(c!.kind, "clarifying");
+});

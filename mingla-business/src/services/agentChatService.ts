@@ -15,7 +15,12 @@ import { supabase } from "./supabase";
 // sends its `label` as a normal user turn (Q2 conversational feedback); it does
 // NOT pre-fill a tool arg. Purely additive to a text turn.
 export interface AgentChoices {
-  kind: "brand_disambiguation" | "no_brand_handoff";
+  kind:
+    | "brand_disambiguation"
+    | "no_brand_handoff"
+    | "clarifying"
+    | "multi_select"
+    | "next_step";
   prompt: string;
   options: { id: string; label: string }[];
 }

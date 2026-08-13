@@ -31,12 +31,14 @@ export function choicesOf(m: MessageLike): AgentChoices | undefined {
     | { choices?: unknown }
     | undefined;
   const choices = structured?.choices as Partial<AgentChoices> | undefined;
-  if (
-    !choices ||
-    (choices.kind !== "brand_disambiguation" && choices.kind !== "no_brand_handoff") ||
-    !Array.isArray(choices.options) ||
-    choices.options.length === 0
-  ) {
+  const kinds = new Set([
+    "brand_disambiguation",
+    "no_brand_handoff",
+    "clarifying",
+    "multi_select",
+    "next_step",
+  ]);
+  if (!choices || !choices.kind || !kinds.has(choices.kind) || !Array.isArray(choices.options)) {
     return undefined;
   }
   const options = choices.options.filter(
@@ -45,7 +47,8 @@ export function choicesOf(m: MessageLike): AgentChoices | undefined {
       typeof (o as ChoiceOption).id === "string" &&
       typeof (o as ChoiceOption).label === "string",
   );
-  if (options.length === 0) return undefined;
+  // clarifying is a typed ask — options may be empty. Other kinds need chips.
+  if (choices.kind !== "clarifying" && options.length === 0) return undefined;
   return { kind: choices.kind, prompt: choices.prompt ?? "", options };
 }
 

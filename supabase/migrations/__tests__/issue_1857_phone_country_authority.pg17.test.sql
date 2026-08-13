@@ -84,6 +84,17 @@ BEGIN
     ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)', 'eaa44b5386a7a6a668e69ce769cdd6d8'),
     ('public.issue_1770_enqueue_source()', '82f95d2c7440945e43df55948c164f1f')
   ) AS expected(signature,definition_md5) LOOP
+    -- #1773 last-wrote biz_resolve_brand_person_source after #1857 (stay ingest).
+    -- Skip that one 1857-era fingerprint when the 1773 body is live.
+    IF v_expected.signature LIKE 'public.biz_resolve_brand_person_source(%'
+       AND position('stay_reservation' in coalesce(pg_get_functiondef(to_regprocedure(v_expected.signature)), '')) > 0 THEN
+      CONTINUE;
+    END IF;
+    -- #1773 also last-wrote issue_1770_enqueue_source (reservation ingest).
+    IF v_expected.signature = 'public.issue_1770_enqueue_source()'
+       AND position('issue_1773_ingest_enqueue_failed' in coalesce(pg_get_functiondef(to_regprocedure(v_expected.signature)), '')) > 0 THEN
+      CONTINUE;
+    END IF;
     IF md5(pg_get_functiondef(to_regprocedure(v_expected.signature)))<>v_expected.definition_md5 THEN
       RAISE EXCEPTION 'issue_1857_pg17_fingerprint_baseline_failed:%',v_expected.signature;
     END IF;
