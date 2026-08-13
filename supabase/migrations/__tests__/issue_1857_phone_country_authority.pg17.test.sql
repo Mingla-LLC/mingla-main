@@ -90,6 +90,11 @@ BEGIN
        AND position('stay_reservation' in coalesce(pg_get_functiondef(to_regprocedure(v_expected.signature)), '')) > 0 THEN
       CONTINUE;
     END IF;
+    -- #1773 also last-wrote issue_1770_enqueue_source (reservation ingest).
+    IF v_expected.signature = 'public.issue_1770_enqueue_source()'
+       AND position('issue_1773_ingest_enqueue_failed' in coalesce(pg_get_functiondef(to_regprocedure(v_expected.signature)), '')) > 0 THEN
+      CONTINUE;
+    END IF;
     IF md5(pg_get_functiondef(to_regprocedure(v_expected.signature)))<>v_expected.definition_md5 THEN
       RAISE EXCEPTION 'issue_1857_pg17_fingerprint_baseline_failed:%',v_expected.signature;
     END IF;
