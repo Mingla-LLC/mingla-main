@@ -106,8 +106,12 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   const [typedValue, setTypedValue] = useState("");
   const [isHolding, setIsHolding] = useState(false);
   const progress = useSharedValue(0);
-  const cancelFocusRef = useRef<View | null>(null);
-  const confirmFocusRef = useRef<View | null>(null);
+  const cancelFocusRef = useRef<React.ElementRef<typeof Pressable> | null>(
+    null,
+  );
+  const confirmFocusRef = useRef<React.ElementRef<typeof Pressable> | null>(
+    null,
+  );
   const webOriginRef = useRef<FocusableTarget | null>(null);
   const wasVisibleRef = useRef<boolean>(false);
 
@@ -135,8 +139,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       }
     }
     if (!visible && wasVisibleRef.current) {
-      restoreFocus?.();
-      if (Platform.OS === "web") webOriginRef.current?.focus?.();
+      if (restoreFocus !== undefined) restoreFocus();
+      else if (Platform.OS === "web") webOriginRef.current?.focus?.();
       webOriginRef.current = null;
     }
     wasVisibleRef.current = visible;
@@ -223,21 +227,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         ) : null}
 
         <View style={styles.actions}>
-          <View
-            ref={cancelFocusRef}
-            accessible={initialFocus === "cancel"}
-            accessibilityLabel={
-              initialFocus === "cancel" ? cancelLabel : undefined
-            }
-            accessibilityRole={initialFocus === "cancel" ? "button" : undefined}
-            focusable={initialFocus === "cancel"}
-            onAccessibilityTap={
-              initialFocus === "cancel" ? handleClose : undefined
-            }
-            style={styles.actionFlex}
-            tabIndex={initialFocus === "cancel" ? 0 : undefined}
-          >
+          <View style={styles.actionFlex}>
             <Button
+              ref={cancelFocusRef}
               label={cancelLabel}
               onPress={handleClose}
               variant="secondary"
@@ -248,23 +240,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             />
           </View>
           {variant === "holdToConfirm" ? (
-            <View
-              ref={confirmFocusRef}
-              accessible={initialFocus === "confirm"}
-              accessibilityLabel={
-                initialFocus === "confirm" ? confirmLabel : undefined
-              }
-              accessibilityRole={
-                initialFocus === "confirm" ? "button" : undefined
-              }
-              focusable={initialFocus === "confirm"}
-              onAccessibilityTap={
-                initialFocus === "confirm" ? triggerConfirm : undefined
-              }
-              style={styles.actionFlex}
-              tabIndex={initialFocus === "confirm" ? 0 : undefined}
-            >
+            <View style={styles.actionFlex}>
               <Pressable
+                ref={confirmFocusRef}
                 onPressIn={confirmBlocked ? undefined : handleHoldStart}
                 onPressOut={confirmBlocked ? undefined : handleHoldEnd}
                 disabled={confirmBlocked}
@@ -284,23 +262,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
               </Pressable>
             </View>
           ) : (
-            <View
-              ref={confirmFocusRef}
-              accessible={initialFocus === "confirm"}
-              accessibilityLabel={
-                initialFocus === "confirm" ? confirmLabel : undefined
-              }
-              accessibilityRole={
-                initialFocus === "confirm" ? "button" : undefined
-              }
-              focusable={initialFocus === "confirm"}
-              onAccessibilityTap={
-                initialFocus === "confirm" ? triggerConfirm : undefined
-              }
-              style={styles.actionFlex}
-              tabIndex={initialFocus === "confirm" ? 0 : undefined}
-            >
+            <View style={styles.actionFlex}>
               <Button
+                ref={confirmFocusRef}
                 label={confirmLabel}
                 onPress={triggerConfirm}
                 variant={destructive ? "destructive" : "primary"}

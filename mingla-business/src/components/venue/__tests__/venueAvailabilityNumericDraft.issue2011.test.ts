@@ -82,6 +82,7 @@ interface RenderNode {
     disabled?: unknown;
     onChangeText?: (value: string) => void;
     onPress?: () => void;
+    [key: string]: unknown;
   };
 }
 interface RenderTree {
@@ -213,7 +214,7 @@ describe("issue #2011 availability numeric draft", () => {
     });
   });
 
-  it("renders the real module, protects a dirty draft from refetch, then performs one save", () => {
+  it("stays dirty through save and rebases only from authoritative server truth", () => {
     let renderer!: RenderTree;
     act(() => {
       renderer = TestRenderer.create(
@@ -255,6 +256,57 @@ describe("issue #2011 availability numeric draft", () => {
       advanceWindowDays: 30,
       minNoticeMinutes: 0,
     });
+
+    // The submitted local value remains dirty while the mutation's server
+    // refetch is unresolved. A reverted optimistic onSuccess path cleans here.
+    expect(p2().props.value).toBe("120");
+    expect(save.props.disabled).toBe(false);
+
+    const authoritative = {
+      ...config,
+      turnTimes: { ...config.turnTimes, p2: 110 },
+    };
+    const mutationOptions = mutateConfig.mock.calls[0]?.[1] as {
+      onSuccess?: (value: VenueAvailabilityConfig) => void;
+    };
+    act(() => mutationOptions.onSuccess?.(authoritative));
+
+    expect(p2().props.value).toBe("110");
+    expect(
+      renderer!.root.findByProps({ testID: "venue-avail-save" }).props.disabled,
+    ).toBe(true);
+  });
+
+  it("retains the exact dirty draft when the authoritative save/refetch rejects", () => {
+    let renderer!: RenderTree;
+    act(() => {
+      renderer = TestRenderer.create(
+        React.createElement(VenueAvailabilityModule, {
+          brandId: "brand-1",
+          venueId: "venue-1",
+        }),
+      );
+    });
+    const p2 = () =>
+      renderer.root.findByProps({ testID: "venue-avail-turn-p2" });
+    act(() => p2().props.onChangeText?.("120"));
+    act(() =>
+      renderer.root
+        .findByProps({ testID: "venue-avail-save" })
+        .props.onPress?.(),
+    );
+    const mutationOptions = mutateConfig.mock.calls[0]?.[1] as {
+      onError?: () => void;
+    };
+    act(() => mutationOptions.onError?.());
+
+    expect(p2().props.value).toBe("120");
+    expect(
+      renderer.root.findByProps({ testID: "venue-avail-save" }).props.disabled,
+    ).toBe(false);
+    expect(
+      renderer.root.findByProps({ testID: "venue-avail-save-error" }),
+    ).toBeDefined();
   });
 
   it("renders numeric controls read-only without a save action for lower roles", () => {

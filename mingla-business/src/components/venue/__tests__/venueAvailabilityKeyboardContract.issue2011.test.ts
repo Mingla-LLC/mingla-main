@@ -16,14 +16,19 @@ describe("issue #2011 keyboard-safe availability contract", () => {
     );
   });
 
-  it("the form owns strings, one save mutation, exact state copy, and no per-key persistence", () => {
+  it("the form owns strings, one save mutation, authoritative rebasing, and no per-key persistence", () => {
     const availability = read("VenueAvailabilityModule.tsx");
     expect(availability).toContain(
       "setDraft((current) => ({ ...current, [key]: next }))",
     );
     expect(availability).toContain(
-      "upsertConfig.mutate(buildAvailabilityPatch(savedDraft)",
+      "upsertConfig.mutate(buildAvailabilityPatch(submittedDraft)",
     );
+    expect(availability).toContain("onSuccess: (authoritativeConfig) =>");
+    expect(availability).toMatch(
+      /availabilityDraftFromConfig\(\s*authoritativeConfig\s*,?\s*\)/,
+    );
+    expect(availability).not.toContain("setBaseline(submittedDraft)");
     expect(availability).toContain("Fix the highlighted fields before saving.");
     expect(availability).toContain("Your changes are still here — try again.");
     expect(availability).toContain("maxWidth: suiteFormMaxWidth");
@@ -49,6 +54,47 @@ describe("issue #2011 keyboard-safe availability contract", () => {
     expect(input).toContain('"aria-invalid": true');
     expect(input).toContain("outlineWidth: 2");
     expect(confirm).toContain('initialFocus?: "cancel" | "confirm"');
-    expect(confirm).toContain("restoreFocus?.()");
+    expect(confirm).toContain("if (restoreFocus !== undefined) restoreFocus()");
+  });
+
+  it("the mutation resolves only after authoritative refetch and caches that exact row", () => {
+    const hook = read("../../hooks/useVenueAvailability.ts");
+    const upsertStart = hook.indexOf(
+      "export function useUpsertVenueAvailabilityConfig",
+    );
+    const upsertEnd = hook.indexOf(
+      "/* ----------------------------- blackouts",
+      upsertStart,
+    );
+    const upsert = hook.slice(upsertStart, upsertEnd);
+
+    expect(upsert).toMatch(
+      /await fetchVenueAvailabilityConfig\(\s*brandId,\s*venueId,?\s*\)/,
+    );
+    expect(upsert).toContain('throw new Error("availability_refetch_missing")');
+    expect(upsert).toContain("queryClient.setQueryData(");
+    expect(upsert.indexOf(".upsert(row")).toBeLessThan(
+      upsert.indexOf("await fetchVenueAvailabilityConfig"),
+    );
+    expect(upsert.indexOf("await fetchVenueAvailabilityConfig")).toBeLessThan(
+      upsert.indexOf("return authoritative"),
+    );
+  });
+
+  it("focuses the actual Button ref without an accessible wrapper or numeric-field restore", () => {
+    const button = read("../ui/Button.tsx");
+    const confirm = read("../ui/ConfirmDialog.tsx");
+    const availability = read("VenueAvailabilityModule.tsx");
+
+    expect(button).toContain("forwardRef<");
+    expect(button).toContain("ref={forwardedRef}");
+    expect(confirm).toContain("ref={cancelFocusRef}");
+    expect(confirm).not.toMatch(
+      /<View[\s\S]{0,250}accessible=\{initialFocus === "cancel"\}/,
+    );
+    expect(availability).not.toContain("restoreActiveFieldFocus");
+    expect(availability).not.toContain(
+      "restoreFocus={restoreActiveFieldFocus}",
+    );
   });
 });

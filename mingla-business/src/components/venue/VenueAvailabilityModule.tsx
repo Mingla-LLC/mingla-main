@@ -399,11 +399,6 @@ export const VenueAvailabilityModule = forwardRef<
     setSubmitted(false);
   }, [configQuery.data, configQuery.isSuccess]);
 
-  const restoreActiveFieldFocus = useCallback((): void => {
-    const index = activeFieldIndexRef.current;
-    if (index !== null) inputRefs.current[index]?.focus();
-  }, []);
-
   const requestLeave = useCallback((onDiscard: () => void): void => {
     if (!dirtyRef.current) {
       onDiscard();
@@ -554,11 +549,13 @@ export const VenueAvailabilityModule = forwardRef<
       setToast({ kind: "error", message });
       return;
     }
-    const savedDraft = { ...draftRef.current };
-    upsertConfig.mutate(buildAvailabilityPatch(savedDraft), {
-      onSuccess: () => {
-        setBaseline(savedDraft);
-        setDraft(savedDraft);
+    const submittedDraft = { ...draftRef.current };
+    upsertConfig.mutate(buildAvailabilityPatch(submittedDraft), {
+      onSuccess: (authoritativeConfig) => {
+        const authoritativeDraft =
+          availabilityDraftFromConfig(authoritativeConfig);
+        setBaseline(authoritativeDraft);
+        setDraft(authoritativeDraft);
         setTouched(new Set());
         setSubmitted(false);
         setSaveState("success");
@@ -577,8 +574,7 @@ export const VenueAvailabilityModule = forwardRef<
   const handleKeepEditing = useCallback((): void => {
     setDiscardDialogVisible(false);
     pendingLeaveRef.current = null;
-    restoreActiveFieldFocus();
-  }, [restoreActiveFieldFocus]);
+  }, []);
 
   const handleDiscard = useCallback((): void => {
     const leave = pendingLeaveRef.current;
@@ -1026,7 +1022,6 @@ export const VenueAvailabilityModule = forwardRef<
         confirmLabel="Discard changes"
         destructive
         initialFocus="cancel"
-        restoreFocus={restoreActiveFieldFocus}
         cancelTestID="venue-avail-keep-editing"
         confirmTestID="venue-avail-discard"
         testID="venue-avail-discard-dialog"
