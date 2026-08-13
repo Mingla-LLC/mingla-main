@@ -197,6 +197,7 @@ const AUTH_SCOPED_HOOK_FILES = [
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads
 //    depend on them. Each entry carries the reason it is anon-safe.
 const PUBLIC_HOOK_ALLOWLIST = [
+  ["useTurnoutForecast.ts", "#1008 React Query observer is permanently enabled:false; authenticated metered runs are imperative and never execute through this query"],
   ["usePublicEvents.ts", "anon-readable events via security-definer public views (buyer-web feed)"],
   ["usePublicTripBySlug.ts", "anon-readable published trips via trip-sidecar anon RLS (buyer-web)"],
   ["usePublicTripById.ts", "anon-readable published trips by id (buyer-web)"],
