@@ -1,0 +1,57 @@
+name: Issue 1996 Business Desktop Sharing Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-business/src/components/ui/ShareModal.tsx"
+      - "mingla-business/src/components/ui/ShareModalContent.tsx"
+      - "mingla-business/src/utils/sharePublicUrl.ts"
+      - "mingla-business/src/utils/__tests__/issue1996BusinessWebShare.implementor.test.ts"
+      - "mingla-business/src/utils/__tests__/issue1996BusinessWebShare.tester.adversarial.test.ts"
+      - "mingla-marketing/lib/content-share-readiness.ts"
+      - ".github/workflows/issue-1996-business-desktop-sharing-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-business/src/components/ui/ShareModal.tsx"
+      - "mingla-business/src/components/ui/ShareModalContent.tsx"
+      - "mingla-business/src/utils/sharePublicUrl.ts"
+      - "mingla-business/src/utils/__tests__/issue1996BusinessWebShare.implementor.test.ts"
+      - "mingla-business/src/utils/__tests__/issue1996BusinessWebShare.tester.adversarial.test.ts"
+      - "mingla-marketing/lib/content-share-readiness.ts"
+      - ".github/workflows/issue-1996-business-desktop-sharing-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1996-business-jest:
+    name: "#1996 BIZ: desktop preview, copy, and share contracts"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Run #1996 implementor and tester regression guards
+        run: >
+          npx jest
+          src/utils/__tests__/issue1996BusinessWebShare.implementor.test.ts
+          src/utils/__tests__/issue1996BusinessWebShare.tester.adversarial.test.ts
+          --runInBand
+      - name: Preserve unified sharing behavior
+        run: >
+          npx jest
+          src/utils/__tests__/sharePublicUrl.test.ts
+          src/components/ui/__tests__/issue_1719_share_same_turn.happy.test.tsx
+          --runInBand
