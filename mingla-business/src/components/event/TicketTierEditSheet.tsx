@@ -10,6 +10,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  type GestureResponderEvent,
   Platform,
   Pressable,
   StyleSheet,
@@ -83,6 +84,31 @@ const currencySymbol = (currency?: string): string | null => {
   } catch {
     return currency.trim().toUpperCase();
   }
+};
+
+const isValidPriceInput = (value: string): boolean =>
+  /^\d*(?:\.\d*)?$/.test(value);
+
+const isValidCapacityInput = (value: string): boolean => /^\d*$/.test(value);
+
+const hasSelectionRange = (
+  value: unknown,
+): value is { setSelectionRange: (start: number, end: number) => void } =>
+  typeof value === "object" &&
+  value !== null &&
+  "setSelectionRange" in value &&
+  typeof value.setSelectionRange === "function";
+
+const reselectWebValueAfterPointer = (
+  event: GestureResponderEvent,
+  value: string,
+): void => {
+  if (Platform.OS !== "web" || value.length === 0) return;
+
+  const target: unknown = event.currentTarget;
+  requestAnimationFrame(() => {
+    if (hasSelectionRange(target)) target.setSelectionRange(0, value.length);
+  });
 };
 
 // ---- Visibility options ---------------------------------------------
@@ -520,6 +546,17 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
 
   // ORCH-0704 v2 — capacity floor inline validation when tier has sales.
   const parsedCapacityValue = parseInt(capacityText, 10);
+  const parsedPriceValue = Number(priceText);
+  const priceInvalid =
+    !isFree &&
+    (priceText.trim().length === 0 ||
+      !Number.isFinite(parsedPriceValue) ||
+      parsedPriceValue <= 0);
+  const capacityInvalid =
+    !isUnlimited &&
+    (capacityText.trim().length === 0 ||
+      !Number.isFinite(parsedCapacityValue) ||
+      parsedCapacityValue <= 0);
   const capacityBelowSold =
     isPriceLocked &&
     !isUnlimited &&
@@ -538,6 +575,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     !maxLessThanMin &&
     !descriptionTooLong &&
     !saleEndBeforeStart &&
+    !priceInvalid &&
+    !capacityInvalid &&
     !capacityBelowSold;
 
   // Sale period picker handlers — bottom-docked inline DateTimePicker
@@ -827,10 +866,16 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
               >
                 <TextInput
                   value={priceText}
-                  onChangeText={setPriceText}
+                  onChangeText={(value) => {
+                    if (isValidPriceInput(value)) setPriceText(value);
+                  }}
                   placeholder="35"
                   placeholderTextColor={textTokens.quaternary}
                   keyboardType="decimal-pad"
+                  selectTextOnFocus
+                  onPressIn={(event) =>
+                    reselectWebValueAfterPointer(event, priceText)
+                  }
                   style={styles.textInput}
                   editable={!isPriceLocked}
                   accessibilityLabel={
@@ -841,7 +886,11 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   }
                 />
               </View>
-              {isPriceLockedByRank ? (
+              {priceInvalid ? (
+                <Text style={styles.helperError}>
+                  Enter a price greater than zero, or mark this ticket free.
+                </Text>
+              ) : isPriceLockedByRank ? (
                 <Text style={styles.helperHint}>
                   You can&apos;t change ticket prices with your current role. A
                   finance manager or above can.
@@ -885,15 +934,26 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
               >
                 <TextInput
                   value={capacityText}
-                  onChangeText={setCapacityText}
+                  onChangeText={(value) => {
+                    if (isValidCapacityInput(value)) setCapacityText(value);
+                  }}
                   placeholder="200"
                   placeholderTextColor={textTokens.quaternary}
                   keyboardType="number-pad"
+                  selectTextOnFocus
+                  onPressIn={(event) =>
+                    reselectWebValueAfterPointer(event, capacityText)
+                  }
                   style={styles.textInput}
                   accessibilityLabel="Ticket capacity"
                 />
               </View>
-              {capacityBelowSold ? (
+              {capacityInvalid ? (
+                <Text style={styles.helperError}>
+                  Enter a whole-number capacity greater than zero, or mark this
+                  ticket unlimited.
+                </Text>
+              ) : capacityBelowSold ? (
                 <Text style={styles.helperError}>
                   Cannot go below {soldCount} tickets sold. Increase capacity or
                   refund existing buyers first.
