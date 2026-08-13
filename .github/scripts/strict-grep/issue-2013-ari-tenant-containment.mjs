@@ -18,7 +18,7 @@ export function twoAccountPublicRlsProof(ownerId, memberRows, publicBrands) {
 
 export function check(sources) {
   const failures = [];
-  const { helper, chat, tools, domain, prompt, hook, screen, list, migration } = sources;
+  const { helper, chat, confirm, tools, domain, prompt, hook, screen, list, migration } = sources;
   for (const token of [
     '.eq("account_id", userId)', '.eq("user_id", userId)', '.not("accepted_at", "is", null)', '.is("removed_at", null)',
     '.is("brand.deleted_at", null)', 'role: "owner"', 'effective_rank: 60',
@@ -41,6 +41,10 @@ export function check(sources) {
   ]) if (!chat.includes(token)) failures.push(`conversation lifecycle missing ${token}`);
   for (const token of ['.select("role, content, tool_calls, tool_results, prompt_version, created_at")', 'trustedHistoryPromptVersion = "tenant-v1"', "m.prompt_version !== trustedHistoryPromptVersion", "prompt_version: TENANT_CONTEXT_VERSION"]) {
     if (!chat.includes(token)) failures.push(`persisted-context provenance boundary missing ${token}`);
+  }
+  const confirmationWrites = confirm.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1;
+  if (!confirm.includes('import { TENANT_CONTEXT_VERSION }') || confirmationWrites !== 4 || confirm.includes("PROMPT_VERSION")) {
+    failures.push(`confirmation provenance registry incomplete: expected 4 tenant-v1 writes, found ${confirmationWrites}`);
   }
   if (chat.indexOf("resolveAccessibleAgentBrands") > chat.indexOf('.from("agent_conversations")')) {
     failures.push("tenant scope must resolve before conversation persistence");
@@ -82,6 +86,7 @@ export function check(sources) {
 const sources = {
   helper: read("supabase/functions/_shared/agentTenantScope.ts"),
   chat: read("supabase/functions/agent-chat/index.ts"),
+  confirm: read("supabase/functions/agent-confirm-action/index.ts"),
   tools: read("supabase/functions/_shared/agentTools.ts"),
   domain: read("supabase/functions/_shared/agentDomainTools.ts"),
   prompt: read("supabase/functions/_shared/agentSystemPrompt.ts"),
@@ -97,11 +102,13 @@ if (process.argv.includes("--self-test")) {
   const revertDetected = reverted.some((failure) => failure.includes("tenant authority missing"));
   const historyReverted = check({ ...sources, chat: sources.chat.replace("if (m.prompt_version !== trustedHistoryPromptVersion) continue;", "") });
   const historyRevertDetected = historyReverted.some((failure) => failure.includes("persisted-context provenance boundary"));
-  if (good.length > 0 || !revertDetected || !historyRevertDetected) {
-    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted });
+  const confirmationReverted = check({ ...sources, confirm: sources.confirm.replace("prompt_version: TENANT_CONTEXT_VERSION", "prompt_version: PROMPT_VERSION") });
+  const confirmationRevertDetected = confirmationReverted.some((failure) => failure.includes("confirmation provenance registry incomplete"));
+  if (good.length > 0 || !revertDetected || !historyRevertDetected || !confirmationRevertDetected) {
+    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted });
     process.exit(1);
   }
-  console.log("issue-2013 self-test PASS: clean source passes; owner-filter and persisted-history reverts fail.");
+  console.log("issue-2013 self-test PASS: clean source passes; owner, history, and confirmation-writer reverts fail.");
   process.exit(0);
 }
 

@@ -1,5 +1,5 @@
 // #2013 — append-only tenant-containment regression.
-import { assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { assert, assertEquals, assertThrows } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { READ_ONLY_TOOL_NAMES } from "../agentTools.ts";
 import {
   AccessibleAgentBrand,
@@ -46,4 +46,29 @@ Deno.test("#2013 negative proof is anchored to the repository's public brand RLS
   // from Account A's explicit owner/member scope is therefore the proof.
   const accountAPrivateScope = [owner];
   assertThrows(() => requireAccessibleAgentBrand(accountAPrivateScope, delegated.id), TenantScopeError);
+});
+
+Deno.test("#2013 proposal-confirm rows share provenance and replay while v4 stays excluded", async () => {
+  const confirmSource = await Deno.readTextFile("supabase/functions/agent-confirm-action/index.ts");
+  assert(confirmSource.includes('import { TENANT_CONTEXT_VERSION }'));
+  assertEquals(confirmSource.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1, 4);
+  assertEquals(confirmSource.includes("PROMPT_VERSION"), false);
+
+  const chatSource = await Deno.readTextFile("supabase/functions/agent-chat/index.ts");
+  const start = chatSource.indexOf("const contents: GeminiContentMessage[] = [];");
+  const end = chatSource.indexOf("// Append the new user message", start);
+  assert(start >= 0 && end > start);
+  const executable = chatSource.slice(start, end)
+    .replace("const contents: GeminiContentMessage[] = [];", "const contents = [];")
+    .replaceAll(" as any", "") + "\nreturn contents;";
+  const serialize = new Function("history", executable) as (history: unknown[]) => unknown[];
+  const replay = serialize([
+    { role: "tool", prompt_version: "v4", tool_results: { tool_name: "create_event", result: { title: "legacy poison" } } },
+    { role: "tool", prompt_version: "tenant-v1", tool_results: { tool_name: "create_event", result: { title: "Scoped launch" } } },
+    { role: "assistant", prompt_version: "tenant-v1", content: { text: "Created Scoped launch." } },
+  ]);
+  const encoded = JSON.stringify(replay);
+  assertEquals(encoded.includes("legacy poison"), false);
+  assert(encoded.includes("Scoped launch"));
+  assert(encoded.includes("Created Scoped launch."));
 });

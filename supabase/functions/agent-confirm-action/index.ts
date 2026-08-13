@@ -11,7 +11,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
-import { PROMPT_VERSION } from "../_shared/agentSystemPrompt.ts";
+import { TENANT_CONTEXT_VERSION } from "../_shared/agentSystemPrompt.ts";
 import { ARI_MODEL_VERSION } from "../_shared/agentGemini.ts";
 import { findTool, ToolError } from "../_shared/agentTools.ts";
 
@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
           pending_action_id: pending.id,
           outcome: "cancelled",
         },
-        prompt_version: PROMPT_VERSION,
+        prompt_version: TENANT_CONTEXT_VERSION,
         model_version: ARI_MODEL_VERSION,
       });
     }
@@ -216,7 +216,7 @@ Deno.serve(async (req) => {
           outcome: "failed",
           reason,
         },
-        prompt_version: PROMPT_VERSION,
+        prompt_version: TENANT_CONTEXT_VERSION,
         model_version: ARI_MODEL_VERSION,
       });
     }
@@ -262,7 +262,7 @@ Deno.serve(async (req) => {
         outcome: "executed",
         result,
       },
-      prompt_version: PROMPT_VERSION,
+      prompt_version: TENANT_CONTEXT_VERSION,
       model_version: ARI_MODEL_VERSION,
     });
   }
@@ -274,7 +274,7 @@ Deno.serve(async (req) => {
       user_id: userId,
       role: "assistant",
       content: { text: followupText },
-      prompt_version: PROMPT_VERSION,
+      prompt_version: TENANT_CONTEXT_VERSION,
       model_version: ARI_MODEL_VERSION,
     });
   }
