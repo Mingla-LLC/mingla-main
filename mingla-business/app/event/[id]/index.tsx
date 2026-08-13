@@ -871,6 +871,7 @@ export default function EventDetailScreen(): React.ReactElement {
 
       {/* Share modal — Cycle 7 reuse */}
       <ShareModal
+        preloadContent
         visible={shareModalVisible}
         onClose={() => setShareModalVisible(false)}
         url={eventPublicUrl({

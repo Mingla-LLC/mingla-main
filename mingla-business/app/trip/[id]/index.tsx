@@ -642,6 +642,7 @@ export default function TripDashboardRoute(): React.ReactElement {
           TripManageMenu share row */}
       {trip.brandSlug !== null && trip.brandSlug.length > 0 ? (
         <ShareModal
+          preloadContent
           visible={shareModalVisible}
           onClose={() => setShareModalVisible(false)}
           url={`https://business.usemingla.com/t/${trip.brandSlug}/${trip.slug}`}

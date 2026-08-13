@@ -484,6 +484,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
 
       {hasPublicPage ? (
         <ShareModal
+          preloadContent
           visible={shareModalVisible}
           onClose={() => setShareModalVisible(false)}
           url={`https://business.usemingla.com/exp/${experience.brandSlug}/${experience.slug}`}

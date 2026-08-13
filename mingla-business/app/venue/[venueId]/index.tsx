@@ -387,6 +387,7 @@ export default function VenueManagementPage(): React.ReactElement {
           on an empty segment, so it is only ever called behind canShowPublic. */}
       {canShowPublic && brandSlug !== null && venueSlug !== null ? (
         <ShareModal
+          preloadContent
           visible={shareVisible}
           onClose={() => setShareVisible(false)}
           url={venuePublicUrl({ brandSlug, venueSlug })}

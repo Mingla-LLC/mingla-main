@@ -28,10 +28,11 @@ const LazyShareModal = React.lazy(async () => {
 
 export const ShareModal: React.FC<ShareModalProps> = (props) => {
   React.useEffect(() => {
+    if (!props.preloadContent) return;
     // Keep the implementation in its split chunk, but fetch it while the
     // management surface is idle so the first Share tap can present promptly.
     void loadShareModalContent();
-  }, []);
+  }, [props.preloadContent]);
 
   if (!props.visible) return null;
   return (

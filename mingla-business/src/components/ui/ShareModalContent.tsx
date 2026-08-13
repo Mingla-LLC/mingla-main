@@ -21,6 +21,7 @@ export interface ShareModalProps {
   title: string;
   description?: string;
   contentKind: ShareEntityKind;
+  preloadContent?: boolean;
 }
 
 function canWebShare(): boolean {
