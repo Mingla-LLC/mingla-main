@@ -12,17 +12,19 @@ describe("issue #1774 People page happy path", () => {
     expect(legacy).not.toContain("AudienceListScreen");
   });
 
-  test("the page shows truthful unavailable dependencies and never fabricates reach", () => {
+  test("the page hides future reach/export dependencies and never fabricates reach", () => {
     const page = read("../PeoplePage.tsx");
-    expect(page).toContain('status="Reach unavailable"');
     expect(page).toContain('status="Import unavailable"');
-    expect(page).toContain('status="Export unavailable"');
+    expect(page).not.toMatch(/People you can reach|Reach unavailable|Followers|Extended circle/);
+    expect(page).not.toMatch(/Export unavailable|Book export is coming soon/);
     expect(page).not.toMatch(/followersCount|extendedCircleCount|estimatedReach/);
   });
 
   test("import is fail-closed and every import exit replaces back to People", () => {
     const page = read("../PeoplePage.tsx");
-    expect(page).toContain("!flag.isPending&&!flag.isFetching&&!flag.isError&&flag.data===true");
+    expect(page).toMatch(
+      /!flag\.isPending\s*&&\s*!flag\.isFetching\s*&&\s*!flag\.isError\s*&&\s*flag\.data\s*===\s*true/,
+    );
     const route = read("../../../../app/(tabs)/people/import.tsx");
     expect(route).toContain('returnTo === "marketingPeople"');
     expect(route).toContain('navigation.addListener(\n      "beforeRemove"');

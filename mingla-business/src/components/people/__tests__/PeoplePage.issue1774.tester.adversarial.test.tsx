@@ -19,17 +19,18 @@ describe("#1774 tester-owned privacy and rollout tripwires", () => {
     expect(page).not.toMatch(/Boolean\(importFlag\.data\)/);
   });
 
-  test("unavailable dependency rows remain status text rather than dead buttons", () => {
+  test("represented unavailable dependencies remain status text rather than dead buttons", () => {
     const start = primitives.indexOf("export function DependencyStatus");
     const end = primitives.indexOf("export function PeopleRow", start);
     const dependency = primitives.slice(start, end);
     expect(dependency).toBeDefined();
     expect(dependency).not.toMatch(/Pressable|Touchable|onPress|role="button"/);
+    expect(page).toContain('status="Import unavailable"');
   });
 
-  test("reach dependencies never invent a numeric recipient count", () => {
-    expect(page).toContain('status="Unavailable"');
-    expect(page).toContain('status="Reach unavailable"');
+  test("hidden reach dependencies reserve no UI and never invent a numeric recipient count", () => {
+    expect(page).not.toMatch(/People you can reach|Reach unavailable|Followers|Extended circle/);
+    expect(page).not.toMatch(/Export unavailable|Book export is coming soon/);
     expect(page).not.toMatch(/followers?\s*:\s*\d|extended\s*:\s*\d/i);
   });
 });
