@@ -83,7 +83,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "batch:E",
       "invocation": "node",
       "modes": [
         "self-test",
