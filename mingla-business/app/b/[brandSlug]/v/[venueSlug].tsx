@@ -82,6 +82,7 @@ import {
   venuePublicUrl,
 } from "../../../../src/constants/publicUrls";
 import type { PublicVenue } from "../../../../src/services/publicEventsService";
+import { shareCanonicalPublicPageOnWeb } from "../../../../src/utils/shareCanonicalPublicPageOnWeb";
 import {
   captureVenueOrganicEvent,
   settleVenueOrganicJourneyOnConsent,
@@ -334,8 +335,22 @@ export default function PublicVenueRoute(): React.ReactElement {
   }, [brandSlug, router]);
 
   const handleShare = useCallback((): void => {
+    if (
+      Platform.OS === "web" &&
+      venue !== null &&
+      typeof brandSlug === "string" &&
+      typeof venueSlug === "string"
+    ) {
+      const { pageTitle, metaDescription } = publicVenueMeta(venue);
+      void shareCanonicalPublicPageOnWeb({
+        url: venuePublicUrl({ brandSlug, venueSlug }),
+        title: pageTitle,
+        description: metaDescription,
+      });
+      return;
+    }
     setShareModalVisible(true);
-  }, []);
+  }, [brandSlug, venue, venueSlug]);
 
   // issue #1562 mitigation 2 — the guest's live quoted total, reported up from
   // the Reservations tab's booking body. It replaces the "from" rate in the

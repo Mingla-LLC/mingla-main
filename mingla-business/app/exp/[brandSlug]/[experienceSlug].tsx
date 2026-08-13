@@ -54,6 +54,7 @@ import {
 import { useResponsiveLayout } from "@mingla/offering-rendering";
 import { useThemeFont } from "../../../src/theme/useThemeFont";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
+import { shareCanonicalPublicPageOnWeb } from "../../../src/utils/shareCanonicalPublicPageOnWeb";
 import { TripReserveBar } from "../../../src/components/trip/TripReserveBar";
 import {
   experienceCheckoutPath,
@@ -182,10 +183,24 @@ export default function PublicExperienceRoute(): React.ReactElement {
     }
   }, [router, brandSlug]);
 
-  // ORCH-1114: share → web-aware ShareModal. NEVER the bare react-native share.
+  // #1968 — public web is already the destination, so it shares the canonical
+  // URL directly. Native retains the existing custom Mingla share sheet.
   const handleShare = useCallback((): void => {
+    if (
+      Platform.OS === "web" &&
+      typeof brandSlug === "string" &&
+      typeof experienceSlug === "string" &&
+      query.data?.experience !== undefined
+    ) {
+      void shareCanonicalPublicPageOnWeb({
+        url: experiencePublicUrl({ brandSlug, experienceSlug }),
+        title: query.data.experience.title,
+        description: query.data.experience.description?.slice(0, 200) ?? undefined,
+      });
+      return;
+    }
     setShareModalVisible(true);
-  }, []);
+  }, [brandSlug, experienceSlug, query.data?.experience]);
   const handleToggleMute = useCallback((): void => {
     setMuted((m) => !m);
   }, []);

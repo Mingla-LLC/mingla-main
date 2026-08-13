@@ -39,6 +39,17 @@
       "destination": "/api/public-trip?brandSlug=:brandSlug&tripSlug=:tripSlug"
     },
     {
+      "source": "/exp/:brandSlug/:experienceSlug",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(.*)(facebookexternalhit|Twitterbot|Slackbot|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Applebot|bot|crawler|spider)(.*)"
+        }
+      ],
+      "destination": "/api/public-experience?brandSlug=:brandSlug&experienceSlug=:experienceSlug"
+    },
+    {
       "source": "/b/:brandSlug",
       "has": [
         {

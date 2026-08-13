@@ -32,6 +32,7 @@ import type {
 import type { Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
+import { shareCanonicalPublicPageOnWeb } from "../../utils/shareCanonicalPublicPageOnWeb";
 import { useThemeFont } from "../../theme/useThemeFont";
 
 import { ShareModal } from "../ui/ShareModal";
@@ -211,6 +212,18 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     }
   }, [router]);
 
+  const handleShare = useCallback((): void => {
+    if (Platform.OS === "web") {
+      void shareCanonicalPublicPageOnWeb({
+        url: canonicalUrl(brand),
+        title: `${brand.displayName} on Mingla`,
+        description: brand.bio?.slice(0, 200) ?? brand.tagline ?? undefined,
+      });
+      return;
+    }
+    setShareModalVisible(true);
+  }, [brand]);
+
   const handleOpenEvent = useCallback(
     (event: PublicBrandEvent): void => {
       router.push(
@@ -367,7 +380,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         contentBottomInset={insets.bottom + 24}
         callbacks={{
           onClose: handleClose,
-          onShare: () => setShareModalVisible(true),
+          onShare: handleShare,
           onOpenEvent: handleOpenEvent,
           onOpenTrip: handleOpenTrip,
           onOpenExperience: handleOpenExperience,

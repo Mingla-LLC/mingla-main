@@ -55,6 +55,7 @@ import {
 } from "@mingla/offering-rendering";
 import { useThemeFont } from "../../../src/theme/useThemeFont";
 import { ShareModal } from "../../../src/components/ui/ShareModal";
+import { shareCanonicalPublicPageOnWeb } from "../../../src/utils/shareCanonicalPublicPageOnWeb";
 import {
   tripCheckoutPath,
   tripPublicUrl,
@@ -196,12 +197,24 @@ export default function PublicTripRoute(): React.ReactElement {
     }
   }, [router, brandSlug]);
 
-  // ORCH-1114: share → web-aware ShareModal (copy-link/QR/native-share-via).
-  // NEVER revert to the bare react-native share API — it dead-taps on
-  // react-native-web (navigator.share undefined). See SPEC_ORCH-1114.
+  // #1968 — public web is already the destination, so it shares the canonical
+  // URL directly. Native retains the existing custom Mingla share sheet.
   const handleShare = useCallback((): void => {
+    if (
+      Platform.OS === "web" &&
+      typeof brandSlug === "string" &&
+      typeof tripSlug === "string" &&
+      query.data?.trip !== undefined
+    ) {
+      void shareCanonicalPublicPageOnWeb({
+        url: tripPublicUrl({ brandSlug, tripSlug }),
+        title: query.data.trip.title,
+        description: query.data.trip.description?.slice(0, 200),
+      });
+      return;
+    }
     setShareModalVisible(true);
-  }, []);
+  }, [brandSlug, query.data?.trip, tripSlug]);
 
   const handleToggleMute = useCallback((): void => {
     setMuted((m) => !m);
