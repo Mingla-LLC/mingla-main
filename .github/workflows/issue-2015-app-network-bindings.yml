@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "supabase/migrations/**2015**"
+      - "supabase/migrations/**2041**"
       - "supabase/functions/admin-ad-app-readiness/**"
       - "supabase/functions/_shared/adAppReadiness.ts"
       - "supabase/functions/_shared/adAppReadinessProviders/**"
@@ -35,6 +36,7 @@ jobs:
           cache-dependency-path: mingla-admin/package-lock.json
       - run: deno test --allow-read supabase/migrations/__tests__/issue_2015_app_network_appsflyer_bindings.test.ts
       - run: deno test --allow-read supabase/migrations/__tests__/issue_2015_app_network_appsflyer_bindings.rework.test.ts
+      - run: deno test --allow-read supabase/migrations/__tests__/issue_2041_google_link_id_format.test.ts
       - run: deno test supabase/functions/_shared/__tests__/issue2015_app_network_bindings.test.ts supabase/functions/_shared/__tests__/issue2015_provider_allowlist.adversarial.test.ts supabase/functions/_shared/__tests__/issue2015_rework_provider_truth.test.ts supabase/functions/_shared/__tests__/issue2038_appsflyer_production_shape.test.ts supabase/functions/_shared/__tests__/issue2038_appsflyer_production_shape.adversarial.test.ts supabase/functions/_shared/__tests__/issue2038_appsflyer_production_authority.rework.test.ts supabase/functions/_shared/__tests__/issue2041_google_app_link_readiness.test.ts supabase/functions/_shared/__tests__/issue2041_google_app_link_readiness.adversarial.test.ts supabase/functions/admin-ad-app-readiness/__tests__/issue2015_safe_binding.test.ts supabase/functions/admin-ad-app-readiness/__tests__/issue2015_rework_conflicts.test.ts
       - run: deno test --allow-read supabase/functions/_shared/__tests__/issue1950_app_readiness.test.ts supabase/functions/admin-ad-app-readiness/__tests__/issue1950_handler.test.ts
       - run: deno check supabase/functions/_shared/adAppReadiness.ts supabase/functions/_shared/adAppReadinessProviders/*.ts supabase/functions/admin-ad-app-readiness/index.ts
@@ -49,6 +51,7 @@ jobs:
           done
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2015_app_network_appsflyer_bindings.happy.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2015_app_network_appsflyer_bindings.rework.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2041_google_link_id_format.pg17.test.sql
           bash supabase/migrations/__tests__/issue_2015_app_network_appsflyer_bindings.concurrency.pg17.test.sh
       - name: Install Admin dependencies
         working-directory: mingla-admin
