@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - 'supabase/functions/**'
+      - 'docs/contracts/production-supabase-authority.json'
+      - 'scripts/ops/verify-production-supabase-authority.mjs'
+      - 'scripts/deploy-supabase-functions.sh'
   workflow_dispatch:
 
 jobs:

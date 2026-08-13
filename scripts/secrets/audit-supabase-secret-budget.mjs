@@ -16,6 +16,7 @@ import {
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { verifyProductionAuthority } from "../ops/verify-production-supabase-authority.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "..", "..");
@@ -483,6 +484,10 @@ function main() {
   } else {
     const projectRef = argValue("--project-ref") ?? process.env.SUPABASE_PROJECT_REF;
     if (!projectRef) throw new Error("supabase_project_ref_missing");
+    verifyProductionAuthority({
+      targetRef: projectRef,
+      variableName: "SUPABASE_PROJECT_REF",
+    });
     liveNames = liveNamesFromSupabase(projectRef);
   }
   const result = auditSecretBudget({

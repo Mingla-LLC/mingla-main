@@ -20,7 +20,7 @@
  * Investigation: Mingla_Artifacts/reports/INVESTIGATION_APPLE_JWT_AUTOROTATE.md
  */
 
-import jwt from "jsonwebtoken";
+import { verifyProductionAuthority } from "./ops/verify-production-supabase-authority.mjs";
 
 const REQUIRED_ENV = [
   "APPLE_P8_PRIVATE_KEY",
@@ -45,6 +45,21 @@ const {
   SUPABASE_PROJECT_REF,
   SUPABASE_MANAGEMENT_TOKEN,
 } = process.env;
+
+try {
+  verifyProductionAuthority({
+    targetRef: SUPABASE_PROJECT_REF,
+    variableName: "SUPABASE_PROJECT_REF",
+  });
+} catch (error) {
+  const message = error instanceof Error ? error.message : "authority_verification_failed";
+  console.error(`[fatal] ${message}`);
+  process.exit(1);
+}
+
+// Load the signing dependency only after the production target is proven. This
+// keeps a wrong-ref invocation entirely inside the offline authority boundary.
+const { default: jwt } = await import("jsonwebtoken");
 
 // ---------------------------------------------------------------------------
 // Step 1: generate fresh JWT
@@ -99,11 +114,9 @@ const patch = await fetch(baseUrl, {
 });
 
 if (!patch.ok) {
-  const errBody = await patch.text();
   console.error(
     `[fatal] PATCH /config/auth failed: HTTP ${patch.status} ${patch.statusText}`,
   );
-  console.error("[fatal] response body:", errBody.slice(0, 1000));
   process.exit(4);
 }
 
@@ -148,7 +161,7 @@ if (!enabled || !clientIdValid || !secretPresent) {
 
 console.log("[success] Apple JWT rotated. New expiry: 180 days from now.");
 console.log("[success] external_apple_enabled:", enabled);
-console.log("[success] external_apple_client_id:", cfg.external_apple_client_id);
+console.log("[success] external_apple_client_id: <verified>");
 console.log("[success] external_apple_secret: <masked but present>");
 
 process.exit(0);

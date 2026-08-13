@@ -5,6 +5,12 @@ set -euo pipefail
 : "${SUPABASE_PROJECT_ID:?SUPABASE_PROJECT_ID is required}"
 
 functions_root="${1:-supabase/functions}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/.." && pwd)"
+
+node "${repo_root}/scripts/ops/verify-production-supabase-authority.mjs" \
+  --mode=offline \
+  --target-ref "${SUPABASE_PROJECT_ID}"
 
 deploy_function() {
   local func_name="$1"

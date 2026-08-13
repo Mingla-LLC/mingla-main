@@ -45,7 +45,7 @@ async function run(mode) {
     env: {
       ...process.env,
       PATH: `${current.binRoot}:${process.env.PATH}`,
-      SUPABASE_PROJECT_ID: "abcdefghijklmnopqrst",
+      SUPABASE_PROJECT_ID: "gqnoajqerqhnvulmnyvv",
       ISSUE1456_CALLS: current.callsPath,
       ISSUE1456_MODE: mode,
     },
