@@ -228,6 +228,19 @@ jest.mock("../../../hooks/useAgentChat", () => ({
     clearErrorMessage: jest.fn(),
   }),
 }));
+// [TEST-MOD-APPROVED #2013] — tenant containment wired the canonical
+// BrandSwitcherSheet into AriChatScreen. That sheet pulls currentBrandStore
+// (AsyncStorage/Zustand persist). This suite mounts the real screen only to
+// read inputWrap paddingBottom; brand switching is not under test. Stub both
+// the sheet and useCurrentBrand so the keyboard-clearance tree still mounts.
+jest.mock("../../../hooks/useCurrentBrand", () => ({
+  useCurrentBrand: () => null,
+}));
+jest.mock("../../../components/brand/BrandSwitcherSheet", () => {
+  const RN = jest.requireActual("react-native");
+  const R = jest.requireActual("react") as typeof React;
+  return { BrandSwitcherSheet: () => R.createElement(RN.View, { testID: "ari-brand-switcher-stub" }) };
+});
 
 /**
  * The composer itself is stubbed to a locatable host node. It is not under
