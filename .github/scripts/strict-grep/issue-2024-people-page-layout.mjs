@@ -69,6 +69,9 @@ export function audit(base) {
   if (!page.includes("paddingBottom: fabOffset + FAB_HEIGHT + spacing.md")) {
     failures.push("People content no longer clears the FAB by the approved amount");
   }
+  if (!page.includes("style={{ marginBottom: fabOffset + FAB_HEIGHT + spacing.md }}")) {
+    failures.push("People scroll viewport no longer reserves a clear lane above the FAB");
+  }
   if (!page.includes('testID="people-new-campaign"') || !page.includes('accessibilityLabel="New campaign"')) {
     failures.push("People lost the labelled New campaign action");
   }
@@ -140,6 +143,20 @@ function selfTest() {
         fs.writeFileSync(target("page"), source.replace("const fabOffset = useStickyFooterOffset();", "const fabOffset = 24;"));
       },
       "useStickyFooterOffset",
+    );
+    expectMutation(
+      "FAB viewport lane deleted",
+      () => {
+        const source = fs.readFileSync(target("page"), "utf8");
+        fs.writeFileSync(
+          target("page"),
+          source.replace(
+            'style={{ marginBottom: fabOffset + FAB_HEIGHT + spacing.md }}',
+            'style={{ marginBottom: 0 }}',
+          ),
+        );
+      },
+      "clear lane above the FAB",
     );
     expectMutation(
       "campaign action deleted",

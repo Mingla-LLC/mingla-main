@@ -7,6 +7,7 @@ let brand: { id: string } | null = { id: "brand-a" };
 let role = { isLoading: false, isError: false, accepted: true, rank: 20 };
 let auth = { isAuthReady: true, user: { id: "user-1" } };
 let layout = { isWideDesktop: true, isWeb: true, width: 1440 };
+let stickyOffset = 120;
 let forcedKind: string | null = null;
 const refetch = jest.fn(async () => {});
 const fetchNextPage = jest.fn(async () => {});
@@ -59,7 +60,9 @@ jest.mock("../../../hooks/useFeatureFlag", () => ({
   useFeatureFlag: () => ({ isPending: false, isFetching: false, isError: false, data: true }),
 }));
 jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => layout }));
-jest.mock("../../../hooks/useStickyFooterOffset", () => ({ useStickyFooterOffset: () => 120 }));
+jest.mock("../../../hooks/useStickyFooterOffset", () => ({
+  useStickyFooterOffset: () => stickyOffset,
+}));
 jest.mock("../../../hooks/marketing/useBrandPeople", () => ({
   useBrandPeople: (...args: [string | null, string | null, boolean, boolean, number]) =>
     peopleHook(args[0], args[1], args[2], args[3], args[4]),
@@ -162,6 +165,7 @@ beforeEach(() => {
   role = { isLoading: false, isError: false, accepted: true, rank: 20 };
   auth = { isAuthReady: true, user: { id: "user-1" } };
   layout = { isWideDesktop: true, isWeb: true, width: 1440 };
+  stickyOffset = 120;
   forcedKind = null;
   Object.defineProperty(globalThis, "matchMedia", {
     configurable: true,
@@ -233,6 +237,24 @@ describe("issue #2024 rendered People workspace happy path", () => {
     TestRenderer.act(() => fab.props.onPress());
     expect(router.push).toHaveBeenCalledTimes(1);
     expect(router.push).toHaveBeenCalledWith("/marketing/campaigns/compose");
+  });
+
+  test.each([
+    { name: "iPhone SE", width: 320, height: 568, bottom: 120 },
+    { name: "modern compact", width: 390, height: 844, bottom: 132 },
+  ])("reserves a clear viewport lane above the FAB on $name", ({ width, height, bottom }) => {
+    layout = { isWideDesktop: false, isWeb: false, width };
+    stickyOffset = bottom;
+    renderPage();
+    const fab = campaignFabs()[0];
+    const scroll = tree.root.findByType(ScrollView);
+    const scrollStyle = StyleSheet.flatten(scroll.props.style);
+    const contentStyle = StyleSheet.flatten(scroll.props.contentContainerStyle);
+    const fabStyle = StyleSheet.flatten(fab.props.style({ pressed: false }));
+    const scrollViewportBottom = height - scrollStyle.marginBottom;
+    const fabTop = height - fabStyle.bottom - 48;
+    expect(fabTop - scrollViewportBottom).toBeGreaterThanOrEqual(16);
+    expect(contentStyle.paddingBottom).toBe(bottom + 48 + 16);
   });
 
   test("makes campaign-action state changes instantaneous for reduced motion", () => {

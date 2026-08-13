@@ -357,6 +357,7 @@ export function PeoplePage(): React.ReactElement {
             { paddingBottom: fabOffset + FAB_HEIGHT + spacing.md },
           ]}
           keyboardShouldPersistTaps="handled"
+          style={{ marginBottom: fabOffset + FAB_HEIGHT + spacing.md }}
         >
           <PageHeading />
           <View
