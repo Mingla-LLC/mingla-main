@@ -1,0 +1,3956 @@
+{
+  "schema_version": 1,
+  "contract": "I-PROPOSED-ARI-CAPABILITY-LEDGER-TRUTH",
+  "authority": {
+    "support_status": "docs/contracts/ari-capability-ledger.json",
+    "registration_schema_executor": "supabase/functions/_shared/agentTools.ts and agentDomainTools.ts",
+    "advertising": "supabase/functions/_shared/agentSystemPrompt.ts",
+    "product_operations": "declared Business source roots below"
+  },
+  "audit": {
+    "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
+    "verified_at": "2026-08-13T12:00:00Z",
+    "registered_tool_count": 64,
+    "capability_count": 114,
+    "status_breakdown": {
+      "verified": 0,
+      "registered_unverified": 16,
+      "broken": 47,
+      "guided_handoff": 7,
+      "unsupported": 40,
+      "in_flight": 4
+    }
+  },
+  "operation_universe": {
+    "definition": "One row per stable, user-intentful Business management outcome family exposed by a declared route/service, plus every registered Ari tool and accepted open-work overlay. Polymorphic tools remain one operation family with variants; buttons and internal helpers are not separate operations.",
+    "source_roots": [
+      "mingla-business/app",
+      "mingla-business/src/screens",
+      "mingla-business/src/components",
+      "mingla-business/src/services",
+      "mingla-business/src/hooks",
+      "supabase/functions",
+      "supabase/migrations",
+      "supabase/functions/_shared/agentTools.ts",
+      "supabase/functions/_shared/agentDomainTools.ts",
+      "supabase/functions/_shared/agentSystemPrompt.ts"
+    ],
+    "external_overlay": "GitHub issues #1736, #1743, #1753, #1796, #2000 at the audit timestamp",
+    "exclusions": [
+      "consumer iOS and Android operations",
+      "buyer or anonymous web checkout/public-page operations",
+      "admin-only operations except read-only canonical-command evidence",
+      "authentication/session plumbing and provider callback routes",
+      "passive rendering, navigation-only taps, local form fields, and internal helpers without a distinct persisted/read outcome",
+      "future or closed issue ideas with no current Business source or accepted open-work owner"
+    ],
+    "required_surfaces": ["business_ios", "business_android", "business_web"]
+  },
+  "status_definitions": {
+    "verified": "Mapped tool plus distinct implementor and independent tester guards, exact-revision deployed runtime evidence, and production observation on every required surface.",
+    "registered_unverified": "A real registered tool with source or regression evidence but insufficient exact-revision runtime proof.",
+    "broken": "A mapped tool with a proven contract or runtime defect and an owning issue/evidence.",
+    "guided_handoff": "No false completion claim; Ari directs the user to a concrete existing route or native/hosted flow.",
+    "unsupported": "The Business operation exists but has no mapped Ari tool or accepted handoff.",
+    "in_flight": "An open owning issue exists; registration elsewhere does not satisfy the operation."
+  },
+  "evidence_order": [
+    "registration",
+    "source_contract",
+    "regression",
+    "deployed_runtime",
+    "production_observation"
+  ],
+  "capabilities": [
+    {
+      "id": "ari.brand.create",
+      "domain": "brands",
+      "outcome": "Create a brand",
+      "safety": "write",
+      "required_role": "business_user",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "ORCH-1103" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/new.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/brandsService.ts",
+            "symbol": "createBrand"
+          },
+          {
+            "path": "supabase/functions/_shared/agentTools.ts",
+            "symbol": "const createBrand"
+          }
+        ]
+      },
+      "ari_tool": "create_brand",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "orch_1103_ari_brand_crud.test.ts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": [
+        "No exact-revision runtime evidence on all required surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.brand.list",
+      "domain": "brands",
+      "outcome": "List accessible brands",
+      "safety": "read",
+      "required_role": "business_user",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "ORCH-1103" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/home.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/brandsService.ts",
+            "symbol": "getBrands"
+          },
+          {
+            "path": "supabase/functions/_shared/agentTools.ts",
+            "symbol": "const listBrands"
+          }
+        ]
+      },
+      "ari_tool": "list_brands",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentTools.ts:listBrands"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No exact-revision runtime evidence"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.brand.update",
+      "domain": "brands",
+      "outcome": "Update brand profile",
+      "safety": "write",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "ORCH-1103" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/brandsService.ts",
+            "symbol": "updateBrand"
+          },
+          {
+            "path": "supabase/functions/_shared/agentTools.ts",
+            "symbol": "const updateBrand"
+          }
+        ]
+      },
+      "ari_tool": "update_brand",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "orch_1103_ari_brand_crud.test.ts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No independent exact-revision runtime proof"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.brand.delete",
+      "domain": "brands",
+      "outcome": "Soft-delete an eligible brand",
+      "safety": "destructive",
+      "required_role": "owner",
+      "confirmation": "type_to_confirm",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "ORCH-1103" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/brandsService.ts",
+            "symbol": "softDeleteBrand"
+          },
+          {
+            "path": "supabase/functions/_shared/agentTools.ts",
+            "symbol": "const deleteBrand"
+          }
+        ]
+      },
+      "ari_tool": "delete_brand",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "orch_1103_ari_brand_crud.test.ts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No full surface runtime proof"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.create",
+      "domain": "events",
+      "outcome": "Create an event draft",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "ORCH-1103" },
+      "owners": {
+        "ui": ["mingla-business/app/event/create.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/eventDrafts.ts",
+            "symbol": "createServerDraft"
+          },
+          {
+            "path": "supabase/functions/_shared/agentTools.ts",
+            "symbol": "const createEvent"
+          }
+        ]
+      },
+      "ari_tool": "create_event",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "orch_1103_ari_brand_crud.test.ts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No full surface runtime proof"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.list",
+      "domain": "events",
+      "outcome": "List managed events",
+      "safety": "read",
+      "required_role": "brand_member",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "ORCH-1103" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/hub/events.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/businessEvents.ts",
+            "symbol": "fetchBusinessEventsForBrand"
+          },
+          {
+            "path": "supabase/functions/_shared/agentTools.ts",
+            "symbol": "const listEvents"
+          }
+        ]
+      },
+      "ari_tool": "list_events",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentTools.ts:listEvents"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No exact-revision runtime proof"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.update",
+      "domain": "events",
+      "outcome": "Update event basics",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "ORCH-1103" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/eventDrafts.ts",
+            "symbol": "autosaveServerDraft"
+          },
+          {
+            "path": "supabase/functions/_shared/agentTools.ts",
+            "symbol": "const updateEvent"
+          }
+        ]
+      },
+      "ari_tool": "update_event",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "orch_1103_ari_brand_crud.test.ts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No exact-revision runtime proof"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.experience.create",
+      "domain": "experiences",
+      "outcome": "Create an experience draft",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "ORCH-1103" },
+      "owners": {
+        "ui": ["mingla-business/app/experience/create.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentTools.ts",
+            "symbol": "const createExperience"
+          }
+        ]
+      },
+      "ari_tool": "create_experience",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "orch_1146_create_experience_field_completeness.test.ts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No exact-revision runtime proof"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+
+    {
+      "id": "ari.event.publish",
+      "domain": "events",
+      "outcome": "Publish an event draft",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/businessEvents.ts",
+            "symbol": "publishBusinessEventDraft"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const publishEvent"
+          }
+        ]
+      },
+      "ari_tool": "publish_event",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard blocks delegated event managers"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": [
+        "Delegated event managers are rejected before role/RLS authority"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.unpublish",
+      "domain": "events",
+      "outcome": "Return a published event to draft",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/index.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const unpublishEvent"
+          }
+        ]
+      },
+      "ari_tool": "unpublish_event",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.cancel",
+      "domain": "events",
+      "outcome": "Cancel an event",
+      "safety": "destructive",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "type_to_confirm",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/businessEvents.ts",
+            "symbol": "cancelBusinessEvent"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const cancelEvent"
+          }
+        ]
+      },
+      "ari_tool": "cancel_event",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.end_sales",
+      "domain": "events",
+      "outcome": "End event ticket sales",
+      "safety": "money",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/businessEvents.ts",
+            "symbol": "endBusinessEventTicketSales"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const endEventSales"
+          }
+        ]
+      },
+      "ari_tool": "end_event_sales",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.duplicate",
+      "domain": "events",
+      "outcome": "Duplicate an event as a complete draft",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/index.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const duplicateEvent"
+          }
+        ]
+      },
+      "ari_tool": "duplicate_event",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:duplicateEvent shallow events-row copy"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Does not duplicate the canonical draft graph"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.patch_when",
+      "domain": "events",
+      "outcome": "Change a published event date or time",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/businessEvents.ts",
+            "symbol": "patchPublishedEventWhen"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const patchEventWhen"
+          }
+        ]
+      },
+      "ari_tool": "patch_event_when",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.cover",
+      "domain": "events",
+      "outcome": "Set event cover media already attached by the picker",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/eventCoverMediaService.ts",
+            "symbol": "setEventCover"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const setEventCover"
+          }
+        ]
+      },
+      "ari_tool": "set_event_cover",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": [
+        "Delegated event managers blocked; picker remains a separate guided handoff"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.guest_privacy",
+      "domain": "events",
+      "outcome": "Set event guest-list privacy",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/guests/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/businessEvents.ts",
+            "symbol": "setEventGuestPrivacy"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const setEventGuestPrivacy"
+          }
+        ]
+      },
+      "ari_tool": "set_event_guest_privacy",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.ticket.upsert_tier",
+      "domain": "tickets",
+      "outcome": "Create or update a ticket tier",
+      "safety": "money",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const upsertTicketTier"
+          }
+        ]
+      },
+      "ari_tool": "upsert_ticket_tier",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.ticket.pricing_switches",
+      "domain": "tickets",
+      "outcome": "Set event all-in pricing switches",
+      "safety": "money",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/pricingSwitchesService.ts",
+            "symbol": "setEventPricingSwitches"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const setPricingSwitches"
+          }
+        ]
+      },
+      "ari_tool": "set_pricing_switches",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+
+    {
+      "id": "ari.experience.publish",
+      "domain": "experiences",
+      "outcome": "Publish an experience",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/experience/[id]/index.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const publishExperience"
+          }
+        ]
+      },
+      "ari_tool": "publish_experience",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.experience.update",
+      "domain": "experiences",
+      "outcome": "Update an experience",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/experience/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const updateExperience"
+          }
+        ]
+      },
+      "ari_tool": "update_experience",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.experience.delete",
+      "domain": "experiences",
+      "outcome": "Soft-delete an experience",
+      "safety": "destructive",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/experience/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const deleteExperience"
+          }
+        ]
+      },
+      "ari_tool": "delete_experience",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.trip.create",
+      "domain": "trips",
+      "outcome": "Create the canonical trip draft shell",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/trip/create.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/tripsService.ts",
+            "symbol": "createTripDraft"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const createTrip"
+          }
+        ]
+      },
+      "ari_tool": "create_trip",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:createTrip omits canonical draft graph"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Shallow event row is not the canonical trip draft"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.trip.update",
+      "domain": "trips",
+      "outcome": "Update trip basics",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/trip/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/tripsService.ts",
+            "symbol": "updateTripBasics"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const updateTrip"
+          }
+        ]
+      },
+      "ari_tool": "update_trip",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.trip.publish",
+      "domain": "trips",
+      "outcome": "Publish a trip",
+      "safety": "money",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/trip/[id]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/tripsService.ts",
+            "symbol": "publishTrip"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const publishTrip"
+          }
+        ]
+      },
+      "ari_tool": "publish_trip",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.trip.delete",
+      "domain": "trips",
+      "outcome": "Soft-delete a trip",
+      "safety": "destructive",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/trip/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/tripsService.ts",
+            "symbol": "softDeleteTrip"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const deleteTrip"
+          }
+        ]
+      },
+      "ari_tool": "delete_trip",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+
+    {
+      "id": "ari.rsvp.create",
+      "domain": "rsvp",
+      "outcome": "Create an RSVP draft",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/rsvp/create.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const createRsvp"
+          }
+        ]
+      },
+      "ari_tool": "create_rsvp",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.rsvp.publish",
+      "domain": "rsvp",
+      "outcome": "Publish an RSVP",
+      "safety": "money",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/rsvp/[id]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/rsvpEvents.ts",
+            "symbol": "publishRsvpDraft"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const publishRsvp"
+          }
+        ]
+      },
+      "ari_tool": "publish_rsvp",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.rsvp.bulk_status",
+      "domain": "rsvp",
+      "outcome": "Set selected RSVP guest statuses",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/rsvp/[id]/guests.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/rsvpApprovals.ts",
+            "symbol": "bulkApproveRsvps"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const setRsvpGuestStatus"
+          }
+        ]
+      },
+      "ari_tool": "set_rsvp_guest_status",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:setRsvpGuestStatus discards selected ids and approves all pending"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Selected IDs are not preserved"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.rsvp.refund_contribution",
+      "domain": "rsvp",
+      "outcome": "Refund an RSVP contribution",
+      "safety": "money",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "type_to_confirm",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/rsvp/[id]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/sourceRefundService.ts",
+            "symbol": "requestRsvpContributionRefund"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const refundRsvpContribution"
+          }
+        ]
+      },
+      "ari_tool": "refund_rsvp_contribution",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:refundRsvpContribution uses wrong refund-order envelope"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Required source refund payload omitted"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+
+    {
+      "id": "ari.stay.quote",
+      "domain": "stays",
+      "outcome": "Quote a stay request",
+      "safety": "read",
+      "required_role": "brand_member",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/stay/[groupId].tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/stayReservationService.ts",
+            "symbol": "quote(input"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const quoteStay"
+          }
+        ]
+      },
+      "ari_tool": "quote_stay",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:quoteStay wrong stay-reservations envelope"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Wrong action and request envelope"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.stay.create_reservation",
+      "domain": "stays",
+      "outcome": "Create a stay reservation group",
+      "safety": "money",
+      "required_role": "brand_member",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/stay/[groupId].tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/stayReservationService.ts",
+            "symbol": "createGroup(input"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const createStayReservation"
+          }
+        ]
+      },
+      "ari_tool": "create_stay_reservation",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:createStayReservation wrong envelope"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Wrong action and required fields"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.stay.transition",
+      "domain": "stays",
+      "outcome": "Approve, decline, or cancel a stay request",
+      "safety": "write",
+      "required_role": "owner_or_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/stay/[groupId].tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/stayReservationService.ts",
+            "symbol": "approveRequest(input"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const transitionStay"
+          }
+        ]
+      },
+      "ari_tool": "transition_stay",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:transitionStay wrong actions/envelope"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": [
+        "All transition action contracts differ from canonical service"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+
+    {
+      "id": "ari.venue.create_reservation",
+      "domain": "venues",
+      "outcome": "Create a venue reservation",
+      "safety": "money",
+      "required_role": "brand_member",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/reserve/[brandId]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/venueGuestReservationService.ts",
+            "symbol": "createGuestVenueReservation"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const createVenueReservation"
+          }
+        ]
+      },
+      "ari_tool": "create_venue_reservation",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:createVenueReservation sends nonexistent p_start_at"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": [
+        "RPC request shape does not match canonical reservation contract"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.transition_reservation",
+      "domain": "venues",
+      "outcome": "Transition a venue reservation status",
+      "safety": "write",
+      "required_role": "owner_or_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/reserve/[brandId]/manage.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const transitionVenueReservation"
+          }
+        ]
+      },
+      "ari_tool": "transition_venue_reservation",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:transitionVenueReservation"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No canonical parity runtime proof"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.create_listing",
+      "domain": "venues",
+      "outcome": "Create a venue listing",
+      "safety": "write",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/venue/create.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/venueListingsService.ts",
+            "symbol": "createVenueListing"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const createVenueListing"
+          }
+        ]
+      },
+      "ari_tool": "create_venue_listing",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:createVenueListing omits required RPC arguments"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Incomplete canonical RPC envelope"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.submit_claim",
+      "domain": "venues",
+      "outcome": "Submit or resubmit a venue claim",
+      "safety": "write",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/attendance/claim.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/venueClaimService.ts",
+            "symbol": "resubmitVenueClaim"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const submitVenueClaim"
+          }
+        ]
+      },
+      "ari_tool": "submit_venue_claim",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:submitVenueClaim wrong RPC parameters"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Claim submission parameters mismatch canonical service"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.mark_claim_feedback",
+      "domain": "venues",
+      "outcome": "Mark a venue-claim feedback item fixed",
+      "safety": "write",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/venue/[venueId]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/venueClaimService.ts",
+            "symbol": "markFeedbackItemFixed"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const markClaimFeedbackFixed"
+          }
+        ]
+      },
+      "ari_tool": "mark_claim_feedback_fixed",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:markClaimFeedbackFixed wrong RPC parameters"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Feedback RPC parameters mismatch canonical service"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.ops",
+      "domain": "venues",
+      "outcome": "Operate tables, tabs, kitchen, and waitlist",
+      "safety": "money",
+      "required_role": "owner_or_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/venue/[venueId]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/venueOrderingService.ts",
+            "symbol": "venueOrderGuestAction"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const venueOpsAction"
+          }
+        ]
+      },
+      "ari_tool": "venue_ops_action",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:venueOpsAction vocabulary diverges from venue-order-staff"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": [
+        "Action vocabulary and envelopes do not match canonical endpoint"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.send_sms",
+      "domain": "venues",
+      "outcome": "Send an approved venue SMS",
+      "safety": "write",
+      "required_role": "owner_or_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/venue/[venueId]/index.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const sendVenueSms"
+          }
+        ]
+      },
+      "ari_tool": "send_venue_sms",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:sendVenueSms wrong endpoint payload"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Payload does not match send-venue-sms contract"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+
+    {
+      "id": "ari.marketing.draft_campaign",
+      "domain": "marketing",
+      "outcome": "Create a campaign draft",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/marketing/campaigns/compose.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/marketing/marketingCampaignService.ts",
+            "symbol": "createDraft"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const draftCampaign"
+          }
+        ]
+      },
+      "ari_tool": "draft_campaign",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:draftCampaign"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No exact-revision runtime parity proof"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.marketing.schedule_campaign",
+      "domain": "marketing",
+      "outcome": "Schedule a campaign",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/marketing/campaigns/[id].tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/marketing/marketingCampaignService.ts",
+            "symbol": "scheduleSend"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const scheduleCampaign"
+          }
+        ]
+      },
+      "ari_tool": "schedule_campaign",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:scheduleCampaign"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No runtime parity proof"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.marketing.send_now",
+      "domain": "marketing",
+      "outcome": "Schedule then send a campaign immediately",
+      "safety": "money",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "type_to_confirm",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/marketing/campaigns/[id].tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/marketing/marketingCampaignService.ts",
+            "symbol": "sendNow"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const sendCampaignNow"
+          }
+        ]
+      },
+      "ari_tool": "send_campaign_now",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:sendCampaignNow skips canonical schedule-first transition"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Calls sender without canonical scheduling state"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.marketing.cancel_campaign",
+      "domain": "marketing",
+      "outcome": "Cancel a scheduled campaign",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/marketing/campaigns/[id].tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/marketing/marketingCampaignService.ts",
+            "symbol": "cancelScheduled"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const cancelCampaign"
+          }
+        ]
+      },
+      "ari_tool": "cancel_campaign",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:cancelCampaign"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No runtime parity proof"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.growth.run_tool",
+      "domain": "growth",
+      "outcome": "Run a selected Growth Tool engine",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/marketing/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/growthToolsService.ts",
+            "symbol": "runGrowthTool"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const runGrowthTool"
+          }
+        ]
+      },
+      "ari_tool": "run_growth_tool",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:runGrowthTool routes three of four engines to wrong endpoint/envelope"
+        }
+      ],
+      "owning_issues": [2000, 1743],
+      "blockers": ["Three engines use the wrong backend contract"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+
+    {
+      "id": "ari.payout.status",
+      "domain": "payments",
+      "outcome": "Read whether a brand can collect payouts",
+      "safety": "read",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/payments/index.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getPayoutStatus"
+          }
+        ]
+      },
+      "ari_tool": "get_payout_status",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated finance managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.partner.status",
+      "domain": "payments",
+      "outcome": "Read partner payout connection status",
+      "safety": "read",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/partner/earnings.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/partnerStripeService.ts",
+            "symbol": "getPartnerStripeStatus"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getPartnerStatus"
+          }
+        ]
+      },
+      "ari_tool": "get_partner_status",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated finance managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.partner.disconnect",
+      "domain": "payments",
+      "outcome": "Disconnect an eligible payout partner",
+      "safety": "destructive",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "type_to_confirm",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/connect-partner-account-management.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/partnerStripeService.ts",
+            "symbol": "detachPartnerStripe"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const disconnectPartner"
+          }
+        ]
+      },
+      "ari_tool": "disconnect_partner",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated finance managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.tax.status_guidance",
+      "domain": "payments",
+      "outcome": "Guide the user to live tax-registration status",
+      "safety": "read",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "guided_handoff",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/connect-tax-registrations/index.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getTaxStatus"
+          }
+        ]
+      },
+      "ari_tool": "get_tax_status",
+      "status": "guided_handoff",
+      "guided_handoff": {
+        "path": "mingla-business/app/connect-tax-registrations/index.tsx",
+        "symbol": "export default"
+      },
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "getTaxStatus returns guidance, not live tax state"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Hosted provider state cannot be completed in chat"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+
+    {
+      "id": "ari.order.refund",
+      "domain": "orders",
+      "outcome": "Refund an eligible order",
+      "safety": "money",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "type_to_confirm",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/orders/[oid]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/orderRefundService.ts",
+            "symbol": "issueOrderRefund"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const refundOrder"
+          }
+        ]
+      },
+      "ari_tool": "refund_order",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:refundOrder omits required refund payload"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Required source/refund contract fields missing"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.order.cancel",
+      "domain": "orders",
+      "outcome": "Cancel an eligible free order",
+      "safety": "destructive",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "type_to_confirm",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/orders/[oid]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/orderCancelService.ts",
+            "symbol": "cancelFreeOrder"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const cancelOrder"
+          }
+        ]
+      },
+      "ari_tool": "cancel_order",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:cancelOrder omits canonical cancellation payload"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Canonical cancellation contract mismatch"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.trip.cancel_booking",
+      "domain": "orders",
+      "outcome": "Cancel a trip booking through preview then commit",
+      "safety": "money",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "type_to_confirm",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/booking/[orderId]/cancel.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/cancelTripBookingService.ts",
+            "symbol": "commitOperatorCancel"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const cancelTripBooking"
+          }
+        ]
+      },
+      "ari_tool": "cancel_trip_booking",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:cancelTripBooking uses wrong identifier/flow"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Bypasses canonical preview/commit flow and identifier"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.installment.retry",
+      "domain": "orders",
+      "outcome": "Retry a failed installment",
+      "safety": "money",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/trip/[id]/money/index.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const retryInstallment"
+          }
+        ]
+      },
+      "ari_tool": "retry_installment",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated finance managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+
+    {
+      "id": "ari.analytics.brand",
+      "domain": "analytics",
+      "outcome": "Read brand conversion and venue analytics",
+      "safety": "read",
+      "required_role": "brand_member",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/analytics.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/brandAnalyticsService.ts",
+            "symbol": "fetchBrandMinglaDroveRollup"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getBrandAnalytics"
+          }
+        ]
+      },
+      "ari_tool": "get_brand_analytics",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated members blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.team.invite_member",
+      "domain": "team",
+      "outcome": "Invite a brand team member",
+      "safety": "write",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/team.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const inviteBrandMember"
+          }
+        ]
+      },
+      "ari_tool": "invite_brand_member",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated brand admins blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.team.invite_scanner",
+      "domain": "team",
+      "outcome": "Invite an event scanner",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/scanners.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/scannerInvitationsService.ts",
+            "symbol": "inviteScanner"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const inviteScanner"
+          }
+        ]
+      },
+      "ari_tool": "invite_scanner",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.team.revoke_member",
+      "domain": "team",
+      "outcome": "Revoke a brand team member",
+      "safety": "destructive",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/team.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const revokeBrandMember"
+          }
+        ]
+      },
+      "ari_tool": "revoke_brand_member",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:revokeBrandMember targets nonexistent brand_members"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": [
+        "Targets a nonexistent table instead of canonical membership authority"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.guests.list_roster",
+      "domain": "guests",
+      "outcome": "List an offering guest roster",
+      "safety": "read",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/guests/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/guestRosterService.ts",
+            "symbol": "fetchGuestRoster"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const listGuestRoster"
+          }
+        ]
+      },
+      "ari_tool": "list_guest_roster",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated event managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.guests.set_approval",
+      "domain": "guests",
+      "outcome": "Approve or deny one guest",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/guests/[guestId].tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const setGuestApproval"
+          }
+        ]
+      },
+      "ari_tool": "set_guest_approval",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:setGuestApproval calls wrong access RPC"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Wrong RPC and argument meaning"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.people.export",
+      "domain": "people",
+      "outcome": "Export Brand People with explicit targeting",
+      "safety": "destructive",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "type_to_confirm",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/marketing/people/index.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const exportBrandPeople"
+          }
+        ]
+      },
+      "ari_tool": "export_brand_people",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated marketing managers blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+
+    {
+      "id": "ari.settings.preferences",
+      "domain": "account",
+      "outcome": "Update Ari preferences",
+      "safety": "write",
+      "required_role": "self",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/ari/settings.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/agentChatService.ts",
+            "symbol": "upsertProfile"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const updateAriPrefs"
+          }
+        ]
+      },
+      "ari_tool": "update_ari_prefs",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:updateAriPrefs"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No runtime surface proof"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.settings.notifications",
+      "domain": "account",
+      "outcome": "Update notification preferences",
+      "safety": "write",
+      "required_role": "self",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/account/notifications.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const updateNotificationPrefs"
+          }
+        ]
+      },
+      "ari_tool": "update_notification_prefs",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:updateNotificationPrefs"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No runtime surface proof"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.support.create_ticket",
+      "domain": "support",
+      "outcome": "Create a support ticket",
+      "safety": "write",
+      "required_role": "self",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/account/support.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/supportService.ts",
+            "symbol": "createSupportTicket"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const createSupportTicket"
+          }
+        ]
+      },
+      "ari_tool": "create_support_ticket",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:createSupportTicket"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No runtime surface proof"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.account.delete",
+      "domain": "account",
+      "outcome": "Request account deletion",
+      "safety": "destructive",
+      "required_role": "self",
+      "confirmation": "type_to_confirm",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/account/delete.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const requestAccountDeletion"
+          }
+        ]
+      },
+      "ari_tool": "request_account_deletion",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "registration",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:requestAccountDeletion"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No runtime surface proof"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.operator.snapshot",
+      "domain": "intelligence",
+      "outcome": "Read an operator snapshot for next-step planning",
+      "safety": "read",
+      "required_role": "brand_member",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/ari.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getOperatorSnapshot"
+          }
+        ]
+      },
+      "ari_tool": "get_operator_snapshot",
+      "status": "broken",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:getOperatorSnapshot owner-only brand check"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Delegated members blocked"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+
+    {
+      "id": "ari.brand.hours",
+      "domain": "brands",
+      "outcome": "Manage brand opening hours",
+      "safety": "write",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/brandsService.ts",
+            "symbol": "upsertBrandHours"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "brandsService.ts:upsertBrandHours has no Ari mapping"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.brand.pricing_defaults",
+      "domain": "brands",
+      "outcome": "Manage brand pricing defaults",
+      "safety": "money",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/pricing-defaults.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/pricingSwitchesService.ts",
+            "symbol": "setBrandPricingDefaults"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "pricingSwitchesService.ts:setBrandPricingDefaults"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.discard_draft",
+      "domain": "events",
+      "outcome": "Discard an event draft",
+      "safety": "destructive",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/eventDrafts.ts",
+            "symbol": "discardServerDraft"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "eventDrafts.ts:discardServerDraft"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.group_chat",
+      "domain": "events",
+      "outcome": "Read and moderate event group chat",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/group-chat.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/groupChatService.ts",
+            "symbol": "getEventGroupChat"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "groupChatService.ts"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.scan_ticket",
+      "domain": "events",
+      "outcome": "Scan and validate an event ticket",
+      "safety": "write",
+      "required_role": "scanner_or_manager",
+      "confirmation": "guided_handoff",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/scanner/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/scanTicketService.ts",
+            "symbol": "scan"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "guided_handoff",
+      "guided_handoff": {
+        "path": "mingla-business/app/event/[id]/scanner/index.tsx",
+        "symbol": "export default"
+      },
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "Native camera scanner route"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Camera hardware remains a native handoff"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.media.pick_cover",
+      "domain": "media",
+      "outcome": "Choose and upload cover media from device or provider",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "guided_handoff",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/src/components/ui/CoverPickerSheet.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/components/ui/CoverPickerSheet.tsx",
+            "symbol": "CoverPickerSheet"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "guided_handoff",
+      "guided_handoff": {
+        "path": "mingla-business/src/components/ui/CoverPickerSheet.tsx",
+        "symbol": "CoverPickerSheet"
+      },
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "Device/provider picker requires user interaction"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["File/device picker cannot be completed by the model"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.trip.manage_days",
+      "domain": "trips",
+      "outcome": "Manage trip days and stops",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/trip/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/tripsService.ts",
+            "symbol": "upsertTripDays"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "tripsService.ts:upsertTripDays"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.trip.manage_inclusions",
+      "domain": "trips",
+      "outcome": "Manage trip inclusions and exclusions",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/trip/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/tripsService.ts",
+            "symbol": "upsertTripInclusions"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "tripsService.ts:upsertTripInclusions"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.trip.manage_tiers",
+      "domain": "trips",
+      "outcome": "Manage trip pricing tiers",
+      "safety": "money",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/trip/[id]/money/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/tripsService.ts",
+            "symbol": "createTripPricingTier"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "tripsService.ts:createTripPricingTier"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.trip.quote_builder",
+      "domain": "trips",
+      "outcome": "Produce a complete trip quote",
+      "safety": "read",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "open_work", "introduced_by": "issue-1736" },
+      "owners": {
+        "ui": ["mingla-business/app/trip/create.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/tripsService.ts",
+            "symbol": "createTripDraft"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "in_flight",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "GitHub issue #1736 open-work overlay"
+        }
+      ],
+      "owning_issues": [1736],
+      "blockers": ["Open issue; no accepted runtime capability"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.trip.quote_to_draft",
+      "domain": "trips",
+      "outcome": "Convert an accepted quote into a canonical trip draft",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "open_work", "introduced_by": "issue-1753" },
+      "owners": {
+        "ui": ["mingla-business/app/trip/create.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/tripsService.ts",
+            "symbol": "createTripDraft"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "in_flight",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "GitHub issue #1753 open-work overlay"
+        }
+      ],
+      "owning_issues": [1753],
+      "blockers": [
+        "Open issue; create_trip registration does not satisfy quote conversion"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.intelligence.four_tools",
+      "domain": "intelligence",
+      "outcome": "Run the four accepted Ari intelligence tools",
+      "safety": "read",
+      "required_role": "brand_member",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "open_work", "introduced_by": "issue-1743" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/ari.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/growthToolsService.ts",
+            "symbol": "runGrowthTool"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "in_flight",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "GitHub issue #1743 open-work overlay"
+        }
+      ],
+      "owning_issues": [1743],
+      "blockers": [
+        "Open issue; run_growth_tool registration is not the four-tool capability"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.intelligence",
+      "domain": "intelligence",
+      "outcome": "Answer venue-intelligence questions from the canonical venue data",
+      "safety": "read",
+      "required_role": "brand_member",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "open_work", "introduced_by": "issue-1796" },
+      "owners": {
+        "ui": ["mingla-business/app/venue/[venueId]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/venueIntelligenceService.ts",
+            "symbol": "venue"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "in_flight",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "GitHub issue #1796 open-work overlay"
+        }
+      ],
+      "owning_issues": [1796],
+      "blockers": ["Open issue; no accepted Ari mapping"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+
+    {
+      "id": "ari.stay.manage_inventory",
+      "domain": "stays",
+      "outcome": "Manage stay inventory and room nights",
+      "safety": "write",
+      "required_role": "owner_or_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/stay/[groupId].tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/stayInventoryService.ts",
+            "symbol": "manageStayInventory"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "stayInventoryService.ts"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.stay.publish_offering",
+      "domain": "stays",
+      "outcome": "Publish a stay offering",
+      "safety": "money",
+      "required_role": "owner_or_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/stay/[groupId].tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/stayInventoryService.ts",
+            "symbol": "publishStay"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "stayInventoryService.ts:publishStay"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.stay.manage_policy_price_media",
+      "domain": "stays",
+      "outcome": "Manage stay policies, prices, fees, and media",
+      "safety": "money",
+      "required_role": "owner_or_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/stay/[groupId].tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/stayInventoryService.ts",
+            "symbol": "setStayOfferingPolicy"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "stayInventoryService.ts policy/price/media operation family"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.manage_availability",
+      "domain": "venues",
+      "outcome": "Manage venue availability and reservation settings",
+      "safety": "write",
+      "required_role": "owner_or_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/venue/[venueId]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/venueGuestReservationService.ts",
+            "symbol": "fetchPublicVenueSlots"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "venue availability hooks/services"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.manage_menu",
+      "domain": "venues",
+      "outcome": "Manage venue menus and modifiers",
+      "safety": "write",
+      "required_role": "owner_or_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/venue/[venueId]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/menusService.ts",
+            "symbol": "menu"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "menusService.ts"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No explicit Ari operation family"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.manage_waitlist",
+      "domain": "venues",
+      "outcome": "Read and manage the venue waitlist",
+      "safety": "write",
+      "required_role": "owner_or_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/venue/[venueId]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/waitlistService.ts",
+            "symbol": "fetchEventWaitlist"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "waitlistService.ts"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["venue_ops_action is broken and does not establish parity"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.marketing.manage_audiences",
+      "domain": "marketing",
+      "outcome": "Create and resolve campaign audiences",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/marketing/audiences/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/marketing/marketingAudienceService.ts",
+            "symbol": "Audience"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "marketingAudienceService.ts"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.marketing.manage_templates",
+      "domain": "marketing",
+      "outcome": "Create, edit, and delete marketing templates",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/marketing/templates/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/marketing/marketingTemplateService.ts",
+            "symbol": "Template"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "marketingTemplateService.ts"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.people.list_detail_add",
+      "domain": "people",
+      "outcome": "List, inspect, and manually add Brand People",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue-1774" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/marketing/people/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/peopleService.ts",
+            "symbol": "listBrandPeople"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "peopleService.ts canonical People book"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Export tool does not cover book/detail/add"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.people.import_contacts",
+      "domain": "people",
+      "outcome": "Import contacts from a user-selected CSV",
+      "safety": "write",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "guided_handoff",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "issue-1775" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/people/import.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/contactImportService.ts",
+            "symbol": "import"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "guided_handoff",
+      "guided_handoff": {
+        "path": "mingla-business/app/(tabs)/people/import.tsx",
+        "symbol": "export default"
+      },
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "CSV file picker and consent flow"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["User-selected file and consent require the existing route"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.payments.stripe_kyc",
+      "domain": "payments",
+      "outcome": "Complete Stripe onboarding and KYC",
+      "safety": "money",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "guided_handoff",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/connect-onboarding.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/hooks/useStartBrandStripeOnboarding.ts",
+            "symbol": "useStartBrandStripeOnboarding"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "guided_handoff",
+      "guided_handoff": {
+        "path": "mingla-business/app/connect-onboarding.tsx",
+        "symbol": "export default"
+      },
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "Hosted Stripe onboarding route"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Hosted KYC cannot be completed in chat"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.payments.paystack_kyc",
+      "domain": "payments",
+      "outcome": "Complete Paystack partner onboarding",
+      "safety": "money",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "guided_handoff",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/connect-partner-onboarding.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/partnerPaystackService.ts",
+            "symbol": "createPartnerPaystackRecipient"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "guided_handoff",
+      "guided_handoff": {
+        "path": "mingla-business/app/connect-partner-onboarding.tsx",
+        "symbol": "export default"
+      },
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "Hosted/provider bank onboarding route"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["KYC and bank verification require provider/user flow"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.payments.read_balances_reports",
+      "domain": "payments",
+      "outcome": "Read balances, payout ledger, and reports",
+      "safety": "read",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/payments/reports.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/brandStripeBalancesService.ts",
+            "symbol": "balance"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "payments reports surface"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Payout readiness is not balance/report parity"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.team.list_manage_roles",
+      "domain": "team",
+      "outcome": "List team members and change roles",
+      "safety": "write",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/team.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/hooks/useBrandInvitations.ts",
+            "symbol": "useBrandInvitations"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "team management surface"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Invite/revoke tools do not cover listing and role changes"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.team.revoke_scanner",
+      "domain": "team",
+      "outcome": "Revoke a scanner invitation",
+      "safety": "destructive",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/scanners.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/scannerInvitationsService.ts",
+            "symbol": "revokeScannerInvitation"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "scannerInvitationsService.ts"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.account.edit_profile_avatar",
+      "domain": "account",
+      "outcome": "Edit account profile and avatar",
+      "safety": "write",
+      "required_role": "self",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/account/edit-profile.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/creatorAvatarService.ts",
+            "symbol": "avatar"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "edit-profile route and avatar service"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool; file selection is separate"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.account.manage_ari_history",
+      "domain": "account",
+      "outcome": "List and delete Ari conversations or all Ari data",
+      "safety": "destructive",
+      "required_role": "self",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/ari.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/agentChatService.ts",
+            "symbol": "deleteAllAriData"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentChatService history operations"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.notifications.read_manage",
+      "domain": "notifications",
+      "outcome": "Read, mark, and route business notifications",
+      "safety": "write",
+      "required_role": "self",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/notifications.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/hooks/useBusinessNotifications.ts",
+            "symbol": "useBusinessNotifications"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "notifications route/hook"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Preference update is not notification inbox parity"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.support.read_reply",
+      "domain": "support",
+      "outcome": "List, inspect, and reply to support tickets",
+      "safety": "write",
+      "required_role": "self",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/support/inbox.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/supportService.ts",
+            "symbol": "listOwnSupportTickets"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "supportService read surface"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Create ticket does not cover inbox/detail/reply"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.analytics.orders_reconciliation",
+      "domain": "analytics",
+      "outcome": "Read event orders and reconciliation",
+      "safety": "read",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/reconciliation.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/eventOrdersService.ts",
+            "symbol": "order"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "event reconciliation surface"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Brand analytics tool does not cover order reconciliation"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.organic_insights",
+      "domain": "analytics",
+      "outcome": "Read venue organic insights",
+      "safety": "read",
+      "required_role": "brand_member",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/venue/[venueId]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/venueOrganicInsightsService.ts",
+            "symbol": "insight"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "venueOrganicInsightsService.ts"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No accepted Ari mapping; venue intelligence remains #1796"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.marketing.campaign_reports",
+      "domain": "analytics",
+      "outcome": "Read campaign delivery reports",
+      "safety": "read",
+      "required_role": "owner_or_marketing_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/(tabs)/marketing/campaigns/[id].tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/marketing/marketingReportService.ts",
+            "symbol": "report"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "marketingReportService.ts"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.brand.audit_log",
+      "domain": "brands",
+      "outcome": "Read the brand audit log",
+      "safety": "read",
+      "required_role": "owner_or_admin",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/audit-log.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/hooks/useAuditLog.ts",
+            "symbol": "useAuditLog"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "brand audit-log route"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.brand.discovery_currency",
+      "domain": "brands",
+      "outcome": "Manage brand discovery currency and price range",
+      "safety": "money",
+      "required_role": "owner_or_admin",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/brand/[id]/listing.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/hooks/useBrandDiscoveryCurrency.ts",
+            "symbol": "useBrandDiscoveryCurrency"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "brand listing discovery-currency owner"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.door_sale",
+      "domain": "events",
+      "outcome": "Create and manage an event door sale",
+      "safety": "money",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/door/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/ticketCheckoutService.ts",
+            "symbol": "checkout"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "event door-sale surface"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.order_management",
+      "domain": "events",
+      "outcome": "List and inspect event orders",
+      "safety": "read",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/orders/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/eventOrdersService.ts",
+            "symbol": "fetch"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "event orders service"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Refund/cancel tools do not cover order reading"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.waitlist",
+      "domain": "events",
+      "outcome": "Read and manage an event waitlist",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/guests/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/waitlistService.ts",
+            "symbol": "fetchEventWaitlist"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "waitlistService event flow"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered event-waitlist tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.event.scanner_admin",
+      "domain": "events",
+      "outcome": "List and revoke event scanner invitations",
+      "safety": "destructive",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/event/[id]/scanners/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/scannerInvitationsService.ts",
+            "symbol": "listScannerInvitationsForEvent"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "scanner invitation administration"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["invite_scanner does not cover list/revoke"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.experience.snap_generation",
+      "domain": "experiences",
+      "outcome": "Generate an experience draft from a venue snap",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/experience/snap.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/experienceGenerationService.ts",
+            "symbol": "generate"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "experience generation service"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["create_experience does not cover snap generation"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.experience.manage_stops",
+      "domain": "experiences",
+      "outcome": "Manage experience stops, intents, and stop media",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/experience/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/experienceStopImageService.ts",
+            "symbol": "image"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "experience edit/stop-media surface"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["update_experience does not establish full stop parity"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.rsvp.scan_pass",
+      "domain": "rsvp",
+      "outcome": "Scan and validate an RSVP pass",
+      "safety": "write",
+      "required_role": "scanner_or_manager",
+      "confirmation": "guided_handoff",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/rsvp/[id]/scanner/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/scanRsvpService.ts",
+            "symbol": "scan"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "guided_handoff",
+      "guided_handoff": {
+        "path": "mingla-business/app/rsvp/[id]/scanner/index.tsx",
+        "symbol": "export { default }"
+      },
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "Native RSVP scanner route"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Camera hardware remains a native handoff"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.rsvp.contribution_settings",
+      "domain": "rsvp",
+      "outcome": "Manage RSVP chip-in pricing and contribution settings",
+      "safety": "money",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/rsvp/[id]/edit.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/rsvpEvents.ts",
+            "symbol": "updateLiveRsvp"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "RSVP live-edit contribution contract"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered settings tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.trip.traveler_intake",
+      "domain": "trips",
+      "outcome": "Manage traveler intake questions and responses",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/trip/[id]/travelers/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/intakeSchemaService.ts",
+            "symbol": "Intake"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "trip traveler intake service"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.trip.order_money",
+      "domain": "trips",
+      "outcome": "Read trip orders, sold counts, and installment state",
+      "safety": "read",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "none",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/trip/[id]/money/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/tripsService.ts",
+            "symbol": "aggregatePaidOrdersByEvent"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "trip money dashboard"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered read tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.gallery",
+      "domain": "venues",
+      "outcome": "Manage venue gallery media",
+      "safety": "write",
+      "required_role": "owner_or_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/venue/[venueId]/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/venueGalleryService.ts",
+            "symbol": "gallery"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "venue gallery service"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": [
+        "No registered tool; device media selection also needs handoff"
+      ],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.partner.brand_links",
+      "domain": "payments",
+      "outcome": "Invite and manage partner-brand links",
+      "safety": "write",
+      "required_role": "partner_or_owner",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/partner/brands.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/partnerBrandLinksService.ts",
+            "symbol": "Partner"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "partner brand-links service"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered tool"],
+      "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.partner.splits",
+      "domain": "payments",
+      "outcome": "Read and manage partner split allocations",
+      "safety": "money",
+      "required_role": "partner_or_finance_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "post_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/partner/earnings.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/services/partnerSplitsService.ts",
+            "symbol": "listPartnerSplits"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "partner splits service"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["Partner status does not cover splits"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    }
+  ]
+}
