@@ -7,6 +7,18 @@
 
 ---
 
+## ACTIVE — issue #1996 (Business desktop share preparation and browser activation remain valid)
+
+### I-BUSINESS-WEB-SHARE-RECEIVER-AND-READINESS (ACTIVE)
+
+- **Rule:** The signed-in Business web share dialog preloads its split content before the first Share tap without creating a share early. Its credential-free public readiness GET is cross-origin readable and uncached. Clipboard and Web Share calls retain their owning browser objects and run from the original user activation without a post-click module import. Anonymous canonical public-page sharing, Explorer `/s` pages and previews, QR payloads, and native Business transports remain separate and unchanged.
+- **Enforcement:** `.github/workflows/issue-1996-business-desktop-sharing-tests.yml` runs the append-only implementor and independent tester guards plus the preserved #1719 same-turn and shared-transport suites whenever any load-bearing file changes.
+- **Regression:** Detaching Clipboard, detaching Web Share, removing readiness ACAO/no-store, removing the cached preload, or restoring post-click transport imports makes the dedicated CI job fail. The #1968 canonical-sharing guards separately prove public pages still share their own canonical URLs and Explorer keeps its custom rich-share contract.
+- **Scope:** Business web management sharing and the public Marketing readiness response only. No database, Edge Function, app version, native dependency, native behavior, public-page renderer, metadata renderer, Explorer renderer, or OTA behavior changes.
+- **Established:** ACTIVE at #1996 merge through PR #1998 after independent receiver-sensitive fail-on-revert proof, full Business Jest, production web deployment, and live cross-domain verification recorded on the issue.
+
+---
+
 ## ACTIVE — issue #1914 (elapsed RSVP writes fail closed and RSVP appears in brand Upcoming — CLOSED 2026-08-11, PR #1917, production database + Edge Function deployed)
 
 > Registered DRAFT at issue #1914 IMPLEMENT and activated at CLOSE after independent tester PASS, the all-green merge, surgical production migration apply, exact merged Edge deployment, and read-only production verification.
