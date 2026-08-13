@@ -4,7 +4,31 @@
 // deno-lint-ignore-file no-explicit-any
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
-export interface AgentTool {
+export type AgentRequiredRole =
+  | "business_user"
+  | "self"
+  | "scanner"
+  | "marketing_manager"
+  | "finance_manager"
+  | "event_manager"
+  | "brand_admin"
+  | "deed_owner";
+
+export type AgentResourceKind =
+  | "none"
+  | "optional_brand"
+  | "brand"
+  | "event"
+  | "campaign"
+  | "stay_reservation"
+  | "venue_reservation";
+
+export interface AgentAuthorizationDeclaration {
+  requiredRole: AgentRequiredRole;
+  resource: AgentResourceKind;
+}
+
+export interface AgentToolDefinition {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
@@ -14,6 +38,8 @@ export interface AgentTool {
     userId: string,
   ) => Promise<unknown>;
 }
+
+export interface AgentTool extends AgentToolDefinition, AgentAuthorizationDeclaration {}
 
 export class ToolError extends Error {
   constructor(public code: string, message: string) {
@@ -43,39 +69,18 @@ export function newIdempotencyKey(): string {
   return crypto.randomUUID();
 }
 
-export async function assertBrandOwned(
-  client: SupabaseClient,
-  brandId: string,
-  userId: string,
-): Promise<void> {
-  const { data, error } = await client
-    .from("brands")
-    .select("id")
-    .eq("id", brandId)
-    .eq("account_id", userId)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (error) throw new ToolError("OWNERSHIP_CHECK_FAILED", error.message);
-  if (!data) throw new ToolError("OWNERSHIP_DENIED", `Brand ${brandId} is not owned by caller`);
-}
-
-export async function assertEventOwned(
+export async function resolveEventBrand(
   client: SupabaseClient,
   eventId: string,
-  userId: string,
 ): Promise<string> {
   const { data, error } = await client
     .from("events")
-    .select("id, brand_id, brands!inner(account_id)")
+    .select("id, brand_id")
     .eq("id", eventId)
     .is("deleted_at", null)
     .maybeSingle();
-  if (error) throw new ToolError("OWNERSHIP_CHECK_FAILED", error.message);
-  if (!data) throw new ToolError("OWNERSHIP_DENIED", `Event ${eventId} not found or not owned`);
-  const accountId = (data as any).brands?.account_id;
-  if (accountId !== userId) {
-    throw new ToolError("OWNERSHIP_DENIED", `Event ${eventId} is not owned by caller`);
-  }
+  if (error) throw new ToolError("RESOURCE_CHECK_FAILED", error.message);
+  if (!data) throw new ToolError("BRAND_ACCESS_DENIED", "That resource is unavailable");
   return (data as any).brand_id as string;
 }
 
@@ -96,41 +101,6 @@ export async function assertCanCollect(
     throw new ToolError(
       "PAYOUT_NOT_READY",
       "This brand cannot collect payments yet. Finish Stripe or Paystack onboarding first (Ari can show status, but cannot skip KYC).",
-    );
-  }
-}
-
-/**
- * Role-rank gate. Mirrors mingla-business/src/utils/brandRole.ts ranks:
- * owner 60 > admin 50 > event_manager 40 > finance_manager 30 > marketing_manager 20 > scanner 10.
- */
-export async function assertBrandRole(
-  client: SupabaseClient,
-  brandId: string,
-  userId: string,
-  minRank: number,
-): Promise<void> {
-  const { data, error } = await client.rpc("biz_brand_effective_rank", {
-    p_brand_id: brandId,
-    p_user_id: userId,
-  });
-  if (error) {
-    // Fallback: owner of the brand always passes.
-    const { data: brand } = await client
-      .from("brands")
-      .select("id")
-      .eq("id", brandId)
-      .eq("account_id", userId)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (brand) return;
-    throw new ToolError("ROLE_CHECK_FAILED", error.message);
-  }
-  const rank = typeof data === "number" ? data : Number(data ?? 0);
-  if (!Number.isFinite(rank) || rank < minRank) {
-    throw new ToolError(
-      "ROLE_DENIED",
-      `This action needs a higher brand role (required rank ${minRank}).`,
     );
   }
 }

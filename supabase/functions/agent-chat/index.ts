@@ -16,6 +16,7 @@ import { buildSystemPrompt, TENANT_CONTEXT_VERSION, AgentUserProfile, BrandSumma
 import { detectPromptInjection } from "../_shared/agentPromptInjection.ts";
 import { callGemini, ARI_MODEL_VERSION, GeminiContentMessage, GeminiError } from "../_shared/agentGemini.ts";
 import { AGENT_TOOLS, READ_ONLY_TOOL_NAMES, findTool, ToolError } from "../_shared/agentTools.ts";
+import { authorizeAgentTool } from "../_shared/agentToolAuthorization.ts";
 import { buildServiceClient, enforceTurnRateLimit } from "../_shared/agentRateLimit.ts";
 import { detectChoices, AgentChoices } from "../_shared/agentChoices.ts";
 import { logError } from "../_shared/structuredLog.ts";
@@ -181,7 +182,7 @@ async function handle(req: Request): Promise<Response> {
   let accessibleBrands: AccessibleAgentBrand[];
   try {
     accessibleBrands = await resolveAccessibleAgentBrands(userClient, userId);
-  } catch (error) {
+  } catch (_error) {
     console.error("[agent-chat] tenant scope denied", JSON.stringify({
       fn: "agent-chat", revision: "2013", code: "TENANT_SCOPE_UNAVAILABLE",
       scope_state: body.conversation_id ? "bound_or_legacy" : "new",
@@ -476,7 +477,7 @@ async function handle(req: Request): Promise<Response> {
       try {
         const result = await tool.executor(gemini.toolCall.args, userClient, userId);
         // Log tool result as a tool message, then ask Gemini for a natural-language summary
-        const { data: toolMsg } = await userClient
+        await userClient
           .from("agent_messages")
           .insert({
             conversation_id: conversationId,
@@ -555,10 +556,24 @@ async function handle(req: Request): Promise<Response> {
             accessible_brand_count: accessibleBrands.length,
             tool_name: tool.name,
           }));
-          return errorResponse(err.code === "TENANT_SCOPE_UNAVAILABLE" ? 503 : 403, err.code, err.message);
+          return errorResponse(
+            err.code === "TENANT_SCOPE_UNAVAILABLE" || err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : 403,
+            err.code,
+            err.message,
+          );
         }
         return errorResponse(500, "EXECUTION_FAILED", err?.message ?? "Tool failed");
       }
+    }
+
+    // #2019: authorization precedes every persisted proposal.
+    try {
+      await authorizeAgentTool(tool, gemini.toolCall.args, userClient, userId);
+    } catch (err: unknown) {
+      if (err instanceof ToolError) {
+        return errorResponse(err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : 403, err.code, err.message);
+      }
+      return errorResponse(503, "ROLE_CHECK_UNAVAILABLE", "Ari could not verify permissions right now");
     }
 
     // For WRITE tools, register a pending action (NOT execute)

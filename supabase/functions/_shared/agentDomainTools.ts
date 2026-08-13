@@ -3,18 +3,16 @@
 // Ari-only write path.
 
 // deno-lint-ignore-file no-explicit-any
-import type { AgentTool } from "./agentToolHelpers.ts";
+import type { AgentToolDefinition } from "./agentToolHelpers.ts";
 import {
   ToolError,
-  assertBrandOwned,
-  assertBrandRole,
   assertCanCollect,
-  assertEventOwned,
   callRpc,
   invokeFn,
   isString,
   isUuid,
   newIdempotencyKey,
+  resolveEventBrand,
 } from "./agentToolHelpers.ts";
 import {
   assertAgentReadBrand,
@@ -30,9 +28,9 @@ function writeTool(
   description: string,
   properties: Record<string, unknown>,
   required: string[],
-  executor: AgentTool["executor"],
+  executor: AgentToolDefinition["executor"],
   confirmPhrase?: string,
-): AgentTool {
+): AgentToolDefinition {
   const props = confirmPhrase
     ? { ...properties, confirm_phrase: { type: "string", enum: [confirmPhrase] } }
     : properties;
@@ -59,15 +57,14 @@ function writeTool(
   };
 }
 
-async function requireEvent(args: Record<string, unknown>, client: any, userId: string): Promise<{ eventId: string; brandId: string }> {
+async function requireEvent(args: Record<string, unknown>, client: any, _userId: string): Promise<{ eventId: string; brandId: string }> {
   if (!isUuid(args.event_id)) throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
-  const brandId = await assertEventOwned(client, args.event_id, userId);
+  const brandId = await resolveEventBrand(client, args.event_id);
   return { eventId: args.event_id, brandId };
 }
 
-async function requireBrand(args: Record<string, unknown>, client: any, userId: string): Promise<string> {
+function requireBrand(args: Record<string, unknown>, _client: any, _userId: string): string {
   if (!isUuid(args.brand_id)) throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
-  await assertBrandOwned(client, args.brand_id, userId);
   return args.brand_id;
 }
 
@@ -672,7 +669,6 @@ const venueOpsAction = writeTool(
   ["brand_id", "venue_id", "action"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    await assertBrandRole(client, args.brand_id as string, userId, 40);
     return await invokeFn(client, "venue-order-staff", {
       venue_id: args.venue_id,
       action: args.action,
@@ -688,7 +684,6 @@ const sendVenueSms = writeTool(
   ["brand_id", "venue_id", "to_phone", "body"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    await assertBrandRole(client, args.brand_id as string, userId, 40);
     return await invokeFn(client, "send-venue-sms", {
       venue_id: args.venue_id,
       to: args.to_phone,
@@ -909,7 +904,6 @@ const refundOrder = writeTool(
   ["brand_id", "order_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    await assertBrandRole(client, args.brand_id as string, userId, 30);
     if (!isUuid(args.order_id)) throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
     return await invokeFn(
       client,
@@ -928,7 +922,6 @@ const cancelOrder = writeTool(
   ["brand_id", "order_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    await assertBrandRole(client, args.brand_id as string, userId, 30);
     return await invokeFn(
       client,
       "cancel-order",
@@ -946,7 +939,6 @@ const cancelTripBooking = writeTool(
   ["brand_id", "booking_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    await assertBrandRole(client, args.brand_id as string, userId, 30);
     return await invokeFn(
       client,
       "cancel-trip-booking",
@@ -964,7 +956,6 @@ const retryInstallment = writeTool(
   ["brand_id", "installment_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    await assertBrandRole(client, args.brand_id as string, userId, 30);
     return await callRpc(client, "biz_retry_installment", { p_installment_id: args.installment_id });
   },
 );
@@ -1000,7 +991,6 @@ const inviteBrandMember = writeTool(
   ["brand_id", "email", "role"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    await assertBrandRole(client, args.brand_id as string, userId, 50);
     return await invokeFn(client, "invite-brand-member", {
       brand_id: args.brand_id,
       invitee_email: args.email,
@@ -1017,7 +1007,6 @@ const inviteScanner = writeTool(
   ["brand_id", "email"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    await assertBrandRole(client, args.brand_id as string, userId, 40);
     return await invokeFn(client, "invite-brand-member", {
       brand_id: args.brand_id,
       invitee_email: args.email,
@@ -1034,7 +1023,6 @@ const revokeBrandMember = writeTool(
   ["brand_id", "member_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    await assertBrandRole(client, args.brand_id as string, userId, 50);
     const { error } = await client
       .from("brand_members")
       .delete()
@@ -1079,7 +1067,6 @@ const exportBrandPeople = writeTool(
   ["brand_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    await assertBrandRole(client, args.brand_id as string, userId, 50);
     return await invokeFn(client, "brand-people-export", { brand_id: args.brand_id });
   },
   "EXPORT",
@@ -1176,7 +1163,6 @@ const getOperatorSnapshot = writeTool(
     if (args.brand_id !== undefined && !brandId) throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
     if (brandId) {
       await assertAgentReadBrand(client, userId, brandId);
-      await assertBrandOwned(client, brandId, userId);
     }
     // Preserve this tool's pre-existing owner-only detail semantics after the
     // broader accessibility guard; delegated roles are not silently promoted.
@@ -1209,7 +1195,7 @@ const getOperatorSnapshot = writeTool(
   },
 );
 
-export const DOMAIN_TOOLS: AgentTool[] = [
+export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   publishEvent,
   unpublishEvent,
   cancelEvent,
