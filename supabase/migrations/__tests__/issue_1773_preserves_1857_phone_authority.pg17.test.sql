@@ -155,11 +155,22 @@ BEGIN
   INSERT INTO public.event_rsvps(
     id,event_id,user_id,guest_name,guest_email,guest_phone,guest_phone_country_iso,
     rsvp_status,approval_status,plus_count,created_at
-  ) VALUES(v_strict_match,v_event,NULL,'Phone Authority',NULL,'+19194199222',NULL,
+  ) VALUES(v_strict_match,v_event,NULL,'Phone Authority','strict-phone-match@example.test','+19194199222',NULL,
     'going','approved',0,now());
   v_match:=public.biz_resolve_brand_person_source_derived('event_rsvp',v_strict_match);
   IF (v_match->>'personId')::uuid<>v_person THEN
     RAISE EXCEPTION 'issue_1773_1857_strict_e164_stopped_being_match_key:%',v_match;
+  END IF;
+  IF NOT EXISTS(
+       SELECT 1 FROM public.brand_person_source_links l
+       JOIN public.brand_person_contact_method_sources s ON s.source_link_id=l.id AND s.active
+       JOIN public.brand_person_contact_methods c ON c.id=s.contact_method_id
+       WHERE l.id=(v_match->>'sourceLinkId')::uuid
+         AND l.source_kind='event_rsvp' AND l.source_id=v_strict_match
+         AND l.detached_at IS NULL
+         AND c.channel='phone' AND c.normalized_value='+19194199222'
+     ) THEN
+    RAISE EXCEPTION 'issue_1773_1857_strict_e164_source_missing';
   END IF;
 END;
 $rsvp_phone_authority$;
