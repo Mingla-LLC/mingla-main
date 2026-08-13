@@ -35,7 +35,10 @@ jest.mock("../PeoplePrimitives",()=>({
   GroupsSheet:({visible}:any)=>visible?<Text>GROUPS SHEET</Text>:null,
 }));
 
+// Jest requires dependency mocks to be declared before loading this component.
+// eslint-disable-next-line import/first
 import { PeoplePage } from "../PeoplePage";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const TR=require("react-test-renderer") as {create:(node:React.ReactElement)=>any;act:(callback:()=>void|Promise<void>)=>void|Promise<void>};
 const textOf=(json:any):string=>{if(typeof json==="string")return json;if(Array.isArray(json))return json.map(textOf).join(" ");if(json&&typeof json==="object")return textOf(json.children??[]);return ""};
 let tree:any;
@@ -55,6 +58,14 @@ describe("#1774 rendered People state machine",()=>{
     role={...role,accepted:false,rank:50}; render(); expect(textOf(tree.toJSON())).toContain("You don’t have access");
     role={...role,accepted:true,rank:10}; update(); expect(textOf(tree.toJSON())).toContain("You don’t have access");
     role={...role,rank:20}; update(); expect(textOf(tree.toJSON())).toMatch(/Your book.*Ada.*Groups.*Buyers/);
+  });
+
+  test("role lookup failure clears cached PII and ends in a terminal privacy-safe state",()=>{
+    render(); expect(textOf(tree.toJSON())).toMatch(/Ada.*ada@example\.test.*Buyers/);
+    role={...role,isError:true}; update(); const output=textOf(tree.toJSON());
+    expect(output).toContain("You don’t have access to People.");
+    expect(output).not.toMatch(/Ada|ada@example|Buyers|Your book|People you can reach/);
+    expect(tree.root.findAllByType("MockSkeleton")).toHaveLength(0);
   });
 
   test("no-brand recovery invokes the existing Marketing switcher owner",()=>{

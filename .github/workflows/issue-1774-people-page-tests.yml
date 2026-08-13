@@ -66,6 +66,7 @@ jobs:
             src/components/people/__tests__/PeopleSheets.issue1774.behavior.test.ts \
             src/components/people/__tests__/AddPersonSheet.issue1774.behavior.test.tsx \
             src/components/people/__tests__/PersonDetailView.issue1774.behavior.test.tsx \
+            "app/(tabs)/people/__tests__/PersonDetailRoute.issue1774.role-error.test.tsx" \
             src/components/people/__tests__/peopleRequestId.issue1774.test.ts \
             "app/(tabs)/marketing/__tests__/MarketingAudiences.disabled-query.adversarial.test.ts" \
             __tests__/orch-0891.bundle-budget.adversarial.test.ts
