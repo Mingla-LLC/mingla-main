@@ -46,6 +46,9 @@ const GUARDED_MODULES = [
   "mingla-business/src/services/growthToolsService.ts",
   "mingla-business/src/hooks/growthToolsKeys.ts",
   "mingla-business/src/hooks/useGrowthTools.ts",
+  "mingla-business/src/hooks/useTurnoutForecast.ts",
+  "mingla-business/src/utils/turnoutInput.ts",
+  "mingla-business/src/types/growthTools.ts",
 ];
 /** P-B — src/store has 29 files at authoring time; a sweep seeing fewer than
  * this many did not walk the real directory. */
@@ -56,6 +59,8 @@ const MODULE_TOKENS = [
   ["growthToolsService", "the growth-tools service module"],
   ["growthToolsKeys", "the growth-tools query-key factory"],
   ["useGrowthTools", "the growth-tools hook family"],
+  ["useTurnoutForecast", "the turnout forecast hook"],
+  ["turnoutInput", "the canonical turnout input builder"],
 ];
 /** R-2 — the report type namespace. */
 const TYPE_TOKENS = [
@@ -64,6 +69,8 @@ const TYPE_TOKENS = [
   ["SubjectLatestResult", "the latest-read result type"],
   ["CompetitorWatchRow", "the competitor watch row type"],
   ["GrowthToolsAppError", "the growth-tools error type"],
+  ["TurnoutReport", "the turnout report type"],
+  ["TurnoutCachedResult", "the turnout cached-result type"],
 ];
 /** R-3 — direct edge-function invocation from a store. */
 const FUNCTION_LITERAL = /["'`]growth-tools-/;
@@ -156,6 +163,37 @@ export function runGate(storeFiles, guardedPresent) {
   };
 }
 
+const TURNOUT_INPUT_OWNER = "mingla-business/src/utils/turnoutInput.ts";
+const TURNOUT_RUN_OWNER = "mingla-business/src/hooks/useTurnoutForecast.ts";
+
+/** #1008 A9 — turnout payload construction and event runs stay single-owned. */
+export function runTurnoutSingleSourceGate(clientFiles) {
+  const failures = [];
+  for (const file of clientFiles) {
+    if (/\/__tests__\//.test(file.rel) || /\.test\./.test(file.rel)) continue;
+    const code = stripComments(file.code);
+    if (
+      file.rel !== TURNOUT_INPUT_OWNER &&
+      code.includes("stableStringify") &&
+      code.includes("ticket_price")
+    ) {
+      failures.push(`${file.rel}: duplicates canonical turnout input/key construction.`);
+    }
+    if (
+      file.rel !== TURNOUT_RUN_OWNER &&
+      /runGrowthTool(?:<[^>]+>)?\s*\(\s*["']events["']/.test(code)
+    ) {
+      failures.push(`${file.rel}: starts an events engine run outside useTurnoutForecast.`);
+    }
+  }
+  return {
+    code: failures.length === 0 ? 0 : 1,
+    messages: failures.length === 0
+      ? ["OK [I-PROPOSED-1008-TURNOUT-INPUT-SINGLE-SOURCE]: one builder and one metered event-run owner."]
+      : ["FAIL [I-PROPOSED-1008-TURNOUT-INPUT-SINGLE-SOURCE]:", ...failures.map((f) => `  x ${f}`)],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Disk I/O
 // ---------------------------------------------------------------------------
@@ -189,6 +227,23 @@ function sweepStoreDir() {
     }
   };
   walk(path.join(REPO_ROOT, STORE_DIR), STORE_DIR);
+  return out;
+}
+
+function sweepBusinessClient() {
+  const root = path.join(REPO_ROOT, "mingla-business/src");
+  const out = [];
+  const walk = (absDir, relDir) => {
+    for (const entry of fs.readdirSync(absDir, { withFileTypes: true })) {
+      const abs = path.join(absDir, entry.name);
+      const rel = `${relDir}/${entry.name}`;
+      if (entry.isDirectory()) walk(abs, rel);
+      else if (/\.(ts|tsx)$/.test(entry.name)) {
+        out.push({ rel, code: fs.readFileSync(abs, "utf8") });
+      }
+    }
+  };
+  walk(root, "mingla-business/src");
   return out;
 }
 
@@ -274,7 +329,15 @@ if (process.argv.includes("--self-test")) {
     expect("comment-only reference", runGate(stores, allPresent).code, 0);
   }
 
-  // 8 — VACUITY: an empty/short sweep is a FAILURE, never a pass.
+  // 8 — turnout-specific report imports fail too.
+  {
+    const stores = cleanStores();
+    stores[0].code +=
+      '\nimport type { TurnoutCachedResult } from "../hooks/useTurnoutForecast";\n';
+    expect("turnout result store import", runGate(stores, allPresent).code, 1);
+  }
+
+  // 9 — VACUITY: an empty/short sweep is a FAILURE, never a pass.
   expect("empty sweep", runGate([], allPresent).code, 2);
   expect(
     "short sweep",
@@ -294,6 +357,28 @@ if (process.argv.includes("--self-test")) {
     }
   }
 
+  const cleanClient = [
+    { rel: TURNOUT_INPUT_OWNER, code: "const stableStringify = 1; const ticket_price = 0;" },
+    { rel: TURNOUT_RUN_OWNER, code: 'runGrowthTool("events", brandId, input);' },
+  ];
+  expect("turnout single owners", runTurnoutSingleSourceGate(cleanClient).code, 0);
+  expect(
+    "duplicate turnout builder",
+    runTurnoutSingleSourceGate([
+      ...cleanClient,
+      { rel: "mingla-business/src/utils/other.ts", code: "stableStringify({ ticket_price: 2 });" },
+    ]).code,
+    1,
+  );
+  expect(
+    "duplicate turnout run",
+    runTurnoutSingleSourceGate([
+      ...cleanClient,
+      { rel: "mingla-business/src/hooks/other.ts", code: 'runGrowthTool("events", id, input);' },
+    ]).code,
+    1,
+  );
+
   if (problems.length > 0) {
     console.error("SELF-TEST FAIL:");
     for (const p of problems) console.error(`- ${p}`);
@@ -307,8 +392,10 @@ if (process.argv.includes("--self-test")) {
   process.exit(0);
 }
 
-const { code, messages } = runGate(sweepStoreDir(), guardedModulesPresent());
-for (const message of messages) {
+const storeResult = runGate(sweepStoreDir(), guardedModulesPresent());
+const turnoutResult = runTurnoutSingleSourceGate(sweepBusinessClient());
+const code = storeResult.code !== 0 ? storeResult.code : turnoutResult.code;
+for (const message of [...storeResult.messages, ...turnoutResult.messages]) {
   if (code === 0) console.log(message);
   else console.error(message);
 }

@@ -395,6 +395,12 @@ export const androidOpaque = {
    * The translucent value stays the iOS/web truth; only Android composites.
    */
   accentFill: "#2b1d15",
+  // Issue #1008 — semantic chip composites over canvas.discover. Native
+  // Android never receives translucent glass under rounded content.
+  successFill: "#102f20",
+  warningFill: "#362811",
+  errorFill: "#35181b",
+  infoFill: "#14233b",
 } as const;
 
 

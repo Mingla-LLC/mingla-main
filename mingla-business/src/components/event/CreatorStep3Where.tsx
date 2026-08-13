@@ -30,6 +30,7 @@ import {
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
+import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
 // ORCH-1047: the event Where step now uses the Mapbox address autocomplete
 // (META-ORCH-1059's mapbox-geocode edge fn + MapboxAddressInput) — the legacy
 // Google Places path was REQUEST_DENIED, leaving an empty suggestions dropdown.
@@ -329,6 +330,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
           ) : null}
         </View>
       ) : null}
+      <TurnoutForecastCard surface="where" />
     </View>
   );
 };
