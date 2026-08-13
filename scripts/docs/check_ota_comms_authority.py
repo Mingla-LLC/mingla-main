@@ -100,9 +100,18 @@ def check_comms(text: str) -> list[str]:
     else:
         authority = normalized(authorities[0].body)
         required = {
-            "Consumer and Business runtime 1.1.4": "consumer and business runtime 1.1.4",
+            "dated reach snapshot": "recorded reach truth as of 2026-08-11",
+            "Consumer and Business runtime 1.1.4 builds": "consumer and business runtime 1.1.4 builds exist",
+            "runtime-existence/public-reach distinction": "existence is not public reach",
+            "Android 1.1.4 public reach at 100%": "both android apps were public at 1.1.4 at 100%",
+            "iOS manual/not-public state": "both ios apps were release type manual and not public",
+            "iOS installed public runtime 1.1.2": "public ios users remained on runtime 1.1.2",
             "#1758 lifting evidence": "#1758",
             "#1871 lifting evidence": "#1871",
+            "freshness boundary": "immediately before every publish",
+            "Play production re-read": "play production track",
+            "App Store re-read": "app store release state",
+            "EAS served-manifest re-read": "eas served manifest",
             "pure-JS eligibility": "pure-js",
             "reviewed merged main": "reviewed merged main",
             "per-platform publication": "per-platform",
@@ -153,10 +162,27 @@ def fixture(active_rows_text: str, archive_text: str = "") -> str:
 def self_test() -> None:
     authority = (
         "| COMMS-9001 | date | owner | ALL | WARN | OPEN | none | | "
-        "**CURRENT OTA AUTHORITY:** Consumer and Business runtime 1.1.4 exists. "
-        "#1758 and #1871 lifted the old freeze. OTA is eligible only for pure-JS "
+        "**CURRENT OTA AUTHORITY — recorded reach truth as of 2026-08-11:** "
+        "Consumer and Business runtime 1.1.4 builds exist, but existence is not public reach. "
+        "Both Android apps were public at 1.1.4 at 100%. Both iOS apps were release type "
+        "MANUAL and not public; public iOS users remained on runtime 1.1.2. #1758 and "
+        "#1871 lifted the old freeze. Immediately before every publish, re-read the Play "
+        "production track, App Store release state, and EAS served manifest. "
+        "OTA is eligible only for pure-JS "
         "changes from reviewed merged `main`, published per-platform with served "
         "manifest verification. Native/config changes require a fresh native build. |"
+    )
+    flattened_authority = (
+        "| COMMS-9006 | date | owner | ALL | WARN | OPEN | none | | "
+        "**CURRENT OTA AUTHORITY:** Consumer and Business runtime 1.1.4 exists on iOS "
+        "and Android. #1758 and #1871 lifted the old freeze. OTA is eligible only for "
+        "pure-JS changes from reviewed merged `main`, published per-platform with served "
+        "manifest verification. Native/config changes require a fresh native build. |"
+    )
+    stale_snapshot_authority = authority.replace(
+        "Immediately before every publish, re-read the Play production track, App Store "
+        "release state, and EAS served manifest. ",
+        "",
     )
     warning = (
         "| COMMS-9002 | date | owner | ALL | WARN | OPEN | none | | "
@@ -177,6 +203,14 @@ def self_test() -> None:
     )
 
     assert check_comms(fixture(authority + "\n" + warning)) == []
+    assert any(
+        "public reach" in failure or "reach snapshot" in failure
+        for failure in check_comms(fixture(flattened_authority + "\n" + warning))
+    )
+    assert any(
+        "freshness" in failure or "re-read" in failure
+        for failure in check_comms(fixture(stale_snapshot_authority + "\n" + warning))
+    )
     assert any(
         "globally forbids OTA" in failure
         for failure in check_comms(fixture(authority + "\n" + warning + "\n" + old_freeze))
@@ -217,7 +251,7 @@ def main() -> int:
 
     if args.self_test:
         self_test()
-        print("OTA COMMS authority self-test: PASS (10/10 cases)")
+        print("OTA COMMS authority self-test: PASS (12/12 cases)")
         return 0
 
     failures: list[str] = []
