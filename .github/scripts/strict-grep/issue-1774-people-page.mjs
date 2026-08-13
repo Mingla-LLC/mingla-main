@@ -17,6 +17,8 @@ const files = {
   marketingKeys: "mingla-business/src/hooks/marketing/marketingKeys.ts",
   flagHook: "mingla-business/src/hooks/useFeatureFlag.ts",
   migration: "supabase/migrations/20270329001774_issue_1774_people_page.sql",
+  digestFix: "supabase/migrations/20270330001774_issue_1774_qualify_people_digest.sql",
+  marketingAudit: "scripts/audit/marketing-grade-a-contract.mjs",
 };
 
 export function audit(base) {
@@ -26,7 +28,7 @@ export function audit(base) {
     if (!fs.existsSync(target)) { failures.push(`${files[key]} is missing`); return ""; }
     return fs.readFileSync(target, "utf8");
   };
-  const route=read("route"),legacy=read("legacy"),page=read("page"),detail=read("detail"),service=read("service"),importRoute=read("importRoute"),importHook=read("importHook"),analytics=read("analytics"),marketingKeys=read("marketingKeys"),flagHook=read("flagHook"),migration=read("migration");
+  const route=read("route"),legacy=read("legacy"),page=read("page"),detail=read("detail"),service=read("service"),importRoute=read("importRoute"),importHook=read("importHook"),analytics=read("analytics"),marketingKeys=read("marketingKeys"),flagHook=read("flagHook"),migration=read("migration"),digestFix=read("digestFix"),marketingAudit=read("marketingAudit");
   if (!route.includes("<PeoplePage")) failures.push("canonical People route does not mount PeoplePage");
   if (!legacy.includes('<Redirect href="/(tabs)/marketing/people"') || /AudienceListScreen|useAudienceList/.test(legacy)) failures.push("legacy Audiences route is not a renderless People redirect");
   if (/\.from\s*\(/.test([page,detail,service].join("\n"))) failures.push("People book/detail bypasses the RPC service boundary");
@@ -42,6 +44,9 @@ export function audit(base) {
   const authNeedles=["biz_brand_effective_rank(p_brand_id,v_uid)","biz_role_rank('marketing_manager')"];
   for (const needle of authNeedles) if (!migration.includes(needle)) failures.push(`migration authorization is missing ${needle}`);
   if (!migration.includes("brand_person_manual_add_requests") || !migration.includes("pg_advisory_xact_lock") || !migration.includes("people_idempotency_conflict")) failures.push("manual add lacks durable idempotency authority");
+  const digestFunction=digestFix.split("REVOKE ALL ON FUNCTION")[0];
+  if (!/v_hash\s*:=\s*encode\s*\(\s*extensions\.digest\s*\(/.test(digestFunction) || /v_hash\s*:=\s*encode\s*\(\s*digest\s*\(/.test(digestFunction)) failures.push("manual add digest is not extension-qualified in the forward correction");
+  if (!marketingAudit.includes('label: "legacy-audiences-redirect"') || !marketingAudit.includes('label: "people"') || !marketingAudit.includes('book.kind==="offlineEmpty"')) failures.push("marketing Grade A audit does not split the legacy redirect from truthful People ownership");
   return failures;
 }
 
@@ -64,6 +69,12 @@ function selfTest() {
     }
     const keys=path.join(tmp,files.marketingKeys); fs.appendFileSync(keys,"\nconst contact_import_v1 = true;\n");
     if (!audit(tmp).some((x)=>x.includes("duplicate contact-import rollout authority"))) throw new Error("true mutation: duplicate flag authority was not detected");
+    fs.copyFileSync(path.join(root,files.marketingKeys),keys);
+    const digestFix=path.join(tmp,files.digestFix),cleanDigest=fs.readFileSync(digestFix,"utf8"); fs.writeFileSync(digestFix,cleanDigest.replace("v_hash := encode(extensions.digest(","v_hash := encode(digest("));
+    if (!audit(tmp).some((x)=>x.includes("digest is not extension-qualified"))) throw new Error("true mutation: unqualified People digest was not detected");
+    fs.writeFileSync(digestFix,cleanDigest);
+    const marketingAudit=path.join(tmp,files.marketingAudit),cleanAudit=fs.readFileSync(marketingAudit,"utf8"); fs.writeFileSync(marketingAudit,cleanAudit.replace('label: "people"','label: "retired-audiences"'));
+    if (!audit(tmp).some((x)=>x.includes("does not split the legacy redirect"))) throw new Error("true mutation: stale Grade A ownership was not detected");
     console.log("[issue-1774-people-page] self-test PASS");
   } finally { fs.rmSync(tmp,{recursive:true,force:true}); }
 }

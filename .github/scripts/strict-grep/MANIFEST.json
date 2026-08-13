@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 520,
+  "expectedStrictGrepMjsFiles": 521,
   "selfTestWiredFloor": 327,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -35,6 +35,19 @@
         "plain"
       ],
       "selfTest": "wired",
+      "jobKeys": [
+        "issue-1774-people-page"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-1774-people-page.tester.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
       "jobKeys": [
         "issue-1774-people-page"
       ]
