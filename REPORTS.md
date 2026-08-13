@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-13 — Public event, RSVP, experience, trip, venue, and brand pages now keep their cover artwork clean instead of duplicating titles and banners; sharing those web pages sends their canonical link with rich chat previews, while Mingla Explorer's custom share pages remain unchanged. (#1968, PR #1969)
 - 2026-08-12 — Venue reservations and confirmed Stay bookings now enter the brand's contact book automatically alongside buyers and RSVP guests; ambiguous identities are quarantined instead of guessed, source writes remain available if ingest is delayed, and safe replay cannot create duplicate contacts. (#1773, PR #1987)
 - 2026-08-12 — Brand People exports now require the exact active brand, so rank-50 membership admins and multi-brand owners export the intended contact book while unauthorized, deleted, missing, or ambiguous brand requests create nothing; existing offering guest-roster exports remain compatible. (#1858, PR #1961)
 - 2026-08-12 — Guests can enter a phone number in their own national format across RSVP plus-ones, Stay bookings, and venue reservations after explicitly choosing the handset country; strict international numbers remain authoritative, ambiguous historical phones are never guessed, and the same country evidence now survives every affected app, web, database, and backend path. (#1857, PR #1921)
