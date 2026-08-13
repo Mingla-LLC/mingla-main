@@ -91,9 +91,13 @@ const isValidPriceInput = (value: string): boolean =>
 
 const isValidCapacityInput = (value: string): boolean => /^\d*$/.test(value);
 
-type WebSelectableInput = {
-  setSelectionRange?: (start: number, end: number) => void;
-};
+const hasSelectionRange = (
+  value: unknown,
+): value is { setSelectionRange: (start: number, end: number) => void } =>
+  typeof value === "object" &&
+  value !== null &&
+  "setSelectionRange" in value &&
+  typeof value.setSelectionRange === "function";
 
 const reselectWebValueAfterPointer = (
   event: GestureResponderEvent,
@@ -101,8 +105,10 @@ const reselectWebValueAfterPointer = (
 ): void => {
   if (Platform.OS !== "web" || value.length === 0) return;
 
-  const target = event.currentTarget as unknown as WebSelectableInput;
-  requestAnimationFrame(() => target.setSelectionRange?.(0, value.length));
+  const target: unknown = event.currentTarget;
+  requestAnimationFrame(() => {
+    if (hasSelectionRange(target)) target.setSelectionRange(0, value.length);
+  });
 };
 
 // ---- Visibility options ---------------------------------------------
