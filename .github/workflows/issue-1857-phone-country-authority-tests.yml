@@ -22,6 +22,7 @@ on:
       - "supabase/functions/venue-reservation-create/**"
       - "supabase/migrations/20270325001857_issue_1857_phone_country_authority.sql"
       - "supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql"
       - "docs/INVARIANT_REGISTRY.md"
       - ".github/scripts/strict-grep/issue-1857-phone-country-authority.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
@@ -118,6 +119,12 @@ jobs:
         run: >-
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
           -f supabase/migrations/__tests__/issue_1857_phone_country_authority.pg17.test.sql
+      - name: Prove #1773 current writers preserve #1857 phone authority
+        env:
+          PGPASSWORD: ${{ format('issue-1857-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql
       - name: Re-run #1902 PG17 lifecycle proofs against the #1857 last writer
         env:
           PGPASSWORD: ${{ format('issue-1857-ci-{0}', github.run_id) }}

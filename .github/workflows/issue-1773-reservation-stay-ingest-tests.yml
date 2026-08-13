@@ -6,8 +6,10 @@ on:
     paths: &paths
       - "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql"
       - "supabase/migrations/__tests__/issue_1773_reservation_stay_ingest.test.sql"
+      - "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql"
       - "supabase/functions/brand-person-ingest-worker/**"
-      - "packages/card-identity/package.json"
+      - "packages/card-identity/phone.cjs"
+      - "packages/card-identity/phone.js"
       - ".github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-1773-reservation-stay-ingest-tests.yml"
@@ -35,19 +37,29 @@ jobs:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          deno-version: v2.9.5
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.98.2
+      - name: Record pinned packaging tools
+        run: |
+          deno --version
+          supabase --version
       - name: Run strict contract and true-mutation proof
         run: |
           node .github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs --self-test
           node .github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs
       - name: Prove canonical CommonJS adapter in worker graph
         run: |
-          deno check --unstable-detect-cjs supabase/functions/brand-person-ingest-worker/index.ts
-          deno bundle --unstable-detect-cjs supabase/functions/brand-person-ingest-worker/index.ts >/tmp/issue-1773-worker.js
-          deno test --unstable-detect-cjs --allow-env --allow-net --allow-read \
-            supabase/functions/brand-person-ingest-worker/issue_1770_ingest_worker.happy.test.ts \
-            supabase/functions/brand-person-ingest-worker/issue_1773_reservation_stay.happy.test.ts \
-            supabase/functions/brand-person-ingest-worker/issue_1773_reservation_stay.tester.adversarial.test.ts
+          deno check supabase/functions/brand-person-ingest-worker/index.ts
+          deno bundle supabase/functions/brand-person-ingest-worker/index.ts >/tmp/issue-1773-worker.js
+          deno bundle supabase/functions/brand-person-ingest-worker/issue_1773_reservation_stay.happy.test.ts >/tmp/issue-1773-worker-happy.test.js
+          deno bundle supabase/functions/brand-person-ingest-worker/issue_1773_reservation_stay.tester.adversarial.test.ts >/tmp/issue-1773-worker-adversarial.test.js
+          deno test --allow-read \
+            supabase/functions/brand-person-ingest-worker/issue_1770_ingest_worker.happy.test.ts
+          deno test /tmp/issue-1773-worker-happy.test.js /tmp/issue-1773-worker-adversarial.test.js
+          deno test --allow-env --allow-net --allow-read --allow-run --allow-write \
+            supabase/functions/brand-person-ingest-worker/issue_1773_worker_cjs_artifact.test.ts
           node --test \
             packages/card-identity/__tests__/issue_1857_phone_country_authority.happy.test.mjs \
             packages/card-identity/__tests__/issue_1857_phone_country_authority.tester.adversarial.test.mjs
@@ -70,3 +82,7 @@ jobs:
         env:
           PGPASSWORD: ${{ format('issue-1773-ci-{0}', github.run_id) }}
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1773_reservation_stay_ingest.test.sql
+      - name: Prove current writers preserve RSVP phone authority
+        env:
+          PGPASSWORD: ${{ format('issue-1773-ci-{0}', github.run_id) }}
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql
