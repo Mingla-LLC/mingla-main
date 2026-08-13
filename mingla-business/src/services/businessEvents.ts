@@ -41,6 +41,7 @@ interface BusinessManagementEventRow {
   is_multi_date: boolean;
   recurrence_rules: unknown;
   cover_media_url: string | null;
+  cover_media_poster_url?: string | null;
   cover_media_type: EventCoverMediaType | null;
   cover_media_provider: EventCoverMediaProvider | null;
   cover_media_source_url: string | null;
@@ -154,6 +155,7 @@ export interface PublishRpcResponse {
     is_multi_date: boolean;
     recurrence_rules: unknown;
     cover_media_url: string | null;
+    cover_media_poster_url?: string | null;
     cover_media_type: EventCoverMediaType | null;
     cover_media_provider?: EventCoverMediaProvider | null;
     cover_media_source_url?: string | null;
@@ -463,6 +465,7 @@ const eventFromRow = (
     ),
     coverHue: asNumber(businessEvent.coverHue ?? theme.coverHue, 25),
     coverMediaUrl: row.cover_media_url,
+    coverMediaPosterUrl: asStringOrNull(row.cover_media_poster_url),
     coverMediaType: row.cover_media_type,
     coverMediaProvider: asEventCoverMediaProvider(row.cover_media_provider),
     coverMediaSourceUrl: asStringOrNull(row.cover_media_source_url),
@@ -810,6 +813,7 @@ export const eventFromPublishResponse = (
     is_multi_date: response.event.is_multi_date,
     recurrence_rules: response.event.recurrence_rules,
     cover_media_url: response.event.cover_media_url,
+    cover_media_poster_url: response.event.cover_media_poster_url ?? null,
     cover_media_type: response.event.cover_media_type,
     cover_media_provider: response.event.cover_media_provider ?? null,
     cover_media_source_url: response.event.cover_media_source_url ?? null,

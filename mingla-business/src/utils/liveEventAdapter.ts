@@ -321,7 +321,10 @@ export const editableDraftToPatch = (
   if (original.coverMediaUrl !== edited.coverMediaUrl) {
     patch.coverMediaUrl = edited.coverMediaUrl;
   }
-  if (original.coverMediaPosterUrl !== edited.coverMediaPosterUrl) {
+  if (
+    (original.coverMediaPosterUrl ?? null) !==
+    (edited.coverMediaPosterUrl ?? null)
+  ) {
     patch.coverMediaPosterUrl = edited.coverMediaPosterUrl ?? null;
   }
   if (original.coverMediaType !== edited.coverMediaType) {
@@ -561,7 +564,9 @@ export const computeRichFieldDiffs = (
     const b = edited[key];
     // #1022 C-3 — theme is compared on its normalised shape so an all-null
     // override never shows up as a change against `null`.
-    if (key === "themeOverrides") {
+    if (key === "coverMediaPosterUrl") {
+      if ((a ?? null) === (b ?? null)) continue;
+    } else if (key === "themeOverrides") {
       if (
         deepEqual(
           normalizeThemeOverrides(a as ThemeInput | null | undefined),

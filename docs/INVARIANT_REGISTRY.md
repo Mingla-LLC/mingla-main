@@ -8533,3 +8533,13 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 - **Rule:** Every private Ari prompt preload and inline read is limited to brands the authenticated operator owns or currently serves as an accepted, non-removed team member. Public brand/event visibility is never private-agent authorization, and a conversation's validated brand scope is immutable for its lifetime.
 - **Enforcement:** `agentTenantScope.ts`, the nine-entry read-tool scope registry, immutable conversation checks in `agent-chat`, shared Business brand-switch reset/read-only legacy behavior, and `.github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs` (including its two-account public-visibility and functional-revert self-test).
+
+---
+
+## DRAFT — issue #2010 (published editor hydration honesty)
+
+### I-PROPOSED-2010-PUBLISHED-EDITOR-HYDRATION-HONESTY (DRAFT)
+
+- **Rule:** An authoritative server field omitted or represented by a semantically equivalent nullish value must never become a user-authored patch; media poster reads and writes remain lossless end to end.
+- **Enforcement:** issue #2010 management-view migration, Business event mapper and adapter regressions. Activate only after independent tester PASS, all-green merge, migration apply, and runtime verification at CLOSE.
+- **Established:** DRAFT at issue #2010 SPEC 2026-08-13.
