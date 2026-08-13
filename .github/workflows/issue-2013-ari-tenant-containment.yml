@@ -13,6 +13,7 @@ on:
       - "mingla-business/src/hooks/useConversationList.ts"
       - "mingla-business/src/services/agentChatService.ts"
       - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.tester_adversarial.test.ts"
       - ".github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs"
   pull_request:
     paths:
@@ -26,6 +27,7 @@ on:
       - "mingla-business/src/hooks/useConversationList.ts"
       - "mingla-business/src/services/agentChatService.ts"
       - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.tester_adversarial.test.ts"
       - ".github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs"
 
 permissions:
@@ -40,7 +42,7 @@ jobs:
       - uses: denoland/setup-deno@v1
         with:
           deno-version: "1.46.x"
-      - run: deno test --allow-read supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts
+      - run: deno test --allow-read supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.tester_adversarial.test.ts
       - run: deno check supabase/functions/agent-chat/index.ts supabase/functions/_shared/agentTools.ts supabase/functions/_shared/agentDomainTools.ts
       - run: node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs --self-test
       - run: node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs

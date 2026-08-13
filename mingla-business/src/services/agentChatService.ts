@@ -35,7 +35,7 @@ export type AgentChatResponse =
       conversation_id: string;
       message_id: string;
     }
-  | { kind: "error"; code: string; message: string };
+  | { kind: "error"; code: string; message: string; retry_after_seconds?: number; cooldown_until?: string };
 
 export type AgentConfirmResponse =
   | {
@@ -74,7 +74,7 @@ export interface ConfirmActionArgs {
 // Error extraction (mirrors app-mobile/src/utils/edgeFunctionError.ts)
 // ----------------------------------------------------------------------------
 
-async function extractError(error: unknown, fallback: string): Promise<{ code: string; message: string }> {
+async function extractError(error: unknown, fallback: string): Promise<{ code: string; message: string; retry_after_seconds?: number; cooldown_until?: string }> {
   try {
     const err = error as Record<string, unknown> | null | undefined;
     if (!err) return { code: "EDGE_ERROR", message: fallback };
@@ -84,7 +84,12 @@ async function extractError(error: unknown, fallback: string): Promise<{ code: s
         const raw = await ctx.text();
         try {
           const body = JSON.parse(raw);
-          if (body?.message && typeof body.message === "string") return { code: typeof body.code === "string" ? body.code : "EDGE_ERROR", message: body.message };
+          if (body?.message && typeof body.message === "string") return {
+            code: typeof body.code === "string" ? body.code : "EDGE_ERROR",
+            message: body.message,
+            ...(typeof body.retry_after_seconds === "number" ? { retry_after_seconds: body.retry_after_seconds } : {}),
+            ...(typeof body.cooldown_until === "string" ? { cooldown_until: body.cooldown_until } : {}),
+          };
           if (body?.error && typeof body.error === "string") return { code: typeof body.code === "string" ? body.code : "EDGE_ERROR", message: body.error };
         } catch {
           if (raw && raw.length < 300 && !raw.startsWith("<!")) return { code: "EDGE_ERROR", message: raw };

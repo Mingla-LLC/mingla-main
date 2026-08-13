@@ -12,7 +12,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
-import { buildSystemPrompt, PROMPT_VERSION, AgentUserProfile, BrandSummary, BusinessContext, OfferingSummary } from "../_shared/agentSystemPrompt.ts";
+import { buildSystemPrompt, TENANT_CONTEXT_VERSION, AgentUserProfile, BrandSummary, BusinessContext, OfferingSummary } from "../_shared/agentSystemPrompt.ts";
 import { detectPromptInjection } from "../_shared/agentPromptInjection.ts";
 import { callGemini, ARI_MODEL_VERSION, GeminiContentMessage, GeminiError } from "../_shared/agentGemini.ts";
 import { AGENT_TOOLS, READ_ONLY_TOOL_NAMES, findTool, ToolError } from "../_shared/agentTools.ts";
@@ -38,7 +38,7 @@ interface RequestBody {
 type Response_ =
   | { kind: "text"; text: string; conversation_id: string; message_id: string; choices?: AgentChoices }
   | { kind: "pending_action"; pending_action_id: string; tool_name: string; tool_args: Record<string, unknown>; conversation_id: string; message_id: string }
-  | { kind: "error"; code: string; message: string };
+  | { kind: "error"; code: string; message: string; retry_after_seconds?: number; cooldown_until?: string };
 
 function jsonResponse(status: number, body: Response_): Response {
   return new Response(JSON.stringify(body), {
@@ -47,8 +47,13 @@ function jsonResponse(status: number, body: Response_): Response {
   });
 }
 
-function errorResponse(status: number, code: string, message: string): Response {
-  return jsonResponse(status, { kind: "error", code, message });
+function errorResponse(
+  status: number,
+  code: string,
+  message: string,
+  recovery?: { retry_after_seconds?: number; cooldown_until?: string },
+): Response {
+  return jsonResponse(status, { kind: "error", code, message, ...recovery });
 }
 
 function tenantScopeResponse(
@@ -164,7 +169,12 @@ async function handle(req: Request): Promise<Response> {
     const message = rateLimit.reason === "rate_limited_inflight"
       ? "Another action is currently being processed — please wait a moment"
       : "You've reached today's chat limit. Resets in 24 hours.";
-    return errorResponse(429, "RATE_LIMITED", message);
+    const cooldownUntil = rateLimit.resetAt ?? new Date(Date.now() + 5_000).toISOString();
+    const retryAfterSeconds = Math.max(1, Math.ceil((Date.parse(cooldownUntil) - Date.now()) / 1000));
+    return errorResponse(429, "RATE_LIMITED", message, {
+      retry_after_seconds: retryAfterSeconds,
+      cooldown_until: cooldownUntil,
+    });
   }
 
   // #2013: resolve private tenant scope before conversation/model/message/tool work.
@@ -245,7 +255,7 @@ async function handle(req: Request): Promise<Response> {
   // Load last N messages
   const { data: historyRows } = await userClient
     .from("agent_messages")
-    .select("role, content, tool_calls, tool_results, created_at")
+    .select("role, content, tool_calls, tool_results, prompt_version, created_at")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(HISTORY_WINDOW);
@@ -350,7 +360,7 @@ async function handle(req: Request): Promise<Response> {
       user_id: userId,
       role: "user",
       content: { text: body.message },
-      prompt_version: PROMPT_VERSION,
+      prompt_version: TENANT_CONTEXT_VERSION,
       model_version: ARI_MODEL_VERSION,
     })
     .select("id")
@@ -367,7 +377,12 @@ async function handle(req: Request): Promise<Response> {
 
   // Build contents — wrap user-stored content in <user_data> delimiters per I-ARI-USER-DATA-WRAP
   const contents: GeminiContentMessage[] = [];
+  // #2013 rework: only rows written under the first tenant-contained prompt
+  // revision have authenticated scope provenance. Older/unmarked transcript
+  // remains visible in the client but never crosses the Gemini boundary.
+  const trustedHistoryPromptVersion = "tenant-v1";
   for (const m of history) {
+    if (m.prompt_version !== trustedHistoryPromptVersion) continue;
     if (m.role === "user") {
       const text = (m.content as any)?.text ?? "";
       contents.push({
@@ -469,7 +484,7 @@ async function handle(req: Request): Promise<Response> {
             role: "tool",
             content: { text: "" },
             tool_results: { tool_name: tool.name, result },
-            prompt_version: PROMPT_VERSION,
+            prompt_version: TENANT_CONTEXT_VERSION,
             model_version: ARI_MODEL_VERSION,
           })
           .select("id")
@@ -517,7 +532,7 @@ async function handle(req: Request): Promise<Response> {
             user_id: userId,
             role: "assistant",
             content: { text, structured: result },
-            prompt_version: PROMPT_VERSION,
+            prompt_version: TENANT_CONTEXT_VERSION,
             model_version: ARI_MODEL_VERSION,
           })
           .select("id")
@@ -574,7 +589,7 @@ async function handle(req: Request): Promise<Response> {
           args: gemini.toolCall.args,
           pending_action_id: pending.id,
         },
-        prompt_version: PROMPT_VERSION,
+        prompt_version: TENANT_CONTEXT_VERSION,
         model_version: ARI_MODEL_VERSION,
       })
       .select("id")
@@ -613,7 +628,7 @@ async function handle(req: Request): Promise<Response> {
       user_id: userId,
       role: "assistant",
       content,
-      prompt_version: PROMPT_VERSION,
+      prompt_version: TENANT_CONTEXT_VERSION,
       model_version: ARI_MODEL_VERSION,
     })
     .select("id")

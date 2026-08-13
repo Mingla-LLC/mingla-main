@@ -95,7 +95,7 @@ function isAlreadyResolvedError(message: string): boolean {
   );
 }
 
-type Recovery = { code: string; title: string; body: string; action: string };
+type Recovery = { code: string; title: string; body: string; action?: string };
 
 const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({ recovery, onAction }) => {
   const [focused, setFocused] = useState(false);
@@ -103,6 +103,7 @@ const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({
     <View style={styles.recoveryPanel} accessibilityRole="alert">
       <Text style={styles.recoveryTitle}>{recovery.title}</Text>
       <Text style={styles.recoveryBody}>{recovery.body}</Text>
+    {recovery.action ? (
       <Pressable
         onPress={onAction}
         onFocus={() => setFocused(true)}
@@ -112,6 +113,7 @@ const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({
       >
         <Text style={styles.recoveryActionText}>{recovery.action}</Text>
       </Pressable>
+    ) : null}
     </View>
   );
 };
@@ -127,6 +129,8 @@ export const AriChatScreen: React.FC = () => {
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [brandSwitcherOpen, setBrandSwitcherOpen] = useState(false);
   const [retryText, setRetryText] = useState<string | null>(null);
+  const [rateLimitUntil, setRateLimitUntil] = useState<number | null>(null);
+  const [cooldownNow, setCooldownNow] = useState(() => Date.now());
   // ORCH-1101 REWORK Bug #6 — dismiss the AI-disclosure sheet the instant the
   // CTA is tapped, decoupled from the acknowledge mutation's network round-trip
   // + profile-query refetch. Previously the sheet only closed when the refetched
@@ -177,6 +181,7 @@ export const AriChatScreen: React.FC = () => {
     setSuggestionsOpen(false);
     setLocalError(null);
     setRetryText(null);
+    setRateLimitUntil(null);
     Keyboard.dismiss();
     if (currentBrand?.displayName) {
       AccessibilityInfo.announceForAccessibility(`Started a new Ari chat for ${currentBrand.displayName}.`);
@@ -203,13 +208,17 @@ export const AriChatScreen: React.FC = () => {
   };
 
   const handleSend = async (text: string): Promise<boolean> => {
+    if (rateLimitUntil !== null && rateLimitUntil > Date.now()) return false;
     setLocalError(null);
     const result = await chat.sendMessage(text);
     if (result.kind === "error") {
       if (["BRAND_CONTEXT_REQUIRED", "BRAND_ACCESS_DENIED", "CONVERSATION_BRAND_MISMATCH", "LEGACY_CONVERSATION_UNSCOPED", "TENANT_SCOPE_UNAVAILABLE", "UNAUTHORIZED"].includes(result.code)) {
         setRetryText(text);
       } else if (result.code === "RATE_LIMITED") {
-        setLocalError("You have reached today’s chat limit — try again later.");
+        const parsedUntil = result.cooldown_until ? Date.parse(result.cooldown_until) : Number.NaN;
+        const fallbackMs = Math.max(1, result.retry_after_seconds ?? 5) * 1000;
+        setRateLimitUntil(Number.isFinite(parsedUntil) && parsedUntil > Date.now() ? parsedUntil : Date.now() + fallbackMs);
+        setCooldownNow(Date.now());
       } else {
         setLocalError("Ari could not connect — check your connection and try again.");
       }
@@ -278,6 +287,17 @@ export const AriChatScreen: React.FC = () => {
   const legacyReadOnly = !!selectedBrandId && activeConversation?.brand_id === null;
   const brandSelectionRequired = !selectedBrandId && (brands.data?.length ?? 0) > 0;
   const brandName = currentBrand?.displayName ?? "selected brand";
+  const rateLimited = rateLimitUntil !== null && rateLimitUntil > cooldownNow;
+  const cooldownSeconds = rateLimited ? Math.max(1, Math.ceil((rateLimitUntil - cooldownNow) / 1000)) : 0;
+
+  React.useEffect(() => {
+    if (!rateLimited) {
+      if (rateLimitUntil !== null) setRateLimitUntil(null);
+      return;
+    }
+    const timer = setInterval(() => setCooldownNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [rateLimitUntil, rateLimited]);
   const recovery: Recovery | null = legacyReadOnly || chat.errorCode === "LEGACY_CONVERSATION_UNSCOPED"
     ? { code: "LEGACY_CONVERSATION_UNSCOPED", title: "This older chat is read-only", body: "It was not saved to a brand, so Ari cannot safely continue it.", action: `Start a new chat for ${brandName}` }
     : chat.errorCode === "BRAND_ACCESS_DENIED"
@@ -443,7 +463,7 @@ export const AriChatScreen: React.FC = () => {
             },
           ]}
         >
-          {suggestionsOpen && !recovery ? (
+          {suggestionsOpen && !recovery && !rateLimited ? (
             <View style={styles.suggestionsPanel}>
               <QuickReplyChips
                 chips={[
@@ -463,12 +483,24 @@ export const AriChatScreen: React.FC = () => {
               `inputWrap`'s paddingBottom already positions this pill's bottom
               edge; nothing needs the pill's own height. */}
           {recovery ? <RecoveryPanel recovery={recovery} onAction={handleRecovery} /> : (
-            <InputBar
-              onSend={handleSend}
-              disabled={chat.isSending || brands.isLoading}
-              placeholder={brands.isLoading ? "Checking brand access…" : "Ask Ari…"}
-              onShowSuggestions={() => setSuggestionsOpen((v) => !v)}
-            />
+            <>
+              {rateLimited ? (
+                <RecoveryPanel
+                  recovery={{
+                    code: "RATE_LIMITED",
+                    title: "You have reached today’s chat limit",
+                    body: `Sending is paused. Try again in ${cooldownSeconds} ${cooldownSeconds === 1 ? "second" : "seconds"}.`,
+                  }}
+                  onAction={() => undefined}
+                />
+              ) : null}
+              <InputBar
+                onSend={handleSend}
+                disabled={chat.isSending || brands.isLoading || rateLimited}
+                placeholder={brands.isLoading ? "Checking brand access…" : rateLimited ? "Sending paused…" : "Ask Ari…"}
+                onShowSuggestions={() => setSuggestionsOpen((v) => !v)}
+              />
+            </>
           )}
         </View>
       </View>

@@ -21,7 +21,7 @@ describe("#2013 Ari tenant-containment UI", () => {
   });
 
   test("legacy and typed recovery replace rather than disable the composer", () => {
-    expect(screen).toMatch(/\{recovery \? <RecoveryPanel[\s\S]*: \(\s*<InputBar/);
+    expect(screen).toMatch(/\{recovery \? <RecoveryPanel[\s\S]*: \(\s*<>[\s\S]*<InputBar/);
     expect(screen).toContain('accessibilityRole="alert"');
     expect(screen).toContain("ariThread.ariBubbleAndroid");
   });
@@ -38,5 +38,13 @@ describe("#2013 Ari tenant-containment UI", () => {
     }
     expect(drawer).toContain("older read-only conversation");
     expect(drawer).toContain("<Lock size={16}");
+  });
+
+  test("rate limit is a persistent accessible cooldown and disables every send path", () => {
+    for (const token of ["rateLimitUntil", "cooldown_until", "retry_after_seconds", "You have reached today’s chat limit", "accessibilityRole=\"alert\""]) {
+      expect(screen).toContain(token);
+    }
+    expect(screen).toContain("disabled={chat.isSending || brands.isLoading || rateLimited}");
+    expect(screen).toContain("rateLimitUntil > Date.now()");
   });
 });

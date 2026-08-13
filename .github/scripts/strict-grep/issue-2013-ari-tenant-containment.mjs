@@ -39,13 +39,16 @@ export function check(sources) {
     '"LEGACY_CONVERSATION_UNSCOPED"', '"BRAND_ACCESS_DENIED"',
     '.select("id, summary, brand_id")', 'brand_id: body.brand_id ?? null',
   ]) if (!chat.includes(token)) failures.push(`conversation lifecycle missing ${token}`);
+  for (const token of ['.select("role, content, tool_calls, tool_results, prompt_version, created_at")', 'trustedHistoryPromptVersion = "tenant-v1"', "m.prompt_version !== trustedHistoryPromptVersion", "prompt_version: TENANT_CONTEXT_VERSION"]) {
+    if (!chat.includes(token)) failures.push(`persisted-context provenance boundary missing ${token}`);
+  }
   if (chat.indexOf("resolveAccessibleAgentBrands") > chat.indexOf('.from("agent_conversations")')) {
     failures.push("tenant scope must resolve before conversation persistence");
   }
   for (const token of ["ACTIVE BRAND", "ACCESSIBLE BRANDS", "ACTIVE BRAND OFFERINGS"]) {
     if (!prompt.includes(token)) failures.push(`prompt missing ${token}`);
   }
-  for (const forbidden of ["USER'S BRANDS", "OWNED OFFERINGS", "Role: owner (default)"]) {
+  for (const forbidden of ["USER'S BRANDS", "OWNED OFFERINGS", "Role: owner (default)", "${summaryLine}"]) {
     if (prompt.includes(forbidden)) failures.push(`prompt retains misleading label ${forbidden}`);
   }
   for (const token of ["brandEpoch", "setConversationId(null)", "setPendingAction(null)", "setOptimisticMessages([])"]) {
@@ -54,6 +57,9 @@ export function check(sources) {
   if (!screen.includes("useCurrentBrand()") || !screen.includes("legacyReadOnly")) failures.push("shared screen lacks selected-brand/legacy lifecycle");
   for (const token of ["RecoveryPanel", "BrandSwitcherSheet", "This older chat is read-only", "Ari cannot verify your brand right now", "setDrawerOpen(false)"]) {
     if (!screen.includes(token)) failures.push(`binding recovery UI missing ${token}`);
+  }
+  for (const token of ["rateLimitUntil", "cooldown_until", "retry_after_seconds", "disabled={chat.isSending || brands.isLoading || rateLimited}"]) {
+    if (!(screen + chat).includes(token)) failures.push(`persistent cooldown missing ${token}`);
   }
   for (const token of ["Older chats · Read-only", "Could not load conversations.", "loadingRow", "older read-only conversation"]) {
     if (!read("mingla-business/src/components/ari/ConversationDrawer.tsx").includes(token)) failures.push(`scoped drawer UI missing ${token}`);
@@ -89,11 +95,13 @@ if (process.argv.includes("--self-test")) {
   const good = check(sources);
   const reverted = check({ ...sources, helper: sources.helper.replace('.eq("account_id", userId)', '.neq("account_id", userId)') });
   const revertDetected = reverted.some((failure) => failure.includes("tenant authority missing"));
-  if (good.length > 0 || !revertDetected) {
-    console.error("issue-2013 self-test FAIL", { good, reverted });
+  const historyReverted = check({ ...sources, chat: sources.chat.replace("if (m.prompt_version !== trustedHistoryPromptVersion) continue;", "") });
+  const historyRevertDetected = historyReverted.some((failure) => failure.includes("persisted-context provenance boundary"));
+  if (good.length > 0 || !revertDetected || !historyRevertDetected) {
+    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted });
     process.exit(1);
   }
-  console.log("issue-2013 self-test PASS: clean source passes; true owner-filter revert fails.");
+  console.log("issue-2013 self-test PASS: clean source passes; owner-filter and persisted-history reverts fail.");
   process.exit(0);
 }
 
