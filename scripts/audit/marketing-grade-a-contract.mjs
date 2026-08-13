@@ -24,13 +24,26 @@ const ROUTES = [
   {
     file: "audiences/index.tsx",
     mustInclude: [
-      "useAudienceList",
-      "hasResolved",
-      "Couldn't load audiences",
-      "No buyers yet",
-      "errorToast",
+      'import { Redirect } from "expo-router"',
+      '<Redirect href="/(tabs)/marketing/people"',
     ],
-    label: "audiences",
+    mustExclude: ["useAudienceList", "AudienceListScreen"],
+    label: "legacy-audiences-redirect",
+  },
+  {
+    file: "mingla-business/src/components/people/PeoplePage.tsx",
+    rootRelative: true,
+    mustInclude: [
+      "useBrandPeople",
+      'book.kind==="forbidden"',
+      'book.kind==="offlineEmpty"',
+      'book.kind==="error"',
+      "No one is in your book yet.",
+      "useAudienceList",
+      "groups.isError",
+      "people-groups-skeleton",
+    ],
+    label: "people",
   },
   {
     file: "campaigns/index.tsx",
@@ -79,12 +92,17 @@ for (const rel of REQUIRED_EXTERNAL) {
 }
 
 for (const route of ROUTES) {
-  const path = join(MARKETING, route.file);
+  const path = join(route.rootRelative ? ROOT : MARKETING, route.file);
   if (!existsSync(path)) fail(`missing marketing route ${route.file}`);
   const text = readFileSync(path, "utf8");
   for (const snippet of route.mustInclude) {
     if (!text.includes(snippet)) {
       fail(`${route.label} (${route.file}) missing required marker: ${snippet}`);
+    }
+  }
+  for (const snippet of route.mustExclude ?? []) {
+    if (text.includes(snippet)) {
+      fail(`${route.label} (${route.file}) contains retired marker: ${snippet}`);
     }
   }
 }
@@ -100,5 +118,5 @@ if (
   fail("grade-a-marketing.md must reference marketing-send.js and test:orch-432");
 }
 
-console.log("PASS: marketing Grade A contract (5 marketing routes + evidence)");
+console.log("PASS: marketing Grade A contract (legacy redirect + 5 owned surfaces + evidence)");
 process.exit(0);

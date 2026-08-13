@@ -120,4 +120,18 @@ describe("ORCH-0891 bundle-size gate — adversarial subprocess attack", () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  test("People is a measured Marketing basename and Audiences is retired", () => {
+    const source = fs.readFileSync(GATE_PATH, "utf8");
+    expect(source).toMatch(/MARKETING_BASENAMES[\s\S]*"people"/);
+    expect(source).not.toMatch(/MARKETING_BASENAMES[\s\S]*"audiences"/);
+  });
+
+  test("missing and malformed baselines fail closed", () => {
+    const source = fs.readFileSync(GATE_PATH, "utf8");
+    expect(source).toContain('throw new Error("ORCH-0891 baseline file is missing")');
+    expect(source).toContain("ORCH-0891 baseline is malformed");
+    expect(source).toContain('kind: "missing-baseline"');
+    expect(source).toContain("No expected Marketing chunks were measured.");
+  });
 });

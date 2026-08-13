@@ -16,7 +16,7 @@
  * The gate maps each `dist/_expo/static/js/**\/*.js` file to its
  * basename minus the hash via the regex `^(.+?)-[0-9a-f]{8,}.js$`. If
  * the basename is one of the Marketing routes (`compose`, `campaigns`,
- * `audiences`, `templates`, or the bare `marketing` entry) the chunk is
+ * `people`, `templates`, or the bare `marketing` entry) the chunk is
  * measured.
  *
  * # Why a separate baseline file
@@ -68,7 +68,7 @@ const OTHER_INCREMENTAL_BYTES_GZ = 80 * 1024; // SC-37
 const MARKETING_BASENAMES = new Set([
   "compose",
   "campaigns",
-  "audiences",
+  "people",
   "templates",
   "marketing",
 ]);
@@ -129,11 +129,13 @@ export function measureBundle(distRoot) {
 }
 
 function loadBaseline() {
-  if (!fs.existsSync(BASELINE_FILE)) return {};
+  if (!fs.existsSync(BASELINE_FILE)) throw new Error("ORCH-0891 baseline file is missing");
   try {
-    return JSON.parse(fs.readFileSync(BASELINE_FILE, "utf8"));
-  } catch (_err) {
-    return {};
+    const parsed = JSON.parse(fs.readFileSync(BASELINE_FILE, "utf8"));
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("baseline must be an object");
+    return parsed;
+  } catch (error) {
+    throw new Error(`ORCH-0891 baseline is malformed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -152,6 +154,9 @@ function runExpoExport() {
 
 export function verifyAgainstBaseline(measured, baseline) {
   const violations = [];
+  if (Object.keys(measured).length === 0) {
+    return [{ chunk: "marketing", kind: "missing", current: 0, limit: 0, message: "No expected Marketing chunks were measured." }];
+  }
   const composer = measured["compose"];
   if (composer !== undefined) {
     if (composer.size > COMPOSER_LIMIT_BYTES_GZ) {
@@ -167,7 +172,10 @@ export function verifyAgainstBaseline(measured, baseline) {
   for (const [basename, info] of Object.entries(measured)) {
     if (basename === "compose") continue;
     const baselineSize = typeof baseline[basename] === "number" ? baseline[basename] : null;
-    if (baselineSize === null) continue;
+    if (baselineSize === null) {
+      violations.push({ chunk: basename, kind: "missing-baseline", current: info.size, limit: 0, message: `Chunk \`${basename}\` has no numeric tracked baseline.` });
+      continue;
+    }
     const diff = info.size - baselineSize;
     if (diff > OTHER_INCREMENTAL_BYTES_GZ) {
       violations.push({
@@ -237,6 +245,15 @@ async function selfTest() {
     const violationsSmall = verifyAgainstBaseline(measuredSmall, {});
     if (violationsSmall.length !== 0) {
       throw new Error("self-test: expected no violations for the small composer fixture");
+    }
+    fs.rmSync(path.join(fakeStatic, "compose-deadbeef00.js"));
+    fs.writeFileSync(path.join(fakeStatic, "people-deadbeef00.js"), small);
+    const measuredPeople = measureBundle(tmpDir);
+    if (!verifyAgainstBaseline(measuredPeople, {}).some((v) => v.kind === "missing-baseline")) {
+      throw new Error("self-test: expected a missing-baseline violation for People");
+    }
+    if (verifyAgainstBaseline(measuredPeople, { people: measuredPeople.people.size }).length !== 0) {
+      throw new Error("self-test: expected tracked People baseline to pass");
     }
     // eslint-disable-next-line no-console
     console.log("[orch-0891-budget] self-test PASSED (over-budget detected, under-budget cleared)");

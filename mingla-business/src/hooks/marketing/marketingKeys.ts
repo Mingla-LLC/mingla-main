@@ -29,6 +29,13 @@ export const marketingKeys = {
     reach: (clientKey: string): readonly unknown[] =>
       ["marketing", "audiences", "reach", clientKey] as const,
   },
+  people: {
+    all: (brandId: string): readonly unknown[] => ["marketing", "people", brandId] as const,
+    book: (brandId: string, search: string | null): readonly unknown[] =>
+      [...marketingKeys.people.all(brandId), "book", search?.trim() ?? ""] as const,
+    detail: (brandId: string, personId: string): readonly unknown[] =>
+      [...marketingKeys.people.all(brandId), "detail", personId] as const,
+  },
   templates: {
     all: ["marketing", "templates"] as const,
     starter: ["marketing", "templates", "starter"] as const,

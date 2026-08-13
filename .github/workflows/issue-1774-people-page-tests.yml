@@ -1,0 +1,100 @@
+name: Issue 1774 truthful People page
+
+on:
+  push:
+    branches: [main]
+    paths: &people_paths
+      - "mingla-business/app/(tabs)/marketing/people/**"
+      - "mingla-business/app/(tabs)/marketing/_layout.tsx"
+      - "mingla-business/app/(tabs)/marketing/audiences/**"
+      - "mingla-business/app/(tabs)/people/**"
+      - "mingla-business/src/components/people/**"
+      - "mingla-business/src/components/marketing/MarketingSubNav.tsx"
+      - "mingla-business/src/components/ui/CommandPalette.web.tsx"
+      - "mingla-business/src/features/people/**"
+      - "mingla-business/src/hooks/marketing/**"
+      - "mingla-business/src/hooks/useContactImport.ts"
+      - "mingla-business/src/lib/search/registry.ts"
+      - "mingla-business/src/services/peopleService.ts"
+      - "mingla-business/src/types/people.ts"
+      - "supabase/migrations/20270329001774_issue_1774_people_page.sql"
+      - "supabase/migrations/20270330001774_issue_1774_qualify_people_digest.sql"
+      - "supabase/migrations/__tests__/issue_1774_people_page.test.sql"
+      - "supabase/migrations/__tests__/issue_1774_people_digest_qualification.test.sql"
+      - "supabase/migrations/__tests__/issue_1774_people_page.tester.adversarial.test.sql"
+      - ".github/scripts/strict-grep/issue-1774-people-page.mjs"
+      - ".github/scripts/strict-grep/__tests__/issue-1774-people-page.tester.test.mjs"
+      - ".github/scripts/strict-grep/orch-0891-marketing-performance-budget.mjs"
+      - ".github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs"
+      - ".github/scripts/strict-grep/.orch-0891-bundle-baseline.json"
+      - "scripts/audit/marketing-grade-a-contract.mjs"
+      - ".github/workflows/issue-1774-people-page-tests.yml"
+  pull_request:
+    paths: *people_paths
+
+permissions:
+  contents: read
+
+jobs:
+  issue-1774-people-page:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-1774-ci-{0}', github.run_id) }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - name: Install business dependencies
+        working-directory: mingla-business
+        run: npm ci
+      - name: Run People client and static regressions
+        run: |
+          node .github/scripts/strict-grep/issue-1774-people-page.mjs --self-test
+          node .github/scripts/strict-grep/issue-1774-people-page.mjs
+          node .github/scripts/strict-grep/__tests__/issue-1774-people-page.tester.test.mjs
+          node scripts/audit/marketing-grade-a-contract.mjs
+          cd mingla-business
+          npx jest --runInBand --runTestsByPath \
+            src/services/__tests__/peopleService.issue1774.test.ts \
+            src/hooks/marketing/__tests__/useBrandPeople.issue1774.behavior.test.tsx \
+            src/components/people/__tests__/PeoplePage.issue1774.happy.test.tsx \
+            src/components/people/__tests__/PeoplePage.issue1774.behavior.test.tsx \
+            src/components/people/__tests__/PeoplePage.issue1774.tester.adversarial.test.tsx \
+            src/components/people/__tests__/PeopleSheets.issue1774.behavior.test.ts \
+            src/components/people/__tests__/AddPersonSheet.issue1774.behavior.test.tsx \
+            src/components/people/__tests__/PersonDetailView.issue1774.behavior.test.tsx \
+            "app/(tabs)/people/__tests__/PersonDetailRoute.issue1774.role-error.test.tsx" \
+            src/components/people/__tests__/peopleRequestId.issue1774.test.ts \
+            "app/(tabs)/marketing/__tests__/MarketingAudiences.disabled-query.adversarial.test.ts" \
+            __tests__/orch-0891.bundle-budget.adversarial.test.ts
+      - name: Wait for PostgreSQL 17 and apply every migration
+        env:
+          PGPASSWORD: ${{ format('issue-1774-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc "SELECT to_regnamespace('vault') IS NOT NULL" 2>/dev/null | grep -qx t; then ready=true; break; fi
+            sleep 1
+          done
+          "$ready"
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 | sort -z |
+            while IFS= read -r -d '' migration; do psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null; done
+      - name: Prove People SQL contract
+        env:
+          PGPASSWORD: ${{ format('issue-1774-ci-{0}', github.run_id) }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1774_people_page.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1774_people_digest_qualification.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1774_people_page.tester.adversarial.test.sql

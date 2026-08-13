@@ -19,6 +19,7 @@ import { Slot, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { MarketingSubNav } from "../../../src/components/marketing/MarketingSubNav";
+import { MarketingBrandSwitcherProvider } from "../../../src/components/people/MarketingBrandSwitcherContext";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
 import { TopBar } from "../../../src/components/ui/TopBar";
 import { canvas, spacing } from "../../../src/constants/designSystem";
@@ -69,7 +70,9 @@ export default function MarketingTabLayout(): React.ReactElement {
         />
       </View>
       <MarketingSubNav />
-      <Slot />
+      <MarketingBrandSwitcherProvider value={handleOpenSwitcher}>
+        <Slot />
+      </MarketingBrandSwitcherProvider>
       {brandSheetVisible ? (
         <Suspense fallback={null}>
           <LazyBrandSwitcherSheet
