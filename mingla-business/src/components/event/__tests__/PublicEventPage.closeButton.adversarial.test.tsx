@@ -288,7 +288,7 @@ const renderPublicEventPage = (
         };
       case "../../utils/phone":
         return { composeE164: () => "" };
-      case "@mingla/card-identity/phone":
+      case "@mingla/card-identity/phone.mjs":
         return { resolveUserPhoneE164: () => null };
       case "../ui/Icon":
         return { Icon: "Icon" };

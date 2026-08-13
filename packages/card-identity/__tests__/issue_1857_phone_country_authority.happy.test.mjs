@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import phone from "../phone.js";
-
-const { resolveUserPhoneE164 } = phone;
+import { resolveUserPhoneE164 } from "../phone.mjs";
 
 test("#1857 resolves national numbers only with explicit handset country", () => {
   assert.equal(resolveUserPhoneE164("0803 482 1689", "NG"), "+2348034821689");

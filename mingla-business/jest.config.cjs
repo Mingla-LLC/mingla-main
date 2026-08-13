@@ -330,6 +330,12 @@ module.exports = {
     // already points here, so the mapping is the identity. Anchored to the
     // subpath form only: the bare barrel is untouched.
     "^@mingla/brand-rendering/(.+)$": "<rootDir>/../packages/brand-rendering/$1",
+    // #1773 — resolution repair, NOT a mock. The phone owner is deliberately a
+    // real `.mjs` ESM module for Supabase's hosted ESZip bundler. Metro resolves
+    // the workspace symlink, while this node/ts-jest runner must stay on this
+    // worktree instead of following the anchor checkout's package symlink.
+    "^@mingla/card-identity/phone\\.mjs$":
+      "<rootDir>/../packages/card-identity/phone.mjs",
     // #1615 — resolution repair, NOT a mock. The real consumer route mounted
     // by the Business suite imports this workspace package, while CI installs
     // only Business dependencies. Resolve the bare package to this checkout so
@@ -418,6 +424,10 @@ module.exports = {
         diagnostics: { exclude: ["**/packages/**", "**/app-mobile/**"] },
       },
     ],
+    // #1773 — execute the real hosted-compatible ESM owner in Jest's CJS
+    // runtime. Babel changes module syntax only; the phone implementation and
+    // assertions run unchanged.
+    "^.+\\.mjs$": ["babel-jest", { presets: ["babel-preset-expo"] }],
     // ORCH-1137 (rework) — the biz-web lucide shim deep-requires per-icon ESM
     // modules from `lucide-react/dist/esm/icons/<kebab>.js` (the tree-shakeable
     // import form that keeps the eager web `__common` chunk under the ORCH-1083

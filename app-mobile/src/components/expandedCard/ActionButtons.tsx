@@ -20,7 +20,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { ExpandedCardData } from "../../types/expandedCardTypes";
 // #1703 — relative, like the other card-identity imports in this tree: the CI
 // guards import it under plain `node --test` with no `npm install`.
-import { dialablePhone } from "../../../../packages/card-identity/phone.js";
+import { dialablePhone } from "../../../../packages/card-identity/phone.mjs";
 import { savedCardsService } from "../../services/savedCardsService";
 import { CalendarService } from "../../services/calendarService";
 import { useAppStore } from "../../store/appStore";

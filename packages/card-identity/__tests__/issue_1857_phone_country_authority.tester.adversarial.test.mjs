@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import phone from "../phone.js";
-
-const { resolveUserPhoneE164 } = phone;
+import { resolveUserPhoneE164 } from "../phone.mjs";
 
 test("#1857 country metadata is provenance, never authority over strict E.164", () => {
   const fixtures = [

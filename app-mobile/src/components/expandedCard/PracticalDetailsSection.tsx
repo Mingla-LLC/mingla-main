@@ -44,7 +44,7 @@ import { getUserLocale } from "../../utils/localeUtils";
 import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
 // #1703 — relative, like every other card-identity import in this tree: the CI
 // guards import it under plain `node --test` with no `npm install`.
-import { dialablePhone } from "../../../../packages/card-identity/phone.js";
+import { dialablePhone } from "../../../../packages/card-identity/phone.mjs";
 import { FactRow, LinkRow, Section, present } from "./SpineParts";
 import { SPINE } from "./spineTokens";
 
