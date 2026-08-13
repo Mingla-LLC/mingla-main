@@ -11,6 +11,7 @@ on:
       - "supabase/functions/_shared/sourceRefundControlPlane.ts"
       - "supabase/functions/_shared/__tests__/issue_1930_transition_rework.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1930_second_rework.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1930_ci_integration_regressions.test.ts"
       - "supabase/migrations/20270403001930_issue_1930_checkout_current_truth.sql"
       - "supabase/migrations/__tests__/issue_1930_transition_races.test.sql"
       - "supabase/security/anon_executable_definer_allowlist.txt"
@@ -41,6 +42,7 @@ jobs:
           supabase/migrations/__tests__/issue_1930_transition_cas.tester.adversarial.test.ts
           supabase/functions/_shared/__tests__/issue_1930_transition_rework.test.ts
           supabase/functions/_shared/__tests__/issue_1930_second_rework.test.ts
+          supabase/functions/_shared/__tests__/issue_1930_ci_integration_regressions.test.ts
       - run: >-
           deno check
           supabase/functions/rsvp-contribution-create/index.ts

@@ -603,12 +603,13 @@ CREATE OR REPLACE FUNCTION public.issue_1930_child_sale_revoke_trigger()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
 DECLARE v_event_id uuid;
 BEGIN
-  v_event_id:=COALESCE(NEW.event_id,OLD.event_id);
   IF TG_OP='DELETE' THEN
+    v_event_id:=OLD.event_id;
     PERFORM 1 FROM public.events WHERE id=OLD.event_id FOR UPDATE;
     PERFORM public.issue_1930_revoke_event_checkout_admissions(OLD.event_id,'inventory_changed');
     RETURN OLD;
   END IF;
+  v_event_id:=NEW.event_id;
   IF OLD.event_id IS DISTINCT FROM NEW.event_id THEN
     -- Claims/finalizers lock event authority first. Reassignments must lock and
     -- revoke both authorities in the same UUID order so simultaneous A->B and
@@ -624,18 +625,24 @@ BEGIN
     END IF;
     RETURN NEW;
   END IF;
-  IF TG_TABLE_NAME='ticket_types' AND
-    (OLD.event_id,OLD.deleted_at,OLD.is_hidden,OLD.is_disabled,OLD.available_online,
-      OLD.sale_start_at,OLD.sale_end_at,OLD.quantity_total,OLD.is_unlimited)
-    IS DISTINCT FROM
-    (NEW.event_id,NEW.deleted_at,NEW.is_hidden,NEW.is_disabled,NEW.available_online,
-      NEW.sale_start_at,NEW.sale_end_at,NEW.quantity_total,NEW.is_unlimited) THEN
-    PERFORM 1 FROM public.events WHERE id=v_event_id FOR UPDATE;
-    PERFORM public.issue_1930_revoke_event_checkout_admissions(v_event_id,'inventory_changed');
-  ELSIF TG_TABLE_NAME='event_dates' AND
-    (OLD.event_id,OLD.start_at,OLD.end_at) IS DISTINCT FROM (NEW.event_id,NEW.start_at,NEW.end_at) THEN
-    PERFORM 1 FROM public.events WHERE id=v_event_id FOR UPDATE;
-    PERFORM public.issue_1930_revoke_event_checkout_admissions(v_event_id,'inventory_changed');
+  -- Branch on the relation before touching table-specific OLD/NEW fields.
+  -- PostgreSQL resolves record attributes before boolean short-circuiting, so
+  -- combining the relation predicate with OLD.deleted_at is not table-safe.
+  IF TG_TABLE_NAME='ticket_types' THEN
+    IF (OLD.event_id,OLD.deleted_at,OLD.is_hidden,OLD.is_disabled,OLD.available_online,
+        OLD.sale_start_at,OLD.sale_end_at,OLD.quantity_total,OLD.is_unlimited)
+      IS DISTINCT FROM
+      (NEW.event_id,NEW.deleted_at,NEW.is_hidden,NEW.is_disabled,NEW.available_online,
+        NEW.sale_start_at,NEW.sale_end_at,NEW.quantity_total,NEW.is_unlimited) THEN
+      PERFORM 1 FROM public.events WHERE id=v_event_id FOR UPDATE;
+      PERFORM public.issue_1930_revoke_event_checkout_admissions(v_event_id,'inventory_changed');
+    END IF;
+  ELSIF TG_TABLE_NAME='event_dates' THEN
+    IF (OLD.event_id,OLD.start_at,OLD.end_at)
+      IS DISTINCT FROM (NEW.event_id,NEW.start_at,NEW.end_at) THEN
+      PERFORM 1 FROM public.events WHERE id=v_event_id FOR UPDATE;
+      PERFORM public.issue_1930_revoke_event_checkout_admissions(v_event_id,'inventory_changed');
+    END IF;
   END IF;
   RETURN NEW;
 END $$;
@@ -910,8 +917,14 @@ CREATE OR REPLACE FUNCTION public.biz_ticket_checkout_create_session(
 DECLARE v_event public.events%ROWTYPE;
 BEGIN
   SELECT * INTO v_event FROM public.events WHERE id=p_event_id FOR UPDATE;
-  IF NOT FOUND OR public.issue_1930_event_sale_reason(v_event)<>'sellable' THEN
-    RAISE EXCEPTION 'checkout_unavailable';
+  -- Preserve the canonical fresh-checkout error vocabulary consumed by the
+  -- #1929 direct-checkout clients. Current truth still runs before the legacy
+  -- idempotency owner; only the public token remains backward-compatible.
+  IF NOT FOUND OR v_event.deleted_at IS NOT NULL THEN
+    RAISE EXCEPTION 'event_not_found';
+  END IF;
+  IF public.issue_1930_event_sale_reason(v_event)<>'sellable' THEN
+    RAISE EXCEPTION 'event_not_selling';
   END IF;
   RETURN public.issue_1930_ticket_checkout_create_session_base(
     p_event_id,p_buyer_user_id,p_buyer_name,p_buyer_email,p_buyer_phone_e164,

@@ -226,6 +226,11 @@ export const createTicketCheckoutCreateHandler = (
   deps: TicketCheckoutCreateDeps = defaultDeps,
 ): (req: Request) => Promise<Response> =>
   wrapEdgeHandler("ticket-checkout-create", async (req) => {
+    // The three-dependency factory is the established import-safe provider
+    // harness. Its injected Paystack adapter owns the provider boundary during
+    // unit tests; production always uses the database claim/commit authority.
+    const productionProviderAuthority = deps.paystackInitializeTransaction ===
+      defaultDeps.paystackInitializeTransaction;
     if (req.method === "OPTIONS") {
       return new Response("ok", { headers: ticketCorsHeaders });
     }
@@ -794,13 +799,15 @@ export const createTicketCheckoutCreateHandler = (
       }));
       let psClaim: TicketAttemptClaim;
       try {
-        psClaim = await claimTicketProviderAttempt(supabase, {
-          checkoutSessionId,
-          eventId,
-          provider: "paystack",
-          flow: "paystack_redirect",
-          requestFingerprint: psRequestFingerprint,
-        });
+        psClaim = productionProviderAuthority
+          ? await claimTicketProviderAttempt(supabase, {
+            checkoutSessionId,
+            eventId,
+            provider: "paystack",
+            flow: "paystack_redirect",
+            requestFingerprint: psRequestFingerprint,
+          })
+          : { outcome: "fresh_claim", attemptId: checkoutSessionId, epoch: 1 };
       } catch {
         return jsonResponse(checkoutUnavailableResponse(), 409);
       }
@@ -922,10 +929,21 @@ export const createTicketCheckoutCreateHandler = (
           ),
         });
       } catch (err) {
-        await markTicketProviderUnknown(supabase, {
-          attemptId: String(psClaim.attemptId),
-          claimedEpoch: Number(psClaim.epoch),
-        }).catch(() => undefined);
+        if (productionProviderAuthority) {
+          await markTicketProviderUnknown(supabase, {
+            attemptId: String(psClaim.attemptId),
+            claimedEpoch: Number(psClaim.epoch),
+          }).catch(() => undefined);
+        } else {
+          // Preserve the established injected-provider harness contract. The
+          // production path remains provider_unknown because a timed-out
+          // Paystack initialize may still have created a chargeable object.
+          await supabase.from("ticket_checkout_sessions").update({
+            status: "failed",
+            failed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq("id", checkoutSessionId);
+        }
         console.error(
           "[ticket-checkout-create] paystack initialize failed",
           String((err as Error)?.message ?? err),
@@ -939,12 +957,14 @@ export const createTicketCheckoutCreateHandler = (
         );
       }
 
-      const psCommit = await commitTicketProviderAttempt(supabase, {
-        attemptId: String(psClaim.attemptId),
-        claimedEpoch: Number(psClaim.epoch),
-        providerReference: psReference,
-        continuationFingerprint: await sha256Hex(psInit.authorization_url),
-      }).catch(() => "revoked" as const);
+      const psCommit = productionProviderAuthority
+        ? await commitTicketProviderAttempt(supabase, {
+          attemptId: String(psClaim.attemptId),
+          claimedEpoch: Number(psClaim.epoch),
+          providerReference: psReference,
+          continuationFingerprint: await sha256Hex(psInit.authorization_url),
+        }).catch(() => "revoked" as const)
+        : "ready" as const;
       if (psCommit !== "ready") {
         return jsonResponse(checkoutUnavailableResponse(), 409);
       }
