@@ -37,6 +37,7 @@ jobs:
       - run: node .github/scripts/strict-grep/issue-1995-contact-book-blast.mjs --self-test
       - run: node .github/scripts/strict-grep/issue-1995-contact-book-blast.mjs
       - run: deno test supabase/functions/marketing-send/issue_1995_contact_book_blast.happy.test.ts
+      - run: deno test supabase/functions/marketing-send/issue_1995_contact_book_blast.adversarial.test.ts
       - run: deno check supabase/functions/marketing-send/index.ts
       - name: Apply full migration chain and prove PG17 contract
         env:
