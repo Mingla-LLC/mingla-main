@@ -8468,13 +8468,13 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 - **Rule:** People analytics may describe surface, dependency state, bounded result, and coarse bucket only. It may never carry a person's name, contact value, person ID, brand ID, search text, or other identity payload.
 - **Enforcement:** `peopleAnalytics.ts` property schema and `.github/scripts/strict-grep/issue-1774-people-page.mjs`.
 
-## DRAFT — issue #2024 (compact People workspace and campaign entry)
+## ACTIVE — issue #2024 (compact People workspace and campaign entry)
 
-### I-PROPOSED-2024-PEOPLE-WORKSPACE-PRIMARY-ACTION (DRAFT)
+### I-PROPOSED-2024-PEOPLE-WORKSPACE-PRIMARY-ACTION (ACTIVE)
 
 - **Rule:** Business People exposes only present-tense Book and Groups content, uses the responsive authenticated workspace, preserves one visually hidden semantic People page heading in every mounted route state, and exposes a safe-area-aware New campaign action through the existing parameter-free composer route.
 - **Enforcement:** `PeoplePage.tsx`, the People lazy fallback, the issue #2024 rendered regression, and `.github/scripts/strict-grep/issue-2024-people-page-layout.mjs`.
-- **Established:** DRAFT at issue #2024 IMPLEMENT 2026-08-13. Activate only at orchestrator CLOSE after independent tester PASS, merge, and production-web verification.
+- **Established:** ACTIVE at issue #2024 CLOSE 2026-08-13 after independent tester PASS on iPhone, Android, and responsive web; PR #2027 merged; `business.usemingla.com` served the verified production build; and separate iOS/Android 1.1.4 OTA manifests were verified at commit `6592561d9`.
 
 ---
 
