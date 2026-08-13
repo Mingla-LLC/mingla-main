@@ -12,6 +12,7 @@ const json = (body: Record<string, unknown>, status: number) => new Response(JSO
     'cache-control': 'private, no-store, max-age=0',
     'cdn-cache-control': 'no-store',
     'vercel-cdn-cache-control': 'no-store',
+    'access-control-allow-origin': '*',
   },
 })
 

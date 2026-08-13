@@ -8,12 +8,31 @@ export type { ShareModalProps } from './ShareModalContent';
 // Keep the share implementation out of the eager Business web bundle. The
 // lightweight sheet appears on the same tap; facts, poster, QR and transports
 // load behind that already-visible boundary.
+type ShareModalContentModule = typeof import('./ShareModalContent');
+
+let shareModalContentPromise: Promise<ShareModalContentModule> | null = null;
+
+function importShareModalContent(): Promise<ShareModalContentModule> {
+  return import('./ShareModalContent');
+}
+
+function loadShareModalContent(): Promise<ShareModalContentModule> {
+  shareModalContentPromise ??= importShareModalContent();
+  return shareModalContentPromise;
+}
+
 const LazyShareModal = React.lazy(async () => {
-  const module = await import('./ShareModalContent');
+  const module = await loadShareModalContent();
   return { default: module.ShareModal };
 });
 
 export const ShareModal: React.FC<ShareModalProps> = (props) => {
+  React.useEffect(() => {
+    // Keep the implementation in its split chunk, but fetch it while the
+    // management surface is idle so the first Share tap can present promptly.
+    void loadShareModalContent();
+  }, []);
+
   if (!props.visible) return null;
   return (
     <Suspense fallback={

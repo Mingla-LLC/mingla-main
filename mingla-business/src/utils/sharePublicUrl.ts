@@ -73,11 +73,11 @@ const webNavigator = (): {
 
 export const copyPublicUrl = async (url: string): Promise<void> => {
   if (Platform.OS === "web") {
-    const writeText = webNavigator()?.clipboard?.writeText;
-    if (writeText === undefined) {
+    const clipboard = webNavigator()?.clipboard;
+    if (clipboard?.writeText === undefined) {
       throw new Error("clipboard_unavailable");
     }
-    await writeText(url);
+    await clipboard.writeText(url);
     return;
   }
 
