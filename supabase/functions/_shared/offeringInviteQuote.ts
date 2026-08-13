@@ -213,6 +213,10 @@ function canonicalTimestamp(now: Date): string {
   return now.toISOString().replace(/\.(\d{3})Z$/, ".$1000Z");
 }
 
+function resolveOfferingInviteSmsPriceBook(now: Date): SmsRateV1[] {
+  return validatedSmsRates(now);
+}
+
 function assertContent(value: string, maxBytes: number): void {
   if (
     new TextEncoder().encode(value).length > maxBytes ||
@@ -447,7 +451,7 @@ export async function buildOfferingExecutionSnapshot(input: {
   const hasReachableSms = candidates.some((candidate) =>
     candidate.channel === "sms" && candidate.outcome === "queued"
   );
-  const rates = hasReachableSms ? validatedSmsRates(now) : [];
+  const rates = hasReachableSms ? resolveOfferingInviteSmsPriceBook(now) : [];
   const fractions: Array<
     { candidate: ExecutionCandidateV1; numerator: bigint; denominator: bigint }
   > = [];

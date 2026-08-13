@@ -69,6 +69,7 @@ export function allocateSmsCosts<T>(
       country === null || !Number.isSafeInteger(input.segments) ||
       input.segments < 1
     ) throw new Error("cost_unavailable");
+    // orch-strict-grep-allow stripe-country-out-of-scope — messaging-provider selection, not Stripe/self-serve payout eligibility
     const provider = country === "NG" ? "termii" : "twilio";
     const rate = rates.find((candidate) =>
       candidate.country === country && candidate.provider === provider
