@@ -8,6 +8,7 @@ on:
       - "supabase/migrations/__tests__/issue_1775_csv_contact_import.happy.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1775_csv_contact_import.tester.adversarial.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1993_contact_import_extension_qualification.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1993_contact_import_extension_shadowing.tester.adversarial.pg17.test.sql"
       - "supabase/functions/contact-import/**"
       - "supabase/functions/_shared/contactImportContract.ts"
       - "mingla-business/app/(tabs)/people/import.tsx"
@@ -60,4 +61,5 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1775_csv_contact_import.happy.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1775_csv_contact_import.tester.adversarial.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1993_contact_import_extension_qualification.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1993_contact_import_extension_shadowing.tester.adversarial.pg17.test.sql
       - run: cd mingla-business && npx jest --runInBand src/features/contact-import/__tests__/issue_1775_csv_contact_import.happy.test.ts src/features/contact-import/__tests__/issue_1775_csv_contact_import.tester.adversarial.test.ts src/services/__tests__/issue_1775_contact_import_functions_error.tester.adversarial.test.ts
