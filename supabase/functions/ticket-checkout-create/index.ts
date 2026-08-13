@@ -1425,6 +1425,17 @@ export const createTicketCheckoutCreateHandler = (
           "[ticket-checkout-create] checkout session create failed",
           failure.detail,
         );
+        // Persist only the bounded classifier detail. A create timeout is
+        // provider-ambiguous, so the attempt remains provider_unknown and the
+        // sale must not be terminally failed or assigned a guessed identity.
+        await supabase
+          .from("ticket_checkout_sessions")
+          .update({
+            failure_reason: failure.detail,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", checkoutSessionId)
+          .is("stripe_payment_intent_id", null);
         return jsonResponse(
           { error: "checkout_session_create_failed", detail: failure.detail },
           failure.httpStatus,
@@ -1967,6 +1978,17 @@ export const createTicketCheckoutCreateHandler = (
         "[ticket-checkout-create] payment intent create failed",
         failure.detail,
       );
+      // Preserve the structured, non-secret diagnostic without converting an
+      // ambiguous provider result into a final failed sale. Exact-key recovery
+      // remains owned by provider_unknown reconciliation.
+      await supabase
+        .from("ticket_checkout_sessions")
+        .update({
+          failure_reason: failure.detail,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", checkoutSessionId)
+        .is("stripe_payment_intent_id", null);
       return jsonResponse(
         { error: "payment_intent_create_failed", detail: failure.detail },
         failure.httpStatus,
