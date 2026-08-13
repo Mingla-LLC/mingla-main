@@ -386,6 +386,12 @@ export async function handlePaystackChargeSuccess(
       `paystack_finalize_failed: ${finalizeError?.message ?? "no result"}`,
     );
   }
+  if (
+    (finalized as Record<string, unknown>).outcome ===
+      "paid_reversal_pending"
+  ) {
+    return { status: "paid_reversal_pending", paidAtIso };
+  }
 
   const orderId = String((finalized as Record<string, unknown>).orderId ?? "");
 

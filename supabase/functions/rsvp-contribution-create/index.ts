@@ -100,6 +100,71 @@ async function contributionStillAuthorized(
   return error === null && data === true;
 }
 
+type RsvpProviderClaim = {
+  epoch: number;
+  idempotencyKey: string;
+};
+
+async function claimRsvpProviderAttempt(
+  client: ReturnType<typeof serviceClient>,
+  contributionId: string,
+  eventId: string,
+  flow: "stripe_native" | "stripe_checkout" | "paystack_redirect",
+  requestFingerprint: string,
+): Promise<RsvpProviderClaim | null> {
+  const { data, error } = await client.rpc(
+    "issue_1930_claim_rsvp_provider_attempt",
+    {
+      p_contribution_id: contributionId,
+      p_event_id: eventId,
+      p_flow: flow,
+      p_request_fingerprint: requestFingerprint,
+    },
+  );
+  if (error || data?.outcome !== "fresh_claim") return null;
+  const epoch = Number(data.epoch);
+  const idempotencyKey = typeof data.idempotencyKey === "string"
+    ? data.idempotencyKey
+    : "";
+  return Number.isSafeInteger(epoch) && epoch > 0 && idempotencyKey.length > 0
+    ? { epoch, idempotencyKey }
+    : null;
+}
+
+async function commitRsvpProviderAttempt(
+  client: ReturnType<typeof serviceClient>,
+  contributionId: string,
+  epoch: number,
+  providerObjectId: string | null,
+  providerCheckoutId: string | null,
+  providerReference: string | null,
+  continuationFingerprint: string,
+): Promise<boolean> {
+  const { data, error } = await client.rpc(
+    "issue_1930_commit_rsvp_provider_attempt",
+    {
+      p_contribution_id: contributionId,
+      p_claimed_epoch: epoch,
+      p_provider_object_id: providerObjectId,
+      p_provider_checkout_id: providerCheckoutId,
+      p_provider_reference: providerReference,
+      p_continuation_fingerprint: continuationFingerprint,
+    },
+  );
+  return error === null && data?.outcome === "ready";
+}
+
+async function markRsvpProviderUnknown(
+  client: ReturnType<typeof serviceClient>,
+  contributionId: string,
+  epoch: number,
+): Promise<void> {
+  await client.rpc("issue_1930_mark_rsvp_provider_unknown", {
+    p_contribution_id: contributionId,
+    p_claimed_epoch: epoch,
+  });
+}
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -367,6 +432,16 @@ serve(async (req: Request): Promise<Response> => {
       );
       return jsonResponse({ error: "contribution_persist_failed" }, 500);
     }
+    const paystackClaim = await claimRsvpProviderAttempt(
+      supabase,
+      contributionId,
+      eventId,
+      "paystack_redirect",
+      `paystack_redirect:${eventId}:${buyerTotalCents}:NGN`,
+    );
+    if (paystackClaim === null) {
+      return jsonResponse({ error: "checkout_unavailable" }, 409);
+    }
 
     const callbackBase = Deno.env.get("PAYSTACK_CALLBACK_BASE") ??
       "https://business.usemingla.com/pay/callback";
@@ -411,6 +486,11 @@ serve(async (req: Request): Promise<Response> => {
         ),
       });
     } catch (err) {
+      await markRsvpProviderUnknown(
+        supabase,
+        contributionId,
+        paystackClaim.epoch,
+      );
       console.error(
         "[rsvp-contribution-create] paystack initialize failed",
         String((err as Error)?.message ?? err),
@@ -420,6 +500,19 @@ serve(async (req: Request): Promise<Response> => {
         .update({ status: "failed", updated_at: new Date().toISOString() })
         .eq("id", contributionId);
       return jsonResponse({ error: "paystack_initialize_failed" }, 502);
+    }
+
+    const paystackCommitted = await commitRsvpProviderAttempt(
+      supabase,
+      contributionId,
+      paystackClaim.epoch,
+      null,
+      null,
+      init.reference,
+      `paystack_reference:${init.reference}`,
+    );
+    if (!paystackCommitted) {
+      return jsonResponse({ error: "checkout_unavailable" }, 409);
     }
 
     return jsonResponse({
@@ -522,6 +615,16 @@ serve(async (req: Request): Promise<Response> => {
   // WEB / MOBILE-WEB → hosted Stripe Checkout (redirect). NO automatic_tax — a
   // contribution is a zero-tax gift (SPEC §10 Q-A). unit_amount = the gift.
   if (surface === "web" || surface === "mobile-web") {
+    const stripeWebClaim = await claimRsvpProviderAttempt(
+      supabase,
+      contributionId,
+      eventId,
+      "stripe_checkout",
+      `stripe_checkout:${eventId}:${buyerTotalCents}:${currencyLower}`,
+    );
+    if (stripeWebClaim === null) {
+      return jsonResponse({ error: "checkout_unavailable" }, 409);
+    }
     const eventName =
       typeof eventRow.title === "string" && eventRow.title.length > 0
         ? eventRow.title
@@ -608,11 +711,16 @@ serve(async (req: Request): Promise<Response> => {
           metadata,
         },
         {
-          idempotencyKey: `rsvp_contribution_web:${contributionId}`,
+          idempotencyKey: stripeWebClaim.idempotencyKey,
           stripeAccount: stripeAccountId,
         },
       );
     } catch (err) {
+      await markRsvpProviderUnknown(
+        supabase,
+        contributionId,
+        stripeWebClaim.epoch,
+      );
       const failure = classifyStripeCheckoutSessionCreateFailure(err);
       console.error(
         "[rsvp-contribution-create] checkout session create failed",
@@ -639,6 +747,31 @@ serve(async (req: Request): Promise<Response> => {
       })
       .eq("id", contributionId);
 
+    const stripeWebCommitted = await commitRsvpProviderAttempt(
+      supabase,
+      contributionId,
+      stripeWebClaim.epoch,
+      null,
+      checkoutSession.id,
+      null,
+      `stripe_checkout:${checkoutSession.id}`,
+    );
+    if (!stripeWebCommitted) {
+      try {
+        await stripeWeb.checkout.sessions.expire(
+          checkoutSession.id,
+          {},
+          {
+            stripeAccount: stripeAccountId,
+            idempotencyKey: `${stripeWebClaim.idempotencyKey}:expire`,
+          },
+        );
+      } catch {
+        // Durable revocation outbox owns provider reconciliation.
+      }
+      return jsonResponse({ error: "checkout_unavailable" }, 409);
+    }
+
     return jsonResponse({
       kind: "requires_web_redirect",
       contributionId,
@@ -651,6 +784,16 @@ serve(async (req: Request): Promise<Response> => {
 
   // NATIVE → PaymentIntent + Stripe RN PaymentSheet (guest mode; a gift needs no
   // saved Customer). Direct-charge: application_fee_amount + Stripe-Account header.
+  const stripeNativeClaim = await claimRsvpProviderAttempt(
+    supabase,
+    contributionId,
+    eventId,
+    "stripe_native",
+    `stripe_native:${eventId}:${buyerTotalCents}:${currencyLower}`,
+  );
+  if (stripeNativeClaim === null) {
+    return jsonResponse({ error: "checkout_unavailable" }, 409);
+  }
   let paymentIntent: { id: string; client_secret?: string | null };
   let stripe: ReturnType<typeof stripeTicketCheckout> | null = null;
   try {
@@ -671,11 +814,16 @@ serve(async (req: Request): Promise<Response> => {
     paymentIntent = await stripe.paymentIntents.create(
       piCreateBody,
       {
-        idempotencyKey: `rsvp_contribution:${contributionId}`,
+        idempotencyKey: stripeNativeClaim.idempotencyKey,
         stripeAccount: stripeAccountId,
       },
     );
   } catch (err) {
+    await markRsvpProviderUnknown(
+      supabase,
+      contributionId,
+      stripeNativeClaim.epoch,
+    );
     const failure = classifyStripePaymentIntentCreateFailure(err);
     console.error(
       "[rsvp-contribution-create] payment intent create failed",
@@ -712,6 +860,29 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
     return jsonResponse({ error: "payment_session_persist_failed" }, 500);
+  }
+
+  const stripeNativeCommitted = await commitRsvpProviderAttempt(
+    supabase,
+    contributionId,
+    stripeNativeClaim.epoch,
+    paymentIntent.id,
+    null,
+    null,
+    `stripe_payment_intent:${paymentIntent.id}`,
+  );
+  if (!stripeNativeCommitted) {
+    if (stripe !== null) {
+      try {
+        await stripe.paymentIntents.cancel(paymentIntent.id, {}, {
+          stripeAccount: stripeAccountId,
+          idempotencyKey: `${stripeNativeClaim.idempotencyKey}:cancel`,
+        });
+      } catch {
+        // Durable revocation outbox owns provider reconciliation.
+      }
+    }
+    return jsonResponse({ error: "checkout_unavailable" }, 409);
   }
 
   return jsonResponse({

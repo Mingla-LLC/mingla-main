@@ -93,6 +93,18 @@ ALTER TABLE public.event_rsvp_contributions
   ADD COLUMN caller_idempotency_key text,
   ADD COLUMN admission_epoch bigint,
   ADD COLUMN provider_attempt_key text,
+  ADD COLUMN provider_attempt_state text NOT NULL DEFAULT 'unclaimed' CHECK (
+    provider_attempt_state IN ('unclaimed','claimed','provider_unknown','ready',
+      'neutralization_pending','neutralized','paid_reversal_pending','paid_reversed','terminal_failed')
+  ),
+  ADD COLUMN provider_flow text CHECK (provider_flow IS NULL OR provider_flow IN (
+    'stripe_native','stripe_checkout','paystack_redirect'
+  )),
+  ADD COLUMN provider_object_id text,
+  ADD COLUMN provider_checkout_id text,
+  ADD COLUMN provider_reference text,
+  ADD COLUMN provider_request_fingerprint text,
+  ADD COLUMN provider_continuation_fingerprint text,
   ADD COLUMN revoked_at timestamptz,
   ADD COLUMN revoked_reason text,
   ADD COLUMN reversal_state text NOT NULL DEFAULT 'none' CHECK (reversal_state IN (
@@ -102,6 +114,15 @@ ALTER TABLE public.event_rsvp_contributions
 CREATE UNIQUE INDEX event_rsvp_contributions_caller_idempotency_idx
   ON public.event_rsvp_contributions(event_id,caller_idempotency_key)
   WHERE caller_idempotency_key IS NOT NULL;
+CREATE UNIQUE INDEX event_rsvp_contributions_provider_attempt_key_idx
+  ON public.event_rsvp_contributions(provider_attempt_key)
+  WHERE provider_attempt_key IS NOT NULL;
+CREATE UNIQUE INDEX event_rsvp_contributions_provider_object_idx
+  ON public.event_rsvp_contributions(provider_object_id)
+  WHERE provider_object_id IS NOT NULL;
+CREATE UNIQUE INDEX event_rsvp_contributions_provider_checkout_idx
+  ON public.event_rsvp_contributions(provider_checkout_id)
+  WHERE provider_checkout_id IS NOT NULL;
 
 CREATE TABLE public.issue_1930_runtime_capability (
   singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
@@ -172,6 +193,20 @@ BEGIN
       OR NOT tt.available_online
       OR (tt.sale_start_at IS NOT NULL AND tt.sale_start_at > now())
       OR (tt.sale_end_at IS NOT NULL AND tt.sale_end_at <= now())
+      OR (NOT tt.is_unlimited AND tt.quantity_total IS NOT NULL AND
+        (SELECT count(*) FROM public.tickets sold
+          WHERE sold.ticket_type_id=tt.id
+            AND sold.status IN ('valid','used','transferred'))
+        + (SELECT COALESCE(sum(reserved.quantity),0) FROM public.ticket_checkout_session_items reserved
+            JOIN public.ticket_checkout_sessions active
+              ON active.id=reserved.checkout_session_id
+          WHERE reserved.ticket_type_id=tt.id
+            AND active.id<>p_session_id
+            AND active.expires_at>now()
+            AND active.order_id IS NULL
+            AND active.revoked_at IS NULL
+            AND active.status IN ('pending_free','requires_payment','processing_payment','awaiting_web_redirect'))
+        + i.quantity > tt.quantity_total)
     )
   ) INTO v_bad;
   IF v_bad THEN RETURN false; END IF;
@@ -338,6 +373,108 @@ REVOKE ALL ON FUNCTION public.issue_1930_rsvp_contribution_authorized(uuid,uuid)
   FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_1930_rsvp_contribution_authorized(uuid,uuid) TO service_role;
 
+CREATE OR REPLACE FUNCTION public.issue_1930_claim_rsvp_provider_attempt(
+  p_contribution_id uuid,p_event_id uuid,p_flow text,p_request_fingerprint text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+DECLARE v_event public.events%ROWTYPE; v_c public.event_rsvp_contributions%ROWTYPE;
+  v_admission public.event_checkout_admission_state%ROWTYPE; v_key text;
+BEGIN
+  IF p_flow NOT IN ('stripe_native','stripe_checkout','paystack_redirect')
+     OR p_request_fingerprint IS NULL OR char_length(p_request_fingerprint)<16 THEN
+    RETURN jsonb_build_object('outcome','flow_conflict');
+  END IF;
+  SELECT * INTO v_event FROM public.events WHERE id=p_event_id FOR UPDATE;
+  IF NOT FOUND THEN RETURN jsonb_build_object('outcome','revoked'); END IF;
+  INSERT INTO public.event_checkout_admission_state(event_id,epoch,sellable,reason)
+  VALUES(p_event_id,1,public.issue_1930_event_sale_reason(v_event)='sellable',
+    public.issue_1930_event_sale_reason(v_event))
+  ON CONFLICT(event_id) DO UPDATE SET sellable=EXCLUDED.sellable,reason=EXCLUDED.reason
+  RETURNING * INTO v_admission;
+  SELECT * INTO v_c FROM public.event_rsvp_contributions
+    WHERE id=p_contribution_id FOR UPDATE;
+  IF NOT FOUND OR v_c.event_id<>p_event_id
+     OR NOT public.issue_1930_rsvp_contribution_authorized(p_contribution_id,p_event_id) THEN
+    RETURN jsonb_build_object('outcome','revoked');
+  END IF;
+  IF v_c.provider_attempt_key IS NOT NULL THEN
+    IF v_c.provider_flow<>p_flow OR v_c.provider_request_fingerprint<>p_request_fingerprint THEN
+      RETURN jsonb_build_object('outcome','flow_conflict');
+    END IF;
+    RETURN jsonb_build_object('outcome',CASE
+      WHEN v_c.provider_attempt_state='ready' THEN 'existing_ready'
+      WHEN v_c.provider_attempt_state='provider_unknown' THEN 'provider_unknown'
+      ELSE 'in_progress' END,'epoch',v_c.admission_epoch,
+      'idempotencyKey',v_c.provider_attempt_key,
+      'providerObjectId',v_c.provider_object_id,
+      'providerCheckoutId',v_c.provider_checkout_id,
+      'providerReference',v_c.provider_reference);
+  END IF;
+  v_key:='rsvp_contribution:'||p_contribution_id::text||':'||p_flow;
+  UPDATE public.event_rsvp_contributions SET admission_epoch=v_admission.epoch,
+    provider_attempt_key=v_key,provider_attempt_state='claimed',provider_flow=p_flow,
+    provider_request_fingerprint=p_request_fingerprint,updated_at=now()
+    WHERE id=p_contribution_id;
+  RETURN jsonb_build_object('outcome','fresh_claim','epoch',v_admission.epoch,
+    'idempotencyKey',v_key);
+END $$;
+REVOKE ALL ON FUNCTION public.issue_1930_claim_rsvp_provider_attempt(uuid,uuid,text,text)
+  FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_1930_claim_rsvp_provider_attempt(uuid,uuid,text,text)
+  TO service_role;
+
+CREATE OR REPLACE FUNCTION public.issue_1930_commit_rsvp_provider_attempt(
+  p_contribution_id uuid,p_claimed_epoch bigint,p_provider_object_id text,
+  p_provider_checkout_id text,p_provider_reference text,p_continuation_fingerprint text
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+DECLARE v_event public.events%ROWTYPE; v_c public.event_rsvp_contributions%ROWTYPE;
+  v_admission public.event_checkout_admission_state%ROWTYPE;
+BEGIN
+  SELECT e.* INTO v_event FROM public.event_rsvp_contributions c
+    JOIN public.events e ON e.id=c.event_id WHERE c.id=p_contribution_id FOR UPDATE OF e;
+  IF NOT FOUND THEN RETURN jsonb_build_object('outcome','missing'); END IF;
+  SELECT * INTO v_admission FROM public.event_checkout_admission_state
+    WHERE event_id=v_event.id FOR UPDATE;
+  SELECT * INTO v_c FROM public.event_rsvp_contributions
+    WHERE id=p_contribution_id FOR UPDATE;
+  IF v_c.admission_epoch IS DISTINCT FROM p_claimed_epoch
+     OR v_admission.epoch IS DISTINCT FROM p_claimed_epoch
+     OR NOT public.issue_1930_rsvp_contribution_authorized(v_c.id,v_event.id) THEN
+    UPDATE public.event_rsvp_contributions SET
+      provider_attempt_state='neutralization_pending',
+      revoked_at=COALESCE(revoked_at,now()),revoked_reason=COALESCE(revoked_reason,'commit_epoch_lost'),
+      reversal_state=CASE WHEN reversal_state='none' THEN 'neutralization_pending' ELSE reversal_state END,
+      status='failed',updated_at=now() WHERE id=v_c.id;
+    INSERT INTO public.checkout_sale_revocation_outbox(
+      subject_type,subject_id,event_id,target_epoch,reason)
+    VALUES('rsvp_contribution',v_c.id,v_event.id,GREATEST(v_admission.epoch,p_claimed_epoch),
+      'commit_epoch_lost') ON CONFLICT DO NOTHING;
+    RETURN jsonb_build_object('outcome','revoked');
+  END IF;
+  UPDATE public.event_rsvp_contributions SET provider_attempt_state='ready',
+    provider_object_id=COALESCE(provider_object_id,p_provider_object_id),
+    provider_checkout_id=COALESCE(provider_checkout_id,p_provider_checkout_id),
+    provider_reference=COALESCE(provider_reference,p_provider_reference),
+    provider_continuation_fingerprint=p_continuation_fingerprint,updated_at=now()
+    WHERE id=v_c.id AND provider_attempt_state IN ('claimed','provider_unknown','ready');
+  RETURN jsonb_build_object('outcome','ready');
+END $$;
+REVOKE ALL ON FUNCTION public.issue_1930_commit_rsvp_provider_attempt(uuid,bigint,text,text,text,text)
+  FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_1930_commit_rsvp_provider_attempt(uuid,bigint,text,text,text,text)
+  TO service_role;
+
+CREATE OR REPLACE FUNCTION public.issue_1930_mark_rsvp_provider_unknown(
+  p_contribution_id uuid,p_claimed_epoch bigint
+) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+BEGIN
+  UPDATE public.event_rsvp_contributions SET provider_attempt_state='provider_unknown',updated_at=now()
+    WHERE id=p_contribution_id AND admission_epoch=p_claimed_epoch
+      AND provider_attempt_state='claimed';
+END $$;
+REVOKE ALL ON FUNCTION public.issue_1930_mark_rsvp_provider_unknown(uuid,bigint)
+  FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_1930_mark_rsvp_provider_unknown(uuid,bigint) TO service_role;
+
 CREATE OR REPLACE FUNCTION public.issue_1930_revoke_event_checkout_admissions(
   p_event_id uuid,p_reason text
 ) RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
@@ -369,6 +506,9 @@ BEGIN
     UPDATE public.event_rsvp_contributions c SET revoked_at=COALESCE(revoked_at,now()),
       revoked_reason=COALESCE(revoked_reason,left(p_reason,80)),
       reversal_state=CASE WHEN reversal_state='none' THEN 'neutralization_pending' ELSE reversal_state END,
+      provider_attempt_state=CASE
+        WHEN provider_attempt_state IN ('claimed','provider_unknown','ready') THEN 'neutralization_pending'
+        ELSE provider_attempt_state END,
       status='failed',updated_at=now()
     WHERE c.event_id=p_event_id AND c.revoked_at IS NULL AND c.status='pending'
     RETURNING c.id
@@ -406,6 +546,7 @@ GRANT EXECUTE ON FUNCTION public.issue_1930_claim_revocations(text,integer) TO s
 CREATE OR REPLACE FUNCTION public.issue_1930_record_revocation_result(
   p_outbox_id uuid,p_worker_id text,p_state text,p_error_code text DEFAULT NULL
 ) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
+DECLARE v_outbox public.checkout_sale_revocation_outbox%ROWTYPE;
 BEGIN
   IF p_state NOT IN ('neutralized','provider_unknown','paid_reversal_pending','paid_reversed','failed_retryable','failed_terminal')
     THEN RAISE EXCEPTION 'invalid_revocation_state'; END IF;
@@ -413,7 +554,18 @@ BEGIN
     next_retry_at=CASE WHEN p_state IN ('provider_unknown','failed_retryable')
       THEN now()+LEAST(interval '1 hour',interval '30 seconds'*(2^LEAST(attempt_count,7))) ELSE NULL END,
     last_error_code=CASE WHEN p_error_code ~ '^[a-z0-9_]{3,80}$' THEN p_error_code ELSE NULL END,
-    updated_at=now() WHERE id=p_outbox_id AND lease_owner=p_worker_id;
+    updated_at=now() WHERE id=p_outbox_id AND lease_owner=p_worker_id
+    RETURNING * INTO v_outbox;
+  IF FOUND AND v_outbox.subject_type='rsvp_contribution' THEN
+    UPDATE public.event_rsvp_contributions SET
+      provider_attempt_state=CASE p_state
+        WHEN 'neutralized' THEN 'neutralized'
+        WHEN 'paid_reversal_pending' THEN 'paid_reversal_pending'
+        WHEN 'paid_reversed' THEN 'paid_reversed'
+        WHEN 'failed_terminal' THEN 'terminal_failed'
+        ELSE 'provider_unknown' END,
+      updated_at=now() WHERE id=v_outbox.subject_id;
+  END IF;
 END $$;
 REVOKE ALL ON FUNCTION public.issue_1930_record_revocation_result(uuid,text,text,text)
   FROM PUBLIC,anon,authenticated;
@@ -422,9 +574,11 @@ GRANT EXECUTE ON FUNCTION public.issue_1930_record_revocation_result(uuid,text,t
 CREATE OR REPLACE FUNCTION public.issue_1930_events_revoke_trigger()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
 BEGIN
-  IF (OLD.status,OLD.visibility,OLD.deleted_at,OLD.booking_deadline,OLD.bookings_closed)
+  IF (OLD.status,OLD.visibility,OLD.deleted_at,OLD.booking_deadline,OLD.bookings_closed,
+        OLD.rsvp_contribution_enabled)
      IS DISTINCT FROM
-     (NEW.status,NEW.visibility,NEW.deleted_at,NEW.booking_deadline,NEW.bookings_closed) THEN
+     (NEW.status,NEW.visibility,NEW.deleted_at,NEW.booking_deadline,NEW.bookings_closed,
+        NEW.rsvp_contribution_enabled) THEN
     PERFORM public.issue_1930_revoke_event_checkout_admissions(NEW.id,
       public.issue_1930_event_sale_reason(NEW));
   END IF;
@@ -432,7 +586,7 @@ BEGIN
 END $$;
 DROP TRIGGER IF EXISTS issue_1930_events_revoke ON public.events;
 CREATE TRIGGER issue_1930_events_revoke AFTER UPDATE OF status,visibility,deleted_at,
-  booking_deadline,bookings_closed ON public.events FOR EACH ROW
+  booking_deadline,bookings_closed,rsvp_contribution_enabled ON public.events FOR EACH ROW
   EXECUTE FUNCTION public.issue_1930_events_revoke_trigger();
 
 CREATE OR REPLACE FUNCTION public.issue_1930_child_sale_revoke_trigger()
@@ -440,12 +594,21 @@ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
 DECLARE v_event_id uuid;
 BEGIN
   v_event_id:=COALESCE(NEW.event_id,OLD.event_id);
+  IF TG_OP='DELETE' THEN
+    PERFORM public.issue_1930_revoke_event_checkout_admissions(OLD.event_id,'inventory_changed');
+    RETURN OLD;
+  END IF;
+  IF OLD.event_id IS DISTINCT FROM NEW.event_id THEN
+    PERFORM public.issue_1930_revoke_event_checkout_admissions(OLD.event_id,'inventory_changed');
+    PERFORM public.issue_1930_revoke_event_checkout_admissions(NEW.event_id,'inventory_changed');
+    RETURN NEW;
+  END IF;
   IF TG_TABLE_NAME='ticket_types' AND
     (OLD.event_id,OLD.deleted_at,OLD.is_hidden,OLD.is_disabled,OLD.available_online,
-      OLD.sale_start_at,OLD.sale_end_at)
+      OLD.sale_start_at,OLD.sale_end_at,OLD.quantity_total,OLD.is_unlimited)
     IS DISTINCT FROM
     (NEW.event_id,NEW.deleted_at,NEW.is_hidden,NEW.is_disabled,NEW.available_online,
-      NEW.sale_start_at,NEW.sale_end_at) THEN
+      NEW.sale_start_at,NEW.sale_end_at,NEW.quantity_total,NEW.is_unlimited) THEN
     PERFORM public.issue_1930_revoke_event_checkout_admissions(v_event_id,'inventory_changed');
   ELSIF TG_TABLE_NAME='event_dates' AND
     (OLD.event_id,OLD.start_at,OLD.end_at) IS DISTINCT FROM (NEW.event_id,NEW.start_at,NEW.end_at) THEN
@@ -455,10 +618,11 @@ BEGIN
 END $$;
 DROP TRIGGER IF EXISTS issue_1930_ticket_types_revoke ON public.ticket_types;
 CREATE TRIGGER issue_1930_ticket_types_revoke AFTER UPDATE OF event_id,deleted_at,is_hidden,
-  is_disabled,available_online,sale_start_at,sale_end_at ON public.ticket_types
+  is_disabled,available_online,sale_start_at,sale_end_at,quantity_total,is_unlimited OR DELETE
+  ON public.ticket_types
   FOR EACH ROW EXECUTE FUNCTION public.issue_1930_child_sale_revoke_trigger();
 DROP TRIGGER IF EXISTS issue_1930_event_dates_revoke ON public.event_dates;
-CREATE TRIGGER issue_1930_event_dates_revoke AFTER UPDATE OF event_id,start_at,end_at
+CREATE TRIGGER issue_1930_event_dates_revoke AFTER UPDATE OF event_id,start_at,end_at OR DELETE
   ON public.event_dates FOR EACH ROW EXECUTE FUNCTION public.issue_1930_child_sale_revoke_trigger();
 
 -- Extend the canonical source-refund vocabulary for provider-verified late
@@ -569,7 +733,8 @@ BEGIN
     ('platform_application_fee_reversal',v_fee,'platform')) x(kind,amount,key)
   WHERE x.amount>0 ON CONFLICT(idempotency_key) DO NOTHING;
   UPDATE public.event_rsvp_contributions SET status='failed',
-    reversal_state='paid_reversal_pending',updated_at=now() WHERE id=v_c.id;
+    reversal_state='paid_reversal_pending',provider_attempt_state='paid_reversal_pending',
+    updated_at=now() WHERE id=v_c.id;
   RETURN v_refund_id;
 END $$;
 REVOKE ALL ON FUNCTION public.issue_1930_mint_rsvp_late_reversal(uuid,text)
@@ -682,6 +847,16 @@ BEGIN
     WHERE id=v_refund.subject_id AND order_id IS NULL;
     UPDATE public.ticket_checkout_provider_attempts SET state='terminal_failed',updated_at=now()
     WHERE checkout_session_id=v_refund.subject_id AND state='paid_reversal_pending';
+  ELSIF v_refund.source_type='rsvp_contribution'
+     AND p_leg_type='buyer_refund' AND p_next_state='processed' THEN
+    UPDATE public.event_rsvp_contributions SET reversal_state='paid_reversed',
+      provider_attempt_state='paid_reversed',updated_at=now()
+    WHERE id=v_refund.subject_id AND reversal_state='paid_reversal_pending';
+  ELSIF v_refund.source_type='rsvp_contribution'
+     AND p_leg_type='buyer_refund' AND p_next_state='failed_terminal' THEN
+    UPDATE public.event_rsvp_contributions SET reversal_state='failed_terminal',
+      provider_attempt_state='terminal_failed',updated_at=now()
+    WHERE id=v_refund.subject_id;
   END IF;
   RETURN v_result;
 END $$;

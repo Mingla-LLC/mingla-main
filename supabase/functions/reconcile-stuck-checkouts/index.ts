@@ -254,6 +254,19 @@ serve(async (req) => {
           continue;
         }
 
+        if (
+          (finalized as Record<string, unknown> | null)?.outcome ===
+            "paid_reversal_pending"
+        ) {
+          results.push({
+            sessionId,
+            piId,
+            status: "paid_reversal_pending",
+            skip: "paid_reversal_pending",
+          });
+          continue;
+        }
+
         const orderId =
           typeof (finalized as Record<string, unknown> | null)?.orderId ===
               "string"
