@@ -31,6 +31,8 @@ import { ChatBubble } from "./ChatBubble";
 import { ToolProposalCard } from "./ToolProposalCard";
 import { ResponseCard } from "./ResponseCard";
 import { QuickReplyChips } from "./QuickReplyChips";
+import { ClarifyingCard } from "./ClarifyingCard";
+import { MultiSelectPrompt } from "./MultiSelectPrompt";
 import { choicesOf, resolveChoiceLabel } from "./agentChoices";
 import type { PendingActionView } from "../../hooks/useAgentChat";
 
@@ -119,6 +121,8 @@ export const MessageList: React.FC<MessageListProps> = ({
   // CHOICE "submitted" state) and stays that way — the follow-up user turn has
   // been sent and re-asking with the same chip would be redundant.
   const [resolvedChoice, setResolvedChoice] = useState<{ messageId: string; optionId: string } | null>(null);
+  const [clarifyDraft, setClarifyDraft] = useState<Record<string, string>>({});
+  const [multiDraft, setMultiDraft] = useState<Record<string, string[]>>({});
 
   // Compose the rendered list. Two classes of rows are skipped entirely so
   // they don't leave empty separators in the FlatList:
@@ -317,6 +321,69 @@ export const MessageList: React.FC<MessageListProps> = ({
         // Stale rows (superseded by a newer turn / pending proposal) collapse to
         // nothing extra — just the bubble — so they can't be tapped again.
         if (!isLatest && !isResolved) return bubble;
+        if (choices.kind === "clarifying") {
+          const typed = clarifyDraft[m.id] ?? "";
+          const clarifyState = isResolved
+            ? "submitted"
+            : typed.trim().length > 0
+              ? "typed"
+              : "default";
+          return (
+            <View>
+              {bubble}
+              <View style={styles.choicesRow}>
+                <ClarifyingCard
+                  question={choices.prompt}
+                  value={typed}
+                  state={clarifyState}
+                  onChange={(next) => setClarifyDraft((prev) => ({ ...prev, [m.id]: next }))}
+                  onSubmit={() => {
+                    const label = typed.trim();
+                    if (!label) return;
+                    setResolvedChoice({ messageId: m.id, optionId: "typed" });
+                    sendChoice?.(label);
+                  }}
+                  onSkip={() => {
+                    setResolvedChoice({ messageId: m.id, optionId: "skip" });
+                    sendChoice?.("Skip for now");
+                  }}
+                />
+              </View>
+            </View>
+          );
+        }
+        if (choices.kind === "multi_select") {
+          const selectedIds = multiDraft[m.id] ?? [];
+          return (
+            <View>
+              {bubble}
+              <View style={styles.choicesRow}>
+                <MultiSelectPrompt
+                  title={choices.prompt}
+                  options={choices.options}
+                  selectedIds={selectedIds}
+                  state={isResolved ? "submitted" : "default"}
+                  onToggle={(id) => {
+                    setMultiDraft((prev) => {
+                      const cur = prev[m.id] ?? [];
+                      const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+                      return { ...prev, [m.id]: next };
+                    });
+                  }}
+                  onConfirm={() => {
+                    const ids = multiDraft[m.id] ?? [];
+                    const labels = ids
+                      .map((id) => resolveChoiceLabel(choices, id))
+                      .filter((x): x is string => !!x);
+                    if (labels.length === 0) return;
+                    setResolvedChoice({ messageId: m.id, optionId: ids.join(",") });
+                    sendChoice?.(labels.join(", "));
+                  }}
+                />
+              </View>
+            </View>
+          );
+        }
         return (
           <View>
             {bubble}
@@ -328,8 +395,6 @@ export const MessageList: React.FC<MessageListProps> = ({
                 onSelectId={(optionId) => {
                   const label = resolveChoiceLabel(choices, optionId);
                   if (label == null) return;
-                  // Visually resolve (selected pill, siblings unmount) and send
-                  // the label as a normal user turn — never a tool pre-fill.
                   setResolvedChoice({ messageId: m.id, optionId });
                   sendChoice?.(label);
                 }}

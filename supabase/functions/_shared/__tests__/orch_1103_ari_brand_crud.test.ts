@@ -102,8 +102,8 @@ Deno.test("ORCH-1103 G-3: update_brand + delete_brand are in BOTH registry and C
   assertStringIncludes(caps, "delete_brand");
 });
 
-Deno.test("ORCH-1103: PROMPT_VERSION bumped to v3", () => {
-  assertEquals(PROMPT_VERSION, "v3");
+Deno.test("ORCH-1103: PROMPT_VERSION bumped (v4 Wave 0 keeps the v3 tools)", () => {
+  assertEquals(PROMPT_VERSION, "v4");
 });
 
 // ── richer brand context in the prompt (currency / cover / deletable hint) ──

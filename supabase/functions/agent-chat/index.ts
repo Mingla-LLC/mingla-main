@@ -12,7 +12,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
-import { buildSystemPrompt, PROMPT_VERSION, AgentUserProfile, BrandSummary } from "../_shared/agentSystemPrompt.ts";
+import { buildSystemPrompt, PROMPT_VERSION, AgentUserProfile, BrandSummary, BusinessContext, OfferingSummary } from "../_shared/agentSystemPrompt.ts";
 import { detectPromptInjection } from "../_shared/agentPromptInjection.ts";
 import { callGemini, ARI_MODEL_VERSION, GeminiContentMessage } from "../_shared/agentGemini.ts";
 import { AGENT_TOOLS, READ_ONLY_TOOL_NAMES, findTool, ToolError } from "../_shared/agentTools.ts";
@@ -150,10 +150,11 @@ async function handle(req: Request): Promise<Response> {
 
   // Load or create conversation
   let conversationId: string;
+  let conversationSummary: string | null = null;
   if (body.conversation_id) {
     const { data: convo, error: convoErr } = await userClient
       .from("agent_conversations")
-      .select("id")
+      .select("id, summary")
       .eq("id", body.conversation_id)
       .eq("user_id", userId)
       .maybeSingle();
@@ -161,6 +162,9 @@ async function handle(req: Request): Promise<Response> {
       return errorResponse(404, "CONVERSATION_NOT_FOUND", "Conversation not found");
     }
     conversationId = convo.id;
+    conversationSummary = typeof (convo as { summary?: unknown }).summary === "string"
+      ? (convo as { summary: string }).summary
+      : null;
   } else {
     const { data: created, error: createErr } = await userClient
       .from("agent_conversations")
@@ -233,6 +237,41 @@ async function handle(req: Request): Promise<Response> {
     hasBlockingEvents: blockingBrandIds.has(b.id),
   }));
 
+  // Wave 0 — compact offerings + payout-ready. Cap tokens; never dump PII.
+  const offerings: OfferingSummary[] = [];
+  let payoutReady: boolean | null = null;
+  if (brandIds.length > 0) {
+    const { data: offeringRows } = await userClient
+      .from("events")
+      .select("id, title, status, event_type")
+      .in("brand_id", brandIds)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(12);
+    for (const row of (offeringRows ?? []) as any[]) {
+      offerings.push({
+        id: row.id,
+        title: String(row.title ?? "untitled").slice(0, 80),
+        kind: String(row.event_type ?? "event"),
+        status: String(row.status ?? "draft"),
+      });
+    }
+    const probeBrand = body.brand_id && brandIds.includes(body.brand_id) ? body.brand_id : brandIds[0];
+    try {
+      const { data: can } = await userClient.rpc("pg_brand_can_collect", { p_brand_id: probeBrand });
+      payoutReady = can === true || (can as { can_collect?: boolean } | null)?.can_collect === true;
+    } catch {
+      payoutReady = null;
+    }
+  }
+  const business: BusinessContext = {
+    brands: brandsList,
+    offerings,
+    payoutReady,
+    roleHint: "owner",
+    conversationSummary,
+  };
+
   // Auto-title: if this is the first user message in the conversation and
   // the title is still null, derive a short title from the message text so
   // the conversations drawer shows something meaningful instead of "Untitled".
@@ -268,6 +307,7 @@ async function handle(req: Request): Promise<Response> {
   // Build system prompt
   const systemPrompt = buildSystemPrompt(profile, brandsList, {
     injectStrictReminder: injection.flagged,
+    business,
   });
 
   // Build contents — wrap user-stored content in <user_data> delimiters per I-ARI-USER-DATA-WRAP
@@ -516,10 +556,16 @@ async function handle(req: Request): Promise<Response> {
     return errorResponse(500, "INTERNAL", "Failed to write assistant message");
   }
 
-  // Update conversation updated_at
+  // Wave 0 / child O — compress last turn into reserved summary columns.
+  const nextSummary = `${body.message.slice(0, 160)} → ${text.slice(0, 160)}`.slice(0, 400);
   await userClient
     .from("agent_conversations")
-    .update({ updated_at: new Date().toISOString() })
+    .update({
+      updated_at: new Date().toISOString(),
+      summary: nextSummary,
+      summary_through_message_id: asstMsg.id,
+      summary_updated_at: new Date().toISOString(),
+    })
     .eq("id", conversationId);
 
   return jsonResponse(200, {

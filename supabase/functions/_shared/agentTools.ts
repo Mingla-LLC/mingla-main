@@ -13,6 +13,10 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { filterPlayIntentTags } from "./playIntentTags.ts";
 import { mapToCanonicalExperienceIntents } from "./canonicalExperienceIntents.ts";
+import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "./agentDomainTools.ts";
+import { ToolError } from "./agentToolHelpers.ts";
+
+export { ToolError } from "./agentToolHelpers.ts";
 
 export interface AgentTool {
   name: string;
@@ -82,13 +86,6 @@ async function assertEventOwned(
     throw new ToolError("OWNERSHIP_DENIED", `Event ${eventId} is not owned by caller`);
   }
   return (data as any).brand_id as string;
-}
-
-export class ToolError extends Error {
-  constructor(public code: string, message: string) {
-    super(message);
-    this.name = "ToolError";
-  }
 }
 
 // ----------------------------------------------------------------------------
@@ -1019,6 +1016,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   updateEvent,
   updateBrand,
   deleteBrand,
+  ...DOMAIN_TOOLS,
 ];
 
 export function findTool(name: string): AgentTool | undefined {
@@ -1026,4 +1024,8 @@ export function findTool(name: string): AgentTool | undefined {
 }
 
 // READ-ONLY tools that can run inline in agent-chat (no confirmation needed)
-export const READ_ONLY_TOOL_NAMES = new Set<string>(["list_brands", "list_events"]);
+export const READ_ONLY_TOOL_NAMES = new Set<string>([
+  "list_brands",
+  "list_events",
+  ...DOMAIN_READ_ONLY,
+]);

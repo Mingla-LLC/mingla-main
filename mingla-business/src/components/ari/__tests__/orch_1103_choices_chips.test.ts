@@ -175,3 +175,49 @@ describe("ORCH-1103 REWORK 2 — MessageList renders QuickReplyChips CHOICE for 
     expect(screen).toMatch(/onSendChoice=\{\(label\) => void handleSend\(label\)\}/);
   });
 });
+
+describe("#1970 Wave 0 — ClarifyingCard + MultiSelectPrompt are wired", () => {
+  const messageList = read("src/components/ari/MessageList.tsx");
+
+  it("imports ClarifyingCard and MultiSelectPrompt", () => {
+    expect(messageList).toMatch(/import\s*\{\s*ClarifyingCard\s*\}\s*from\s*"\.\/ClarifyingCard"/);
+    expect(messageList).toMatch(/import\s*\{\s*MultiSelectPrompt\s*\}\s*from\s*"\.\/MultiSelectPrompt"/);
+  });
+
+  it("renders ClarifyingCard for clarifying kind and MultiSelectPrompt for multi_select", () => {
+    expect(messageList).toContain('choices.kind === "clarifying"');
+    expect(messageList).toContain('choices.kind === "multi_select"');
+    expect(messageList).toMatch(/<ClarifyingCard\b/);
+    expect(messageList).toMatch(/<MultiSelectPrompt\b/);
+  });
+
+  it("choicesOf accepts clarifying with empty options", () => {
+    const m = asstWithChoices("m7", {
+      kind: "clarifying",
+      prompt: "What date should we use?",
+      options: [],
+    });
+    const c = choicesOf(m);
+    expect(c?.kind).toBe("clarifying");
+    expect(c?.prompt).toBe("What date should we use?");
+  });
+
+  it("a clarifying submit still sends the typed label as a normal turn (no pre-fill)", () => {
+    const sent: string[] = [];
+    const sendChoice = (label: string): void => {
+      sent.push(label);
+    };
+    sendChoice("Friday 7pm");
+    expect(sent).toEqual(["Friday 7pm"]);
+  });
+});
+
+describe("#1970 Wave 0 — money confirm pattern on ToolProposalCard", () => {
+  it("exports MONEY_CONFIRM_TOOLS including refund/send/delete", () => {
+    const src = read("src/components/ari/ToolProposalCard.tsx");
+    expect(src).toContain("MONEY_CONFIRM_TOOLS");
+    expect(src).toContain("send_campaign_now");
+    expect(src).toContain("request_account_deletion");
+    expect(src).toContain("refund_order");
+  });
+});

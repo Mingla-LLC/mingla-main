@@ -115,9 +115,36 @@ function humanizeToolName(toolName: string): string {
     case "delete_brand": return "Delete brand";
     case "create_event": return "Create event";
     case "update_event": return "Update event";
+    case "cancel_event": return "Cancel event";
+    case "send_campaign_now": return "Send campaign";
+    case "refund_order": return "Refund order";
+    case "request_account_deletion": return "Delete account";
     default: return toolName.replace(/_/g, " ");
   }
 }
+
+/** Destructive / money tools that reuse the brand type-to-confirm gate. */
+export const MONEY_CONFIRM_TOOLS: Record<string, string> = {
+  cancel_event: "CANCEL",
+  refund_rsvp_contribution: "REFUND",
+  send_campaign_now: "SEND",
+  disconnect_partner: "DISCONNECT",
+  refund_order: "REFUND",
+  cancel_order: "CANCEL",
+  cancel_trip_booking: "CANCEL",
+  export_brand_people: "EXPORT",
+  request_account_deletion: "DELETE",
+};
+
+const COVER_OFFERING_TOOLS = new Set([
+  "create_event",
+  "update_event",
+  "set_event_cover",
+  "create_experience",
+  "update_experience",
+  "create_trip",
+  "update_trip",
+]);
 
 function primaryIdentity(
   toolName: string,
@@ -131,7 +158,10 @@ function primaryIdentity(
     const id = typeof args.brand_id === "string" ? args.brand_id : "";
     return brandNamesById[id] ?? (toolName === "update_brand" ? "Brand update" : "This brand");
   }
-  return toolName;
+  if (typeof args.title === "string" && args.title) return args.title;
+  if (typeof args.name === "string" && args.name) return args.name;
+  if (typeof args.subject === "string" && args.subject) return args.subject;
+  return toolName.replace(/_/g, " ");
 }
 
 function coverTypeLabel(type: unknown): string | null {
@@ -178,6 +208,22 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
     const ct = coverTypeLabel(args.cover_media_type);
     if (typeof args.cover_media_url === "string" && args.cover_media_url && ct) {
       out.push({ label: "Cover", value: ct });
+    }
+  }
+  if (out.length === 0) {
+    const skip = new Set([
+      "brand_id",
+      "event_id",
+      "cover_media_url",
+      "cover_media_poster_url",
+      "cover_media_type",
+      "confirm_phrase",
+    ]);
+    for (const [key, value] of Object.entries(args)) {
+      if (skip.has(key) || value == null || value === "") continue;
+      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        out.push({ label: key.replace(/_/g, " "), value: String(value) });
+      }
     }
   }
   return out;
@@ -335,7 +381,15 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const isBrandCreate = toolName === "create_brand";
   const isBrandUpdate = toolName === "update_brand";
   const isBrandDelete = toolName === "delete_brand";
+  const moneyPhrase = MONEY_CONFIRM_TOOLS[toolName] ?? null;
+  const isMoneyConfirm = moneyPhrase !== null;
+  const isTypeConfirm = isBrandDelete || isMoneyConfirm;
   const isBrandWithCover = isBrandCreate || isBrandUpdate;
+  const isOfferingCover =
+    COVER_OFFERING_TOOLS.has(toolName) &&
+    typeof liveArgs.event_id === "string" &&
+    typeof liveArgs.brand_id === "string";
+  const isCoverTool = isBrandWithCover || isOfferingCover;
 
   // ----- delete-variant -----------------------------------------------------
   const deleteBrandId = isBrandDelete && typeof args.brand_id === "string" ? args.brand_id : null;
@@ -343,6 +397,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const deleteName = isBrandDelete ? identity : "";
   const canDelete =
     typedName.trim().toLowerCase() === deleteName.trim().toLowerCase() && deleteName.length > 0;
+  const canMoneyConfirm =
+    !!moneyPhrase && typedName.trim().toUpperCase() === moneyPhrase;
 
   // ----- cover threading -----------------------------------------------------
   const coverUrl = (liveArgs.cover_media_url as string | undefined) ?? null;
@@ -375,6 +431,8 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   // brand target the reused CoverPicker can persist against.
   const updateBrandId = isBrandUpdate && typeof args.brand_id === "string" ? args.brand_id : null;
   const effectiveBrandId = createdBrandId ?? updateBrandId;
+  const offeringKind: "event" | "trip" | "experience" =
+    toolName.includes("trip") ? "trip" : toolName.includes("experience") ? "experience" : "event";
   const coverTarget: CoverTarget | null =
     isBrandWithCover && effectiveBrandId && accountId
       ? {
@@ -386,7 +444,14 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               ? createDescription
               : (args.description as string | null) ?? null,
         }
-      : null;
+      : isOfferingCover && typeof liveArgs.brand_id === "string" && typeof liveArgs.event_id === "string"
+        ? {
+            kind: offeringKind,
+            brandId: liveArgs.brand_id,
+            eventRowId: liveArgs.event_id,
+            coverMediaApplyMode: "draft_auto",
+          }
+        : null;
 
   // ORCH-1103 — what happens when the user taps "Add cover".
   //   - EDIT (real brand_id already): open the picker directly.
@@ -496,16 +561,16 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     <GlassChrome
       intensity="cardElevated"
       tintColor={glass.tint.profileElevated}
-      borderColor={isBrandDelete ? "rgba(239,68,68,0.32)" : ariPalette.proposalBorder}
+      borderColor={isTypeConfirm ? "rgba(239,68,68,0.32)" : ariPalette.proposalBorder}
       radius="lg"
       style={styles.card}
     >
       <View style={styles.inner} accessibilityRole="summary">
         <View style={styles.headerRow}>
           <AriOrb size="xs" decorative />
-          {isBrandDelete ? <AlertTriangle size={12} color={semantic.error} /> : null}
+          {isTypeConfirm ? <AlertTriangle size={12} color={semantic.error} /> : null}
           <Text
-            style={[styles.verb, isBrandDelete && styles.verbDanger]}
+            style={[styles.verb, isTypeConfirm && styles.verbDanger]}
             numberOfLines={1}
           >
             {verb.toUpperCase()}
@@ -563,10 +628,31 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               accessibilityHint="The delete button enables when the name matches"
             />
           </>
+        ) : isMoneyConfirm && moneyPhrase ? (
+          <>
+            <View style={styles.assuranceRow}>
+              <Text style={styles.assuranceText}>
+                This cannot be undone from chat. Type {moneyPhrase} to confirm.
+              </Text>
+            </View>
+            <Text style={styles.confirmHelper}>
+              Type <Text style={styles.confirmHelperName}>{moneyPhrase}</Text> to confirm
+            </Text>
+            <TextInput
+              value={typedName}
+              onChangeText={setTypedName}
+              placeholder={moneyPhrase}
+              placeholderTextColor={textTokens.quaternary}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              style={styles.confirmInput}
+              accessibilityLabel={`Type ${moneyPhrase} to confirm`}
+            />
+          </>
         ) : null}
 
-        {/* ORCH-1103 — cover band on create/update brand */}
-        {isBrandWithCover ? (
+        {/* Cover band — brands plus events/trips/experiences that already have ids */}
+        {isCoverTool ? (
           <View style={styles.coverWrap}>
             <CoverBand
               url={coverUrl}
@@ -612,14 +698,14 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           </View>
         ) : null}
 
-        {editing && !isBrandDelete ? (
+        {editing && !isTypeConfirm ? (
           <ToolEditForm
             toolName={toolName}
             args={editedArgs}
             onChange={setEditedArgs}
           />
         ) : (
-          !isBrandDelete && fieldsFor(toolName, liveArgs).length > 0 && (
+          !isTypeConfirm && fieldsFor(toolName, liveArgs).length > 0 && (
             <View style={styles.fields}>
               {fieldsFor(toolName, liveArgs).map((f, i) => (
                 <View key={i} style={styles.fieldRow}>
@@ -673,23 +759,30 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           </Pressable>
 
           {/* Delete-variant has no Edit button; the typed-name field is the gate */}
-          {isBrandDelete ? (
+          {isBrandDelete || isMoneyConfirm ? (
             <Pressable
               onPress={() => onConfirm(editing ? editedArgs : undefined)}
-              disabled={isExecuting || !canDelete}
+              disabled={isExecuting || (isBrandDelete ? !canDelete : !canMoneyConfirm)}
               hitSlop={{ top: 5, bottom: 5 }}
               style={({ pressed }) => [
                 styles.actionBtn,
                 styles.deleteBtn,
-                !canDelete && styles.deleteBtnDisabled,
+                (isBrandDelete ? !canDelete : !canMoneyConfirm) && styles.deleteBtnDisabled,
                 pressed && styles.btnPressed,
               ]}
               accessibilityRole="button"
-              accessibilityLabel="Delete brand"
-              accessibilityState={{ disabled: isExecuting || !canDelete }}
+              accessibilityLabel={isBrandDelete ? "Delete brand" : `Confirm ${verb}`}
+              accessibilityState={{
+                disabled: isExecuting || (isBrandDelete ? !canDelete : !canMoneyConfirm),
+              }}
             >
-              <Text style={[styles.deleteText, !canDelete && styles.deleteTextDisabled]}>
-                {isExecuting ? "Deleting…" : "Delete brand"}
+              <Text
+                style={[
+                  styles.deleteText,
+                  (isBrandDelete ? !canDelete : !canMoneyConfirm) && styles.deleteTextDisabled,
+                ]}
+              >
+                {isExecuting ? "Working…" : isBrandDelete ? "Delete brand" : "Confirm"}
               </Text>
             </Pressable>
           ) : (
@@ -743,7 +836,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               picker can't swap targets while mounted, so we open it fresh
               against the new brand (close+reopen), covered by the "Creating
               brand…" band state. */}
-      {isBrandWithCover && coverTarget ? (
+      {isCoverTool && coverTarget ? (
         <CoverPickerSheet
           visible={coverSheetVisible}
           onClose={handleCoverSheetClose}

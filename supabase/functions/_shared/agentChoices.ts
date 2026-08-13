@@ -1,22 +1,27 @@
-// ORCH-1103 REWORK 2 — presentational "suggested replies" detector.
+// #1970 / #424 Wave 0 — presentational suggested-replies detector.
 //
-// Detects the two conversational moments where Ari should surface tappable chips
-// ON TOP of its prose (SPEC §6.ii disambiguation / §6.v no-brand handoff;
-// DESIGN §5 / §7). This is PURELY presentational: tapping a chip sends its
-// `label` as a normal user turn (Q2 — Gemini stays the sole proposer). It does
-// NOT touch the tool-confirm contract. A miss = prose-only (graceful degrade);
-// a false-positive = harmless extra chips whose labels just re-send as a turn.
+// Chip tap still sends the label as a normal user turn (Q2). Client never
+// pre-fills tool IDs. A miss = prose-only; a false-positive = extra chips.
 //
-// Extracted into a _shared module (not inline in agent-chat) so it's importable
-// and unit-testable without invoking the edge function's Deno.serve handler.
+// Kinds:
+//   brand_disambiguation — ≥2 brands, edit/delete intent, Ari is asking
+//   no_brand_handoff     — 0 brands, create offering intent
+//   clarifying           — Ari asked a missing-field question (when/where/name)
+//   multi_select         — Ari listed pick-all options
+//   next_step            — Ari offered a concrete next action after a write
 
 import type { BrandSummary } from "./agentSystemPrompt.ts";
 
+export type AgentChoiceKind =
+  | "brand_disambiguation"
+  | "no_brand_handoff"
+  | "clarifying"
+  | "multi_select"
+  | "next_step";
+
 export interface AgentChoices {
-  kind: "brand_disambiguation" | "no_brand_handoff";
-  // A short label for screen readers / fallback; the visible question is Ari's prose.
+  kind: AgentChoiceKind;
   prompt: string;
-  // Tapping option N sends options[N].label as the next user message.
   options: { id: string; label: string }[];
 }
 
@@ -26,15 +31,40 @@ const BRAND_WORD = /\bbrand(s)?\b/i;
 const CREATE_EVENT_INTENT =
   /\b(create|make|set up|setup|schedule|host|add|plan|start)\b/i;
 const EVENT_OBJECT = /\b(event|experience|trip|gathering|party|show)s?\b/i;
-// Ari's text turn must read like a question (asking which brand) rather than a
-// flat statement, so we don't decorate every reply.
 const ARI_IS_ASKING = /\?/;
+const MISSING_FIELD =
+  /\b(when|where|what (?:date|time|name|title|price|location)|which (?:date|time|venue|location|city)|what(?:'s| is) (?:the )?(?:date|time|name|title|price|location))\b/i;
+const MULTI_SELECT_CUE =
+  /\b(pick all|select all that apply|which of these|choose any|all that apply)\b/i;
+const NEXT_STEP_CUE =
+  /\b(want me to|shall i|should i|next (?:i can|step)|add (?:your )?(?:first )?(?:event|ticket|cover)|publish (?:it|this)|schedule a (?:blast|campaign))\b/i;
+const OPTION_LINE = /^\s*(?:[-*]|\d+[.)])\s+(.+?)\s*$/gm;
+
+function parseListedOptions(text: string): { id: string; label: string }[] {
+  const options: { id: string; label: string }[] = [];
+  OPTION_LINE.lastIndex = 0;
+  let m;
+  let i = 0;
+  while ((m = OPTION_LINE.exec(text)) && i < 8) {
+    const label = m[1].replace(/^["']|["']$/g, "").trim();
+    if (label.length > 0 && label.length < 80) {
+      options.push({ id: `opt_${i}`, label });
+      i++;
+    }
+  }
+  return options;
+}
+
+function firstQuestion(text: string): string {
+  const idx = text.indexOf("?");
+  if (idx < 0) return text.slice(0, 140).trim();
+  const start = Math.max(0, text.lastIndexOf("\n", idx));
+  return text.slice(start, idx + 1).trim().slice(0, 200);
+}
 
 /**
- * Returns a presentational choices payload for a TEXT turn (Gemini answered with
- * text — i.e. it's asking a question, not proposing a write), or undefined.
- *
- * Detection is intent-keyword + state based and intentionally conservative.
+ * Returns a presentational choices payload for a TEXT turn, or undefined.
+ * Conservative: existing brand/handoff detectors win first.
  */
 export function detectChoices(
   userMessage: string,
@@ -43,10 +73,6 @@ export function detectChoices(
 ): AgentChoices | undefined {
   const msg = userMessage;
 
-  // (1) "Which brand?" disambiguation — the user expressed edit/delete intent
-  // against "my brand" with no clear target, there are ≥2 brands, and Ari is
-  // asking. Chips = the candidate brands; tapping one sends its name as the
-  // next user turn (SPEC §6.ii Q2 — Gemini re-proposes with the resolved brand).
   if (
     brands.length >= 2 &&
     EDIT_DELETE_INTENT.test(msg) &&
@@ -56,16 +82,10 @@ export function detectChoices(
     return {
       kind: "brand_disambiguation",
       prompt: "Which brand?",
-      // Names are already escaped at the prompt boundary; here they only ride
-      // back to the client as plain chip labels (no prompt interpolation).
       options: brands.slice(0, 8).map((b) => ({ id: b.id, label: b.name })),
     };
   }
 
-  // (2) No-brand → "create one?" handoff — the user asked to create an
-  // event/experience/trip, they have ZERO brands, and Ari is explaining they
-  // need a brand first. Chips = yes/no; "Yes…" sends a create-a-brand turn,
-  // "Not now" backs off (SPEC §6.v, non-chaining).
   if (
     brands.length === 0 &&
     CREATE_EVENT_INTENT.test(msg) &&
@@ -78,6 +98,40 @@ export function detectChoices(
         { id: "yes", label: "Yes, create a brand" },
         { id: "no", label: "Not now" },
       ],
+    };
+  }
+
+  if (MULTI_SELECT_CUE.test(ariText)) {
+    const options = parseListedOptions(ariText);
+    if (options.length >= 2) {
+      return {
+        kind: "multi_select",
+        prompt: firstQuestion(ariText) || "Pick all that apply",
+        options,
+      };
+    }
+  }
+
+  if (ARI_IS_ASKING.test(ariText) && MISSING_FIELD.test(ariText)) {
+    return {
+      kind: "clarifying",
+      prompt: firstQuestion(ariText),
+      options: [],
+    };
+  }
+
+  if (NEXT_STEP_CUE.test(ariText) && ARI_IS_ASKING.test(ariText)) {
+    const listed = parseListedOptions(ariText);
+    const options = listed.length >= 1
+      ? listed
+      : [
+        { id: "yes", label: "Yes, do that" },
+        { id: "no", label: "Not now" },
+      ];
+    return {
+      kind: "next_step",
+      prompt: firstQuestion(ariText) || "Next step?",
+      options: options.slice(0, 6),
     };
   }
 
