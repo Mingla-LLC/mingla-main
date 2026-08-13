@@ -93,7 +93,6 @@ const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 //   Home             src/components/stay/StaySuiteShell.tsx
 //   LayoutGrid       src/components/venue/* (ORCH-1196)
 //   List             src/components/venue/* (ORCH-1196)
-//   Lock             src/components/ari/ConversationDrawer.tsx (#2013)
 //   Menu             src/screens/ari/AriChatScreen.tsx
 //   MessageSquare    src/components/venue/* (ORCH-1196)
 //   Pencil           src/components/ari/ToolProposalCard.tsx
@@ -125,7 +124,6 @@ const USED_ICONS = {
   Flag: iconOf(require("lucide-react/dist/esm/icons/flag.js")),
   LayoutGrid: iconOf(require("lucide-react/dist/esm/icons/layout-grid.js")),
   List: iconOf(require("lucide-react/dist/esm/icons/list.js")),
-  Lock: iconOf(require("lucide-react/dist/esm/icons/lock.js")),
   Menu: iconOf(require("lucide-react/dist/esm/icons/menu.js")),
   MessageSquare: iconOf(
     require("lucide-react/dist/esm/icons/message-square.js"),

@@ -14,7 +14,7 @@
 
 import React, { useCallback, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { Lock } from "lucide-react-native";
+import { AlertTriangle } from "lucide-react-native";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -230,7 +230,7 @@ export const ConversationDrawer: React.FC<ConversationDrawerProps> = ({
       >
         {selectMode ? (
           <View style={[styles.checkbox, isSelected && styles.checkboxOn]}>{isSelected ? <Text style={styles.checkboxTick}>✓</Text> : null}</View>
-        ) : readOnly ? <Lock size={16} color={textTokens.tertiary} accessibilityElementsHidden /> : null}
+        ) : readOnly ? <AlertTriangle size={16} color={textTokens.tertiary} accessibilityElementsHidden /> : null}
         <Text style={styles.rowTitle} numberOfLines={2}>{title}</Text>
         <Text style={styles.rowDate}>{date}</Text>
       </Pressable>

@@ -37,7 +37,7 @@ describe("#2013 Ari tenant-containment UI", () => {
       expect(drawer).toContain(copy);
     }
     expect(drawer).toContain("older read-only conversation");
-    expect(drawer).toContain("<Lock size={16}");
+    expect(drawer).toContain("<AlertTriangle size={16}");
   });
 
   test("rate limit is a persistent accessible cooldown and disables every send path", () => {
