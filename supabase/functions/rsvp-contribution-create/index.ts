@@ -54,7 +54,10 @@ import {
   paystackChannelsForCountry,
   resolveProviderRouting,
 } from "../_shared/paymentProvider.ts";
-import { paystackInitializeTransaction } from "../_shared/paystack.ts";
+import {
+  paystackInitializeTransaction,
+  paystackVerifyTransaction,
+} from "../_shared/paystack.ts";
 import {
   cancelPaymentIntentIfClientAvailable,
   classifyStripeCheckoutSessionCreateFailure,
@@ -101,8 +104,16 @@ async function contributionStillAuthorized(
 }
 
 type RsvpProviderClaim = {
+  outcome:
+    | "fresh_claim"
+    | "provider_unknown"
+    | "existing_ready"
+    | "in_progress";
   epoch: number;
   idempotencyKey: string;
+  providerObjectId: string | null;
+  providerCheckoutId: string | null;
+  providerReference: string | null;
 };
 
 async function claimRsvpProviderAttempt(
@@ -121,14 +132,46 @@ async function claimRsvpProviderAttempt(
       p_request_fingerprint: requestFingerprint,
     },
   );
-  if (error || data?.outcome !== "fresh_claim") return null;
+  const outcome = typeof data?.outcome === "string" ? data.outcome : "";
+  if (
+    error ||
+    !["fresh_claim", "provider_unknown", "existing_ready", "in_progress"]
+      .includes(outcome)
+  ) return null;
   const epoch = Number(data.epoch);
   const idempotencyKey = typeof data.idempotencyKey === "string"
     ? data.idempotencyKey
     : "";
   return Number.isSafeInteger(epoch) && epoch > 0 && idempotencyKey.length > 0
-    ? { epoch, idempotencyKey }
+    ? {
+      outcome: outcome as RsvpProviderClaim["outcome"],
+      epoch,
+      idempotencyKey,
+      providerObjectId: typeof data.providerObjectId === "string"
+        ? data.providerObjectId
+        : null,
+      providerCheckoutId: typeof data.providerCheckoutId === "string"
+        ? data.providerCheckoutId
+        : null,
+      providerReference: typeof data.providerReference === "string"
+        ? data.providerReference
+        : null,
+    }
     : null;
+}
+
+function boundedExistingAttemptResponse(
+  claim: RsvpProviderClaim,
+  contributionId: string,
+): Response | null {
+  if (claim.outcome === "fresh_claim" || claim.outcome === "provider_unknown") {
+    return null;
+  }
+  return jsonResponse({
+    error: "contribution_in_progress",
+    contributionId,
+    providerState: claim.outcome === "existing_ready" ? "ready" : "in_progress",
+  }, 202);
 }
 
 async function commitRsvpProviderAttempt(
@@ -233,15 +276,20 @@ serve(async (req: Request): Promise<Response> => {
 
   const { data: existingContribution } = await supabase
     .from("event_rsvp_contributions")
-    .select("id,status,provider,stripe_payment_intent_id")
+    .select(
+      "id,status,provider,stripe_payment_intent_id,provider_attempt_state",
+    )
     .eq("event_id", eventId)
     .eq("caller_idempotency_key", callerIdempotencyKey)
     .maybeSingle();
-  if (existingContribution) {
+  if (
+    existingContribution &&
+    existingContribution.status !== "pending" &&
+    !(existingContribution.status === "failed" &&
+      existingContribution.provider_attempt_state === "provider_unknown")
+  ) {
     return jsonResponse({
-      error: existingContribution.status === "pending"
-        ? "contribution_in_progress"
-        : "contribution_already_submitted",
+      error: "contribution_already_submitted",
       contributionId: existingContribution.id,
     }, 409);
   }
@@ -356,7 +404,7 @@ serve(async (req: Request): Promise<Response> => {
       : null;
   })();
 
-  const contributionId = crypto.randomUUID();
+  const contributionId = existingContribution?.id ?? crypto.randomUUID();
 
   // WYSIWYG gift — FORCE organiser-absorbs regardless of the brand's ticket
   // switches (SPEC §10 Q-B): the buyer is charged EXACTLY the typed amount.
@@ -405,32 +453,34 @@ serve(async (req: Request): Promise<Response> => {
     // calling Paystack (idempotency + retry safety; a retry mints a fresh ref).
     const reference = `mingla_contrib_${contributionId.replaceAll("-", "")}`;
 
-    const { error: insertErr } = await supabase
-      .from("event_rsvp_contributions")
-      .insert({
-        id: contributionId,
-        event_id: eventId,
-        rsvp_id: rsvpId,
-        brand_id: brandId,
-        user_id: userId,
-        guest_name: guestName,
-        guest_email: guestEmail,
-        provider: "paystack",
-        currency: "NGN",
-        amount_cents: amountCents,
-        buyer_total_cents: buyerTotalCents,
-        application_fee_amount_cents: applicationFeeCents,
-        pricing_breakdown: breakdown,
-        status: "pending",
-        caller_idempotency_key: callerIdempotencyKey,
-        stripe_payment_intent_id: reference,
-      });
-    if (insertErr) {
-      console.error(
-        "[rsvp-contribution-create] paystack contribution insert failed",
-        insertErr,
-      );
-      return jsonResponse({ error: "contribution_persist_failed" }, 500);
+    if (!existingContribution) {
+      const { error: insertErr } = await supabase
+        .from("event_rsvp_contributions")
+        .insert({
+          id: contributionId,
+          event_id: eventId,
+          rsvp_id: rsvpId,
+          brand_id: brandId,
+          user_id: userId,
+          guest_name: guestName,
+          guest_email: guestEmail,
+          provider: "paystack",
+          currency: "NGN",
+          amount_cents: amountCents,
+          buyer_total_cents: buyerTotalCents,
+          application_fee_amount_cents: applicationFeeCents,
+          pricing_breakdown: breakdown,
+          status: "pending",
+          caller_idempotency_key: callerIdempotencyKey,
+          stripe_payment_intent_id: reference,
+        });
+      if (insertErr) {
+        console.error(
+          "[rsvp-contribution-create] paystack contribution insert failed",
+          insertErr,
+        );
+        return jsonResponse({ error: "contribution_persist_failed" }, 500);
+      }
     }
     const paystackClaim = await claimRsvpProviderAttempt(
       supabase,
@@ -441,6 +491,48 @@ serve(async (req: Request): Promise<Response> => {
     );
     if (paystackClaim === null) {
       return jsonResponse({ error: "checkout_unavailable" }, 409);
+    }
+    const existingAttempt = boundedExistingAttemptResponse(
+      paystackClaim,
+      contributionId,
+    );
+    if (existingAttempt !== null) return existingAttempt;
+
+    if (paystackClaim.outcome === "provider_unknown") {
+      try {
+        const verified = await paystackVerifyTransaction(reference);
+        if (String(verified.reference ?? "") !== reference) {
+          throw new Error("paystack_reference_mismatch");
+        }
+        const adopted = await commitRsvpProviderAttempt(
+          supabase,
+          contributionId,
+          paystackClaim.epoch,
+          null,
+          null,
+          reference,
+          `paystack_reference:${reference}`,
+        );
+        if (!adopted) {
+          return jsonResponse({ error: "checkout_unavailable" }, 409);
+        }
+        return jsonResponse({
+          error: "contribution_in_progress",
+          contributionId,
+          providerState: "ready",
+        }, 202);
+      } catch (verifyError) {
+        console.warn(
+          "[rsvp-contribution-create] exact Paystack recovery remains unknown",
+          verifyError instanceof Error
+            ? verifyError.message
+            : "provider_unknown",
+        );
+        return jsonResponse({
+          error: "provider_outcome_unknown",
+          contributionId,
+        }, 202);
+      }
     }
 
     const callbackBase = Deno.env.get("PAYSTACK_CALLBACK_BASE") ??
@@ -495,11 +587,10 @@ serve(async (req: Request): Promise<Response> => {
         "[rsvp-contribution-create] paystack initialize failed",
         String((err as Error)?.message ?? err),
       );
-      await supabase
-        .from("event_rsvp_contributions")
-        .update({ status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", contributionId);
-      return jsonResponse({ error: "paystack_initialize_failed" }, 502);
+      return jsonResponse({
+        error: "provider_outcome_unknown",
+        contributionId,
+      }, 202);
     }
 
     const paystackCommitted = await commitRsvpProviderAttempt(
@@ -579,31 +670,33 @@ serve(async (req: Request): Promise<Response> => {
   const buyerTotalCents = breakdown.buyer_total_cents;
 
   // Persist the pending row BEFORE charging (the PI id fills stripe_payment_intent_id).
-  const { error: insertErr } = await supabase
-    .from("event_rsvp_contributions")
-    .insert({
-      id: contributionId,
-      event_id: eventId,
-      rsvp_id: rsvpId,
-      brand_id: brandId,
-      user_id: userId,
-      guest_name: guestName,
-      guest_email: guestEmail,
-      provider: "stripe",
-      currency,
-      amount_cents: amountCents,
-      buyer_total_cents: buyerTotalCents,
-      application_fee_amount_cents: applicationFeeCents,
-      pricing_breakdown: breakdown,
-      status: "pending",
-      caller_idempotency_key: callerIdempotencyKey,
-    });
-  if (insertErr) {
-    console.error(
-      "[rsvp-contribution-create] stripe contribution insert failed",
-      insertErr,
-    );
-    return jsonResponse({ error: "contribution_persist_failed" }, 500);
+  if (!existingContribution) {
+    const { error: insertErr } = await supabase
+      .from("event_rsvp_contributions")
+      .insert({
+        id: contributionId,
+        event_id: eventId,
+        rsvp_id: rsvpId,
+        brand_id: brandId,
+        user_id: userId,
+        guest_name: guestName,
+        guest_email: guestEmail,
+        provider: "stripe",
+        currency,
+        amount_cents: amountCents,
+        buyer_total_cents: buyerTotalCents,
+        application_fee_amount_cents: applicationFeeCents,
+        pricing_breakdown: breakdown,
+        status: "pending",
+        caller_idempotency_key: callerIdempotencyKey,
+      });
+    if (insertErr) {
+      console.error(
+        "[rsvp-contribution-create] stripe contribution insert failed",
+        insertErr,
+      );
+      return jsonResponse({ error: "contribution_persist_failed" }, 500);
+    }
   }
 
   const metadata = {
@@ -625,6 +718,11 @@ serve(async (req: Request): Promise<Response> => {
     if (stripeWebClaim === null) {
       return jsonResponse({ error: "checkout_unavailable" }, 409);
     }
+    const existingAttempt = boundedExistingAttemptResponse(
+      stripeWebClaim,
+      contributionId,
+    );
+    if (existingAttempt !== null) return existingAttempt;
     const eventName =
       typeof eventRow.title === "string" && eventRow.title.length > 0
         ? eventRow.title
@@ -689,6 +787,9 @@ serve(async (req: Request): Promise<Response> => {
         piData.application_fee_amount = applicationFeeCents;
       }
       // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+      // Replaying an exact provider_unknown attempt uses the identical
+      // Stripe idempotency key. Stripe returns the original Checkout Session
+      // when it accepted the lost request; a second logical key is forbidden.
       checkoutSession = await stripeWeb.checkout.sessions.create(
         {
           mode: "payment",
@@ -726,14 +827,11 @@ serve(async (req: Request): Promise<Response> => {
         "[rsvp-contribution-create] checkout session create failed",
         failure.detail,
       );
-      await supabase
-        .from("event_rsvp_contributions")
-        .update({ status: "failed", updated_at: new Date().toISOString() })
-        .eq("id", contributionId);
       return jsonResponse({
-        error: "checkout_session_create_failed",
+        error: "provider_outcome_unknown",
+        contributionId,
         detail: failure.detail,
-      }, failure.httpStatus);
+      }, 202);
     }
 
     if (!checkoutSession.url) {
@@ -794,6 +892,11 @@ serve(async (req: Request): Promise<Response> => {
   if (stripeNativeClaim === null) {
     return jsonResponse({ error: "checkout_unavailable" }, 409);
   }
+  const existingAttempt = boundedExistingAttemptResponse(
+    stripeNativeClaim,
+    contributionId,
+  );
+  if (existingAttempt !== null) return existingAttempt;
   let paymentIntent: { id: string; client_secret?: string | null };
   let stripe: ReturnType<typeof stripeTicketCheckout> | null = null;
   try {
@@ -811,6 +914,8 @@ serve(async (req: Request): Promise<Response> => {
       piCreateBody.application_fee_amount = applicationFeeCents;
     }
     // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
+    // Exact-key replay recovers an accepted-but-lost PaymentIntent without
+    // creating a second logical provider attempt.
     paymentIntent = await stripe.paymentIntents.create(
       piCreateBody,
       {
@@ -829,14 +934,11 @@ serve(async (req: Request): Promise<Response> => {
       "[rsvp-contribution-create] payment intent create failed",
       failure.detail,
     );
-    await supabase
-      .from("event_rsvp_contributions")
-      .update({ status: "failed", updated_at: new Date().toISOString() })
-      .eq("id", contributionId);
     return jsonResponse({
-      error: "payment_intent_create_failed",
+      error: "provider_outcome_unknown",
+      contributionId,
       detail: failure.detail,
-    }, failure.httpStatus);
+    }, 202);
   }
 
   const clientSecret = String(paymentIntent.client_secret ?? "");

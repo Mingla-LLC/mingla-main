@@ -1439,6 +1439,20 @@ async function handleTicketCheckoutPaymentIntent(
         `ticket checkout finalize failed: ${finalizeError.message}`,
       );
     }
+    const finalizeOutcome = typeof (finalized as Record<string, unknown> | null)
+        ?.outcome === "string"
+      ? String((finalized as Record<string, unknown>).outcome)
+      : null;
+    if (finalizeOutcome === "paid_reversal_pending") {
+      // Provider money succeeded after checkout authority closed. The DB has
+      // durably minted the reversal; do not dispatch tickets, tax, conversion,
+      // or ordinary purchase notifications for this bounded non-final state.
+      console.warn(
+        "[stripe-webhook] ticket payment entered paid_reversal_pending",
+        session.id,
+      );
+      return session.brand_id as string | null;
+    }
     const orderId =
       typeof (finalized as Record<string, unknown> | null)?.orderId === "string"
         ? String((finalized as Record<string, unknown>).orderId)

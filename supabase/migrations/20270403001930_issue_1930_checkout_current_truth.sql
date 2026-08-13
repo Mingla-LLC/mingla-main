@@ -367,7 +367,10 @@ BEGIN
   SELECT * INTO v_contribution FROM public.event_rsvp_contributions
     WHERE id=p_contribution_id FOR UPDATE;
   RETURN FOUND AND v_contribution.event_id=p_event_id
-    AND v_contribution.status='pending' AND v_contribution.revoked_at IS NULL;
+    AND (v_contribution.status='pending' OR
+      (v_contribution.status='failed' AND
+       v_contribution.provider_attempt_state='provider_unknown'))
+    AND v_contribution.revoked_at IS NULL;
 END $$;
 REVOKE ALL ON FUNCTION public.issue_1930_rsvp_contribution_authorized(uuid,uuid)
   FROM PUBLIC,anon,authenticated;
@@ -441,6 +444,11 @@ BEGIN
      OR NOT public.issue_1930_rsvp_contribution_authorized(v_c.id,v_event.id) THEN
     UPDATE public.event_rsvp_contributions SET
       provider_attempt_state='neutralization_pending',
+      provider_object_id=COALESCE(provider_object_id,p_provider_object_id),
+      provider_checkout_id=COALESCE(provider_checkout_id,p_provider_checkout_id),
+      provider_reference=COALESCE(provider_reference,p_provider_reference),
+      provider_continuation_fingerprint=COALESCE(
+        provider_continuation_fingerprint,p_continuation_fingerprint),
       revoked_at=COALESCE(revoked_at,now()),revoked_reason=COALESCE(revoked_reason,'commit_epoch_lost'),
       reversal_state=CASE WHEN reversal_state='none' THEN 'neutralization_pending' ELSE reversal_state END,
       status='failed',updated_at=now() WHERE id=v_c.id;
@@ -454,7 +462,8 @@ BEGIN
     provider_object_id=COALESCE(provider_object_id,p_provider_object_id),
     provider_checkout_id=COALESCE(provider_checkout_id,p_provider_checkout_id),
     provider_reference=COALESCE(provider_reference,p_provider_reference),
-    provider_continuation_fingerprint=p_continuation_fingerprint,updated_at=now()
+    provider_continuation_fingerprint=p_continuation_fingerprint,
+    status=CASE WHEN status='failed' THEN 'pending' ELSE status END,updated_at=now()
     WHERE id=v_c.id AND provider_attempt_state IN ('claimed','provider_unknown','ready');
   RETURN jsonb_build_object('outcome','ready');
 END $$;
@@ -467,7 +476,8 @@ CREATE OR REPLACE FUNCTION public.issue_1930_mark_rsvp_provider_unknown(
   p_contribution_id uuid,p_claimed_epoch bigint
 ) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
 BEGIN
-  UPDATE public.event_rsvp_contributions SET provider_attempt_state='provider_unknown',updated_at=now()
+  UPDATE public.event_rsvp_contributions SET provider_attempt_state='provider_unknown',
+    status='pending',updated_at=now()
     WHERE id=p_contribution_id AND admission_epoch=p_claimed_epoch
       AND provider_attempt_state='claimed';
 END $$;
@@ -595,12 +605,23 @@ DECLARE v_event_id uuid;
 BEGIN
   v_event_id:=COALESCE(NEW.event_id,OLD.event_id);
   IF TG_OP='DELETE' THEN
+    PERFORM 1 FROM public.events WHERE id=OLD.event_id FOR UPDATE;
     PERFORM public.issue_1930_revoke_event_checkout_admissions(OLD.event_id,'inventory_changed');
     RETURN OLD;
   END IF;
   IF OLD.event_id IS DISTINCT FROM NEW.event_id THEN
-    PERFORM public.issue_1930_revoke_event_checkout_admissions(OLD.event_id,'inventory_changed');
-    PERFORM public.issue_1930_revoke_event_checkout_admissions(NEW.event_id,'inventory_changed');
+    -- Claims/finalizers lock event authority first. Reassignments must lock and
+    -- revoke both authorities in the same UUID order so simultaneous A->B and
+    -- B->A moves cannot invert the checkout lock graph.
+    PERFORM 1 FROM public.events
+      WHERE id IN (OLD.event_id,NEW.event_id) ORDER BY id FOR UPDATE;
+    IF OLD.event_id<NEW.event_id THEN
+      PERFORM public.issue_1930_revoke_event_checkout_admissions(OLD.event_id,'inventory_changed');
+      PERFORM public.issue_1930_revoke_event_checkout_admissions(NEW.event_id,'inventory_changed');
+    ELSE
+      PERFORM public.issue_1930_revoke_event_checkout_admissions(NEW.event_id,'inventory_changed');
+      PERFORM public.issue_1930_revoke_event_checkout_admissions(OLD.event_id,'inventory_changed');
+    END IF;
     RETURN NEW;
   END IF;
   IF TG_TABLE_NAME='ticket_types' AND
@@ -609,9 +630,11 @@ BEGIN
     IS DISTINCT FROM
     (NEW.event_id,NEW.deleted_at,NEW.is_hidden,NEW.is_disabled,NEW.available_online,
       NEW.sale_start_at,NEW.sale_end_at,NEW.quantity_total,NEW.is_unlimited) THEN
+    PERFORM 1 FROM public.events WHERE id=v_event_id FOR UPDATE;
     PERFORM public.issue_1930_revoke_event_checkout_admissions(v_event_id,'inventory_changed');
   ELSIF TG_TABLE_NAME='event_dates' AND
     (OLD.event_id,OLD.start_at,OLD.end_at) IS DISTINCT FROM (NEW.event_id,NEW.start_at,NEW.end_at) THEN
+    PERFORM 1 FROM public.events WHERE id=v_event_id FOR UPDATE;
     PERFORM public.issue_1930_revoke_event_checkout_admissions(v_event_id,'inventory_changed');
   END IF;
   RETURN NEW;

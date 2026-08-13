@@ -50,7 +50,9 @@ serve(async (req) => {
             .select("stripe_account_id")
             .eq("brand_id", contribution.brand_id)
             .is("detached_at", null).maybeSingle();
-          if (!account?.stripe_account_id || !contribution.provider_attempt_key) {
+          if (
+            !account?.stripe_account_id || !contribution.provider_attempt_key
+          ) {
             throw new Error("stripe_account_missing");
           }
           const stripe = stripeTicketCheckout();
@@ -63,8 +65,7 @@ serve(async (req) => {
               {},
               {
                 stripeAccount: account.stripe_account_id,
-                idempotencyKey:
-                  `${contribution.provider_attempt_key}:expire`,
+                idempotencyKey: `${contribution.provider_attempt_key}:expire`,
               },
             );
           } else if (contribution.provider_object_id) {
@@ -73,10 +74,14 @@ serve(async (req) => {
               {},
               {
                 stripeAccount: account.stripe_account_id,
-                idempotencyKey:
-                  `${contribution.provider_attempt_key}:cancel`,
+                idempotencyKey: `${contribution.provider_attempt_key}:cancel`,
               },
             );
+          } else {
+            // A Stripe revocation is never terminal merely because the local
+            // row lacks an object id. An accepted-but-lost provider response
+            // remains retryable/unknown until exact identity is adopted.
+            throw new Error("provider_identity_missing");
           }
           state = "neutralized";
         }
