@@ -201,7 +201,7 @@ describe("ORCH-1202 (C) — completeness algorithm catches unregistered query ho
     }
   });
 
-  test("the live gate's two lists classify EVERY on-disk query hook (no orphans)", () => {
+  test("the live gate's classifications cover EVERY on-disk query hook (no orphans)", () => {
     const gatePath = path.resolve(
       __dirname,
       "..",
@@ -223,7 +223,10 @@ describe("ORCH-1202 (C) — completeness algorithm catches unregistered query ho
     const allowFiles = [
       ...extractBlock("const PUBLIC_HOOK_ALLOWLIST").matchAll(/\[\s*"([^"]+\.ts)"/g),
     ].map((m) => m[1]);
-    const classified = new Set([...authFiles, ...allowFiles]);
+    const nonFetchingImperativeFiles = [
+      ...extractBlock("const NON_FETCHING_IMPERATIVE_HOOKS").matchAll(/["']([^"']+\.ts)["']/g),
+    ].map((m) => m[1]);
+    const classified = new Set([...authFiles, ...allowFiles, ...nonFetchingImperativeFiles]);
 
     const orphans = collect(hooksDir).filter((rel) => !classified.has(rel));
     expect(orphans).toEqual([]);
