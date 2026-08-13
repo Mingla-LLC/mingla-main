@@ -61,6 +61,8 @@ jobs:
         run: |
           python3 scripts/docs/check_comms_integrity.py --self-test
           python3 scripts/docs/check_comms_integrity.py
+          python3 scripts/docs/check_ota_comms_authority.py --self-test
+          python3 scripts/docs/check_ota_comms_authority.py
 
       - name: Check README snapshot
         run: python3 scripts/docs/check_readme_snapshot.py
