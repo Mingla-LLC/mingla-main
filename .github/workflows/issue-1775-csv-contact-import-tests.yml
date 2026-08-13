@@ -1,0 +1,51 @@
+name: Issue 1775 CSV contact import
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - "supabase/migrations/20270328001775_issue_1775_csv_contact_import.sql"
+      - "supabase/migrations/__tests__/issue_1775_csv_contact_import.happy.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1775_csv_contact_import.tester.adversarial.pg17.test.sql"
+      - "supabase/functions/contact-import/**"
+      - "supabase/functions/_shared/contactImportContract.ts"
+      - "mingla-business/app/(tabs)/people/import.tsx"
+      - "mingla-business/src/features/contact-import/**"
+      - "mingla-business/src/services/contactImportService.ts"
+      - "mingla-business/src/hooks/useContactImport.ts"
+      - ".github/scripts/strict-grep/issue-1775-csv-contact-import*.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-1775-csv-contact-import-tests.yml"
+  pull_request:
+    paths: *paths
+permissions:
+  contents: read
+jobs:
+  issue-1775-csv-contact-import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-1775-ci-{0}', github.run_id) }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with: { deno-version: v2.9.5 }
+      - run: node .github/scripts/strict-grep/issue-1775-csv-contact-import.self-test.mjs --self-test && node .github/scripts/strict-grep/issue-1775-csv-contact-import.mjs
+      - run: deno check supabase/functions/contact-import/index.ts && deno test --allow-read supabase/functions/contact-import/issue_1775_csv_contact_import.happy.test.ts
+      - run: deno test --allow-read supabase/functions/contact-import/issue_1775_csv_contact_import.tester.adversarial.test.ts
+      - name: Apply migrations and prove PG17 contract
+        env:
+          PGPASSWORD: ${{ format('issue-1775-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..90}; do pg_isready -h localhost -U postgres && break; sleep 1; done
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 | sort -z | while IFS= read -r -d '' m; do psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$m" >/dev/null; done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1775_csv_contact_import.happy.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1775_csv_contact_import.tester.adversarial.pg17.test.sql
+      - run: cd mingla-business && npx jest --runInBand src/features/contact-import/__tests__/issue_1775_csv_contact_import.happy.test.ts src/features/contact-import/__tests__/issue_1775_csv_contact_import.tester.adversarial.test.ts src/services/__tests__/issue_1775_contact_import_functions_error.tester.adversarial.test.ts

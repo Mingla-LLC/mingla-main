@@ -186,6 +186,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useVenueReservationMetrics.ts",
   // #1421 — exact-venue organic aggregate RPC is active-member/auth scoped.
   "useVenueOrganicInsights.ts",
+  // #1775 — import status is actor/brand scoped and must not cache a pre-auth
+  // not-found response as the batch's final state.
+  "useContactImport.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads
