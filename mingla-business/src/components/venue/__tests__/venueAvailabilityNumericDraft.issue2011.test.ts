@@ -11,6 +11,7 @@ import {
   sanitizeAvailabilityDigits,
   validateAvailabilityDraft,
   VenueAvailabilityModule,
+  type VenueAvailabilityLeaveHandle,
 } from "../VenueAvailabilityModule";
 import React from "react";
 import { useCurrentBrandRole } from "../../../hooks/useCurrentBrandRole";
@@ -149,6 +150,39 @@ beforeEach(() => {
 });
 
 describe("issue #2011 availability numeric draft", () => {
+  it.each([
+    ["venue-avail-minnotice", "0"],
+    ["venue-avail-buffer", "212"],
+  ])(
+    "arms native select-on-focus for untouched %s, then preserves ordinary caret editing",
+    (testID, persistedValue) => {
+      liveConfig = {
+        ...config,
+        bufferMinutes: testID === "venue-avail-buffer" ? 212 : 0,
+        minNoticeMinutes: testID === "venue-avail-minnotice" ? 0 : 30,
+      };
+      let renderer!: RenderTree;
+      act(() => {
+        renderer = TestRenderer.create(
+          React.createElement(VenueAvailabilityModule, {
+            brandId: "brand-1",
+            venueId: "venue-1",
+          }),
+        );
+      });
+      const untouched = renderer.root.findByProps({ testID });
+      expect(untouched.props.value).toBe(persistedValue);
+      expect(untouched.props.selectTextOnFocus).toBe(true);
+
+      act(() => {
+        (untouched.props.onFocus as () => void)();
+        untouched.props.onChangeText?.("9");
+      });
+      const edited = renderer.root.findByProps({ testID });
+      expect(edited.props.value).toBe("9");
+      expect(edited.props.selectTextOnFocus).toBe(false);
+    },
+  );
   it("hydrates editable strings and preserves the legacy zero-as-omitted turn meaning", () => {
     const draft = availabilityDraftFromConfig({
       ...config,
@@ -307,6 +341,34 @@ describe("issue #2011 availability numeric draft", () => {
     expect(
       renderer.root.findByProps({ testID: "venue-avail-save-error" }),
     ).toBeDefined();
+  });
+
+  it("owns and passes the exact initiating-control restorer to the dirty-exit dialog", () => {
+    const leaveRef = React.createRef<VenueAvailabilityLeaveHandle>();
+    const restoreInitiator = jest.fn();
+    let renderer!: RenderTree;
+    act(() => {
+      renderer = TestRenderer.create(
+        React.createElement(VenueAvailabilityModule, {
+          ref: leaveRef,
+          brandId: "brand-1",
+          venueId: "venue-1",
+        }),
+      );
+    });
+    act(() => {
+      renderer.root
+        .findByProps({ testID: "venue-avail-minnotice" })
+        .props.onChangeText?.("9");
+      leaveRef.current?.requestLeave(jest.fn(), restoreInitiator);
+    });
+    const dialog = renderer.root.findByProps({
+      testID: "venue-avail-discard-dialog",
+    });
+    expect(dialog.props.visible).toBe(true);
+    expect(dialog.props.restoreFocus).toEqual(expect.any(Function));
+    act(() => (dialog.props.restoreFocus as () => void)());
+    expect(restoreInitiator).toHaveBeenCalledTimes(1);
   });
 
   it("renders numeric controls read-only without a save action for lower roles", () => {

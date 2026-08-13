@@ -32,7 +32,10 @@ interface VenueSuiteState {
    * The shell installs its `setActiveModule` here so the layout's pill row can
    * drive module selection without navigation. Null when the suite is inactive.
    */
-  selectModule: ((module: VenueModule) => void) | null;
+  selectModule: ((module: VenueModule, restoreFocus?: () => void) => void) | null;
+  pendingLeaveFocus: (() => void) | null;
+  setPendingLeaveFocus: (restoreFocus: (() => void) | null) => void;
+  takePendingLeaveFocus: () => (() => void) | null;
 
   /** Shell lifecycle. */
   activate: (initialModule: VenueModule) => void;
@@ -41,7 +44,7 @@ interface VenueSuiteState {
   sync: (params: {
     activeModule: VenueModule;
     visibleModules: readonly VenueModule[];
-    selectModule: (module: VenueModule) => void;
+    selectModule: (module: VenueModule, restoreFocus?: () => void) => void;
   }) => void;
 }
 
@@ -50,6 +53,13 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set) => ({
   activeModule: "overview",
   visibleModules: ["overview", "settings"],
   selectModule: null,
+  pendingLeaveFocus: null,
+  setPendingLeaveFocus: (pendingLeaveFocus) => set({ pendingLeaveFocus }),
+  takePendingLeaveFocus: () => {
+    const pending = useVenueSuiteStore.getState().pendingLeaveFocus;
+    set({ pendingLeaveFocus: null });
+    return pending;
+  },
 
   activate: (initialModule) =>
     set({ active: true, activeModule: initialModule }),
@@ -59,6 +69,7 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set) => ({
       activeModule: "overview",
       visibleModules: ["overview", "settings"],
       selectModule: null,
+      pendingLeaveFocus: null,
     }),
   sync: ({ activeModule, visibleModules, selectModule }) =>
     set({ activeModule, visibleModules, selectModule }),

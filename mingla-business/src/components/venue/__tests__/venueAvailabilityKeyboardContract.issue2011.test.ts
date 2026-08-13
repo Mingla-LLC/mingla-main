@@ -97,4 +97,20 @@ describe("issue #2011 keyboard-safe availability contract", () => {
       "restoreFocus={restoreActiveFieldFocus}",
     );
   });
+
+  it("carries the actual TopBar Back initiator into Availability instead of trusting Modal", () => {
+    const iconChrome = read("../ui/IconChrome.tsx");
+    const topBar = read("../ui/TopBar.tsx");
+    const page = read("../../../app/venue/[venueId]/index.tsx");
+    const store = read("../../store/venueSuiteStore.ts");
+    const availability = read("VenueAvailabilityModule.tsx");
+
+    expect(iconChrome).toContain("await onPress(restoreFocus)");
+    expect(iconChrome).toContain("AccessibilityInfo.setAccessibilityFocus(handle)");
+    expect(topBar).toContain("onBack?: (restoreFocus?: () => void) => void");
+    expect(page).toContain("setPendingLeaveFocus(restoreFocus ?? null)");
+    expect(store).toContain("takePendingLeaveFocus");
+    expect(availability).toContain(".takePendingLeaveFocus()");
+    expect(availability).toContain("restoreFocus={() => {");
+  });
 });

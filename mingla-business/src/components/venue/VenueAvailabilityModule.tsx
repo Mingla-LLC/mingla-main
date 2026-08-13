@@ -305,7 +305,7 @@ const BOOKING_FIELDS: readonly NumericFieldDefinition[] = [
 ];
 
 export interface VenueAvailabilityLeaveHandle {
-  requestLeave: (onDiscard: () => void) => void;
+  requestLeave: (onDiscard: () => void, restoreFocus?: () => void) => void;
 }
 
 export interface VenueAvailabilityModuleProps {
@@ -368,6 +368,7 @@ export const VenueAvailabilityModule = forwardRef<
   const activeFieldIndexRef = useRef<number | null>(null);
   const initiallySelectedRef = useRef<Set<AvailabilityFieldKey>>(new Set());
   const pendingLeaveRef = useRef<(() => void) | null>(null);
+  const pendingLeaveFocusRef = useRef<(() => void) | null>(null);
   const sanctionedExitRef = useRef(false);
   const draftRef = useRef(draft);
 
@@ -399,12 +400,16 @@ export const VenueAvailabilityModule = forwardRef<
     setSubmitted(false);
   }, [configQuery.data, configQuery.isSuccess]);
 
-  const requestLeave = useCallback((onDiscard: () => void): void => {
+  const requestLeave = useCallback((
+    onDiscard: () => void,
+    restoreFocus?: () => void,
+  ): void => {
     if (!dirtyRef.current) {
       onDiscard();
       return;
     }
     pendingLeaveRef.current = onDiscard;
+    pendingLeaveFocusRef.current = restoreFocus ?? null;
     setDiscardDialogVisible(true);
   }, []);
 
@@ -434,10 +439,13 @@ export const VenueAvailabilityModule = forwardRef<
           data: { action: unknown };
         };
         event.preventDefault();
+        const restoreFocus = useVenueSuiteStore
+          .getState()
+          .takePendingLeaveFocus();
         requestLeave(() => {
           sanctionedExitRef.current = true;
           navigation.dispatch(event.data.action as never);
-        });
+        }, restoreFocus ?? undefined);
       },
     );
     return unsubscribe;
@@ -512,12 +520,6 @@ export const VenueAvailabilityModule = forwardRef<
       });
       if (!initiallySelectedRef.current.has(key)) {
         initiallySelectedRef.current.add(key);
-        requestAnimationFrame(() => {
-          const valueLength = draftRef.current[key].length;
-          inputRefs.current[index]?.setNativeProps({
-            selection: { start: 0, end: valueLength },
-          });
-        });
       }
     },
     [],
@@ -634,6 +636,7 @@ export const VenueAvailabilityModule = forwardRef<
                   inputRefs.current[index] = instance;
                 }}
                 value={draft[field.key]}
+                selectTextOnFocus={!initiallySelectedRef.current.has(field.key)}
                 onChangeText={(value) => handleNumericChange(field.key, value)}
                 onFocus={() => handleNumericFocus(index, field.key)}
                 onBlur={() => handleNumericBlur(field.key)}
@@ -1022,6 +1025,11 @@ export const VenueAvailabilityModule = forwardRef<
         confirmLabel="Discard changes"
         destructive
         initialFocus="cancel"
+        restoreFocus={() => {
+          const restore = pendingLeaveFocusRef.current;
+          pendingLeaveFocusRef.current = null;
+          restore?.();
+        }}
         cancelTestID="venue-avail-keep-editing"
         confirmTestID="venue-avail-discard"
         testID="venue-avail-discard-dialog"

@@ -144,10 +144,13 @@ export function VenueSuiteShell({
   const availabilityRef = useRef<VenueAvailabilityLeaveHandle | null>(null);
 
   const selectModule = useCallback(
-    (nextModule: VenueModule): void => {
+    (nextModule: VenueModule, restoreFocus?: () => void): void => {
       if (nextModule === activeModule) return;
       if (activeModule === "availability" && availabilityRef.current !== null) {
-        availabilityRef.current.requestLeave(() => setActiveModule(nextModule));
+        availabilityRef.current.requestLeave(
+          () => setActiveModule(nextModule),
+          restoreFocus,
+        );
         return;
       }
       setActiveModule(nextModule);
@@ -193,9 +196,9 @@ export function VenueSuiteShell({
     [visibleModules],
   );
   const handleRailSelect = useCallback(
-    (key: string): void => {
+    (key: string, restoreFocus?: () => void): void => {
       const next = visibleModules.find((m) => m === key);
-      if (next !== undefined) selectModule(next);
+      if (next !== undefined) selectModule(next, restoreFocus);
     },
     [selectModule, visibleModules],
   );
