@@ -495,6 +495,12 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1793_guest_ordering_public_state.test.sql
 
+          # Issue #2013 — RLS still permits an owner to update their own
+          # conversation metadata, so the database must independently reject
+          # brand_id relabelling while allowing title/summary updates.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2013_agent_conversation_brand_immutable.test.sql
+
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"
     runs-on: ubuntu-latest

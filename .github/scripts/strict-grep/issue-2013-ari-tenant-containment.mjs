@@ -18,7 +18,7 @@ export function twoAccountPublicRlsProof(ownerId, memberRows, publicBrands) {
 
 export function check(sources) {
   const failures = [];
-  const { helper, chat, confirm, tools, domain, prompt, hook, screen, list, migration, workflow, writerTest } = sources;
+  const { helper, chat, confirm, tools, domain, prompt, hook, screen, list, publicMigration, scopeMigration, scopeTest, migrationWorkflow, workflow, writerTest } = sources;
   for (const token of [
     '.eq("account_id", userId)', '.eq("user_id", userId)', '.not("accepted_at", "is", null)', '.is("removed_at", null)',
     '.is("brand.deleted_at", null)', 'role: "owner"', 'effective_rank: 60',
@@ -76,7 +76,18 @@ export function check(sources) {
     if (!read("mingla-business/src/components/ari/ConversationDrawer.tsx").includes(token)) failures.push(`scoped drawer UI missing ${token}`);
   }
   if (!list.includes("conversation.brand_id === selectedBrandId")) failures.push("drawer is not selected-brand filtered");
-  if (!/Public can read non-deleted brands[\s\S]*ON public\.brands/.test(migration)) failures.push("public-RLS premise is not exercised");
+  if (!/Public can read non-deleted brands[\s\S]*ON public\.brands/.test(publicMigration)) failures.push("public-RLS premise is not exercised");
+  for (const token of [
+    "preserve_agent_conversation_brand_scope", "NEW.brand_id IS DISTINCT FROM OLD.brand_id",
+    "ERRCODE = '42501'", "BEFORE UPDATE OF brand_id", "SET search_path = ''",
+  ]) if (!scopeMigration.includes(token)) failures.push(`database scope immutability missing ${token}`);
+  for (const token of [
+    "non-scope update was blocked", "brand scope rewrite was accepted",
+    "rejected rewrite changed stored scope", "trigger helper is directly executable",
+  ]) if (!scopeTest.includes(token)) failures.push(`database scope test missing ${token}`);
+  if (!migrationWorkflow.includes("issue_2013_agent_conversation_brand_immutable.test.sql")) {
+    failures.push("database scope behavior test is not wired into PostgreSQL replay");
+  }
 
   const brands = [
     { id: "a", account_id: "user-a", deleted_at: null },
@@ -100,7 +111,10 @@ const sources = {
   hook: read("mingla-business/src/hooks/useAgentChat.ts"),
   screen: read("mingla-business/src/screens/ari/AriChatScreen.tsx"),
   list: read("mingla-business/src/hooks/useConversationList.ts"),
-  migration: read("supabase/migrations/20260729000000_meta_orch_0972_universal_authoring.sql"),
+  publicMigration: read("supabase/migrations/20260729000000_meta_orch_0972_universal_authoring.sql"),
+  scopeMigration: read("supabase/migrations/20270402002013_issue_2013_agent_conversation_brand_immutable.sql"),
+  scopeTest: read("supabase/migrations/__tests__/issue_2013_agent_conversation_brand_immutable.test.sql"),
+  migrationWorkflow: read(".github/workflows/supabase-migrations-and-stripe-deno.yml"),
   workflow: read(".github/workflows/issue-2013-ari-tenant-containment.yml"),
   writerTest: read("supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts"),
 };
@@ -115,11 +129,13 @@ if (process.argv.includes("--self-test")) {
   const confirmationRevertDetected = confirmationReverted.some((failure) => failure.includes("confirmation provenance registry incomplete"));
   const writerWorkflowReverted = check({ ...sources, workflow: sources.workflow.replace("supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts", "") });
   const writerWorkflowRevertDetected = writerWorkflowReverted.some((failure) => failure.includes("writer-registry tester must trigger"));
-  if (good.length > 0 || !revertDetected || !historyRevertDetected || !confirmationRevertDetected || !writerWorkflowRevertDetected) {
-    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted, writerWorkflowReverted });
+  const scopeReverted = check({ ...sources, scopeMigration: sources.scopeMigration.replace("NEW.brand_id IS DISTINCT FROM OLD.brand_id", "false") });
+  const scopeRevertDetected = scopeReverted.some((failure) => failure.includes("database scope immutability"));
+  if (good.length > 0 || !revertDetected || !historyRevertDetected || !confirmationRevertDetected || !writerWorkflowRevertDetected || !scopeRevertDetected) {
+    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted, writerWorkflowReverted, scopeReverted });
     process.exit(1);
   }
-  console.log("issue-2013 self-test PASS: clean source passes; owner, history, confirmation-writer, and tester-wiring reverts fail.");
+  console.log("issue-2013 self-test PASS: clean source passes; owner, history, confirmation-writer, tester-wiring, and immutable-scope reverts fail.");
   process.exit(0);
 }
 
