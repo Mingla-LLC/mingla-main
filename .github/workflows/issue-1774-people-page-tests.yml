@@ -75,6 +75,7 @@ jobs:
             src/components/people/__tests__/PeoplePage.issue1774.behavior.test.tsx \
             src/components/people/__tests__/PeoplePage.issue1774.tester.adversarial.test.tsx \
             src/components/people/__tests__/PeoplePage.issue2024.happy.test.tsx \
+            src/components/people/__tests__/PeoplePage.issue2024.tester.adversarial.test.tsx \
             src/components/people/__tests__/PeopleSheets.issue1774.behavior.test.ts \
             src/components/people/__tests__/AddPersonSheet.issue1774.behavior.test.tsx \
             src/components/people/__tests__/PersonDetailView.issue1774.behavior.test.tsx \
