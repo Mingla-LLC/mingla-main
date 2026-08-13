@@ -19,6 +19,7 @@ on:
       - "mingla-business/src/types/people.ts"
       - "supabase/migrations/20270329001774_issue_1774_people_page.sql"
       - "supabase/migrations/__tests__/issue_1774_people_page.test.sql"
+      - "supabase/migrations/__tests__/issue_1774_people_page.tester.adversarial.test.sql"
       - ".github/scripts/strict-grep/issue-1774-people-page.mjs"
       - ".github/scripts/strict-grep/orch-0891-marketing-performance-budget.mjs"
       - ".github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs"
@@ -57,12 +58,14 @@ jobs:
         run: |
           node .github/scripts/strict-grep/issue-1774-people-page.mjs --self-test
           node .github/scripts/strict-grep/issue-1774-people-page.mjs
+          node .github/scripts/strict-grep/__tests__/issue-1774-people-page.tester.test.mjs
           cd mingla-business
           npx jest --runInBand --runTestsByPath \
             src/services/__tests__/peopleService.issue1774.test.ts \
             src/hooks/marketing/__tests__/useBrandPeople.issue1774.behavior.test.tsx \
             src/components/people/__tests__/PeoplePage.issue1774.happy.test.tsx \
             src/components/people/__tests__/PeoplePage.issue1774.behavior.test.tsx \
+            src/components/people/__tests__/PeoplePage.issue1774.tester.adversarial.test.tsx \
             src/components/people/__tests__/PeopleSheets.issue1774.behavior.test.ts \
             src/components/people/__tests__/AddPersonSheet.issue1774.behavior.test.tsx \
             src/components/people/__tests__/PersonDetailView.issue1774.behavior.test.tsx \
@@ -86,4 +89,6 @@ jobs:
       - name: Prove People SQL contract
         env:
           PGPASSWORD: ${{ format('issue-1774-ci-{0}', github.run_id) }}
-        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1774_people_page.test.sql
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1774_people_page.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1774_people_page.tester.adversarial.test.sql
