@@ -36,7 +36,6 @@ const ROLE_RANK: Record<string, number> = {
   admin: 50,
   owner: 60,
   brand_owner: 60,
-  account_owner: 60,
 };
 
 export async function resolveAccessibleAgentBrands(
