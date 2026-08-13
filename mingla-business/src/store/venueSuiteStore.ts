@@ -48,7 +48,7 @@ interface VenueSuiteState {
   }) => void;
 }
 
-export const useVenueSuiteStore = create<VenueSuiteState>((set) => ({
+export const useVenueSuiteStore = create<VenueSuiteState>((set, get) => ({
   active: false,
   activeModule: "overview",
   visibleModules: ["overview", "settings"],
@@ -56,7 +56,7 @@ export const useVenueSuiteStore = create<VenueSuiteState>((set) => ({
   pendingLeaveFocus: null,
   setPendingLeaveFocus: (pendingLeaveFocus) => set({ pendingLeaveFocus }),
   takePendingLeaveFocus: () => {
-    const pending = useVenueSuiteStore.getState().pendingLeaveFocus;
+    const pending = get().pendingLeaveFocus;
     set({ pendingLeaveFocus: null });
     return pending;
   },
