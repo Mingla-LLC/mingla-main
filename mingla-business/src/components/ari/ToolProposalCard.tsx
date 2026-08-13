@@ -759,30 +759,47 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           </Pressable>
 
           {/* Delete-variant has no Edit button; the typed-name field is the gate */}
-          {isBrandDelete || isMoneyConfirm ? (
+          {isBrandDelete ? (
             <Pressable
               onPress={() => onConfirm(editing ? editedArgs : undefined)}
-              disabled={isExecuting || (isBrandDelete ? !canDelete : !canMoneyConfirm)}
+              disabled={isExecuting || !canDelete}
               hitSlop={{ top: 5, bottom: 5 }}
               style={({ pressed }) => [
                 styles.actionBtn,
                 styles.deleteBtn,
-                (isBrandDelete ? !canDelete : !canMoneyConfirm) && styles.deleteBtnDisabled,
+                !canDelete && styles.deleteBtnDisabled,
                 pressed && styles.btnPressed,
               ]}
               accessibilityRole="button"
-              accessibilityLabel={isBrandDelete ? "Delete brand" : `Confirm ${verb}`}
-              accessibilityState={{
-                disabled: isExecuting || (isBrandDelete ? !canDelete : !canMoneyConfirm),
-              }}
+              accessibilityLabel="Delete brand"
+              accessibilityState={{ disabled: isExecuting || !canDelete }}
             >
-              <Text
-                style={[
-                  styles.deleteText,
-                  (isBrandDelete ? !canDelete : !canMoneyConfirm) && styles.deleteTextDisabled,
-                ]}
-              >
-                {isExecuting ? "Working…" : isBrandDelete ? "Delete brand" : "Confirm"}
+              <Text style={[styles.deleteText, !canDelete && styles.deleteTextDisabled]}>
+                {isExecuting ? "Deleting…" : "Delete brand"}
+              </Text>
+            </Pressable>
+          ) : isMoneyConfirm && moneyPhrase ? (
+            <Pressable
+              onPress={() =>
+                onConfirm({
+                  ...(editing ? editedArgs : args),
+                  confirm_phrase: moneyPhrase,
+                })
+              }
+              disabled={isExecuting || !canMoneyConfirm}
+              hitSlop={{ top: 5, bottom: 5 }}
+              style={({ pressed }) => [
+                styles.actionBtn,
+                styles.deleteBtn,
+                !canMoneyConfirm && styles.deleteBtnDisabled,
+                pressed && styles.btnPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`Confirm ${verb}`}
+              accessibilityState={{ disabled: isExecuting || !canMoneyConfirm }}
+            >
+              <Text style={[styles.deleteText, !canMoneyConfirm && styles.deleteTextDisabled]}>
+                {isExecuting ? "Working…" : "Confirm"}
               </Text>
             </Pressable>
           ) : (
@@ -836,7 +853,18 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
               picker can't swap targets while mounted, so we open it fresh
               against the new brand (close+reopen), covered by the "Creating
               brand…" band state. */}
-      {isCoverTool && coverTarget ? (
+      {isBrandWithCover && coverTarget ? (
+        <CoverPickerSheet
+          visible={coverSheetVisible}
+          onClose={handleCoverSheetClose}
+          target={coverTarget}
+          initial={initialPatch}
+          onCoverChange={handleCoverChange}
+          onShowToast={() => undefined}
+          onCoverVideoProcessingChange={(p) => setCoverUploadState(p ? "processing" : "idle")}
+        />
+      ) : null}
+      {!isBrandWithCover && isOfferingCover && coverTarget ? (
         <CoverPickerSheet
           visible={coverSheetVisible}
           onClose={handleCoverSheetClose}

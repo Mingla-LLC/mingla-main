@@ -110,7 +110,7 @@ export async function assertBrandRole(
   userId: string,
   minRank: number,
 ): Promise<void> {
-  const { data, error } = await client.rpc("biz_role_rank", {
+  const { data, error } = await client.rpc("biz_brand_effective_rank", {
     p_brand_id: brandId,
     p_user_id: userId,
   });

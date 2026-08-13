@@ -224,21 +224,26 @@ const upsertTicketTier = writeTool(
     ticket_type_id: UUID,
     name: STR,
     price_cents: { type: "integer", minimum: 0 },
-    quantity: { type: "integer", minimum: 0 },
+    quantity: { type: "integer", minimum: 1 },
     currency: { type: "string", minLength: 3, maxLength: 3 },
   },
   ["event_id", "name", "price_cents"],
   async (args, client, userId) => {
-    const { eventId, brandId } = await requireEvent(args, client, userId);
     const price = Number(args.price_cents);
     if (!Number.isFinite(price) || price < 0) throw new ToolError("INVALID_ARGS", "price_cents must be ≥ 0");
+    if (args.quantity !== undefined && (typeof args.quantity !== "number" || args.quantity < 1)) {
+      throw new ToolError("INVALID_ARGS", "quantity must be ≥ 1 when set (omit for unlimited)");
+    }
+    const { eventId, brandId } = await requireEvent(args, client, userId);
     if (price > 0) await assertCanCollect(client, brandId);
+    const currency = typeof args.currency === "string" ? args.currency.toUpperCase() : "USD";
+    if (!/^[A-Z]{3}$/.test(currency)) throw new ToolError("INVALID_ARGS", "currency must be a 3-letter code");
     const row: Record<string, unknown> = {
       event_id: eventId,
       name: args.name,
       price_cents: price,
-      quantity: typeof args.quantity === "number" ? args.quantity : null,
-      currency: typeof args.currency === "string" ? args.currency : "USD",
+      quantity_total: typeof args.quantity === "number" ? args.quantity : null,
+      currency,
     };
     if (isUuid(args.ticket_type_id)) {
       const { data, error } = await client
@@ -454,21 +459,23 @@ const setRsvpGuestStatus = writeTool(
     event_id: UUID,
     guest_id: UUID,
     guest_ids: { type: "array", items: UUID },
-    status: { type: "string", enum: ["approved", "declined", "pending"] },
+    status: { type: "string", enum: ["approved", "denied", "pending"] },
   },
   ["event_id", "status"],
   async (args, client, userId) => {
     const { eventId } = await requireEvent(args, client, userId);
     if (Array.isArray(args.guest_ids) && args.guest_ids.length > 0) {
-      return await callRpc(client, "host_bulk_approve_rsvps", {
-        p_event_id: eventId,
-        p_guest_ids: args.guest_ids,
-      });
+      if (args.status !== "approved") {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "guest_ids bulk path only approves. Pass status=approved, or a single guest_id to deny/pend.",
+        );
+      }
+      return await callRpc(client, "host_bulk_approve_rsvps", { p_event_id: eventId });
     }
     if (!isUuid(args.guest_id)) throw new ToolError("INVALID_ARGS", "guest_id or guest_ids required");
     return await callRpc(client, "host_set_rsvp_status", {
-      p_event_id: eventId,
-      p_guest_id: args.guest_id,
+      p_rsvp_id: args.guest_id,
       p_status: args.status,
     });
   },
@@ -675,21 +682,55 @@ const sendVenueSms = writeTool(
 const draftCampaign = writeTool(
   "draft_campaign",
   "Create a marketing campaign draft (RLS insert). Does not send.",
-  { brand_id: UUID, title: STR, body: { type: "string" }, channel: { type: "string", enum: ["email", "sms", "push"] } },
+  { brand_id: UUID, title: STR, body: { type: "string" }, channel: { type: "string", enum: ["email", "sms", "rcs"] } },
   ["brand_id", "title"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
+    const channel = args.channel === "sms" || args.channel === "rcs" ? args.channel : "email";
+    let audienceId: string | null = null;
+    const { data: audiences, error: audErr } = await client
+      .from("marketing_audiences")
+      .select("id, query_definition")
+      .eq("brand_id", args.brand_id)
+      .eq("is_system_generated", true);
+    if (audErr) throw new ToolError("RPC_FAILED", audErr.message);
+    for (const row of (audiences ?? []) as Array<{ id: string; query_definition: { kind?: string } }>) {
+      if (row.query_definition?.kind === "brand_buyers") {
+        audienceId = row.id;
+        break;
+      }
+    }
+    if (!audienceId) {
+      const { data: created, error: createAudErr } = await client
+        .from("marketing_audiences")
+        .insert({
+          account_id: userId,
+          brand_id: args.brand_id,
+          name: "All brand buyers",
+          is_system_generated: true,
+          query_definition: {
+            kind: "brand_buyers",
+            brand_id: args.brand_id,
+            payment_statuses: ["paid", "partial_refund"],
+          },
+        })
+        .select("id")
+        .single();
+      if (createAudErr || !created) throw new ToolError("RPC_FAILED", createAudErr?.message ?? "audience create failed");
+      audienceId = created.id as string;
+    }
     const { data, error } = await client
       .from("marketing_campaigns")
       .insert({
+        account_id: userId,
         brand_id: args.brand_id,
-        title: args.title,
-        body: args.body ?? "",
-        channel: args.channel ?? "email",
+        audience_id: audienceId,
+        name: args.title,
+        channel,
+        channel_payload: { kind: channel, body: typeof args.body === "string" ? args.body : "" },
         status: "draft",
-        created_by: userId,
       })
-      .select("id, title, status")
+      .select("id, name, status, channel")
       .single();
     if (error) throw new ToolError("RPC_FAILED", error.message);
     return data;
@@ -705,11 +746,17 @@ const scheduleCampaign = writeTool(
     if (!isUuid(args.campaign_id)) throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
     const { data, error } = await client
       .from("marketing_campaigns")
-      .update({ status: "scheduled", scheduled_for: args.scheduled_for })
+      .update({
+        status: "scheduled",
+        scheduled_for: args.scheduled_for,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", args.campaign_id)
+      .in("status", ["draft", "scheduled"])
       .select("id, status, scheduled_for")
-      .single();
+      .maybeSingle();
     if (error) throw new ToolError("RPC_FAILED", error.message);
+    if (!data) throw new ToolError("INVALID_ARGS", "Campaign is not a draft/scheduled row");
     return data;
   },
 );
@@ -734,11 +781,13 @@ const cancelCampaign = writeTool(
     if (!isUuid(args.campaign_id)) throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
     const { data, error } = await client
       .from("marketing_campaigns")
-      .update({ status: "cancelled" })
+      .update({ status: "cancelled", updated_at: new Date().toISOString() })
       .eq("id", args.campaign_id)
+      .eq("status", "scheduled")
       .select("id, status")
-      .single();
+      .maybeSingle();
     if (error) throw new ToolError("RPC_FAILED", error.message);
+    if (!data) throw new ToolError("INVALID_ARGS", "Only a scheduled campaign can be cancelled");
     return data;
   },
 );
@@ -916,23 +965,17 @@ const getBrandAnalytics = writeTool(
 const inviteBrandMember = writeTool(
   "invite_brand_member",
   "Invite a brand member via existing invitations table / service.",
-  { brand_id: UUID, email: STR, role: { type: "string", enum: ["admin", "event_manager", "finance_manager", "marketing_manager"] } },
+  { brand_id: UUID, email: STR, role: { type: "string", enum: ["brand_admin", "event_manager", "finance_manager", "marketing_manager"] } },
   ["brand_id", "email", "role"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
     await assertBrandRole(client, args.brand_id as string, userId, 50);
-    const { data, error } = await client
-      .from("brand_invitations")
-      .insert({
-        brand_id: args.brand_id,
-        email: args.email,
-        role: args.role,
-        invited_by: userId,
-      })
-      .select("id, email, role")
-      .single();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+    return await invokeFn(client, "invite-brand-member", {
+      brand_id: args.brand_id,
+      invitee_email: args.email,
+      invitee_name: "",
+      role: args.role,
+    });
   },
 );
 
@@ -944,18 +987,12 @@ const inviteScanner = writeTool(
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
     await assertBrandRole(client, args.brand_id as string, userId, 40);
-    const { data, error } = await client
-      .from("brand_invitations")
-      .insert({
-        brand_id: args.brand_id,
-        email: args.email,
-        role: "scanner",
-        invited_by: userId,
-      })
-      .select("id, email, role")
-      .single();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+    return await invokeFn(client, "invite-brand-member", {
+      brand_id: args.brand_id,
+      invitee_email: args.email,
+      invitee_name: "",
+      role: "scanner",
+    });
   },
 );
 
@@ -1037,7 +1074,7 @@ const updateAriPrefs = writeTool(
     }
     const { data, error } = await client
       .from("agent_user_profile")
-      .upsert(patch, { onConflict: "user_id" })
+      .upsert(patch)
       .select("preferred_timezone, preferred_currency, communication_style")
       .single();
     if (error) throw new ToolError("RPC_FAILED", error.message);
@@ -1051,19 +1088,15 @@ const updateNotificationPrefs = writeTool(
   { email_enabled: { type: "boolean" }, push_enabled: { type: "boolean" }, sms_enabled: { type: "boolean" } },
   [],
   async (args, client, userId) => {
+    const rows = [
+      { user_id: userId, channel: "email", type: "order", opt_in: args.email_enabled ?? true },
+      { user_id: userId, channel: "push", type: "order", opt_in: args.push_enabled ?? true },
+      { user_id: userId, channel: "sms", type: "order", opt_in: args.sms_enabled ?? false },
+    ];
     const { data, error } = await client
-      .from("notification_preferences")
-      .upsert(
-        {
-          user_id: userId,
-          email_enabled: args.email_enabled ?? true,
-          push_enabled: args.push_enabled ?? true,
-          sms_enabled: args.sms_enabled ?? false,
-        },
-        { onConflict: "user_id" },
-      )
-      .select("email_enabled, push_enabled, sms_enabled")
-      .single();
+      .from("business_notification_type_preferences")
+      .upsert(rows)
+      .select("channel, type, opt_in");
     if (error) throw new ToolError("RPC_FAILED", error.message);
     return data;
   },

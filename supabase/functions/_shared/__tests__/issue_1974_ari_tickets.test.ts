@@ -33,3 +33,22 @@ Deno.test("#1974 adversarial: set_pricing_switches rejects a non-uuid event", as
     ToolError,
   );
 });
+
+Deno.test("#1974 adversarial: quantity 0 is refused before write", async () => {
+  const tool = findTool("upsert_ticket_tier")!;
+  await assertRejects(
+    () =>
+      tool.executor(
+        {
+          event_id: "11111111-1111-4111-8111-111111111111",
+          name: "GA",
+          price_cents: 0,
+          quantity: 0,
+        },
+        {} as never,
+        "user-1",
+      ),
+    ToolError,
+    "quantity must be ≥ 1",
+  );
+});
