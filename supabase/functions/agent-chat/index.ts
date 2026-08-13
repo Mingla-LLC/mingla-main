@@ -557,7 +557,9 @@ async function handle(req: Request): Promise<Response> {
             tool_name: tool.name,
           }));
           return errorResponse(
-            err.code === "TENANT_SCOPE_UNAVAILABLE" || err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : 403,
+            err.code === "TENANT_SCOPE_UNAVAILABLE" || err.code === "ROLE_CHECK_UNAVAILABLE"
+              ? 503
+              : err.code === "INVALID_ARGS" ? 400 : 403,
             err.code,
             err.message,
           );
@@ -571,7 +573,8 @@ async function handle(req: Request): Promise<Response> {
       await authorizeAgentTool(tool, gemini.toolCall.args, userClient, userId);
     } catch (err: unknown) {
       if (err instanceof ToolError) {
-        return errorResponse(err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : 403, err.code, err.message);
+        const status = err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : err.code === "INVALID_ARGS" ? 400 : 403;
+        return errorResponse(status, err.code, err.message);
       }
       return errorResponse(503, "ROLE_CHECK_UNAVAILABLE", "Ari could not verify permissions right now");
     }

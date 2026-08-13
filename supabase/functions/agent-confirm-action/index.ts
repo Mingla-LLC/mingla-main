@@ -187,7 +187,7 @@ Deno.serve(async (req) => {
     await authorizeAgentTool(tool, finalArgs, userClient, userId);
   } catch (err: unknown) {
     const code = err instanceof ToolError ? err.code : "ROLE_CHECK_UNAVAILABLE";
-    const status = code === "ROLE_CHECK_UNAVAILABLE" ? 503 : 403;
+    const status = code === "ROLE_CHECK_UNAVAILABLE" ? 503 : code === "INVALID_ARGS" ? 400 : 403;
     await userClient.from("agent_pending_actions")
       .update({ status: "failed", failure_reason: code })
       .eq("id", pending.id).eq("status", "pending");
