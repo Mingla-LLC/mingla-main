@@ -14,6 +14,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { TENANT_CONTEXT_VERSION } from "../_shared/agentSystemPrompt.ts";
 import { ARI_MODEL_VERSION } from "../_shared/agentGemini.ts";
 import { findTool, ToolError } from "../_shared/agentTools.ts";
+import { authorizeAgentTool } from "../_shared/agentToolAuthorization.ts";
 
 interface RequestBody {
   action: "confirm" | "cancel";
@@ -167,19 +168,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Atomic flip pending -> executing
-  const { data: flipped, error: flipErr } = await userClient
-    .from("agent_pending_actions")
-    .update({ status: "executing" })
-    .eq("id", pending.id)
-    .eq("status", "pending")
-    .select("id")
-    .maybeSingle();
-  if (flipErr || !flipped) {
-    return errorResponse(409, "WRONG_STATE", "Race detected — this action was already handled");
-  }
-
-  // Resolve final args (operator edits override model args)
+  // #2019: resolve and authorize final edited scope while still pending.
   const finalArgs = body.edited_args && typeof body.edited_args === "object"
     ? body.edited_args
     : (pending.tool_args as Record<string, unknown>);
@@ -192,6 +181,31 @@ Deno.serve(async (req) => {
       .update({ status: "failed", failure_reason: "Unknown tool" })
       .eq("id", pending.id);
     return errorResponse(500, "INTERNAL", "Unknown tool");
+  }
+
+  try {
+    await authorizeAgentTool(tool, finalArgs, userClient, userId);
+  } catch (err: unknown) {
+    const code = err instanceof ToolError ? err.code : "ROLE_CHECK_UNAVAILABLE";
+    const status = code === "ROLE_CHECK_UNAVAILABLE" ? 503 : code === "INVALID_ARGS" ? 400 : 403;
+    await userClient.from("agent_pending_actions")
+      .update({ status: "failed", failure_reason: code })
+      .eq("id", pending.id).eq("status", "pending");
+    return errorResponse(status, code, code === "ROLE_CHECK_UNAVAILABLE"
+      ? "Ari could not verify permissions right now"
+      : "Your current access does not allow this action");
+  }
+
+  // Atomic flip pending -> executing only after final-argument authorization.
+  const { data: flipped, error: flipErr } = await userClient
+    .from("agent_pending_actions")
+    .update({ status: "executing" })
+    .eq("id", pending.id)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
+  if (flipErr || !flipped) {
+    return errorResponse(409, "WRONG_STATE", "Race detected — this action was already handled");
   }
 
   // Execute
@@ -225,7 +239,8 @@ Deno.serve(async (req) => {
       // adjusting their request (rename the brand, pick a different event,
       // etc.). 5xx is reserved for genuine server-side issues.
       let status: number;
-      if (err.code === "OWNERSHIP_DENIED") status = 403;
+      if (["OWNERSHIP_DENIED", "ROLE_DENIED", "BRAND_ACCESS_DENIED"].includes(err.code)) status = 403;
+      else if (err.code === "ROLE_CHECK_UNAVAILABLE") status = 503;
       else if (err.code === "INVALID_ARGS" || err.code === "SLUG_TAKEN") status = 400;
       // ORCH-1103 — delete refused because the brand has upcoming/live events.
       // Recoverable, user-actionable conflict (cancel/transfer first) → 409.

@@ -8543,3 +8543,20 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 - **Rule:** An authoritative server field omitted or represented by a semantically equivalent nullish value must never become a user-authored patch; media poster reads and writes remain lossless end to end.
 - **Enforcement:** issue #2010 management-view migration, Business event mapper and adapter regressions. Activate only after independent tester PASS, all-green merge, migration apply, and runtime verification at CLOSE.
 - **Established:** DRAFT at issue #2010 SPEC 2026-08-13.
+
+---
+
+### I-ARI-DECLARED-AUTH (ACTIVE)
+
+- **Rule:** Every registered Ari tool declares one canonical required role and one resource scope, exactly matching the accepted capability ledger translation.
+- **Enforcement:** `agentToolAuthorization.ts`, the issue #2019 implementor/tester suites, and the strict registry guard.
+
+### I-ARI-CALLER-BOUND-TWO-PHASE-AUTH (ACTIVE)
+
+- **Rule:** Ari authorizes with `biz_brand_effective_rank_for_caller` and `biz_role_rank` before proposal, reauthorizes final edited arguments before execution state, and reauthorizes in the executor wrapper. Authority failure, revocation, or resource mismatch fails closed.
+- **Enforcement:** shared authorization adapter, `agent-chat`, `agent-confirm-action`, and issue #2019 ordering/matrix regressions.
+
+### I-ARI-DEED-OWNER (ACTIVE)
+
+- **Rule:** Brand deletion requires the exact `brands.account_id = auth.uid()` deed. Rank 60, `brand_owner` membership, `owner`, and `account_owner` cannot substitute.
+- **Enforcement:** `agentToolAuthorization.ts` deed-owner branch and issue #2019 adversarial tests.

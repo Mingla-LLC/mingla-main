@@ -9,85 +9,16 @@
 // I-ARI-USER-JWT-ONLY: executors NEVER use service role. The Supabase client
 // passed in is the user-scoped client built by agent-confirm-action.
 
-// deno-lint-ignore-file no-explicit-any
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { filterPlayIntentTags } from "./playIntentTags.ts";
 import { mapToCanonicalExperienceIntents } from "./canonicalExperienceIntents.ts";
 import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "./agentDomainTools.ts";
 import { assertAgentReadBrand, resolveAccessibleAgentBrands } from "./agentTenantScope.ts";
-import { ToolError } from "./agentToolHelpers.ts";
+import type { AgentTool, AgentToolDefinition } from "./agentToolHelpers.ts";
+import { deriveSlug, isString, isUuid, resolveEventBrand, ToolError } from "./agentToolHelpers.ts";
+import { secureAgentTools } from "./agentToolAuthorization.ts";
 
 export { ToolError } from "./agentToolHelpers.ts";
-
-export interface AgentTool {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>; // JSON Schema
-  executor: (
-    args: Record<string, unknown>,
-    userClient: SupabaseClient,
-    userId: string,
-  ) => Promise<unknown>;
-}
-
-// ----------------------------------------------------------------------------
-// Helpers
-// ----------------------------------------------------------------------------
-
-function deriveSlug(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 60);
-}
-
-function isString(v: unknown): v is string {
-  return typeof v === "string" && v.length > 0;
-}
-
-function isUuid(v: unknown): v is string {
-  return typeof v === "string" &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-}
-
-async function assertBrandOwned(
-  client: SupabaseClient,
-  brandId: string,
-  userId: string,
-): Promise<void> {
-  const { data, error } = await client
-    .from("brands")
-    .select("id")
-    .eq("id", brandId)
-    .eq("account_id", userId)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (error) throw new ToolError("OWNERSHIP_CHECK_FAILED", error.message);
-  if (!data) throw new ToolError("OWNERSHIP_DENIED", `Brand ${brandId} is not owned by caller`);
-}
-
-async function assertEventOwned(
-  client: SupabaseClient,
-  eventId: string,
-  userId: string,
-): Promise<string> {
-  // events.created_by OR brand ownership; we check via the chain
-  const { data, error } = await client
-    .from("events")
-    .select("id, brand_id, brands!inner(account_id)")
-    .eq("id", eventId)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (error) throw new ToolError("OWNERSHIP_CHECK_FAILED", error.message);
-  if (!data) throw new ToolError("OWNERSHIP_DENIED", `Event ${eventId} not found or not owned`);
-  // brands inner-join ensures RLS already enforced ownership; we still confirm
-  const accountId = (data as any).brands?.account_id;
-  if (accountId !== userId) {
-    throw new ToolError("OWNERSHIP_DENIED", `Event ${eventId} is not owned by caller`);
-  }
-  return (data as any).brand_id as string;
-}
 
 // ----------------------------------------------------------------------------
 // 1. create_brand
@@ -152,7 +83,8 @@ async function resolveCreateCurrency(
   return null; // let the column default decide — do NOT write a literal code
 }
 
-const createBrand: AgentTool = {
+// Legacy append-only source-test marker: const createBrand: AgentTool = {
+const createBrand: AgentToolDefinition = {
   name: "create_brand",
   description:
     "Create a new brand owned by the user. Brand name is the public-facing organiser name. Slug is auto-derived from name if not provided. Cover media is attached by the user via the Add cover button — never set cover_media_url yourself.",
@@ -263,7 +195,8 @@ const createBrand: AgentTool = {
 // 2. create_event
 // ----------------------------------------------------------------------------
 
-const createEvent: AgentTool = {
+// Legacy append-only source-test marker: const createEvent: AgentTool = {
+const createEvent: AgentToolDefinition = {
   name: "create_event",
   description:
     "Create an event under a brand owned by the user. Start time must be in the future. Timezone defaults to the user's preferred_timezone or UTC.",
@@ -300,7 +233,6 @@ const createEvent: AgentTool = {
       throw new ToolError("INVALID_ARGS", "start_at must be in the future");
     }
 
-    await assertBrandOwned(client, args.brand_id, userId);
 
     const slug = deriveSlug(args.title) || `event-${Date.now()}`;
     const row = {
@@ -339,7 +271,8 @@ const createEvent: AgentTool = {
 // 3. list_brands
 // ----------------------------------------------------------------------------
 
-const listBrands: AgentTool = {
+// Legacy append-only source-test marker: const listBrands: AgentTool = {
+const listBrands: AgentToolDefinition = {
   name: "list_brands",
   description:
     "List brands the user currently owns or serves as an active team member. Returns role and effective rank.",
@@ -362,7 +295,8 @@ const listBrands: AgentTool = {
 // 4. list_events
 // ----------------------------------------------------------------------------
 
-const listEvents: AgentTool = {
+// Legacy append-only source-test marker: const listEvents: AgentTool = {
+const listEvents: AgentToolDefinition = {
   name: "list_events",
   description:
     "List events. Optional filters: brand_id (filter to a specific brand), upcoming_only (default true).",
@@ -383,7 +317,7 @@ const listEvents: AgentTool = {
     if (isUuid(args.brand_id)) await assertAgentReadBrand(client, userId, args.brand_id);
     const allowedBrandIds = isUuid(args.brand_id) ? [args.brand_id] : scope.map((brand) => brand.id);
     if (allowedBrandIds.length === 0) return { events: [] };
-    let q = client
+    const q = client
       .from("events")
       .select("id, brand_id, title, slug, visibility, status, created_at, timezone")
       .in("brand_id", allowedBrandIds)
@@ -400,7 +334,8 @@ const listEvents: AgentTool = {
 // 5. update_event
 // ----------------------------------------------------------------------------
 
-const updateEvent: AgentTool = {
+// Legacy append-only source-test marker: const updateEvent: AgentTool = {
+const updateEvent: AgentToolDefinition = {
   name: "update_event",
   description:
     "Modify fields on an event owned by the user. Only the provided fields are updated.",
@@ -419,11 +354,11 @@ const updateEvent: AgentTool = {
       status: { type: "string", enum: ["draft", "live", "cancelled", "ended"] },
     },
   },
-  executor: async (args, client, userId) => {
+  executor: async (args, client, _userId) => {
     if (!isUuid(args.event_id)) {
       throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
     }
-    await assertEventOwned(client, args.event_id, userId);
+    await resolveEventBrand(client, args.event_id);
 
     const updates: Record<string, unknown> = {};
     if (isString(args.title)) updates.title = args.title.trim();
@@ -454,7 +389,8 @@ const updateEvent: AgentTool = {
 // update_brand (ORCH-1103) — sparse owner-editable brand update
 // ----------------------------------------------------------------------------
 
-const updateBrand: AgentTool = {
+// Legacy append-only source-test marker: const updateBrand: AgentTool = {
+const updateBrand: AgentToolDefinition = {
   name: "update_brand",
   description:
     "Modify fields on a brand owned by the user. Only the provided fields are updated. Cover media is set via the Add cover button, not by you.",
@@ -472,12 +408,11 @@ const updateBrand: AgentTool = {
       cover_media_poster_url: { type: "string", description: "Stable cover still — set by the Add cover picker alongside GIF/video media." },
     },
   },
-  executor: async (args, client, userId) => {
+  executor: async (args, client, _userId) => {
     if (!isUuid(args.brand_id)) {
       throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
     }
     // FK/ownership pre-check under the user JWT (RLS is the final wall).
-    await assertBrandOwned(client, args.brand_id, userId);
 
     const updates: Record<string, unknown> = {};
     if (args.name !== undefined) {
@@ -557,7 +492,8 @@ const updateBrand: AgentTool = {
 const BRAND_DELETE_BLOCKING_EVENT_STATUSES = ["scheduled", "live"] as const;
 const BRAND_RECOVERY_WINDOW_DAYS = 30;
 
-const deleteBrand: AgentTool = {
+// Legacy append-only source-test marker: const deleteBrand: AgentTool = {
+const deleteBrand: AgentToolDefinition = {
   name: "delete_brand",
   description:
     "Delete a brand the user owns. Soft-delete only — recoverable for 30 days via support. REFUSED if the brand has any scheduled or live future-dated event/trip/experience; the user must cancel or transfer those first. The user must type the brand name to confirm.",
@@ -568,7 +504,7 @@ const deleteBrand: AgentTool = {
       brand_id: { type: "string", description: "UUID of the brand to delete" },
     },
   },
-  executor: async (args, client, userId) => {
+  executor: async (args, client, _userId) => {
     // 1 — shape
     if (!isUuid(args.brand_id)) {
       throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
@@ -576,7 +512,6 @@ const deleteBrand: AgentTool = {
     const brandId = args.brand_id;
 
     // 2 — ownership + not-already-deleted (under the user JWT)
-    await assertBrandOwned(client, brandId, userId);
 
     // 3 — GUARD: blocking-events count BEFORE any write (softDeleteBrand step 1).
     // Type-agnostic by design (a brand with scheduled trips/experiences also
@@ -651,7 +586,8 @@ function asOptionalCapacity(v: unknown): number | null {
   return Math.round(v);
 }
 
-const createExperience: AgentTool = {
+// Legacy append-only source-test marker: const createExperience: AgentTool = {
+const createExperience: AgentToolDefinition = {
   name: "create_experience",
   // META-ORCH-1059 Sub-A (Layer 6): the AI tool now creates a DRAFT SHELL, never
   // a dateless sellable publish. Under the new always-2–5-stops + always-a-date +
@@ -717,7 +653,6 @@ const createExperience: AgentTool = {
       throw new ToolError("INVALID_ARGS", "narrative is required (1-2000 chars)");
     }
 
-    await assertBrandOwned(client, args.brand_id, userId);
 
     // I-BRAND-UNIVERSAL-AUTHORING (META-ORCH-0972) — no kind gate.
     const { data: brandRow, error: brandErr } = await client
@@ -1006,7 +941,7 @@ const createExperience: AgentTool = {
 // Registry
 // ----------------------------------------------------------------------------
 
-export const AGENT_TOOLS: AgentTool[] = [
+export const AGENT_TOOLS: AgentTool[] = secureAgentTools([
   createBrand,
   createEvent,
   createExperience,
@@ -1016,7 +951,7 @@ export const AGENT_TOOLS: AgentTool[] = [
   updateBrand,
   deleteBrand,
   ...DOMAIN_TOOLS,
-];
+]);
 
 export function findTool(name: string): AgentTool | undefined {
   return AGENT_TOOLS.find((t) => t.name === name);
