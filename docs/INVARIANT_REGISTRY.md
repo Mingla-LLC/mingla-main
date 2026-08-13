@@ -20,15 +20,15 @@
 
 ---
 
-## DRAFT — issue #2004 (rich snippet clicks continue to canonical public pages)
+## ACTIVE — issue #2004 (rich snippet clicks continue to canonical public pages)
 
-### I-CONTENT-SHARE-CLICK-CONTINUES-TO-CANONICAL-PUBLIC-PAGE (DRAFT)
+### I-CONTENT-SHARE-CLICK-CONTINUES-TO-CANONICAL-PUBLIC-PAGE (ACTIVE)
 
 - **Rule:** The Explorer `/s/{code}` receiver remains the HTTP 200, crawler-readable owner of its canonical, Open Graph, Twitter, and portrait metadata. In a JavaScript-capable browser, a valid event, RSVP, trip, experience, venue, or brand share continues with `window.location.replace` to its exact `business.usemingla.com` public page. Place and curated shares remain on `/s`. A continuation is allowed only when the typed destination kind agrees with the shared facts and its stored `webPath` exactly equals the path reconstructed from encoded typed slugs; malformed, missing, mismatched, or protocol-relative destinations fail closed on `/s`.
 - **Enforcement:** `contentShareBusinessDestination` is the only Business URL constructor used by the receiver's CTA and head continuation. `.github/workflows/issue-2004-share-click-canonical-destination.yml` runs append-only implementor and independent tester proofs plus the protected #1615 Explorer-receiver and #1968 canonical-public-sharing suites whenever a load-bearing file changes.
 - **Regression:** Deleting the head continuation leaves a real browser on the intermediate page and fails runtime navigation tests. Changing `replace` to `assign` or `href` fails the history assertion. Removing kind/path validation permits inconsistent or external destinations and fails the adversarial matrix. Changing `/s` metadata, redirecting place/curated shares, or altering canonical public-page sharing fails protected suites.
 - **Scope:** Business server-rendered content-share receiver only. No HTTP redirect, crawler user-agent branch, meta refresh, public-page renderer, Explorer app route, native sharing transport, marketing proxy, Supabase function, version, native dependency, or OTA behavior changes.
-- **Established:** DRAFT at #2004 IMPLEMENT; activate only after independent tester PASS, all-green merge, and live production proof.
+- **Established:** ACTIVE at #2004 CLOSE through PR #2005 after independent runtime tester PASS, all-green merge, and live production proof recorded on the issue.
 
 ---
 
