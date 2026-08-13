@@ -15,6 +15,7 @@ jest.mock("../../../hooks/useCurrentBrand",()=>({useCurrentBrand:()=>brand}));
 jest.mock("../../../hooks/useCurrentBrandRole",()=>({useCurrentBrandRole:()=>role}));
 jest.mock("../../../hooks/useFeatureFlag",()=>({useFeatureFlag:()=>flag}));
 jest.mock("../../../hooks/useResponsiveLayout",()=>({useResponsiveLayout:()=>({isWideDesktop:false,width:390})}));
+jest.mock("../../../hooks/useStickyFooterOffset",()=>({useStickyFooterOffset:()=>120}));
 jest.mock("../../../hooks/marketing/useBrandPeople",()=>({useBrandPeople:(...args:any[])=>peopleHook(args[0],args[1],args[2],args[3],args[4])}));
 jest.mock("../../../hooks/marketing/useAudienceList",()=>({useAudienceList:()=>groupState}));
 jest.mock("../../ui/useShareNetworkState",()=>({useShareNetworkState:()=>online}),{virtual:true});
@@ -24,6 +25,7 @@ jest.mock("../../../services/marketing/marketingCampaignService",()=>({ensureBra
 jest.mock("../../ui/Button",()=>({Button:(props:any)=>React.createElement("MockButton",props)}));
 jest.mock("../../ui/EmptyState",()=>({EmptyState:(props:any)=><View><Text>{props.title}</Text>{props.description?<Text>{props.description}</Text>:null}{props.cta?React.createElement("MockButton",{label:props.cta.label,onPress:props.cta.onPress}):null}</View>}));
 jest.mock("../../ui/Skeleton",()=>({Skeleton:()=>React.createElement("MockSkeleton")}));
+jest.mock("../../ui/Icon",()=>({Icon:()=>React.createElement("MockIcon")}));
 jest.mock("../../ui/Toast",()=>({Toast:(props:any)=>props.visible?<Text>{props.message}</Text>:null}));
 jest.mock("../../marketing/AudienceCard",()=>({AudienceCard:({entry}:any)=><Text>{entry.display_name}</Text>}));
 jest.mock("../AddPersonSheet",()=>({AddPersonSheet:({visible}:any)=>visible?<Text>ADD SHEET</Text>:null}));

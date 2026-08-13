@@ -23,6 +23,7 @@ on:
       - "supabase/migrations/__tests__/issue_1774_people_digest_qualification.test.sql"
       - "supabase/migrations/__tests__/issue_1774_people_page.tester.adversarial.test.sql"
       - ".github/scripts/strict-grep/issue-1774-people-page.mjs"
+      - ".github/scripts/strict-grep/issue-2024-people-page-layout.mjs"
       - ".github/scripts/strict-grep/__tests__/issue-1774-people-page.tester.test.mjs"
       - ".github/scripts/strict-grep/orch-0891-marketing-performance-budget.mjs"
       - ".github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs"
@@ -62,6 +63,8 @@ jobs:
         run: |
           node .github/scripts/strict-grep/issue-1774-people-page.mjs --self-test
           node .github/scripts/strict-grep/issue-1774-people-page.mjs
+          node .github/scripts/strict-grep/issue-2024-people-page-layout.mjs --self-test
+          node .github/scripts/strict-grep/issue-2024-people-page-layout.mjs
           node .github/scripts/strict-grep/__tests__/issue-1774-people-page.tester.test.mjs
           node scripts/audit/marketing-grade-a-contract.mjs
           cd mingla-business
@@ -71,6 +74,8 @@ jobs:
             src/components/people/__tests__/PeoplePage.issue1774.happy.test.tsx \
             src/components/people/__tests__/PeoplePage.issue1774.behavior.test.tsx \
             src/components/people/__tests__/PeoplePage.issue1774.tester.adversarial.test.tsx \
+            src/components/people/__tests__/PeoplePage.issue2024.happy.test.tsx \
+            src/components/people/__tests__/PeoplePage.issue2024.tester.adversarial.test.tsx \
             src/components/people/__tests__/PeopleSheets.issue1774.behavior.test.ts \
             src/components/people/__tests__/AddPersonSheet.issue1774.behavior.test.tsx \
             src/components/people/__tests__/PersonDetailView.issue1774.behavior.test.tsx \

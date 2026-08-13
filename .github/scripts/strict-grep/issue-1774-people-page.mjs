@@ -33,8 +33,8 @@ export function audit(base) {
   if (!legacy.includes('<Redirect href="/(tabs)/marketing/people"') || /AudienceListScreen|useAudienceList/.test(legacy)) failures.push("legacy Audiences route is not a renderless People redirect");
   if (/\.from\s*\(/.test([page,detail,service].join("\n"))) failures.push("People book/detail bypasses the RPC service boundary");
   for (const rpc of ["biz_get_brand_people_book","biz_get_brand_person","biz_add_brand_person"]) if (!service.includes(`rpc(\"${rpc}\"`)) failures.push(`service is missing ${rpc}`);
-  if (!/status="Reach unavailable"/.test(page) || /followersCount|extendedCircleCount|estimatedReach/.test(page)) failures.push("reach is fabricated or not explicitly unavailable");
-  if (!page.includes('useFeatureFlag("contact_import_v1")') || !page.includes("!flag.isPending&&!flag.isFetching&&!flag.isError&&flag.data===true")) failures.push("contact import is not fail-closed on the canonical flag");
+  if (/People you can reach|Reach unavailable|Followers|Extended circle|Export unavailable|Book export is coming soon/.test(page) || /followersCount|extendedCircleCount|estimatedReach/.test(page)) failures.push("future reach/export dependency is rendered or fabricated");
+  if (!page.includes('useFeatureFlag("contact_import_v1")') || !/!flag\.isPending\s*&&\s*!flag\.isFetching\s*&&\s*!flag\.isError\s*&&\s*flag\.data\s*===\s*true/.test(page)) failures.push("contact import is not fail-closed on the canonical flag");
   if (/contact_import_v1|getFeatureFlag|feature_flags/.test([service,detail,importRoute,importHook,marketingKeys].join("\n"))) failures.push("People created a duplicate contact-import rollout authority");
   if (!flagHook.includes("featureFlagKeys.detail(flagKey)") || !flagHook.includes("isAuthReady && user !== null")) failures.push("canonical feature-flag query authority was weakened");
   if (/posthog|PostHog/.test(page)) failures.push("PostHog is being used as People availability authority");
@@ -59,7 +59,10 @@ function selfTest() {
     if (!audit(tmp).some((x)=>x.includes("renderless People redirect"))) throw new Error("true mutation: deleting the redirect was not detected");
     fs.copyFileSync(path.join(root,files.legacy),legacy);
     const page=path.join(tmp,files.page); fs.appendFileSync(page,"\nconst estimatedReach = 999;\n");
-    if (!audit(tmp).some((x)=>x.includes("reach is fabricated"))) throw new Error("true mutation: fabricated reach was not detected");
+    if (!audit(tmp).some((x)=>x.includes("rendered or fabricated"))) throw new Error("true mutation: fabricated reach was not detected");
+    fs.copyFileSync(path.join(root,files.page),page);
+    fs.appendFileSync(page,'\nconst futurePlaceholder = "Extended circle";\n');
+    if (!audit(tmp).some((x)=>x.includes("rendered or fabricated"))) throw new Error("true mutation: restored future dependency UI was not detected");
     fs.copyFileSync(path.join(root,files.page),page);
     for (const needle of ["!flag.isPending","!flag.isFetching","!flag.isError","flag.data===true","useFeatureFlag(\"contact_import_v1\")"]) {
       const clean=fs.readFileSync(page,"utf8"),broken=clean.replace(needle,needle.includes("useFeatureFlag")?'useFeatureFlag("other_flag")':"true");

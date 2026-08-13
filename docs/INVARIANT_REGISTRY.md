@@ -8445,7 +8445,7 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 ### I-PROPOSED-1774-NO-FABRICATED-REACH (ACTIVE)
 
-- **Rule:** Followers, Extended circle, and combined reach remain explicitly unavailable until a privacy-safe server authority exists. Counts must never be inferred, hard-coded, or borrowed from unrelated datasets.
+- **Rule:** Followers, Extended circle, and combined reach remain hidden or explicitly unavailable until a privacy-safe server authority exists. No count, row, contact, request, estimate, or action may be inferred, hard-coded, or borrowed from unrelated datasets.
 - **Enforcement:** issue #1774 page regression and static gate.
 
 ### I-PROPOSED-1774-MANUAL-ADD-IDEMPOTENT (ACTIVE)
@@ -8460,13 +8460,21 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 ### I-PROPOSED-1774-DEPENDENCY-NO-DEAD-TAP (ACTIVE)
 
-- **Rule:** A People dependency is actionable only when its real authority is resolved and available. Otherwise the page shows an explicit unavailable state and no dead or misleading tap target; contact import is fail-closed on `contact_import_v1`.
+- **Rule:** A People dependency is actionable only when its real authority is resolved and available. Future-only dependencies may be absent; any represented unavailable dependency is truthful non-interactive text, and hidden dependencies reserve no space or request. Contact import remains fail-closed on `contact_import_v1`.
 - **Enforcement:** issue #1774 page/import regressions and static gate.
 
 ### I-PROPOSED-1774-PEOPLE-ANALYTICS-NO-PII (ACTIVE)
 
 - **Rule:** People analytics may describe surface, dependency state, bounded result, and coarse bucket only. It may never carry a person's name, contact value, person ID, brand ID, search text, or other identity payload.
 - **Enforcement:** `peopleAnalytics.ts` property schema and `.github/scripts/strict-grep/issue-1774-people-page.mjs`.
+
+## DRAFT — issue #2024 (compact People workspace and campaign entry)
+
+### I-PROPOSED-2024-PEOPLE-WORKSPACE-PRIMARY-ACTION (DRAFT)
+
+- **Rule:** Business People exposes only present-tense Book and Groups content, uses the responsive authenticated workspace, preserves one visually hidden semantic People page heading in every mounted route state, and exposes a safe-area-aware New campaign action through the existing parameter-free composer route.
+- **Enforcement:** `PeoplePage.tsx`, the People lazy fallback, the issue #2024 rendered regression, and `.github/scripts/strict-grep/issue-2024-people-page-layout.mjs`.
+- **Established:** DRAFT at issue #2024 IMPLEMENT 2026-08-13. Activate only at orchestrator CLOSE after independent tester PASS, merge, and production-web verification.
 
 ---
 
