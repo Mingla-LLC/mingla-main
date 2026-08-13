@@ -69,6 +69,33 @@ Deno.test("#424 adversarial: refund_order / send_campaign_now reject bad ids", a
   );
 });
 
+Deno.test("#424 adversarial: cancel_event rejects a missing or wrong confirm_phrase before any RPC", async () => {
+  const tool = findTool("cancel_event")!;
+  await assertRejects(
+    () =>
+      tool.executor(
+        { event_id: "11111111-1111-4111-8111-111111111111" },
+        {} as never,
+        "u",
+      ),
+    ToolError,
+    "confirm_phrase must be CANCEL",
+  );
+  await assertRejects(
+    () =>
+      tool.executor(
+        {
+          event_id: "11111111-1111-4111-8111-111111111111",
+          confirm_phrase: "cancel",
+        },
+        {} as never,
+        "u",
+      ),
+    ToolError,
+    "confirm_phrase must be CANCEL",
+  );
+});
+
 Deno.test("#424 intelligence: get_operator_snapshot is read-only for chain planning", () => {
   assert(READ_ONLY_TOOL_NAMES.has("get_operator_snapshot"));
   assert(findTool("get_operator_snapshot"));

@@ -26,17 +26,31 @@ function writeTool(
   properties: Record<string, unknown>,
   required: string[],
   executor: AgentTool["executor"],
+  confirmPhrase?: string,
 ): AgentTool {
+  const props = confirmPhrase
+    ? { ...properties, confirm_phrase: { type: "string", enum: [confirmPhrase] } }
+    : properties;
+  const req = confirmPhrase && !required.includes("confirm_phrase")
+    ? [...required, "confirm_phrase"]
+    : required;
   return {
     name,
     description,
     parameters: {
       type: "object",
       additionalProperties: false,
-      properties,
-      required,
+      properties: props,
+      required: req,
     },
-    executor,
+    executor: confirmPhrase
+      ? async (args, client, userId) => {
+        if (args.confirm_phrase !== confirmPhrase) {
+          throw new ToolError("INVALID_ARGS", `confirm_phrase must be ${confirmPhrase}`);
+        }
+        return await executor(args, client, userId);
+      }
+      : executor,
   };
 }
 
@@ -99,12 +113,13 @@ const unpublishEvent = writeTool(
 const cancelEvent = writeTool(
   "cancel_event",
   "Cancel a live event via business_cancel_event. Destructive — type-to-confirm in the card.",
-  { event_id: UUID, confirm_phrase: { type: "string", enum: ["CANCEL"] } },
+  { event_id: UUID },
   ["event_id"],
   async (args, client, userId) => {
     const { eventId } = await requireEvent(args, client, userId);
     return await callRpc(client, "business_cancel_event", { p_event_id: eventId });
   },
+  "CANCEL",
 );
 
 const endEventSales = writeTool(
@@ -494,6 +509,7 @@ const refundRsvpContribution = writeTool(
       amount_cents: args.amount_cents ?? null,
     }, { "Idempotency-Key": newIdempotencyKey() });
   },
+  "REFUND",
 );
 
 // ----------------------------------------------------------------------------
@@ -764,12 +780,13 @@ const scheduleCampaign = writeTool(
 const sendCampaignNow = writeTool(
   "send_campaign_now",
   "Send a campaign immediately via marketing-send. Irreversible — type-to-confirm SEND.",
-  { campaign_id: UUID, confirm_phrase: { type: "string", enum: ["SEND"] } },
+  { campaign_id: UUID },
   ["campaign_id"],
   async (args, client, _userId) => {
     if (!isUuid(args.campaign_id)) throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
     return await invokeFn(client, "marketing-send", { campaign_id: args.campaign_id, sendNow: true });
   },
+  "SEND",
 );
 
 const cancelCampaign = writeTool(
@@ -855,6 +872,7 @@ const disconnectPartner = writeTool(
     if (error) throw new ToolError("RPC_FAILED", error.message);
     return { partner_id: args.partner_id, disconnected: true };
   },
+  "DISCONNECT",
 );
 
 const getTaxStatus = writeTool(
@@ -891,6 +909,7 @@ const refundOrder = writeTool(
       { "Idempotency-Key": newIdempotencyKey() },
     );
   },
+  "REFUND",
 );
 
 const cancelOrder = writeTool(
@@ -908,6 +927,7 @@ const cancelOrder = writeTool(
       { "Idempotency-Key": newIdempotencyKey() },
     );
   },
+  "CANCEL",
 );
 
 const cancelTripBooking = writeTool(
@@ -925,6 +945,7 @@ const cancelTripBooking = writeTool(
       { "Idempotency-Key": newIdempotencyKey() },
     );
   },
+  "CANCEL",
 );
 
 const retryInstallment = writeTool(
@@ -1043,13 +1064,14 @@ const setGuestApproval = writeTool(
 const exportBrandPeople = writeTool(
   "export_brand_people",
   "Export Brand People CSV via brand-people-export. PII — extra confirm.",
-  { brand_id: UUID, confirm_phrase: { type: "string", enum: ["EXPORT"] } },
+  { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
     await assertBrandRole(client, args.brand_id as string, userId, 50);
     return await invokeFn(client, "brand-people-export", { brand_id: args.brand_id });
   },
+  "EXPORT",
 );
 
 // ----------------------------------------------------------------------------
@@ -1118,14 +1140,12 @@ const createSupportTicket = writeTool(
 const requestAccountDeletion = writeTool(
   "request_account_deletion",
   "Delete the operator account via delete-user. Requires typed legal name + DELETE.",
-  { legal_name: STR, confirm_phrase: { type: "string", enum: ["DELETE"] } },
-  ["legal_name", "confirm_phrase"],
+  { legal_name: STR },
+  ["legal_name"],
   async (args, client, _userId) => {
-    if (args.confirm_phrase !== "DELETE") {
-      throw new ToolError("INVALID_ARGS", "confirm_phrase must be DELETE");
-    }
     return await invokeFn(client, "delete-user", { legal_name: args.legal_name, confirm: "DELETE" });
   },
+  "DELETE",
 );
 
 // ----------------------------------------------------------------------------
