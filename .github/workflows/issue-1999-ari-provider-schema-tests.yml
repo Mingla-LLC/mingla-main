@@ -1,0 +1,41 @@
+name: "Issue #1999 Ari provider schema contract"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/_shared/agentGemini.ts"
+      - "supabase/functions/_shared/agentTools.ts"
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentToolHelpers.ts"
+      - "supabase/functions/agent-chat/**"
+      - "supabase/functions/_shared/__tests__/issue_1999_ari_provider_schema_contract.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1999_ari_provider_schema_contract.tester_adversarial.test.ts"
+      - ".github/workflows/issue-1999-ari-provider-schema-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/agentGemini.ts"
+      - "supabase/functions/_shared/agentTools.ts"
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentToolHelpers.ts"
+      - "supabase/functions/agent-chat/**"
+      - "supabase/functions/_shared/__tests__/issue_1999_ari_provider_schema_contract.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1999_ari_provider_schema_contract.tester_adversarial.test.ts"
+      - ".github/workflows/issue-1999-ari-provider-schema-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  provider-schema-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run implementor and independent tester provider-schema contracts
+        run: deno test --allow-read supabase/functions/_shared/__tests__/issue_1999_ari_provider_schema_contract.test.ts supabase/functions/_shared/__tests__/issue_1999_ari_provider_schema_contract.tester_adversarial.test.ts
+      - name: Type-check the shared compiler and affected importer
+        run: deno check supabase/functions/_shared/agentGemini.ts supabase/functions/agent-chat/index.ts

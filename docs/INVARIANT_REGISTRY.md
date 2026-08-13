@@ -1,5 +1,18 @@
 # Invariant Registry
 
+## DRAFT — issue #1999 (Ari provider-schema compatibility)
+
+### I-PROPOSED-1999-ARI-PROVIDER-SCHEMAS-COMPILE-FAIL-CLOSED (DRAFT)
+
+- **Rule:** Every Ari tool declaration sent to Gemini MUST pass through the single recursive compiler in `supabase/functions/_shared/agentGemini.ts`. The compiler may consume only canonical `additionalProperties: false`, MUST reject every other unsupported keyword or value before secret lookup/network access, MUST normalize Gemini typed-schema int64 fields to canonical decimal strings, and MUST NOT mutate the canonical schemas used by Ari's execution layer.
+- **Failure contract:** Provider-schema drift returns HTTP 500 code `MODEL_SCHEMA_INVALID` with fixed provider-neutral user copy. Logs may identify the static tool name, JSON pointer, keyword, and classification, but never schema values, prompts, or user data.
+- **Enforcement:** `.github/workflows/issue-1999-ari-provider-schema-tests.yml` runs the implementor contract and independently authored tester adversarial suite; `.github/scripts/strict-grep/issue-1999-ari-provider-schema-ci-wiring.mjs` pins both tests and both `callGemini` boundaries.
+- **Regression:** 64/64 real registered tool schemas compile. True reversions of `additionalProperties: false` consumption and unknown-keyword rejection make their respective suites fail, then pass after restoration.
+- **Scope:** Provider-boundary translation only. Confirmation, JWT/RLS, prompts, models/keys, domain executors, migrations, and native/web clients are unchanged.
+- **Established:** DRAFT at #1999 IMPLEMENT/TEST 2026-08-13; flip to ACTIVE only after all-green PR, exact merged-main edge deployment, and production live-fire.
+
+---
+
 > Rules that must ALWAYS hold in the Mingla codebase. Every invariant lists
 > (a) the rule, (b) the enforcement mechanism, (c) the test that catches a
 > regression. When a change breaks one of these, the severity is raised

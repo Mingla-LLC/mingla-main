@@ -20,6 +20,12 @@ export interface GeminiToolDef {
   parameters: Record<string, unknown>; // JSON Schema
 }
 
+export interface GeminiFunctionDeclaration {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
 export interface GeminiContentMessage {
   role: "user" | "model";
   parts: Array<
@@ -49,7 +55,7 @@ export interface GeminiResult {
 }
 
 export interface GeminiError extends Error {
-  kind: "config" | "http" | "malformed" | "empty";
+  kind: "config" | "http" | "malformed" | "empty" | "schema";
   status?: number;
   detail?: string;
 }
@@ -66,11 +72,248 @@ function makeError(
   return err;
 }
 
+const PROVIDER_SCHEMA_FIELDS = new Set([
+  "type",
+  "format",
+  "title",
+  "description",
+  "nullable",
+  "enum",
+  "maxItems",
+  "minItems",
+  "properties",
+  "required",
+  "minProperties",
+  "maxProperties",
+  "minLength",
+  "maxLength",
+  "pattern",
+  "example",
+  "anyOf",
+  "propertyOrdering",
+  "default",
+  "items",
+  "minimum",
+  "maximum",
+]);
+
+const INT64_SCHEMA_FIELDS = new Set([
+  "maxItems",
+  "minItems",
+  "minProperties",
+  "maxProperties",
+  "minLength",
+  "maxLength",
+]);
+
+const STRING_SCHEMA_FIELDS = new Set([
+  "format",
+  "title",
+  "description",
+  "pattern",
+]);
+
+const STRING_ARRAY_SCHEMA_FIELDS = new Set([
+  "enum",
+  "required",
+  "propertyOrdering",
+]);
+
+const PROVIDER_TYPES = new Set([
+  "STRING",
+  "NUMBER",
+  "INTEGER",
+  "BOOLEAN",
+  "ARRAY",
+  "OBJECT",
+  "NULL",
+]);
+
+const MAX_SIGNED_INT64 = 9_223_372_036_854_775_807n;
+
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+function escapeJsonPointerSegment(segment: string): string {
+  return segment.replaceAll("~", "~0").replaceAll("/", "~1");
+}
+
+function schemaError(toolName: string, pointer: string, keyword: string, reason: string): GeminiError {
+  return makeError(
+    "schema",
+    `Ari tool schema invalid: tool=${toolName} path=${pointer} keyword=${keyword} reason=${reason}`,
+    { detail: `tool=${toolName} path=${pointer} keyword=${keyword}` },
+  );
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function cloneJsonValue(
+  value: unknown,
+  toolName: string,
+  pointer: string,
+  keyword: string,
+): JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw schemaError(toolName, pointer, keyword, "must be JSON-compatible");
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry, index) =>
+      cloneJsonValue(entry, toolName, `${pointer}/${index}`, keyword)
+    );
+  }
+  if (isPlainRecord(value)) {
+    const copy: { [key: string]: JsonValue } = {};
+    for (const [key, entry] of Object.entries(value)) {
+      copy[key] = cloneJsonValue(
+        entry,
+        toolName,
+        `${pointer}/${escapeJsonPointerSegment(key)}`,
+        keyword,
+      );
+    }
+    return copy;
+  }
+  throw schemaError(toolName, pointer, keyword, "must be JSON-compatible");
+}
+
+function normalizeInt64(
+  value: unknown,
+  toolName: string,
+  pointer: string,
+  keyword: string,
+): string {
+  let normalized: string;
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw schemaError(toolName, pointer, keyword, "must be a safe nonnegative integer");
+    }
+    normalized = String(value);
+  } else if (typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value)) {
+    normalized = value;
+  } else {
+    throw schemaError(toolName, pointer, keyword, "must be a canonical nonnegative decimal integer");
+  }
+
+  if (BigInt(normalized) > MAX_SIGNED_INT64) {
+    throw schemaError(toolName, pointer, keyword, "exceeds signed int64 range");
+  }
+  return normalized;
+}
+
+function compileProviderSchema(
+  schema: unknown,
+  toolName: string,
+  pointer: string,
+): Record<string, unknown> {
+  if (!isPlainRecord(schema)) {
+    throw schemaError(toolName, pointer, "parameters", "must be an object");
+  }
+
+  const compiled: Record<string, unknown> = {};
+  for (const [keyword, value] of Object.entries(schema)) {
+    const keywordPointer = `${pointer}/${escapeJsonPointerSegment(keyword)}`;
+
+    if (keyword === "additionalProperties") {
+      if (value !== false) {
+        throw schemaError(toolName, keywordPointer, keyword, "only false can be consumed");
+      }
+      continue;
+    }
+    if (!PROVIDER_SCHEMA_FIELDS.has(keyword)) {
+      throw schemaError(toolName, keywordPointer, keyword, "unsupported typed-schema keyword");
+    }
+
+    if (keyword === "type") {
+      if (typeof value !== "string" || !PROVIDER_TYPES.has(value.toUpperCase())) {
+        throw schemaError(toolName, keywordPointer, keyword, "must be a supported schema type");
+      }
+      compiled[keyword] = value;
+    } else if (STRING_SCHEMA_FIELDS.has(keyword)) {
+      if (typeof value !== "string") {
+        throw schemaError(toolName, keywordPointer, keyword, "must be a string");
+      }
+      compiled[keyword] = value;
+    } else if (keyword === "nullable") {
+      if (typeof value !== "boolean") {
+        throw schemaError(toolName, keywordPointer, keyword, "must be a boolean");
+      }
+      compiled[keyword] = value;
+    } else if (STRING_ARRAY_SCHEMA_FIELDS.has(keyword)) {
+      if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+        throw schemaError(toolName, keywordPointer, keyword, "must be an array of strings");
+      }
+      compiled[keyword] = [...value];
+    } else if (INT64_SCHEMA_FIELDS.has(keyword)) {
+      compiled[keyword] = normalizeInt64(value, toolName, keywordPointer, keyword);
+    } else if (keyword === "minimum" || keyword === "maximum") {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        throw schemaError(toolName, keywordPointer, keyword, "must be a finite number");
+      }
+      compiled[keyword] = value;
+    } else if (keyword === "properties") {
+      if (!isPlainRecord(value)) {
+        throw schemaError(toolName, keywordPointer, keyword, "must be an object of schemas");
+      }
+      const properties: Record<string, unknown> = {};
+      for (const [propertyName, propertySchema] of Object.entries(value)) {
+        properties[propertyName] = compileProviderSchema(
+          propertySchema,
+          toolName,
+          `${keywordPointer}/${escapeJsonPointerSegment(propertyName)}`,
+        );
+      }
+      compiled[keyword] = properties;
+    } else if (keyword === "items") {
+      compiled[keyword] = compileProviderSchema(value, toolName, keywordPointer);
+    } else if (keyword === "anyOf") {
+      if (!Array.isArray(value)) {
+        throw schemaError(toolName, keywordPointer, keyword, "must be an array of schemas");
+      }
+      compiled[keyword] = value.map((entry, index) =>
+        compileProviderSchema(entry, toolName, `${keywordPointer}/${index}`)
+      );
+    } else if (keyword === "example" || keyword === "default") {
+      compiled[keyword] = cloneJsonValue(value, toolName, keywordPointer, keyword);
+    }
+  }
+
+  return compiled;
+}
+
+export function compileGeminiToolDeclarations(
+  tools: readonly GeminiToolDef[],
+): GeminiFunctionDeclaration[] {
+  return tools.map((tool, index) => {
+    const fallbackName = `tools[${index}]`;
+    if (typeof tool?.name !== "string" || tool.name.length === 0) {
+      throw schemaError(fallbackName, "/name", "name", "must be a nonempty string");
+    }
+    if (typeof tool.description !== "string") {
+      throw schemaError(tool.name, "/description", "description", "must be a string");
+    }
+    return {
+      name: tool.name,
+      description: tool.description,
+      parameters: compileProviderSchema(tool.parameters, tool.name, "/parameters"),
+    };
+  });
+}
+
 export async function callGemini(args: {
   systemPrompt: string;
   contents: GeminiContentMessage[];
   tools: GeminiToolDef[];
 }): Promise<GeminiResult> {
+  // Compile before secret lookup or network access so provider-contract drift
+  // fails locally, deterministically, and without exposing request data.
+  const functionDeclarations = compileGeminiToolDeclarations(args.tools);
+
   // GEMINI_API_KEY_ARI is the ONLY accepted secret. No fallbacks — Ari
   // gets its own isolated quota by design. If this key is missing, the
   // operator must set it in the Supabase function secrets before Ari can
@@ -88,11 +331,7 @@ export async function callGemini(args: {
     systemInstruction: { parts: [{ text: args.systemPrompt }] },
     tools: [
       {
-        function_declarations: args.tools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          parameters: t.parameters,
-        })),
+        function_declarations: functionDeclarations,
       },
     ],
     toolConfig: {
