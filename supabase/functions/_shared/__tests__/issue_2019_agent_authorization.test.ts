@@ -134,3 +134,33 @@ Deno.test("#2019 wrapped executor cannot be bypassed and catches revocation", as
   catch (error) { denied = error instanceof ToolError && error.code === "ROLE_DENIED"; }
   assert(denied && calls === 1, "revoked caller reached domain boundary");
 });
+
+Deno.test("#2019 foreign indirect resources and nonexistent ids are indistinguishable", async () => {
+  const FOREIGN = "22222222-2222-4222-8222-222222222222";
+  const PARTNER = "33333333-3333-4333-8333-333333333333";
+  const makeResourceClient = (partnerExists: boolean): any => ({
+    rpc(name: string) {
+      return Promise.resolve({ data: name === "biz_role_rank" ? 30 : 60, error: null });
+    },
+    from(table: string) {
+      const query: any = {
+        select: () => query, eq: () => query,
+        maybeSingle: () => Promise.resolve({
+          data: table === "brand_partners" && partnerExists ? { brand_id: FOREIGN } : null,
+          error: null,
+        }),
+      };
+      return query;
+    },
+  });
+  const tool = { name: "disconnect_partner", requiredRole: "finance_manager", resource: "brand" } as const;
+  const codes: string[] = [];
+  for (const exists of [true, false]) {
+    try {
+      await authorizeAgentTool(tool, { brand_id: UUID, partner_id: PARTNER }, makeResourceClient(exists), UUID);
+    } catch (error) {
+      if (error instanceof ToolError) codes.push(error.code);
+    }
+  }
+  assert(codes.length === 2 && codes.every((code) => code === "BRAND_ACCESS_DENIED"), "resource existence leaked");
+});
