@@ -1339,6 +1339,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       if (typeof __DEV__ !== "undefined" && __DEV__) {
         console.info("[CoverPicker] cover media render failed", event);
       }
+      // Local preview playback and upload are independent; a preview render
+      // failure cannot declare the active upload failed.
       if (
         activeVideoUpload &&
         videoUpload.localPreviewUri !== null &&
