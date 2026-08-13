@@ -308,6 +308,7 @@ DECLARE
   -- and if it turns out to insert, the writes_outbox check below rejects it
   -- from this bucket outright.
   readers text[] := ARRAY[
+    'audit_overbroad_table_grants',
     'claim_notification_outbox',
     'claim_source_refund_notification_delivery',
     'claim_source_refund_notification_outbox',
