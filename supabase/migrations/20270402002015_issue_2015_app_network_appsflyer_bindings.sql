@@ -100,7 +100,7 @@ CREATE TABLE public.ad_app_acquisition_canaries (
   approved_spend_ceiling_cents bigint NULL CHECK (approved_spend_ceiling_cents >= 0),
   approved_currency text NULL CHECK (approved_currency IS NULL OR approved_currency ~ '^[A-Z]{3}$'),
   started_at timestamptz NULL,
-  paused_at timestamptz NULL,
+  completed_at timestamptz NULL,
   safe_provider_campaign_id text NULL CHECK (safe_provider_campaign_id IS NULL OR safe_provider_campaign_id ~ '^[A-Za-z0-9._:@/-]{1,160}$'),
   safe_evidence jsonb NULL CHECK (public.is_safe_ad_app_canary_evidence(safe_evidence)),
   evidence_expires_at timestamptz NULL,
@@ -112,7 +112,7 @@ CREATE TABLE public.ad_app_acquisition_canaries (
     REFERENCES public.ad_app_provider_bindings(app_key,os,provider) ON DELETE RESTRICT,
   CHECK (status NOT IN ('paused_ready','running','passed') OR (founder_approval_reference IS NOT NULL AND approved_spend_ceiling_cents IS NOT NULL AND approved_currency IS NOT NULL)),
   CHECK (status <> 'running' OR started_at IS NOT NULL),
-  CHECK (status NOT IN ('passed','failed') OR (started_at IS NOT NULL AND paused_at IS NOT NULL AND safe_provider_campaign_id IS NOT NULL AND safe_evidence IS NOT NULL))
+  CHECK (status NOT IN ('passed','failed') OR (started_at IS NOT NULL AND completed_at IS NOT NULL AND safe_provider_campaign_id IS NOT NULL AND safe_evidence IS NOT NULL))
 );
 
 INSERT INTO public.ad_app_acquisition_canaries(app_key,os,provider)
@@ -240,7 +240,7 @@ BEGIN
     evidence_summary=NULL,checked_at=NULL,expires_at=NULL,checked_by=NULL,configuration_version=configuration_version+1
   WHERE app_key=v_app AND os=v_os AND provider=v_provider;
   UPDATE public.ad_app_acquisition_canaries SET status='not_started',founder_approval_reference=NULL,
-    approved_spend_ceiling_cents=NULL,approved_currency=NULL,started_at=NULL,paused_at=NULL,
+    approved_spend_ceiling_cents=NULL,approved_currency=NULL,started_at=NULL,completed_at=NULL,
     safe_provider_campaign_id=NULL,safe_evidence=NULL,evidence_expires_at=NULL,canary_version=canary_version+1
   WHERE app_key=v_app AND os=v_os AND provider=v_provider;
   RETURN v_existing || jsonb_build_object('idempotent_replay',false);
@@ -318,9 +318,9 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $func
       END
       AND canary.safe_evidence->>'campaign_id'=canary.safe_provider_campaign_id
       AND (canary.safe_evidence->>'install_timestamp')::timestamptz>=canary.started_at
-      AND (canary.safe_evidence->>'install_timestamp')::timestamptz<=canary.paused_at
+      AND (canary.safe_evidence->>'install_timestamp')::timestamptz<=canary.completed_at
       AND (canary.safe_evidence->>'install_timestamp')::timestamptz<canary.evidence_expires_at
-      AND canary.paused_at IS NOT NULL
+      AND canary.completed_at IS NOT NULL
       AND canary.evidence_expires_at>clock_timestamp()
       AND public.is_safe_ad_app_canary_evidence(canary.safe_evidence)
   );

@@ -82,7 +82,7 @@ Deno.test("#2015 safe-binding writer is service-only, optimistic, idempotent, au
   assertMatch(sql, /p_change - ARRAY\[[^\]]*'idempotency_key'[^\]]*\]/s);
 });
 
-Deno.test("#2015 native campaign authority is default OFF and independently requires fresh exact readiness plus a paused passed canary", () => {
+Deno.test("#2015 native campaign authority is default OFF and independently requires fresh exact readiness plus a completed passed canary", () => {
   assertStringIncludes(
     sql,
     "VALUES ('enable_native_app_campaign_creation','false'::jsonb)",
@@ -101,7 +101,7 @@ Deno.test("#2015 native campaign authority is default OFF and independently requ
   assertStringIncludes(sql, "latest.stale_at>clock_timestamp()");
   assertStringIncludes(sql, "result.verdict='ready'");
   assertStringIncludes(sql, "canary.status='passed'");
-  assertStringIncludes(sql, "canary.paused_at IS NOT NULL");
+  assertStringIncludes(sql, "canary.completed_at IS NOT NULL");
   assertStringIncludes(sql, "canary.evidence_expires_at>clock_timestamp()");
   assertStringIncludes(
     sql,

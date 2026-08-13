@@ -48,7 +48,7 @@ Deno.test("#2015 rework enforces provider identity equality and strict canary li
       "canary.safe_evidence->>'device_os'=p_os",
       "canary.safe_evidence->>'campaign_id'=canary.safe_provider_campaign_id",
       "canary.safe_evidence->>'install_timestamp')::timestamptz>=canary.started_at",
-      "canary.safe_evidence->>'install_timestamp')::timestamptz<=canary.paused_at",
+      "canary.safe_evidence->>'install_timestamp')::timestamptz<=canary.completed_at",
       "canary.safe_evidence->>'install_timestamp')::timestamptz<canary.evidence_expires_at",
     ]
   ) assertStringIncludes(sql, clause);

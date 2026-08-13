@@ -101,7 +101,7 @@ serve((request: Request) =>
                 "app_key,os,provider,status,partner_active,install_mapping_enabled,privacy_status,safe_measurement_id,evidence_provenance,checked_at,expires_at,configuration_version",
               ),
               db.from("ad_app_acquisition_canaries").select(
-                "app_key,os,provider,status,founder_approval_reference,approved_spend_ceiling_cents,approved_currency,started_at,paused_at,safe_provider_campaign_id,evidence_expires_at,canary_version",
+                "app_key,os,provider,status,founder_approval_reference,approved_spend_ceiling_cents,approved_currency,started_at,completed_at,safe_provider_campaign_id,evidence_expires_at,canary_version",
               ),
             ]);
           const targets = requireData(targetResult) as Array<

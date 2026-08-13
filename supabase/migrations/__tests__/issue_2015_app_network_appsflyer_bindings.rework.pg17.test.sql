@@ -126,7 +126,7 @@ BEGIN
   SET status='passed',founder_approval_reference='issue-2015-test-approval',
       approved_spend_ceiling_cents=100,approved_currency='USD',
       started_at=clock_timestamp()-interval '2 minutes',
-      paused_at=clock_timestamp()-interval '1 minute',
+      completed_at=clock_timestamp()-interval '1 minute',
       safe_provider_campaign_id='reddit-canary-2015',
       safe_evidence=jsonb_build_object(
         'provenance','appsflyer_api',
@@ -166,8 +166,8 @@ BEGIN
 
   UPDATE public.ad_app_acquisition_canaries SET safe_evidence=jsonb_set(safe_evidence,'{install_timestamp}',to_jsonb((started_at-interval '1 second')::text)) WHERE app_key='business' AND os='android' AND provider='reddit';
   IF public.can_create_native_app_campaign('business','android','reddit') THEN RAISE EXCEPTION 'pre-start install authorized creation'; END IF;
-  UPDATE public.ad_app_acquisition_canaries SET safe_evidence=jsonb_set(safe_evidence,'{install_timestamp}',to_jsonb((paused_at+interval '1 second')::text)) WHERE app_key='business' AND os='android' AND provider='reddit';
-  IF public.can_create_native_app_campaign('business','android','reddit') THEN RAISE EXCEPTION 'post-pause install authorized creation'; END IF;
+  UPDATE public.ad_app_acquisition_canaries SET safe_evidence=jsonb_set(safe_evidence,'{install_timestamp}',to_jsonb((completed_at+interval '1 second')::text)) WHERE app_key='business' AND os='android' AND provider='reddit';
+  IF public.can_create_native_app_campaign('business','android','reddit') THEN RAISE EXCEPTION 'post-completion install authorized creation'; END IF;
 
   UPDATE public.ad_app_acquisition_canaries
   SET safe_evidence=jsonb_set(safe_evidence,'{install_timestamp}',to_jsonb((clock_timestamp()-interval '90 seconds')::text)),
