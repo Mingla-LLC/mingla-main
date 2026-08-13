@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-13 — Businesses can import consented contacts into Your Book and send them an email or SMS campaign only after Mingla shows an exact server-owned recipient count and honest cost state; confirmed recipients are sealed against expansion, suppression can still shrink a send, and retries cannot double-send. (#1995, PR #1997)
 - 2026-08-13 — Ari now has one enforced source-of-truth ledger for 116 Business operations, separating 64 registered tools from what is actually proven, broken, unsupported, handed off, or still in flight instead of treating registration as working capability. (#2000, PR #2006)
 - 2026-08-13 — Ari chat now translates its 64 canonical tool schemas into Gemini's supported contract before every model call, preventing the provider rejection that made every conversation fail while preserving confirmation and execution safeguards. (#1999, PR #2001)
 - 2026-08-13 — Rich Mingla chat snippets now open the actual event, RSVP, trip, experience, venue, or brand public page when tapped, while keeping the rich preview artwork and leaving Explorer-only place and curated shares unchanged. (#2004, PR #2005)
