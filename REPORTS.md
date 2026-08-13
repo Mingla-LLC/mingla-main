@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-13 — Mingla Business now has one truthful People page across iPhone, Android, and web: businesses can search their contact book, inspect one person's real source and contact facts, add a person safely, and enter the guarded CSV-import flow without fabricated reach counts or a competing legacy Audiences screen. (#1774, PR #1992)
 - 2026-08-13 — Contact import now installs cleanly on PostgreSQL 17 and browser preflight keeps every shared and import-specific permission header, with adversarial guards against unsafe extension resolution and future CORS drift. (#1993, PR #1994)
 - 2026-08-13 — Businesses can import CSV contact lists through a server-validated, consent-audited workflow with column mapping, suppression-safe identity handling, retry recovery, and paged results; the production engine is installed dark until the People-page entry point ships. (#1775, PR #1990)
 - 2026-08-13 — Public event, RSVP, experience, trip, venue, and brand pages now keep their cover artwork clean instead of duplicating titles and banners; sharing those web pages sends their canonical link with rich chat previews, while Mingla Explorer's custom share pages remain unchanged. (#1968, PR #1969)

@@ -8384,36 +8384,36 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 ---
 
-## DRAFT — issue #1774 (first truthful Business People page)
+## ACTIVE — issue #1774 (first truthful Business People page; ratified 2026-08-13)
 
-> Registered DRAFT at issue #1774 IMPLEMENT. The orchestrator may activate these only after independent tester PASS, all-green merge, surgical migration apply, and production verification.
+> Independently verified across Business iOS, Android, web, and a fresh PostgreSQL 17 chain; production activation remains fail-closed on `contact_import_v1`.
 
-### I-PROPOSED-1774-PEOPLE-RPC-ONLY (DRAFT)
+### I-PROPOSED-1774-PEOPLE-RPC-ONLY (ACTIVE)
 
 - **Rule:** Business People book, detail, and manual-add data crosses the client boundary only through `biz_get_brand_people_book`, `biz_get_brand_person`, and `biz_add_brand_person`. No People component may read Brand People tables directly.
 - **Enforcement:** issue #1774 client/SQL regressions and `.github/scripts/strict-grep/issue-1774-people-page.mjs`.
 
-### I-PROPOSED-1774-NO-FABRICATED-REACH (DRAFT)
+### I-PROPOSED-1774-NO-FABRICATED-REACH (ACTIVE)
 
 - **Rule:** Followers, Extended circle, and combined reach remain explicitly unavailable until a privacy-safe server authority exists. Counts must never be inferred, hard-coded, or borrowed from unrelated datasets.
 - **Enforcement:** issue #1774 page regression and static gate.
 
-### I-PROPOSED-1774-MANUAL-ADD-IDEMPOTENT (DRAFT)
+### I-PROPOSED-1774-MANUAL-ADD-IDEMPOTENT (ACTIVE)
 
 - **Rule:** One manual-add client request ID represents one length-framed normalized payload for one actor and one brand. Exact replay returns the durable result; changed replay is rejected; ambiguous identity creates review work and never silently merges.
-- **Enforcement:** `20270329001774_issue_1774_people_page.sql`, its PostgreSQL 17 regression, and the issue #1774 gate.
+- **Enforcement:** `20270329001774_issue_1774_people_page.sql`, forward qualification migration `20270330001774_issue_1774_qualify_people_digest.sql`, their PostgreSQL 17 regressions, and the issue #1774 gate.
 
-### I-PROPOSED-1774-LEGACY-AUDIENCES-REDIRECT (DRAFT)
+### I-PROPOSED-1774-LEGACY-AUDIENCES-REDIRECT (ACTIVE)
 
 - **Rule:** The legacy Business Marketing Audiences route is a renderless redirect to People. It must not mount, query, or maintain a second audience screen.
 - **Enforcement:** issue #1774 route regressions and static gate.
 
-### I-PROPOSED-1774-DEPENDENCY-NO-DEAD-TAP (DRAFT)
+### I-PROPOSED-1774-DEPENDENCY-NO-DEAD-TAP (ACTIVE)
 
 - **Rule:** A People dependency is actionable only when its real authority is resolved and available. Otherwise the page shows an explicit unavailable state and no dead or misleading tap target; contact import is fail-closed on `contact_import_v1`.
 - **Enforcement:** issue #1774 page/import regressions and static gate.
 
-### I-PROPOSED-1774-PEOPLE-ANALYTICS-NO-PII (DRAFT)
+### I-PROPOSED-1774-PEOPLE-ANALYTICS-NO-PII (ACTIVE)
 
 - **Rule:** People analytics may describe surface, dependency state, bounded result, and coarse bucket only. It may never carry a person's name, contact value, person ID, brand ID, search text, or other identity payload.
 - **Enforcement:** `peopleAnalytics.ts` property schema and `.github/scripts/strict-grep/issue-1774-people-page.mjs`.
