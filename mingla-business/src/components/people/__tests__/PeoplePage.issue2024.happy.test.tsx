@@ -108,13 +108,15 @@ jest.mock("../PeoplePrimitives", () => ({
     count,
     children,
     testID,
+    floatingActionInset,
   }: {
     title: string;
     count?: string;
     children: React.ReactNode;
     testID?: string;
+    floatingActionInset?: number;
   }) => (
-    <View testID={testID}>
+    <View testID={testID} style={{ paddingRight: floatingActionInset ?? 0 }}>
       <Text accessibilityRole="header">{title}</Text>
       {count !== undefined ? <Text>{count}</Text> : null}
       {children}
@@ -208,6 +210,14 @@ describe("issue #2024 rendered People workspace happy path", () => {
     expect(row).toMatchObject({ flexDirection: "row", alignItems: "flex-start", gap: 24 });
     expect(bookColumn).toMatchObject({ flexBasis: 0, flexGrow: 5, minWidth: 0 });
     expect(groupsColumn).toMatchObject({ flexBasis: 0, flexGrow: 3, minWidth: 0 });
+    const bookBlock = tree.root.find(
+      (node: any) => node.type === View && node.props.testID === "people-book-block",
+    );
+    const groupsBlock = tree.root.find(
+      (node: any) => node.type === View && node.props.testID === "people-groups-block",
+    );
+    expect(StyleSheet.flatten(bookBlock.props.style).paddingRight).toBe(0);
+    expect(StyleSheet.flatten(groupsBlock.props.style).paddingRight).toBe(176);
   });
 
   test("keeps one visually hidden People heading without a visible duplicate", () => {
@@ -242,7 +252,7 @@ describe("issue #2024 rendered People workspace happy path", () => {
   test.each([
     { name: "iPhone SE", width: 320, height: 568, bottom: 120 },
     { name: "modern compact", width: 390, height: 844, bottom: 132 },
-  ])("reserves a clear viewport lane above the FAB on $name", ({ width, height, bottom }) => {
+  ])("keeps a full-height canvas and a local clear lane beside the FAB on $name", ({ width, bottom }) => {
     layout = { isWideDesktop: false, isWeb: false, width };
     stickyOffset = bottom;
     renderPage();
@@ -250,11 +260,29 @@ describe("issue #2024 rendered People workspace happy path", () => {
     const scroll = tree.root.findByType(ScrollView);
     const scrollStyle = StyleSheet.flatten(scroll.props.style);
     const contentStyle = StyleSheet.flatten(scroll.props.contentContainerStyle);
-    const fabStyle = StyleSheet.flatten(fab.props.style({ pressed: false }));
-    const scrollViewportBottom = height - scrollStyle.marginBottom;
-    const fabTop = height - fabStyle.bottom - 48;
-    expect(fabTop - scrollViewportBottom).toBeGreaterThanOrEqual(16);
+    const bookStyle = StyleSheet.flatten(
+      tree.root.find(
+        (node: any) => node.type === View && node.props.testID === "people-book-block",
+      ).props.style,
+    );
+    const groupsStyle = StyleSheet.flatten(
+      tree.root.find(
+        (node: any) => node.type === View && node.props.testID === "people-groups-block",
+      ).props.style,
+    );
+    expect(scrollStyle?.marginBottom).toBeUndefined();
+    expect(bookStyle.paddingRight - 160).toBeGreaterThanOrEqual(16);
+    expect(groupsStyle.paddingRight - 160).toBeGreaterThanOrEqual(16);
     expect(contentStyle.paddingBottom).toBe(bottom + 48 + 16);
+    TestRenderer.act(() =>
+      fab.props.onLayout({ nativeEvent: { layout: { width: 200 } } }),
+    );
+    const enlargedBookStyle = StyleSheet.flatten(
+      tree.root.find(
+        (node: any) => node.type === View && node.props.testID === "people-book-block",
+      ).props.style,
+    );
+    expect(enlargedBookStyle.paddingRight - 200).toBeGreaterThanOrEqual(16);
   });
 
   test("makes campaign-action state changes instantaneous for reduced motion", () => {

@@ -54,6 +54,7 @@ import {
 import { useMarketingBrandSwitcher } from "./MarketingBrandSwitcherContext";
 
 const FAB_HEIGHT = 48;
+const FAB_FALLBACK_WIDTH = 160;
 const FAB_BASE_BACKGROUND = "rgba(235, 120, 37, 0.42)";
 const FAB_HOVER_BACKGROUND = "rgba(235, 120, 37, 0.52)";
 
@@ -205,6 +206,7 @@ export function PeoplePage(): React.ReactElement {
   const [creatingKey, setCreatingKey] = React.useState<string | null>(null);
   const [fabHovered, setFabHovered] = React.useState(false);
   const [fabFocused, setFabFocused] = React.useState(false);
+  const [fabWidth, setFabWidth] = React.useState(FAB_FALLBACK_WIDTH);
   const [toast, setToast] = React.useState<{
     message: string;
     kind: "success" | "error";
@@ -357,7 +359,6 @@ export function PeoplePage(): React.ReactElement {
             { paddingBottom: fabOffset + FAB_HEIGHT + spacing.md },
           ]}
           keyboardShouldPersistTaps="handled"
-          style={{ marginBottom: fabOffset + FAB_HEIGHT + spacing.md }}
         >
           <PageHeading />
           <View
@@ -380,6 +381,7 @@ export function PeoplePage(): React.ReactElement {
                     : undefined
                 }
                 elevated
+                floatingActionInset={isWideDesktop ? undefined : fabWidth + spacing.md}
                 testID="people-book-block"
               >
                 {book.kind==="authLoading"||book.kind==="roleLoading"||book.kind==="loading" ? (
@@ -504,6 +506,7 @@ export function PeoplePage(): React.ReactElement {
               <PeopleBlock
                 title="Groups"
                 caption="Buyer groups that update automatically."
+                floatingActionInset={fabWidth + spacing.md}
                 testID="people-groups-block"
               >
                 {!groups.hasResolved&&!groups.isError ? (
@@ -562,6 +565,10 @@ export function PeoplePage(): React.ReactElement {
           onFocus={() => setFabFocused(true)}
           onHoverIn={() => setFabHovered(true)}
           onHoverOut={() => setFabHovered(false)}
+          onLayout={(event) => {
+            const measuredWidth = Math.ceil(event.nativeEvent.layout.width);
+            setFabWidth((currentWidth) => Math.max(currentWidth, measuredWidth));
+          }}
           onPress={openNewCampaign}
           testID="people-new-campaign"
           style={({ pressed }) => [

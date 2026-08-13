@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const files = {
   page: "mingla-business/src/components/people/PeoplePage.tsx",
+  primitives: "mingla-business/src/components/people/PeoplePrimitives.tsx",
   route: "mingla-business/app/(tabs)/marketing/people/index.tsx",
   happy: "mingla-business/src/components/people/__tests__/PeoplePage.issue2024.happy.test.tsx",
   preservedHappy:
@@ -30,6 +31,7 @@ export function audit(base) {
     return fs.readFileSync(target, "utf8");
   };
   const page = read("page");
+  const primitives = read("primitives");
   const route = read("route");
   const happy = read("happy");
   const preservedHappy = read("preservedHappy");
@@ -69,8 +71,16 @@ export function audit(base) {
   if (!page.includes("paddingBottom: fabOffset + FAB_HEIGHT + spacing.md")) {
     failures.push("People content no longer clears the FAB by the approved amount");
   }
-  if (!page.includes("style={{ marginBottom: fabOffset + FAB_HEIGHT + spacing.md }}")) {
-    failures.push("People scroll viewport no longer reserves a clear lane above the FAB");
+  if (/marginBottom\s*:\s*fabOffset\s*\+\s*FAB_HEIGHT/.test(page)) {
+    failures.push("People restored the forbidden full-width FAB bottom bar");
+  }
+  if (
+    !page.includes("floatingActionInset={isWideDesktop ? undefined : fabWidth + spacing.md}") ||
+    !page.includes("floatingActionInset={fabWidth + spacing.md}") ||
+    !page.includes("setFabWidth((currentWidth) => Math.max(currentWidth, measuredWidth))") ||
+    !primitives.includes("floatingActionInset!==undefined?{paddingRight:floatingActionInset}:undefined")
+  ) {
+    failures.push("People lost the measured local FAB-side content exclusion");
   }
   if (!page.includes('testID="people-new-campaign"') || !page.includes('accessibilityLabel="New campaign"')) {
     failures.push("People lost the labelled New campaign action");
@@ -84,6 +94,9 @@ export function audit(base) {
   }
   if (!happy.includes("TestRenderer.create(<PeoplePage />)") || !happy.includes('node.props.testID === "people-new-campaign"')) {
     failures.push("issue #2024 happy guard no longer renders the real PeoplePage and campaign action");
+  }
+  if (!happy.includes("marginBottom).toBeUndefined()") || !happy.includes("paddingRight - 200")) {
+    failures.push("issue #2024 rendered guard no longer rejects both overlap and viewport shrink");
   }
   if (!workflow.includes("PeoplePage.issue2024.happy.test.tsx") || !workflow.includes("issue-2024-people-page-layout.mjs --self-test") || !workflow.includes("issue-2024-people-page-layout.mjs")) {
     failures.push("issue #2024 happy/static guards are not both CI-wired");
@@ -145,18 +158,43 @@ function selfTest() {
       "useStickyFooterOffset",
     );
     expectMutation(
-      "FAB viewport lane deleted",
+      "local FAB-side lane deleted",
       () => {
         const source = fs.readFileSync(target("page"), "utf8");
         fs.writeFileSync(
           target("page"),
           source.replace(
-            'style={{ marginBottom: fabOffset + FAB_HEIGHT + spacing.md }}',
-            'style={{ marginBottom: 0 }}',
+            "floatingActionInset={fabWidth + spacing.md}",
+            "floatingActionInset={undefined}",
           ),
         );
       },
-      "clear lane above the FAB",
+      "measured local FAB-side content exclusion",
+    );
+    expectMutation(
+      "global FAB bottom bar restored",
+      () => {
+        const source = fs.readFileSync(target("page"), "utf8");
+        fs.writeFileSync(
+          target("page"),
+          `${source}\nconst revertedViewport = { marginBottom: fabOffset + FAB_HEIGHT };\n`,
+        );
+      },
+      "forbidden full-width FAB bottom bar",
+    );
+    expectMutation(
+      "PeopleBlock stops applying the local lane",
+      () => {
+        const source = fs.readFileSync(target("primitives"), "utf8");
+        fs.writeFileSync(
+          target("primitives"),
+          source.replace(
+            "floatingActionInset!==undefined?{paddingRight:floatingActionInset}:undefined",
+            "undefined",
+          ),
+        );
+      },
+      "measured local FAB-side content exclusion",
     );
     expectMutation(
       "campaign action deleted",
