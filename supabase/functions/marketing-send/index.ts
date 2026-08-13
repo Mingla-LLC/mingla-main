@@ -39,6 +39,13 @@ import {
   type ResolvedContact,
 } from "../_shared/marketingAudience.ts";
 import {
+  buildMarketingBookQuote,
+  parseBookQuotedAt,
+  publicMarketingBookQuote,
+  resolveMarketingTrackingOrigin,
+  rewriteMarketingSmsLinks,
+} from "../_shared/marketingBookQuote.ts";
+import {
   type EmbeddedEvent,
   type MarketingVariables,
   renderMarketingEmail,
@@ -375,7 +382,9 @@ interface DispatchResult {
   preview_skipped?: number;
 }
 
-serve(async (req) => {
+export async function handleMarketingSendRequest(
+  req: Request,
+): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: ticketCorsHeaders });
   }
@@ -396,10 +405,19 @@ serve(async (req) => {
     return jsonResponse({ error: "resend_not_configured" }, 503);
   }
 
-  let body: { campaign_id?: string } = {};
+  let body: {
+    action?: string;
+    campaign_id?: string;
+    client_request_id?: string;
+    quoteHash?: string;
+    expectedCostMinor?: number | null;
+    currency?: string | null;
+    scheduledFor?: string | null;
+    quotedAt?: string;
+  } = {};
   try {
     const raw = await req.text();
-    if (raw.length > 0) body = JSON.parse(raw) as { campaign_id?: string };
+    if (raw.length > 0) body = JSON.parse(raw) as typeof body;
   } catch (_err) {
     return jsonResponse({ error: "invalid_json_body" }, 400);
   }
@@ -408,6 +426,8 @@ serve(async (req) => {
   const auth = req.headers.get("authorization") ?? "";
   const isServiceRole = serviceKey.length > 0 &&
     auth === `Bearer ${serviceKey}`;
+  const isBookAction = body.action === "preview_book_v1" ||
+    body.action === "confirm_book_v1";
 
   // Direct invocation path requires a campaign_id AND a user JWT we can
   // verify ownership against. Cron path has neither.
@@ -415,13 +435,165 @@ serve(async (req) => {
     if (typeof body.campaign_id !== "string" || body.campaign_id.length === 0) {
       return jsonResponse({ error: "forbidden" }, 403);
     }
-    const ownsCampaign = await verifyCampaignOwnership(req, body.campaign_id);
-    if (!ownsCampaign) {
-      return jsonResponse({ error: "forbidden" }, 403);
+    if (!isBookAction) {
+      const ownsCampaign = await verifyCampaignOwnership(req, body.campaign_id);
+      if (!ownsCampaign) {
+        return jsonResponse({ error: "forbidden" }, 403);
+      }
     }
   }
 
   const supabase = serviceClient();
+  if (isBookAction) {
+    if (typeof body.campaign_id !== "string" || isServiceRole) {
+      return jsonResponse({ error: "BOOK_BLAST_FORBIDDEN" }, 403);
+    }
+    const { data: actor } = await userClient(req).auth.getUser();
+    if (actor.user === null) {
+      return jsonResponse({ error: "BOOK_BLAST_FORBIDDEN" }, 403);
+    }
+    if (body.action === "confirm_book_v1") {
+      if (
+        typeof body.client_request_id !== "string" ||
+        typeof body.quoteHash !== "string" ||
+        typeof body.quotedAt !== "string" ||
+        (body.expectedCostMinor !== null &&
+          typeof body.expectedCostMinor !== "number") ||
+        (body.currency !== null && typeof body.currency !== "string") ||
+        (body.scheduledFor !== null && body.scheduledFor !== undefined &&
+          typeof body.scheduledFor !== "string")
+      ) return jsonResponse({ error: "BOOK_BLAST_PREVIEW_STALE" }, 409);
+      try {
+        const existing = await findExistingBookSend(
+          supabase,
+          actor.user.id,
+          body.campaign_id,
+          body.client_request_id,
+          body.quoteHash,
+          body.quotedAt,
+          body.expectedCostMinor ?? null,
+          body.currency ?? null,
+          body.scheduledFor ?? null,
+        );
+        if (existing !== null) {
+          return jsonResponse(
+            existingBookSendResponse(existing),
+          );
+        }
+      } catch (error) {
+        return bookRpcErrorResponse(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+    const candidates = await supabase.rpc(
+      "biz_marketing_book_quote_candidates",
+      { p_actor_id: actor.user.id, p_campaign_id: body.campaign_id },
+    );
+    if (candidates.error) {
+      return bookRpcErrorResponse(candidates.error.message);
+    }
+    const requestedQuotedAt = body.action === "confirm_book_v1"
+      ? parseBookQuotedAt(body.quotedAt)
+      : new Date();
+    if (requestedQuotedAt === null) {
+      const refreshed = await safeBookQuote(candidates.data);
+      return jsonResponse({
+        error: "BOOK_BLAST_PREVIEW_STALE",
+        preview: refreshed,
+      }, 409);
+    }
+    let quote;
+    try {
+      quote = await buildMarketingBookQuote(
+        candidates.data as never,
+        requestedQuotedAt,
+      );
+    } catch (error) {
+      return jsonResponse({
+        error: (error instanceof Error && error.message.includes("mms"))
+          ? "BOOK_BLAST_MMS_NOT_SUPPORTED"
+          : "BOOK_BLAST_COST_UNAVAILABLE",
+      }, error instanceof Error && error.message.includes("mms") ? 409 : 503);
+    }
+    if (body.action === "preview_book_v1") {
+      return jsonResponse(publicMarketingBookQuote(quote));
+    }
+    if (
+      body.quoteHash !== quote.quoteHash ||
+      body.expectedCostMinor !== quote.estimatedCostMinor ||
+      body.currency !== quote.currency
+    ) {
+      return jsonResponse({
+        error: "BOOK_BLAST_PREVIEW_STALE",
+        preview: publicMarketingBookQuote(quote),
+      }, 409);
+    }
+    if (quote.reachableCount === 0) {
+      return jsonResponse({ error: "BOOK_BLAST_ZERO_RECIPIENTS" }, 409);
+    }
+    const confirmed = await supabase.rpc("biz_confirm_marketing_book_send_v1", {
+      p_actor_id: actor.user.id,
+      p_campaign_id: body.campaign_id,
+      p_client_request_id: body.client_request_id,
+      p_quote_snapshot: quote,
+      p_scheduled_for: body.scheduledFor ?? null,
+    });
+    if (confirmed.error) {
+      return bookRpcErrorResponse(confirmed.error.message);
+    }
+    if ((confirmed.data as { replay?: boolean } | null)?.replay === true) {
+      try {
+        const existing = await findExistingBookSend(
+          supabase,
+          actor.user.id,
+          body.campaign_id,
+          body.client_request_id as string,
+          body.quoteHash as string,
+          body.quotedAt as string,
+          body.expectedCostMinor ?? null,
+          body.currency ?? null,
+          body.scheduledFor ?? null,
+        );
+        if (existing === null) throw new Error("book_blast_preview_stale");
+        return jsonResponse(
+          existingBookSendResponse(existing),
+        );
+      } catch (error) {
+        return bookRpcErrorResponse(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+    // A null schedule is the direct-send contract: atomically confirmed SQL
+    // has made the campaign claimable, so enter the exact same claim/dispatch/
+    // finalize path as the legacy direct invocation. Future schedules remain
+    // untouched for cron. Atomic claim + marketing_messages uniqueness make a
+    // repeated request provider-idempotent.
+    const directDispatch = body.scheduledFor == null
+      ? await dispatchConfirmedBookSend(
+        supabase,
+        body.campaign_id,
+        null,
+        { live: LIVE, resendApiKey: RESEND_API_KEY },
+      )
+      : null;
+    if (directDispatch !== null) {
+      const accounted = directDispatch.delivered + directDispatch.deferred +
+        directDispatch.recipient_failed + directDispatch.preview_skipped;
+      if (accounted > quote.reachableCount) {
+        return jsonResponse({ error: "BOOK_BLAST_PREVIEW_STALE" }, 409);
+      }
+      directDispatch.skipped_after_confirm = quote.reachableCount - accounted;
+    }
+    return jsonResponse({
+      ...(confirmed.data as Record<string, unknown>),
+      resultState: body.scheduledFor == null
+        ? directDispatch?.deferred ? "deferred" : "complete"
+        : "scheduled",
+      ...(directDispatch === null ? {} : { dispatch: directDispatch }),
+    });
+  }
   let campaigns: CampaignRow[];
   try {
     campaigns = await claimCampaigns(supabase, body.campaign_id ?? null);
@@ -435,72 +607,50 @@ serve(async (req) => {
     );
   }
 
-  const results: DispatchResult[] = [];
-  let succeeded = 0;
-  let failed = 0;
-  let previewSkippedTotal = 0;
+  return jsonResponse(
+    await processClaimedCampaigns(
+      supabase,
+      campaigns,
+      { live: LIVE, resendApiKey: RESEND_API_KEY },
+    ),
+  );
+}
 
-  for (const campaign of campaigns) {
-    try {
-      const outcome = await dispatchByKind(supabase, campaign, {
-        live: LIVE,
-        resendApiKey: RESEND_API_KEY,
-      });
-      previewSkippedTotal += outcome.preview_skipped;
-      // ORCH-1270 RC-2 — honest campaign status. The old inline
-      // `UPDATE ... SET status='sent', recipient_count=outcome.recipients`
-      // lied when every recipient was quiet-hours-failed (0 delivered → still
-      // 'sent'). mkt_finalize_campaign recomputes the true outcome from
-      // marketing_messages and NEVER marks 'sent' unless delivered>0 OR
-      // preview_skipped>0 — a deferred cohort parks it back in 'scheduled' with
-      // a future scheduled_for so the existing cron re-picks it in-window.
-      const { error: finalizeErr } = await supabase.rpc(
-        "mkt_finalize_campaign",
-        {
-          p_campaign_id: campaign.id,
-        },
-      );
-      if (finalizeErr) throw new Error(`finalize:${finalizeErr.message}`);
-      results.push({
-        campaign_id: campaign.id,
-        status: "succeeded",
-        delivered: outcome.delivered,
-        deferred: outcome.deferred,
-        failed: outcome.failed,
-        preview_skipped: outcome.preview_skipped,
-      });
-      succeeded += 1;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(
-        `[marketing-send] campaign ${campaign.id} failed: ${message}`,
-      );
-      await supabase
-        .from("marketing_campaigns")
-        .update({
-          status: "failed",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", campaign.id);
-      results.push({
-        campaign_id: campaign.id,
-        status: "failed",
-        reason: message,
-      });
-      failed += 1;
-    }
+function bookRpcErrorResponse(message: string): Response {
+  const envelope = bookRpcErrorEnvelope(message);
+  return jsonResponse({ error: envelope.error }, envelope.status);
+}
+
+export function bookRpcErrorEnvelope(
+  message: string,
+): { error: string; status: number } {
+  if (message.includes("book_blast_audience_not_found")) {
+    return { error: "BOOK_BLAST_AUDIENCE_NOT_FOUND", status: 404 };
   }
+  if (message.includes("book_blast_flag_disabled")) {
+    return { error: "BOOK_BLAST_FLAG_DISABLED", status: 503 };
+  }
+  if (message.includes("book_blast_forbidden")) {
+    return { error: "BOOK_BLAST_FORBIDDEN", status: 403 };
+  }
+  if (message.includes("book_blast_idempotency_conflict")) {
+    return { error: "BOOK_BLAST_IDEMPOTENCY_CONFLICT", status: 409 };
+  }
+  if (message.includes("book_blast_zero_recipients")) {
+    return { error: "BOOK_BLAST_ZERO_RECIPIENTS", status: 409 };
+  }
+  return { error: "BOOK_BLAST_PREVIEW_STALE", status: 409 };
+}
 
-  return jsonResponse({
-    processed: campaigns.length,
-    succeeded,
-    failed,
-    preview_skipped: previewSkippedTotal,
-    errors: results
-      .filter((r) => r.status === "failed")
-      .map((r) => ({ campaign_id: r.campaign_id, reason: r.reason ?? "" })),
-  });
-});
+async function safeBookQuote(candidates: unknown) {
+  try {
+    return publicMarketingBookQuote(
+      await buildMarketingBookQuote(candidates as never),
+    );
+  } catch {
+    return null;
+  }
+}
 
 async function verifyCampaignOwnership(
   req: Request,
@@ -561,6 +711,214 @@ interface DispatchOutcome {
   deferred: number;
   failed: number;
   preview_skipped: number;
+}
+
+type CampaignDispatcher = (
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  campaign: CampaignRow,
+  options: DispatchOptions,
+) => Promise<DispatchOutcome>;
+
+interface DispatchBatchSummary {
+  processed: number;
+  succeeded: number;
+  failed: number;
+  delivered: number;
+  deferred: number;
+  recipient_failed: number;
+  skipped_after_confirm: number;
+  preview_skipped: number;
+  errors: Array<{ campaign_id: string; reason: string }>;
+}
+
+export async function processClaimedCampaigns(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  campaigns: CampaignRow[],
+  options: DispatchOptions,
+  dispatcher: CampaignDispatcher = dispatchByKind,
+): Promise<DispatchBatchSummary> {
+  const results: DispatchResult[] = [];
+  let succeeded = 0;
+  let failed = 0;
+  let deliveredTotal = 0;
+  let deferredTotal = 0;
+  let recipientFailedTotal = 0;
+  let previewSkippedTotal = 0;
+
+  for (const campaign of campaigns) {
+    try {
+      const outcome = await dispatcher(supabase, campaign, options);
+      deliveredTotal += outcome.delivered;
+      deferredTotal += outcome.deferred;
+      recipientFailedTotal += outcome.failed;
+      previewSkippedTotal += outcome.preview_skipped;
+      const { error: finalizeErr } = await supabase.rpc(
+        "mkt_finalize_campaign",
+        { p_campaign_id: campaign.id },
+      );
+      if (finalizeErr) throw new Error(`finalize:${finalizeErr.message}`);
+      results.push({
+        campaign_id: campaign.id,
+        status: "succeeded",
+        delivered: outcome.delivered,
+        deferred: outcome.deferred,
+        failed: outcome.failed,
+        preview_skipped: outcome.preview_skipped,
+      });
+      succeeded += 1;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[marketing-send] campaign ${campaign.id} failed: ${message}`,
+      );
+      await supabase
+        .from("marketing_campaigns")
+        .update({ status: "failed", updated_at: new Date().toISOString() })
+        .eq("id", campaign.id);
+      const { error: bookFailureError } = await supabase.rpc(
+        "biz_record_marketing_book_send_failure_v1",
+        { p_campaign_id: campaign.id },
+      );
+      if (bookFailureError) {
+        console.error(
+          `[marketing-send] campaign ${campaign.id} Book failure marker failed: ${bookFailureError.message}`,
+        );
+      }
+      results.push({
+        campaign_id: campaign.id,
+        status: "failed",
+        reason: message,
+      });
+      failed += 1;
+    }
+  }
+
+  return {
+    processed: campaigns.length,
+    succeeded,
+    failed,
+    delivered: deliveredTotal,
+    deferred: deferredTotal,
+    recipient_failed: recipientFailedTotal,
+    skipped_after_confirm: 0,
+    preview_skipped: previewSkippedTotal,
+    errors: results
+      .filter((result) => result.status === "failed")
+      .map((result) => ({
+        campaign_id: result.campaign_id,
+        reason: result.reason ?? "",
+      })),
+  };
+}
+
+interface ExistingBookResult {
+  executionId: string;
+  campaignId: string;
+  scheduledFor: string;
+  sendMode: "now" | "scheduled";
+  campaignStatus: string;
+  campaignFailed: boolean;
+  sealedReachable: number;
+  delivered: number;
+  deferred: number;
+  recipientFailed: number;
+  previewSkipped: number;
+  queued: number;
+  messageRows: number;
+}
+
+export function existingBookSendResponse(
+  existing: ExistingBookResult,
+): Record<string, unknown> {
+  if (existing.messageRows > existing.sealedReachable) {
+    throw new Error("book_blast_execution_expanded");
+  }
+  const common = {
+    executionId: existing.executionId,
+    campaignId: existing.campaignId,
+    scheduledFor: existing.scheduledFor,
+    replay: true,
+  };
+  if (
+    existing.sendMode === "scheduled" &&
+    existing.campaignStatus === "scheduled" && existing.messageRows === 0
+  ) {
+    return { ...common, resultState: "scheduled" };
+  }
+  if (
+    existing.campaignStatus === "sending" || existing.queued > 0 ||
+    (existing.campaignStatus === "scheduled" && existing.messageRows === 0)
+  ) return { ...common, resultState: "in_progress" };
+  const campaignFailed = existing.campaignFailed;
+  return {
+    ...common,
+    resultState: existing.deferred > 0 ? "deferred" : "complete",
+    dispatch: {
+      processed: 1,
+      succeeded: campaignFailed ? 0 : 1,
+      failed: campaignFailed ? 1 : 0,
+      delivered: existing.delivered,
+      deferred: existing.deferred,
+      recipient_failed: existing.recipientFailed,
+      preview_skipped: existing.previewSkipped,
+      skipped_after_confirm: Math.max(
+        existing.sealedReachable - existing.messageRows,
+        0,
+      ),
+      errors: campaignFailed
+        ? [{ campaign_id: existing.campaignId, reason: "campaign_failed" }]
+        : [],
+    },
+  };
+}
+
+async function findExistingBookSend(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  actorId: string,
+  campaignId: string,
+  clientRequestId: string,
+  quoteHash: string,
+  quotedAt: string,
+  expectedCostMinor: number | null,
+  currency: string | null,
+  scheduledFor: string | null,
+): Promise<ExistingBookResult | null> {
+  const { data, error } = await supabase.rpc(
+    "biz_marketing_book_existing_result_v1",
+    {
+      p_actor_id: actorId,
+      p_campaign_id: campaignId,
+      p_client_request_id: clientRequestId,
+      p_quote_hash: quoteHash,
+      p_quoted_at: quotedAt,
+      p_expected_cost_minor: expectedCostMinor,
+      p_currency: currency,
+      p_scheduled_for: scheduledFor,
+    },
+  );
+  if (error) throw new Error(error.message);
+  return data as ExistingBookResult | null;
+}
+
+export async function dispatchConfirmedBookSend(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  campaignId: string,
+  scheduledFor: string | null,
+  options: DispatchOptions,
+  dispatcher: CampaignDispatcher = dispatchByKind,
+): Promise<DispatchBatchSummary | null> {
+  if (scheduledFor !== null) return null;
+  const claimed = await claimCampaigns(supabase, campaignId);
+  return await processClaimedCampaigns(
+    supabase,
+    claimed,
+    options,
+    dispatcher,
+  );
 }
 
 async function dispatchByKind(
@@ -655,7 +1013,11 @@ async function sendEmail(
   );
 
   // 2. Resolve audience via shared helper (service-role bypasses RLS).
-  const resolved = await resolveAudience(supabase, audience.query_definition);
+  const resolved = await resolveAudience(
+    supabase,
+    audience.query_definition,
+    campaign.id,
+  );
 
   // 3. Per-recipient send loop.
   const subject = campaign.channel_payload.subject ?? "";
@@ -879,39 +1241,6 @@ interface SmsContact {
  * — NEVER a public shortener. Each rewritten link gets a marketing_clicks row so
  * attribution + per-campaign click tracking works identically to email.
  */
-function rewriteSmsLinks(
-  body: string,
-): {
-  rewritten: string;
-  links: Array<{ tracking_id: string; destination_url: string }>;
-} {
-  const links: Array<{ tracking_id: string; destination_url: string }> = [];
-  const origin = getTrackingRedirectOrigin();
-  const urlRe = /https?:\/\/[^\s]+/g;
-  const rewritten = body.replace(urlRe, (match) => {
-    // Strip a trailing sentence punctuation so it isn't swallowed into the URL.
-    const trailingMatch = match.match(/[.,;:!?)]+$/);
-    const trailing = trailingMatch ? trailingMatch[0] : "";
-    const destination = trailing.length > 0
-      ? match.slice(0, match.length - trailing.length)
-      : match;
-    const trackingId = generateTrackingId();
-    links.push({ tracking_id: trackingId, destination_url: destination });
-    return `${origin}/${trackingId}${trailing}`;
-  });
-  return { rewritten, links };
-}
-
-function getTrackingRedirectOrigin(): string {
-  const override = Deno.env.get("MINGLA_TRACKING_LINK_ORIGIN");
-  if (override !== undefined && override.trim().length > 0) {
-    return override.replace(/\/+$/, "");
-  }
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")?.replace(/\/+$/, "") ??
-    "https://gqnoajqerqhnvulmnyvv.supabase.co";
-  return `${supabaseUrl}/functions/v1/marketing-track-click`;
-}
-
 // META-ORCH-1161 go-live-prep (P3-1 carry-forward) — US NANP area-code → IANA
 // timezone. The prior quiet-hours logic anchored EVERY US number to
 // America/New_York, so a +1 West-Coast recipient was evaluated at Eastern time
@@ -1309,7 +1638,11 @@ async function sendSms(
 
   // 2. Resolve audience (service-role bypasses RLS). reachable_sms is now truthful
   //    (Sub-B phone-suppression fix in marketingAudience.ts).
-  const resolved = await resolveAudience(supabase, audience.query_definition);
+  const resolved = await resolveAudience(
+    supabase,
+    audience.query_definition,
+    campaign.id,
+  );
 
   const rawBody = (campaign.channel_payload.body ?? "").trim();
   if (rawBody.length === 0) throw new Error("sms_body_empty");
@@ -1443,7 +1776,11 @@ async function sendSms(
 
       // disposition.action === "send" — in-window: existing send path.
       // Branded links + per-link click rows.
-      const { rewritten, links } = rewriteSmsLinks(rawBody);
+      const { rewritten, links } = rewriteMarketingSmsLinks(
+        rawBody,
+        resolveMarketingTrackingOrigin(),
+        generateTrackingId,
+      );
       if (
         links.some((link) =>
           link.destination_url.includes("oi=") ||
@@ -1477,7 +1814,7 @@ async function sendSms(
 
       if (links.length > 0) {
         // Clicks are written only on the actual send pass (a deferred row wrote
-        // none). Each send re-runs rewriteSmsLinks producing fresh unique
+        // none). Each send re-runs rewriteMarketingSmsLinks producing fresh unique
         // tracking_ids — no dup because a recipient sends at most once.
         const { error: insClicksErr } = await supabase
           .from("marketing_clicks")
@@ -1623,6 +1960,10 @@ async function sendSms(
   }
 
   return { delivered, deferred, failed, preview_skipped: previewSkipped };
+}
+
+if (import.meta.main) {
+  serve(handleMarketingSendRequest);
 }
 
 async function writeBlastIntoEventChat(

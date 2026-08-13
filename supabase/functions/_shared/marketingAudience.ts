@@ -45,12 +45,17 @@ export interface AudienceQueryOfferingSendGroup {
   send_group_id: string;
   channel: "email" | "sms";
 }
+export interface AudienceQueryAllBrandPeople {
+  kind: "all_brand_people";
+  brand_id: string;
+}
 export type AudienceQueryDefinition =
   | AudienceQueryBrandBuyers
   | AudienceQueryEventBuyers
   | AudienceQueryBrandFollowers
   | AudienceQueryCustomSegment
-  | AudienceQueryOfferingSendGroup;
+  | AudienceQueryOfferingSendGroup
+  | AudienceQueryAllBrandPeople;
 
 export interface ResolvedContact {
   contact_key: string;
@@ -250,6 +255,7 @@ async function resolveSuppressedEmails(
 export async function resolveAudience(
   client: SupabaseClient<any, "public", any>,
   query: AudienceQueryDefinition,
+  campaignId?: string,
 ): Promise<ResolveResult> {
   switch (query.kind) {
     case "brand_buyers":
@@ -262,6 +268,22 @@ export async function resolveAudience(
       throw new Error("audience_kind_not_yet_enabled:custom_segment");
     case "offering_send_group":
       return await resolveOfferingSendGroup(client, query);
+    case "all_brand_people": {
+      if (campaignId === undefined) {
+        throw new Error("book_blast_campaign_context_required");
+      }
+      const { data, error } = await client.rpc(
+        "biz_marketing_book_send_audience",
+        { p_campaign_id: campaignId },
+      );
+      if (error) throw new Error(`book_blast_audience_failed:${error.message}`);
+      const result = data as Partial<ResolveResult> | null;
+      if (
+        result === null || result.brand_id !== query.brand_id ||
+        !Array.isArray(result.rows)
+      ) throw new Error("book_blast_audience_invalid_response");
+      return result as ResolveResult;
+    }
     default: {
       // Exhaustiveness sentinel — TS compile error if a new kind is added
       // without a case branch.

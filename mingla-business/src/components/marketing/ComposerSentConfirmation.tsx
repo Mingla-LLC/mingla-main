@@ -54,6 +54,10 @@ import {
 export interface ComposerSentConfirmationProps {
   visible: boolean;
   isSendNow: boolean;
+  /** Book send-now recipients held for their permitted local SMS window. */
+  deferredRecipientCount?: number;
+  /** Book recipients who became ineligible after the sealed confirmation. */
+  skippedRecipientCount?: number;
   /** Closes the overlay only — leaves the operator on the composer route. */
   onDismiss: () => void;
   /** Closes the overlay AND navigates to the campaigns list. */
@@ -63,6 +67,8 @@ export interface ComposerSentConfirmationProps {
 export const ComposerSentConfirmation: React.FC<ComposerSentConfirmationProps> = ({
   visible,
   isSendNow,
+  deferredRecipientCount = 0,
+  skippedRecipientCount = 0,
   onDismiss,
   onViewInCampaigns,
 }) => {
@@ -170,13 +176,28 @@ export const ComposerSentConfirmation: React.FC<ComposerSentConfirmationProps> =
         </View>
         <Animated.View style={copyAnimatedStyle}>
           <Text style={styles.title}>
-            {isSendNow ? "On the way." : "Scheduled."}
+            {isSendNow && deferredRecipientCount > 0
+              ? "Sending started."
+              : isSendNow
+                ? "On the way."
+                : "Scheduled."}
           </Text>
           <Text style={styles.body}>
-            {isSendNow
+            {isSendNow && deferredRecipientCount > 0
+              ? `${deferredRecipientCount} ${
+                  deferredRecipientCount === 1 ? "recipient is" : "recipients are"
+                } held for allowed local messaging hours. Mingla will send automatically when their window opens.`
+              : isSendNow
               ? "Your campaign goes out in under a minute. Refresh Campaigns to watch the status flip to Sent."
               : "We'll fire it off at the time you picked."}
           </Text>
+          {isSendNow && skippedRecipientCount > 0 ? (
+            <Text style={styles.body}>
+              {`${skippedRecipientCount} ${
+                skippedRecipientCount === 1 ? "recipient was" : "recipients were"
+              } safely skipped because they could no longer receive this campaign through the selected channel after confirmation.`}
+            </Text>
+          ) : null}
         </Animated.View>
         <Animated.View style={[styles.ctaStack, ctaAnimatedStyle]}>
           <Pressable

@@ -1,6 +1,6 @@
 import { composeSmsBody, computeSegments } from "./adapters/smsAdapter.ts";
 import { countryFromE164 } from "./e164Country.ts";
-import { resolveOfferingInviteSmsPriceBook } from "./runtimeConfig.ts";
+import { type SmsRateV1, validatedSmsRates } from "./smsPriceBook.ts";
 
 export const OFFERING_INVITE_LINK_MARKER = "__MINGLA_OFFERING_INVITE_URL_V1__";
 const HEX = /^[0-9a-f]{64}$/;
@@ -32,19 +32,6 @@ export interface PersistedOfferingPushV1 {
   title: string;
   body: string;
   eventId: string;
-}
-
-export interface SmsRateV1 {
-  rateId: string;
-  provider: "twilio" | "termii";
-  country: string;
-  currency: string;
-  unit: "sms_segment";
-  minorNumerator: number;
-  minorDenominator: number;
-  effectiveAt: string;
-  expiresAt: string;
-  sourceReference: string;
 }
 
 export interface ExecutionCandidateV1 {
@@ -226,29 +213,8 @@ function canonicalTimestamp(now: Date): string {
   return now.toISOString().replace(/\.(\d{3})Z$/, ".$1000Z");
 }
 
-function validatedRates(now: Date): SmsRateV1[] {
-  const raw = resolveOfferingInviteSmsPriceBook();
-  if (!Array.isArray(raw)) throw new Error("cost_unavailable");
-  return raw.map((entry) => {
-    const rate = entry as SmsRateV1;
-    if (
-      typeof rate?.rateId !== "string" ||
-      (rate.provider !== "twilio" && rate.provider !== "termii") ||
-      !/^[A-Z]{2}$/.test(rate.country) || !/^[A-Z]{3}$/.test(rate.currency) ||
-      rate.unit !== "sms_segment" ||
-      !Number.isSafeInteger(rate.minorNumerator) ||
-      rate.minorNumerator <= 0 ||
-      !Number.isSafeInteger(rate.minorDenominator) ||
-      rate.minorDenominator <= 0 ||
-      !Number.isFinite(Date.parse(rate.effectiveAt)) ||
-      !Number.isFinite(Date.parse(rate.expiresAt)) ||
-      Date.parse(rate.effectiveAt) > now.getTime() ||
-      Date.parse(rate.expiresAt) <= now.getTime() ||
-      typeof rate.sourceReference !== "string" ||
-      rate.sourceReference.length === 0
-    ) throw new Error("cost_unavailable");
-    return rate;
-  });
+function resolveOfferingInviteSmsPriceBook(now: Date): SmsRateV1[] {
+  return validatedSmsRates(now);
 }
 
 function assertContent(value: string, maxBytes: number): void {
@@ -485,7 +451,7 @@ export async function buildOfferingExecutionSnapshot(input: {
   const hasReachableSms = candidates.some((candidate) =>
     candidate.channel === "sms" && candidate.outcome === "queued"
   );
-  const rates = hasReachableSms ? validatedRates(now) : [];
+  const rates = hasReachableSms ? resolveOfferingInviteSmsPriceBook(now) : [];
   const fractions: Array<
     { candidate: ExecutionCandidateV1; numerator: bigint; denominator: bigint }
   > = [];

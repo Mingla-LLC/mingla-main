@@ -33,7 +33,13 @@
  *   - SPEC: Mingla_Artifacts/specs/SPEC_ORCH-0864_MARKETING_COMPOSER_V2.md
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -99,6 +105,7 @@ import {
   getCampaign,
   updateDraft,
 } from "../../../../src/services/marketing/marketingCampaignService";
+import { MarketingBookSendError } from "../../../../src/services/marketing/marketingCampaignService";
 import { getTemplate } from "../../../../src/services/marketing/marketingTemplateService";
 import { extractEmbeddedEventIds } from "../../../../src/services/marketing/tenTapTokenBridge";
 import { useBrandEvents } from "../../../../src/services/marketing/brandEvents";
@@ -106,7 +113,10 @@ import { ChannelTabs } from "../../../../src/components/marketing/ChannelTabs";
 import type { MarketingChannelKind } from "../../../../src/components/marketing/ChannelTabs";
 import { SmsComposeCard } from "../../../../src/components/marketing/SmsComposeCard";
 import type { PreviewVariables } from "../../../../src/services/marketing/marketingRenderingService";
-import type { CampaignChannelPayload } from "../../../../src/types/marketing";
+import type {
+  CampaignChannelPayload,
+  MarketingBookQuote,
+} from "../../../../src/types/marketing";
 // ORCH-1282 — MMS photo attach: cross-platform pick (native picker / browser
 // file input), upload to the public brand_covers bucket, verified public URL.
 import { uploadMarketingMmsImage } from "../../../../src/services/marketingMmsImageService";
@@ -123,8 +133,16 @@ import { BrandCoverError } from "../../../../src/utils/brandCoverRules";
 // ORCH-1281 — wire body (incl. STOP footer) for the review-sheet MESSAGE row.
 import { bodyWithFooter } from "../../../../src/utils/smsCost";
 import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
+import { useFeatureFlag } from "../../../../src/hooks/useFeatureFlag";
+import {
+  getBookBlastDisabledReason,
+  isBookBlastFeatureReady,
+  useBookBlastPreview,
+  useConfirmBookBlast,
+} from "../../../../src/hooks/marketing/useBookBlastPreview";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useResponsiveLayout } from "../../../../src/hooks/useResponsiveLayout";
+import { useShareNetworkState } from "../../../../src/components/ui/useShareNetworkState";
 // ORCH-0891 M3 D-3 — wire the M2-shipped composer keyboard shortcuts.
 // On native this resolves to the no-op `.ts` sibling; web picks the
 // .web.ts implementation that installs the global keydown listener.
@@ -160,7 +178,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const router = useRouter();
   const navigation = useNavigation();
   const { isWideDesktop } = useResponsiveLayout();
-  const params = useLocalSearchParams<{ audience?: string; draft?: string; template?: string }>();
+  const params = useLocalSearchParams<{
+    audience?: string;
+    draft?: string;
+    template?: string;
+  }>();
   // Memoize so the pre-fill useEffect's dep array doesn't re-trigger on every
   // render — parseAudienceParam returns a new object literal each call.
   const audienceParam = useMemo(
@@ -182,6 +204,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const brandId = currentBrand?.id ?? null;
   const brandName = currentBrand?.displayName ?? null;
   const brandAddress = currentBrand?.address ?? null;
+  const importFlag = useFeatureFlag("contact_import_v1"),
+    bookFlag = useFeatureFlag("brand_book_blast_v1");
+  const bookBlastEnabled = isBookBlastFeatureReady(importFlag, bookFlag);
 
   const resolvedAudience = useResolveAudience(audienceParam);
 
@@ -236,6 +261,16 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   );
   const [audienceId, setAudienceId] = useState<string | null>(null);
   const [audienceName, setAudienceName] = useState<string | null>(null);
+  const [isBookAudience, setIsBookAudience] = useState(false);
+  const [bookQuote, setBookQuote] = useState<MarketingBookQuote | null>(null);
+  const [bookRequestId, setBookRequestId] = useState<string | null>(null);
+  const [bookStaleWarning, setBookStaleWarning] = useState(false);
+  const [bookStaleDetail, setBookStaleDetail] = useState<string | undefined>();
+  const [bookNow, setBookNow] = useState(() => Date.now());
+  const [bookPreviewError, setBookPreviewError] = useState<string | null>(null);
+  const bookPreviewMutation = useBookBlastPreview(),
+    bookConfirmMutation = useConfirmBookBlast();
+  const bookOnline = useShareNetworkState();
   const [sendMode, setSendMode] = useState<SendMode>("now");
   const [scheduledForIso, setScheduledForIso] = useState("");
   const [campaignId, setCampaignId] = useState<string | null>(null);
@@ -252,7 +287,37 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [showSentConfirmation, setShowSentConfirmation] = useState(false);
   const [isSendNowConfirmation, setIsSendNowConfirmation] = useState(false);
+  const [bookDeferredConfirmationCount, setBookDeferredConfirmationCount] =
+    useState(0);
+  const [bookSkippedConfirmationCount, setBookSkippedConfirmationCount] =
+    useState(0);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
+  useEffect(() => {
+    if (!showReview || !isBookAudience) return;
+    const timer = setInterval(() => setBookNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [showReview, isBookAudience]);
+  const bookDisabledReason = getBookBlastDisabledReason({
+    featureReady: bookBlastEnabled,
+    online: bookOnline,
+    previewPending: bookPreviewMutation.isPending,
+    previewError: bookPreviewError,
+    quote: bookQuote,
+    nowMs: bookNow,
+  });
+
+  const bookPreviewFailure = (error: unknown): string => {
+    const code = error instanceof Error ? error.message : "BOOK_BLAST_FAILED";
+    if (code.includes("COST"))
+      return "Provider cost could not be verified. Refresh the preview before confirming.";
+    if (code.includes("MMS"))
+      return "MMS media could not be verified. Fix the media or refresh the preview.";
+    if (code.includes("FORBIDDEN"))
+      return "You no longer have permission to send this campaign.";
+    if (code.includes("FLAG_DISABLED") || code.includes("AUDIENCE_NOT_FOUND"))
+      return "Book blasts aren't available. Your access or this feature changed.";
+    return "The server preview is unavailable. Refresh it before confirming.";
+  };
 
   // Sanctioned-exit disarm flag for back-listener.
   const sanctionedExitRef = useRef(false);
@@ -291,7 +356,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
 
   // Hydrate audience from query param (lazy: ensures system audience row exists).
   useEffect(() => {
-    if (audienceParam === null || accountId === null || brandId === null) return;
+    if (audienceParam === null || accountId === null || brandId === null)
+      return;
     if (audienceId !== null) return;
     let cancelled = false;
     (async () => {
@@ -317,7 +383,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       } catch (err) {
         if (!cancelled) {
           setErrorBanner(
-            err instanceof Error ? err.message : "Couldn't load audience — pick one below.",
+            err instanceof Error
+              ? err.message
+              : "Couldn't load audience — pick one below.",
           );
         }
       }
@@ -434,42 +502,62 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     return subject.length > 0 ? subject : "Untitled campaign";
   }, [channel, smsBody, subject]);
 
-  const flushDraft = useCallback(
-    async () => {
-      if (accountId === null || brandId === null || audienceId === null) return;
-      const payload = buildPayload();
-      try {
-        if (campaignId === null) {
-          const row = await createDraft({
-            account_id: accountId,
-            brand_id: brandId,
-            audience_id: audienceId,
-            name: campaignName,
-            channel_payload: payload,
-            ...(templateId !== null ? { template_id: templateId } : {}),
-          });
-          setCampaignId(row.id);
-        } else {
-          await updateDraft({
-            campaign_id: campaignId,
-            name: campaignName,
-            audience_id: audienceId,
-            channel_payload: payload,
-          });
-        }
+  const flushDraft = useCallback(async (): Promise<string | null> => {
+    if (accountId === null || brandId === null || audienceId === null)
+      return null;
+    const payload = buildPayload();
+    try {
+      if (campaignId === null) {
+        const row = await createDraft({
+          account_id: accountId,
+          brand_id: brandId,
+          audience_id: audienceId,
+          name: campaignName,
+          channel_payload: payload,
+          ...(templateId !== null ? { template_id: templateId } : {}),
+        });
+        setCampaignId(row.id);
         setIsDirty(false);
-      } catch (err) {
-        setErrorBanner(
-          err instanceof Error ? err.message : "Couldn't save draft. Tap Save draft to retry.",
-        );
+        return row.id;
+      } else {
+        await updateDraft({
+          campaign_id: campaignId,
+          name: campaignName,
+          audience_id: audienceId,
+          channel_payload: payload,
+        });
       }
-    },
-    [accountId, brandId, audienceId, campaignName, buildPayload, campaignId, templateId],
-  );
+      setIsDirty(false);
+      return campaignId;
+    } catch (err) {
+      setErrorBanner(
+        err instanceof Error
+          ? err.message
+          : "Couldn't save draft. Tap Save draft to retry.",
+      );
+    }
+    return null;
+  }, [
+    accountId,
+    brandId,
+    audienceId,
+    campaignName,
+    buildPayload,
+    campaignId,
+    templateId,
+  ]);
 
   useComposerDraft({
     // ORCH-1282 — include mmsMediaUrls so autosave re-fires when media changes.
-    state: { channel, subject, body, smsBody, mmsMediaUrls, embeddedEvents: extractEmbeddedEventIds(body), audienceId },
+    state: {
+      channel,
+      subject,
+      body,
+      smsBody,
+      mmsMediaUrls,
+      embeddedEvents: extractEmbeddedEventIds(body),
+      audienceId,
+    },
     isDirty,
     flush: async () => {
       await flushDraft();
@@ -510,7 +598,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     }
     if (missing.length === 0) return null;
     if (missing.length === 1) return `Pick ${missing[0]} before sending.`;
-    if (missing.length === 2) return `Add ${missing[0]} and ${missing[1]} first.`;
+    if (missing.length === 2)
+      return `Add ${missing[0]} and ${missing[1]} first.`;
     return `Add ${missing[0]}, ${missing[1]}, and ${missing[2]} first.`;
   }, [audienceId, channel, smsBody, subject, body, mmsUploading]);
 
@@ -540,6 +629,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       sanctionedExitRef.current = true;
       setShowReview(false);
       setIsSendNowConfirmation(sendMode === "now");
+      setBookDeferredConfirmationCount(0);
+      setBookSkippedConfirmationCount(0);
       setShowSentConfirmation(true);
     },
     onError: (err) => {
@@ -553,10 +644,60 @@ export default function ComposeCampaignRoute(): React.ReactElement {
 
   const handleConfirmSchedule = useCallback(() => {
     if (campaignId === null) return;
+    if (isBookAudience) {
+      if (bookQuote === null || bookRequestId === null) return;
+      bookConfirmMutation.mutate(
+        {
+          campaign_id: campaignId,
+          client_request_id: bookRequestId,
+          quote: bookQuote,
+          scheduled_for:
+            sendMode === "now" ? null : new Date(scheduledForIso).toISOString(),
+        },
+        {
+          onSuccess: (result) => {
+            setShowReview(false);
+            if (result.mode === "in_progress") {
+              setErrorBanner(
+                "This send was already confirmed and is still processing. Check Campaigns for its current status.",
+              );
+              return;
+            }
+            setIsSendNowConfirmation(result.mode !== "scheduled");
+            setBookDeferredConfirmationCount(result.deferred);
+            setBookSkippedConfirmationCount(result.skippedAfterConfirm);
+            setShowSentConfirmation(true);
+          },
+          onError: (error) => {
+            if (
+              error instanceof MarketingBookSendError &&
+              error.refreshedPreview !== null
+            ) {
+              const next = error.refreshedPreview;
+              setBookStaleDetail(
+                `Reach changed from ${bookQuote.reachableCount} to ${next.reachableCount}; cost changed from ${bookQuote.estimatedCostMinor ?? "not metered"} to ${next.estimatedCostMinor ?? "not metered"}.`,
+              );
+              setBookQuote(next);
+              setBookRequestId(
+                globalThis.crypto?.randomUUID?.() ??
+                  `${Date.now().toString(16).padStart(8, "0")}-0000-4000-8000-000000000000`,
+              );
+              setBookStaleWarning(true);
+              return;
+            }
+            setErrorBanner(
+              "Confirmation failed. Refresh the preview and retry.",
+            );
+          },
+        },
+      );
+      return;
+    }
     Keyboard.dismiss();
-    const isoForServer = sendMode === "now"
-      ? new Date().toISOString()
-      : new Date(scheduledForIso).toISOString();
+    const isoForServer =
+      sendMode === "now"
+        ? new Date().toISOString()
+        : new Date(scheduledForIso).toISOString();
     scheduleMutation.mutate({
       campaign_id: campaignId,
       scheduled_for: isoForServer,
@@ -564,7 +705,18 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       // META-ORCH-1161 Sub-B — channel-correct payload (email HTML or SMS body).
       channel_payload: buildPayload(),
     });
-  }, [campaignId, sendMode, scheduledForIso, campaignName, buildPayload, scheduleMutation]);
+  }, [
+    campaignId,
+    isBookAudience,
+    bookQuote,
+    bookRequestId,
+    bookConfirmMutation,
+    sendMode,
+    scheduledForIso,
+    campaignName,
+    buildPayload,
+    scheduleMutation,
+  ]);
 
   // ORCH-1270 F-1 — capture the soonest global send window at the moment the
   // operator taps Send now (SMS only), to label the review sheet's "Schedule
@@ -608,43 +760,49 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // and let the navigation proceed, so the draft is preserved without a
   // no-op dialog. The native Alert.alert dirty-guard below is unchanged.
   useEffect(() => {
-    const unsubscribe = navigation.addListener("beforeRemove" as never, (event: unknown) => {
-      const ev = event as { preventDefault: () => void; data?: { action?: unknown } };
-      if (sanctionedExitRef.current) return;
-      if (!isDirty) return;
-      if (Platform.OS === "web") {
-        // Don't block the exit — autosave already persists edits. Fire one last
-        // flush (fire-and-forget) in case the debounced save hasn't run yet.
-        void flushDraft();
-        return;
-      }
-      ev.preventDefault?.();
-      Alert.alert(
-        "Save your draft?",
-        "You've got unsaved edits. Save them so you can pick up later — or discard.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Discard",
-            style: "destructive",
-            onPress: () => {
-              sanctionedExitRef.current = true;
-              if (router.canGoBack()) router.back();
-              else router.replace("/(tabs)/marketing/campaigns" as never);
+    const unsubscribe = navigation.addListener(
+      "beforeRemove" as never,
+      (event: unknown) => {
+        const ev = event as {
+          preventDefault: () => void;
+          data?: { action?: unknown };
+        };
+        if (sanctionedExitRef.current) return;
+        if (!isDirty) return;
+        if (Platform.OS === "web") {
+          // Don't block the exit — autosave already persists edits. Fire one last
+          // flush (fire-and-forget) in case the debounced save hasn't run yet.
+          void flushDraft();
+          return;
+        }
+        ev.preventDefault?.();
+        Alert.alert(
+          "Save your draft?",
+          "You've got unsaved edits. Save them so you can pick up later — or discard.",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Discard",
+              style: "destructive",
+              onPress: () => {
+                sanctionedExitRef.current = true;
+                if (router.canGoBack()) router.back();
+                else router.replace("/(tabs)/marketing/campaigns" as never);
+              },
             },
-          },
-          {
-            text: "Save draft",
-            onPress: async () => {
-              await flushDraft();
-              sanctionedExitRef.current = true;
-              if (router.canGoBack()) router.back();
-              else router.replace("/(tabs)/marketing/campaigns" as never);
+            {
+              text: "Save draft",
+              onPress: async () => {
+                await flushDraft();
+                sanctionedExitRef.current = true;
+                if (router.canGoBack()) router.back();
+                else router.replace("/(tabs)/marketing/campaigns" as never);
+              },
             },
-          },
-        ],
-      );
-    });
+          ],
+        );
+      },
+    );
     return unsubscribe;
   }, [navigation, isDirty, campaignId, flushDraft, router]);
 
@@ -652,9 +810,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   // live-preview pane via the editor's props.
   const previewVariables = useMemo<PreviewVariables>(() => {
     const firstBuyerName = resolvedAudience.data?.rows[0]?.display_name ?? null;
-    const firstName = firstBuyerName !== null
-      ? firstBuyerName.split(/\s+/)[0]
-      : null;
+    const firstName =
+      firstBuyerName !== null ? firstBuyerName.split(/\s+/)[0] : null;
     return {
       first_name: firstName,
       brand_name: brandName,
@@ -674,20 +831,23 @@ export default function ComposeCampaignRoute(): React.ReactElement {
 
   // META-ORCH-1161 Sub-B — channel switch (Email ↔ SMS). Marks dirty so the
   // channel choice persists to the draft.
-  const handleChannelChange = useCallback((next: MarketingChannelKind): void => {
-    setChannel(next);
-    setIsDirty(true);
-    // ORCH-1282 / ORCH-1289 — attached photos are meaningless off the SMS
-    // channel; clear them (and revoke any web blob URLs first).
-    if (next !== "sms") {
-      revokeBrowserPickedFiles(
-        mmsMedia
-          .filter((m) => m.objectUrl !== null)
-          .map((m) => ({ objectUrl: m.objectUrl })),
-      );
-      setMmsMedia([]);
-    }
-  }, [mmsMedia]);
+  const handleChannelChange = useCallback(
+    (next: MarketingChannelKind): void => {
+      setChannel(next);
+      setIsDirty(true);
+      // ORCH-1282 / ORCH-1289 — attached photos are meaningless off the SMS
+      // channel; clear them (and revoke any web blob URLs first).
+      if (next !== "sms") {
+        revokeBrowserPickedFiles(
+          mmsMedia
+            .filter((m) => m.objectUrl !== null)
+            .map((m) => ({ objectUrl: m.objectUrl })),
+        );
+        setMmsMedia([]);
+      }
+    },
+    [mmsMedia],
+  );
 
   // ORCH-1282 / ORCH-1289 — pick + upload up to MMS_MAX_MEDIA photos. Mirrors
   // ExperienceStopPhotoSheet.pickFromLibrary cross-platform acquisition (native
@@ -700,7 +860,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     if (brandId === null) return;
     const remaining = MMS_MAX_MEDIA - mmsMedia.length;
     if (remaining <= 0) {
-      setErrorBanner(`A picture message can carry up to ${MMS_MAX_MEDIA} photos.`);
+      setErrorBanner(
+        `A picture message can carry up to ${MMS_MAX_MEDIA} photos.`,
+      );
       return;
     }
     type PickedAsset = {
@@ -793,7 +955,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             // Swap this item to its verified public URL — display now prefers it.
             setMmsMedia((prev) =>
               prev.map((m) =>
-                m.key === item.key ? { ...m, remoteUrl: url, uploading: false } : m,
+                m.key === item.key
+                  ? { ...m, remoteUrl: url, uploading: false }
+                  : m,
               ),
             );
             setIsDirty(true);
@@ -815,24 +979,30 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       );
     } catch (err) {
       setErrorBanner(
-        err instanceof Error ? err.message : "Couldn't add that photo. Try another.",
+        err instanceof Error
+          ? err.message
+          : "Couldn't add that photo. Try another.",
       );
     }
   }, [brandId, mmsMedia.length]);
 
-  const handleRemoveMms = useCallback((key: string): void => {
-    const removed = mmsMedia.find((m) => m.key === key);
-    if (removed?.objectUrl != null) {
-      revokeBrowserPickedFiles([{ objectUrl: removed.objectUrl }]);
-    }
-    setMmsMedia((prev) => prev.filter((m) => m.key !== key));
-    setIsDirty(true);
-  }, [mmsMedia]);
+  const handleRemoveMms = useCallback(
+    (key: string): void => {
+      const removed = mmsMedia.find((m) => m.key === key);
+      if (removed?.objectUrl != null) {
+        revokeBrowserPickedFiles([{ objectUrl: removed.objectUrl }]);
+      }
+      setMmsMedia((prev) => prev.filter((m) => m.key !== key));
+      setIsDirty(true);
+    },
+    [mmsMedia],
+  );
 
   // Reachability shown in the Who row + review sheet depends on the channel.
-  const channelReachable = channel === "sms"
-    ? (reach?.reachable_sms ?? null)
-    : (reach?.reachable_email ?? null);
+  const channelReachable =
+    channel === "sms"
+      ? (reach?.reachable_sms ?? null)
+      : (reach?.reachable_email ?? null);
 
   const handleBack = useCallback((): void => {
     if (router.canGoBack()) router.back();
@@ -843,34 +1013,41 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     await flushDraft();
   }, [flushDraft]);
 
-  const handleSelectAudience = useCallback(async (option: AudienceOption) => {
-    setAudienceName(option.name);
-    setIsDirty(true);
-    if (option.existing_audience_id !== null) {
-      setAudienceId(option.existing_audience_id);
-      return;
-    }
-    if (accountId === null || brandId === null) return;
-    try {
-      const id = option.kind === "brand_buyers"
-        ? await ensureBrandBuyersAudience({
-            account_id: accountId,
-            brand_id: option.target_id,
-          })
-        : await ensureEventBuyersAudience({
-            account_id: accountId,
-            brand_id: brandId,
-            event_id: option.target_id,
-          });
-      setAudienceId(id);
-    } catch (err) {
-      setErrorBanner(
-        err instanceof Error
-          ? err.message
-          : "Couldn't load that audience. Pick another or retry.",
-      );
-    }
-  }, [accountId, brandId]);
+  const handleSelectAudience = useCallback(
+    async (option: AudienceOption) => {
+      setAudienceName(option.name);
+      setIsBookAudience(option.kind === "all_brand_people");
+      setBookQuote(null);
+      setIsDirty(true);
+      if (option.existing_audience_id !== null) {
+        setAudienceId(option.existing_audience_id);
+        return;
+      }
+      if (accountId === null || brandId === null) return;
+      if (option.kind === "all_brand_people") return;
+      try {
+        const id =
+          option.kind === "brand_buyers"
+            ? await ensureBrandBuyersAudience({
+                account_id: accountId,
+                brand_id: option.target_id,
+              })
+            : await ensureEventBuyersAudience({
+                account_id: accountId,
+                brand_id: brandId,
+                event_id: option.target_id,
+              });
+        setAudienceId(id);
+      } catch (err) {
+        setErrorBanner(
+          err instanceof Error
+            ? err.message
+            : "Couldn't load that audience. Pick another or retry.",
+        );
+      }
+    },
+    [accountId, brandId],
+  );
 
   const onSubjectChange = useCallback((value: string) => {
     setSubject(value);
@@ -882,27 +1059,29 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     setIsDirty(true);
   }, []);
 
-  const scheduledLabel = sendMode === "now"
-    ? "Send immediately"
-    : scheduledForIso.length > 0
-      ? new Date(scheduledForIso).toLocaleString(undefined, {
+  const scheduledLabel =
+    sendMode === "now"
+      ? "Send immediately"
+      : scheduledForIso.length > 0
+        ? new Date(scheduledForIso).toLocaleString(undefined, {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          })
+        : "Pick a time";
+
+  // ORCH-1270 RC-3 — short human label for the "Schedule for …" affordance,
+  // same locale format as scheduledLabel.
+  const nextWindowLabel =
+    nextWindowIso !== null
+      ? new Date(nextWindowIso).toLocaleString(undefined, {
           month: "short",
           day: "numeric",
           hour: "numeric",
           minute: "2-digit",
         })
-      : "Pick a time";
-
-  // ORCH-1270 RC-3 — short human label for the "Schedule for …" affordance,
-  // same locale format as scheduledLabel.
-  const nextWindowLabel = nextWindowIso !== null
-    ? new Date(nextWindowIso).toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : "";
+      : "";
 
   // ORCH-0891 M3 D-3: install web composer keyboard shortcuts. Hook is
   // unconditional (Rules of Hooks) and a no-op on native. Handlers are
@@ -928,6 +1107,30 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       if (coreFooterDisabled) return;
       captureSmsSendWindow();
       setSendMode("now");
+      if (isBookAudience) {
+        void (async () => {
+          const id = await flushDraft();
+          if (id === null) {
+            setErrorBanner("Save the draft, then preview again.");
+            return;
+          }
+          setBookPreviewError(null);
+          setBookQuote(null);
+          setShowReview(true);
+          try {
+            const quote = await bookPreviewMutation.mutateAsync(id);
+            setBookQuote(quote);
+            setBookStaleWarning(false);
+            setBookRequestId(
+              globalThis.crypto?.randomUUID?.() ??
+                `${Date.now().toString(16).padStart(8, "0")}-0000-4000-8000-000000000000`,
+            );
+          } catch (error) {
+            setBookPreviewError(bookPreviewFailure(error));
+          }
+        })();
+        return;
+      }
       setShowReview(true);
     },
     onTogglePreview: (): void => {
@@ -967,7 +1170,12 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   if (audienceParam !== null && audienceId === null && errorBanner === null) {
     return (
       <View style={[styles.host, isWideDesktop ? styles.desktopHost : null]}>
-        <ComposerHeader title="New campaign" onBack={handleBack} onSaveDraft={() => {}} saveDraftDisabled />
+        <ComposerHeader
+          title="New campaign"
+          onBack={handleBack}
+          onSaveDraft={() => {}}
+          saveDraftDisabled
+        />
         <View style={styles.centerHost}>
           <ActivityIndicator size="small" color={textTokens.secondary} />
         </View>
@@ -1007,7 +1215,12 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                   inside a ScrollView blocks taps on iOS (RN WebView gesture
                   conflict). Flex column instead: Who fixed, Editor flex:1,
                   When+Compliance fixed below editor. */}
-              <View style={[styles.whoRow, isWideDesktop ? styles.desktopWhoRow : null]}>
+              <View
+                style={[
+                  styles.whoRow,
+                  isWideDesktop ? styles.desktopWhoRow : null,
+                ]}
+              >
                 <ComposerStepWho
                   audienceName={audienceName}
                   reachableEmail={channelReachable}
@@ -1067,32 +1280,54 @@ export default function ComposeCampaignRoute(): React.ReactElement {
               <ComposerFooter
                 onPreview={() => setShowPreview(true)}
                 onSendNow={() => {
-            // F.10c hard-guard: refuse to open the review sheet if the
-            // core fields aren't filled. Mirrors the disabled state on
-            // the button but defends against any case where the disabled
-            // visual slips (e.g. rapid taps mid-state-update).
-            const missing = missingFieldsLabel();
-            if (missing !== null) {
-              setErrorBanner(missing);
-              return;
-            }
-            // ORCH-1270 RC-3 — snapshot the send window at tap time (SMS only).
-            captureSmsSendWindow();
-            setSendMode("now");
-            setShowReview(true);
-          }}
-          sendNowDisabled={coreFooterDisabled}
-          onSchedule={() => {
-            const missing = missingFieldsLabel();
-            if (missing !== null) {
-              setErrorBanner(missing);
-              return;
-            }
-            setShowSchedulePicker(true);
-          }}
-          scheduleDisabled={coreFooterDisabled}
-          submitting={scheduleMutation.isPending}
-        />
+                  // F.10c hard-guard: refuse to open the review sheet if the
+                  // core fields aren't filled. Mirrors the disabled state on
+                  // the button but defends against any case where the disabled
+                  // visual slips (e.g. rapid taps mid-state-update).
+                  const missing = missingFieldsLabel();
+                  if (missing !== null) {
+                    setErrorBanner(missing);
+                    return;
+                  }
+                  // ORCH-1270 RC-3 — snapshot the send window at tap time (SMS only).
+                  captureSmsSendWindow();
+                  setSendMode("now");
+                  if (isBookAudience) {
+                    void (async () => {
+                      const id = await flushDraft();
+                      if (id === null) {
+                        setErrorBanner("Save the draft, then preview again.");
+                        return;
+                      }
+                      setBookPreviewError(null);
+                      setBookQuote(null);
+                      setShowReview(true);
+                      try {
+                        const quote = await bookPreviewMutation.mutateAsync(id);
+                        setBookQuote(quote);
+                        setBookStaleWarning(false);
+                        setBookRequestId(
+                          globalThis.crypto?.randomUUID?.() ??
+                            `${Date.now().toString(16).padStart(8, "0")}-0000-4000-8000-000000000000`,
+                        );
+                      } catch (error) {
+                        setBookPreviewError(bookPreviewFailure(error));
+                      }
+                    })();
+                  } else setShowReview(true);
+                }}
+                sendNowDisabled={coreFooterDisabled}
+                onSchedule={() => {
+                  const missing = missingFieldsLabel();
+                  if (missing !== null) {
+                    setErrorBanner(missing);
+                    return;
+                  }
+                  setShowSchedulePicker(true);
+                }}
+                scheduleDisabled={coreFooterDisabled}
+                submitting={scheduleMutation.isPending}
+              />
             </>
           }
           preview={
@@ -1137,25 +1372,73 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           selectedAudienceId={audienceId}
           onClose={() => setShowAudiencePicker(false)}
           onSelect={handleSelectAudience}
+          actorId={accountId}
+          bookBlastEnabled={bookBlastEnabled}
         />
         <ComposerReviewSheet
           visible={showReview}
           audienceName={audienceName}
-          recipientCount={channelReachable}
+          recipientCount={
+            isBookAudience
+              ? (bookQuote?.reachableCount ?? null)
+              : channelReachable
+          }
           subject={subject}
           scheduledLabel={scheduledLabel}
           isSendNow={sendMode === "now"}
-          submitting={scheduleMutation.isPending}
+          submitting={
+            scheduleMutation.isPending ||
+            bookConfirmMutation.isPending ||
+            bookPreviewMutation.isPending
+          }
+          dismissDisabled={isBookAudience && bookConfirmMutation.isPending}
           onBack={() => setShowReview(false)}
           onClose={() => setShowReview(false)}
           onConfirm={handleConfirmSchedule}
           smsInfoNote={channel === "sms"}
           nextWindowLabel={nextWindowLabel}
-          onScheduleForNextWindow={handleScheduleForNextWindow}
+          onScheduleForNextWindow={
+            isBookAudience ? undefined : handleScheduleForNextWindow
+          }
           // ORCH-1281 — SMS shows a MESSAGE row (wire body) instead of SUBJECT.
           channelKind={channel === "sms" ? "sms" : "email"}
           messagePreview={bodyWithFooter(smsBody).slice(0, 160)}
           hasMedia={mmsMedia.length > 0}
+          estimatedCostLabel={
+            isBookAudience && bookQuote !== null
+              ? bookQuote.costKind === "not_metered"
+                ? "Provider cost not metered"
+                : `${bookQuote.currency ?? ""} ${((bookQuote.estimatedCostMinor ?? 0) / 100).toFixed(2)} estimated provider cost`
+              : undefined
+          }
+          selectedCount={isBookAudience ? bookQuote?.selectedCount : undefined}
+          suppressedCount={
+            isBookAudience ? bookQuote?.suppressedCount : undefined
+          }
+          unavailableCount={
+            isBookAudience ? bookQuote?.unavailableCount : undefined
+          }
+          quoteExpiresAt={isBookAudience ? bookQuote?.expiresAt : undefined}
+          staleWarning={bookStaleWarning}
+          disabledReason={isBookAudience ? bookDisabledReason : null}
+          retryDisabled={isBookAudience && !bookOnline}
+          staleDetail={bookStaleDetail}
+          onRetryPreview={
+            isBookAudience && campaignId !== null
+              ? () => {
+                  setBookPreviewError(null);
+                  bookPreviewMutation.mutate(campaignId, {
+                    onSuccess: (quote) => {
+                      setBookQuote(quote);
+                      setBookNow(Date.now());
+                      setBookStaleWarning(false);
+                    },
+                    onError: (error) =>
+                      setBookPreviewError(bookPreviewFailure(error)),
+                  });
+                }
+              : undefined
+          }
         />
         <SchedulePickerSheet
           visible={showSchedulePicker}
@@ -1171,7 +1454,28 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             setScheduledForIso(iso);
             setShowSchedulePicker(false);
             setTimeout(() => {
-              setShowReview(true);
+              if (!isBookAudience) {
+                setShowReview(true);
+                return;
+              }
+              void (async () => {
+                const id = await flushDraft();
+                if (id === null) return;
+                setBookPreviewError(null);
+                setBookQuote(null);
+                setShowReview(true);
+                try {
+                  const quote = await bookPreviewMutation.mutateAsync(id);
+                  setBookQuote(quote);
+                  setBookStaleWarning(false);
+                  setBookRequestId(
+                    globalThis.crypto?.randomUUID?.() ??
+                      `${Date.now().toString(16).padStart(8, "0")}-0000-4000-8000-000000000000`,
+                  );
+                } catch (error) {
+                  setBookPreviewError(bookPreviewFailure(error));
+                }
+              })();
             }, 350);
           }}
         />
@@ -1241,6 +1545,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         <ComposerSentConfirmation
           visible={showSentConfirmation}
           isSendNow={isSendNowConfirmation}
+          deferredRecipientCount={bookDeferredConfirmationCount}
+          skippedRecipientCount={bookSkippedConfirmationCount}
           onDismiss={() => {
             setShowSentConfirmation(false);
             sanctionedExitRef.current = true;
