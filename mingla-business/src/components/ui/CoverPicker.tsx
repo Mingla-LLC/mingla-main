@@ -1339,6 +1339,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       if (typeof __DEV__ !== "undefined" && __DEV__) {
         console.info("[CoverPicker] cover media render failed", event);
       }
+      if (
+        activeVideoUpload &&
+        videoUpload.localPreviewUri !== null &&
+        event.mediaUrl === videoUpload.localPreviewUri
+      ) {
+        return;
+      }
       setMediaDisplayError(
         "Uploaded, but this cover could not be displayed. Try another image or GIF.",
       );
@@ -1346,7 +1353,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         "Uploaded, but this cover could not be displayed. Try another image or GIF.",
       );
     },
-    [onShowToast],
+    [activeVideoUpload, onShowToast, videoUpload.localPreviewUri],
   );
 
   const switchTab = useCallback((tab: CoverTabId): void => {
