@@ -14,7 +14,7 @@ import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-
 import { corsHeaders } from "../_shared/cors.ts";
 import { buildSystemPrompt, PROMPT_VERSION, AgentUserProfile, BrandSummary, BusinessContext, OfferingSummary } from "../_shared/agentSystemPrompt.ts";
 import { detectPromptInjection } from "../_shared/agentPromptInjection.ts";
-import { callGemini, ARI_MODEL_VERSION, GeminiContentMessage } from "../_shared/agentGemini.ts";
+import { callGemini, ARI_MODEL_VERSION, GeminiContentMessage, GeminiError } from "../_shared/agentGemini.ts";
 import { AGENT_TOOLS, READ_ONLY_TOOL_NAMES, findTool, ToolError } from "../_shared/agentTools.ts";
 import { buildServiceClient, enforceTurnRateLimit } from "../_shared/agentRateLimit.ts";
 import { detectChoices, AgentChoices } from "../_shared/agentChoices.ts";
@@ -44,6 +44,19 @@ function jsonResponse(status: number, body: Response_): Response {
 
 function errorResponse(status: number, code: string, message: string): Response {
   return jsonResponse(status, { kind: "error", code, message });
+}
+
+function schemaErrorResponse(err: unknown): Response | null {
+  const geminiError = err as Partial<GeminiError>;
+  if (geminiError?.kind !== "schema") return null;
+  // Schema errors contain only static tool names, JSON pointers, keywords,
+  // and classifications. Never log the schema value, prompt, or user data.
+  console.error("[agent-chat] Ari provider schema error:", geminiError.message);
+  return errorResponse(
+    500,
+    "MODEL_SCHEMA_INVALID",
+    "Ari's tools need an update before chat can continue. Please try again later.",
+  );
 }
 
 Deno.serve(async (req) => {
@@ -364,6 +377,8 @@ async function handle(req: Request): Promise<Response> {
       })),
     });
   } catch (err: any) {
+    const schemaResponse = schemaErrorResponse(err);
+    if (schemaResponse) return schemaResponse;
     console.error("[agent-chat] Gemini error:", err?.kind, err?.message, err?.detail);
     // Surface config errors specifically — these are operator-fixable
     // (set the secret) and the generic "having trouble" message hides
@@ -446,7 +461,9 @@ async function handle(req: Request): Promise<Response> {
               parameters: t.parameters,
             })),
           });
-        } catch {
+        } catch (err: unknown) {
+          const schemaResponse = schemaErrorResponse(err);
+          if (schemaResponse) return schemaResponse;
           followup = undefined;
         }
         const text = followup?.textResponse ?? "Here's what I found.";
