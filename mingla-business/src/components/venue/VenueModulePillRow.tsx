@@ -46,6 +46,19 @@ export interface VenueModulePillRowProps {
   testID?: string;
 }
 
+interface FocusCapable {
+  focus: () => void;
+}
+
+function hasFocusCapability(value: unknown): value is FocusCapable {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    "focus" in value &&
+    typeof value.focus === "function"
+  );
+}
+
 /**
  * Issue #1735 rework P3-5 — the scroll offset that reveals a pill whose left
  * edge sits at `pillX` inside the content container: lead with one gutter so
@@ -92,7 +105,7 @@ export function VenueModulePillRow({
   const focusControl = useCallback((control: View | null): void => {
     if (control === null) return;
     if (Platform.OS === "web") {
-      (control as unknown as { focus?: () => void }).focus?.();
+      if (hasFocusCapability(control)) control.focus();
       return;
     }
     const handle = findNodeHandle(control);

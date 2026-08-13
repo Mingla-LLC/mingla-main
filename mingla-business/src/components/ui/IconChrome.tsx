@@ -87,6 +87,19 @@ const BADGE_SIZE = 18;
 // Cycle 17c §A.1 — effective touch area = 36 + 4×2 = 44 per side (WCAG AA + Apple HIG floor).
 const DEFAULT_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 
+interface FocusCapable {
+  focus: () => void;
+}
+
+function hasFocusCapability(value: unknown): value is FocusCapable {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    "focus" in value &&
+    typeof value.focus === "function"
+  );
+}
+
 export const IconChrome = forwardRef<View, IconChromeProps>(function IconChrome({
   icon,
   badge,
@@ -131,7 +144,7 @@ export const IconChrome = forwardRef<View, IconChromeProps>(function IconChrome(
     const control = pressableRef.current;
     if (control === null) return;
     if (Platform.OS === "web") {
-      (control as unknown as { focus?: () => void }).focus?.();
+      if (hasFocusCapability(control)) control.focus();
       return;
     }
     const handle = findNodeHandle(control);
@@ -144,7 +157,6 @@ export const IconChrome = forwardRef<View, IconChromeProps>(function IconChrome(
       await onPress(restoreFocus);
     } catch (error) {
       if (__DEV__) {
-        // eslint-disable-next-line no-console
         console.error("[IconChrome] onPress threw:", error);
       }
     }

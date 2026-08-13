@@ -503,10 +503,16 @@ export const VenueAvailabilityModule = forwardRef<
     (key: AvailabilityFieldKey, raw: string): void => {
       if (!canMutate || upsertConfig.isPending) return;
       const next = sanitizeAvailabilityDigits(raw);
-      setDraft((current) => ({ ...current, [key]: next }));
+      const nextDraft = { ...draftRef.current, [key]: next };
+      // An initiating control can request leave in the same React turn as this
+      // keystroke. Keep imperative truth current before React schedules the
+      // render so that exit cannot silently discard the just-entered value.
+      draftRef.current = nextDraft;
+      dirtyRef.current = !availabilityDraftsEqual(nextDraft, baseline);
+      setDraft(nextDraft);
       setSaveState("idle");
     },
-    [canMutate, upsertConfig.isPending],
+    [baseline, canMutate, upsertConfig.isPending],
   );
 
   const handleNumericFocus = useCallback(

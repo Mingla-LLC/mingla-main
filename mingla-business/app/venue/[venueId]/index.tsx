@@ -252,7 +252,7 @@ export default function VenueManagementPage(): React.ReactElement {
             label="Back to your venues"
             variant="secondary"
             size="md"
-            onPress={handleBack}
+            onPress={() => handleBack()}
           />
         </View>
       </View>

@@ -19,8 +19,9 @@ describe("issue #2011 keyboard-safe availability contract", () => {
   it("the form owns strings, one save mutation, authoritative rebasing, and no per-key persistence", () => {
     const availability = read("VenueAvailabilityModule.tsx");
     expect(availability).toContain(
-      "setDraft((current) => ({ ...current, [key]: next }))",
+      "const nextDraft = { ...draftRef.current, [key]: next }",
     );
+    expect(availability).toContain("setDraft(nextDraft)");
     expect(availability).toContain(
       "upsertConfig.mutate(buildAvailabilityPatch(submittedDraft)",
     );
@@ -112,5 +113,22 @@ describe("issue #2011 keyboard-safe availability contract", () => {
     expect(store).toContain("takePendingLeaveFocus");
     expect(availability).toContain(".takePendingLeaveFocus()");
     expect(availability).toContain("restoreFocus={() => {");
+  });
+
+  it("uses capability guards for focus and records dirty truth in the keystroke turn", () => {
+    const desktopShell = read("../suite/SuiteDesktopShell.tsx");
+    const iconChrome = read("../ui/IconChrome.tsx");
+    const pillRow = read("VenueModulePillRow.tsx");
+    const availability = read("VenueAvailabilityModule.tsx");
+
+    for (const source of [desktopShell, iconChrome, pillRow]) {
+      expect(source).toContain("function hasFocusCapability(");
+      expect(source).toContain("if (hasFocusCapability(control)) control.focus()");
+      expect(source).not.toContain("as unknown as");
+    }
+    expect(availability).toContain("draftRef.current = nextDraft");
+    expect(availability).toContain(
+      "dirtyRef.current = !availabilityDraftsEqual(nextDraft, baseline)",
+    );
   });
 });

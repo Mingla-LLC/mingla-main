@@ -75,6 +75,19 @@ export interface SuiteDesktopShellProps {
   testID?: string;
 }
 
+interface FocusCapable {
+  focus: () => void;
+}
+
+function hasFocusCapability(value: unknown): value is FocusCapable {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    "focus" in value &&
+    typeof value.focus === "function"
+  );
+}
+
 export function SuiteDesktopShell({
   modules,
   activeModule,
@@ -131,7 +144,7 @@ function SuiteDesktopRail({
 }: SuiteDesktopRailProps): React.ReactElement {
   const controlRefs = useRef<Record<string, View | null>>({});
   const focusControl = useCallback((control: View | null): void => {
-    (control as unknown as { focus?: () => void } | null)?.focus?.();
+    if (hasFocusCapability(control)) control.focus();
   }, []);
   // ORCH-1184 — no grey uppercase section captions: the rail reads as ONE
   // clean, uniformly-spaced list. Ordering/grouping is the caller's job.
