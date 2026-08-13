@@ -3,7 +3,7 @@
  * (ORCH-0815-B foundation).
  *
  * Sits at the top of every `/(tabs)/marketing/*` route (except composer,
- * which hides it). Four pills: Overview · Audiences · Campaigns · Templates.
+ * which hides it). Four pills: Overview · People · Campaigns · Templates.
  * Active pill: `accent.tint` background + `accent.border`. Inactive: text
  * tertiary on transparent. Tap switches sub-route via expo-router `replace`.
  *
@@ -30,7 +30,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 
-export type MarketingSubNavId = "overview" | "audiences" | "campaigns" | "templates";
+export type MarketingSubNavId = "overview" | "people" | "campaigns" | "templates";
 
 interface SubNavTab {
   id: MarketingSubNavId;
@@ -41,14 +41,14 @@ interface SubNavTab {
 
 const TABS: ReadonlyArray<SubNavTab> = [
   { id: "overview", label: "Overview", path: "/(tabs)/marketing" },
-  { id: "audiences", label: "Audiences", path: "/(tabs)/marketing/audiences" },
+  { id: "people", label: "People", path: "/(tabs)/marketing/people" },
   { id: "campaigns", label: "Campaigns", path: "/(tabs)/marketing/campaigns" },
   { id: "templates", label: "Templates", path: "/(tabs)/marketing/templates" },
 ];
 
 function detectActive(pathname: string): MarketingSubNavId {
   const lower = pathname.toLowerCase();
-  if (lower.includes("/marketing/audiences")) return "audiences";
+  if (lower.includes("/marketing/people") || lower.includes("/marketing/audiences")) return "people";
   if (lower.includes("/marketing/campaigns")) return "campaigns";
   if (lower.includes("/marketing/templates")) return "templates";
   return "overview";

@@ -189,6 +189,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #1775 — import status is actor/brand scoped and must not cache a pre-auth
   // not-found response as the batch's final state.
   "useContactImport.ts",
+  // #1774 — canonical Brand People Book/detail RPCs are accepted-role and
+  // auth.uid()-scoped; both queries wait for auth, brand and role truth.
+  "marketing/useBrandPeople.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads

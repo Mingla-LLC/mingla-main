@@ -13,10 +13,10 @@
  * - Backdrop click closes (cmdk default).
  *
  * # Group order (fixed per DESIGN_SPEC §5.2)
- *   1. Jump to       — Overview / Audiences / Campaigns / Templates
+ *   1. Jump to       — Overview / People / Campaigns / Templates
  *   2. Actions       — New campaign
  *   3. Recent campaigns   (up to 5 most-recent by created_at DESC)
- *   4. Recent audiences   (up to 5)
+ *   4. Recent groups   (up to 5)
  *   5. Recent templates   (up to 5)
  *
  * # Visual contract (DESIGN_SPEC §5.1)
@@ -131,11 +131,11 @@ export const CommandPalette: React.FC = () => {
             Overview
           </Command.Item>
           <Command.Item
-            value="jump-audiences"
-            onSelect={() => navigateAndClose("/marketing/audiences")}
+            value="jump-people"
+            onSelect={() => navigateAndClose("/marketing/people")}
             style={ITEM_STYLE}
           >
-            Audiences
+            People
           </Command.Item>
           <Command.Item
             value="jump-campaigns"
@@ -179,12 +179,16 @@ export const CommandPalette: React.FC = () => {
         ) : null}
 
         {recentAudiences.length > 0 ? (
-          <Command.Group heading="Recent audiences" style={GROUP_STYLE}>
+          <Command.Group heading="Recent groups" style={GROUP_STYLE}>
             {recentAudiences.map((a) => (
               <Command.Item
                 key={`audience-${a.client_key}`}
                 value={`audience-${a.client_key}-${a.display_name}`}
-                onSelect={() => navigateAndClose("/marketing/audiences")}
+                onSelect={() => {
+                  const kind = a.kind === "brand_buyers" ? "brand" : "event";
+                  const target = a.kind === "brand_buyers" ? a.brand_id : a.event_id;
+                  if (target !== null) navigateAndClose(`/marketing/campaigns/compose?audience=${kind}:${target}`);
+                }}
                 style={ITEM_STYLE}
               >
                 {a.display_name}

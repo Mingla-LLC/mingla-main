@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import { brandKeys } from "./brandKeys";
+import { marketingKeys } from "./marketing/marketingKeys";
 import {
   cancelContactImport,
   executeContactImport,
@@ -53,6 +54,7 @@ export function useContactImport() {
           queryKey: contactImportKeys.batch(v.brandId, v.preview.batchId),
         });
         void qc.invalidateQueries({ queryKey: brandKeys.detail(v.brandId) });
+        void qc.invalidateQueries({ queryKey: marketingKeys.people.all(v.brandId) });
       },
     }),
     cancel: useMutation({
