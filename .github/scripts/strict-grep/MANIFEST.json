@@ -16,7 +16,7 @@
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
   "expectedStrictGrepMjsFiles": 524,
-  "selfTestWiredFloor": 328,
+  "selfTestWiredFloor": 329,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
