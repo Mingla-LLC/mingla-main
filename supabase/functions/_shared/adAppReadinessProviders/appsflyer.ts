@@ -16,6 +16,8 @@ interface AppsFlyerExtendedProof {
   measurementId: string | null;
   privacyConfigured: boolean;
   eventCount: number;
+  postbacksEnabled: boolean;
+  productionShape: boolean;
 }
 
 // The #1950 public parser contract predates the extra #2015 proof dimensions.
@@ -127,6 +129,70 @@ function explicitInstallMapping(value: unknown): boolean {
   return Object.values(row).some(explicitInstallMapping);
 }
 
+function explicitTrue(value: unknown): boolean {
+  return value === true ||
+    (typeof value === "string" && value.trim().toLowerCase() === "true");
+}
+
+function objectValue(
+  row: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> {
+  const value = row[key];
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+const MEASUREMENT_ID_KEYS: Record<ReadinessProvider, readonly string[]> = {
+  meta: ["facebook_app_id"],
+  tiktok: ["tiktok_app_id"],
+  snapchat: ["snap_app_id"],
+  google: ["link_id", "google_ads_link_id"],
+  reddit: ["reddit_app_id"],
+};
+
+const ENABLED_SENDING_OPTIONS = new Set([
+  "this partner only",
+  "all media sources, including organic",
+]);
+
+// A real Mingla integration has single-digit mappings today. Keep the parser
+// generous for future growth while refusing payloads large enough to make the
+// response body, rather than an intentional dashboard configuration, the
+// effective source of truth.
+const MAX_APPSFLYER_EVENT_MAPPINGS = 500;
+
+function productionMappedEventCount(value: unknown): number {
+  if (
+    !Array.isArray(value) || value.length === 0 ||
+    value.length > MAX_APPSFLYER_EVENT_MAPPINGS
+  ) return 0;
+  const distinct = new Set<string>();
+  let duplicateOnly = false;
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const row = item as Record<string, unknown>;
+    const identifier = stringValue(row, ["identifier"])?.trim();
+    const name = stringValue(row, ["name"])?.trim();
+    const sendingOption = stringValue(row, ["sending option"])
+      ?.trim().toLowerCase();
+    if (
+      !identifier || identifier.length > 160 || !name || name.length > 160 ||
+      !sendingOption || !ENABLED_SENDING_OPTIONS.has(sendingOption)
+    ) continue;
+    const key = `${identifier}\u0000${name}`;
+    if (distinct.has(key)) duplicateOnly = true;
+    distinct.add(key);
+  }
+  return duplicateOnly && distinct.size === 1 ? 0 : distinct.size;
+}
+
+function legacyMappedEventCount(value: unknown): number {
+  if (!Array.isArray(value)) return 0;
+  return value.filter((item) => explicitInstallMapping(item)).length;
+}
+
 function stringValue(
   row: Record<string, unknown>,
   keys: string[],
@@ -135,6 +201,10 @@ function stringValue(
     typeof item === "string" || typeof item === "number"
   );
   return value === undefined ? null : String(value);
+}
+
+function hasOwn(row: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(row, key);
 }
 
 export function parseAppsFlyerIntegrationSnapshot(
@@ -153,28 +223,56 @@ export function parseAppsFlyerIntegrationSnapshot(
       // Do not infer event mapping from partner presence. It must be explicit
       // in the returned integration parameters or supplied by a current
       // separately-authorized dashboard attestation.
-      installEventMapped: row
-        ? explicitInstallMapping(row.in_app_postbacks_params) ||
-          explicitInstallMapping(row.general_params)
-        : false,
+      installEventMapped: false,
     };
+    const generalParams = row ? objectValue(row, "general_params") : {};
+    const postbackParams = row
+      ? objectValue(row, "in_app_postbacks_params")
+      : {};
+    const productionEventCount = productionMappedEventCount(
+      postbackParams["mapped-in-app-events"],
+    );
+    const productionShape = Boolean(row) && (
+      hasOwn(postbackParams, "Send in-app events postbacks") ||
+      hasOwn(postbackParams, "mapped-in-app-events") ||
+      MEASUREMENT_ID_KEYS[provider].some((key) => hasOwn(generalParams, key))
+    );
+    const legacyEventCount = row && !productionShape
+      ? legacyMappedEventCount(row.in_app_postbacks_params)
+      : 0;
+    const legacyGeneralEventCount = row && !productionShape &&
+        explicitInstallMapping(row.general_params)
+      ? 1
+      : 0;
+    // Once an official production topology is present, its recognized fields
+    // are authoritative. Unknown recursive legacy objects must not override an
+    // explicit production false or manufacture provider identity.
+    const postbacksEnabled = productionShape
+      ? explicitTrue(postbackParams["Send in-app events postbacks"])
+      : legacyEventCount > 0 || legacyGeneralEventCount > 0;
+    const eventCount = productionShape
+      ? productionEventCount
+      : legacyEventCount;
+    state.installEventMapped = postbacksEnabled &&
+      (eventCount > 0 || legacyGeneralEventCount > 0);
     EXTENDED_PROOF.set(state, {
       measurementId: row
-        ? stringValue(row, [
-          "link_id",
-          "app_id",
-          "provider_app_id",
-          "account_id",
-        ])
+        ? stringValue(generalParams, [...MEASUREMENT_ID_KEYS[provider]]) ??
+          (productionShape ? null : stringValue(row, [
+            "link_id",
+            "app_id",
+            "provider_app_id",
+            "account_id",
+          ]))
         : null,
       privacyConfigured: Boolean(
         row && (row.privacy_configured === true ||
           row.skan_configured === true || row.privacy_status === "active" ||
           row.privacy_status === "not_applicable"),
       ),
-      eventCount: row && Array.isArray(row.in_app_postbacks_params)
-        ? row.in_app_postbacks_params.length
-        : 0,
+      eventCount,
+      postbacksEnabled,
+      productionShape,
     });
     return [provider, state];
   })) as AppsFlyerMeasurementSnapshot;
@@ -238,11 +336,24 @@ export async function verifyAppsflyer(
     // still fails closed on absent privacy/event/identifier evidence.
     const extendedProof = EXTENDED_PROOF.get(state);
     const extendedProofReady = !extendedProof ||
-      (extendedProof.privacyConfigured &&
-        !(target.app_key === "business" && target.os === "android" &&
-          extendedProof.eventCount === 0) &&
+      (((target.os === "android" && extendedProof.productionShape) ||
+        extendedProof.privacyConfigured) &&
+        extendedProof.postbacksEnabled && extendedProof.eventCount > 0 &&
         Boolean(binding?.provider_measurement_id) &&
         extendedProof.measurementId === binding?.provider_measurement_id);
+    const incompleteSummary = !state.partnerActive
+      ? `AppsFlyer does not return an active ${provider} integration for the exact app target.`
+      : !extendedProof?.measurementId
+      ? `AppsFlyer confirms the ${provider} integration, but does not return its exact provider/link ID.`
+      : extendedProof.measurementId !== binding?.provider_measurement_id
+      ? `AppsFlyer returns a ${provider} provider/link ID that does not match the canonical binding.`
+      : !extendedProof.postbacksEnabled
+      ? `AppsFlyer confirms the exact ${provider} integration, but required in-app event postbacks are disabled or not verifiable.`
+      : extendedProof.eventCount === 0 || !state.installEventMapped
+      ? `AppsFlyer confirms the exact ${provider} integration, but no valid enabled event mapping is verifiable.`
+      : target.os === "ios" && !extendedProof.privacyConfigured
+      ? `AppsFlyer confirms the exact ${provider} integration and event mapping, but iOS privacy/SKAN configuration is not verifiable through this API.`
+      : `AppsFlyer confirms the ${provider} integration, but required measurement evidence is incomplete.`;
     return [
       provider,
       state.partnerActive && state.installEventMapped && extendedProofReady
@@ -251,16 +362,14 @@ export async function verifyAppsflyer(
           `AppsFlyer confirms the ${provider} integration and install-event mapping for the exact app target.`,
           checkedAt,
           "appsflyer_api",
-          extendedProof?.measurementId ?? target.appsflyer_app_id,
+          extendedProof?.measurementId ?? undefined,
         )
         : evidence(
           "action_required",
-          state.partnerActive
-            ? `AppsFlyer confirms the ${provider} integration, but its exact provider/link ID, install mapping, privacy configuration, or required event evidence is incomplete.`
-            : `AppsFlyer does not return an active ${provider} integration for the exact app target.`,
+          incompleteSummary,
           checkedAt,
           "appsflyer_api",
-          target.appsflyer_app_id,
+          extendedProof?.measurementId ?? undefined,
         ),
     ];
   })) as Record<ReadinessProvider, SafeEvidence>;
