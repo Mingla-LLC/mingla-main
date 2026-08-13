@@ -121,13 +121,13 @@ export async function verify(ctx: VerifyContext) {
     "snapchat",
     "mobile_apps",
     "GET",
-    "adaccounts/{id}/mobile_apps",
+    "organizations/{id}/mobile_apps",
     async () =>
       parseMobileApps(
         await snapchatApi(
           client,
           "GET",
-          `adaccounts/${client.adAccountId}/mobile_apps`,
+          `organizations/${organizationId}/mobile_apps`,
         ),
       ),
   );

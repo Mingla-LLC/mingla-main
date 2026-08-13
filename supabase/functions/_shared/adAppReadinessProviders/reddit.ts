@@ -1,11 +1,39 @@
 import { evidence } from "../adAppReadiness.ts";
-import { redditConnectPreflight } from "../reddit.ts";
+import {
+  redditConnectPreflight,
+  redditRequest,
+  resolveRedditClient,
+} from "../reddit.ts";
 import type { VerifyContext } from "./common.ts";
 import {
   asAdConnectionRow,
   runAllowedProviderOperation,
   verifyCanonicalBinding,
 } from "./common.ts";
+
+export interface RedditAppBinding {
+  appId: string;
+  platform: "ios" | "android" | null;
+}
+export function parseRedditApps(payload: unknown): RedditAppBinding[] {
+  const root = payload as Record<string, unknown> | null;
+  const rows = Array.isArray(root?.data)
+    ? root?.data as Record<string, unknown>[]
+    : [];
+  return rows.flatMap((row) => {
+    const id = row.app_id ?? row.id ?? row.store_id;
+    if (typeof id !== "string") return [];
+    const raw = String(row.platform ?? row.app_store ?? "").toLowerCase();
+    return [{
+      appId: id,
+      platform: raw.includes("ios") || raw.includes("apple")
+        ? "ios" as const
+        : raw.includes("android") || raw.includes("google")
+        ? "android" as const
+        : null,
+    }];
+  });
+}
 export async function verify(ctx: VerifyContext) {
   const base = verifyCanonicalBinding("reddit", ctx);
   if (!ctx.connection) return base;
@@ -45,6 +73,42 @@ export async function verify(ctx: VerifyContext) {
       "Reddit does not report a servable funding instrument.",
       ctx.checkedAt,
       "provider_api",
+    );
+  const client = await resolveRedditClient(
+    asAdConnectionRow(connection),
+    "consumer",
+  );
+  const apps = await runAllowedProviderOperation(
+    "reddit",
+    "apps",
+    "GET",
+    "ad_accounts/{id}/apps",
+    async () =>
+      parseRedditApps(
+        await redditRequest(
+          client,
+          "GET",
+          `/ad_accounts/${snapshot.account.id}/apps`,
+        ),
+      ),
+  );
+  const exact = apps.find((row) =>
+    row.appId === ctx.target.store_identifier && row.platform === ctx.target.os
+  );
+  base.dimensions.binding = exact
+    ? evidence(
+      "proven",
+      "Reddit returned the exact store identity after provider-authoritative app-install use.",
+      ctx.checkedAt,
+      "provider_api",
+      exact.appId,
+    )
+    : evidence(
+      "action_required",
+      "Reddit has no pre-created app object. The exact store identity remains unproven until a separately approved paused app-install canary is accepted.",
+      ctx.checkedAt,
+      "provider_api",
+      ctx.target.store_identifier,
     );
   base.reason_code = !payerMatches
     ? "payer_mismatch"

@@ -82,28 +82,107 @@ export const responseHeaders = {
   "X-Content-Type-Options": "nosniff",
 };
 
-export function parseReadinessRequest(body: unknown): {
+const MUTATION_ORIGINS = new Set([
+  "https://admin.usemingla.com",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+]);
+
+type ReadinessRequest = {
   action: "load" | "check";
   appKey: AppKey;
   os: OperatingSystem;
-} | null {
+} | {
+  action: "set_safe_binding";
+  appKey: AppKey;
+  os: OperatingSystem;
+  provider: ReadinessProvider;
+  providerContractKind: "mobile_asset" | "app_link" | "campaign_store_binding";
+  providerAppId: string | null;
+  providerMeasurementId: string | null;
+  expectedCurrentVersion: number;
+  idempotencyKey: string;
+  reason: string;
+} | {
+  action: "record_canary_evidence";
+  appKey: AppKey;
+  os: OperatingSystem;
+};
+
+export function parseReadinessRequest(body: unknown): ReadinessRequest | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
   const row = body as Record<string, unknown>;
-  if (Object.keys(row).sort().join(",") !== "action,app_key,os") return null;
-  if (row.action !== "load" && row.action !== "check") return null;
   if (!APP_KEYS.includes(row.app_key as AppKey)) return null;
   if (!OPERATING_SYSTEMS.includes(row.os as OperatingSystem)) return null;
+  if (row.action === "load" || row.action === "check") {
+    if (Object.keys(row).sort().join(",") !== "action,app_key,os") return null;
+    return {
+      action: row.action,
+      appKey: row.app_key as AppKey,
+      os: row.os as OperatingSystem,
+    };
+  }
+  if (row.action === "record_canary_evidence") {
+    if (Object.keys(row).sort().join(",") !== "action,app_key,os") return null;
+    return {
+      action: row.action,
+      appKey: row.app_key as AppKey,
+      os: row.os as OperatingSystem,
+    };
+  }
+  if (row.action !== "set_safe_binding") return null;
+  if (
+    Object.keys(row).sort().join(",") !==
+      "action,app_key,expected_current_version,idempotency_key,os,provider,provider_app_id,provider_contract_kind,provider_measurement_id,reason"
+  ) return null;
+  if (!READINESS_PROVIDERS.includes(row.provider as ReadinessProvider)) {
+    return null;
+  }
+  if (
+    !["mobile_asset", "app_link", "campaign_store_binding"].includes(
+      String(row.provider_contract_kind),
+    )
+  ) return null;
+  if (
+    !Number.isSafeInteger(row.expected_current_version) ||
+    Number(row.expected_current_version) < 1
+  ) return null;
+  if (
+    typeof row.idempotency_key !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(row.idempotency_key)
+  ) return null;
+  if (
+    typeof row.reason !== "string" || row.reason.trim().length < 8 ||
+    row.reason.length > 240
+  ) return null;
+  for (const value of [row.provider_app_id, row.provider_measurement_id]) {
+    if (
+      value !== null &&
+      (typeof value !== "string" || !/^[A-Za-z0-9._:@/-]{1,160}$/.test(value))
+    ) return null;
+  }
   return {
-    action: row.action,
+    action: "set_safe_binding",
     appKey: row.app_key as AppKey,
     os: row.os as OperatingSystem,
+    provider: row.provider as ReadinessProvider,
+    providerContractKind: row.provider_contract_kind as
+      | "mobile_asset"
+      | "app_link"
+      | "campaign_store_binding",
+    providerAppId: row.provider_app_id as string | null,
+    providerMeasurementId: row.provider_measurement_id as string | null,
+    expectedCurrentVersion: row.expected_current_version as number,
+    idempotencyKey: row.idempotency_key as string,
+    reason: row.reason.trim(),
   };
 }
 
 export interface ReadinessDb {
   loadRegistry(): Promise<{
     targets: TargetRow[];
-    bindings: Array<Record<string, unknown>>;
+    bindings: BindingRow[];
     connections: ReadinessConnection[];
     identities: Array<Record<string, unknown>>;
   }>;
@@ -111,6 +190,9 @@ export interface ReadinessDb {
   persist(
     input: Record<string, unknown>,
     results: unknown[],
+  ): Promise<Record<string, unknown>>;
+  setSafeBinding?(
+    input: Record<string, unknown>,
   ): Promise<Record<string, unknown>>;
 }
 
@@ -249,10 +331,16 @@ export async function runSelectedCheck(
   appKey: AppKey,
   os: OperatingSystem,
   checks: {
-    verifyAppsflyer: typeof verifyAppsflyer;
+    verifyAppsflyer: (
+      target: TargetRow,
+      signal: AbortSignal,
+      checkedAt: string,
+      bindings: BindingRow[],
+    ) => ReturnType<typeof verifyAppsflyer>;
     adapters: typeof ADAPTERS;
   } = {
-    verifyAppsflyer,
+    verifyAppsflyer: (target, signal, checkedAt, bindings) =>
+      verifyAppsflyer(target, signal, checkedAt, undefined, bindings),
     adapters: ADAPTERS,
   },
 ): Promise<Record<string, unknown>> {
@@ -268,7 +356,12 @@ export async function runSelectedCheck(
   let appsFlyerMeasurements;
   try {
     appsFlyerMeasurements = await timeout(
-      checks.verifyAppsflyer(target, appsFlyerController.signal, checkedAt),
+      checks.verifyAppsflyer(
+        target,
+        appsFlyerController.signal,
+        checkedAt,
+        registry.bindings,
+      ),
       PROVIDER_TIMEOUT_MS,
       appsFlyerController,
     );
@@ -426,7 +519,12 @@ export async function handleAppReadinessRequest(
     createDb(): ReadinessDb;
     now(): string;
     checks?: {
-      verifyAppsflyer: typeof verifyAppsflyer;
+      verifyAppsflyer: (
+        target: TargetRow,
+        signal: AbortSignal,
+        checkedAt: string,
+        bindings: BindingRow[],
+      ) => ReturnType<typeof verifyAppsflyer>;
       adapters: typeof ADAPTERS;
     };
   },
@@ -445,7 +543,7 @@ export async function handleAppReadinessRequest(
   }
   if (auth.status === "forbidden") return json({ error: "forbidden" }, 403);
   const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > 2048) {
+  if (new TextEncoder().encode(text).byteLength > 4096) {
     return json({ error: "invalid_request" }, 400);
   }
   let body: unknown;
@@ -456,8 +554,38 @@ export async function handleAppReadinessRequest(
   }
   const parsed = parseReadinessRequest(body);
   if (!parsed) return json({ error: "invalid_request" }, 400);
+  if (
+    parsed.action === "set_safe_binding" ||
+    parsed.action === "record_canary_evidence"
+  ) {
+    const origin = request.headers.get("Origin");
+    if (!origin || !MUTATION_ORIGINS.has(origin)) {
+      return json({ error: "origin_forbidden" }, 403);
+    }
+  }
   const db = dependencies.createDb();
   try {
+    if (parsed.action === "record_canary_evidence") {
+      return json({ error: "founder_approval_required" }, 409);
+    }
+    if (parsed.action === "set_safe_binding") {
+      if (!db.setSafeBinding) {
+        return json({ error: "readiness_unavailable" }, 503);
+      }
+      const changed = await db.setSafeBinding({
+        app_key: parsed.appKey,
+        os: parsed.os,
+        provider: parsed.provider,
+        provider_contract_kind: parsed.providerContractKind,
+        provider_app_id: parsed.providerAppId,
+        provider_measurement_id: parsed.providerMeasurementId,
+        actor: auth.actor,
+        reason: parsed.reason,
+        expected_current_version: parsed.expectedCurrentVersion,
+        idempotency_key: parsed.idempotencyKey,
+      });
+      return json({ contract_version: 2, changed });
+    }
     if (parsed.action === "check") {
       await runSelectedCheck(
         db,

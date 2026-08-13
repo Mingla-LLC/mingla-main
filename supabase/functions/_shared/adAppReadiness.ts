@@ -85,6 +85,12 @@ export interface BindingRow {
   public_identity_required: boolean;
   provider_app_id: string | null;
   provider_measurement_id: string | null;
+  provider_contract_kind?:
+    | "mobile_asset"
+    | "app_link"
+    | "campaign_store_binding";
+  binding_version?: number;
+  readiness_invalidated_at?: string;
   native_binding_attested_at?: string | null;
   native_binding_attestation_expires_at?: string | null;
   native_binding_attestation_safe_id?: string | null;

@@ -105,6 +105,14 @@ export async function checkAppReadiness(appKey, os, { signal } = {}) {
   });
 }
 
+/** Issue #2015: audited safe-ID registry write. Never creates provider objects. */
+export async function setAppReadinessSafeBinding(input, { signal } = {}) {
+  return invokeWithRefresh("admin-ad-app-readiness", {
+    body: { action: "set_safe_binding", ...input },
+    ...(signal ? { signal } : {}),
+  });
+}
+
 export async function recordAppReadinessEvent(event) {
   return invokeWithRefresh("admin-ad-app-readiness-event", { body: event });
 }
