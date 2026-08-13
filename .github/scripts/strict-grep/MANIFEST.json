@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 522,
+  "expectedStrictGrepMjsFiles": 523,
   "selfTestWiredFloor": 328,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -90,6 +90,19 @@
         "plain"
       ],
       "selfTest": "wired",
+      "jobKeys": [
+        "issue-2000-ari-capability-ledger"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-2000-ari-capability-ledger.tester.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
       "jobKeys": [
         "issue-2000-ari-capability-ledger"
       ]
