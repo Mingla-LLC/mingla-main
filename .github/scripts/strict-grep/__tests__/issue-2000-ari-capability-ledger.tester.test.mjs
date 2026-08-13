@@ -31,19 +31,19 @@ const EXPECTED_TOOL_NAMES = [
 ];
 
 const EXPECTED = Object.freeze({
-  capabilityCount: 114,
+  capabilityCount: 116,
   statusBreakdown: Object.freeze({
     verified: 0,
     registered_unverified: 16,
     broken: 47,
     guided_handoff: 7,
-    unsupported: 40,
+    unsupported: 42,
     in_flight: 4,
   }),
-  idDigest: "c6b5cb85772e402219e0e3403c06dc88cddfc0ed2050e7f2ea07d639513ddf82",
-  statusDigest: "99fa0a6ead73c36c88ef9c120d2b0c984e38b99afd4891d97c9330ea5a3d1fba",
+  idDigest: "a63afe467e81ac3fd2441d0ccbc92dcb8c8afea8fd8ee4327c3f6fdb1a8a95c0",
+  statusDigest: "c69ab7aa28dbaf38d027c00fc7d184f6ee93ee2ae52e1fa48ffc570ad297db0a",
   mappingDigest: "4f9babfa94a8a97bdfd6f2043d5f6ebdf6a1ba4057d5321468341c3bcef6fe6f",
-  sourceRefDigest: "9a82c3b4dc20842b6f6790a3f4384a8e65f3d0b87e515aeae6d814fd32c95de7",
+  sourceRefDigest: "2e2c112c814af4b5bf9607e0d497d40bbba22e7234ff79317b95a8ef86f8dd6f",
 });
 
 function readLedger() {
@@ -70,7 +70,7 @@ function independentlyValidateSnapshot(ledger) {
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
   if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("64-tool set changed");
-  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("47/16/40/7/4/0 classification changed");
+  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("47/16/42/7/4/0 classification changed");
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");
   if (digest(mapped.map((capability) => `${capability.ari_tool}\t${capability.id}`)) !== EXPECTED.mappingDigest) failures.push("tool-to-capability mapping changed");
