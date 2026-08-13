@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths: &people_paths
       - "mingla-business/app/(tabs)/marketing/people/**"
+      - "mingla-business/app/(tabs)/marketing/_layout.tsx"
       - "mingla-business/app/(tabs)/marketing/audiences/**"
       - "mingla-business/app/(tabs)/people/**"
       - "mingla-business/src/components/people/**"
@@ -57,7 +58,17 @@ jobs:
           node .github/scripts/strict-grep/issue-1774-people-page.mjs --self-test
           node .github/scripts/strict-grep/issue-1774-people-page.mjs
           cd mingla-business
-          npx jest --runInBand --runTestsByPath src/services/__tests__/peopleService.issue1774.test.ts src/components/people/__tests__/PeoplePage.issue1774.happy.test.tsx "app/(tabs)/marketing/__tests__/MarketingAudiences.disabled-query.adversarial.test.ts"
+          npx jest --runInBand --runTestsByPath \
+            src/services/__tests__/peopleService.issue1774.test.ts \
+            src/hooks/marketing/__tests__/useBrandPeople.issue1774.behavior.test.tsx \
+            src/components/people/__tests__/PeoplePage.issue1774.happy.test.tsx \
+            src/components/people/__tests__/PeoplePage.issue1774.behavior.test.tsx \
+            src/components/people/__tests__/PeopleSheets.issue1774.behavior.test.ts \
+            src/components/people/__tests__/AddPersonSheet.issue1774.behavior.test.tsx \
+            src/components/people/__tests__/PersonDetailView.issue1774.behavior.test.tsx \
+            src/components/people/__tests__/peopleRequestId.issue1774.test.ts \
+            "app/(tabs)/marketing/__tests__/MarketingAudiences.disabled-query.adversarial.test.ts" \
+            __tests__/orch-0891.bundle-budget.adversarial.test.ts
       - name: Wait for PostgreSQL 17 and apply every migration
         env:
           PGPASSWORD: ${{ format('issue-1774-ci-{0}', github.run_id) }}
