@@ -110,6 +110,7 @@ const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({
         onBlur={() => setFocused(false)}
         style={({ pressed }) => [styles.recoveryAction, pressed && styles.pressed, focused && styles.recoveryActionFocused]}
         accessibilityRole="button"
+        accessibilityLabel={recovery.action}
       >
         <Text style={styles.recoveryActionText}>{recovery.action}</Text>
       </Pressable>
