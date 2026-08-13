@@ -1,0 +1,37 @@
+name: issue-1930-checkout-current-truth
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/ticket-checkout-**"
+      - "supabase/functions/reconcile-stuck-checkouts/**"
+      - "supabase/functions/rsvp-contribution-create/**"
+      - "supabase/functions/checkout-sale-revocation/**"
+      - "supabase/functions/_shared/*WebhookRouter.ts"
+      - "supabase/functions/_shared/checkoutSaleTruth.ts"
+      - "supabase/functions/_shared/sourceRefundControlPlane.ts"
+      - "supabase/migrations/20270403001930_issue_1930_checkout_current_truth.sql"
+      - "supabase/security/anon_executable_definer_allowlist.txt"
+      - ".github/scripts/strict-grep/issue-1930-checkout-current-truth.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-1930-checkout-current-truth.yml"
+      - "docs/INVARIANT_REGISTRY.md"
+  workflow_dispatch:
+
+jobs:
+  issue-1930-checkout-current-truth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: node .github/scripts/strict-grep/issue-1930-checkout-current-truth.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-1930-checkout-current-truth.mjs
+      - run: >-
+          deno test --allow-read
+          supabase/functions/_shared/__tests__/issue_1930_checkout_sale_truth.test.ts
+          supabase/functions/_shared/__tests__/issue_1930_source_refund_dispatch.test.ts
+          supabase/functions/ticket-checkout-status/__tests__/issue_1930_preflight_contract.test.ts
+          supabase/functions/checkout-sale-revocation/issue_1930_revocation_worker.test.ts
+          supabase/functions/rsvp-contribution-create/issue_1930_rsvp_truth.test.ts
+          supabase/migrations/__tests__/issue_1930_checkout_current_truth.test.ts

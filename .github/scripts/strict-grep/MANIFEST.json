@@ -8093,6 +8093,20 @@
       ]
     },
     {
+      "script": ".github/scripts/strict-grep/issue-1930-checkout-current-truth.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1930-checkout-current-truth"
+      ]
+    },
+    {
       "script": ".github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs",
       "kind": "file",
       "enforcement": "batch:A",

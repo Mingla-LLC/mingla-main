@@ -43,9 +43,9 @@ import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
 // fee/tax arithmetic in this function.
 import {
   buildPricingBreakdown,
+  type ComputeAllInInput,
   computeBuyerSubtotal,
   MINGLA_SERVICE_FEE_BPS,
-  type ComputeAllInInput,
   type PricingBreakdown,
   type PricingRegion,
   type PricingSwitches,
@@ -88,6 +88,18 @@ function optionalTrimmed(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+async function contributionStillAuthorized(
+  client: ReturnType<typeof serviceClient>,
+  contributionId: string,
+  eventId: string,
+): Promise<boolean> {
+  const { data, error } = await client.rpc(
+    "issue_1930_rsvp_contribution_authorized",
+    { p_contribution_id: contributionId, p_event_id: eventId },
+  );
+  return error === null && data === true;
+}
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -108,6 +120,7 @@ serve(async (req: Request): Promise<Response> => {
   const amountCents = Number(body.amountCents);
   const guestName = optionalTrimmed(body.guestName) ?? null;
   const guestEmail = optionalTrimmed(body.guestEmail) ?? null;
+  const callerIdempotencyKey = optionalTrimmed(body.callerIdempotencyKey);
   const surface: ContributionSurface = body.surface === "web"
     ? "web"
     : body.surface === "mobile-web"
@@ -115,6 +128,9 @@ serve(async (req: Request): Promise<Response> => {
     : "native";
 
   if (!eventId) return jsonResponse({ error: "event_id_required" }, 400);
+  if (!callerIdempotencyKey || callerIdempotencyKey.length > 120) {
+    return jsonResponse({ error: "idempotency_key_required" }, 400);
+  }
   if (!Number.isInteger(amountCents) || amountCents <= 0) {
     return jsonResponse({ error: "amount_invalid" }, 400);
   }
@@ -132,7 +148,7 @@ serve(async (req: Request): Promise<Response> => {
   const { data: eventRow, error: eventErr } = await supabase
     .from("events")
     .select(
-      "id, slug, event_type, brand_id, title, status, rsvp_contribution_enabled, rsvp_contribution_min_cents, brands(slug, name)",
+      "id, slug, event_type, brand_id, title, status, visibility, deleted_at, rsvp_contribution_enabled, rsvp_contribution_min_cents, brands(slug, name)",
     )
     .eq("id", eventId)
     .maybeSingle();
@@ -141,6 +157,28 @@ serve(async (req: Request): Promise<Response> => {
   }
   if (eventRow.event_type !== "rsvp") {
     return jsonResponse({ error: "not_an_rsvp_event" }, 409);
+  }
+  if (
+    eventRow.deleted_at !== null ||
+    !["scheduled", "live"].includes(String(eventRow.status)) ||
+    !["public", "hidden"].includes(String(eventRow.visibility))
+  ) {
+    return jsonResponse({ error: "checkout_unavailable" }, 409);
+  }
+
+  const { data: existingContribution } = await supabase
+    .from("event_rsvp_contributions")
+    .select("id,status,provider,stripe_payment_intent_id")
+    .eq("event_id", eventId)
+    .eq("caller_idempotency_key", callerIdempotencyKey)
+    .maybeSingle();
+  if (existingContribution) {
+    return jsonResponse({
+      error: existingContribution.status === "pending"
+        ? "contribution_in_progress"
+        : "contribution_already_submitted",
+      contributionId: existingContribution.id,
+    }, 409);
   }
   if (eventRow.rsvp_contribution_enabled !== true) {
     return jsonResponse({ error: "contribution_not_enabled" }, 409);
@@ -184,7 +222,10 @@ serve(async (req: Request): Promise<Response> => {
     { p_brand_id: brandId },
   );
   if (canCollectErr) {
-    console.error("[rsvp-contribution-create] pg_brand_can_collect failed", canCollectErr);
+    console.error(
+      "[rsvp-contribution-create] pg_brand_can_collect failed",
+      canCollectErr,
+    );
     return jsonResponse({ error: "readiness_check_failed" }, 500);
   }
   // #1178 — a STAMPED (cut-over) brand is admitted even if pg_brand_can_collect
@@ -201,7 +242,10 @@ serve(async (req: Request): Promise<Response> => {
     { p_event_id: eventId },
   );
   if (pricingError || !Array.isArray(pricingRows) || pricingRows.length === 0) {
-    console.error("[rsvp-contribution-create] resolve_event_pricing_inputs failed", pricingError);
+    console.error(
+      "[rsvp-contribution-create] resolve_event_pricing_inputs failed",
+      pricingError,
+    );
     return jsonResponse({ error: "pricing_config_unavailable" }, 409);
   }
   const pricing = pricingRows[0] as {
@@ -227,7 +271,9 @@ serve(async (req: Request): Promise<Response> => {
       | Array<{ name?: string | null; slug?: string | null }>
       | null;
     const row = Array.isArray(joined) ? joined[0] ?? null : joined;
-    return typeof row?.name === "string" && row.name.length > 0 ? row.name : "the host";
+    return typeof row?.name === "string" && row.name.length > 0
+      ? row.name
+      : "the host";
   })();
 
   // ORCH-1295 [chip-in-post-payment-polish] — the brand's URL slug for the web
@@ -240,7 +286,9 @@ serve(async (req: Request): Promise<Response> => {
       | Array<{ name?: string | null; slug?: string | null }>
       | null;
     const row = Array.isArray(joined) ? joined[0] ?? null : joined;
-    return typeof row?.slug === "string" && row.slug.length > 0 ? row.slug : null;
+    return typeof row?.slug === "string" && row.slug.length > 0
+      ? row.slug
+      : null;
   })();
 
   const contributionId = crypto.randomUUID();
@@ -290,7 +338,7 @@ serve(async (req: Request): Promise<Response> => {
 
     // Unique reference — persisted in stripe_payment_intent_id (UNIQUE) BEFORE
     // calling Paystack (idempotency + retry safety; a retry mints a fresh ref).
-    const reference = `mingla_contrib_${contributionId.replaceAll("-", "")}_${Date.now().toString(36)}`;
+    const reference = `mingla_contrib_${contributionId.replaceAll("-", "")}`;
 
     const { error: insertErr } = await supabase
       .from("event_rsvp_contributions")
@@ -309,19 +357,34 @@ serve(async (req: Request): Promise<Response> => {
         application_fee_amount_cents: applicationFeeCents,
         pricing_breakdown: breakdown,
         status: "pending",
+        caller_idempotency_key: callerIdempotencyKey,
         stripe_payment_intent_id: reference,
       });
     if (insertErr) {
-      console.error("[rsvp-contribution-create] paystack contribution insert failed", insertErr);
+      console.error(
+        "[rsvp-contribution-create] paystack contribution insert failed",
+        insertErr,
+      );
       return jsonResponse({ error: "contribution_persist_failed" }, 500);
     }
 
     const callbackBase = Deno.env.get("PAYSTACK_CALLBACK_BASE") ??
       "https://business.usemingla.com/pay/callback";
-    const callbackUrl = `${callbackBase}?contrib=${encodeURIComponent(contributionId)}`;
+    const callbackUrl = `${callbackBase}?contrib=${
+      encodeURIComponent(contributionId)
+    }`;
 
-    let init: { authorization_url: string; reference: string; access_code: string };
+    let init: {
+      authorization_url: string;
+      reference: string;
+      access_code: string;
+    };
     try {
+      if (
+        !await contributionStillAuthorized(supabase, contributionId, eventId)
+      ) {
+        return jsonResponse({ error: "checkout_unavailable" }, 409);
+      }
       init = await paystackInitializeTransaction({
         email: guestEmail ?? `${contributionId}@guest.usemingla.com`,
         amountSubunits: buyerTotalCents, // already kobo (minor units)
@@ -440,9 +503,13 @@ serve(async (req: Request): Promise<Response> => {
       application_fee_amount_cents: applicationFeeCents,
       pricing_breakdown: breakdown,
       status: "pending",
+      caller_idempotency_key: callerIdempotencyKey,
     });
   if (insertErr) {
-    console.error("[rsvp-contribution-create] stripe contribution insert failed", insertErr);
+    console.error(
+      "[rsvp-contribution-create] stripe contribution insert failed",
+      insertErr,
+    );
     return jsonResponse({ error: "contribution_persist_failed" }, 500);
   }
 
@@ -455,9 +522,10 @@ serve(async (req: Request): Promise<Response> => {
   // WEB / MOBILE-WEB → hosted Stripe Checkout (redirect). NO automatic_tax — a
   // contribution is a zero-tax gift (SPEC §10 Q-A). unit_amount = the gift.
   if (surface === "web" || surface === "mobile-web") {
-    const eventName = typeof eventRow.title === "string" && eventRow.title.length > 0
-      ? eventRow.title
-      : "this event";
+    const eventName =
+      typeof eventRow.title === "string" && eventRow.title.length > 0
+        ? eventRow.title
+        : "this event";
     let successUrl: string;
     let cancelUrl: string;
     if (surface === "web") {
@@ -472,10 +540,15 @@ serve(async (req: Request): Promise<Response> => {
       // `/e/{brandSlug}/{eventSlug}` (ORCH-1291 dropped brandSlug → dead page).
       // Fail closed if brandSlug is missing rather than strand the guest on a URL
       // with a missing path segment (the pending row is marked failed first).
-      const eventSlug = typeof eventRow.slug === "string" && eventRow.slug.length > 0
-        ? eventRow.slug
-        : eventId;
-      const returnUrls = buildContributionWebReturnUrls(baseUrl, brandSlug, eventSlug);
+      const eventSlug =
+        typeof eventRow.slug === "string" && eventRow.slug.length > 0
+          ? eventRow.slug
+          : eventId;
+      const returnUrls = buildContributionWebReturnUrls(
+        baseUrl,
+        brandSlug,
+        eventSlug,
+      );
       if (returnUrls === null) {
         console.error(
           "[rsvp-contribution-create] cannot build web return URL — brandSlug missing",
@@ -490,14 +563,21 @@ serve(async (req: Request): Promise<Response> => {
       successUrl = returnUrls.successUrl;
       cancelUrl = returnUrls.cancelUrl;
     } else {
-      successUrl = `mingla-business://checkout/return?contribution=paid&contrib=${contributionId}`;
-      cancelUrl = `mingla-business://checkout/return?contribution=cancel&contrib=${contributionId}`;
+      successUrl =
+        `mingla-business://checkout/return?contribution=paid&contrib=${contributionId}`;
+      cancelUrl =
+        `mingla-business://checkout/return?contribution=cancel&contrib=${contributionId}`;
     }
 
     let stripeWeb: ReturnType<typeof stripeTicketCheckout>;
     let checkoutSession: { id: string; url: string | null };
     try {
       stripeWeb = stripeTicketCheckout();
+      if (
+        !await contributionStillAuthorized(supabase, contributionId, eventId)
+      ) {
+        return jsonResponse({ error: "checkout_unavailable" }, 409);
+      }
       const piData: Record<string, unknown> = {
         metadata,
         statement_descriptor_suffix: "MINGLA",
@@ -534,12 +614,18 @@ serve(async (req: Request): Promise<Response> => {
       );
     } catch (err) {
       const failure = classifyStripeCheckoutSessionCreateFailure(err);
-      console.error("[rsvp-contribution-create] checkout session create failed", failure.detail);
+      console.error(
+        "[rsvp-contribution-create] checkout session create failed",
+        failure.detail,
+      );
       await supabase
         .from("event_rsvp_contributions")
         .update({ status: "failed", updated_at: new Date().toISOString() })
         .eq("id", contributionId);
-      return jsonResponse({ error: "checkout_session_create_failed", detail: failure.detail }, failure.httpStatus);
+      return jsonResponse({
+        error: "checkout_session_create_failed",
+        detail: failure.detail,
+      }, failure.httpStatus);
     }
 
     if (!checkoutSession.url) {
@@ -569,6 +655,9 @@ serve(async (req: Request): Promise<Response> => {
   let stripe: ReturnType<typeof stripeTicketCheckout> | null = null;
   try {
     stripe = stripeTicketCheckout();
+    if (!await contributionStillAuthorized(supabase, contributionId, eventId)) {
+      return jsonResponse({ error: "checkout_unavailable" }, 409);
+    }
     const piCreateBody: Record<string, unknown> = {
       amount: buyerTotalCents,
       currency: currencyLower,
@@ -588,12 +677,18 @@ serve(async (req: Request): Promise<Response> => {
     );
   } catch (err) {
     const failure = classifyStripePaymentIntentCreateFailure(err);
-    console.error("[rsvp-contribution-create] payment intent create failed", failure.detail);
+    console.error(
+      "[rsvp-contribution-create] payment intent create failed",
+      failure.detail,
+    );
     await supabase
       .from("event_rsvp_contributions")
       .update({ status: "failed", updated_at: new Date().toISOString() })
       .eq("id", contributionId);
-    return jsonResponse({ error: "payment_intent_create_failed", detail: failure.detail }, failure.httpStatus);
+    return jsonResponse({
+      error: "payment_intent_create_failed",
+      detail: failure.detail,
+    }, failure.httpStatus);
   }
 
   const clientSecret = String(paymentIntent.client_secret ?? "");
@@ -610,7 +705,10 @@ serve(async (req: Request): Promise<Response> => {
       try {
         await cancelPaymentIntentIfClientAvailable(stripe, paymentIntent.id);
       } catch (cancelError) {
-        console.error("[rsvp-contribution-create] PI cancel failed", cancelError);
+        console.error(
+          "[rsvp-contribution-create] PI cancel failed",
+          cancelError,
+        );
       }
     }
     return jsonResponse({ error: "payment_session_persist_failed" }, 500);

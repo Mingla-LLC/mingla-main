@@ -19,7 +19,6 @@
 #  #1793 added pg_public_venue_ordering_state; #1929 added pg_direct_event_checkout_bundle.)
 
 # === INTENDED-PUBLIC READS (power anonymous public pages / checkout / signup) — INVESTIGATION F-8 / SPEC §4.4 ===
-biz_ticket_checkout_create_session(p_event_id uuid, p_buyer_user_id uuid, p_buyer_name text, p_buyer_email text, p_buyer_phone_e164 text, p_marketing_opt_in boolean, p_lines jsonb, p_idempotency_key text, p_expires_at timestamp with time zone, p_application_fee_amount_cents integer, p_payment_plan_choice text)
 check_username_availability(check_username text)
 is_username_available(p_username text)
 # #1384: static active currency metadata is required before sign-in and carries no user or brand data.
@@ -136,7 +135,6 @@ biz_refund_order(p_order_id uuid, p_lines jsonb, p_reason text, p_idempotency_ke
 biz_refund_order_commit(p_refund_id uuid, p_stripe_refund_id text, p_application_fee_refunded_cents integer, p_status text, p_stripe_tax_transaction_id text)
 biz_retry_installment(p_installment_id uuid)
 biz_send_installment_reminder(p_order_id uuid)
-biz_ticket_checkout_finalize(p_checkout_session_id uuid, p_stripe_payment_intent_id text, p_stripe_charge_id text, p_stripe_payment_method_type text, p_qr_token_pepper text, p_stripe_customer_id_on_connected_account text, p_saved_payment_method_id text, p_installment_plan_root boolean)
 biz_trip_tickets_sold(p_event_id uuid)
 biz_update_live_experience(p_event_id uuid, p_payload jsonb, p_reason text)
 biz_update_live_rsvp(p_event_id uuid, p_payload jsonb, p_reason text)
