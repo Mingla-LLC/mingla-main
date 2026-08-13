@@ -90,6 +90,12 @@ function numericId(value: unknown): string | null {
   return /^[0-9]+$/.test(normalized) ? normalized : null;
 }
 
+function googleLinkId(value: unknown): string | null {
+  return typeof value === "string" && /^[A-Fa-f0-9]{32}$/.test(value)
+    ? value
+    : null;
+}
+
 export function parseGoogleAppLinks(payload: unknown): GoogleAppLink[] {
   const results =
     Array.isArray((payload as Record<string, unknown> | null)?.results)
@@ -107,7 +113,7 @@ export function parseGoogleAppLinks(payload: unknown): GoogleAppLink[] {
       | Record<string, unknown>
       | undefined;
     const resourceName = analyticsLink?.resourceName;
-    const shareableLinkId = numericId(analyticsLink?.shareableLinkId);
+    const shareableLinkId = googleLinkId(analyticsLink?.shareableLinkId);
     const appAnalyticsProviderId = numericId(
       analytics?.appAnalyticsProviderId,
     );

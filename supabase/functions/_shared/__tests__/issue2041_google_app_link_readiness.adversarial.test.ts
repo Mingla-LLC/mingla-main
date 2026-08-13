@@ -33,7 +33,10 @@ function target(os: SupportedOs): TargetRow {
   };
 }
 
-function binding(os: SupportedOs, linkId = "9876543210"): BindingRow {
+function binding(
+  os: SupportedOs,
+  linkId = "66CB20600C7FDA957E511684502DFFE3",
+): BindingRow {
   return {
     app_key: "business",
     os,
@@ -70,7 +73,8 @@ function link(
     thirdPartyAppAnalyticsLink: {
       resourceName: overrides.resourceName ??
         "customers/3623860476/thirdPartyAppAnalyticsLinks/123",
-      shareableLinkId: overrides.shareableLinkId ?? "9876543210",
+      shareableLinkId: overrides.shareableLinkId ??
+        "66CB20600C7FDA957E511684502DFFE3",
     },
   };
 }
@@ -103,7 +107,9 @@ Deno.test("#2041 tester: hostile near-matches cannot shadow the exact iOS or And
       : "APPLE_APP_STORE";
     const payload = {
       results: [
-        link(os, { shareableLinkId: "1111111111" }),
+        link(os, {
+          shareableLinkId: "595D7630DCA3E05A82CEADA049AD832E",
+        }),
         link(os, { appId: "com.attacker.near.match" }),
         link(os, { vendor: oppositeVendor }),
         link(os),
@@ -115,7 +121,10 @@ Deno.test("#2041 tester: hostile near-matches cannot shadow the exact iOS or And
       target: target(os),
       binding: binding(os),
     });
-    assertEquals(exact?.shareableLinkId, "9876543210");
+    assertEquals(
+      exact?.shareableLinkId,
+      "66CB20600C7FDA957E511684502DFFE3",
+    );
     assertEquals(exact?.appVendor, FIXTURES[os].vendor);
 
     const ctx = context(os);
@@ -125,7 +134,10 @@ Deno.test("#2041 tester: hostile near-matches cannot shadow the exact iOS or And
       payload,
     );
     assertEquals(result.dimensions.binding.status, "proven");
-    assertEquals(result.dimensions.binding.safe_id, "9876543210");
+    assertEquals(
+      result.dimensions.binding.safe_id,
+      "66CB20600C7FDA957E511684502DFFE3",
+    );
     assertEquals(result.dimensions.funding.status, "action_required");
     assertEquals(result.reason_code, "funding_missing");
   }
@@ -142,7 +154,7 @@ Deno.test("#2041 tester: a plausible but non-canonical link stays non-ready and 
       results: [
         link("android", {
           providerId: "777777",
-          shareableLinkId: "1111111111",
+          shareableLinkId: "595D7630DCA3E05A82CEADA049AD832E",
           resourceName: providerOnlyResource,
         }),
       ],
@@ -156,7 +168,10 @@ Deno.test("#2041 tester: a plausible but non-canonical link stays non-ready and 
   const safeEvidence = JSON.stringify(result);
   assertEquals(safeEvidence.includes(providerOnlyResource), false);
   assertEquals(safeEvidence.includes("777777"), false);
-  assertEquals(safeEvidence.includes("1111111111"), false);
+  assertEquals(
+    safeEvidence.includes("595D7630DCA3E05A82CEADA049AD832E"),
+    false,
+  );
 });
 
 Deno.test("#2041 tester: invalid top-level provider shapes never fabricate a link", () => {

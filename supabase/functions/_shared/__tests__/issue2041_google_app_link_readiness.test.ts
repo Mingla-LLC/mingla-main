@@ -31,7 +31,7 @@ const BINDING: BindingRow = {
   payer_connection_id: "payer",
   public_identity_required: false,
   provider_app_id: TARGET.store_identifier,
-  provider_measurement_id: "9876543210",
+  provider_measurement_id: "66CB20600C7FDA957E511684502DFFE3",
   active: true,
 };
 
@@ -51,7 +51,7 @@ function link(overrides: Record<string, unknown> = {}) {
     },
     thirdPartyAppAnalyticsLink: {
       resourceName: "customers/3623860476/thirdPartyAppAnalyticsLinks/123",
-      shareableLinkId: "9876543210",
+      shareableLinkId: "66CB20600C7FDA957E511684502DFFE3",
       ...(overrides.thirdPartyAppAnalyticsLink as Record<string, unknown> ??
         {}),
     },
@@ -79,7 +79,10 @@ Deno.test("#2041 exact enabled app, vendor, provider, and Link ID prove without 
   const parsed = parseGoogleAppLinks({ results: [link()] });
   assertEquals(parsed.length, 1);
   assertEquals(parsed[0].appAnalyticsProviderId, "42");
-  assertEquals(parsed[0].shareableLinkId, "9876543210");
+  assertEquals(
+    parsed[0].shareableLinkId,
+    "66CB20600C7FDA957E511684502DFFE3",
+  );
   assertEquals(
     findExactGoogleAppLink(parsed, { target: TARGET, binding: BINDING }),
     parsed[0],
@@ -87,7 +90,10 @@ Deno.test("#2041 exact enabled app, vendor, provider, and Link ID prove without 
   assertEquals(
     findExactGoogleAppLink(parsed, {
       target: TARGET,
-      binding: { ...BINDING, provider_measurement_id: "1111111111" },
+      binding: {
+        ...BINDING,
+        provider_measurement_id: "595D7630DCA3E05A82CEADA049AD832E",
+      },
     }),
     undefined,
   );
@@ -123,7 +129,10 @@ Deno.test("#2041 exact enabled app, vendor, provider, and Link ID prove without 
     { results: [link()] },
   );
   assertEquals(evidence.dimensions.binding.status, "proven");
-  assertEquals(evidence.dimensions.binding.safe_id, "9876543210");
+  assertEquals(
+    evidence.dimensions.binding.safe_id,
+    "66CB20600C7FDA957E511684502DFFE3",
+  );
   assertEquals(evidence.dimensions.funding.status, "action_required");
   assertEquals(evidence.reason_code, "funding_missing");
 });
@@ -163,7 +172,7 @@ Deno.test("#2041 malformed identities, wrong platform, and wrong app fail closed
     link({ thirdPartyAppAnalytics: { appVendor: "UNKNOWN" } }),
     link({ thirdPartyAppAnalyticsLink: { resourceName: "" } }),
     link({ thirdPartyAppAnalyticsLink: { shareableLinkId: "" } }),
-    link({ thirdPartyAppAnalyticsLink: { shareableLinkId: "not-numeric" } }),
+    link({ thirdPartyAppAnalyticsLink: { shareableLinkId: "not-hex" } }),
   ];
   for (const row of invalidRows) {
     assertEquals(parseGoogleAppLinks({ results: [row] }), []);
