@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * #1999 — keep the implementor's actual-registry provider contract live in CI.
+ * #1999 — keep both independently owned provider-schema contracts live in CI.
  *
- * This Class A gate fails if the dedicated workflow, exact Deno target, or
- * source/test path triggers disappear. `--self-test` proves the checker sees
+ * This Class A gate fails if the dedicated workflow, either exact Deno target,
+ * or source/test path triggers disappear. `--self-test` proves the checker sees
  * omitted targets, conditional execution, and incomplete source coverage.
  */
 
@@ -17,14 +17,20 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../../..");
 
 const WORKFLOW_PATH = ".github/workflows/issue-1999-ari-provider-schema-tests.yml";
-const TEST_PATH =
+const IMPLEMENTOR_TEST_PATH =
   "supabase/functions/_shared/__tests__/issue_1999_ari_provider_schema_contract.test.ts";
+const TESTER_TEST_PATH =
+  "supabase/functions/_shared/__tests__/issue_1999_ari_provider_schema_contract.tester_adversarial.test.ts";
+const TEST_PATHS = [IMPLEMENTOR_TEST_PATH, TESTER_TEST_PATH];
 const SOURCE_PATHS = [
   "supabase/functions/_shared/agentGemini.ts",
   "supabase/functions/_shared/agentTools.ts",
   "supabase/functions/_shared/agentDomainTools.ts",
+  "supabase/functions/_shared/agentToolHelpers.ts",
   "supabase/functions/agent-chat/**",
 ];
+const EXACT_RUN =
+  `run: deno test --allow-read ${IMPLEMENTOR_TEST_PATH} ${TESTER_TEST_PATH}`;
 
 export function check(workflowSource, failures) {
   if (!workflowSource.includes("pull_request:")) {
@@ -41,19 +47,18 @@ export function check(workflowSource, failures) {
     }
   }
 
-  const testOccurrences = workflowSource.split(TEST_PATH).length - 1;
-  if (testOccurrences < 3) {
-    failures.push("exact implementor test must appear in both triggers and the Deno command");
+  for (const testPath of TEST_PATHS) {
+    const testOccurrences = workflowSource.split(testPath).length - 1;
+    if (testOccurrences < 3) {
+      failures.push(`exact test must appear in both triggers and the Deno command: ${testPath}`);
+    }
   }
 
-  const exactRun = new RegExp(
-    `run:\\s*deno test\\s+${TEST_PATH.replaceAll(".", "\\.")}\\s*(?:\\n|$)`,
-  );
-  if (!exactRun.test(workflowSource)) {
-    failures.push("exact unconditional deno test command is missing");
+  if (!workflowSource.includes(EXACT_RUN)) {
+    failures.push("exact unconditional dual-test Deno command is missing");
   }
   if (/if\s+(?:\[\s+-f|test\s+-f)[^\n]*issue_1999/.test(workflowSource)) {
-    failures.push("implementor test execution is conditional");
+    failures.push("provider-schema test execution is conditional");
   }
 }
 
@@ -65,17 +70,21 @@ on:
       - "supabase/functions/_shared/agentGemini.ts"
       - "supabase/functions/_shared/agentTools.ts"
       - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentToolHelpers.ts"
       - "supabase/functions/agent-chat/**"
-      - "${TEST_PATH}"
+      - "${IMPLEMENTOR_TEST_PATH}"
+      - "${TESTER_TEST_PATH}"
   pull_request:
     paths:
       - "supabase/functions/_shared/agentGemini.ts"
       - "supabase/functions/_shared/agentTools.ts"
       - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentToolHelpers.ts"
       - "supabase/functions/agent-chat/**"
-      - "${TEST_PATH}"
+      - "${IMPLEMENTOR_TEST_PATH}"
+      - "${TESTER_TEST_PATH}"
 steps:
-  - run: deno test ${TEST_PATH}
+  - ${EXACT_RUN}
 `;
   const selfFailures = [];
   const goodFailures = [];
@@ -84,16 +93,16 @@ steps:
     selfFailures.push(`GOOD fixture rejected: ${goodFailures.join("; ")}`);
   }
 
-  const missingTarget = good.replace(`  - run: deno test ${TEST_PATH}`, "  - run: deno test other.test.ts");
+  const missingTarget = good.replaceAll(TESTER_TEST_PATH, "other.test.ts");
   const missingFailures = [];
   check(missingTarget, missingFailures);
-  if (!missingFailures.some((failure) => failure.includes("exact implementor test"))) {
-    selfFailures.push("BAD1 missing exact test target was not rejected");
+  if (!missingFailures.some((failure) => failure.includes(TESTER_TEST_PATH))) {
+    selfFailures.push("BAD1 missing exact tester target was not rejected");
   }
 
   const conditional = good.replace(
-    `  - run: deno test ${TEST_PATH}`,
-    `  - run: if test -f ${TEST_PATH}; then deno test ${TEST_PATH}; fi`,
+    `  - ${EXACT_RUN}`,
+    `  - run: if test -f ${TESTER_TEST_PATH}; then deno test --allow-read ${IMPLEMENTOR_TEST_PATH} ${TESTER_TEST_PATH}; fi`,
   );
   const conditionalFailures = [];
   check(conditional, conditionalFailures);
@@ -108,12 +117,22 @@ steps:
     selfFailures.push("BAD3 missing registry trigger was not rejected");
   }
 
+  const missingHelper = good.replaceAll(
+    "supabase/functions/_shared/agentToolHelpers.ts",
+    "other-helper.ts",
+  );
+  const missingHelperFailures = [];
+  check(missingHelper, missingHelperFailures);
+  if (!missingHelperFailures.some((failure) => failure.includes("agentToolHelpers.ts"))) {
+    selfFailures.push("BAD4 missing helper trigger was not rejected");
+  }
+
   if (selfFailures.length > 0) {
     console.error("issue-1999-ari-provider-schema-ci-wiring self-test FAIL:");
     selfFailures.forEach((failure) => console.error(`  - ${failure}`));
     process.exit(1);
   }
-  console.log("issue-1999-ari-provider-schema-ci-wiring self-test PASS (4/4 cases).");
+  console.log("issue-1999-ari-provider-schema-ci-wiring self-test PASS (5/5 cases).");
   process.exit(0);
 }
 
@@ -124,8 +143,10 @@ if (!fs.existsSync(workflowAbsolute)) {
 } else {
   check(fs.readFileSync(workflowAbsolute, "utf8"), failures);
 }
-if (!fs.existsSync(path.join(repoRoot, TEST_PATH))) {
-  failures.push(`implementor test missing: ${TEST_PATH}`);
+for (const testPath of TEST_PATHS) {
+  if (!fs.existsSync(path.join(repoRoot, testPath))) {
+    failures.push(`provider-schema test missing: ${testPath}`);
+  }
 }
 
 if (failures.length > 0) {
