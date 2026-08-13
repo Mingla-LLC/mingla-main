@@ -96,6 +96,7 @@ export function currentMeasurementAttestation(ctx: VerifyContext) {
 
 export const READ_ONLY_METHODS = ["GET"] as const;
 export const META_VALIDATE_ONLY_OPERATION = "meta_exact_identity_validate_only";
+export const GOOGLE_READ_ONLY_SEARCH_OPERATION = "google_read_only_search";
 export const PROVIDER_READ_OPERATIONS = {
   meta: {
     account: ["GET", "ad_account"],
@@ -105,19 +106,25 @@ export const PROVIDER_READ_OPERATIONS = {
       "POST",
       "ad_account/adcreatives:validate_only",
     ],
+    mobile_app: ["GET", "{app_id}"],
   },
   tiktok: {
     advertiser: ["GET", "advertiser/info/"],
     identities: ["GET", "identity/get/"],
+    app_list: ["GET", "app/list/"],
+    app_info: ["GET", "app/info/"],
   },
   snapchat: {
     account: ["GET", "adaccounts/{id}"],
     funding: ["GET", "organizations/{id}/fundingsources"],
-    mobile_apps: ["GET", "adaccounts/{id}/mobile_apps"],
+    mobile_apps: ["GET", "organizations/{id}/mobile_apps"],
   },
-  google: {},
+  google: {
+    app_bindings: ["POST", "customers/{id}/googleAds:search"],
+  },
   reddit: {
     preflight: ["GET", "read_only_preflight"],
+    apps: ["GET", "ad_accounts/{id}/apps"],
   },
 } as const;
 
@@ -150,7 +157,11 @@ export function assertReadOnlyProviderRequest(
 ): void {
   const upper = method.toUpperCase();
   if (upper === "GET") return;
-  if (upper === "POST" && operation === META_VALIDATE_ONLY_OPERATION) return;
+  if (
+    upper === "POST" &&
+    (operation === META_VALIDATE_ONLY_OPERATION ||
+      operation === GOOGLE_READ_ONLY_SEARCH_OPERATION)
+  ) return;
   throw new Error("provider_write_forbidden");
 }
 
@@ -173,6 +184,8 @@ export async function runAllowedProviderOperation<T>(
     method,
     provider === "meta" && operation === "exact_identity_validate_only"
       ? META_VALIDATE_ONLY_OPERATION
+      : provider === "google" && operation === "app_bindings"
+      ? GOOGLE_READ_ONLY_SEARCH_OPERATION
       : undefined,
   );
   return await read();

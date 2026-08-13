@@ -30,6 +30,24 @@ function requireData<T>(
   return result.data;
 }
 
+function requireSafeBindingData<T>(
+  result: { data: T | null; error: { message: string } | null },
+): T {
+  if (result.error) {
+    for (
+      const conflict of [
+        "binding_version_conflict",
+        "idempotency_key_conflict",
+      ]
+    ) {
+      if (result.error.message.includes(conflict)) throw new Error(conflict);
+    }
+    throw new Error("database_unavailable");
+  }
+  if (result.data === null) throw new Error("database_unavailable");
+  return result.data;
+}
+
 serve((request: Request) =>
   handleAppReadinessRequest(request, {
     authorize: async (authorization) => {
@@ -71,11 +89,33 @@ serve((request: Request) =>
           } as never;
         },
         loadLatest: async () => {
-          const targets = requireData(
-            await db.from("ad_app_targets").select(
-              "app_key,os,display_name,store_identifier,appsflyer_app_id",
-            ).eq("active", true).order("app_key").order("os"),
-          ) as Array<Record<string, unknown>>;
+          const [targetResult, bindingResult, measurementResult, canaryResult] =
+            await Promise.all([
+              db.from("ad_app_targets").select(
+                "app_key,os,display_name,store_identifier,appsflyer_app_id",
+              ).eq("active", true).order("app_key").order("os"),
+              db.from("ad_app_provider_bindings").select(
+                "app_key,os,provider,provider_contract_kind,provider_app_id,provider_measurement_id,binding_version,readiness_invalidated_at",
+              ).eq("active", true),
+              db.from("ad_app_measurement_configurations").select(
+                "app_key,os,provider,status,partner_active,install_mapping_enabled,privacy_status,safe_measurement_id,evidence_provenance,checked_at,expires_at,configuration_version",
+              ),
+              db.from("ad_app_acquisition_canaries").select(
+                "app_key,os,provider,status,founder_approval_reference,approved_spend_ceiling_cents,approved_currency,started_at,completed_at,safe_provider_campaign_id,evidence_expires_at,canary_version",
+              ),
+            ]);
+          const targets = requireData(targetResult) as Array<
+            Record<string, unknown>
+          >;
+          const bindingRows = requireData(bindingResult) as Array<
+            Record<string, unknown>
+          >;
+          const measurementRows = requireData(measurementResult) as Array<
+            Record<string, unknown>
+          >;
+          const canaryRows = requireData(canaryResult) as Array<
+            Record<string, unknown>
+          >;
           const ordered = [
             ["explorer", "ios"],
             ["explorer", "android"],
@@ -88,6 +128,19 @@ serve((request: Request) =>
               row.app_key === appKey && row.os === os
             );
             if (!target) continue;
+            const targetBindings: Array<Record<string, unknown>> = bindingRows
+              .filter((row) => row.app_key === appKey && row.os === os)
+              .map((row) => ({
+                ...row,
+                measurement_configuration: measurementRows.find((item) =>
+                  item.app_key === appKey && item.os === os &&
+                  item.provider === row.provider
+                ) ?? null,
+                canary: canaryRows.find((item) =>
+                  item.app_key === appKey && item.os === os &&
+                  item.provider === row.provider
+                ) ?? null,
+              }));
             const runResult = await db.from("ad_app_readiness_runs").select(
               "id,checked_at,stale_at,duration_ms",
             ).eq("app_key", appKey).eq("os", os).order("checked_at", {
@@ -95,13 +148,19 @@ serve((request: Request) =>
             }).order("id", { ascending: false }).limit(1).maybeSingle();
             if (runResult.error) throw new Error("database_unavailable");
             if (!runResult.data) {
-              output.push({ ...target, latest: null, needs_check: true });
+              output.push({
+                ...target,
+                provider_contracts: targetBindings,
+                latest: null,
+                needs_check: true,
+              });
               continue;
             }
+            const latestRun = runResult.data;
             const results = requireData(
               await db.from("ad_app_readiness_results").select(
                 "provider,verdict,reason_code,owner_label,action_code,action_href,payer_evidence,identity_evidence,binding_evidence,measurement_evidence,funding_evidence",
-              ).eq("run_id", runResult.data.id),
+              ).eq("run_id", latestRun.id),
             );
             const canonical = ["meta", "tiktok", "snapchat", "google", "reddit"]
               .map((provider) =>
@@ -109,13 +168,20 @@ serve((request: Request) =>
                   row.provider === provider
                 )
               );
+            const invalidated = targetBindings.some((row) =>
+              Date.parse(String(row.readiness_invalidated_at ?? "")) >=
+                Date.parse(latestRun.checked_at)
+            );
             output.push({
               ...target,
+              provider_contracts: targetBindings,
               latest: {
-                run_id: runResult.data.id,
-                checked_at: runResult.data.checked_at,
-                stale_at: runResult.data.stale_at,
-                duration_ms: runResult.data.duration_ms,
+                run_id: latestRun.id,
+                checked_at: latestRun.checked_at,
+                stale_at: invalidated
+                  ? latestRun.checked_at
+                  : latestRun.stale_at,
+                duration_ms: latestRun.duration_ms,
                 results: canonical.map((row) => ({
                   ...row,
                   evidence: {
@@ -139,16 +205,21 @@ serve((request: Request) =>
               p_results: results,
             }),
           ),
+        setSafeBinding: async (input) =>
+          requireSafeBindingData(
+            await db.rpc("set_ad_app_safe_binding", { p_change: input }),
+          ),
       };
     },
     now: () => new Date().toISOString(),
     checks: {
-      verifyAppsflyer: (target, signal, checkedAt) =>
+      verifyAppsflyer: (target, signal, checkedAt, bindings) =>
         verifyAppsflyer(
           target,
           signal,
           checkedAt,
           readAppsFlyerMeasurement,
+          bindings,
         ),
       adapters: ADAPTERS,
     },

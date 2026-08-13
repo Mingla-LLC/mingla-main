@@ -3,6 +3,7 @@ import {
   metaCheckPageAdvertiseTaskForIdentity,
   metaFetchAccount,
   metaFetchIgBusinessAccountForIdentity,
+  metaGraph,
   metaValidateOnlyCreativeProbeForIdentity,
   resolveMetaClient,
 } from "../meta.ts";
@@ -13,6 +14,44 @@ import {
   runAllowedProviderOperation,
   verifyCanonicalBinding,
 } from "./common.ts";
+
+export interface MetaMobileAppSnapshot {
+  id: string;
+  platforms: string[];
+  iosStoreId: string | null;
+  androidPackage: string | null;
+}
+export function parseMetaMobileApp(
+  payload: unknown,
+): MetaMobileAppSnapshot | null {
+  if (!payload || typeof payload !== "object") return null;
+  const row = payload as Record<string, unknown>;
+  if (typeof row.id !== "string") return null;
+  return {
+    id: row.id,
+    platforms: Array.isArray(row.platforms)
+      ? row.platforms.filter((x) => typeof x === "string").map(String)
+      : [],
+    iosStoreId: typeof row.ios_store_id === "string" ? row.ios_store_id : null,
+    androidPackage: typeof row.android_package_name === "string"
+      ? row.android_package_name
+      : null,
+  };
+}
+export function metaMobileAppMatches(
+  snapshot: MetaMobileAppSnapshot | null,
+  providerAppId: string | null,
+  os: "ios" | "android",
+  storeIdentifier: string,
+): boolean {
+  if (!snapshot || snapshot.id !== providerAppId) return false;
+  if (os === "ios") {
+    return snapshot.platforms.some((x) => x.toLowerCase() === "ios") &&
+      snapshot.iosStoreId === storeIdentifier;
+  }
+  return snapshot.platforms.some((x) => x.toLowerCase() === "android") &&
+    snapshot.androidPackage === storeIdentifier;
+}
 export async function verify(ctx: VerifyContext) {
   const base = verifyCanonicalBinding("meta", ctx);
   if (!ctx.connection) return base;
@@ -111,6 +150,43 @@ export async function verify(ctx: VerifyContext) {
       "The exact Meta identity registry row is missing.",
       ctx.checkedAt,
     );
+  }
+  if (ctx.binding.provider_app_id) {
+    const providerAppId = ctx.binding.provider_app_id;
+    const mobileApp = await runAllowedProviderOperation(
+      "meta",
+      "mobile_app",
+      "GET",
+      "{app_id}",
+      async () =>
+        parseMetaMobileApp(
+          await metaGraph(client, "GET", providerAppId, {
+            fields: "id,name,platforms,ios_store_id,android_package_name",
+          }),
+        ),
+    );
+    if (base.dimensions.binding.status !== "proven") {
+      base.dimensions.binding = metaMobileAppMatches(
+          mobileApp,
+          providerAppId,
+          ctx.target.os,
+          ctx.target.store_identifier,
+        )
+        ? evidence(
+          "proven",
+          "Meta returned the exact product app with the matching OS platform and store identity.",
+          ctx.checkedAt,
+          "provider_api",
+          mobileApp?.id,
+        )
+        : evidence(
+          "blocked",
+          "Meta did not return the exact product app, OS platform, and store identity registered for this target.",
+          ctx.checkedAt,
+          "provider_api",
+          ctx.binding.provider_app_id,
+        );
+    }
   }
   base.reason_code = !payerMatches
     ? "payer_mismatch"
