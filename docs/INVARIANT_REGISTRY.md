@@ -1,5 +1,18 @@
 # Invariant Registry
 
+## DRAFT — issue #2000 (Ari capability truth ledger)
+
+### I-PROPOSED-2000-ARI-CAPABILITY-LEDGER-FAIL-CLOSED (DRAFT)
+
+- **Rule:** `docs/contracts/ari-capability-ledger.json` is the canonical statement of what Ari can and cannot do across Business iOS, Android, and web. Registration is not verification: every Business operation has one stable row and one of `verified`, `registered_unverified`, `broken`, `guided_handoff`, `unsupported`, or `in_flight`; every registered tool maps exactly once; no row may claim `verified` without distinct implementor/tester regressions, exact-revision deployment evidence, and production observation on every required surface.
+- **Current audited truth:** 116 operations across 21 domains: 47 broken, 16 registered-unverified, 42 unsupported, 7 guided handoffs, 4 in flight, and 0 verified. All 64 registered tools map exactly once. The 47 broken IDs are independently pinned at the immutable audit baseline, preventing status/blocker/counter laundering.
+- **Enforcement:** `.github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs` validates the explicit operation universe, registry↔prompt parity, tool bijection, status/evidence rules, exact code symbols at current and audit revisions, and proven-broken authority. The independently authored `.github/scripts/strict-grep/__tests__/issue-2000-ari-capability-ledger.tester.test.mjs` pins the reviewed denominator, mappings, classifications, and source evidence. Both run in Class A.
+- **Regression:** Implementor self-test has 10 hostile mutations; tester has 5 independent attacks. True deletion/status-laundering reversions make both guards fail, then pass on restore. Full Class A passes 846/846.
+- **Scope:** Truth inventory and CI enforcement only. This invariant does not repair or newly enable any Ari runtime operation.
+- **Established:** DRAFT after independent tester PASS at #2000 TEST 2026-08-13; flip to ACTIVE only after all-green merge and merged-main verification.
+
+---
+
 ## DRAFT — issue #1999 (Ari provider-schema compatibility)
 
 ### I-PROPOSED-1999-ARI-PROVIDER-SCHEMAS-COMPILE-FAIL-CLOSED (DRAFT)
