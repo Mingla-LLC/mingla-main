@@ -56,6 +56,8 @@ export interface ComposerSentConfirmationProps {
   isSendNow: boolean;
   /** Book send-now recipients held for their permitted local SMS window. */
   deferredRecipientCount?: number;
+  /** Book recipients who became ineligible after the sealed confirmation. */
+  skippedRecipientCount?: number;
   /** Closes the overlay only — leaves the operator on the composer route. */
   onDismiss: () => void;
   /** Closes the overlay AND navigates to the campaigns list. */
@@ -66,6 +68,7 @@ export const ComposerSentConfirmation: React.FC<ComposerSentConfirmationProps> =
   visible,
   isSendNow,
   deferredRecipientCount = 0,
+  skippedRecipientCount = 0,
   onDismiss,
   onViewInCampaigns,
 }) => {
@@ -188,6 +191,13 @@ export const ComposerSentConfirmation: React.FC<ComposerSentConfirmationProps> =
               ? "Your campaign goes out in under a minute. Refresh Campaigns to watch the status flip to Sent."
               : "We'll fire it off at the time you picked."}
           </Text>
+          {isSendNow && skippedRecipientCount > 0 ? (
+            <Text style={styles.body}>
+              {`${skippedRecipientCount} ${
+                skippedRecipientCount === 1 ? "recipient was" : "recipients were"
+              } safely skipped because they could no longer receive this campaign through the selected channel after confirmation.`}
+            </Text>
+          ) : null}
         </Animated.View>
         <Animated.View style={[styles.ctaStack, ctaAnimatedStyle]}>
           <Pressable

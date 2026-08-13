@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS public.marketing_book_send_executions(
   quoted_at timestamptz NOT NULL,
   confirmed_at timestamptz NOT NULL DEFAULT now(),
   scheduled_for timestamptz NOT NULL,
+  send_mode text NOT NULL CHECK(send_mode IN ('now','scheduled')),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(brand_id,client_request_id),
@@ -72,10 +73,16 @@ CREATE TABLE IF NOT EXISTS public.marketing_book_send_targets(
      OR (outcome<>'unavailable' AND contact_method_id IS NOT NULL AND contact_value_digest IS NOT NULL))
 );
 
+CREATE TABLE IF NOT EXISTS public.marketing_book_send_failures(
+  campaign_id uuid PRIMARY KEY REFERENCES public.marketing_book_send_executions(campaign_id) ON DELETE RESTRICT,
+  failed_at timestamptz NOT NULL DEFAULT now()
+);
+
 ALTER TABLE public.marketing_book_send_executions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.marketing_book_send_targets ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.marketing_book_send_executions,public.marketing_book_send_targets FROM PUBLIC,anon,authenticated;
-GRANT SELECT,INSERT ON public.marketing_book_send_executions,public.marketing_book_send_targets TO service_role;
+ALTER TABLE public.marketing_book_send_failures ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.marketing_book_send_executions,public.marketing_book_send_targets,public.marketing_book_send_failures FROM PUBLIC,anon,authenticated;
+GRANT SELECT,INSERT ON public.marketing_book_send_executions,public.marketing_book_send_targets,public.marketing_book_send_failures TO service_role;
 
 CREATE OR REPLACE FUNCTION public.issue_1995_reject_immutable_mutation()
 RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $f$
@@ -87,6 +94,18 @@ FOR EACH ROW EXECUTE FUNCTION public.issue_1995_reject_immutable_mutation();
 DROP TRIGGER IF EXISTS issue_1995_target_immutable ON public.marketing_book_send_targets;
 CREATE TRIGGER issue_1995_target_immutable BEFORE UPDATE OR DELETE ON public.marketing_book_send_targets
 FOR EACH ROW EXECUTE FUNCTION public.issue_1995_reject_immutable_mutation();
+DROP TRIGGER IF EXISTS issue_1995_failure_immutable ON public.marketing_book_send_failures;
+CREATE TRIGGER issue_1995_failure_immutable BEFORE UPDATE OR DELETE ON public.marketing_book_send_failures
+FOR EACH ROW EXECUTE FUNCTION public.issue_1995_reject_immutable_mutation();
+
+CREATE OR REPLACE FUNCTION public.biz_record_marketing_book_send_failure_v1(p_campaign_id uuid)
+RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path=public,pg_temp AS $f$
+ INSERT INTO public.marketing_book_send_failures(campaign_id)
+ SELECT p_campaign_id WHERE EXISTS(SELECT 1 FROM public.marketing_book_send_executions WHERE campaign_id=p_campaign_id)
+ ON CONFLICT(campaign_id) DO NOTHING
+$f$;
+REVOKE ALL ON FUNCTION public.biz_record_marketing_book_send_failure_v1(uuid) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_record_marketing_book_send_failure_v1(uuid) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.biz_brand_person_authorized_contact_v2(
   p_brand_id uuid,p_brand_person_id uuid,p_channel text,p_category_key text
@@ -243,8 +262,8 @@ BEGIN
   RAISE EXCEPTION 'book_blast_preview_stale' USING ERRCODE='23514'; END IF;
  SELECT * INTO v_existing FROM public.marketing_book_send_executions WHERE brand_id=(p_quote_snapshot->>'brandId')::uuid AND client_request_id=p_client_request_id;
  IF FOUND THEN
-  IF v_existing.campaign_id=p_campaign_id AND v_existing.quote_hash=p_quote_snapshot->>'quoteHash' THEN
-   RETURN jsonb_build_object('executionId',v_existing.id,'campaignId',v_existing.campaign_id,'scheduledFor',v_existing.scheduled_for);
+  IF v_existing.actor_id=p_actor_id AND v_existing.campaign_id=p_campaign_id AND v_existing.quote_hash=p_quote_snapshot->>'quoteHash' THEN
+   RETURN jsonb_build_object('executionId',v_existing.id,'campaignId',v_existing.campaign_id,'scheduledFor',v_existing.scheduled_for,'replay',true);
   END IF;
   RAISE EXCEPTION 'book_blast_idempotency_conflict' USING ERRCODE='23505';
  END IF;
@@ -257,14 +276,26 @@ BEGIN
      (SELECT jsonb_agg(jsonb_build_object('brandPersonId',x->>'brandPersonId','contactMethodId',x->>'contactMethodId','normalizedContact',x->>'normalizedContact','allowed',x->>'allowed','safeReasonCode',x->>'safeReasonCode') ORDER BY x->>'brandPersonId') FROM jsonb_array_elements(p_quote_snapshot->'candidates') x) THEN
   RAISE EXCEPTION 'book_blast_preview_stale' USING ERRCODE='23514'; END IF;
  IF (p_quote_snapshot->>'reachableCount')::int=0 THEN RAISE EXCEPTION 'book_blast_zero_recipients' USING ERRCODE='23514'; END IF;
- INSERT INTO public.marketing_book_send_executions(brand_id,campaign_id,actor_id,client_request_id,quote_version,quote_hash,content_hash,
-  selected_count,reachable_count,suppressed_count,unavailable_count,sms_segment_count,estimated_cost_minor,currency,cost_kind,
-  ratebook_ids,source_references,quoted_at,scheduled_for)
- VALUES(v_campaign.brand_id,p_campaign_id,p_actor_id,p_client_request_id,1,p_quote_snapshot->>'quoteHash',p_quote_snapshot->>'contentHash',
-  (p_quote_snapshot->>'selectedCount')::int,(p_quote_snapshot->>'reachableCount')::int,(p_quote_snapshot->>'suppressedCount')::int,
-  (p_quote_snapshot->>'unavailableCount')::int,(p_quote_snapshot->>'smsSegments')::int,NULLIF(p_quote_snapshot->>'estimatedCostMinor','')::bigint,
-  NULLIF(p_quote_snapshot->>'currency',''),p_quote_snapshot->>'costKind',COALESCE(p_quote_snapshot->'rateIds','[]'),
-  COALESCE(p_quote_snapshot->'sourceReferences','[]'),(p_quote_snapshot->>'quotedAt')::timestamptz,COALESCE(p_scheduled_for,v_now)) RETURNING id INTO v_execution;
+ BEGIN
+  INSERT INTO public.marketing_book_send_executions(brand_id,campaign_id,actor_id,client_request_id,quote_version,quote_hash,content_hash,
+   selected_count,reachable_count,suppressed_count,unavailable_count,sms_segment_count,estimated_cost_minor,currency,cost_kind,
+   ratebook_ids,source_references,quoted_at,scheduled_for,send_mode)
+  VALUES(v_campaign.brand_id,p_campaign_id,p_actor_id,p_client_request_id,1,p_quote_snapshot->>'quoteHash',p_quote_snapshot->>'contentHash',
+   (p_quote_snapshot->>'selectedCount')::int,(p_quote_snapshot->>'reachableCount')::int,(p_quote_snapshot->>'suppressedCount')::int,
+   (p_quote_snapshot->>'unavailableCount')::int,(p_quote_snapshot->>'smsSegments')::int,NULLIF(p_quote_snapshot->>'estimatedCostMinor','')::bigint,
+   NULLIF(p_quote_snapshot->>'currency',''),p_quote_snapshot->>'costKind',COALESCE(p_quote_snapshot->'rateIds','[]'),
+   COALESCE(p_quote_snapshot->'sourceReferences','[]'),(p_quote_snapshot->>'quotedAt')::timestamptz,COALESCE(p_scheduled_for,v_now),
+   CASE WHEN p_scheduled_for IS NULL THEN 'now' ELSE 'scheduled' END) RETURNING id INTO v_execution;
+ EXCEPTION WHEN unique_violation THEN
+  SELECT * INTO v_existing FROM public.marketing_book_send_executions
+   WHERE campaign_id=p_campaign_id OR (brand_id=v_campaign.brand_id AND client_request_id=p_client_request_id)
+   ORDER BY (campaign_id=p_campaign_id) DESC LIMIT 1;
+  IF FOUND AND v_existing.actor_id=p_actor_id AND v_existing.campaign_id=p_campaign_id
+   AND v_existing.client_request_id=p_client_request_id AND v_existing.quote_hash=p_quote_snapshot->>'quoteHash' THEN
+   RETURN jsonb_build_object('executionId',v_existing.id,'campaignId',v_existing.campaign_id,'scheduledFor',v_existing.scheduled_for,'replay',true);
+  END IF;
+  RAISE EXCEPTION 'book_blast_idempotency_conflict' USING ERRCODE='23505';
+ END;
  FOR v_row IN SELECT * FROM jsonb_array_elements(p_quote_snapshot->'candidates') LOOP
   INSERT INTO public.marketing_book_send_targets(execution_id,brand_person_id,contact_method_id,contact_value_digest,channel,outcome,reason,segment_count,allocated_cost_minor)
   VALUES(v_execution,(v_row->>'brandPersonId')::uuid,NULLIF(v_row->>'contactMethodId','')::uuid,
@@ -273,10 +304,48 @@ BEGIN
    COALESCE(v_row->>'safeReasonCode','allowed'),COALESCE((v_row->>'segments')::int,0),NULLIF(v_row->>'allocatedCostMinor','')::bigint);
  END LOOP;
  UPDATE public.marketing_campaigns SET status='scheduled',scheduled_for=COALESCE(p_scheduled_for,v_now),updated_at=v_now WHERE id=p_campaign_id AND status='draft';
- RETURN jsonb_build_object('executionId',v_execution,'campaignId',p_campaign_id,'scheduledFor',COALESCE(p_scheduled_for,v_now));
+ RETURN jsonb_build_object('executionId',v_execution,'campaignId',p_campaign_id,'scheduledFor',COALESCE(p_scheduled_for,v_now),'replay',false);
 END $f$;
 REVOKE ALL ON FUNCTION public.biz_confirm_marketing_book_send_v1(uuid,uuid,uuid,jsonb,timestamptz) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.biz_confirm_marketing_book_send_v1(uuid,uuid,uuid,jsonb,timestamptz) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.biz_marketing_book_existing_result_v1(
+ p_actor_id uuid,p_campaign_id uuid,p_client_request_id uuid,p_quote_hash text,p_quoted_at timestamptz,
+ p_expected_cost_minor bigint,p_currency text,p_scheduled_for timestamptz
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $f$
+DECLARE v_execution public.marketing_book_send_executions%ROWTYPE; v_campaign public.marketing_campaigns%ROWTYPE;
+ v_delivered integer; v_deferred integer; v_failed integer; v_preview integer; v_queued integer; v_rows integer;
+BEGIN
+ SELECT * INTO v_campaign FROM public.marketing_campaigns WHERE id=p_campaign_id;
+ IF NOT FOUND OR (v_campaign.account_id<>p_actor_id AND public.biz_brand_effective_rank(v_campaign.brand_id,p_actor_id)<public.biz_role_rank('event_manager')) THEN
+  RAISE EXCEPTION 'book_blast_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT * INTO v_execution FROM public.marketing_book_send_executions WHERE campaign_id=p_campaign_id;
+ IF NOT FOUND THEN
+  IF EXISTS(SELECT 1 FROM public.marketing_book_send_executions WHERE brand_id=v_campaign.brand_id AND client_request_id=p_client_request_id) THEN
+   RAISE EXCEPTION 'book_blast_idempotency_conflict' USING ERRCODE='23505';
+  END IF;
+  RETURN NULL;
+ END IF;
+ IF v_execution.actor_id<>p_actor_id THEN RAISE EXCEPTION 'book_blast_forbidden' USING ERRCODE='42501'; END IF;
+ IF v_execution.client_request_id<>p_client_request_id OR v_execution.quote_hash<>p_quote_hash
+  OR v_execution.quoted_at IS DISTINCT FROM p_quoted_at
+  OR v_execution.estimated_cost_minor IS DISTINCT FROM p_expected_cost_minor
+  OR v_execution.currency IS DISTINCT FROM p_currency
+  OR v_execution.send_mode IS DISTINCT FROM CASE WHEN p_scheduled_for IS NULL THEN 'now' ELSE 'scheduled' END
+  OR (v_execution.send_mode='scheduled' AND v_execution.scheduled_for IS DISTINCT FROM p_scheduled_for) THEN
+  RAISE EXCEPTION 'book_blast_idempotency_conflict' USING ERRCODE='23505'; END IF;
+ SELECT count(*) FILTER(WHERE status IN ('sent','delivered','opened','clicked','unsubscribed')),
+  count(*) FILTER(WHERE status='deferred'),count(*) FILTER(WHERE status IN ('failed','bounced')),
+  count(*) FILTER(WHERE status='preview_skipped'),count(*) FILTER(WHERE status='queued'),count(*)
+ INTO v_delivered,v_deferred,v_failed,v_preview,v_queued,v_rows
+ FROM public.marketing_messages WHERE campaign_id=p_campaign_id;
+ RETURN jsonb_build_object('executionId',v_execution.id,'campaignId',p_campaign_id,'scheduledFor',v_execution.scheduled_for,'sendMode',v_execution.send_mode,
+  'campaignStatus',v_campaign.status,'campaignFailed',EXISTS(SELECT 1 FROM public.marketing_book_send_failures WHERE campaign_id=p_campaign_id),
+  'sealedReachable',v_execution.reachable_count,'delivered',v_delivered,'deferred',v_deferred,
+  'recipientFailed',v_failed,'previewSkipped',v_preview,'queued',v_queued,'messageRows',v_rows);
+END $f$;
+REVOKE ALL ON FUNCTION public.biz_marketing_book_existing_result_v1(uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_marketing_book_existing_result_v1(uuid,uuid,uuid,text,timestamptz,bigint,text,timestamptz) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.biz_marketing_book_send_audience(p_campaign_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,extensions,pg_temp AS $f$

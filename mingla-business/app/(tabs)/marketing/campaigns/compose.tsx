@@ -289,6 +289,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const [isSendNowConfirmation, setIsSendNowConfirmation] = useState(false);
   const [bookDeferredConfirmationCount, setBookDeferredConfirmationCount] =
     useState(0);
+  const [bookSkippedConfirmationCount, setBookSkippedConfirmationCount] =
+    useState(0);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   useEffect(() => {
     if (!showReview || !isBookAudience) return;
@@ -628,6 +630,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       setShowReview(false);
       setIsSendNowConfirmation(sendMode === "now");
       setBookDeferredConfirmationCount(0);
+      setBookSkippedConfirmationCount(0);
       setShowSentConfirmation(true);
     },
     onError: (err) => {
@@ -654,8 +657,15 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         {
           onSuccess: (result) => {
             setShowReview(false);
+            if (result.mode === "in_progress") {
+              setErrorBanner(
+                "This send was already confirmed and is still processing. Check Campaigns for its current status.",
+              );
+              return;
+            }
             setIsSendNowConfirmation(result.mode !== "scheduled");
             setBookDeferredConfirmationCount(result.deferred);
+            setBookSkippedConfirmationCount(result.skippedAfterConfirm);
             setShowSentConfirmation(true);
           },
           onError: (error) => {
@@ -1536,6 +1546,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           visible={showSentConfirmation}
           isSendNow={isSendNowConfirmation}
           deferredRecipientCount={bookDeferredConfirmationCount}
+          skippedRecipientCount={bookSkippedConfirmationCount}
           onDismiss={() => {
             setShowSentConfirmation(false);
             sanctionedExitRef.current = true;

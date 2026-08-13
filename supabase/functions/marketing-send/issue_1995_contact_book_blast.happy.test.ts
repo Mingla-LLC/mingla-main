@@ -2,6 +2,7 @@ import {
   assert,
   assertEquals,
   assertRejects,
+  assertThrows,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   buildMarketingBookQuote,
@@ -14,6 +15,7 @@ import {
 import {
   bookRpcErrorEnvelope,
   dispatchConfirmedBookSend,
+  existingBookSendResponse,
   processClaimedCampaigns,
 } from "./index.ts";
 
@@ -337,7 +339,68 @@ Deno.test("#1995 non-throwing provider rejection remains a zero-delivery summary
     delivered: 0,
     deferred: 0,
     recipient_failed: 0,
+    skipped_after_confirm: 0,
     preview_skipped: 0,
     errors: [],
   });
+});
+
+Deno.test("#1995 exact retry derives persisted truth and never expands", () => {
+  const base = {
+    executionId: crypto.randomUUID(),
+    campaignId: crypto.randomUUID(),
+    scheduledFor: "2026-08-13T12:00:00.000Z",
+    sendMode: "now" as const,
+    campaignStatus: "sent",
+    campaignFailed: false,
+    sealedReachable: 2,
+    delivered: 1,
+    deferred: 0,
+    recipientFailed: 0,
+    previewSkipped: 0,
+    queued: 0,
+    messageRows: 1,
+  };
+  assertEquals(existingBookSendResponse(base), {
+    executionId: base.executionId,
+    campaignId: base.campaignId,
+    scheduledFor: base.scheduledFor,
+    replay: true,
+    resultState: "complete",
+    dispatch: {
+      processed: 1,
+      succeeded: 1,
+      failed: 0,
+      delivered: 1,
+      deferred: 0,
+      recipient_failed: 0,
+      preview_skipped: 0,
+      skipped_after_confirm: 1,
+      errors: [],
+    },
+  });
+  assertEquals(
+    existingBookSendResponse({
+      ...base,
+      campaignStatus: "sending",
+      queued: 1,
+      messageRows: 1,
+    }).resultState,
+    "in_progress",
+  );
+  assertEquals(
+    existingBookSendResponse({
+      ...base,
+      sendMode: "scheduled",
+      campaignStatus: "scheduled",
+      delivered: 0,
+      messageRows: 0,
+    }).resultState,
+    "scheduled",
+  );
+  assertThrows(
+    () => existingBookSendResponse({ ...base, messageRows: 3 }),
+    Error,
+    "book_blast_execution_expanded",
+  );
 });

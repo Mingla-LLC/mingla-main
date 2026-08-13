@@ -10,12 +10,12 @@ BEGIN
 END $test$;
 
 DO $behavior$
-DECLARE v_actor uuid:=gen_random_uuid(); v_brand uuid:=gen_random_uuid(); v_person uuid:=gen_random_uuid(); v_fallback uuid:=gen_random_uuid();
+DECLARE v_actor uuid:=gen_random_uuid(); v_team_actor uuid:=gen_random_uuid(); v_outsider uuid:=gen_random_uuid(); v_brand uuid:=gen_random_uuid(); v_person uuid:=gen_random_uuid(); v_fallback uuid:=gen_random_uuid();
  v_audience uuid:=gen_random_uuid(); v_campaign uuid:=gen_random_uuid(); v_request uuid:=gen_random_uuid(); v_result record;
- v_candidates jsonb; v_snapshot jsonb; v_confirmed jsonb; v_resolved jsonb; v_stale boolean:=false;
+ v_candidates jsonb; v_snapshot jsonb; v_confirmed jsonb; v_replay jsonb; v_resolved jsonb; v_stale boolean:=false; v_forbidden boolean:=false;
 BEGIN
- INSERT INTO auth.users(id) VALUES(v_actor);
- INSERT INTO public.creator_accounts(id) VALUES(v_actor);
+ INSERT INTO auth.users(id) VALUES(v_actor),(v_team_actor),(v_outsider);
+ INSERT INTO public.creator_accounts(id) VALUES(v_actor),(v_team_actor),(v_outsider);
  INSERT INTO public.brands(id,account_id,name,slug) VALUES(v_brand,v_actor,'Issue 1995','issue-1995');
  INSERT INTO public.brand_people(id,brand_id,display_name,linked_user_id) VALUES(v_person,v_brand,'Fallback Person',v_actor);
  INSERT INTO public.brand_person_contact_methods(id,brand_id,brand_person_id,channel,normalized_value,provenance_scope,is_exportable,is_primary,record_state)
@@ -40,6 +40,12 @@ BEGIN
  VALUES(v_audience,v_actor,v_brand,'Your Book',jsonb_build_object('kind','all_brand_people','brand_id',v_brand::text),true);
  INSERT INTO public.marketing_campaigns(id,account_id,brand_id,audience_id,name,channel,channel_payload,status)
  VALUES(v_campaign,v_actor,v_brand,v_audience,'Hello','email','{"kind":"email","subject":"Hello","body_html":"Hi","body_text":"Hi"}'::jsonb,'draft');
+ INSERT INTO public.brand_team_members(brand_id,user_id,role,accepted_at) VALUES(v_brand,v_team_actor,'event_manager',clock_timestamp());
+ IF public.biz_marketing_book_existing_result_v1(v_team_actor,v_campaign,gen_random_uuid(),repeat('a',64),clock_timestamp(),NULL,NULL,NULL) IS NOT NULL THEN
+   RAISE EXCEPTION 'authorized team pre-read fabricated an execution'; END IF;
+ BEGIN PERFORM public.biz_marketing_book_existing_result_v1(v_outsider,v_campaign,gen_random_uuid(),repeat('a',64),clock_timestamp(),NULL,NULL,NULL);
+ EXCEPTION WHEN insufficient_privilege THEN v_forbidden:=SQLERRM LIKE '%book_blast_forbidden%'; END;
+ IF NOT v_forbidden THEN RAISE EXCEPTION 'unauthorized pre-read did not fail closed'; END IF;
  v_candidates:=public.biz_marketing_book_quote_candidates(v_actor,v_campaign);
  v_snapshot:=v_candidates || jsonb_build_object(
    'quoteVersion',1,'quoteHash',repeat('a',64),
@@ -73,6 +79,30 @@ BEGIN
     <> 'cdbb30f189c5bb93e074ebbbd4f851f1a66f350d006c1e2fdfa6acc2d6376536' THEN
    RAISE EXCEPTION 'Edge content digest not retained';
  END IF;
+
+ -- Exact lost-response retry returns the immutable execution before draft
+ -- recomputation. Altered hash remains a conflict.
+ v_replay:=public.biz_confirm_marketing_book_send_v1(v_actor,v_campaign,v_request,v_snapshot,clock_timestamp()+interval '2 hours');
+ IF COALESCE((v_replay->>'replay')::boolean,false) IS NOT TRUE OR v_replay->>'executionId'<>v_confirmed->>'executionId' THEN
+   RAISE EXCEPTION 'exact confirmation replay did not return existing execution'; END IF;
+ v_stale:=false;
+ BEGIN
+   PERFORM public.biz_confirm_marketing_book_send_v1(v_actor,v_campaign,v_request,jsonb_set(v_snapshot,'{quoteHash}',to_jsonb(repeat('d',64))),clock_timestamp()+interval '1 hour');
+ EXCEPTION WHEN unique_violation THEN v_stale:=SQLERRM LIKE '%book_blast_idempotency_conflict%'; END;
+ IF NOT v_stale THEN RAISE EXCEPTION 'altered replay did not conflict'; END IF;
+ FOR v_replay IN SELECT value FROM jsonb_array_elements(jsonb_build_array(
+   jsonb_build_object('quotedAt',to_jsonb(clock_timestamp()+interval '1 minute')),
+   jsonb_build_object('expectedCostMinor',1),jsonb_build_object('currency','USD')
+ )) LOOP
+  v_stale:=false;
+  BEGIN
+   PERFORM public.biz_marketing_book_existing_result_v1(v_actor,v_campaign,v_request,repeat('b',64),
+    CASE WHEN v_replay?'quotedAt' THEN (v_replay->>'quotedAt')::timestamptz ELSE (v_snapshot->>'quotedAt')::timestamptz END,
+    CASE WHEN v_replay?'expectedCostMinor' THEN (v_replay->>'expectedCostMinor')::bigint ELSE NULL END,
+    CASE WHEN v_replay?'currency' THEN v_replay->>'currency' ELSE NULL END,(v_confirmed->>'scheduledFor')::timestamptz);
+  EXCEPTION WHEN unique_violation THEN v_stale:=SQLERRM LIKE '%book_blast_idempotency_conflict%'; END;
+  IF NOT v_stale THEN RAISE EXCEPTION 'altered exact replay field did not conflict: %',v_replay; END IF;
+ END LOOP;
 
  -- An in-place value change after confirmation can only shrink the resolver;
  -- it can never redirect delivery to the new value.

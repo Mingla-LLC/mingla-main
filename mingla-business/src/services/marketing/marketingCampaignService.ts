@@ -296,9 +296,10 @@ export async function confirmMarketingBook(input: {
   quote: MarketingBookQuote;
   scheduled_for: string | null;
 }): Promise<{
-  mode: "sent" | "deferred" | "scheduled";
+  mode: "sent" | "deferred" | "scheduled" | "in_progress";
   delivered: number;
   deferred: number;
+  skippedAfterConfirm: number;
 }> {
   const { data, error } = await supabase.functions.invoke("marketing-send", {
     body: {
@@ -315,8 +316,22 @@ export async function confirmMarketingBook(input: {
   if (error) {
     throw await parseMarketingBookError(error);
   }
-  if (input.scheduled_for !== null) {
-    return { mode: "scheduled", delivered: 0, deferred: 0 };
+  const resultState = (data as { resultState?: string } | null)?.resultState;
+  if (resultState === "scheduled") {
+    return {
+      mode: "scheduled",
+      delivered: 0,
+      deferred: 0,
+      skippedAfterConfirm: 0,
+    };
+  }
+  if (resultState === "in_progress") {
+    return {
+      mode: "in_progress",
+      delivered: 0,
+      deferred: 0,
+      skippedAfterConfirm: 0,
+    };
   }
   const dispatch = (
     data as {
@@ -327,6 +342,7 @@ export async function confirmMarketingBook(input: {
         delivered?: number;
         deferred?: number;
         recipient_failed?: number;
+        skipped_after_confirm?: number;
         preview_skipped?: number;
         errors?: unknown[];
       };
@@ -338,7 +354,10 @@ export async function confirmMarketingBook(input: {
     dispatch.failed !== 0 ||
     dispatch.preview_skipped !== 0 ||
     dispatch.recipient_failed !== 0 ||
-    (dispatch.delivered ?? -1) + (dispatch.deferred ?? -1) !==
+    !Number.isInteger(dispatch.skipped_after_confirm) ||
+    (dispatch.skipped_after_confirm ?? -1) < 0 ||
+    (dispatch.delivered ?? -1) + (dispatch.deferred ?? -1) +
+        (dispatch.skipped_after_confirm ?? -1) !==
       input.quote.reachableCount ||
     !Array.isArray(dispatch.errors) ||
     dispatch.errors.length !== 0
@@ -347,10 +366,12 @@ export async function confirmMarketingBook(input: {
   }
   const delivered = dispatch.delivered ?? 0;
   const deferred = dispatch.deferred ?? 0;
+  const skippedAfterConfirm = dispatch.skipped_after_confirm ?? 0;
   return {
     mode: deferred > 0 ? "deferred" : "sent",
     delivered,
     deferred,
+    skippedAfterConfirm,
   };
 }
 

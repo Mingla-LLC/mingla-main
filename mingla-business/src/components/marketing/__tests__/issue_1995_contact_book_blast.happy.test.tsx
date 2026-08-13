@@ -305,6 +305,7 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
   const invoke = supabase.functions.invoke as jest.Mock;
   invoke.mockResolvedValueOnce({
     data: {
+      resultState: "complete",
       dispatch: {
         processed: 1,
         succeeded: 1,
@@ -312,6 +313,7 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
         delivered: 1,
         deferred: 0,
         recipient_failed: 0,
+        skipped_after_confirm: 0,
         preview_skipped: 0,
         errors: [],
       },
@@ -325,7 +327,12 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
       quote,
       scheduled_for: null,
     }),
-  ).resolves.toEqual({ mode: "sent", delivered: 1, deferred: 0 });
+  ).resolves.toEqual({
+    mode: "sent",
+    delivered: 1,
+    deferred: 0,
+    skippedAfterConfirm: 0,
+  });
 
   for (const dispatch of [
     {
@@ -335,6 +342,7 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
       delivered: 0,
       deferred: 0,
       recipient_failed: 0,
+      skipped_after_confirm: 0,
       preview_skipped: 0,
       errors: [{}],
     },
@@ -345,6 +353,7 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
       delivered: 0,
       deferred: 0,
       recipient_failed: 0,
+      skipped_after_confirm: 0,
       preview_skipped: 1,
       errors: [],
     },
@@ -355,6 +364,7 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
       delivered: 0,
       deferred: 0,
       recipient_failed: 0,
+      skipped_after_confirm: 0,
       preview_skipped: 0,
       errors: [],
     },
@@ -367,11 +377,15 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
       delivered: 0,
       deferred: 0,
       recipient_failed: 0,
+      skipped_after_confirm: 0,
       preview_skipped: 0,
       errors: [],
     },
   ]) {
-    invoke.mockResolvedValueOnce({ data: { dispatch }, error: null });
+    invoke.mockResolvedValueOnce({
+      data: { resultState: "complete", dispatch },
+      error: null,
+    });
     await expect(
       confirmMarketingBook({
         campaign_id: "campaign",
@@ -386,6 +400,7 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
 
   invoke.mockResolvedValueOnce({
     data: {
+      resultState: "deferred",
       dispatch: {
         processed: 1,
         succeeded: 1,
@@ -393,6 +408,7 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
         delivered: 0,
         deferred: 1,
         recipient_failed: 0,
+        skipped_after_confirm: 0,
         preview_skipped: 0,
         errors: [],
       },
@@ -406,9 +422,17 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
       quote,
       scheduled_for: null,
     }),
-  ).resolves.toEqual({ mode: "deferred", delivered: 0, deferred: 1 });
+  ).resolves.toEqual({
+    mode: "deferred",
+    delivered: 0,
+    deferred: 1,
+    skippedAfterConfirm: 0,
+  });
 
-  invoke.mockResolvedValueOnce({ data: {}, error: null });
+  invoke.mockResolvedValueOnce({
+    data: { resultState: "scheduled" },
+    error: null,
+  });
   await expect(
     confirmMarketingBook({
       campaign_id: "campaign",
@@ -416,7 +440,61 @@ test("Book confirmation reports sent only for a truthful direct dispatch", async
       quote,
       scheduled_for: "2026-08-14T12:00:00.000Z",
     }),
-  ).resolves.toEqual({ mode: "scheduled", delivered: 0, deferred: 0 });
+  ).resolves.toEqual({
+    mode: "scheduled",
+    delivered: 0,
+    deferred: 0,
+    skippedAfterConfirm: 0,
+  });
+
+  invoke.mockResolvedValueOnce({
+    data: { resultState: "in_progress" },
+    error: null,
+  });
+  await expect(
+    confirmMarketingBook({
+      campaign_id: "campaign",
+      client_request_id: "request",
+      quote,
+      scheduled_for: "altered-retry-value",
+    }),
+  ).resolves.toEqual({
+    mode: "in_progress",
+    delivered: 0,
+    deferred: 0,
+    skippedAfterConfirm: 0,
+  });
+
+  invoke.mockResolvedValueOnce({
+    data: {
+      resultState: "complete",
+      dispatch: {
+        processed: 1,
+        succeeded: 1,
+        failed: 0,
+        delivered: 0,
+        deferred: 0,
+        recipient_failed: 0,
+        skipped_after_confirm: 1,
+        preview_skipped: 0,
+        errors: [],
+      },
+    },
+    error: null,
+  });
+  await expect(
+    confirmMarketingBook({
+      campaign_id: "campaign",
+      client_request_id: "request",
+      quote,
+      scheduled_for: null,
+    }),
+  ).resolves.toEqual({
+    mode: "sent",
+    delivered: 0,
+    deferred: 0,
+    skippedAfterConfirm: 1,
+  });
 });
 
 test("Book confirmation renders truthful deferred local-hours copy", () => {
@@ -442,6 +520,30 @@ test("Book confirmation renders truthful deferred local-hours copy", () => {
         typeof node.props.children === "string" &&
         node.props.children.includes(
           "2 recipients are held for allowed local messaging hours",
+        ),
+    ).length,
+  ).toBeGreaterThan(0);
+});
+
+test("Book confirmation renders a truthful post-confirm suppression count", () => {
+  let tree!: RenderedTree;
+  TestRenderer.act(() => {
+    tree = TestRenderer.create(
+      <ComposerSentConfirmation
+        visible
+        isSendNow
+        skippedRecipientCount={1}
+        onDismiss={jest.fn()}
+        onViewInCampaigns={jest.fn()}
+      />,
+    );
+  });
+  expect(
+    tree.root.findAll(
+      (node) =>
+        typeof node.props.children === "string" &&
+        node.props.children.includes(
+          "1 recipient was safely skipped because they could no longer receive this campaign through the selected channel after confirmation",
         ),
     ).length,
   ).toBeGreaterThan(0);

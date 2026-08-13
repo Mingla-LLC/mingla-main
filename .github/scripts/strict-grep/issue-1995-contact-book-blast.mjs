@@ -44,6 +44,8 @@ export function audit(base) {
     "marketing_book_send_executions",
     "marketing_book_send_targets",
     "biz_confirm_marketing_book_send_v1",
+    "biz_marketing_book_existing_result_v1",
+    "biz_record_marketing_book_send_failure_v1",
     "biz_marketing_book_send_audience",
   ])
     if (!m.includes(needle)) failures.push(`migration missing ${needle}`);
@@ -84,7 +86,9 @@ export function audit(base) {
   }
   if (
     !s.includes("dispatchConfirmedBookSend(") ||
-    !s.includes("body.scheduledFor == null") ||
+    !s.includes("findExistingBookSend(") ||
+    !s.includes("existingBookSendResponse(") ||
+    !s.includes("const directDispatch = body.scheduledFor == null") ||
     !s.includes("processClaimedCampaigns")
   ) {
     failures.push("Book send-now can wait for cron instead of direct dispatch");
@@ -176,7 +180,12 @@ function selfTest() {
         "false",
         "content identity",
       ],
-      ["send", "body.scheduledFor == null", "false", "wait for cron"],
+      [
+        "send",
+        "const directDispatch = body.scheduledFor == null",
+        "const directDispatch = false",
+        "wait for cron",
+      ],
       [
         "send",
         'error: "BOOK_BLAST_AUDIENCE_NOT_FOUND", status: 404',

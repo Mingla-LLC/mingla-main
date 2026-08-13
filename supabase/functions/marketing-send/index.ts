@@ -452,6 +452,40 @@ export async function handleMarketingSendRequest(
     if (actor.user === null) {
       return jsonResponse({ error: "BOOK_BLAST_FORBIDDEN" }, 403);
     }
+    if (body.action === "confirm_book_v1") {
+      if (
+        typeof body.client_request_id !== "string" ||
+        typeof body.quoteHash !== "string" ||
+        typeof body.quotedAt !== "string" ||
+        (body.expectedCostMinor !== null &&
+          typeof body.expectedCostMinor !== "number") ||
+        (body.currency !== null && typeof body.currency !== "string") ||
+        (body.scheduledFor !== null && body.scheduledFor !== undefined &&
+          typeof body.scheduledFor !== "string")
+      ) return jsonResponse({ error: "BOOK_BLAST_PREVIEW_STALE" }, 409);
+      try {
+        const existing = await findExistingBookSend(
+          supabase,
+          actor.user.id,
+          body.campaign_id,
+          body.client_request_id,
+          body.quoteHash,
+          body.quotedAt,
+          body.expectedCostMinor ?? null,
+          body.currency ?? null,
+          body.scheduledFor ?? null,
+        );
+        if (existing !== null) {
+          return jsonResponse(
+            existingBookSendResponse(existing),
+          );
+        }
+      } catch (error) {
+        return bookRpcErrorResponse(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
     const candidates = await supabase.rpc(
       "biz_marketing_book_quote_candidates",
       { p_actor_id: actor.user.id, p_campaign_id: body.campaign_id },
@@ -508,6 +542,29 @@ export async function handleMarketingSendRequest(
     if (confirmed.error) {
       return bookRpcErrorResponse(confirmed.error.message);
     }
+    if ((confirmed.data as { replay?: boolean } | null)?.replay === true) {
+      try {
+        const existing = await findExistingBookSend(
+          supabase,
+          actor.user.id,
+          body.campaign_id,
+          body.client_request_id as string,
+          body.quoteHash as string,
+          body.quotedAt as string,
+          body.expectedCostMinor ?? null,
+          body.currency ?? null,
+          body.scheduledFor ?? null,
+        );
+        if (existing === null) throw new Error("book_blast_preview_stale");
+        return jsonResponse(
+          existingBookSendResponse(existing),
+        );
+      } catch (error) {
+        return bookRpcErrorResponse(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
     // A null schedule is the direct-send contract: atomically confirmed SQL
     // has made the campaign claimable, so enter the exact same claim/dispatch/
     // finalize path as the legacy direct invocation. Future schedules remain
@@ -521,8 +578,19 @@ export async function handleMarketingSendRequest(
         { live: LIVE, resendApiKey: RESEND_API_KEY },
       )
       : null;
+    if (directDispatch !== null) {
+      const accounted = directDispatch.delivered + directDispatch.deferred +
+        directDispatch.recipient_failed + directDispatch.preview_skipped;
+      if (accounted > quote.reachableCount) {
+        return jsonResponse({ error: "BOOK_BLAST_PREVIEW_STALE" }, 409);
+      }
+      directDispatch.skipped_after_confirm = quote.reachableCount - accounted;
+    }
     return jsonResponse({
       ...(confirmed.data as Record<string, unknown>),
+      resultState: body.scheduledFor == null
+        ? directDispatch?.deferred ? "deferred" : "complete"
+        : "scheduled",
       ...(directDispatch === null ? {} : { dispatch: directDispatch }),
     });
   }
@@ -659,6 +727,7 @@ interface DispatchBatchSummary {
   delivered: number;
   deferred: number;
   recipient_failed: number;
+  skipped_after_confirm: number;
   preview_skipped: number;
   errors: Array<{ campaign_id: string; reason: string }>;
 }
@@ -708,6 +777,15 @@ export async function processClaimedCampaigns(
         .from("marketing_campaigns")
         .update({ status: "failed", updated_at: new Date().toISOString() })
         .eq("id", campaign.id);
+      const { error: bookFailureError } = await supabase.rpc(
+        "biz_record_marketing_book_send_failure_v1",
+        { p_campaign_id: campaign.id },
+      );
+      if (bookFailureError) {
+        console.error(
+          `[marketing-send] campaign ${campaign.id} Book failure marker failed: ${bookFailureError.message}`,
+        );
+      }
       results.push({
         campaign_id: campaign.id,
         status: "failed",
@@ -724,6 +802,7 @@ export async function processClaimedCampaigns(
     delivered: deliveredTotal,
     deferred: deferredTotal,
     recipient_failed: recipientFailedTotal,
+    skipped_after_confirm: 0,
     preview_skipped: previewSkippedTotal,
     errors: results
       .filter((result) => result.status === "failed")
@@ -732,6 +811,96 @@ export async function processClaimedCampaigns(
         reason: result.reason ?? "",
       })),
   };
+}
+
+interface ExistingBookResult {
+  executionId: string;
+  campaignId: string;
+  scheduledFor: string;
+  sendMode: "now" | "scheduled";
+  campaignStatus: string;
+  campaignFailed: boolean;
+  sealedReachable: number;
+  delivered: number;
+  deferred: number;
+  recipientFailed: number;
+  previewSkipped: number;
+  queued: number;
+  messageRows: number;
+}
+
+export function existingBookSendResponse(
+  existing: ExistingBookResult,
+): Record<string, unknown> {
+  if (existing.messageRows > existing.sealedReachable) {
+    throw new Error("book_blast_execution_expanded");
+  }
+  const common = {
+    executionId: existing.executionId,
+    campaignId: existing.campaignId,
+    scheduledFor: existing.scheduledFor,
+    replay: true,
+  };
+  if (
+    existing.sendMode === "scheduled" &&
+    existing.campaignStatus === "scheduled" && existing.messageRows === 0
+  ) {
+    return { ...common, resultState: "scheduled" };
+  }
+  if (
+    existing.campaignStatus === "sending" || existing.queued > 0 ||
+    (existing.campaignStatus === "scheduled" && existing.messageRows === 0)
+  ) return { ...common, resultState: "in_progress" };
+  const campaignFailed = existing.campaignFailed;
+  return {
+    ...common,
+    resultState: existing.deferred > 0 ? "deferred" : "complete",
+    dispatch: {
+      processed: 1,
+      succeeded: campaignFailed ? 0 : 1,
+      failed: campaignFailed ? 1 : 0,
+      delivered: existing.delivered,
+      deferred: existing.deferred,
+      recipient_failed: existing.recipientFailed,
+      preview_skipped: existing.previewSkipped,
+      skipped_after_confirm: Math.max(
+        existing.sealedReachable - existing.messageRows,
+        0,
+      ),
+      errors: campaignFailed
+        ? [{ campaign_id: existing.campaignId, reason: "campaign_failed" }]
+        : [],
+    },
+  };
+}
+
+async function findExistingBookSend(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  actorId: string,
+  campaignId: string,
+  clientRequestId: string,
+  quoteHash: string,
+  quotedAt: string,
+  expectedCostMinor: number | null,
+  currency: string | null,
+  scheduledFor: string | null,
+): Promise<ExistingBookResult | null> {
+  const { data, error } = await supabase.rpc(
+    "biz_marketing_book_existing_result_v1",
+    {
+      p_actor_id: actorId,
+      p_campaign_id: campaignId,
+      p_client_request_id: clientRequestId,
+      p_quote_hash: quoteHash,
+      p_quoted_at: quotedAt,
+      p_expected_cost_minor: expectedCostMinor,
+      p_currency: currency,
+      p_scheduled_for: scheduledFor,
+    },
+  );
+  if (error) throw new Error(error.message);
+  return data as ExistingBookResult | null;
 }
 
 export async function dispatchConfirmedBookSend(
