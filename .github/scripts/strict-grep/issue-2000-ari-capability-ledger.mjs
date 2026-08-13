@@ -8,6 +8,7 @@
  * semantics, and evidence tiers in one fail-closed contract.
  */
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +20,128 @@ const TOOL_PATHS = [
   "supabase/functions/_shared/agentDomainTools.ts",
 ];
 const PROMPT_PATH = "supabase/functions/_shared/agentSystemPrompt.ts";
+
+// Independently maintained operation-universe manifest. The ledger owns support
+// truth; this manifest owns the reviewed denominator, so deleting a real
+// operation and reconciling mutable audit counters still fails closed.
+const REQUIRED_CAPABILITY_IDS = new Set(`
+ari.brand.create
+ari.brand.list
+ari.brand.update
+ari.brand.delete
+ari.event.create
+ari.event.list
+ari.event.update
+ari.experience.create
+ari.event.publish
+ari.event.unpublish
+ari.event.cancel
+ari.event.end_sales
+ari.event.duplicate
+ari.event.patch_when
+ari.event.cover
+ari.event.guest_privacy
+ari.ticket.upsert_tier
+ari.ticket.pricing_switches
+ari.experience.publish
+ari.experience.update
+ari.experience.delete
+ari.trip.create
+ari.trip.update
+ari.trip.publish
+ari.trip.delete
+ari.rsvp.create
+ari.rsvp.publish
+ari.rsvp.bulk_status
+ari.rsvp.refund_contribution
+ari.stay.quote
+ari.stay.create_reservation
+ari.stay.transition
+ari.venue.create_reservation
+ari.venue.transition_reservation
+ari.venue.create_listing
+ari.venue.submit_claim
+ari.venue.mark_claim_feedback
+ari.venue.ops
+ari.venue.send_sms
+ari.marketing.draft_campaign
+ari.marketing.schedule_campaign
+ari.marketing.send_now
+ari.marketing.cancel_campaign
+ari.growth.run_tool
+ari.payout.status
+ari.partner.status
+ari.partner.disconnect
+ari.tax.status_guidance
+ari.order.refund
+ari.order.cancel
+ari.trip.cancel_booking
+ari.installment.retry
+ari.analytics.brand
+ari.team.invite_member
+ari.team.invite_scanner
+ari.team.revoke_member
+ari.guests.list_roster
+ari.guests.set_approval
+ari.people.export
+ari.settings.preferences
+ari.settings.notifications
+ari.support.create_ticket
+ari.account.delete
+ari.operator.snapshot
+ari.brand.hours
+ari.brand.pricing_defaults
+ari.event.discard_draft
+ari.event.group_chat
+ari.event.scan_ticket
+ari.media.pick_cover
+ari.trip.manage_days
+ari.trip.manage_inclusions
+ari.trip.manage_tiers
+ari.trip.quote_builder
+ari.trip.quote_to_draft
+ari.intelligence.four_tools
+ari.venue.intelligence
+ari.stay.manage_inventory
+ari.stay.publish_offering
+ari.stay.manage_policy_price_media
+ari.venue.manage_availability
+ari.venue.manage_menu
+ari.venue.manage_waitlist
+ari.marketing.manage_audiences
+ari.marketing.manage_templates
+ari.people.list_detail_add
+ari.people.import_contacts
+ari.payments.stripe_kyc
+ari.payments.paystack_kyc
+ari.payments.read_balances_reports
+ari.team.list_manage_roles
+ari.team.revoke_scanner
+ari.account.edit_profile_avatar
+ari.account.manage_ari_history
+ari.notifications.read_manage
+ari.support.read_reply
+ari.analytics.orders_reconciliation
+ari.venue.organic_insights
+ari.marketing.campaign_reports
+ari.brand.audit_log
+ari.brand.discovery_currency
+ari.event.door_sale
+ari.event.order_management
+ari.event.waitlist
+ari.event.scanner_admin
+ari.experience.snap_generation
+ari.experience.manage_stops
+ari.rsvp.scan_pass
+ari.rsvp.contribution_settings
+ari.trip.traveler_intake
+ari.installment.charge_now
+ari.installment.send_reminder
+ari.trip.order_money
+ari.venue.gallery
+ari.partner.brand_links
+ari.partner.splits
+`.trim().split(/\s+/));
 
 const STATUSES = new Set([
   "verified",
@@ -75,7 +198,66 @@ function addSetDiff(failures, left, right, message) {
   }
 }
 
-function validateRef(root, ref, label, failures) {
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+function hasExactCodeSymbol(source, symbol) {
+  const clean = stripComments(source);
+  const prefixed = /^(?:const|let|var) ([A-Za-z_$][\w$]*)$/.exec(symbol);
+  if (prefixed) {
+    const [, identifier] = prefixed;
+    return new RegExp(
+      `^\\s*(?:export\\s+)?${symbol.split(" ")[0]}\\s+${escapeRegExp(identifier)}\\b`,
+      "m",
+    ).test(clean);
+  }
+  const member = /^([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)$/.exec(symbol);
+  if (member) {
+    const [, owner, method] = member;
+    const ownerDeclaration = new RegExp(
+      `^\\s*export\\s+const\\s+${escapeRegExp(owner)}\\s*=\\s*\\{`,
+      "m",
+    );
+    const memberDeclaration = new RegExp(`^\\s*${escapeRegExp(method)}\\s*\\(`, "m");
+    return ownerDeclaration.test(clean) && memberDeclaration.test(clean);
+  }
+  if (!/^[A-Za-z_$][\w$]*$/.test(symbol)) return false;
+  const identifier = escapeRegExp(symbol);
+  const declaration = new RegExp(
+    `^\\s*export\\s+(?:default\\s+)?(?:async\\s+)?(?:function|class|interface|type|const|let|var|enum)\\s+${identifier}\\b`,
+    "m",
+  );
+  const namedReexport = new RegExp(
+    `^\\s*export\\s*\\{[^}]*\\b${identifier}\\b[^}]*\\}\\s*from\\s*["'][^"']+["']`,
+    "m",
+  );
+  const defaultReexport = new RegExp(
+    `^\\s*export\\s*\\{\\s*default\\s*\\}\\s*from\\s*["'][^"']*\\/${identifier}["']`,
+    "m",
+  );
+  return declaration.test(clean) || namedReexport.test(clean) || defaultReexport.test(clean);
+}
+
+function readAtAuditSha(root, sha, relative) {
+  try {
+    return execFileSync("git", ["show", `${sha}:${relative}`], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return null;
+  }
+}
+
+function validateRef(root, auditSha, ref, label, failures) {
   if (!ref || typeof ref.path !== "string" || typeof ref.symbol !== "string") {
     failures.push(`${label}: source reference requires path + symbol`);
     return;
@@ -85,9 +267,15 @@ function validateRef(root, ref, label, failures) {
     failures.push(`${label}: source path does not exist: ${ref.path}`);
     return;
   }
-  const source = fs.readFileSync(absolute, "utf8");
-  if (!source.includes(ref.symbol)) {
-    failures.push(`${label}: symbol "${ref.symbol}" is stale in ${ref.path}`);
+  const currentSource = fs.readFileSync(absolute, "utf8");
+  if (!hasExactCodeSymbol(currentSource, ref.symbol)) {
+    failures.push(`${label}: exact code symbol "${ref.symbol}" is stale in ${ref.path}`);
+  }
+  const auditedSource = readAtAuditSha(root, auditSha, ref.path);
+  if (auditedSource === null) {
+    failures.push(`${label}: source path is absent at audit SHA: ${ref.path}`);
+  } else if (!hasExactCodeSymbol(auditedSource, ref.symbol)) {
+    failures.push(`${label}: exact code symbol "${ref.symbol}" is absent at audit SHA in ${ref.path}`);
   }
 }
 
@@ -138,7 +326,15 @@ export function validateLedger({ root, ledger, registered, advertised }) {
     if (!Array.isArray(capability.owners?.ui) || capability.owners.ui.length === 0) failures.push(`${label}: missing UI owner path`);
     else for (const uiPath of capability.owners.ui) if (!fs.existsSync(path.join(root, uiPath))) failures.push(`${label}: UI owner path is stale: ${uiPath}`);
     if (!Array.isArray(capability.owners?.source) || capability.owners.source.length === 0) failures.push(`${label}: missing canonical source owner`);
-    else capability.owners.source.forEach((ref, index) => validateRef(root, ref, `${label}.owners.source[${index}]`, failures));
+    else capability.owners.source.forEach((ref, index) =>
+      validateRef(
+        root,
+        ledger.audit.baseline_sha,
+        ref,
+        `${label}.owners.source[${index}]`,
+        failures,
+      )
+    );
 
     const tool = capability.ari_tool;
     if (tool !== null && typeof tool !== "string") failures.push(`${label}: ari_tool must be string or null`);
@@ -157,13 +353,33 @@ export function validateLedger({ root, ledger, registered, advertised }) {
       failures.push(`${label}: ${capability.status} cannot claim a registered tool`);
     }
     if (capability.status === "guided_handoff") {
-      validateRef(root, capability.guided_handoff, `${label}.guided_handoff`, failures);
+      validateRef(
+        root,
+        ledger.audit.baseline_sha,
+        capability.guided_handoff,
+        `${label}.guided_handoff`,
+        failures,
+      );
       if (capability.confirmation !== "guided_handoff") failures.push(`${label}: guided handoff requires guided_handoff confirmation`);
     } else if (capability.guided_handoff != null) {
       failures.push(`${label}: only guided_handoff status may declare a handoff target`);
     }
     if (capability.status === "broken" && (!Array.isArray(capability.owning_issues) || capability.owning_issues.length === 0)) {
       failures.push(`${label}: broken status requires an owning issue`);
+    }
+    const blockers = Array.isArray(capability.blockers) ? capability.blockers : [];
+    const verificationGap = blockers.length > 0 && blockers.every((blocker) =>
+      typeof blocker === "string" &&
+      /(?:runtime|surface|parity).*(?:proof|evidence)|(?:proof|evidence).*(?:runtime|surface|parity)/i.test(blocker)
+    );
+    if (capability.status === "registered_unverified" && !verificationGap) {
+      failures.push(`${label}: registered_unverified blockers must describe verification gaps only`);
+    }
+    if (capability.status === "broken") {
+      if (verificationGap || blockers.length === 0) failures.push(`${label}: broken requires a concrete defect blocker`);
+      if (!capability.evidence?.some((e) => e.tier === "source_contract" || e.tier === "regression")) {
+        failures.push(`${label}: broken requires source-contract or regression defect evidence`);
+      }
     }
     if (capability.status === "in_flight") {
       if (!Array.isArray(capability.owning_issues) || capability.owning_issues.length === 0) failures.push(`${label}: in_flight requires an open owning issue reference`);
@@ -193,6 +409,9 @@ export function validateLedger({ root, ledger, registered, advertised }) {
       for (const surface of capability.surfaces) if (!observed.has(surface)) failures.push(`${label}: verified lacks production observation for ${surface}`);
     }
   }
+
+  addSetDiff(failures, REQUIRED_CAPABILITY_IDS, ids, "required Business operation is absent from ledger");
+  addSetDiff(failures, ids, REQUIRED_CAPABILITY_IDS, "ledger operation is absent from reviewed operation manifest");
 
   for (const [tool, rows] of mappedTools) {
     if (rows.length !== 1) failures.push(`registered tool ${tool} maps ${rows.length} times: ${rows.join(", ")}`);
@@ -239,14 +458,28 @@ function selfTest() {
   expectMutation("duplicate alias", ({ ledger }) => {
     ledger.capabilities.find((c) => c.ari_tool === null).ari_tool = ledger.capabilities.find((c) => c.ari_tool).ari_tool;
   }, (failure) => failure.includes("maps 2 times"));
-  expectMutation("status laundering", ({ ledger }) => {
+  expectMutation("broken to verified laundering", ({ ledger }) => {
     ledger.capabilities.find((c) => c.status === "broken").status = "verified";
     ledger.audit.status_breakdown.broken--;
     ledger.audit.status_breakdown.verified++;
   }, (failure) => failure.includes("verified requires"));
+  expectMutation("broken to unverified laundering", ({ ledger }) => {
+    ledger.capabilities.find((c) => c.id === "ari.event.publish").status = "registered_unverified";
+    ledger.audit.status_breakdown.broken--;
+    ledger.audit.status_breakdown.registered_unverified++;
+  }, (failure) => failure.includes("verification gaps only"));
   expectMutation("stale symbol", ({ ledger }) => {
     ledger.capabilities[0].owners.source[0].symbol = "symbol_that_does_not_exist";
   }, (failure) => failure.includes("symbol") && failure.includes("stale"));
+  expectMutation("extant generic token", ({ ledger }) => {
+    ledger.capabilities.find((c) => c.id === "ari.brand.create").owners.source[0].symbol = "brand";
+  }, (failure) => failure.includes("exact code symbol"));
+  expectMutation("denominator deletion with laundered counters", ({ ledger }) => {
+    const index = ledger.capabilities.findIndex((c) => c.id === "ari.installment.charge_now");
+    const [removed] = ledger.capabilities.splice(index, 1);
+    ledger.audit.capability_count--;
+    ledger.audit.status_breakdown[removed.status]--;
+  }, (failure) => failure.includes("required Business operation is absent"));
   expectMutation("missing guided route", ({ ledger }) => {
     ledger.capabilities.find((c) => c.status === "guided_handoff").guided_handoff.path = "missing/route.tsx";
   }, (failure) => failure.includes("source path does not exist"));
@@ -258,7 +491,7 @@ function selfTest() {
   const promptWithoutTool = promptSource.replace(new RegExp(`^- ${firstTool} —.*$`, "m"), "");
   const promptFailures = audit(ROOT, { promptSource: promptWithoutTool });
   if (!promptFailures.some((failure) => failure.includes("absent from prompt"))) throw new Error("prompt drift mutation passed");
-  console.log("[issue-2000-ari-capability-ledger] self-test PASS (7 hostile mutations)");
+  console.log("[issue-2000-ari-capability-ledger] self-test PASS (10 hostile mutations)");
 }
 
 if (process.argv.includes("--self-test")) selfTest();

@@ -11,13 +11,13 @@
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-13T12:00:00Z",
     "registered_tool_count": 64,
-    "capability_count": 114,
+    "capability_count": 116,
     "status_breakdown": {
       "verified": 0,
       "registered_unverified": 16,
       "broken": 47,
       "guided_handoff": 7,
-      "unsupported": 40,
+      "unsupported": 42,
       "in_flight": 4
     }
   },
@@ -1104,7 +1104,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/stayReservationService.ts",
-            "symbol": "quote(input"
+            "symbol": "stayReservationService.quote"
           },
           {
             "path": "supabase/functions/_shared/agentDomainTools.ts",
@@ -1140,7 +1140,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/stayReservationService.ts",
-            "symbol": "createGroup(input"
+            "symbol": "stayReservationService.createGroup"
           },
           {
             "path": "supabase/functions/_shared/agentDomainTools.ts",
@@ -1176,7 +1176,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/stayReservationService.ts",
-            "symbol": "approveRequest(input"
+            "symbol": "stayReservationService.approveRequest"
           },
           {
             "path": "supabase/functions/_shared/agentDomainTools.ts",
@@ -1757,7 +1757,7 @@
       "status": "guided_handoff",
       "guided_handoff": {
         "path": "mingla-business/app/connect-tax-registrations/index.tsx",
-        "symbol": "export default"
+        "symbol": "ConnectTaxRegistrationsNativeRoute"
       },
       "evidence": [
         {
@@ -2463,7 +2463,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/scanTicketService.ts",
-            "symbol": "scan"
+            "symbol": "scanTicket"
           }
         ]
       },
@@ -2471,7 +2471,7 @@
       "status": "guided_handoff",
       "guided_handoff": {
         "path": "mingla-business/app/event/[id]/scanner/index.tsx",
-        "symbol": "export default"
+        "symbol": "ScannerCameraRoute"
       },
       "evidence": [
         {
@@ -2731,7 +2731,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/venueIntelligenceService.ts",
-            "symbol": "venue"
+            "symbol": "fetchVenueIntelligence"
           }
         ]
       },
@@ -2892,7 +2892,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/menusService.ts",
-            "symbol": "menu"
+            "symbol": "fetchBrandMenus"
           }
         ]
       },
@@ -2956,7 +2956,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/marketing/marketingAudienceService.ts",
-            "symbol": "Audience"
+            "symbol": "listAudiencesForAccount"
           }
         ]
       },
@@ -2988,7 +2988,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/marketing/marketingTemplateService.ts",
-            "symbol": "Template"
+            "symbol": "listUserTemplates"
           }
         ]
       },
@@ -3052,7 +3052,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/contactImportService.ts",
-            "symbol": "import"
+            "symbol": "executeContactImport"
           }
         ]
       },
@@ -3060,7 +3060,7 @@
       "status": "guided_handoff",
       "guided_handoff": {
         "path": "mingla-business/app/(tabs)/people/import.tsx",
-        "symbol": "export default"
+        "symbol": "ContactImportRoute"
       },
       "evidence": [
         {
@@ -3096,7 +3096,7 @@
       "status": "guided_handoff",
       "guided_handoff": {
         "path": "mingla-business/app/connect-onboarding.tsx",
-        "symbol": "export default"
+        "symbol": "ConnectOnboardingNativeRoute"
       },
       "evidence": [
         {
@@ -3132,7 +3132,7 @@
       "status": "guided_handoff",
       "guided_handoff": {
         "path": "mingla-business/app/connect-partner-onboarding.tsx",
-        "symbol": "export default"
+        "symbol": "ConnectPartnerOnboardingNativeRoute"
       },
       "evidence": [
         {
@@ -3160,7 +3160,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/brandStripeBalancesService.ts",
-            "symbol": "balance"
+            "symbol": "fetchBrandStripeBalances"
           }
         ]
       },
@@ -3256,7 +3256,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/creatorAvatarService.ts",
-            "symbol": "avatar"
+            "symbol": "uploadCreatorAvatar"
           }
         ]
       },
@@ -3384,7 +3384,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/eventOrdersService.ts",
-            "symbol": "order"
+            "symbol": "getEventOrderRevenue"
           }
         ]
       },
@@ -3416,7 +3416,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/venueOrganicInsightsService.ts",
-            "symbol": "insight"
+            "symbol": "fetchVenueOrganicInsights"
           }
         ]
       },
@@ -3448,7 +3448,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/marketing/marketingReportService.ts",
-            "symbol": "report"
+            "symbol": "getCampaignReport"
           }
         ]
       },
@@ -3544,7 +3544,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/ticketCheckoutService.ts",
-            "symbol": "checkout"
+            "symbol": "createTicketCheckout"
           }
         ]
       },
@@ -3576,7 +3576,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/eventOrdersService.ts",
-            "symbol": "fetch"
+            "symbol": "fetchEventOrders"
           }
         ]
       },
@@ -3672,7 +3672,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/experienceGenerationService.ts",
-            "symbol": "generate"
+            "symbol": "parseRestaurantMenu"
           }
         ]
       },
@@ -3704,7 +3704,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/experienceStopImageService.ts",
-            "symbol": "image"
+            "symbol": "uploadExperienceStopImage"
           }
         ]
       },
@@ -3736,7 +3736,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/scanRsvpService.ts",
-            "symbol": "scan"
+            "symbol": "scanRsvp"
           }
         ]
       },
@@ -3744,7 +3744,7 @@
       "status": "guided_handoff",
       "guided_handoff": {
         "path": "mingla-business/app/rsvp/[id]/scanner/index.tsx",
-        "symbol": "export { default }"
+        "symbol": "RsvpAdmissionScanner"
       },
       "evidence": [
         {
@@ -3804,7 +3804,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/intakeSchemaService.ts",
-            "symbol": "Intake"
+            "symbol": "upsertTripIntakeSchema"
           }
         ]
       },
@@ -3820,6 +3820,78 @@
       "owning_issues": [2000],
       "blockers": ["No registered tool"],
       "confidence": "medium",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.installment.charge_now",
+      "domain": "payments",
+      "outcome": "Charge a due trip installment now",
+      "safety": "money",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "type_to_confirm",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/trip/[id]/money/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/hooks/useManualInstallmentActions.ts",
+            "symbol": "useChargeInstallmentNow"
+          },
+          {
+            "path": "mingla-business/src/services/manualInstallmentChargeService.ts",
+            "symbol": "manualChargeInstallment"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "manual trip-installment charge mutation"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered manual-charge tool"],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.installment.send_reminder",
+      "domain": "payments",
+      "outcome": "Send a buyer a trip-installment reminder",
+      "safety": "write",
+      "required_role": "owner_or_finance_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
+      "owners": {
+        "ui": ["mingla-business/app/trip/[id]/money/index.tsx"],
+        "source": [
+          {
+            "path": "mingla-business/src/hooks/useManualInstallmentActions.ts",
+            "symbol": "useSendInstallmentReminder"
+          },
+          {
+            "path": "mingla-business/src/services/installmentReminderService.ts",
+            "symbol": "sendInstallmentReminder"
+          }
+        ]
+      },
+      "ari_tool": null,
+      "status": "unsupported",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "manual buyer reminder mutation"
+        }
+      ],
+      "owning_issues": [2000],
+      "blockers": ["No registered installment-reminder tool"],
+      "confidence": "high",
       "verified_at": "2026-08-13"
     },
     {
@@ -3868,7 +3940,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/venueGalleryService.ts",
-            "symbol": "gallery"
+            "symbol": "uploadGalleryPhoto"
           }
         ]
       },
@@ -3902,7 +3974,7 @@
         "source": [
           {
             "path": "mingla-business/src/services/partnerBrandLinksService.ts",
-            "symbol": "Partner"
+            "symbol": "listPartnerBrandLinks"
           }
         ]
       },
