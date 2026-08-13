@@ -135,17 +135,17 @@
 
 ### I-PROPOSED-PERSON-SUPPRESSION-1 (ACTIVE)
 - **Rule:** A person suppressed for marketing or all messaging remains suppressed across every linked source and contact method; a new order, RSVP, ticket, merge, or re-ingest can never silently reactivate marketing eligibility.
-- **#1773 DRAFT extension:** Venue reservations and historically confirmed Stay reservations are sources under the same rule; a newly linked reservation source must re-project matching pre-existing suppression ledgers before async ingest succeeds.
+- **#1773 ACTIVE extension:** Venue reservations and historically confirmed Stay reservations are sources under the same rule; a newly linked reservation source must re-project matching pre-existing suppression ledgers before async ingest succeeds.
 - **Enforcement:** Brand-person suppression rows, legacy-ledger projection triggers, source-derived resolution, and offering audience selection.
 - **Regression:** The #1770 SQL contract and strict guard require suppression projection and exclusion before attempts are queued.
-- **Established:** ACTIVE at #1770 CLOSE after PostgreSQL state, merge, re-ingest, and offering-audience exclusion proofs passed independently.
+- **Established:** ACTIVE at #1770 CLOSE after PostgreSQL state, merge, re-ingest, and offering-audience exclusion proofs passed independently; the #1773 reservation and Stay extension became ACTIVE after independent QA, all-green PR #1987, production migration `20270327001773`, ACTIVE worker v34, and exact-once production queue verification.
 
 ### I-PROPOSED-SOURCE-FAILOPEN-1 (ACTIVE)
 - **Rule:** Existing RSVP, order, and ticket writes remain authoritative if Brand People ingestion is unavailable; source writes enqueue work, the worker retries with bounded backoff, and only aggregate safe codes leave the boundary.
-- **#1773 DRAFT extension:** Venue reservation writes and Stay confirmation-event writes remain authoritative under the same fail-open queue contract; only identity changes or immutable confirmation evidence enqueue, never operational status/state churn.
+- **#1773 ACTIVE extension:** Venue reservation writes and Stay confirmation-event writes remain authoritative under the same fail-open queue contract; only identity changes or immutable confirmation evidence enqueue, never operational status/state churn.
 - **Enforcement:** Four after-write outbox triggers, claim/finish RPCs, and `brand-person-ingest-worker` with service-only authorization.
 - **Regression:** The #1770 worker test and strict guard pin enqueue-only source triggers, a 100-row claim limit, bounded retry/dead-letter behavior, and PII-free responses.
-- **Established:** ACTIVE at #1770 CLOSE after PostgreSQL proofs covered inserts, material RSVP/approval revisions, exact no-ops, replay, and injected ingest failure without blocking the authoritative source write.
+- **Established:** ACTIVE at #1770 CLOSE after PostgreSQL proofs covered inserts, material RSVP/approval revisions, exact no-ops, replay, and injected ingest failure without blocking the authoritative source write; the #1773 reservation and Stay extension became ACTIVE after independent QA, all-green PR #1987, production migration `20270327001773`, ACTIVE worker v34, and an idempotent production replay with no retries, dead jobs, or duplicates.
 
 ### I-PROPOSED-BRAND-EXPORT-1 (ACTIVE)
 - **Rule:** Brand People exports are brand-authorized, scope-bound, audited, formula-neutralized RFC-4180 files in private storage, exposed only through short-lived signed URLs; an unsupported authoritative provider fails closed.
@@ -8365,7 +8365,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 ### I-PROPOSED-PHONE-COUNTRY-AUTHORITY-1 (ACTIVE)
 
 - A national-format phone may enter identity matching only after conversion by the single country-aware owner using explicit handset-country evidence. Strict E.164 is preserved exactly. Country evidence is provenance, never an identity, matching, suppression, routing, invite, reconciliation, or export-selection key. Missing or conflicting country metadata cannot rewrite an E.164 address, and historical ambiguous values are never guessed or backfilled.
-- **Enforced by:** `packages/card-identity/phone.js`; the shared RSVP and Stay render seams; the public RSVP, Stay, and reservation Edge boundaries; strict SQL writers and provenance refresh in `20270325001857_issue_1857_phone_country_authority.sql`; `.github/scripts/strict-grep/issue-1857-phone-country-authority.mjs`.
+- **Enforced by:** `packages/card-identity/phone.mjs`; the shared RSVP and Stay render seams; the public RSVP, Stay, and reservation Edge boundaries; strict SQL writers and provenance refresh in `20270325001857_issue_1857_phone_country_authority.sql`; `.github/scripts/strict-grep/issue-1857-phone-country-authority.mjs`.
 - **Established:** DRAFT at issue #1857 IMPLEMENT 2026-08-11; ACTIVE after PR #1921 merged and production deployment verification passed on 2026-08-12.
 
 ---

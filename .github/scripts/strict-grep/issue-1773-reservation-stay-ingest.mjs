@@ -94,7 +94,7 @@ export function inspect(source) {
   need("workflow", "supabase/setup-cli@v1", "Supabase CLI setup");
   need("workflow", "version: 2.98.2", "Supabase CLI 2.98.2 workflow pin");
   need("workflow", "issue-1773-reservation-stay-ingest.mjs --self-test", "gate self-test wiring");
-  need("invariant", "#1773 DRAFT extension", "DRAFT invariant extension");
+  need("invariant", "#1773 ACTIVE extension", "ACTIVE invariant extension");
   return failures;
 }
 
@@ -146,6 +146,7 @@ function selfTest(source) {
     ["union", { ...source, worker: source.worker.replace('| "stay_reservation"', '| "reservation"') }],
     ["revision", { ...source, migration: source.migration.replace("'phoneCountryIso',NEW.guest_phone_country_iso", "'status',NEW.status") }],
     ["backfill", { ...source, migration: source.migration.replace("FROM public.reservations r ON CONFLICT DO NOTHING", "FROM public.reservations r WHERE false ON CONFLICT DO NOTHING") }],
+    ["invariant activation", { ...source, invariant: source.invariant.replaceAll("#1773 ACTIVE extension", "#1773 DRAFT extension") }],
   ];
   for (const [label, mutation] of mutations) {
     if (inspect(mutation).length === 0) throw new Error(`self-test did not catch ${label}`);
@@ -156,7 +157,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const source = readSources();
   if (process.argv.includes("--self-test")) {
     selfTest(source);
-    console.log("#1773 reservation/Stay ingest self-test PASS (20 true mutations)");
+    console.log("#1773 reservation/Stay ingest self-test PASS (21 true mutations)");
   } else {
     const failures = inspect(source);
     if (failures.length) { console.error(failures.join("\n")); process.exit(1); }
