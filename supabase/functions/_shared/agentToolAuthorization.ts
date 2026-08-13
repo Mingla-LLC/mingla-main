@@ -13,6 +13,13 @@ import { assertAgentReadBrand } from "./agentTenantScope.ts";
 
 type AuthContext = { brandId: string | null; resource: AgentResourceKind };
 
+const EVENT_TYPE_BY_TOOL: Readonly<Record<string, "experience" | "rsvp" | "trip">> = Object.freeze({
+  publish_experience: "experience", update_experience: "experience", delete_experience: "experience",
+  update_trip: "trip", publish_trip: "trip", delete_trip: "trip", cancel_trip_booking: "trip",
+  publish_rsvp: "rsvp", set_rsvp_guest_status: "rsvp", refund_rsvp_contribution: "rsvp",
+  list_guest_roster: "rsvp", set_guest_approval: "rsvp",
+});
+
 const role = (requiredRole: AgentRequiredRole, resource: AgentResourceKind): AgentAuthorizationDeclaration =>
   ({ requiredRole, resource });
 
@@ -62,15 +69,24 @@ async function rowBrand(
   table: string,
   id: unknown,
   select = "brand_id",
+  requireNotDeleted = false,
 ): Promise<Record<string, any>> {
   if (!isUuid(id)) throw new ToolError("INVALID_ARGS", "A valid resource id is required");
-  const { data, error } = await client.from(table).select(select).eq("id", id).maybeSingle();
+  let query = client.from(table).select(select).eq("id", id);
+  if (requireNotDeleted) query = query.is("deleted_at", null);
+  const { data, error } = await query.maybeSingle();
   if (error) throw new ToolError("ROLE_CHECK_UNAVAILABLE", "Ari could not verify permissions right now");
   if (!data) unavailable();
   return data as Record<string, any>;
 }
 
+function assertExpectedEventType(toolName: string, event: Record<string, any>): void {
+  const expected = EVENT_TYPE_BY_TOOL[toolName];
+  if (expected && event.event_type !== expected) unavailable();
+}
+
 async function resolveBrand(
+  toolName: string,
   declaration: AgentAuthorizationDeclaration,
   args: Record<string, unknown>,
   client: SupabaseClient,
@@ -88,7 +104,8 @@ async function resolveBrand(
       brandId = args.brand_id;
       break;
     case "event": {
-      const row = await rowBrand(client, "events", args.event_id);
+      const row = await rowBrand(client, "events", args.event_id, "brand_id, event_type", true);
+      assertExpectedEventType(toolName, row);
       brandId = row.brand_id;
       break;
     }
@@ -113,23 +130,26 @@ async function resolveBrand(
 
   // Bind redundant high-risk finance/resource identifiers before role checks.
   if (isUuid(args.partner_id)) {
-    const partner = await rowBrand(client, "brand_partners", args.partner_id);
+    const partner = await rowBrand(client, "partner_brand_links", args.partner_id);
     if (partner.brand_id !== brandId) unavailable();
   }
   if (isUuid(args.order_id)) {
     const order = await rowBrand(client, "orders", args.order_id, "event_id");
-    const event = await rowBrand(client, "events", order.event_id);
+    const event = await rowBrand(client, "events", order.event_id, "brand_id, event_type", true);
+    assertExpectedEventType(toolName, event);
     if (event.brand_id !== brandId) unavailable();
   }
   if (isUuid(args.booking_id)) {
     const order = await rowBrand(client, "orders", args.booking_id, "event_id");
-    const event = await rowBrand(client, "events", order.event_id);
+    const event = await rowBrand(client, "events", order.event_id, "brand_id, event_type", true);
+    assertExpectedEventType(toolName, event);
     if (event.brand_id !== brandId) unavailable();
   }
   if (isUuid(args.installment_id)) {
     const installment = await rowBrand(client, "order_installments", args.installment_id, "order_id");
     const order = await rowBrand(client, "orders", installment.order_id, "event_id");
-    const event = await rowBrand(client, "events", order.event_id);
+    const event = await rowBrand(client, "events", order.event_id, "brand_id, event_type", true);
+    assertExpectedEventType(toolName, event);
     if (event.brand_id !== brandId) unavailable();
   }
   if (isUuid(args.member_id)) {
@@ -152,15 +172,17 @@ async function resolveBrand(
   const guestIds = [args.guest_id, ...(Array.isArray(args.guest_ids) ? args.guest_ids : [])]
     .filter(isUuid);
   for (const guestId of guestIds) {
-    const guest = await rowBrand(client, "event_rsvp_guests", guestId, "event_id");
-    const event = await rowBrand(client, "events", guest.event_id);
+    const guest = await rowBrand(client, "event_rsvp_guests", guestId, "rsvp_id");
+    const rsvp = await rowBrand(client, "event_rsvps", guest.rsvp_id, "event_id");
+    const event = await rowBrand(client, "events", rsvp.event_id, "brand_id, event_type", true);
+    assertExpectedEventType(toolName, event);
     if (event.brand_id !== brandId) unavailable();
   }
   return brandId;
 }
 
 export async function authorizeAgentTool(
-  tool: Pick<AgentTool, "name" | "requiredRole" | "resource">,
+  tool: Pick<AgentTool, "name" | "parameters" | "requiredRole" | "resource">,
   args: Record<string, unknown>,
   userClient: SupabaseClient,
   userId: string,
@@ -170,7 +192,8 @@ export async function authorizeAgentTool(
   if (!expected || expected.requiredRole !== tool.requiredRole || expected.resource !== tool.resource) {
     throw new ToolError("ROLE_CHECK_UNAVAILABLE", "Ari's permission contract is unavailable");
   }
-  const brandId = await resolveBrand(expected, args, userClient);
+  validateBeforeAuthorization(tool, args);
+  const brandId = await resolveBrand(tool.name, expected, args, userClient);
   if (expected.resource === "optional_brand" && brandId === null) {
     return { brandId: null, resource: expected.resource };
   }
@@ -202,14 +225,24 @@ export async function authorizeAgentTool(
   }
   const actualRank = Number(actual ?? 0);
   const requiredRank = Number(required ?? 0);
-  if (!Number.isFinite(actualRank) || !Number.isFinite(requiredRank) || requiredRank <= 0 || actualRank < requiredRank) {
+  if (!Number.isFinite(actualRank) || !Number.isFinite(requiredRank) || requiredRank <= 0) {
+    throw new ToolError("ROLE_CHECK_UNAVAILABLE", "Ari could not verify permissions right now");
+  }
+  if (actualRank <= 0) unavailable();
+  if (actualRank < requiredRank) {
     throw new ToolError("ROLE_DENIED", "Your role does not allow that action");
   }
   return { brandId, resource: expected.resource };
 }
 
-function validateBeforeAuthorization(tool: AgentToolDefinition, args: Record<string, unknown>): void {
+function validateBeforeAuthorization(
+  tool: Pick<AgentToolDefinition, "parameters">,
+  args: Record<string, unknown>,
+): void {
   const schema = tool.parameters as any;
+  if (!args || typeof args !== "object" || Array.isArray(args)) {
+    throw new ToolError("INVALID_ARGS", "Tool arguments must be an object");
+  }
   for (const key of schema.required ?? []) {
     if (args[key] === undefined || args[key] === null || args[key] === "") {
       const values = schema.properties?.[key]?.enum;
@@ -219,18 +252,64 @@ function validateBeforeAuthorization(tool: AgentToolDefinition, args: Record<str
       );
     }
   }
+  if (schema.additionalProperties === false) {
+    const allowed = new Set(Object.keys(schema.properties ?? {}));
+    const extra = Object.keys(args).find((key) => !allowed.has(key));
+    if (extra) throw new ToolError("INVALID_ARGS", `${extra} is not allowed`);
+  }
   for (const [key, rule] of Object.entries(schema.properties ?? {}) as [string, any][]) {
     const value = args[key];
     if (value === undefined || value === null) continue;
-    if (rule.format === "uuid" && !isUuid(value)) {
-      throw new ToolError("INVALID_ARGS", `${key} must be a uuid`);
-    }
-    if (Array.isArray(rule.enum) && !rule.enum.includes(value)) {
-      throw new ToolError("INVALID_ARGS", `${key} must be ${rule.enum.join(" or ")}`);
-    }
-    if (typeof value === "number" && typeof rule.minimum === "number" && value < rule.minimum) {
-      throw new ToolError("INVALID_ARGS", `${key} must be ≥ ${rule.minimum}`);
-    }
+    validateSchemaValue(value, rule, key);
+  }
+}
+
+function validateSchemaValue(value: unknown, rule: any, path: string): void {
+  const invalid = (expectation: string): never => {
+    throw new ToolError("INVALID_ARGS", `${path} must be ${expectation}`);
+  };
+  if (Array.isArray(rule.enum) && !rule.enum.includes(value)) {
+    invalid(rule.enum.join(" or "));
+  }
+  switch (rule.type) {
+    case "string":
+      if (typeof value !== "string") invalid("a string");
+      if (typeof rule.minLength === "number" && (value as string).length < rule.minLength) invalid(`at least ${rule.minLength} characters`);
+      if (typeof rule.maxLength === "number" && (value as string).length > rule.maxLength) invalid(`at most ${rule.maxLength} characters`);
+      if (rule.format === "uuid" && !isUuid(value)) invalid("a uuid");
+      if (rule.format === "date-time" && Number.isNaN(Date.parse(value as string))) invalid("a valid date-time");
+      break;
+    case "integer":
+      if (typeof value !== "number" || !Number.isInteger(value)) invalid("an integer");
+      break;
+    case "number":
+      if (typeof value !== "number" || !Number.isFinite(value)) invalid("a number");
+      break;
+    case "boolean":
+      if (typeof value !== "boolean") invalid("a boolean");
+      break;
+    case "array":
+      if (!Array.isArray(value)) invalid("an array");
+      if (rule.items) (value as unknown[]).forEach((item, index) => validateSchemaValue(item, rule.items, `${path}[${index}]`));
+      break;
+    case "object":
+      if (!value || typeof value !== "object" || Array.isArray(value)) invalid("an object");
+      for (const required of rule.required ?? []) {
+        if ((value as Record<string, unknown>)[required] == null) {
+          throw new ToolError("INVALID_ARGS", `${path}.${required} is required`);
+        }
+      }
+      for (const [key, childRule] of Object.entries(rule.properties ?? {}) as [string, any][]) {
+        const child = (value as Record<string, unknown>)[key];
+        if (child !== undefined && child !== null) validateSchemaValue(child, childRule, `${path}.${key}`);
+      }
+      break;
+  }
+  if (typeof value === "number" && typeof rule.minimum === "number" && value < rule.minimum) {
+    invalid(`≥ ${rule.minimum}`);
+  }
+  if (typeof value === "number" && typeof rule.maximum === "number" && value > rule.maximum) {
+    invalid(`≤ ${rule.maximum}`);
   }
 }
 
@@ -247,8 +326,7 @@ export function secureAgentTools(definitions: AgentToolDefinition[]): AgentTool[
       ...definition,
       ...declaration,
       executor: async (args, client, userId) => {
-        validateBeforeAuthorization(definition, args);
-        await authorizeAgentTool({ ...declaration, name: definition.name }, args, client, userId);
+        await authorizeAgentTool({ ...declaration, name: definition.name, parameters: definition.parameters }, args, client, userId);
         return await rawExecutor(args, client, userId);
       },
     };
