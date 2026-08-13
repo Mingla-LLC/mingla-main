@@ -16,28 +16,15 @@ import {
   text,
   typography,
 } from "../../constants/designSystem";
-import type { TurnoutFactorStatus } from "../../types/growthTools";
 import type { TurnoutSurface } from "../../hooks/useTurnoutForecast";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { IntelBandStat } from "./IntelBandStat";
 import { IntelCard } from "./IntelCard";
-import { IntelDriverChip, type IntelDriverTone } from "./IntelDriverChip";
+import { IntelDriverChip } from "./IntelDriverChip";
 import { IntelProgress, INTEL_RESULT_MIN_HEIGHT } from "./IntelProgress";
 import { useTurnoutIntel } from "./TurnoutIntelProvider";
-
-interface Driver {
-  id: string;
-  label: string;
-  detail: string;
-  tone: IntelDriverTone;
-}
-
-const factorOrder: Record<TurnoutFactorStatus, number> = {
-  hurt: 0,
-  watch: 1,
-  help: 2,
-};
+import { buildTurnoutDrivers, type TurnoutDriver } from "./turnoutDrivers";
 
 export interface TurnoutForecastCardProps {
   surface: TurnoutSurface;
@@ -49,56 +36,10 @@ export const TurnoutForecastCard: React.FC<TurnoutForecastCardProps> = () => {
   const entry = useRef(new Animated.Value(0)).current;
   const resultFade = useRef(new Animated.Value(0)).current;
   const report = intel?.report ?? null;
-  const drivers = useMemo<Driver[]>(() => {
-    if (report === null) return [];
-    const output: Driver[] = [];
-    if (report.weather !== undefined && report.weather !== null) {
-      output.push({
-        id: "weather",
-        label: report.weather.kind === "forecast" ? "Forecast" : "Seasonal",
-        detail: [report.weather.summary, report.weather.impact]
-          .filter(Boolean)
-          .join(" · "),
-        tone: report.weather.impact?.toLowerCase().includes("hurt")
-          ? "hurt"
-          : "info",
-      });
-    }
-    if ((report.competitors?.length ?? 0) > 0) {
-      output.push({
-        id: "competitors",
-        label: `${report.competitors?.length ?? 0} competing that night`,
-        detail:
-          report.demand_read ??
-          "Nearby events are included in this modeled band.",
-        tone: "watch",
-      });
-    }
-    const factors = [...(report.factors ?? [])]
-      .filter(
-        (
-          factor,
-        ): factor is typeof factor & {
-          label: string;
-          status: TurnoutFactorStatus;
-        } =>
-          typeof factor.label === "string" &&
-          (factor.status === "hurt" ||
-            factor.status === "watch" ||
-            factor.status === "help"),
-      )
-      .sort((a, b) => factorOrder[a.status] - factorOrder[b.status])
-      .slice(0, 3);
-    for (const [index, factor] of factors.entries()) {
-      output.push({
-        id: factor.key ?? `factor-${index}`,
-        label: factor.label ?? "Signal",
-        detail: factor.detail ?? "Included in this modeled band.",
-        tone: factor.status ?? "info",
-      });
-    }
-    return output.slice(0, 5);
-  }, [report]);
+  const drivers = useMemo<TurnoutDriver[]>(
+    () => buildTurnoutDrivers(report),
+    [report],
+  );
 
   useEffect(() => {
     Animated.timing(entry, {

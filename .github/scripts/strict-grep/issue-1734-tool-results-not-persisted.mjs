@@ -166,6 +166,28 @@ export function runGate(storeFiles, guardedPresent) {
 const TURNOUT_INPUT_OWNER = "mingla-business/src/utils/turnoutInput.ts";
 const TURNOUT_RUN_OWNER = "mingla-business/src/hooks/useTurnoutForecast.ts";
 
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Collect every local spelling that imports the metered run owner. */
+function turnoutRunCallPattern(code) {
+  const localNames = new Set(["runGrowthTool"]);
+  const namedImport = /import\s*\{([\s\S]*?)\}\s*from\s*["'][^"']*growthToolsService["']/g;
+  for (const match of code.matchAll(namedImport)) {
+    for (const specifier of match[1].split(",")) {
+      const runImport = specifier.trim().match(/^runGrowthTool(?:\s+as\s+([A-Za-z_$][\w$]*))?$/);
+      if (runImport !== null) localNames.add(runImport[1] ?? "runGrowthTool");
+    }
+  }
+  const namespaceNames = [];
+  const namespaceImport = /import\s*\*\s*as\s*([A-Za-z_$][\w$]*)\s*from\s*["'][^"']*growthToolsService["']/g;
+  for (const match of code.matchAll(namespaceImport)) namespaceNames.push(match[1]);
+  const callees = [
+    ...[...localNames].map(escapeRegExp),
+    ...namespaceNames.map((name) => `${escapeRegExp(name)}\\s*\\.\\s*runGrowthTool`),
+  ].join("|");
+  return new RegExp(`(?:${callees})(?:<[^>]+>)?\\s*\\(\\s*["']events["']`);
+}
+
 /** #1008 A9 — turnout payload construction and event runs stay single-owned. */
 export function runTurnoutSingleSourceGate(clientFiles) {
   const failures = [];
@@ -181,7 +203,7 @@ export function runTurnoutSingleSourceGate(clientFiles) {
     }
     if (
       file.rel !== TURNOUT_RUN_OWNER &&
-      /runGrowthTool(?:<[^>]+>)?\s*\(\s*["']events["']/.test(code)
+      turnoutRunCallPattern(code).test(code)
     ) {
       failures.push(`${file.rel}: starts an events engine run outside useTurnoutForecast.`);
     }
@@ -375,6 +397,32 @@ if (process.argv.includes("--self-test")) {
     runTurnoutSingleSourceGate([
       ...cleanClient,
       { rel: "mingla-business/src/hooks/other.ts", code: 'runGrowthTool("events", id, input);' },
+    ]).code,
+    1,
+  );
+  expect(
+    "import-aliased duplicate turnout run",
+    runTurnoutSingleSourceGate([
+      ...cleanClient,
+      {
+        rel: "mingla-business/src/hooks/aliased.ts",
+        code:
+          'import { runGrowthTool as spendForecast } from "../services/growthToolsService";\n' +
+          'spendForecast("events", id, input);',
+      },
+    ]).code,
+    1,
+  );
+  expect(
+    "namespace-aliased duplicate turnout run",
+    runTurnoutSingleSourceGate([
+      ...cleanClient,
+      {
+        rel: "mingla-business/src/hooks/namespaced.ts",
+        code:
+          'import * as growth from "../services/growthToolsService";\n' +
+          'growth.runGrowthTool("events", id, input);',
+      },
     ]).code,
     1,
   );
