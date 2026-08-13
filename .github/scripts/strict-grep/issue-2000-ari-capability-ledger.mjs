@@ -143,6 +143,60 @@ ari.partner.brand_links
 ari.partner.splits
 `.trim().split(/\s+/));
 
+// Independent classification authority established by the source-contract
+// reconciliation at this immutable revision. Ledger prose may explain a defect,
+// but it cannot remove one from this set or create a new proven-broken claim.
+const PROVEN_BROKEN_AUDIT_SHA = "829c46fc319c34452e18876b728b6d840f95b904";
+const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
+ari.event.publish
+ari.event.unpublish
+ari.event.cancel
+ari.event.end_sales
+ari.event.duplicate
+ari.event.patch_when
+ari.event.cover
+ari.event.guest_privacy
+ari.ticket.upsert_tier
+ari.ticket.pricing_switches
+ari.experience.publish
+ari.experience.update
+ari.experience.delete
+ari.trip.create
+ari.trip.update
+ari.trip.publish
+ari.trip.delete
+ari.rsvp.create
+ari.rsvp.publish
+ari.rsvp.bulk_status
+ari.rsvp.refund_contribution
+ari.stay.quote
+ari.stay.create_reservation
+ari.stay.transition
+ari.venue.create_reservation
+ari.venue.create_listing
+ari.venue.submit_claim
+ari.venue.mark_claim_feedback
+ari.venue.ops
+ari.venue.send_sms
+ari.marketing.send_now
+ari.growth.run_tool
+ari.payout.status
+ari.partner.status
+ari.partner.disconnect
+ari.order.refund
+ari.order.cancel
+ari.trip.cancel_booking
+ari.installment.retry
+ari.analytics.brand
+ari.team.invite_member
+ari.team.invite_scanner
+ari.team.revoke_member
+ari.guests.list_roster
+ari.guests.set_approval
+ari.people.export
+ari.operator.snapshot
+`.trim().split(/\s+/));
+
 const STATUSES = new Set([
   "verified",
   "registered_unverified",
@@ -281,9 +335,25 @@ function validateRef(root, auditSha, ref, label, failures) {
 
 export function validateLedger({ root, ledger, registered, advertised }) {
   const failures = [];
+  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 47) {
+    failures.push(
+      `proven-broken authority must contain 47 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
+    );
+  }
+  addSetDiff(
+    failures,
+    PROVEN_BROKEN_CAPABILITY_IDS,
+    REQUIRED_CAPABILITY_IDS,
+    "proven-broken authority references an operation outside the reviewed universe",
+  );
   if (ledger.schema_version !== 1) failures.push("schema_version must equal 1");
   if (!/^[0-9a-f]{40}$/.test(ledger.audit?.baseline_sha ?? "")) {
     failures.push("audit.baseline_sha must be a full immutable Git SHA");
+  }
+  if (ledger.audit?.baseline_sha !== PROVEN_BROKEN_AUDIT_SHA) {
+    failures.push(
+      `audit.baseline_sha must match proven-broken authority ${PROVEN_BROKEN_AUDIT_SHA}`,
+    );
   }
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(ledger.audit?.verified_at ?? "")) {
     failures.push("audit.verified_at must be UTC second precision");
@@ -412,6 +482,23 @@ export function validateLedger({ root, ledger, registered, advertised }) {
 
   addSetDiff(failures, REQUIRED_CAPABILITY_IDS, ids, "required Business operation is absent from ledger");
   addSetDiff(failures, ids, REQUIRED_CAPABILITY_IDS, "ledger operation is absent from reviewed operation manifest");
+  const brokenIds = new Set(
+    ledger.capabilities
+      .filter((capability) => capability.status === "broken")
+      .map((capability) => capability.id),
+  );
+  addSetDiff(
+    failures,
+    PROVEN_BROKEN_CAPABILITY_IDS,
+    brokenIds,
+    "proven-broken capability was laundered to another status",
+  );
+  addSetDiff(
+    failures,
+    brokenIds,
+    PROVEN_BROKEN_CAPABILITY_IDS,
+    "broken classification lacks proven-broken authority",
+  );
 
   for (const [tool, rows] of mappedTools) {
     if (rows.length !== 1) failures.push(`registered tool ${tool} maps ${rows.length} times: ${rows.join(", ")}`);
@@ -464,10 +551,12 @@ function selfTest() {
     ledger.audit.status_breakdown.verified++;
   }, (failure) => failure.includes("verified requires"));
   expectMutation("broken to unverified laundering", ({ ledger }) => {
-    ledger.capabilities.find((c) => c.id === "ari.event.publish").status = "registered_unverified";
+    const row = ledger.capabilities.find((c) => c.id === "ari.event.publish");
+    row.status = "registered_unverified";
+    row.blockers = ["No exact-revision runtime evidence on all required surfaces"];
     ledger.audit.status_breakdown.broken--;
     ledger.audit.status_breakdown.registered_unverified++;
-  }, (failure) => failure.includes("verification gaps only"));
+  }, (failure) => failure.includes("proven-broken capability was laundered"));
   expectMutation("stale symbol", ({ ledger }) => {
     ledger.capabilities[0].owners.source[0].symbol = "symbol_that_does_not_exist";
   }, (failure) => failure.includes("symbol") && failure.includes("stale"));
