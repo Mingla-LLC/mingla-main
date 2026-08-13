@@ -10,6 +10,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  type GestureResponderEvent,
   Platform,
   Pressable,
   StyleSheet,
@@ -89,6 +90,20 @@ const isValidPriceInput = (value: string): boolean =>
   /^\d*(?:\.\d*)?$/.test(value);
 
 const isValidCapacityInput = (value: string): boolean => /^\d*$/.test(value);
+
+type WebSelectableInput = {
+  setSelectionRange?: (start: number, end: number) => void;
+};
+
+const reselectWebValueAfterPointer = (
+  event: GestureResponderEvent,
+  value: string,
+): void => {
+  if (Platform.OS !== "web" || value.length === 0) return;
+
+  const target = event.currentTarget as unknown as WebSelectableInput;
+  requestAnimationFrame(() => target.setSelectionRange?.(0, value.length));
+};
 
 // ---- Visibility options ---------------------------------------------
 
@@ -852,6 +867,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   placeholderTextColor={textTokens.quaternary}
                   keyboardType="decimal-pad"
                   selectTextOnFocus
+                  onPressIn={(event) =>
+                    reselectWebValueAfterPointer(event, priceText)
+                  }
                   style={styles.textInput}
                   editable={!isPriceLocked}
                   accessibilityLabel={
@@ -917,6 +935,9 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
                   placeholderTextColor={textTokens.quaternary}
                   keyboardType="number-pad"
                   selectTextOnFocus
+                  onPressIn={(event) =>
+                    reselectWebValueAfterPointer(event, capacityText)
+                  }
                   style={styles.textInput}
                   accessibilityLabel="Ticket capacity"
                 />

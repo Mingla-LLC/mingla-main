@@ -1,5 +1,6 @@
 import React from "react";
 import { describe, expect, jest, test } from "@jest/globals";
+import { Platform } from "react-native";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -123,6 +124,41 @@ const mount = async (
 };
 
 describe("#1959 ticket numeric fields replace existing values", () => {
+  test("web pointer click reselects the whole value after focus places the caret", async () => {
+    const tree = await mount(ticket({ priceGbp: 10000, capacity: 200 }));
+    const originalOS = Platform.OS;
+    const originalAnimationFrame = globalThis.requestAnimationFrame;
+    const priceSelection = jest.fn();
+    const capacitySelection = jest.fn();
+
+    Object.defineProperty(Platform, "OS", { configurable: true, value: "web" });
+    globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    }) as typeof requestAnimationFrame;
+
+    try {
+      await TestRenderer.act(() => {
+        (field(tree, "Ticket price in NGN").props.onPressIn as (
+          event: unknown,
+        ) => void)({ currentTarget: { setSelectionRange: priceSelection } });
+        (field(tree, "Ticket capacity").props.onPressIn as (
+          event: unknown,
+        ) => void)({ currentTarget: { setSelectionRange: capacitySelection } });
+      });
+
+      expect(priceSelection).toHaveBeenCalledWith(0, 5);
+      expect(capacitySelection).toHaveBeenCalledWith(0, 3);
+    } finally {
+      Object.defineProperty(Platform, "OS", {
+        configurable: true,
+        value: originalOS,
+      });
+      globalThis.requestAnimationFrame = originalAnimationFrame;
+      await TestRenderer.act(() => tree.unmount());
+    }
+  });
+
   test("a new tier starts with genuinely blank numeric values and Unlimited off", async () => {
     const tree = await mount(null);
 
