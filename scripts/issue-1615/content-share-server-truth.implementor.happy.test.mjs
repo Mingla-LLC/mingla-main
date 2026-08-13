@@ -182,9 +182,17 @@ test('ST14 served offering price uses canonical all-in tier truth and CTA falls 
   const invalid=mapAuthoritativeShareFacts('event',{row:{title:'Invalid',slug:'invalid',brands:{slug:'brand'}},eligibleTickets:[{price_cents:500,currency:'USD',all_in_cents:700,display_currency:'US'}]});assert.equal(invalid.facts.price,undefined);
   const explicitFree=mapAuthoritativeShareFacts('event',{row:{title:'Free',slug:'free',brands:{slug:'brand'}},eligibleTickets:[{price_cents:999,currency:'USD',is_free:true}]});assert.deepEqual(explicitFree.facts.price,{minorUnits:0,currency:'USD',disclosure:'Free'});
   const source=read('supabase/functions/_shared/contentShare.ts');assert.match(source,/db\.rpc\("pg_public_event_tier_allin"/);assert.match(source,/allInResult\.error[\s\S]*throw new Error\("db_error"\)/);
-  const {renderContentShareHtml}=require(path.join(ROOT,'mingla-business/server/socialPreview.js'));const base={shortCode:'Aa0Bb1Cc2Dd3Ee4F',version:1,media:null,destination:{kind:'event',brandSlug:'brand',eventSlug:'paid'},publicDetails:{kind:'event',actionEligible:false,occurrences:[]}};
+  // [TEST-MOD-APPROVED #2008] #2004 made the canonical webPath a required,
+  // exact member of served destination truth; this fixture must model it.
+  const {renderContentShareHtml}=require(path.join(ROOT,'mingla-business/server/socialPreview.js'));const base={shortCode:'Aa0Bb1Cc2Dd3Ee4F',version:1,media:null,destination:{kind:'event',brandSlug:'brand',eventSlug:'paid',webPath:'/e/brand/paid'},publicDetails:{kind:'event',actionEligible:false,occurrences:[]}};
   const unavailable=renderContentShareHtml({...base,facts:{schemaVersion:1,kind:'event',title:'Paid',status:'sold_out'}});assert.match(unavailable,/>View event<\/a>/);assert.doesNotMatch(unavailable,/>Buy tickets<\/a>/);
   const eligible=renderContentShareHtml({...base,publicDetails:{...base.publicDetails,actionEligible:true},facts:{schemaVersion:1,kind:'event',title:'Paid'}});assert.match(eligible,/>Buy tickets<\/a>/);
+  // [TEST-MOD-APPROVED #2008] Missing or mismatched canonical paths must stay
+  // fail-closed: no business destination CTA and no continuation redirect.
+  for(const destination of [{kind:'event',brandSlug:'brand',eventSlug:'paid'},{kind:'event',brandSlug:'brand',eventSlug:'paid',webPath:'/e/brand/wrong'}]){
+    const rejected=renderContentShareHtml({...base,destination,facts:{schemaVersion:1,kind:'event',title:'Paid'}});
+    assert.doesNotMatch(rejected,/>Buy tickets<\/a>|>View event<\/a>|window\.location\.replace/);
+  }
 });
 
 test('ST15 deferred web referral is server-derived and private while installed-direct remains the opaque content code',async()=>{
