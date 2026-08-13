@@ -15,7 +15,7 @@ import type {
 import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
 import { getCountryByCode, type PhoneInputTheme } from "@mingla/phone-input";
-import { resolveUserPhoneE164 } from "@mingla/card-identity/phone";
+import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
 
 import { usePublicStayDetail } from "../../hooks/useStayGuest";
 import { postHogService } from "../../services/postHogService";

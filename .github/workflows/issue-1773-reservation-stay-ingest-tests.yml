@@ -8,8 +8,8 @@ on:
       - "supabase/migrations/__tests__/issue_1773_reservation_stay_ingest.test.sql"
       - "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql"
       - "supabase/functions/brand-person-ingest-worker/**"
-      - "packages/card-identity/phone.cjs"
-      - "packages/card-identity/phone.js"
+      - "packages/card-identity/phone.mjs"
+      - "packages/card-identity/phone.d.mts"
       - ".github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-1773-reservation-stay-ingest-tests.yml"
@@ -49,7 +49,7 @@ jobs:
         run: |
           node .github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs --self-test
           node .github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs
-      - name: Prove canonical CommonJS adapter in worker graph
+      - name: Prove hosted-compatible ESM owner in worker graph
         run: |
           deno check supabase/functions/brand-person-ingest-worker/index.ts
           deno bundle supabase/functions/brand-person-ingest-worker/index.ts >/tmp/issue-1773-worker.js
@@ -61,6 +61,8 @@ jobs:
           deno test --allow-env --allow-net --allow-read --allow-run --allow-write \
             supabase/functions/brand-person-ingest-worker/issue_1773_worker_cjs_artifact.test.ts
           node --test \
+            packages/card-identity/__tests__/issue_1703_dialable_phone.test.mjs \
+            packages/card-identity/__tests__/issue_1773_hosted_esm_phone_owner.adversarial.test.mjs \
             packages/card-identity/__tests__/issue_1857_phone_country_authority.happy.test.mjs \
             packages/card-identity/__tests__/issue_1857_phone_country_authority.tester.adversarial.test.mjs
       - name: Wait for PostgreSQL 17 and apply every migration

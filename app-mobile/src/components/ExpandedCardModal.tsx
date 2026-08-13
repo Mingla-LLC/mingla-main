@@ -55,7 +55,7 @@ import PlanTimeline, { type PlanTimelineLeg } from "./expandedCard/PlanTimeline"
 import { ExpandedCardHero } from "./expandedCard/ExpandedCardHero";
 import StopList, { type StopListStop } from "./expandedCard/StopList";
 import { occasionFromCategory, stopPurpose } from "./expandedCard/stopPurpose";
-import { dialablePhone } from "../../../packages/card-identity/phone.js";
+import { dialablePhone } from "../../../packages/card-identity/phone.mjs";
 // #1605 P1-3 — the picnic Shopping List, re-homed onto the spine. It rendered on
 // `main` at :990-992 via the deleted PicnicShoppingList and was not in the
 // spec's deletion list; five producers still carry `shoppingList`.

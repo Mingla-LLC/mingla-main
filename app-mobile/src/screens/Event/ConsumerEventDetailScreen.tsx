@@ -97,7 +97,7 @@ import {
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
 import { getCountryByCode, type PhoneInputTheme } from "@mingla/phone-input";
-import { resolveUserPhoneE164 } from "@mingla/card-identity/phone";
+import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
 
 import {
   BaseBottomSheet,

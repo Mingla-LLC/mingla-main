@@ -12,14 +12,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
-
-const require = createRequire(import.meta.url);
-const HERE = dirname(fileURLToPath(import.meta.url));
-const { dialablePhone, supportedDialCountries, PHONE_PLANS } =
-  require(resolve(HERE, '../phone.js'));
+import { dialablePhone, PHONE_PLANS, supportedDialCountries } from '../phone.mjs';
 
 test('C-1 real production formats become real E.164 numbers', () => {
   const cases = [

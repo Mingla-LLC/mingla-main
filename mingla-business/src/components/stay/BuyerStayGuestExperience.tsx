@@ -15,7 +15,7 @@ import {
   type PhoneInputIconName,
   type PhoneInputTheme,
 } from "@mingla/phone-input";
-import { resolveUserPhoneE164 } from "@mingla/card-identity/phone";
+import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
 import { Icon } from "../ui/Icon";
 import type {
   offeringSurfaceStyles,

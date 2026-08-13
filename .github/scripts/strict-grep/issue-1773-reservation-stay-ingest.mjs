@@ -1,19 +1,15 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const APPROVED_PHONE_JS_GIT_BLOB = "b39b337f1f6d7db400e1c14f783ac4e99a1470bb";
-const APPROVED_PHONE_JS_SHA256 = "455644c187c718a3e61cc38972d3aa90d0d16596f3a2e59b20348eb2ff421e4e";
-const APPROVED_PHONE_JS_BYTES = 7420;
+const APPROVED_PHONE_LOGIC_SHA256 = "6c3a054d92c93e9bcebc001a188fa4c2eebe711dbc98c68d65d2006956c2ec35";
 const files = {
   migration: "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql",
   worker: "supabase/functions/brand-person-ingest-worker/index.ts",
-  adapter: "packages/card-identity/phone.cjs",
-  canonicalAdapter: "packages/card-identity/phone.js",
+  adapter: "packages/card-identity/phone.mjs",
   sqlTest: "supabase/migrations/__tests__/issue_1773_reservation_stay_ingest.test.sql",
   phoneAuthoritySuccessor: "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
   artifactTest: "supabase/functions/brand-person-ingest-worker/issue_1773_worker_cjs_artifact.test.ts",
@@ -43,27 +39,29 @@ export function inspect(source) {
   need("migration", "FROM public.stay_reservation_groups g", "Stay backfill");
   need("migration", "REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source_derived(text,uuid,text) FROM PUBLIC,anon,authenticated", "service-only overload");
   if (/CREATE\s+TRIGGER[\s\S]{0,120}ON\s+public\.stay_reservation_groups/i.test(source.migration ?? "")) failures.push("Stay group trigger is forbidden");
-  need("worker", 'import phoneAdapter from "../../../packages/card-identity/phone.cjs";', "exact CommonJS adapter import");
+  need("worker", 'import { resolveUserPhoneE164 } from "../../../packages/card-identity/phone.mjs";', "exact named ESM adapter import");
   need("worker", "resolveUserPhoneE164(", "single canonical adapter call");
   need("worker", '"phone:guest_snapshot->>phone,phoneCountryIso:guest_snapshot->>phoneCountryIso"', "phone-only Stay projection");
   need("worker", '| "reservation"', "reservation worker kind");
   need("worker", '| "stay_reservation"', "Stay worker kind");
-  if (/PHONE_PLANS|dial:\s*['"]|defaultCountry|DEFAULT_COUNTRY|createRequire|module\.exports|require\s*\(/.test(source.worker ?? "")) failures.push("copied phone logic or CommonJS wrapper in worker");
+  if (/PHONE_PLANS|dial:\s*['"]|defaultCountry|DEFAULT_COUNTRY|createRequire|module\.exports|require\s*\(|globalThis/.test(source.worker ?? "")) failures.push("copied phone logic, CommonJS wrapper, or global bridge in worker");
   if ((source.worker ?? "").includes('packages/card-identity/package.json')) failures.push("worker relies on JSON side-effect import");
-  if ((source.worker ?? "").includes('from "../../../packages/card-identity/phone.js"')) failures.push("worker bypasses the .cjs adapter boundary");
-  if (source.adapterKind !== "symlink") failures.push("phone.cjs is not a real filesystem symlink");
-  if (source.adapterTarget !== "phone.js") failures.push("phone.cjs symlink target is not exactly phone.js");
-  if (source.adapterMode !== "120000") failures.push("phone.cjs Git mode is not 120000");
-  if (source.adapterBytes !== source.canonicalAdapter) failures.push("phone.cjs does not resolve to canonical phone.js bytes");
-  if (source.canonicalBlob !== APPROVED_PHONE_JS_GIT_BLOB) failures.push("canonical phone.js Git blob drifted from approved main");
-  if (source.canonicalSha256 !== APPROVED_PHONE_JS_SHA256) failures.push("canonical phone.js byte hash drifted from approved main");
-  if (source.canonicalByteLength !== APPROVED_PHONE_JS_BYTES) failures.push("canonical phone.js byte length drifted from approved main");
+  if (source.adapterKind !== "regular") failures.push("phone.mjs is not one regular filesystem file");
+  if (source.legacyJsExists || source.legacyCjsExists) failures.push("legacy phone.js/phone.cjs owner remains");
+  if (source.logicSha256 !== APPROVED_PHONE_LOGIC_SHA256) failures.push("canonical phone logic region drifted from approved implementation");
+  if ((source.adapter ?? "").includes("module.exports")) failures.push("phone.mjs contains CommonJS export");
+  need("adapter", "export {\n  dialablePhone,\n  resolveUserPhoneE164,\n  supportedDialCountries,\n  PLANS as PHONE_PLANS,\n};", "exact named ESM exports");
+  if (/export\s+default/.test(source.adapter ?? "")) failures.push("phone.mjs has a default export");
+  if (/phone\.(?:js|cjs)|@mingla\/card-identity\/phone["']/.test(source.consumerImports ?? "")) failures.push("consumer retains a legacy or extensionless phone import");
+  if (/createRequire|module\.exports|globalThis|unstable[^\n]*cjs/i.test(source.phoneScoped ?? "")) failures.push("phone graph retains forbidden CJS/global/unstable mechanism");
   need("artifactTest", 'const expectedUploadedFiles = [', "exact upload allowlist");
-  need("artifactTest", 'if (!adapterInfo.isSymlink)', "source symlink assertion");
-  need("artifactTest", 'gitMode.output.startsWith("120000 ")', "Git symlink-mode assertion");
-  need("artifactTest", 'if (!stagedInfo.isFile || stagedInfo.isSymlink)', "regular staged .cjs assertion");
+  need("artifactTest", 'if (!adapterInfo.isFile || adapterInfo.isSymlink)', "regular source .mjs assertion");
+  need("artifactTest", 'gitMode.output.startsWith("100644 ")', "regular Git-mode assertion");
+  need("artifactTest", 'if (!stagedInfo.isFile || stagedInfo.isSymlink)', "regular staged .mjs assertion");
   need("artifactTest", 'packages/card-identity/package.json', "staged package.json absence assertion");
-  need("artifactTest", 'Supabase CLI did not upload canonical phone.js bytes as phone.cjs', "CLI dereference-byte assertion");
+  need("artifactTest", 'Supabase CLI did not upload canonical phone.mjs bytes', "CLI canonical-byte assertion");
+  need("artifactTest", 'phoneModule.kind !== "esm" || phoneModule.mediaType !== "Mjs"', "Deno esm/Mjs graph assertion");
+  need("artifactTest", 'bundleSource.includes("module.exports")', "bundle CommonJS absence assertion");
   need("artifactTest", 'decode(version.stdout).trim() !== "2.98.2"', "Supabase CLI version assertion");
   need("artifactTest", 'denoVersion.output.startsWith("deno 2.9.5 ")', "Deno version assertion");
   need("artifactTest", '["check", entrypoint]', "plain artifact check");
@@ -103,23 +101,30 @@ export function inspect(source) {
 function readSources() {
   const source = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, fs.readFileSync(path.join(root, file), "utf8")]));
   const adapterPath = path.join(root, files.adapter);
-  source.adapterKind = fs.lstatSync(adapterPath).isSymbolicLink() ? "symlink" : "regular";
-  source.adapterTarget = fs.readlinkSync(adapterPath);
-  source.adapterMode = execFileSync("git", ["ls-files", "-s", files.adapter], { cwd: root, encoding: "utf8" }).trim().split(/\s+/)[0];
-  source.adapterBytes = fs.readFileSync(adapterPath, "utf8");
-  source.canonicalBlob = execFileSync("git", ["hash-object", files.canonicalAdapter], { cwd: root, encoding: "utf8" }).trim();
-  source.canonicalSha256 = createHash("sha256").update(source.canonicalAdapter).digest("hex");
-  source.canonicalByteLength = Buffer.byteLength(source.canonicalAdapter);
+  source.adapterKind = fs.lstatSync(adapterPath).isFile() && !fs.lstatSync(adapterPath).isSymbolicLink() ? "regular" : "other";
+  source.legacyJsExists = fs.existsSync(path.join(root, "packages/card-identity/phone.js"));
+  source.legacyCjsExists = fs.existsSync(path.join(root, "packages/card-identity/phone.cjs"));
+  const footer = source.adapter.lastIndexOf("\nexport {");
+  const start = source.adapter.indexOf("'use strict';");
+  source.logicSha256 = createHash("sha256").update(source.adapter.slice(start, footer)).digest("hex");
+  const consumers = [
+    "app-mobile/src/components/ExpandedCardModal.tsx",
+    "app-mobile/src/components/expandedCard/ActionButtons.tsx",
+    "app-mobile/src/components/expandedCard/PracticalDetailsSection.tsx",
+    "app-mobile/src/components/stay/ConsumerStayGuestExperience.tsx",
+    "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
+    "mingla-business/src/components/event/useBusinessRsvpPhoneField.tsx",
+    "mingla-business/src/components/stay/BuyerStayGuestExperience.tsx",
+    "packages/card-identity/__tests__/issue_1703_dialable_phone.test.mjs",
+    "packages/card-identity/__tests__/issue_1857_phone_country_authority.happy.test.mjs",
+    "packages/card-identity/__tests__/issue_1857_phone_country_authority.tester.adversarial.test.mjs",
+  ].map((file) => fs.readFileSync(path.join(root, file), "utf8"));
+  source.consumerImports = consumers.join("\n");
+  source.phoneScoped = [source.worker, source.adapter, source.consumerImports, source.workflow].join("\n");
   return source;
 }
 
-function gitBlobForText(value) {
-  const bytes = Buffer.from(value);
-  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
-}
-
 function selfTest(source) {
-  const driftedCanonical = `${source.canonicalAdapter}\n// one-byte-equivalent packaging drift`;
   const mutations = [
     ["Stay kind", { ...source, migration: source.migration.replaceAll("'reservation','stay_reservation'", "'reservation','reservation'") }],
     ["confirmation", { ...source, migration: source.migration.replaceAll("e.event_type='stay_reservation_confirmed'", "g.state='confirmed'") }],
@@ -129,21 +134,14 @@ function selfTest(source) {
     ["suppression", { ...source, migration: source.migration.replaceAll("biz_record_brand_person_suppression", "removed_suppression_owner") }],
     ["ACL", { ...source, migration: source.migration.replace("REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source_derived(text,uuid,text) FROM PUBLIC,anon,authenticated", "REVOKE ALL ON FUNCTION public.biz_resolve_brand_person_source_derived(text,uuid,text) FROM PUBLIC,anon") }],
     ["adapter", { ...source, worker: source.worker.replaceAll("resolveUserPhoneE164(", "copiedPhoneConverter(") }],
-    ["adapter import", { ...source, worker: source.worker.replace('import phoneAdapter from "../../../packages/card-identity/phone.cjs";', 'import phoneAdapter from "../../../packages/card-identity/phone.js";') }],
+    ["adapter import", { ...source, worker: source.worker.replace('import { resolveUserPhoneE164 } from "../../../packages/card-identity/phone.mjs";', 'import phoneAdapter from "../../../packages/card-identity/phone.mjs";') }],
     ["JSON workaround", { ...source, worker: 'import "../../../packages/card-identity/package.json" with { type: "json" };\n' + source.worker }],
-    ["symlink kind", { ...source, adapterKind: "regular" }],
-    ["symlink target", { ...source, adapterTarget: "copied-phone.js" }],
-    ["Git mode", { ...source, adapterMode: "100644" }],
-    ["adapter bytes", { ...source, adapterBytes: source.adapterBytes + "\n// drift" }],
-    ["canonical blob/hash", {
-      ...source,
-      canonicalAdapter: driftedCanonical,
-      adapterBytes: driftedCanonical,
-      canonicalBlob: gitBlobForText(driftedCanonical),
-      canonicalSha256: createHash("sha256").update(driftedCanonical).digest("hex"),
-      canonicalByteLength: Buffer.byteLength(driftedCanonical),
-    }],
-    ["CLI upload proof", { ...source, artifactTest: source.artifactTest.replace("Supabase CLI did not upload canonical phone.js bytes as phone.cjs", "unverified upload bytes") }],
+    ["regular owner", { ...source, adapterKind: "other" }],
+    ["legacy CJS", { ...source, legacyCjsExists: true }],
+    ["logic drift", { ...source, logicSha256: "0".repeat(64) }],
+    ["ESM footer", { ...source, adapter: source.adapter.replace("PLANS as PHONE_PLANS", "PHONE_PLANS") }],
+    ["consumer fallback", { ...source, consumerImports: source.consumerImports + '\nimport x from "@mingla/card-identity/phone";' }],
+    ["CLI upload proof", { ...source, artifactTest: source.artifactTest.replace("Supabase CLI did not upload canonical phone.mjs bytes", "unverified upload bytes") }],
     ["phone authority successor", { ...source, phoneAuthoritySuccessor: source.phoneAuthoritySuccessor.replace("guest_phone_country_iso='CA'", "guest_phone_country_iso='US'") }],
     ["union", { ...source, worker: source.worker.replace('| "stay_reservation"', '| "reservation"') }],
     ["revision", { ...source, migration: source.migration.replace("'phoneCountryIso',NEW.guest_phone_country_iso", "'status',NEW.status") }],

@@ -1,7 +1,7 @@
 const repositoryRoot = new URL("../../../", import.meta.url);
 const workerRelativePath = "supabase/functions/brand-person-ingest-worker/index.ts";
 const sharedRelativePath = "supabase/functions/_shared/brandPeople.ts";
-const adapterRelativePath = "packages/card-identity/phone.cjs";
+const adapterRelativePath = "packages/card-identity/phone.mjs";
 const expectedUploadedFiles = [
   adapterRelativePath,
   sharedRelativePath,
@@ -37,23 +37,19 @@ async function run(
 async function assertSourceBoundary(): Promise<Uint8Array> {
   const adapterUrl = new URL(adapterRelativePath, repositoryRoot);
   const adapterInfo = await Deno.lstat(adapterUrl);
-  if (!adapterInfo.isSymlink) throw new Error("phone.cjs is not a symlink");
-  if (await Deno.readLink(adapterUrl) !== "phone.js") {
-    throw new Error("phone.cjs does not point exactly to phone.js");
+  if (!adapterInfo.isFile || adapterInfo.isSymlink) {
+    throw new Error("phone.mjs is not one regular ESM owner");
   }
   const gitMode = await run("git", ["ls-files", "-s", adapterRelativePath], {
     cwd: decodeURIComponent(repositoryRoot.pathname),
   });
-  if (gitMode.code !== 0 || !gitMode.output.startsWith("120000 ")) {
-    throw new Error(`phone.cjs is not recorded with Git mode 120000: ${gitMode.output}`);
+  if (gitMode.code !== 0 || !gitMode.output.startsWith("100644 ")) {
+    throw new Error(`phone.mjs is not recorded as one regular Git file: ${gitMode.output}`);
   }
-  const adapterBytes = await Deno.readFile(adapterUrl);
-  const canonicalBytes = await Deno.readFile(
-    new URL("packages/card-identity/phone.js", repositoryRoot),
-  );
-  if (adapterBytes.length !== canonicalBytes.length ||
-    adapterBytes.some((byte, index) => byte !== canonicalBytes[index])) {
-    throw new Error("phone.cjs did not dereference to the exact canonical phone.js bytes");
+  const canonicalBytes = await Deno.readFile(adapterUrl);
+  const source = new TextDecoder().decode(canonicalBytes);
+  if (!source.includes("PLANS as PHONE_PLANS") || source.includes("module.exports")) {
+    throw new Error("phone.mjs is not the named-export ESM owner");
   }
   return canonicalBytes;
 }
@@ -137,15 +133,16 @@ async function captureSupabaseUpload(
     const stagedAdapter = `${artifactRoot}/${adapterRelativePath}`;
     const stagedInfo = await Deno.lstat(stagedAdapter);
     if (!stagedInfo.isFile || stagedInfo.isSymlink) {
-      throw new Error("uploaded phone.cjs is not a regular staged file");
+      throw new Error("uploaded phone.mjs is not a regular staged file");
     }
     const stagedBytes = await Deno.readFile(stagedAdapter);
     if (stagedBytes.length !== canonicalBytes.length ||
       stagedBytes.some((byte, index) => byte !== canonicalBytes[index])) {
-      throw new Error("Supabase CLI did not upload canonical phone.js bytes as phone.cjs");
+      throw new Error("Supabase CLI did not upload canonical phone.mjs bytes");
     }
     for (const forbidden of [
       `${artifactRoot}/packages/card-identity/phone.js`,
+      `${artifactRoot}/packages/card-identity/phone.cjs`,
       `${artifactRoot}/packages/card-identity/package.json`,
     ]) {
       try {
@@ -161,7 +158,7 @@ async function captureSupabaseUpload(
   }
 }
 
-Deno.test("issue #1773 Supabase upload and Deno artifact preserve the canonical CJS boundary", async () => {
+Deno.test("issue #1773 Supabase upload and Deno artifact preserve the hosted ESM boundary", async () => {
   const artifactRoot = await Deno.makeTempDir({ prefix: "issue-1773-worker-artifact-" });
   const cleanCache = await Deno.makeTempDir({ prefix: "issue-1773-deno-cache-" });
   try {
@@ -177,7 +174,7 @@ Deno.test("issue #1773 Supabase upload and Deno artifact preserve the canonical 
     const info = await run(Deno.execPath(), ["info", "--json", entrypoint], { env: denoEnv });
     if (info.code !== 0) throw new Error(`plain deno info failed:\n${info.output}`);
     const graph = JSON.parse(new TextDecoder().decode(info.stdout)) as {
-      modules?: Array<{ specifier?: string; mediaType?: string }>;
+      modules?: Array<{ specifier?: string; kind?: string; mediaType?: string }>;
     };
     const executableModules = (graph.modules ?? []).filter((module) =>
       ![undefined, "Dts", "Dmts"].includes(module.mediaType)
@@ -187,9 +184,13 @@ Deno.test("issue #1773 Supabase upload and Deno artifact preserve the canonical 
         `unexpected executable worker graph size: ${executableModules.length} modules`,
       );
     }
-    if (!(graph.modules ?? []).some((module) =>
-      module.specifier?.endsWith("/packages/card-identity/phone.cjs")
-    )) throw new Error("staged phone.cjs is absent from the Deno module graph");
+    const phoneModule = (graph.modules ?? []).find((module) =>
+      module.specifier?.endsWith("/packages/card-identity/phone.mjs")
+    );
+    if (!phoneModule) throw new Error("staged phone.mjs is absent from the Deno module graph");
+    if (phoneModule.kind !== "esm" || phoneModule.mediaType !== "Mjs") {
+      throw new Error(`phone owner is not esm/Mjs: ${JSON.stringify(phoneModule)}`);
+    }
 
     const checked = await run(Deno.execPath(), ["check", entrypoint], { env: denoEnv });
     if (checked.code !== 0) throw new Error(`plain deno check failed:\n${checked.output}`);
@@ -200,6 +201,18 @@ Deno.test("issue #1773 Supabase upload and Deno artifact preserve the canonical 
     if (!bundleSource.includes("resolveUserPhoneE164")) {
       throw new Error("canonical phone resolver is absent from the complete bundle");
     }
+    if (bundleSource.includes("module.exports")) {
+      throw new Error("CommonJS export survived in the complete bundle");
+    }
+    const stagedPhoneUrl = new URL(`file://${artifactRoot}/${adapterRelativePath}`).href;
+    const phoneLoaded = await run(Deno.execPath(), [
+      "eval",
+      `const phone=await import(${JSON.stringify(stagedPhoneUrl)});` +
+      `for(const name of ["dialablePhone","resolveUserPhoneE164","supportedDialCountries","PHONE_PLANS"]){if(!(name in phone))throw new Error("missing named export:"+name);}` +
+      `const cases=[["(919) 419-9222","US","+19194199222"],["01279 942348","GB","+441279942348"],["0803 482 1689","NG","+2348034821689"],["+19194199222",null,"+19194199222"]];` +
+      `for(const [raw,iso,want] of cases){const got=phone.resolveUserPhoneE164(raw,iso);if(got!==want)throw new Error(raw+":"+got);}`,
+    ], { env: denoEnv });
+    if (phoneLoaded.code !== 0) throw new Error(`phone ESM load/probe failed:\n${phoneLoaded.output}`);
     const bundlePath = `${artifactRoot}/brand-person-ingest-worker.bundle.js`;
     await Deno.writeFile(bundlePath, bundled.stdout);
     const workerUrl = new URL(`file://${bundlePath}`).href;

@@ -14,10 +14,9 @@
  * knows the country; this is for a VENUE whose country comes from a database
  * column. Different inputs, different failure modes.
  *
- * WHY THIS IS A PLAIN .js FILE IN THIS PACKAGE. Same reason as `index.js`: the
- * CI guard must import the REAL function under `node --test` on a bare checkout,
- * and the deck, the expanded sheet and (later) the public offering page all need
- * it. It is RN-free, dependency-free, and pure.
+ * WHY THIS IS A PLAIN .mjs FILE IN THIS PACKAGE. The CI guard, Node consumers,
+ * Metro consumers, and Supabase's hosted ESZip bundler all import this exact ESM
+ * owner. It is RN-free, dependency-free, and pure.
  *
  * ---------------------------------------------------------------------------
  * WHAT IT WILL NOT DO
@@ -164,9 +163,9 @@ function resolveUserPhoneE164(raw, countryIso) {
   return resolved.tel;
 }
 
-module.exports = {
+export {
   dialablePhone,
   resolveUserPhoneE164,
   supportedDialCountries,
-  PHONE_PLANS: PLANS,
+  PLANS as PHONE_PLANS,
 };

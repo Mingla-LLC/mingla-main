@@ -5,11 +5,11 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PATHS = {
-  adapter: "packages/card-identity/phone.js",
+  adapter: "packages/card-identity/phone.mjs",
   phoneInput: "packages/phone-input/PhoneInput.tsx",
   countryPicker: "packages/phone-input/CountryPickerModal.tsx",
   pickerBehavior: "packages/phone-input/pickerPresentation.ts",
-  phoneDeclaration: "packages/card-identity/phone.d.ts",
+  phoneDeclaration: "packages/card-identity/phone.d.mts",
   rsvp: "packages/offering-rendering/RsvpOfferingBody.tsx",
   stay: "packages/brand-rendering/StayGuestBooking.tsx",
   rsvpEdge: "supabase/functions/public-submit-rsvp/index.ts",
@@ -37,6 +37,9 @@ export function violations(files) {
   need(files.adapter, "function resolveUserPhoneE164", "adapter", failures);
   need(files.adapter, "if (STRICT_E164.test(trimmed)) return trimmed", "adapter E.164 wins", failures);
   need(files.adapter, "dialablePhone(trimmed, countryIso)", "single converter", failures);
+  need(files.adapter, "PLANS as PHONE_PLANS", "named ESM phone plan export", failures);
+  forbid(files.adapter, "module.exports", "CommonJS phone owner", failures);
+  forbid(files.adapter, "export default", "default phone export", failures);
   need(files.phoneInput, "countryCode: string | null", "neutral picker", failures);
   need(files.phoneInput, '"Select country"', "neutral picker", failures);
   need(files.phoneInput, "pickerCloseFocusTarget(countryWasSelected.current)", "picker focus restoration", failures);
