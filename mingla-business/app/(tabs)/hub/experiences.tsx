@@ -485,6 +485,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
 
       {shareExp !== null && hasBrandSlug ? (
         <ShareModal
+          preloadContent
           visible
           onClose={() => setShareExp(null)}
           url={`https://business.usemingla.com/exp/${brandSlug}/${shareExp.slug}`}

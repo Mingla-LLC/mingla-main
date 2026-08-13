@@ -73,11 +73,11 @@ const webNavigator = (): {
 
 export const copyPublicUrl = async (url: string): Promise<void> => {
   if (Platform.OS === "web") {
-    const writeText = webNavigator()?.clipboard?.writeText;
-    if (writeText === undefined) {
+    const clipboard = webNavigator()?.clipboard;
+    if (clipboard?.writeText === undefined) {
       throw new Error("clipboard_unavailable");
     }
-    await writeText(url);
+    await clipboard.writeText(url);
     return;
   }
 
@@ -91,8 +91,8 @@ export const sharePublicUrl = async ({
 }: SharePublicUrlInput): Promise<void> => {
   const shareBody = buildPublicShareBody({ title, url, description });
   if (Platform.OS === "web") {
-    const share = webNavigator()?.share;
-    if (share === undefined) {
+    const navigatorOwner = webNavigator();
+    if (navigatorOwner?.share === undefined) {
       throw new Error("native_share_unavailable");
     }
     const data: { title: string; url: string; text?: string } = {
@@ -102,7 +102,7 @@ export const sharePublicUrl = async ({
     if (shareBody.length > 0) {
       data.text = shareBody;
     }
-    await share(data);
+    await navigatorOwner.share(data);
     return;
   }
 

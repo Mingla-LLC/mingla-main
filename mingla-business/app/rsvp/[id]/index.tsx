@@ -411,6 +411,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
 
       {/* Share modal */}
       <ShareModal
+        preloadContent
         visible={shareModalVisible}
         onClose={() => setShareModalVisible(false)}
         url={eventPublicUrl({

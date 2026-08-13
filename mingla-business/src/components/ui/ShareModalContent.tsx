@@ -2,6 +2,7 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import { AccessibilityInfo, ActivityIndicator, AppState, Dimensions, Image, Platform, Pressable, StyleSheet, Text, View, useColorScheme, useWindowDimensions } from 'react-native';
 import type { ShareEntityKind } from '@mingla/sharing';
 import type { PreparedBusinessShare } from '../../services/contentShareAdapter';
+import { copyPublicUrl, sharePublicUrl } from '../../utils/sharePublicUrl';
 import { Sheet } from './Sheet';
 import { useShareNetworkState } from './useShareNetworkState';
 
@@ -20,6 +21,7 @@ export interface ShareModalProps {
   title: string;
   description?: string;
   contentKind: ShareEntityKind;
+  preloadContent?: boolean;
 }
 
 function canWebShare(): boolean {
@@ -152,7 +154,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
     busyRef.current = true;
     setActionError(null); setBusy(true);
     try {
-      const { sharePublicUrl } = await import('../../utils/sharePublicUrl');
       await sharePublicUrl({ title: prepared.title, url: prepared.url, description: prepared.message });
       trackBusinessShareEvent('share_sheet_returned', { kind: contentKind, result: 'returned' });
     }
@@ -165,7 +166,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
   const copy = async (): Promise<void> => {
     if (!prepared || busy) return;
     setActionError(null); setBusy(true);
-    try { const { copyPublicUrl } = await import('../../utils/sharePublicUrl'); await copyPublicUrl(prepared.url); setCopied(true); AccessibilityInfo.announceForAccessibility('Link copied'); setTimeout(() => setCopied(false), 1200); }
+    try { await copyPublicUrl(prepared.url); setCopied(true); AccessibilityInfo.announceForAccessibility('Link copied'); setTimeout(() => setCopied(false), 1200); }
     catch { setActionError("Couldn't copy the link. Please try again."); }
     finally { setBusy(false); }
   };
