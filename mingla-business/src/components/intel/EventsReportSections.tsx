@@ -79,7 +79,7 @@ export const EventsReportSections: React.FC<{ report: TurnoutReport }> = ({
         <Section title="What is shaping turnout">
           {report.factors.slice(0, 8).map((factor, index) => (
             <Row
-              key={factor.key ?? `${factor.label ?? "factor"}-${index}`}
+              key={`${factor.key ?? factor.label ?? "factor"}:${index}`}
               title={factor.label ?? "Signal"}
               body={factor.detail}
             />
