@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-13 — Contact import now installs cleanly on PostgreSQL 17 and browser preflight keeps every shared and import-specific permission header, with adversarial guards against unsafe extension resolution and future CORS drift. (#1993, PR #1994)
 - 2026-08-13 — Businesses can import CSV contact lists through a server-validated, consent-audited workflow with column mapping, suppression-safe identity handling, retry recovery, and paged results; the production engine is installed dark until the People-page entry point ships. (#1775, PR #1990)
 - 2026-08-13 — Public event, RSVP, experience, trip, venue, and brand pages now keep their cover artwork clean instead of duplicating titles and banners; sharing those web pages sends their canonical link with rich chat previews, while Mingla Explorer's custom share pages remain unchanged. (#1968, PR #1969)
 - 2026-08-12 — Venue reservations and confirmed Stay bookings now enter the brand's contact book automatically alongside buyers and RSVP guests; ambiguous identities are quarantined instead of guessed, source writes remain available if ingest is delayed, and safe replay cannot create duplicate contacts. (#1773, PR #1987)
