@@ -358,6 +358,31 @@ const renderContentShareDetails = (contentShare) => {
   return "";
 };
 
+const contentShareBusinessDestination = (contentShare) => {
+  const factsKind = asText(contentShare?.facts?.kind);
+  const destination = contentShare?.destination;
+  if (!destination || typeof destination !== "object" || Array.isArray(destination)
+    || asText(destination.kind) !== factsKind) return null;
+  const segment = (value) => {
+    const text = asText(value);
+    return text && text.length <= 256 ? encodeURIComponent(text) : "";
+  };
+  const brand = segment(destination.brandSlug);
+  const event = segment(destination.eventSlug);
+  const venue = segment(destination.venueSlug);
+  const path = factsKind === "event" || factsKind === "rsvp_event"
+    ? brand && event ? `/e/${brand}/${event}` : ""
+    : factsKind === "trip"
+      ? brand && event ? `/t/${brand}/${event}` : ""
+      : factsKind === "experience"
+        ? brand && event ? `/exp/${brand}/${event}` : ""
+        : factsKind === "venue"
+          ? brand && venue ? `/b/${brand}/v/${venue}` : ""
+          : factsKind === "brand" && brand ? `/b/${brand}` : "";
+  if (!path || asText(destination.webPath, "") !== path) return null;
+  return `${PUBLIC_ORIGIN}${path}`;
+};
+
 const renderContentShareHtml = (contentShare, installAttribution = null) => {
   const facts = contentShare?.facts && typeof contentShare.facts === "object" ? contentShare.facts : {};
   const code = asText(contentShare?.shortCode);
@@ -376,19 +401,15 @@ const renderContentShareHtml = (contentShare, installAttribution = null) => {
   const publicDetails = contentShare?.publicDetails && typeof contentShare.publicDetails === "object" ? contentShare.publicDetails : {};
   const analyticsKind=["place","curated","event","rsvp_event","trip","experience","venue","brand"].includes(facts.kind)?facts.kind:"place";
   const offeringActionEligible = !["event", "rsvp_event", "trip", "experience"].includes(facts.kind) || publicDetails.actionEligible === true;
-  const d = contentShare?.destination || {};
-  const enc = (value) => encodeURIComponent(asText(value));
-  const offeringHref=d.brandSlug&&d.eventSlug
-    ? facts.kind==="trip"?`${PUBLIC_ORIGIN}/t/${enc(d.brandSlug)}/${enc(d.eventSlug)}`
-      : facts.kind==="experience"?`${PUBLIC_ORIGIN}/exp/${enc(d.brandSlug)}/${enc(d.eventSlug)}`
-      : ["event","rsvp_event"].includes(facts.kind)?`${PUBLIC_ORIGIN}/e/${enc(d.brandSlug)}/${enc(d.eventSlug)}`:""
-    : "";
+  const businessDestination = contentShareBusinessDestination(contentShare);
+  const offeringHref = ["event", "rsvp_event", "trip", "experience"].includes(facts.kind)
+    ? businessDestination || "" : "";
   const transactionLabels={event:"Buy tickets",rsvp_event:"RSVP",trip:"Book trip",experience:"Book experience"};
   const viewLabels={event:"View event",rsvp_event:"View RSVP event",trip:"View trip",experience:"View experience"};
   const actionCodes={"Buy tickets":"buy_tickets",RSVP:"rsvp","Book trip":"book_trip","Book experience":"book_experience","View event":"view_event","View RSVP event":"view_rsvp_event","View trip":"view_trip","View experience":"view_experience","View venue":"view_venue","View brand":"view_brand"};
   const action = offeringHref ? {label:!terminal&&offeringActionEligible?transactionLabels[facts.kind]:viewLabels[facts.kind],href:offeringHref}
-    : facts.kind === "venue" && d.brandSlug && d.venueSlug ? {label:"View venue",href:`${PUBLIC_ORIGIN}/b/${enc(d.brandSlug)}/v/${enc(d.venueSlug)}`}
-    : facts.kind === "brand" && d.brandSlug ? {label:"View brand",href:`${PUBLIC_ORIGIN}/b/${enc(d.brandSlug)}`}: null;
+    : facts.kind === "venue" && businessDestination ? {label:"View venue",href:businessDestination}
+    : facts.kind === "brand" && businessDestination ? {label:"View brand",href:businessDestination}: null;
   const hours = Array.isArray(facts.hours) ? facts.hours.filter((row) => row && typeof row.day === "string" && typeof row.label === "string") : [];
   const today=todayForShareTimezone(facts.timezone);
   const hoursHtml = hours.length ? `<section aria-labelledby="hours-heading"><h2 id="hours-heading">Hours</h2><ul class="hours">${hours.map((row)=>{const isToday=row.day===today;return `<li${isToday ? ' class="today"' : ""}><strong>${escapeHtml(row.day)}</strong><span>${escapeHtml(row.label)}</span>${isToday?'<em>Today</em>':row.special ? `<em>${escapeHtml(row.special)}</em>`:""}</li>`}).join("")}</ul></section>` : "";
@@ -404,7 +425,9 @@ const renderContentShareHtml = (contentShare, installAttribution = null) => {
   const script = videoMoving ? `<script>(()=>{const v=document.querySelector('.share-motion'),p=document.querySelector('.play-control'),m=document.querySelector('.sound-control');if(!v||!p||!m)return;v.muted=true;const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches,save=!!navigator.connection?.saveData;const load=()=>{v.hidden=false;if(!v.src)v.src=v.dataset.source};const reset=()=>{v.pause();v.hidden=true;v.removeAttribute('src');v.load();p.textContent='▶';p.setAttribute('aria-label','Play video')};p.addEventListener('click',()=>{load();if(v.paused){v.play().then(()=>{p.textContent='Ⅱ';p.setAttribute('aria-label','Pause video')}).catch(reset)}else reset()});m.addEventListener('click',()=>{load();v.muted=!v.muted;m.textContent=v.muted?'Muted':'Sound';m.setAttribute('aria-label',v.muted?'Unmute video':'Mute video')});new IntersectionObserver(([e])=>{if(!e.isIntersecting)reset()}).observe(v);document.addEventListener('visibilitychange',()=>{if(document.hidden)reset()});v.addEventListener('error',reset);if(!reduced&&!save){load();v.play().catch(reset)}})()</script>`
     : gifMoving ? `<script>(()=>{const g=document.querySelector('.gif-motion'),p=document.querySelector('.play-control');if(!g||!p)return;const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches,save=!!navigator.connection?.saveData;let playing=false;const stop=()=>{playing=false;g.hidden=true;g.removeAttribute('src');p.textContent='▶';p.setAttribute('aria-label','Play animation')};const play=()=>{g.hidden=false;g.src=g.dataset.source;playing=true;p.textContent='Ⅱ';p.setAttribute('aria-label','Pause animation')};p.addEventListener('click',()=>playing?stop():play());new IntersectionObserver(([e])=>{if(!e.isIntersecting)stop();else if(!reduced&&!save)play()}).observe(g);document.addEventListener('visibilitychange',()=>{if(document.hidden)stop()});g.addEventListener('error',stop);if(!reduced&&!save)play()})()</script>` : "";
   const analyticsScript=`<script>(()=>{const record=(event,action)=>{try{const consent=JSON.parse(localStorage.getItem('mingla_consent_v1')||'null');if(consent?.choice!=='granted'&&consent?.value!=='granted')return;const payload={event,code:${JSON.stringify(code)},version:${Number(contentShare.version)},kind:${JSON.stringify(analyticsKind)}};if(action)payload.action=action;navigator.sendBeacon('/api/content-share-analytics',JSON.stringify(payload))}catch{}};record('share_public_page_viewed');document.querySelector('[data-share-install]')?.addEventListener('click',()=>record('share_install_cta_opened'));document.querySelectorAll('[data-share-destination]').forEach((node)=>node.addEventListener('click',()=>record('share_destination_action',node.dataset.shareDestination)))})()</script>`;
-  return pageShell({ title: `${title} on Mingla`, description, canonicalUrl, imageUrl, imageType:"image/jpeg", imageWidth:1080, imageHeight:1350, imageAlt:alt, type: "article", siteName: "Mingla", headerVariant: "mingla", showHeader:false,
+  const continuationScript = businessDestination
+    ? `<script>window.location.replace(${JSON.stringify(businessDestination).replace(/</g, "\\u003c")})</script>` : "";
+  return pageShell({ title: `${title} on Mingla`, description, canonicalUrl, imageUrl, imageType:"image/jpeg", imageWidth:1080, imageHeight:1350, imageAlt:alt, type: "article", siteName: "Mingla", headerVariant: "mingla", showHeader:false, trustedHeadHtml: continuationScript,
     body: `<style>.page{max-width:1120px;padding:32px}.content-share{display:grid;grid-template-columns:${portrait ? "min(432px,40vw) minmax(0,560px)" : "minmax(0,720px)"};gap:48px;align-items:start}.portrait{position:relative;width:100%;aspect-ratio:4/5;border-radius:32px;overflow:hidden;background:#0C0E12}.portrait-poster,.share-motion,.portrait-identity-overlay{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.share-motion{z-index:1}.portrait-identity-overlay{z-index:2;pointer-events:none}.identity-wordmark{clip-path:inset(0 55% 80% 0)}.identity-bottom{clip-path:inset(48% 0 0 0)}.media-control{position:absolute;z-index:3;top:24px;min-width:44px;height:44px;border:2px solid #FFF7EF;border-radius:22px;background:#0C0E12;color:#FFF7EF;font-size:14px}.play-control{right:24px;width:44px;font-size:18px}.sound-control{right:76px;padding:0 12px}.eyebrow{font-size:14px;text-transform:none;color:#FFF7EF}.status{display:inline-block;margin-left:8px;padding:4px 9px;border-radius:99px;background:#FFF7EF;color:#0C0E12;font-weight:700}.facts{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px}.facts li{padding:7px 10px;border:1px solid rgba(255,255,255,.42);border-radius:99px}.actions,.detail-actions{display:flex;flex-wrap:wrap;gap:12px}.detail-link{display:inline-flex;min-height:44px;align-items:center;color:#FFF7EF}.detail-list li{margin:10px 0}.detail-list li span{display:block;color:rgba(255,255,255,.72)}.secondary{background:transparent;color:#FFF7EF;border:2px solid #FFF7EF}.hours{list-style:none;padding:0}.hours li{display:grid;grid-template-columns:110px 1fr;gap:12px;padding:8px 0}.hours .today{font-weight:800}.hours em{grid-column:2;font-size:14px}.content-share h1{font-size:clamp(36px,6vw,64px);line-height:1}.content-share h2{margin-top:32px}@media(max-width:759px){.page{padding:16px}.content-share{grid-template-columns:1fr;gap:24px}.portrait{max-width:432px;margin:auto}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}</style><section class="content-share">${portrait}<div><p class="eyebrow">${escapeHtml(({place:"Place",curated:"Curated plan",event:"Event",rsvp_event:"RSVP event",trip:"Trip",experience:"Experience",venue:"Venue",brand:"Brand"})[facts.kind] || "Mingla")}${status ? `<span class="status">● ${escapeHtml(status)}</span>`:""}</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p><ul class="facts">${previewFacts.map((fact)=>`<li>${escapeHtml(fact)}</li>`).join("")}</ul><div class="actions">${action ? `<a class="cta" data-share-destination="${actionCodes[action.label]}" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>`:""}<a class="cta secondary" data-share-install href="${escapeHtml(contentShareOneLink(code,installReferralCode))}">Open or get Mingla</a></div>${renderContentShareDetails(contentShare)}${hoursHtml}</div></section>${script}${analyticsScript}` });
 };
 
@@ -875,7 +898,7 @@ const buildBrandOgCardProps = (input) => {
   };
 };
 
-const pageShell = ({ title, description, canonicalUrl, imageUrl, imageType = "image/png", imageWidth = 1200, imageHeight = 630, imageAlt = "", type, body, siteName = "Mingla Business", headerVariant = "business", showHeader = true }) => `<!doctype html>
+const pageShell = ({ title, description, canonicalUrl, imageUrl, imageType = "image/png", imageWidth = 1200, imageHeight = 630, imageAlt = "", type, body, siteName = "Mingla Business", headerVariant = "business", showHeader = true, trustedHeadHtml = "" }) => `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -894,6 +917,7 @@ const pageShell = ({ title, description, canonicalUrl, imageUrl, imageType = "im
   <meta name="twitter:description" content="${escapeHtml(description)}" />
   ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}" />\n  <meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}" />` : ""}
   <link rel="icon" href="${headerVariant === "mingla" ? wordmarkSource() : LOGO_PUBLIC_PATH}" />
+  ${trustedHeadHtml}
   <style>
     :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     body { margin: 0; min-height: 100vh; background: #050505; color: #fff7ef; }
@@ -1493,6 +1517,7 @@ module.exports = {
   fetchContentShare,
   fetchContentShareVersion,
   contentSharePosterUrl,
+  contentShareBusinessDestination,
   firstQueryValue,
   renderBrandHtml,
   renderEventHtml,
