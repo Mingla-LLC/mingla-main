@@ -601,7 +601,15 @@ export async function handleAppReadinessRequest(
       row.app_key === parsed.appKey && row.os === parsed.os
     ) ?? null;
     return json({ contract_version: 1, server_now: now, targets, selected });
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      ["binding_version_conflict", "idempotency_key_conflict"].includes(
+        error.message,
+      )
+    ) {
+      return json({ error: error.message }, 409);
+    }
     return json({ error: "readiness_unavailable" }, 500);
   }
 }

@@ -46,6 +46,50 @@ const PARTNER_IDS: Record<ReadinessProvider, readonly string[]> = {
 const noConfiguredReadApi: AppsFlyerMeasurementReader = () =>
   Promise.resolve(null);
 
+const MAX_APPSFLYER_RESPONSE_BYTES = 1_000_000;
+
+async function readJsonWithByteLimit(
+  response: Response,
+  maxBytes = MAX_APPSFLYER_RESPONSE_BYTES,
+): Promise<unknown> {
+  const declaredLength = response.headers.get("content-length");
+  if (declaredLength !== null) {
+    const parsedLength = Number(declaredLength);
+    if (Number.isFinite(parsedLength) && parsedLength > maxBytes) {
+      throw new Error("appsflyer_response_invalid");
+    }
+  }
+  if (!response.body) throw new Error("appsflyer_response_invalid");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > maxBytes) {
+        await reader.cancel("appsflyer_response_invalid");
+        throw new Error("appsflyer_response_invalid");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body));
+  } catch {
+    throw new Error("appsflyer_response_invalid");
+  }
+}
+
 function rowsFromPayload(payload: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(payload)) {
     return payload.filter((row) => row && typeof row === "object") as Array<
@@ -156,16 +200,7 @@ export function createAppsFlyerMeasurementReader(
       },
     );
     if (!response.ok) throw new Error("appsflyer_read_unavailable");
-    const declaredLength = Number(response.headers.get("content-length") ?? 0);
-    if (declaredLength > 1_000_000) {
-      throw new Error("appsflyer_response_invalid");
-    }
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch {
-      throw new Error("appsflyer_response_invalid");
-    }
+    const payload = await readJsonWithByteLimit(response);
     return parseAppsFlyerIntegrationSnapshot(payload);
   };
 }
@@ -206,8 +241,8 @@ export async function verifyAppsflyer(
       (extendedProof.privacyConfigured &&
         !(target.app_key === "business" && target.os === "android" &&
           extendedProof.eventCount === 0) &&
-        (!binding?.provider_measurement_id ||
-          extendedProof.measurementId === binding.provider_measurement_id));
+        Boolean(binding?.provider_measurement_id) &&
+        extendedProof.measurementId === binding?.provider_measurement_id);
     return [
       provider,
       state.partnerActive && state.installEventMapped && extendedProofReady

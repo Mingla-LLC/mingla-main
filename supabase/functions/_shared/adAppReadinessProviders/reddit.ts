@@ -1,4 +1,5 @@
 import { evidence } from "../adAppReadiness.ts";
+import type { OperatingSystem, TargetRow } from "../adAppReadiness.ts";
 import {
   redditConnectPreflight,
   redditRequest,
@@ -15,7 +16,10 @@ export interface RedditAppBinding {
   appId: string;
   platform: "ios" | "android" | null;
 }
-export function parseRedditApps(payload: unknown): RedditAppBinding[] {
+export function parseRedditApps(
+  payload: unknown,
+  canonicalTarget?: Pick<TargetRow, "os" | "store_identifier">,
+): RedditAppBinding[] {
   const root = payload as Record<string, unknown> | null;
   const rows = Array.isArray(root?.data)
     ? root?.data as Record<string, unknown>[]
@@ -24,13 +28,16 @@ export function parseRedditApps(payload: unknown): RedditAppBinding[] {
     const id = row.app_id ?? row.id ?? row.store_id;
     if (typeof id !== "string") return [];
     const raw = String(row.platform ?? row.app_store ?? "").toLowerCase();
+    const providerPlatform: OperatingSystem | null = raw.includes("ios") ||
+        raw.includes("apple")
+      ? "ios"
+      : raw.includes("android") || raw.includes("google")
+      ? "android"
+      : null;
     return [{
       appId: id,
-      platform: raw.includes("ios") || raw.includes("apple")
-        ? "ios" as const
-        : raw.includes("android") || raw.includes("google")
-        ? "android" as const
-        : null,
+      platform: providerPlatform ??
+        (canonicalTarget?.store_identifier === id ? canonicalTarget.os : null),
     }];
   });
 }
@@ -90,6 +97,7 @@ export async function verify(ctx: VerifyContext) {
           "GET",
           `/ad_accounts/${snapshot.account.id}/apps`,
         ),
+        ctx.target,
       ),
   );
   const exact = apps.find((row) =>

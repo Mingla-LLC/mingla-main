@@ -30,6 +30,24 @@ function requireData<T>(
   return result.data;
 }
 
+function requireSafeBindingData<T>(
+  result: { data: T | null; error: { message: string } | null },
+): T {
+  if (result.error) {
+    for (
+      const conflict of [
+        "binding_version_conflict",
+        "idempotency_key_conflict",
+      ]
+    ) {
+      if (result.error.message.includes(conflict)) throw new Error(conflict);
+    }
+    throw new Error("database_unavailable");
+  }
+  if (result.data === null) throw new Error("database_unavailable");
+  return result.data;
+}
+
 serve((request: Request) =>
   handleAppReadinessRequest(request, {
     authorize: async (authorization) => {
@@ -188,7 +206,7 @@ serve((request: Request) =>
             }),
           ),
         setSafeBinding: async (input) =>
-          requireData(
+          requireSafeBindingData(
             await db.rpc("set_ad_app_safe_binding", { p_change: input }),
           ),
       };

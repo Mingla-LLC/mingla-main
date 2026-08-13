@@ -128,6 +128,8 @@ CREATE TABLE public.ad_app_binding_audit (
   actor uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
   reason text NOT NULL CHECK (length(btrim(reason)) BETWEEN 8 AND 240),
   idempotency_key uuid NOT NULL UNIQUE,
+  expected_binding_version bigint NOT NULL CHECK (expected_binding_version >= 1),
+  request_fingerprint text NOT NULL CHECK (request_fingerprint ~ '^[0-9a-f]{32}$'),
   previous_safe_values jsonb NOT NULL CHECK (jsonb_typeof(previous_safe_values)='object'),
   new_safe_values jsonb NOT NULL CHECK (jsonb_typeof(new_safe_values)='object'),
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -154,7 +156,8 @@ DECLARE
   v_measurement_id text := p_change->>'provider_measurement_id'; v_actor uuid := (p_change->>'actor')::uuid;
   v_reason text := btrim(p_change->>'reason'); v_expected bigint := (p_change->>'expected_current_version')::bigint;
   v_key uuid := (p_change->>'idempotency_key')::uuid; v_row public.ad_app_provider_bindings%ROWTYPE;
-  v_prior jsonb; v_existing jsonb; v_expected_contract text;
+  v_prior jsonb; v_existing jsonb; v_expected_contract text; v_fingerprint text;
+  v_existing_audit public.ad_app_binding_audit%ROWTYPE;
 BEGIN
   IF jsonb_typeof(p_change)<>'object'
      OR (p_change - ARRAY['app_key','os','provider','provider_contract_kind','provider_app_id','provider_measurement_id','actor','reason','expected_current_version','idempotency_key']) <> '{}'::jsonb
@@ -165,12 +168,27 @@ BEGIN
                     WHERE u.id=v_actor AND a.status='active' AND a.role IN ('owner','admin')) THEN
     RAISE EXCEPTION 'invalid_safe_binding_change';
   END IF;
-  SELECT new_safe_values INTO v_existing FROM public.ad_app_binding_audit WHERE idempotency_key=v_key;
-  IF FOUND THEN RETURN v_existing || jsonb_build_object('idempotent_replay',true); END IF;
-
   SELECT * INTO v_row FROM public.ad_app_provider_bindings
   WHERE app_key=v_app AND os=v_os AND provider=v_provider AND active=true FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'binding_target_mismatch'; END IF;
+  v_fingerprint := md5(jsonb_build_object(
+    'provider_contract_kind',v_contract,
+    'provider_app_id',v_app_id,
+    'provider_measurement_id',v_measurement_id,
+    'reason',v_reason
+  )::text);
+  SELECT * INTO v_existing_audit FROM public.ad_app_binding_audit WHERE idempotency_key=v_key;
+  IF FOUND THEN
+    IF v_existing_audit.actor=v_actor
+       AND v_existing_audit.app_key=v_app
+       AND v_existing_audit.os=v_os
+       AND v_existing_audit.provider=v_provider
+       AND v_existing_audit.expected_binding_version=v_expected
+       AND v_existing_audit.request_fingerprint=v_fingerprint THEN
+      RETURN v_existing_audit.new_safe_values || jsonb_build_object('idempotent_replay',true);
+    END IF;
+    RAISE EXCEPTION 'idempotency_key_conflict';
+  END IF;
   IF v_row.binding_version<>v_expected THEN RAISE EXCEPTION 'binding_version_conflict'; END IF;
   v_expected_contract := CASE v_provider WHEN 'google' THEN 'app_link' WHEN 'reddit' THEN 'campaign_store_binding' ELSE 'mobile_asset' END;
   IF v_contract<>v_expected_contract THEN RAISE EXCEPTION 'provider_contract_mismatch'; END IF;
@@ -179,6 +197,7 @@ BEGIN
   IF v_provider IN ('meta','tiktok') AND ((v_app_id IS NOT NULL AND v_app_id !~ '^[0-9]{6,32}$') OR (v_measurement_id IS NOT NULL AND v_measurement_id !~ '^[0-9]{6,32}$')) THEN RAISE EXCEPTION 'invalid_numeric_provider_id'; END IF;
   IF v_provider='snapchat' AND v_app_id IS NOT NULL AND v_app_id !~ '^[A-Za-z0-9_-]{6,80}$' THEN RAISE EXCEPTION 'invalid_snap_app_id'; END IF;
   IF v_provider='google' AND v_measurement_id IS NOT NULL AND v_measurement_id !~ '^[0-9]{4,32}$' THEN RAISE EXCEPTION 'invalid_google_link_id'; END IF;
+  IF v_provider IN ('meta','snapchat') AND v_app_id IS DISTINCT FROM v_measurement_id THEN RAISE EXCEPTION 'provider_measurement_identity_mismatch'; END IF;
   IF v_provider IN ('google','reddit') AND v_app_id IS NOT NULL AND v_app_id<>(SELECT store_identifier FROM public.ad_app_targets WHERE app_key=v_app AND os=v_os) THEN RAISE EXCEPTION 'store_identifier_mismatch'; END IF;
   IF v_provider IN ('meta','snapchat') AND EXISTS (
     SELECT 1 FROM public.ad_app_provider_bindings b WHERE b.app_key=v_app AND b.os<>v_os AND b.provider=v_provider
@@ -186,6 +205,29 @@ BEGIN
   ) THEN RAISE EXCEPTION 'product_app_id_mismatch'; END IF;
 
   v_prior := jsonb_build_object('provider_contract_kind',v_row.provider_contract_kind,'provider_app_id',v_row.provider_app_id,'provider_measurement_id',v_row.provider_measurement_id,'binding_version',v_row.binding_version);
+  v_existing := jsonb_build_object('app_key',v_app,'os',v_os,'provider',v_provider,'provider_contract_kind',v_contract,
+    'provider_app_id',v_app_id,'provider_measurement_id',v_measurement_id,'binding_version',v_row.binding_version+1);
+  BEGIN
+    INSERT INTO public.ad_app_binding_audit(
+      app_key,os,provider,action,actor,reason,idempotency_key,
+      expected_binding_version,request_fingerprint,previous_safe_values,new_safe_values
+    ) VALUES(
+      v_app,v_os,v_provider,'safe_binding_replaced',v_actor,v_reason,v_key,
+      v_expected,v_fingerprint,v_prior,v_existing
+    );
+  EXCEPTION WHEN unique_violation THEN
+    SELECT * INTO v_existing_audit FROM public.ad_app_binding_audit WHERE idempotency_key=v_key;
+    IF FOUND
+       AND v_existing_audit.actor=v_actor
+       AND v_existing_audit.app_key=v_app
+       AND v_existing_audit.os=v_os
+       AND v_existing_audit.provider=v_provider
+       AND v_existing_audit.expected_binding_version=v_expected
+       AND v_existing_audit.request_fingerprint=v_fingerprint THEN
+      RETURN v_existing_audit.new_safe_values || jsonb_build_object('idempotent_replay',true);
+    END IF;
+    RAISE EXCEPTION 'idempotency_key_conflict';
+  END;
   UPDATE public.ad_app_provider_bindings SET provider_contract_kind=v_contract, provider_app_id=v_app_id,
     provider_measurement_id=v_measurement_id, binding_version=binding_version+1, readiness_invalidated_at=clock_timestamp(),
     native_binding_attested_at=NULL,native_binding_attestation_expires_at=NULL,native_binding_attestation_safe_id=NULL,
@@ -201,10 +243,6 @@ BEGIN
     approved_spend_ceiling_cents=NULL,approved_currency=NULL,started_at=NULL,paused_at=NULL,
     safe_provider_campaign_id=NULL,safe_evidence=NULL,evidence_expires_at=NULL,canary_version=canary_version+1
   WHERE app_key=v_app AND os=v_os AND provider=v_provider;
-  v_existing := jsonb_build_object('app_key',v_app,'os',v_os,'provider',v_provider,'provider_contract_kind',v_contract,
-    'provider_app_id',v_app_id,'provider_measurement_id',v_measurement_id,'binding_version',v_row.binding_version+1);
-  INSERT INTO public.ad_app_binding_audit(app_key,os,provider,action,actor,reason,idempotency_key,previous_safe_values,new_safe_values)
-  VALUES(v_app,v_os,v_provider,'safe_binding_replaced',v_actor,v_reason,v_key,v_prior,v_existing);
   RETURN v_existing || jsonb_build_object('idempotent_replay',false);
 END;
 $function$;
@@ -267,6 +305,21 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $func
       AND latest.stale_at>clock_timestamp()
       AND result.verdict='ready'
       AND canary.status='passed'
+      AND canary.safe_evidence->>'result'='passed'
+      AND canary.safe_evidence->>'store_identifier'=t.store_identifier
+      AND canary.safe_evidence->>'device_os'=p_os
+      AND canary.safe_evidence->>'media_source'=CASE p_provider
+        WHEN 'meta' THEN 'facebook_int'
+        WHEN 'tiktok' THEN 'tiktokglobal_int'
+        WHEN 'snapchat' THEN 'snapchat_int'
+        WHEN 'google' THEN 'googleadwords_int'
+        WHEN 'reddit' THEN 'reddit_int'
+        ELSE NULL
+      END
+      AND canary.safe_evidence->>'campaign_id'=canary.safe_provider_campaign_id
+      AND (canary.safe_evidence->>'install_timestamp')::timestamptz>=canary.started_at
+      AND (canary.safe_evidence->>'install_timestamp')::timestamptz<=canary.paused_at
+      AND (canary.safe_evidence->>'install_timestamp')::timestamptz<canary.evidence_expires_at
       AND canary.paused_at IS NOT NULL
       AND canary.evidence_expires_at>clock_timestamp()
       AND public.is_safe_ad_app_canary_evidence(canary.safe_evidence)

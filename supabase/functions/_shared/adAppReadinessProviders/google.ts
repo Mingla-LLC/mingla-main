@@ -10,7 +10,9 @@ import {
 export const GOOGLE_APP_BINDING_GAQL =
   "SELECT campaign.id, campaign.status, campaign.app_campaign_setting.app_id, " +
   "campaign.app_campaign_setting.app_store FROM campaign " +
-  "WHERE campaign.advertising_channel_type = 'MULTI_CHANNEL'";
+  "WHERE campaign.advertising_channel_type = 'MULTI_CHANNEL' " +
+  "AND campaign.status != 'REMOVED' " +
+  "AND campaign.app_campaign_setting.app_id IS NOT NULL";
 
 export interface GoogleAppBinding {
   appId: string;
@@ -28,11 +30,15 @@ export function parseGoogleAppBindings(payload: unknown): GoogleAppBinding[] {
       : [];
   return results.flatMap((row) => {
     const campaign = row.campaign as Record<string, unknown> | undefined;
+    const status = campaign?.status;
+    if (
+      status !== undefined && status !== "ENABLED" && status !== "PAUSED"
+    ) return [];
     const setting = campaign?.appCampaignSetting as
       | Record<string, unknown>
       | undefined;
     const appId = setting?.appId;
-    if (typeof appId !== "string") return [];
+    if (typeof appId !== "string" || appId.length === 0) return [];
     const rawStore = setting?.appStore;
     return [{
       appId,
@@ -92,6 +98,12 @@ export async function verify(ctx: VerifyContext) {
       "provider_api",
       ctx.target.store_identifier,
     );
-  base.reason_code = exact ? "measurement_missing" : "native_binding_missing";
+  base.dimensions.funding = evidence(
+    "action_required",
+    "Google Ads does not expose a truthful current funding signal through this read-only app-binding query.",
+    ctx.checkedAt,
+    "provider_api",
+  );
+  base.reason_code = exact ? "funding_missing" : "native_binding_missing";
   return base;
 }
