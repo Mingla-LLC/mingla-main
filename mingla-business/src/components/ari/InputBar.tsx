@@ -67,7 +67,7 @@ const WEB_INPUT_PROPS =
     : {};
 
 export interface InputBarProps {
-  onSend: (text: string) => void;
+  onSend: (text: string) => void | boolean | Promise<void | boolean>;
   disabled?: boolean;
   placeholder?: string;
   /** Called when the user taps the "suggestions" button. When provided, a
@@ -97,7 +97,7 @@ export const InputBar: React.FC<InputBarProps> = ({
     ...(Platform.OS === "ios" ? { shadowOpacity: glowOpacity.value } : {}),
   }));
 
-  const handleSend = (): void => {
+  const handleSend = async (): Promise<void> => {
     const t = text.trim();
     if (!t) return;
 
@@ -123,8 +123,8 @@ export const InputBar: React.FC<InputBarProps> = ({
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 
-    onSend(t);
-    setText("");
+    const accepted = await onSend(t);
+    if (accepted !== false) setText("");
   };
 
   return (

@@ -16,6 +16,11 @@ import {
   isUuid,
   newIdempotencyKey,
 } from "./agentToolHelpers.ts";
+import {
+  assertAgentReadBrand,
+  assertAgentReadEvent,
+  resolveAccessibleAgentBrands,
+} from "./agentTenantScope.ts";
 
 const UUID = { type: "string", format: "uuid" };
 const STR = { type: "string", minLength: 1, maxLength: 500 };
@@ -522,6 +527,7 @@ const quoteStay = writeTool(
   { brand_id: UUID, listing_id: UUID, check_in: { type: "string" }, check_out: { type: "string" } },
   ["brand_id", "listing_id", "check_in", "check_out"],
   async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
     return await invokeFn(client, "stay-reservations", {
       action: "quote",
@@ -830,6 +836,7 @@ const getPayoutStatus = writeTool(
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
     const can = await callRpc(client, "pg_brand_can_collect", { p_brand_id: args.brand_id });
     return {
@@ -846,6 +853,7 @@ const getPartnerStatus = writeTool(
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
     const { data, error } = await client
       .from("brand_partners")
@@ -881,6 +889,7 @@ const getTaxStatus = writeTool(
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
     return {
       brand_id: args.brand_id,
@@ -970,6 +979,7 @@ const getBrandAnalytics = writeTool(
   { brand_id: UUID, question: { type: "string" } },
   ["brand_id"],
   async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
     const [conv, intel] = await Promise.all([
       callRpc(client, "brand_conversion_rollup", { p_brand_id: args.brand_id }).catch((e) => ({ error: String(e) })),
@@ -1041,6 +1051,7 @@ const listGuestRoster = writeTool(
   { event_id: UUID },
   ["event_id"],
   async (args, client, userId) => {
+    await assertAgentReadEvent(client, userId, args.event_id);
     await requireEvent(args, client, userId);
     return await callRpc(client, "biz_guest_roster_list", { p_event_id: args.event_id });
   },
@@ -1158,15 +1169,20 @@ const getOperatorSnapshot = writeTool(
   { brand_id: UUID },
   [],
   async (args, client, userId) => {
+    const scope = await resolveAccessibleAgentBrands(client, userId).catch((error) => {
+      throw new ToolError("TENANT_SCOPE_UNAVAILABLE", error instanceof Error ? error.message : "Brand scope unavailable");
+    });
     let brandId: string | null = isUuid(args.brand_id) ? args.brand_id : null;
-    if (brandId) await assertBrandOwned(client, brandId, userId);
-    const { data: brands } = await client
-      .from("brands")
-      .select("id, name")
-      .eq("account_id", userId)
-      .is("deleted_at", null)
-      .limit(8);
-    if (!brandId && brands && brands.length === 1) brandId = brands[0].id;
+    if (args.brand_id !== undefined && !brandId) throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    if (brandId) {
+      await assertAgentReadBrand(client, userId, brandId);
+      await assertBrandOwned(client, brandId, userId);
+    }
+    // Preserve this tool's pre-existing owner-only detail semantics after the
+    // broader accessibility guard; delegated roles are not silently promoted.
+    const brands = scope.filter((brand) => brand.role === "owner").slice(0, 8)
+      .map(({ id, name, role, effective_rank }) => ({ id, name, role, effective_rank }));
+    if (!brandId && brands.length === 1) brandId = brands[0].id;
     let offerings: unknown[] = [];
     let canCollect: unknown = null;
     if (brandId) {
@@ -1181,10 +1197,10 @@ const getOperatorSnapshot = writeTool(
       canCollect = await callRpc(client, "pg_brand_can_collect", { p_brand_id: brandId }).catch(() => null);
     }
     return {
-      brands: brands ?? [],
+      brands,
       offerings,
       payout_ready: canCollect === true || (canCollect as any)?.can_collect === true,
-      next_step_hint: !brands?.length
+      next_step_hint: !brands.length
         ? "create_brand"
         : offerings.length === 0
           ? "create_event"

@@ -19,6 +19,11 @@ import { AGENT_TOOLS, READ_ONLY_TOOL_NAMES, findTool, ToolError } from "../_shar
 import { buildServiceClient, enforceTurnRateLimit } from "../_shared/agentRateLimit.ts";
 import { detectChoices, AgentChoices } from "../_shared/agentChoices.ts";
 import { logError } from "../_shared/structuredLog.ts";
+import {
+  AccessibleAgentBrand,
+  requireAccessibleAgentBrand,
+  resolveAccessibleAgentBrands,
+} from "../_shared/agentTenantScope.ts";
 
 const MAX_MESSAGE_LENGTH = 4096;
 const HISTORY_WINDOW = 10;
@@ -44,6 +49,24 @@ function jsonResponse(status: number, body: Response_): Response {
 
 function errorResponse(status: number, code: string, message: string): Response {
   return jsonResponse(status, { kind: "error", code, message });
+}
+
+function tenantScopeResponse(
+  status: number,
+  code: string,
+  message: string,
+  scopeState: "new" | "bound" | "legacy",
+  requestBrandSupplied: boolean,
+  accessibleBrandCount: number,
+): Response {
+  // Intentionally excludes user/brand/conversation IDs, names, messages,
+  // prompts, args, and results.
+  console.warn("[agent-chat] tenant scope stopped", JSON.stringify({
+    fn: "agent-chat", revision: "2013", code,
+    scope_state: scopeState, request_brand_supplied: requestBrandSupplied,
+    accessible_brand_count: accessibleBrandCount,
+  }));
+  return errorResponse(status, code, message);
 }
 
 function schemaErrorResponse(err: unknown): Response | null {
@@ -144,18 +167,17 @@ async function handle(req: Request): Promise<Response> {
     return errorResponse(429, "RATE_LIMITED", message);
   }
 
-  // Validate brand_id if provided
-  if (body.brand_id) {
-    const { data: brand, error: brandErr } = await userClient
-      .from("brands")
-      .select("id")
-      .eq("id", body.brand_id)
-      .eq("account_id", userId)
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (brandErr || !brand) {
-      return errorResponse(400, "INVALID_BRAND", "Brand not found or not owned");
-    }
+  // #2013: resolve private tenant scope before conversation/model/message/tool work.
+  let accessibleBrands: AccessibleAgentBrand[];
+  try {
+    accessibleBrands = await resolveAccessibleAgentBrands(userClient, userId);
+  } catch (error) {
+    console.error("[agent-chat] tenant scope denied", JSON.stringify({
+      fn: "agent-chat", revision: "2013", code: "TENANT_SCOPE_UNAVAILABLE",
+      scope_state: body.conversation_id ? "bound_or_legacy" : "new",
+      request_brand_supplied: typeof body.brand_id === "string",
+    }));
+    return errorResponse(503, "TENANT_SCOPE_UNAVAILABLE", "Ari couldn't verify your brand access. Try again.");
   }
 
   // Prompt injection detection (flag but do not refuse)
@@ -164,10 +186,11 @@ async function handle(req: Request): Promise<Response> {
   // Load or create conversation
   let conversationId: string;
   let conversationSummary: string | null = null;
+  let activeBrand: AccessibleAgentBrand | null = null;
   if (body.conversation_id) {
     const { data: convo, error: convoErr } = await userClient
       .from("agent_conversations")
-      .select("id, summary")
+      .select("id, summary, brand_id")
       .eq("id", body.conversation_id)
       .eq("user_id", userId)
       .maybeSingle();
@@ -178,7 +201,32 @@ async function handle(req: Request): Promise<Response> {
     conversationSummary = typeof (convo as { summary?: unknown }).summary === "string"
       ? (convo as { summary: string }).summary
       : null;
+    const storedBrandId = (convo as { brand_id?: string | null }).brand_id ?? null;
+    if (storedBrandId) {
+      try {
+        activeBrand = requireAccessibleAgentBrand(accessibleBrands, storedBrandId);
+      } catch {
+        return tenantScopeResponse(403, "BRAND_ACCESS_DENIED", "You no longer have access to this conversation's brand.", "bound", typeof body.brand_id === "string", accessibleBrands.length);
+      }
+      if (body.brand_id !== storedBrandId) {
+        return tenantScopeResponse(409, "CONVERSATION_BRAND_MISMATCH", "This conversation belongs to a different brand. Start a new chat for the selected brand.", "bound", typeof body.brand_id === "string", accessibleBrands.length);
+      }
+    } else if (accessibleBrands.length > 0) {
+      return tenantScopeResponse(409, "LEGACY_CONVERSATION_UNSCOPED", "This older conversation is read-only. Start a new chat for the selected brand.", "legacy", typeof body.brand_id === "string", accessibleBrands.length);
+    } else if (body.brand_id) {
+      return tenantScopeResponse(403, "BRAND_ACCESS_DENIED", "That brand is not available to this account.", "legacy", true, accessibleBrands.length);
+    }
   } else {
+    if (accessibleBrands.length > 0 && !body.brand_id) {
+      return tenantScopeResponse(409, "BRAND_CONTEXT_REQUIRED", "Select a brand before starting a new Ari chat.", "new", false, accessibleBrands.length);
+    }
+    if (body.brand_id) {
+      try {
+        activeBrand = requireAccessibleAgentBrand(accessibleBrands, body.brand_id);
+      } catch {
+        return tenantScopeResponse(403, "BRAND_ACCESS_DENIED", "That brand is not available to this account.", "new", true, accessibleBrands.length);
+      }
+    }
     const { data: created, error: createErr } = await userClient
       .from("agent_conversations")
       .insert({
@@ -211,21 +259,12 @@ async function handle(req: Request): Promise<Response> {
     .maybeSingle();
   const profile = profileRow as AgentUserProfile | null;
 
-  // Load brands summary (ORCH-1103 — widened for edit/delete targeting +
-  // disambiguation: currency, cover presence, and a per-brand deletable hint).
-  const { data: brandsRows } = await userClient
-    .from("brands")
-    .select("id, name, slug, default_currency, cover_media_url")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
   // hasBlockingEvents (Q1 = grouped count, no migration) — mirrors the
   // delete-guard semantics EXACTLY so the prompt's "deletable" hint and the
   // delete_brand executor's actual guard cannot drift: scheduled/live events
   // with a future event_dates.end_at, type-agnostic.
   // orch-strict-grep-allow events-type-filter — intentionally NO event_type filter.
-  const brandIds = (brandsRows ?? []).map((b: any) => b.id as string);
+  const brandIds = activeBrand ? [activeBrand.id] : [];
   const blockingBrandIds = new Set<string>();
   if (brandIds.length > 0) {
     const nowIso = new Date().toISOString();
@@ -241,13 +280,15 @@ async function handle(req: Request): Promise<Response> {
     }
   }
 
-  const brandsList: BrandSummary[] = (brandsRows ?? []).map((b: any) => ({
+  const brandsList: BrandSummary[] = accessibleBrands.slice(0, 20).map((b) => ({
     id: b.id,
     name: b.name,
     slug: b.slug,
     defaultCurrency: b.default_currency ?? null,
     hasCover: b.cover_media_url != null,
     hasBlockingEvents: blockingBrandIds.has(b.id),
+    role: b.role,
+    effectiveRank: b.effective_rank,
   }));
 
   // Wave 0 — compact offerings + payout-ready. Cap tokens; never dump PII.
@@ -269,7 +310,7 @@ async function handle(req: Request): Promise<Response> {
         status: String(row.status ?? "draft"),
       });
     }
-    const probeBrand = body.brand_id && brandIds.includes(body.brand_id) ? body.brand_id : brandIds[0];
+    const probeBrand = activeBrand?.id;
     try {
       const { data: can } = await userClient.rpc("pg_brand_can_collect", { p_brand_id: probeBrand });
       payoutReady = can === true || (can as { can_collect?: boolean } | null)?.can_collect === true;
@@ -279,9 +320,10 @@ async function handle(req: Request): Promise<Response> {
   }
   const business: BusinessContext = {
     brands: brandsList,
+    activeBrand: activeBrand ? brandsList.find((brand) => brand.id === activeBrand.id) ?? null : null,
     offerings,
     payoutReady,
-    roleHint: "owner",
+    roleHint: activeBrand?.role ?? null,
     conversationSummary,
   };
 
@@ -491,7 +533,14 @@ async function handle(req: Request): Promise<Response> {
         });
       } catch (err: any) {
         if (err instanceof ToolError) {
-          return errorResponse(403, err.code, err.message);
+          console.error("[agent-chat] tenant-scoped read stopped", JSON.stringify({
+            fn: "agent-chat", revision: "2013", code: err.code,
+            scope_state: activeBrand ? "bound" : "legacy_or_zero_brand",
+            request_brand_supplied: typeof body.brand_id === "string",
+            accessible_brand_count: accessibleBrands.length,
+            tool_name: tool.name,
+          }));
+          return errorResponse(err.code === "TENANT_SCOPE_UNAVAILABLE" ? 503 : 403, err.code, err.message);
         }
         return errorResponse(500, "EXECUTION_FAILED", err?.message ?? "Tool failed");
       }

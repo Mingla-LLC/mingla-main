@@ -14,6 +14,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4
 import { filterPlayIntentTags } from "./playIntentTags.ts";
 import { mapToCanonicalExperienceIntents } from "./canonicalExperienceIntents.ts";
 import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "./agentDomainTools.ts";
+import { assertAgentReadBrand, resolveAccessibleAgentBrands } from "./agentTenantScope.ts";
 import { ToolError } from "./agentToolHelpers.ts";
 
 export { ToolError } from "./agentToolHelpers.ts";
@@ -341,23 +342,19 @@ const createEvent: AgentTool = {
 const listBrands: AgentTool = {
   name: "list_brands",
   description:
-    "List all brands owned by the user. Returns id, name, slug, default_currency, created_at.",
+    "List brands the user currently owns or serves as an active team member. Returns role and effective rank.",
   parameters: {
     type: "object",
     properties: {
       limit: { type: "integer", minimum: 1, maximum: 50, description: "Max brands to return (1-50, default 20)" },
     },
   },
-  executor: async (args, client, _userId) => {
+  executor: async (args, client, userId) => {
     const limit = typeof args.limit === "number" ? Math.min(50, Math.max(1, args.limit)) : 20;
-    const { data, error } = await client
-      .from("brands")
-      .select("id, name, slug, default_currency, created_at")
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    if (error) throw new ToolError("READ_FAILED", error.message);
-    return { brands: data ?? [] };
+    const scope = await resolveAccessibleAgentBrands(client, userId).catch((error) => {
+      throw new ToolError("TENANT_SCOPE_UNAVAILABLE", error instanceof Error ? error.message : "Brand scope unavailable");
+    });
+    return { brands: scope.slice(0, limit).map(({ cover_media_url: _cover, effective_rank, ...brand }) => ({ ...brand, effective_rank })) };
   },
 };
 
@@ -379,18 +376,20 @@ const listEvents: AgentTool = {
   },
   executor: async (args, client, userId) => {
     const limit = typeof args.limit === "number" ? Math.min(50, Math.max(1, args.limit)) : 20;
-    if (isUuid(args.brand_id)) {
-      await assertBrandOwned(client, args.brand_id, userId);
-    }
+    const scope = await resolveAccessibleAgentBrands(client, userId).catch((error) => {
+      throw new ToolError("TENANT_SCOPE_UNAVAILABLE", error instanceof Error ? error.message : "Brand scope unavailable");
+    });
+    if (args.brand_id !== undefined && !isUuid(args.brand_id)) throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    if (isUuid(args.brand_id)) await assertAgentReadBrand(client, userId, args.brand_id);
+    const allowedBrandIds = isUuid(args.brand_id) ? [args.brand_id] : scope.map((brand) => brand.id);
+    if (allowedBrandIds.length === 0) return { events: [] };
     let q = client
       .from("events")
       .select("id, brand_id, title, slug, visibility, status, created_at, timezone")
+      .in("brand_id", allowedBrandIds)
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(limit);
-    if (isUuid(args.brand_id)) {
-      q = q.eq("brand_id", args.brand_id);
-    }
     const { data, error } = await q;
     if (error) throw new ToolError("READ_FAILED", error.message);
     return { events: data ?? [] };

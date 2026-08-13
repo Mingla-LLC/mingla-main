@@ -14,6 +14,7 @@
 
 import React, { useState } from "react";
 import {
+  AccessibilityInfo,
   Keyboard,
   Platform,
   Pressable,
@@ -27,7 +28,10 @@ import { Menu, Settings } from "lucide-react-native";
 
 import {
   canvas,
+  ariPalette,
+  ariThread,
   glass,
+  radius,
   spacing,
   text as textTokens,
   typography,
@@ -42,12 +46,14 @@ import type { ConfirmOutcome } from "../../components/ari/toolProposalTypes";
 import { QuickReplyChips } from "../../components/ari/QuickReplyChips";
 import { StreamingText } from "../../components/ari/StreamingText";
 import { Toast } from "../../components/ui/Toast";
+import { BrandSwitcherSheet } from "../../components/brand/BrandSwitcherSheet";
 
 import { useAgentChat } from "../../hooks/useAgentChat";
 import { useAriPreferences } from "../../hooks/useAriPreferences";
 import { useConfirmPendingAction } from "../../hooks/useConfirmPendingAction";
 import { useConversationList } from "../../hooks/useConversationList";
 import { useBrands } from "../../hooks/useBrands";
+import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useAuth } from "../../context/AuthContext";
 // #1841 [keyboard-guard-blind-spots] — the composer's keyboard height now comes
 // from a react-native-keyboard-controller-backed wrapper instead of a bespoke
@@ -89,6 +95,27 @@ function isAlreadyResolvedError(message: string): boolean {
   );
 }
 
+type Recovery = { code: string; title: string; body: string; action: string };
+
+const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({ recovery, onAction }) => {
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={styles.recoveryPanel} accessibilityRole="alert">
+      <Text style={styles.recoveryTitle}>{recovery.title}</Text>
+      <Text style={styles.recoveryBody}>{recovery.body}</Text>
+      <Pressable
+        onPress={onAction}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={({ pressed }) => [styles.recoveryAction, pressed && styles.pressed, focused && styles.recoveryActionFocused]}
+        accessibilityRole="button"
+      >
+        <Text style={styles.recoveryActionText}>{recovery.action}</Text>
+      </Pressable>
+    </View>
+  );
+};
+
 export const AriChatScreen: React.FC = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -98,6 +125,8 @@ export const AriChatScreen: React.FC = () => {
   // value, same timing as the deleted listener pair; no bespoke plumbing.
   const keyboardHeight = useKeyboardHeight();
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [brandSwitcherOpen, setBrandSwitcherOpen] = useState(false);
+  const [retryText, setRetryText] = useState<string | null>(null);
   // ORCH-1101 REWORK Bug #6 — dismiss the AI-disclosure sheet the instant the
   // CTA is tapped, decoupled from the acknowledge mutation's network round-trip
   // + profile-query refetch. Previously the sheet only closed when the refetched
@@ -123,9 +152,11 @@ export const AriChatScreen: React.FC = () => {
   // by #1841; do not reinstate it.
 
   const prefs = useAriPreferences();
-  const conversations = useConversationList();
   const { user } = useAuth();
   const accountId = user?.id ?? null;
+  const currentBrand = useCurrentBrand();
+  const selectedBrandId = currentBrand?.id ?? null;
+  const conversations = useConversationList(selectedBrandId);
   // ORCH-1103 — brand name lookup for delete/update target display +
   // type-to-confirm matching. Mirrors the prompt-known brand list.
   const brands = useBrands(accountId);
@@ -135,7 +166,22 @@ export const AriChatScreen: React.FC = () => {
     return out;
   }, [brands.data]);
 
-  const chat = useAgentChat(null, null);
+  const chat = useAgentChat(null, selectedBrandId);
+  const previousBrandId = React.useRef(selectedBrandId);
+  const brandScopeStable = previousBrandId.current === selectedBrandId;
+
+  React.useEffect(() => {
+    if (previousBrandId.current === selectedBrandId) return;
+    previousBrandId.current = selectedBrandId;
+    setDrawerOpen(false);
+    setSuggestionsOpen(false);
+    setLocalError(null);
+    setRetryText(null);
+    Keyboard.dismiss();
+    if (currentBrand?.displayName) {
+      AccessibilityInfo.announceForAccessibility(`Started a new Ari chat for ${currentBrand.displayName}.`);
+    }
+  }, [currentBrand?.displayName, selectedBrandId]);
   const confirm = useConfirmPendingAction(chat.conversationId);
 
   const disclosureNeeded =
@@ -156,12 +202,21 @@ export const AriChatScreen: React.FC = () => {
     });
   };
 
-  const handleSend = async (text: string): Promise<void> => {
+  const handleSend = async (text: string): Promise<boolean> => {
     setLocalError(null);
     const result = await chat.sendMessage(text);
     if (result.kind === "error") {
-      setLocalError(result.message);
+      if (["BRAND_CONTEXT_REQUIRED", "BRAND_ACCESS_DENIED", "CONVERSATION_BRAND_MISMATCH", "LEGACY_CONVERSATION_UNSCOPED", "TENANT_SCOPE_UNAVAILABLE", "UNAUTHORIZED"].includes(result.code)) {
+        setRetryText(text);
+      } else if (result.code === "RATE_LIMITED") {
+        setLocalError("You have reached today’s chat limit — try again later.");
+      } else {
+        setLocalError("Ari could not connect — check your connection and try again.");
+      }
+      return false;
     }
+    setRetryText(null);
+    return true;
   };
 
   const handleConfirm = async (
@@ -217,8 +272,42 @@ export const AriChatScreen: React.FC = () => {
     chat.clearPendingAction();
   };
 
-  const displayError = localError ?? chat.errorMessage;
+  const displayError = localError;
   const noMessages = chat.messages.length === 0 && chat.conversationId == null;
+  const activeConversation = conversations.conversations.find((item) => item.id === chat.conversationId);
+  const legacyReadOnly = !!selectedBrandId && activeConversation?.brand_id === null;
+  const brandSelectionRequired = !selectedBrandId && (brands.data?.length ?? 0) > 0;
+  const brandName = currentBrand?.displayName ?? "selected brand";
+  const recovery: Recovery | null = legacyReadOnly || chat.errorCode === "LEGACY_CONVERSATION_UNSCOPED"
+    ? { code: "LEGACY_CONVERSATION_UNSCOPED", title: "This older chat is read-only", body: "It was not saved to a brand, so Ari cannot safely continue it.", action: `Start a new chat for ${brandName}` }
+    : chat.errorCode === "BRAND_ACCESS_DENIED"
+      ? { code: chat.errorCode, title: "You no longer have access to this brand", body: "Choose a brand you can access to start a new chat.", action: "Choose a brand" }
+      : chat.errorCode === "CONVERSATION_BRAND_MISMATCH"
+        ? { code: chat.errorCode, title: "This chat belongs to another brand", body: "Ari will not move a conversation between brands.", action: `Start a new chat for ${brandName}` }
+        : chat.errorCode === "TENANT_SCOPE_UNAVAILABLE"
+          ? { code: chat.errorCode, title: "Ari cannot verify your brand right now", body: "Nothing was sent. Try again in a moment.", action: "Try again" }
+          : chat.errorCode === "UNAUTHORIZED"
+            ? { code: chat.errorCode, title: "Your session expired", body: "Sign in again to keep chatting with Ari.", action: "Sign in" }
+            : brandSelectionRequired || chat.errorCode === "BRAND_CONTEXT_REQUIRED"
+              ? { code: "BRAND_CONTEXT_REQUIRED", title: "Choose a brand to chat with Ari", body: "Ari keeps each conversation tied to one brand.", action: "Choose a brand" }
+              : null;
+
+  React.useEffect(() => {
+    if (recovery) AccessibilityInfo.announceForAccessibility(`${recovery.title}. ${recovery.body}`);
+  }, [recovery?.code]);
+
+  const handleRecovery = (): void => {
+    if (recovery?.code === "TENANT_SCOPE_UNAVAILABLE" && retryText) {
+      void handleSend(retryText);
+    } else if (recovery?.code === "UNAUTHORIZED") {
+      router.replace("/" as never);
+    } else if (recovery?.code === "BRAND_CONTEXT_REQUIRED" || recovery?.code === "BRAND_ACCESS_DENIED") {
+      setBrandSwitcherOpen(true);
+    } else {
+      chat.setConversationId(null);
+      chat.clearErrorMessage();
+    }
+  };
 
   return (
     <View style={[styles.host, { paddingTop: insets.top }]}>
@@ -354,7 +443,7 @@ export const AriChatScreen: React.FC = () => {
             },
           ]}
         >
-          {suggestionsOpen ? (
+          {suggestionsOpen && !recovery ? (
             <View style={styles.suggestionsPanel}>
               <QuickReplyChips
                 chips={[
@@ -373,21 +462,31 @@ export const AriChatScreen: React.FC = () => {
           {/* #1890 — the measuring wrapper is gone with the double count it fed.
               `inputWrap`'s paddingBottom already positions this pill's bottom
               edge; nothing needs the pill's own height. */}
-          <InputBar
-            onSend={handleSend}
-            disabled={chat.isSending}
-            onShowSuggestions={() => setSuggestionsOpen((v) => !v)}
-          />
+          {recovery ? <RecoveryPanel recovery={recovery} onAction={handleRecovery} /> : (
+            <InputBar
+              onSend={handleSend}
+              disabled={chat.isSending || brands.isLoading}
+              placeholder={brands.isLoading ? "Checking brand access…" : "Ask Ari…"}
+              onShowSuggestions={() => setSuggestionsOpen((v) => !v)}
+            />
+          )}
         </View>
       </View>
 
       <ConversationDrawer
-        visible={drawerOpen}
+        visible={drawerOpen && brandScopeStable}
         onClose={() => setDrawerOpen(false)}
         conversations={conversations.conversations}
         activeId={chat.conversationId}
         onSelect={handleSelectConversation}
+        selectedBrandName={brandName}
+        hasSelectedBrand={!!selectedBrandId}
+        isLoading={conversations.isLoading}
+        isError={conversations.isError}
+        onRetry={conversations.refetch}
       />
+
+      <BrandSwitcherSheet visible={brandSwitcherOpen} onClose={() => setBrandSwitcherOpen(false)} />
 
       <AiDisclosureModal
         visible={disclosureNeeded}
@@ -448,6 +547,21 @@ const styles = StyleSheet.create({
   suggestionsPanel: {
     marginBottom: spacing.sm,
   },
+  recoveryPanel: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileElevated,
+    backgroundColor: Platform.OS === "android" ? ariThread.ariBubbleAndroid : glass.tint.profileElevated,
+    overflow: "hidden",
+    gap: spacing.sm,
+  },
+  recoveryTitle: { color: textTokens.primary, fontSize: 15, fontWeight: "600" },
+  recoveryBody: { color: textTokens.secondary, fontSize: 14, lineHeight: 20 },
+  recoveryAction: { minHeight: 44, width: "100%", alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: ariPalette.userBubble },
+  recoveryActionFocused: Platform.OS === "web" ? ({ outlineWidth: 2, outlineStyle: "solid", outlineColor: ariPalette.flame, outlineOffset: 2 } as object) : {},
+  recoveryActionText: { color: textTokens.inverse, fontWeight: "700", textAlign: "center" },
 });
 
 export default AriChatScreen;

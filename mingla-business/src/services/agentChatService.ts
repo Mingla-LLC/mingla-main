@@ -74,38 +74,38 @@ export interface ConfirmActionArgs {
 // Error extraction (mirrors app-mobile/src/utils/edgeFunctionError.ts)
 // ----------------------------------------------------------------------------
 
-async function extractError(error: unknown, fallback: string): Promise<string> {
+async function extractError(error: unknown, fallback: string): Promise<{ code: string; message: string }> {
   try {
     const err = error as Record<string, unknown> | null | undefined;
-    if (!err) return fallback;
+    if (!err) return { code: "EDGE_ERROR", message: fallback };
     const ctx = err.context as Response | undefined;
     if (ctx && typeof ctx.text === "function") {
       try {
         const raw = await ctx.text();
         try {
           const body = JSON.parse(raw);
-          if (body?.message && typeof body.message === "string") return body.message;
-          if (body?.error && typeof body.error === "string") return body.error;
+          if (body?.message && typeof body.message === "string") return { code: typeof body.code === "string" ? body.code : "EDGE_ERROR", message: body.message };
+          if (body?.error && typeof body.error === "string") return { code: typeof body.code === "string" ? body.code : "EDGE_ERROR", message: body.error };
         } catch {
-          if (raw && raw.length < 300 && !raw.startsWith("<!")) return raw;
+          if (raw && raw.length < 300 && !raw.startsWith("<!")) return { code: "EDGE_ERROR", message: raw };
         }
       } catch {
         // fall through
       }
       const status = (ctx as Response).status;
-      if (status === 401) return "Session expired — please sign in again";
-      if (status === 403) return "Not authorized for this action";
-      if (status === 410) return "This proposal expired. Ask Ari to propose it again.";
-      if (status === 429) return "You've reached today's chat limit — try again later";
+      if (status === 401) return { code: "UNAUTHORIZED", message: "Session expired — please sign in again" };
+      if (status === 403) return { code: "BRAND_ACCESS_DENIED", message: "You no longer have access to that brand." };
+      if (status === 410) return { code: "EXPIRED", message: "This proposal expired. Ask Ari to propose it again." };
+      if (status === 429) return { code: "RATE_LIMITED", message: "You've reached today's chat limit — try again later" };
     }
     const msg = err.message;
     if (typeof msg === "string" && !msg.startsWith("Edge Function returned")) {
-      return msg;
+      return { code: "EDGE_ERROR", message: msg };
     }
   } catch {
     // ignore
   }
-  return fallback;
+  return { code: "EDGE_ERROR", message: fallback };
 }
 
 // ----------------------------------------------------------------------------
@@ -117,8 +117,8 @@ export async function sendAgentMessage(args: SendMessageArgs): Promise<AgentChat
     body: args,
   });
   if (error) {
-    const message = await extractError(error, "Ari couldn't respond — try again");
-    return { kind: "error", code: "EDGE_ERROR", message };
+    const typed = await extractError(error, "Ari couldn't respond — try again");
+    return { kind: "error", ...typed };
   }
   if (!data) {
     return { kind: "error", code: "EMPTY", message: "Ari returned an empty response" };
@@ -132,8 +132,8 @@ export async function confirmAgentAction(args: ConfirmActionArgs): Promise<Agent
     { body: { action: "confirm", ...args } },
   );
   if (error) {
-    const message = await extractError(error, "Couldn't complete that action — try again");
-    return { kind: "error", code: "EDGE_ERROR", message };
+    const typed = await extractError(error, "Couldn't complete that action — try again");
+    return { kind: "error", ...typed };
   }
   if (!data) {
     return { kind: "error", code: "EMPTY", message: "Empty response" };
@@ -149,8 +149,8 @@ export async function cancelAgentAction(
     { body: { action: "cancel", pending_action_id } },
   );
   if (error) {
-    const message = await extractError(error, "Couldn't cancel — try again");
-    return { kind: "error", code: "EDGE_ERROR", message };
+    const typed = await extractError(error, "Couldn't cancel — try again");
+    return { kind: "error", ...typed };
   }
   if (!data) {
     return { kind: "error", code: "EMPTY", message: "Empty response" };
