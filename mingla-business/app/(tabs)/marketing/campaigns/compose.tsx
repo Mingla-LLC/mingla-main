@@ -287,6 +287,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [showSentConfirmation, setShowSentConfirmation] = useState(false);
   const [isSendNowConfirmation, setIsSendNowConfirmation] = useState(false);
+  const [bookDeferredConfirmationCount, setBookDeferredConfirmationCount] =
+    useState(0);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   useEffect(() => {
     if (!showReview || !isBookAudience) return;
@@ -625,6 +627,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       sanctionedExitRef.current = true;
       setShowReview(false);
       setIsSendNowConfirmation(sendMode === "now");
+      setBookDeferredConfirmationCount(0);
       setShowSentConfirmation(true);
     },
     onError: (err) => {
@@ -649,8 +652,10 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             sendMode === "now" ? null : new Date(scheduledForIso).toISOString(),
         },
         {
-          onSuccess: () => {
+          onSuccess: (result) => {
             setShowReview(false);
+            setIsSendNowConfirmation(result.mode !== "scheduled");
+            setBookDeferredConfirmationCount(result.deferred);
             setShowSentConfirmation(true);
           },
           onError: (error) => {
@@ -1376,6 +1381,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             bookConfirmMutation.isPending ||
             bookPreviewMutation.isPending
           }
+          dismissDisabled={isBookAudience && bookConfirmMutation.isPending}
           onBack={() => setShowReview(false)}
           onClose={() => setShowReview(false)}
           onConfirm={handleConfirmSchedule}
@@ -1529,6 +1535,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         <ComposerSentConfirmation
           visible={showSentConfirmation}
           isSendNow={isSendNowConfirmation}
+          deferredRecipientCount={bookDeferredConfirmationCount}
           onDismiss={() => {
             setShowSentConfirmation(false);
             sanctionedExitRef.current = true;

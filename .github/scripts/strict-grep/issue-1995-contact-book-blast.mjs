@@ -99,6 +99,14 @@ export function audit(base) {
   if (/estimatedCostMinor:\s*0[\s,}]/.test(q))
     failures.push("email/provider cost is fabricated as zero");
   if (
+    !q.includes("rewriteMarketingSmsLinks") ||
+    !q.includes("const wireBody = marketingBookSmsWireBody(") ||
+    !s.includes("rewriteMarketingSmsLinks(") ||
+    s.includes("function rewriteSmsLinks(")
+  ) {
+    failures.push("Book quote and dispatch do not share SMS wire-link semantics");
+  }
+  if (
     !p.includes('name: "Your Book"') ||
     p.includes(".catch(() => null)") ||
     !c.includes("bookPreviewMutation.mutateAsync") ||
@@ -107,6 +115,17 @@ export function audit(base) {
     !c.includes("const id = await flushDraft()")
   ) {
     failures.push("Business Book review flow incomplete");
+  }
+  if (
+    !c.includes('setIsSendNowConfirmation(result.mode !== "scheduled")') ||
+    !c.includes("deferredRecipientCount={bookDeferredConfirmationCount}") ||
+    !c.includes(
+      "dismissDisabled={isBookAudience && bookConfirmMutation.isPending}",
+    ) ||
+    !b.includes("BOOK_BLAST_DISPATCH_FAILED") ||
+    !b.includes("dismissOnScrimTap")
+  ) {
+    failures.push("Book direct confirmation can celebrate or dismiss an unproven send");
   }
   if (
     !c.includes(
@@ -177,6 +196,24 @@ function selfTest() {
         '"Send now again"',
         "not behavior-tested",
       ],
+      [
+        "quote",
+        "const wireBody = marketingBookSmsWireBody(",
+        "const wireBody = composeSmsBody(",
+        "do not share SMS wire-link semantics",
+      ],
+      [
+        "compose",
+        'setIsSendNowConfirmation(result.mode !== "scheduled")',
+        "setIsSendNowConfirmation(true)",
+        "can celebrate or dismiss an unproven send",
+      ],
+      [
+        "behavior",
+        '"BOOK_BLAST_DISPATCH_FAILED"',
+        '"BOOK_BLAST_FAILED"',
+        "can celebrate or dismiss an unproven send",
+      ],
     ];
     for (const [key, from, to, expected] of mutations) {
       const target = path.join(tmp, files[key]);
@@ -187,7 +224,7 @@ function selfTest() {
       }
       fs.writeFileSync(target, clean);
     }
-    console.log("[issue-1995-contact-book-blast] self-test PASS (8 mutations)");
+    console.log("[issue-1995-contact-book-blast] self-test PASS (11 mutations)");
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

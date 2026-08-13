@@ -42,6 +42,8 @@ import {
   buildMarketingBookQuote,
   parseBookQuotedAt,
   publicMarketingBookQuote,
+  resolveMarketingTrackingOrigin,
+  rewriteMarketingSmsLinks,
 } from "../_shared/marketingBookQuote.ts";
 import {
   type EmbeddedEvent,
@@ -654,6 +656,9 @@ interface DispatchBatchSummary {
   processed: number;
   succeeded: number;
   failed: number;
+  delivered: number;
+  deferred: number;
+  recipient_failed: number;
   preview_skipped: number;
   errors: Array<{ campaign_id: string; reason: string }>;
 }
@@ -668,11 +673,17 @@ export async function processClaimedCampaigns(
   const results: DispatchResult[] = [];
   let succeeded = 0;
   let failed = 0;
+  let deliveredTotal = 0;
+  let deferredTotal = 0;
+  let recipientFailedTotal = 0;
   let previewSkippedTotal = 0;
 
   for (const campaign of campaigns) {
     try {
       const outcome = await dispatcher(supabase, campaign, options);
+      deliveredTotal += outcome.delivered;
+      deferredTotal += outcome.deferred;
+      recipientFailedTotal += outcome.failed;
       previewSkippedTotal += outcome.preview_skipped;
       const { error: finalizeErr } = await supabase.rpc(
         "mkt_finalize_campaign",
@@ -710,6 +721,9 @@ export async function processClaimedCampaigns(
     processed: campaigns.length,
     succeeded,
     failed,
+    delivered: deliveredTotal,
+    deferred: deferredTotal,
+    recipient_failed: recipientFailedTotal,
     preview_skipped: previewSkippedTotal,
     errors: results
       .filter((result) => result.status === "failed")
@@ -1058,39 +1072,6 @@ interface SmsContact {
  * — NEVER a public shortener. Each rewritten link gets a marketing_clicks row so
  * attribution + per-campaign click tracking works identically to email.
  */
-function rewriteSmsLinks(
-  body: string,
-): {
-  rewritten: string;
-  links: Array<{ tracking_id: string; destination_url: string }>;
-} {
-  const links: Array<{ tracking_id: string; destination_url: string }> = [];
-  const origin = getTrackingRedirectOrigin();
-  const urlRe = /https?:\/\/[^\s]+/g;
-  const rewritten = body.replace(urlRe, (match) => {
-    // Strip a trailing sentence punctuation so it isn't swallowed into the URL.
-    const trailingMatch = match.match(/[.,;:!?)]+$/);
-    const trailing = trailingMatch ? trailingMatch[0] : "";
-    const destination = trailing.length > 0
-      ? match.slice(0, match.length - trailing.length)
-      : match;
-    const trackingId = generateTrackingId();
-    links.push({ tracking_id: trackingId, destination_url: destination });
-    return `${origin}/${trackingId}${trailing}`;
-  });
-  return { rewritten, links };
-}
-
-function getTrackingRedirectOrigin(): string {
-  const override = Deno.env.get("MINGLA_TRACKING_LINK_ORIGIN");
-  if (override !== undefined && override.trim().length > 0) {
-    return override.replace(/\/+$/, "");
-  }
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")?.replace(/\/+$/, "") ??
-    "https://gqnoajqerqhnvulmnyvv.supabase.co";
-  return `${supabaseUrl}/functions/v1/marketing-track-click`;
-}
-
 // META-ORCH-1161 go-live-prep (P3-1 carry-forward) — US NANP area-code → IANA
 // timezone. The prior quiet-hours logic anchored EVERY US number to
 // America/New_York, so a +1 West-Coast recipient was evaluated at Eastern time
@@ -1626,7 +1607,11 @@ async function sendSms(
 
       // disposition.action === "send" — in-window: existing send path.
       // Branded links + per-link click rows.
-      const { rewritten, links } = rewriteSmsLinks(rawBody);
+      const { rewritten, links } = rewriteMarketingSmsLinks(
+        rawBody,
+        resolveMarketingTrackingOrigin(),
+        generateTrackingId,
+      );
       if (
         links.some((link) =>
           link.destination_url.includes("oi=") ||
@@ -1660,7 +1645,7 @@ async function sendSms(
 
       if (links.length > 0) {
         // Clicks are written only on the actual send pass (a deferred row wrote
-        // none). Each send re-runs rewriteSmsLinks producing fresh unique
+        // none). Each send re-runs rewriteMarketingSmsLinks producing fresh unique
         // tracking_ids — no dup because a recipient sends at most once.
         const { error: insClicksErr } = await supabase
           .from("marketing_clicks")

@@ -54,6 +54,7 @@ export function validatedSmsRates(now: Date): SmsRateV1[] {
 export function allocateSmsCosts<T>(
   inputs: SmsCostInput<T>[],
   now: Date,
+  suppliedRates?: SmsRateV1[],
 ): {
   allocations: SmsCostAllocation<T>[];
   estimatedCostMinor: number;
@@ -62,7 +63,7 @@ export function allocateSmsCosts<T>(
   if (inputs.length === 0) {
     return { allocations: [], estimatedCostMinor: 0, currency: null };
   }
-  const rates = validatedSmsRates(now);
+  const rates = suppliedRates ?? validatedSmsRates(now);
   const fractions = inputs.map((input) => {
     const country = countryFromE164(input.normalizedPhone);
     if (

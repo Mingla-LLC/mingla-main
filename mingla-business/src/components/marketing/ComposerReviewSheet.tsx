@@ -26,6 +26,7 @@ export interface ComposerReviewSheetProps {
   scheduledLabel: string;
   isSendNow: boolean;
   submitting: boolean;
+  dismissDisabled?: boolean;
   onBack: () => void;
   onClose: () => void;
   onConfirm: () => void;
@@ -72,6 +73,7 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
   scheduledLabel,
   isSendNow,
   submitting,
+  dismissDisabled = false,
   onBack,
   onClose,
   onConfirm,
@@ -93,13 +95,19 @@ export const ComposerReviewSheet: React.FC<ComposerReviewSheetProps> = ({
   staleDetail,
 }) => {
   const ctaLabel = isSendNow ? "Send now" : "Schedule";
+  const handleClose = dismissDisabled ? () => {} : onClose;
   // ORCH-1270 F-1 — always show the SMS timing info note on an SMS Send-now
   // review. Informational (not a warning): it tells the operator that off-hours
   // recipients are held and auto-sent in their next window, nothing is lost.
   const showSmsInfoNote = isSendNow && smsInfoNote === true;
   const scheduleForLabel = `Schedule for ${nextWindowLabel ?? ""}`.trim();
   return (
-    <Sheet visible={visible} onClose={onClose} snapPoint="half">
+    <Sheet
+      visible={visible}
+      onClose={handleClose}
+      dismissOnScrimTap={!dismissDisabled}
+      snapPoint="half"
+    >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.title}>Ready to send?</Text>
         <Text style={styles.subtitle}>

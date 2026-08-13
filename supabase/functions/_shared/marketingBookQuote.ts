@@ -1,7 +1,57 @@
 import { composeSmsBody, computeSegments } from "./adapters/smsAdapter.ts";
 import { allocateSmsCosts } from "./smsPriceBook.ts";
+import type { SmsRateV1 } from "./smsPriceBook.ts";
 
 const HEX = /^[0-9a-f]{64}$/;
+const QUOTE_TRACKING_ID = "00000000-0000-4000-8000-000000000000";
+
+export interface MarketingSmsLink {
+  tracking_id: string;
+  destination_url: string;
+}
+
+export function resolveMarketingTrackingOrigin(
+  getEnv: (name: string) => string | undefined = (name) => Deno.env.get(name),
+): string {
+  const override = getEnv("MINGLA_TRACKING_LINK_ORIGIN");
+  if (override !== undefined && override.trim().length > 0) {
+    return override.replace(/\/+$/, "");
+  }
+  const supabaseUrl = getEnv("SUPABASE_URL")?.replace(/\/+$/, "") ??
+    "https://gqnoajqerqhnvulmnyvv.supabase.co";
+  return `${supabaseUrl}/functions/v1/marketing-track-click`;
+}
+
+/** One owner for the exact SMS body shape used by both Book quotes and send. */
+export function rewriteMarketingSmsLinks(
+  body: string,
+  origin: string,
+  createTrackingId: () => string = () => crypto.randomUUID(),
+): { rewritten: string; links: MarketingSmsLink[] } {
+  const links: MarketingSmsLink[] = [];
+  const rewritten = body.replace(/https?:\/\/[^\s]+/g, (match) => {
+    const trailingMatch = match.match(/[.,;:!?)]+$/);
+    const trailing = trailingMatch ? trailingMatch[0] : "";
+    const destination = trailing.length > 0
+      ? match.slice(0, match.length - trailing.length)
+      : match;
+    const trackingId = createTrackingId();
+    links.push({ tracking_id: trackingId, destination_url: destination });
+    return `${origin}/${trackingId}${trailing}`;
+  });
+  return { rewritten, links };
+}
+
+export function marketingBookSmsWireBody(
+  rawBody: string,
+  trackingOrigin: string,
+): string {
+  return composeSmsBody(
+    rewriteMarketingSmsLinks(rawBody, trackingOrigin, () => QUOTE_TRACKING_ID)
+      .rewritten,
+    true,
+  );
+}
 export interface MarketingBookCandidate {
   brandPersonId: string;
   contactMethodId: string | null;
@@ -55,6 +105,7 @@ function stable(value: unknown): string {
 export async function buildMarketingBookQuote(
   input: MarketingBookCandidateResponse,
   now = new Date(),
+  options: { trackingOrigin?: string; smsRates?: SmsRateV1[] } = {},
 ) {
   now = new Date(Math.floor(now.getTime() / 1000) * 1000);
   if (
@@ -79,7 +130,10 @@ export async function buildMarketingBookQuote(
   );
   let estimatedCostMinor: number | null = null, currency: string | null = null;
   if (input.channel === "sms" && reachable.length > 0) {
-    const wireBody = composeSmsBody(String(input.content.body ?? ""), true);
+    const wireBody = marketingBookSmsWireBody(
+      String(input.content.body ?? ""),
+      options.trackingOrigin ?? resolveMarketingTrackingOrigin(),
+    );
     const segments = computeSegments(wireBody);
     const priced = allocateSmsCosts(
       reachable.map((candidate) => {
@@ -94,6 +148,7 @@ export async function buildMarketingBookQuote(
         };
       }),
       now,
+      options.smsRates,
     );
     estimatedCostMinor = priced.estimatedCostMinor;
     currency = priced.currency;

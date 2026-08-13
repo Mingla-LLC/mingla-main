@@ -253,7 +253,9 @@ export class MarketingBookSendError extends Error {
     this.name = "MarketingBookSendError";
   }
 }
-async function parseMarketingBookError(error: unknown): Promise<MarketingBookSendError> {
+async function parseMarketingBookError(
+  error: unknown,
+): Promise<MarketingBookSendError> {
   const context = (error as { context?: { json?: () => Promise<unknown> } })
     .context;
   const payload =
@@ -293,8 +295,12 @@ export async function confirmMarketingBook(input: {
   client_request_id: string;
   quote: MarketingBookQuote;
   scheduled_for: string | null;
-}): Promise<void> {
-  const { error } = await supabase.functions.invoke("marketing-send", {
+}): Promise<{
+  mode: "sent" | "deferred" | "scheduled";
+  delivered: number;
+  deferred: number;
+}> {
+  const { data, error } = await supabase.functions.invoke("marketing-send", {
     body: {
       action: "confirm_book_v1",
       campaign_id: input.campaign_id,
@@ -309,6 +315,43 @@ export async function confirmMarketingBook(input: {
   if (error) {
     throw await parseMarketingBookError(error);
   }
+  if (input.scheduled_for !== null) {
+    return { mode: "scheduled", delivered: 0, deferred: 0 };
+  }
+  const dispatch = (
+    data as {
+      dispatch?: {
+        processed?: number;
+        succeeded?: number;
+        failed?: number;
+        delivered?: number;
+        deferred?: number;
+        recipient_failed?: number;
+        preview_skipped?: number;
+        errors?: unknown[];
+      };
+    } | null
+  )?.dispatch;
+  if (
+    dispatch?.processed !== 1 ||
+    dispatch.succeeded !== 1 ||
+    dispatch.failed !== 0 ||
+    dispatch.preview_skipped !== 0 ||
+    dispatch.recipient_failed !== 0 ||
+    (dispatch.delivered ?? -1) + (dispatch.deferred ?? -1) !==
+      input.quote.reachableCount ||
+    !Array.isArray(dispatch.errors) ||
+    dispatch.errors.length !== 0
+  ) {
+    throw new MarketingBookSendError("BOOK_BLAST_DISPATCH_FAILED", null);
+  }
+  const delivered = dispatch.delivered ?? 0;
+  const deferred = dispatch.deferred ?? 0;
+  return {
+    mode: deferred > 0 ? "deferred" : "sent",
+    delivered,
+    deferred,
+  };
 }
 
 /**

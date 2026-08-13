@@ -5,10 +5,17 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   buildMarketingBookQuote,
+  marketingBookSmsWireBody,
   parseBookQuotedAt,
   publicMarketingBookQuote,
+  resolveMarketingTrackingOrigin,
+  rewriteMarketingSmsLinks,
 } from "../_shared/marketingBookQuote.ts";
-import { bookRpcErrorEnvelope, dispatchConfirmedBookSend } from "./index.ts";
+import {
+  bookRpcErrorEnvelope,
+  dispatchConfirmedBookSend,
+  processClaimedCampaigns,
+} from "./index.ts";
 
 Deno.test("#1995 quotedAt reproduces through five minutes and fails closed", async () => {
   const input = {
@@ -219,4 +226,118 @@ Deno.test("#1995 MMS fails before quote", async () => {
     Error,
     "book_blast_mms_not_supported",
   );
+});
+
+Deno.test("#1995 linked SMS quote prices the exact tracking-link wire boundary", async () => {
+  const trackingOrigin = "https://go.usemingla.com/m";
+  assertEquals(
+    resolveMarketingTrackingOrigin((name) =>
+      name === "MINGLA_TRACKING_LINK_ORIGIN"
+        ? `${trackingOrigin}///`
+        : undefined
+    ),
+    trackingOrigin,
+  );
+  const rawBody = `${"A".repeat(71)} https://x.co/a).`;
+  const trackingId = "12345678-1234-4234-8234-123456789abc";
+  const rewritten = rewriteMarketingSmsLinks(
+    rawBody,
+    trackingOrigin,
+    () => trackingId,
+  );
+  assertEquals(rewritten.links, [{
+    tracking_id: trackingId,
+    destination_url: "https://x.co/a",
+  }]);
+  assert(
+    rewritten.rewritten.endsWith(
+      ` ${trackingOrigin}/${trackingId}).`,
+    ),
+  );
+  const wireBody = marketingBookSmsWireBody(rawBody, trackingOrigin);
+  assert(
+    wireBody.includes(
+      `${trackingOrigin}/00000000-0000-4000-8000-000000000000).`,
+    ),
+  );
+  const quote = await buildMarketingBookQuote(
+    {
+      brandId: crypto.randomUUID(),
+      channel: "sms",
+      selectedCount: 1,
+      content: { kind: "sms", body: rawBody },
+      candidates: [{
+        brandPersonId: crypto.randomUUID(),
+        contactMethodId: crypto.randomUUID(),
+        normalizedContact: "+12025550123",
+        allowed: true,
+        safeReasonCode: "allowed",
+      }],
+    },
+    new Date("2026-08-13T12:00:00.000Z"),
+    {
+      trackingOrigin,
+      smsRates: [{
+        rateId: "twilio-us-test",
+        provider: "twilio",
+        country: "US",
+        currency: "USD",
+        unit: "sms_segment",
+        minorNumerator: 100,
+        minorDenominator: 1,
+        effectiveAt: "2026-08-01T00:00:00.000Z",
+        expiresAt: "2026-09-01T00:00:00.000Z",
+        sourceReference: "test-rate",
+      }],
+    },
+  );
+  assertEquals(quote.smsSegments, 2);
+  assertEquals(quote.estimatedCostMinor, 200);
+});
+
+Deno.test("#1995 non-throwing provider rejection remains a zero-delivery summary", async () => {
+  const campaign = {
+    id: crypto.randomUUID(),
+    account_id: crypto.randomUUID(),
+    brand_id: crypto.randomUUID(),
+    audience_id: crypto.randomUUID(),
+    channel: "email",
+    channel_payload: {
+      kind: "email" as const,
+      subject: "Hi",
+      body_html: "Hi",
+      body_text: "Hi",
+    },
+    name: "Hi",
+    scheduled_for: new Date().toISOString(),
+  };
+  const client = {
+    rpc: async (name: string) => {
+      if (name === "mkt_finalize_campaign") {
+        return { data: null, error: null };
+      }
+      throw new Error(`unexpected_rpc:${name}`);
+    },
+  };
+  const summary = await processClaimedCampaigns(
+    client,
+    [campaign],
+    { live: true, resendApiKey: "unused" },
+    async () => ({
+      delivered: 0,
+      deferred: 0,
+      failed: 0,
+      preview_skipped: 0,
+    }),
+  );
+  assertEquals(summary, {
+    processed: 1,
+    succeeded: 1,
+    failed: 0,
+    delivered: 0,
+    deferred: 0,
+    recipient_failed: 0,
+    preview_skipped: 0,
+    errors: [],
+  });
 });

@@ -8,12 +8,44 @@ jest.mock("../../ui/Sheet", () => ({
   Sheet: ({
     visible,
     children,
-  }: React.PropsWithChildren<{ visible: boolean }>): React.ReactNode =>
-    visible ? children : null,
+    ...props
+  }: React.PropsWithChildren<{ visible: boolean }>): React.ReactNode => {
+    const LocalReact = require("react") as typeof React;
+    return visible
+      ? LocalReact.createElement(
+          "MockSheet",
+          { ...props, accessibilityLabel: "Mock sheet" },
+          children,
+        )
+      : null;
+  },
 }));
 jest.mock("../../../services/supabase", () => ({
   supabase: { functions: { invoke: jest.fn() } },
 }));
+jest.mock("react-native-reanimated", () => {
+  const LocalReact = require("react") as typeof React;
+  const AnimatedView = ({ children, ...props }: React.PropsWithChildren) =>
+    LocalReact.createElement("AnimatedView", props, children);
+  return {
+    __esModule: true,
+    default: { View: AnimatedView },
+    Easing: { bezier: jest.fn(), out: jest.fn(), cubic: "cubic" },
+    useReducedMotion: () => true,
+    useSharedValue: (value: unknown) => ({ value }),
+    useAnimatedStyle: (factory: () => unknown) => factory(),
+    withDelay: (_delay: number, value: unknown) => value,
+    withSequence: (...values: unknown[]) => values.at(-1),
+    withSpring: (value: unknown) => value,
+    withTiming: (value: unknown) => value,
+  };
+});
+jest.mock("expo-haptics", () => ({
+  NotificationFeedbackType: { Success: "success" },
+  notificationAsync: jest.fn(),
+  selectionAsync: jest.fn(),
+}));
+jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
 
 import { supabase } from "../../../services/supabase";
 import {
@@ -27,6 +59,7 @@ import {
   isBookBlastFeatureReady,
 } from "../../../hooks/marketing/useBookBlastPreview";
 import { ComposerReviewSheet } from "../ComposerReviewSheet";
+import { ComposerSentConfirmation } from "../ComposerSentConfirmation";
 import type { MarketingBookQuote } from "../../../types/marketing";
 
 const TestRenderer = require("react-test-renderer") as {
@@ -195,6 +228,28 @@ describe("#1995 rendered Book review behavior", () => {
     pressByLabel(tree, "Confirm updated send");
     expect(confirmed).toBe(true);
   });
+
+  it("cannot dismiss an atomic Book confirmation while it is submitting", () => {
+    const close = jest.fn();
+    let tree!: RenderedTree;
+    TestRenderer.act(() => {
+      tree = TestRenderer.create(
+        <ComposerReviewSheet
+          {...reviewProps({
+            submitting: true,
+            dismissDisabled: true,
+            onClose: close,
+          })}
+        />,
+      );
+    });
+    const sheet = tree.root.findAll(
+      (node) => node.props.accessibilityLabel === "Mock sheet",
+    )[0];
+    expect(sheet.props.dismissOnScrimTap).toBe(false);
+    TestRenderer.act(() => (sheet.props.onClose as () => void)());
+    expect(close).not.toHaveBeenCalled();
+  });
 });
 
 test("feature flags fail closed while cached true values refetch", () => {
@@ -244,4 +299,150 @@ test("Book Functions errors are parsed while legacy sendNow remains raw", async 
   await expect(sendNow("00000000-0000-4000-8000-000000000000")).rejects.toBe(
     raw,
   );
+});
+
+test("Book confirmation reports sent only for a truthful direct dispatch", async () => {
+  const invoke = supabase.functions.invoke as jest.Mock;
+  invoke.mockResolvedValueOnce({
+    data: {
+      dispatch: {
+        processed: 1,
+        succeeded: 1,
+        failed: 0,
+        delivered: 1,
+        deferred: 0,
+        recipient_failed: 0,
+        preview_skipped: 0,
+        errors: [],
+      },
+    },
+    error: null,
+  });
+  await expect(
+    confirmMarketingBook({
+      campaign_id: "campaign",
+      client_request_id: "request",
+      quote,
+      scheduled_for: null,
+    }),
+  ).resolves.toEqual({ mode: "sent", delivered: 1, deferred: 0 });
+
+  for (const dispatch of [
+    {
+      processed: 1,
+      succeeded: 0,
+      failed: 1,
+      delivered: 0,
+      deferred: 0,
+      recipient_failed: 0,
+      preview_skipped: 0,
+      errors: [{}],
+    },
+    {
+      processed: 1,
+      succeeded: 1,
+      failed: 0,
+      delivered: 0,
+      deferred: 0,
+      recipient_failed: 0,
+      preview_skipped: 1,
+      errors: [],
+    },
+    {
+      processed: 0,
+      succeeded: 0,
+      failed: 0,
+      delivered: 0,
+      deferred: 0,
+      recipient_failed: 0,
+      preview_skipped: 0,
+      errors: [],
+    },
+    // Provider rejection can be a non-throwing campaign result. Zero accepted
+    // or deferred recipients must still fail the Book send-now confirmation.
+    {
+      processed: 1,
+      succeeded: 1,
+      failed: 0,
+      delivered: 0,
+      deferred: 0,
+      recipient_failed: 0,
+      preview_skipped: 0,
+      errors: [],
+    },
+  ]) {
+    invoke.mockResolvedValueOnce({ data: { dispatch }, error: null });
+    await expect(
+      confirmMarketingBook({
+        campaign_id: "campaign",
+        client_request_id: "request",
+        quote,
+        scheduled_for: null,
+      }),
+    ).rejects.toMatchObject({
+      code: "BOOK_BLAST_DISPATCH_FAILED",
+    });
+  }
+
+  invoke.mockResolvedValueOnce({
+    data: {
+      dispatch: {
+        processed: 1,
+        succeeded: 1,
+        failed: 0,
+        delivered: 0,
+        deferred: 1,
+        recipient_failed: 0,
+        preview_skipped: 0,
+        errors: [],
+      },
+    },
+    error: null,
+  });
+  await expect(
+    confirmMarketingBook({
+      campaign_id: "campaign",
+      client_request_id: "request",
+      quote,
+      scheduled_for: null,
+    }),
+  ).resolves.toEqual({ mode: "deferred", delivered: 0, deferred: 1 });
+
+  invoke.mockResolvedValueOnce({ data: {}, error: null });
+  await expect(
+    confirmMarketingBook({
+      campaign_id: "campaign",
+      client_request_id: "request",
+      quote,
+      scheduled_for: "2026-08-14T12:00:00.000Z",
+    }),
+  ).resolves.toEqual({ mode: "scheduled", delivered: 0, deferred: 0 });
+});
+
+test("Book confirmation renders truthful deferred local-hours copy", () => {
+  let tree!: RenderedTree;
+  TestRenderer.act(() => {
+    tree = TestRenderer.create(
+      <ComposerSentConfirmation
+        visible
+        isSendNow
+        deferredRecipientCount={2}
+        onDismiss={jest.fn()}
+        onViewInCampaigns={jest.fn()}
+      />,
+    );
+  });
+  expect(
+    tree.root.findAll((node) => node.props.children === "Sending started.")
+      .length,
+  ).toBeGreaterThan(0);
+  expect(
+    tree.root.findAll(
+      (node) =>
+        typeof node.props.children === "string" &&
+        node.props.children.includes(
+          "2 recipients are held for allowed local messaging hours",
+        ),
+    ).length,
+  ).toBeGreaterThan(0);
 });
