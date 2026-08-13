@@ -8,6 +8,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const files = {
   page: "mingla-business/src/components/people/PeoplePage.tsx",
   primitives: "mingla-business/src/components/people/PeoplePrimitives.tsx",
+  overview: "mingla-business/app/(tabs)/marketing/index.tsx",
+  campaigns: "mingla-business/app/(tabs)/marketing/campaigns/index.tsx",
   route: "mingla-business/app/(tabs)/marketing/people/index.tsx",
   happy: "mingla-business/src/components/people/__tests__/PeoplePage.issue2024.happy.test.tsx",
   preservedHappy:
@@ -32,6 +34,8 @@ export function audit(base) {
   };
   const page = read("page");
   const primitives = read("primitives");
+  const overview = read("overview");
+  const campaigns = read("campaigns");
   const route = read("route");
   const happy = read("happy");
   const preservedHappy = read("preservedHappy");
@@ -68,19 +72,26 @@ export function audit(base) {
   if (!page.includes("const fabOffset = useStickyFooterOffset();")) {
     failures.push("People FAB bottom no longer comes from useStickyFooterOffset");
   }
-  if (!page.includes("paddingBottom: fabOffset + FAB_HEIGHT + spacing.md")) {
-    failures.push("People content no longer clears the FAB by the approved amount");
+  if (!page.includes("paddingBottom: 120")) {
+    failures.push("People no longer uses the established sibling FAB scroll clearance");
   }
   if (/marginBottom\s*:\s*fabOffset\s*\+\s*FAB_HEIGHT/.test(page)) {
     failures.push("People restored the forbidden full-width FAB bottom bar");
   }
-  if (
-    !page.includes("floatingActionInset={isWideDesktop ? undefined : fabWidth + spacing.md}") ||
-    !page.includes("floatingActionInset={fabWidth + spacing.md}") ||
-    !page.includes("setFabWidth((currentWidth) => Math.max(currentWidth, measuredWidth))") ||
-    !primitives.includes("floatingActionInset!==undefined?{paddingRight:floatingActionInset}:undefined")
-  ) {
-    failures.push("People lost the measured local FAB-side content exclusion");
+  if (/floatingActionInset|people-fab-exclusion|LinearGradient|PanResponder|fabSize|marginBottom\s*:\s*fabOffset|paddingRight\s*:\s*(?:fab|shield)/.test(`${page}\n${primitives}`)) {
+    failures.push("People introduced custom FAB exclusion geometry instead of the sibling pattern");
+  }
+  const siblingFabMarkers = [
+    'position: "absolute"',
+    "right: spacing.md",
+    "minHeight: 48",
+    "paddingHorizontal: spacing.md",
+    "paddingVertical: spacing.sm",
+    'backgroundColor: "rgba(235, 120, 37, 0.42)"',
+    "pressed ? styles.fabPressed : null",
+  ];
+  if (siblingFabMarkers.some((marker) => !page.includes(marker) || !overview.includes(marker) || !campaigns.includes(marker))) {
+    failures.push("People New campaign FAB diverged from the established Overview/Campaigns contract");
   }
   if (!page.includes('testID="people-new-campaign"') || !page.includes('accessibilityLabel="New campaign"')) {
     failures.push("People lost the labelled New campaign action");
@@ -92,11 +103,11 @@ export function audit(base) {
   if (!page.includes('pointerEvents={modalOpen ? "none" : "auto"}') || !page.includes("accessibilityElementsHidden={modalOpen}")) {
     failures.push("People modal state no longer isolates the workspace and FAB");
   }
-  if (!happy.includes("TestRenderer.create(<PeoplePage />)") || !happy.includes('node.props.testID === "people-new-campaign"')) {
+  if (!happy.includes("TestRenderer.create(<PeoplePage />") || !happy.includes('node.props.testID === "people-new-campaign"')) {
     failures.push("issue #2024 happy guard no longer renders the real PeoplePage and campaign action");
   }
-  if (!happy.includes("marginBottom).toBeUndefined()") || !happy.includes("paddingRight - 200")) {
-    failures.push("issue #2024 rendered guard no longer rejects both overlap and viewport shrink");
+  if (!happy.includes("marginBottom).toBeUndefined()") || !happy.includes('paddingBottom).toBe(120)') || !happy.includes('people-fab-exclusion')) {
+    failures.push("issue #2024 rendered guard no longer proves sibling FAB geometry and full cards");
   }
   if (!workflow.includes("PeoplePage.issue2024.happy.test.tsx") || !workflow.includes("issue-2024-people-page-layout.mjs --self-test") || !workflow.includes("issue-2024-people-page-layout.mjs")) {
     failures.push("issue #2024 happy/static guards are not both CI-wired");
@@ -158,18 +169,12 @@ function selfTest() {
       "useStickyFooterOffset",
     );
     expectMutation(
-      "local FAB-side lane deleted",
+      "custom FAB halo restored",
       () => {
         const source = fs.readFileSync(target("page"), "utf8");
-        fs.writeFileSync(
-          target("page"),
-          source.replace(
-            "floatingActionInset={fabWidth + spacing.md}",
-            "floatingActionInset={undefined}",
-          ),
-        );
+        fs.writeFileSync(target("page"), `${source}\nconst revertedShield = "people-fab-exclusion";\n`);
       },
-      "measured local FAB-side content exclusion",
+      "custom FAB exclusion geometry",
     );
     expectMutation(
       "global FAB bottom bar restored",
@@ -183,18 +188,20 @@ function selfTest() {
       "forbidden full-width FAB bottom bar",
     );
     expectMutation(
-      "PeopleBlock stops applying the local lane",
+      "whole-card inset restored",
+      () => fs.appendFileSync(target("primitives"), "\nconst revertedCard = { paddingRight: fabWidth };\n"),
+      "custom FAB exclusion geometry",
+    );
+    expectMutation(
+      "sibling scroll clearance changed",
       () => {
-        const source = fs.readFileSync(target("primitives"), "utf8");
+        const source = fs.readFileSync(target("page"), "utf8");
         fs.writeFileSync(
-          target("primitives"),
-          source.replace(
-            "floatingActionInset!==undefined?{paddingRight:floatingActionInset}:undefined",
-            "undefined",
-          ),
+          target("page"),
+          source.replace("paddingBottom: 120", "paddingBottom: 184"),
         );
       },
-      "measured local FAB-side content exclusion",
+      "established sibling FAB scroll clearance",
     );
     expectMutation(
       "campaign action deleted",

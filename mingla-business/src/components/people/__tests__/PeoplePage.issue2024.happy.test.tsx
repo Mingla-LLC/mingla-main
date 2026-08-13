@@ -108,15 +108,13 @@ jest.mock("../PeoplePrimitives", () => ({
     count,
     children,
     testID,
-    floatingActionInset,
   }: {
     title: string;
     count?: string;
     children: React.ReactNode;
     testID?: string;
-    floatingActionInset?: number;
   }) => (
-    <View testID={testID} style={{ paddingRight: floatingActionInset ?? 0 }}>
+    <View testID={testID} style={{ width: "100%", padding: 16 }}>
       <Text accessibilityRole="header">{title}</Text>
       {count !== undefined ? <Text>{count}</Text> : null}
       {children}
@@ -216,8 +214,10 @@ describe("issue #2024 rendered People workspace happy path", () => {
     const groupsBlock = tree.root.find(
       (node: any) => node.type === View && node.props.testID === "people-groups-block",
     );
-    expect(StyleSheet.flatten(bookBlock.props.style).paddingRight).toBe(0);
-    expect(StyleSheet.flatten(groupsBlock.props.style).paddingRight).toBe(176);
+    expect(StyleSheet.flatten(bookBlock.props.style)).toMatchObject({ width: "100%", padding: 16 });
+    expect(StyleSheet.flatten(groupsBlock.props.style)).toMatchObject({ width: "100%", padding: 16 });
+    expect(StyleSheet.flatten(bookBlock.props.style).paddingRight).toBeUndefined();
+    expect(StyleSheet.flatten(groupsBlock.props.style).paddingRight).toBeUndefined();
   });
 
   test("keeps one visually hidden People heading without a visible duplicate", () => {
@@ -242,7 +242,7 @@ describe("issue #2024 rendered People workspace happy path", () => {
     expect(StyleSheet.flatten(fab.props.style({ pressed: false }))).toMatchObject({ bottom: 120 });
     const scroll = tree.root.findByType(ScrollView);
     expect(StyleSheet.flatten(scroll.props.contentContainerStyle)).toMatchObject({
-      paddingBottom: 184,
+      paddingBottom: 120,
     });
     TestRenderer.act(() => fab.props.onPress());
     expect(router.push).toHaveBeenCalledTimes(1);
@@ -252,47 +252,34 @@ describe("issue #2024 rendered People workspace happy path", () => {
   test.each([
     { name: "iPhone SE", width: 320, height: 568, bottom: 120 },
     { name: "modern compact", width: 390, height: 844, bottom: 132 },
-  ])("keeps a full-height canvas and a local clear lane beside the FAB on $name", ({ width, bottom }) => {
+  ])("matches the sibling full-canvas FAB contract on $name", ({ width, bottom }) => {
     layout = { isWideDesktop: false, isWeb: false, width };
     stickyOffset = bottom;
     renderPage();
-    const fab = campaignFabs()[0];
     const scroll = tree.root.findByType(ScrollView);
     const scrollStyle = StyleSheet.flatten(scroll.props.style);
     const contentStyle = StyleSheet.flatten(scroll.props.contentContainerStyle);
-    const bookStyle = StyleSheet.flatten(
-      tree.root.find(
-        (node: any) => node.type === View && node.props.testID === "people-book-block",
-      ).props.style,
-    );
-    const groupsStyle = StyleSheet.flatten(
-      tree.root.find(
-        (node: any) => node.type === View && node.props.testID === "people-groups-block",
-      ).props.style,
-    );
     expect(scrollStyle?.marginBottom).toBeUndefined();
-    expect(bookStyle.paddingRight - 160).toBeGreaterThanOrEqual(16);
-    expect(groupsStyle.paddingRight - 160).toBeGreaterThanOrEqual(16);
-    expect(contentStyle.paddingBottom).toBe(bottom + 48 + 16);
-    TestRenderer.act(() =>
-      fab.props.onLayout({ nativeEvent: { layout: { width: 200 } } }),
+    expect(contentStyle.paddingBottom).toBe(120);
+    expect(tree.root.findAllByProps({ testID: "people-fab-exclusion" })).toHaveLength(0);
+    const bookStyle = StyleSheet.flatten(
+      tree.root.find((node: any) => node.type === View && node.props.testID === "people-book-block")
+        .props.style,
     );
-    const enlargedBookStyle = StyleSheet.flatten(
-      tree.root.find(
-        (node: any) => node.type === View && node.props.testID === "people-book-block",
-      ).props.style,
+    expect(bookStyle).toMatchObject({ width: "100%", padding: 16 });
+    expect(bookStyle.paddingRight).toBeUndefined();
+    const groupsStyle = StyleSheet.flatten(
+      tree.root.find((node: any) => node.type === View && node.props.testID === "people-groups-block")
+        .props.style,
     );
-    expect(enlargedBookStyle.paddingRight - 200).toBeGreaterThanOrEqual(16);
-  });
-
-  test("makes campaign-action state changes instantaneous for reduced motion", () => {
-    Object.defineProperty(globalThis, "matchMedia", {
-      configurable: true,
-      value: () => ({ matches: true }),
-    });
-    renderPage();
+    expect(groupsStyle).toMatchObject({ width: "100%", padding: 16 });
+    expect(groupsStyle.paddingRight).toBeUndefined();
     expect(StyleSheet.flatten(campaignFabs()[0].props.style({ pressed: false }))).toMatchObject({
-      transitionDuration: "0ms",
+      right: 16,
+      bottom,
+      minHeight: 48,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
     });
   });
 

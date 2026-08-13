@@ -1,6 +1,5 @@
 import React from "react";
 import {
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,8 +18,6 @@ import { useShareNetworkState } from "../ui/useShareNetworkState";
 import {
   accent,
   canvas,
-  durations,
-  easings,
   glass,
   radius,
   shadows,
@@ -53,34 +50,9 @@ import {
 } from "./PeoplePrimitives";
 import { useMarketingBrandSwitcher } from "./MarketingBrandSwitcherContext";
 
-const FAB_HEIGHT = 48;
-const FAB_FALLBACK_WIDTH = 160;
-const FAB_BASE_BACKGROUND = "rgba(235, 120, 37, 0.42)";
-const FAB_HOVER_BACKGROUND = "rgba(235, 120, 37, 0.52)";
 
 const contacts = (count: number | null): string | undefined =>
   count === null ? undefined : `${count} ${count === 1 ? "contact" : "contacts"}`;
-
-const useWebReducedMotion = (): boolean => {
-  const [reduced, setReduced] = React.useState(false);
-  React.useEffect(() => {
-    const mql = (
-      globalThis as unknown as {
-        matchMedia?: (query: string) => {
-          matches: boolean;
-          addEventListener?: (type: string, listener: () => void) => void;
-          removeEventListener?: (type: string, listener: () => void) => void;
-        };
-      }
-    ).matchMedia?.("(prefers-reduced-motion: reduce)");
-    if (mql === undefined) return;
-    setReduced(mql.matches);
-    const onChange = (): void => setReduced(mql.matches);
-    mql.addEventListener?.("change", onChange);
-    return (): void => mql.removeEventListener?.("change", onChange);
-  }, []);
-  return reduced;
-};
 
 function PageHeading(): React.ReactElement {
   return (
@@ -164,7 +136,6 @@ export function PeoplePage(): React.ReactElement {
   const online = useShareNetworkState();
   const openBrandSwitcher = useMarketingBrandSwitcher();
   const { isWideDesktop, width } = useResponsiveLayout();
-  const reduceMotion = useWebReducedMotion();
   const fabOffset = useStickyFooterOffset();
   const actionColumns = width > 0 && width < 352 ? 1 : isWideDesktop ? 3 : 2;
   const regularActionCell = {
@@ -204,9 +175,6 @@ export function PeoplePage(): React.ReactElement {
   const [groupsOpen, setGroupsOpen] = React.useState(false);
   const [addOpen, setAddOpen] = React.useState(false);
   const [creatingKey, setCreatingKey] = React.useState<string | null>(null);
-  const [fabHovered, setFabHovered] = React.useState(false);
-  const [fabFocused, setFabFocused] = React.useState(false);
-  const [fabWidth, setFabWidth] = React.useState(FAB_FALLBACK_WIDTH);
   const [toast, setToast] = React.useState<{
     message: string;
     kind: "success" | "error";
@@ -354,10 +322,7 @@ export function PeoplePage(): React.ReactElement {
         testID="people-workspace"
       >
         <ScrollView
-          contentContainerStyle={[
-            styles.content,
-            { paddingBottom: fabOffset + FAB_HEIGHT + spacing.md },
-          ]}
+          contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
           <PageHeading />
@@ -381,7 +346,6 @@ export function PeoplePage(): React.ReactElement {
                     : undefined
                 }
                 elevated
-                floatingActionInset={isWideDesktop ? undefined : fabWidth + spacing.md}
                 testID="people-book-block"
               >
                 {book.kind==="authLoading"||book.kind==="roleLoading"||book.kind==="loading" ? (
@@ -506,7 +470,6 @@ export function PeoplePage(): React.ReactElement {
               <PeopleBlock
                 title="Groups"
                 caption="Buyer groups that update automatically."
-                floatingActionInset={fabWidth + spacing.md}
                 testID="people-groups-block"
               >
                 {!groups.hasResolved&&!groups.isError ? (
@@ -561,28 +524,12 @@ export function PeoplePage(): React.ReactElement {
         <Pressable
           accessibilityLabel="New campaign"
           accessibilityRole="button"
-          onBlur={() => setFabFocused(false)}
-          onFocus={() => setFabFocused(true)}
-          onHoverIn={() => setFabHovered(true)}
-          onHoverOut={() => setFabHovered(false)}
-          onLayout={(event) => {
-            const measuredWidth = Math.ceil(event.nativeEvent.layout.width);
-            setFabWidth((currentWidth) => Math.max(currentWidth, measuredWidth));
-          }}
           onPress={openNewCampaign}
           testID="people-new-campaign"
           style={({ pressed }) => [
             styles.fab,
             { bottom: fabOffset },
-            Platform.OS === "web"
-              ? ({
-                  transitionDuration: reduceMotion ? "0ms" : `${durations.fast}ms`,
-                  transitionTimingFunction: pressed ? easings.press : easings.out,
-                } as never)
-              : undefined,
-            fabHovered && Platform.OS === "web" ? styles.fabHovered : undefined,
-            fabFocused && Platform.OS === "web" ? styles.fabFocused : undefined,
-            pressed ? styles.fabPressed : undefined,
+            pressed ? styles.fabPressed : null,
           ]}
         >
           <Icon name="plus" size={24} color={text.primary} />
@@ -635,6 +582,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
+    paddingBottom: 120,
   },
   screenReaderHeading: {
     position: "absolute",
@@ -737,40 +685,21 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: spacing.md,
-    minHeight: FAB_HEIGHT,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,
-    backgroundColor: FAB_BASE_BACKGROUND,
+    backgroundColor: "rgba(235, 120, 37, 0.42)",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: accent.border,
-    zIndex: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.32,
     shadowRadius: 12,
     elevation: 6,
-    ...Platform.select({
-        web: {
-          cursor: "pointer",
-          transitionProperty: "background-color, border-color, opacity",
-          transitionTimingFunction: easings.out,
-      },
-      default: {},
-    }),
-  },
-  fabHovered: {
-    backgroundColor: FAB_HOVER_BACKGROUND,
-  },
-  fabFocused: {
-    outlineColor: accent.warm,
-    outlineWidth: 2,
-    outlineStyle: "solid",
-    outlineOffset: 2,
   },
   fabPressed: {
     opacity: 0.85,

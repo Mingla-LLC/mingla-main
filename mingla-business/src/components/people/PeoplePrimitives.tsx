@@ -14,8 +14,8 @@ import { Sheet } from "../ui/Sheet";
 import { Spinner } from "../ui/Spinner";
 import { resolveBookSheetView } from "./bookSheetState";
 
-export function PeopleBlock({title,caption,count,children,elevated=false,testID,icon,minHeight,floatingActionInset}:{title:string;caption?:string;count?:string;children:React.ReactNode;elevated?:boolean;testID?:string;icon?:"target"|"users"|"branch";minHeight?:number;floatingActionInset?:number}):React.ReactElement{
-  return <GlassCard variant={elevated?"elevated":"base"} radius={elevated?"xl":"lg"} contentStyle={[styles.block,minHeight?{minHeight}:undefined,floatingActionInset!==undefined?{paddingRight:floatingActionInset}:undefined]} testID={testID}>
+export function PeopleBlock({title,caption,count,children,elevated=false,testID,icon,minHeight}:{title:string;caption?:string;count?:string;children:React.ReactNode;elevated?:boolean;testID?:string;icon?:"target"|"users"|"branch";minHeight?:number}):React.ReactElement{
+  return <GlassCard variant={elevated?"elevated":"base"} radius={elevated?"xl":"lg"} contentStyle={[styles.block,minHeight?{minHeight}:undefined]} testID={testID}>
     <View style={styles.header}>{icon?<Icon name={icon} size={icon==="target"?24:20} color={text.tertiary}/>:null}<View style={styles.headerCopy}><Text accessibilityRole="header" style={styles.title}>{title}</Text>{caption?<Text style={styles.caption}>{caption}</Text>:null}</View>{count?<Text style={styles.count}>{count}</Text>:null}</View>{children}
   </GlassCard>;
 }
