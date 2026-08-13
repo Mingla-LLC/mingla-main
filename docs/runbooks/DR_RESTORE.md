@@ -17,11 +17,11 @@
 - Accidental destructive migration or bad data deploy
 - Regional Supabase outage with unrecoverable project state
 - Ransomware / credential compromise requiring clean restore
-- **G4 drill:** scheduled exercise on a **clone of `gqnoajqerqhnvulmnyvv`** (see warning below)
+- **G4 drill:** scheduled exercise on a **new isolated clone of the project declared in
+  `docs/contracts/production-supabase-authority.json`** (see warning below)
 
-> ⚠️ **`gqnoajqerqhnvulmnyvv` is the LIVE PRODUCTION project, not staging** (it is labelled
-> "Mingla-dev" in the dashboard but every live app points at it — see the two-projects note
-> in the master keys doc). There is no separate staging project. Therefore the G4 drill MUST
+> ⚠️ **The authority contract identifies the LIVE PRODUCTION project, never a staging target.**
+> There is no separate Mingla staging project. Therefore the G4 drill MUST
 > be run as **"Restore to a new project" (clone)** — NEVER an **in-place** restore, which would
 > overwrite live production data. An in-place restore is for a real incident only.
 
@@ -30,7 +30,7 @@
 - Supabase org **Owner** or **Admin** access
 - PITR or daily backups enabled on target project (Settings → Database → Backups)
 - Incident channel ready (Slack/email template from [INCIDENT_DATABASE_DOWN.md](./INCIDENT_DATABASE_DOWN.md))
-- Staging credentials for post-restore smoke (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, optional `SUPABASE_SERVICE_ROLE_KEY`)
+- Isolated-clone credentials for post-restore smoke (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, optional `SUPABASE_SERVICE_ROLE_KEY`)
 
 ## Roles
 
@@ -40,7 +40,7 @@
 | **DB operator** | Executes Supabase restore in dashboard |
 | **Verifier** | Runs SQL + smoke checks, records timestamps |
 
-## Procedure (real incident or staging drill)
+## Procedure (real incident or isolated-clone drill)
 
 ### 1. Declare and freeze (T0)
 
@@ -59,7 +59,7 @@
 
 **Clone drill (recommended for G4 evidence — safe on live production):**
 
-1. **Restore to a new project** (clone) so the live `gqnoajqerqhnvulmnyvv` project stays untouched and serving real users.
+1. Read `docs/contracts/production-supabase-authority.json`, then **restore its project to a new project** (clone) so live production stays untouched and serving real users.
 2. Do NOT in-place restore for the drill — that would take live production down and overwrite real data. In-place is for a real incident only, in a scheduled maintenance window.
 
 **Production incident:**
@@ -76,8 +76,8 @@ Record:
 
 If restore created a **new** project ref:
 
-1. Update staging secrets: EAS env, GitHub Actions, local `.env` for operators.
-2. Redeploy edge functions: `supabase link --project-ref <new-ref>` then deploy affected functions.
+1. Label every clone-only credential and local environment as a drill target. Never place clone values in Production-scoped EAS, Vercel, or GitHub settings.
+2. Deploy functions to the clone only from a dedicated drill checkout after recording the clone ref. The production deploy wrapper intentionally rejects clone refs.
 3. Do **not** copy production Stripe live keys to a drill clone.
 
 ### 5. Verification (T2 → T3)

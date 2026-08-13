@@ -1,0 +1,63 @@
+name: Production Supabase Authority
+
+on:
+  pull_request:
+    paths:
+      - "docs/contracts/production-supabase-authority.json"
+      - "docs/runbooks/PRODUCTION_SUPABASE_AUTHORITY.md"
+      - "docs/runbooks/DR_RESTORE.md"
+      - "docs/MINGLA_ENGINEERING_HANDBOOK.md"
+      - "docs/runbooks/B2_GO_LIVE_CHECKLIST.md"
+      - "docs/runbooks/B2_VERCEL_DEPLOY_RUNBOOK.md"
+      - "docs/INVARIANT_REGISTRY.md"
+      - "scripts/ops/verify-production-supabase-authority.mjs"
+      - "scripts/ops/__tests__/issue_2016_*.test.mjs"
+      - "scripts/deploy-supabase-functions.sh"
+      - "scripts/ops/deploy-g3-sentry.sh"
+      - "scripts/load/deploy-discover-staging.sh"
+      - "scripts/rotate-apple-jwt.mjs"
+      - "scripts/secrets/audit-supabase-secret-budget.mjs"
+      - ".github/workflows/deploy-functions.yml"
+      - ".github/workflows/rotate-apple-jwt.yml"
+      - ".github/workflows/supabase-secret-budget.yml"
+      - ".github/workflows/production-supabase-authority.yml"
+      - "supabase/config.toml"
+      - "backend/supabase/config.toml"
+      - "app-mobile/src/services/supabase.ts"
+      - "app-mobile/eas.json"
+      - "mingla-business/app.config.ts"
+      - "mingla-business/src/services/supabase.ts"
+      - "mingla-business/public/auth/callback.html"
+      - "mingla-business/eas.json"
+      - "mingla-business/env.example"
+      - "mingla-business/.env.example"
+      - "mingla-admin/src/lib/supabase.js"
+      - "mingla-admin/.env.example"
+      - "mingla-marketing/.env.example"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-authority:
+    name: Fail-closed production authority
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run authority regression tests
+        run: node --test scripts/ops/__tests__/issue_2016_*.test.mjs
+      - name: Verify canonical target and production source contracts
+        run: >-
+          node scripts/ops/verify-production-supabase-authority.mjs
+          --mode=offline
+          --target-ref gqnoajqerqhnvulmnyvv
+          --check-sources
+      - name: Verify deploy wrapper syntax
+        run: >-
+          bash -n scripts/deploy-supabase-functions.sh
+          scripts/ops/deploy-g3-sentry.sh
+          scripts/load/deploy-discover-staging.sh

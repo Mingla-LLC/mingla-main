@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "environment": "production",
+  "project_ref": "gqnoajqerqhnvulmnyvv",
+  "origins": {
+    "rest": "https://gqnoajqerqhnvulmnyvv.supabase.co",
+    "functions": "https://gqnoajqerqhnvulmnyvv.functions.supabase.co"
+  },
+  "forbidden_mingla_refs": [
+    {
+      "project_ref": "gupxgpmukdwhozqfmzgd",
+      "classification": "unrelated_project_do_not_target"
+    }
+  ]
+}

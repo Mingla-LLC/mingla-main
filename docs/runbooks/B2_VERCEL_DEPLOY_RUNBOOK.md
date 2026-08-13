@@ -101,15 +101,26 @@ For Phase 16 onboarding flow, **skip this step**.
 
 ## Step 6 — Set `MINGLA_BUSINESS_WEB_URL` Supabase secret (~30 sec)
 
+This is a production secret write. First export the canonical project ref and run the offline
+authority verifier. Continue only when it succeeds; otherwise no action is authorized:
+
 ```bash
+export SUPABASE_PROJECT_REF=gqnoajqerqhnvulmnyvv
+node scripts/ops/verify-production-supabase-authority.mjs \
+  --mode=offline --target-ref "$SUPABASE_PROJECT_REF"
+/opt/homebrew/bin/supabase link --project-ref "$SUPABASE_PROJECT_REF" --yes
 /opt/homebrew/bin/supabase secrets set \
   MINGLA_BUSINESS_WEB_URL=https://business.usemingla.com
 ```
 
-Then re-deploy `brand-stripe-onboard` if you are maintaining the legacy embedded fallback. ORCH-0764A hosted onboarding still uses `MINGLA_BUSINESS_WEB_URL` only to validate Mingla return URLs; it must not return `/connect-onboarding` as the onboarding surface:
+Then re-deploy `brand-stripe-onboard` only through an issue-approved single-function surgical lane
+that repeats the same exact-target verifier, or use the guarded repository wrapper for a reviewed
+full function-set deployment. ORCH-0764A hosted onboarding still uses
+`MINGLA_BUSINESS_WEB_URL` only to validate Mingla return URLs; it must not return
+`/connect-onboarding` as the onboarding surface:
 
 ```bash
-/opt/homebrew/bin/supabase functions deploy brand-stripe-onboard
+SUPABASE_PROJECT_ID="$SUPABASE_PROJECT_REF" scripts/deploy-supabase-functions.sh
 ```
 
 ---

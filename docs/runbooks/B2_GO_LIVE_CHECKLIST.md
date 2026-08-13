@@ -43,7 +43,8 @@ Per https://docs.stripe.com/get-started/checklist/go-live:
 ## Section B — Supabase production environment
 
 - [ ] Production Supabase project provisioned + region matches user-base centroid (US East / EU West)
-- [ ] All 12 V3 migrations applied to production (`supabase db push` against production project ref)
+- [ ] All 12 V3 migrations applied through the verified production migration lane in
+      `PRODUCTION_SUPABASE_AUTHORITY.md` (authority check passes before any network action)
 - [ ] All 13 production env vars set (per `B2_RAK_MIGRATION_RUNBOOK.md` Step 7):
   - 6 STRIPE_RAK_* (live values)
   - STRIPE_SECRET_KEY (live full secret — kept until full RAK migration confirmed working)
@@ -57,7 +58,8 @@ Per https://docs.stripe.com/get-started/checklist/go-live:
   - EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY (live `pk_live_*`)
   - EXPO_PUBLIC_SUPABASE_URL (production)
   - EXPO_PUBLIC_SUPABASE_ANON_KEY (production)
-- [ ] All 7 Stripe edge functions deployed to production (`supabase functions deploy`):
+- [ ] All 7 Stripe edge functions deployed through `scripts/deploy-supabase-functions.sh` with the
+      canonical `SUPABASE_PROJECT_ID` (or an issue-approved verified surgical lane):
   - brand-stripe-onboard
   - brand-stripe-refresh-status
   - brand-stripe-detach
