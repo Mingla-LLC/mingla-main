@@ -85,6 +85,17 @@ export function audit(base) {
     failures.push("Edge and PostgreSQL content identity can diverge");
   }
   if (
+    !m.includes(
+      "v_requested_send_mode text:=CASE WHEN p_scheduled_for IS NULL THEN 'now' ELSE 'scheduled' END",
+    ) ||
+    !m.includes(
+      "v_execution.send_mode IS DISTINCT FROM v_requested_send_mode",
+    ) ||
+    /send_mode\s+IS\s+DISTINCT\s+FROM\s+CASE\b/.test(m)
+  ) {
+    failures.push("Book replay send-mode comparison is not parser-safe");
+  }
+  if (
     !s.includes("dispatchConfirmedBookSend(") ||
     !s.includes("findExistingBookSend(") ||
     !s.includes("existingBookSendResponse(") ||
@@ -181,6 +192,12 @@ function selfTest() {
         "content identity",
       ],
       [
+        "migration",
+        "v_execution.send_mode IS DISTINCT FROM v_requested_send_mode",
+        "v_execution.send_mode IS DISTINCT FROM CASE WHEN p_scheduled_for IS NULL THEN 'now' ELSE 'scheduled' END",
+        "not parser-safe",
+      ],
+      [
         "send",
         "const directDispatch = body.scheduledFor == null",
         "const directDispatch = false",
@@ -233,7 +250,7 @@ function selfTest() {
       }
       fs.writeFileSync(target, clean);
     }
-    console.log("[issue-1995-contact-book-blast] self-test PASS (11 mutations)");
+    console.log("[issue-1995-contact-book-blast] self-test PASS (12 mutations)");
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

@@ -548,3 +548,30 @@ test("Book confirmation renders a truthful post-confirm suppression count", () =
     ).length,
   ).toBeGreaterThan(0);
 });
+
+test("confirmation optional Book counts preserve exact legacy default copy", () => {
+  const render = (isSendNow: boolean): RenderedTree => {
+    let tree!: RenderedTree;
+    TestRenderer.act(() => {
+      tree = TestRenderer.create(
+        <ComposerSentConfirmation
+          visible
+          isSendNow={isSendNow}
+          onDismiss={jest.fn()}
+          onViewInCampaigns={jest.fn()}
+        />,
+      );
+    });
+    return tree;
+  };
+  expect(
+    render(true).root.findAll(
+      (node) => node.props.children === "On the way.",
+    ).length,
+  ).toBeGreaterThan(0);
+  expect(
+    render(false).root.findAll(
+      (node) => node.props.children === "Scheduled.",
+    ).length,
+  ).toBeGreaterThan(0);
+});

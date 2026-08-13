@@ -315,6 +315,7 @@ CREATE OR REPLACE FUNCTION public.biz_marketing_book_existing_result_v1(
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $f$
 DECLARE v_execution public.marketing_book_send_executions%ROWTYPE; v_campaign public.marketing_campaigns%ROWTYPE;
  v_delivered integer; v_deferred integer; v_failed integer; v_preview integer; v_queued integer; v_rows integer;
+ v_requested_send_mode text:=CASE WHEN p_scheduled_for IS NULL THEN 'now' ELSE 'scheduled' END;
 BEGIN
  SELECT * INTO v_campaign FROM public.marketing_campaigns WHERE id=p_campaign_id;
  IF NOT FOUND OR (v_campaign.account_id<>p_actor_id AND public.biz_brand_effective_rank(v_campaign.brand_id,p_actor_id)<public.biz_role_rank('event_manager')) THEN
@@ -331,7 +332,7 @@ BEGIN
   OR v_execution.quoted_at IS DISTINCT FROM p_quoted_at
   OR v_execution.estimated_cost_minor IS DISTINCT FROM p_expected_cost_minor
   OR v_execution.currency IS DISTINCT FROM p_currency
-  OR v_execution.send_mode IS DISTINCT FROM CASE WHEN p_scheduled_for IS NULL THEN 'now' ELSE 'scheduled' END
+  OR v_execution.send_mode IS DISTINCT FROM v_requested_send_mode
   OR (v_execution.send_mode='scheduled' AND v_execution.scheduled_for IS DISTINCT FROM p_scheduled_for) THEN
   RAISE EXCEPTION 'book_blast_idempotency_conflict' USING ERRCODE='23505'; END IF;
  SELECT count(*) FILTER(WHERE status IN ('sent','delivered','opened','clicked','unsubscribed')),
