@@ -21,12 +21,12 @@ type ServiceClient = Pick<
   ReturnType<typeof createClient>,
   "rpc" | "from"
 >;
-const contactImportCorsHeaders = {
-  ...sharedCorsHeaders,
-  "Access-Control-Allow-Headers": `${
-    sharedCorsHeaders["Access-Control-Allow-Headers"]
-  }, x-mingla-import-action, x-mingla-brand-id`,
-};
+const contactImportCorsHeaders = { ...sharedCorsHeaders };
+contactImportCorsHeaders["Access-Control-Allow-Headers"] = [
+  sharedCorsHeaders["Access-Control-Allow-Headers"],
+  "x-mingla-import-action",
+  "x-mingla-brand-id",
+].join(", ");
 
 class ImportError extends Error {
   constructor(
