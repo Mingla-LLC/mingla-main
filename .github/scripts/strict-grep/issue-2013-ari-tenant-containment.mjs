@@ -18,7 +18,7 @@ export function twoAccountPublicRlsProof(ownerId, memberRows, publicBrands) {
 
 export function check(sources) {
   const failures = [];
-  const { helper, chat, confirm, tools, domain, prompt, hook, screen, list, migration } = sources;
+  const { helper, chat, confirm, tools, domain, prompt, hook, screen, list, migration, workflow, writerTest } = sources;
   for (const token of [
     '.eq("account_id", userId)', '.eq("user_id", userId)', '.not("accepted_at", "is", null)', '.is("removed_at", null)',
     '.is("brand.deleted_at", null)', 'role: "owner"', 'effective_rank: 60',
@@ -45,6 +45,13 @@ export function check(sources) {
   const confirmationWrites = confirm.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1;
   if (!confirm.includes('import { TENANT_CONTEXT_VERSION }') || confirmationWrites !== 4 || confirm.includes("PROMPT_VERSION")) {
     failures.push(`confirmation provenance registry incomplete: expected 4 tenant-v1 writes, found ${confirmationWrites}`);
+  }
+  const writerTestPath = "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts";
+  if (workflow.split(writerTestPath).length - 1 !== 3) {
+    failures.push("writer-registry tester must trigger on push/PR and run unconditionally");
+  }
+  for (const token of ['"agent-chat": 5', '"agent-confirm-action": 4', 'prompt_version\\s*:\\s*TENANT_CONTEXT_VERSION']) {
+    if (!writerTest.includes(token)) failures.push(`writer-registry tester missing ${token}`);
   }
   if (chat.indexOf("resolveAccessibleAgentBrands") > chat.indexOf('.from("agent_conversations")')) {
     failures.push("tenant scope must resolve before conversation persistence");
@@ -94,6 +101,8 @@ const sources = {
   screen: read("mingla-business/src/screens/ari/AriChatScreen.tsx"),
   list: read("mingla-business/src/hooks/useConversationList.ts"),
   migration: read("supabase/migrations/20260729000000_meta_orch_0972_universal_authoring.sql"),
+  workflow: read(".github/workflows/issue-2013-ari-tenant-containment.yml"),
+  writerTest: read("supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts"),
 };
 
 if (process.argv.includes("--self-test")) {
@@ -104,11 +113,13 @@ if (process.argv.includes("--self-test")) {
   const historyRevertDetected = historyReverted.some((failure) => failure.includes("persisted-context provenance boundary"));
   const confirmationReverted = check({ ...sources, confirm: sources.confirm.replace("prompt_version: TENANT_CONTEXT_VERSION", "prompt_version: PROMPT_VERSION") });
   const confirmationRevertDetected = confirmationReverted.some((failure) => failure.includes("confirmation provenance registry incomplete"));
-  if (good.length > 0 || !revertDetected || !historyRevertDetected || !confirmationRevertDetected) {
-    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted });
+  const writerWorkflowReverted = check({ ...sources, workflow: sources.workflow.replace("supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts", "") });
+  const writerWorkflowRevertDetected = writerWorkflowReverted.some((failure) => failure.includes("writer-registry tester must trigger"));
+  if (good.length > 0 || !revertDetected || !historyRevertDetected || !confirmationRevertDetected || !writerWorkflowRevertDetected) {
+    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted, writerWorkflowReverted });
     process.exit(1);
   }
-  console.log("issue-2013 self-test PASS: clean source passes; owner, history, and confirmation-writer reverts fail.");
+  console.log("issue-2013 self-test PASS: clean source passes; owner, history, confirmation-writer, and tester-wiring reverts fail.");
   process.exit(0);
 }
 
