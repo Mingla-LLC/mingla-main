@@ -409,12 +409,22 @@ GRANT EXECUTE ON FUNCTION public.business_assert_event_visibility(jsonb)
 -- the same validator used by draft create/update and Ari.
 CREATE OR REPLACE FUNCTION public.business_guard_event_publish_visibility()
 RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $fn$
+DECLARE
+  v_requested_visibility text;
+  v_expected_live_visibility text;
 BEGIN
   IF OLD.event_type='event' AND OLD.status='draft'
      AND NEW.status IN('scheduled','live') THEN
-    PERFORM public.business_assert_event_visibility(
+    v_requested_visibility:=public.business_assert_event_visibility(
       NEW.theme#>'{business_event,requestedVisibility}'
     );
+    v_expected_live_visibility:=CASE v_requested_visibility
+      WHEN 'unlisted' THEN 'hidden'
+      ELSE v_requested_visibility
+    END;
+    IF NEW.visibility IS DISTINCT FROM v_expected_live_visibility THEN
+      RAISE EXCEPTION 'event_visibility_invalid';
+    END IF;
   END IF;
   RETURN NEW;
 END;$fn$;

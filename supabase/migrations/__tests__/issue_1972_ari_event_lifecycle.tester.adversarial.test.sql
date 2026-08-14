@@ -63,7 +63,7 @@ BEGIN
   VALUES
     (v_past_first,now()-interval '2 days',now()-interval '47 hours','UTC',true),
     (v_past_first,now()+interval '2 days',now()+interval '49 hours','UTC',false);
-  UPDATE public.events SET status='scheduled',is_multi_date=true,
+  UPDATE public.events SET status='scheduled',visibility='public',is_multi_date=true,
     theme=theme||jsonb_build_object('business_event',jsonb_build_object(
       'requestedVisibility','public'))
   WHERE id=v_past_first;
@@ -82,7 +82,7 @@ BEGIN
   v_waitlisted := (v_result#>>'{event,id}')::uuid;
   INSERT INTO public.event_dates(event_id,start_at,end_at,timezone,is_master)
   VALUES(v_waitlisted,now()+interval '7 days',now()+interval '7 days 2 hours','UTC',true);
-  UPDATE public.events SET status='scheduled',
+  UPDATE public.events SET status='scheduled',visibility='public',
     theme=theme||jsonb_build_object('business_event',jsonb_build_object(
       'requestedVisibility','public'))
   WHERE id=v_waitlisted;

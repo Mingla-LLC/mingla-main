@@ -51,6 +51,8 @@ export function check(sources) {
     "p_args->'visibility'",
     "CREATE TRIGGER business_guard_event_publish_visibility",
     "NEW.theme#>'{business_event,requestedVisibility}'",
+    "WHEN 'unlisted' THEN 'hidden'",
+    "NEW.visibility IS DISTINCT FROM v_expected_live_visibility",
   ]) if (!migration.includes(token)) failures.push(`closed visibility contract missing ${token}`);
   if (!tools.includes('required: ["brand_id", "title", "when_mode", "visibility"]'))
     failures.push("Ari create schema does not require an explicit visibility choice");
@@ -165,6 +167,7 @@ if (process.argv.includes("--self-test")) {
     { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester_round4.adversarial.test.sql", "removed-round4.sql") },
     { ...sources, migration: sources.migration.replace("v_visibility NOT IN('public','unlisted','private')", "false") },
     { ...sources, migration: sources.migration.replace("CREATE TRIGGER business_guard_event_publish_visibility", "CREATE TRIGGER removed_publish_visibility_guard") },
+    { ...sources, migration: sources.migration.replace("NEW.visibility IS DISTINCT FROM v_expected_live_visibility", "false") },
     { ...sources, tools: sources.tools.replace('required: ["brand_id", "title", "when_mode", "visibility"]', 'required: ["brand_id", "title", "when_mode"]') },
     { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.round5.implementor.test.sql", "removed-round5.sql") },
     { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester_round5.adversarial.test.sql", "removed-round5-tester.sql") },
