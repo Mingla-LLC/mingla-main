@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,14 +31,65 @@ const SELF_TEST_COMMAND =
   "node scripts/ci/issue-2062-expo-config-node20.mjs --self-test";
 const REAL_COMMAND =
   "node scripts/ci/issue-2062-expo-config-node20.mjs --app ${{ matrix.app }}";
-const LIVE_OPERATIONAL_REFERENCES = [
-  "app-mobile/src/services/appsFlyerService.ts",
-  "packages/payments-native/StripeNativeProvider.tsx",
-  "mingla-business/src/services/giphyEventCoverService.ts",
-  "mingla-business/src/services/coverProviderBrowseService.ts",
-  "scripts/ota/verify-published-manifest.mjs",
-  "supabase/functions/ticket-checkout-create/index.ts",
-];
+const STALE_CONFIG_ROOT = ["app.config", "ts"].join(".");
+const EXPECTED_INVENTORY = {
+  guard: { occurrences: 14, files: 4 },
+  historical: { occurrences: 5, files: 5 },
+  stale: { occurrences: 0, files: 0 },
+  unclassified: { occurrences: 0, files: 0 },
+};
+const GUARD_CONTEXTS = new Map([
+  [
+    ".github/workflows/issue-994-ota-env-resolution.yml",
+    [
+      `- "app-mobile/${STALE_CONFIG_ROOT}"`,
+      `- "mingla-business/${STALE_CONFIG_ROOT}"`,
+    ],
+  ],
+  [
+    ".github/workflows/production-supabase-authority.yml",
+    [`- "mingla-business/${STALE_CONFIG_ROOT}"`],
+  ],
+  [
+    "scripts/ci/issue-2062-expo-config-node20.mjs",
+    [
+      `"app-mobile/${STALE_CONFIG_ROOT}",`,
+      `"mingla-business/${STALE_CONFIG_ROOT}",`,
+      `if (source.includes("mingla-business/${STALE_CONFIG_ROOT}")) {`,
+      `const tsConfig = join(appRoot, "${STALE_CONFIG_ROOT}");`,
+      `platformUrlSource.replaceAll("app.config.js", "${STALE_CONFIG_ROOT}"),`,
+      `writeFixture(tsOnly, "${STALE_CONFIG_ROOT}", "export default ({ config }) => config;\\n");`,
+    ],
+  ],
+  [
+    TEST_REL,
+    [
+      `"app-mobile/${STALE_CONFIG_ROOT}",`,
+      `"mingla-business/${STALE_CONFIG_ROOT}",`,
+      `assert.ok(!existsSync(resolve(REPO_ROOT, appName, "${STALE_CONFIG_ROOT}")));`,
+    ],
+  ],
+]);
+const HISTORICAL_CACHE_BLOBS = new Map([
+  [
+    ".mtmp/metro-cache/2b/9d171ab3ada8f7052fc8e5dafb7b5f892bd13ca858ee59229fa0d05ce339432b47f938",
+    "4bb7b5763fa88ccf9f371a8775618fa2e066372c",
+  ],
+  [
+    ".mtmp/metro-cache/5b/78d0188f0de9625fd956fb19a91d00892bd13ca858ee59229fa0d05ce339432b47f938",
+    "4bb7b5763fa88ccf9f371a8775618fa2e066372c",
+  ],
+  [
+    ".mtmp/metro-cache/bb/714dad05df1a69acb4f35e460f1ffca687c3471c2d5bfdde1c54b215b44ae3c4606ba6",
+    "c7055ae296c10f0b38ba8d3285a85ff50b667825",
+  ],
+  [
+    ".mtmp/metro-cache/fd/976461f750de5662b8c26196124a1ea687c3471c2d5bfdde1c54b215b44ae3c4606ba6",
+    "c7055ae296c10f0b38ba8d3285a85ff50b667825",
+  ],
+]);
+const HISTORICAL_REPORT_LINE =
+  `- 2026-08-10 — \`expo config --json\` hides config errors: it exits non-zero with nothing on either stream when ${STALE_CONFIG_ROOT} throws, while the same command without \`--json\` prints the real message. Documented in the handbook with the reason it bites — both apps carry guards that fire only under a release build profile, so a silent exit 1 is indistinguishable from a guard working correctly, and it briefly passed for proof that a newly-added guard worked when a different guard had thrown. (#1748, PR #1766)`;
 
 function indentation(line) {
   return line.match(/^\s*/)?.[0].length ?? 0;
@@ -162,6 +215,94 @@ function expectAuditFailure(label, action) {
   assert.throws(action, undefined, label);
 }
 
+function gitBlobHash(buffer) {
+  return createHash("sha1")
+    .update(Buffer.from(`blob ${buffer.length}\0`))
+    .update(buffer)
+    .digest("hex");
+}
+
+function trackedWorkingTreeFiles() {
+  const result = spawnSync("git", ["ls-files", "-z"], {
+    cwd: REPO_ROOT,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  assert.equal(
+    result.status,
+    0,
+    `git ls-files failed: ${result.error?.message ?? result.stderr.toString("utf8")}`,
+  );
+  return result.stdout
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean);
+}
+
+function classifyOccurrence(relativePath, line, buffer) {
+  const trimmed = line.trim();
+  const allowedGuardLines = GUARD_CONTEXTS.get(relativePath) ?? [];
+  if (allowedGuardLines.includes(trimmed)) return "guard";
+
+  if (
+    relativePath === "REPORTS.md" &&
+    trimmed === HISTORICAL_REPORT_LINE
+  ) {
+    return "historical";
+  }
+
+  const expectedBlob = HISTORICAL_CACHE_BLOBS.get(relativePath);
+  if (expectedBlob !== undefined) {
+    return gitBlobHash(buffer) === expectedBlob ? "historical" : "unclassified";
+  }
+
+  return "stale";
+}
+
+function auditTrackedInventory() {
+  const inventory = {
+    guard: [],
+    historical: [],
+    stale: [],
+    unclassified: [],
+  };
+
+  for (const relativePath of trackedWorkingTreeFiles()) {
+    const absolutePath = resolve(REPO_ROOT, relativePath);
+    if (!existsSync(absolutePath)) continue;
+    const buffer = readFileSync(absolutePath);
+    if (buffer.includes(0)) continue;
+    const source = buffer.toString("utf8");
+    for (const [lineIndex, line] of source.split(/\r?\n/).entries()) {
+      let offset = line.indexOf(STALE_CONFIG_ROOT);
+      while (offset !== -1) {
+        const category = classifyOccurrence(relativePath, line, buffer);
+        inventory[category].push({
+          relativePath,
+          line: lineIndex + 1,
+          offset,
+        });
+        offset = line.indexOf(STALE_CONFIG_ROOT, offset + STALE_CONFIG_ROOT.length);
+      }
+    }
+  }
+
+  for (const [category, expected] of Object.entries(EXPECTED_INVENTORY)) {
+    const records = inventory[category];
+    assert.equal(
+      records.length,
+      expected.occurrences,
+      `${category} occurrence drift: ${JSON.stringify(records)}`,
+    );
+    assert.equal(
+      new Set(records.map(({ relativePath }) => relativePath)).size,
+      expected.files,
+      `${category} file-count drift: ${JSON.stringify(records)}`,
+    );
+  }
+
+  return inventory;
+}
+
 test("#2062 tester: canonical workflow and real process-version binding pass", () => {
   auditWorkflow(readFileSync(WORKFLOW_PATH, "utf8"));
   auditProductionRuntimeBinding(readFileSync(GATE_PATH, "utf8"));
@@ -275,12 +416,26 @@ test("#2062 tester: both CommonJS roots and platformUrl operational path are cur
 });
 
 test("#2062 tester: active runtime and OTA guidance has no stale TypeScript-root path", () => {
-  for (const relativePath of LIVE_OPERATIONAL_REFERENCES) {
-    const source = readFileSync(resolve(REPO_ROOT, relativePath), "utf8");
-    assert.doesNotMatch(
-      source,
-      /(?:app-mobile\/|mingla-business\/)?app\.config\.ts/,
-      `${relativePath} still points current operations at the deleted TypeScript root`,
-    );
-  }
+  const inventory = auditTrackedInventory();
+  assert.equal(inventory.guard.length, 14);
+  assert.equal(inventory.historical.length, 5);
+  assert.equal(inventory.stale.length, 0);
+  assert.equal(inventory.unclassified.length, 0);
+
+  assert.equal(
+    classifyOccurrence(
+      "scripts/ci/__tests__/unrelated-fixture.mjs",
+      `// Current runtime source is ${STALE_CONFIG_ROOT}`,
+      Buffer.from("fixture"),
+    ),
+    "stale",
+  );
+  assert.equal(
+    classifyOccurrence(
+      ".github/workflows/issue-994-ota-env-resolution.yml",
+      `# Current runtime source is ${STALE_CONFIG_ROOT}`,
+      Buffer.from("fixture"),
+    ),
+    "stale",
+  );
 });
