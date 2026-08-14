@@ -1,9 +1,4 @@
-import { OrganiserHero } from '@/components/sections/organiser-home/hero'
-import { OrganiserWhatIsMingla } from '@/components/sections/organiser-home/what-is-mingla'
-import { OrganiserImpactStats } from '@/components/sections/organiser-home/impact-stats'
-import { OrganiserAudienceTabs } from '@/components/sections/organiser-home/audience-tabs'
-import { OrganiserAudiences } from '@/components/sections/organiser-home/audiences'
-import { OrganiserFeatures } from '@/components/sections/organiser-home/features'
+import { HostExperienceHome } from '@/components/sections/organiser-home/host-experience'
 
 export const metadata = {
   title: 'Mingla Host — we give people a reason to show up for you.',
@@ -12,14 +7,5 @@ export const metadata = {
 }
 
 export default function OrganiserHomePage() {
-  return (
-    <>
-      <OrganiserHero />
-      <OrganiserWhatIsMingla />
-      <OrganiserImpactStats />
-      <OrganiserAudiences />
-      <OrganiserAudienceTabs />
-      <OrganiserFeatures />
-    </>
-  )
+  return <HostExperienceHome />
 }
