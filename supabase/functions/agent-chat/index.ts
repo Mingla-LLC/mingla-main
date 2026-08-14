@@ -382,9 +382,7 @@ async function handle(req: Request): Promise<Response> {
   // Load last N messages
   const { data: historyRows } = await userClient
     .from("agent_messages")
-    .select(
-      "role, content, tool_calls, tool_results, prompt_version, created_at",
-    )
+    .select("role, content, tool_calls, tool_results, prompt_version, created_at")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(HISTORY_WINDOW);

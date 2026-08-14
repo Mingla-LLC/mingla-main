@@ -43,14 +43,14 @@ export function check(sources) {
     if (!chat.includes(token)) failures.push(`persisted-context provenance boundary missing ${token}`);
   }
   const confirmationWrites = confirm.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1;
-  if (!confirm.includes('import { TENANT_CONTEXT_VERSION }') || confirmationWrites !== 4 || confirm.includes("PROMPT_VERSION")) {
-    failures.push(`confirmation provenance registry incomplete: expected 4 tenant-v1 writes, found ${confirmationWrites}`);
+  if (!confirm.includes('import { TENANT_CONTEXT_VERSION }') || confirmationWrites !== 5 || confirm.includes("PROMPT_VERSION")) {
+    failures.push(`confirmation provenance registry incomplete: expected 5 tenant-v1 writes, found ${confirmationWrites}`);
   }
   const writerTestPath = "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts";
   if (workflow.split(writerTestPath).length - 1 !== 3) {
     failures.push("writer-registry tester must trigger on push/PR and run unconditionally");
   }
-  for (const token of ['"agent-chat": 5', '"agent-confirm-action": 4', 'prompt_version\\s*:\\s*TENANT_CONTEXT_VERSION']) {
+  for (const token of ['"agent-chat": 5', '"agent-confirm-action": 5', 'prompt_version\\s*:\\s*TENANT_CONTEXT_VERSION']) {
     if (!writerTest.includes(token)) failures.push(`writer-registry tester missing ${token}`);
   }
   if (chat.indexOf("resolveAccessibleAgentBrands") > chat.indexOf('.from("agent_conversations")')) {

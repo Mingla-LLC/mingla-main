@@ -118,5 +118,6 @@ Deno.test("#2013 tester retest: every chat and confirmation message writer emits
     }
   }
 
-  assertEquals(observed, { "agent-chat": 5, "agent-confirm-action": 4 });
+  // [TEST-MOD-APPROVED #1972] Terminal expiry is a fifth canonical tool writer.
+  assertEquals(observed, { "agent-chat": 5, "agent-confirm-action": 5 });
 });

@@ -51,7 +51,8 @@ Deno.test("#2013 negative proof is anchored to the repository's public brand RLS
 Deno.test("#2013 proposal-confirm rows share provenance and replay while v4 stays excluded", async () => {
   const confirmSource = await Deno.readTextFile("supabase/functions/agent-confirm-action/index.ts");
   assert(confirmSource.includes('import { TENANT_CONTEXT_VERSION }'));
-  assertEquals(confirmSource.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1, 4);
+  // [TEST-MOD-APPROVED #1972] Terminal expiry is a fifth canonical tool writer.
+  assertEquals(confirmSource.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1, 5);
   assertEquals(confirmSource.includes("PROMPT_VERSION"), false);
 
   const chatSource = await Deno.readTextFile("supabase/functions/agent-chat/index.ts");
