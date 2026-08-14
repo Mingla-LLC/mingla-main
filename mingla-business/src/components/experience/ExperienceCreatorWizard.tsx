@@ -49,6 +49,7 @@ import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import type { TurnoutIntelSessionController } from "../intel/TurnoutIntelContext";
+import { createDeferredTurnoutIntelProvider } from "../intel/createDeferredTurnoutIntelProvider";
 import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 import type { TurnoutForecastController } from "../../hooks/useTurnoutForecast";
 import type { TurnoutInputSource } from "../../utils/turnoutInput";
@@ -109,10 +110,12 @@ const loadPrePublishGateSheet = async () => {
   return { default: module.PrePublishGateSheet };
 };
 const LazyPrePublishGateSheet = React.lazy(loadPrePublishGateSheet);
-const LazyTurnoutIntelProvider = React.lazy(async () => {
-  const module = await import("../intel/TurnoutIntelProvider");
-  return { default: module.TurnoutIntelProvider };
-});
+const LazyTurnoutIntelProvider = createDeferredTurnoutIntelProvider(
+  async () => {
+    const module = await import("../intel/TurnoutIntelProvider");
+    return { default: module.TurnoutIntelRuntime };
+  },
+);
 
 export interface ExperienceCreatorWizardProps {
   brandId: string;
@@ -1111,8 +1114,7 @@ export const ExperienceCreatorWizard: React.FC<
   ]);
 
   return (
-    <React.Suspense fallback={null}>
-      <LazyTurnoutIntelProvider
+    <LazyTurnoutIntelProvider
       source={turnoutSource}
       brandId={brandId}
       wizard="experience"
@@ -1427,8 +1429,7 @@ export const ExperienceCreatorWizard: React.FC<
           </React.Suspense>
         ) : null}
     </View>
-      </LazyTurnoutIntelProvider>
-    </React.Suspense>
+    </LazyTurnoutIntelProvider>
   );
 };
 

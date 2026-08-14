@@ -53,8 +53,14 @@ export interface TurnoutIntelProviderProps {
   ) => void;
 }
 
-export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
-  children,
+export type TurnoutIntelRuntimeProps = Omit<
+  TurnoutIntelProviderProps,
+  "children"
+> & {
+  onValue: (value: TurnoutIntelContextValue | null) => void;
+};
+
+export const TurnoutIntelRuntime: React.FC<TurnoutIntelRuntimeProps> = ({
   source,
   brandId,
   wizard,
@@ -65,6 +71,7 @@ export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
   controllerRef,
   sessionRef,
   navigateTo,
+  onValue,
 }) => {
   const [controller, setController] =
     useState<TurnoutForecastController | null>(null);
@@ -89,8 +96,7 @@ export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
   const estimateSourceCompatible =
     source.kind === "experience" && source.unlimited;
   const effectiveEstimate = useMemo<TurnoutEstimateState>(
-    () =>
-      estimateSourceCompatible ? estimate : { kind: "unanswered" },
+    () => (estimateSourceCompatible ? estimate : { kind: "unanswered" }),
     [estimate, estimateSourceCompatible],
   );
   const estimateApplied = effectiveEstimate.kind === "answered";
@@ -192,28 +198,49 @@ export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
       wizard,
     ],
   );
+  useEffect(() => {
+    onValue(value);
+  }, [onValue, value]);
+  useEffect(
+    () => () => {
+      onValue(null);
+      if (controllerRef !== undefined) controllerRef.current = null;
+      if (sessionRef !== undefined) sessionRef.current = null;
+    },
+    [controllerRef, onValue, sessionRef],
+  );
+  return (
+    <Suspense fallback={null}>
+      <LazyTurnoutIntelObserver
+        brandId={brandId}
+        source={modeledSource}
+        wizard={wizard}
+        surface={surface}
+        previewActive={previewActive}
+        autoRunEnabled={autoRunEnabled}
+        onController={setController}
+      />
+      {reportOpen && controller !== null ? (
+        <LazyIntelReportSheet
+          visible
+          report={controller.report}
+          onClose={() => setReportOpen(false)}
+          contextLabel={reportContext}
+        />
+      ) : null}
+    </Suspense>
+  );
+};
+
+export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
+  children,
+  ...runtimeProps
+}) => {
+  const [value, setValue] = useState<TurnoutIntelContextValue | null>(null);
   return (
     <TurnoutIntelContext.Provider value={value}>
       {children}
-      <Suspense fallback={null}>
-        <LazyTurnoutIntelObserver
-          brandId={brandId}
-          source={modeledSource}
-          wizard={wizard}
-          surface={surface}
-          previewActive={previewActive}
-          autoRunEnabled={autoRunEnabled}
-          onController={setController}
-        />
-        {reportOpen && controller !== null ? (
-          <LazyIntelReportSheet
-            visible
-            report={controller.report}
-            onClose={() => setReportOpen(false)}
-            contextLabel={reportContext}
-          />
-        ) : null}
-      </Suspense>
+      <TurnoutIntelRuntime {...runtimeProps} onValue={setValue} />
     </TurnoutIntelContext.Provider>
   );
 };

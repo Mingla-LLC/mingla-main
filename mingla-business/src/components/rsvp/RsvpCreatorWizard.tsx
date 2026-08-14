@@ -103,12 +103,15 @@ import { RsvpStep7Preview } from "./RsvpStep7Preview";
 // master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
 // the app-local copy is deleted.
 import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
+import { createDeferredTurnoutIntelProvider } from "../intel/createDeferredTurnoutIntelProvider";
 
 // #1742 / ORCH-1083 — creator intelligence is loaded only inside a creator.
-const LazyTurnoutIntelProvider = React.lazy(async () => {
-  const module = await import("../intel/TurnoutIntelProvider");
-  return { default: module.TurnoutIntelProvider };
-});
+const LazyTurnoutIntelProvider = createDeferredTurnoutIntelProvider(
+  async () => {
+    const module = await import("../intel/TurnoutIntelProvider");
+    return { default: module.TurnoutIntelRuntime };
+  },
+);
 
 const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
   { title: "Basics", subtitle: "Name, format, and party type" },
@@ -842,8 +845,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   );
 
   return (
-    <React.Suspense fallback={null}>
-      <LazyTurnoutIntelProvider
+    <LazyTurnoutIntelProvider
       source={{
         kind: "rsvp",
         draft: liveDraft,
@@ -1102,8 +1104,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         />
       </View>
     </View>
-      </LazyTurnoutIntelProvider>
-    </React.Suspense>
+    </LazyTurnoutIntelProvider>
   );
 };
 

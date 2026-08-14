@@ -97,6 +97,7 @@ import { Stepper } from "../ui/Stepper";
 import type { StepperStep } from "../ui/Stepper";
 import { TopBar } from "../ui/TopBar";
 import { Toast } from "../ui/Toast";
+import { createDeferredTurnoutIntelProvider } from "../intel/createDeferredTurnoutIntelProvider";
 
 /*
  * Desktop web wizard contract restored after regression:
@@ -123,10 +124,12 @@ import { PublishErrorsSheet } from "./PublishErrorsSheet";
 import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
 
 // #1742 / ORCH-1083 — creator intelligence is not app-startup UI.
-const LazyTurnoutIntelProvider = React.lazy(async () => {
-  const module = await import("../intel/TurnoutIntelProvider");
-  return { default: module.TurnoutIntelProvider };
-});
+const LazyTurnoutIntelProvider = createDeferredTurnoutIntelProvider(
+  async () => {
+    const module = await import("../intel/TurnoutIntelProvider");
+    return { default: module.TurnoutIntelRuntime };
+  },
+);
 
 const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
   { title: "Basics", subtitle: "Name, format, and category" },
@@ -906,8 +909,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   );
 
   return (
-    <React.Suspense fallback={null}>
-      <LazyTurnoutIntelProvider
+    <LazyTurnoutIntelProvider
       source={{
         kind: "event",
         draft: liveDraft,
@@ -1166,8 +1168,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         />
       </View>
     </View>
-      </LazyTurnoutIntelProvider>
-    </React.Suspense>
+    </LazyTurnoutIntelProvider>
   );
 };
 
