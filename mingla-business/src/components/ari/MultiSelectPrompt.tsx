@@ -42,6 +42,7 @@ export interface MultiSelectPromptProps {
   state: MultiSelectState;
   onToggle?: (id: string) => void;
   onConfirm?: () => void;
+  disabled?: boolean;
 }
 
 export const MultiSelectPrompt: React.FC<MultiSelectPromptProps> = ({
@@ -51,6 +52,7 @@ export const MultiSelectPrompt: React.FC<MultiSelectPromptProps> = ({
   state,
   onToggle,
   onConfirm,
+  disabled = false,
 }) => {
   const selectedSet = new Set(selectedIds);
   const count = selectedIds.length;
@@ -75,7 +77,7 @@ export const MultiSelectPrompt: React.FC<MultiSelectPromptProps> = ({
     );
   }
 
-  const isDisabled = state === "disabled";
+  const isDisabled = state === "disabled" || disabled;
   const isLoading = state === "loading";
   const rowsLocked = isDisabled || isLoading;
   const canConfirm = count >= 1 && state === "default";
@@ -173,7 +175,7 @@ const styles = StyleSheet.create({
     backgroundColor: glass.border.profileBase,
   },
   row: {
-    height: 40,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
@@ -201,7 +203,7 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
   },
   confirmBtn: {
-    height: ariThread.btnHeight,
+    minHeight: 44,
     minWidth: 96,
     borderRadius: 10,
     paddingHorizontal: spacing.md,

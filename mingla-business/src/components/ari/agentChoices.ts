@@ -1,64 +1,72 @@
-/**
- * ORCH-1103 REWORK 2 — pure helpers for the presentational "suggested replies"
- * chips (Surfaces 3 & 5). Extracted from MessageList so the payload→chips and
- * tap→label logic is unit-testable in the node jest env without importing the
- * react-native component tree.
- *
- * Q2 (resolved): a chip tap sends its `label` as a NORMAL user turn — Gemini
- * re-proposes with the resolved target. The client NEVER pre-fills a tool arg.
- */
+/** Issue #1985 — strict client boundary for question-bound AgentChoicesV2. */
 
-import type { AgentChoices } from "../../services/agentChatService";
-import type { ChoiceOption } from "./QuickReplyChips";
-
-interface ContentWithStructured {
-  structured?: { choices?: unknown } | unknown;
-}
+import type {
+  AgentChoicesV2,
+  AgentChoiceSubmissionV2,
+} from "../../services/agentChatService";
 
 interface MessageLike {
   role: "user" | "assistant" | "tool";
-  content: ContentWithStructured | Record<string, unknown>;
+  content: { structured?: unknown } | Record<string, unknown>;
 }
 
-/**
- * Pull a well-formed choices payload off an assistant message (persisted in
- * content.structured by agent-chat). Returns undefined for any message without
- * a valid payload so a malformed/legacy row degrades to a plain bubble.
- */
-export function choicesOf(m: MessageLike): AgentChoices | undefined {
-  if (m.role !== "assistant") return undefined;
-  const structured = (m.content as { structured?: unknown })?.structured as
-    | { choices?: unknown }
-    | undefined;
-  const choices = structured?.choices as Partial<AgentChoices> | undefined;
-  const kinds = new Set([
-    "brand_disambiguation",
-    "no_brand_handoff",
-    "clarifying",
-    "multi_select",
-    "next_step",
-  ]);
-  if (!choices || !choices.kind || !kinds.has(choices.kind) || !Array.isArray(choices.options)) {
-    return undefined;
-  }
-  const options = choices.options.filter(
-    (o): o is ChoiceOption =>
-      !!o &&
-      typeof (o as ChoiceOption).id === "string" &&
-      typeof (o as ChoiceOption).label === "string",
-  );
-  // clarifying is a typed ask — options may be empty. Other kinds need chips.
-  if (choices.kind !== "clarifying" && options.length === 0) return undefined;
-  return { kind: choices.kind, prompt: choices.prompt ?? "", options };
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-/**
- * The label a chip tap must send as the next user turn. Pure so the tap-dispatch
- * contract is unit-testable: tapping option `id` sends EXACTLY this brand name /
- * yes-no label (no id, no tool pre-fill). Returns null for an unknown id so the
- * handler no-ops instead of sending an empty turn (no dead tap, no junk send).
- */
-export function resolveChoiceLabel(choices: AgentChoices, optionId: string): string | null {
-  const opt = choices.options.find((o) => o.id === optionId);
-  return opt ? opt.label : null;
+/** Legacy V1 and malformed rows remain readable as prose, but are never interactive. */
+export function choicesOf(message: MessageLike): AgentChoicesV2 | undefined {
+  if (message.role !== "assistant") return undefined;
+  const structured = (message.content as { structured?: unknown }).structured;
+  const raw = isRecord(structured) ? structured.choices : undefined;
+  if (!isRecord(raw) || raw.schema_version !== 2) return undefined;
+  if (
+    typeof raw.question_id !== "string" ||
+    !new Set(["clarifying", "multi_select", "next_step"]).has(String(raw.kind)) ||
+    typeof raw.prompt !== "string" ||
+    !Array.isArray(raw.required_slot_keys) ||
+    raw.required_slot_keys.some((key) => typeof key !== "string") ||
+    !Array.isArray(raw.options) ||
+    raw.options.length > 4
+  ) return undefined;
+  const options = raw.options.filter((option): option is AgentChoicesV2["options"][number] => {
+    if (!isRecord(option) || typeof option.id !== "string" || typeof option.label !== "string" || !isRecord(option.payload)) return false;
+    if (option.payload.type === "slot_patch") return isRecord(option.payload.slot_updates);
+    if (option.payload.type === "handoff") return typeof option.payload.route === "string";
+    return option.payload.type === "task_command" && new Set(["pause", "resume", "cancel", "start_new", "continue_planning"]).has(String(option.payload.command));
+  });
+  if (options.length !== raw.options.length) return undefined;
+  return {
+    schema_version: 2,
+    question_id: raw.question_id,
+    kind: raw.kind as AgentChoicesV2["kind"],
+    prompt: raw.prompt,
+    required_slot_keys: raw.required_slot_keys as string[],
+    options,
+  };
+}
+
+/** Build semantic submission from server-owned option IDs; labels are display-only. */
+export function buildChoiceSubmission(
+  choices: AgentChoicesV2,
+  optionIds: string[],
+  freeText?: string,
+): AgentChoiceSubmissionV2 | null {
+  const ids = [...new Set(optionIds)];
+  if (ids.length > 3 || ids.some((id) => !choices.options.some((option) => option.id === id))) return null;
+  const trimmed = freeText?.trim();
+  if (ids.length === 0 && !trimmed) return null;
+  return {
+    question_id: choices.question_id,
+    option_ids: ids,
+    ...(trimmed ? { free_text: trimmed } : {}),
+  };
+}
+
+export function choiceLabel(choices: AgentChoicesV2, optionIds: string[], freeText?: string): string {
+  if (freeText?.trim()) return freeText.trim();
+  return optionIds
+    .map((id) => choices.options.find((option) => option.id === id)?.label)
+    .filter((label): label is string => !!label)
+    .join(", ");
 }

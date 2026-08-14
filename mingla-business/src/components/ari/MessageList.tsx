@@ -15,7 +15,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Check } from "lucide-react-native";
 
 import {
@@ -33,7 +33,8 @@ import { ResponseCard } from "./ResponseCard";
 import { QuickReplyChips } from "./QuickReplyChips";
 import { ClarifyingCard } from "./ClarifyingCard";
 import { MultiSelectPrompt } from "./MultiSelectPrompt";
-import { choicesOf, resolveChoiceLabel } from "./agentChoices";
+import { buildChoiceSubmission, choiceLabel, choicesOf } from "./agentChoices";
+import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
 import type { PendingActionView } from "../../hooks/useAgentChat";
 
 /**
@@ -74,7 +75,9 @@ export interface MessageListProps {
    * Gemini re-proposes with the resolved target). The client NEVER pre-fills a
    * tool arg. Defaults to onSeedMessage when omitted.
    */
-  onSendChoice?: (label: string) => void;
+  onSendChoice?: (submission: AgentChoiceSubmissionV2, label: string) => void;
+  onRetryTurn?: (clientTurnId: string) => void;
+  choicesDisabled?: boolean;
   /**
    * ORCH-1103 REWORK 3 — covers attached AFTER a create-and-attach commit, keyed
    * by the executed pending_action_id. The executed create_brand tool_result row
@@ -111,6 +114,8 @@ export const MessageList: React.FC<MessageListProps> = ({
   accountId = null,
   onSeedMessage,
   onSendChoice,
+  onRetryTurn,
+  choicesDisabled = false,
   onAttachDone,
   attachedCovers = {},
 }) => {
@@ -123,6 +128,11 @@ export const MessageList: React.FC<MessageListProps> = ({
   const [resolvedChoice, setResolvedChoice] = useState<{ messageId: string; optionId: string } | null>(null);
   const [clarifyDraft, setClarifyDraft] = useState<Record<string, string>>({});
   const [multiDraft, setMultiDraft] = useState<Record<string, string[]>>({});
+
+  // A failed typed turn remains in the thread as a retryable optimistic row.
+  // Re-open the choice when the message set changes so an error never strands
+  // a locally-collapsed chip/card. Successful turns are superseded at the tail.
+  useEffect(() => setResolvedChoice(null), [messages.length]);
 
   // Compose the rendered list. Two classes of rows are skipped entirely so
   // they don't leave empty separators in the FlatList:
@@ -214,8 +224,6 @@ export const MessageList: React.FC<MessageListProps> = ({
     }
   }
 
-  const sendChoice = onSendChoice ?? onSeedMessage;
-
   useEffect(() => {
     if (items.length === 0) return;
     requestAnimationFrame(() => {
@@ -300,6 +308,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         }
         const text = (m.content as any)?.text ?? "";
         if (!text) return null; // empty rows shouldn't render an empty bubble
+        const localDelivery = (m.content as { local_delivery?: string }).local_delivery;
 
         // ORCH-1103 REWORK 2 — render disambiguation / no-brand-handoff chips
         // beneath an Ari bubble that carries a choices payload (SPEC §6.ii/§6.v,
@@ -307,12 +316,24 @@ export const MessageList: React.FC<MessageListProps> = ({
         // sends its label as a normal user turn (Q2 conversational feedback).
         const choices = choicesOf(m);
         const bubble = (
-          <ChatBubble
-            role={m.role === "user" ? "user" : "assistant"}
-            text={text}
-            hideOrb={item.hideOrb}
-            tail={item.tail}
-          />
+          <View>
+            <ChatBubble
+              role={m.role === "user" ? "user" : "assistant"}
+              text={text}
+              hideOrb={item.hideOrb}
+              tail={item.tail}
+            />
+            {m.role === "user" && localDelivery === "failed" && m.client_turn_id ? (
+              <Pressable
+                onPress={() => onRetryTurn?.(m.client_turn_id as string)}
+                style={styles.retryTurn}
+                accessibilityRole="button"
+                accessibilityLabel={`Retry sending ${text}`}
+              >
+                <Text style={styles.retryTurnText}>Not sent · Retry</Text>
+              </Pressable>
+            ) : null}
+          </View>
         );
         if (!choices) return bubble;
 
@@ -325,6 +346,8 @@ export const MessageList: React.FC<MessageListProps> = ({
           const typed = clarifyDraft[m.id] ?? "";
           const clarifyState = isResolved
             ? "submitted"
+            : choicesDisabled
+              ? "disabled"
             : typed.trim().length > 0
               ? "typed"
               : "default";
@@ -340,12 +363,10 @@ export const MessageList: React.FC<MessageListProps> = ({
                   onSubmit={() => {
                     const label = typed.trim();
                     if (!label) return;
+                    const submission = buildChoiceSubmission(choices, [], label);
+                    if (!submission) return;
                     setResolvedChoice({ messageId: m.id, optionId: "typed" });
-                    sendChoice?.(label);
-                  }}
-                  onSkip={() => {
-                    setResolvedChoice({ messageId: m.id, optionId: "skip" });
-                    sendChoice?.("Skip for now");
+                    onSendChoice?.(submission, label);
                   }}
                 />
               </View>
@@ -363,6 +384,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                   options={choices.options}
                   selectedIds={selectedIds}
                   state={isResolved ? "submitted" : "default"}
+                  disabled={choicesDisabled}
                   onToggle={(id) => {
                     setMultiDraft((prev) => {
                       const cur = prev[m.id] ?? [];
@@ -372,12 +394,11 @@ export const MessageList: React.FC<MessageListProps> = ({
                   }}
                   onConfirm={() => {
                     const ids = multiDraft[m.id] ?? [];
-                    const labels = ids
-                      .map((id) => resolveChoiceLabel(choices, id))
-                      .filter((x): x is string => !!x);
-                    if (labels.length === 0) return;
+                    const submission = buildChoiceSubmission(choices, ids);
+                    if (!submission) return;
+                    const label = choiceLabel(choices, ids);
                     setResolvedChoice({ messageId: m.id, optionId: ids.join(",") });
-                    sendChoice?.(labels.join(", "));
+                    onSendChoice?.(submission, label);
                   }}
                 />
               </View>
@@ -392,11 +413,13 @@ export const MessageList: React.FC<MessageListProps> = ({
                 options={choices.options}
                 selectedId={isResolved ? resolvedChoice?.optionId : undefined}
                 state={isResolved ? "submitted" : "default"}
+                disabled={choicesDisabled}
                 onSelectId={(optionId) => {
-                  const label = resolveChoiceLabel(choices, optionId);
-                  if (label == null) return;
+                  const submission = buildChoiceSubmission(choices, [optionId]);
+                  if (!submission) return;
+                  const label = choiceLabel(choices, [optionId]);
                   setResolvedChoice({ messageId: m.id, optionId });
-                  sendChoice?.(label);
+                  onSendChoice?.(submission, label);
                 }}
               />
             </View>
@@ -532,6 +555,17 @@ const styles = StyleSheet.create({
   choicesRow: {
     marginTop: ariThread.gapGroup,
     marginLeft: 24 + ariThread.orbGap,
+  },
+  retryTurn: {
+    alignSelf: "flex-end",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  retryTurnText: {
+    color: semantic.error,
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
   },
   successRibbon: {
     alignSelf: "flex-start",
