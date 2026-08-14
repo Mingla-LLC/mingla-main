@@ -25,6 +25,13 @@ import {
   requireUserId,
   serviceRoleClient,
 } from "../_shared/stripeEdgeAuth.ts";
+import { evaluateBusinessNativeVersion } from "../_shared/appVersionPolicy.ts";
+
+const versionCorsHeaders = {
+  ...corsHeaders,
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, accept-language, x-mingla-app-id, x-mingla-app-platform, x-mingla-app-version",
+};
 
 const BUSINESS_WEB_ORIGIN = Deno.env.get("BUSINESS_WEB_ORIGIN");
 if (!BUSINESS_WEB_ORIGIN) {
@@ -109,11 +116,13 @@ function buildTargetUrl(input: {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: versionCorsHeaders });
   }
   if (req.method !== "POST") {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
+  const versionBlocked = await evaluateBusinessNativeVersion(req, "brand-stripe-account-session");
+  if (versionBlocked) return versionBlocked;
 
   const userIdOrResponse = await requireUserId(req);
   if (userIdOrResponse instanceof Response) return userIdOrResponse;

@@ -1,4 +1,4 @@
-import '../src/i18n'  // Must be first — initializes i18next before any component renders
+import "../src/i18n"; // Must be first — initializes i18next before any component renders
 // ORCH-0896 [Stripe forwardRef RedBox under React 19.1]: this side-effect file
 // MUST import BEFORE @mingla/payments-native (and any other module that pulls
 // @stripe/stripe-react-native). ES module imports hoist — the previous
@@ -9,12 +9,12 @@ import '../src/i18n'  // Must be first — initializes i18next before any compon
 // the filter before the Stripe import evaluates.
 // Originally tracked as DISC-QA-0892-A-RETEST-2-2 from ORCH-0892-A close.
 // See app-mobile/src/diagnostics/silenceStripeForwardRef.ts for full rationale.
-import '../src/diagnostics/silenceStripeForwardRef'
+import "../src/diagnostics/silenceStripeForwardRef";
 import React, { useEffect, useState } from "react";
 import { Stack } from "expo-router";
 import { useFonts } from "expo-font";
-import * as Sentry from '@sentry/react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import * as Sentry from "@sentry/react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StripeNativeProvider } from "@mingla/payments-native";
 import { MINGLA_THEME_FONTS } from "../src/theme/themeFonts";
 import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
@@ -46,6 +46,7 @@ import { KeyboardToolbarRoot } from "../src/wrappers/KeyboardToolbarRoot";
 // the call sites and autocapture share one instance).
 import { PostHogAnalyticsProvider } from "../src/services/PostHogAnalyticsProvider";
 import { UnifiedShareProvider } from "../src/components/share/UnifiedShareProvider";
+import { MandatoryUpdateGate } from "../src/components/MandatoryUpdateGate";
 
 // ORCH-0679 Wave 2B-2: SINGLE source of truth for Sentry init.
 // I-SENTRY-SINGLE-INIT — duplicate Sentry.init in app/index.tsx was deleted as
@@ -54,7 +55,7 @@ import { UnifiedShareProvider } from "../src/components/share/UnifiedShareProvid
 // CI gate: scripts/ci/check-single-sentry-init.sh — fails if more than one
 // Sentry.init call exists in app-mobile/.
 Sentry.init({
-  dsn: 'https://5bb11663dddc2efc612498d7a14b70f4@o4511136062701568.ingest.us.sentry.io/4511136064012288',
+  dsn: "https://5bb11663dddc2efc612498d7a14b70f4@o4511136062701568.ingest.us.sentry.io/4511136064012288",
 
   // ── From original _layout.tsx config ──
   // ORCH-0977 (2026-05-26) — privacy review complete; operator chose to keep
@@ -132,10 +133,10 @@ export default Sentry.wrap(function RootLayout() {
 
   React.useEffect(() => {
     const MAX_CACHE_BYTES = 1_500_000; // 1.5MB — below Android's 2MB CursorWindow limit
-    AsyncStorage.getItem('REACT_QUERY_OFFLINE_CACHE')
+    AsyncStorage.getItem("REACT_QUERY_OFFLINE_CACHE")
       .then((cached) => {
         if (cached && cached.length > MAX_CACHE_BYTES) {
-          return AsyncStorage.removeItem('REACT_QUERY_OFFLINE_CACHE');
+          return AsyncStorage.removeItem("REACT_QUERY_OFFLINE_CACHE");
         }
       })
       .catch(() => {})
@@ -176,33 +177,36 @@ export default Sentry.wrap(function RootLayout() {
             do NOT re-add one in any route file (index.tsx). */}
         {cacheReady && (
           <KeyboardRoot>
-            <PersistQueryClientProvider
-              client={queryClient}
-              persistOptions={{
-                persister: asyncStoragePersister,
-                maxAge: 24 * 60 * 60 * 1000, // 24 hours
+            <MandatoryUpdateGate>
+              <PersistQueryClientProvider
+                client={queryClient}
+                persistOptions={{
+                  persister: asyncStoragePersister,
+                  maxAge: 24 * 60 * 60 * 1000, // 24 hours
 
-                dehydrateOptions: {
-                  // Exclude large/transient queries from persistence to prevent
-                  // Android CursorWindow overflow (2MB SQLite row limit)
-                  shouldDehydrateQuery: (query) => {
-                    return shouldDehydrateMinglaQuery(query, useAppStore.getState().user?.id ?? null);
+                  dehydrateOptions: {
+                    // Exclude large/transient queries from persistence to prevent
+                    // Android CursorWindow overflow (2MB SQLite row limit)
+                    shouldDehydrateQuery: (query) => {
+                      return shouldDehydrateMinglaQuery(query, useAppStore.getState().user?.id ?? null);
+                    },
                   },
-                },
-              }}
-            >
-              {/* META-ORCH-1187: PostHog autocapture + masked replay wraps
-                  every route. Inside the providers so usePostHog() + identify
-                  work app-wide; renders children directly when the key is
-                  absent / on web (no-op). */}
-              <PostHogAnalyticsProvider>
-                <UnifiedShareProvider>
-                  <Stack screenOptions={{ headerShown: false }} />
-                </UnifiedShareProvider>
-              </PostHogAnalyticsProvider>
-            </PersistQueryClientProvider>
-            {/* Sibling so the toolbar stays visually above the keyboard. */}
-            <KeyboardToolbarRoot />
+                }}
+              >
+                {/* META-ORCH-1187: PostHog autocapture + masked replay wraps
+                    every route. Inside the providers so usePostHog() + identify
+                    work app-wide; renders children directly when the key is
+                    absent / on web (no-op). */}
+                <PostHogAnalyticsProvider>
+                  <UnifiedShareProvider>
+                    <Stack screenOptions={{ headerShown: false }} />
+                  </UnifiedShareProvider>
+                </PostHogAnalyticsProvider>
+              </PersistQueryClientProvider>
+              {/* Kept under the version gate so an open keyboard accessory can
+                  never layer over the mandatory screen on foreground. */}
+              <KeyboardToolbarRoot />
+            </MandatoryUpdateGate>
           </KeyboardRoot>
         )}
         {/* ORCH-1125: AnimatedSplashScreen renders immediately (independent of

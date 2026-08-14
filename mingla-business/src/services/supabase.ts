@@ -5,6 +5,7 @@ import { createClient, navigatorLock } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
+import { getNativeAppVersionHeaders } from "./appVersionIdentity";
 
 const extra = Constants.expoConfig?.extra as Record<string, string | undefined> | undefined;
 
@@ -38,7 +39,6 @@ const ssrSafeStorage = {
 };
 
 const storage = typeof window === "undefined" ? ssrSafeStorage : AsyncStorage;
-
 // ORCH-1100 Wave 1A (RC-1) — web auth-lock resilience.
 //
 // supabase-js coordinates session reads/refreshes across tabs with the Web Locks
@@ -124,4 +124,5 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     // Native omits `lock` entirely → default behaviour unchanged.
     ...(Platform.OS === "web" ? { lock: webResilientLock } : {}),
   },
+  global: { headers: getNativeAppVersionHeaders() },
 });

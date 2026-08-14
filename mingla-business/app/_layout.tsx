@@ -25,7 +25,7 @@
 // side effect; must arm before any route chunk can fail. See the module header.
 import "../src/diagnostics/chunkReloadGuard";
 import "../src/diagnostics/silenceStripeForwardRef";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
@@ -46,6 +46,10 @@ import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
 import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
+import {
+  MandatoryUpdateGate,
+  type VersionForegroundEvent,
+} from "../src/components/ui/MandatoryUpdateGate";
 import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
@@ -74,6 +78,7 @@ import { mixpanelService } from "../src/services/mixpanelService";
 // NOT remove them). Provider + boot init + iOS ATT prompt (before AppsFlyer).
 import { postHogService } from "../src/services/postHogService";
 import { PostHogAnalyticsProvider } from "../src/services/PostHogAnalyticsProvider";
+import { VersionForegroundStateMachine } from "../src/services/appVersionForeground";
 import { revenueCatService } from "../src/services/revenueCatService";
 import {
   initializeOneSignal,
@@ -484,9 +489,8 @@ function RootLayoutInner(): React.ReactElement {
             // request" because it had been fired off-active and never shown.
             const runAttRequest = async (): Promise<void> => {
               try {
-                const { requestTrackingPermissionsAsync } = await import(
-                  "expo-tracking-transparency"
-                );
+                const { requestTrackingPermissionsAsync } =
+                  await import("expo-tracking-transparency");
                 await requestTrackingPermissionsAsync();
               } catch (e) {
                 console.warn("[ATT] business tracking request failed:", e);
@@ -522,10 +526,7 @@ function RootLayoutInner(): React.ReactElement {
                 REFERRAL_CODE_KEY,
                 dest.referralCode,
               ).catch((e) => {
-                console.warn(
-                  "[AppsFlyer] referral code persist failed:",
-                  e,
-                );
+                console.warn("[AppsFlyer] referral code persist failed:", e);
               });
             }
             // dest.kind === "download": universal-download link has no in-app
@@ -576,9 +577,11 @@ function RootLayoutInner(): React.ReactElement {
   useEffect(() => {
     // Foreground: show the system banner for every business push (consumer
     // chose "app feels alive"; SDK v5 needs an explicit display()).
-    const removeForeground = onForegroundNotification((_data, _prevent, display) => {
-      display();
-    });
+    const removeForeground = onForegroundNotification(
+      (_data, _prevent, display) => {
+        display();
+      },
+    );
 
     // Tap (tray / lock screen / banner): mark read + track + navigate. When
     // unauthenticated, stash the resolved target for post-login replay.
@@ -628,52 +631,6 @@ function RootLayoutInner(): React.ReactElement {
       cancelled = true;
     };
   }, [userId, router]);
-
-  // ORCH-0740 Cycle 1: AppState → React Query focusManager wiring.
-  // When the app comes back to foreground, tell React Query to refetch
-  // stale queries that have refetchOnWindowFocus enabled (the default).
-  // Cross-platform: react-native-web 0.21.0 shims AppState 'change' events
-  // to document.visibilitychange + window.focus/blur, so this single code
-  // path works identically on iOS, Android, and Expo Web.
-  // ORCH-1192 — track the previous AppState so the foreground `app_opened`
-  // fires ONLY on a genuine background→active resume. Seeding from
-  // AppState.currentState means the very first 'active' (which coincides with
-  // the cold-start app_opened emitted in the boot effect above) is NOT counted
-  // as a resume → no double-fire. iOS inactive→active (Control Center,
-  // notification shade) is also excluded because prev !== "background".
-  const prevAppStateRef = useRef<AppStateStatus>(AppState.currentState);
-  useEffect(() => {
-    const handleAppStateChange = (status: AppStateStatus): void => {
-      focusManager.setFocused(status === "active");
-      if (status === "active") {
-        // ORCH-1250 (consumer ORCH-1243 parity): reconcile the OneSignal
-        // OS-permission tag on every foreground so returning from iOS Settings
-        // (after enabling/disabling notifications) updates the launch In-App
-        // Message audience. Self-guards on _initialized; never throws. Runs on
-        // every 'active' (incl. inactive→active), matching consumer.
-        void syncPushPermissionTag();
-      }
-      const wasBackground = prevAppStateRef.current === "background";
-      prevAppStateRef.current = status;
-      if (wasBackground && status === "active") {
-        // Foreground resume — feeds DAU/WAU/MAU keyed on a real session event.
-        // capture() no-ops when opted out / key absent. Web (react-native-web
-        // shims AppState to visibilitychange) also benefits, but the native
-        // postHogService is a no-op on web so this only emits on iOS/Android.
-        postHogService.capture("app_opened", {
-          cold_start: false,
-          surface: "business_app",
-        });
-      }
-    };
-    const subscription = AppState.addEventListener(
-      "change",
-      handleAppStateChange,
-    );
-    return (): void => {
-      subscription.remove();
-    };
-  }, []);
 
   // Cycle 17d §C — TTL evict ended-event entries from phone stores (30d post end_at).
   // Runs once after auth bootstrap completes (signal that Zustand persist hydration is done).
@@ -806,6 +763,63 @@ const authRoutingStyles = StyleSheet.create({
 });
 
 export default function RootLayout(): React.ReactElement {
+  const prevAppStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const versionForegroundStateRef = useRef(new VersionForegroundStateMachine());
+  const updateRequiredRef = useRef(false);
+  const foregroundSequenceRef = useRef(0);
+  const [versionForegroundEvent, setVersionForegroundEvent] =
+    useState<VersionForegroundEvent | null>(null);
+
+  const handleRequiredChange = useCallback((required: boolean): void => {
+    updateRequiredRef.current = required;
+  }, []);
+
+  const handleForegroundCheckComplete = useCallback((eventId: number): void => {
+    setVersionForegroundEvent((current) =>
+      current?.id === eventId ? null : current,
+    );
+  }, []);
+
+  // #2075 folds the version trigger into Host's one existing root AppState
+  // owner. The event state is set during the background→active callback, so
+  // MandatoryUpdateGate replaces the old snapshot with its opaque veil before
+  // the route tree can accept a foreground tap.
+  useEffect(() => {
+    const handleAppStateChange = (status: AppStateStatus): void => {
+      focusManager.setFocused(status === "active");
+      if (status === "active") void syncPushPermissionTag();
+
+      const wasBackground = prevAppStateRef.current === "background";
+      prevAppStateRef.current = status;
+      const versionDecision = versionForegroundStateRef.current.transition(
+        status,
+        Date.now(),
+        updateRequiredRef.current,
+      );
+      if (status === "background") {
+        return;
+      }
+      if (wasBackground && status === "active") {
+        postHogService.capture("app_opened", {
+          cold_start: false,
+          surface: "business_app",
+        });
+      }
+      if (Platform.OS !== "web" && versionDecision !== null) {
+        foregroundSequenceRef.current += 1;
+        setVersionForegroundEvent({
+          id: foregroundSequenceRef.current,
+          backgroundDurationMs: versionDecision.backgroundDurationMs,
+        });
+      }
+    };
+    const subscription = AppState.addEventListener(
+      "change",
+      handleAppStateChange,
+    );
+    return () => subscription.remove();
+  }, []);
+
   // ORCH-1083: the 14 theme fonts are NO LONGER loaded here. They render only on
   // the 3 themed surfaces (PublicBrandPage/PublicEventPage/ThemeEditorSection),
   // which load the needed family on demand via `useThemeFont`. Do NOT re-add a
@@ -844,25 +858,19 @@ export default function RootLayout(): React.ReactElement {
                   intentionally route-scoped to checkout payment screens so Home
                   startup does not initialize the payment SDK. */}
               <KeyboardRoot>
-                {/* META-ORCH-1187: PostHog autocapture + masked replay wraps
-                    every route (inside AuthProvider so identify works). Renders
-                    children directly when the key is absent / on web (no-op). */}
-                <PostHogAnalyticsProvider>
-                  <RootLayoutInner />
-                </PostHogAnalyticsProvider>
-                {/* ORCH-1165: Done-only accessory bar, sibling of the app shell
-                    inside KeyboardProvider. KeyboardStickyView (internal) is
-                    absolutely positioned, so it overlays the root window and
-                    stays off-screen until a field is focused. Last child keeps
-                    it visually on top. Native-only (web variant returns null). */}
-                <KeyboardToolbarRoot />
-                {/* META-ORCH-1187 LEG 2 — buyer-web consent banner. Web-only
-                    (the .tsx variant returns null on native). Rendered at the
-                    root so it overlays public buyer routes (which never reach
-                    the auth gate) and authed surfaces alike; it returns null
-                    once the visitor has chosen, and stays gated (no cookies /
-                    no capture) until Accept. */}
-                <ConsentBanner />
+                <MandatoryUpdateGate
+                  foregroundEvent={versionForegroundEvent}
+                  onRequiredChange={handleRequiredChange}
+                  onForegroundCheckComplete={handleForegroundCheckComplete}
+                >
+                  {/* META-ORCH-1187: PostHog autocapture + masked replay wraps
+                      every route (inside AuthProvider so identify works). */}
+                  <PostHogAnalyticsProvider>
+                    <RootLayoutInner />
+                  </PostHogAnalyticsProvider>
+                  <KeyboardToolbarRoot />
+                  <ConsentBanner />
+                </MandatoryUpdateGate>
               </KeyboardRoot>
             </AuthProvider>
           </QueryClientProvider>

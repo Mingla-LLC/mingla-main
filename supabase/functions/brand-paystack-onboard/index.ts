@@ -64,6 +64,7 @@ import {
   type BrandRecipientRow,
 } from "./recipient.ts";
 import { resolvePaystackPayoutHoldOnboardFlip } from "../_shared/secretBundle.ts";
+import { evaluateBusinessNativeVersion } from "../_shared/appVersionPolicy.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -71,7 +72,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-mingla-app-id, x-mingla-app-platform, x-mingla-app-version",
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -418,6 +419,8 @@ export const brandPaystackOnboardHandler = async (req: Request): Promise<Respons
   if (req.method !== "POST") {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
+  const versionBlocked = await evaluateBusinessNativeVersion(req, "brand-paystack-onboard");
+  if (versionBlocked) return versionBlocked;
 
   try {
     let body: OnboardBody;
