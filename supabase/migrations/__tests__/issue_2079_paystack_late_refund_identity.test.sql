@@ -23,6 +23,14 @@ BEGIN
       'public.issue_2079_capture_ticket_paid_identity_attention(uuid,text,text,text,text,text,text)','EXECUTE') THEN
     RAISE EXCEPTION '#2079 service capture grant missing';
   END IF;
+  IF has_function_privilege('anon',
+      'public.issue_2079_record_paid_identity_retry(uuid,text,text)','EXECUTE')
+     OR has_function_privilege('authenticated',
+      'public.issue_2079_record_paid_identity_retry(uuid,text,text)','EXECUTE')
+     OR NOT has_function_privilege('service_role',
+      'public.issue_2079_record_paid_identity_retry(uuid,text,text)','EXECUTE') THEN
+    RAISE EXCEPTION '#2079 paid identity retry RPC privilege mismatch';
+  END IF;
   SELECT pg_get_functiondef('public.claim_source_refund_operations(text,integer,timestamptz)'::regprocedure)
     INTO v_definition;
   IF v_definition !~ 'source_type\s*=\s*''ticket_checkout_session'''
@@ -98,7 +106,13 @@ VALUES
  '+2348012345678','USD',1000,1000,'requires_payment','issue-2079-stripe-attention',now()+interval '15 minutes',100),
 ('20790000-0000-0000-0000-000000000724','20790000-0000-0000-0000-000000000711',
  '20790000-0000-0000-0000-000000000710','Stripe complete','stripe-complete@example.com',
- '+2348012345678','USD',1000,1000,'requires_payment','issue-2079-stripe-complete',now()+interval '15 minutes',100);
+ '+2348012345678','USD',1000,1000,'requires_payment','issue-2079-stripe-complete',now()+interval '15 minutes',100),
+('20790000-0000-0000-0000-000000000725','20790000-0000-0000-0000-000000000711',
+ '20790000-0000-0000-0000-000000000710','Missing attempt','missing-attempt@example.com',
+ '+2348012345678','NGN',1000,1000,'failed','issue-2079-missing-attempt',now()+interval '15 minutes',100);
+UPDATE public.ticket_checkout_sessions SET revoked_at=now(),revoked_reason='event_status',
+  reversal_state='paid_reversal_pending'
+WHERE id='20790000-0000-0000-0000-000000000725';
 
 DO $test$
 DECLARE v_claim jsonb; v_replay jsonb; v_conflict jsonb; v_complete jsonb;
@@ -136,14 +150,23 @@ BEGIN
      OR (SELECT count(*) FROM public.source_refunds WHERE source_id='20790000-0000-0000-0000-000000000721')<>1 THEN
     RAISE EXCEPTION '#2079 exact replay was not stable: %',v_replay;
   END IF;
-  v_conflict:=public.issue_2079_capture_ticket_paid_identity_attention(
+  v_replay:=public.issue_1930_mint_ticket_late_reversal(
     '20790000-0000-0000-0000-000000000721','paystack',
-    'issue-2079-paystack-attention-reference','2079001',NULL,NULL,
-    'paid_provider_transaction_id_invalid');
+    'issue-2079-paystack-attention-reference','2079001',NULL);
+  IF v_replay->>'outcome'<>'promoted'
+     OR NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE id=v_refund
+       AND paystack_transaction_id=2079001 AND buyer_state='queued'
+       AND financial_state='pending' AND ops_status='none') THEN
+    RAISE EXCEPTION '#2079 authenticated secondary completion did not promote: %',v_replay;
+  END IF;
+  v_conflict:=public.issue_1930_mint_ticket_late_reversal(
+    '20790000-0000-0000-0000-000000000721','paystack',
+    'issue-2079-paystack-attention-reference','2079003',NULL);
   IF v_conflict->>'outcome'<>'conflict'
      OR NOT EXISTS(SELECT 1 FROM public.source_refunds WHERE id=v_refund
-       AND paystack_transaction_id IS NULL AND last_error_code='paid_provider_evidence_conflict') THEN
-    RAISE EXCEPTION '#2079 conflicting replay rewrote canonical identity: %',v_conflict;
+       AND paystack_transaction_id=2079001 AND buyer_state='needs_attention'
+       AND last_error_code='paid_provider_evidence_conflict') THEN
+    RAISE EXCEPTION '#2079 conflicting complete replay rewrote canonical identity: %',v_conflict;
   END IF;
 
   v_claim:=public.issue_1930_claim_ticket_provider_attempt(
@@ -206,6 +229,18 @@ BEGIN
     RAISE EXCEPTION '#2079 complete Stripe identity was not queued: %',v_complete;
   END IF;
 
+  v_replay:=public.biz_ticket_checkout_finalize(
+    '20790000-0000-0000-0000-000000000725',
+    'issue-2079-missing-attempt-reference','2079005','card','issue-2079-pepper');
+  IF v_replay->>'outcome'<>'paid_reversal_pending'
+     OR NOT EXISTS(SELECT 1 FROM public.source_refunds
+       WHERE source_id='20790000-0000-0000-0000-000000000725'
+         AND provider='paystack' AND provider_payment_reference='issue-2079-missing-attempt-reference'
+         AND paystack_transaction_id=2079005 AND buyer_state='needs_attention'
+         AND last_error_code='paid_provider_attempt_missing') THEN
+    RAISE EXCEPTION '#2079 missing-attempt paid evidence was dropped or relabelled: %',v_replay;
+  END IF;
+
   PERFORM * FROM public.claim_source_refund_operations('issue-2079-worker',25,now());
   IF EXISTS(SELECT 1 FROM public.source_refunds
        WHERE id IN (v_refund,v_stripe_refund) AND lease_owner IS NOT NULL)
@@ -216,6 +251,25 @@ BEGIN
        WHERE source_id='20790000-0000-0000-0000-000000000724'
          AND lease_owner='issue-2079-worker') THEN
     RAISE EXCEPTION '#2079 ticket-specific claim predicate is unsafe';
+  END IF;
+
+  UPDATE public.checkout_sale_revocation_outbox SET
+    state='leased',lease_owner='issue-2079-retry-worker',leased_at=now(),
+    attempt_count=3,next_retry_at=NULL
+  WHERE subject_type='ticket_checkout_session'
+    AND subject_id='20790000-0000-0000-0000-000000000725';
+  PERFORM public.issue_2079_record_paid_identity_retry(
+    (SELECT id FROM public.checkout_sale_revocation_outbox
+      WHERE subject_type='ticket_checkout_session'
+        AND subject_id='20790000-0000-0000-0000-000000000725'),
+    'issue-2079-retry-worker','paid_provider_identity_pending');
+  IF NOT EXISTS(SELECT 1 FROM public.checkout_sale_revocation_outbox
+      WHERE subject_type='ticket_checkout_session'
+        AND subject_id='20790000-0000-0000-0000-000000000725'
+        AND state='provider_unknown' AND lease_owner IS NULL
+        AND leased_at IS NULL AND next_retry_at>now()
+        AND last_error_code='paid_provider_identity_pending') THEN
+    RAISE EXCEPTION '#2079 paid identity retry did not release exact lease with bounded backoff';
   END IF;
 END $test$;
 ROLLBACK;

@@ -99,17 +99,13 @@ serve(async (req) => {
             "provider,flow,provider_object_id,provider_checkout_id,provider_reference,provider_idempotency_key",
           )
           .eq("id", row.provider_attempt_id).maybeSingle();
-        if (!attempt) {
-          state = "neutralized";
-        } else if (
-          attempt.provider === "paystack" &&
-          (row.state === "provider_unknown" ||
-            row.reason.startsWith("paid_provider_"))
-        ) {
+        if (row.reason.startsWith("paid_provider_")) {
           // Paid provider evidence is a refund obligation, never ordinary
-          // continuation suppression. Keep it retryable until the authenticated
-          // finalize boundary supplies a canonical identity.
+          // continuation suppression. The retryable outbox remains visible
+          // until the durable attention/source-refund row is reconciled.
           throw new Error("paid_provider_identity_pending");
+        } else if (!attempt) {
+          state = "neutralized";
         } else if (attempt.provider === "paystack") {
           state = "neutralized";
         } else if (!session?.stripe_account_id) {
@@ -174,17 +170,40 @@ serve(async (req) => {
       const message = caught instanceof Error
         ? caught.message
         : "provider_unknown";
+      if (message === "paid_provider_identity_pending") {
+        const { error: retryError } = await client.rpc(
+          "issue_2079_record_paid_identity_retry",
+          {
+            p_outbox_id: row.id,
+            p_worker_id: workerId,
+            p_error_code: message,
+          },
+        );
+        if (retryError) {
+          results.push({ id: row.id, state: "record_failed" });
+          continue;
+        }
+        results.push({ id: row.id, state: "provider_unknown" });
+        continue;
+      }
       errorCode = /^[a-z0-9_]{3,80}$/.test(message)
         ? message
         : "provider_unknown";
       state = "provider_unknown";
     }
-    await client.rpc("issue_1930_record_revocation_result", {
-      p_outbox_id: row.id,
-      p_worker_id: workerId,
-      p_state: state,
-      p_error_code: errorCode,
-    });
+    const { error: recordError } = await client.rpc(
+      "issue_1930_record_revocation_result",
+      {
+        p_outbox_id: row.id,
+        p_worker_id: workerId,
+        p_state: state,
+        p_error_code: errorCode,
+      },
+    );
+    if (recordError) {
+      results.push({ id: row.id, state: "record_failed" });
+      continue;
+    }
     results.push({ id: row.id, state });
   }
   return Response.json({ claimed: results.length, results });

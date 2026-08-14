@@ -170,9 +170,25 @@ serve(async (req) => {
       let truth: StripeTruth = {};
       let pi: PaymentIntentLike | null = null;
       let piId: string | null = null;
+      let hostedRelationConflict = false;
 
       if (refClass === "STRIPE_PI") {
         piId = piRef as string; // non-null + `pi_`-prefixed by classification
+        if (csId) {
+          const cs = await retrieveCheckoutSessionReadOnly(
+            stripe,
+            csId,
+            stripeAccountId,
+          );
+          const rawCsPi = cs.payment_intent;
+          const resolvedPiId = typeof rawCsPi === "string"
+            ? rawCsPi
+            : rawCsPi?.id ?? null;
+          if (resolvedPiId) {
+            hostedRelationConflict = resolvedPiId !== piId;
+            piId = resolvedPiId;
+          }
+        }
         const retrievedPi = await retrievePaymentIntentReadOnly(
           stripe,
           piId,
@@ -206,6 +222,22 @@ serve(async (req) => {
           );
           pi = retrievedPi;
           truth = { piStatus: retrievedPi.status };
+          const { error: persistError } = await supabase
+            .from("ticket_checkout_sessions")
+            .update({
+              stripe_payment_intent_id: piId,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", sessionId)
+            .is("stripe_payment_intent_id", null);
+          if (persistError) {
+            results.push({
+              sessionId,
+              piId,
+              error: "paid_identity_persist_failed",
+            });
+            continue;
+          }
         } else {
           truth = { csPaymentStatus: cs.payment_status };
         }
@@ -232,6 +264,30 @@ serve(async (req) => {
           ? pi.payment_method_types
           : [];
         const methodType = (pmTypes[0] as string | undefined) ?? "card";
+
+        if (hostedRelationConflict) {
+          const { error: captureError } = await supabase.rpc(
+            "issue_2079_capture_ticket_paid_identity_attention",
+            {
+              p_checkout_session_id: sessionId,
+              p_observed_provider: "stripe",
+              p_payment_reference: piId,
+              p_paystack_transaction_id: null,
+              p_stripe_charge_id: chargeId,
+              p_observed_account_reference: stripeAccountId,
+              p_reason_code: "paid_provider_checkout_conflict",
+            },
+          );
+          results.push({
+            sessionId,
+            piId,
+            ...(captureError ? { error: "paid_identity_capture_failed" } : {
+              status: "paid_reversal_pending",
+              skip: "paid_identity_attention",
+            }),
+          });
+          continue;
+        }
 
         const { data: identityTruth, error: identityError } = await supabase
           .rpc(
