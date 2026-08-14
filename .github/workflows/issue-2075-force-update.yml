@@ -10,12 +10,16 @@ on:
       - "app-mobile/src/services/appVersionPolicy.ts"
       - "app-mobile/src/services/supabase.ts"
       - "app-mobile/src/services/__tests__/issue_2075_app_version_policy.test.ts"
+      - "app-mobile/src/services/__tests__/issue_2075_app_version_foreground.test.ts"
+      - "app-mobile/src/services/appVersionForeground.ts"
       - "mingla-business/app/_layout.tsx"
       - "mingla-business/src/components/ui/MandatoryUpdateGate.tsx"
       - "mingla-business/src/services/appVersionIdentity.ts"
       - "mingla-business/src/services/appVersionPolicy.ts"
       - "mingla-business/src/services/supabase.ts"
       - "mingla-business/src/services/__tests__/issue_2075_app_version_policy.test.ts"
+      - "mingla-business/src/services/__tests__/issue_2075_app_version_foreground.test.ts"
+      - "mingla-business/src/services/appVersionForeground.ts"
       - "supabase/config.toml"
       - "supabase/functions/_shared/appVersionPolicy.ts"
       - "supabase/functions/_shared/appVersionPolicy.test.ts"
@@ -66,7 +70,7 @@ jobs:
           cache: npm
           cache-dependency-path: app-mobile/package-lock.json
       - run: npm ci
-      - run: npx jest --runInBand src/services/__tests__/issue_2075_app_version_policy.test.ts
+      - run: npx jest --runInBand src/services/__tests__/issue_2075_app_version_policy.test.ts src/services/__tests__/issue_2075_app_version_foreground.test.ts
 
   host-policy:
     runs-on: ubuntu-latest
@@ -81,7 +85,7 @@ jobs:
           cache: npm
           cache-dependency-path: mingla-business/package-lock.json
       - run: npm ci
-      - run: npx jest --runInBand src/services/__tests__/issue_2075_app_version_policy.test.ts
+      - run: npx jest --runInBand src/services/__tests__/issue_2075_app_version_policy.test.ts src/services/__tests__/issue_2075_app_version_foreground.test.ts
 
   edge-policy:
     runs-on: ubuntu-latest

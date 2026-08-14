@@ -20,7 +20,6 @@ import {
   Text,
   View,
   findNodeHandle,
-  type AppStateStatus,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { backgroundWarmGlow, colors, spacing } from "../constants/designSystem";
@@ -28,8 +27,8 @@ import {
   createAppVersionCoordinator,
   type VersionGateSnapshot,
 } from "../services/appVersionPolicy";
+import { VersionForegroundStateMachine } from "../services/appVersionForeground";
 
-const FOREGROUND_REFRESH_MS = 15 * 60 * 1_000;
 const STORE_TAP_LOCK_MS = 700;
 
 export function MandatoryUpdateGate({
@@ -51,28 +50,18 @@ export function MandatoryUpdateGate({
   );
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
-  const backgroundedAtRef = useRef<number | null>(null);
-  const previousAppStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const foregroundStateRef = useRef(new VersionForegroundStateMachine());
 
   useEffect(() => {
     void coordinator.check(true);
     if (Platform.OS === "web") return;
     const subscription = AppState.addEventListener("change", (next) => {
-      const previous = previousAppStateRef.current;
-      previousAppStateRef.current = next;
-      if (next === "background") {
-        backgroundedAtRef.current = Date.now();
-        return;
-      }
-      if (previous !== "background" || next !== "active") return;
-      const backgroundDuration =
-        backgroundedAtRef.current === null
-          ? 0
-          : Date.now() - backgroundedAtRef.current;
-      if (
-        snapshotRef.current.phase === "required" ||
-        backgroundDuration >= FOREGROUND_REFRESH_MS
-      ) {
+      const decision = foregroundStateRef.current.transition(
+        next,
+        Date.now(),
+        snapshotRef.current.phase === "required",
+      );
+      if (decision !== null) {
         void coordinator.check(true);
       }
     });

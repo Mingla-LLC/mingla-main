@@ -78,6 +78,7 @@ import { mixpanelService } from "../src/services/mixpanelService";
 // NOT remove them). Provider + boot init + iOS ATT prompt (before AppsFlyer).
 import { postHogService } from "../src/services/postHogService";
 import { PostHogAnalyticsProvider } from "../src/services/PostHogAnalyticsProvider";
+import { VersionForegroundStateMachine } from "../src/services/appVersionForeground";
 import { revenueCatService } from "../src/services/revenueCatService";
 import {
   initializeOneSignal,
@@ -763,7 +764,7 @@ const authRoutingStyles = StyleSheet.create({
 
 export default function RootLayout(): React.ReactElement {
   const prevAppStateRef = useRef<AppStateStatus>(AppState.currentState);
-  const backgroundedAtRef = useRef<number | null>(null);
+  const versionForegroundStateRef = useRef(new VersionForegroundStateMachine());
   const updateRequiredRef = useRef(false);
   const foregroundSequenceRef = useRef(0);
   const [versionForegroundEvent, setVersionForegroundEvent] =
@@ -790,8 +791,12 @@ export default function RootLayout(): React.ReactElement {
 
       const wasBackground = prevAppStateRef.current === "background";
       prevAppStateRef.current = status;
+      const versionDecision = versionForegroundStateRef.current.transition(
+        status,
+        Date.now(),
+        updateRequiredRef.current,
+      );
       if (status === "background") {
-        backgroundedAtRef.current = Date.now();
         return;
       }
       if (wasBackground && status === "active") {
@@ -799,20 +804,13 @@ export default function RootLayout(): React.ReactElement {
           cold_start: false,
           surface: "business_app",
         });
-        const backgroundDurationMs =
-          backgroundedAtRef.current === null
-            ? 0
-            : Date.now() - backgroundedAtRef.current;
-        if (
-          Platform.OS !== "web" &&
-          (updateRequiredRef.current || backgroundDurationMs >= 15 * 60 * 1_000)
-        ) {
-          foregroundSequenceRef.current += 1;
-          setVersionForegroundEvent({
-            id: foregroundSequenceRef.current,
-            backgroundDurationMs,
-          });
-        }
+      }
+      if (Platform.OS !== "web" && versionDecision !== null) {
+        foregroundSequenceRef.current += 1;
+        setVersionForegroundEvent({
+          id: foregroundSequenceRef.current,
+          backgroundDurationMs: versionDecision.backgroundDurationMs,
+        });
       }
     };
     const subscription = AppState.addEventListener(

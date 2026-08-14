@@ -11,6 +11,8 @@ const FILES = {
   hostRoot: "mingla-business/app/_layout.tsx",
   consumerGate: "app-mobile/src/components/MandatoryUpdateGate.tsx",
   hostGate: "mingla-business/src/components/ui/MandatoryUpdateGate.tsx",
+  consumerForeground: "app-mobile/src/services/appVersionForeground.ts",
+  hostForeground: "mingla-business/src/services/appVersionForeground.ts",
   consumerIdentity: "app-mobile/src/services/appVersionIdentity.ts",
   hostIdentity: "mingla-business/src/services/appVersionIdentity.ts",
   consumerSupabase: "app-mobile/src/services/supabase.ts",
@@ -66,6 +68,28 @@ function validate(sources) {
   if (count(sources.hostRoot, "const handleAppStateChange =") !== 1) {
     failures.push("Host root must retain exactly one primary AppState change owner");
   }
+  for (const key of ["consumerForeground", "hostForeground"]) {
+    requireText(
+      key,
+      'status !== "active" || this.backgroundedAtMs === null',
+      `${key} must preserve a real background latch across inactive`,
+    );
+    requireText(
+      key,
+      "this.backgroundedAtMs = null",
+      `${key} must consume each real background cycle once`,
+    );
+  }
+  requireText(
+    "consumerGate",
+    "foregroundStateRef.current.transition(",
+    "Consumer gate must use the inactive-safe lifecycle state machine",
+  );
+  requireText(
+    "hostRoot",
+    "versionForegroundStateRef.current.transition(",
+    "Host root must use the inactive-safe lifecycle state machine",
+  );
 
   for (const key of ["consumerIdentity", "hostIdentity"]) {
     for (const header of [
@@ -162,6 +186,20 @@ if (process.argv.includes("--self-test")) {
     )
   ) {
     throw new Error("self-test failed: wordmark geometry revert was not detected");
+  }
+  const lifecycleReverted = {
+    ...sources,
+    consumerGate: sources.consumerGate.replace(
+      "foregroundStateRef.current.transition(",
+      "foregroundStateRef.current.adjacentTransition(",
+    ),
+  };
+  if (
+    !validate(lifecycleReverted).some((failure) =>
+      failure.includes("inactive-safe lifecycle state machine")
+    )
+  ) {
+    throw new Error("self-test failed: inactive-safe lifecycle revert was not detected");
   }
   console.log("#2075 force-update strict gate self-test: PASS");
   process.exit(0);
