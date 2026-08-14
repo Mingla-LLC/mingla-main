@@ -8662,3 +8662,27 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 - **Rule:** Provider-authenticated late ticket money creates exactly one payout-blocking refund obligation before acknowledgment. Missing or conflicting identity never mints value, calls a provider, or terminalizes as neutralized.
 - **Enforcement:** the #2079 migration's service-only capture/verify RPCs, ticket-only claim predicate, dual-provider secondary identity constraints, refund-worker corroboration, checkout revocation non-terminal branch, three capture-before-finalize callers, and the CI-wired issue #2079 guard/tests.
+
+---
+
+## DRAFT — issue #1972 (canonical Ari event lifecycle)
+
+### I-PROPOSED-1972-ARI-EVENT-EXACTLY-ONCE (DRAFT)
+
+- **Rule:** One confirmed event operation ID binds one caller, tool, canonical argument hash, domain transaction, and stored result. Exact replay returns that result; changed replay fails closed and never repeats an effect.
+- **Enforcement:** the generic operation receipt functions, `ari_execute_event_operation`, the shared confirm executor, and issue #1972 PostgreSQL/Deno regressions.
+
+### I-PROPOSED-1972-EVENT-DRAFT-GRAPH-CANONICAL (DRAFT)
+
+- **Rule:** Business and Ari create, update, publish, unpublish, and duplicate events through one server-owned typed draft/live graph. Lifecycle status is never a raw editable field, and duplication carries no buyer, guest, contribution, payment, scan, or audit rows.
+- **Enforcement:** issue #1972 canonical event RPCs, Business services, Ari adapters, and strict source/runtime regressions.
+
+### I-PROPOSED-1972-CANCEL-OPENS-REFUND-RUN (DRAFT)
+
+- **Rule:** Cancelling an event and making its refund run discoverable commit in the same database transaction. Edge fan-out may reduce latency but is never the correctness owner.
+- **Enforcement:** `business_cancel_event_with_refund_run`, the existing refund preparation owner, and issue #1972 PostgreSQL regression.
+
+### I-PROPOSED-1972-EVENT-COVER-USER-SELECTION (DRAFT)
+
+- **Rule:** An event cover mutation consumes an unexpired, caller-bound picker/upload selection whose complete media tuple exactly matches the confirmed write. Model-authored or changed raw URLs fail closed.
+- **Enforcement:** event cover selection registration/consumption RPCs, the shared Business cover service, Ari proposal card, and issue #1972 regressions.

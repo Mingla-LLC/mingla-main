@@ -17,6 +17,7 @@ const mockGetUser = jest.fn<
   () => Promise<{ data: { user: { id: string } | null }; error: Error | null }>
 >();
 const mockFrom = jest.fn();
+const mockRpc = jest.fn();
 
 jest.mock("../supabase", () => ({
   supabase: {
@@ -24,6 +25,7 @@ jest.mock("../supabase", () => ({
       getUser: mockGetUser,
     },
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
@@ -190,23 +192,16 @@ const queueTaxonomyAutosave = (
         },
       }),
     },
-    {
-      table: "events",
-      builder: queryBuilder(
-        {
-          method: "maybeSingle",
-          result: { data: echoRow(draft), error: null },
-        },
-        (payload) => {
-          onUpdate(payload as Record<string, unknown>);
-        },
-      ),
-    },
   ]);
+  mockRpc.mockImplementation((_name: unknown, args: unknown) => {
+    onUpdate((args as { p_payload: Record<string, unknown> }).p_payload);
+    return Promise.resolve({ data: { event: echoRow(draft) }, error: null });
+  });
 };
 
 beforeEach(() => {
   mockFrom.mockReset();
+  mockRpc.mockReset();
   mockGetUser.mockReset();
   mockGetUser.mockResolvedValue({
     data: { user: { id: "user-1" } },

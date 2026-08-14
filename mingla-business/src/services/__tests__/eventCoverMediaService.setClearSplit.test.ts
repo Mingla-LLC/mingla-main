@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 import type { EventCoverProviderMetadata } from "../../types/eventCoverProvider";
@@ -7,6 +10,8 @@ import { supabase } from "../supabase";
 jest.mock("../supabase", () => ({
   supabase: {
     from: jest.fn(),
+    rpc: jest.fn(),
+    functions: { invoke: jest.fn() },
   },
 }));
 
@@ -22,45 +27,34 @@ const metadata: EventCoverProviderMetadata = {
   alt: "Crowd dancing under warm lights",
 };
 
-type QueryResult = {
-  data: unknown;
-  error: { message: string } | null;
-};
-type SelectChain = { maybeSingle: () => Promise<QueryResult> };
-type IsChain = { select: (columns: string) => SelectChain };
-type EqChain = {
-  eq: (column: string, value: string) => EqChain;
-  is: (column: string, value: null) => IsChain;
-};
-type UpdateChain = { eq: (column: string, value: string) => EqChain };
+const rpc = supabase.rpc as unknown as jest.Mock<
+  (...args: unknown[]) => Promise<{ data: unknown; error: null }>
+>;
+const invoke = supabase.functions.invoke as unknown as jest.Mock<
+  (...args: unknown[]) => Promise<{ data: unknown; error: null }>
+>;
+const serviceSource = fs.readFileSync(
+  path.resolve(__dirname, "..", "eventCoverMediaService.ts"),
+  "utf8",
+);
 
-const maybeSingle = jest.fn<() => Promise<QueryResult>>();
-const select = jest.fn<(columns: string) => SelectChain>();
-const is = jest.fn<(column: string, value: null) => IsChain>();
-const eq = jest.fn<(column: string, value: string) => EqChain>();
-const update = jest.fn<(payload: Record<string, unknown>) => UpdateChain>();
-
-const mockEventsUpdate = (row: unknown): void => {
-  maybeSingle.mockResolvedValue({ data: row, error: null });
-  select.mockReturnValue({ maybeSingle });
-  is.mockReturnValue({ select });
-  eq.mockReturnValue({ eq, is });
-  update.mockReturnValue({ eq });
-  (supabase.from as jest.Mock).mockReturnValue({ update });
+const mockCoverRpcs = (row: unknown): void => {
+  invoke.mockResolvedValueOnce({ data: null, error: null });
+  rpc.mockResolvedValueOnce({ data: { event: row }, error: null });
 };
 
 describe("eventCoverMediaService set/clear split", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockEventsUpdate({
+  });
+
+  test("T-AMEND7-01: setEventCover writes all cover columns and verifies round-trip", async () => {
+    mockCoverRpcs({
       id: "event-1",
       cover_media_type: "video",
       cover_media_url: "https://cdn.example.com/cover.mp4",
       cover_media_poster_url: "https://cdn.example.com/cover-poster.jpg",
     });
-  });
-
-  test("T-AMEND7-01: setEventCover writes all cover columns and verifies round-trip", async () => {
     await expect(
       setEventCover(
         "event-1",
@@ -75,43 +69,51 @@ describe("eventCoverMediaService set/clear split", () => {
       id: "event-1",
     });
 
-    expect(update).toHaveBeenCalledWith(
+    expect(rpc).toHaveBeenNthCalledWith(
+      1,
+      "business_set_event_cover_media",
       expect.objectContaining({
-        cover_media_alt: "Crowd dancing under warm lights",
-        cover_media_credit: "Mingla",
-        cover_media_credit_url: "https://source.example.com",
-        cover_media_provider: "upload",
-        cover_media_source_url: "https://source.example.com/source.mov",
-        cover_media_type: "video",
-        cover_media_url: "https://cdn.example.com/cover.mp4",
-        cover_media_poster_url: "https://cdn.example.com/cover-poster.jpg",
+        p_alt: "Crowd dancing under warm lights",
+        p_credit: "Mingla",
+        p_credit_url: "https://source.example.com",
+        p_provider: "upload",
+        p_source_url: "https://source.example.com/source.mov",
+        p_type: "video",
+        p_url: "https://cdn.example.com/cover.mp4",
+        p_poster_url: "https://cdn.example.com/cover-poster.jpg",
       }),
     );
-    expect(update.mock.calls[0][0]).not.toHaveProperty("cover_media_url", null);
-    // [TEST-MOD-APPROVED #1719] The persistence proof now includes the stable
-    // poster because URL/type without its still is an incomplete motion cover.
-    expect(select).toHaveBeenCalledWith(
-      "id, cover_media_url, cover_media_type, cover_media_poster_url",
+    expect(rpc.mock.calls[0][1]).not.toHaveProperty("p_url", null);
+    // [TEST-MOD-APPROVED #1972] A trusted Edge verifier now attests provider
+    // inventory/storage before SQL creates the one-use selection reference.
+    expect(invoke).toHaveBeenNthCalledWith(
+      1,
+      "event-cover-attest-selection",
+      expect.objectContaining({ body: expect.objectContaining({ event_id: "event-1", url: "https://cdn.example.com/cover.mp4" }) }),
     );
+    // [TEST-MOD-APPROVED #1972] Fail on revert to the former direct table write.
+    const setCoverSource = serviceSource.slice(
+      serviceSource.indexOf("export const setEventCover ="),
+      serviceSource.indexOf("export const setEventCoverGallery ="),
+    );
+    expect(setCoverSource).not.toContain('.from("events")');
   });
 
   test("T-AMEND7-02: clearEventCover nulls the full cover column set", async () => {
-    mockEventsUpdate({ id: "event-1" });
+    rpc.mockResolvedValueOnce({ data: { event: { id: "event-1" } }, error: null });
 
     await expect(clearEventCover("event-1")).resolves.toBeUndefined();
 
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        cover_media_alt: null,
-        cover_media_credit: null,
-        cover_media_credit_url: null,
-        cover_media_provider: null,
-        cover_media_source_url: null,
-        cover_media_type: null,
-        cover_media_url: null,
-      }),
+    expect(rpc).toHaveBeenNthCalledWith(
+      1,
+      "business_clear_event_cover_media",
+      { p_event_id: "event-1" },
     );
-    expect(select).toHaveBeenCalledWith("id");
+    expect(invoke).not.toHaveBeenCalled();
+    const clearCoverSource = serviceSource.slice(
+      serviceSource.indexOf("export const clearEventCover ="),
+    );
+    expect(clearCoverSource).not.toContain('.from("events")');
   });
 
   test("T-AMEND7-03: setEventCover rejects null mediaUrl at TypeScript level", () => {
@@ -124,7 +126,7 @@ describe("eventCoverMediaService set/clear split", () => {
   });
 
   test("T-AMEND7-04: setEventCover throws persist_mismatch when the row echoes a different URL", async () => {
-    mockEventsUpdate({
+    mockCoverRpcs({
       id: "event-1",
       cover_media_type: "video",
       cover_media_url: null,
@@ -157,6 +159,7 @@ describe("eventCoverMediaService set/clear split", () => {
       code: "upload_failed",
       message: "Cover save failed because its fallback image is missing or invalid.",
     });
-    expect(update).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
   });
 });

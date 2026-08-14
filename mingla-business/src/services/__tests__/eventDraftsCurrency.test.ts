@@ -4,6 +4,9 @@ const mockGetUser = jest.fn<
   () => Promise<{ data: { user: { id: string } | null }; error: Error | null }>
 >();
 const mockFrom = jest.fn();
+const mockRpc = jest.fn<
+  (...args: unknown[]) => Promise<{ data: unknown; error: Error | null }>
+>();
 
 jest.mock("../supabase", () => ({
   supabase: {
@@ -11,6 +14,7 @@ jest.mock("../supabase", () => ({
       getUser: mockGetUser,
     },
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
@@ -213,6 +217,7 @@ const queueFrom = (
 
 beforeEach(() => {
   mockFrom.mockReset();
+  mockRpc.mockReset();
   mockGetUser.mockReset();
   mockGetUser.mockResolvedValue({
     data: { user: { id: "user-1" } },
@@ -223,8 +228,6 @@ beforeEach(() => {
 describe("event draft currency persistence", () => {
   test("createServerDraft falls back to brand default when source draft currency is null", async () => {
     const source = baseDraft({ currency: null });
-    const insertPayloads: Record<string, unknown>[] = [];
-
     queueFrom([
       {
         table: "brands",
@@ -233,27 +236,17 @@ describe("event draft currency persistence", () => {
           result: { data: { default_currency: "usd" }, error: null },
         }),
       },
-      {
-        table: "events",
-        builder: queryBuilder(
-          {
-            method: "single",
-            result: {
-              data: rowFromDraft(source, "USD", {}),
-              error: null,
-            },
-          },
-          undefined,
-          (payload) => {
-            insertPayloads.push(payload as Record<string, unknown>);
-          },
-        ),
-      },
     ]);
+    mockRpc.mockResolvedValue({
+      data: { event: rowFromDraft(source, "USD", {}) },
+      error: null,
+    });
 
     await createServerDraft(source.brandId, source);
 
-    const insertPayload = insertPayloads[0];
+    const insertPayload = (mockRpc.mock.calls[0][1] as {
+      p_payload: Record<string, unknown>;
+    }).p_payload;
     expect(insertPayload?.currency).toBe("USD");
     expect(
       ((insertPayload?.theme as Record<string, unknown>).business_draft as {
@@ -427,14 +420,8 @@ describe("event draft currency persistence", () => {
           },
         }),
       },
-      {
-        table: "events",
-        builder: queryBuilder({
-          method: "maybeSingle",
-          result: { data: null, error: null },
-        }),
-      },
     ]);
+    mockRpc.mockResolvedValue({ data: null, error: null });
 
     await expect(autosaveServerDraft(draft)).rejects.toMatchObject({
       name: "ServerDraftLifecycleError",
@@ -509,27 +496,21 @@ function queueAutosave({
     });
   }
 
-  entries.push({
-    table: "events",
-    builder: queryBuilder(
-      {
-        method: "maybeSingle",
-        result: {
-          data: rowFromDraft(
-            draft,
-            draft.currency?.toUpperCase() ??
-              existingCurrency ??
-              brandDefaultCurrency?.toUpperCase() ??
-              "GBP",
-            {},
-          ),
-          error: null,
-        },
+  mockRpc.mockImplementation((_name: unknown, args: unknown) => {
+    onUpdate((args as { p_payload: Record<string, unknown> }).p_payload);
+    return Promise.resolve({
+      data: {
+        event: rowFromDraft(
+          draft,
+          draft.currency?.toUpperCase() ??
+            existingCurrency ??
+            brandDefaultCurrency?.toUpperCase() ??
+            "GBP",
+          {},
+        ),
       },
-      (payload) => {
-        onUpdate(payload as Record<string, unknown>);
-      },
-    ),
+      error: null,
+    });
   });
 
   queueFrom(entries);

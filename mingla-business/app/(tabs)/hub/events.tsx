@@ -75,6 +75,10 @@ import {
 } from "../../../src/hooks/useBusinessEvents";
 import { eventPublicUrl } from "../../../src/constants/publicUrls";
 import { canPerformAction } from "../../../src/utils/permissionGates";
+import {
+  duplicateBusinessEventAsDraft,
+  unpublishBusinessEventToDraft,
+} from "../../../src/services/businessEvents";
 // ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
 import { routeForEventRowDefensive } from "../../../src/utils/routeForEventRow";
 // ORCH-0850 [End-not-start parity systemic]: route past/upcoming/live decision
@@ -431,6 +435,49 @@ export default function EventsTab(): React.ReactElement {
     setManageCtx(null);
   }, [manageCtx]);
 
+  const handleManageDuplicate = useCallback(async (): Promise<void> => {
+    if (manageCtx === null) return;
+    const source = manageCtx.event;
+    const isServerBacked = manageCtx.kind === "live"
+      ? serverBackedEventIds.has(source.id)
+      : !isLocalOnlyDraft(source as DraftEvent);
+    if (!isServerBacked) {
+      setToast({ visible: true, message: "Save this event before duplicating it." });
+      return;
+    }
+    setManageCtx(null);
+    try {
+      const result = await duplicateBusinessEventAsDraft(source.id);
+      setToast({ visible: true, message: "Draft copy created." });
+      router.push(`/event/${result.event.id}/edit` as never);
+    } catch {
+      setToast({ visible: true, message: "Could not duplicate this event. Try again." });
+    }
+  }, [manageCtx, router, serverBackedEventIds]);
+
+  const handleManageUnpublish = useCallback(async (): Promise<void> => {
+    if (manageCtx === null || manageCtx.kind !== "live") return;
+    if (!serverBackedEventIds.has(manageCtx.event.id)) {
+      setToast({ visible: true, message: "This event is not synced to Mingla yet." });
+      return;
+    }
+    const eventId = manageCtx.event.id;
+    setManageCtx(null);
+    try {
+      const result = await unpublishBusinessEventToDraft(eventId);
+      setToast({ visible: true, message: "Event moved back to drafts." });
+      router.push(`/event/${result.event.id}/edit` as never);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "unpublish_failed";
+      setToast({
+        visible: true,
+        message: code.includes("event_unpublish_has_commitments")
+          ? "This event has buyer activity and cannot be unpublished. Cancel it instead."
+          : "Could not unpublish this event. Try again.",
+      });
+    }
+  }, [manageCtx, router, serverBackedEventIds]);
+
   // 9b-1 lifecycle handlers ----------------------------------------
   const handleManageEndSales = useCallback((): void => {
     if (manageCtx === null || manageCtx.kind !== "live") return;
@@ -770,6 +817,8 @@ export default function EventsTab(): React.ReactElement {
             onEndSales={handleManageEndSales}
             onCancelEvent={handleManageCancelEvent}
             onDeleteDraft={handleManageDeleteDraft}
+            onDuplicate={handleManageDuplicate}
+            onUnpublish={handleManageUnpublish}
             onOpenOrders={() => {
               handleManageClose();
               router.push(

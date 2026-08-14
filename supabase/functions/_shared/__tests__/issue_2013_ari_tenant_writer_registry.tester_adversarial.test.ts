@@ -118,5 +118,8 @@ Deno.test("#2013 tester retest: every chat and confirmation message writer emits
     }
   }
 
-  assertEquals(observed, { "agent-chat": 5, "agent-confirm-action": 4 });
+  // [TEST-MOD-APPROVED #1972] Terminal tool rows are now inserted by the
+  // service-only atomic SQL owner. Edge retains only the assistant follow-up
+  // writer, whose provenance remains mandatory here.
+  assertEquals(observed, { "agent-chat": 5, "agent-confirm-action": 1 });
 });

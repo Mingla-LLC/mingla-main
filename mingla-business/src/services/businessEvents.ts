@@ -11,7 +11,7 @@ import type {
   TicketStub,
   WhenMode,
 } from "../store/draftEventStore";
-import type { LiveEvent, LiveEventStatus } from "../store/liveEventStore";
+import type { EditableLiveEventFields, LiveEvent, LiveEventStatus } from "../store/liveEventStore";
 import type { Brand, BrandLinks } from "../store/currentBrandStore";
 import {
   asEventCoverMediaProvider,
@@ -387,6 +387,7 @@ const eventFromRow = (
     brandSlug: row.brand_slug,
     eventSlug: row.slug,
     status: viewStatusToLiveStatus(row.status),
+    clientRevision: asNumber(businessEvent.clientRevision, 0),
     publishedAt: row.published_at ?? row.updated_at,
     cancelledAt: row.status === "cancelled" ? row.updated_at : null,
     endedAt: row.status === "ended" ? row.updated_at : null,
@@ -933,6 +934,67 @@ export const cancelBusinessEvent = async (
     /* fan-out client unavailable — backstop cron re-drives */
   }
   return eventFromPublishResponse(response);
+};
+
+export interface EventDraftLifecycleResult {
+  event: Record<string, unknown> & { id: string; brand_id: string; status: string };
+  client_revision: number;
+}
+
+const requireEventDraftLifecycleResult = (
+  value: unknown,
+  operation: "Unpublish" | "Duplicate",
+): EventDraftLifecycleResult => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${operation} did not return a durable event draft.`);
+  }
+  const result = value as Partial<EventDraftLifecycleResult>;
+  if (
+    result.event === null || typeof result.event !== "object" ||
+    typeof result.event.id !== "string" || result.event.status !== "draft"
+  ) {
+    throw new Error(`${operation} returned an invalid event draft.`);
+  }
+  return result as EventDraftLifecycleResult;
+};
+
+export const unpublishBusinessEventToDraft = async (
+  eventId: string,
+): Promise<EventDraftLifecycleResult> => {
+  const { data, error } = await supabase.rpc("business_unpublish_event_to_draft", {
+    p_event_id: eventId,
+  });
+  if (error !== null) throw error;
+  return requireEventDraftLifecycleResult(data, "Unpublish");
+};
+
+export const duplicateBusinessEventAsDraft = async (
+  eventId: string,
+): Promise<EventDraftLifecycleResult> => {
+  const { data, error } = await supabase.rpc("business_duplicate_event_as_draft", {
+    p_event_id: eventId,
+  });
+  if (error !== null) throw error;
+  return requireEventDraftLifecycleResult(data, "Duplicate");
+};
+
+export const patchPublishedEventCore = async (
+  eventId: string,
+  patch: Partial<EditableLiveEventFields>,
+  reason: string,
+  clientRevision: number | null = null,
+): Promise<Record<string, unknown>> => {
+  const { data, error } = await supabase.rpc("business_update_live_event", {
+    p_event_id: eventId,
+    p_patch: patch,
+    p_reason: reason,
+    p_client_revision: clientRevision,
+  });
+  if (error !== null) throw new Error(error.message ?? "business_update_live_event_failed");
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("business_update_live_event_empty_response");
+  }
+  return data as Record<string, unknown>;
 };
 
 export const endBusinessEventTicketSales = async (

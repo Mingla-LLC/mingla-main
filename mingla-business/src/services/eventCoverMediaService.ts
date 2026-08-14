@@ -50,6 +50,34 @@ export interface EventCoverUploadResult {
   mediaType: EventCoverMediaType;
 }
 
+export const registerEventCoverSelection = async (
+  serverEventId: string,
+  selectionRef: string,
+  mediaUrl: string | null,
+  mediaType: EventCoverMediaType | null,
+  posterUrl: string | null,
+  metadata: EventCoverProviderMetadata,
+): Promise<void> => {
+  const { error } = await supabase.functions.invoke(
+    "event-cover-attest-selection",
+    {
+      body: {
+        event_id: serverEventId,
+        selection_ref: selectionRef,
+        url: mediaUrl,
+        type: mediaType,
+        poster_url: posterUrl,
+        provider: metadata.provider ?? "upload",
+        source_url: metadata.sourceUrl ?? null,
+        credit: metadata.credit ?? null,
+        credit_url: metadata.creditUrl ?? null,
+        alt: metadata.alt ?? null,
+      },
+    },
+  );
+  if (error !== null) throw new EventCoverMediaError("upload_failed", error.message);
+};
+
 export const eventCoverPath = (
   brandId: string,
   eventId: string,
@@ -207,47 +235,50 @@ export const setEventCover = async (
       "Cover save failed because its fallback image is missing or invalid.",
     );
   }
-  // ORCH-0859 REWORK 3 (events-type-filter audit): event-wizard cover
-  // media writer is event-only. Trip wizard manages its own cover via
-  // theme.business_trip + its own service path.
-  const { data, error } = await supabase
-    .from("events")
-    .update({
-      cover_media_url: mediaUrl,
-      cover_media_poster_url: stablePosterUrl,
-      cover_media_type: mediaType,
-      cover_media_provider: metadata.provider ?? null,
-      cover_media_source_url: metadata.sourceUrl ?? null,
-      cover_media_credit: metadata.credit ?? null,
-      cover_media_credit_url: metadata.creditUrl ?? null,
-      cover_media_alt: metadata.alt ?? null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", serverEventId)
-    .eq("event_type", "event")
-    .is("deleted_at", null)
-    .select("id, cover_media_url, cover_media_type, cover_media_poster_url")
-    .maybeSingle();
+  const selectionRef = randomId();
+  await registerEventCoverSelection(
+    serverEventId,
+    selectionRef,
+    mediaUrl,
+    mediaType,
+    stablePosterUrl,
+    metadata,
+  );
+  const { data, error } = await supabase.rpc("business_set_event_cover_media", {
+    p_event_id: serverEventId,
+    p_selection_ref: selectionRef,
+    p_url: mediaUrl,
+    p_type: mediaType,
+    p_poster_url: stablePosterUrl,
+    p_provider: metadata.provider ?? null,
+    p_source_url: metadata.sourceUrl ?? null,
+    p_credit: metadata.credit ?? null,
+    p_credit_url: metadata.creditUrl ?? null,
+    p_alt: metadata.alt ?? null,
+  });
 
   if (error !== null) {
     throw new EventCoverMediaError("upload_failed", error.message);
   }
-  if (data === null) {
+  const event = data !== null && typeof data === "object" && !Array.isArray(data)
+    ? (data as { event?: Record<string, unknown> }).event
+    : null;
+  if (event === null || event === undefined) {
     throw new EventCoverMediaError(
       "missing_server_event_id",
       "Save failed because this event could not be found.",
     );
   }
   if (
-    data.cover_media_url !== mediaUrl ||
-    data.cover_media_poster_url !== stablePosterUrl
+    event.cover_media_url !== mediaUrl ||
+    event.cover_media_poster_url !== stablePosterUrl
   ) {
     throw new EventCoverMediaError(
       "persist_mismatch",
       "Save succeeded but the cover did not persist. Refresh and try again.",
     );
   }
-  return data as {
+  return event as {
     id: string;
     cover_media_url: string;
     cover_media_poster_url: string;
@@ -305,32 +336,17 @@ export const clearEventCover = async (serverEventId: string): Promise<void> => {
       "Save failed because this event is missing its server id.",
     );
   }
-  // ORCH-0859 REWORK 3 (events-type-filter audit): event-wizard cover
-  // media writer is event-only. Trip wizard manages its own cover via
-  // theme.business_trip + its own service path.
-  const { data, error } = await supabase
-    .from("events")
-    .update({
-      cover_media_url: null,
-      cover_media_poster_url: null,
-      cover_media_type: null,
-      cover_media_provider: null,
-      cover_media_source_url: null,
-      cover_media_credit: null,
-      cover_media_credit_url: null,
-      cover_media_alt: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", serverEventId)
-    .eq("event_type", "event")
-    .is("deleted_at", null)
-    .select("id")
-    .maybeSingle();
+  const { data, error } = await supabase.rpc("business_clear_event_cover_media", {
+    p_event_id: serverEventId,
+  });
 
   if (error !== null) {
     throw new EventCoverMediaError("upload_failed", error.message);
   }
-  if (data === null) {
+  const event = data !== null && typeof data === "object" && !Array.isArray(data)
+    ? (data as { event?: Record<string, unknown> }).event
+    : null;
+  if (event === null || event === undefined) {
     throw new EventCoverMediaError(
       "missing_server_event_id",
       "Save failed because this event could not be found.",

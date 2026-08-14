@@ -45,6 +45,8 @@ import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 import type { CoverTarget } from "../ui/coverTarget";
 import { useBrandCascadePreview } from "../../hooks/useBrands";
+import { randomId } from "../../utils/randomId";
+import { registerEventCoverSelection } from "../../services/eventCoverMediaService";
 import type { ConfirmOutcome } from "./toolProposalTypes";
 
 // Premium proposal-card metrics — tighter than the default kit values.
@@ -116,6 +118,7 @@ function humanizeToolName(toolName: string): string {
     case "create_event": return "Create event";
     case "update_event": return "Update event";
     case "cancel_event": return "Cancel event";
+    case "discard_event_draft": return "Discard draft";
     case "send_campaign_now": return "Send campaign";
     case "refund_order": return "Refund order";
     case "request_account_deletion": return "Delete account";
@@ -126,6 +129,7 @@ function humanizeToolName(toolName: string): string {
 /** Destructive / money tools that reuse the brand type-to-confirm gate. */
 export const MONEY_CONFIRM_TOOLS: Record<string, string> = {
   cancel_event: "CANCEL",
+  discard_event_draft: "DISCARD",
   refund_rsvp_contribution: "REFUND",
   send_campaign_now: "SEND",
   disconnect_partner: "DISCONNECT",
@@ -405,12 +409,41 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const coverPosterUrl = (liveArgs.cover_media_poster_url as string | undefined) ?? null;
   const coverType = liveArgs.cover_media_type;
 
-  const handleCoverChange = (patch: CoverPatch): void => {
+  const handleCoverChange = async (patch: CoverPatch): Promise<void> => {
+    const selectionRef = patch.coverMediaUrl ? randomId() : undefined;
+    if (selectionRef && typeof liveArgs.event_id === "string") {
+      try {
+        await registerEventCoverSelection(
+          liveArgs.event_id,
+          selectionRef,
+          patch.coverMediaUrl,
+          patch.coverMediaType,
+          patch.coverMediaPosterUrl,
+          {
+            provider: patch.coverMediaProvider,
+            sourceUrl: patch.coverMediaSourceUrl,
+            credit: patch.coverMediaCredit,
+            creditUrl: patch.coverMediaCreditUrl,
+            alt: patch.coverMediaAlt,
+          },
+        );
+      } catch {
+        setCoverUploadState("error");
+        return;
+      }
+    }
     setEditedArgs((prev) => ({
       ...prev,
       cover_media_url: patch.coverMediaUrl ?? undefined,
       cover_media_poster_url: patch.coverMediaPosterUrl ?? undefined,
       cover_media_type: patch.coverMediaType ?? undefined,
+      cover_media_provider: patch.coverMediaProvider ?? undefined,
+      cover_media_source_url: patch.coverMediaSourceUrl ?? undefined,
+      cover_media_credit: patch.coverMediaCredit ?? undefined,
+      cover_media_credit_url: patch.coverMediaCreditUrl ?? undefined,
+      cover_media_alt: patch.coverMediaAlt ?? undefined,
+      selection_ref: selectionRef,
+      clear_cover: patch.coverMediaUrl ? false : undefined,
     }));
     if (patch.coverMediaUrl) setCoverUploadState("idle");
   };
@@ -421,6 +454,15 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
       delete next.cover_media_url;
       delete next.cover_media_poster_url;
       delete next.cover_media_type;
+      delete next.cover_media_provider;
+      delete next.cover_media_source_url;
+      delete next.cover_media_credit;
+      delete next.cover_media_credit_url;
+      delete next.cover_media_alt;
+      delete next.selection_ref;
+      if (toolName === "set_event_cover") {
+        next.clear_cover = true;
+      }
       return next;
     });
   };

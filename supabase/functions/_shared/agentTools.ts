@@ -13,9 +13,20 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4
 import { filterPlayIntentTags } from "./playIntentTags.ts";
 import { mapToCanonicalExperienceIntents } from "./canonicalExperienceIntents.ts";
 import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "./agentDomainTools.ts";
-import { assertAgentReadBrand, resolveAccessibleAgentBrands } from "./agentTenantScope.ts";
+import {
+  assertAgentReadBrand,
+  resolveAccessibleAgentBrands,
+} from "./agentTenantScope.ts";
 import type { AgentTool, AgentToolDefinition } from "./agentToolHelpers.ts";
-import { deriveSlug, isString, isUuid, resolveEventBrand, ToolError } from "./agentToolHelpers.ts";
+import {
+  callRpc,
+  deriveSlug,
+  isString,
+  isUuid,
+  requireAgentOperationId,
+  resolveEventBrand,
+  ToolError,
+} from "./agentToolHelpers.ts";
 import { secureAgentTools } from "./agentToolAuthorization.ts";
 
 export { ToolError } from "./agentToolHelpers.ts";
@@ -36,7 +47,11 @@ function isHttpsUrl(v: unknown): v is string {
 
 function resolveCoverPair(
   args: Record<string, unknown>,
-): { cover_media_url: string; cover_media_type: string; cover_media_poster_url: string } | null {
+): {
+  cover_media_url: string;
+  cover_media_type: string;
+  cover_media_poster_url: string;
+} | null {
   const url = args.cover_media_url;
   const type = args.cover_media_type;
   const requestedPoster = args.cover_media_poster_url;
@@ -68,7 +83,9 @@ async function resolveCreateCurrency(
   client: SupabaseClient,
   userId: string,
 ): Promise<string | null> {
-  if (isString(args.default_currency) && args.default_currency.trim().length >= 3) {
+  if (
+    isString(args.default_currency) && args.default_currency.trim().length >= 3
+  ) {
     return args.default_currency.toUpperCase().slice(0, 3);
   }
   const { data } = await client
@@ -76,7 +93,8 @@ async function resolveCreateCurrency(
     .select("preferred_currency")
     .eq("user_id", userId)
     .maybeSingle();
-  const pref = (data as { preferred_currency?: string | null } | null)?.preferred_currency;
+  const pref = (data as { preferred_currency?: string | null } | null)
+    ?.preferred_currency;
   if (isString(pref) && pref.trim().length >= 3) {
     return pref.toUpperCase().slice(0, 3);
   }
@@ -95,24 +113,57 @@ const createBrand: AgentToolDefinition = {
     type: "object",
     required: ["name"],
     properties: {
-      name: { type: "string", description: "Public-facing brand name (1-80 chars)" },
-      slug: { type: "string", description: "URL slug, lowercase hyphenated. Auto-derived from name if omitted." },
-      description: { type: "string", description: "Optional short description (<=500 chars)" },
-      contact_email: { type: "string", description: "Optional brand contact email" },
-      default_currency: { type: "string", description: "3-letter ISO currency code (e.g. USD, GBP, NGN). If omitted, uses the user's preferred currency." },
-      cover_media_url: { type: "string", description: "Cover media URL — set by the Add cover picker, NOT by you. Leave unset; the user attaches it via the card." },
-      cover_media_type: { type: "string", enum: ["image", "gif", "video"], description: "Cover media type. Set by the picker alongside cover_media_url." },
-      cover_media_poster_url: { type: "string", description: "Stable cover still — set by the Add cover picker alongside GIF/video media." },
+      name: {
+        type: "string",
+        description: "Public-facing brand name (1-80 chars)",
+      },
+      slug: {
+        type: "string",
+        description:
+          "URL slug, lowercase hyphenated. Auto-derived from name if omitted.",
+      },
+      description: {
+        type: "string",
+        description: "Optional short description (<=500 chars)",
+      },
+      contact_email: {
+        type: "string",
+        description: "Optional brand contact email",
+      },
+      default_currency: {
+        type: "string",
+        description:
+          "3-letter ISO currency code (e.g. USD, GBP, NGN). If omitted, uses the user's preferred currency.",
+      },
+      cover_media_url: {
+        type: "string",
+        description:
+          "Cover media URL — set by the Add cover picker, NOT by you. Leave unset; the user attaches it via the card.",
+      },
+      cover_media_type: {
+        type: "string",
+        enum: ["image", "gif", "video"],
+        description:
+          "Cover media type. Set by the picker alongside cover_media_url.",
+      },
+      cover_media_poster_url: {
+        type: "string",
+        description:
+          "Stable cover still — set by the Add cover picker alongside GIF/video media.",
+      },
     },
   },
-  executor: async (args, client, userId) => {
+  executor: async (args, client, userId, _context) => {
     const name = args.name;
     if (!isString(name) || name.length > 80) {
       throw new ToolError("INVALID_ARGS", "name is required (1-80 chars)");
     }
     const slug = isString(args.slug) ? args.slug : deriveSlug(name);
     if (!slug) {
-      throw new ToolError("INVALID_ARGS", "Could not derive a valid slug from name");
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Could not derive a valid slug from name",
+      );
     }
 
     // ORCH-1103 — de-GBP: resolve currency or OMIT so the column default
@@ -142,7 +193,9 @@ const createBrand: AgentToolDefinition = {
     const { data, error } = await client
       .from("brands")
       .insert(row)
-      .select("id, name, slug, default_currency, cover_media_url, cover_media_poster_url, cover_media_type, created_at")
+      .select(
+        "id, name, slug, default_currency, cover_media_url, cover_media_poster_url, cover_media_type, created_at",
+      )
       .single();
     if (error) {
       // 23505 = Postgres unique_violation. The manual create-brand UI
@@ -177,14 +230,20 @@ const createBrand: AgentToolDefinition = {
           .update({ default_brand_id: newBrandId })
           .eq("id", userId);
         if (defaultErr) {
-          console.warn("[create_brand] set default_brand_id failed:", defaultErr.message);
+          console.warn(
+            "[create_brand] set default_brand_id failed:",
+            defaultErr.message,
+          );
         } else {
           setAsDefault = true;
         }
       }
     } catch (e) {
       // Non-fatal — brand is already created. Surface, do not throw.
-      console.warn("[create_brand] default-brand check failed:", (e as Error)?.message ?? e);
+      console.warn(
+        "[create_brand] default-brand check failed:",
+        (e as Error)?.message ?? e,
+      );
     }
 
     return { brand: data, set_as_default: setAsDefault };
@@ -202,68 +261,173 @@ const createEvent: AgentToolDefinition = {
     "Create an event under a brand owned by the user. Start time must be in the future. Timezone defaults to the user's preferred_timezone or UTC.",
   parameters: {
     type: "object",
-    required: ["brand_id", "title", "start_at"],
+    required: ["brand_id", "title", "when_mode"],
     properties: {
-      brand_id: { type: "string", description: "UUID of a brand owned by the user" },
+      brand_id: {
+        type: "string",
+        description: "UUID of a brand owned by the user",
+      },
       title: { type: "string", description: "Event name (1-120 chars)" },
-      start_at: { type: "string", description: "ISO 8601 datetime in the future (e.g., 2026-05-17T21:00:00Z)" },
-      description: { type: "string", description: "Optional event description (<=2000 chars)" },
-      location_text: { type: "string", description: "Optional venue name or address (<=200 chars)" },
-      is_online: { type: "boolean", description: "True if the event is online-only" },
+      when_mode: {
+        type: "string",
+        enum: ["single", "multi_date", "recurring"],
+        description:
+          "Schedule topology. Single/recurring use start_at; multi_date uses multi_dates.",
+      },
+      start_at: {
+        type: "string",
+        description:
+          "ISO 8601 datetime in the future (e.g., 2026-05-17T21:00:00Z)",
+      },
+      end_at: {
+        type: "string",
+        description: "Optional ISO 8601 end datetime after start_at",
+      },
+      multi_dates: {
+        type: "array",
+        minItems: 2,
+        maxItems: 24,
+        items: {
+          type: "object",
+          required: ["date", "start_time", "end_time"],
+          properties: {
+            id: { type: "string" },
+            date: { type: "string", description: "Local YYYY-MM-DD date" },
+            start_time: { type: "string", description: "Local HH:mm start" },
+            end_time: { type: "string", description: "Local HH:mm end" },
+            overrides: { type: "object" },
+          },
+          additionalProperties: false,
+        },
+      },
+      recurrence_rule: {
+        type: "object",
+        properties: {
+          preset: {
+            type: "string",
+            enum: [
+              "daily",
+              "weekly",
+              "biweekly",
+              "monthly_dom",
+              "monthly_dow",
+            ],
+          },
+          byDay: {
+            type: "string",
+            enum: ["MO", "TU", "WE", "TH", "FR", "SA", "SU"],
+          },
+          byMonthDay: { type: "integer", minimum: 1, maximum: 28 },
+          bySetPos: { type: "integer", enum: [1, 2, 3, 4, -1] },
+          termination: {
+            type: "object",
+            properties: {
+              kind: { type: "string", enum: ["count", "until"] },
+              count: { type: "integer", minimum: 1, maximum: 52 },
+              until: {
+                type: "string",
+                description: "Final local YYYY-MM-DD date",
+              },
+            },
+            required: ["kind"],
+            additionalProperties: false,
+          },
+        },
+        required: ["preset", "termination"],
+        additionalProperties: false,
+      },
+      description: {
+        type: "string",
+        description: "Optional event description (<=2000 chars)",
+      },
+      location_text: {
+        type: "string",
+        description: "Optional venue name or address (<=200 chars)",
+      },
+      is_online: {
+        type: "boolean",
+        description: "True if the event is online-only",
+      },
       online_url: { type: "string", description: "URL if is_online" },
-      timezone: { type: "string", description: "IANA timezone (e.g., America/New_York). Defaults to UTC." },
-      visibility: { type: "string", enum: ["draft", "public", "unlisted"], description: "Defaults to draft." },
+      timezone: {
+        type: "string",
+        description: "IANA timezone (e.g., America/New_York). Defaults to UTC.",
+      },
+      visibility: {
+        type: "string",
+        enum: ["draft", "public", "unlisted"],
+        description: "Defaults to draft.",
+      },
+      city: { type: "string", description: "Event city" },
+      currency: { type: "string", description: "Optional ISO 4217 currency" },
+      party_types: { type: "array", items: { type: "string" } },
+      vibe_tags: { type: "array", items: { type: "string" } },
+      music_genres: { type: "array", items: { type: "string" } },
+      tickets: {
+        type: "array",
+        items: { type: "object" },
+        description: "Optional canonical ticket draft rows",
+      },
     },
   },
-  executor: async (args, client, userId) => {
+  executor: async (args, client, _userId, context) => {
     if (!isUuid(args.brand_id)) {
       throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
     }
     if (!isString(args.title) || args.title.length > 120) {
       throw new ToolError("INVALID_ARGS", "title is required (1-120 chars)");
     }
-    if (!isString(args.start_at)) {
-      throw new ToolError("INVALID_ARGS", "start_at is required (ISO datetime)");
+    const whenMode = args.when_mode;
+    if (!["single", "multi_date", "recurring"].includes(String(whenMode))) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "when_mode must be single, multi_date, or recurring",
+      );
     }
-    const startDate = new Date(args.start_at);
-    if (Number.isNaN(startDate.getTime())) {
-      throw new ToolError("INVALID_ARGS", "start_at must be a valid ISO datetime");
-    }
-    if (startDate.getTime() < Date.now() - 60 * 1000) {
-      throw new ToolError("INVALID_ARGS", "start_at must be in the future");
-    }
-
-
-    const slug = deriveSlug(args.title) || `event-${Date.now()}`;
-    const row = {
-      brand_id: args.brand_id,
-      created_by: userId,
-      title: args.title.trim(),
-      slug,
-      description: isString(args.description) ? args.description : null,
-      location_text: isString(args.location_text) ? args.location_text : null,
-      is_online: args.is_online === true,
-      online_url: isString(args.online_url) ? args.online_url : null,
-      timezone: isString(args.timezone) ? args.timezone : "UTC",
-      visibility: isString(args.visibility) ? args.visibility : "draft",
-      status: "draft",
-    };
-
-    const { data, error } = await client
-      .from("events")
-      .insert(row)
-      .select("id, brand_id, title, slug, visibility, status, created_at")
-      .single();
-    if (error) {
-      if ((error as { code?: string }).code === "23505") {
+    if (whenMode === "multi_date") {
+      if (
+        !Array.isArray(args.multi_dates) || args.multi_dates.length < 2 ||
+        args.multi_dates.length > 24
+      ) {
         throw new ToolError(
-          "SLUG_TAKEN",
-          `An event titled "${args.title}" already exists under that brand. Try a small variation.`,
+          "INVALID_ARGS",
+          "multi_dates must contain 2-24 dated occurrences",
         );
       }
-      throw new ToolError("WRITE_FAILED", error.message);
+    } else {
+      if (!isString(args.start_at)) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "start_at is required for single and recurring events",
+        );
+      }
+      const startDate = new Date(args.start_at);
+      if (
+        Number.isNaN(startDate.getTime()) ||
+        startDate.getTime() < Date.now() - 60 * 1000
+      ) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "start_at must be a valid future ISO datetime",
+        );
+      }
+      if (
+        whenMode === "recurring" &&
+        (args.recurrence_rule === null ||
+          typeof args.recurrence_rule !== "object")
+      ) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "recurrence_rule is required for recurring events",
+        );
+      }
     }
-    return { event: data, start_at: args.start_at };
+    const operationId = requireAgentOperationId(context);
+    return await callRpc(client, "ari_execute_event_operation", {
+      p_operation_id: operationId,
+      p_tool_name: "create_event",
+      p_args: args,
+    });
   },
 };
 
@@ -279,15 +443,31 @@ const listBrands: AgentToolDefinition = {
   parameters: {
     type: "object",
     properties: {
-      limit: { type: "integer", minimum: 1, maximum: 50, description: "Max brands to return (1-50, default 20)" },
+      limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 50,
+        description: "Max brands to return (1-50, default 20)",
+      },
     },
   },
   executor: async (args, client, userId) => {
-    const limit = typeof args.limit === "number" ? Math.min(50, Math.max(1, args.limit)) : 20;
-    const scope = await resolveAccessibleAgentBrands(client, userId).catch((error) => {
-      throw new ToolError("TENANT_SCOPE_UNAVAILABLE", error instanceof Error ? error.message : "Brand scope unavailable");
-    });
-    return { brands: scope.slice(0, limit).map(({ cover_media_url: _cover, effective_rank, ...brand }) => ({ ...brand, effective_rank })) };
+    const limit = typeof args.limit === "number"
+      ? Math.min(50, Math.max(1, args.limit))
+      : 20;
+    const scope = await resolveAccessibleAgentBrands(client, userId).catch(
+      (error) => {
+        throw new ToolError(
+          "TENANT_SCOPE_UNAVAILABLE",
+          error instanceof Error ? error.message : "Brand scope unavailable",
+        );
+      },
+    );
+    return {
+      brands: scope.slice(0, limit).map((
+        { cover_media_url: _cover, effective_rank, ...brand },
+      ) => ({ ...brand, effective_rank })),
+    };
   },
 };
 
@@ -303,30 +483,50 @@ const listEvents: AgentToolDefinition = {
   parameters: {
     type: "object",
     properties: {
-      brand_id: { type: "string", description: "Optional brand UUID to filter to one brand's events" },
-      upcoming_only: { type: "boolean", description: "Default true — only show future events" },
-      limit: { type: "integer", minimum: 1, maximum: 50, description: "Max events to return (1-50, default 20)" },
+      brand_id: {
+        type: "string",
+        description: "Optional brand UUID to filter to one brand's events",
+      },
+      upcoming_only: {
+        type: "boolean",
+        description: "Default true — only show future events",
+      },
+      limit: {
+        type: "integer",
+        minimum: 1,
+        maximum: 50,
+        description: "Max events to return (1-50, default 20)",
+      },
     },
   },
   executor: async (args, client, userId) => {
-    const limit = typeof args.limit === "number" ? Math.min(50, Math.max(1, args.limit)) : 20;
-    const scope = await resolveAccessibleAgentBrands(client, userId).catch((error) => {
-      throw new ToolError("TENANT_SCOPE_UNAVAILABLE", error instanceof Error ? error.message : "Brand scope unavailable");
-    });
-    if (args.brand_id !== undefined && !isUuid(args.brand_id)) throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
-    if (isUuid(args.brand_id)) await assertAgentReadBrand(client, userId, args.brand_id);
-    const allowedBrandIds = isUuid(args.brand_id) ? [args.brand_id] : scope.map((brand) => brand.id);
+    const limit = typeof args.limit === "number"
+      ? Math.min(50, Math.max(1, args.limit))
+      : 20;
+    const scope = await resolveAccessibleAgentBrands(client, userId).catch(
+      (error) => {
+        throw new ToolError(
+          "TENANT_SCOPE_UNAVAILABLE",
+          error instanceof Error ? error.message : "Brand scope unavailable",
+        );
+      },
+    );
+    if (args.brand_id !== undefined && !isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    if (isUuid(args.brand_id)) {
+      await assertAgentReadBrand(client, userId, args.brand_id);
+    }
+    const allowedBrandIds = isUuid(args.brand_id)
+      ? [args.brand_id]
+      : scope.map((brand) => brand.id);
     if (allowedBrandIds.length === 0) return { events: [] };
-    const q = client
-      .from("events")
-      .select("id, brand_id, title, slug, visibility, status, created_at, timezone")
-      .in("brand_id", allowedBrandIds)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    const { data, error } = await q;
-    if (error) throw new ToolError("READ_FAILED", error.message);
-    return { events: data ?? [] };
+    const events = await callRpc(client, "business_list_events_for_ari", {
+      p_brand_ids: allowedBrandIds,
+      p_limit: limit,
+      p_upcoming_only: args.upcoming_only !== false,
+    });
+    return { events: Array.isArray(events) ? events : [] };
   },
 };
 
@@ -341,47 +541,65 @@ const updateEvent: AgentToolDefinition = {
     "Modify fields on an event owned by the user. Only the provided fields are updated.",
   parameters: {
     type: "object",
-    required: ["event_id"],
+    required: ["event_id", "client_revision"],
     properties: {
       event_id: { type: "string", description: "UUID of the event to update" },
       title: { type: "string", description: "New event title (1-120 chars)" },
       start_at: { type: "string", description: "New ISO 8601 start datetime" },
-      description: { type: "string", description: "New description (<=2000 chars)" },
-      location_text: { type: "string", description: "New venue/location (<=200 chars)" },
+      description: {
+        type: "string",
+        description: "New description (<=2000 chars)",
+      },
+      location_text: {
+        type: "string",
+        description: "New venue/location (<=200 chars)",
+      },
       is_online: { type: "boolean" },
       online_url: { type: "string" },
       visibility: { type: "string", enum: ["draft", "public", "unlisted"] },
-      status: { type: "string", enum: ["draft", "live", "cancelled", "ended"] },
+      end_at: { type: "string", description: "Optional ISO 8601 end datetime" },
+      timezone: { type: "string", description: "IANA timezone for the event" },
+      client_revision: { type: "integer", minimum: 0 },
+      reason: {
+        type: "string",
+        description:
+          "Required 10–200 character reason when editing a scheduled or live event",
+      },
     },
   },
-  executor: async (args, client, _userId) => {
+  executor: async (args, client, _userId, context) => {
     if (!isUuid(args.event_id)) {
       throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
     }
-    await resolveEventBrand(client, args.event_id);
-
-    const updates: Record<string, unknown> = {};
-    if (isString(args.title)) updates.title = args.title.trim();
-    if (isString(args.description)) updates.description = args.description;
-    if (isString(args.location_text)) updates.location_text = args.location_text;
-    if (typeof args.is_online === "boolean") updates.is_online = args.is_online;
-    if (isString(args.online_url)) updates.online_url = args.online_url;
-    if (isString(args.visibility)) updates.visibility = args.visibility;
-    if (isString(args.status)) updates.status = args.status;
-
-    if (Object.keys(updates).length === 0) {
+    if (
+      !Number.isInteger(args.client_revision) ||
+      Number(args.client_revision) < 1
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "client_revision must be the next server revision",
+      );
+    }
+    const mutableKeys = [
+      "title",
+      "start_at",
+      "end_at",
+      "description",
+      "location_text",
+      "is_online",
+      "online_url",
+      "visibility",
+      "timezone",
+    ];
+    if (!mutableKeys.some((key) => args[key] !== undefined)) {
       throw new ToolError("INVALID_ARGS", "No fields provided to update");
     }
-    updates.updated_at = new Date().toISOString();
-
-    const { data, error } = await client
-      .from("events")
-      .update(updates)
-      .eq("id", args.event_id)
-      .select("id, brand_id, title, visibility, status, updated_at")
-      .single();
-    if (error) throw new ToolError("WRITE_FAILED", error.message);
-    return { event: data };
+    const operationId = requireAgentOperationId(context);
+    return await callRpc(client, "ari_execute_event_operation", {
+      p_operation_id: operationId,
+      p_tool_name: "update_event",
+      p_args: args,
+    });
   },
 };
 
@@ -399,13 +617,35 @@ const updateBrand: AgentToolDefinition = {
     required: ["brand_id"],
     properties: {
       brand_id: { type: "string", description: "UUID of the brand to update" },
-      name: { type: "string", description: "New public-facing brand name (1-80 chars)" },
-      description: { type: "string", description: "New short description (<=500 chars)" },
+      name: {
+        type: "string",
+        description: "New public-facing brand name (1-80 chars)",
+      },
+      description: {
+        type: "string",
+        description: "New short description (<=500 chars)",
+      },
       contact_email: { type: "string", description: "New brand contact email" },
-      default_currency: { type: "string", description: "New 3-letter ISO currency code" },
-      cover_media_url: { type: "string", description: "Cover media URL — set by the Add cover picker, NOT by you." },
-      cover_media_type: { type: "string", enum: ["image", "gif", "video"], description: "Cover media type, set by the picker alongside cover_media_url." },
-      cover_media_poster_url: { type: "string", description: "Stable cover still — set by the Add cover picker alongside GIF/video media." },
+      default_currency: {
+        type: "string",
+        description: "New 3-letter ISO currency code",
+      },
+      cover_media_url: {
+        type: "string",
+        description:
+          "Cover media URL — set by the Add cover picker, NOT by you.",
+      },
+      cover_media_type: {
+        type: "string",
+        enum: ["image", "gif", "video"],
+        description:
+          "Cover media type, set by the picker alongside cover_media_url.",
+      },
+      cover_media_poster_url: {
+        type: "string",
+        description:
+          "Stable cover still — set by the Add cover picker alongside GIF/video media.",
+      },
     },
   },
   executor: async (args, client, _userId) => {
@@ -416,13 +656,18 @@ const updateBrand: AgentToolDefinition = {
 
     const updates: Record<string, unknown> = {};
     if (args.name !== undefined) {
-      if (!isString(args.name) || args.name.trim().length === 0 || args.name.length > 80) {
+      if (
+        !isString(args.name) || args.name.trim().length === 0 ||
+        args.name.length > 80
+      ) {
         throw new ToolError("INVALID_ARGS", "name must be 1-80 chars");
       }
       updates.name = args.name.trim();
     }
     if (args.description !== undefined) {
-      if (typeof args.description !== "string" || args.description.length > 500) {
+      if (
+        typeof args.description !== "string" || args.description.length > 500
+      ) {
         throw new ToolError("INVALID_ARGS", "description must be <=500 chars");
       }
       // Q3: brands.description is a single physical column; the app splits it
@@ -430,19 +675,33 @@ const updateBrand: AgentToolDefinition = {
       // Ari description writes the SAME column the wizard's bio field persists
       // (a one-part description splits to `bio`), so Ari + wizard edits are
       // interchangeable. We write brands.description directly.
-      updates.description = args.description.trim().length > 0 ? args.description.trim() : null;
+      updates.description = args.description.trim().length > 0
+        ? args.description.trim()
+        : null;
     }
     if (args.contact_email !== undefined) {
       if (!isString(args.contact_email)) {
-        throw new ToolError("INVALID_ARGS", "contact_email must be a non-empty string");
+        throw new ToolError(
+          "INVALID_ARGS",
+          "contact_email must be a non-empty string",
+        );
       }
       updates.contact_email = args.contact_email.trim();
     }
     if (args.default_currency !== undefined) {
-      if (!isString(args.default_currency) || args.default_currency.trim().length < 3) {
-        throw new ToolError("INVALID_ARGS", "default_currency must be a 3-letter ISO code");
+      if (
+        !isString(args.default_currency) ||
+        args.default_currency.trim().length < 3
+      ) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "default_currency must be a 3-letter ISO code",
+        );
       }
-      updates.default_currency = args.default_currency.toUpperCase().slice(0, 3);
+      updates.default_currency = args.default_currency.toUpperCase().slice(
+        0,
+        3,
+      );
     }
     // Cover — atomic pair only (picker-sourced). On update a real brandId
     // exists so the picker has already persisted live; we still thread the
@@ -464,7 +723,9 @@ const updateBrand: AgentToolDefinition = {
       .update(updates)
       .eq("id", args.brand_id)
       .is("deleted_at", null)
-      .select("id, name, slug, default_currency, cover_media_url, cover_media_poster_url, cover_media_type, updated_at")
+      .select(
+        "id, name, slug, default_currency, cover_media_url, cover_media_poster_url, cover_media_type, updated_at",
+      )
       .single();
     if (error) {
       if ((error as { code?: string }).code === "23505") {
@@ -532,7 +793,9 @@ const deleteBrand: AgentToolDefinition = {
       // Recoverable refusal — surfaced as a clear Ari message (409), NOT a crash.
       throw new ToolError(
         "DELETE_BLOCKED_BY_EVENTS",
-        `This brand has ${count} upcoming or live event${count === 1 ? "" : "s"}. Cancel or transfer them before deleting.`,
+        `This brand has ${count} upcoming or live event${
+          count === 1 ? "" : "s"
+        }. Cancel or transfer them before deleting.`,
       );
     }
 
@@ -563,10 +826,16 @@ const deleteBrand: AgentToolDefinition = {
         .update({ default_brand_id: null })
         .eq("default_brand_id", brandId);
       if (clearErr) {
-        console.warn("[delete_brand] clear default_brand_id failed:", clearErr.message);
+        console.warn(
+          "[delete_brand] clear default_brand_id failed:",
+          clearErr.message,
+        );
       }
     } catch (e) {
-      console.warn("[delete_brand] clear default_brand_id threw:", (e as Error)?.message ?? e);
+      console.warn(
+        "[delete_brand] clear default_brand_id threw:",
+        (e as Error)?.message ?? e,
+      );
     }
 
     return {
@@ -604,18 +873,36 @@ const createExperience: AgentToolDefinition = {
     properties: {
       brand_id: { type: "string", description: "UUID of the venue brand" },
       title: { type: "string", description: "Experience title (1-120 chars)" },
-      narrative: { type: "string", description: "Experience description (1-2000 chars)" },
-      suggested_price_min_cents: { type: "integer", description: "Optional minimum price in cents" },
-      suggested_price_max_cents: { type: "integer", description: "Optional maximum price in cents" },
+      narrative: {
+        type: "string",
+        description: "Experience description (1-2000 chars)",
+      },
+      suggested_price_min_cents: {
+        type: "integer",
+        description: "Optional minimum price in cents",
+      },
+      suggested_price_max_cents: {
+        type: "integer",
+        description: "Optional maximum price in cents",
+      },
       currency: { type: "string", description: "3-letter ISO currency code" },
       intent_tags: {
         type: "array",
         items: { type: "string" },
         description: "Intent tags (restaurant or Play vocabulary)",
       },
-      capacity_min: { type: "integer", description: "Play: minimum group size" },
-      capacity_max: { type: "integer", description: "Play: maximum group size" },
-      suggested_time_of_day: { type: "string", description: "Play: e.g. Friday evening" },
+      capacity_min: {
+        type: "integer",
+        description: "Play: minimum group size",
+      },
+      capacity_max: {
+        type: "integer",
+        description: "Play: maximum group size",
+      },
+      suggested_time_of_day: {
+        type: "string",
+        description: "Play: e.g. Friday evening",
+      },
       is_free: {
         type: "boolean",
         description:
@@ -634,9 +921,18 @@ const createExperience: AgentToolDefinition = {
         items: {
           type: "object",
           properties: {
-            name: { type: "string", description: "Stop / item name (1-120 chars)" },
-            description: { type: "string", description: "Optional one-line blurb (≤280)" },
-            price_cents: { type: "integer", description: "Printed price in cents (null → 0)" },
+            name: {
+              type: "string",
+              description: "Stop / item name (1-120 chars)",
+            },
+            description: {
+              type: "string",
+              description: "Optional one-line blurb (≤280)",
+            },
+            price_cents: {
+              type: "integer",
+              description: "Printed price in cents (null → 0)",
+            },
           },
         },
       },
@@ -650,9 +946,11 @@ const createExperience: AgentToolDefinition = {
       throw new ToolError("INVALID_ARGS", "title is required (1-120 chars)");
     }
     if (!isString(args.narrative) || args.narrative.length > 2000) {
-      throw new ToolError("INVALID_ARGS", "narrative is required (1-2000 chars)");
+      throw new ToolError(
+        "INVALID_ARGS",
+        "narrative is required (1-2000 chars)",
+      );
     }
-
 
     // I-BRAND-UNIVERSAL-AUTHORING (META-ORCH-0972) — no kind gate.
     const { data: brandRow, error: brandErr } = await client
@@ -660,7 +958,9 @@ const createExperience: AgentToolDefinition = {
       .select("venue_category, default_currency")
       .eq("id", args.brand_id)
       .maybeSingle();
-    if (brandErr) throw new ToolError("OWNERSHIP_CHECK_FAILED", brandErr.message);
+    if (brandErr) {
+      throw new ToolError("OWNERSHIP_CHECK_FAILED", brandErr.message);
+    }
     if (!brandRow) throw new ToolError("OWNERSHIP_DENIED", "Brand not found");
 
     const brand = brandRow as {
@@ -683,7 +983,9 @@ const createExperience: AgentToolDefinition = {
       intentTags = filterPlayIntentTags(args.intent_tags);
     } else if (Array.isArray(args.intent_tags)) {
       for (const t of args.intent_tags) {
-        if (typeof t === "string" && t.trim()) intentTags.push(t.trim().slice(0, 40));
+        if (typeof t === "string" && t.trim()) {
+          intentTags.push(t.trim().slice(0, 40));
+        }
       }
       intentTags = intentTags.slice(0, 12);
     }
@@ -704,7 +1006,10 @@ const createExperience: AgentToolDefinition = {
     if (venueCategory === "play") {
       capacityMin = asOptionalCapacity(args.capacity_min);
       capacityMax = asOptionalCapacity(args.capacity_max);
-      if (capacityMin !== null && capacityMax !== null && capacityMin > capacityMax) {
+      if (
+        capacityMin !== null && capacityMax !== null &&
+        capacityMin > capacityMax
+      ) {
         const swap = capacityMin;
         capacityMin = capacityMax;
         capacityMax = swap;
@@ -717,12 +1022,14 @@ const createExperience: AgentToolDefinition = {
     const slug = deriveSlug(args.title) || `experience-${Date.now()}`;
     const experienceMeta: Record<string, unknown> = {
       intent_tags: intentTags,
-      suggested_price_min_cents: typeof args.suggested_price_min_cents === "number"
-        ? Math.max(0, Math.round(args.suggested_price_min_cents))
-        : null,
-      suggested_price_max_cents: typeof args.suggested_price_max_cents === "number"
-        ? Math.max(0, Math.round(args.suggested_price_max_cents))
-        : null,
+      suggested_price_min_cents:
+        typeof args.suggested_price_min_cents === "number"
+          ? Math.max(0, Math.round(args.suggested_price_min_cents))
+          : null,
+      suggested_price_max_cents:
+        typeof args.suggested_price_max_cents === "number"
+          ? Math.max(0, Math.round(args.suggested_price_max_cents))
+          : null,
       currency,
       confidence: typeof args.confidence === "number"
         ? Math.max(0, Math.min(1, args.confidence))
@@ -752,12 +1059,12 @@ const createExperience: AgentToolDefinition = {
     // is allowed to have <2 stops (the 2–5 gate fires only on publish).
     const suggestedMidCents =
       typeof experienceMeta.suggested_price_min_cents === "number" &&
-      typeof experienceMeta.suggested_price_max_cents === "number"
+        typeof experienceMeta.suggested_price_max_cents === "number"
         ? Math.round(
-            ((experienceMeta.suggested_price_min_cents as number) +
-              (experienceMeta.suggested_price_max_cents as number)) /
-              2,
-          )
+          ((experienceMeta.suggested_price_min_cents as number) +
+            (experienceMeta.suggested_price_max_cents as number)) /
+            2,
+        )
         : null;
 
     // ORCH-1151: stops present = SNAP path (menu/activities items-as-stops,
@@ -772,9 +1079,9 @@ const createExperience: AgentToolDefinition = {
     // are present. A NULL/absent stop price contributes 0 (no fabrication).
     const stopSumCents = hasStops
       ? stopArgs.reduce(
-          (sum, s) => sum + Math.max(0, Math.round(Number(s?.price_cents) || 0)),
-          0,
-        )
+        (sum, s) => sum + Math.max(0, Math.round(Number(s?.price_cents) || 0)),
+        0,
+      )
       : 0;
 
     const row: Record<string, unknown> = {
@@ -808,7 +1115,9 @@ const createExperience: AgentToolDefinition = {
     const { data, error } = await client
       .from("events")
       .insert(row)
-      .select("id, brand_id, title, slug, event_type, visibility, status, created_at")
+      .select(
+        "id, brand_id, title, slug, event_type, visibility, status, created_at",
+      )
       .single();
     if (error) {
       if ((error as { code?: string }).code === "23505") {
@@ -876,9 +1185,7 @@ const createExperience: AgentToolDefinition = {
     // (the explicit args.is_free / midpoint derivation is ignored on this path).
     // ORCH-1146 (Ari/manual path): is_free precedence — explicit args.is_free
     // wins; else derive from the suggested-price absence.
-    const ticketPriceCents = hasStops
-      ? stopSumCents
-      : (suggestedMidCents ?? 0);
+    const ticketPriceCents = hasStops ? stopSumCents : (suggestedMidCents ?? 0);
     const isFree = hasStops
       ? stopSumCents === 0
       : (typeof args.is_free === "boolean"

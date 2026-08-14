@@ -82,6 +82,17 @@ const requireUserId = async (): Promise<string> => {
 const rowToDraft = (row: unknown): DraftEvent =>
   serverRowToDraft(row as ServerDraftEventRow);
 
+const eventRowFromDraftRpc = (value: unknown, operation: string): unknown => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${operation}: RPC returned malformed response`);
+  }
+  const event = (value as { event?: unknown }).event;
+  if (event === null || typeof event !== "object" || Array.isArray(event)) {
+    throw new Error(`${operation}: RPC response missing event`);
+  }
+  return event;
+};
+
 const nullableCurrency = (value: unknown): string | null =>
   typeof value === "string" && value.trim().length > 0
     ? value.trim().toUpperCase()
@@ -176,14 +187,19 @@ export const createServerDraft = async (
   const eventTypeForInsert: "event" | "rsvp" =
     draft.isRsvp === true ? "rsvp" : "event";
   // orch-strict-grep-allow events-type-filter — ORCH-1150 D-2: event_type IS written (event|rsvp) via the eventTypeForInsert variable, not unfiltered; the gate only matches string literals in the payload.
-  const { data, error } = await supabase
-    .from("events")
-    .insert({ ...insertPayload, event_type: eventTypeForInsert })
-    .select(EVENT_DRAFT_SELECT)
-    .single();
+  const { data, error } = eventTypeForInsert === "rsvp"
+    ? await supabase
+      .from("events")
+      .insert({ ...insertPayload, event_type: eventTypeForInsert })
+      .select(EVENT_DRAFT_SELECT)
+      .single()
+    : await supabase.rpc("business_create_event_draft", {
+      p_brand_id: brandId,
+      p_payload: insertPayload,
+    });
 
   if (error !== null) throw error;
-  return rowToDraft(data);
+  return rowToDraft(eventTypeForInsert === "rsvp" ? data : eventRowFromDraftRpc(data, "createServerDraft"));
 };
 
 export const fetchDraftsForBrand = async (
@@ -294,21 +310,27 @@ export const autosaveServerDraft = async (
   // accidentally write to a trip row that shares an id space.
   // ORCH-1150: include RSVP drafts (DRAFT_EVENT_TYPES) so RSVP autosave persists.
   // orch-strict-grep-allow events-type-filter — ORCH-1150 D-2: RSVP-draft UPDATE is scoped via .in("event_type", ["event","rsvp"]); event_type IS filtered (event+rsvp), not unfiltered.
-  const { data, error } = await supabase
-    .from("events")
-    .update(updatePayload)
-    .eq("id", draft.id)
-    .in("event_type", DRAFT_EVENT_TYPES)
-    .eq("status", "draft")
-    .is("deleted_at", null)
-    .select(EVENT_DRAFT_SELECT)
-    .maybeSingle();
+  const { data, error } = draft.isRsvp === true
+    ? await supabase
+      .from("events")
+      .update(updatePayload)
+      .eq("id", draft.id)
+      .in("event_type", DRAFT_EVENT_TYPES)
+      .eq("status", "draft")
+      .is("deleted_at", null)
+      .select(EVENT_DRAFT_SELECT)
+      .maybeSingle()
+    : await supabase.rpc("business_update_event_draft", {
+      p_event_id: draft.id,
+      p_payload: updatePayload,
+      p_client_revision: draft.clientRevision ?? 0,
+    });
 
   if (error !== null) throw error;
   if (data === null) {
     throw new ServerDraftLifecycleError("draft_not_editable", draft.id);
   }
-  return rowToDraft(data);
+  return rowToDraft(draft.isRsvp === true ? data : eventRowFromDraftRpc(data, "autosaveServerDraft"));
 };
 
 export const discardServerDraft = async (draftId: string): Promise<void> => {

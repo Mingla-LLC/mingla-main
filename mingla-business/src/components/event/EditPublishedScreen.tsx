@@ -123,6 +123,7 @@ import {
 // + city fields. Bridges the local-only EditPublishedScreen save flow to
 // the events DB row so legacy events become Discover-eligible after edit.
 import {
+  patchPublishedEventCore,
   patchPublishedEventPricingSwitches,
   patchPublishedEventTaxonomy,
   patchPublishedEventTheme,
@@ -221,12 +222,31 @@ const ORCH_1006_PRICING_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "pricingSwitches",
 ]);
 
+const ISSUE_1972_CORE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
+  "name",
+  "description",
+  "format",
+  "venueName",
+  "onlineUrl",
+  "hideAddressUntilTicket",
+  "coverHue",
+  "tickets",
+  "visibility",
+  "requireApproval",
+  "allowTransfers",
+  "hideRemainingCount",
+  "passwordProtected",
+  "privateGuestList",
+  "inPersonPaymentsEnabled",
+]);
+
 const SERVER_EDITABLE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   ...COVER_MEDIA_PATCH_KEYS,
   ...ORCH_0824_PATCH_KEYS,
   ...ORCH_0877_WHEN_PATCH_KEYS,
   ...ORCH_0964_THEME_PATCH_KEYS,
   ...ORCH_1006_PRICING_PATCH_KEYS,
+  ...ISSUE_1972_CORE_PATCH_KEYS,
 ]);
 
 const sleep = (ms: number): Promise<void> =>
@@ -983,6 +1003,42 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         const pendingReject = buildRejectDialog(validation);
         setTimeout(() => setRejectDialog(pendingReject), REJECT_DIALOG_HANDOFF_MS);
         return;
+      }
+      const corePatch = Object.fromEntries(
+        Object.entries(patch).filter(([key]) =>
+          ISSUE_1972_CORE_PATCH_KEYS.has(key as keyof EditableLiveEventFields)
+        ),
+      ) as Partial<EditableLiveEventFields>;
+      if (Object.keys(corePatch).length > 0) {
+        if (liveEvent.serverEventId === null) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast("Save failed because this event is missing its server id.");
+          return;
+        }
+        try {
+          await patchPublishedEventCore(
+            liveEvent.serverEventId,
+            corePatch,
+            validation.trimmedReason,
+            (liveEvent.clientRevision ?? 0) + 1,
+          );
+          invalidateServerEventCaches();
+        } catch (error) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          const code = error instanceof Error ? error.message : "live_event_update_failed";
+          const message = code.includes("ticket_change_with_sales") ||
+              code.includes("ticket_delete_with_sales")
+            ? "Refund affected buyers before changing or removing that ticket."
+            : code.includes("insufficient_event_permission")
+            ? "You don't have permission to edit this event."
+            : code.includes("event_not_editable_status")
+            ? "This event can't be edited — it may be ended or cancelled."
+            : "Couldn't save your changes. Tap to try again.";
+          showToast(message);
+          return;
+        }
       }
       const explicitCoverSet =
         patch.coverMediaUrl !== undefined && patch.coverMediaUrl !== null;

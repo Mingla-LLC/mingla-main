@@ -9,6 +9,8 @@ import { supabase } from "../../../services/supabase";
 jest.mock("../../../services/supabase", () => ({
   supabase: {
     from: jest.fn(),
+    rpc: jest.fn(),
+    functions: { invoke: jest.fn() },
   },
 }));
 
@@ -36,31 +38,16 @@ const sliceBetween = (
   return source.slice(start, end);
 };
 
-type QueryResult = {
-  data: unknown;
-  error: { message: string } | null;
-};
-type SelectChain = { maybeSingle: () => Promise<QueryResult> };
-type IsChain = { select: (columns: string) => SelectChain };
-type EqChain = {
-  eq: (column: string, value: string) => EqChain;
-  is: (column: string, value: null) => IsChain;
-};
-type UpdateChain = { eq: (column: string, value: string) => EqChain };
+const rpc = supabase.rpc as unknown as jest.Mock<
+  (...args: unknown[]) => Promise<{ data: unknown; error: null }>
+>;
+const invoke = supabase.functions.invoke as unknown as jest.Mock<
+  (...args: unknown[]) => Promise<{ data: unknown; error: null }>
+>;
 
-const maybeSingle = jest.fn<() => Promise<QueryResult>>();
-const select = jest.fn<(columns: string) => SelectChain>();
-const is = jest.fn<(column: string, value: null) => IsChain>();
-const eq = jest.fn<(column: string, value: string) => EqChain>();
-const update = jest.fn<(payload: Record<string, unknown>) => UpdateChain>();
-
-const mockEventsUpdate = (row: unknown): void => {
-  maybeSingle.mockResolvedValue({ data: row, error: null });
-  select.mockReturnValue({ maybeSingle });
-  is.mockReturnValue({ select });
-  eq.mockReturnValue({ eq, is });
-  update.mockReturnValue({ eq });
-  (supabase.from as jest.Mock).mockReturnValue({ update });
+const mockCoverRpcs = (row: unknown): void => {
+  invoke.mockResolvedValueOnce({ data: null, error: null });
+  rpc.mockResolvedValueOnce({ data: { event: row }, error: null });
 };
 
 describe("AMENDMENT 7 published cover persistence", () => {
@@ -161,7 +148,7 @@ describe("AMENDMENT 7 published cover persistence", () => {
   });
 
   test("T-AMEND7-08: mismatched setEventCover echo maps to the same toast contract", async () => {
-    mockEventsUpdate({
+    mockCoverRpcs({
       id: "event-1",
       cover_media_type: "video",
       cover_media_url: "https://cdn.example.com/other.mp4",
@@ -188,6 +175,11 @@ describe("AMENDMENT 7 published cover persistence", () => {
       message:
         "Save succeeded but the cover did not persist. Refresh and try again.",
     });
+    expect(rpc).toHaveBeenNthCalledWith(
+      1,
+      "business_set_event_cover_media",
+      expect.objectContaining({ p_url: "https://cdn.example.com/expected.mp4" }),
+    );
 
     const source = readScreen();
     const catchBlock = sliceBetween(

@@ -68,6 +68,20 @@
       ]
     },
     {
+      "script": ".github/scripts/strict-grep/issue-1972-ari-event-lifecycle.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "deno-and-business"
+      ]
+    },
+    {
       "script": ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs",
       "kind": "file",
       "enforcement": "batch:A",

@@ -28,6 +28,15 @@ export interface AgentAuthorizationDeclaration {
   resource: AgentResourceKind;
 }
 
+/**
+ * Durable execution identity for a confirmed Ari proposal. Read-only tools use
+ * a null operation id; every write owner must require the pending-action id and
+ * bind its database receipt to it.
+ */
+export interface AgentToolExecutionContext {
+  operationId: string | null;
+}
+
 export interface AgentToolDefinition {
   name: string;
   description: string;
@@ -36,10 +45,12 @@ export interface AgentToolDefinition {
     args: Record<string, unknown>,
     userClient: SupabaseClient,
     userId: string,
+    context?: AgentToolExecutionContext,
   ) => Promise<unknown>;
 }
 
-export interface AgentTool extends AgentToolDefinition, AgentAuthorizationDeclaration {}
+export interface AgentTool
+  extends AgentToolDefinition, AgentAuthorizationDeclaration {}
 
 export class ToolError extends Error {
   constructor(public code: string, message: string) {
@@ -65,6 +76,18 @@ export function isUuid(v: unknown): v is string {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
 
+export function requireAgentOperationId(
+  context?: AgentToolExecutionContext,
+): string {
+  if (!isUuid(context?.operationId)) {
+    throw new ToolError(
+      "OPERATION_ID_REQUIRED",
+      "This write must be confirmed from its original Ari proposal.",
+    );
+  }
+  return context.operationId;
+}
+
 export function newIdempotencyKey(): string {
   return crypto.randomUUID();
 }
@@ -80,7 +103,9 @@ export async function resolveEventBrand(
     .is("deleted_at", null)
     .maybeSingle();
   if (error) throw new ToolError("RESOURCE_CHECK_FAILED", error.message);
-  if (!data) throw new ToolError("BRAND_ACCESS_DENIED", "That resource is unavailable");
+  if (!data) {
+    throw new ToolError("BRAND_ACCESS_DENIED", "That resource is unavailable");
+  }
   return (data as any).brand_id as string;
 }
 
@@ -96,7 +121,8 @@ export async function assertCanCollect(
     p_brand_id: brandId,
   });
   if (error) throw new ToolError("PAYOUT_CHECK_FAILED", error.message);
-  const ready = data === true || (data as { can_collect?: boolean } | null)?.can_collect === true;
+  const ready = data === true ||
+    (data as { can_collect?: boolean } | null)?.can_collect === true;
   if (!ready) {
     throw new ToolError(
       "PAYOUT_NOT_READY",

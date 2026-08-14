@@ -27,11 +27,13 @@ const mockGetUser = jest.fn<
   () => Promise<{ data: { user: { id: string } | null }; error: Error | null }>
 >();
 const mockFrom = jest.fn();
+const mockRpc = jest.fn();
 
 jest.mock("../supabase", () => ({
   supabase: {
     auth: { getUser: mockGetUser },
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
@@ -173,6 +175,7 @@ const echoRowWithGeo = (
 
 beforeEach(() => {
   mockFrom.mockReset();
+  mockRpc.mockReset();
   mockGetUser.mockReset();
   mockGetUser.mockResolvedValue({
     data: { user: { id: "user-1" } },
@@ -235,17 +238,6 @@ describe("ORCH-0841 adversarial — taxonomy/city/geo round-trip edge cases", ()
           },
         }),
       },
-      // tap 1 update
-      {
-        table: "events",
-        builder: queryBuilder(
-          {
-            method: "maybeSingle",
-            result: { data: echoRowWithGeo(tapOne, "(13.405,52.52)"), error: null },
-          },
-          (p) => updatePayloads.push(p as Record<string, unknown>),
-        ),
-      },
       // tap 2 fetch context
       {
         table: "events",
@@ -260,18 +252,16 @@ describe("ORCH-0841 adversarial — taxonomy/city/geo round-trip edge cases", ()
           },
         }),
       },
-      // tap 2 update
-      {
-        table: "events",
-        builder: queryBuilder(
-          {
-            method: "maybeSingle",
-            result: { data: echoRowWithGeo(tapTwo, "(13.405,52.52)"), error: null },
-          },
-          (p) => updatePayloads.push(p as Record<string, unknown>),
-        ),
-      },
     ]);
+    mockRpc
+      .mockImplementationOnce((_name: unknown, args: unknown) => {
+        updatePayloads.push((args as { p_payload: Record<string, unknown> }).p_payload);
+        return Promise.resolve({ data: { event: echoRowWithGeo(tapOne, "(13.405,52.52)") }, error: null });
+      })
+      .mockImplementationOnce((_name: unknown, args: unknown) => {
+        updatePayloads.push((args as { p_payload: Record<string, unknown> }).p_payload);
+        return Promise.resolve({ data: { event: echoRowWithGeo(tapTwo, "(13.405,52.52)") }, error: null });
+      });
 
     await autosaveServerDraft(tapOne);
     await autosaveServerDraft(tapTwo);
