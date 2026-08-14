@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../../../../");
 const workflow = readFileSync(join(ROOT, ".github/workflows/bundle-baseline-ratchet.yml"), "utf8");
+const producer = readFileSync(join(ROOT, "mingla-business/scripts/ci/bundle-baseline-update.mjs"), "utf8");
 
 test("#2058 stale comparison explicitly drives the write and REST handoff", () => {
   const compareStart = workflow.indexOf("- name: Compare against the recorded baseline");
@@ -26,7 +27,11 @@ test("#2058 stale comparison explicitly drives the write and REST handoff", () =
   const compareStep = workflow.slice(compareStart, writeStart);
   const writeStep = workflow.slice(writeStart, tokenStart);
   assert.match(compareStep, /if \[ "\$code" -eq 0 \]; then[\s\S]*echo "stale=false" >> "\$GITHUB_OUTPUT"/);
-  assert.match(compareStep, /elif \[ "\$code" -eq 2 \]; then[\s\S]*echo "stale=true" >> "\$GITHUB_OUTPUT"/);
+  assert.match(compareStep, /node scripts\/ci\/bundle-baseline-update\.mjs --check/);
+  assert.match(compareStep, /elif \[ "\$code" -eq 2 \]; then/);
+  assert.match(producer, /if \(mode === "check"\)[\s\S]*const out = process\.env\.GITHUB_OUTPUT/);
+  assert.match(producer, /`stale=true\\ndirection=\$\{direction\}\\nsummary=\$\{summary\}\\n`/);
+  assert.match(producer, /process\.exit\(2\)/);
   assert.match(writeStep, /if: steps\.compare\.outputs\.stale == 'true'/);
   assert.match(workflow, /BASELINE_CHANGED: \$\{\{ steps\.compare\.outputs\.stale \}\}/);
 });
