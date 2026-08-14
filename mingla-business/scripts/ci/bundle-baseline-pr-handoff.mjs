@@ -91,9 +91,10 @@ export function makeRestAdapter({ token, owner, repo, fetchImpl = fetch }) {
     throw new HandoffError("INVALID_INPUT", "Repository owner and name are required.");
   }
 
-  const root = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
-  const request = async (method, path, body = undefined) => {
-    const response = await fetchImpl(`${root}${path}`, {
+  const apiRoot = "https://api.github.com";
+  const root = `${apiRoot}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+  const requestUrl = async (method, url, body = undefined) => {
+    const response = await fetchImpl(url, {
       method,
       headers: {
         Accept: "application/vnd.github+json",
@@ -119,6 +120,8 @@ export function makeRestAdapter({ token, owner, repo, fetchImpl = fetch }) {
     }
     return payload;
   };
+  const request = async (method, path, body = undefined) =>
+    requestUrl(method, `${root}${path}`, body);
 
   const paged = async (path) => {
     const rows = [];
@@ -153,8 +156,29 @@ export function makeRestAdapter({ token, owner, repo, fetchImpl = fetch }) {
         base_tree: baseTree,
         tree: [{ path: BASELINE_PATH, mode: "100644", type: "blob", sha: blobSha }],
       }),
-    createCommit: async ({ message, treeSha, parentSha }) =>
-      request("POST", "/git/commits", { message, tree: treeSha, parents: [parentSha] }),
+    createCommit: async ({ message, treeSha, parentSha, actor }) => {
+      if (!/^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?\[bot\]$/i.test(actor ?? "")) {
+        throw new HandoffError("INVALID_CREDENTIAL_CONFIG", "Generated commit actor is missing or malformed.");
+      }
+      const user = await requestUrl("GET", `${apiRoot}/users/${encodeURIComponent(actor)}`);
+      if (user?.login !== actor || user?.type !== "Bot" || !Number.isSafeInteger(user?.id) || user.id <= 0) {
+        throw new HandoffError(
+          "INVALID_CREDENTIAL_CONFIG",
+          "Configured App actor did not resolve to the expected GitHub Bot account.",
+        );
+      }
+      const identity = {
+        name: actor,
+        email: `${user.id}+${actor}@users.noreply.github.com`,
+      };
+      return request("POST", "/git/commits", {
+        message,
+        tree: treeSha,
+        parents: [parentSha],
+        author: identity,
+        committer: identity,
+      });
+    },
     createRef: async (branch, sha) =>
       request("POST", "/git/refs", { ref: `refs/heads/${branch}`, sha }),
     deleteRef: async (branch) => request("DELETE", `/git/refs/heads/${encodeRef(branch)}`),
@@ -571,6 +595,7 @@ export async function runHandoff(api, options) {
     message: commitMessage(title, sourceSha),
     treeSha: tree.sha,
     parentSha: sourceSha,
+    actor: expectedActor(expectedAppSlug),
   });
   const generatedSha = assertSha(generated?.sha, "generated commit SHA");
 
