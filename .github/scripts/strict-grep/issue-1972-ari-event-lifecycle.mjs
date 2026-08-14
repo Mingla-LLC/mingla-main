@@ -17,6 +17,7 @@ export function check(sources) {
     confirm,
     coverEdge,
     coverService,
+    editor,
     menu,
     parseMenu,
     parsePlay,
@@ -28,6 +29,16 @@ export function check(sources) {
     "v_event.theme#>'{business_draft,multiDates}'",
     "v_event.theme#>'{business_draft,recurrenceRule}'",
   ]) if (!migration.includes(token)) failures.push(`draft topology preservation missing ${token}`);
+  for (const token of [
+    "e.theme#>'{business_draft,tickets}'",
+    "business_resolve_event_local_datetime",
+    "event_date_dst_invalid",
+    "CREATE OR REPLACE FUNCTION public.business_update_live_event_atomic",
+    "WHEN 'patch_event_when' THEN\n      v_result:=public.business_update_live_event_atomic(",
+    "FROM PUBLIC,anon,authenticated;\nGRANT EXECUTE ON FUNCTION public.business_update_live_event(uuid,jsonb,text,integer)\n  TO service_role;",
+    "public.business_patch_event_taxonomy(\n    uuid,text,text[],text[],text[],numeric,numeric,text,text\n  ) TO service_role;",
+    "v_payload:=jsonb_set(v_payload,'{visibility}'",
+  ]) if (!migration.includes(token)) failures.push(`round-three lifecycle contract missing ${token}`);
   for (const token of [
     "(SELECT min(start_at) FROM public.event_dates WHERE event_id=p_event_id)<=now()",
     "public.waitlist_entries WHERE event_id=p_event_id",
@@ -58,8 +69,23 @@ export function check(sources) {
   ]) if (!migration.includes(token)) failures.push(`cover SQL trust boundary missing ${token}`);
   for (const token of ["api.pexels.com/v1/photos/", "api.giphy.com/v1/gifs/", "SUPABASE_SERVICE_ROLE_KEY"])
     if (!coverEdge.includes(token)) failures.push(`provider attestation missing ${token}`);
+  for (const token of [
+    "p_credit: verifiedMetadata.credit",
+    "p_credit_url: verifiedMetadata.creditUrl",
+    "p_alt: verifiedMetadata.alt",
+  ]) if (!coverEdge.includes(token)) failures.push(`provider metadata attestation missing ${token}`);
   if (!coverService.includes('functions.invoke(\n    "event-cover-attest-selection"'))
     failures.push("Business cover service bypasses trusted Edge attestation");
+  if (!editor.includes("await patchPublishedEventAtomically("))
+    failures.push("Business live editor bypasses the atomic mutation owner");
+  for (const staleOwner of [
+    "await patchPublishedEventCore(",
+    "await patchPublishedEventTaxonomy(",
+    "await patchPublishedEventWhen(",
+    "await patchPublishedEventPricingSwitches(",
+    "await setEventCover(",
+    "await clearEventCover(",
+  ]) if (editor.includes(staleOwner)) failures.push(`Business live editor retains fragmented owner ${staleOwner}`);
   for (const [name, source] of [["menu", parseMenu], ["play", parsePlay]]) {
     if (!source.includes("const pendingStateClient = buildServiceClient();"))
       failures.push(`${name} parser lacks server-authoritative proposal client`);
@@ -75,8 +101,11 @@ export function check(sources) {
   for (const token of [
     "issue_1972_ari_event_lifecycle.implementor.test.ts",
     "issue_1972_ari_event_lifecycle.tester_adversarial.test.ts",
+    "issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.ts",
     "issue_1972_ari_event_lifecycle.test.sql",
     "issue_1972_ari_event_lifecycle.tester.adversarial.test.sql",
+    "issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.sql",
+    "issue_1972_ari_event_lifecycle.round3.implementor.test.sql",
     "issue-1972-ari-event-lifecycle.mjs --self-test",
   ]) if (!workflow.includes(token)) failures.push(`CI proof missing ${token}`);
   return failures;
@@ -89,6 +118,7 @@ const sources = {
   confirm: read("supabase/functions/agent-confirm-action/index.ts"),
   coverEdge: read("supabase/functions/event-cover-attest-selection/index.ts"),
   coverService: read("mingla-business/src/services/eventCoverMediaService.ts"),
+  editor: read("mingla-business/src/components/event/EditPublishedScreen.tsx"),
   menu: read("mingla-business/src/components/event/EventManageMenu.tsx"),
   parseMenu: read("supabase/functions/parse-restaurant-menu/index.ts"),
   parsePlay: read("supabase/functions/parse-play-activities/index.ts"),
@@ -102,6 +132,8 @@ if (process.argv.includes("--self-test")) {
     { ...sources, migration: sources.migration.replace("public.waitlist_entries WHERE event_id=p_event_id", "public.waitlist_entries WHERE false") },
     { ...sources, confirm: sources.confirm.replace("RECEIPT_BACKED_EVENT_TOOL_NAMES.has(pending.tool_name)", "true") },
     { ...sources, coverEdge: sources.coverEdge.replace("api.pexels.com/v1/photos/", "example.invalid/photos/") },
+    { ...sources, migration: sources.migration.replace("CREATE OR REPLACE FUNCTION public.business_update_live_event_atomic", "CREATE OR REPLACE FUNCTION public.business_update_live_event_fragmented") },
+    { ...sources, editor: sources.editor.replace("await patchPublishedEventAtomically(", "await patchPublishedEventCore(") },
     { ...sources, parseMenu: sources.parseMenu.replace("pendingStateClient\n      .from", "userClient\n      .from") },
     { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester.adversarial.test.sql", "removed.sql") },
   ];

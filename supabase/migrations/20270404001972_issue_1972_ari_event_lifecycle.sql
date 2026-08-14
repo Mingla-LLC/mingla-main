@@ -17,7 +17,7 @@ GRANT ALL ON public.agent_pending_actions TO service_role;
 -- ---------------------------------------------------------------------------
 -- 1. Generic confirmed-operation receipts (shared with later Ari domains).
 -- ---------------------------------------------------------------------------
-CREATE TABLE public.agent_operation_receipts (
+CREATE TABLE IF NOT EXISTS public.agent_operation_receipts (
   operation_id uuid PRIMARY KEY
     REFERENCES public.agent_pending_actions(id) ON DELETE RESTRICT,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -29,6 +29,8 @@ CREATE TABLE public.agent_operation_receipts (
 
 ALTER TABLE public.agent_operation_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.agent_operation_receipts FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS agent_operation_receipts_owner_read
+  ON public.agent_operation_receipts;
 CREATE POLICY agent_operation_receipts_owner_read
   ON public.agent_operation_receipts FOR SELECT TO authenticated
   USING (user_id = auth.uid());
@@ -136,7 +138,7 @@ GRANT EXECUTE ON FUNCTION public.agent_operation_receipt_begin(uuid,text,jsonb),
 -- Only the trusted Edge service client may attest a terminal outcome. A
 -- caller-JWT tool executor still owns every domain write and its operation
 -- receipt; this adapter only closes the server-owned proposal state machine.
-CREATE TABLE public.agent_pending_action_terminal_receipts(
+CREATE TABLE IF NOT EXISTS public.agent_pending_action_terminal_receipts(
   pending_action_id uuid PRIMARY KEY
     REFERENCES public.agent_pending_actions(id) ON DELETE RESTRICT,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -279,7 +281,7 @@ GRANT EXECUTE ON FUNCTION public.terminalize_agent_pending_action(
   uuid,uuid,text,text,jsonb,text,text,text,boolean
 ) TO service_role;
 
-CREATE TABLE public.event_cover_selections(
+CREATE TABLE IF NOT EXISTS public.event_cover_selections(
   selection_ref text PRIMARY KEY CHECK(length(selection_ref) BETWEEN 8 AND 128),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
@@ -535,8 +537,23 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
       FROM public.event_dates ed WHERE ed.event_id=e.id
     ) dates ON true
     LEFT JOIN LATERAL (
-      SELECT count(*)::integer tier_count,sum(tt.quantity_total)::integer capacity,bool_and(tt.is_free) all_free
-      FROM public.ticket_types tt WHERE tt.event_id=e.id AND tt.deleted_at IS NULL
+      SELECT count(*)::integer tier_count,
+        sum(ticket_summary.capacity)::integer capacity,
+        bool_and(ticket_summary.is_free) all_free
+      FROM (
+        SELECT NULLIF(draft_ticket->>'capacity','')::integer capacity,
+          COALESCE((draft_ticket->>'isFree')::boolean,
+            COALESCE((draft_ticket->>'priceGbp')::numeric,0)=0) is_free
+        FROM jsonb_array_elements(
+          CASE WHEN e.status='draft'
+            THEN COALESCE(e.theme#>'{business_draft,tickets}','[]'::jsonb)
+            ELSE '[]'::jsonb END
+        ) draft_ticket
+        UNION ALL
+        SELECT tt.quantity_total,tt.is_free
+        FROM public.ticket_types tt
+        WHERE e.status<>'draft' AND tt.event_id=e.id AND tt.deleted_at IS NULL
+      ) ticket_summary
     ) tickets ON true
     WHERE e.brand_id=ANY(COALESCE(p_brand_ids,ARRAY[]::uuid[])) AND e.event_type='event' AND e.deleted_at IS NULL
       AND public.biz_brand_effective_rank(e.brand_id,auth.uid())>=public.biz_role_rank('scanner')
@@ -679,9 +696,9 @@ REVOKE ALL ON FUNCTION public.business_create_event_draft(uuid,jsonb),
 GRANT EXECUTE ON FUNCTION public.business_create_event_draft(uuid,jsonb),
   public.business_update_event_draft(uuid,jsonb,integer) TO authenticated, service_role;
 
--- One durable owner for the fields exposed by EditPublishedScreen that were
--- previously acknowledged only in Zustand. Specialized when/taxonomy/cover/
--- theme/pricing owners remain authoritative and are invoked separately.
+-- Core leaf mutation used inside the one transactional live-event owner below.
+-- It retains ticket/settings/privacy validation and the single revision gate;
+-- Business and Ari must call business_update_live_event_atomic instead.
 CREATE OR REPLACE FUNCTION public.business_update_live_event(
   p_event_id uuid,
   p_patch jsonb,
@@ -784,8 +801,10 @@ BEGIN
   SELECT COALESCE(jsonb_agg(to_jsonb(tt) ORDER BY tt.display_order,tt.created_at),'[]'::jsonb) INTO v_tickets FROM public.ticket_types tt WHERE tt.event_id=p_event_id AND tt.deleted_at IS NULL;
   RETURN jsonb_build_object('event',to_jsonb(v_event),'tickets',v_tickets,'client_revision',p_client_revision);
 END;$fn$;
-REVOKE ALL ON FUNCTION public.business_update_live_event(uuid,jsonb,text,integer) FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.business_update_live_event(uuid,jsonb,text,integer) TO authenticated,service_role;
+REVOKE ALL ON FUNCTION public.business_update_live_event(uuid,jsonb,text,integer)
+  FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.business_update_live_event(uuid,jsonb,text,integer)
+  TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- 4. Unpublish / duplicate / cover owners.
@@ -916,6 +935,169 @@ GRANT EXECUTE ON FUNCTION public.business_unpublish_event_to_draft(uuid),
   public.business_set_event_cover_media(uuid,text,text,text,text,text,text,text,text,text),
   public.business_clear_event_cover_media(uuid) TO authenticated,service_role;
 
+-- Resolve a user-entered local wall clock without allowing PostgreSQL to
+-- silently normalize a daylight-saving gap or choose one side of an ambiguous
+-- fall-back hour. Every caller gets the same stable rejection code.
+CREATE OR REPLACE FUNCTION public.business_resolve_event_local_datetime(
+  p_date text,p_time text,p_timezone text
+) RETURNS timestamptz
+LANGUAGE plpgsql STABLE SET search_path=public,pg_catalog,pg_temp AS $fn$
+DECLARE
+  v_local timestamp;
+  v_resolved timestamptz;
+  v_offset_before interval;
+  v_offset_after interval;
+  v_shift interval;
+BEGIN
+  IF NULLIF(btrim(COALESCE(p_date,'')),'') IS NULL
+     OR NULLIF(btrim(COALESCE(p_time,'')),'') IS NULL THEN
+    RAISE EXCEPTION 'event_date_required';
+  END IF;
+  IF NOT EXISTS(SELECT 1 FROM pg_timezone_names WHERE name=p_timezone) THEN
+    RAISE EXCEPTION 'event_timezone_invalid';
+  END IF;
+  v_local:=(p_date||' '||p_time)::timestamp;
+  v_resolved:=v_local AT TIME ZONE p_timezone;
+  IF (v_resolved AT TIME ZONE p_timezone) IS DISTINCT FROM v_local THEN
+    RAISE EXCEPTION 'event_date_dst_invalid';
+  END IF;
+  v_offset_before:=(v_local-interval '12 hours')-
+    (((v_local-interval '12 hours') AT TIME ZONE p_timezone) AT TIME ZONE 'UTC');
+  v_offset_after:=(v_local+interval '12 hours')-
+    (((v_local+interval '12 hours') AT TIME ZONE p_timezone) AT TIME ZONE 'UTC');
+  v_shift:=make_interval(secs=>abs(extract(epoch FROM v_offset_after-v_offset_before))::double precision);
+  IF v_shift<>interval '0 seconds' AND (
+    ((v_resolved-v_shift) AT TIME ZONE p_timezone)=v_local OR
+    ((v_resolved+v_shift) AT TIME ZONE p_timezone)=v_local
+  ) THEN
+    RAISE EXCEPTION 'event_date_dst_invalid';
+  END IF;
+  RETURN v_resolved;
+END;$fn$;
+REVOKE ALL ON FUNCTION public.business_resolve_event_local_datetime(text,text,text)
+  FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.business_resolve_event_local_datetime(text,text,text)
+  TO authenticated,service_role;
+
+-- The Business editor and Ari share this one transactional live-event owner.
+-- Existing domain functions retain their validation logic, but every sub-write
+-- now occurs inside this function's transaction and one exact revision gate.
+CREATE OR REPLACE FUNCTION public.business_update_live_event_atomic(
+  p_event_id uuid,p_patch jsonb,p_reason text,p_client_revision integer
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE
+  v_core jsonb:=COALESCE(p_patch->'core','{}'::jsonb);
+  v_taxonomy jsonb:=p_patch->'taxonomy';
+  v_when jsonb:=p_patch->'when';
+  v_cover jsonb:=p_patch->'cover';
+  v_selection public.event_cover_selections%ROWTYPE;
+  v_event public.events%ROWTYPE;
+  v_tickets jsonb;
+  v_item jsonb;
+  v_mode text;
+  v_timezone text;
+  v_local_when jsonb;
+BEGIN
+  -- This call owns auth, event/status/role validation, the row lock, ticket
+  -- protections, settings/privacy merge, and the single revision increment.
+  PERFORM public.business_update_live_event(
+    p_event_id,v_core,p_reason,p_client_revision
+  );
+
+  IF v_taxonomy IS NOT NULL THEN
+    PERFORM public.business_patch_event_taxonomy(
+      p_event_id,
+      v_taxonomy->>'city',
+      ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_taxonomy->'partyTypes','[]'::jsonb))),
+      ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_taxonomy->'vibeTags','[]'::jsonb))),
+      ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_taxonomy->'musicGenres','[]'::jsonb))),
+      NULLIF(v_taxonomy#>>'{locationGeo,lat}','')::numeric,
+      NULLIF(v_taxonomy#>>'{locationGeo,lng}','')::numeric,
+      NULLIF(v_taxonomy->>'locationText',''),
+      COALESCE(v_taxonomy->>'coordinatePrecision','')
+    );
+  END IF;
+
+  IF v_when IS NOT NULL THEN
+    v_mode:=COALESCE(NULLIF(v_when->>'whenMode',''),'single');
+    v_timezone:=COALESCE(NULLIF(v_when->>'timezone',''),
+      (SELECT timezone FROM public.events WHERE id=p_event_id),'UTC');
+    IF v_mode IN('single','recurring') THEN
+      v_local_when:=v_when->'when';
+      PERFORM public.business_resolve_event_local_datetime(
+        v_local_when->>'date',COALESCE(NULLIF(v_local_when->>'doorsOpen',''),'00:00'),v_timezone
+      );
+      PERFORM public.business_resolve_event_local_datetime(
+        v_local_when->>'date',COALESCE(NULLIF(v_local_when->>'endsAt',''),
+          COALESCE(NULLIF(v_local_when->>'doorsOpen',''),'00:00')),v_timezone
+      );
+    ELSIF v_mode='multi_date' THEN
+      FOR v_item IN SELECT value FROM jsonb_array_elements(COALESCE(v_when->'multiDates','[]'::jsonb)) LOOP
+        PERFORM public.business_resolve_event_local_datetime(
+          v_item->>'date',COALESCE(NULLIF(v_item->>'startTime',''),'00:00'),v_timezone
+        );
+        PERFORM public.business_resolve_event_local_datetime(
+          v_item->>'date',COALESCE(NULLIF(v_item->>'endTime',''),
+            COALESCE(NULLIF(v_item->>'startTime',''),'00:00')),v_timezone
+        );
+      END LOOP;
+    END IF;
+    PERFORM public.business_patch_event_when(
+      p_event_id,v_when,p_reason,p_client_revision
+    );
+  END IF;
+
+  IF p_patch ? 'theme' THEN
+    UPDATE public.events SET
+      theme_color_override=NULLIF(p_patch#>>'{theme,color}',''),
+      theme_font_override=NULLIF(p_patch#>>'{theme,font}',''),
+      theme_animation_override=NULLIF(p_patch#>>'{theme,animation}',''),
+      updated_at=now()
+    WHERE id=p_event_id;
+  END IF;
+
+  IF p_patch ? 'pricing' THEN
+    UPDATE public.events SET
+      pass_tax=NULLIF(p_patch#>>'{pricing,passTax}','')::boolean,
+      pass_mingla_fee=NULLIF(p_patch#>>'{pricing,passMinglaFee}','')::boolean,
+      pass_service_fee=NULLIF(p_patch#>>'{pricing,passServiceFee}','')::boolean,
+      updated_at=now()
+    WHERE id=p_event_id;
+  END IF;
+
+  IF v_cover IS NOT NULL THEN
+    IF COALESCE((v_cover->>'clear')::boolean,false) THEN
+      PERFORM public.business_clear_event_cover_media(p_event_id);
+    ELSE
+      SELECT * INTO v_selection FROM public.event_cover_selections
+      WHERE selection_ref=v_cover->>'selectionRef'
+        AND user_id=auth.uid() AND event_id=p_event_id
+        AND consumed_at IS NULL AND expires_at>now() FOR UPDATE;
+      IF NOT FOUND THEN RAISE EXCEPTION 'cover_selection_unverified';END IF;
+      PERFORM public.business_set_event_cover_media(
+        p_event_id,v_selection.selection_ref,v_selection.media_url,
+        v_selection.media_type,v_selection.poster_url,v_selection.provider,
+        v_selection.source_url,v_selection.credit,v_selection.credit_url,
+        v_selection.alt
+      );
+    END IF;
+  END IF;
+
+  SELECT * INTO v_event FROM public.events WHERE id=p_event_id;
+  SELECT COALESCE(jsonb_agg(to_jsonb(tt) ORDER BY tt.display_order,tt.created_at),'[]'::jsonb)
+    INTO v_tickets FROM public.ticket_types tt
+    WHERE tt.event_id=p_event_id AND tt.deleted_at IS NULL;
+  RETURN jsonb_build_object(
+    'event',to_jsonb(v_event),'tickets',v_tickets,
+    'client_revision',p_client_revision
+  );
+END;$fn$;
+REVOKE ALL ON FUNCTION public.business_update_live_event_atomic(uuid,jsonb,text,integer)
+  FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.business_update_live_event_atomic(uuid,jsonb,text,integer)
+  TO authenticated,service_role;
+
 -- ---------------------------------------------------------------------------
 -- 5. Every cancelled transition opens the refund run in the same transaction.
 --    The trigger covers Business, Ari, admin, and any future canonical writer;
@@ -1020,8 +1202,12 @@ BEGIN
           IF v_date_text IS NULL OR v_start_text IS NULL OR v_end_text IS NULL THEN
             RAISE EXCEPTION 'event_multi_date_fields_required';
           END IF;
-          v_start:=(v_date_text||' '||v_start_text)::timestamp AT TIME ZONE v_timezone;
-          v_end:=(v_date_text||' '||v_end_text)::timestamp AT TIME ZONE v_timezone;
+          v_start:=public.business_resolve_event_local_datetime(
+            v_date_text,v_start_text,v_timezone
+          );
+          v_end:=public.business_resolve_event_local_datetime(
+            v_date_text,v_end_text,v_timezone
+          );
           IF v_end<=v_start THEN v_end:=v_end+interval '1 day';END IF;
           IF v_start<=now() OR v_end<=v_start THEN RAISE EXCEPTION 'event_date_invalid';END IF;
           v_multi_dates:=v_multi_dates||jsonb_build_array(jsonb_build_object(
@@ -1030,8 +1216,12 @@ BEGIN
             'overrides',COALESCE(v_date_item->'overrides','{}'::jsonb)));
         END LOOP;
         v_date_item:=v_multi_dates->0;
-        v_start:=((v_date_item->>'date')||' '||(v_date_item->>'startTime'))::timestamp AT TIME ZONE v_timezone;
-        v_end:=((v_date_item->>'date')||' '||(v_date_item->>'endTime'))::timestamp AT TIME ZONE v_timezone;
+        v_start:=public.business_resolve_event_local_datetime(
+          v_date_item->>'date',v_date_item->>'startTime',v_timezone
+        );
+        v_end:=public.business_resolve_event_local_datetime(
+          v_date_item->>'date',v_date_item->>'endTime',v_timezone
+        );
         IF v_end<=v_start THEN v_end:=v_end+interval '1 day';END IF;
       END IF;
       v_business:=jsonb_build_object(
@@ -1114,17 +1304,36 @@ BEGIN
         IF p_args ? 'online_url' THEN v_business:=v_business||jsonb_build_object('onlineUrl',p_args->'online_url');END IF;
         IF p_args ? 'is_online' THEN v_business:=v_business||jsonb_build_object('format',CASE WHEN (p_args->>'is_online')::boolean THEN 'online' ELSE 'in_person' END);END IF;
         IF p_args ? 'visibility' THEN v_business:=v_business||jsonb_build_object('visibility',p_args->'visibility');END IF;
-        v_result:=public.business_update_live_event(v_event_id,v_business,p_args->>'reason',NULLIF(p_args->>'client_revision','')::integer);
+        v_result:=public.business_update_live_event_atomic(
+          v_event_id,jsonb_build_object('core',v_business),p_args->>'reason',
+          NULLIF(p_args->>'client_revision','')::integer
+        );
       END IF;
     WHEN 'publish_event' THEN
       v_payload:=public.business_event_draft_payload_from_graph(v_event_id);
+      IF p_args ? 'visibility' THEN
+        IF p_args->>'visibility' NOT IN('public','unlisted','private') THEN
+          RAISE EXCEPTION 'event_visibility_invalid';
+        END IF;
+        v_payload:=jsonb_set(v_payload,'{visibility}',p_args->'visibility',true);
+        v_payload:=jsonb_set(
+          v_payload,'{theme,business_draft,requestedVisibility}',
+          p_args->'visibility',true
+        );
+      END IF;
       v_result:=public.issue_1719_publish_event_with_poster(v_event_id,v_payload,
         COALESCE(NULLIF(p_args->>'client_revision','')::integer,(v_payload#>>'{theme,business_draft,clientRevision}')::integer));
     WHEN 'unpublish_event' THEN v_result:=public.business_unpublish_event_to_draft(v_event_id);
     WHEN 'cancel_event' THEN v_result:=public.business_cancel_event(v_event_id);
     WHEN 'end_event_sales' THEN v_result:=public.business_end_event_ticket_sales(v_event_id);
     WHEN 'duplicate_event' THEN v_result:=public.business_duplicate_event_as_draft(v_event_id);
-    WHEN 'patch_event_when' THEN v_result:=public.business_patch_event_when(v_event_id,p_args->'when_payload',p_args->>'reason',NULLIF(p_args->>'client_revision','')::integer);
+    WHEN 'patch_event_when' THEN
+      v_result:=public.business_update_live_event_atomic(
+        v_event_id,
+        jsonb_build_object('core','{}'::jsonb,'when',p_args->'when_payload'),
+        p_args->>'reason',
+        NULLIF(p_args->>'client_revision','')::integer
+      );
     WHEN 'set_event_cover' THEN
       IF COALESCE((p_args->>'clear_cover')::boolean,false) THEN
         v_result:=public.business_clear_event_cover_media(v_event_id);
@@ -1145,8 +1354,15 @@ GRANT EXECUTE ON FUNCTION public.ari_execute_event_operation(uuid,text,jsonb) TO
 
 -- The historical patch-when function was accidentally executable by anon in
 -- deployed schema. Restate the intended grants for all lifecycle owners.
-REVOKE EXECUTE ON FUNCTION public.business_patch_event_when(uuid,jsonb,text,integer) FROM PUBLIC,anon;
-GRANT EXECUTE ON FUNCTION public.business_patch_event_when(uuid,jsonb,text,integer) TO authenticated,service_role;
+REVOKE EXECUTE ON FUNCTION public.business_patch_event_when(uuid,jsonb,text,integer)
+  FROM PUBLIC,anon,authenticated;
+REVOKE EXECUTE ON FUNCTION public.business_patch_event_taxonomy(
+  uuid,text,text[],text[],text[],numeric,numeric,text,text
+) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.business_patch_event_when(uuid,jsonb,text,integer),
+  public.business_patch_event_taxonomy(
+    uuid,text,text[],text[],text[],numeric,numeric,text,text
+  ) TO service_role;
 
 COMMENT ON TABLE public.agent_operation_receipts IS '#1972 shared exactly-once receipt; result commits atomically with its domain mutation.';
 COMMENT ON FUNCTION public.ari_execute_event_operation(uuid,text,jsonb) IS '#1972 canonical confirmed event dispatcher; pending action id is the operation id.';

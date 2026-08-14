@@ -57,8 +57,8 @@ export const registerEventCoverSelection = async (
   mediaType: EventCoverMediaType | null,
   posterUrl: string | null,
   metadata: EventCoverProviderMetadata,
-): Promise<void> => {
-  const { error } = await supabase.functions.invoke(
+): Promise<EventCoverProviderMetadata> => {
+  const { data, error } = await supabase.functions.invoke(
     "event-cover-attest-selection",
     {
       body: {
@@ -75,7 +75,72 @@ export const registerEventCoverSelection = async (
       },
     },
   );
-  if (error !== null) throw new EventCoverMediaError("upload_failed", error.message);
+  if (error !== null)
+    throw new EventCoverMediaError("upload_failed", error.message);
+  const response =
+    data !== null && typeof data === "object" && !Array.isArray(data)
+      ? (data as { metadata?: Record<string, unknown> })
+      : null;
+  const attested = response?.metadata;
+  if (attested === undefined) {
+    if ((metadata.provider ?? "upload") !== "upload") {
+      throw new EventCoverMediaError(
+        "upload_failed",
+        "Cover verification did not return provider attribution.",
+      );
+    }
+    return metadata;
+  }
+  return {
+    provider: metadata.provider ?? "upload",
+    sourceUrl:
+      typeof attested.sourceUrl === "string" ? attested.sourceUrl : null,
+    credit: typeof attested.credit === "string" ? attested.credit : null,
+    creditUrl:
+      typeof attested.creditUrl === "string" ? attested.creditUrl : null,
+    alt: typeof attested.alt === "string" ? attested.alt : null,
+  };
+};
+
+export interface AttestedEventCoverSelection {
+  selectionRef: string;
+  metadata: EventCoverProviderMetadata;
+}
+
+export const attestEventCoverSelection = async (
+  serverEventId: string,
+  mediaUrl: string,
+  mediaType: EventCoverMediaType,
+  metadata: EventCoverProviderMetadata,
+  posterUrl: string | null = mediaType === "image" ? mediaUrl : null,
+): Promise<AttestedEventCoverSelection> => {
+  if (serverEventId.trim().length === 0) {
+    throw new EventCoverMediaError(
+      "missing_server_event_id",
+      "Save failed because this event is missing its server id.",
+    );
+  }
+  const stablePosterUrl = posterUrl?.trim() || null;
+  if (
+    stablePosterUrl === null ||
+    (mediaType === "image" && stablePosterUrl !== mediaUrl) ||
+    (mediaType !== "image" && stablePosterUrl === mediaUrl)
+  ) {
+    throw new EventCoverMediaError(
+      "upload_failed",
+      "Cover save failed because its fallback image is missing or invalid.",
+    );
+  }
+  const selectionRef = randomId();
+  const attestedMetadata = await registerEventCoverSelection(
+    serverEventId,
+    selectionRef,
+    mediaUrl,
+    mediaType,
+    stablePosterUrl,
+    metadata,
+  );
+  return { selectionRef, metadata: attestedMetadata };
 };
 
 export const eventCoverPath = (
@@ -154,13 +219,15 @@ export const uploadEventCoverMedia = async (
     uri: input.uri,
   });
   const mediaType = validateEventCoverAsset(normalized);
-  const contentType = normalized.inferredMimeType ?? eventCoverContentType({
-    byteHeader: fileBytes.bytes,
-    fileName: input.fileName,
-    mediaType,
-    mimeType: input.mimeType,
-    uri: input.uri,
-  });
+  const contentType =
+    normalized.inferredMimeType ??
+    eventCoverContentType({
+      byteHeader: fileBytes.bytes,
+      fileName: input.fileName,
+      mediaType,
+      mimeType: input.mimeType,
+      uri: input.uri,
+    });
   const storagePath = eventCoverPath(
     input.brandId,
     input.eventId,
@@ -218,51 +285,34 @@ export const setEventCover = async (
   cover_media_poster_url: string;
   cover_media_type: EventCoverMediaType;
 }> => {
-  if (serverEventId.trim().length === 0) {
-    throw new EventCoverMediaError(
-      "missing_server_event_id",
-      "Save failed because this event is missing its server id.",
-    );
-  }
   const stablePosterUrl = posterUrl?.trim() || null;
-  if (
-    stablePosterUrl === null ||
-    (mediaType === "image" && stablePosterUrl !== mediaUrl) ||
-    (mediaType !== "image" && stablePosterUrl === mediaUrl)
-  ) {
-    throw new EventCoverMediaError(
-      "upload_failed",
-      "Cover save failed because its fallback image is missing or invalid.",
-    );
-  }
-  const selectionRef = randomId();
-  await registerEventCoverSelection(
+  const attested = await attestEventCoverSelection(
     serverEventId,
-    selectionRef,
     mediaUrl,
     mediaType,
-    stablePosterUrl,
     metadata,
+    stablePosterUrl,
   );
   const { data, error } = await supabase.rpc("business_set_event_cover_media", {
     p_event_id: serverEventId,
-    p_selection_ref: selectionRef,
+    p_selection_ref: attested.selectionRef,
     p_url: mediaUrl,
     p_type: mediaType,
     p_poster_url: stablePosterUrl,
-    p_provider: metadata.provider ?? null,
-    p_source_url: metadata.sourceUrl ?? null,
-    p_credit: metadata.credit ?? null,
-    p_credit_url: metadata.creditUrl ?? null,
-    p_alt: metadata.alt ?? null,
+    p_provider: attested.metadata.provider ?? null,
+    p_source_url: attested.metadata.sourceUrl ?? null,
+    p_credit: attested.metadata.credit ?? null,
+    p_credit_url: attested.metadata.creditUrl ?? null,
+    p_alt: attested.metadata.alt ?? null,
   });
 
   if (error !== null) {
     throw new EventCoverMediaError("upload_failed", error.message);
   }
-  const event = data !== null && typeof data === "object" && !Array.isArray(data)
-    ? (data as { event?: Record<string, unknown> }).event
-    : null;
+  const event =
+    data !== null && typeof data === "object" && !Array.isArray(data)
+      ? (data as { event?: Record<string, unknown> }).event
+      : null;
   if (event === null || event === undefined) {
     throw new EventCoverMediaError(
       "missing_server_event_id",
@@ -336,16 +386,20 @@ export const clearEventCover = async (serverEventId: string): Promise<void> => {
       "Save failed because this event is missing its server id.",
     );
   }
-  const { data, error } = await supabase.rpc("business_clear_event_cover_media", {
-    p_event_id: serverEventId,
-  });
+  const { data, error } = await supabase.rpc(
+    "business_clear_event_cover_media",
+    {
+      p_event_id: serverEventId,
+    },
+  );
 
   if (error !== null) {
     throw new EventCoverMediaError("upload_failed", error.message);
   }
-  const event = data !== null && typeof data === "object" && !Array.isArray(data)
-    ? (data as { event?: Record<string, unknown> }).event
-    : null;
+  const event =
+    data !== null && typeof data === "object" && !Array.isArray(data)
+      ? (data as { event?: Record<string, unknown> }).event
+      : null;
   if (event === null || event === undefined) {
     throw new EventCoverMediaError(
       "missing_server_event_id",

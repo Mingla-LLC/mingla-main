@@ -12,16 +12,14 @@
  * event (the `disableLocalSaveReason !== undefined` path), the dock-level
  * `disabled={...}` gate uses `isServerEditableOnlyPatch(patch)` to decide
  * whether to lift the gate. When keys weren't in the set, so the gate
- * stayed locked even though the new `business_patch_event_when` RPC was
- * fully wired and reachable.
+ * stayed locked even though a server mutation path was wired and reachable.
  *
- * Secondary issue: even if the dock gate had lifted, the When-RPC call
+ * Secondary issue: even if the dock gate had lifted, the server call
  * sat BELOW the unified server-editable early-return at line 766. The
  * early-return would have fired first and exited before the RPC ran.
  *
  * Fix: (a) add `ORCH_0877_WHEN_PATCH_KEYS` to `SERVER_EDITABLE_PATCH_KEYS`;
- * (b) move the When-RPC block ABOVE the unified early-return so it
- * mirrors the placement of cover-media + ORCH-0824 taxonomy blocks.
+ * (b) keep the canonical atomic live-event call ABOVE the unified early-return.
  *
  * fails-on-revert: the source-text assertions below all fail if either
  * the keys set narrows back, the constant disappears, or the block order
@@ -65,9 +63,9 @@ describe("ORCH-0877 hotfix — EditPublishedScreen When-section save gate", () =
     );
   });
 
-  test("When-RPC block sits BEFORE the unified server-editable early-return", () => {
+  test("atomic live-event RPC sits BEFORE the unified server-editable early-return", () => {
     const src = read();
-    const rpcIndex = src.indexOf("patchPublishedEventWhen({");
+    const rpcIndex = src.indexOf("await patchPublishedEventAtomically(");
     const earlyReturnIndex = src.indexOf(
       "ORCH-0824 hotfix: unified early-return",
     );

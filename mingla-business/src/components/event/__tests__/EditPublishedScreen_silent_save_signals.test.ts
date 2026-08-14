@@ -2,11 +2,10 @@
  * ORCH-0980 [Silent-save-failure bug class — regression pin].
  *
  * Investigation `INVESTIGATION_ORCH-0980_REHOME_CURRENT_MAIN.md` §6.3 proved
- * that both original silent-save bugs are already fixed-by-construction on
- * current main: `handleConfirmSave` is now five independent sequential
- * server-patch blocks (cover-media, ORCH-0824 taxonomy/address, ORCH-0877
- * When, ORCH-0964 theme, ORCH-1006 pricing), each failing-closed with a
- * VISIBLE toast, then a clean success fast-path (toast + navigate), then a
+ * that both original silent-save bugs are fixed-by-construction.
+ * `handleConfirmSave` now sends one atomic server patch for cover-media,
+ * taxonomy/address, When, theme, and pricing, with a VISIBLE failure toast,
+ * then a clean success fast-path (toast + navigate), then a
  * local-store path whose `{ok:false}` opens a VISIBLE reject dialog — plus
  * an up-front block-with-toast in `handleSavePress` for any patch that
  * touches a non-server-editable field on a server-loaded event.
@@ -87,20 +86,20 @@ describe("ORCH-0980 — EditPublishedScreen save paths are never silent", () => 
   });
 
   // ---- T-02: server-block failure surfaces a toast -----------------------
-  // When the When-RPC rejects (e.g. multi_date_remove_with_sales), the catch
+  // When the atomic RPC rejects (e.g. multi_date_remove_with_sales), the catch
   // MUST surface the drop-a-date copy via showToast. If the catch's
   // showToast(message) is removed the failure becomes silent.
   test("T-02: When-block RPC rejection shows the active-tickets toast (no silent server failure)", () => {
     const src = readScreen();
     const whenCatch = sliceBetween(
       src,
-      "patchPublishedEventWhen({",
-      "const themePatchPresent = patch.themeOverrides !== undefined;",
+      "await patchPublishedEventAtomically(",
+      "ORCH-0824 hotfix: unified early-return for server-editable-only",
     );
 
     // The catch maps the RPC reject codes to user copy and surfaces it.
     expect(whenCatch).toContain("} catch (error) {");
-    expect(whenCatch).toContain('code === "multi_date_remove_with_sales"');
+    expect(whenCatch).toContain('code.includes("multi_date_remove_with_sales")');
     expect(whenCatch).toContain(
       "This change would drop a date with active tickets. Cancel or refund those tickets first.",
     );

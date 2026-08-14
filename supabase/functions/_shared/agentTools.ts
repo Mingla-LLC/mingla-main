@@ -355,8 +355,9 @@ const createEvent: AgentToolDefinition = {
       },
       visibility: {
         type: "string",
-        enum: ["draft", "public", "unlisted"],
-        description: "Defaults to draft.",
+        enum: ["public", "unlisted", "private"],
+        description:
+          "Requested visibility stored in the private draft; the event remains draft-only until publish.",
       },
       city: { type: "string", description: "Event city" },
       currency: { type: "string", description: "Optional ISO 4217 currency" },
@@ -556,7 +557,7 @@ const updateEvent: AgentToolDefinition = {
       },
       is_online: { type: "boolean" },
       online_url: { type: "string" },
-      visibility: { type: "string", enum: ["draft", "public", "unlisted"] },
+      visibility: { type: "string", enum: ["public", "unlisted", "private"] },
       end_at: { type: "string", description: "Optional ISO 8601 end datetime" },
       timezone: { type: "string", description: "IANA timezone for the event" },
       client_revision: { type: "integer", minimum: 0 },

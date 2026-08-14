@@ -13,15 +13,15 @@ describe("#1972 canonical event lifecycle Business surfaces", () => {
     expect(source).toContain('supabase.rpc("business_create_event_draft"');
     expect(source).toContain('supabase.rpc("business_update_event_draft"');
     expect(source).toContain('eventTypeForInsert === "rsvp"');
-    expect(source).toContain('draft.isRsvp === true');
+    expect(source).toContain("draft.isRsvp === true");
   });
 
   test("published lifecycle services expose live edit, duplicate, unpublish, and durable cancellation", () => {
     const source = read("src/services/businessEvents.ts");
-    expect(source).toContain('supabase.rpc("business_update_live_event"');
-    expect(source).toContain('supabase.rpc("business_duplicate_event_as_draft"');
-    expect(source).toContain('supabase.rpc("business_unpublish_event_to_draft"');
-    expect(source).toContain('supabase.rpc("business_cancel_event"');
+    expect(source).toContain('"business_update_live_event_atomic"');
+    expect(source).toContain('"business_duplicate_event_as_draft"');
+    expect(source).toContain('"business_unpublish_event_to_draft"');
+    expect(source).toContain('"business_cancel_event"');
   });
 
   test("Hub and event detail wire real duplicate and unpublish handlers on the shared surface", () => {
@@ -41,15 +41,19 @@ describe("#1972 canonical event lifecycle Business surfaces", () => {
   test("published editor sends all core fields and the required audit reason to the server", () => {
     const source = read("src/components/event/EditPublishedScreen.tsx");
     expect(source).toContain("ISSUE_1972_CORE_PATCH_KEYS");
-    expect(source).toContain("await patchPublishedEventCore(");
+    expect(source).toContain("await patchPublishedEventAtomically(");
+    expect(source).not.toContain("await patchPublishedEventCore(");
+    expect(source).not.toContain("await patchPublishedEventWhen(");
     expect(source).toContain("validation.trimmedReason");
     expect(source).toContain("(liveEvent.clientRevision ?? 0) + 1");
   });
 
-  test("cover selections use trusted Edge attestation and a separate clear owner", () => {
+  test("cover selections use trusted Edge attestation before the atomic owner", () => {
     const source = read("src/services/eventCoverMediaService.ts");
     expect(source).toContain('"event-cover-attest-selection"');
-    expect(source).toContain('supabase.rpc("business_clear_event_cover_media"');
-    expect(source).not.toContain('supabase.rpc("business_register_event_cover_selection"');
+    expect(source).toContain("export const attestEventCoverSelection");
+    expect(source).not.toContain(
+      'supabase.rpc("business_register_event_cover_selection"',
+    );
   });
 });

@@ -166,7 +166,7 @@ const duplicateEvent = writeTool(
 
 const patchEventWhen = writeTool(
   "patch_event_when",
-  "Change an event's date/time via business_patch_event_when.",
+  "Change an event's date/time through the canonical atomic live-event owner.",
   {
     event_id: UUID,
     when_payload: { type: "object" },

@@ -11,13 +11,20 @@ import type {
   TicketStub,
   WhenMode,
 } from "../store/draftEventStore";
-import type { EditableLiveEventFields, LiveEvent, LiveEventStatus } from "../store/liveEventStore";
+import type {
+  EditableLiveEventFields,
+  LiveEvent,
+  LiveEventStatus,
+} from "../store/liveEventStore";
 import type { Brand, BrandLinks } from "../store/currentBrandStore";
 import {
   asEventCoverMediaProvider,
   type EventCoverMediaProvider,
 } from "../types/eventCoverProvider";
-import { draftToServerUpdate, publishedVisibilityForDraft } from "../utils/serverDraftEventMapper";
+import {
+  draftToServerUpdate,
+  publishedVisibilityForDraft,
+} from "../utils/serverDraftEventMapper";
 // ORCH-0808 — organizer-funnel instrumentation.
 import { logAppsFlyerEvent } from "./appsFlyerService";
 
@@ -301,7 +308,11 @@ export const ticketRowToTicketStub = (row: TicketTypeRow): TicketStub => ({
   capacity: row.quantity_total,
   isFree: row.is_free,
   isUnlimited: row.is_unlimited,
-  visibility: row.is_hidden ? "hidden" : row.is_disabled ? "disabled" : "public",
+  visibility: row.is_hidden
+    ? "hidden"
+    : row.is_disabled
+      ? "disabled"
+      : "public",
   displayOrder: row.display_order,
   approvalRequired: row.requires_approval,
   passwordProtected: row.password_protected,
@@ -406,7 +417,8 @@ const eventFromRow = (
     // Feeds liveEventToEditableDraft so the edit-published chip-in toggle + amounts
     // hydrate to the TRUE stored state instead of always-off.
     rsvpContributionEnabled: rsvpMeta?.rsvpContributionEnabled ?? false,
-    rsvpContributionSuggestedCents: rsvpMeta?.rsvpContributionSuggestedCents ?? null,
+    rsvpContributionSuggestedCents:
+      rsvpMeta?.rsvpContributionSuggestedCents ?? null,
     rsvpContributionMinCents: rsvpMeta?.rsvpContributionMinCents ?? null,
     name: row.title,
     description: row.description ?? "",
@@ -436,7 +448,11 @@ const eventFromRow = (
         const m = g.match(/^\(([-\d.]+),([-\d.]+)\)$/);
         return m ? { lng: Number(m[1]), lat: Number(m[2]) } : null;
       }
-      if (typeof g === "object" && typeof g.x === "number" && typeof g.y === "number") {
+      if (
+        typeof g === "object" &&
+        typeof g.x === "number" &&
+        typeof g.y === "number"
+      ) {
         return { lng: g.x, lat: g.y };
       }
       return null;
@@ -478,10 +494,19 @@ const eventFromRow = (
       tickets.find((ticket) => ticket.currency !== undefined)?.currency,
     tickets,
     visibility: asVisibility(row.visibility),
-    requireApproval: asBoolean(settings.requireApproval, tickets.some((t) => t.approvalRequired)),
-    allowTransfers: asBoolean(settings.allowTransfers, tickets.every((t) => t.allowTransfers)),
+    requireApproval: asBoolean(
+      settings.requireApproval,
+      tickets.some((t) => t.approvalRequired),
+    ),
+    allowTransfers: asBoolean(
+      settings.allowTransfers,
+      tickets.every((t) => t.allowTransfers),
+    ),
     hideRemainingCount: asBoolean(settings.hideRemainingCount, false),
-    passwordProtected: asBoolean(settings.passwordProtected, tickets.some((t) => t.passwordProtected)),
+    passwordProtected: asBoolean(
+      settings.passwordProtected,
+      tickets.some((t) => t.passwordProtected),
+    ),
     // #1022 C-3 — BUSINESS_EVENT_SELECT is "*", so the three columns are
     // ALWAYS present (as null) on a never-themed event. The old
     // `!== undefined` guard was therefore always true and yielded a non-null
@@ -492,7 +517,10 @@ const eventFromRow = (
     privateGuestList: asBoolean(settings.privateGuestList, false),
     inPersonPaymentsEnabled: asBoolean(
       settings.inPersonPaymentsEnabled,
-      tickets.some((ticket) => ticket.availableAt === "both" || ticket.availableAt === "door"),
+      tickets.some(
+        (ticket) =>
+          ticket.availableAt === "both" || ticket.availableAt === "door",
+      ),
     ),
     // ORCH-1006 — per-offering pricing switches from events.pass_* (NULL = inherit).
     pricingSwitches: {
@@ -576,7 +604,10 @@ export const fetchBusinessEventsForBrand = async (
   // even if a trip leaks past this filter via a future regression).
   // ORCH-1150 — the map now also carries 'rsvp' so RSVP rows reach the Hub
   // event list with event_type='rsvp' (rendered as "N going" by EventListCard).
-  const eventTypeById = new Map<string, "event" | "experience" | "trip" | "rsvp">();
+  const eventTypeById = new Map<
+    string,
+    "event" | "experience" | "trip" | "rsvp"
+  >();
   // ORCH-1150 — per-RSVP host-control snapshot from the same probe.
   const rsvpMetaById = new Map<
     string,
@@ -636,7 +667,8 @@ export const fetchBusinessEventsForBrand = async (
           rsvpDiscoverable: r.rsvp_discoverable ?? false,
           rsvpGoingCount: 0,
           rsvpContributionEnabled: r.rsvp_contribution_enabled ?? false,
-          rsvpContributionSuggestedCents: r.rsvp_contribution_suggested_cents ?? null,
+          rsvpContributionSuggestedCents:
+            r.rsvp_contribution_suggested_cents ?? null,
           rsvpContributionMinCents: r.rsvp_contribution_min_cents ?? null,
         });
       }
@@ -752,8 +784,10 @@ export const fetchBusinessEventById = async (
           // ORCH-1296 — the TRUE stored chip-in config so the editor hydrates the
           // toggle + amounts correctly (was always off/blank on open — the LOAD gap).
           rsvpContributionEnabled: probeRow.rsvp_contribution_enabled ?? false,
-          rsvpContributionSuggestedCents: probeRow.rsvp_contribution_suggested_cents ?? null,
-          rsvpContributionMinCents: probeRow.rsvp_contribution_min_cents ?? null,
+          rsvpContributionSuggestedCents:
+            probeRow.rsvp_contribution_suggested_cents ?? null,
+          rsvpContributionMinCents:
+            probeRow.rsvp_contribution_min_cents ?? null,
         }
       : null;
 
@@ -788,7 +822,10 @@ export const eventFromPublishResponse = (
   response: PublishRpcResponse,
 ): PublishedBusinessEvent => {
   const businessEvent = asRecord(asRecord(response.event.theme).business_event);
-  if (response.event.currency === null || response.event.currency === undefined) {
+  if (
+    response.event.currency === null ||
+    response.event.currency === undefined
+  ) {
     throw new Error("Published event is missing currency.");
   }
   // ORCH-0792: extract master event_dates row from the RPC response so the
@@ -874,14 +911,17 @@ export const publishBusinessEventDraft = async (
   clientRevision: number | null = draft.clientRevision ?? null,
 ): Promise<PublishedBusinessEvent> => {
   const payload = draftToServerUpdate(draft, {});
-  const { data, error } = await supabase.rpc("issue_1719_publish_event_with_poster", {
-    p_event_id: draft.id,
-    p_draft_payload: {
-      ...payload,
-      visibility: publishedVisibilityForDraft(draft.visibility),
+  const { data, error } = await supabase.rpc(
+    "issue_1719_publish_event_with_poster",
+    {
+      p_event_id: draft.id,
+      p_draft_payload: {
+        ...payload,
+        visibility: publishedVisibilityForDraft(draft.visibility),
+      },
+      p_client_revision: clientRevision,
     },
-    p_client_revision: clientRevision,
-  });
+  );
 
   if (error !== null) throw error;
   const response = data as PublishRpcResponse | null;
@@ -937,7 +977,11 @@ export const cancelBusinessEvent = async (
 };
 
 export interface EventDraftLifecycleResult {
-  event: Record<string, unknown> & { id: string; brand_id: string; status: string };
+  event: Record<string, unknown> & {
+    id: string;
+    brand_id: string;
+    status: string;
+  };
   client_revision: number;
 }
 
@@ -950,8 +994,10 @@ const requireEventDraftLifecycleResult = (
   }
   const result = value as Partial<EventDraftLifecycleResult>;
   if (
-    result.event === null || typeof result.event !== "object" ||
-    typeof result.event.id !== "string" || result.event.status !== "draft"
+    result.event === null ||
+    typeof result.event !== "object" ||
+    typeof result.event.id !== "string" ||
+    result.event.status !== "draft"
   ) {
     throw new Error(`${operation} returned an invalid event draft.`);
   }
@@ -961,9 +1007,12 @@ const requireEventDraftLifecycleResult = (
 export const unpublishBusinessEventToDraft = async (
   eventId: string,
 ): Promise<EventDraftLifecycleResult> => {
-  const { data, error } = await supabase.rpc("business_unpublish_event_to_draft", {
-    p_event_id: eventId,
-  });
+  const { data, error } = await supabase.rpc(
+    "business_unpublish_event_to_draft",
+    {
+      p_event_id: eventId,
+    },
+  );
   if (error !== null) throw error;
   return requireEventDraftLifecycleResult(data, "Unpublish");
 };
@@ -971,9 +1020,12 @@ export const unpublishBusinessEventToDraft = async (
 export const duplicateBusinessEventAsDraft = async (
   eventId: string,
 ): Promise<EventDraftLifecycleResult> => {
-  const { data, error } = await supabase.rpc("business_duplicate_event_as_draft", {
-    p_event_id: eventId,
-  });
+  const { data, error } = await supabase.rpc(
+    "business_duplicate_event_as_draft",
+    {
+      p_event_id: eventId,
+    },
+  );
   if (error !== null) throw error;
   return requireEventDraftLifecycleResult(data, "Duplicate");
 };
@@ -990,9 +1042,51 @@ export const patchPublishedEventCore = async (
     p_reason: reason,
     p_client_revision: clientRevision,
   });
-  if (error !== null) throw new Error(error.message ?? "business_update_live_event_failed");
+  if (error !== null)
+    throw new Error(error.message ?? "business_update_live_event_failed");
   if (data === null || typeof data !== "object" || Array.isArray(data)) {
     throw new Error("business_update_live_event_empty_response");
+  }
+  return data as Record<string, unknown>;
+};
+
+export interface AtomicPublishedEventPatch {
+  core: Partial<EditableLiveEventFields>;
+  taxonomy?: Omit<PatchEventTaxonomyInput, "eventId">;
+  when?: PatchEventWhenInput["whenPayload"] & {
+    acknowledgeSoldImpact?: boolean;
+  };
+  theme?: ThemeInput | null;
+  pricing?: {
+    passTax: boolean | null;
+    passMinglaFee: boolean | null;
+    passServiceFee: boolean | null;
+  };
+  cover?: { clear: true } | { selectionRef: string };
+}
+
+export const patchPublishedEventAtomically = async (
+  eventId: string,
+  patch: AtomicPublishedEventPatch,
+  reason: string,
+  clientRevision: number,
+): Promise<Record<string, unknown>> => {
+  const { data, error } = await supabase.rpc(
+    "business_update_live_event_atomic",
+    {
+      p_event_id: eventId,
+      p_patch: patch,
+      p_reason: reason,
+      p_client_revision: clientRevision,
+    },
+  );
+  if (error !== null) {
+    throw new Error(
+      error.message ?? "business_update_live_event_atomic_failed",
+    );
+  }
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("business_update_live_event_atomic_empty_response");
   }
   return data as Record<string, unknown>;
 };
@@ -1067,23 +1161,20 @@ interface PatchEventTaxonomyResponse {
 export const patchPublishedEventTaxonomy = async (
   input: PatchEventTaxonomyInput,
 ): Promise<PatchEventTaxonomyResponse> => {
-  const { data, error } = await supabase.rpc(
-    "business_patch_event_taxonomy",
-    {
-      p_event_id: input.eventId,
-      p_city: input.city,
-      p_party_types: input.partyTypes,
-      p_vibe_tags: input.vibeTags,
-      p_music_genres: input.musicGenres,
-      p_location_lat: input.locationGeo?.lat ?? null,
-      p_location_lng: input.locationGeo?.lng ?? null,
-      p_location_text: input.locationText,
-      // Issue #1363 G2: forward coordinate precision (empty string → NULL in
-      // the RPC). Written to events.coordinate_precision only when a new
-      // coordinate is supplied.
-      p_coordinate_precision: input.coordinatePrecision ?? "",
-    },
-  );
+  const { data, error } = await supabase.rpc("business_patch_event_taxonomy", {
+    p_event_id: input.eventId,
+    p_city: input.city,
+    p_party_types: input.partyTypes,
+    p_vibe_tags: input.vibeTags,
+    p_music_genres: input.musicGenres,
+    p_location_lat: input.locationGeo?.lat ?? null,
+    p_location_lng: input.locationGeo?.lng ?? null,
+    p_location_text: input.locationText,
+    // Issue #1363 G2: forward coordinate precision (empty string → NULL in
+    // the RPC). Written to events.coordinate_precision only when a new
+    // coordinate is supplied.
+    p_coordinate_precision: input.coordinatePrecision ?? "",
+  });
 
   if (error !== null) {
     // Surface the RPC's error code (e.g. 'city_required',
@@ -1270,9 +1361,10 @@ export const setEventGuestPrivacy = async (
   if (error !== null) {
     throw new Error(error.message ?? "set_event_guest_privacy_failed");
   }
-  const echo = data as
-    | { privateGuestList?: boolean; hideRemainingCount?: boolean }
-    | null;
+  const echo = data as {
+    privateGuestList?: boolean;
+    hideRemainingCount?: boolean;
+  } | null;
   if (echo === null) {
     throw new Error("set_event_guest_privacy_empty_response");
   }
