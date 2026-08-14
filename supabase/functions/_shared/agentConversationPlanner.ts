@@ -342,6 +342,8 @@ function incorporateTime(
       choices,
       text: resolution.invalidReason === "nonexistent_local_time"
         ? `That local time doesn’t exist because the clock changes then. ${choices.prompt}`
+        : resolution.invalidReason === "past"
+        ? `That day has already passed this week. I can offer the next occurrence instead. ${choices.prompt}`
         : choices.prompt,
     };
   }
@@ -473,6 +475,20 @@ export function applyStoredChoice(args: {
     state.pending_question.question_id !== choices.question_id
   ) {
     throw new TaskStateError("CHOICE_STALE", "That choice is no longer active");
+  }
+  const mode = state.pending_question.mode;
+  const hasFreeText = typeof freeText === "string" &&
+    freeText.trim().length > 0;
+  const hasDuplicateOptionIds = new Set(optionIds).size !== optionIds.length;
+  const invalidCardinality = hasDuplicateOptionIds ||
+    (mode === "single" && (optionIds.length !== 1 || hasFreeText)) ||
+    (mode === "multi" && (optionIds.length === 0 || hasFreeText)) ||
+    (mode === "free_text" && (optionIds.length !== 0 || !hasFreeText));
+  if (invalidCardinality) {
+    throw new TaskStateError(
+      "CHOICE_STALE",
+      "That answer does not match the active question",
+    );
   }
   const allowed = new Map(choices.options.map((option) => [option.id, option]));
   const selected: AgentChoiceOptionV2[] = [];

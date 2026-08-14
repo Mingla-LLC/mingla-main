@@ -15,6 +15,9 @@ const files = {
   screen: "mingla-business/src/screens/ari/AriChatScreen.tsx",
   list: "mingla-business/src/components/ari/MessageList.tsx",
   clientChoices: "mingla-business/src/components/ari/agentChoices.ts",
+  typecheck: "mingla-business/tsconfig.issue-1985.json",
+  typecheckRunner: ".github/scripts/strict-grep/issue-1985-business-typecheck.mjs",
+  workflow: ".github/workflows/issue-1985-ari-task-state.yml",
 };
 const sources = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, read(file)]));
 
@@ -58,6 +61,31 @@ export function check(s) {
   if (!s.clientChoices.includes("raw.schema_version !== 2") || !s.clientChoices.includes("buildChoiceSubmission") || !s.list.includes("buildChoiceSubmission(choices, [optionId])") || s.list.includes("resolveChoiceLabel")) {
     failures.push("client can treat display labels or V1 rows as semantic authority");
   }
+  const typedBusinessFiles = [
+    "src/components/ari/ClarifyingCard.tsx",
+    "src/components/ari/MessageList.tsx",
+    "src/components/ari/MultiSelectPrompt.tsx",
+    "src/components/ari/QuickReplyChips.tsx",
+    "src/components/ari/agentChoices.ts",
+    "src/components/ari/__tests__/issue_1985_choice_payloads.test.tsx",
+    "src/components/ari/__tests__/issue_1985_value_choices.adversarial.test.tsx",
+    "src/components/ari/__tests__/orch_1103_choices_chips.test.ts",
+    "src/hooks/useAgentChat.ts",
+    "src/screens/ari/AriChatScreen.tsx",
+    "src/screens/ari/__tests__/issue_2013_ari_tenant_containment.test.ts",
+    "src/services/agentChatService.ts",
+  ];
+  for (const file of typedBusinessFiles) {
+    if (!s.typecheck.includes(`"${file}"`)) {
+      failures.push(`Business typecheck contract missing ${file}`);
+    }
+  }
+  if (!s.typecheckRunner.includes("const SCOPED_FILES = new Set(config.fileNames.map") || !s.typecheckRunner.includes("SCOPED_FILES.has(path.resolve(diagnostic.file.fileName))")) {
+    failures.push("#1985 Business typecheck runner can ignore its scoped files");
+  }
+  if (!s.workflow.includes("node .github/scripts/strict-grep/issue-1985-business-typecheck.mjs")) {
+    failures.push("#1985 workflow does not run the issue-scoped Business typecheck");
+  }
   return failures;
 }
 
@@ -78,6 +106,9 @@ if (process.argv.includes("--self-test")) {
     { key: "hook", from: "payload, clientTurnId", to: "payload, newClientTurnId()" },
     { key: "screen", from: 'import { useShareNetworkState } from "../../components/ui/useShareNetworkState";', to: 'import { useUnsafeOnline } from "unsafe";' },
     { key: "clientChoices", from: "raw.schema_version !== 2", to: "false" },
+    { key: "typecheck", from: '"src/services/agentChatService.ts"', to: '"src/services/removedAgentChatService.ts"' },
+    { key: "typecheckRunner", from: "SCOPED_FILES.has(path.resolve(diagnostic.file.fileName))", to: "true" },
+    { key: "workflow", from: "node .github/scripts/strict-grep/issue-1985-business-typecheck.mjs", to: "npx tsc --noEmit" },
   ];
   for (const mutation of mutations) {
     const mutated = { ...sources, [mutation.key]: sources[mutation.key].replace(mutation.from, mutation.to) };
@@ -86,7 +117,7 @@ if (process.argv.includes("--self-test")) {
       process.exit(1);
     }
   }
-  console.log("issue-1985 self-test PASS: clean source passes and 11 load-bearing reverts fail.");
+  console.log("issue-1985 self-test PASS: clean source passes and 14 load-bearing reverts fail.");
   process.exit(0);
 }
 

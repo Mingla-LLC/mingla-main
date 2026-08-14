@@ -342,7 +342,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         // Stale rows (superseded by a newer turn / pending proposal) collapse to
         // nothing extra — just the bubble — so they can't be tapped again.
         if (!isLatest && !isResolved) return bubble;
-        if (choices.kind === "clarifying") {
+        if (choices.kind === "clarifying" && choices.options.length === 0) {
           const typed = clarifyDraft[m.id] ?? "";
           const clarifyState = isResolved
             ? "submitted"

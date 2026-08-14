@@ -17,7 +17,9 @@ on:
       - "mingla-business/src/hooks/useAgentChat.ts"
       - "mingla-business/src/screens/ari/AriChatScreen.tsx"
       - "mingla-business/src/services/agentChatService.ts"
+      - "mingla-business/tsconfig.issue-1985.json"
       - ".github/scripts/strict-grep/issue-1985-ari-task-state.mjs"
+      - ".github/scripts/strict-grep/issue-1985-business-typecheck.mjs"
       - ".github/workflows/issue-1985-ari-task-state.yml"
   pull_request:
     paths:
@@ -35,7 +37,9 @@ on:
       - "mingla-business/src/hooks/useAgentChat.ts"
       - "mingla-business/src/screens/ari/AriChatScreen.tsx"
       - "mingla-business/src/services/agentChatService.ts"
+      - "mingla-business/tsconfig.issue-1985.json"
       - ".github/scripts/strict-grep/issue-1985-ari-task-state.mjs"
+      - ".github/scripts/strict-grep/issue-1985-business-typecheck.mjs"
       - ".github/workflows/issue-1985-ari-task-state.yml"
 
 permissions:
@@ -67,5 +71,4 @@ jobs:
         run: npx jest src/components/ari/__tests__/issue_1985_choice_payloads.test.tsx src/components/ari/__tests__/issue_1985_value_choices.adversarial.test.tsx src/components/ari/__tests__/orch_1103_choices_chips.test.ts --runInBand
         working-directory: mingla-business
       - name: Type-check Business client
-        run: npx tsc --noEmit
-        working-directory: mingla-business
+        run: node .github/scripts/strict-grep/issue-1985-business-typecheck.mjs

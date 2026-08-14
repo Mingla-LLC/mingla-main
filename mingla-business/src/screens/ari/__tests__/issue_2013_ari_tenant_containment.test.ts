@@ -112,6 +112,9 @@ describe("#2013 Ari tenant-containment UI behavior", () => {
     const result = await sendAgentMessage({
       conversation_id: "conversation-a",
       message: "Continue planning",
+      client_turn_id: "00000000-0000-4000-8000-000000002013",
+      client_timezone: "Africa/Lagos",
+      locale: "en-NG",
       brand_id: "brand-a",
     });
 
@@ -119,6 +122,9 @@ describe("#2013 Ari tenant-containment UI behavior", () => {
       body: {
         conversation_id: "conversation-a",
         message: "Continue planning",
+        client_turn_id: "00000000-0000-4000-8000-000000002013",
+        client_timezone: "Africa/Lagos",
+        locale: "en-NG",
         brand_id: "brand-a",
       },
     });

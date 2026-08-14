@@ -452,7 +452,7 @@ export function resolveRelativeTime(
   const original = text.trim().slice(0, 240);
   if (!context.timezone) {
     const containsRelative =
-      /\b(today|tomorrow|in \d+ (?:day|week)s?|next |this |weekend|end of (?:the )?month|morning|afternoon|evening|later)\b/i
+      /\b(today|tomorrow|in \d+ (?:day|week)s?|next |this |weekend|end of (?:(?:the|this) )?month|morning|afternoon|evening|later)\b/i
         .test(text);
     return { temporal: null, choices: [], needsTimezone: containsRelative };
   }
@@ -460,7 +460,7 @@ export function resolveRelativeTime(
   const today = localDate(nowLocal);
   const userTime = parseUserTime(text);
 
-  if (/\bend of (?:the )?month\b/i.test(text)) {
+  if (/\bend of (?:(?:the|this) )?month\b/i.test(text)) {
     const choices = endOfMonthChoices(original, context, today);
     return {
       temporal: {
@@ -499,7 +499,28 @@ export function resolveRelativeTime(
   if (weekday) {
     precision = "weekday";
     const target = WEEKDAY_INDEX[weekday[2].toLowerCase()];
-    date = nextWeekday(today, target, weekday[1].toLowerCase() === "next");
+    const qualifier = weekday[1].toLowerCase();
+    const currentWeekday = weekdayOf(today);
+    const requestedTime = userTime ? parseTime(userTime) : null;
+    const requestedMinutes = requestedTime
+      ? requestedTime.hour * 60 + requestedTime.minute
+      : null;
+    const currentMinutes = nowLocal.hour * 60 + nowLocal.minute;
+    const thisWeekdayPassed = target < currentWeekday ||
+      (target === currentWeekday && requestedMinutes !== null &&
+        requestedMinutes <= currentMinutes);
+    if (qualifier === "this" && thisWeekdayPassed) {
+      return {
+        temporal: null,
+        choices: exactChoices(original, [{
+          date: addLocalDays(today, (target - currentWeekday + 7) % 7 || 7),
+          time: userTime ?? "19:00",
+        }], context),
+        needsTimezone: false,
+        invalidReason: "past",
+      };
+    }
+    date = nextWeekday(today, target, qualifier === "next");
     if (
       weekday[1].toLowerCase() === "this" && date === today &&
       nowLocal.hour >= 23

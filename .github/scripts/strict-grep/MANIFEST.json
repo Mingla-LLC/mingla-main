@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 529,
+  "expectedStrictGrepMjsFiles": 530,
   "selfTestWiredFloor": 334,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -25,6 +25,19 @@
     "scripts/ota"
   ],
   "gates": [
+    {
+      "script": ".github/scripts/strict-grep/issue-1985-business-typecheck.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-1985-ari-task-state.yml",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "ari-task-state"
+      ]
+    },
     {
       "script": ".github/scripts/strict-grep/issue-1985-ari-task-state.mjs",
       "kind": "file",
