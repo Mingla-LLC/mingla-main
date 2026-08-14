@@ -36,6 +36,11 @@ const canonicalTier = (ticket: TicketStub, id: string): Record<string, unknown> 
   // currency is derived by the database from the event/brand rail.
 });
 
+/** Stable draft representation used to avoid revision churn on unrelated autosaves. */
+export const canonicalizeDraftTicketTiers = (
+  tickets: TicketStub[],
+): Array<Record<string, unknown>> => tickets.map((ticket) => canonicalTier(ticket, ticket.id));
+
 export interface TicketTierMutationResult {
   event_id: string;
   representation: "draft" | "live";
@@ -75,4 +80,3 @@ export async function persistEventTicketTiers(input: {
   if (!data || typeof data !== "object") throw new Error("ticket_tier_readback_missing");
   return data as unknown as TicketTierMutationResult;
 }
-

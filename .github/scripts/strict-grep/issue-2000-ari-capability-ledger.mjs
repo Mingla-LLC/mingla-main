@@ -156,8 +156,6 @@ ari.event.duplicate
 ari.event.patch_when
 ari.event.cover
 ari.event.guest_privacy
-ari.ticket.upsert_tier
-ari.ticket.pricing_switches
 ari.experience.publish
 ari.experience.update
 ari.experience.delete
@@ -335,9 +333,9 @@ function validateRef(root, auditSha, ref, label, failures) {
 
 export function validateLedger({ root, ledger, registered, advertised }) {
   const failures = [];
-  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 47) {
+  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 45) {
     failures.push(
-      `proven-broken authority must contain 47 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
+      `proven-broken authority must contain 45 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
     );
   }
   addSetDiff(
@@ -440,7 +438,7 @@ export function validateLedger({ root, ledger, registered, advertised }) {
     const blockers = Array.isArray(capability.blockers) ? capability.blockers : [];
     const verificationGap = blockers.length > 0 && blockers.every((blocker) =>
       typeof blocker === "string" &&
-      /(?:runtime|surface|parity).*(?:proof|evidence)|(?:proof|evidence).*(?:runtime|surface|parity)/i.test(blocker)
+      /(?:runtime|surface|parity).*(?:proof|evidence|certification)|(?:proof|evidence|certification).*(?:runtime|surface|parity)/i.test(blocker)
     );
     if (capability.status === "registered_unverified" && !verificationGap) {
       failures.push(`${label}: registered_unverified blockers must describe verification gaps only`);

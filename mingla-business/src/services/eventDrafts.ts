@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 import {
   buildDraftEvent,
   type DraftEvent,
+  type TicketStub,
 } from "../store/draftEventStore";
 import { generateEventSlug } from "../utils/eventSlug";
 import {
@@ -14,7 +15,11 @@ import {
   BusinessAuthNotReadyError,
   toBusinessAuthNotReadyError,
 } from "../utils/authReadiness";
-import { persistEventTicketTiers } from "./eventTicketTiersService";
+import {
+  canonicalizeDraftTicketTiers,
+  persistEventTicketTiers,
+} from "./eventTicketTiersService";
+import { setEventPricingSwitches } from "./pricingSwitchesService";
 
 // ORCH-0841: include the post-ORCH-0824 top-level taxonomy + city + geo
 // columns so serverRowToDraft sees them on every fetch / autosave round-trip.
@@ -230,6 +235,9 @@ interface ExistingDraftSaveContext {
   currency: string | null;
   eventType: string;
   updatedAt: string;
+  passTax: boolean | null;
+  passMinglaFee: boolean | null;
+  passServiceFee: boolean | null;
 }
 
 const resolveMissingDraftLifecycle = async (
@@ -279,12 +287,20 @@ const fetchExistingDraftSaveContext = async (
     currency?: unknown;
     event_type?: unknown;
     updated_at?: unknown;
+    pass_tax?: unknown;
+    pass_mingla_fee?: unknown;
+    pass_service_fee?: unknown;
   } | null;
   return {
     theme: row?.theme ?? {},
     currency: nullableCurrency(row?.currency),
     eventType: typeof row?.event_type === "string" ? row.event_type : "event",
     updatedAt: typeof row?.updated_at === "string" ? row.updated_at : "",
+    passTax: typeof row?.pass_tax === "boolean" ? row.pass_tax : null,
+    passMinglaFee:
+      typeof row?.pass_mingla_fee === "boolean" ? row.pass_mingla_fee : null,
+    passServiceFee:
+      typeof row?.pass_service_fee === "boolean" ? row.pass_service_fee : null,
   };
 };
 
@@ -302,26 +318,65 @@ export const autosaveServerDraft = async (
       (existing.theme as { business_draft?: { clientRevision?: unknown } } | null)
         ?.business_draft?.clientRevision ?? 0,
     );
-    const ticketWrite = await persistEventTicketTiers({
-      eventId: draft.id,
-      tickets: draft.tickets,
-      lifecycle: "draft",
-      expectedUpdatedAt: existing.updatedAt,
-      expectedClientRevision: serverRevision,
-    });
-    normalizedDraft = {
-      ...normalizedDraft,
-      tickets: ticketWrite.tiers,
-      clientRevision: ticketWrite.client_revision ?? serverRevision + 1,
-      currency: ticketWrite.effective_currency ?? effectiveCurrency,
+    const storedTickets = (
+      existing.theme as { business_draft?: { tickets?: unknown } } | null
+    )?.business_draft?.tickets;
+    const nextTickets = canonicalizeDraftTicketTiers(draft.tickets);
+    const canonicalStoredTickets = Array.isArray(storedTickets)
+      ? canonicalizeDraftTicketTiers(storedTickets as TicketStub[])
+      : [];
+    if (JSON.stringify(nextTickets) !== JSON.stringify(canonicalStoredTickets)) {
+      const ticketWrite = await persistEventTicketTiers({
+        eventId: draft.id,
+        tickets: draft.tickets,
+        lifecycle: "draft",
+        expectedUpdatedAt: existing.updatedAt,
+        expectedClientRevision: serverRevision,
+      });
+      normalizedDraft = {
+        ...normalizedDraft,
+        tickets: ticketWrite.tiers,
+        clientRevision: ticketWrite.client_revision ?? serverRevision + 1,
+        currency: ticketWrite.effective_currency ?? effectiveCurrency,
+      };
+      expectedUpdatedAt = ticketWrite.updated_at;
+    }
+
+    const nextPricing = normalizedDraft.pricingSwitches ?? {
+      passTax: null,
+      passMinglaFee: null,
+      passServiceFee: null,
     };
-    expectedUpdatedAt = ticketWrite.updated_at;
+    const pricingPatch: Partial<typeof nextPricing> = {};
+    if (nextPricing.passTax !== existing.passTax) pricingPatch.passTax = nextPricing.passTax;
+    if (nextPricing.passMinglaFee !== existing.passMinglaFee) {
+      pricingPatch.passMinglaFee = nextPricing.passMinglaFee;
+    }
+    if (nextPricing.passServiceFee !== existing.passServiceFee) {
+      pricingPatch.passServiceFee = nextPricing.passServiceFee;
+    }
+    if (Object.keys(pricingPatch).length > 0) {
+      const pricingWrite = await setEventPricingSwitches(draft.id, pricingPatch);
+      normalizedDraft = {
+        ...normalizedDraft,
+        pricingSwitches: pricingWrite.overrides,
+      };
+      expectedUpdatedAt = pricingWrite.updatedAt;
+    }
   }
-  const updatePayload = draftToServerUpdate(
+  const updatePayload: Partial<ReturnType<typeof draftToServerUpdate>> = draftToServerUpdate(
     normalizedDraft,
     existing.theme,
     normalizedDraft.clientRevision ?? draft.clientRevision ?? 0,
   );
+  // Event ticket/pricing state has dedicated locked command owners. The
+  // general autosave composes their readbacks but cannot write those leaves a
+  // second time. RSVP retains its separate contribution/settings graph.
+  if (existing.eventType === "event") {
+    delete updatePayload.pass_tax;
+    delete updatePayload.pass_mingla_fee;
+    delete updatePayload.pass_service_fee;
+  }
 
   // ORCH-0859 REWORK 3 (events-type-filter audit): draft UPDATE must not
   // accidentally write to a trip row that shares an id space.

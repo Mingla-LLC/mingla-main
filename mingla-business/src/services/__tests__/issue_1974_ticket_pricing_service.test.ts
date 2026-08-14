@@ -116,6 +116,7 @@ describe("#1974 canonical shared Business ticket/pricing service", () => {
   test("event pricing patch preserves omitted keys and can write inherit", async () => {
     rpcMock.mockResolvedValue({
       data: {
+        updated_at: "2027-01-01T00:01:00.000Z",
         overrides: { pass_tax: null, pass_mingla_fee: false, pass_service_fee: true },
         resolved: { pass_tax: true, pass_mingla_fee: false, pass_service_fee: true },
       },
@@ -127,6 +128,7 @@ describe("#1974 canonical shared Business ticket/pricing service", () => {
       p_patch: { pass_tax: null },
     });
     expect(result.overrides.passTax).toBeNull();
+    expect(result.updatedAt).toBe("2027-01-01T00:01:00.000Z");
   });
 
   test("brand default patch is sparse and returns concrete readback", async () => {

@@ -294,7 +294,16 @@ const upsertTicketTier = writeTool(
       p_operation_id: operationId,
       p_reason: event.status === "draft" ? null : "Updated through a confirmed Ari ticket request.",
     });
-    if (!error && data) return data;
+    if (!error && data) {
+      const snapshot = data as Record<string, unknown>;
+      const writtenTier = Array.isArray(snapshot.tiers)
+        ? snapshot.tiers.find((tier) =>
+          tier !== null && typeof tier === "object" && (tier as { id?: unknown }).id === next.id
+        )
+        : null;
+      if (!writtenTier) throw new ToolError("RPC_FAILED", "Ticket mutation readback omitted the written tier");
+      return { ...snapshot, tier: writtenTier };
+    }
 
     // Ambiguous response recovery: the deterministic create id (pending action
     // UUID) or update id is read from the canonical lifecycle representation.

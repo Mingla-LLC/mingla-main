@@ -69,7 +69,7 @@ export function resolveSwitches(
 export async function setEventPricingSwitches(
   eventId: string,
   switches: Partial<PricingSwitchOverrides>,
-): Promise<{ overrides: PricingSwitchOverrides; resolved: PricingSwitches }> {
+): Promise<{ overrides: PricingSwitchOverrides; resolved: PricingSwitches; updatedAt: string }> {
   const patch: Record<string, boolean | null> = {};
   if (Object.prototype.hasOwnProperty.call(switches, "passTax")) patch.pass_tax = switches.passTax ?? null;
   if (Object.prototype.hasOwnProperty.call(switches, "passMinglaFee")) patch.pass_mingla_fee = switches.passMinglaFee ?? null;
@@ -79,8 +79,10 @@ export async function setEventPricingSwitches(
     p_patch: patch,
   });
   if (error) throw error;
-  const value = data as { overrides?: Record<string, boolean | null>; resolved?: Record<string, boolean> } | null;
-  if (!value?.overrides || !value.resolved) throw new Error("pricing_switch_readback_missing");
+  const value = data as { overrides?: Record<string, boolean | null>; resolved?: Record<string, boolean>; updated_at?: unknown } | null;
+  if (!value?.overrides || !value.resolved || typeof value.updated_at !== "string") {
+    throw new Error("pricing_switch_readback_missing");
+  }
   return {
     overrides: {
       passTax: value.overrides.pass_tax ?? null,
@@ -92,6 +94,7 @@ export async function setEventPricingSwitches(
       passMinglaFee: value.resolved.pass_mingla_fee === true,
       passServiceFee: value.resolved.pass_service_fee === true,
     },
+    updatedAt: value.updated_at,
   };
 }
 

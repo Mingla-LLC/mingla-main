@@ -168,6 +168,24 @@ BEGIN
     IF EXISTS (SELECT 1 FROM public.ticket_types tt WHERE tt.event_id=p_event_id AND tt.deleted_at IS NULL) THEN
       RAISE EXCEPTION 'draft_ticket_projection_conflict';
     END IF;
+    -- A draft tier id belongs only to the draft JSON graph. Reusing an id from
+    -- any live ticket or from the separate trip-pricing graph would make the
+    -- caller's lifecycle intent ambiguous and can poison deterministic retry.
+    IF EXISTS (
+      SELECT 1 FROM jsonb_array_elements(v_tiers) t
+      WHERE EXISTS (
+              SELECT 1 FROM public.ticket_types tt
+              WHERE tt.id=CASE
+                WHEN (t->>'id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                THEN (t->>'id')::uuid ELSE NULL END
+            )
+         OR EXISTS (
+              SELECT 1 FROM public.trip_pricing_tiers trip
+              WHERE trip.id=CASE
+                WHEN (t->>'id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                THEN (t->>'id')::uuid ELSE NULL END
+            )
+    ) THEN RAISE EXCEPTION 'ticket_lifecycle_mismatch'; END IF;
     -- Collection readiness is required only for a new or newly-paid tier. An
     -- unrelated edit to an already-paid tier must not become hostage to a later
     -- provider disconnect; checkout remains independently fail closed.
@@ -218,6 +236,10 @@ BEGIN
       JOIN public.ticket_types tt ON tt.id=(t->>'id')::uuid
       WHERE tt.event_id<>p_event_id OR tt.deleted_at IS NOT NULL
     ) THEN RAISE EXCEPTION 'ticket_event_mismatch'; END IF;
+    IF EXISTS (
+      SELECT 1 FROM jsonb_array_elements(v_tiers) t
+      JOIN public.trip_pricing_tiers trip ON trip.id=(t->>'id')::uuid
+    ) THEN RAISE EXCEPTION 'ticket_lifecycle_mismatch'; END IF;
 
     IF EXISTS (
       SELECT 1
@@ -345,7 +367,8 @@ BEGIN
   v_mingla:=CASE WHEN p_patch?'pass_mingla_fee' THEN (p_patch->>'pass_mingla_fee')::boolean ELSE v_event.pass_mingla_fee END;
   v_service:=CASE WHEN p_patch?'pass_service_fee' THEN (p_patch->>'pass_service_fee')::boolean ELSE v_event.pass_service_fee END;
   UPDATE public.events SET pass_tax=v_tax,pass_mingla_fee=v_mingla,pass_service_fee=v_service,updated_at=now() WHERE id=p_event_id;
-  RETURN jsonb_build_object('event_id',p_event_id,'overrides',jsonb_build_object('pass_tax',v_tax,'pass_mingla_fee',v_mingla,'pass_service_fee',v_service),
+  RETURN jsonb_build_object('event_id',p_event_id,'updated_at',(SELECT updated_at FROM public.events WHERE id=p_event_id),
+    'overrides',jsonb_build_object('pass_tax',v_tax,'pass_mingla_fee',v_mingla,'pass_service_fee',v_service),
     'resolved',jsonb_build_object('pass_tax',COALESCE(v_tax,(SELECT default_pass_tax FROM public.brands WHERE id=v_event.brand_id)),
       'pass_mingla_fee',COALESCE(v_mingla,(SELECT default_pass_mingla_fee FROM public.brands WHERE id=v_event.brand_id)),
       'pass_service_fee',COALESCE(v_service,(SELECT default_pass_service_fee FROM public.brands WHERE id=v_event.brand_id))));

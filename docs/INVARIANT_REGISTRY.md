@@ -8584,6 +8584,51 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 ---
 
+## DRAFT — issue #1974 (canonical Ari ticket tiers and pricing)
+
+### I-ARI-TICKET-CANONICAL-STATE (DRAFT)
+- **Rule:** Event and experience drafts store ticket tiers only in `events.theme.business_draft.tickets`; scheduled/live tiers store only in `ticket_types`.
+
+### I-ARI-TICKET-ONE-WRITER (DRAFT)
+- **Rule:** Ari and the shared Business web/iOS/Android draft and published editors persist through `business_patch_event_ticket_tiers`.
+
+### I-ARI-TIER-COMPLETE (DRAFT)
+- **Rule:** The full tier modifier contract round-trips, sparse updates preserve omitted fields, and password material never enters the model path.
+
+### I-ARI-TICKET-ID-BINDING (DRAFT)
+- **Rule:** Supplied tier IDs bind to the requested event and lifecycle; malformed, deleted, stale, cross-event, RSVP, and trip IDs fail closed.
+
+### I-ARI-MONEY-CURRENCY (DRAFT)
+- **Rule:** Ticket currency is derived from event then active provider/brand authority; Ari never supplies or defaults a literal currency.
+
+### I-ARI-PAID-READY (DRAFT)
+- **Rule:** New and newly-paid tiers recheck `pg_brand_can_collect` at proposal and confirmation; provider ambiguity produces no write.
+
+### I-ARI-SOLD-PROTECTION (DRAFT)
+- **Rule:** Sold live tiers cannot change buyer-breaking fields, be removed, or reduce capacity below sold count; pricing switches lock after first sale.
+
+### I-ARI-PRICING-PATCH (DRAFT)
+- **Rule:** Event pricing patches use key presence, preserve omitted switches, and support SQL `NULL` inheritance; brand defaults remain concrete.
+
+### I-ARI-TAX-FAIL-CLOSED (DRAFT)
+- **Rule:** Passing/involving tax requires a fresh active-registration provider probe at proposal and confirmation; missing or ambiguous registration writes nothing.
+
+### I-ARI-MONEY-ROLES (DRAFT)
+- **Rule:** Tier writes require event-manager rank 40; event pricing and brand defaults require finance-manager rank 30 through canonical monotonic role functions.
+
+### I-ARI-CONFIRM-EXACTLY-ONCE (DRAFT)
+- **Rule:** The pending-action UUID is immutable execution context and deterministic tier identity; issue #1972 owns the shared atomic receipt/terminalization seam.
+
+### I-ARI-NO-TICKET-SECRET-IN-MODEL (DRAFT)
+- **Rule:** Plaintext ticket passwords and hashes never enter Gemini arguments, proposal cards, tool results, logs, or ledger evidence; setup remains a guided Business handoff.
+
+### I-ARI-LEDGER-TRUTH (DRAFT)
+- **Rule:** Source evidence may advance #1974 rows only to `registered_unverified`; independent deployed web+iOS+Android proof is required for `verified`.
+
+- **Enforcement:** `issue-1974-ari-ticket-pricing.mjs` (plain + mutation self-test), issue-specific Deno/migration/Jest tests, and the capability-ledger bijection guard. #1972 round 3 must first provide canonical draft ticket list/readback plus one atomic mixed-draft save transaction; #1974 integrates at that seam and does not duplicate it. Activate only after independent exact-revision runtime PASS.
+
+---
+
 ## DRAFT — issue #1008 (in-flow Event/RSVP turnout forecast)
 
 ### I-PROPOSED-1008-TURNOUT-AUTO-RUN-METERED (DRAFT)

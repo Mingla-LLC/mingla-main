@@ -10,14 +10,14 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-13T12:00:00Z",
-    "registered_tool_count": 64,
+    "registered_tool_count": 65,
     "capability_count": 116,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 16,
-      "broken": 47,
+      "registered_unverified": 19,
+      "broken": 45,
       "guided_handoff": 7,
-      "unsupported": 42,
+      "unsupported": 41,
       "in_flight": 4
     }
   },
@@ -658,16 +658,16 @@
         ]
       },
       "ari_tool": "upsert_ticket_tier",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+          "tier": "registration",
+          "sha": "10b4ae7e641120438d11a8dba7c95a2b01230934",
+          "reference": "issue_1974_ticket_pricing_canonical.test.ts + issue_1974_ticket_pricing_service.test.ts"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["Delegated event managers blocked"],
+      "owning_issues": [1974, 2000],
+      "blockers": ["deployed cross-surface runtime certification pending"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -676,7 +676,7 @@
       "domain": "tickets",
       "outcome": "Set event all-in pricing switches",
       "safety": "money",
-      "required_role": "owner_or_event_manager",
+      "required_role": "owner_or_finance_manager",
       "confirmation": "standard",
       "surfaces": ["business_ios", "business_android", "business_web"],
       "provenance": { "phase": "pr_1986", "introduced_by": "PR-1986" },
@@ -694,16 +694,16 @@
         ]
       },
       "ari_tool": "set_pricing_switches",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+          "tier": "registration",
+          "sha": "10b4ae7e641120438d11a8dba7c95a2b01230934",
+          "reference": "issue_1974_ticket_pricing_canonical.test.ts + issue_1974_ticket_pricing_contract.test.ts"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["Delegated event managers blocked"],
+      "owning_issues": [1974, 2000],
+      "blockers": ["deployed cross-surface runtime certification pending"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -2368,20 +2368,24 @@
           {
             "path": "mingla-business/src/services/pricingSwitchesService.ts",
             "symbol": "setBrandPricingDefaults"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "DOMAIN_TOOLS"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "set_brand_pricing_defaults",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "pricingSwitchesService.ts:setBrandPricingDefaults"
+          "tier": "registration",
+          "sha": "10b4ae7e641120438d11a8dba7c95a2b01230934",
+          "reference": "issue_1974_ticket_pricing_service.test.ts: sparse concrete default readback"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["No registered tool"],
+      "owning_issues": [1974, 2000],
+      "blockers": ["deployed cross-surface runtime certification pending"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },

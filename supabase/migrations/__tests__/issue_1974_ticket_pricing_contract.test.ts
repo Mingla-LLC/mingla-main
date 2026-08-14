@@ -21,6 +21,8 @@ Deno.test("#1974 SQL keeps draft tiers in JSON and live tiers in ticket_types", 
   assertStringIncludes(draft, "'{business_draft}'");
   assertStringIncludes(draft, "'tickets',v_tiers");
   assertStringIncludes(draft, "draft_ticket_projection_conflict");
+  assertStringIncludes(sql, "ticket_lifecycle_mismatch");
+  assertStringIncludes(sql, "public.trip_pricing_tiers");
   const migrationCleanup = /DELETE\s+FROM\s+public\.ticket_types/i.test(sql);
   assertEquals(migrationCleanup, false, "migration must not clean or reinterpret existing trip rows");
 });
@@ -45,4 +47,13 @@ Deno.test("#1974 SQL binds currency, revisions, sold guards, and deterministic o
     "password_hash=v_password_hash",
   ]) assert(sql.includes(contract), `missing ${contract}`);
   assert(!/['\"]USD['\"]/i.test(sql), "ticket writer must not manufacture USD");
+});
+
+Deno.test("#1974 stays a command seam and does not duplicate #1972 transaction/receipt ownership", () => {
+  assertStringIncludes(sql, "Issue #1972 owns the");
+  assert(
+    !/CREATE\s+(?:TABLE|FUNCTION)[\s\S]*agent_operation_receipt/i.test(sql),
+    "#1974 must not create #1972 receipt objects",
+  );
+  assertStringIncludes(sql, "p_operation_id uuid DEFAULT NULL");
 });
