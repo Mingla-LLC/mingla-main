@@ -15,6 +15,11 @@ import {
   resolveEventBrand,
 } from "./agentToolHelpers.ts";
 import {
+  applyTierPatch,
+  loadEventTicketState,
+  requireActiveTaxRegistration,
+} from "./agentTicketPricing.ts";
+import {
   assertAgentReadBrand,
   assertAgentReadEvent,
   resolveAccessibleAgentBrands,
@@ -47,11 +52,11 @@ function writeTool(
       required: req,
     },
     executor: confirmPhrase
-      ? async (args, client, userId) => {
+      ? async (args, client, userId, executionContext) => {
         if (args.confirm_phrase !== confirmPhrase) {
           throw new ToolError("INVALID_ARGS", `confirm_phrase must be ${confirmPhrase}`);
         }
-        return await executor(args, client, userId);
+        return await executor(args, client, userId, executionContext);
       }
       : executor,
   };
@@ -235,73 +240,133 @@ const setEventGuestPrivacy = writeTool(
 
 const upsertTicketTier = writeTool(
   "upsert_ticket_tier",
-  "Create or update a ticket tier on an owned event. Paid tiers require pg_brand_can_collect.",
+  "Create or sparsely update a complete canonical ticket tier. Currency is derived by the server; paid tiers require payout readiness.",
   {
     event_id: UUID,
-    ticket_type_id: UUID,
+    tier_id: { type: "string", minLength: 1, maxLength: 100 },
     name: STR,
     price_cents: { type: "integer", minimum: 0 },
-    quantity: { type: "integer", minimum: 1 },
-    currency: { type: "string", minLength: 3, maxLength: 3 },
+    is_free: { type: "boolean" },
+    is_unlimited: { type: "boolean" },
+    capacity: { type: "integer", minimum: 1, nullable: true },
+    visibility: { type: "string", enum: ["public", "hidden", "disabled"] },
+    display_order: { type: "integer", minimum: 0 },
+    approval_required: { type: "boolean" },
+    waitlist_enabled: { type: "boolean" },
+    min_purchase_qty: { type: "integer", minimum: 1 },
+    max_purchase_qty: { type: "integer", minimum: 1, nullable: true },
+    allow_transfers: { type: "boolean" },
+    description: { type: "string", maxLength: 280, nullable: true },
+    sale_start_at: { type: "string", format: "date-time", nullable: true },
+    sale_end_at: { type: "string", format: "date-time", nullable: true },
+    available_at: { type: "string", enum: ["online", "door", "both"] },
   },
-  ["event_id", "name", "price_cents"],
-  async (args, client, userId) => {
-    const price = Number(args.price_cents);
-    if (!Number.isFinite(price) || price < 0) throw new ToolError("INVALID_ARGS", "price_cents must be ≥ 0");
-    if (args.quantity !== undefined && (typeof args.quantity !== "number" || args.quantity < 1)) {
-      throw new ToolError("INVALID_ARGS", "quantity must be ≥ 1 when set (omit for unlimited)");
-    }
+  ["event_id"],
+  async (args, client, userId, executionContext) => {
+    void userId;
     const { eventId, brandId } = await requireEvent(args, client, userId);
-    if (price > 0) await assertCanCollect(client, brandId);
-    const currency = typeof args.currency === "string" ? args.currency.toUpperCase() : "USD";
-    if (!/^[A-Z]{3}$/.test(currency)) throw new ToolError("INVALID_ARGS", "currency must be a 3-letter code");
-    const row: Record<string, unknown> = {
-      event_id: eventId,
-      name: args.name,
-      price_cents: price,
-      quantity_total: typeof args.quantity === "number" ? args.quantity : null,
-      currency,
-    };
-    if (isUuid(args.ticket_type_id)) {
-      const { data, error } = await client
-        .from("ticket_types")
-        .update(row)
-        .eq("id", args.ticket_type_id)
-        .eq("event_id", eventId)
-        .select("id, name, price_cents")
-        .single();
-      if (error) throw new ToolError("RPC_FAILED", error.message);
-      return data;
+    const operationId = executionContext?.operationId;
+    if (!isUuid(operationId)) {
+      throw new ToolError("EXECUTION_CONTEXT_REQUIRED", "Ticket writes require a confirmed server operation id");
     }
-    const { data, error } = await client
-      .from("ticket_types")
-      .insert(row)
-      .select("id, name, price_cents")
-      .single();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+    const { event, tiers } = await loadEventTicketState(client, eventId);
+    const requestedId = typeof args.tier_id === "string" && args.tier_id.length > 0 ? args.tier_id : null;
+    const existing = requestedId === null ? null : tiers.find((tier) => tier.id === requestedId) ?? null;
+    if (requestedId !== null && existing === null) throw new ToolError("INVALID_ARGS", "That tier is stale or belongs to another event");
+    const next = applyTierPatch(
+      existing,
+      args,
+      operationId,
+      tiers.reduce((max, tier) => Math.max(max, tier.displayOrder), -1) + 1,
+    );
+    if (!next.isFree && (existing === null || existing.isFree)) {
+      await assertCanCollect(client, brandId);
+    }
+    const finalTiers = existing === null
+      ? [...tiers, next]
+      : tiers.map((tier) => tier.id === existing.id ? next : tier);
+    const clientRevision = Number((event.theme as any)?.business_draft?.clientRevision ?? 0);
+    const { data, error } = await client.rpc("business_patch_event_ticket_tiers", {
+      p_event_id: eventId,
+      p_tiers: finalTiers,
+      p_expected_event_updated_at: event.updated_at,
+      p_expected_client_revision: event.status === "draft" ? clientRevision : null,
+      p_operation_id: operationId,
+      p_reason: event.status === "draft" ? null : "Updated through a confirmed Ari ticket request.",
+    });
+    if (!error && data) return data;
+
+    // Ambiguous response recovery: the deterministic create id (pending action
+    // UUID) or update id is read from the canonical lifecycle representation.
+    const recovered = await loadEventTicketState(client, eventId).catch(() => null);
+    const recoveredTier = recovered?.tiers.find((tier) => tier.id === next.id);
+    if (recoveredTier && JSON.stringify(recoveredTier) === JSON.stringify(next)) {
+      return { event_id: eventId, tier: recoveredTier, recovered: true };
+    }
+    throw new ToolError("RPC_FAILED", error?.message ?? "Ticket mutation could not be read back");
   },
 );
 
 const setPricingSwitches = writeTool(
   "set_pricing_switches",
-  "Set all-in / absorb-fee / pass-tax switches via business_set_pricing_switches.",
+  "Sparsely set event tax and fee decisions; omitted keys are unchanged and inherit writes SQL NULL.",
   {
     event_id: UUID,
-    pass_tax: { type: "boolean" },
-    pass_mingla_fee: { type: "boolean" },
-    pass_service_fee: { type: "boolean" },
+    tax: { type: "string", enum: ["inherit", "pass_to_buyer", "included_in_price", "absorb_by_brand"] },
+    mingla_fee: { type: "string", enum: ["inherit", "pass_to_buyer", "absorb_by_brand"] },
+    service_fee: { type: "string", enum: ["inherit", "pass_to_buyer", "absorb_by_brand"] },
   },
   ["event_id"],
   async (args, client, userId) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    await callRpc(client, "business_set_pricing_switches", {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    const supplied = ["tax", "mingla_fee", "service_fee"].filter((key) => args[key] !== undefined);
+    if (supplied.length === 0) throw new ToolError("INVALID_ARGS", "Choose at least one pricing setting");
+    if (args.tax === "pass_to_buyer" || args.tax === "included_in_price") {
+      await requireActiveTaxRegistration(client, brandId);
+    }
+    const patch: Record<string, boolean | null> = {};
+    if (args.tax !== undefined) {
+      patch.pass_tax = args.tax === "inherit"
+        ? null
+        : args.tax === "pass_to_buyer" || args.tax === "included_in_price";
+    }
+    if (args.mingla_fee !== undefined) patch.pass_mingla_fee = args.mingla_fee === "inherit" ? null : args.mingla_fee === "pass_to_buyer";
+    if (args.service_fee !== undefined) patch.pass_service_fee = args.service_fee === "inherit" ? null : args.service_fee === "pass_to_buyer";
+    return await callRpc(client, "business_patch_pricing_switches", {
       p_event_id: eventId,
-      p_pass_tax: args.pass_tax ?? true,
-      p_pass_mingla_fee: args.pass_mingla_fee ?? true,
-      p_pass_service_fee: args.pass_service_fee ?? true,
+      p_patch: patch,
     });
-    return { event_id: eventId, ok: true };
+  },
+);
+
+const setBrandPricingDefaults = writeTool(
+  "set_brand_pricing_defaults",
+  "Sparsely set concrete brand tax and fee defaults. Omitted keys remain unchanged.",
+  {
+    brand_id: UUID,
+    tax: { type: "string", enum: ["pass_to_buyer", "included_in_price", "absorb_by_brand"] },
+    mingla_fee: { type: "string", enum: ["pass_to_buyer", "absorb_by_brand"] },
+    service_fee: { type: "string", enum: ["pass_to_buyer", "absorb_by_brand"] },
+  },
+  ["brand_id"],
+  async (args, client, userId) => {
+    void userId;
+    const brandId = requireBrand(args, client, userId);
+    const supplied = ["tax", "mingla_fee", "service_fee"].filter((key) => args[key] !== undefined);
+    if (supplied.length === 0) throw new ToolError("INVALID_ARGS", "Choose at least one pricing default");
+    if (args.tax === "pass_to_buyer" || args.tax === "included_in_price") {
+      await requireActiveTaxRegistration(client, brandId);
+    }
+    const patch: Record<string, boolean> = {};
+    if (args.tax !== undefined) {
+      patch.default_pass_tax = args.tax === "pass_to_buyer" || args.tax === "included_in_price";
+    }
+    if (args.mingla_fee !== undefined) patch.default_pass_mingla_fee = args.mingla_fee === "pass_to_buyer";
+    if (args.service_fee !== undefined) patch.default_pass_service_fee = args.service_fee === "pass_to_buyer";
+    return await callRpc(client, "business_patch_brand_pricing_defaults", {
+      p_brand_id: brandId,
+      p_patch: patch,
+    });
   },
 );
 
@@ -1206,6 +1271,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   setEventGuestPrivacy,
   upsertTicketTier,
   setPricingSwitches,
+  setBrandPricingDefaults,
   publishExperience,
   updateExperience,
   deleteExperience,

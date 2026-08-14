@@ -14,6 +14,7 @@ import {
   BusinessAuthNotReadyError,
   toBusinessAuthNotReadyError,
 } from "../utils/authReadiness";
+import { persistEventTicketTiers } from "./eventTicketTiersService";
 
 // ORCH-0841: include the post-ORCH-0824 top-level taxonomy + city + geo
 // columns so serverRowToDraft sees them on every fetch / autosave round-trip.
@@ -227,6 +228,8 @@ export const fetchDraftById = async (
 interface ExistingDraftSaveContext {
   theme: unknown;
   currency: string | null;
+  eventType: string;
+  updatedAt: string;
 }
 
 const resolveMissingDraftLifecycle = async (
@@ -262,7 +265,7 @@ const fetchExistingDraftSaveContext = async (
   // orch-strict-grep-allow events-type-filter — ORCH-1150 D-2: RSVP drafts are included via .in("event_type", ["event","rsvp"]); event_type IS filtered (event+rsvp), not unfiltered.
   const { data, error } = await supabase
     .from("events")
-    .select("theme,currency")
+    .select("theme,currency,event_type,updated_at")
     .eq("id", draftId)
     .in("event_type", DRAFT_EVENT_TYPES)
     .eq("status", "draft")
@@ -271,10 +274,17 @@ const fetchExistingDraftSaveContext = async (
 
   if (error !== null) throw error;
   if (data === null) throw await resolveMissingDraftLifecycle(draftId);
-  const row = data as { theme?: unknown; currency?: unknown } | null;
+  const row = data as {
+    theme?: unknown;
+    currency?: unknown;
+    event_type?: unknown;
+    updated_at?: unknown;
+  } | null;
   return {
     theme: row?.theme ?? {},
     currency: nullableCurrency(row?.currency),
+    eventType: typeof row?.event_type === "string" ? row.event_type : "event",
+    updatedAt: typeof row?.updated_at === "string" ? row.updated_at : "",
   };
 };
 
@@ -283,11 +293,34 @@ export const autosaveServerDraft = async (
 ): Promise<DraftEvent> => {
   const existing = await fetchExistingDraftSaveContext(draft.id);
   const effectiveCurrency = await resolveDraftCurrencyForSave(draft, existing.currency);
-  const normalizedDraft = { ...draft, currency: effectiveCurrency };
+  let normalizedDraft = { ...draft, currency: effectiveCurrency };
+  let expectedUpdatedAt = existing.updatedAt;
+  // Event tickets have one command owner. RSVP drafts intentionally stay on
+  // their separate guest/contribution graph and never enter this RPC.
+  if (existing.eventType === "event") {
+    const serverRevision = Number(
+      (existing.theme as { business_draft?: { clientRevision?: unknown } } | null)
+        ?.business_draft?.clientRevision ?? 0,
+    );
+    const ticketWrite = await persistEventTicketTiers({
+      eventId: draft.id,
+      tickets: draft.tickets,
+      lifecycle: "draft",
+      expectedUpdatedAt: existing.updatedAt,
+      expectedClientRevision: serverRevision,
+    });
+    normalizedDraft = {
+      ...normalizedDraft,
+      tickets: ticketWrite.tiers,
+      clientRevision: ticketWrite.client_revision ?? serverRevision + 1,
+      currency: ticketWrite.effective_currency ?? effectiveCurrency,
+    };
+    expectedUpdatedAt = ticketWrite.updated_at;
+  }
   const updatePayload = draftToServerUpdate(
     normalizedDraft,
     existing.theme,
-    draft.clientRevision ?? 0,
+    normalizedDraft.clientRevision ?? draft.clientRevision ?? 0,
   );
 
   // ORCH-0859 REWORK 3 (events-type-filter audit): draft UPDATE must not
@@ -301,6 +334,7 @@ export const autosaveServerDraft = async (
     .in("event_type", DRAFT_EVENT_TYPES)
     .eq("status", "draft")
     .is("deleted_at", null)
+    .eq("updated_at", expectedUpdatedAt)
     .select(EVENT_DRAFT_SELECT)
     .maybeSingle();
 

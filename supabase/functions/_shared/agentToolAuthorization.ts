@@ -34,7 +34,8 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<Record<string, AgentAuthorizatio
   cancel_event: role("event_manager", "event"), end_event_sales: role("event_manager", "event"),
   duplicate_event: role("event_manager", "event"), patch_event_when: role("event_manager", "event"),
   set_event_cover: role("event_manager", "event"), set_event_guest_privacy: role("event_manager", "event"),
-  upsert_ticket_tier: role("event_manager", "event"), set_pricing_switches: role("event_manager", "event"),
+  upsert_ticket_tier: role("event_manager", "event"), set_pricing_switches: role("finance_manager", "event"),
+  set_brand_pricing_defaults: role("finance_manager", "brand"),
   publish_experience: role("event_manager", "event"), update_experience: role("event_manager", "event"),
   delete_experience: role("event_manager", "event"), create_trip: role("event_manager", "brand"),
   update_trip: role("event_manager", "event"), publish_trip: role("event_manager", "event"),
@@ -325,9 +326,9 @@ export function secureAgentTools(definitions: AgentToolDefinition[]): AgentTool[
     return {
       ...definition,
       ...declaration,
-      executor: async (args, client, userId) => {
+      executor: async (args, client, userId, executionContext) => {
         await authorizeAgentTool({ ...declaration, name: definition.name, parameters: definition.parameters }, args, client, userId);
-        return await rawExecutor(args, client, userId);
+        return await rawExecutor(args, client, userId, executionContext);
       },
     };
   });

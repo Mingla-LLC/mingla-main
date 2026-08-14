@@ -36,7 +36,16 @@ export interface AgentToolDefinition {
     args: Record<string, unknown>,
     userClient: SupabaseClient,
     userId: string,
+    executionContext?: AgentExecutionContext,
   ) => Promise<unknown>;
+}
+
+/**
+ * Server-owned execution facts. These values are never model arguments and
+ * therefore cannot be edited in an Ari confirmation card.
+ */
+export interface AgentExecutionContext {
+  operationId: string;
 }
 
 export interface AgentTool extends AgentToolDefinition, AgentAuthorizationDeclaration {}

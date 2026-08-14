@@ -361,6 +361,12 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           currency={switchesCurrency}
           effectiveTakeRateBps={brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS}
           locked={pricingLocked}
+          disabled={!canEditTicketPrice || taxRegistration.isLoading}
+          disabledReason={
+            taxRegistration.isLoading
+              ? "Checking your tax registration…"
+              : "A finance manager or above can change pricing settings."
+          }
           onEditDefaults={() =>
             router.push(`/brand/${brand.id}/pricing-defaults` as never)
           }

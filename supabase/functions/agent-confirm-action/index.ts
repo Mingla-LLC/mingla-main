@@ -169,9 +169,14 @@ Deno.serve(async (req) => {
   }
 
   // #2019: resolve and authorize final edited scope while still pending.
+  const storedArgs = { ...(pending.tool_args as Record<string, unknown>) };
+  // Proposal context is server-owned presentation data. It is neither editable
+  // nor part of any model tool schema, so it must never enter final auth or the
+  // domain executor (which both reject undeclared arguments).
+  delete storedArgs.__proposal_context;
   const finalArgs = body.edited_args && typeof body.edited_args === "object"
     ? body.edited_args
-    : (pending.tool_args as Record<string, unknown>);
+    : storedArgs;
 
   // Find tool + validate
   const tool = findTool(pending.tool_name);
@@ -211,7 +216,12 @@ Deno.serve(async (req) => {
   // Execute
   let result: unknown;
   try {
-    result = await tool.executor(finalArgs, userClient, userId);
+    result = await tool.executor(finalArgs, userClient, userId, {
+      // Immutable server context: never copied into editable_args/tool_args.
+      // #1972 owns the shared atomic receipt; #1974 consumes this UUID as its
+      // deterministic tier identity and receipt integration seam.
+      operationId: pending.id,
+    });
   } catch (err: any) {
     const reason = err instanceof ToolError ? `${err.code}: ${err.message}` : (err?.message ?? "unknown");
     await userClient
@@ -240,8 +250,9 @@ Deno.serve(async (req) => {
       // etc.). 5xx is reserved for genuine server-side issues.
       let status: number;
       if (["OWNERSHIP_DENIED", "ROLE_DENIED", "BRAND_ACCESS_DENIED"].includes(err.code)) status = 403;
-      else if (err.code === "ROLE_CHECK_UNAVAILABLE") status = 503;
+      else if (["ROLE_CHECK_UNAVAILABLE", "PAYOUT_CHECK_FAILED"].includes(err.code)) status = 503;
       else if (err.code === "INVALID_ARGS" || err.code === "SLUG_TAKEN") status = 400;
+      else if (["PAYOUT_NOT_READY", "TAX_REGISTRATION_REQUIRED", "EVENT_CURRENCY_REQUIRED"].includes(err.code)) status = 409;
       // ORCH-1103 — delete refused because the brand has upcoming/live events.
       // Recoverable, user-actionable conflict (cancel/transfer first) → 409.
       else if (err.code === "DELETE_BLOCKED_BY_EVENTS") status = 409;
@@ -331,6 +342,16 @@ function buildFollowupText(toolName: string, result: unknown): string | undefine
     if (toolName === "create_experience") {
       const title = (result as any)?.event?.title;
       return title ? `Published experience "${title}" to your venue.` : undefined;
+    }
+    if (toolName === "upsert_ticket_tier") {
+      const tierName = (result as any)?.tier?.name ?? (result as any)?.tiers?.[0]?.name;
+      return tierName ? `Saved ticket tier "${tierName}" and verified it on the event.` : `Saved the ticket tier and verified it.`;
+    }
+    if (toolName === "set_pricing_switches") {
+      return `Saved the event pricing settings and verified the resolved result.`;
+    }
+    if (toolName === "set_brand_pricing_defaults") {
+      return `Saved the brand pricing defaults and verified the resolved result.`;
     }
   } catch {
     // ignore

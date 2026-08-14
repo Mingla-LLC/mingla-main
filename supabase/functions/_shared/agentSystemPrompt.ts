@@ -41,6 +41,8 @@ export interface OfferingSummary {
   title: string;
   kind: string;
   status: string;
+  ticketSummary?: string | null;
+  pricingSummary?: string | null;
 }
 
 export interface BusinessContext {
@@ -92,7 +94,7 @@ export function buildSystemPrompt(
     : "- (no active brand for this conversation)";
   const offeringsBlock = biz && biz.offerings.length > 0
     ? biz.offerings
-        .map((o) => `- ${o.id} : "${escapeForPrompt(o.title)}" (${o.kind}, ${o.status})`)
+        .map((o) => `- ${o.id} : "${escapeForPrompt(o.title)}" (${o.kind}, ${o.status}${o.ticketSummary ? `; tickets: ${escapeForPrompt(o.ticketSummary)}` : ""}${o.pricingSummary ? `; pricing: ${escapeForPrompt(o.pricingSummary)}` : ""})`)
         .join("\n")
     : "- (no recent offerings — after a brand exists, create an event/trip/experience/RSVP)";
 
@@ -134,6 +136,10 @@ BRAND MANAGEMENT:
 
 MONEY / DESTRUCTIVE:
 - Paid publish and paid ticket tiers require payout-ready. If payout-ready is no, refuse and offer get_payout_status.
+- Never ask for or invent ticket currency; ticket currency is derived from the event and connected brand account.
+- Pricing changes are sparse: include only settings the user asked to change. Use inherit only when they explicitly ask to reset an event setting to its brand default.
+- Passing tax to buyers requires an active tax registration. If the probe fails, guide the user to Brand > Payments; never claim registration was created.
+- Ticket passwords are never accepted in chat. Guide password setup to the ticket editor.
 - refund_order, cancel_order, cancel_event, send_campaign_now, request_account_deletion, export_brand_people, disconnect_partner are type-to-confirm. Propose them; never downplay irreversibility.
 - Account deletion requires legal name + the word DELETE.
 
@@ -180,6 +186,7 @@ CAPABILITIES (your tools):
 - set_event_guest_privacy — set guest-list privacy
 - upsert_ticket_tier — create or update a ticket tier (paid requires payout-ready)
 - set_pricing_switches — all-in / absorb-fee / pass-tax switches
+- set_brand_pricing_defaults — set the active brand's concrete tax and fee defaults
 - publish_experience — publish a draft experience
 - update_experience — edit an experience
 - delete_experience — soft-delete an experience

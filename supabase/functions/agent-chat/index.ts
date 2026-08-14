@@ -17,6 +17,7 @@ import { detectPromptInjection } from "../_shared/agentPromptInjection.ts";
 import { callGemini, ARI_MODEL_VERSION, GeminiContentMessage, GeminiError } from "../_shared/agentGemini.ts";
 import { AGENT_TOOLS, READ_ONLY_TOOL_NAMES, findTool, ToolError } from "../_shared/agentTools.ts";
 import { authorizeAgentTool } from "../_shared/agentToolAuthorization.ts";
+import { preflightTicketPricingProposal } from "../_shared/agentTicketPricing.ts";
 import { buildServiceClient, enforceTurnRateLimit } from "../_shared/agentRateLimit.ts";
 import { detectChoices, AgentChoices } from "../_shared/agentChoices.ts";
 import { logError } from "../_shared/structuredLog.ts";
@@ -308,18 +309,38 @@ async function handle(req: Request): Promise<Response> {
   if (brandIds.length > 0) {
     const { data: offeringRows } = await userClient
       .from("events")
-      .select("id, title, status, event_type")
+      .select("id, title, status, event_type, currency, theme, pass_tax, pass_mingla_fee, pass_service_fee")
       .in("brand_id", brandIds)
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(12);
     for (const row of (offeringRows ?? []) as any[]) {
+      const draftTickets = row.status === "draft" && Array.isArray(row.theme?.business_draft?.tickets)
+        ? row.theme.business_draft.tickets.slice(0, 6)
+        : [];
       offerings.push({
         id: row.id,
         title: String(row.title ?? "untitled").slice(0, 80),
         kind: String(row.event_type ?? "event"),
         status: String(row.status ?? "draft"),
+        ticketSummary: draftTickets.length > 0
+          ? draftTickets.map((tier: any) => `${String(tier.name ?? "Tier").slice(0, 40)} ${tier.isFree === true ? "free" : `${Number(tier.priceGbp ?? tier.price ?? 0).toFixed(2)} ${String(row.currency ?? "currency pending")}`}`).join("; ")
+          : null,
+        pricingSummary: `tax=${row.pass_tax === null ? "inherit" : row.pass_tax ? "included" : "absorbed"}, mingla=${row.pass_mingla_fee === null ? "inherit" : row.pass_mingla_fee ? "buyer" : "absorbed"}, service=${row.pass_service_fee === null ? "inherit" : row.pass_service_fee ? "buyer" : "absorbed"}`,
       });
+    }
+    const liveOfferingIds = offerings.filter((offering) => offering.status !== "draft").map((offering) => offering.id);
+    if (liveOfferingIds.length > 0) {
+      const { data: liveTiers } = await userClient.from("ticket_types")
+        .select("event_id,name,price_cents,is_free,currency")
+        .in("event_id", liveOfferingIds).is("deleted_at", null)
+        .order("display_order", { ascending: true }).limit(24);
+      for (const offering of offerings) {
+        const tiers = (liveTiers ?? []).filter((tier: any) => tier.event_id === offering.id).slice(0, 6);
+        if (tiers.length > 0) {
+          offering.ticketSummary = tiers.map((tier: any) => `${String(tier.name ?? "Tier").slice(0, 40)} ${tier.is_free === true ? "free" : `${(Number(tier.price_cents ?? 0) / 100).toFixed(2)} ${String(tier.currency ?? "currency pending")}`}`).join("; ");
+        }
+      }
     }
     const probeBrand = activeBrand?.id;
     try {
@@ -569,8 +590,14 @@ async function handle(req: Request): Promise<Response> {
     }
 
     // #2019: authorization precedes every persisted proposal.
+    let proposalContext: Record<string, unknown> | null = null;
     try {
       await authorizeAgentTool(tool, gemini.toolCall.args, userClient, userId);
+      proposalContext = await preflightTicketPricingProposal(
+        tool.name,
+        gemini.toolCall.args,
+        userClient,
+      );
     } catch (err: unknown) {
       if (err instanceof ToolError) {
         const status = err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : err.code === "INVALID_ARGS" ? 400 : 403;
@@ -586,7 +613,9 @@ async function handle(req: Request): Promise<Response> {
         user_id: userId,
         conversation_id: conversationId,
         tool_name: tool.name,
-        tool_args: gemini.toolCall.args,
+        tool_args: proposalContext === null
+          ? gemini.toolCall.args
+          : { ...gemini.toolCall.args, __proposal_context: proposalContext },
         status: "pending",
       })
       .select("id, tool_name, tool_args")
@@ -604,7 +633,9 @@ async function handle(req: Request): Promise<Response> {
         content: { text: "" },
         tool_calls: {
           tool_name: tool.name,
-          args: gemini.toolCall.args,
+          args: proposalContext === null
+            ? gemini.toolCall.args
+            : { ...gemini.toolCall.args, __proposal_context: proposalContext },
           pending_action_id: pending.id,
         },
         prompt_version: TENANT_CONTEXT_VERSION,

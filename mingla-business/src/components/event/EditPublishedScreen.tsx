@@ -123,11 +123,12 @@ import {
 // + city fields. Bridges the local-only EditPublishedScreen save flow to
 // the events DB row so legacy events become Discover-eligible after edit.
 import {
-  patchPublishedEventPricingSwitches,
   patchPublishedEventTaxonomy,
   patchPublishedEventTheme,
   patchPublishedEventWhen,
 } from "../../services/businessEvents";
+import { persistEventTicketTiers } from "../../services/eventTicketTiersService";
+import { setEventPricingSwitches } from "../../services/pricingSwitchesService";
 import { updateLiveRsvp } from "../../services/rsvpEvents";
 import { buildRsvpUpdatePayloadDiff } from "../../utils/serverDraftEventMapper";
 import { RsvpStep5Setup } from "../rsvp/RsvpStep5Setup";
@@ -221,12 +222,17 @@ const ORCH_1006_PRICING_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "pricingSwitches",
 ]);
 
+const ISSUE_1974_TICKET_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
+  "tickets",
+]);
+
 const SERVER_EDITABLE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   ...COVER_MEDIA_PATCH_KEYS,
   ...ORCH_0824_PATCH_KEYS,
   ...ORCH_0877_WHEN_PATCH_KEYS,
   ...ORCH_0964_THEME_PATCH_KEYS,
   ...ORCH_1006_PRICING_PATCH_KEYS,
+  ...ISSUE_1974_TICKET_PATCH_KEYS,
 ]);
 
 const sleep = (ms: number): Promise<void> =>
@@ -984,6 +990,44 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         setTimeout(() => setRejectDialog(pendingReject), REJECT_DIALOG_HANDOFF_MS);
         return;
       }
+
+      // Issue #1974 — ticket changes commit to the canonical server graph
+      // before any local cache reports success. The readback replaces any
+      // temporary client ids with durable live ticket UUIDs.
+      if (patch.tickets !== undefined) {
+        if (liveEvent.serverEventId === null) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast("Save failed because this event is missing its server id.");
+          return;
+        }
+        try {
+          const saved = await persistEventTicketTiers({
+            eventId: liveEvent.serverEventId,
+            tickets: patch.tickets,
+            lifecycle: "live",
+            expectedUpdatedAt: liveEvent.updatedAt,
+            reason: validation.trimmedReason,
+          });
+          patch.tickets = saved.tiers;
+          invalidateServerEventCaches();
+        } catch (error) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          const code = error instanceof Error ? error.message : "ticket_tier_save_failed";
+          const message = code.includes("stale_event_revision")
+            ? "Someone else updated these tickets. Reload before saving."
+            : code.includes("sold_ticket_mutation_blocked") || code.includes("tier_delete_with_sales")
+              ? "Sold tickets protect this change. Refund buyers or add a new tier instead."
+              : code.includes("payout_not_ready") || code.includes("event_currency_required")
+                ? "Connect a payout account with a currency before adding a paid tier."
+                : code.includes("insufficient_event_permission")
+                  ? "You don't have permission to edit these tickets."
+                  : "Couldn't save ticket changes. Tap to try again.";
+          showToast(message);
+          return;
+        }
+      }
       const explicitCoverSet =
         patch.coverMediaUrl !== undefined && patch.coverMediaUrl !== null;
       const explicitCoverClear = patch.coverMediaUrl === null;
@@ -1289,7 +1333,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           return;
         }
         try {
-          await patchPublishedEventPricingSwitches(
+          await setEventPricingSwitches(
             liveEvent.serverEventId,
             patch.pricingSwitches,
           );
