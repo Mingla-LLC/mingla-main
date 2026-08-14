@@ -200,7 +200,6 @@
     "autolinking": {
       "android": {
         "exclude": [
-          "react-native-appsflyer",
           "react-native-onesignal",
           "react-native-purchases"
         ]
