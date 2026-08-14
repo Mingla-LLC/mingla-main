@@ -82,6 +82,26 @@ const requireUserId = async (): Promise<string> => {
 const rowToDraft = (row: unknown): DraftEvent =>
   serverRowToDraft(row as ServerDraftEventRow);
 
+const createRsvpRequestId = (): string => {
+  const maybeCrypto = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (typeof maybeCrypto?.randomUUID === "function") return maybeCrypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16);
+    return (character === "x" ? random : (random & 0x3) | 0x8).toString(16);
+  });
+};
+
+const eventFromRsvpGraph = (value: unknown, operation: string): DraftEvent => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${operation}: RSVP graph was malformed`);
+  }
+  const event = (value as { event?: unknown }).event;
+  if (event === null || typeof event !== "object" || Array.isArray(event)) {
+    throw new Error(`${operation}: RSVP graph did not include its event`);
+  }
+  return rowToDraft(event);
+};
+
 const nullableCurrency = (value: unknown): string | null =>
   typeof value === "string" && value.trim().length > 0
     ? value.trim().toUpperCase()
@@ -175,6 +195,15 @@ export const createServerDraft = async (
   // Setting it at draft-promotion realizes SPEC §4.6:401's explicit instruction.
   const eventTypeForInsert: "event" | "rsvp" =
     draft.isRsvp === true ? "rsvp" : "event";
+  if (eventTypeForInsert === "rsvp") {
+    const { data, error } = await supabase.rpc("business_create_rsvp_draft_graph", {
+      p_brand_id: brandId,
+      p_payload: insertPayload,
+      p_client_request_id: createRsvpRequestId(),
+    });
+    if (error !== null) throw error;
+    return eventFromRsvpGraph(data, "createServerDraft");
+  }
   // orch-strict-grep-allow events-type-filter — ORCH-1150 D-2: event_type IS written (event|rsvp) via the eventTypeForInsert variable, not unfiltered; the gate only matches string literals in the payload.
   const { data, error } = await supabase
     .from("events")
@@ -290,6 +319,17 @@ export const autosaveServerDraft = async (
     draft.clientRevision ?? 0,
   );
 
+  if (draft.isRsvp === true) {
+    const { data, error } = await supabase.rpc("business_update_rsvp_graph", {
+      p_event_id: draft.id,
+      p_payload: { ...updatePayload, __expectedClientRevision: draft.clientRevision ?? 0 },
+      p_reason: null,
+      p_client_request_id: createRsvpRequestId(),
+    });
+    if (error !== null) throw error;
+    return eventFromRsvpGraph(data, "autosaveServerDraft");
+  }
+
   // ORCH-0859 REWORK 3 (events-type-filter audit): draft UPDATE must not
   // accidentally write to a trip row that shares an id space.
   // ORCH-1150: include RSVP drafts (DRAFT_EVENT_TYPES) so RSVP autosave persists.
@@ -312,8 +352,20 @@ export const autosaveServerDraft = async (
 };
 
 export const discardServerDraft = async (draftId: string): Promise<void> => {
-  const { data, error } = await supabase.rpc("business_discard_event_draft", {
+  const { data: row, error: readError } = await supabase
+    .from("events")
+    .select("event_type")
+    .eq("id", draftId)
+    .in("event_type", DRAFT_EVENT_TYPES)
+    .eq("status", "draft")
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (readError !== null) throw readError;
+  if (row === null) throw await resolveMissingDraftLifecycle(draftId);
+  const isRsvp = (row as { event_type?: unknown }).event_type === "rsvp";
+  const { data, error } = await supabase.rpc(isRsvp ? "business_discard_rsvp_draft" : "business_discard_event_draft", {
     p_event_id: draftId,
+    ...(isRsvp ? { p_client_request_id: createRsvpRequestId() } : {}),
   });
 
   if (error !== null) {

@@ -13,9 +13,9 @@ const tool = (name: string) => {
 };
 
 Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
-  assert(AGENT_TOOLS.length === 64, `expected 64 tools, got ${AGENT_TOOLS.length}`);
-  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 64, "duplicate tool");
-  assert(Object.keys(AGENT_TOOL_AUTHORIZATION).length === 64, "authorization registry drift");
+  assert(AGENT_TOOLS.length === 66, `expected 66 tools, got ${AGENT_TOOLS.length}`);
+  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 66, "duplicate tool");
+  assert(Object.keys(AGENT_TOOL_AUTHORIZATION).length === 66, "authorization registry drift");
   for (const tool of AGENT_TOOLS) {
     const expected = AGENT_TOOL_AUTHORIZATION[tool.name];
     assert(expected?.requiredRole === tool.requiredRole, `${tool.name}: role drift`);
@@ -35,7 +35,7 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
     owner_or_admin: "brand_admin", owner: "deed_owner",
   };
   const rows = ledger.capabilities.filter((row: any) => AGENT_TOOL_AUTHORIZATION[row.ari_tool]);
-  assert(rows.length === 64, `expected 64 ledger rows, got ${rows.length}`);
+  assert(rows.length === 66, `expected 66 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole === translate[row.required_role],
@@ -271,9 +271,8 @@ Deno.test("#2019 malformed final args fail before any authority or resource look
   assert(authorityCalls === 0, "malformed args reached authority or resource lookup");
 });
 
-Deno.test("#2019 RSVP plus-one guest binding follows guest to RSVP to event", async () => {
+Deno.test("#2019 RSVP selected-status binding authorizes the canonical event", async () => {
   const EVENT = "44444444-4444-4444-8444-444444444444";
-  const GUEST = "55555555-5555-4555-8555-555555555555";
   const RSVP = "66666666-6666-4666-8666-666666666666";
   const selects: string[] = [];
   const resourceClient: any = {
@@ -289,11 +288,7 @@ Deno.test("#2019 RSVP plus-one guest binding follows guest to RSVP to event", as
         maybeSingle: () => Promise.resolve({
           data: table === "events" && selected === "brand_id, event_type"
             ? { brand_id: UUID, event_type: "rsvp" }
-            : table === "event_rsvp_guests" && selected === "rsvp_id"
-              ? { rsvp_id: RSVP }
-              : table === "event_rsvps" && selected === "event_id"
-                ? { event_id: EVENT }
-                : null,
+            : null,
           error: null,
         }),
       };
@@ -301,11 +296,11 @@ Deno.test("#2019 RSVP plus-one guest binding follows guest to RSVP to event", as
     },
   };
   await authorizeAgentTool(
-    tool("set_guest_approval"),
-    { event_id: EVENT, guest_id: GUEST, approved: true },
+    tool("set_rsvp_guest_status"),
+    { event_id: EVENT, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP}`] },
     resourceClient,
     UUID,
   );
-  assert(selects.includes("event_rsvp_guests:rsvp_id"), "guest binding queried a nonexistent direct event_id");
-  assert(selects.includes("event_rsvps:event_id"), "guest binding skipped canonical RSVP parent");
+  assert(selects.includes("events:brand_id, event_type"), "selected RSVP status skipped canonical event binding");
+  assert(!selects.some((value) => value.startsWith("event_rsvp_guests:")), "opaque RSVP keys were confused with plus-one guest ids");
 });

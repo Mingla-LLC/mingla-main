@@ -16,8 +16,9 @@ type AuthContext = { brandId: string | null; resource: AgentResourceKind };
 const EVENT_TYPE_BY_TOOL: Readonly<Record<string, "experience" | "rsvp" | "trip">> = Object.freeze({
   publish_experience: "experience", update_experience: "experience", delete_experience: "experience",
   update_trip: "trip", publish_trip: "trip", delete_trip: "trip", cancel_trip_booking: "trip",
-  publish_rsvp: "rsvp", set_rsvp_guest_status: "rsvp", refund_rsvp_contribution: "rsvp",
-  list_guest_roster: "rsvp", set_guest_approval: "rsvp",
+  update_rsvp: "rsvp", publish_rsvp: "rsvp", update_rsvp_contribution_settings: "rsvp",
+  set_rsvp_guest_status: "rsvp", refund_rsvp_contribution: "rsvp",
+  list_guest_roster: "rsvp", list_rsvp_contributions: "rsvp",
 });
 
 const role = (requiredRole: AgentRequiredRole, resource: AgentResourceKind): AgentAuthorizationDeclaration =>
@@ -39,7 +40,9 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<Record<string, AgentAuthorizatio
   delete_experience: role("event_manager", "event"), create_trip: role("event_manager", "brand"),
   update_trip: role("event_manager", "event"), publish_trip: role("event_manager", "event"),
   delete_trip: role("event_manager", "event"), create_rsvp: role("event_manager", "brand"),
-  publish_rsvp: role("event_manager", "event"), set_rsvp_guest_status: role("event_manager", "event"),
+  update_rsvp: role("event_manager", "event"), publish_rsvp: role("event_manager", "event"),
+  update_rsvp_contribution_settings: role("event_manager", "event"),
+  set_rsvp_guest_status: role("event_manager", "event"),
   refund_rsvp_contribution: role("finance_manager", "event"), quote_stay: role("scanner", "brand"),
   create_stay_reservation: role("scanner", "brand"), transition_stay: role("event_manager", "stay_reservation"),
   create_venue_reservation: role("scanner", "brand"), transition_venue_reservation: role("event_manager", "venue_reservation"),
@@ -54,7 +57,7 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<Record<string, AgentAuthorizatio
   cancel_trip_booking: role("finance_manager", "brand"), retry_installment: role("finance_manager", "brand"),
   get_brand_analytics: role("scanner", "brand"), invite_brand_member: role("brand_admin", "brand"),
   invite_scanner: role("event_manager", "brand"), revoke_brand_member: role("brand_admin", "brand"),
-  list_guest_roster: role("event_manager", "event"), set_guest_approval: role("event_manager", "event"),
+  list_guest_roster: role("event_manager", "event"), list_rsvp_contributions: role("finance_manager", "event"),
   export_brand_people: role("marketing_manager", "brand"), update_ari_prefs: role("self", "none"),
   update_notification_prefs: role("self", "none"), create_support_ticket: role("self", "optional_brand"),
   request_account_deletion: role("self", "none"), get_operator_snapshot: role("scanner", "optional_brand"),

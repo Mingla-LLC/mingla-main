@@ -8597,3 +8597,32 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 ### I-PROPOSED-1008-TURNOUT-INPUT-SINGLE-SOURCE (DRAFT)
 - **Rule:** Every turnout run for the in-flow card, the #1742 gate, and future Business creator surfaces builds its engine payload and collision-free cache key exclusively through `turnoutInput.ts`.
 - **Enforcement:** the issue #1734 store-isolation strict-grep guard includes the turnout client modules; issue #1008 tests pin canonical payload, date, capacity, price, and key behavior.
+
+---
+
+## DRAFT — issue #1977 (canonical Ari RSVP lifecycle)
+
+### I-PROPOSED-1977-RSVP-ONE-GRAPH (DRAFT)
+
+- **Rule:** Ari and Business web/iOS/Android create, update, publish, and discard the same typed RSVP aggregate. A draft is one private `events` row, carries the complete RSVP draft graph, and has no materialized date or ticket row until the RSVP publish owner succeeds.
+- **Enforcement:** issue #1977 migration, shared Business service path, PostgreSQL/Deno/Jest regressions, and `.github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs`.
+
+### I-PROPOSED-1977-RSVP-MINIMIZED-SELECTION (DRAFT)
+
+- **Rule:** Ari receives only opaque RSVP roster/contribution selection keys, safe display labels, necessary state/counts, and server-derived refundable amounts. Contact, account, order, provider, delivery, and payment-reference fields never cross its database projection boundary.
+- **Enforcement:** `business_list_rsvp_roster`, `business_list_rsvp_contributions`, the #1977 PostgreSQL regression, and the #1977 strict gate.
+
+### I-PROPOSED-1977-RSVP-GUEST-EFFECT-OWNER (DRAFT)
+
+- **Rule:** Every manual or Ari RSVP approve/deny action uses `business_set_rsvp_guest_status`, names either an exact selected set or explicit all-pending scope, rechecks capacity and watermark, and owns the single idempotent pass/notification transition.
+- **Enforcement:** the #1977 database owner, Business approval/roster services, and Deno/Jest/PostgreSQL regressions.
+
+### I-PROPOSED-1977-RSVP-CONTRIBUTION-SOURCE-REFUND (DRAFT)
+
+- **Rule:** RSVP contribution selection and refund require finance-manager authority and bind event, contribution, mode, and reason. The database derives cents and fee consequence through the source-refund control plane; callers never supply an order or amount and never alter RSVP attendance.
+- **Enforcement:** the #1977 minimized contribution RPC, refund preparation/Edge path, typed `REFUND` tool contract, and regression matrix.
+
+### I-PROPOSED-1977-RSVP-DOMAIN-REPLAY (DRAFT)
+
+- **Rule:** A stable RSVP domain request ID and canonical request hash identify one result across create, update, publish, discard, and guest-status retries. Exact replay returns stored truth and changed replay fails; this domain boundary composes with, and never replaces, #1972's generic pending-action receipt.
+- **Enforcement:** `rsvp_domain_operation_receipts`, advisory-lock/hash checks, and #1977 replay regressions. The #1972 adapter integration remains held until its owner merges.

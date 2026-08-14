@@ -25,11 +25,13 @@ const mockGetUser = jest.fn<
   () => Promise<{ data: { user: { id: string } | null }; error: Error | null }>
 >();
 const mockFrom = jest.fn();
+const mockRpc = jest.fn<(...args: unknown[]) => Promise<{ data: unknown; error: Error | null }>>();
 
 jest.mock("../supabase", () => ({
   supabase: {
     auth: { getUser: mockGetUser },
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
@@ -138,6 +140,7 @@ const baseDraft = (patch: Partial<DraftEvent> = {}): DraftEvent =>
 beforeEach(() => {
   mockFrom.mockReset();
   mockGetUser.mockReset();
+  mockRpc.mockReset();
   mockGetUser.mockResolvedValue({
     data: { user: { id: "user-1" } },
     error: null,
@@ -147,7 +150,7 @@ beforeEach(() => {
 describe("ORCH-1150-R2 D-2 — createServerDraft types the server row by RSVP-ness", () => {
   const runCreate = async (
     source: DraftEvent,
-  ): Promise<{ insertPayloads: unknown[] }> => {
+  ): Promise<{ insertPayloads: unknown[]; rpcCalls: unknown[][] }> => {
     const capture = { inFilters: [] as InFilter[], insertPayloads: [] as unknown[] };
     const insertedRow = {
       id: "00000000-0000-4000-8000-0000000000aa",
@@ -178,16 +181,17 @@ describe("ORCH-1150-R2 D-2 — createServerDraft types the server row by RSVP-ne
         capture,
       );
     });
+    mockRpc.mockResolvedValue({ data: { event: insertedRow }, error: null });
     await createServerDraft(source.brandId, source);
-    return { insertPayloads: capture.insertPayloads };
+    return { insertPayloads: capture.insertPayloads, rpcCalls: mockRpc.mock.calls };
   };
 
-  test("RSVP draft (isRsvp:true) → server row inserted with event_type:'rsvp'", async () => {
-    const { insertPayloads } = await runCreate(baseDraft({ isRsvp: true }));
-    expect(insertPayloads).toHaveLength(1);
-    expect((insertPayloads[0] as { event_type?: string }).event_type).toBe(
-      "rsvp",
-    );
+  test("RSVP draft (isRsvp:true) → canonical RSVP graph owner receives the typed RSVP draft", async () => {
+    const { insertPayloads, rpcCalls } = await runCreate(baseDraft({ isRsvp: true }));
+    expect(insertPayloads).toHaveLength(0);
+    expect(rpcCalls).toHaveLength(1);
+    expect(rpcCalls[0]?.[0]).toBe("business_create_rsvp_draft_graph");
+    expect((rpcCalls[0]?.[1] as { p_payload?: { theme?: { business_draft?: { isRsvp?: boolean } } } }).p_payload?.theme?.business_draft?.isRsvp).toBe(true);
   });
 
   test("ticketed draft (isRsvp:false) → server row stays event_type:'event'", async () => {

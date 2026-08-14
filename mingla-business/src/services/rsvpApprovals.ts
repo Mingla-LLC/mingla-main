@@ -10,6 +10,7 @@
  */
 
 import { supabase } from "./supabase";
+import { createGuestRosterRequestId } from "./guestRosterService";
 
 export type RsvpStatusValue = "going" | "not_going" | "waitlisted" | "maybe";
 export type RsvpApprovalValue = "pending" | "approved" | "denied";
@@ -126,29 +127,32 @@ export interface SetRsvpStatusResult {
 }
 
 export const setRsvpStatus = async (
+  eventId: string,
   rsvpId: string,
   status: "approved" | "denied",
 ): Promise<SetRsvpStatusResult> => {
-  const { data, error } = await supabase.rpc("host_set_rsvp_status", {
-    p_rsvp_id: rsvpId,
-    p_status: status,
+  const { data, error } = await supabase.rpc("business_set_rsvp_guest_status", {
+    p_event_id: eventId,
+    p_decision: status === "approved" ? "approve" : "deny",
+    p_scope: "selected",
+    p_roster_keys: [`rsvp:${rsvpId}`],
+    p_expected_watermark: null,
+    p_client_request_id: createGuestRosterRequestId(),
   });
   if (error !== null) throw error;
   const res = (data ?? {}) as {
-    ok?: boolean;
-    rsvpId?: string;
-    approvalStatus?: RsvpApprovalValue;
-    wasRemoved?: boolean;
-    pendingCountRemaining?: number;
-    goingCountRemaining?: number;
+    appliedCount?: number;
+    pendingRemaining?: number;
+    goingPersonCount?: number;
+    outcomes?: Array<{ outcome?: string; wasRemoved?: boolean }>;
   };
   return {
-    ok: res.ok ?? false,
-    rsvpId: res.rsvpId ?? rsvpId,
-    approvalStatus: res.approvalStatus ?? status,
-    wasRemoved: res.wasRemoved ?? false,
-    pendingCountRemaining: res.pendingCountRemaining ?? 0,
-    goingCountRemaining: res.goingCountRemaining ?? 0,
+    ok: (res.appliedCount ?? 0) > 0 || res.outcomes?.[0]?.outcome === "unchanged",
+    rsvpId,
+    approvalStatus: status,
+    wasRemoved: res.outcomes?.[0]?.wasRemoved === true,
+    pendingCountRemaining: res.pendingRemaining ?? 0,
+    goingCountRemaining: res.goingPersonCount ?? 0,
   };
 };
 
@@ -160,16 +164,21 @@ export interface BulkApproveResult {
 export const bulkApproveRsvps = async (
   eventId: string,
 ): Promise<BulkApproveResult> => {
-  const { data, error } = await supabase.rpc("host_bulk_approve_rsvps", {
+  const { data, error } = await supabase.rpc("business_set_rsvp_guest_status", {
     p_event_id: eventId,
+    p_decision: "approve",
+    p_scope: "all_pending",
+    p_roster_keys: null,
+    p_expected_watermark: null,
+    p_client_request_id: createGuestRosterRequestId(),
   });
   if (error !== null) throw error;
   const res = (data ?? {}) as {
-    approvedCount?: number;
+    appliedCount?: number;
     skippedForCapacity?: number;
   };
   return {
-    approvedCount: res.approvedCount ?? 0,
+    approvedCount: res.appliedCount ?? 0,
     skippedForCapacity: res.skippedForCapacity ?? 0,
   };
 };
