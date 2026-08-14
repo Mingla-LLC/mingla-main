@@ -474,8 +474,10 @@ BEGIN
       'city', v_event.city,
       'locationGeo', CASE WHEN v_event.location_geo IS NULL THEN NULL ELSE
         jsonb_build_object('lng', (v_event.location_geo)[0], 'lat', (v_event.location_geo)[1]) END,
-      'requestedVisibility', CASE v_event.visibility WHEN 'hidden' THEN 'unlisted'
-        WHEN 'private' THEN 'private' ELSE 'public' END,
+      'requestedVisibility', CASE WHEN v_event.status='draft' THEN
+        COALESCE(NULLIF(v_event.theme#>>'{business_draft,requestedVisibility}',''),'public')
+        ELSE CASE v_event.visibility WHEN 'hidden' THEN 'unlisted'
+          WHEN 'private' THEN 'private' ELSE 'public' END END,
       'coverHue', COALESCE((v_event.theme->>'coverHue')::numeric, 25),
       'coverProvider', jsonb_build_object(
         'provider', v_event.cover_media_provider,
@@ -490,7 +492,10 @@ BEGIN
         THEN v_event.theme#>'{business_draft,recurrenceRule}'
         ELSE v_event.recurrence_rules END,
       'multiDates', v_multi,
-      'location', jsonb_build_object('venueName', v_event.location_text, 'address', NULL),
+      'location', CASE WHEN v_event.status='draft' THEN
+        COALESCE(v_event.theme#>'{business_draft,location}',
+          jsonb_build_object('venueName',v_event.location_text,'address',NULL))
+        ELSE jsonb_build_object('venueName',v_event.location_text,'address',NULL) END,
       'tickets', v_tickets,
       'lastStepReached', 6,
       'clientRevision', COALESCE(
@@ -999,6 +1004,11 @@ DECLARE
   v_timezone text;
   v_local_when jsonb;
 BEGIN
+  IF v_core ? 'visibility'
+     AND COALESCE(v_core->>'visibility','') NOT IN('public','unlisted','private') THEN
+    RAISE EXCEPTION 'event_visibility_invalid';
+  END IF;
+
   -- This call owns auth, event/status/role validation, the row lock, ticket
   -- protections, settings/privacy merge, and the single revision increment.
   PERFORM public.business_update_live_event(

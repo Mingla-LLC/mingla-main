@@ -28,6 +28,8 @@ export function check(sources) {
     "v_event.theme#>'{business_draft,when}'",
     "v_event.theme#>'{business_draft,multiDates}'",
     "v_event.theme#>'{business_draft,recurrenceRule}'",
+    "v_event.theme#>>'{business_draft,requestedVisibility}'",
+    "v_event.theme#>'{business_draft,location}'",
   ]) if (!migration.includes(token)) failures.push(`draft topology preservation missing ${token}`);
   for (const token of [
     "e.theme#>'{business_draft,tickets}'",
@@ -38,6 +40,8 @@ export function check(sources) {
     "FROM PUBLIC,anon,authenticated;\nGRANT EXECUTE ON FUNCTION public.business_update_live_event(uuid,jsonb,text,integer)\n  TO service_role;",
     "public.business_patch_event_taxonomy(\n    uuid,text,text[],text[],text[],numeric,numeric,text,text\n  ) TO service_role;",
     "v_payload:=jsonb_set(v_payload,'{visibility}'",
+    "v_core ? 'visibility'",
+    "COALESCE(v_core->>'visibility','') NOT IN('public','unlisted','private')",
   ]) if (!migration.includes(token)) failures.push(`round-three lifecycle contract missing ${token}`);
   for (const token of [
     "(SELECT min(start_at) FROM public.event_dates WHERE event_id=p_event_id)<=now()",
@@ -106,6 +110,8 @@ export function check(sources) {
     "issue_1972_ari_event_lifecycle.tester.adversarial.test.sql",
     "issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.sql",
     "issue_1972_ari_event_lifecycle.round3.implementor.test.sql",
+    "issue_1972_ari_event_lifecycle.tester_round3.adversarial.test.sql",
+    "issue_1972_ari_event_lifecycle.round4.implementor.test.sql",
     "issue-1972-ari-event-lifecycle.mjs --self-test",
   ]) if (!workflow.includes(token)) failures.push(`CI proof missing ${token}`);
   return failures;
@@ -136,6 +142,10 @@ if (process.argv.includes("--self-test")) {
     { ...sources, editor: sources.editor.replace("await patchPublishedEventAtomically(", "await patchPublishedEventCore(") },
     { ...sources, parseMenu: sources.parseMenu.replace("pendingStateClient\n      .from", "userClient\n      .from") },
     { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester.adversarial.test.sql", "removed.sql") },
+    { ...sources, migration: sources.migration.replace("v_event.theme#>>'{business_draft,requestedVisibility}'", "'public'") },
+    { ...sources, migration: sources.migration.replace("v_event.theme#>'{business_draft,location}'", "'null'::jsonb") },
+    { ...sources, migration: sources.migration.replace("v_core ? 'visibility'", "false") },
+    { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester_round3.adversarial.test.sql", "removed-round3.sql") },
   ];
   const undetected = mutations.filter((mutation) => check(mutation).length === 0);
   if (good.length || undetected.length) {
