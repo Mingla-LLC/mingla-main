@@ -919,7 +919,11 @@ CREATE OR REPLACE FUNCTION public.biz_ticket_checkout_create_session(
   p_idempotency_key text,p_expires_at timestamptz,
   p_application_fee_amount_cents integer DEFAULT 0,p_payment_plan_choice text DEFAULT 'auto'
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$
-DECLARE v_event public.events%ROWTYPE;
+DECLARE
+  v_event public.events%ROWTYPE;
+  v_existing record;
+  v_items jsonb := '[]'::jsonb;
+  v_result jsonb;
 BEGIN
   SELECT * INTO v_event FROM public.events WHERE id=p_event_id FOR UPDATE;
   -- Preserve the canonical fresh-checkout error vocabulary consumed by the
@@ -931,10 +935,82 @@ BEGIN
   IF public.issue_1930_event_sale_reason(v_event)<>'sellable' THEN
     RAISE EXCEPTION 'event_not_selling';
   END IF;
-  RETURN public.issue_1930_ticket_checkout_create_session_base(
+
+  -- Preserve the canonical ORCH-0791 / ORCH-0829-B replay contract in the
+  -- latest public authority. Current event truth is locked and accepted before
+  -- any in-flight continuation can be returned.
+  SELECT *
+    INTO v_existing
+    FROM public.ticket_checkout_sessions
+   WHERE idempotency_key=p_idempotency_key;
+
+  IF FOUND THEN
+    IF v_existing.status IN ('paid_completed','free_completed','failed','expired')
+       OR v_existing.expires_at < now() THEN
+      UPDATE public.ticket_checkout_sessions
+         SET idempotency_key=idempotency_key || ':tombstone:' || id::text,
+             status=CASE
+               WHEN status IN ('paid_completed','free_completed','failed','expired') THEN status
+               ELSE 'expired'
+             END,
+             failed_at=CASE
+               WHEN status IN ('paid_completed','free_completed','failed','expired') THEN failed_at
+               WHEN status IN ('pending_free','requires_payment','processing_payment','awaiting_web_redirect')
+                 AND expires_at < now() THEN now()
+               ELSE failed_at
+             END,
+             updated_at=now()
+       WHERE id=v_existing.id;
+    ELSE
+      SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'ticketTypeId',i.ticket_type_id,
+        'ticketName',i.ticket_name_at_purchase,
+        'quantity',i.quantity,
+        'unitPriceCents',i.unit_price_cents,
+        'totalCents',i.total_cents
+      ) ORDER BY i.created_at),'[]'::jsonb)
+        INTO v_items
+        FROM public.ticket_checkout_session_items i
+       WHERE i.checkout_session_id=v_existing.id;
+
+      RETURN jsonb_build_object(
+        'checkoutSessionId',v_existing.id,
+        'eventId',v_existing.event_id,
+        'brandId',v_existing.brand_id,
+        'status',v_existing.status,
+        'totalCents',v_existing.total_cents,
+        'subtotalCents',v_existing.total_cents,
+        'currency',trim(v_existing.currency),
+        'stripeAccountId',v_existing.stripe_account_id,
+        'orderId',v_existing.order_id,
+        'items',v_items,
+        'lineItems',v_items,
+        'installmentSchedule',v_existing.installment_schedule
+      );
+    END IF;
+  END IF;
+
+  v_result:=public.issue_1930_ticket_checkout_create_session_base(
     p_event_id,p_buyer_user_id,p_buyer_name,p_buyer_email,p_buyer_phone_e164,
     p_marketing_opt_in,p_lines,p_idempotency_key,p_expires_at,
     p_application_fee_amount_cents,p_payment_plan_choice);
+
+  -- Keep the wrapper response explicit so the public authority owns the same
+  -- stable checkout contract on both replay and fresh-session paths.
+  RETURN jsonb_build_object(
+    'checkoutSessionId',v_result->'checkoutSessionId',
+    'eventId',v_result->'eventId',
+    'brandId',v_result->'brandId',
+    'status',v_result->'status',
+    'totalCents',v_result->'totalCents',
+    'subtotalCents',v_result->'subtotalCents',
+    'currency',v_result->'currency',
+    'stripeAccountId',v_result->'stripeAccountId',
+    'orderId',v_result->'orderId',
+    'items',v_result->'items',
+    'lineItems',v_result->'lineItems',
+    'installmentSchedule',v_result->'installmentSchedule'
+  );
 END $$;
 REVOKE ALL ON FUNCTION public.issue_1930_ticket_checkout_create_session_base(
   uuid,uuid,text,text,text,boolean,jsonb,text,timestamptz,integer,text)
