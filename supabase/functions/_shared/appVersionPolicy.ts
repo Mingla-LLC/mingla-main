@@ -18,8 +18,6 @@ export type AppVersionPolicyReader = (
 ) => Promise<AppVersionPolicy | null>;
 
 const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-const VERCEL_MINGLA_ORIGIN =
-  /^https:\/\/mingla-(business|admin)-[a-z0-9-]+\.vercel\.app$/;
 const TRUSTED_BROWSER_ORIGINS = new Set([
   "https://host.usemingla.com",
   "https://admin.usemingla.com",
@@ -38,15 +36,29 @@ export function compareSemver(a: string, b: string): number | null {
   const right = VERSION_PATTERN.exec(b);
   if (!left || !right) return null;
   for (let index = 1; index <= 3; index += 1) {
-    const delta = Number(left[index]) - Number(right[index]);
-    if (delta !== 0) return delta > 0 ? 1 : -1;
+    const leftSegment = left[index];
+    const rightSegment = right[index];
+    if (leftSegment.length !== rightSegment.length) {
+      return leftSegment.length > rightSegment.length ? 1 : -1;
+    }
+    if (leftSegment !== rightSegment) {
+      return leftSegment > rightSegment ? 1 : -1;
+    }
   }
   return 0;
 }
 
 export function isTrustedMinglaBrowserOrigin(origin: string | null): boolean {
-  return origin !== null &&
-    (TRUSTED_BROWSER_ORIGINS.has(origin) || VERCEL_MINGLA_ORIGIN.test(origin));
+  if (origin === null) return false;
+  if (TRUSTED_BROWSER_ORIGINS.has(origin)) return true;
+  const configuredOrigin = Deno.env.get("BUSINESS_WEB_ORIGIN")?.trim();
+  if (configuredOrigin === undefined || configuredOrigin !== origin) return false;
+  try {
+    const url = new URL(configuredOrigin);
+    return url.protocol === "https:" && url.origin === configuredOrigin;
+  } catch {
+    return false;
+  }
 }
 
 export function appVersionCorsHeaders(req: Request): Record<string, string> {

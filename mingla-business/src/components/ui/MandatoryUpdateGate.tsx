@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: backgroundWarmGlow,
   },
-  veilLogo: { width: 88, aspectRatio: 1356 / 480 },
+  veilLogo: { width: 88, height: 31 },
   page: { flex: 1, backgroundColor: backgroundWarmGlow },
   scrollContent: {
     flexGrow: 1,
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     paddingHorizontal: spacing.lg,
   },
-  logo: { width: 88, aspectRatio: 1356 / 480, flexShrink: 0 },
+  logo: { width: 88, height: 31, flexShrink: 0 },
   messageGroup: {
     flexGrow: 1,
     justifyContent: "center",
@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: colors.text.tertiary,
   },
-  actionGroup: { width: "100%" },
+  actionGroup: { width: "100%", flexShrink: 0 },
   error: {
     marginBottom: spacing.md,
     fontSize: 14,

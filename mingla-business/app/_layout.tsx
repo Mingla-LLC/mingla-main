@@ -442,8 +442,7 @@ function RootLayoutInner(): React.ReactElement {
     isWeb,
     hasUser: user !== null,
     stillResolving: authResolving,
-    elapsedMs:
-      authResolveStartedAt === null ? 0 : Date.now() - authResolveStartedAt,
+    elapsedMs: authResolveStartedAt === null ? 0 : Date.now() - authResolveStartedAt,
   });
 
   // Wakeup interval for a QUIET deadlock (no render loop to re-evaluate the
@@ -795,25 +794,25 @@ export default function RootLayout(): React.ReactElement {
         backgroundedAtRef.current = Date.now();
         return;
       }
-      if (!wasBackground || status !== "active") return;
-
-      postHogService.capture("app_opened", {
-        cold_start: false,
-        surface: "business_app",
-      });
-      const backgroundDurationMs =
-        backgroundedAtRef.current === null
-          ? 0
-          : Date.now() - backgroundedAtRef.current;
-      if (
-        Platform.OS !== "web" &&
-        (updateRequiredRef.current || backgroundDurationMs >= 15 * 60 * 1_000)
-      ) {
-        foregroundSequenceRef.current += 1;
-        setVersionForegroundEvent({
-          id: foregroundSequenceRef.current,
-          backgroundDurationMs,
+      if (wasBackground && status === "active") {
+        postHogService.capture("app_opened", {
+          cold_start: false,
+          surface: "business_app",
         });
+        const backgroundDurationMs =
+          backgroundedAtRef.current === null
+            ? 0
+            : Date.now() - backgroundedAtRef.current;
+        if (
+          Platform.OS !== "web" &&
+          (updateRequiredRef.current || backgroundDurationMs >= 15 * 60 * 1_000)
+        ) {
+          foregroundSequenceRef.current += 1;
+          setVersionForegroundEvent({
+            id: foregroundSequenceRef.current,
+            backgroundDurationMs,
+          });
+        }
       }
     };
     const subscription = AppState.addEventListener(

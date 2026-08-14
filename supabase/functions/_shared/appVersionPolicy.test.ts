@@ -6,6 +6,7 @@ import {
   type AppVersionPolicy,
   compareSemver,
   evaluateBusinessNativeVersion,
+  isTrustedMinglaBrowserOrigin,
 } from "./appVersionPolicy.ts";
 
 const policy = (mode: "observe" | "enforce"): AppVersionPolicy => ({
@@ -67,4 +68,28 @@ Deno.test("#2075 trusted Host web is explicitly exempt", async () => {
   );
   assertEquals(response, null);
   assertEquals(reads, 0);
+});
+
+Deno.test("#2075 numeric segments beyond MAX_SAFE_INTEGER compare exactly", () => {
+  assertEquals(
+    compareSemver("1.9007199254740993.0", "1.9007199254740992.0"),
+    1,
+  );
+  assertEquals(
+    compareSemver("1.9007199254740992.0", "1.9007199254740993.0"),
+    -1,
+  );
+});
+
+Deno.test("#2075 crafted Vercel lookalikes are never trusted", () => {
+  assertEquals(
+    isTrustedMinglaBrowserOrigin(
+      "https://mingla-business-evil.vercel.app",
+    ),
+    false,
+  );
+  assertEquals(
+    isTrustedMinglaBrowserOrigin("https://mingla-admin-evil.vercel.app"),
+    false,
+  );
 });

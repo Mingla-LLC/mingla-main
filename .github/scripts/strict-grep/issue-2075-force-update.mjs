@@ -48,6 +48,11 @@ function validate(sources) {
   requireText("hostGate", "Update Host to continue", "Host approved title drifted");
   requireText("consumerGate", "borderRadius: 999", "Consumer update button must stay fully rounded");
   requireText("hostGate", "borderRadius: 999", "Host update button must stay fully rounded");
+  for (const key of ["consumerGate", "hostGate"]) {
+    if (count(sources[key], "width: 88, height: 31") < 2) {
+      failures.push(`${key} must explicitly constrain both gate and veil wordmark geometry`);
+    }
+  }
   requireText("consumerGate", "createAppVersionCoordinator", "Consumer gate must use bounded coordinator");
   requireText("hostGate", "foregroundEvent", "Host gate must consume the existing root lifecycle signal");
   requireText(
@@ -76,6 +81,9 @@ function validate(sources) {
   requireText("hostSupabase", "getNativeAppVersionHeaders()", "Host Supabase must share version authority");
 
   requireText("evaluator", "isTrustedMinglaBrowserOrigin", "Edge evaluator must use explicit browser-origin trust");
+  if (sources.evaluator.includes("VERCEL_MINGLA_ORIGIN")) {
+    failures.push("Edge evaluator must not trust wildcard Vercel project names");
+  }
   requireText("evaluator", 'status: 426', "Edge evaluator must return structured 426");
   requireText("policyEndpoint", "readAppVersionPolicy", "Public policy endpoint must read the private policy owner");
   requireText("config", "[functions.app-version-policy]", "Public policy endpoint must be registered in Supabase config");
@@ -140,6 +148,20 @@ if (process.argv.includes("--self-test")) {
     )
   ) {
     throw new Error("self-test failed: Host foreground race revert was not detected");
+  }
+  const geometryReverted = {
+    ...sources,
+    consumerGate: sources.consumerGate.replace(
+      "width: 88, height: 31",
+      "width: 88, aspectRatio: 1356 / 480",
+    ),
+  };
+  if (
+    !validate(geometryReverted).some((failure) =>
+      failure.includes("wordmark geometry")
+    )
+  ) {
+    throw new Error("self-test failed: wordmark geometry revert was not detected");
   }
   console.log("#2075 force-update strict gate self-test: PASS");
   process.exit(0);

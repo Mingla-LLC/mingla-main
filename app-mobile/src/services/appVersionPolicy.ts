@@ -60,8 +60,14 @@ export function compareSemver(a: string, b: string): number | null {
   const right = SEMVER_PATTERN.exec(b);
   if (!left || !right) return null;
   for (let index = 1; index <= 3; index += 1) {
-    const delta = Number(left[index]) - Number(right[index]);
-    if (delta !== 0) return delta > 0 ? 1 : -1;
+    const leftSegment = left[index];
+    const rightSegment = right[index];
+    if (leftSegment.length !== rightSegment.length) {
+      return leftSegment.length > rightSegment.length ? 1 : -1;
+    }
+    if (leftSegment !== rightSegment) {
+      return leftSegment > rightSegment ? 1 : -1;
+    }
   }
   return 0;
 }
@@ -167,10 +173,23 @@ export class VersionGateCoordinator {
         ? this.snapshot.decision
         : null;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let markCacheHydrated!: () => void;
+    const cacheHydrated = new Promise<void>((resolve) => {
+      markCacheHydrated = resolve;
+    });
 
     const pipeline = (async (): Promise<VersionGateSnapshot> => {
       try {
-        const cachedRaw = await this.dependencies.loadCache();
+        let cachedRaw: string | null = null;
+        try {
+          cachedRaw = await this.dependencies.loadCache();
+        } catch (error) {
+          this.dependencies.report(
+            error instanceof Error ? error.message : "policy_cache_read_failed",
+          );
+        } finally {
+          markCacheHydrated();
+        }
         if (generation !== this.generation) return this.snapshot;
         if (cachedRaw !== null) {
           let cachedPolicy: AppVersionPolicy | null = null;
@@ -223,21 +242,24 @@ export class VersionGateCoordinator {
       }
     })();
 
-    const timeout = new Promise<VersionGateSnapshot>((resolve) => {
-      timer = setTimeout(() => {
-        if (generation !== this.generation) return resolve(this.snapshot);
-        this.generation += 1;
-        this.dependencies.report("policy_check_timeout");
-        resolve(
-          cachedRequired?.state === "required"
-            ? this.publish({ phase: "required", decision: cachedRequired })
-            : this.publish({
-                phase: "allowed",
-                decision: { state: "unknown" },
-              }),
-        );
-      }, timeoutMs);
-    });
+    const timeout = cacheHydrated.then(
+      () =>
+        new Promise<VersionGateSnapshot>((resolve) => {
+          timer = setTimeout(() => {
+            if (generation !== this.generation) return resolve(this.snapshot);
+            this.generation += 1;
+            this.dependencies.report("policy_check_timeout");
+            resolve(
+              cachedRequired?.state === "required"
+                ? this.publish({ phase: "required", decision: cachedRequired })
+                : this.publish({
+                    phase: "allowed",
+                    decision: { state: "unknown" },
+                  }),
+            );
+          }, timeoutMs);
+        }),
+    );
 
     this.inFlight = Promise.race([pipeline, timeout]).finally(() => {
       if (timer !== null) clearTimeout(timer);

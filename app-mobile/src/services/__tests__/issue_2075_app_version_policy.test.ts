@@ -134,4 +134,37 @@ describe("#2075 Consumer app-version happy path", () => {
     await Promise.resolve();
     expect(coordinator.getSnapshot()).toMatchObject({ phase: "allowed" });
   });
+
+  it("hydrates a slow required cache before the network deadline can allow", async () => {
+    let resolveCache!: (value: string) => void;
+    const coordinator = new VersionGateCoordinator({
+      platform: "ios",
+      installedVersion: "1.1.4",
+      loadCache: () =>
+        new Promise((resolve) => {
+          resolveCache = resolve;
+        }),
+      saveCache: async () => undefined,
+      fetchPolicy: async () => {
+        throw new Error("offline");
+      },
+      report: () => undefined,
+      timeoutMs: 5,
+    });
+
+    const result = coordinator.check(true);
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(coordinator.getSnapshot()).toMatchObject({ phase: "checking" });
+    resolveCache(JSON.stringify(policy()));
+    await expect(result).resolves.toMatchObject({ phase: "required" });
+  });
+
+  it("compares SemVer segments beyond Number.MAX_SAFE_INTEGER exactly", () => {
+    expect(
+      compareSemver("1.9007199254740993.0", "1.9007199254740992.0"),
+    ).toBe(1);
+    expect(
+      compareSemver("1.9007199254740992.0", "1.9007199254740993.0"),
+    ).toBe(-1);
+  });
 });
