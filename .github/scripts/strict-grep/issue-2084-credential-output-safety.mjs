@@ -8,6 +8,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const PATHS = {
   utility: "scripts/security/issue_2084_safe_credential_inventory.mjs",
   tests: "scripts/security/issue_2084_safe_credential_inventory.test.mjs",
+  tester: "scripts/security/issue_2084_safe_credential_inventory.tester.adversarial.test.mjs",
   runbook: "docs/runbooks/B2_WEBHOOK_SECRET_ROTATION_RUNBOOK.md",
   workflow: ".github/workflows/issue-2084-credential-output-safety.yml",
 };
@@ -38,6 +39,12 @@ const REQUIRED = {
     "oversized input fails without outputting the payload",
     "extra requested output fields fail the closed schema",
   ],
+  tester: [
+    "combined header URL bearer and webhook material collapses to one closed class",
+    "nested aggregate causes with Unicode separators never cross the failure boundary",
+    "a near-limit valid credential is classified without partial or full reflection",
+    "a malicious Unicode label cannot echo embedded credentials or inject output rows",
+  ],
   runbook: [
     "one endpoint at a time",
     "provider-native delayed expiry",
@@ -49,7 +56,9 @@ const REQUIRED = {
     "pull_request:",
     "push:",
     "node-version: 20",
-    "node scripts/security/issue_2084_safe_credential_inventory.test.mjs",
+    "node --test",
+    "scripts/security/issue_2084_safe_credential_inventory.test.mjs",
+    "scripts/security/issue_2084_safe_credential_inventory.tester.adversarial.test.mjs",
     "node .github/scripts/strict-grep/issue-2084-credential-output-safety.mjs --self-test",
     "node .github/scripts/strict-grep/issue-2084-credential-output-safety.mjs",
   ],
@@ -68,11 +77,19 @@ export function violations(files) {
   for (const unsafe of ["console.log(error", "console.error(error", "error.message", "error.cause"]) {
     if (files.utility?.includes(unsafe)) found.push(`utility:forbidden:${unsafe}`);
   }
+  const testerPath = "scripts/security/issue_2084_safe_credential_inventory.tester.adversarial.test.mjs";
+  const testerPathOccurrences = files.workflow?.split(testerPath).length - 1;
+  if (testerPathOccurrences !== 3) {
+    found.push("workflow:tester-path-must-cover-pr-push-and-command");
+  }
   return found;
 }
 
 function cleanFixture() {
-  return Object.fromEntries(Object.entries(REQUIRED).map(([name, needles]) => [name, needles.join("\n")]));
+  const fixture = Object.fromEntries(Object.entries(REQUIRED).map(([name, needles]) => [name, needles.join("\n")]));
+  const testerPath = "scripts/security/issue_2084_safe_credential_inventory.tester.adversarial.test.mjs";
+  fixture.workflow += `\n${testerPath}\n${testerPath}`;
+  return fixture;
 }
 
 function selfTest() {
@@ -84,6 +101,7 @@ function selfTest() {
     ["runbook", "up to three days", "retry-horizon truth removal"],
     ["workflow", "push:", "push enforcement removal"],
     ["tests", "malformed JSON fails through the same sanitizer", "regression removal"],
+    ["tester", "a malicious Unicode label cannot echo embedded credentials or inject output rows", "tester regression removal"],
   ];
   for (const [file, token, name] of mutations) {
     const fixture = { ...clean, [file]: clean[file].replace(token, "") };
@@ -91,6 +109,9 @@ function selfTest() {
   }
   if (violations({ ...clean, utility: `${clean.utility}\nvalue.split("_")` }).length === 0) {
     throw new Error("delimiter slicing was not rejected");
+  }
+  if (violations({ ...clean, workflow: clean.workflow.replaceAll("scripts/security/issue_2084_safe_credential_inventory.tester.adversarial.test.mjs", "") }).length === 0) {
+    throw new Error("tester PR/push/command wiring removal was not rejected");
   }
   process.stdout.write("issue-2084 credential-output safety self-test passed\n");
 }
