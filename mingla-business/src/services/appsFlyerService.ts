@@ -121,6 +121,7 @@ if (Platform.OS !== "web" && hasAppsFlyerEnv) {
 
 let _initialized = false;
 const registeredDeviceKeys = new Set<string>();
+let _pendingAuthenticatedUserId: string | null = null;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ORCH-1318 (§A.2/§B.3/§C.1) — OneLink deferred deep-linking (BUSINESS, B1)
@@ -348,6 +349,12 @@ export function initializeAppsFlyer(): void {
       (result: unknown) => {
         if (__DEV__) console.log("[AppsFlyer] SDK initialized:", result);
         _initialized = true;
+        const pendingUserId = _pendingAuthenticatedUserId;
+        _pendingAuthenticatedUserId = null;
+        if (pendingUserId) {
+          setAppsFlyerUserId(pendingUserId);
+          registerAppsFlyerDevice(pendingUserId);
+        }
         // ORCH-1318 (§A.3) — Android cold-start: force a deferred `onDeepLink`
         // resolution pass now that transmission has begun. iOS resolves via the
         // AppDelegate hooks the Expo plugin injects — no equivalent call needed.
@@ -377,7 +384,10 @@ export function initializeAppsFlyer(): void {
  * Call immediately after a successful Supabase sign-in.
  */
 export function setAppsFlyerUserId(userId: string): void {
-  if (!_initialized || !appsFlyer) return;
+  if (!_initialized || !appsFlyer) {
+    _pendingAuthenticatedUserId = userId;
+    return;
+  }
   try {
     appsFlyer.setCustomerUserId(userId, (result: unknown) => {
       if (__DEV__) console.log("[AppsFlyer] Customer user ID set:", result);
@@ -395,6 +405,7 @@ export function setAppsFlyerUserId(userId: string): void {
  * caches that survive Supabase signOut by default.
  */
 export function clearAppsFlyerUserId(): void {
+  _pendingAuthenticatedUserId = null;
   if (!_initialized || !appsFlyer) return;
   try {
     appsFlyer.setCustomerUserId("", (result: unknown) => {
@@ -417,7 +428,10 @@ export function clearAppsFlyerUserId(): void {
  * Fire-and-forget — failures are logged but never block auth flow.
  */
 export function registerAppsFlyerDevice(userId: string): void {
-  if (!_initialized || !appsFlyer) return;
+  if (!_initialized || !appsFlyer) {
+    _pendingAuthenticatedUserId = userId;
+    return;
+  }
   try {
     appsFlyer.getAppsFlyerUID(async (err: unknown, uid: string) => {
       if (err || !uid) {
@@ -486,6 +500,7 @@ export function registerAppsFlyerDevice(userId: string): void {
  * is registered fresh rather than skipped as "already registered."
  */
 export function resetAppsFlyerDeviceCache(): void {
+  _pendingAuthenticatedUserId = null;
   registeredDeviceKeys.clear();
 }
 
