@@ -379,6 +379,84 @@ END;$fn$;
 REVOKE ALL ON FUNCTION public.business_register_event_cover_selection(uuid,uuid,text,text,text,text,text,text,text,text,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.business_register_event_cover_selection(uuid,uuid,text,text,text,text,text,text,text,text,text) TO service_role;
 
+-- Visibility is a closed contract at every event lifecycle boundary. Accepting
+-- JSON text here (instead of coercing with ->>) makes missing, JSON null, and
+-- non-string values indistinguishable from neither a valid nor a default
+-- choice: all fail closed with the same stable product error.
+CREATE OR REPLACE FUNCTION public.business_assert_event_visibility(
+  p_value jsonb
+) RETURNS text
+LANGUAGE plpgsql IMMUTABLE SET search_path=public,pg_temp AS $fn$
+DECLARE v_visibility text;
+BEGIN
+  IF p_value IS NULL OR jsonb_typeof(p_value) IS DISTINCT FROM 'string' THEN
+    RAISE EXCEPTION 'event_visibility_invalid';
+  END IF;
+  v_visibility:=p_value#>>'{}';
+  IF v_visibility NOT IN('public','unlisted','private') THEN
+    RAISE EXCEPTION 'event_visibility_invalid';
+  END IF;
+  RETURN v_visibility;
+END;$fn$;
+REVOKE ALL ON FUNCTION public.business_assert_event_visibility(jsonb)
+  FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.business_assert_event_visibility(jsonb)
+  TO service_role;
+
+-- The legacy publish owner historically mapped every unknown value to public.
+-- This trigger is the final persistence boundary, including direct RPC calls:
+-- a draft cannot become public/scheduled until its exact stored choice passes
+-- the same validator used by draft create/update and Ari.
+CREATE OR REPLACE FUNCTION public.business_guard_event_publish_visibility()
+RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $fn$
+BEGIN
+  IF OLD.event_type='event' AND OLD.status='draft'
+     AND NEW.status IN('scheduled','live') THEN
+    PERFORM public.business_assert_event_visibility(
+      NEW.theme#>'{business_event,requestedVisibility}'
+    );
+  END IF;
+  RETURN NEW;
+END;$fn$;
+REVOKE ALL ON FUNCTION public.business_guard_event_publish_visibility()
+  FROM PUBLIC,anon,authenticated;
+DROP TRIGGER IF EXISTS business_guard_event_publish_visibility
+  ON public.events;
+CREATE TRIGGER business_guard_event_publish_visibility
+BEFORE UPDATE OF status,visibility,theme ON public.events
+FOR EACH ROW EXECUTE FUNCTION public.business_guard_event_publish_visibility();
+
+-- Business and Ari publish through this poster-preserving owner. Validate the
+-- submitted draft before cover or publish work begins; the trigger above is
+-- the backstop for callers of the underlying legacy RPC.
+CREATE OR REPLACE FUNCTION public.issue_1719_publish_event_with_poster(
+  p_event_id uuid,p_draft_payload jsonb,p_client_revision integer DEFAULT NULL
+) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
+AS $fn$
+DECLARE v_result jsonb;v_url text;v_type text;v_poster text;
+BEGIN
+  PERFORM public.business_assert_event_visibility(
+    p_draft_payload#>'{theme,business_draft,requestedVisibility}'
+  );
+  v_url:=NULLIF(p_draft_payload->>'cover_media_url','');
+  v_type:=NULLIF(p_draft_payload->>'cover_media_type','');
+  v_poster:=COALESCE(NULLIF(p_draft_payload->>'cover_media_poster_url',''),
+    CASE WHEN v_type='image' THEN v_url END);
+  PERFORM public.assert_cover_media_triplet(v_url,v_type,v_poster);
+  v_result:=public.business_publish_event_draft(
+    p_event_id,p_draft_payload,p_client_revision
+  );
+  UPDATE public.events SET cover_media_poster_url=v_poster
+  WHERE id=p_event_id AND cover_media_url IS NOT DISTINCT FROM v_url
+    AND cover_media_type IS NOT DISTINCT FROM v_type;
+  IF NOT FOUND THEN RAISE EXCEPTION 'cover_media_persist_mismatch';END IF;
+  RETURN v_result;
+END;$fn$;
+REVOKE ALL ON FUNCTION public.issue_1719_publish_event_with_poster(uuid,jsonb,integer)
+  FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.issue_1719_publish_event_with_poster(uuid,jsonb,integer)
+  TO authenticated,service_role;
+
 -- ---------------------------------------------------------------------------
 -- 2. Rebuild the complete editable draft payload from canonical live rows.
 --    No orders, attendees, payments, scans, PII, or audit history are copied.
@@ -396,6 +474,7 @@ DECLARE
   v_when_mode text;
   v_when jsonb;
   v_multi jsonb;
+  v_requested_visibility text;
 BEGIN
   SELECT * INTO v_event FROM public.events
    WHERE id = p_event_id AND deleted_at IS NULL;
@@ -463,6 +542,20 @@ BEGIN
     v_multi := CASE WHEN v_when_mode = 'multi_date' THEN v_dates ELSE NULL END;
   END IF;
 
+  IF v_event.status='draft' THEN
+    v_requested_visibility:=public.business_assert_event_visibility(
+      v_event.theme#>'{business_draft,requestedVisibility}'
+    );
+  ELSIF v_event.visibility='public' THEN
+    v_requested_visibility:='public';
+  ELSIF v_event.visibility='hidden' THEN
+    v_requested_visibility:='unlisted';
+  ELSIF v_event.visibility='private' THEN
+    v_requested_visibility:='private';
+  ELSE
+    RAISE EXCEPTION 'event_visibility_invalid';
+  END IF;
+
   v_business := COALESCE(v_event.theme->'business_draft', v_event.theme->'business_event', '{}'::jsonb)
     || jsonb_build_object(
       'schemaVersion', 1,
@@ -474,10 +567,7 @@ BEGIN
       'city', v_event.city,
       'locationGeo', CASE WHEN v_event.location_geo IS NULL THEN NULL ELSE
         jsonb_build_object('lng', (v_event.location_geo)[0], 'lat', (v_event.location_geo)[1]) END,
-      'requestedVisibility', CASE WHEN v_event.status='draft' THEN
-        COALESCE(NULLIF(v_event.theme#>>'{business_draft,requestedVisibility}',''),'public')
-        ELSE CASE v_event.visibility WHEN 'hidden' THEN 'unlisted'
-          WHEN 'private' THEN 'private' ELSE 'public' END END,
+      'requestedVisibility', v_requested_visibility,
       'coverHue', COALESCE((v_event.theme->>'coverHue')::numeric, 25),
       'coverProvider', jsonb_build_object(
         'provider', v_event.cover_media_provider,
@@ -595,6 +685,9 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.brands WHERE id=p_brand_id AND deleted_at IS NULL) THEN
     RAISE EXCEPTION 'brand_not_found';
   END IF;
+  PERFORM public.business_assert_event_visibility(
+    p_payload#>'{theme,business_draft,requestedVisibility}'
+  );
   v_title := COALESCE(NULLIF(btrim(p_payload->>'title'), ''), 'Untitled draft');
   v_slug := 'draft-' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 16);
   IF NULLIF(p_payload->>'location_geo','') IS NOT NULL THEN
@@ -664,6 +757,9 @@ BEGIN
   IF p_client_revision IS NULL OR p_client_revision <> v_stored_revision + 1 THEN
     RAISE EXCEPTION 'stale_client_revision';
   END IF;
+  PERFORM public.business_assert_event_visibility(
+    p_payload#>'{theme,business_draft,requestedVisibility}'
+  );
   IF NULLIF(p_payload->>'location_geo','') IS NOT NULL THEN v_geo := (p_payload->>'location_geo')::point; END IF;
   PERFORM public.assert_cover_media_triplet(NULLIF(p_payload->>'cover_media_url',''),
     NULLIF(p_payload->>'cover_media_type',''),NULLIF(p_payload->>'cover_media_poster_url',''));
@@ -1162,6 +1258,7 @@ BEGIN
   v_event_id:=NULLIF(p_args->>'event_id','')::uuid;
   CASE p_tool_name
     WHEN 'create_event' THEN
+      PERFORM public.business_assert_event_visibility(p_args->'visibility');
       v_timezone:=COALESCE(NULLIF(p_args->>'timezone',''),'UTC');
       IF NOT EXISTS(SELECT 1 FROM pg_timezone_names WHERE name=v_timezone) THEN
         RAISE EXCEPTION 'event_timezone_invalid';
@@ -1241,7 +1338,7 @@ BEGIN
         'vibeTags',COALESCE(p_args->'vibe_tags','[]'::jsonb),
         'musicGenres',COALESCE(p_args->'music_genres','[]'::jsonb),
         'city',p_args->'city','locationGeo',NULL,
-        'requestedVisibility',COALESCE(NULLIF(p_args->>'visibility',''),'public'),
+        'requestedVisibility',p_args->>'visibility',
         'coverHue',25,'coverProvider',jsonb_build_object(
           'provider',p_args->'cover_media_provider','sourceUrl',p_args->'cover_media_source_url',
           'credit',p_args->'cover_media_credit','creditUrl',p_args->'cover_media_credit_url','alt',p_args->'cover_media_alt'),
@@ -1289,7 +1386,10 @@ BEGIN
         END IF;
         IF p_args ? 'is_online' THEN v_payload:=jsonb_set(v_payload,'{is_online}',p_args->'is_online',true);END IF;
         IF p_args ? 'online_url' THEN v_payload:=jsonb_set(v_payload,'{online_url}',p_args->'online_url',true);END IF;
-        IF p_args ? 'visibility' THEN v_business:=jsonb_set(v_business,'{requestedVisibility}',p_args->'visibility',true);END IF;
+        IF p_args ? 'visibility' THEN
+          PERFORM public.business_assert_event_visibility(p_args->'visibility');
+          v_business:=jsonb_set(v_business,'{requestedVisibility}',p_args->'visibility',true);
+        END IF;
         IF p_args ? 'start_at' THEN
           v_timezone:=COALESCE(NULLIF(p_args->>'timezone',''),v_payload->>'timezone','UTC');
           v_start:=(p_args->>'start_at')::timestamptz;
@@ -1322,9 +1422,7 @@ BEGIN
     WHEN 'publish_event' THEN
       v_payload:=public.business_event_draft_payload_from_graph(v_event_id);
       IF p_args ? 'visibility' THEN
-        IF p_args->>'visibility' NOT IN('public','unlisted','private') THEN
-          RAISE EXCEPTION 'event_visibility_invalid';
-        END IF;
+        PERFORM public.business_assert_event_visibility(p_args->'visibility');
         v_payload:=jsonb_set(v_payload,'{visibility}',p_args->'visibility',true);
         v_payload:=jsonb_set(
           v_payload,'{theme,business_draft,requestedVisibility}',

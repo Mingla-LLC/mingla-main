@@ -28,7 +28,7 @@ export function check(sources) {
     "v_event.theme#>'{business_draft,when}'",
     "v_event.theme#>'{business_draft,multiDates}'",
     "v_event.theme#>'{business_draft,recurrenceRule}'",
-    "v_event.theme#>>'{business_draft,requestedVisibility}'",
+    "v_event.theme#>'{business_draft,requestedVisibility}'",
     "v_event.theme#>'{business_draft,location}'",
   ]) if (!migration.includes(token)) failures.push(`draft topology preservation missing ${token}`);
   for (const token of [
@@ -43,6 +43,19 @@ export function check(sources) {
     "v_core ? 'visibility'",
     "COALESCE(v_core->>'visibility','') NOT IN('public','unlisted','private')",
   ]) if (!migration.includes(token)) failures.push(`round-three lifecycle contract missing ${token}`);
+  for (const token of [
+    "CREATE OR REPLACE FUNCTION public.business_assert_event_visibility",
+    "p_value IS NULL OR jsonb_typeof(p_value) IS DISTINCT FROM 'string'",
+    "v_visibility NOT IN('public','unlisted','private')",
+    "p_payload#>'{theme,business_draft,requestedVisibility}'",
+    "p_args->'visibility'",
+    "CREATE TRIGGER business_guard_event_publish_visibility",
+    "NEW.theme#>'{business_event,requestedVisibility}'",
+  ]) if (!migration.includes(token)) failures.push(`closed visibility contract missing ${token}`);
+  if (!tools.includes('required: ["brand_id", "title", "when_mode", "visibility"]'))
+    failures.push("Ari create schema does not require an explicit visibility choice");
+  if ((migration.match(/business_assert_event_visibility\(/g) ?? []).length < 8)
+    failures.push("closed visibility validator is not shared by every lifecycle boundary");
   for (const token of [
     "(SELECT min(start_at) FROM public.event_dates WHERE event_id=p_event_id)<=now()",
     "public.waitlist_entries WHERE event_id=p_event_id",
@@ -113,6 +126,7 @@ export function check(sources) {
     "issue_1972_ari_event_lifecycle.tester_round3.adversarial.test.sql",
     "issue_1972_ari_event_lifecycle.round4.implementor.test.sql",
     "issue_1972_ari_event_lifecycle.tester_round4.adversarial.test.sql",
+    "issue_1972_ari_event_lifecycle.round5.implementor.test.sql",
     "issue-1972-ari-event-lifecycle.mjs --self-test",
   ]) if (!workflow.includes(token)) failures.push(`CI proof missing ${token}`);
   return failures;
@@ -143,11 +157,15 @@ if (process.argv.includes("--self-test")) {
     { ...sources, editor: sources.editor.replace("await patchPublishedEventAtomically(", "await patchPublishedEventCore(") },
     { ...sources, parseMenu: sources.parseMenu.replace("pendingStateClient\n      .from", "userClient\n      .from") },
     { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester.adversarial.test.sql", "removed.sql") },
-    { ...sources, migration: sources.migration.replace("v_event.theme#>>'{business_draft,requestedVisibility}'", "'public'") },
+    { ...sources, migration: sources.migration.replace("v_event.theme#>'{business_draft,requestedVisibility}'", "'public'::jsonb") },
     { ...sources, migration: sources.migration.replace("v_event.theme#>'{business_draft,location}'", "'null'::jsonb") },
     { ...sources, migration: sources.migration.replace("v_core ? 'visibility'", "false") },
     { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester_round3.adversarial.test.sql", "removed-round3.sql") },
     { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester_round4.adversarial.test.sql", "removed-round4.sql") },
+    { ...sources, migration: sources.migration.replace("v_visibility NOT IN('public','unlisted','private')", "false") },
+    { ...sources, migration: sources.migration.replace("CREATE TRIGGER business_guard_event_publish_visibility", "CREATE TRIGGER removed_publish_visibility_guard") },
+    { ...sources, tools: sources.tools.replace('required: ["brand_id", "title", "when_mode", "visibility"]', 'required: ["brand_id", "title", "when_mode"]') },
+    { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.round5.implementor.test.sql", "removed-round5.sql") },
   ];
   const undetected = mutations.filter((mutation) => check(mutation).length === 0);
   if (good.length || undetected.length) {

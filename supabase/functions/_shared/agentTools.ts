@@ -261,7 +261,7 @@ const createEvent: AgentToolDefinition = {
     "Create an event under a brand owned by the user. Start time must be in the future. Timezone defaults to the user's preferred_timezone or UTC.",
   parameters: {
     type: "object",
-    required: ["brand_id", "title", "when_mode"],
+    required: ["brand_id", "title", "when_mode", "visibility"],
     properties: {
       brand_id: {
         type: "string",
@@ -377,6 +377,12 @@ const createEvent: AgentToolDefinition = {
     }
     if (!isString(args.title) || args.title.length > 120) {
       throw new ToolError("INVALID_ARGS", "title is required (1-120 chars)");
+    }
+    if (!["public", "unlisted", "private"].includes(String(args.visibility))) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "visibility must be public, unlisted, or private",
+      );
     }
     const whenMode = args.when_mode;
     if (!["single", "multi_date", "recurring"].includes(String(whenMode))) {
@@ -594,6 +600,15 @@ const updateEvent: AgentToolDefinition = {
     ];
     if (!mutableKeys.some((key) => args[key] !== undefined)) {
       throw new ToolError("INVALID_ARGS", "No fields provided to update");
+    }
+    if (
+      args.visibility !== undefined &&
+      !["public", "unlisted", "private"].includes(String(args.visibility))
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "visibility must be public, unlisted, or private",
+      );
     }
     const operationId = requireAgentOperationId(context);
     return await callRpc(client, "ari_execute_event_operation", {
