@@ -161,6 +161,12 @@ export function checkContract(fixture) {
   requireNeedles(s.explorerBackground, [...backgroundCommon, ...nativeLifecycle, "PORTRAIT_VIDEO", "PORTRAIT_POSTER", '"textureView"', "eligibleRef.current = reduceMotion === false && isActive && !failed", "!eligibleRef.current"], "explorer background");
   requireNeedles(s.hostNative, [...backgroundCommon, ...nativeLifecycle, "PORTRAIT_VIDEO", "PORTRAIT_POSTER", '"textureView"', "eligibleRef.current = reduceMotion === false && isActive && !failed", "!eligibleRef.current"], "host native background");
   requireNeedles(s.hostWeb, [...backgroundCommon, "LANDSCAPE_VIDEO", "LANDSCAPE_POSTER", "saveData", "matchMedia", "onConnectionChange", "playsInline", "eligibleRef.current = !reduceMotion && !saveData && isActive && !failed", "!eligibleRef.current"], "host web background");
+  requireNeedles(s.hostWeb, ['const MEDIA_FILL_STYLE = { width: "100%", height: "100%" } as const'], "host web background");
+  assert.equal(
+    s.hostWeb.split("style={[StyleSheet.absoluteFill, MEDIA_FILL_STYLE]}").length - 1,
+    2,
+    "host web background: poster and video must both fill their parent",
+  );
   const hostWebReveal = s.hostWeb.match(
     /const revealVideo = useCallback\(\(\) => \{([\s\S]*?)\n\s*\}, \[([^\]]*)\]\);/,
   );
@@ -208,8 +214,9 @@ function selfTest() {
   expectMutationToFail(good, (x) => { x.source.hostNative = x.source.hostNative.replace("eligibleRef.current = reduceMotion === false", "eligibleRef.current = true || reduceMotion === false"); }, "reduced motion family");
   expectMutationToFail(good, (x) => { x.source.hostNative = x.source.hostNative.replace("{shouldRenderVideo ? (", "{true ? ("); }, "native lifecycle family");
   expectMutationToFail(good, (x) => { x.source.hostWeb = x.source.hostWeb.replace("if (!eligibleRef.current) return;", "if (failed || reduceMotion || saveData || !isActive) return;").replace("}, [opacity]);", "}, [failed, isActive, opacity, reduceMotion, saveData]);"); }, "host web retained reveal callback family");
+  expectMutationToFail(good, (x) => { x.source.hostWeb = x.source.hostWeb.replace('width: "100%"', 'width: "auto"'); }, "host web responsive media fill family");
   expectMutationToFail(good, (x) => { x.assetBytes.hostLandscapeVideo = Buffer.from(x.assetBytes.hostLandscapeVideo); x.assetBytes.hostLandscapeVideo[100] ^= 1; }, "asset family");
-  process.stdout.write("issue-2052 self-test: 1 GOOD + 10 BAD fixtures passed\n");
+  process.stdout.write("issue-2052 self-test: 1 GOOD + 11 BAD fixtures passed\n");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
