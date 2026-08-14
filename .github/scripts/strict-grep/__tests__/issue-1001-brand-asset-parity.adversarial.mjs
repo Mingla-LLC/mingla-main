@@ -61,6 +61,8 @@ const MASTERS = [
   "packages/brand-assets/mingla-app-icon-500.png",
 ];
 const MIRRORS = {
+  "mingla-business/public/brand/mingla-wordmark.png":
+    "packages/brand-assets/mingla-wordmark.png",
   "mingla-business/public/brand/mingla-business-logo.png":
     "packages/brand-assets/mingla-business-logo.png",
   "mingla-business/public/brand/mingla-business-logo.svg":
