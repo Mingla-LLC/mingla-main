@@ -104,7 +104,7 @@ test("tester rejects a bijective but semantically swapped tool mapping", () => {
 
 test("tester rejects broken-to-unverified status laundering with reconciled counters", () => {
   const ledger = readLedger();
-  const row = ledger.capabilities.find((capability) => capability.id === "ari.event.publish");
+  const row = ledger.capabilities.find((capability) => capability.id === "ari.ticket.upsert_tier");
   row.status = "registered_unverified";
   ledger.audit.status_breakdown.broken--;
   ledger.audit.status_breakdown.registered_unverified++;
