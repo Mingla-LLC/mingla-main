@@ -33,6 +33,8 @@ import { upcomingKeys } from "./upcomingKeys";
 import { postHogService } from "../services/postHogService";
 import {
   createTripDraft,
+  newTripOperationId,
+  getTripRevision,
   getTrip,
   getTripsByBrand,
   updateTripBasics,
@@ -59,6 +61,21 @@ import {
   type LiveTripPatch,
   type UpdateLiveTripResult,
 } from "../services/tripsService";
+
+type TripMutationWithOperation = { operationId?: string };
+type TripMutationWithRevision = TripMutationWithOperation & { eventId: string; expectedUpdatedAt?: string };
+
+/** Mutates the React Query variables object once so automatic retries replay. */
+export function ensureTripOperationId<T extends TripMutationWithOperation>(input: T): string {
+  if (!input.operationId) input.operationId = newTripOperationId();
+  return input.operationId;
+}
+
+/** Captures one CAS revision on the mutation variables so retries cannot drift. */
+export async function ensureTripMutationRevision<T extends TripMutationWithRevision>(input: T): Promise<string> {
+  if (!input.expectedUpdatedAt) input.expectedUpdatedAt = await getTripRevision(input.eventId);
+  return input.expectedUpdatedAt;
+}
 
 // ---------------------- Query key factory ----------------------
 
@@ -137,7 +154,10 @@ export interface UseCreateTripDraftResult {
 export const useCreateTripDraft = (): UseCreateTripDraftResult => {
   const queryClient = useQueryClient();
   const mutation = useMutation<Trip, Error, CreateTripDraftInput>({
-    mutationFn: async (input) => createTripDraft(input, "owner"),
+    mutationFn: async (input) => {
+      ensureTripOperationId(input);
+      return createTripDraft(input, "owner");
+    },
     onSuccess: (trip) => {
       queryClient.setQueryData<Trip>(tripKeys.detail(trip.id), trip);
       queryClient.invalidateQueries({
@@ -166,6 +186,8 @@ export interface UpdateTripBasicsInput {
   eventId: string;
   patch: TripBasicsPatch;
   brandId: string;
+  operationId?: string;
+  expectedUpdatedAt?: string;
 }
 
 export const useUpdateTripBasics = (): UseMutationResult<
@@ -175,8 +197,9 @@ export const useUpdateTripBasics = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<Trip, Error, UpdateTripBasicsInput>({
-    mutationFn: async ({ eventId, patch }) =>
-      updateTripBasics(eventId, patch),
+    mutationFn: async (input) => updateTripBasics(
+      input.eventId, input.patch, ensureTripOperationId(input), await ensureTripMutationRevision(input),
+    ),
     onSuccess: (trip, { brandId }) => {
       queryClient.setQueryData<Trip>(tripKeys.detail(trip.id), trip);
       queryClient.invalidateQueries({
@@ -199,6 +222,8 @@ export const useUpdateTripBasics = (): UseMutationResult<
 export interface UpsertTripDaysInput {
   eventId: string;
   days: TripDayInput[];
+  operationId?: string;
+  expectedUpdatedAt?: string;
 }
 
 export const useUpsertTripDays = (): UseMutationResult<
@@ -208,7 +233,9 @@ export const useUpsertTripDays = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<TripDay[], Error, UpsertTripDaysInput>({
-    mutationFn: async ({ eventId, days }) => upsertTripDays(eventId, days),
+    mutationFn: async (input) => upsertTripDays(
+      input.eventId, input.days, ensureTripOperationId(input), await ensureTripMutationRevision(input),
+    ),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
     },
@@ -226,6 +253,8 @@ export const useUpsertTripDays = (): UseMutationResult<
 export interface UpsertTripInclusionsInput {
   eventId: string;
   items: TripInclusionInput[];
+  operationId?: string;
+  expectedUpdatedAt?: string;
 }
 
 export const useUpsertTripInclusions = (): UseMutationResult<
@@ -235,8 +264,9 @@ export const useUpsertTripInclusions = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<TripInclusion[], Error, UpsertTripInclusionsInput>({
-    mutationFn: async ({ eventId, items }) =>
-      upsertTripInclusions(eventId, items),
+    mutationFn: async (input) => upsertTripInclusions(
+      input.eventId, input.items, ensureTripOperationId(input), await ensureTripMutationRevision(input),
+    ),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
     },
@@ -254,6 +284,8 @@ export const useUpsertTripInclusions = (): UseMutationResult<
 export interface UpdateTripPricingInput {
   eventId: string;
   patch: TripPricingPatch;
+  operationId?: string;
+  expectedUpdatedAt?: string;
 }
 
 export const useUpdateTripPricing = (): UseMutationResult<
@@ -263,8 +295,9 @@ export const useUpdateTripPricing = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<TripPricingTier, Error, UpdateTripPricingInput>({
-    mutationFn: async ({ eventId, patch }) =>
-      updateTripPricing(eventId, patch),
+    mutationFn: async (input) => updateTripPricing(
+      input.eventId, input.patch, ensureTripOperationId(input), await ensureTripMutationRevision(input),
+    ),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
     },
@@ -282,6 +315,8 @@ export const useUpdateTripPricing = (): UseMutationResult<
 export interface CreateTripPricingTierInput {
   eventId: string;
   patch: Omit<TripPricingPatch, "ticketTypeId">;
+  operationId?: string;
+  expectedUpdatedAt?: string;
 }
 
 /**
@@ -296,8 +331,9 @@ export const useCreateTripPricingTier = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<TripPricingTier, Error, CreateTripPricingTierInput>({
-    mutationFn: async ({ eventId, patch }) =>
-      createTripPricingTier(eventId, patch),
+    mutationFn: async (input) => createTripPricingTier(
+      input.eventId, input.patch, ensureTripOperationId(input), await ensureTripMutationRevision(input),
+    ),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
     },
@@ -313,6 +349,8 @@ export const useCreateTripPricingTier = (): UseMutationResult<
 export interface RemoveTripPricingTierInput {
   eventId: string;
   ticketTypeId: string;
+  operationId?: string;
+  expectedUpdatedAt?: string;
 }
 
 /**
@@ -327,8 +365,9 @@ export const useRemoveTripPricingTier = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<void, Error, RemoveTripPricingTierInput>({
-    mutationFn: async ({ eventId, ticketTypeId }) =>
-      removeTripPricingTier(eventId, ticketTypeId),
+    mutationFn: async (input) => removeTripPricingTier(
+      input.eventId, input.ticketTypeId, ensureTripOperationId(input), await ensureTripMutationRevision(input),
+    ),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
     },
@@ -347,6 +386,8 @@ export interface PublishTripInput {
   eventId: string;
   draftPayload: Record<string, unknown>;
   brandId: string;
+  operationId?: string;
+  expectedUpdatedAt?: string;
 }
 
 export const usePublishTrip = (): UseMutationResult<
@@ -356,8 +397,9 @@ export const usePublishTrip = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<Trip, Error, PublishTripInput>({
-    mutationFn: async ({ eventId, draftPayload }) =>
-      publishTrip(eventId, draftPayload),
+    mutationFn: async (input) => publishTrip(
+      input.eventId, input.draftPayload, ensureTripOperationId(input), await ensureTripMutationRevision(input),
+    ),
     onSuccess: (trip, { brandId }) => {
       queryClient.setQueryData<Trip>(tripKeys.detail(trip.id), trip);
       queryClient.invalidateQueries({
@@ -386,6 +428,8 @@ export const usePublishTrip = (): UseMutationResult<
 export interface SoftDeleteTripInput {
   eventId: string;
   brandId: string;
+  operationId?: string;
+  expectedUpdatedAt?: string;
 }
 
 export const useSoftDeleteTrip = (): UseMutationResult<
@@ -395,7 +439,9 @@ export const useSoftDeleteTrip = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<SoftDeleteResult, Error, SoftDeleteTripInput>({
-    mutationFn: async ({ eventId }) => softDeleteTrip(eventId),
+    mutationFn: async (input) => softDeleteTrip(
+      input.eventId, ensureTripOperationId(input), await ensureTripMutationRevision(input),
+    ),
     onSuccess: (result, { eventId, brandId }) => {
       if (!result.rejected) {
         queryClient.removeQueries({ queryKey: tripKeys.detail(eventId) });
@@ -432,6 +478,8 @@ export interface UpdateLiveTripFieldsInput {
   eventId: string;
   patch: LiveTripPatch;
   reason: string;
+  operationId?: string;
+  expectedUpdatedAt?: string;
 }
 
 export const useUpdateLiveTripFields = (): UseMutationResult<
@@ -441,8 +489,9 @@ export const useUpdateLiveTripFields = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<UpdateLiveTripResult, Error, UpdateLiveTripFieldsInput>({
-    mutationFn: async ({ eventId, patch, reason }) =>
-      updateLiveTripFields(eventId, patch, reason),
+    mutationFn: async (input) => updateLiveTripFields(
+      input.eventId, input.patch, input.reason, ensureTripOperationId(input), await ensureTripMutationRevision(input),
+    ),
     onSuccess: (result, { eventId }) => {
       // Only invalidate on actual successful patch — refund-gate rejections
       // do NOT mutate the trip, so cache stays valid.

@@ -8597,3 +8597,27 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 ### I-PROPOSED-1008-TURNOUT-INPUT-SINGLE-SOURCE (DRAFT)
 - **Rule:** Every turnout run for the in-flow card, the #1742 gate, and future Business creator surfaces builds its engine payload and collision-free cache key exclusively through `turnoutInput.ts`.
 - **Enforcement:** the issue #1734 store-isolation strict-grep guard includes the turnout client modules; issue #1008 tests pin canonical payload, date, capacity, price, and key behavior.
+
+---
+
+## DRAFT — issue #1971 (canonical Ari/manual trip lifecycle)
+
+### I-PROPOSED-1971-TRIP-GRAPH-ONE-COMMAND (DRAFT)
+- **Rule:** Every manual and Ari trip mutation writes the canonical event plus sidecar graph through the same database command boundary; publish derives its payload only from persisted server state.
+- **Enforcement:** the six `biz_*_trip_*` commands, Business service adapters, Ari trip tools, and `issue-1971-trip-lifecycle.mjs`.
+
+### I-PROPOSED-1971-TRIP-WRITES-IDEMPOTENT (DRAFT)
+- **Rule:** Every trip command has one caller operation UUID; exact replay returns the durable result and reuse with different actor, target, tool, or semantic arguments fails closed.
+- **Enforcement:** `biz_trip_command_receipts`, advisory operation locks, argument hashes, and same-transaction command completion.
+
+### I-PROPOSED-1971-TRIP-DELETE-NO-CONFIRMED-ORDERS (DRAFT)
+- **Rule:** A trip cannot be deleted while any order is outside `failed` or `cancelled`, and order creation/payment transition serializes with deletion on the trip id.
+- **Enforcement:** `biz_soft_delete_trip`, `trg_biz_trip_order_delete_lock`, and the #1971 migration regression.
+
+### I-PROPOSED-1971-TRIP-SIDECAR-EVENT-MANAGER (DRAFT)
+- **Rule:** Authenticated direct writes to trip days, inclusions, and pricing-tier sidecars require effective `event_manager` rank or above on the parent trip brand.
+- **Enforcement:** the three `*_write_event_managers` RLS policies.
+
+### I-PROPOSED-1971-TRIP-ORDER-MONEY-NO-PII (DRAFT)
+- **Rule:** Ari's trip money read requires `finance_manager` and returns only aggregate order, refund, status, and installment amounts—never buyer identity or contact fields.
+- **Enforcement:** `biz_get_trip_order_money_snapshot`, declarative Ari authorization, and the #1971 migration regression.

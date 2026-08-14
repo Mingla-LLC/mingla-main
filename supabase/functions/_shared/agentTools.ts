@@ -319,7 +319,7 @@ const listEvents: AgentToolDefinition = {
     if (allowedBrandIds.length === 0) return { events: [] };
     const q = client
       .from("events")
-      .select("id, brand_id, title, slug, visibility, status, created_at, timezone")
+      .select("id, brand_id, title, slug, event_type, visibility, status, created_at, updated_at, timezone")
       .in("brand_id", allowedBrandIds)
       .is("deleted_at", null)
       .order("created_at", { ascending: false })

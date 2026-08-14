@@ -32,6 +32,7 @@
  */
 
 import { supabase } from "./supabase";
+import { newTripOperationId } from "./tripsService";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -318,8 +319,11 @@ export async function upsertTripIntakeSchema(args: {
   /** Caller's hint to skip the status probe; only set true when caller already
    * knows the trip is in draft state. */
   skipStatusProbe?: boolean;
+  operationId?: string;
+  expectedUpdatedAt?: string;
 }): Promise<void> {
   const { eventId, ticketTypeId, schema, reason, skipStatusProbe } = args;
+  const operationId = args.operationId ?? newTripOperationId();
   if (!eventId || !ticketTypeId) {
     throw makeError("not_found", "Trip or tier not found.");
   }
@@ -332,10 +336,11 @@ export async function upsertTripIntakeSchema(args: {
 
   // Status probe: decide direct-write vs RPC route.
   let isPublished = false;
+  let currentRevision: string | null = null;
   if (!skipStatusProbe) {
     const { data: statusRow, error: statusErr } = await supabase
       .from("events")
-      .select("status")
+      .select("status,updated_at")
       .eq("id", eventId)
       .eq("event_type", "trip")
       .maybeSingle();
@@ -345,6 +350,7 @@ export async function upsertTripIntakeSchema(args: {
       throw makeError("not_found", "Trip not found.");
     }
     isPublished = statusRow.status === "scheduled" || statusRow.status === "live";
+    currentRevision = statusRow.updated_at as string | null;
   }
 
   if (isPublished) {
@@ -358,7 +364,7 @@ export async function upsertTripIntakeSchema(args: {
     }
 
     const { data: rpcResult, error: rpcErr } = await supabase.rpc(
-      "biz_update_live_trip",
+      "biz_update_trip_live_command",
       {
         p_event_id: eventId,
         p_patch: {
@@ -367,6 +373,8 @@ export async function upsertTripIntakeSchema(args: {
           ],
         },
         p_reason: trimmedReason,
+        p_expected_updated_at: args.expectedUpdatedAt ?? currentRevision,
+        p_operation_id: operationId,
       },
     );
 
@@ -379,51 +387,17 @@ export async function upsertTripIntakeSchema(args: {
     return;
   }
 
-  // Draft path: direct upsert per RLS policy.
-  // I-PROPOSED-I MUTATION-ROWCOUNT-VERIFIED: chain .select("id").maybeSingle()
-  // — but use .upsert() return rows directly since onConflict requires no
-  // separate .select.
-  if (schema === null) {
-    // Clear the tier's schema = DELETE the row.
-    const { data, error } = await supabase
-      .from("trip_intake_schemas")
-      .delete()
-      .eq("event_id", eventId)
-      .eq("ticket_type_id", ticketTypeId)
-      .select("id")
-      .maybeSingle();
-
-    if (error) throw mapPgError(error);
-    // Delete with no row is fine (idempotent — already cleared). Don't throw
-    // not_found here; that would noisy the planner if they delete twice.
-    void data;
-    return;
-  }
-
-  // Upsert with schema_version_id from the schema payload (planner mints new
-  // UUIDs client-side on every "Save question" tap for cache-busting).
-  const { data, error } = await supabase
-    .from("trip_intake_schemas")
-    .upsert(
-      {
-        event_id: eventId,
-        ticket_type_id: ticketTypeId,
-        schema,
-        schema_version_id: schema.schema_version_id,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "event_id,ticket_type_id" },
-    )
-    .select("id")
-    .maybeSingle();
-
+  const revision = await supabase.from("events").select("updated_at")
+    .eq("id", eventId).eq("event_type", "trip").maybeSingle();
+  if (revision.error) throw mapPgError(revision.error);
+  if (!revision.data) throw makeError("not_found", "Trip not found.");
+  const { error } = await supabase.rpc("biz_apply_trip_draft_graph", {
+    p_event_id: eventId,
+    p_patch: { intake_schemas: [{ ticket_type_id: ticketTypeId, schema }] },
+    p_expected_updated_at: args.expectedUpdatedAt ?? revision.data.updated_at,
+    p_operation_id: operationId,
+  });
   if (error) throw mapPgError(error);
-  if (data === null) {
-    throw makeError(
-      "unauthorized",
-      "Couldn't save intake form — permission denied.",
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------

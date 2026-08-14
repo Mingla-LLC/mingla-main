@@ -10,14 +10,14 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-13T12:00:00Z",
-    "registered_tool_count": 64,
+    "registered_tool_count": 69,
     "capability_count": 116,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 16,
-      "broken": 47,
+      "registered_unverified": 25,
+      "broken": 43,
       "guided_handoff": 7,
-      "unsupported": 42,
+      "unsupported": 37,
       "in_flight": 4
     }
   },
@@ -827,7 +827,7 @@
         ]
       },
       "ari_tool": "create_trip",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -835,8 +835,8 @@
           "reference": "agentDomainTools.ts:createTrip omits canonical draft graph"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["Shallow event row is not the canonical trip draft"],
+      "owning_issues": [1971, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -863,7 +863,7 @@
         ]
       },
       "ari_tool": "update_trip",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -871,8 +871,8 @@
           "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["Delegated event managers blocked"],
+      "owning_issues": [1971, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -899,7 +899,7 @@
         ]
       },
       "ari_tool": "publish_trip",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -907,8 +907,8 @@
           "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["Delegated event managers blocked"],
+      "owning_issues": [1971, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -935,7 +935,7 @@
         ]
       },
       "ari_tool": "delete_trip",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -943,8 +943,8 @@
           "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["Delegated event managers blocked"],
+      "owning_issues": [1971, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -2539,8 +2539,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_trip_days",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -2548,8 +2548,8 @@
           "reference": "tripsService.ts:upsertTripDays"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["No registered tool"],
+      "owning_issues": [1971, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -2571,8 +2571,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_trip_inclusions",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -2580,8 +2580,8 @@
           "reference": "tripsService.ts:upsertTripInclusions"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["No registered tool"],
+      "owning_issues": [1971, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -2603,8 +2603,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_trip_tiers",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -2612,8 +2612,8 @@
           "reference": "tripsService.ts:createTripPricingTier"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["No registered tool"],
+      "owning_issues": [1971, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -3808,8 +3808,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_trip_traveler_intake",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -3817,8 +3817,8 @@
           "reference": "trip traveler intake service"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["No registered tool"],
+      "owning_issues": [1971, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "medium",
       "verified_at": "2026-08-13"
     },
@@ -3912,8 +3912,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "get_trip_order_money",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -3921,8 +3921,8 @@
           "reference": "trip money dashboard"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["No registered read tool"],
+      "owning_issues": [1971, 2000],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },

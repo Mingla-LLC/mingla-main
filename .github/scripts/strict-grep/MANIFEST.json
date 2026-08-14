@@ -8133,6 +8133,20 @@
       "jobKeys": [
         "issue-2052-video-welcome-contract"
       ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1971-trip-lifecycle.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1971-trip-lifecycle"
+      ]
     }
   ]
 }

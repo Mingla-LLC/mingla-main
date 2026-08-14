@@ -367,53 +367,43 @@ const createTrip = writeTool(
   ["brand_id", "title"],
   async (args, client, userId) => {
     const brandId = await requireBrand(args, client, userId);
-    const { data, error } = await client
-      .from("events")
-      .insert({
-        brand_id: brandId,
-        created_by: userId,
-        title: args.title,
-        description: args.description ?? null,
-        event_type: "trip",
-        status: "draft",
-      })
-      .select("id, title, status")
-      .single();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+    return await callRpc(client, "biz_create_trip_draft", {
+      p_brand_id: brandId,
+      p_seed: { title: args.title, description: args.description ?? null },
+      // #1972 will replace this local key with the confirmed pending-action id.
+      p_operation_id: newIdempotencyKey(),
+    });
   },
 );
 
 const updateTrip = writeTool(
   "update_trip",
-  "Update an owned trip's title/description.",
-  { event_id: UUID, title: STR, description: { type: "string" } },
-  ["event_id"],
+  "Update an owned trip's title/description. A scheduled/live trip also requires a 10–200 character audit reason.",
+  { event_id: UUID, expected_updated_at: { type: "string", format: "date-time" }, title: STR, description: { type: "string" }, reason: { type: "string", minLength: 10, maxLength: 200 } },
+  ["event_id", "expected_updated_at"],
   async (args, client, userId) => {
     const { eventId } = await requireEvent(args, client, userId);
     const patch: Record<string, unknown> = {};
     if (isString(args.title)) patch.title = args.title;
     if (typeof args.description === "string") patch.description = args.description;
     if (Object.keys(patch).length === 0) throw new ToolError("INVALID_ARGS", "Nothing to update");
-    const { data, error } = await client.from("events").update(patch).eq("id", eventId).select("id, title").single();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+    return await applyTripGraph(args, client, eventId, { event: patch });
   },
 );
 
 const publishTrip = writeTool(
   "publish_trip",
-  "Publish a draft trip via issue_1719_publish_trip_with_poster.",
-  { event_id: UUID },
-  ["event_id"],
+  "Publish a draft trip from its persisted canonical graph.",
+  { event_id: UUID, expected_updated_at: { type: "string", format: "date-time" } },
+  ["event_id", "expected_updated_at"],
   async (args, client, userId) => {
     const { eventId, brandId } = await requireEvent(args, client, userId);
     const { data: paid } = await client.from("ticket_types").select("id").eq("event_id", eventId).gt("price_cents", 0).limit(1);
     if (paid && paid.length > 0) await assertCanCollect(client, brandId);
-    return await callRpc(client, "issue_1719_publish_trip_with_poster", {
+    return await callRpc(client, "biz_publish_trip_command", {
       p_event_id: eventId,
-      p_draft_payload: {},
-      p_client_revision: null,
+      p_expected_updated_at: args.expected_updated_at,
+      p_operation_id: newIdempotencyKey(),
     });
   },
 );
@@ -421,13 +411,121 @@ const publishTrip = writeTool(
 const deleteTrip = writeTool(
   "delete_trip",
   "Soft-delete an owned trip.",
-  { event_id: UUID },
-  ["event_id"],
+  { event_id: UUID, expected_updated_at: { type: "string", format: "date-time" } },
+  ["event_id", "expected_updated_at"],
   async (args, client, userId) => {
     const { eventId } = await requireEvent(args, client, userId);
-    const { error } = await client.from("events").update({ deleted_at: new Date().toISOString() }).eq("id", eventId);
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return { id: eventId, deleted: true };
+    return await callRpc(client, "biz_soft_delete_trip", {
+      p_event_id: eventId,
+      p_expected_updated_at: args.expected_updated_at,
+      p_operation_id: newIdempotencyKey(),
+    });
+  },
+);
+
+async function applyTripGraph(
+  args: Record<string, unknown>,
+  client: any,
+  eventId: string,
+  patch: Record<string, unknown>,
+): Promise<unknown> {
+  const { data: trip, error } = await client.from("events").select("status").eq("id", eventId)
+    .eq("event_type", "trip").is("deleted_at", null).maybeSingle();
+  if (error || !trip) throw new ToolError("OWNERSHIP_DENIED", "Trip not found");
+  const operationId = newIdempotencyKey(); // #1972 supplies the pending-action id here.
+  if (trip.status === "draft") {
+    return await callRpc(client, "biz_apply_trip_draft_graph", {
+      p_event_id: eventId, p_patch: patch,
+      p_expected_updated_at: args.expected_updated_at,
+      p_operation_id: operationId,
+    });
+  }
+  if (trip.status === "scheduled" || trip.status === "live") {
+    if (typeof args.reason !== "string" || args.reason.trim().length < 10 || args.reason.trim().length > 200) {
+      throw new ToolError("INVALID_ARGS", "Scheduled/live trip edits require a 10–200 character reason");
+    }
+    return await callRpc(client, "biz_update_trip_live_command", {
+      p_event_id: eventId, p_patch: patch, p_reason: args.reason.trim(),
+      p_expected_updated_at: args.expected_updated_at,
+      p_operation_id: operationId,
+    });
+  }
+  throw new ToolError("INVALID_ARGS", "Trip is not editable in its current status");
+}
+
+function tripGraphTool(name: string, description: string, graphKey: string, itemProperties: Record<string, unknown>, requiredItem: string[]): AgentToolDefinition {
+  return writeTool(name, description, {
+    event_id: UUID,
+    expected_updated_at: { type: "string", format: "date-time" },
+    reason: { type: "string", minLength: 10, maxLength: 200 },
+    items: { type: "array", maxItems: 100, items: { type: "object", additionalProperties: false, properties: itemProperties, required: requiredItem } },
+  }, ["event_id", "expected_updated_at", "items"], async (args, client, userId) => {
+    const { eventId } = await requireEvent(args, client, userId);
+    return await applyTripGraph(args, client, eventId, { [graphKey]: args.items });
+  });
+}
+
+// Static registry hints for the repository registry↔prompt gate; the concrete
+// definitions below are generated by tripGraphTool to keep schemas consistent.
+export const TRIP_GRAPH_TOOL_REGISTRY_HINTS = [
+  {
+    name: "manage_trip_days",
+  },
+  {
+    name: "manage_trip_inclusions",
+  },
+  {
+    name: "manage_trip_tiers",
+  },
+  {
+    name: "manage_trip_traveler_intake",
+  },
+] as const;
+
+const manageTripDays = tripGraphTool("manage_trip_days", "Replace the ordered itinerary days on a draft trip.", "days", {
+  ordinal: { type: "integer", minimum: 1 }, title: STR, narrative: { type: "string" }, date: { type: "string", format: "date" },
+  media: { type: "array", items: { type: "object" } }, stops: { type: "array" },
+}, ["ordinal", "title"]);
+
+const manageTripInclusions = tripGraphTool("manage_trip_inclusions", "Replace a draft trip's included and excluded items.", "inclusions", {
+  kind: { type: "string", enum: ["included", "excluded"] }, item: STR, ordinal: { type: "integer", minimum: 0 },
+}, ["kind", "item", "ordinal"]);
+
+const manageTripTiers = writeTool(
+  "manage_trip_tiers",
+  "Create, update, or explicitly remove trip packages. Quote calculation remains outside this tool.",
+  {
+    event_id: UUID,
+    expected_updated_at: { type: "string", format: "date-time" },
+    reason: { type: "string", minLength: 10, maxLength: 200 },
+    items: { type: "array", maxItems: 50, items: { type: "object", additionalProperties: false, properties: {
+      ticket_type_id: UUID, tier_name: STR, tier_metadata: { type: "object" },
+      price_cents: { type: "integer", minimum: 0 }, capacity: { type: "integer", minimum: 1 },
+      display_order: { type: "integer", minimum: 0 }, deleted: { type: "boolean" },
+    } } },
+  },
+  ["event_id", "expected_updated_at", "items"],
+  async (args, client, userId) => {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    const items = Array.isArray(args.items) ? args.items as Record<string, unknown>[] : [];
+    if (items.some((item) => typeof item.price_cents === "number" && item.price_cents > 0)) {
+      await assertCanCollect(client, brandId);
+    }
+    return await applyTripGraph(args, client, eventId, { tiers: items });
+  },
+);
+
+const manageTripTravelerIntake = tripGraphTool("manage_trip_traveler_intake", "Replace per-tier traveler intake schemas. Scheduled/live edits require a reason; consent mapping remains in #1753.", "intake_schemas", {
+  ticket_type_id: UUID, schema: { type: "object", nullable: true },
+}, ["ticket_type_id", "schema"]);
+
+const getTripOrderMoney = writeTool(
+  "get_trip_order_money",
+  "Read aggregate trip order and installment money totals without buyer PII.",
+  { event_id: UUID }, ["event_id"],
+  async (args, client, userId) => {
+    const { eventId } = await requireEvent(args, client, userId);
+    return await callRpc(client, "biz_get_trip_order_money_snapshot", { p_event_id: eventId });
   },
 );
 
@@ -1211,6 +1309,11 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   deleteExperience,
   createTrip,
   updateTrip,
+  manageTripDays,
+  manageTripInclusions,
+  manageTripTiers,
+  manageTripTravelerIntake,
+  getTripOrderMoney,
   publishTrip,
   deleteTrip,
   createRsvp,

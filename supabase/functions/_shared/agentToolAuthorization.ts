@@ -15,7 +15,9 @@ type AuthContext = { brandId: string | null; resource: AgentResourceKind };
 
 const EVENT_TYPE_BY_TOOL: Readonly<Record<string, "experience" | "rsvp" | "trip">> = Object.freeze({
   publish_experience: "experience", update_experience: "experience", delete_experience: "experience",
-  update_trip: "trip", publish_trip: "trip", delete_trip: "trip", cancel_trip_booking: "trip",
+  update_trip: "trip", manage_trip_days: "trip", manage_trip_inclusions: "trip",
+  manage_trip_tiers: "trip", manage_trip_traveler_intake: "trip", get_trip_order_money: "trip",
+  publish_trip: "trip", delete_trip: "trip", cancel_trip_booking: "trip",
   publish_rsvp: "rsvp", set_rsvp_guest_status: "rsvp", refund_rsvp_contribution: "rsvp",
   list_guest_roster: "rsvp", set_guest_approval: "rsvp",
 });
@@ -38,6 +40,9 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<Record<string, AgentAuthorizatio
   publish_experience: role("event_manager", "event"), update_experience: role("event_manager", "event"),
   delete_experience: role("event_manager", "event"), create_trip: role("event_manager", "brand"),
   update_trip: role("event_manager", "event"), publish_trip: role("event_manager", "event"),
+  manage_trip_days: role("event_manager", "event"), manage_trip_inclusions: role("event_manager", "event"),
+  manage_trip_tiers: role("event_manager", "event"), manage_trip_traveler_intake: role("event_manager", "event"),
+  get_trip_order_money: role("finance_manager", "event"),
   delete_trip: role("event_manager", "event"), create_rsvp: role("event_manager", "brand"),
   publish_rsvp: role("event_manager", "event"), set_rsvp_guest_status: role("event_manager", "event"),
   refund_rsvp_contribution: role("finance_manager", "event"), quote_stay: role("scanner", "brand"),

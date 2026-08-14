@@ -147,7 +147,7 @@ ari.partner.splits
 // reconciliation at this immutable revision. Ledger prose may explain a defect,
 // but it cannot remove one from this set or create a new proven-broken claim.
 const PROVEN_BROKEN_AUDIT_SHA = "829c46fc319c34452e18876b728b6d840f95b904";
-const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
+const BASELINE_PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
 ari.event.publish
 ari.event.unpublish
 ari.event.cancel
@@ -196,6 +196,21 @@ ari.guests.set_approval
 ari.people.export
 ari.operator.snapshot
 `.trim().split(/\s+/));
+
+// #1971 resolves the four audited trip-shell failures through the canonical
+// graph commands. They remain in the immutable baseline set above; this
+// explicit resolved overlay prevents silent ledger laundering.
+const RESOLVED_PROVEN_BROKEN_CAPABILITY_IDS = new Set([
+  "ari.trip.create",
+  "ari.trip.update",
+  "ari.trip.publish",
+  "ari.trip.delete",
+]);
+const PROVEN_BROKEN_CAPABILITY_IDS = new Set(
+  [...BASELINE_PROVEN_BROKEN_CAPABILITY_IDS].filter(
+    (id) => !RESOLVED_PROVEN_BROKEN_CAPABILITY_IDS.has(id),
+  ),
+);
 
 const STATUSES = new Set([
   "verified",
@@ -335,10 +350,13 @@ function validateRef(root, auditSha, ref, label, failures) {
 
 export function validateLedger({ root, ledger, registered, advertised }) {
   const failures = [];
-  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 47) {
+  if (BASELINE_PROVEN_BROKEN_CAPABILITY_IDS.size !== 47) {
     failures.push(
-      `proven-broken authority must contain 47 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
+      `baseline proven-broken authority must contain 47 audited IDs, found ${BASELINE_PROVEN_BROKEN_CAPABILITY_IDS.size}`,
     );
+  }
+  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 43) {
+    failures.push(`unresolved proven-broken authority must contain 43 IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`);
   }
   addSetDiff(
     failures,

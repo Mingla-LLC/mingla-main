@@ -60,32 +60,35 @@ describe("ORCH-0859 — tripsService.publishTrip", () => {
       error: null,
     });
     // Mock getTrip's subsequent refresh
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const eventMaybeSingle = (jest.fn() as any)
+      .mockResolvedValueOnce({ data: { updated_at: "2026-05-17T00:00:00Z" }, error: null })
+      .mockResolvedValueOnce({
+        data: {
+          id: "trip-1",
+          brand_id: "b-1",
+          title: "Test Trip",
+          description: null,
+          slug: "test-trip",
+          status: "scheduled",
+          visibility: "public",
+          published_at: "2026-05-17T00:00:00Z",
+          timezone: "UTC",
+          cover_media_url: null,
+          cover_media_type: null,
+          theme: { business_trip: {} },
+          event_type: "trip",
+          created_at: "2026-05-17T00:00:00Z",
+          updated_at: "2026-05-17T00:00:00Z",
+          brands: { slug: "brand-1" },
+        },
+        error: null,
+      });
     const eventChain = {
       select: () => eventChain,
       eq: () => eventChain,
       is: () => eventChain,
-      maybeSingle: () =>
-        Promise.resolve({
-          data: {
-            id: "trip-1",
-            brand_id: "b-1",
-            title: "Test Trip",
-            description: null,
-            slug: "test-trip",
-            status: "scheduled",
-            visibility: "public",
-            published_at: "2026-05-17T00:00:00Z",
-            timezone: "UTC",
-            cover_media_url: null,
-            cover_media_type: null,
-            theme: { business_trip: {} },
-            event_type: "trip",
-            created_at: "2026-05-17T00:00:00Z",
-            updated_at: "2026-05-17T00:00:00Z",
-            brands: { slug: "brand-1" },
-          },
-          error: null,
-        }),
+      maybeSingle: eventMaybeSingle,
       in: () => eventChain,
       order: () => eventChain,
     };
@@ -106,9 +109,9 @@ describe("ORCH-0859 — tripsService.publishTrip", () => {
 
     expect(rpcMock).toHaveBeenCalledTimes(2);
     const [calledFn] = rpcMock.mock.calls[0] as [string, unknown];
-    // [TEST-MOD-APPROVED #1719] Publish now enters the atomic poster-triplet
-    // wrapper, which delegates to the proven trip publisher in one transaction.
-    expect(calledFn).toBe("issue_1719_publish_trip_with_poster");
+    // #1971 loads the persisted graph server-side; the command delegates to
+    // the #1719 poster wrapper in the same database transaction.
+    expect(calledFn).toBe("biz_publish_trip_command");
     expect(calledFn).not.toBe("business_publish_event_draft");
     expect(rpcMock.mock.calls[1]).toEqual([
       "biz_trip_tickets_sold",
@@ -121,6 +124,8 @@ describe("ORCH-0859 — tripsService.publishTrip", () => {
     // `RAISE EXCEPTION 'foo'` statements; the literal name lives in
     // `message`. Earlier mock incorrectly inverted these (would have
     // masked the wizard mapper bug fixed in same ORCH-0859 commit).
+    const revision = createChainableQuery({ data: { updated_at: "2026-05-17T00:00:00Z" } });
+    fromMock.mockReturnValue(revision);
     rpcMock.mockResolvedValueOnce({
       data: null,
       error: { code: "P0001", message: "trip_days_required" },

@@ -40,8 +40,8 @@
 /* eslint-disable import/first */
 import { describe, expect, jest, test, beforeEach } from "@jest/globals";
 
-let mockStatusReturn: { status: string } | null = {
-  status: "draft",
+let mockStatusReturn: { status: string; updated_at?: string } | null = {
+  status: "draft", updated_at: "2026-08-14T00:00:00Z",
 };
 const mockRpcSpy = jest.fn();
 const mockUpsertSpy = jest.fn();
@@ -116,19 +116,19 @@ beforeEach(() => {
   mockRpcSpy.mockClear();
   mockUpsertSpy.mockClear();
   mockDeleteSpy.mockClear();
-  mockStatusReturn = { status: "draft" };
+  mockStatusReturn = { status: "draft", updated_at: "2026-08-14T00:00:00Z" };
 });
 
 describe("ORCH-0880 ADVERSARIAL — I-PROPOSED-TR5-INTAKE-SCHEMA-EDIT-PERSISTS-TO-DB", () => {
-  test("A. draft trip + valid schema → DIRECT upsert (no RPC)", async () => {
-    mockStatusReturn = { status: "draft" };
+  test("A. draft trip + valid schema → canonical graph RPC", async () => {
+    mockStatusReturn = { status: "draft", updated_at: "2026-08-14T00:00:00Z" };
     await upsertTripIntakeSchema({
       eventId: "event-1",
       ticketTypeId: "tier-1",
       schema: makeValidSchema(),
     });
-    expect(mockUpsertSpy).toHaveBeenCalledTimes(1);
-    expect(mockRpcSpy).not.toHaveBeenCalled();
+    expect(mockUpsertSpy).not.toHaveBeenCalled();
+    expect(mockRpcSpy).toHaveBeenCalledWith("biz_apply_trip_draft_graph", expect.objectContaining({ p_event_id: "event-1" }));
   });
 
   test("B. published trip (status=scheduled) → RPC ONLY; no direct upsert", async () => {
@@ -143,7 +143,7 @@ describe("ORCH-0880 ADVERSARIAL — I-PROPOSED-TR5-INTAKE-SCHEMA-EDIT-PERSISTS-T
     });
     expect(mockRpcSpy).toHaveBeenCalledTimes(1);
     expect(mockRpcSpy).toHaveBeenCalledWith(
-      "biz_update_live_trip",
+      "biz_update_trip_live_command",
       expect.objectContaining({
         p_event_id: "event-1",
         p_patch: expect.objectContaining({
@@ -183,7 +183,7 @@ describe("ORCH-0880 ADVERSARIAL — I-PROPOSED-TR5-INTAKE-SCHEMA-EDIT-PERSISTS-T
     });
     expect(mockRpcSpy).toHaveBeenCalledTimes(1);
     expect(mockRpcSpy).toHaveBeenCalledWith(
-      "biz_update_live_trip",
+      "biz_update_trip_live_command",
       expect.objectContaining({
         p_patch: expect.objectContaining({
           intake_schemas: expect.arrayContaining([
@@ -291,7 +291,7 @@ describe("ORCH-0880 ADVERSARIAL — I-PROPOSED-TR2-EVENTS-TYPE-FILTER", () => {
 });
 
 describe("ORCH-0880 ADVERSARIAL — skipStatusProbe optimization safety", () => {
-  test("I. skipStatusProbe=true forces direct upsert (assumed-draft path)", async () => {
+  test("I. skipStatusProbe=true still uses the canonical draft command", async () => {
     // The wizard's autosaveStep6 uses skipStatusProbe=true since the wizard
     // always operates on drafts. This must bypass the status query AND
     // force the direct-upsert path. Reverting this would either (a) hit
@@ -305,7 +305,7 @@ describe("ORCH-0880 ADVERSARIAL — skipStatusProbe optimization safety", () => 
       schema: makeValidSchema(),
       skipStatusProbe: true,
     });
-    expect(mockUpsertSpy).toHaveBeenCalledTimes(1);
-    expect(mockRpcSpy).not.toHaveBeenCalled();
+    expect(mockUpsertSpy).not.toHaveBeenCalled();
+    expect(mockRpcSpy).toHaveBeenCalledWith("biz_apply_trip_draft_graph", expect.objectContaining({ p_event_id: "event-1" }));
   });
 });
