@@ -30,11 +30,11 @@
 # green the other):
 #
 #   EXPO_PUBLIC_SENTRY_DSN             REQUIRED  https:// + .ingest.  (app/_layout.tsx:122, static read)
-#   EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY REQUIRED  pk_live_             (app.config.ts -> extra; the #990 brick)
-#   EXPO_PUBLIC_GIPHY_API_KEY          REQUIRED  none                 (app.config.ts -> extra; GIF tab)
-#   EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN    ADVISORY  pk.                  (app.config.ts -> extra; trip-page map)
+#   EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY REQUIRED  pk_live_             (app.config.js -> extra; the #990 brick)
+#   EXPO_PUBLIC_GIPHY_API_KEY          REQUIRED  none                 (app.config.js -> extra; GIF tab)
+#   EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN    ADVISORY  pk.                  (app.config.js -> extra; trip-page map)
 #   EXPO_PUBLIC_MIXPANEL_TOKEN         ADVISORY  none                 (mixpanelService.ts:63, static read)
-#   EXPO_PUBLIC_POSTHOG_KEY            ADVISORY  phc_                 (app.config.ts carries a committed
+#   EXPO_PUBLIC_POSTHOG_KEY            ADVISORY  phc_                 (app.config.js carries a committed
 #                                                                      literal fallback, so it can NEVER be
 #                                                                      absent — it is deliberately not a
 #                                                                      tripwire on this app)
@@ -112,7 +112,7 @@ APP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 REPO_ROOT="$(cd "${APP_ROOT}/.." && pwd)"
 VERIFIER="${REPO_ROOT}/scripts/ota/verify-published-manifest.mjs"
 
-if [ ! -f "${APP_ROOT}/app.config.ts" ] || [ ! -f "${VERIFIER}" ]; then
+if [ ! -f "${APP_ROOT}/app.config.js" ] || [ ! -f "${VERIFIER}" ]; then
   echo "ABORT [#994] this script must be run at its REAL tracked path inside the repo checkout." >&2
   if [ -L "${BASH_SOURCE[0]}" ]; then
     echo "       Confirmed cause: this invocation came through a SYMLINK (${BASH_SOURCE[0]})." >&2

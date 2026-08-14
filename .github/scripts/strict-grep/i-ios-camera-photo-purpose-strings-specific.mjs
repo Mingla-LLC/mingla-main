@@ -13,7 +13,7 @@
  *   - is reasonably descriptive (length floor),
  *   - references a real, truthful use surface (profile / chat / message).
  *
- * Scope: app-mobile/app.json infoPlist (the authoritative source — app.config.ts
+ * Scope: app-mobile/app.json infoPlist (the authoritative source — app.config.js
  * does not override infoPlist).
  *
  * Exit 0 clean, 1 on violation. Supports --self-test.

@@ -39,7 +39,7 @@
 #                                                           process.env read is the only live path —
 #                                                           and the reason the post-publish check
 #                                                           cannot see it directly.)
-#   EXPO_PUBLIC_POSTHOG_KEY            REQUIRED  phc_      (app.config.ts:75 -> extra. This app's ONLY
+#   EXPO_PUBLIC_POSTHOG_KEY            REQUIRED  phc_      (app.config.js -> extra. This app's ONLY
 #                                                           manifest tripwire: it is the one value with
 #                                                           no committed literal fallback, so it is the
 #                                                           only thing in the served manifest that can
@@ -129,7 +129,7 @@ APP_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 REPO_ROOT="$(cd "${APP_ROOT}/.." && pwd)"
 VERIFIER="${REPO_ROOT}/scripts/ota/verify-published-manifest.mjs"
 
-if [ ! -f "${APP_ROOT}/app.config.ts" ] || [ ! -f "${VERIFIER}" ]; then
+if [ ! -f "${APP_ROOT}/app.config.js" ] || [ ! -f "${VERIFIER}" ]; then
   echo "ABORT [#994] this script must be run at its REAL tracked path inside the repo checkout." >&2
   if [ -L "${BASH_SOURCE[0]}" ]; then
     echo "       Confirmed cause: this invocation came through a SYMLINK (${BASH_SOURCE[0]})." >&2

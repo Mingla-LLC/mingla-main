@@ -76,7 +76,7 @@ const resolveEnvString = (
 //     that boot-render throws are invisible behind the never-hidden splash. It
 //     would convert a degraded-checkout state into a bricked app, which is the
 //     #990 failure mode, on the app whose users are buyers.
-//   · `mingla-business` can never reach the empty string: its `app.config.ts`
+//   · `mingla-business` can never reach the empty string: its `app.config.js`
 //     always emits a key into `extra` (a live key, or the sandbox literal on
 //     local dev), so the only app a throw could ever fire on is the consumer.
 //   · On `app-mobile` the empty string is now UNREACHABLE on any shipped build:

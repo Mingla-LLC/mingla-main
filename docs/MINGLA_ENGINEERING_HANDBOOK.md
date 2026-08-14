@@ -348,7 +348,7 @@ supabase functions serve <name>
 ### 7.5b Reading app config — `expo config --json` hides config errors
 
 **If `npx expo config --json` exits non-zero with NO output on either stream, re-run it without
-`--json`.** With `--json` the Expo CLI prints nothing when `app.config.ts` throws — empty stdout,
+`--json`.** With `--json` the Expo CLI prints nothing when `app.config.js` throws — empty stdout,
 empty stderr, exit 1. Drop the flag and the config's own error appears on stderr, naming exactly
 what is wrong:
 
@@ -392,7 +392,7 @@ shipped five production incidents and fails two different ways:
 always passes the flag, pre-flights every key that app silently defaults on (presence FIRST, then
 prefix), and — after publishing — downloads the manifest the CDN will actually serve and fails loudly
 if a key is missing. #994 added the consumer wrapper and the post-publish check; a strict-grep gate
-keeps this page, both wrappers and both `app.config.ts` tripwires honest.
+keeps this page, both wrappers and both `app.config.js` tripwires honest.
 
 ```bash
 mingla-business/scripts/ota/publish-production-ota.sh ios     "<summary>"

@@ -1,12 +1,12 @@
 /**
  * #1732 [payment-key-fail-closed] — IMPLEMENTOR happy-path regression.
  *
- * WHAT THIS PINS, in one paragraph. `mingla-business/app.config.ts` resolves
+ * WHAT THIS PINS, in one paragraph. `mingla-business/app.config.js` resolves
  * EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY through four branches. Three are strict.
  * The fourth — `VERCEL_ENV === undefined`, which covers BOTH a native EAS build
  * AND local dev — was asymmetric: it rejected a pk_live_ value under
  * MINGLA_STRIPE_MODE=test, but ACCEPTED a pk_test_ value under mode=live, in
- * silence. Because the mode DEFAULTS to "live" (app.config.ts), a native release
+ * silence. Because the mode DEFAULTS to "live" (app.config.js), a native release
  * build with the environment absent resolved to the committed pk_test_ sandbox
  * literal and shipped it against the live backend. That is the #990 brick:
  * verifyStripeModeAlignment() throws at boot, the ErrorBoundary unmounts the
@@ -27,7 +27,7 @@
  * issue is about.
  *
  * FAILS-ON-REVERT: delete the `isReleaseBoundStripeBuild` throw from
- * app.config.ts (true line deletion, not a comment-out) and B1/B2/B3 go red —
+ * app.config.js (true line deletion, not a comment-out) and B1/B2/B3 go red —
  * the config resolves the sandbox literal and returns 0.
  *
  * NOTE ON GUARD ORDER. Two SIBLING release-bound guards run before this one on a
@@ -39,7 +39,7 @@
 
 import path from "node:path";
 
-const appConfigPath = path.resolve(__dirname, "../../app.config.ts");
+const appConfigPath = path.resolve(__dirname, "../../app.config.js");
 
 const ORIGINAL_ENV = process.env;
 
@@ -62,10 +62,10 @@ function runConfigWithEnv(env: Record<string, string | undefined>): {
     ...env,
   } as NodeJS.ProcessEnv;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const mod = require(appConfigPath).default as (ctx: never) => {
+  const configFn = require(appConfigPath) as (ctx: never) => {
     extra?: Record<string, unknown>;
   };
-  return mod({ config: { plugins: [] } } as never);
+  return configFn({ config: { plugins: [] } } as never);
 }
 
 describe("#1732 — mingla-business release-bound Stripe fail-close", () => {

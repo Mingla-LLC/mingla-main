@@ -509,7 +509,7 @@ function selfTest() {
     0,
   );
   // 4d (#1733) — S-1 on the SECOND consumer tripwire: the payment key resolving
-  // to a real value in the blind run means app.config.ts handed it a committed
+  // to a real value in the blind run means app.config.js handed it a committed
   // literal fallback, which is the one thing Corollary 4 forbids.
   {
     const r = evaluateRuns({
@@ -523,7 +523,7 @@ function selfTest() {
     expectMsg("4d S-1 consumer payment tripwire gained a fallback", r.messages, "unfalsifiable");
   }
   // 4e (#1733) — S-2 on the SECOND consumer tripwire: the applied run failing to
-  // carry the sentinel means app.config.ts stopped EMITTING the payment key into
+  // carry the sentinel means app.config.js stopped EMITTING the payment key into
   // `extra`, which is exactly the state #1733 fixed.
   {
     const r = evaluateRuns({

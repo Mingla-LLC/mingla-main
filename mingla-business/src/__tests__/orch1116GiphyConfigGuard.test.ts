@@ -5,12 +5,12 @@
  * The implementor's happy-path test (CoverPicker.providerTelemetry.test.ts)
  * attacks the *telemetry split* via a re-implemented mirror of the helper plus
  * source-string assertions on CoverPicker.tsx. It NEVER exercises the real
- * `app.config.ts` fail-loud guard at runtime — SC-3 / SC-4 there are only an
+ * `app.config.js` fail-loud guard at runtime — SC-3 / SC-4 there are only an
  * uncommitted manual env-probe in the implementation report, and the strict-grep
  * gate only checks the guard exists *textually*.
  *
  * This test attacks the OTHER load-bearing half: the REAL exported
- * `app.config.ts` default function, invoked with a controlled `process.env`
+ * `app.config.js` CommonJS function, invoked with a controlled `process.env`
  * matrix, asserting the actual THROW / NO-THROW behavior of the GIPHY guard
  * (§4.B, SC-3/SC-4) — including the VERCEL_ENV web-export branch the implementor
  * never covered with a committed test, and the key-plumbing (value lands in
@@ -24,18 +24,9 @@
  * no VERCEL_ENV, so the Stripe guard takes its local sandbox-fallback path and
  * does not interfere.
  *
- * Fails-on-revert: if the GIPHY guard IIFE in app.config.ts is reduced to a
+ * Fails-on-revert: if the GIPHY guard IIFE in app.config.js is reduced to a
  * passthrough (the throw removed), the THROW assertions below FAIL.
  */
-
-// expo/config is types-only at runtime here; app.config.ts imports it solely for
-// ExpoConfig / ConfigContext type names, so no runtime mock is needed under
-// ts-jest's type-erasing transform. We still provide a stub to be safe.
-jest.mock(
-  "expo/config",
-  () => ({}),
-  { virtual: true },
-);
 
 // A minimal ConfigContext.config — the default fn only reads config.plugins,
 // config.name, config.slug, etc., all optional-tolerant.
@@ -48,7 +39,7 @@ const FAKE_PK_TEST = "pk_test_" + "0".repeat(24);
 
 // [ORCH-1062 drift-update] ORCH-1313 (§4.C) added a SIBLING AppsFlyer fail-loud
 // guard that runs BEFORE the GIPHY guard on release-bound EAS profiles
-// (production / production-apk / preview / preview-sim; app.config.ts:60-81).
+// (production / production-apk / preview / preview-sim; app.config.js).
 // It throws when the three AppsFlyer env vars are unset — masking the GIPHY
 // assertion on the EAS-profile cases (A1/A2/A7/A8). Supply a valid AppsFlyer env
 // on those cases to get past it and isolate the GIPHY throw/no-throw behavior,
@@ -66,13 +57,13 @@ function runConfigWithEnv(env: Record<string, string | undefined>): unknown {
   jest.resetModules();
   process.env = { ...ORIGINAL_ENV, ...env } as NodeJS.ProcessEnv;
   // Re-require after env mutation so the module reads the fresh process.env.
-  // app.config.ts has no top-level env reads that matter to the guard — the
+  // app.config.js has no top-level env reads that matter to the guard — the
   // guard IIFE runs when the default fn is invoked.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const mod = require("../../app.config").default as (ctx: never) => {
+  const configFn = require("../../app.config.js") as (ctx: never) => {
     extra?: Record<string, unknown>;
   };
-  return mod(FAKE_CTX);
+  return configFn(FAKE_CTX);
 }
 
 describe("ORCH-1116 app.config GIPHY fail-loud guard (real default fn)", () => {

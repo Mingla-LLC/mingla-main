@@ -10,12 +10,12 @@
  *   blank version, invalid JSON. It never probed (a) realistic full-structure
  *   app.json with DECOY version-like sibling fields, (b) near-equal / invisible
  *   divergence, (c) a wrong-TYPE (numeric) version that JS loose-equality could
- *   silently treat as equal, or (d) the app.config.ts dynamic-config override
+ *   silently treat as equal, or (d) the app.config.js dynamic-config override
  *   blind spot that the gate — reading only app.json — cannot see.
  *
  *   This test drives the ACTUAL gate binary (byte-copied into an isolated
  *   sandbox root so it reads controlled fixtures via its real file-read path),
- *   and statically guards the invariant's unenforced app.config.ts assumption
+ *   and statically guards the invariant's unenforced app.config.js assumption
  *   against the REAL repo files.
  *
  * Exit 0 = gate is robust against every adversarial case. Exit 1 = a gate hole.
@@ -135,21 +135,21 @@ console.log("ORCH-1367 tester adversarial suite:");
   );
 }
 
-// CASE E — app.config.ts DYNAMIC-CONFIG BLIND SPOT (angle: unenforced
+// CASE E — app.config.js DYNAMIC-CONFIG BLIND SPOT (angle: unenforced
 // invariant assumption). The gate reads ONLY app.json; the invariant claims
-// neither app.config.ts overrides `version`. If that assumption ever breaks,
+// neither app.config.js overrides `version`. If that assumption ever breaks,
 // the gate goes blind. Guard it statically against the REAL repo files.
 {
   const configFiles = [
-    path.join(repoRoot, "app-mobile/app.config.ts"),
-    path.join(repoRoot, "mingla-business/app.config.ts"),
+    path.join(repoRoot, "app-mobile/app.config.js"),
+    path.join(repoRoot, "mingla-business/app.config.js"),
   ];
   // Match an assignment/property of `version` (NOT runtimeVersion / appVersion).
   const overrideRe =
     /(^|[^a-zA-Z])version\s*[:=]/m;
   for (const cf of configFiles) {
     if (!fs.existsSync(cf)) {
-      console.log(`  --  E skipped (no ${path.basename(path.dirname(cf))}/app.config.ts)`);
+      console.log(`  --  E skipped (no ${path.basename(path.dirname(cf))}/app.config.js)`);
       continue;
     }
     const src = fs.readFileSync(cf, "utf8");
@@ -157,9 +157,9 @@ console.log("ORCH-1367 tester adversarial suite:");
     const scrubbed = src.replace(/runtimeVersion/g, "RUNTIME_VER");
     const hit = overrideRe.test(scrubbed);
     expect(
-      `E app.config.ts-no-version-override (${path.basename(path.dirname(cf))})`,
+      `E app.config.js-no-version-override (${path.basename(path.dirname(cf))})`,
       !hit,
-      `app.config.ts appears to set a \`version\` key — the app.json-only gate would be BLIND to it. Invariant assumption broken.`,
+      `app.config.js appears to set a \`version\` key — the app.json-only gate would be BLIND to it. Invariant assumption broken.`,
     );
   }
 }

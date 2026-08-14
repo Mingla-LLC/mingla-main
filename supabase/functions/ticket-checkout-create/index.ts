@@ -1229,7 +1229,7 @@ export const createTicketCheckoutCreateHandler = (
         // intercepts this URL inside the in-app browser session and resolves
         // with type:"success" + the full URL (so the app can read `cs` from
         // the query string). The scheme `mingla-business` is registered in
-        // mingla-business/app.config.ts; reusing it for /checkout/return is
+        // mingla-business/app.config.js; reusing it for /checkout/return is
         // safe because /onboarding-complete and /checkout/return have
         // disjoint route handlers (and there is no in-app Linking listener —
         // the in-app browser session intercepts before the OS even tries to
