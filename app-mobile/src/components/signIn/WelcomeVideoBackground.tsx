@@ -126,6 +126,8 @@ export function WelcomeVideoBackground() {
     }).start();
   }, [failed, isActive, reduceMotion, videoOpacity]);
 
+  const shouldRenderVideo = reduceMotion === false && isActive && !failed;
+
   return (
     <View
       pointerEvents="none"
@@ -139,17 +141,19 @@ export function WelcomeVideoBackground() {
         accessible={false}
         style={StyleSheet.absoluteFill}
       />
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: videoOpacity }]}>
-        <VideoView
-          player={player}
-          style={StyleSheet.absoluteFill}
-          contentFit="cover"
-          nativeControls={false}
-          surfaceType={Platform.OS === "android" ? "textureView" : undefined}
-          onFirstFrameRender={revealVideo}
-          accessible={false}
-        />
-      </Animated.View>
+      {shouldRenderVideo ? (
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: videoOpacity }]}>
+          <VideoView
+            player={player}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            nativeControls={false}
+            surfaceType={Platform.OS === "android" ? "textureView" : undefined}
+            onFirstFrameRender={revealVideo}
+            accessible={false}
+          />
+        </Animated.View>
+      ) : null}
     </View>
   );
 }

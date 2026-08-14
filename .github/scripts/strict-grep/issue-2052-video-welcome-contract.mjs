@@ -20,6 +20,7 @@ const assets = {
   hostPortraitPoster: ["mingla-business/assets/welcome/mingla-welcome-portrait-poster.jpg", "27d1c1b4df8e690d16805909a0db458d6f7813c19a474eb164f6bfb23a4202c0"],
   hostLandscapeVideo: ["mingla-business/assets/welcome/mingla-welcome-landscape.mp4", "0fd10d4d76b3da429f6a37f5ded97a63a826bee307f0c553796b6a4284aded02"],
   hostLandscapePoster: ["mingla-business/assets/welcome/mingla-welcome-landscape-poster.jpg", "af81e22dae69e51e52adff1a60e97a9bf22c582cc84049728aa36bba01da47bf"],
+  hostWebWordmark: ["mingla-business/public/brand/mingla-wordmark.png", "561de62de16d9a3cc9fd839cf38ddd233ddc53408c0c3ea34d228a9cc2d354c4"],
 };
 
 const stripComments = (source) =>
@@ -99,7 +100,8 @@ export function checkContract(fixture) {
     'const WELCOME_TAGLINE = "Great places and experiences\\ndeserve to be discovered."',
     '"Great places and experiences deserve to be discovered."',
     'import { MINGLA_WORDMARK } from "@mingla/brand-assets"',
-    "Image.resolveAssetSource(MINGLA_WORDMARK).uri",
+    'const WEB_LOGO_SRC = "/brand/mingla-wordmark.png"',
+    "src: WEB_LOGO_SRC",
     'alt: "Mingla"',
     'accessibilityLabel="Mingla"',
     "const WELCOME_LOGO_PILL_WIDTH = 140",
@@ -123,7 +125,7 @@ export function checkContract(fixture) {
     'setMode("otp-verifying")',
     "keyboardPad > 0 ? keyboardPad + 42 : 0",
   ], "host owner");
-  forbidNeedles(s.hostOwner, ["MINGLA_BUSINESS_LOGO", "mingla-business-logo.png", "HEADLINE_WORDS", "List experiences", "LinearGradient"], "host owner");
+  forbidNeedles(s.hostOwner, ["Image.resolveAssetSource", "MINGLA_BUSINESS_LOGO", "mingla-business-logo.png", "HEADLINE_WORDS", "List experiences", "LinearGradient"], "host owner");
   requireStyleNeedles(s.hostOwner, "logoContainer", ['backgroundColor: "#ffffff"', "borderRadius: 999"], "host owner");
   requireStyleNeedles(s.hostOwner, "tagline", ['color: "#ffffff"', 'textShadowColor: "rgba(0, 0, 0, 0.45)"'], "host owner");
   requireStyleNeedles(s.hostOwner, "appleButton", ['backgroundColor: "#ffffff"'], "host owner");
@@ -152,8 +154,12 @@ export function checkContract(fixture) {
     'importantForAccessibility="no-hide-descendants"',
     'accessible={false}',
   ];
-  requireNeedles(s.explorerBackground, [...backgroundCommon, "PORTRAIT_VIDEO", "PORTRAIT_POSTER", '"textureView"', "eligibleRef.current = reduceMotion === false && isActive && !failed", "!eligibleRef.current"], "explorer background");
-  requireNeedles(s.hostNative, [...backgroundCommon, "PORTRAIT_VIDEO", "PORTRAIT_POSTER", '"textureView"', "eligibleRef.current = reduceMotion === false && isActive && !failed", "!eligibleRef.current"], "host native background");
+  const nativeLifecycle = [
+    "const shouldRenderVideo = reduceMotion === false && isActive && !failed",
+    "{shouldRenderVideo ? (",
+  ];
+  requireNeedles(s.explorerBackground, [...backgroundCommon, ...nativeLifecycle, "PORTRAIT_VIDEO", "PORTRAIT_POSTER", '"textureView"', "eligibleRef.current = reduceMotion === false && isActive && !failed", "!eligibleRef.current"], "explorer background");
+  requireNeedles(s.hostNative, [...backgroundCommon, ...nativeLifecycle, "PORTRAIT_VIDEO", "PORTRAIT_POSTER", '"textureView"', "eligibleRef.current = reduceMotion === false && isActive && !failed", "!eligibleRef.current"], "host native background");
   requireNeedles(s.hostWeb, [...backgroundCommon, "LANDSCAPE_VIDEO", "LANDSCAPE_POSTER", "saveData", "matchMedia", "onConnectionChange", "playsInline", "eligibleRef.current = !reduceMotion && !saveData && isActive && !failed", "!eligibleRef.current"], "host web background");
   forbidNeedles(s.explorerBackground, ["landscape"], "explorer background orientation");
   forbidNeedles(s.hostNative, ["landscape"], "host native orientation");
@@ -194,8 +200,9 @@ function selfTest() {
   expectMutationToFail(good, (x) => { x.source.hostOwner = x.source.hostOwner.replace("rgba(0, 0, 0, 0.74)", "rgba(255, 255, 255, 0.64)"); }, "overlay family");
   expectMutationToFail(good, (x) => { x.source.hostWeb = x.source.hostWeb.replace("status === \"error\"", "status === \"never\""); }, "error fallback family");
   expectMutationToFail(good, (x) => { x.source.hostNative = x.source.hostNative.replace("eligibleRef.current = reduceMotion === false", "eligibleRef.current = true || reduceMotion === false"); }, "reduced motion family");
+  expectMutationToFail(good, (x) => { x.source.hostNative = x.source.hostNative.replace("{shouldRenderVideo ? (", "{true ? ("); }, "native lifecycle family");
   expectMutationToFail(good, (x) => { x.assetBytes.hostLandscapeVideo = Buffer.from(x.assetBytes.hostLandscapeVideo); x.assetBytes.hostLandscapeVideo[100] ^= 1; }, "asset family");
-  process.stdout.write("issue-2052 self-test: 1 GOOD + 8 BAD fixtures passed\n");
+  process.stdout.write("issue-2052 self-test: 1 GOOD + 9 BAD fixtures passed\n");
 }
 
 if (process.argv.includes("--self-test")) selfTest();

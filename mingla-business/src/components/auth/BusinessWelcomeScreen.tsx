@@ -50,6 +50,7 @@ const WELCOME_LOGO_PILL_HEIGHT = 54;
 const WELCOME_WORDMARK_WIDTH = 108;
 const WELCOME_DESKTOP_PILL_SCALE = 1.2;
 const WELCOME_DESKTOP_BREAKPOINT = 768;
+const WEB_LOGO_SRC = "/brand/mingla-wordmark.png";
 
 export interface BusinessWelcomeScreenProps {
   onGoogleSignIn: () => Promise<void>;
@@ -472,8 +473,6 @@ export default function BusinessWelcomeScreen({
   const logoWidth =
     (logoPillWidth * WELCOME_WORDMARK_WIDTH) / WELCOME_LOGO_PILL_WIDTH;
   const logoHeight = logoWidth * 480 / 1356;
-  const webLogoSource = Image.resolveAssetSource(MINGLA_WORDMARK).uri;
-
   const renderLogo = () => (
     <Animated.View
       style={[
@@ -484,7 +483,7 @@ export default function BusinessWelcomeScreen({
     >
       {Platform.OS === "web" ? (
         React.createElement("img", {
-          src: webLogoSource,
+          src: WEB_LOGO_SRC,
           alt: "Mingla",
           role: "img",
           style: {
