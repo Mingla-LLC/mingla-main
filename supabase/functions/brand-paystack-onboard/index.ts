@@ -72,7 +72,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-mingla-app-id, x-mingla-app-platform, x-mingla-app-version",
 };
 
 function jsonResponse(body: unknown, status = 200): Response {

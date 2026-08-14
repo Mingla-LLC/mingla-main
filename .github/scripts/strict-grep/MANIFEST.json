@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 535,
-  "selfTestWiredFloor": 339,
+  "expectedStrictGrepMjsFiles": 536,
+  "selfTestWiredFloor": 340,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -37,6 +37,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "issue-2079-provider-correct-late-refund"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2075-force-update.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-2075-force-update.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2075-force-update"
       ]
     },
     {

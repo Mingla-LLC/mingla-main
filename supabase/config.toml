@@ -747,3 +747,8 @@ verify_jwt = false
 # never pauses a venue's ordering, and never sends an SMS (D-7a/D-7b/D-7c).
 [functions.venue-order-escalation-sweep]
 verify_jwt = false
+
+# Issue #2075 — public, read-only native minimum-version policy. The function
+# validates app/platform itself and reads the private table with service role.
+[functions.app-version-policy]
+verify_jwt = false

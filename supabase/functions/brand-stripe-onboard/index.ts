@@ -69,7 +69,7 @@ const ONBOARD_FLIP = resolvePaymentOperationFlagValue(
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-mingla-app-id, x-mingla-app-platform, x-mingla-app-version",
 };
 
 function jsonResponse(body: unknown, status = 200): Response {

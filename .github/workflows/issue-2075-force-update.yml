@@ -1,0 +1,99 @@
+name: "#2075 Force Update"
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app-mobile/app/_layout.tsx"
+      - "app-mobile/src/components/MandatoryUpdateGate.tsx"
+      - "app-mobile/src/services/appVersionIdentity.ts"
+      - "app-mobile/src/services/appVersionPolicy.ts"
+      - "app-mobile/src/services/supabase.ts"
+      - "app-mobile/src/services/__tests__/issue_2075_app_version_policy.test.ts"
+      - "mingla-business/app/_layout.tsx"
+      - "mingla-business/src/components/ui/MandatoryUpdateGate.tsx"
+      - "mingla-business/src/services/appVersionIdentity.ts"
+      - "mingla-business/src/services/appVersionPolicy.ts"
+      - "mingla-business/src/services/supabase.ts"
+      - "mingla-business/src/services/__tests__/issue_2075_app_version_policy.test.ts"
+      - "supabase/config.toml"
+      - "supabase/functions/_shared/appVersionPolicy.ts"
+      - "supabase/functions/_shared/appVersionPolicy.test.ts"
+      - "supabase/functions/app-version-policy/**"
+      - "supabase/functions/brand-stripe-onboard/index.ts"
+      - "supabase/functions/brand-stripe-account-session/index.ts"
+      - "supabase/functions/brand-stripe-tax-account-session/index.ts"
+      - "supabase/functions/brand-paystack-onboard/index.ts"
+      - "supabase/migrations/*2075*"
+      - ".github/scripts/strict-grep/issue-2075-force-update.mjs"
+      - ".github/workflows/issue-2075-force-update.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-2075-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  structural-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node .github/scripts/strict-grep/issue-2075-force-update.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-2075-force-update.mjs
+      - name: Prove a true root-gate revert fails
+        run: |
+          if ISSUE_2075_SIMULATE_REVERT=1 node .github/scripts/strict-grep/issue-2075-force-update.mjs; then
+            echo "#2075 simulated revert unexpectedly passed"
+            exit 1
+          fi
+
+  consumer-policy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app-mobile/package-lock.json
+      - run: npm ci
+      - run: npx jest --runInBand src/services/__tests__/issue_2075_app_version_policy.test.ts
+
+  host-policy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - run: npx jest --runInBand src/services/__tests__/issue_2075_app_version_policy.test.ts
+
+  edge-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno test --allow-env supabase/functions/_shared/appVersionPolicy.test.ts
+      - run: >-
+          deno check
+          supabase/functions/app-version-policy/index.ts
+          supabase/functions/brand-stripe-onboard/index.ts
+          supabase/functions/brand-stripe-account-session/index.ts
+          supabase/functions/brand-stripe-tax-account-session/index.ts
+          supabase/functions/brand-paystack-onboard/index.ts
