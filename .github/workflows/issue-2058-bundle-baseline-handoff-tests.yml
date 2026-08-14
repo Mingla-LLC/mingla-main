@@ -1,0 +1,37 @@
+name: "#2058: bundle baseline handoff tests"
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/bundle-baseline-ratchet.yml"
+      - ".github/workflows/bundle-baseline-provenance-guard.yml"
+      - ".github/workflows/issue-2058-bundle-baseline-handoff-tests.yml"
+      - "mingla-business/scripts/ci/bundle-baseline-pr-handoff.mjs"
+      - "mingla-business/scripts/ci/__tests__/issue2058_*.mjs"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bundle-baseline-ratchet.yml"
+      - ".github/workflows/bundle-baseline-provenance-guard.yml"
+      - ".github/workflows/issue-2058-bundle-baseline-handoff-tests.yml"
+      - "mingla-business/scripts/ci/bundle-baseline-pr-handoff.mjs"
+      - "mingla-business/scripts/ci/__tests__/issue2058_*.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  handoff-tests:
+    name: "#2058: handoff + trust-boundary regression"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+      - name: Run append-only #2058 suites
+        working-directory: mingla-business
+        run: node --test scripts/ci/__tests__/issue2058_*.mjs

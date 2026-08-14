@@ -10,7 +10,7 @@ name: Bundle Baseline Ratchet
 # made the payload smaller simply handed its saving to whichever branch merged
 # next. Growth was permanent and improvement was invisible.
 #
-# WHAT THIS DOES: after every merge to main that can move the bundle, re-measure
+# WHAT THIS DOES: after every merge to main, re-measure
 # and open a PR writing the true numbers into bundle-baseline.json. A reduction
 # is therefore BANKED — the next PR's allowance is computed from the smaller
 # number and the saving cannot be silently re-spent. A growth is RECORDED in a
@@ -23,10 +23,6 @@ name: Bundle Baseline Ratchet
 on:
   push:
     branches: [main]
-    paths:
-      - "mingla-business/**"
-      - "packages/**"
-      - ".github/workflows/bundle-baseline-ratchet.yml"
   workflow_dispatch:
 
 concurrency:
@@ -34,17 +30,18 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   ratchet:
     name: "Re-measure main's boot payload and bank the result"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
 
@@ -87,70 +84,29 @@ jobs:
           ORCH_1083_WEB_BUILD=/tmp/ratchet-web-build \
             node scripts/ci/bundle-baseline-update.mjs --write
 
-      - name: Open the baseline pull request
-        if: steps.compare.outputs.stale == 'true'
+      # A repository-only App is the sole writer. The built-in token stays
+      # read-only and can neither push a ref nor create/close a pull request.
+      - name: Mint the one-job bundle-baseline App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.BUNDLE_BASELINE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.BUNDLE_BASELINE_APP_PRIVATE_KEY }}
+          owner: Mingla-LLC
+          repositories: mingla-main
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Reconcile the provenance-safe baseline pull request
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUNDLE_BASELINE_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          BUNDLE_BASELINE_APP_SLUG: ${{ vars.BUNDLE_BASELINE_APP_SLUG }}
+          BUNDLE_BASELINE_TOKEN_APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          SOURCE_SHA: ${{ github.sha }}
+          BASELINE_CHANGED: ${{ steps.compare.outputs.stale }}
           DIRECTION: ${{ steps.compare.outputs.direction }}
-          SUMMARY: ${{ steps.compare.outputs.summary }}
+          MOVEMENT_SUMMARY: ${{ steps.compare.outputs.summary }}
           COMMON_RAW: ${{ steps.compare.outputs.common_raw }}
           COMMON_BROTLI: ${{ steps.compare.outputs.common_brotli }}
           EAGER_BROTLI: ${{ steps.compare.outputs.eager_brotli }}
-        run: |
-          branch="bundle-baseline/${GITHUB_SHA::7}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$branch"
-          git add mingla-business/scripts/ci/bundle-baseline.json
-          if git diff --cached --quiet; then
-            echo "nothing to commit"
-            exit 0
-          fi
-
-          if [ "$DIRECTION" = "reduction" ]; then
-            title="Bank the business-web boot payload reduction (${SUMMARY})"
-          elif [ "$DIRECTION" = "growth" ]; then
-            title="Record business-web boot payload growth (${SUMMARY})"
-          else
-            title="Re-baseline the business-web boot payload (${SUMMARY})"
-          fi
-
-          git commit -m "$title
-
-          Measured from ${GITHUB_SHA} by .github/workflows/bundle-baseline-ratchet.yml.
-          Baseline only — no limit was changed."
-          git push origin "$branch"
-
-          gh pr create \
-            --base main \
-            --head "$branch" \
-            --title "$title" \
-            --body "$(cat <<EOF
-          Automated by \`.github/workflows/bundle-baseline-ratchet.yml\` (issue #1509).
-
-          Re-measured \`main\` at \`${GITHUB_SHA}\` and updated
-          \`mingla-business/scripts/ci/bundle-baseline.json\` to the true numbers.
-
-          | | value |
-          |---|---|
-          | direction | **${DIRECTION}** |
-          | movement | ${SUMMARY} |
-          | \`__common\` raw | ${COMMON_RAW} B |
-          | \`__common\` brotli | ${COMMON_BROTLI} B |
-          | eager payload brotli | ${EAGER_BROTLI} B |
-
-          **What this changes:** the number the per-PR delta gate subtracts from.
-          A *reduction* means the saving is now permanent — the next branch computes
-          its allowance from the smaller figure and cannot quietly spend it.
-
-          **What this does not change:** any limit. \`HARD_CEILING\` and
-          \`PR_DELTA_ALLOWANCE\` live in
-          \`mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs\` and no
-          automation touches them. If this says **growth** and the runway line in the
-          budget gate is climbing, that is the signal to work #943 (trim) rather than
-          to move a ceiling.
-
-          Note: pull requests opened with \`GITHUB_TOKEN\` do not start \`pull_request\`
-          workflows. If required checks have not appeared, close and reopen this PR.
-          EOF
-          )"
+        run: node mingla-business/scripts/ci/bundle-baseline-pr-handoff.mjs --handoff
