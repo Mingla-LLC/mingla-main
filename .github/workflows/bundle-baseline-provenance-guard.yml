@@ -1,0 +1,30 @@
+name: Bundle baseline provenance guard
+
+# This workflow intentionally uses pull_request_target so the verifier always
+# comes from trusted main. It never checks out or executes the proposed head.
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  provenance:
+    name: Bundle baseline provenance guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the trusted intended base
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Verify the proposed head as read-only GitHub data
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BUNDLE_BASELINE_APP_SLUG: ${{ vars.BUNDLE_BASELINE_APP_SLUG }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+        run: node mingla-business/scripts/ci/bundle-baseline-pr-handoff.mjs --verify-pr
