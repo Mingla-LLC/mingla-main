@@ -19,9 +19,12 @@ describe("issue #2052 Business welcome wordmark adversarial contract", () => {
     expect(asset.readUInt32BE(20)).toBe(480);
   });
 
-  test("the old square/public-mirror logo path cannot return", () => {
+  test("the old square logo and Business label cannot return", () => {
     expect(source).not.toContain("mingla-business-logo.png");
-    expect(source).not.toContain("/brand/");
+    expect(source.match(/\/brand\//g)).toHaveLength(1);
+    expect(source).toContain(
+      'const WEB_LOGO_SRC = "/brand/mingla-wordmark.png";',
+    );
     expect(source).not.toContain('alt: "Mingla Business"');
     expect(source).not.toContain('accessibilityLabel="Mingla Business"');
     expect(source).not.toContain("const LOGO_SIZE");
@@ -35,7 +38,7 @@ describe("issue #2052 Business welcome wordmark adversarial contract", () => {
 
     const webImage = source.match(/React\.createElement\("img"[\s\S]*?\}\)/);
     expect(webImage).not.toBeNull();
-    expect(webImage![0]).toContain("src: webLogoSource");
+    expect(webImage![0]).toContain("src: WEB_LOGO_SRC");
     expect(webImage![0]).toContain("width: logoWidth");
     expect(webImage![0]).toContain("height: logoHeight");
     expect(webImage![0]).toContain("opacity: 1");

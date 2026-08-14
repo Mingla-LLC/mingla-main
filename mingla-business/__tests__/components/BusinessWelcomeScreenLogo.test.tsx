@@ -15,8 +15,12 @@ describe("issue #2052 Business welcome canonical wordmark", () => {
     );
     expect(source).toContain("const logo = MINGLA_WORDMARK;");
     expect(source).not.toContain("MINGLA_BUSINESS_LOGO");
-    expect(source).toContain("Image.resolveAssetSource(MINGLA_WORDMARK).uri");
+    expect(source).toContain(
+      'const WEB_LOGO_SRC = "/brand/mingla-wordmark.png";',
+    );
+    expect(source).not.toContain("Image.resolveAssetSource(MINGLA_WORDMARK).uri");
     expect(source).toContain('React.createElement("img"');
+    expect(source).toContain("src: WEB_LOGO_SRC");
     expect(source).toContain('alt: "Mingla"');
     expect(source).toContain('role: "img"');
     expect(source).toContain('objectFit: "contain"');
