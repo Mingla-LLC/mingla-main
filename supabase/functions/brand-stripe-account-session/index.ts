@@ -25,6 +25,7 @@ import {
   requireUserId,
   serviceRoleClient,
 } from "../_shared/stripeEdgeAuth.ts";
+import { evaluateBusinessNativeVersion } from "../_shared/appVersionPolicy.ts";
 
 const BUSINESS_WEB_ORIGIN = Deno.env.get("BUSINESS_WEB_ORIGIN");
 if (!BUSINESS_WEB_ORIGIN) {
@@ -114,6 +115,8 @@ serve(async (req) => {
   if (req.method !== "POST") {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
+  const versionBlocked = await evaluateBusinessNativeVersion(req, "brand-stripe-account-session");
+  if (versionBlocked) return versionBlocked;
 
   const userIdOrResponse = await requireUserId(req);
   if (userIdOrResponse instanceof Response) return userIdOrResponse;

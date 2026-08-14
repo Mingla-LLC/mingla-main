@@ -8581,6 +8581,16 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 ## DRAFT — issue #2010 (published editor hydration honesty)
 
+### I-APP-VERSION-POLICY-SINGLE-OWNER (DRAFT)
+
+- **Rule:** Native support floors are owned only by `app_version_policies` and served only through `app-version-policy`; client constants and source marketing versions are never support-policy owners.
+- **Enforcement:** #2075 migration, public policy Edge function, and native policy services.
+
+### I-APP-VERSION-EDGE-ENFORCEMENT-BOUNDED (DRAFT)
+
+- **Rule:** Only the four named Business-native payment onboarding functions evaluate the shared native version policy before side effects; buyer checkout and browser callers remain exempt.
+- **Enforcement:** #2075 shared evaluator and protected function entrypoint regressions.
+
 ### I-PROPOSED-2010-PUBLISHED-EDITOR-HYDRATION-HONESTY (DRAFT)
 
 - **Rule:** An authoritative server field omitted or represented by a semantically equivalent nullish value must never become a user-authored patch; media poster reads and writes remain lossless end to end.

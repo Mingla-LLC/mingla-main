@@ -46,6 +46,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
 import { queryClient } from "../src/config/queryClient";
 import { ErrorBoundary } from "../src/components/ui/ErrorBoundary";
+import { MandatoryUpdateGate } from "../src/components/ui/MandatoryUpdateGate";
 import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
@@ -791,7 +792,9 @@ function RootLayoutInner(): React.ReactElement {
         }
       }}
     >
-      <Stack screenOptions={{ headerShown: false }} />
+      <MandatoryUpdateGate>
+        <Stack screenOptions={{ headerShown: false }} />
+      </MandatoryUpdateGate>
     </ErrorBoundary>
   );
 }

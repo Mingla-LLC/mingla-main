@@ -38,6 +38,11 @@ const ssrSafeStorage = {
 };
 
 const storage = typeof window === "undefined" ? ssrSafeStorage : AsyncStorage;
+const nativeVersionHeaders = Platform.OS === "web" ? {} : {
+  "X-Mingla-App-Id": "business",
+  "X-Mingla-App-Version": Constants.nativeAppVersion ?? "",
+  "X-Mingla-App-Platform": Platform.OS,
+};
 
 // ORCH-1100 Wave 1A (RC-1) — web auth-lock resilience.
 //
@@ -124,4 +129,5 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     // Native omits `lock` entirely → default behaviour unchanged.
     ...(Platform.OS === "web" ? { lock: webResilientLock } : {}),
   },
+  global: { headers: nativeVersionHeaders },
 });

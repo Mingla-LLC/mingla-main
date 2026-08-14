@@ -12,6 +12,7 @@ import {
   requireUserId,
   serviceRoleClient,
 } from "../_shared/stripeEdgeAuth.ts";
+import { evaluateBusinessNativeVersion } from "../_shared/appVersionPolicy.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -20,6 +21,8 @@ serve(async (req) => {
   if (req.method !== "POST") {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
+  const versionBlocked = await evaluateBusinessNativeVersion(req, "brand-stripe-tax-account-session");
+  if (versionBlocked) return versionBlocked;
 
   const userIdOrResponse = await requireUserId(req);
   if (userIdOrResponse instanceof Response) return userIdOrResponse;

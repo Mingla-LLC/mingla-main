@@ -1,0 +1,13 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
+import { Platform } from "react-native";
+const extra = Constants.expoConfig?.extra as Record<string, string | undefined> | undefined;
+const url = extra?.EXPO_PUBLIC_SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || "";
+export type UpdateDecision = { state: "required"; storeUrl: string; message: string } | { state: "allowed" | "unknown" };
+type Policy = { appId: "business"; platform: "ios" | "android"; minimumVersion: string; storeUrl: string; message: string };
+const CACHE_KEY = "mingla.appVersionPolicy.business.v1"; const V = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/; let inFlight: Promise<UpdateDecision> | null = null;
+export const nativeAppVersion = (): string | null => typeof Constants.nativeAppVersion === "string" && V.test(Constants.nativeAppVersion) ? Constants.nativeAppVersion : (__DEV__ && typeof Constants.expoConfig?.version === "string" && V.test(Constants.expoConfig.version) ? Constants.expoConfig.version : null);
+export const compareSemver = (a: string, b: string): number | null => { const aa = V.exec(a); const bb = V.exec(b); if (!aa || !bb) return null; for (let i=1;i<4;i+=1) { const d=Number(aa[i])-Number(bb[i]); if(d)return d; } return 0; };
+const valid = (x: unknown): x is Policy => { const p=x as Partial<Policy>; return p?.appId === "business" && (p.platform === "ios" || p.platform === "android") && typeof p.minimumVersion === "string" && V.test(p.minimumVersion) && typeof p.storeUrl === "string" && /^https:\/\//.test(p.storeUrl) && typeof p.message === "string"; };
+const decide=(p:Policy):UpdateDecision=>{const v=nativeAppVersion(); const c=v?compareSemver(v,p.minimumVersion):null; return c!==null&&c<0?{state:"required",storeUrl:p.storeUrl,message:p.message}:{state:"allowed"};};
+export async function checkAppVersionPolicy(): Promise<UpdateDecision> { if (Platform.OS === "web") return {state:"allowed"}; if(inFlight)return inFlight; inFlight=(async()=>{try{const platform=Platform.OS as "ios"|"android"; const r=await fetch(`${url}/functions/v1/app-version-policy?app_id=business&platform=${platform}`,{headers:{"Cache-Control":"no-store"}}); const body:unknown=await r.json(); if(!r.ok||!valid(body)||body.platform!==platform)throw new Error("invalid_policy_response"); await AsyncStorage.setItem(CACHE_KEY,JSON.stringify(body)); return decide(body);}catch{try{const c=await AsyncStorage.getItem(CACHE_KEY);if(c){const p:unknown=JSON.parse(c);if(valid(p))return decide(p);}}catch{}return {state:"unknown"};}finally{inFlight=null;}})();return inFlight; }
