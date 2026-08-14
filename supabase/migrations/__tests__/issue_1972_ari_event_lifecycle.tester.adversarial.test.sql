@@ -29,6 +29,7 @@ BEGIN
     'timezone','America/New_York',
     'currency','USD',
     'theme',jsonb_build_object('business_draft',jsonb_build_object(
+      'requestedVisibility','public',
       'whenMode','single',
       'when',jsonb_build_object(
         'date','2028-09-23','doorsOpen','19:30','endsAt','22:00',
@@ -54,13 +55,18 @@ BEGIN
   END IF;
 
   v_result := public.business_create_event_draft(v_brand,
-    jsonb_build_object('title','Past first occurrence','timezone','UTC','currency','USD'));
+    jsonb_build_object('title','Past first occurrence','timezone','UTC','currency','USD',
+      'theme',jsonb_build_object('business_draft',jsonb_build_object(
+        'requestedVisibility','public'))));
   v_past_first := (v_result#>>'{event,id}')::uuid;
   INSERT INTO public.event_dates(event_id,start_at,end_at,timezone,is_master)
   VALUES
     (v_past_first,now()-interval '2 days',now()-interval '47 hours','UTC',true),
     (v_past_first,now()+interval '2 days',now()+interval '49 hours','UTC',false);
-  UPDATE public.events SET status='scheduled',is_multi_date=true WHERE id=v_past_first;
+  UPDATE public.events SET status='scheduled',is_multi_date=true,
+    theme=theme||jsonb_build_object('business_event',jsonb_build_object(
+      'requestedVisibility','public'))
+  WHERE id=v_past_first;
   BEGIN
     PERFORM public.business_unpublish_event_to_draft(v_past_first);
     v_failures := array_append(v_failures,
@@ -70,11 +76,16 @@ BEGIN
   END;
 
   v_result := public.business_create_event_draft(v_brand,
-    jsonb_build_object('title','Waitlisted future event','timezone','UTC','currency','USD'));
+    jsonb_build_object('title','Waitlisted future event','timezone','UTC','currency','USD',
+      'theme',jsonb_build_object('business_draft',jsonb_build_object(
+        'requestedVisibility','public'))));
   v_waitlisted := (v_result#>>'{event,id}')::uuid;
   INSERT INTO public.event_dates(event_id,start_at,end_at,timezone,is_master)
   VALUES(v_waitlisted,now()+interval '7 days',now()+interval '7 days 2 hours','UTC',true);
-  UPDATE public.events SET status='scheduled' WHERE id=v_waitlisted;
+  UPDATE public.events SET status='scheduled',
+    theme=theme||jsonb_build_object('business_event',jsonb_build_object(
+      'requestedVisibility','public'))
+  WHERE id=v_waitlisted;
   INSERT INTO public.ticket_types(id,event_id,name,currency,is_free,is_unlimited,waitlist_enabled)
   VALUES(v_ticket_type,v_waitlisted,'Waitlist tier','USD',true,true,true);
   INSERT INTO public.waitlist_entries(event_id,ticket_type_id,email,status)

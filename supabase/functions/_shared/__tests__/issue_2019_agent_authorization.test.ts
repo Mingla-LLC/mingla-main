@@ -6,6 +6,13 @@ import { ToolError } from "../agentToolHelpers.ts";
 const assert = (value: unknown, message: string) => { if (!value) throw new Error(message); };
 const UUID = "11111111-1111-4111-8111-111111111111";
 const PARTNER = "33333333-3333-4333-8333-333333333333";
+const VALID_CREATE_EVENT_ARGS = {
+  brand_id: UUID,
+  title: "Test",
+  when_mode: "single",
+  start_at: "2027-01-01T00:00:00Z",
+  visibility: "public",
+};
 const tool = (name: string) => {
   const found = AGENT_TOOLS.find((candidate) => candidate.name === name);
   if (!found) throw new Error(`missing tool fixture: ${name}`);
@@ -65,14 +72,14 @@ function client(rank: number, required: number, deedOwner = false, rpcError = fa
 
 Deno.test("#2019 canonical role boundary is caller-bound and monotonic", async () => {
   const createEvent = tool("create_event");
-  await authorizeAgentTool(createEvent, { brand_id: UUID, title: "Test", when_mode: "single", start_at: "2027-01-01T00:00:00Z" }, client(40, 40), UUID);
-  await authorizeAgentTool(createEvent, { brand_id: UUID, title: "Test", when_mode: "single", start_at: "2027-01-01T00:00:00Z" }, client(50, 40), UUID);
+  await authorizeAgentTool(createEvent, VALID_CREATE_EVENT_ARGS, client(40, 40), UUID);
+  await authorizeAgentTool(createEvent, VALID_CREATE_EVENT_ARGS, client(50, 40), UUID);
   await authorizeAgentTool(
     tool("get_payout_status"),
     { brand_id: UUID }, client(40, 30), UUID,
   );
   let denied = false;
-  try { await authorizeAgentTool(createEvent, { brand_id: UUID, title: "Test", when_mode: "single", start_at: "2027-01-01T00:00:00Z" }, client(30, 40), UUID); }
+  try { await authorizeAgentTool(createEvent, VALID_CREATE_EVENT_ARGS, client(30, 40), UUID); }
   catch (e) { denied = e instanceof ToolError && e.code === "ROLE_DENIED"; }
   assert(denied, "one-rank-below caller reached executor boundary");
 });
@@ -110,7 +117,7 @@ Deno.test("#2019 full rank x operation-class matrix", async () => {
         await authorizeAgentTool(
           registered,
           name === "create_event"
-            ? { brand_id: UUID, title: "Test", when_mode: "single", start_at: "2027-01-01T00:00:00Z" }
+            ? VALID_CREATE_EVENT_ARGS
             : name === "draft_campaign"
               ? { brand_id: UUID, title: "Test" }
               : name === "update_brand"

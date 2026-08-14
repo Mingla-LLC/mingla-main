@@ -29,7 +29,7 @@ BEGIN
   PERFORM set_config('request.jwt.claim.role','authenticated',true);
 
   v_args:=jsonb_build_object(
-    'brand_id',v_brand,'title','Exactly once launch','when_mode','single','start_at','2028-08-14T20:00:00Z',
+    'brand_id',v_brand,'title','Exactly once launch','visibility','public','when_mode','single','start_at','2028-08-14T20:00:00Z',
     'end_at','2028-08-14T22:00:00Z','timezone','America/New_York','city','New York',
     'party_types',jsonb_build_array('birthday-party'),'vibe_tags',jsonb_build_array('social'),
     'music_genres',jsonb_build_array('house'),'tickets',jsonb_build_array(
@@ -134,7 +134,7 @@ BEGIN
   )) THEN RAISE EXCEPTION 'canonical cover clear left a partial tuple';END IF;
 
   v_args:=jsonb_build_object(
-    'brand_id',v_brand,'title','Two date launch','when_mode','multi_date',
+    'brand_id',v_brand,'title','Two date launch','visibility','public','when_mode','multi_date',
     'timezone','America/New_York','city','New York',
     'party_types',jsonb_build_array('birthday-party'),'vibe_tags',jsonb_build_array('social'),
     'music_genres',jsonb_build_array('house'),'multi_dates',jsonb_build_array(
@@ -175,7 +175,7 @@ BEGIN
   END;
 
   v_args:=jsonb_build_object(
-    'brand_id',v_brand,'title','Weekly launch','when_mode','recurring',
+    'brand_id',v_brand,'title','Weekly launch','visibility','public','when_mode','recurring',
     'start_at','2028-10-01T20:00:00Z','end_at','2028-10-01T22:00:00Z','timezone','UTC','city','London',
     'party_types',jsonb_build_array('birthday-party'),'vibe_tags',jsonb_build_array('social'),
     'music_genres',jsonb_build_array('house'),
@@ -209,9 +209,9 @@ BEGIN
     IF SQLERRM NOT LIKE '%operation_not_executing%' THEN RAISE;END IF;
   END;
 
-  INSERT INTO public.event_dates(event_id,start_at,end_at,timezone,is_master)
-  VALUES(v_event_id,'2028-08-14T20:00:00Z','2028-08-14T22:00:00Z','America/New_York',true);
-  UPDATE public.events SET status='scheduled' WHERE id=v_event_id;
+  PERFORM public.issue_1719_publish_event_with_poster(
+    v_event_id,public.business_event_draft_payload_from_graph(v_event_id),1
+  );
   PERFORM public.business_cancel_event(v_event_id);
   IF NOT EXISTS(
     SELECT 1 FROM public.event_cancel_refund_runs
