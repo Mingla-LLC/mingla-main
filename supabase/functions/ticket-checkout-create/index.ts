@@ -604,11 +604,7 @@ export const createTicketCheckoutCreateHandler = (
         body.attribution_click_id.length > 0
       ? body.attribution_click_id
       : null;
-    await persistAttributionClickId(
-      supabase as never,
-      checkoutSessionId,
-      attributionClickId,
-    );
+    await persistAttributionClickId(supabase as never, checkoutSessionId, attributionClickId);
 
     const totalCents = Number(session.totalCents ?? 0);
     // ORCH-1034 — the session/ticket currency (ticket → event currency). This is
