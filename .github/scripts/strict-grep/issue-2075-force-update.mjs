@@ -50,6 +50,11 @@ function validate(sources) {
   requireText("hostGate", "borderRadius: 999", "Host update button must stay fully rounded");
   requireText("consumerGate", "createAppVersionCoordinator", "Consumer gate must use bounded coordinator");
   requireText("hostGate", "foregroundEvent", "Host gate must consume the existing root lifecycle signal");
+  requireText(
+    "hostGate",
+    'foregroundEvent !== null && snapshot.phase !== "required"',
+    "Host must veil a pending native foreground check before old UI can render",
+  );
   if (sources.hostGate.includes("AppState.addEventListener")) {
     failures.push("Host gate must not add a duplicate AppState listener");
   }
@@ -121,6 +126,20 @@ if (process.argv.includes("--self-test")) {
   };
   if (!validate(reverted).some((failure) => failure.includes("Consumer root"))) {
     throw new Error("self-test failed: true gate revert was not detected");
+  }
+  const foregroundRaceReverted = {
+    ...sources,
+    hostGate: sources.hostGate.replace(
+      'foregroundEvent !== null && snapshot.phase !== "required"',
+      'foregroundEvent === null && snapshot.phase !== "required"',
+    ),
+  };
+  if (
+    !validate(foregroundRaceReverted).some((failure) =>
+      failure.includes("pending native foreground check")
+    )
+  ) {
+    throw new Error("self-test failed: Host foreground race revert was not detected");
   }
   console.log("#2075 force-update strict gate self-test: PASS");
   process.exit(0);

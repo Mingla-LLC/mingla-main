@@ -86,7 +86,10 @@ export function MandatoryUpdateGate({
   if (Platform.OS === "web") {
     return <>{children}</>;
   }
-  if (foregroundEvent !== null || snapshot.phase === "checking") {
+  if (
+    snapshot.phase === "checking" ||
+    (foregroundEvent !== null && snapshot.phase !== "required")
+  ) {
     return <VersionDecisionVeil />;
   }
   if (snapshot.phase === "allowed") return <>{children}</>;

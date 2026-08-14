@@ -80,4 +80,26 @@ describe("#2075 Host app-version happy path", () => {
     });
     expect(fetchCount).toBe(1);
   });
+
+  it("lets a fresh lowered floor win when cache persistence fails", async () => {
+    const reports: string[] = [];
+    const coordinator = new VersionGateCoordinator({
+      platform: "android",
+      installedVersion: "1.1.4",
+      loadCache: async () => JSON.stringify(policy()),
+      saveCache: async () => {
+        throw new Error("storage unavailable");
+      },
+      fetchPolicy: async () => policy({ minimumVersion: "1.1.4" }),
+      report: (outcome) => reports.push(outcome),
+    });
+
+    await expect(coordinator.check(true)).resolves.toMatchObject({
+      phase: "allowed",
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(coordinator.getSnapshot()).toMatchObject({ phase: "allowed" });
+    expect(reports).toContain("policy_cache_write_failed");
+  });
 });
