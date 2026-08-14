@@ -25,6 +25,7 @@ on:
       - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round4.implementor.test.sql"
       - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round4.adversarial.test.sql"
       - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round5.implementor.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round5.adversarial.test.sql"
       - "mingla-business/src/**"
       - ".github/scripts/strict-grep/issue-1972-ari-event-lifecycle.mjs"
       - ".github/workflows/issue-1972-ari-event-lifecycle.yml"
@@ -52,6 +53,7 @@ on:
       - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round4.implementor.test.sql"
       - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round4.adversarial.test.sql"
       - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round5.implementor.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round5.adversarial.test.sql"
       - "mingla-business/src/**"
       - ".github/scripts/strict-grep/issue-1972-ari-event-lifecycle.mjs"
       - ".github/workflows/issue-1972-ari-event-lifecycle.yml"
@@ -140,3 +142,4 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round4.implementor.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round4.adversarial.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round5.implementor.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round5.adversarial.test.sql
