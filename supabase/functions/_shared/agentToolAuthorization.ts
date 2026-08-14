@@ -15,6 +15,7 @@ type AuthContext = { brandId: string | null; resource: AgentResourceKind };
 
 const EVENT_TYPE_BY_TOOL: Readonly<Record<string, "experience" | "rsvp" | "trip">> = Object.freeze({
   publish_experience: "experience", update_experience: "experience", delete_experience: "experience",
+  unpublish_experience: "experience", manage_experience_stops: "experience",
   update_trip: "trip", publish_trip: "trip", delete_trip: "trip", cancel_trip_booking: "trip",
   publish_rsvp: "rsvp", set_rsvp_guest_status: "rsvp", refund_rsvp_contribution: "rsvp",
   list_guest_roster: "rsvp", set_guest_approval: "rsvp",
@@ -36,6 +37,7 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<Record<string, AgentAuthorizatio
   set_event_cover: role("event_manager", "event"), set_event_guest_privacy: role("event_manager", "event"),
   upsert_ticket_tier: role("event_manager", "event"), set_pricing_switches: role("event_manager", "event"),
   publish_experience: role("event_manager", "event"), update_experience: role("event_manager", "event"),
+  manage_experience_stops: role("event_manager", "event"), unpublish_experience: role("event_manager", "event"),
   delete_experience: role("event_manager", "event"), create_trip: role("event_manager", "brand"),
   update_trip: role("event_manager", "event"), publish_trip: role("event_manager", "event"),
   delete_trip: role("event_manager", "event"), create_rsvp: role("event_manager", "brand"),

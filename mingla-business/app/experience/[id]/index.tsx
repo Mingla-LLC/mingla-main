@@ -68,6 +68,7 @@ import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 import { summarizeEventMoney } from "../../../src/utils/moneySummary";
 import { offeringActivityFromOrders } from "../../../src/utils/offeringActivityFromOrders";
 import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
+import { unpublishExperienceToDraft } from "../../../src/services/experienceDetailService";
 
 function formatCurrency(cents: number, currency: string): string {
   try {
@@ -132,6 +133,8 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
   const [manageMenuVisible, setManageMenuVisible] = useState(false);
   const [cancelDialogVisible, setCancelDialogVisible] = useState(false);
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
+  const [unpublishDialogVisible, setUnpublishDialogVisible] = useState(false);
+  const [unpublishSubmitting, setUnpublishSubmitting] = useState(false);
   const [toast, setToast] = useState<{
     visible: boolean;
     kind: "success" | "warn" | "error" | "info";
@@ -432,6 +435,19 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           )}
         </GlassCard>
 
+        {experience.status === "scheduled" ? (
+          <View style={styles.cancelWrap}>
+            <Button
+              label="Return experience to draft"
+              variant="ghost"
+              size="md"
+              onPress={() => setUnpublishDialogVisible(true)}
+              fullWidth
+              testID="experience-dashboard-unpublish-cta"
+            />
+          </View>
+        ) : null}
+
         {experience.status !== "ended" &&
         experience.status !== "cancelled" &&
         experience.status !== "draft" ? (
@@ -497,6 +513,39 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           }
         />
       ) : null}
+
+      <ConfirmDialog
+        visible={unpublishDialogVisible}
+        onClose={() => {
+          if (unpublishSubmitting) return;
+          setUnpublishDialogVisible(false);
+        }}
+        onConfirm={async () => {
+          setUnpublishSubmitting(true);
+          try {
+            await unpublishExperienceToDraft(experience.id);
+            setUnpublishDialogVisible(false);
+            setToast({ visible: true, kind: "success", message: "Experience returned to draft." });
+            await detailQuery.refetch();
+          } catch (e) {
+            setToast({
+              visible: true,
+              kind: "error",
+              message: e instanceof Error ? e.message : "Couldn't return this experience to draft.",
+            });
+          } finally {
+            setUnpublishSubmitting(false);
+          }
+        }}
+        title="Return this experience to draft?"
+        description="Its public dates and checkout will disappear. Your stops, pricing, cover, and settings will remain available for editing."
+        confirmLabel="Return to draft"
+        cancelLabel="Keep it published"
+        confirmLoading={unpublishSubmitting}
+        confirmDisabled={unpublishSubmitting}
+        closeDisabled={unpublishSubmitting}
+        testID="experience-dashboard-unpublish-dialog"
+      />
 
       <ConfirmDialog
         visible={cancelDialogVisible}

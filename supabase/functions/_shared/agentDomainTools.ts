@@ -311,48 +311,113 @@ const setPricingSwitches = writeTool(
 
 const publishExperience = writeTool(
   "publish_experience",
-  "Publish a draft experience via issue_1719_publish_experience_with_poster.",
-  { event_id: UUID },
+  "Publish a draft experience from its complete fresh server graph. Missing publish requirements fail without partial writes.",
+  { event_id: UUID, expected_revision: { type: "string", format: "date-time" }, patch: { type: "object" } },
   ["event_id"],
   async (args, client, userId) => {
     const { eventId, brandId } = await requireEvent(args, client, userId);
     const { data: paid } = await client.from("ticket_types").select("id").eq("event_id", eventId).gt("price_cents", 0).limit(1);
     if (paid && paid.length > 0) await assertCanCollect(client, brandId);
-    return await callRpc(client, "issue_1719_publish_experience_with_poster", {
+    return await callRpc(client, "business_apply_experience_action", {
       p_event_id: eventId,
-      p_draft_payload: {},
-      p_client_revision: null,
+      p_patch: args.patch ?? {},
+      p_action: "publish",
+      p_expected_revision: args.expected_revision ?? null,
+      p_reason: null,
     });
   },
 );
 
 const updateExperience = writeTool(
   "update_experience",
-  "Update title/description on an owned experience (events row).",
-  { event_id: UUID, title: STR, description: { type: "string" } },
+  "Compose a typed patch over the fresh canonical experience graph. Draft and scheduled/live lifecycles use their existing server owners.",
+  {
+    event_id: UUID,
+    expected_revision: { type: "string", format: "date-time" },
+    title: STR,
+    description: { type: "string", maxLength: 500 },
+    experience_intents: { type: "array", minItems: 1, maxItems: 4, items: { type: "string", enum: ["adventurous", "first-date", "romantic", "group-fun"] } },
+    currency: { type: "string", minLength: 3, maxLength: 3 },
+    location_mode: { type: "string", enum: ["single", "per_stop"] },
+    pricing_mode: { type: "string", enum: ["whole", "per_stop"] },
+    whole_price_cents: { type: "integer", minimum: 0 },
+    is_free: { type: "boolean" },
+    capacity: { type: "integer", minimum: 1, nullable: true },
+    timezone: { type: "string" },
+    whenMode: { type: "string", enum: ["single", "multi_date", "recurring"] },
+    when: { type: "object" },
+    multiDates: { type: "array", items: { type: "object" } },
+    recurrence_rules: { type: ["array", "object", "null"] },
+    cover: { type: "object" },
+    edit_reason: { type: "string", minLength: 10, maxLength: 200 },
+  },
   ["event_id"],
   async (args, client, userId) => {
     const { eventId } = await requireEvent(args, client, userId);
-    const patch: Record<string, unknown> = {};
-    if (isString(args.title)) patch.title = args.title;
-    if (typeof args.description === "string") patch.description = args.description;
+    const patch = { ...args };
+    delete patch.event_id;
+    delete patch.expected_revision;
+    delete patch.edit_reason;
     if (Object.keys(patch).length === 0) throw new ToolError("INVALID_ARGS", "Nothing to update");
-    const { data, error } = await client.from("events").update(patch).eq("id", eventId).select("id, title").single();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+    return await callRpc(client, "business_apply_experience_action", {
+      p_event_id: eventId,
+      p_patch: patch,
+      p_action: "update",
+      p_expected_revision: args.expected_revision ?? null,
+      p_reason: args.edit_reason ?? null,
+    });
+  },
+);
+
+const manageExperienceStops = writeTool(
+  "manage_experience_stops",
+  "Atomically replace the ordered experience stops and canonical intents using persisted media references only.",
+  {
+    event_id: UUID,
+    expected_revision: { type: "string", format: "date-time" },
+    stops: { type: "array", minItems: 0, maxItems: 5, items: { type: "object" } },
+    experience_intents: { type: "array", minItems: 1, maxItems: 4, items: { type: "string", enum: ["adventurous", "first-date", "romantic", "group-fun"] } },
+    edit_reason: { type: "string", minLength: 10, maxLength: 200 },
+  },
+  ["event_id", "stops", "experience_intents"],
+  async (args, client, userId) => {
+    const { eventId } = await requireEvent(args, client, userId);
+    return await callRpc(client, "business_apply_experience_action", {
+      p_event_id: eventId,
+      p_patch: { stops: args.stops, experience_intents: args.experience_intents },
+      p_action: "manage_stops",
+      p_expected_revision: args.expected_revision ?? null,
+      p_reason: args.edit_reason ?? null,
+    });
+  },
+);
+
+const unpublishExperience = writeTool(
+  "unpublish_experience",
+  "Take an eligible future unsold scheduled experience back to a private draft while preserving its editable graph.",
+  { event_id: UUID, expected_revision: { type: "string", format: "date-time" } },
+  ["event_id"],
+  async (args, client, userId) => {
+    const { eventId } = await requireEvent(args, client, userId);
+    return await callRpc(client, "business_unpublish_experience_to_draft", {
+      p_event_id: eventId,
+      p_expected_revision: args.expected_revision ?? null,
+    });
   },
 );
 
 const deleteExperience = writeTool(
   "delete_experience",
-  "Soft-delete an owned experience.",
-  { event_id: UUID },
-  ["event_id"],
+  "Discard a draft experience only. The user must type its exact current title; scheduled/live experiences are never deleted by this action.",
+  { event_id: UUID, confirm_title: STR },
+  ["event_id", "confirm_title"],
   async (args, client, userId) => {
     const { eventId } = await requireEvent(args, client, userId);
-    const { error } = await client.from("events").update({ deleted_at: new Date().toISOString() }).eq("id", eventId);
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return { id: eventId, deleted: true };
+    const { data: current, error } = await client.from("events").select("title, status").eq("id", eventId).maybeSingle();
+    if (error || !current) throw new ToolError("BRAND_ACCESS_DENIED", "That experience is unavailable");
+    if (current.status !== "draft") throw new ToolError("EXPERIENCE_NOT_DISCARDABLE", "Only a draft can be discarded; unpublish or cancel this experience instead");
+    if (args.confirm_title !== current.title) throw new ToolError("INVALID_ARGS", "Type the exact experience title to confirm discard");
+    return await callRpc(client, "business_discard_experience_draft", { p_event_id: eventId });
   },
 );
 
@@ -1208,6 +1273,8 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   setPricingSwitches,
   publishExperience,
   updateExperience,
+  manageExperienceStops,
+  unpublishExperience,
   deleteExperience,
   createTrip,
   updateTrip,

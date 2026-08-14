@@ -8597,3 +8597,22 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 ### I-PROPOSED-1008-TURNOUT-INPUT-SINGLE-SOURCE (DRAFT)
 - **Rule:** Every turnout run for the in-flow card, the #1742 gate, and future Business creator surfaces builds its engine payload and collision-free cache key exclusively through `turnoutInput.ts`.
 - **Enforcement:** the issue #1734 store-isolation strict-grep guard includes the turnout client modules; issue #1008 tests pin canonical payload, date, capacity, price, and key behavior.
+
+---
+
+## DRAFT — issue #1973 (canonical Ari experience lifecycle)
+
+### I-PROPOSED-1973-ONE-EXPERIENCE-GRAPH (DRAFT)
+
+- **Rule:** Ari, Snap, and Business web/iOS/Android mutate one canonical experience graph through the existing Business transaction owners; no agent executor directly writes lifecycle, stops, tickets, dates, theme/privacy, or media columns.
+- **Enforcement:** `business_create_experience_graph`, `business_apply_experience_action`, canonical full readback, and issue #1973 append-only regression suites. Activate only after #1972 integration and independent deployed runtime proof.
+
+### I-PROPOSED-1973-SAFE-EXPERIENCE-DEMOTION (DRAFT)
+
+- **Rule:** Only a future unsold dependency-free scheduled experience can return to draft; demotion atomically removes public dates and checkout exposure while preserving the private editable graph. Draft discard never applies to a published lifecycle.
+- **Enforcement:** `business_unpublish_experience_to_draft`, `business_discard_experience_draft`, Business shared manage action, and issue #1973 lifecycle regressions.
+
+### I-PROPOSED-1973-EXPERIENCE-MEDIA-PROVENANCE (DRAFT)
+
+- **Rule:** Ari can retain only media already persisted on the caller-bound experience; camera/file/provider acquisition remains a guided picker flow and the model cannot author a raw URL.
+- **Enforcement:** server-side persisted-reference checks in `business_apply_experience_action`, strict tool schemas, the `/experience/snap` handoff, and forged-reference regressions.
