@@ -2,65 +2,44 @@ import { describe, expect, test } from "@jest/globals";
 import fs from "node:fs";
 import path from "node:path";
 
-// ORCH-1084 [business-logo-wordmark] — the welcome/auth screen must present the
-// OFFICIAL Mingla Business logo image as the single brand mark, NOT the orange
-// uppercase "Mingla Business" text wordmark. This screen is the shared RN
-// component rendered on web (business.usemingla.com), iOS, and Android, so this
-// one assertion covers all three surfaces.
-//
-// fails-on-revert verified at e8e3f2c (pre-fix commit; see implementation report)
-
 const repoRoot = path.resolve(__dirname, "../..");
-const readBusinessFile = (relativePath: string): string =>
-  fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+const source = fs.readFileSync(
+  path.join(repoRoot, "src/components/auth/BusinessWelcomeScreen.tsx"),
+  "utf8",
+);
 
-const SCREEN = "src/components/auth/BusinessWelcomeScreen.tsx";
-
-describe("ORCH-1084 BusinessWelcomeScreen official-logo wordmark", () => {
-  test("SC-1 renders the official Mingla Business logo Image in a stable square box", () => {
-    const source = readBusinessFile(SCREEN);
-
-    // The official square business-logo asset is the brand mark.
-    // ISSUE-1001 [brand logo consolidation] — sourced from the canonical
-    // master package (packages/brand-assets/mingla-business-logo.png); the
-    // app-local require is gone. Intent unchanged: the official square
-    // lockup, not a text badge, is the single brand mark.
+describe("issue #2052 Business welcome canonical wordmark", () => {
+  test("renders the regular wide Mingla wordmark on native and real-DOM web paths", () => {
     expect(source).toContain(
-      'import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets"',
+      'import { MINGLA_WORDMARK } from "@mingla/brand-assets"',
     );
-    expect(source).toContain("const logo = MINGLA_BUSINESS_LOGO;");
-    // Native still renders as an <Image source={logo} ...> with contain sizing.
-    expect(source).toMatch(/<Image\s+source=\{logo\}/);
-    expect(source).toContain('resizeMode="contain"');
-    // Web uses a DOM <img> because RN Web's internal Image <img> can remain
-    // opacity-zero even when the wrapper is square.
+    expect(source).toContain("const logo = MINGLA_WORDMARK;");
+    expect(source).not.toContain("MINGLA_BUSINESS_LOGO");
+    expect(source).toContain(
+      'const WEB_LOGO_SRC = "/brand/mingla-wordmark.png";',
+    );
+    expect(source).not.toContain("Image.resolveAssetSource(MINGLA_WORDMARK).uri");
     expect(source).toContain('React.createElement("img"');
-    expect(source).toContain('const WEB_LOGO_SRC = "/brand/mingla-business-logo.png";');
     expect(source).toContain("src: WEB_LOGO_SRC");
-    expect(source).toContain('alt: "Mingla Business"');
-    expect(source).toContain("objectFit: \"contain\"");
+    expect(source).toContain('alt: "Mingla"');
+    expect(source).toContain('role: "img"');
+    expect(source).toContain('objectFit: "contain"');
+    expect(source).toContain('display: "block"');
     expect(source).toContain("opacity: 1");
-    // The Image is labelled for the brand (replaces the old text badge).
-    expect(source).toContain('accessibilityLabel="Mingla Business"');
-    // RN Web needs explicit dimensions here. A width-only + aspectRatio style
-    // passed source tests but leaked the 2000px natural asset height live.
-    expect(source).toContain("const LOGO_SIZE = Math.min(s(220), 220);");
-    expect(source).toMatch(/logoContainer:\s*\{[\s\S]*?width:\s*LOGO_SIZE,[\s\S]*?height:\s*LOGO_SIZE,/);
-    expect(source).toMatch(/logo:\s*\{[\s\S]*?width:\s*LOGO_SIZE,[\s\S]*?height:\s*LOGO_SIZE,/);
-    // Square aspect ratio remains as belt-and-braces documentation so the
-    // 2000x2000 official lockup is not letterboxed into the old wide
-    // 1356/480 consumer-wordmark ratio.
-    expect(source).toContain("aspectRatio: 1");
-    expect(source).not.toContain("aspectRatio: 1356 / 480");
+    expect(source).toContain('accessibilityLabel="Mingla"');
+    expect(source).toContain('resizeMode="contain"');
   });
 
-  test("SC-2 does NOT render the orange 'Mingla Business' text wordmark badge", () => {
-    const source = readBusinessFile(SCREEN);
-
-    // The removed text badge: <Text style={styles.businessBadge}>Mingla Business</Text>
-    expect(source).not.toMatch(/<Text[^>]*styles\.businessBadge[^>]*>/);
-    expect(source).not.toContain(">Mingla Business</Text>");
-    // Its dedicated style is gone too.
-    expect(source).not.toMatch(/businessBadge:\s*\{/);
+  test("uses the approved compact capsule and fully contained wordmark", () => {
+    expect(source).toContain("const WELCOME_LOGO_PILL_WIDTH = 140;");
+    expect(source).toContain("const WELCOME_LOGO_PILL_HEIGHT = 54;");
+    expect(source).toContain("const WELCOME_WORDMARK_WIDTH = 108;");
+    expect(source).toContain("const WELCOME_DESKTOP_PILL_SCALE = 1.2;");
+    expect(source).toContain("{ width: logoPillWidth, height: logoPillHeight }");
+    expect(source).toContain("const logoHeight = logoWidth * 480 / 1356;");
+    expect(source).toContain('backgroundColor: "#ffffff"');
+    expect(source).toContain("borderRadius: 999");
+    expect(source).toContain("aspectRatio: 1356 / 480");
+    expect(source).not.toMatch(/aspectRatio:\s*1\s*,/);
   });
 });

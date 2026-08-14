@@ -49,6 +49,8 @@ export const MASTERS = [
 
 /** mirror path → master path (mirror bytes MUST equal master bytes). */
 export const MIRRORS = {
+  "mingla-business/public/brand/mingla-wordmark.png":
+    `${MASTER_DIR}/mingla-wordmark.png`,
   "mingla-business/public/brand/mingla-business-logo.png":
     `${MASTER_DIR}/mingla-business-logo.png`,
   "mingla-business/public/brand/mingla-business-logo.svg":

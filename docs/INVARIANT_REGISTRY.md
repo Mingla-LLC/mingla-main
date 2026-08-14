@@ -1,5 +1,12 @@
 # Invariant Registry
 
+## DRAFT — issue #2052 (video welcome-screen parity)
+
+### I-PROPOSED-2052-VIDEO-WELCOME-PARITY (DRAFT)
+- **Rule:** Explorer native and Host native/web logged-out welcome screens keep one presentation owner per app; the regular orange `MINGLA_WORDMARK` is fully contained in the compact white capsule, exact two-line product promise and legal text remain white with restrained shadow, and every idle auth action remains a white surface with dark content above an always-present local poster and 74% black veil. Native bundles require only the approved portrait media and Host web only the approved landscape media. Reduced motion, save-data, lifecycle pause, unsupported video, and playback failure stay poster-safe and never own or block authentication or navigation.
+- **Enforcement:** `.github/scripts/strict-grep/issue-2052-video-welcome-contract.mjs`, the Business happy-path render suite, the amended canonical-wordmark suites, and the tester-owned independent adversarial gate/runtime matrix required before activation.
+- **Status:** DRAFT at IMPLEMENT; activate only after independent tester PASS and verified merge.
+
 ## DRAFT — issue #2000 (Ari capability truth ledger)
 
 ### I-PROPOSED-2000-ARI-CAPABILITY-LEDGER-FAIL-CLOSED (DRAFT)

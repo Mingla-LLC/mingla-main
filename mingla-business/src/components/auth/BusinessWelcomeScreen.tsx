@@ -15,10 +15,10 @@ import {
   AccessibilityInfo,
   Keyboard,
   TextInput,
+  useWindowDimensions,
 } from "react-native";
 import { AppleLogo } from "../ui/BrandIcons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 import * as WebBrowser from "expo-web-browser";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import { Icon } from "../ui/Icon";
@@ -28,22 +28,29 @@ import {
   shadows,
   colors,
   fontWeights,
-  backgroundWarmGlow,
 } from "../../constants/designSystem";
 import { s, vs } from "../../utils/responsive";
-// ISSUE-1001 — the official business lockup now imports from the canonical
-// master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
-// the app-local copy is deleted. WEB_LOGO_SRC below is UNCHANGED — it serves
-// from mingla-business/public/brand/, a parity-checked mirror.
-import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
+import { MINGLA_WORDMARK } from "@mingla/brand-assets";
+import { ScrollView } from "../../wrappers/SmartScrollView";
+// @ts-ignore -- Expo resolves the required .native/.web implementation per platform.
+import { WelcomeVideoBackground } from "./WelcomeVideoBackground";
 
 const googleIcon = require("../../../assets/google_icon.png");
-const logo = MINGLA_BUSINESS_LOGO;
+const logo = MINGLA_WORDMARK;
 
 const TERMS_URL = "https://usemingla.com/terms-of-service";
 const PRIVACY_URL = "https://usemingla.com/privacy-policy";
-const LOGO_SIZE = Math.min(s(220), 220);
-const WEB_LOGO_SRC = "/brand/mingla-business-logo.png";
+const WELCOME_TAGLINE = "Great places and experiences\ndeserve to be discovered.";
+const WELCOME_TAGLINE_ACCESSIBILITY =
+  "Great places and experiences deserve to be discovered.";
+const WELCOME_VIDEO_VEIL = "rgba(0, 0, 0, 0.74)";
+const WELCOME_CONTENT_GUTTER = 24;
+const WELCOME_LOGO_PILL_WIDTH = 140;
+const WELCOME_LOGO_PILL_HEIGHT = 54;
+const WELCOME_WORDMARK_WIDTH = 108;
+const WELCOME_DESKTOP_PILL_SCALE = 1.2;
+const WELCOME_DESKTOP_BREAKPOINT = 768;
+const WEB_LOGO_SRC = "/brand/mingla-wordmark.png";
 
 export interface BusinessWelcomeScreenProps {
   onGoogleSignIn: () => Promise<void>;
@@ -74,17 +81,6 @@ type WelcomeMode = "idle" | "email-input" | "otp-input" | "otp-verifying";
 
 const RESEND_COOLDOWN_MS = 60_000;
 
-const HEADLINE_WORDS = [
-  "List",
-  "experiences,",
-  "reach",
-  "guests,",
-  "and",
-  "grow",
-  "\u2014",
-  "simply.",
-];
-
 export default function BusinessWelcomeScreen({
   onGoogleSignIn,
   onAppleSignIn,
@@ -93,6 +89,7 @@ export default function BusinessWelcomeScreen({
   onBack,
 }: BusinessWelcomeScreenProps) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const [isGoogleSignInInProgress, setIsGoogleSignInInProgress] = useState(false);
   const [isAppleSignInInProgress, setIsAppleSignInInProgress] = useState(false);
 
@@ -114,14 +111,9 @@ export default function BusinessWelcomeScreen({
     isGoogleSignInInProgress || isAppleSignInInProgress;
 
   const logoOpacity = useRef(new Animated.Value(0)).current;
-  const logoScale = useRef(new Animated.Value(0.85)).current;
-
-  const wordAnims = useRef(
-    HEADLINE_WORDS.map(() => ({
-      opacity: new Animated.Value(0),
-      translateY: new Animated.Value(18),
-    }))
-  ).current;
+  const logoScale = useRef(new Animated.Value(0.96)).current;
+  const taglineOpacity = useRef(new Animated.Value(0)).current;
+  const taglineTranslateY = useRef(new Animated.Value(12)).current;
 
   const appleOpacity = useRef(new Animated.Value(0)).current;
   const appleTranslateY = useRef(new Animated.Value(25)).current;
@@ -133,6 +125,8 @@ export default function BusinessWelcomeScreen({
   const termsOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    let mounted = true;
+    let entrance: Animated.CompositeAnimation | undefined;
     const runAnimation = async () => {
       let reducedMotion = false;
       try {
@@ -140,76 +134,71 @@ export default function BusinessWelcomeScreen({
       } catch {
         reducedMotion = false;
       }
+      if (!mounted) return;
 
       if (reducedMotion) {
         logoOpacity.setValue(1);
         logoScale.setValue(1);
-        wordAnims.forEach((w) => {
-          w.opacity.setValue(1);
-          w.translateY.setValue(0);
-        });
+        taglineOpacity.setValue(1);
+        taglineTranslateY.setValue(0);
         appleOpacity.setValue(1);
         appleTranslateY.setValue(0);
         googleOpacity.setValue(1);
         googleTranslateY.setValue(0);
         emailOpacity.setValue(1);
         emailTranslateY.setValue(0);
-        termsOpacity.setValue(0.8);
+        termsOpacity.setValue(1);
         return;
       }
 
-      Animated.parallel([
+      entrance = Animated.parallel([
+        Animated.parallel([
         Animated.timing(logoOpacity, {
           toValue: 1,
-          duration: 600,
+          duration: 400,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(logoScale, {
           toValue: 1,
-          duration: 600,
+          duration: 400,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
-      ]).start();
-
-      setTimeout(() => {
-        Animated.stagger(
-          70,
-          wordAnims.map((w) =>
-            Animated.parallel([
-              Animated.timing(w.opacity, {
-                toValue: 1,
-                duration: 350,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: true,
-              }),
-              Animated.spring(w.translateY, {
-                toValue: 0,
-                tension: 100,
-                friction: 12,
-                useNativeDriver: true,
-              }),
-            ])
-          )
-        ).start();
-      }, 400);
-
-      setTimeout(() => {
-        Animated.stagger(120, [
+        ]),
+        Animated.sequence([
+          Animated.delay(160),
+          Animated.parallel([
+            Animated.timing(taglineOpacity, {
+              toValue: 1,
+              duration: 300,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+            Animated.timing(taglineTranslateY, {
+              toValue: 0,
+              duration: 300,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
+        Animated.sequence([
+          Animated.delay(300),
+          Animated.stagger(80, [
           ...(Platform.OS === "ios" || Platform.OS === "web"
             ? [
                 Animated.parallel([
                   Animated.timing(appleOpacity, {
                     toValue: 1,
-                    duration: 400,
+                    duration: 300,
                     easing: Easing.out(Easing.cubic),
                     useNativeDriver: true,
                   }),
-                  Animated.spring(appleTranslateY, {
+                  Animated.timing(appleTranslateY, {
                     toValue: 0,
-                    tension: 80,
-                    friction: 10,
+                    duration: 300,
+                    easing: Easing.out(Easing.cubic),
                     useNativeDriver: true,
                   }),
                 ]),
@@ -218,42 +207,48 @@ export default function BusinessWelcomeScreen({
           Animated.parallel([
             Animated.timing(googleOpacity, {
               toValue: 1,
-              duration: 400,
+              duration: 300,
               easing: Easing.out(Easing.cubic),
               useNativeDriver: true,
             }),
-            Animated.spring(googleTranslateY, {
+            Animated.timing(googleTranslateY, {
               toValue: 0,
-              tension: 80,
-              friction: 10,
+              duration: 300,
+              easing: Easing.out(Easing.cubic),
               useNativeDriver: true,
             }),
           ]),
           Animated.parallel([
             Animated.timing(emailOpacity, {
               toValue: 1,
-              duration: 400,
+              duration: 300,
               easing: Easing.out(Easing.cubic),
               useNativeDriver: true,
             }),
-            Animated.spring(emailTranslateY, {
+            Animated.timing(emailTranslateY, {
               toValue: 0,
-              tension: 80,
-              friction: 10,
+              duration: 300,
+              easing: Easing.out(Easing.cubic),
               useNativeDriver: true,
             }),
           ]),
           Animated.timing(termsOpacity, {
-            toValue: 0.8,
+            toValue: 1,
             duration: 300,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
-        ]).start();
-      }, 1300);
+          ]),
+        ]),
+      ]);
+      entrance.start();
     };
 
-    runAnimation();
+    void runAnimation();
+    return () => {
+      mounted = false;
+      entrance?.stop();
+    };
   }, []);
 
   useEffect(() => {
@@ -267,12 +262,8 @@ export default function BusinessWelcomeScreen({
     return () => backHandler.remove();
   }, [onBack]);
 
-  // Sign-in screen has no ScrollView (bottom-anchored action zone with
-  // email/OTP inputs at viewport bottom). SmartScrollView/KAS doesn't fit
-  // — wrapping would change anchored → scrollable layout. JS-side
-  // keyboardPad remains until a `useKeyboardHeightJs()` wrapper hook is
-  // added (ORCH-0892-Bz follow-up; Discovery for Orchestrator).
-  // Per SPEC_ORCH-0892-B_v2 §7.F deviation note.
+  // Email/OTP inputs remain bottom-anchored rather than moving into the idle
+  // SmartScrollView. JS-side keyboardPad preserves that existing mode layout.
   useEffect(() => {
     if (Platform.OS === "web") return;
     // orch-strict-grep-allow orch-0892 — anchored sign-in (no ScrollView)
@@ -467,13 +458,290 @@ export default function BusinessWelcomeScreen({
     await WebBrowser.openBrowserAsync(PRIVACY_URL);
   };
 
-  return (
-    <LinearGradient
-      colors={[colors.background.primary, backgroundWarmGlow]}
-      style={styles.gradient}
+  const desktop = Platform.OS === "web" && width >= WELCOME_DESKTOP_BREAKPOINT;
+  const logoPillScale = desktop ? WELCOME_DESKTOP_PILL_SCALE : 1;
+  const logoPillWidth = Math.min(
+    width - WELCOME_CONTENT_GUTTER * 2,
+    WELCOME_LOGO_PILL_WIDTH * logoPillScale,
+  );
+  const logoPillHeight =
+    (logoPillWidth * WELCOME_LOGO_PILL_HEIGHT) / WELCOME_LOGO_PILL_WIDTH;
+  const logoWidth =
+    (logoPillWidth * WELCOME_WORDMARK_WIDTH) / WELCOME_LOGO_PILL_WIDTH;
+  const logoHeight = logoWidth * 480 / 1356;
+  const renderLogo = () => (
+    <Animated.View
+      style={[
+        styles.logoContainer,
+        { width: logoPillWidth, height: logoPillHeight },
+        { opacity: logoOpacity, transform: [{ scale: logoScale }] },
+      ]}
     >
+      {Platform.OS === "web" ? (
+        React.createElement("img", {
+          src: WEB_LOGO_SRC,
+          alt: "Mingla",
+          role: "img",
+          style: {
+            width: logoWidth,
+            height: logoHeight,
+            objectFit: "contain",
+            display: "block",
+            opacity: 1,
+          },
+        })
+      ) : (
+        <Image
+          source={logo}
+          style={[styles.logo, { width: logoWidth, height: logoHeight }]}
+          resizeMode="contain"
+          accessibilityLabel="Mingla"
+          accessibilityRole="image"
+        />
+      )}
+    </Animated.View>
+  );
+
+  const renderIdleAuthGroup = () => (
+    <View style={styles.authGroup}>
+      {(Platform.OS === "ios" || Platform.OS === "web") && (
+        <Animated.View
+          style={[
+            styles.buttonAnimWrapper,
+            { opacity: appleOpacity, transform: [{ translateY: appleTranslateY }] },
+          ]}
+        >
+          <TouchableOpacity
+            onPress={handleAppleSignIn}
+            style={[
+              styles.appleButton,
+              isAnyAuthInProgress && !isAppleSignInInProgress && styles.buttonDisabled,
+            ]}
+            disabled={isAnyAuthInProgress}
+            activeOpacity={0.85}
+            accessibilityLabel="Continue with Apple"
+            accessibilityRole="button"
+            accessibilityState={{
+              disabled: isAnyAuthInProgress,
+              busy: isAppleSignInInProgress,
+            }}
+          >
+            {isAppleSignInInProgress ? (
+              <ActivityIndicator size="small" color="#111827" />
+            ) : (
+              <AppleLogo size={22} color="#111827" />
+            )}
+            <Text style={styles.appleButtonText}>
+              {isAppleSignInInProgress ? "Connecting..." : "Continue with Apple"}
+            </Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      <Animated.View
+        style={[
+          styles.buttonAnimWrapper,
+          { opacity: googleOpacity, transform: [{ translateY: googleTranslateY }] },
+        ]}
+      >
+        <TouchableOpacity
+          onPress={handleGoogleSignIn}
+          style={[
+            styles.googleButton,
+            isAnyAuthInProgress && !isGoogleSignInInProgress && styles.buttonDisabled,
+          ]}
+          disabled={isAnyAuthInProgress}
+          activeOpacity={0.9}
+          accessibilityLabel="Continue with Google"
+          accessibilityRole="button"
+          accessibilityState={{
+            disabled: isAnyAuthInProgress,
+            busy: isGoogleSignInInProgress,
+          }}
+        >
+          {isGoogleSignInInProgress ? (
+            <ActivityIndicator size="small" color="#111827" />
+          ) : (
+            <Image source={googleIcon} style={styles.googleIcon} resizeMode="contain" />
+          )}
+          <Text style={styles.googleButtonText}>
+            {isGoogleSignInInProgress ? "Connecting..." : "Continue with Google"}
+          </Text>
+        </TouchableOpacity>
+      </Animated.View>
+
+      <Animated.View
+        style={[
+          styles.buttonAnimWrapper,
+          { opacity: emailOpacity, transform: [{ translateY: emailTranslateY }] },
+        ]}
+      >
+        <TouchableOpacity
+          onPress={handleStartEmailFlow}
+          style={[styles.emailButton, isAnyAuthInProgress && styles.buttonDisabled]}
+          disabled={isAnyAuthInProgress}
+          activeOpacity={0.9}
+          accessibilityLabel="Continue with Email"
+          accessibilityRole="button"
+        >
+          <Icon name="mail" size={22} color={colors.text.primary} />
+          <Text style={styles.emailButtonText}>Continue with Email</Text>
+        </TouchableOpacity>
+      </Animated.View>
+
+      <Animated.View style={[styles.termsWrapper, { opacity: termsOpacity }]}>
+        <Text style={styles.termsText}>
+          By continuing, you agree to our{" "}
+          <Text style={styles.termsLink} onPress={openTerms} accessibilityRole="link">
+            Terms of Service
+          </Text>{" "}
+          and{" "}
+          <Text style={styles.termsLink} onPress={openPrivacy} accessibilityRole="link">
+            Privacy Policy
+          </Text>
+          .
+        </Text>
+      </Animated.View>
+    </View>
+  );
+
+  const renderModeActions = () => (
+    <View
+      style={[
+        styles.actionZone,
+        {
+          paddingBottom:
+            Math.max(insets.bottom, vs(24)) +
+            (keyboardPad > 0 ? keyboardPad + 42 : 0),
+        },
+      ]}
+    >
+      {mode === "email-input" && (
+        <View style={styles.modeWrapper}>
+          <TextInput
+            style={styles.emailField}
+            value={emailInput}
+            onChangeText={setEmailInput}
+            placeholder="you@example.com"
+            placeholderTextColor={colors.text.tertiary}
+            autoCapitalize="none"
+            autoComplete="email"
+            autoCorrect={false}
+            keyboardType="email-address"
+            returnKeyType="send"
+            onSubmitEditing={() => void handleSendCode()}
+            editable={!submittingEmail}
+            autoFocus
+            accessibilityLabel="Email address"
+          />
+          <TouchableOpacity
+            onPress={() => void handleSendCode()}
+            style={[
+              styles.primaryActionButton,
+              (submittingEmail || !emailInput.trim()) && styles.buttonDisabled,
+            ]}
+            disabled={submittingEmail || !emailInput.trim()}
+            activeOpacity={0.9}
+            accessibilityLabel="Send 6-digit code"
+            accessibilityRole="button"
+            accessibilityState={{
+              disabled: submittingEmail || !emailInput.trim(),
+              busy: submittingEmail,
+            }}
+          >
+            {submittingEmail ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <Text style={styles.primaryActionButtonText}>Send code</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleBackToIdle}
+            style={styles.linkButton}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityLabel="Back to sign-in options"
+            accessibilityRole="button"
+          >
+            <Text style={styles.linkButtonText}>Back</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {mode === "otp-input" && (
+        <View style={styles.modeWrapper}>
+          <TextInput
+            style={styles.codeField}
+            value={otpInput}
+            onChangeText={handleOtpChange}
+            placeholder="••••••"
+            placeholderTextColor={colors.text.tertiary}
+            keyboardType="number-pad"
+            autoComplete="one-time-code"
+            textContentType="oneTimeCode"
+            maxLength={6}
+            editable={!submittingOtp}
+            autoFocus
+            accessibilityLabel="6-digit code"
+          />
+          <TouchableOpacity
+            onPress={() => void handleResendCode()}
+            style={styles.linkButton}
+            disabled={submittingEmail || resendSecondsLeft > 0}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityLabel={
+              resendSecondsLeft > 0
+                ? `Resend code in ${resendSecondsLeft} seconds`
+                : "Resend code"
+            }
+            accessibilityRole="button"
+            accessibilityState={{ disabled: submittingEmail || resendSecondsLeft > 0 }}
+          >
+            <Text
+              style={[
+                styles.linkButtonText,
+                (submittingEmail || resendSecondsLeft > 0) && styles.linkButtonTextDisabled,
+              ]}
+            >
+              {resendSecondsLeft > 0
+                ? `Resend code in ${resendSecondsLeft}s`
+                : "Resend code"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleEditEmail}
+            style={styles.linkButton}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityLabel="Wrong email? Edit"
+            accessibilityRole="button"
+          >
+            <Text style={styles.linkButtonTextSubtle}>Wrong email? Edit</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleBackToIdle}
+            style={styles.linkButton}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityLabel="Back to sign-in options"
+            accessibilityRole="button"
+          >
+            <Text style={styles.linkButtonTextSubtle}>Back to sign-in options</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {mode === "otp-verifying" && (
+        <View style={styles.verifyingWrapper}>
+          <ActivityIndicator size="large" color={colors.primary[500]} />
+        </View>
+      )}
+    </View>
+  );
+
+  return (
+    <View style={styles.root}>
+      <WelcomeVideoBackground />
+      <View pointerEvents="none" style={styles.videoVeil} />
       <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
         {onBack ? (
           <View style={[styles.topBar, { paddingLeft: Math.max(insets.left, spacing.md) }]}>
@@ -486,68 +754,41 @@ export default function BusinessWelcomeScreen({
               accessibilityLabel="Go back"
               accessibilityRole="button"
             >
-              <Icon name="chevL" size={28} color={colors.text.primary} />
+              <Icon name="chevL" size={28} color="#ffffff" />
             </TouchableOpacity>
           </View>
         ) : null}
 
-        <View style={styles.centerZone}>
-          <Animated.View
-            style={[
-              styles.logoContainer,
-              {
-                opacity: logoOpacity,
-                transform: [{ scale: logoScale }],
-              },
+        {mode === "idle" ? (
+          <ScrollView
+            bounces={false}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[
+              styles.idleContent,
+              { paddingBottom: Math.max(insets.bottom, WELCOME_CONTENT_GUTTER) },
             ]}
           >
-            {Platform.OS === "web" ? (
-              React.createElement("img", {
-                src: WEB_LOGO_SRC,
-                alt: "Mingla Business",
-                role: "img",
-                style: {
-                  width: LOGO_SIZE,
-                  height: LOGO_SIZE,
-                  objectFit: "contain",
-                  display: "block",
-                  opacity: 1,
+            {renderLogo()}
+            <Animated.Text
+              style={[
+                styles.tagline,
+                desktop && styles.taglineDesktop,
+                {
+                  opacity: taglineOpacity,
+                  transform: [{ translateY: taglineTranslateY }],
                 },
-              })
-            ) : (
-              <Image
-                source={logo}
-                style={styles.logo}
-                resizeMode="contain"
-                accessibilityLabel="Mingla Business"
-                accessibilityRole="image"
-              />
-            )}
-          </Animated.View>
-
-          {mode === "idle" && (
-            <View
-              style={styles.headlineRow}
-              accessibilityLabel="List experiences, reach guests, and grow — simply."
+              ]}
+              accessibilityLabel={WELCOME_TAGLINE_ACCESSIBILITY}
               accessibilityRole="header"
             >
-              {HEADLINE_WORDS.map((word, i) => (
-                <Animated.Text
-                  key={i}
-                  style={[
-                    styles.headlineWord,
-                    i === HEADLINE_WORDS.length - 1 && styles.headlineAccent,
-                    {
-                      opacity: wordAnims[i].opacity,
-                      transform: [{ translateY: wordAnims[i].translateY }],
-                    },
-                  ]}
-                >
-                  {word}{" "}
-                </Animated.Text>
-              ))}
-            </View>
-          )}
+              {WELCOME_TAGLINE}
+            </Animated.Text>
+            {renderIdleAuthGroup()}
+          </ScrollView>
+        ) : (
+          <>
+        <View style={styles.centerZone}>
+          {renderLogo()}
 
           {mode === "email-input" && (
             <Text style={styles.modeHeading} accessibilityRole="header">
@@ -586,144 +827,6 @@ export default function BusinessWelcomeScreen({
             },
           ]}
         >
-          {mode === "idle" && (
-            <>
-              {(Platform.OS === "ios" || Platform.OS === "web") && (
-                <Animated.View
-                  style={[
-                    styles.buttonAnimWrapper,
-                    {
-                      opacity: appleOpacity,
-                      transform: [{ translateY: appleTranslateY }],
-                    },
-                  ]}
-                >
-                  <TouchableOpacity
-                    onPress={handleAppleSignIn}
-                    style={[
-                      styles.appleButton,
-                      isAnyAuthInProgress &&
-                        !isAppleSignInInProgress &&
-                        styles.buttonDisabled,
-                    ]}
-                    disabled={isAnyAuthInProgress}
-                    activeOpacity={0.85}
-                    accessibilityLabel="Continue with Apple"
-                    accessibilityRole="button"
-                    accessibilityState={{
-                      disabled: isAnyAuthInProgress,
-                      busy: isAppleSignInInProgress,
-                    }}
-                  >
-                    {isAppleSignInInProgress ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
-                    ) : (
-                      <AppleLogo size={22} color="#ffffff" />
-                    )}
-                    <Text style={styles.appleButtonText}>
-                      {isAppleSignInInProgress
-                        ? "Connecting..."
-                        : "Continue with Apple"}
-                    </Text>
-                  </TouchableOpacity>
-                </Animated.View>
-              )}
-
-              <Animated.View
-                style={[
-                  styles.buttonAnimWrapper,
-                  {
-                    opacity: googleOpacity,
-                    transform: [{ translateY: googleTranslateY }],
-                  },
-                ]}
-              >
-                <TouchableOpacity
-                  onPress={handleGoogleSignIn}
-                  style={[
-                    styles.googleButton,
-                    isAnyAuthInProgress &&
-                      !isGoogleSignInInProgress &&
-                      styles.buttonDisabled,
-                  ]}
-                  disabled={isAnyAuthInProgress}
-                  activeOpacity={0.9}
-                  accessibilityLabel="Continue with Google"
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    disabled: isAnyAuthInProgress,
-                    busy: isGoogleSignInInProgress,
-                  }}
-                >
-                  {isGoogleSignInInProgress ? (
-                    <ActivityIndicator size="small" color="#111827" />
-                  ) : (
-                    <Image
-                      source={googleIcon}
-                      style={styles.googleIcon}
-                      resizeMode="contain"
-                    />
-                  )}
-                  <Text style={styles.googleButtonText}>
-                    {isGoogleSignInInProgress
-                      ? "Connecting..."
-                      : "Continue with Google"}
-                  </Text>
-                </TouchableOpacity>
-              </Animated.View>
-
-              {/* Cycle 15 — NEW Continue with Email button (DEC-097). */}
-              <Animated.View
-                style={[
-                  styles.buttonAnimWrapper,
-                  {
-                    opacity: emailOpacity,
-                    transform: [{ translateY: emailTranslateY }],
-                  },
-                ]}
-              >
-                <TouchableOpacity
-                  onPress={handleStartEmailFlow}
-                  style={[
-                    styles.emailButton,
-                    isAnyAuthInProgress && styles.buttonDisabled,
-                  ]}
-                  disabled={isAnyAuthInProgress}
-                  activeOpacity={0.9}
-                  accessibilityLabel="Continue with Email"
-                  accessibilityRole="button"
-                >
-                  <Icon name="mail" size={22} color={colors.text.primary} />
-                  <Text style={styles.emailButtonText}>Continue with Email</Text>
-                </TouchableOpacity>
-              </Animated.View>
-
-              <Animated.View
-                style={[styles.termsWrapper, { opacity: termsOpacity }]}
-              >
-                <Text style={styles.termsText}>
-                  By continuing, you agree to our{" "}
-                  <Text
-                    style={styles.termsLink}
-                    onPress={openTerms}
-                    accessibilityRole="link"
-                  >
-                    Terms of Service
-                  </Text>{" "}
-                  and{" "}
-                  <Text
-                    style={styles.termsLink}
-                    onPress={openPrivacy}
-                    accessibilityRole="link"
-                  >
-                    Privacy Policy
-                  </Text>
-                  .
-                </Text>
-              </Animated.View>
-            </>
-          )}
-
           {/* Cycle 15 — email input mode (DEC-097 + SPEC §3.5.4). */}
           {mode === "email-input" && (
             <View style={styles.modeWrapper}>
@@ -857,14 +960,21 @@ export default function BusinessWelcomeScreen({
             </View>
           )}
         </View>
+          </>
+        )}
       </SafeAreaView>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: {
+  root: {
     flex: 1,
+    backgroundColor: colors.background.primary,
+  },
+  videoVeil: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: WELCOME_VIDEO_VEIL,
   },
   container: {
     flex: 1,
@@ -875,6 +985,14 @@ const styles = StyleSheet.create({
     minHeight: 44,
     justifyContent: "center",
   },
+  idleContent: {
+    flexGrow: 1,
+    alignItems: "center",
+    justifyContent: "space-evenly",
+    paddingHorizontal: WELCOME_CONTENT_GUTTER,
+    paddingTop: WELCOME_CONTENT_GUTTER,
+    gap: WELCOME_CONTENT_GUTTER,
+  },
   centerZone: {
     flex: 1,
     alignItems: "center",
@@ -883,41 +1001,38 @@ const styles = StyleSheet.create({
     paddingBottom: vs(48),
   },
   logoContainer: {
-    width: LOGO_SIZE,
-    height: LOGO_SIZE,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: vs(18),
     flexShrink: 0,
+    backgroundColor: "#ffffff",
+    borderRadius: 999,
   },
-  // ORCH-1084 — official square Mingla Business logo lockup (native path)
-  // (ISSUE-1001: packages/brand-assets/mingla-business-logo.png, 2000x2000,
-  // "Mingla" wordmark +
-  // pretzel symbol + "BUSINESS" pill). The web path above uses a plain DOM
-  // image because RN Web's Image internals can keep the actual <img>
-  // opacity-zero. Replaces the orange "Mingla Business" text badge — the logo
-  // IS the brand mark.
   logo: {
-    width: LOGO_SIZE,
-    height: LOGO_SIZE,
-    aspectRatio: 1,
+    aspectRatio: 1356 / 480,
   },
-  headlineRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    maxWidth: s(320),
-  },
-  headlineWord: {
+  tagline: {
+    width: "100%",
+    maxWidth: 342,
     fontSize: 22,
-    lineHeight: 34,
-    fontWeight: fontWeights.medium,
-    color: colors.text.primary,
-    letterSpacing: 0.1,
-  },
-  headlineAccent: {
+    lineHeight: 28,
     fontWeight: fontWeights.bold,
-    color: colors.primary[500],
+    color: "#ffffff",
+    letterSpacing: 0,
+    textAlign: "center",
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  taglineDesktop: {
+    maxWidth: 430,
+    fontSize: 27,
+    lineHeight: 34,
+  },
+  authGroup: {
+    width: "100%",
+    maxWidth: 400,
+    alignItems: "center",
+    gap: vs(14),
   },
   actionZone: {
     paddingHorizontal: spacing.lg,
@@ -932,16 +1047,18 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: s(400),
     height: vs(56),
-    backgroundColor: "#000000",
+    backgroundColor: "#ffffff",
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
     borderRadius: radius.lg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
-    ...shadows.md,
+    ...shadows.sm,
   },
   appleButtonText: {
-    color: colors.text.inverse,
+    color: colors.text.primary,
     fontSize: 17,
     fontWeight: fontWeights.semibold,
     letterSpacing: 0.3,
@@ -980,12 +1097,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     fontWeight: fontWeights.regular,
-    color: colors.text.tertiary,
+    color: "#ffffff",
     textAlign: "center",
     paddingHorizontal: spacing.xl,
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   termsLink: {
-    color: colors.primary[700],
+    color: "#ffffff",
+    fontWeight: fontWeights.semibold,
+    textDecorationLine: "underline",
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   // Cycle 15 — email + OTP styles (DEC-097).
   emailButton: {
@@ -1012,23 +1137,29 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 30,
     fontWeight: fontWeights.bold,
-    color: colors.text.primary,
+    color: "#ffffff",
     textAlign: "center",
     marginTop: vs(8),
     paddingHorizontal: spacing.xl,
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   modeSubtext: {
     fontSize: 15,
     lineHeight: 22,
     fontWeight: fontWeights.regular,
-    color: colors.text.secondary,
+    color: "#ffffff",
     textAlign: "center",
     marginTop: vs(8),
     paddingHorizontal: spacing.xl,
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   modeSubtextEmail: {
     fontWeight: fontWeights.semibold,
-    color: colors.text.primary,
+    color: "#ffffff",
   },
   modeWrapper: {
     width: "100%",
@@ -1088,15 +1219,21 @@ const styles = StyleSheet.create({
   linkButtonText: {
     fontSize: 15,
     fontWeight: fontWeights.semibold,
-    color: colors.primary[700],
+    color: "#ffffff",
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   linkButtonTextDisabled: {
-    color: colors.text.tertiary,
+    color: "rgba(255, 255, 255, 0.65)",
   },
   linkButtonTextSubtle: {
     fontSize: 14,
     fontWeight: fontWeights.medium,
-    color: colors.text.secondary,
+    color: "#ffffff",
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   verifyingWrapper: {
     width: "100%",

@@ -13,11 +13,11 @@ import {
   Alert,
   BackHandler,
   AccessibilityInfo,
+  ScrollView,
+  useWindowDimensions,
 } from "react-native";
-import { Icon } from "../ui/Icon";
 import { AppleLogo } from "../ui/BrandIcons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 import * as WebBrowser from "expo-web-browser";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import {
@@ -26,13 +26,13 @@ import {
   shadows,
   colors,
   fontWeights,
-  backgroundWarmGlow,
 } from "../../constants/designSystem";
 import { s, vs } from "../../utils/responsive";
 import { useTranslation } from "react-i18next";
 // ISSUE-1001 — wordmark from the canonical master package (same bytes as the
 // deleted app-local mingla_official_logo.png copy).
 import { MINGLA_WORDMARK } from "@mingla/brand-assets";
+import { WelcomeVideoBackground } from "./WelcomeVideoBackground";
 
 const googleIcon = require("../../../assets/google_icon.png");
 const logo = MINGLA_WORDMARK;
@@ -44,14 +44,21 @@ interface WelcomeScreenProps {
   onAppleSignIn: () => Promise<void>;
 }
 
-// Staggered word-by-word headline
-const HEADLINE_WORDS = ["Dates,", "hangouts,", "and", "everything", "in", "between", "\u2014", "sorted."];
+const WELCOME_TAGLINE = "Places, plans, and experiences\nworth showing up for";
+const WELCOME_TAGLINE_ACCESSIBILITY =
+  "Places, plans, and experiences worth showing up for";
+const WELCOME_VIDEO_VEIL = "rgba(0, 0, 0, 0.74)";
+const WELCOME_CONTENT_GUTTER = 24;
+const WELCOME_LOGO_PILL_WIDTH = 140;
+const WELCOME_LOGO_PILL_HEIGHT = 54;
+const WELCOME_WORDMARK_WIDTH = 108;
 
 export default function WelcomeScreen({
   onGoogleSignIn,
   onAppleSignIn,
 }: WelcomeScreenProps) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { t } = useTranslation(['auth', 'common']);
   const [isGoogleSignInInProgress, setIsGoogleSignInInProgress] =
     useState(false);
@@ -62,15 +69,9 @@ export default function WelcomeScreen({
 
   // Animated values for entrance animation
   const logoOpacity = useRef(new Animated.Value(0)).current;
-  const logoScale = useRef(new Animated.Value(0.85)).current;
-
-  // Per-word animated values for the headline
-  const wordAnims = useRef(
-    HEADLINE_WORDS.map(() => ({
-      opacity: new Animated.Value(0),
-      translateY: new Animated.Value(18),
-    }))
-  ).current;
+  const logoScale = useRef(new Animated.Value(0.96)).current;
+  const taglineOpacity = useRef(new Animated.Value(0)).current;
+  const taglineTranslateY = useRef(new Animated.Value(12)).current;
 
   const appleOpacity = useRef(new Animated.Value(0)).current;
   const appleTranslateY = useRef(new Animated.Value(25)).current;
@@ -80,6 +81,8 @@ export default function WelcomeScreen({
 
   // Entrance animation on mount
   useEffect(() => {
+    let mounted = true;
+    let entrance: Animated.CompositeAnimation | undefined;
     const runAnimation = async () => {
       let reducedMotion = false;
       try {
@@ -87,77 +90,69 @@ export default function WelcomeScreen({
       } catch {
         reducedMotion = false;
       }
+      if (!mounted) return;
 
       if (reducedMotion) {
         logoOpacity.setValue(1);
         logoScale.setValue(1);
-        wordAnims.forEach((w) => {
-          w.opacity.setValue(1);
-          w.translateY.setValue(0);
-        });
+        taglineOpacity.setValue(1);
+        taglineTranslateY.setValue(0);
         appleOpacity.setValue(1);
         appleTranslateY.setValue(0);
         googleOpacity.setValue(1);
         googleTranslateY.setValue(0);
-        termsOpacity.setValue(0.8);
+        termsOpacity.setValue(1);
         return;
       }
 
-      // 1. Logo fade + scale
-      Animated.parallel([
+      const animations = [
+        Animated.parallel([
         Animated.timing(logoOpacity, {
           toValue: 1,
-          duration: 600,
+          duration: 400,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(logoScale, {
           toValue: 1,
-          duration: 600,
+          duration: 400,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
-      ]).start();
-
-      // 2. Staggered word-by-word reveal (starts 400ms after logo begins)
-      setTimeout(() => {
-        Animated.stagger(
-          70,
-          wordAnims.map((w) =>
-            Animated.parallel([
-              Animated.timing(w.opacity, {
-                toValue: 1,
-                duration: 350,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: true,
-              }),
-              Animated.spring(w.translateY, {
-                toValue: 0,
-                tension: 100,
-                friction: 12,
-                useNativeDriver: true,
-              }),
-            ])
-          )
-        ).start();
-      }, 400);
-
-      // 3. Buttons appear after words finish (~400 + 70*8 + 350 ≈ 1.3s)
-      setTimeout(() => {
-        Animated.stagger(120, [
+        ]),
+        Animated.sequence([
+          Animated.delay(160),
+          Animated.parallel([
+            Animated.timing(taglineOpacity, {
+              toValue: 1,
+              duration: 300,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+            Animated.timing(taglineTranslateY, {
+              toValue: 0,
+              duration: 300,
+              easing: Easing.out(Easing.cubic),
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
+        Animated.sequence([
+          Animated.delay(300),
+          Animated.stagger(80, [
           ...(Platform.OS === "ios"
             ? [
                 Animated.parallel([
                   Animated.timing(appleOpacity, {
                     toValue: 1,
-                    duration: 400,
+                    duration: 300,
                     easing: Easing.out(Easing.cubic),
                     useNativeDriver: true,
                   }),
-                  Animated.spring(appleTranslateY, {
+                  Animated.timing(appleTranslateY, {
                     toValue: 0,
-                    tension: 80,
-                    friction: 10,
+                    duration: 300,
+                    easing: Easing.out(Easing.cubic),
                     useNativeDriver: true,
                   }),
                 ]),
@@ -166,28 +161,35 @@ export default function WelcomeScreen({
           Animated.parallel([
             Animated.timing(googleOpacity, {
               toValue: 1,
-              duration: 400,
+              duration: 300,
               easing: Easing.out(Easing.cubic),
               useNativeDriver: true,
             }),
-            Animated.spring(googleTranslateY, {
+            Animated.timing(googleTranslateY, {
               toValue: 0,
-              tension: 80,
-              friction: 10,
+              duration: 300,
+              easing: Easing.out(Easing.cubic),
               useNativeDriver: true,
             }),
           ]),
           Animated.timing(termsOpacity, {
-            toValue: 0.8,
+            toValue: 1,
             duration: 300,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }),
-        ]).start();
-      }, 1300);
+          ]),
+        ]),
+      ];
+      entrance = Animated.parallel(animations);
+      entrance.start();
     };
 
-    runAnimation();
+    void runAnimation();
+    return () => {
+      mounted = false;
+      entrance?.stop();
+    };
   }, []);
 
   // Handle Android back button — stay on WelcomeScreen
@@ -259,23 +261,39 @@ export default function WelcomeScreen({
     await WebBrowser.openBrowserAsync(LEGAL_URLS.privacyPolicy);
   };
 
+  const logoPillWidth = Math.min(
+    width - WELCOME_CONTENT_GUTTER * 2,
+    WELCOME_LOGO_PILL_WIDTH,
+  );
+  const logoPillHeight =
+    (logoPillWidth * WELCOME_LOGO_PILL_HEIGHT) / WELCOME_LOGO_PILL_WIDTH;
+  const logoWidth =
+    (logoPillWidth * WELCOME_WORDMARK_WIDTH) / WELCOME_LOGO_PILL_WIDTH;
+  const logoHeight = logoWidth * 480 / 1356;
+
   return (
-    <LinearGradient
-      colors={[colors.background.primary, backgroundWarmGlow]}
-      style={styles.gradient}
-    >
+    <View style={styles.root}>
+      <WelcomeVideoBackground />
+      <View pointerEvents="none" style={styles.videoVeil} />
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <StatusBar
-          barStyle="dark-content"
+          barStyle="light-content"
           backgroundColor="transparent"
           translucent
         />
 
-        {/* Center Zone — logo + animated headline */}
-        <View style={styles.centerZone}>
+        <ScrollView
+          bounces={false}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.idleContent,
+            { paddingBottom: Math.max(insets.bottom, WELCOME_CONTENT_GUTTER) },
+          ]}
+        >
           <Animated.View
             style={[
               styles.logoContainer,
+              { width: logoPillWidth, height: logoPillHeight },
               {
                 opacity: logoOpacity,
                 transform: [{ scale: logoScale }],
@@ -284,40 +302,28 @@ export default function WelcomeScreen({
           >
             <Image
               source={logo}
-              style={styles.logo}
+              style={[styles.logo, { width: logoWidth, height: logoHeight }]}
               resizeMode="contain"
-              accessibilityLabel={t('auth:welcome.logo_label')}
+              accessibilityLabel="Mingla"
               accessibilityRole="image"
             />
           </Animated.View>
 
-          {/* Word-by-word animated headline */}
-          <View
-            style={styles.headlineRow}
-            accessibilityLabel={t('auth:welcome.tagline_accessibility')}
+          <Animated.Text
+            style={[
+              styles.tagline,
+              {
+                opacity: taglineOpacity,
+                transform: [{ translateY: taglineTranslateY }],
+              },
+            ]}
+            accessibilityLabel={WELCOME_TAGLINE_ACCESSIBILITY}
             accessibilityRole="header"
           >
-            {HEADLINE_WORDS.map((word, i) => (
-              <Animated.Text
-                key={i}
-                style={[
-                  styles.headlineWord,
-                  // Emphasise the last word
-                  i === HEADLINE_WORDS.length - 1 && styles.headlineAccent,
-                  {
-                    opacity: wordAnims[i].opacity,
-                    transform: [{ translateY: wordAnims[i].translateY }],
-                  },
-                ]}
-              >
-                {word}{" "}
-              </Animated.Text>
-            ))}
-          </View>
-        </View>
+            {WELCOME_TAGLINE}
+          </Animated.Text>
 
-        {/* Action Zone — centred buttons */}
-        <View style={[styles.actionZone, { paddingBottom: Math.max(insets.bottom, vs(24)) }]}>
+        <View style={styles.authGroup}>
           {/* Apple Sign-In Button — iOS only */}
           {Platform.OS === "ios" && (
             <Animated.View
@@ -348,9 +354,9 @@ export default function WelcomeScreen({
                 }}
               >
                 {isAppleSignInInProgress ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
+                  <ActivityIndicator size="small" color="#111827" />
                 ) : (
-                  <AppleLogo size={22} color="#ffffff" />
+                  <AppleLogo size={22} color="#111827" />
                 )}
                 <Text style={styles.appleButtonText}>
                   {isAppleSignInInProgress
@@ -431,54 +437,58 @@ export default function WelcomeScreen({
             </Text>
           </Animated.View>
         </View>
+        </ScrollView>
       </SafeAreaView>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: {
+  root: {
     flex: 1,
+    backgroundColor: colors.background.primary,
+  },
+  videoVeil: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: WELCOME_VIDEO_VEIL,
   },
   container: {
     flex: 1,
   },
-  centerZone: {
-    flex: 1,
+  idleContent: {
+    flexGrow: 1,
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.xl,
-    paddingBottom: vs(64),
+    justifyContent: "space-evenly",
+    paddingHorizontal: WELCOME_CONTENT_GUTTER,
+    paddingTop: WELCOME_CONTENT_GUTTER,
+    gap: WELCOME_CONTENT_GUTTER,
   },
   logoContainer: {
     alignItems: "center",
-    marginBottom: vs(20),
+    justifyContent: "center",
     flexShrink: 1,
+    backgroundColor: "#ffffff",
+    borderRadius: 999,
   },
   logo: {
-    width: s(180),
-    maxWidth: "50%",
     aspectRatio: 1356 / 480,
   },
-  headlineRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    maxWidth: s(320),
-  },
-  headlineWord: {
+  tagline: {
+    width: "100%",
+    maxWidth: 342,
     fontSize: 22,
-    lineHeight: 34,
-    fontWeight: fontWeights.medium,
-    color: colors.text.primary,
-    letterSpacing: 0.1,
-  },
-  headlineAccent: {
+    lineHeight: 28,
     fontWeight: fontWeights.bold,
-    color: colors.primary[500],
+    color: "#ffffff",
+    letterSpacing: 0,
+    textAlign: "center",
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
-  actionZone: {
-    paddingHorizontal: spacing.lg,
+  authGroup: {
+    width: "100%",
+    maxWidth: 400,
     alignItems: "center",
     gap: vs(14),
   },
@@ -490,16 +500,18 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: s(400),
     height: vs(56),
-    backgroundColor: "#000000",
+    backgroundColor: "#ffffff",
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
     borderRadius: radius.lg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
-    ...shadows.md,
+    ...shadows.sm,
   },
   appleButtonText: {
-    color: colors.text.inverse,
+    color: colors.text.primary,
     fontSize: 17,
     fontWeight: fontWeights.semibold,
     letterSpacing: 0.3,
@@ -538,11 +550,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     fontWeight: fontWeights.regular,
-    color: colors.text.tertiary,
+    color: "#ffffff",
     textAlign: "center",
     paddingHorizontal: spacing.xl,
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   termsLink: {
-    color: colors.primary[700],
+    color: "#ffffff",
+    fontWeight: fontWeights.semibold,
+    textDecorationLine: "underline",
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
 });
