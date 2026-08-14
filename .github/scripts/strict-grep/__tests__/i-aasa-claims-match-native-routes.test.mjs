@@ -7,8 +7,8 @@
 //
 // It reads the REAL committed files across both app packages and proves:
 //   (a) the consumer AASA appID block (782KVMY869.com.mingla.app.v2) claims
-//       /b/*, /t/*, /exp/*  AND  app-mobile/app.json Android intentFilters carry
-//       matching /t + /exp pathPrefix entries on host.usemingla.com;
+//       /b/*, /e/*, /t/*, /exp/* AND app-mobile/app.json Android intentFilters
+//       carry the matching pathPrefix entries on host.usemingla.com;
 //   (b) every path the consumer AASA claims has a real expo-router file route
 //       under app-mobile/app/ — a stray claim (e.g. /z/*) with no screen behind
 //       it FAILS (catches the inverse "dead Universal Link → 404" failure);
@@ -26,14 +26,14 @@
 // business arm of test (c) is fails-on-revert: re-adding go. to the Business
 // config (or dropping biz.) turns it red.
 //
-// ORCH-1318 /e DEVIATION (Seth's decision): the consumer AASA intentionally does
-// NOT claim /e/* on host.usemingla.com (avoids the /e dual-claim with the
-// business app). Consumer /e content routes via the go.usemingla.com OneLink
-// payload, not a raw host claim. So the required consumer set is {/b,/t,/exp}.
+// #2050 supersedes the former /e dual-claim deviation: the Mingla consumer app
+// exclusively owns every public guest route on host.usemingla.com. The Host app
+// owns only its explicit operator-return route families, so the route sets are
+// non-overlapping.
 //
 // Fails-on-revert matrix:
-//   - delete /t/* (or /exp/*) from the consumer AASA block        -> test (a) fails
-//   - delete the /t (or /exp) pathPrefix from app-mobile app.json -> test (a) fails
+//   - delete /b/*, /e/*, /t/*, or /exp/* from consumer AASA       -> test (a) fails
+//   - delete a matching pathPrefix from app-mobile app.json       -> test (a) fails
 //   - add an unbacked claim (e.g. /z/*) to the consumer block     -> test (b) fails
 //   - drop go.usemingla.com from the CONSUMER config              -> test (c-consumer) fails
 //   - drop biz.usemingla.com from, OR re-add go. to, the BUSINESS config
@@ -57,11 +57,10 @@ const CONSUMER_HOST = "host.usemingla.com";
 const ONELINK_DOMAIN = "go.usemingla.com"; // CONSUMER branded OneLink domain
 const BUSINESS_ONELINK_DOMAIN = "biz.usemingla.com"; // BUSINESS branded OneLink domain (#1050)
 
-// The consumer entity share-URL builders in publicUrls.ts emit /b, /t, /exp on
-// host.usemingla.com; each MUST be claimed for the consumer app (§C.3). /e is
-// deliberately excluded per the ORCH-1318 /e dual-claim deviation.
-const REQUIRED_CONSUMER_AASA_PATHS = ["/b/*", "/t/*", "/exp/*"];
-const REQUIRED_ANDROID_PATH_PREFIXES = ["/t", "/exp"]; // added by ORCH-1318 alongside existing /b
+// The consumer entity share-URL builders emit /b, /e, /t, and /exp on
+// host.usemingla.com; #2050 makes the consumer app their exclusive native owner.
+const REQUIRED_CONSUMER_AASA_PATHS = ["/b/*", "/e/*", "/t/*", "/exp/*"];
+const REQUIRED_ANDROID_PATH_PREFIXES = ["/b/", "/e/", "/t/", "/exp/"];
 
 const readJson = (rel) => JSON.parse(readFileSync(join(REPO_ROOT, rel), "utf8"));
 
@@ -95,7 +94,7 @@ const hasNativeRoute = (segment) => {
   );
 };
 
-test("(a) consumer AASA block claims /b/*, /t/*, /exp/*", () => {
+test("(a) consumer AASA block claims every public guest route", () => {
   const paths = claimedPaths(consumerBlock(loadAasa()));
   for (const required of REQUIRED_CONSUMER_AASA_PATHS) {
     assert.ok(
@@ -105,7 +104,7 @@ test("(a) consumer AASA block claims /b/*, /t/*, /exp/*", () => {
   }
 });
 
-test("(a) app-mobile Android intentFilters carry /t + /exp pathPrefix on host.usemingla.com (autoVerify)", () => {
+test("(a) app-mobile Android intentFilters carry every public guest pathPrefix on host.usemingla.com (autoVerify)", () => {
   const filters = readJson("app-mobile/app.json").expo.android.intentFilters ?? [];
   for (const prefix of REQUIRED_ANDROID_PATH_PREFIXES) {
     const match = filters.some(
