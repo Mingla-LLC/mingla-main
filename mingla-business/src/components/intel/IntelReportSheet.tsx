@@ -12,12 +12,14 @@ export interface IntelReportSheetProps {
   visible: boolean;
   report: TurnoutReport | null;
   onClose: () => void;
+  contextLabel?: string;
 }
 
 export const IntelReportSheet: React.FC<IntelReportSheetProps> = ({
   visible,
   report,
   onClose,
+  contextLabel,
 }) => (
   <Sheet
     visible={visible}
@@ -30,6 +32,9 @@ export const IntelReportSheet: React.FC<IntelReportSheetProps> = ({
         <View style={styles.headerCopy}>
           <Text style={styles.eyebrow}>MINGLA INTELLIGENCE</Text>
           <Text style={styles.title}>Turnout forecast</Text>
+          {contextLabel !== undefined ? (
+            <Text style={styles.context}>{contextLabel}</Text>
+          ) : null}
         </View>
         <Button label="Close" variant="ghost" size="sm" onPress={onClose} />
       </View>
@@ -54,5 +59,10 @@ const styles = StyleSheet.create({
   headerCopy: { flex: 1 },
   eyebrow: { ...typography.labelCap, color: text.tertiary },
   title: { ...typography.h2, color: text.primary },
+  context: {
+    ...typography.caption,
+    color: text.secondary,
+    marginTop: spacing.xs,
+  },
   scroll: { paddingBottom: spacing.xl },
 });

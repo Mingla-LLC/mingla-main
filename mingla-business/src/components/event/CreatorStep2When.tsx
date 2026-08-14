@@ -32,6 +32,7 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
+import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 
 import {
   accent,
@@ -114,11 +115,7 @@ const dateFromIso = (iso: string | null): Date => {
   if (iso === null) return new Date();
   const parts = iso.split("-");
   if (parts.length !== 3) return new Date();
-  return new Date(
-    Number(parts[0]),
-    Number(parts[1]) - 1,
-    Number(parts[2]),
-  );
+  return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
 };
 
 const isDateToday = (iso: string): boolean => {
@@ -185,6 +182,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   // the single-date body. Default false; event wizard is byte-identical.
   lockSingleDate = false,
 }) => {
+  const intelDateHighlight = useTurnoutFocusTarget("date");
   // ---- Picker state (date + time + termination-until) ----
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
   const [tempPickerValue, setTempPickerValue] = useState<Date | null>(null);
@@ -196,38 +194,63 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   const [tzSheetVisible, setTzSheetVisible] = useState<boolean>(false);
   const [tzSearchQuery, setTzSearchQuery] = useState<string>("");
   const [presetSheetVisible, setPresetSheetVisible] = useState<boolean>(false);
-  const [terminationSheetVisible, setTerminationSheetVisible] = useState<boolean>(false);
-  const [addDateSheetVisible, setAddDateSheetVisible] = useState<boolean>(false);
-  const [overrideSheetEntryId, setOverrideSheetEntryId] = useState<string | null>(null);
+  const [terminationSheetVisible, setTerminationSheetVisible] =
+    useState<boolean>(false);
+  const [addDateSheetVisible, setAddDateSheetVisible] =
+    useState<boolean>(false);
+  const [overrideSheetEntryId, setOverrideSheetEntryId] = useState<
+    string | null
+  >(null);
 
   // ---- AddDateSheet local state ----
   const [addDateValue, setAddDateValue] = useState<string | null>(null);
   const [addDateStartTime, setAddDateStartTime] = useState<string>("21:00");
   const [addDateEndTime, setAddDateEndTime] = useState<string>("03:00");
   const [addDateError, setAddDateError] = useState<string | null>(null);
-  const [addDatePickerMode, setAddDatePickerMode] =
-    useState<"date" | "start" | "end" | null>(null);
+  const [addDatePickerMode, setAddDatePickerMode] = useState<
+    "date" | "start" | "end" | null
+  >(null);
   const [addDateTempValue, setAddDateTempValue] = useState<Date | null>(null);
 
   // ---- Mode-switch confirm ----
   const [pendingMode, setPendingMode] = useState<WhenMode | null>(null);
 
   // ---- Multi-date row delete confirm ----
-  const [pendingDeleteEntryId, setPendingDeleteEntryId] = useState<string | null>(null);
+  const [pendingDeleteEntryId, setPendingDeleteEntryId] = useState<
+    string | null
+  >(null);
 
   // ---- Errors ----
   const dateError = showErrors ? errorForKey(errors, "date") : undefined;
   const doorsError = showErrors ? errorForKey(errors, "doorsOpen") : undefined;
   const endsError = showErrors ? errorForKey(errors, "endsAt") : undefined;
-  const recurrenceError = showErrors ? errorForKey(errors, "recurrence") : undefined;
-  const recurrenceByDayError = showErrors ? errorForKey(errors, "recurrence.byDay") : undefined;
-  const recurrenceByMonthDayError = showErrors ? errorForKey(errors, "recurrence.byMonthDay") : undefined;
-  const recurrenceBySetPosError = showErrors ? errorForKey(errors, "recurrence.bySetPos") : undefined;
-  const recurrenceCountError = showErrors ? errorForKey(errors, "recurrence.count") : undefined;
-  const recurrenceUntilError = showErrors ? errorForKey(errors, "recurrence.until") : undefined;
-  const dayMismatchError = showErrors ? errorForKey(errors, "recurrence.dayMismatch") : undefined;
-  const multiMinError = showErrors ? errorForKey(errors, "multiDates.minCount") : undefined;
-  const multiMaxError = showErrors ? errorForKey(errors, "multiDates.maxCount") : undefined;
+  const recurrenceError = showErrors
+    ? errorForKey(errors, "recurrence")
+    : undefined;
+  const recurrenceByDayError = showErrors
+    ? errorForKey(errors, "recurrence.byDay")
+    : undefined;
+  const recurrenceByMonthDayError = showErrors
+    ? errorForKey(errors, "recurrence.byMonthDay")
+    : undefined;
+  const recurrenceBySetPosError = showErrors
+    ? errorForKey(errors, "recurrence.bySetPos")
+    : undefined;
+  const recurrenceCountError = showErrors
+    ? errorForKey(errors, "recurrence.count")
+    : undefined;
+  const recurrenceUntilError = showErrors
+    ? errorForKey(errors, "recurrence.until")
+    : undefined;
+  const dayMismatchError = showErrors
+    ? errorForKey(errors, "recurrence.dayMismatch")
+    : undefined;
+  const multiMinError = showErrors
+    ? errorForKey(errors, "multiDates.minCount")
+    : undefined;
+  const multiMaxError = showErrors
+    ? errorForKey(errors, "multiDates.maxCount")
+    : undefined;
 
   // ---- Timezone list ----
   const allTimezones = useMemo(() => getAllTimezones(), []);
@@ -306,7 +329,8 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       // Native (iOS/Android): existing Sheet+spinner / dialog flow.
       let initial: Date;
       if (mode === "date") initial = dateFromIso(draft.date);
-      else if (mode === "doorsOpen") initial = dateFromHhmm(draft.doorsOpen, "21:00");
+      else if (mode === "doorsOpen")
+        initial = dateFromHhmm(draft.doorsOpen, "21:00");
       else if (mode === "endsAt") initial = dateFromHhmm(draft.endsAt, "03:00");
       else if (mode === "untilDate") {
         const untilIso =
@@ -430,7 +454,8 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       const patch: Partial<DraftEvent> = { whenMode: to };
 
       if (from === "single" && to === "recurring") {
-        const dow: Weekday = draft.date !== null ? weekdayOfIso(draft.date) : "MO";
+        const dow: Weekday =
+          draft.date !== null ? weekdayOfIso(draft.date) : "MO";
         patch.recurrenceRule = {
           preset: "weekly",
           byDay: dow,
@@ -536,7 +561,8 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       let bySetPos: SetPos | undefined = current?.bySetPos;
       if (preset === "monthly_dom") {
         byDay = undefined;
-        byMonthDay = byMonthDay ?? Math.min(28, dateFromIso(draft.date).getDate());
+        byMonthDay =
+          byMonthDay ?? Math.min(28, dateFromIso(draft.date).getDate());
         bySetPos = undefined;
       } else if (preset === "monthly_dow") {
         bySetPos = bySetPos ?? 1;
@@ -655,9 +681,7 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
     // No duplicate date+startTime
     const existing = draft.multiDates ?? [];
     const dupKey = `${addDateValue}T${addDateStartTime}`;
-    if (
-      existing.some((e) => `${e.date}T${e.startTime}` === dupKey)
-    ) {
+    if (existing.some((e) => `${e.date}T${e.startTime}` === dupKey)) {
       setAddDateError("Already added that date+time.");
       return;
     }
@@ -676,7 +700,13 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       multiDates: sortMultiDates([...existing, newEntry]),
     });
     setAddDateSheetVisible(false);
-  }, [addDateValue, addDateStartTime, addDateEndTime, draft.multiDates, updateDraft]);
+  }, [
+    addDateValue,
+    addDateStartTime,
+    addDateEndTime,
+    draft.multiDates,
+    updateDraft,
+  ]);
 
   const handleDeleteMultiDate = useCallback(
     (entryId: string): void => {
@@ -726,7 +756,8 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       // Native: existing Sheet/dialog flow.
       let initial: Date;
       if (mode === "date") {
-        initial = addDateValue !== null ? dateFromIso(addDateValue) : new Date();
+        initial =
+          addDateValue !== null ? dateFromIso(addDateValue) : new Date();
       } else if (mode === "start") {
         initial = dateFromHhmm(addDateStartTime, "21:00");
       } else {
@@ -778,27 +809,41 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   const overrideEntry: MultiDateEntry | null =
     overrideSheetEntryId === null
       ? null
-      : (draft.multiDates ?? []).find((e) => e.id === overrideSheetEntryId) ?? null;
+      : ((draft.multiDates ?? []).find((e) => e.id === overrideSheetEntryId) ??
+        null);
   const overrideEntryIndex: number =
     overrideSheetEntryId === null
       ? 0
-      : (draft.multiDates ?? []).findIndex((e) => e.id === overrideSheetEntryId);
+      : (draft.multiDates ?? []).findIndex(
+          (e) => e.id === overrideSheetEntryId,
+        );
 
   // ---- Date Pressable label per mode ----
   const dateRowLabel =
-    draft.whenMode === "recurring"
-      ? "First occurrence"
-      : "Date";
+    draft.whenMode === "recurring" ? "First occurrence" : "Date";
 
   // ---- Render ----
 
   return (
-    <View>
+    <View
+      style={
+        intelDateHighlight
+          ? {
+              borderColor: accent.warm,
+              borderWidth: 2,
+              borderRadius: radiusTokens.md,
+              padding: spacing.xs,
+            }
+          : undefined
+      }
+    >
       {/* 3-mode segmented control (replaces Cycle 3 Repeats sheet).
           ORCH-1150 — hidden when lockSingleDate (RSVP wizard, single-date only). */}
       {lockSingleDate ? null : (
         <View style={styles.field}>
-          <Text style={styles.fieldLabel}>How often does this event happen?</Text>
+          <Text style={styles.fieldLabel}>
+            How often does this event happen?
+          </Text>
           <View style={styles.segmentRow}>
             <SegmentPill
               label="Single"
@@ -1018,7 +1063,9 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
               <Text style={styles.helperError}>{recurrenceByDayError}</Text>
             ) : null}
             {recurrenceByMonthDayError !== undefined ? (
-              <Text style={styles.helperError}>{recurrenceByMonthDayError}</Text>
+              <Text style={styles.helperError}>
+                {recurrenceByMonthDayError}
+              </Text>
             ) : null}
             {recurrenceBySetPosError !== undefined ? (
               <Text style={styles.helperError}>{recurrenceBySetPosError}</Text>
@@ -1119,7 +1166,8 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
             <Text style={styles.addDateLabel}>Add date</Text>
           </Pressable>
           <Text style={styles.helperHint}>
-            {(draft.multiDates ?? []).length} of 24 dates · need at least 2 to publish.
+            {(draft.multiDates ?? []).length} of 24 dates · need at least 2 to
+            publish.
           </Text>
           {multiMinError !== undefined ? (
             <Text style={styles.helperError}>{multiMinError}</Text>
@@ -1170,7 +1218,11 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
               <View style={styles.iosPickerWrap}>
                 <DateTimePicker
                   value={tempPickerValue}
-                  mode={pickerMode === "date" || pickerMode === "untilDate" ? "date" : "time"}
+                  mode={
+                    pickerMode === "date" || pickerMode === "untilDate"
+                      ? "date"
+                      : "time"
+                  }
                   display="spinner"
                   onChange={handlePickerChange}
                   minimumDate={pickerMinimumDate}
@@ -1196,7 +1248,11 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
                   ? dateFromHhmm(draft.doorsOpen, "21:00")
                   : dateFromHhmm(draft.endsAt, "03:00")
           }
-          mode={pickerMode === "date" || pickerMode === "untilDate" ? "date" : "time"}
+          mode={
+            pickerMode === "date" || pickerMode === "untilDate"
+              ? "date"
+              : "time"
+          }
           display="default"
           onChange={handlePickerChange}
           minimumDate={pickerMinimumDate}
@@ -1313,13 +1369,19 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
 
           {draft.recurrenceRule?.termination.kind === "count" ? (
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Number of occurrences (1–52)</Text>
+              <Text style={styles.fieldLabel}>
+                Number of occurrences (1–52)
+              </Text>
               <View style={styles.countInputWrap}>
                 <TextInput
                   value={String(draft.recurrenceRule.termination.count)}
                   onChangeText={(v: string) => {
                     const parsed = parseInt(v, 10);
-                    if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 52) {
+                    if (
+                      Number.isFinite(parsed) &&
+                      parsed >= 1 &&
+                      parsed <= 52
+                    ) {
                       handleSetCount(parsed);
                     } else if (v === "") {
                       handleSetCount(1);
@@ -1687,15 +1749,12 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
             ? "Multi-date events need at least 2 dates. Add another date first or switch the event to Single."
             : "You'll lose any overrides for this date. This can't be undone."
         }
-        confirmLabel={
-          (draft.multiDates?.length ?? 0) <= 2 ? "OK" : "Remove"
-        }
+        confirmLabel={(draft.multiDates?.length ?? 0) <= 2 ? "OK" : "Remove"}
         cancelLabel="Cancel"
         destructive
       />
 
       <TurnoutForecastCard surface="when" />
-
     </View>
   );
 };
@@ -1708,7 +1767,11 @@ interface SegmentPillProps {
   onPress: () => void;
 }
 
-const SegmentPill: React.FC<SegmentPillProps> = ({ label, active, onPress }) => (
+const SegmentPill: React.FC<SegmentPillProps> = ({
+  label,
+  active,
+  onPress,
+}) => (
   <Pressable
     onPress={onPress}
     accessibilityRole="button"

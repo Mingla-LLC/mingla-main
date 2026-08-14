@@ -8619,3 +8619,19 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 ### I-PROPOSED-1008-TURNOUT-INPUT-SINGLE-SOURCE (DRAFT)
 - **Rule:** Every turnout run for the in-flow card, the #1742 gate, and future Business creator surfaces builds its engine payload and collision-free cache key exclusively through `turnoutInput.ts`.
 - **Enforcement:** the issue #1734 store-isolation strict-grep guard includes the turnout client modules; issue #1008 tests pin canonical payload, date, capacity, price, and key behavior.
+
+---
+
+## DRAFT — issue #1742 (pre-publish intelligence)
+
+### I-PROPOSED-1742-GATE-NEVER-BLOCKS-PUBLISH (DRAFT)
+- **Rule:** Pre-publish intelligence may advise, navigate, retry, or be dismissed, but it never disables, replaces, or adds a prerequisite to an existing publish action. “Publish now” always closes the intelligence surface and calls the existing publish handler unchanged.
+- **Enforcement:** shared `TurnoutIntelProvider`, Event/RSVP `TurnoutGateSection`, Experience `PrePublishGateSheet`, and the issue #1742 happy-path regression.
+
+### I-PROPOSED-1742-GATE-SPEAKS-ON-FAILURE (DRAFT)
+- **Rule:** A visible pre-publish intelligence surface never fails silently: offline, rate-limit, generation failure, running, stale, and blocked states state the truth and explicitly preserve publishing.
+- **Enforcement:** gate-state copy in `TurnoutGateSection` and `PrePublishGateSheet`, bounded one-retry behavior, and issue #1742 regression coverage.
+
+### I-PROPOSED-1742-GATE-NAVIGATE-ONLY (DRAFT)
+- **Rule:** Intelligence recommendations can navigate to and focus an existing authoring field, but never mutate draft, store, validator, payload, or published data. Experience capacity estimates are provider-session model input only.
+- **Enforcement:** the shared keyword target classifier, focus-hint context, unchanged draft/publish writers, and Experience estimate state held outside all persistence payloads.

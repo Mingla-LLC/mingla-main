@@ -8,7 +8,7 @@
  * See SPEC §4.3 (Preview row).
  */
 
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo as useThemeMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -30,14 +30,17 @@ import {
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
-import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
-import { useMemo as useThemeMemo } from "react";
-
 import { createThemePalette } from "../../../../packages/offering-rendering/themePalette";
 import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
 import { type StepBodyProps } from "../event/types";
+
+// #1742 / ORCH-1083 — Review intelligence is an on-demand surface, not boot UI.
+const LazyTurnoutGateSection = React.lazy(async () => {
+  const module = await import("../intel/PrePublishIntelligenceSurfaces");
+  return { default: module.TurnoutGateSection };
+});
 
 interface RsvpStep7PreviewProps extends StepBodyProps {
   brand: Brand | null;
@@ -80,6 +83,9 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
 
   return (
     <View>
+      <React.Suspense fallback={null}>
+        <LazyTurnoutGateSection />
+      </React.Suspense>
       {/* #1022 — second touchpoint before publishing. */}
       <ThemeControlRow
         value={draft.themeOverrides}
@@ -166,8 +172,6 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
           </GlassCard>
         )}
       </View>
-
-      <TurnoutForecastCard surface="preview" />
 
       <Pressable
         onPress={handleMiniCardPress}

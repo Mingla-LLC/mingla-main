@@ -145,7 +145,7 @@ export const TurnoutForecastCardContent: React.FC<
             testID="turnout-result-body"
           >
             <Pressable
-              onPress={intel.openReport}
+              onPress={() => intel.openReport()}
               accessibilityRole="button"
               accessibilityLabel="Open full turnout forecast"
               style={[styles.bandPressable, stale ? styles.stale : null]}
@@ -201,7 +201,7 @@ export const TurnoutForecastCardContent: React.FC<
                 label="See full forecast"
                 variant="ghost"
                 size="sm"
-                onPress={intel.openReport}
+                onPress={() => intel.openReport()}
               />
             )}
             <Text style={styles.footer}>

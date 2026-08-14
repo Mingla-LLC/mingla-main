@@ -17,7 +17,7 @@
  * Per Cycle 3 spec §3.9 Step 7.
  */
 
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo as useThemeMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -47,7 +47,6 @@ import { formatEventLevelTicketBadges } from "../../utils/ticketDisplay";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
-import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
 import { Pill } from "../ui/Pill";
 // ORCH-1076 Stream B — the Stripe-blocked status card is now the shared
 // offering primitive; this Step-7 render is a byte-identical refactor (the
@@ -55,13 +54,18 @@ import { Pill } from "../ui/Pill";
 // CreatorStep7Preview.refactorParity.test.ts (T-15).
 import { StripeBlockedCard } from "../offering/StripeBlockedCard";
 
-import { useMemo as useThemeMemo } from "react";
-
 import { createThemePalette } from "../../../../packages/offering-rendering/themePalette";
 import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
 import { type StepBodyProps } from "./types";
+
+// #1742 / ORCH-1083 — the enriched intelligence presentation is Review-only.
+// Keep it out of the startup payload and download it when Review actually mounts.
+const LazyTurnoutGateSection = React.lazy(async () => {
+  const module = await import("../intel/PrePublishIntelligenceSurfaces");
+  return { default: module.TurnoutGateSection };
+});
 
 interface CreatorStep7PreviewProps extends StepBodyProps {
   brand: Brand | null;
@@ -137,6 +141,9 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
 
   return (
     <View>
+      <React.Suspense fallback={null}>
+        <LazyTurnoutGateSection />
+      </React.Suspense>
       {/* #1022 — second touchpoint: last chance to fix the look before
           publishing. variant="review" swaps the chevron for the word Edit. */}
       <ThemeControlRow
@@ -220,8 +227,6 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
           <ErrorsBlockedCard count={publishability.errorCount} />
         )}
       </View>
-
-      <TurnoutForecastCard surface="preview" />
 
       {/* Preview public page — relocated from dock to content flow.
           Sits directly under the Ready-to-publish status card so it

@@ -14,7 +14,14 @@
  */
 
 import React, { useCallback } from "react";
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 import {
   accent,
@@ -29,6 +36,7 @@ import type { DraftEventVisibility } from "../../store/draftEventStore";
 import { type StepBodyProps } from "../event/types";
 import { Icon } from "../ui/Icon";
 import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
+import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 
 const ROW_BG = Platform.select({
   ios: glass.tint.profileBase,
@@ -36,7 +44,10 @@ const ROW_BG = Platform.select({
   default: glass.tint.profileBase,
 });
 
-const VISIBILITY_OPTIONS: readonly { id: DraftEventVisibility; label: string }[] = [
+const VISIBILITY_OPTIONS: readonly {
+  id: DraftEventVisibility;
+  label: string;
+}[] = [
   { id: "public", label: "Public" },
   { id: "unlisted", label: "Unlisted" },
   { id: "private", label: "Private" },
@@ -73,7 +84,12 @@ const ToggleRow: React.FC<ToggleRowProps> = ({
       <Text style={styles.toggleSub}>{sub}</Text>
     </View>
     <View style={[styles.toggleTrack, on && styles.toggleTrackOn]}>
-      <View style={[styles.toggleThumb, on ? styles.toggleThumbOn : styles.toggleThumbOff]} />
+      <View
+        style={[
+          styles.toggleThumb,
+          on ? styles.toggleThumbOn : styles.toggleThumbOff,
+        ]}
+      />
     </View>
   </Pressable>
 );
@@ -86,7 +102,13 @@ interface StepperRowProps {
   testID?: string;
 }
 
-const NumberStepper: React.FC<StepperRowProps> = ({ label, value, min, onChange, testID }) => (
+const NumberStepper: React.FC<StepperRowProps> = ({
+  label,
+  value,
+  min,
+  onChange,
+  testID,
+}) => (
   <View style={styles.stepperRow}>
     <Text style={styles.stepperLabel}>{label}</Text>
     <View style={styles.stepperControls}>
@@ -99,7 +121,10 @@ const NumberStepper: React.FC<StepperRowProps> = ({ label, value, min, onChange,
       >
         <Text style={styles.stepperBtnText}>−</Text>
       </Pressable>
-      <Text style={styles.stepperValue} testID={testID ? `${testID}-value` : undefined}>
+      <Text
+        style={styles.stepperValue}
+        testID={testID ? `${testID}-value` : undefined}
+      >
         {value}
       </Text>
       <Pressable
@@ -118,9 +143,14 @@ const NumberStepper: React.FC<StepperRowProps> = ({ label, value, min, onChange,
 // ORCH-1291 [rsvp-chip-in] — currency symbol for the money-field prefix.
 const currencySymbol = (currency: string): string => {
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "USD" })
+    return (
+      new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: currency || "USD",
+      })
       .format(0)
-      .replace(/[\d.,\s]/g, "") || "$";
+        .replace(/[\d.,\s]/g, "") || "$"
+    );
   } catch {
     return "$";
   }
@@ -136,13 +166,22 @@ interface MoneyFieldProps {
 }
 
 // ORCH-1291 — currency-prefixed money field (major units in, cents out).
-const MoneyField: React.FC<MoneyFieldProps> = ({ label, helper, currency, cents, onChange, testID }) => (
+const MoneyField: React.FC<MoneyFieldProps> = ({
+  label,
+  helper,
+  currency,
+  cents,
+  onChange,
+  testID,
+}) => (
   <View style={styles.field}>
     <Text style={styles.fieldLabel}>{label}</Text>
     <View style={styles.moneyRow}>
       <Text style={styles.moneyPrefix}>{currencySymbol(currency)}</Text>
       <TextInput
-        value={cents !== null && cents > 0 ? String(Math.round(cents / 100)) : ""}
+        value={
+          cents !== null && cents > 0 ? String(Math.round(cents / 100)) : ""
+        }
         onChangeText={(raw) => {
           const digits = raw.replace(/[^\d]/g, "");
           onChange(digits.length > 0 ? parseInt(digits, 10) * 100 : null);
@@ -165,6 +204,7 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
   brandDefaultCurrency,
   chipInPayoutReady,
 }) => {
+  const intelCapacityHighlight = useTurnoutFocusTarget("capacity");
   const capacityOn = draft.rsvpCapacity !== null;
   const chipCurrency = brandDefaultCurrency ?? draft.currency ?? "USD";
   const contributionOn = draft.rsvpContributionEnabled;
@@ -200,11 +240,26 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
   );
 
   return (
-    <View>
+    <View
+      style={
+        intelCapacityHighlight
+          ? {
+              borderColor: accent.warm,
+              borderWidth: 2,
+              borderRadius: radiusTokens.md,
+              padding: spacing.xs,
+            }
+          : undefined
+      }
+    >
       {/* 1. Capacity */}
       <ToggleRow
         label="Limit the guest list"
-        sub={capacityOn ? "Set a maximum number of guests." : "No limit — anyone with the link can RSVP."}
+        sub={
+          capacityOn
+            ? "Set a maximum number of guests."
+            : "No limit — anyone with the link can RSVP."
+        }
         on={capacityOn}
         onToggle={toggleCapacity}
         testID="rsvp-capacity-toggle"
@@ -246,7 +301,9 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
             : "When a spot opens, the next person on the waitlist is automatically moved in and notified."
         }
         on={draft.rsvpWaitlistEnabled}
-        onToggle={() => updateDraft({ rsvpWaitlistEnabled: !draft.rsvpWaitlistEnabled })}
+        onToggle={() =>
+          updateDraft({ rsvpWaitlistEnabled: !draft.rsvpWaitlistEnabled })
+        }
         disabled={!capacityOn}
         testID="rsvp-waitlist-toggle"
       />
@@ -263,11 +320,18 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
                 onPress={() => selectApprovalMode(mode)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
-                accessibilityLabel={mode === "auto" ? "Auto-approve" : "Approve each RSVP"}
+                accessibilityLabel={
+                  mode === "auto" ? "Auto-approve" : "Approve each RSVP"
+                }
                 style={[styles.segment, active && styles.segmentActive]}
                 testID={`rsvp-approval-${mode}`}
               >
-                <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
+                <Text
+                  style={[
+                    styles.segmentLabel,
+                    active && styles.segmentLabelActive,
+                  ]}
+                >
                   {mode === "auto" ? "Auto-approve" : "Approve each RSVP"}
                 </Text>
               </Pressable>
@@ -288,7 +352,9 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
           label="Let guests chip in"
           sub="Guests can add a voluntary gift after they RSVP. Their RSVP stays free."
           on={contributionOn}
-          onToggle={() => updateDraft({ rsvpContributionEnabled: !contributionOn })}
+          onToggle={() =>
+            updateDraft({ rsvpContributionEnabled: !contributionOn })
+          }
           testID="rsvp-contribution-toggle"
         />
         {contributionOn ? (
@@ -297,7 +363,9 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
               label="Suggested amount (optional)"
               currency={chipCurrency}
               cents={draft.rsvpContributionSuggestedCents}
-              onChange={(c) => updateDraft({ rsvpContributionSuggestedCents: c })}
+              onChange={(c) =>
+                updateDraft({ rsvpContributionSuggestedCents: c })
+              }
               testID="rsvp-contribution-suggested"
             />
             <MoneyField
@@ -321,7 +389,10 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
                 can never flash. */}
             {chipInPayoutReady ? (
               /* READY — positive confirmation (ORCH-1335). */
-              <View style={styles.readyCallout} testID="rsvp-contribution-ready-callout">
+              <View
+                style={styles.readyCallout}
+                testID="rsvp-contribution-ready-callout"
+              >
                 <View style={styles.readyHeadingRow}>
                   <Icon name="check" size={16} color={semantic.success} />
                   <Text style={styles.readyHeading}>Payouts are on</Text>
@@ -332,11 +403,17 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
               </View>
             ) : (
               /* NOT READY / UNKNOWN — today's neutral nudge, copy UNCHANGED. */
-              <View style={styles.connectCallout} testID="rsvp-contribution-connect-callout">
-                <Text style={styles.connectHeading}>Connect your bank to collect contributions</Text>
+              <View
+                style={styles.connectCallout}
+                testID="rsvp-contribution-connect-callout"
+              >
+                <Text style={styles.connectHeading}>
+                  Connect your bank to collect contributions
+                </Text>
                 <Text style={styles.connectSub}>
-                  Guests can chip in once your payouts are set up. If your bank isn't connected yet,
-                  you'll be prompted to finish setup when you publish.
+                  Guests can chip in once your payouts are set up. If your bank
+                  isn't connected yet, you'll be prompted to finish setup when
+                  you publish.
                 </Text>
               </View>
             )}
@@ -350,7 +427,9 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
         // ORCH-1339 — D2-honest sub-copy (SPEC §4.8, byte-exact).
         sub="Hide who's going. Only you see the list."
         on={draft.privateGuestList}
-        onToggle={() => updateDraft({ privateGuestList: !draft.privateGuestList })}
+        onToggle={() =>
+          updateDraft({ privateGuestList: !draft.privateGuestList })
+        }
         testID="rsvp-private-guestlist"
       />
 
@@ -362,7 +441,9 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
         label="Hide the spots-left count"
         sub="Guests see who's going — not how many spots remain."
         on={draft.hideRemainingCount}
-        onToggle={() => updateDraft({ hideRemainingCount: !draft.hideRemainingCount })}
+        onToggle={() =>
+          updateDraft({ hideRemainingCount: !draft.hideRemainingCount })
+        }
         testID="rsvp-hide-count"
       />
 
@@ -390,10 +471,18 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={opt.label}
-                style={[styles.visibilityPill, active && styles.visibilityPillActive]}
+                style={[
+                  styles.visibilityPill,
+                  active && styles.visibilityPillActive,
+                ]}
                 testID={`rsvp-visibility-${opt.id}`}
               >
-                <Text style={[styles.visibilityPillLabel, active && styles.visibilityPillLabelActive]}>
+                <Text
+                  style={[
+                    styles.visibilityPillLabel,
+                    active && styles.visibilityPillLabelActive,
+                  ]}
+                >
                   {opt.label}
                 </Text>
               </Pressable>
@@ -408,7 +497,9 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
               : "Off = invite-link only. On = anyone nearby can find and RSVP."
           }
           on={draft.rsvpDiscoverable}
-          onToggle={() => updateDraft({ rsvpDiscoverable: !draft.rsvpDiscoverable })}
+          onToggle={() =>
+            updateDraft({ rsvpDiscoverable: !draft.rsvpDiscoverable })
+          }
           disabled={draft.visibility === "private"}
           testID="rsvp-discoverable-toggle"
         />
@@ -593,7 +684,12 @@ const styles = StyleSheet.create({
     padding: 3,
   },
   toggleTrackOn: { backgroundColor: accent.warm },
-  toggleThumb: { width: 20, height: 20, borderRadius: 999, backgroundColor: "#fff" },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: "#fff",
+  },
   toggleThumbOff: { transform: [{ translateX: 0 }] },
   toggleThumbOn: { transform: [{ translateX: 18 }] },
 
@@ -617,7 +713,11 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: textTokens.primary,
   },
-  stepperControls: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  stepperControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
   stepperBtn: {
     width: 36,
     height: 36,
@@ -626,7 +726,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: glass.tint.profileElevated,
   },
-  stepperBtnText: { fontSize: 20, fontWeight: "700", color: textTokens.primary },
+  stepperBtnText: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
   stepperValue: {
     minWidth: 28,
     textAlign: "center",

@@ -25,7 +25,13 @@
  * Per Cycle 3 spec §3.4 + dispatch internal-inconsistency lock.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   AppState,
   Image,
@@ -91,7 +97,7 @@ import { Stepper } from "../ui/Stepper";
 import type { StepperStep } from "../ui/Stepper";
 import { TopBar } from "../ui/TopBar";
 import { Toast } from "../ui/Toast";
-import { TurnoutIntelProvider } from "../intel/TurnoutIntelProvider";
+import { createDeferredTurnoutIntelProvider } from "../intel/createDeferredTurnoutIntelProvider";
 
 /*
  * Desktop web wizard contract restored after regression:
@@ -110,11 +116,20 @@ import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { CreatorStep5Tickets } from "./CreatorStep5Tickets";
 import { CreatorStep6Settings } from "./CreatorStep6Settings";
 import { CreatorStep7Preview } from "./CreatorStep7Preview";
+
 import { PublishErrorsSheet } from "./PublishErrorsSheet";
 // ISSUE-1001 — the official business lockup now imports from the canonical
 // master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
 // the app-local copy is deleted.
 import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
+
+// #1742 / ORCH-1083 — creator intelligence is not app-startup UI.
+const LazyTurnoutIntelProvider = createDeferredTurnoutIntelProvider(
+  async () => {
+    const module = await import("../intel/TurnoutIntelProvider");
+    return { default: module.TurnoutIntelRuntime };
+  },
+);
 
 const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
   { title: "Basics", subtitle: "Name, format, and category" },
@@ -229,20 +244,28 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
 
   const [currentStep, setCurrentStep] = useState<number>(() => {
     const fallback = liveDraft.lastStepReached;
-    return initialStep !== undefined && initialStep >= 0 && initialStep < TOTAL_STEPS
+    return initialStep !== undefined &&
+      initialStep >= 0 &&
+      initialStep < TOTAL_STEPS
       ? initialStep
       : fallback;
   });
   const [showStepErrors, setShowStepErrors] = useState<boolean>(false);
-  const [discardDialogVisible, setDiscardDialogVisible] = useState<boolean>(false);
-  const [publishConfirmVisible, setPublishConfirmVisible] = useState<boolean>(false);
+  const [discardDialogVisible, setDiscardDialogVisible] =
+    useState<boolean>(false);
+  const [publishConfirmVisible, setPublishConfirmVisible] =
+    useState<boolean>(false);
   const [errorsSheetVisible, setErrorsSheetVisible] = useState<boolean>(false);
   const [pendingErrors, setPendingErrors] = useState<ValidationError[]>([]);
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
   const [isDiscarding, setIsDiscarding] = useState<boolean>(false);
-  const [coverVideoProcessing, setCoverVideoProcessing] = useState<boolean>(false);
+  const [coverVideoProcessing, setCoverVideoProcessing] =
+    useState<boolean>(false);
   const [discardError, setDiscardError] = useState<string | null>(null);
-  const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
+  const [toast, setToast] = useState<ToastState>({
+    visible: false,
+    message: "",
+  });
   // Track keyboard state — used to (a) hide the bottom dock during
   // typing so it doesn't take space between focused input and keyboard,
   // (b) apply dynamic paddingBottom to the ScrollView so manual scroll
@@ -469,7 +492,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // exactly the sequential-write shape that dropped the first value here.
   const draftId = initialDraft.id;
   const handleUpdate = useCallback(
-    (patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>): void => {
+    (
+      patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>,
+    ): void => {
       const nextRevision = clientRevisionRef.current + 1;
       clientRevisionRef.current = nextRevision;
       const revisionedPatch = {
@@ -479,7 +504,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       markDraftDirty(draftId, nextRevision);
       updateDraft(draftId, revisionedPatch);
       const fresh =
-        useDraftEventStore.getState().getDraft(draftId) ?? latestDraftRef.current;
+        useDraftEventStore.getState().getDraft(draftId) ??
+        latestDraftRef.current;
       const nextDraft: DraftEvent = {
         ...fresh,
         updatedAt: new Date().toISOString(),
@@ -596,7 +622,9 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
 
   const handlePublishTap = useCallback((): void => {
     const errs = validatePublish(liveDraft, stripeStatus);
-    const stripeBlocking = errs.find((e) => e.fieldKey === "stripeNotConnected");
+    const stripeBlocking = errs.find(
+      (e) => e.fieldKey === "stripeNotConnected",
+    );
     const otherErrs = errs.filter((e) => e.fieldKey !== "stripeNotConnected");
 
     if (otherErrs.length > 0) {
@@ -710,14 +738,20 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       case "recurring": {
         const count =
           liveDraft.recurrenceRule !== null && liveDraft.date !== null
-            ? expandRecurrenceToDates(liveDraft.recurrenceRule, liveDraft.date).length
+            ? expandRecurrenceToDates(liveDraft.recurrenceRule, liveDraft.date)
+                .length
             : 0;
         return `Publish recurring event? ${count} occurrences will be created.`;
       }
       case "multi_date":
         return `Publish event with ${liveDraft.multiDates?.length ?? 0} dates?`;
     }
-  }, [liveDraft.whenMode, liveDraft.recurrenceRule, liveDraft.date, liveDraft.multiDates]);
+  }, [
+    liveDraft.whenMode,
+    liveDraft.recurrenceRule,
+    liveDraft.date,
+    liveDraft.multiDates,
+  ]);
 
   // ---- Render step body ----
 
@@ -833,7 +867,10 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
           return (
             <View
               key={step.title}
-              style={[styles.desktopStepItem, active ? styles.desktopStepItemActive : null]}
+              style={[
+                styles.desktopStepItem,
+                active ? styles.desktopStepItemActive : null,
+              ]}
             >
               <View
                 style={[
@@ -872,14 +909,31 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   );
 
   return (
-    <TurnoutIntelProvider
-      draft={liveDraft}
+    <LazyTurnoutIntelProvider
+      source={{
+        kind: "event",
+        draft: liveDraft,
+        brandDefaultCurrency: brand?.defaultCurrency ?? null,
+      }}
       brandId={liveDraft.brandId}
-      brandDefaultCurrency={brand?.defaultCurrency ?? null}
       wizard="event"
-      surface={currentStep === 1 ? "when" : currentStep === 2 ? "where" : currentStep === 4 ? "tickets" : "preview"}
+      surface={
+        currentStep === 1
+          ? "when"
+          : currentStep === 2
+            ? "where"
+            : currentStep === 4
+              ? "tickets"
+              : "preview"
+      }
       previewActive={currentStep === 6}
       keyboardVisible={keyboardVisible}
+      navigateTo={(step, _focus) => {
+        setCurrentStep(step);
+        requestAnimationFrame(() =>
+          scrollViewRef.current?.scrollTo({ y: 0, animated: true }),
+        );
+      }}
     >
     <View
       style={[
@@ -932,7 +986,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       {isWideDesktop ? null : (
       <View style={styles.subtitleRow}>
         <Text style={styles.subtitle}>
-          {brand?.displayName ?? "Brand"} · Step {currentStep + 1} of {TOTAL_STEPS}
+              {brand?.displayName ?? "Brand"} · Step {currentStep + 1} of{" "}
+              {TOTAL_STEPS}
         </Text>
         {serverSaveState !== undefined ? (
           <Text
@@ -955,8 +1010,11 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
 
       <View style={isWideDesktop ? styles.desktopShell : styles.mobileShell}>
         {isWideDesktop ? renderDesktopStepRail() : null}
-        <View style={isWideDesktop ? styles.desktopFormPane : styles.mobileFormPane}>
-
+          <View
+            style={
+              isWideDesktop ? styles.desktopFormPane : styles.mobileFormPane
+            }
+          >
       {/* ORCH-0892-B v2: SmartScrollView (KAS on native) computes precise
           overlap between focused TextInput bottom edge and keyboard top,
           and scrolls exactly that amount. Replaces the old
@@ -975,8 +1033,12 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         <Text style={styles.eyebrow}>
           Step {currentStep + 1} of {TOTAL_STEPS}
         </Text>
-        <Text style={styles.stepTitle}>{STEP_DEFS[currentStep].title}</Text>
-        <Text style={styles.stepSub}>{STEP_DEFS[currentStep].subtitle}</Text>
+              <Text style={styles.stepTitle}>
+                {STEP_DEFS[currentStep].title}
+              </Text>
+              <Text style={styles.stepSub}>
+                {STEP_DEFS[currentStep].subtitle}
+              </Text>
         <View style={styles.stepBodyWrap}>{renderStepBody()}</View>
       </ScrollView>
 
@@ -991,7 +1053,10 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         variant="elevated"
         padding={0}
         radius="xxl"
-        style={[styles.dock, { marginBottom: insets.bottom + spacing.lg }]}
+                style={[
+                  styles.dock,
+                  { marginBottom: insets.bottom + spacing.lg },
+                ]}
       >
         {isLastStep ? (
           // Step 7 — uniform Back + Publish dock. The Stripe-blocked
@@ -1103,7 +1168,7 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         />
       </View>
     </View>
-    </TurnoutIntelProvider>
+    </LazyTurnoutIntelProvider>
   );
 };
 

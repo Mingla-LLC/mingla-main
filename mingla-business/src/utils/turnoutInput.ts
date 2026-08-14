@@ -3,6 +3,15 @@
  * card and #1742's pre-publish gate. Intelligence never writes draft state.
  */
 import { PARTY_TYPES } from "../constants/eventTaxonomy";
+import {
+  EXPERIENCE_INTENTS,
+  type ExperienceIntentId,
+} from "../constants/experienceIntents";
+import type {
+  ExperiencePricingMode,
+  ExperienceStopDraft,
+} from "../components/experience/experienceWizardTypes";
+import type { ExperienceWhenState } from "../hooks/useExperienceDraftAdapter";
 import type { DraftEvent } from "../store/draftEventStore";
 import { effectiveDraftCurrency } from "./moneySummary";
 import { expandRecurrenceToDates } from "./recurrenceRule";
@@ -30,6 +39,7 @@ export type TurnoutBlockReason =
   | "missing_date"
   | "invalid_date"
   | "missing_capacity"
+  | "invalid_price"
   | "unlimited_capacity"
   | "online_event";
 
@@ -37,11 +47,25 @@ export type TurnoutInputResult =
   | { ok: true; input: TurnoutEngineInput }
   | { ok: false; reason: TurnoutBlockReason };
 
-export interface TurnoutInputSource {
-  kind: "event" | "rsvp";
-  draft: DraftEvent;
-  brandDefaultCurrency: string | null;
-}
+export type TurnoutInputSource =
+  | {
+      kind: "event" | "rsvp";
+      draft: DraftEvent;
+      brandDefaultCurrency: string | null;
+    }
+  | {
+      kind: "experience";
+      title: string;
+      intents: readonly ExperienceIntentId[];
+      stops: readonly ExperienceStopDraft[];
+      when: ExperienceWhenState;
+      pricingMode: ExperiencePricingMode;
+      resolvedTotalMajor: number;
+      isFree: boolean;
+      capacity: string;
+      unlimited: boolean;
+      brandDefaultCurrency: string | null;
+    };
 
 const isoDate = (date: Date): string => {
   const year = date.getFullYear();
@@ -68,6 +92,28 @@ export const resolveNextEventDate = (draft: DraftEvent): string | null => {
     .filter((date) => date >= today)
     .sort();
   return next[0] ?? null;
+};
+
+export const resolveNextExperienceDate = (
+  when: ExperienceWhenState,
+): string | null => {
+  const today = todayIso();
+  if (when.whenMode === "single") return when.date;
+  if (when.whenMode === "multi_date") {
+    return (
+      (when.multiDates ?? [])
+        .map((entry) => entry.date)
+        .filter((date) => date >= today)
+        .sort()[0] ?? null
+    );
+  }
+  if (when.date === null || when.recurrenceRule === null) return null;
+  return (
+    expandRecurrenceToDates(when.recurrenceRule, when.date)
+      .map(isoDate)
+      .filter((date) => date >= today)
+      .sort()[0] ?? null
+  );
 };
 
 const isValidForecastDate = (value: string): boolean => {
@@ -121,6 +167,63 @@ const eventTicketPrice = (draft: DraftEvent): number => {
 export const buildTurnoutInput = (
   source: TurnoutInputSource,
 ): TurnoutInputResult => {
+  if (source.kind === "experience") {
+    const title = source.title.trim().slice(0, 140);
+    if (title.length < 2) return { ok: false, reason: "missing_title" };
+    const labels = new Map(
+      EXPERIENCE_INTENTS.map((item) => [item.id, item.label]),
+    );
+    const category = source.intents
+      .slice(0, 3)
+      .map((id) => labels.get(id))
+      .filter((label): label is string => label !== undefined)
+      .join(", ")
+      .slice(0, 60);
+    if (category.length < 2) return { ok: false, reason: "missing_category" };
+    const firstStop = source.stops[0];
+    const city = (firstStop?.city ?? "").trim().slice(0, 80);
+    if (city.length < 2) return { ok: false, reason: "missing_city" };
+    const date = resolveNextExperienceDate(source.when);
+    if (date === null) return { ok: false, reason: "missing_date" };
+    if (!isValidForecastDate(date))
+      return { ok: false, reason: "invalid_date" };
+    if (source.unlimited) return { ok: false, reason: "unlimited_capacity" };
+    const capacity = Number(source.capacity);
+    if (!Number.isInteger(capacity) || capacity < 1)
+      return { ok: false, reason: "missing_capacity" };
+    const currency = source.brandDefaultCurrency?.trim().toUpperCase() ?? "";
+    const startTime = source.when.doorsOpen ?? firstStop?.startTime ?? "";
+    if (
+      !source.isFree &&
+      (!Number.isFinite(source.resolvedTotalMajor) ||
+        source.resolvedTotalMajor < 0)
+    ) {
+      return { ok: false, reason: "invalid_price" };
+    }
+    const ticketPrice = source.isFree
+      ? 0
+      : Math.round(source.resolvedTotalMajor * 100) / 100;
+    return {
+      ok: true,
+      input: {
+        title,
+        category,
+        city,
+        venue_name: (firstStop?.placeName ?? "").trim().slice(0, 120),
+        date,
+        indoor_outdoor: "indoor",
+        ticket_price: ticketPrice,
+        capacity,
+        budget: 0,
+        audience_size: null,
+        lineup: null,
+        ...(/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime)
+          ? { start_time: startTime }
+          : {}),
+        ...(/^[A-Z]{3}$/.test(currency) ? { currency } : {}),
+      },
+    };
+  }
   const { draft } = source;
   if (draft.format === "online") return { ok: false, reason: "online_event" };
   const title = draft.name.trim().slice(0, 140);

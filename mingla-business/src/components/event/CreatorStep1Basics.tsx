@@ -23,14 +23,8 @@
  * Mingla_Artifacts/reports/QA_ORCH-0823_EVENT_WIZARD_SPACE_CAPSLOCK_GLITCH_REPORT.md.
  */
 
-import React, { useCallback } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import React, { useCallback, useRef } from "react";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import {
   accent,
@@ -50,6 +44,7 @@ import {
 
 import { GlassCard } from "../ui/GlassCard";
 import { Input } from "../ui/Input";
+import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 
 import { errorForKey, type StepBodyProps } from "./types";
 
@@ -73,7 +68,9 @@ const FormatPill: React.FC<FormatPillProps> = ({ label, active, onPress }) => (
     accessibilityLabel={label}
     style={[styles.formatPill, active && styles.formatPillActive]}
   >
-    <Text style={[styles.formatPillLabel, active && styles.formatPillLabelActive]}>
+    <Text
+      style={[styles.formatPillLabel, active && styles.formatPillLabelActive]}
+    >
       {label}
     </Text>
   </Pressable>
@@ -130,12 +127,17 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
   showErrors,
   scrollToBottom,
 }) => {
+  const nameRef = useRef<TextInput>(null);
+  const focusName = useCallback(() => nameRef.current?.focus(), []);
+  const nameHighlighted = useTurnoutFocusTarget("name", focusName);
   const nameError = showErrors ? errorForKey(errors, "name") : undefined;
   const descError = showErrors ? errorForKey(errors, "description") : undefined;
   const partyTypesError = showErrors
     ? errorForKey(errors, "partyTypes")
     : undefined;
-  const vibeTagsError = showErrors ? errorForKey(errors, "vibeTags") : undefined;
+  const vibeTagsError = showErrors
+    ? errorForKey(errors, "vibeTags")
+    : undefined;
   const musicGenresError = showErrors
     ? errorForKey(errors, "musicGenres")
     : undefined;
@@ -174,12 +176,16 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
       <View style={styles.field}>
         <Text style={styles.fieldLabel}>Event name</Text>
         <Input
+          ref={nameRef}
           value={draft.name}
           onChangeText={(v) => updateDraft({ name: v })}
           placeholder="e.g. Slow Burn vol. 4"
           variant="text"
           accessibilityLabel="Event name"
-          style={nameError !== undefined ? styles.inputError : undefined}
+          style={[
+            nameError !== undefined ? styles.inputError : undefined,
+            nameHighlighted ? styles.intelHighlight : undefined,
+          ]}
         />
         {nameError !== undefined ? (
           <Text style={styles.helperError}>{nameError}</Text>
@@ -328,6 +334,7 @@ const styles = StyleSheet.create({
     borderColor: semantic.error,
     borderWidth: 1,
   },
+  intelHighlight: { borderColor: accent.warm, borderWidth: 2 },
   formatRow: {
     flexDirection: "row",
     gap: spacing.xs,

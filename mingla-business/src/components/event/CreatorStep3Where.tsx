@@ -31,6 +31,7 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
+import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 // ORCH-1047: the event Where step now uses the Mapbox address autocomplete
 // (META-ORCH-1059's mapbox-geocode edge fn + MapboxAddressInput) — the legacy
 // Google Places path was REQUEST_DENIED, leaving an empty suggestions dropdown.
@@ -64,6 +65,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
   showErrors,
   scrollToBottom,
 }) => {
+  const intelCityHighlight = useTurnoutFocusTarget("city");
   const venueError = showErrors ? errorForKey(errors, "venueName") : undefined;
   const addressError = showErrors ? errorForKey(errors, "address") : undefined;
   const onlineError = showErrors ? errorForKey(errors, "onlineUrl") : undefined;
@@ -95,9 +97,13 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
             city: savedCityRef.current,
           });
           if (
-            !isLocationRequestGenerationCurrent(requestGenerationRef, generation) ||
+            !isLocationRequestGenerationCurrent(
+              requestGenerationRef,
+              generation,
+            ) ||
             isFreeTextResolveStale(rawLabel, committedAddrRef.current)
-          ) return;
+          )
+            return;
           if (
             resolution.status === "needs_context" ||
             resolution.location.city === null
@@ -115,7 +121,10 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
           setSelectionState("selected");
         } catch {
           if (
-            isLocationRequestGenerationCurrent(requestGenerationRef, generation) &&
+            isLocationRequestGenerationCurrent(
+              requestGenerationRef,
+              generation,
+            ) &&
             !isFreeTextResolveStale(rawLabel, committedAddrRef.current)
           ) {
             setSelectionState("error");
@@ -126,11 +135,23 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
     [updateDraft],
   );
 
-  const showInPerson = draft.format === "in_person" || draft.format === "hybrid";
+  const showInPerson =
+    draft.format === "in_person" || draft.format === "hybrid";
   const showOnline = draft.format === "online" || draft.format === "hybrid";
 
   return (
-    <View>
+    <View
+      style={
+        intelCityHighlight
+          ? {
+              borderColor: accent.warm,
+              borderWidth: 2,
+              borderRadius: radiusTokens.md,
+              padding: spacing.xs,
+            }
+          : undefined
+      }
+    >
       {showInPerson ? (
         <>
           <View style={styles.field}>
@@ -164,7 +185,12 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
                 advanceLocationRequestGeneration(requestGenerationRef);
                 savedCityRef.current = null;
                 committedAddrRef.current = v;
-                updateDraft({ address: v, city: null, locationGeo: null, coordinatePrecision: null });
+                updateDraft({
+                  address: v,
+                  city: null,
+                  locationGeo: null,
+                  coordinatePrecision: null,
+                });
               }}
               onFreeText={resolveCommittedText}
               onPick={(details: PlaceDetails, selectedLabel?: string): void => {
@@ -199,7 +225,12 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
                 savedCityRef.current = null;
                 committedAddrRef.current = "";
                 setSelectionState("editing");
-                updateDraft({ address: null, city: null, locationGeo: null, coordinatePrecision: null });
+                updateDraft({
+                  address: null,
+                  city: null,
+                  locationGeo: null,
+                  coordinatePrecision: null,
+                });
               }}
               error={addressError}
             />
@@ -276,8 +307,14 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
                 <View style={styles.mapPin} />
                 {isApprox ? (
                   <View style={styles.approxBadge}>
-                    <Icon name="location" size={12} color={textTokens.primary} />
-                    <Text style={styles.approxBadgeText}>Approximate location</Text>
+                    <Icon
+                      name="location"
+                      size={12}
+                      color={textTokens.primary}
+                    />
+                    <Text style={styles.approxBadgeText}>
+                      Approximate location
+                    </Text>
                   </View>
                 ) : null}
               </View>
@@ -292,7 +329,11 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
           })()}
 
           {/* Privacy info card */}
-          <GlassCard variant="base" padding={spacing.md} style={styles.infoCard}>
+          <GlassCard
+            variant="base"
+            padding={spacing.md}
+            style={styles.infoCard}
+          >
             <View style={styles.infoRow}>
               <View style={styles.infoIconWrap}>
                 <Icon name="location" size={14} color={accent.warm} />

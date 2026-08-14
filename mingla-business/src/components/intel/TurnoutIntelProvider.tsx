@@ -1,11 +1,14 @@
 import React, {
   Suspense,
+  useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 
-import type { DraftEvent } from "../../store/draftEventStore";
+import { withExperienceModelEstimate } from "../../utils/experienceTurnoutModel";
+import type { TurnoutInputSource } from "../../utils/turnoutInput";
 import type {
   TurnoutForecastController,
   TurnoutSurface,
@@ -14,6 +17,9 @@ import type {
 import {
   TurnoutIntelContext,
   type TurnoutIntelContextValue,
+  type TurnoutEstimateState,
+  TurnoutGateSessionClaims,
+  type TurnoutIntelSessionController,
 } from "./TurnoutIntelContext";
 
 export { useTurnoutIntel } from "./TurnoutIntelContext";
@@ -32,24 +38,40 @@ const LazyTurnoutIntelObserver = React.lazy(
 
 export interface TurnoutIntelProviderProps {
   children: React.ReactNode;
-  draft: DraftEvent;
+  source: TurnoutInputSource;
   brandId: string;
-  brandDefaultCurrency: string | null;
   wizard: TurnoutWizard;
   surface: TurnoutSurface;
   previewActive: boolean;
   keyboardVisible: boolean;
+  autoRunEnabled?: boolean;
+  controllerRef?: React.MutableRefObject<TurnoutForecastController | null>;
+  sessionRef?: React.MutableRefObject<TurnoutIntelSessionController | null>;
+  navigateTo?: (
+    step: number,
+    focus: "name" | "date" | "city" | "price" | "capacity",
+  ) => void;
 }
 
-export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
-  children,
-  draft,
+export type TurnoutIntelRuntimeProps = Omit<
+  TurnoutIntelProviderProps,
+  "children"
+> & {
+  onValue: (value: TurnoutIntelContextValue | null) => void;
+};
+
+export const TurnoutIntelRuntime: React.FC<TurnoutIntelRuntimeProps> = ({
+  source,
   brandId,
-  brandDefaultCurrency,
   wizard,
   surface,
   previewActive,
   keyboardVisible,
+  autoRunEnabled,
+  controllerRef,
+  sessionRef,
+  navigateTo,
+  onValue,
 }) => {
   const [controller, setController] =
     useState<TurnoutForecastController | null>(null);
@@ -64,40 +86,161 @@ export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
   }
   const display = keyboardVisible ? displayedController.current : controller;
   const [reportOpen, setReportOpen] = useState(false);
+  const [focusHint, setFocusHint] = useState<
+    "name" | "date" | "city" | "price" | "capacity" | null
+  >(null);
+  const [reportContext, setReportContext] = useState<string | undefined>();
+  const [estimate, setEstimateState] = useState<TurnoutEstimateState>({
+    kind: "unanswered",
+  });
+  const estimateSourceCompatible =
+    source.kind === "experience" && source.unlimited;
+  const effectiveEstimate = useMemo<TurnoutEstimateState>(
+    () => (estimateSourceCompatible ? estimate : { kind: "unanswered" }),
+    [estimate, estimateSourceCompatible],
+  );
+  const estimateApplied = effectiveEstimate.kind === "answered";
+  useEffect(() => {
+    if (!estimateSourceCompatible && estimate.kind !== "unanswered") {
+      setEstimateState({ kind: "unanswered" });
+    }
+  }, [estimate.kind, estimateSourceCompatible]);
+  const gateClaims = useRef(new TurnoutGateSessionClaims());
+  const setEstimate = useCallback((value: number): void => {
+    if (Number.isInteger(value) && value > 0) {
+      setEstimateState({ kind: "answered", value });
+    }
+  }, []);
+  const skipEstimate = useCallback((): void => {
+    setEstimateState({ kind: "skipped" });
+  }, []);
+  const claimGate = useCallback(
+    (inputKey: string): "claimed" | "active" | "seen" => {
+      return gateClaims.current.claim(inputKey);
+    },
+    [],
+  );
+  const dismissGate = useCallback((inputKey: string): void => {
+    gateClaims.current.dismiss(inputKey);
+  }, []);
+  const modeledSource = useMemo<TurnoutInputSource>(() => {
+    return withExperienceModelEstimate(
+      source,
+      estimateApplied && effectiveEstimate.kind === "answered"
+        ? effectiveEstimate.value
+        : null,
+    );
+  }, [effectiveEstimate, estimateApplied, source]);
+  const sessionHonesty = useMemo((): string | null => {
+    if (controller?.input?.date === undefined) return null;
+    if (source.kind === "experience") {
+      return source.when.whenMode === "single"
+        ? null
+        : `Modeled for your next session — ${controller.input.date}`;
+    }
+    return source.draft.whenMode === "single"
+      ? null
+      : `Modeled for your next date — ${controller.input.date}`;
+  }, [controller?.input?.date, source]);
+  if (controllerRef !== undefined) controllerRef.current = controller;
+  if (sessionRef !== undefined) {
+    sessionRef.current = {
+      estimate: effectiveEstimate,
+      estimateApplied,
+      setEstimate,
+      skipEstimate,
+      claimGate,
+      dismissGate,
+    };
+  }
   const value = useMemo<TurnoutIntelContextValue | null>(
     () =>
       display === null || controller === null
         ? null
         : ({
             ...display,
+            wizard,
+            navigateTo:
+              navigateTo === undefined
+                ? undefined
+                : (step, focus) => {
+                    setFocusHint(focus);
+                    navigateTo(step, focus);
+                  },
+            focusHint,
+            consumeFocusHint: (focus) => {
+              if (focusHint !== focus) return false;
+              setFocusHint(null);
+              return true;
+            },
+            estimate: effectiveEstimate,
+            estimateApplied,
+            setEstimate,
+            skipEstimate,
+            sessionHonesty,
             run: controller.run,
-            openReport: () => {
-              controller.trackReportOpened();
+            openReport: (contextLabel?: string, door = "ambient") => {
+              controller.trackReportOpened(door);
+              setReportContext(contextLabel);
               setReportOpen(true);
             },
           } satisfies TurnoutIntelContextValue),
-    [controller, display],
+    [
+      controller,
+      display,
+      effectiveEstimate,
+      estimateApplied,
+      focusHint,
+      navigateTo,
+      sessionHonesty,
+      setEstimate,
+      skipEstimate,
+      wizard,
+    ],
   );
+  useEffect(() => {
+    onValue(value);
+  }, [onValue, value]);
+  useEffect(
+    () => () => {
+      onValue(null);
+      if (controllerRef !== undefined) controllerRef.current = null;
+      if (sessionRef !== undefined) sessionRef.current = null;
+    },
+    [controllerRef, onValue, sessionRef],
+  );
+  return (
+    <Suspense fallback={null}>
+      <LazyTurnoutIntelObserver
+        brandId={brandId}
+        source={modeledSource}
+        wizard={wizard}
+        surface={surface}
+        previewActive={previewActive}
+        autoRunEnabled={autoRunEnabled}
+        onController={setController}
+      />
+      {reportOpen && controller !== null ? (
+        <LazyIntelReportSheet
+          visible
+          report={controller.report}
+          onClose={() => setReportOpen(false)}
+          contextLabel={reportContext}
+        />
+      ) : null}
+    </Suspense>
+  );
+};
+
+export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
+  children,
+  ...runtimeProps
+}) => {
+  const [value, setValue] = useState<TurnoutIntelContextValue | null>(null);
   return (
     <TurnoutIntelContext.Provider value={value}>
       {children}
-      <Suspense fallback={null}>
-        <LazyTurnoutIntelObserver
-          brandId={brandId}
-          source={{ kind: wizard, draft, brandDefaultCurrency }}
-          wizard={wizard}
-          surface={surface}
-          previewActive={previewActive}
-          onController={setController}
-        />
-        {reportOpen && controller !== null ? (
-          <LazyIntelReportSheet
-            visible
-            report={controller.report}
-            onClose={() => setReportOpen(false)}
-          />
-        ) : null}
-      </Suspense>
+      <TurnoutIntelRuntime {...runtimeProps} onValue={setValue} />
     </TurnoutIntelContext.Provider>
   );
 };
