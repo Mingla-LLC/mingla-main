@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowRight } from 'lucide-react'
 import { buttonClasses } from '@/components/ui/button'
-import { HeroBookingWall } from '@/components/sections/organiser-home/hero-booking-wall'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { detectClientPlatform, type Platform } from '@/lib/device-platform'
 import {
@@ -21,20 +20,30 @@ import { captureMarketing } from '@/components/marketing/posthog-provider'
 // ⚠ rel="noopener" on an <a> is REQUIRED and is NOT the ORCH-1381 window.open
 // pathology (that ban is scoped to .open( FEATURE STRINGS). Never strip it.
 
-// ORCH-1010 — business hero. A full-bleed 3D "booking wall" (vibe-themed booking
-// moments across restaurants, cafés, events, clubs, tables) runs as the section
-// background behind a dark overlay; the headline sits on top in high contrast.
-// Shows the DEMAND Mingla creates. Illustrative content, no stock art.
-//
 // ORCH-1381 — the hero presents an explicit inline CHOICE (Download the app / Use
 // on web) instead of guessing a single destination, replacing the retired business
-// beta lead modal. The hero stays video-free (I-1045-HERO-NO-VIDEO): no demo-clip
-// tile / video modal is added.
+// beta lead modal. #2083 replaces the old illustrative booking wall with an
+// operator-approved, silent environmental loop. It remains decorative: all copy,
+// controls, destinations and analytics stay in semantic HTML above it.
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
-export function OrganiserHero() {
+export type HostHeroVariant = 'city' | 'world'
+
+const HERO_MEDIA: Record<HostHeroVariant, { video: string; poster: string }> = {
+  city: {
+    video: '/marketing/host-hero/city-waking-up-preview.mp4',
+    poster: '/marketing/host-hero/city-waking-up-poster.jpg',
+  },
+  world: {
+    video: '/marketing/host-hero/world-hosts-create-preview.mp4',
+    poster: '/marketing/host-hero/world-hosts-create-poster.jpg',
+  },
+}
+
+export function OrganiserHero({ variant = 'city' }: { variant?: HostHeroVariant }) {
   const reduced = useMinglaReducedMotion()
+  const media = HERO_MEDIA[variant]
 
   // ORCH-1381 — the RENDERED choice is device-aware, so it must resolve AFTER
   // mount: detectClientPlatform() reads navigator, absent during SSR. Seeding
@@ -76,63 +85,76 @@ export function OrganiserHero() {
   }
 
   return (
-    <>
-      <section className="relative flex min-h-[88vh] items-center overflow-hidden px-6 pb-24 pt-32 md:px-10 md:pb-32 md:pt-40 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]">
-        {/* Background — the 3D booking wall (full-bleed cover). */}
-        <HeroBookingWall />
+    <section
+      data-host-hero-variant={variant}
+      className="relative flex min-h-[100svh] overflow-hidden bg-parchment px-6 pb-24 pt-32 md:px-10 md:pb-32 md:pt-40 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]"
+    >
+      <video
+        key={variant}
+        aria-hidden="true"
+        tabIndex={-1}
+        autoPlay={!reduced}
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        poster={media.poster}
+        className="pointer-events-none absolute inset-0 h-full w-full object-cover object-bottom"
+      >
+        <source src={media.video} type="video/mp4" />
+      </video>
 
-        {/* Overlay — darkens the wall so the headline reads in high contrast.
-            Warm-tinted near the foot, deepest behind the text column. */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              'linear-gradient(180deg, rgba(8,9,12,0.78) 0%, rgba(8,9,12,0.66) 42%, rgba(20,10,4,0.82) 100%)',
-          }}
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0 left-0 w-full md:w-3/4"
-          style={{ background: 'linear-gradient(90deg, rgba(8,9,12,0.72) 0%, transparent 100%)' }}
-        />
-        {/* Dissolve — the dark wall melts into the next section's canvas so the
-            scroll from hero → "What is Mingla?" is one continuous pull, not a cut. */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-[38%]"
-          style={{ background: 'linear-gradient(to bottom, transparent 0%, var(--color-smoke) 92%)' }}
-        />
+      {/* The video carries atmosphere, never contrast responsibility. The fixed
+          parchment veil keeps live copy readable through every generated frame. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            variant === 'city'
+              ? 'linear-gradient(180deg, rgba(250,248,244,0.98) 0%, rgba(250,248,244,0.92) 42%, rgba(250,248,244,0.48) 68%, rgba(250,248,244,0.06) 100%)'
+              : 'linear-gradient(180deg, rgba(250,248,244,0.34) 0%, rgba(250,248,244,0.16) 48%, rgba(250,248,244,0.02) 78%)',
+        }}
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-b from-transparent to-parchment/70"
+      />
 
-        {/* Foreground — headline + single CTA, centered, high contrast on the wall. */}
-        <div className="relative mx-auto w-full max-w-6xl">
-          <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
+      <div className="relative z-10 mx-auto flex w-full max-w-6xl justify-center">
+        <div className="flex max-w-4xl flex-col items-center text-center">
+            <motion.p
+              initial={reduced ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: reduced ? 0 : 0.04, ease: EASE }}
+              className="text-xs font-bold uppercase tracking-[0.22em] text-warm-ink"
+            >
+              Mingla Host
+            </motion.p>
             <motion.h1
               initial={reduced ? false : { opacity: 0, y: 12, filter: 'blur(8px)' }}
               animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
               transition={{ duration: 0.72, delay: reduced ? 0 : 0.1, ease: EASE }}
-              className="font-display text-5xl leading-[1.05] tracking-[-0.02em] text-white md:text-7xl"
-              style={{ textShadow: '0 2px 24px rgba(0,0,0,0.4)' }}
+              className="mt-5 max-w-[15ch] font-display text-[clamp(2.75rem,7vw,5.75rem)] leading-[1.02] tracking-[-0.035em] text-ink"
             >
-              You deserve <br className="hidden sm:block" />to be <span className="text-warm">found.</span>
+              Your place deserves to be found.
             </motion.h1>
 
             <motion.p
               initial={reduced ? false : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: reduced ? 0 : 0.35, ease: EASE }}
-              className="mt-8 max-w-xl text-xl font-bold leading-snug text-white md:text-2xl"
-              style={{ textShadow: '0 2px 20px rgba(0,0,0,0.45)' }}
+              className="mt-6 max-w-2xl text-base font-semibold leading-relaxed text-ink/68 sm:text-lg md:text-xl"
             >
-              Your business has a vibe, your community is looking for it. Mingla
-              helps them find you.
+              Create what makes your place, event, trip or experience worth showing
+              up for. Mingla helps the right people discover it, book it and arrive.
             </motion.p>
 
             <motion.div
               initial={reduced ? false : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: reduced ? 0 : 0.5, ease: EASE }}
-              className="mt-10"
+              className="mt-8"
             >
               {/* ORCH-1381 — two actions in a row (stacking to a column below sm).
                   Desktop/other can install nothing → ONLY the web action renders. */}
@@ -154,20 +176,19 @@ export function OrganiserHero() {
                   target="_blank"
                   rel="noopener"
                   onClick={handleUseBusinessOnWeb}
-                  className={buttonClasses({ variant: 'glass', size: 'lg' })}
+                  className={buttonClasses({ variant: 'secondary', size: 'lg' })}
                 >
                   {BUSINESS_APP_CHOICE_COPY.useWeb}
                 </a>
               </div>
-              <p className="mt-4 text-sm text-white/70">
+              <p className="mx-auto mt-4 max-w-xl rounded-2xl bg-parchment/65 px-4 py-2 text-sm leading-relaxed text-ink/70 backdrop-blur-sm">
                 {target.canInstall
                   ? BUSINESS_APP_CHOICE_COPY.moreNote
                   : BUSINESS_APP_CHOICE_COPY.desktopNote}
               </p>
             </motion.div>
-          </div>
         </div>
-      </section>
-    </>
+      </div>
+    </section>
   )
 }
