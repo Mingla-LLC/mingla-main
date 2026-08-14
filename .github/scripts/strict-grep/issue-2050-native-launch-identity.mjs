@@ -99,7 +99,7 @@ export function validate(model) {
 function loadModel() {
   const consumer = JSON.parse(fs.readFileSync(path.join(ROOT, "app-mobile/app.json"), "utf8"));
   const host = JSON.parse(fs.readFileSync(path.join(ROOT, "mingla-business/app.json"), "utf8"));
-  const hostConfigSource = fs.readFileSync(path.join(ROOT, "mingla-business/app.config.ts"), "utf8");
+  const hostConfigSource = fs.readFileSync(path.join(ROOT, "mingla-business/app.config.js"), "utf8");
   const assets = {};
   for (const file of Object.keys(EXPECTED_ASSETS)) {
     const bytes = fs.readFileSync(path.join(ROOT, file));

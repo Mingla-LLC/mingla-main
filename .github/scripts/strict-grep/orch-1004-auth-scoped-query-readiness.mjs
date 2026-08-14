@@ -212,6 +212,15 @@ const PUBLIC_HOOK_ALLOWLIST = [
 ];
 const ALLOWLIST_SET = new Set(PUBLIC_HOOK_ALLOWLIST.map(([f]) => f));
 
+// Observation-only hooks: neither public nor declarative auth reads. Their
+// observer must stay disabled/fail-closed; the authenticated action owns fetch.
+const NON_FETCHING_IMPERATIVE_HOOKS = [
+  ["useTurnoutForecast.ts", "#1008 metered events runs are imperative-only"],
+];
+const NON_FETCHING_IMPERATIVE_SET = new Set(
+  NON_FETCHING_IMPERATIVE_HOOKS.map(([f]) => f),
+);
+
 // useEventOrders gates via `!loading && session !== null` (the original proven
 // template) which is the functional equivalent of isAuthReady. Treat that exact
 // pattern as a satisfying gate so the template hook is not forced to churn.
@@ -271,13 +280,13 @@ const collectQueryHookRelpaths = (dir) => {
   return out;
 };
 
-const checkCompleteness = (authSet, allowSet, failures) => {
+const checkCompleteness = (authSet, allowSet, nonFetchingSet, failures) => {
   if (!fs.existsSync(hooksDir)) {
     failures.push(`ORCH-1202 completeness: hooks dir not found at ${hooksDir}.`);
     return;
   }
   for (const relpath of collectQueryHookRelpaths(hooksDir)) {
-    if (authSet.has(relpath) || allowSet.has(relpath)) continue;
+    if (authSet.has(relpath) || allowSet.has(relpath) || nonFetchingSet.has(relpath)) continue;
     failures.push(
       `ORCH-1202 completeness: unregistered query hook "${relpath}" — it calls ` +
         `useQuery/useInfiniteQuery but is in neither AUTH_SCOPED_HOOK_FILES nor ` +
@@ -286,6 +295,33 @@ const checkCompleteness = (authSet, allowSet, failures) => {
         `enabled) or to PUBLIC_HOOK_ALLOWLIST with a one-line anon-safe reason.`,
     );
   }
+};
+
+const inspectNonFetchingImperative = (source) => {
+  const start = source.search(/\buseQuery(?!Client)\s*(?:<[^;{}]*>)?\s*\(/);
+  const end = source.indexOf("\n  });", start);
+  const observer = start >= 0 && end >= 0 ? source.slice(start, end + 6) : "";
+  const eventOwners = source.match(/\brunGrowthTool(?:<[^;{}]*>)?\s*\(\s*["']events["']/g) ?? [];
+  const allOwners = source.match(/\brunGrowthTool(?:<[^;{}]*>)?\s*\(/g) ?? [];
+  return {
+    disabled: /\benabled\s*:\s*false\b/.test(observer),
+    failClosed: /\bqueryFn\s*:\s*(?:async\s*)?\(\s*\)\s*=>\s*\{\s*throw\b/.test(observer),
+    observerFetches: /\b(?:fetch|fetchQuery|runGrowthTool|readRunByClientRef)\s*(?:<[^;{}]*>)?\s*\(/.test(observer),
+    imperativeOwner: /\bqueryClient\.fetchQuery\s*(?:<[^;{}]*>)?\s*\(/.test(source),
+    soleEventsOwner: eventOwners.length === 1 && allOwners.length === 1,
+  };
+};
+
+const checkNonFetchingImperative = (relFile, reason, failures) => {
+  const abs = path.join(hooksDir, relFile);
+  if (!fs.existsSync(abs)) {
+    failures.push(`ORCH-1004: missing NON_FETCHING/IMPERATIVE hook ${relFile}.`);
+    return;
+  }
+  const result = inspectNonFetchingImperative(fs.readFileSync(abs, "utf8"));
+  if (!result.disabled) failures.push(`${relFile}: NON_FETCHING/IMPERATIVE observer must keep literal enabled:false — ${reason}.`);
+  if (!result.failClosed || result.observerFetches) failures.push(`${relFile}: NON_FETCHING/IMPERATIVE observer queryFn must throw and never fetch — ${reason}.`);
+  if (!result.imperativeOwner || !result.soleEventsOwner) failures.push(`${relFile}: queryClient.fetchQuery must remain sole runGrowthTool("events") owner — ${reason}.`);
 };
 
 const checkHook = (relFile, failures) => {
@@ -371,6 +407,18 @@ if (process.argv.includes("--self-test")) {
   if (!publicGatedFlagged) {
     selfFailures.push("SELF-TEST allowlist: a gated public hook must be detectable as gated");
   }
+  const validImperative = `useQuery<Result>({ enabled: false, queryFn: async () => { throw new Error("imperative"); },
+  });
+    queryClient.fetchQuery({ queryFn: () => runGrowthTool<Result>("events", brandId, input) });`;
+  const probeImperative = (label, source, expected) => {
+    const r = inspectNonFetchingImperative(source);
+    const clean = r.disabled && r.failClosed && !r.observerFetches && r.imperativeOwner && r.soleEventsOwner;
+    if (clean !== expected) selfFailures.push(`SELF-TEST NON_FETCHING/IMPERATIVE ${label}: expected ${expected}, got ${clean}`);
+  };
+  probeImperative("valid", validImperative, true);
+  probeImperative("enabled:true hostile", validImperative.replace("enabled: false", "enabled: true"), false);
+  probeImperative("non-throwing hostile", validImperative.replace('throw new Error("imperative")', "return null"), false);
+  probeImperative("fetching observer hostile", validImperative.replace('throw new Error("imperative")', 'return runGrowthTool("events", brandId, input)'), false);
 
   // ── ORCH-1202 completeness detection-robustness self-tests. ──────────────
   const probeQueryHook = (label, source, expectQueryHook) => {
@@ -468,18 +516,22 @@ const failures = [];
 const AUTH_SCOPED_SET = new Set(AUTH_SCOPED_HOOK_FILES);
 AUTH_SCOPED_HOOK_FILES.forEach((f) => checkHook(f, failures));
 PUBLIC_HOOK_ALLOWLIST.forEach(([f, reason]) => checkPublicNotGated(f, reason, failures));
+NON_FETCHING_IMPERATIVE_HOOKS.forEach(([f, reason]) => checkNonFetchingImperative(f, reason, failures));
 checkNpmWiring(failures);
 
 // Cross-check: a file cannot be in both lists.
 for (const f of AUTH_SCOPED_HOOK_FILES) {
-  if (ALLOWLIST_SET.has(f)) {
+  if (ALLOWLIST_SET.has(f) || NON_FETCHING_IMPERATIVE_SET.has(f)) {
     failures.push(`ORCH-1004: "${f}" is in BOTH the auth-scoped list and the public allowlist — resolve the conflict.`);
   }
+}
+for (const [f] of PUBLIC_HOOK_ALLOWLIST) {
+  if (NON_FETCHING_IMPERATIVE_SET.has(f)) failures.push(`ORCH-1004: "${f}" is BOTH public and NON_FETCHING/IMPERATIVE.`);
 }
 
 // ORCH-1202 fail-closed completeness check: every on-disk query hook must be
 // classified into exactly one of the two lists, else CI fails.
-checkCompleteness(AUTH_SCOPED_SET, ALLOWLIST_SET, failures);
+checkCompleteness(AUTH_SCOPED_SET, ALLOWLIST_SET, NON_FETCHING_IMPERATIVE_SET, failures);
 
 if (failures.length) {
   console.error("ORCH-1004 auth-scoped query readiness gate FAILED:");
@@ -489,5 +541,6 @@ if (failures.length) {
 console.log(
   `ORCH-1004 gate PASS: all ${AUTH_SCOPED_HOOK_FILES.length} auth-scoped hooks gate enabled on isAuthReady; ` +
     `${PUBLIC_HOOK_ALLOWLIST.length} public/dual-use hooks left ungated (buyer-web protected). ` +
+    `${NON_FETCHING_IMPERATIVE_HOOKS.length} non-fetching/imperative observer locked disabled/fail-closed. ` +
     `ORCH-1202 completeness: every src/hooks query hook is classified.`,
 );

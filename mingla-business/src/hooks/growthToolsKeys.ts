@@ -21,16 +21,15 @@ export const growthToolsKeys = {
   brand: (brandId: string): readonly ["growth-tools", string] =>
     ["growth-tools", brandId] as const,
   /**
-   * P-33 — a run result for one input state. `inputHash` is the CLIENT-side
-   * stable hash (recursive key-sorted stringify; it does not need to equal the
-   * server's P-22 hash — it only needs to be stable per input state).
+   * P-33 / #1008 — a run result for one input state. Callers pass their
+   * canonical collision-free input key; a short hash is analytics-only.
    */
   run: (
     brandId: string,
     tool: GrowthToolName,
-    inputHash: string,
+    inputKey: string,
   ): readonly ["growth-tools", string, "run", GrowthToolName, string] =>
-    ["growth-tools", brandId, "run", tool, inputHash] as const,
+    ["growth-tools", brandId, "run", tool, inputKey] as const,
   /**
    * P-42 — the latest-by-subject leaf (first standing surface lands it).
    * `subjectRef` is the full `venue:<id>` / `competitor:<id>` string; READS

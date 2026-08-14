@@ -7,7 +7,7 @@
  * WHY (COMMS-0028 env reachability): on the Expo native apps a DYNAMIC
  * `process.env[<var>]` bracket read is NOT inlined by babel-preset-expo and is
  * `undefined` in Hermes standalone / OTA builds. The PostHog key MUST therefore
- * be read either from `Constants.expoConfig.extra` (which the app.config.ts
+ * be read either from `Constants.expoConfig.extra` (which the app.config.js
  * emits and survives Hermes/OTA) or via a STATIC `process.env.EXPO_PUBLIC_*`
  * member access (which IS inlined) — never a dynamic bracket lookup. This mirrors
  * the supabase/giphy/mapbox key-reachability contract.

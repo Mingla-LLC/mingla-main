@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const businessRoot = path.resolve(__dirname, "..");
-const appConfigPath = path.join(businessRoot, "app.config.ts");
+const appConfigPath = path.join(businessRoot, "app.config.js");
 const appJsonPath = path.join(businessRoot, "app.json");
 
 const read = (relPath: string): string =>
@@ -11,8 +11,8 @@ const read = (relPath: string): string =>
 const loadConfig = (): { plugins?: unknown[] } => {
   jest.resetModules();
   const appJson = JSON.parse(fs.readFileSync(appJsonPath, "utf8"));
-  const mod = require(appConfigPath);
-  return mod.default({ config: { plugins: appJson.expo.plugins } });
+  const configFn = require(appConfigPath);
+  return configFn({ config: { plugins: appJson.expo.plugins } });
 };
 
 const pluginNames = (plugins: unknown[] = []): string[] =>
@@ -100,7 +100,7 @@ describe("META-ORCH-0972 Sub-B Android optional SDK startup isolation", () => {
   });
 });
 
-// fails-on-revert verified at c2e1850cd: app.config.ts always carried the
+// fails-on-revert verified at c2e1850cd: app.config.js always carried the
 // env-absent AppsFlyer and OneSignal config plugins, package.json did not
 // exclude optional Android install SDKs from autolinking, app/_layout.tsx ran
 // optional SDK init immediately at mount, and the optional SDK services

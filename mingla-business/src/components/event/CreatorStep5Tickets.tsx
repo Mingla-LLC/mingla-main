@@ -43,6 +43,7 @@ import {
 } from "../../utils/ticketDisplay";
 
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { WhoCoversCostsSection } from "../pricing/WhoCoversCostsSection";
@@ -405,6 +406,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
         cancelLabel="Keep"
         destructive
       />
+      <TurnoutForecastCard surface="tickets" />
     </View>
   );
 };

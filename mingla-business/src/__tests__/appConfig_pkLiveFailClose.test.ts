@@ -1,11 +1,11 @@
 import path from "node:path";
 
-const appConfigPath = path.resolve(__dirname, "../../app.config.ts");
+const appConfigPath = path.resolve(__dirname, "../../app.config.js");
 
 const loadConfig = (): { extra?: Record<string, unknown> } => {
   jest.resetModules();
-  const mod = require(appConfigPath);
-  return mod.default({ config: {} });
+  const configFn = require(appConfigPath);
+  return configFn({ config: {} });
 };
 
 describe("ORCH-0954 amendment — mingla-business publishable key fail-close", () => {

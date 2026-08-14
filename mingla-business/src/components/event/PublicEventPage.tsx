@@ -319,6 +319,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // ORCH-1291 [rsvp-chip-in] — the last-submitted guest contact, captured at RSVP
   // so an anon web chip-in can supply guestEmail to rsvp-contribution-create.
   const lastRsvpContactRef = useRef<{ name: string; email: string } | null>(null);
+  const chipInIdempotencyRef = useRef<string | null>(null);
 
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
@@ -836,12 +837,14 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const handleChipIn = useCallback(
     async ({ amountCents }: { amountCents: number }): Promise<ChipInResult> => {
       const contact = lastRsvpContactRef.current;
+      chipInIdempotencyRef.current ??= crypto.randomUUID();
       const res = await submitRsvpContribution({
         eventId: event.id,
         amountCents,
         surface: "web",
         guestName: contact?.name,
         guestEmail: contact?.email,
+        callerIdempotencyKey: chipInIdempotencyRef.current,
       });
       const redirectUrl =
         res.kind === "requires_web_redirect"

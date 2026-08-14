@@ -239,7 +239,7 @@ serve(async (req) => {
         // must attach Stripe Customer to plan PIs explicitly].
         // orch-strict-grep-allow finalize-no-plan-root — ORCH-0924 rollback of ORCH-0921; real fix is ORCH-0925
         const { data: finalized, error: finalizeError } = await supabase.rpc(
-          "biz_ticket_checkout_finalize",
+      "biz_ticket_checkout_finalize",
           {
             p_checkout_session_id: sessionId,
             p_stripe_payment_intent_id: piId,
@@ -251,6 +251,19 @@ serve(async (req) => {
 
         if (finalizeError) {
           results.push({ sessionId, piId, error: finalizeError.message });
+          continue;
+        }
+
+        if (
+          (finalized as Record<string, unknown> | null)?.outcome ===
+            "paid_reversal_pending"
+        ) {
+          results.push({
+            sessionId,
+            piId,
+            status: "paid_reversal_pending",
+            skip: "paid_reversal_pending",
+          });
           continue;
         }
 
@@ -266,11 +279,16 @@ serve(async (req) => {
         // + fail-open. event_id = orderId.
         if (orderId) {
           try {
-            await fireAdConversion(supabase as never, { orderId, surface: "web" });
+            await fireAdConversion(supabase as never, {
+              orderId,
+              surface: "web",
+            });
           } catch (adConvErr) {
             console.warn(
               "[reconcile-stuck-checkouts] ad-conversion fire threw (non-fatal):",
-              adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
+              adConvErr instanceof Error
+                ? adConvErr.message
+                : String(adConvErr),
             );
           }
         }

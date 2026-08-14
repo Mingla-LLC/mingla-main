@@ -489,6 +489,9 @@ verify_jwt = true
 [functions.source-refund-sweep]
 verify_jwt = false
 
+[functions.checkout-sale-revocation]
+verify_jwt = false
+
 [functions.venue-reservation-refund-status]
 verify_jwt = false
 

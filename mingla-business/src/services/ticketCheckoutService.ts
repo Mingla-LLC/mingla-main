@@ -185,6 +185,21 @@ export const getTicketCheckoutStatus = async (
     buyerStatusToken,
   });
 
+export const preflightTicketCheckout = async (
+  checkoutSessionId: string,
+  buyerStatusToken: string,
+): Promise<boolean> => {
+  try {
+    const result = await invokeOrThrow<{ status?: string }>(
+      "ticket-checkout-status",
+      { checkoutSessionId, buyerStatusToken, preflight: true },
+    );
+    return result.status === "present_allowed";
+  } catch {
+    return false;
+  }
+};
+
 /**
  * ORCH-0852 — synchronous confirmation. Replaces `pollTicketCheckoutStatus`
  * on the buyer's success path. The server calls Stripe directly + invokes

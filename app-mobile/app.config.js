@@ -1,4 +1,4 @@
-import { ExpoConfig, ConfigContext } from "expo/config";
+// @ts-check
 
 // ORCH-1313 (§4.C) — env-drive the AppsFlyer dev key + app IDs with a
 // RELEASE-BOUND fail-loud guard. Consumer AppsFlyer works today via hard-coded
@@ -12,7 +12,7 @@ import { ExpoConfig, ConfigContext } from "expo/config";
 // #1732/#1733: renamed from APPSFLYER_RELEASE_BOUND_EAS_PROFILES — the same
 // four profile names now gate TWO guards (AppsFlyer ORCH-1313 and the Stripe
 // publishable key below), so the constant is no longer AppsFlyer-specific. One
-// list per file; `mingla-business/app.config.ts` carries the identical list
+// list per file; `mingla-business/app.config.js` carries the identical list
 // under the identical name for the same reason.
 const RELEASE_BOUND_EAS_PROFILES = [
   "production",
@@ -20,7 +20,13 @@ const RELEASE_BOUND_EAS_PROFILES = [
   "preview",
   "preview-sim",
 ];
-const appsFlyerConfigValue = (envName: string, devFallback: string): string => {
+/**
+ * @param {string} envName
+ * @param {string} devFallback
+ * @returns {string}
+ */
+const appsFlyerConfigValue = (envName, devFallback) => {
+  // eslint-disable-next-line expo/no-dynamic-env-var
   const fromEnv = process.env[envName];
   const easProfile = process.env.EAS_BUILD_PROFILE;
   const isReleaseBound =
@@ -64,7 +70,8 @@ const appsFlyerConfigValue = (envName: string, devFallback: string): string => {
 // The release-bound half is the AppsFlyer pattern above: on a profile a tester
 // or user actually installs, a MISSING key FAILS the build loudly; on local/dev
 // (EAS_BUILD_PROFILE undefined) nothing changes at all.
-const stripePublishableKeyConfigValue = (): string | null => {
+/** @returns {string | null} */
+const stripePublishableKeyConfigValue = () => {
   const fromEnv = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
   const easProfile = process.env.EAS_BUILD_PROFILE;
   const isReleaseBound =
@@ -77,7 +84,11 @@ const stripePublishableKeyConfigValue = (): string | null => {
   return fromEnv && fromEnv.length > 0 ? fromEnv : null;
 };
 
-export default ({ config }: ConfigContext): ExpoConfig => ({
+/**
+ * @param {import("expo/config").ConfigContext} context
+ * @returns {import("expo/config").ExpoConfig}
+ */
+module.exports = ({ config }) => ({
   ...config,
   name: config.name ?? "Mingla",
   slug: config.slug ?? "mingla",

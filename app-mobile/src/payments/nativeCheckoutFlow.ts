@@ -169,6 +169,17 @@ async function pollPaystackOrder(
   return null;
 }
 
+async function preflightPaymentSheet(
+  checkoutSessionId: string,
+  buyerStatusToken: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.functions.invoke<{ status?: string }>(
+    "ticket-checkout-status",
+    { body: { checkoutSessionId, buyerStatusToken, preflight: true } },
+  );
+  return error == null && data?.status === "present_allowed";
+}
+
 export const isStripeGooglePayTestEnv = (): boolean =>
   process.env.EAS_BUILD_PROFILE !== "production";
 
@@ -350,6 +361,20 @@ export const useNativeCheckoutFlow = (): ((
         };
       }
 
+      // #1930: this is a final Mingla status check, not authorization of the
+      // Stripe SDK's later confirm. A closure can still race after this point;
+      // server finalize/reversal remains authoritative.
+      if (
+        !await preflightPaymentSheet(
+          data.checkoutSessionId,
+          data.buyerStatusToken,
+        )
+      ) {
+        return {
+          outcome: "failed",
+          message: "This sale is no longer available.",
+        };
+      }
       const presentResult = await presentPaymentSheet();
       if (presentResult.error) {
         if (presentResult.error.code === "Canceled") {

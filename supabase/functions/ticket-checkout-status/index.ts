@@ -7,23 +7,39 @@ import {
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
 import { qrPayloadToDataUrl } from "../_shared/ticketQrImage.ts";
+import {
+  checkoutUnavailableResponse,
+  ticketCheckoutPreflight,
+} from "../_shared/checkoutSaleTruth.ts";
 
 serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: ticketCorsHeaders });
-  if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: ticketCorsHeaders });
+  }
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "method_not_allowed" }, 405);
+  }
 
   const body = await req.json().catch(() => ({}));
-  const checkoutSessionId =
-    typeof body.checkoutSessionId === "string" ? body.checkoutSessionId : "";
-  const buyerStatusToken =
-    typeof body.buyerStatusToken === "string" ? body.buyerStatusToken : "";
-  if (!checkoutSessionId) return jsonResponse({ error: "checkout_session_required" }, 400);
-  if (!buyerStatusToken) return jsonResponse({ error: "buyer_status_token_required" }, 401);
+  const checkoutSessionId = typeof body.checkoutSessionId === "string"
+    ? body.checkoutSessionId
+    : "";
+  const buyerStatusToken = typeof body.buyerStatusToken === "string"
+    ? body.buyerStatusToken
+    : "";
+  if (!checkoutSessionId) {
+    return jsonResponse({ error: "checkout_session_required" }, 400);
+  }
+  if (!buyerStatusToken) {
+    return jsonResponse({ error: "buyer_status_token_required" }, 401);
+  }
 
   const supabase = serviceClient();
   const { data: session, error } = await supabase
     .from("ticket_checkout_sessions")
-    .select("id, status, order_id, event_id, total_cents, currency, buyer_status_token_hash")
+    .select(
+      "id, status, order_id, event_id, total_cents, currency, buyer_status_token_hash, revoked_at, reversal_state",
+    )
     .eq("id", checkoutSessionId)
     .maybeSingle();
   if (error) {
@@ -31,11 +47,43 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
       fn: "ticket-checkout-status",
       checkoutSessionId,
     });
-    return jsonResponse({ error: "status_lookup_failed", detail: error.message }, 500);
+    return jsonResponse({
+      error: "status_lookup_failed",
+      detail: error.message,
+    }, 500);
   }
-  if (!session) return jsonResponse({ error: "checkout_session_not_found" }, 404);
+  if (!session) {
+    return jsonResponse({ error: "checkout_session_not_found" }, 404);
+  }
   if (session.buyer_status_token_hash !== await sha256Hex(buyerStatusToken)) {
     return jsonResponse({ error: "buyer_status_token_invalid" }, 403);
+  }
+
+  // #1930: updated native clients ask for this immediately before presenting
+  // PaymentSheet. It narrows stale-secret exposure but is not represented as a
+  // server-authorized Stripe confirm; finalize/reversal remains the race owner.
+  if (body.preflight === true) {
+    const outcome = await ticketCheckoutPreflight(supabase, {
+      checkoutSessionId,
+      buyerStatusTokenHash: String(session.buyer_status_token_hash),
+    });
+    if (outcome !== "present_allowed") {
+      return jsonResponse(
+        outcome === "forbidden"
+          ? { error: "buyer_status_token_invalid" }
+          : checkoutUnavailableResponse(),
+        outcome === "forbidden" ? 403 : 409,
+      );
+    }
+    return jsonResponse({ checkoutSessionId, status: "present_allowed" });
+  }
+
+  if (
+    session.revoked_at != null ||
+    session.reversal_state === "paid_reversal_pending" ||
+    session.reversal_state === "paid_reversed"
+  ) {
+    return jsonResponse(checkoutUnavailableResponse(), 409);
   }
 
   if (!session.order_id) {
@@ -62,7 +110,10 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
       fn: "ticket-checkout-status",
       orderId: session.order_id,
     });
-    return jsonResponse({ error: "ticket_lookup_failed", detail: ticketError.message }, 500);
+    return jsonResponse({
+      error: "ticket_lookup_failed",
+      detail: ticketError.message,
+    }, 500);
   }
 
   // ORCH-0804 — pull Stripe Tax amount from the orders row. Defaults to 0
@@ -86,14 +137,19 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
       totalCents: session.total_cents,
       currency: String(session.currency ?? "GBP").trim(),
       taxAmountCents,
-      tickets: await Promise.all((tickets ?? []).map(async (ticket: Record<string, unknown>) => ({
-        ticketId: ticket.id,
-        ticketTypeId: ticket.ticket_type_id,
-        ticketName: (ticket.ticket_types as { name?: string } | null)?.name ?? "Ticket",
-        qrPayload: ticket.qr_code,
-        qrImageDataUrl: await qrPayloadToDataUrl(String(ticket.qr_code ?? "")),
-        status: ticket.status,
-      }))),
+      tickets: await Promise.all(
+        (tickets ?? []).map(async (ticket: Record<string, unknown>) => ({
+          ticketId: ticket.id,
+          ticketTypeId: ticket.ticket_type_id,
+          ticketName: (ticket.ticket_types as { name?: string } | null)?.name ??
+            "Ticket",
+          qrPayload: ticket.qr_code,
+          qrImageDataUrl: await qrPayloadToDataUrl(
+            String(ticket.qr_code ?? ""),
+          ),
+          status: ticket.status,
+        })),
+      ),
       notificationStatus: "queued",
     },
   });

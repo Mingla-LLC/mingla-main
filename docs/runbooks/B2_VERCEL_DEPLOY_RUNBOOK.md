@@ -45,7 +45,7 @@ The original fix was to deploy the existing `mingla-business/dist/` Expo Web exp
 5. **Environment Variables** (Vercel → Project Settings → Environment Variables):
    - `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` = `pk_test_51TTnt1PjlZyAYA40f3kjmxF6uXjfEJKfFR25LiJpVqd7qw6TYfDqqKLcNamL3JGlD2vxh94Bzn4ciaqsMNN1PJ0C00oZVosOxd` (test mode; ⚠ for live launch swap to `pk_live_*` and configure separate Vercel "Production" env)
    - `EXPO_PUBLIC_SUPABASE_URL` = `https://gqnoajqerqhnvulmnyvv.supabase.co`
-   - `EXPO_PUBLIC_SUPABASE_ANON_KEY` = (from `mingla-business/app.config.ts` line 79 — the existing public anon JWT)
+   - `EXPO_PUBLIC_SUPABASE_ANON_KEY` = (from `mingla-business/app.config.js` — the existing public anon JWT)
 6. **Deploy.** Vercel builds and gives you a URL like `mingla-business-web-abc123.vercel.app`. Visit `https://<that-url>/connect-onboarding` — should render the connect-onboarding page (will show "Invalid onboarding link" because no `?session=...` param — that's expected).
 
 ---

@@ -197,6 +197,7 @@ export interface SubmitRsvpContributionInput {
   guestName?: string;
   guestEmail?: string;
   surface: "native" | "web" | "mobile-web";
+  callerIdempotencyKey: string;
 }
 
 export type SubmitRsvpContributionResult =
@@ -243,6 +244,7 @@ export const submitRsvpContribution = async (
       guestEmail: input.guestEmail,
       surface: input.surface,
       returnContract: "host_v1",
+      callerIdempotencyKey: input.callerIdempotencyKey,
     },
   });
   // Bubble the edge fn's { error } code (amount_below_min / brand_cannot_collect /

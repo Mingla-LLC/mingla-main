@@ -8,7 +8,7 @@
  * vendor-neutral `static-map` edge fn instead of `api.mapbox.com`. Each app ALREADY ships
  * `EXPO_PUBLIC_SUPABASE_URL` in `Constants.expoConfig.extra` (it is how the
  * supabase client + the stripe-mode handshake resolve their URLs) — so there is
- * NO new client env var and NO app.config.ts change on any surface.
+ * NO new client env var and NO app.config.js change on any surface.
  *
  * Token read is inlining-safe: Constants.expoConfig.extra FIRST (the only path
  * that survives Hermes standalone/OTA builds), then a STATIC process.env fallback

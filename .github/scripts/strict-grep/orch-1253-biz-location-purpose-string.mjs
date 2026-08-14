@@ -17,7 +17,7 @@
  * non-empty NSLocationWhenInUseUsageDescription.
  *
  * Scope + authority: mingla-business/app.json ios.infoPlist is the authoritative
- * source. mingla-business/app.config.ts spreads `...config` and NEVER rebuilds
+ * source. mingla-business/app.config.js spreads `...config` and NEVER rebuilds
  * or replaces `ios` / `ios.infoPlist`, so the app.json value survives verbatim
  * into the resolved Expo config (verified via `npx expo config`). Asserting on
  * app.json is therefore both simple and robust.

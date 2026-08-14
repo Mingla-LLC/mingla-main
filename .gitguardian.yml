@@ -16,7 +16,7 @@ secret:
     # Supabase anon key — public-by-design. Per Supabase docs
     # (https://supabase.com/docs/guides/api/api-keys#the-anon-key) the anon key
     # is meant to be embedded in client bundles. Used as a fallback in
-    # mingla-business/app.config.ts when EXPO_PUBLIC_SUPABASE_ANON_KEY isn't
+    # mingla-business/app.config.js when EXPO_PUBLIC_SUPABASE_ANON_KEY isn't
     # set in the build environment.
     - name: "Supabase anon key public fallback (mingla-business build config)"
       match: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdxbm9hanFlcnFobnZ1bG1ueXZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1MDUyNzIsImV4cCI6MjA3MzA4MTI3Mn0.p4yi9yD2RWfJ2HN4DD-dgrvXnyzhJi3g2YCouSK-hbo"
@@ -27,7 +27,7 @@ secret:
     # server secret. Per ORCH-1313 it is env-driven for release builds
     # (EXPO_PUBLIC_APPSFLYER_DEV_KEY, with a release-bound fail-loud guard) and
     # appears in source only as the dev/Expo-Go fallback in
-    # app-mobile/app.config.ts. Same category as the Supabase anon key above and
+    # app-mobile/app.config.js. Same category as the Supabase anon key above and
     # the Stripe pk_test keys below. Privileged server-to-server postbacks use
     # the SEPARATE api3 S2S token (APPSFLYER_S2S_TOKEN), which is never in source.
     - name: "AppsFlyer client dev key public fallback (app-mobile build config)"

@@ -326,7 +326,7 @@ export function validateRepositoryAuthority(repoRoot = REPO_ROOT) {
     "consumer:alternate_origin",
     failures,
   );
-  const businessConfig = read("mingla-business/app.config.ts", repoRoot);
+  const businessConfig = read("mingla-business/app.config.js", repoRoot);
   const businessClient = read("mingla-business/src/services/supabase.ts", repoRoot);
   assertSingleValue(
     businessConfig,

@@ -15,7 +15,7 @@ const ONELINK_BRAND_DOMAIN = 'go.usemingla.com'
 // Read from the app.config `extra` block FIRST, then process.env — mirroring
 // supabase.ts. A DYNAMIC process.env read is NOT inlined by babel-preset-expo and
 // is undefined in Hermes standalone/OTA builds (COMMS-0028), so `extra` is the
-// build-safe path. The dev fallback lives in app.config.ts (release builds fail
+// build-safe path. The dev fallback lives in app.config.js (release builds fail
 // loud if the env is unset); on any correctly-built binary these resolve to a
 // real value, so hasAppsFlyerEnv is defense-in-depth for a misconfigured dev build.
 // ─────────────────────────────────────────────────────────────────────────────

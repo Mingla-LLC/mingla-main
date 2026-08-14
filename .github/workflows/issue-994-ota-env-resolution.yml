@@ -30,8 +30,12 @@ on:
   pull_request:
     branches: [main, Seth]
     paths:
+      - "scripts/ci/issue-2062-expo-config-node20.mjs"
+      - "scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs"
+      - "app-mobile/app.config.js"
       - "app-mobile/app.config.ts"
       - "app-mobile/app.json"
+      - "mingla-business/app.config.js"
       - "mingla-business/app.config.ts"
       - "mingla-business/app.json"
       - "scripts/ota/**"
@@ -40,8 +44,12 @@ on:
   push:
     branches: [main, Seth]
     paths:
+      - "scripts/ci/issue-2062-expo-config-node20.mjs"
+      - "scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs"
+      - "app-mobile/app.config.js"
       - "app-mobile/app.config.ts"
       - "app-mobile/app.json"
+      - "mingla-business/app.config.js"
       - "mingla-business/app.config.ts"
       - "mingla-business/app.json"
       - "scripts/ota/**"
@@ -65,7 +73,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "20.19.4"
           cache: npm
           cache-dependency-path: ${{ matrix.app }}/package-lock.json
       # npm ci, never a bare npm install — COMMS-0134. The gate EXECUTES
@@ -75,5 +83,11 @@ jobs:
         run: npm ci
       - name: "#994 env-resolution gate: self-test"
         run: node .github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs --self-test
+      - name: "#2062 Expo config Node 20.19.4 boundary: self-test"
+        run: node scripts/ci/issue-2062-expo-config-node20.mjs --self-test
+      - name: "#2062 independent adversarial workflow/runtime guard"
+        run: node --test scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs
+      - name: "#2062 Expo config Node 20.19.4 boundary: real app"
+        run: node scripts/ci/issue-2062-expo-config-node20.mjs --app ${{ matrix.app }}
       - name: "#994 env-resolution gate: blind vs applied differential"
         run: node .github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs --app ${{ matrix.app }}

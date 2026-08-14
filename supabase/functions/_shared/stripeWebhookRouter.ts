@@ -203,15 +203,19 @@ async function handleRsvpContributionEvent(
       : null;
   }
 
-  const { error } = await supabase.rpc("finalize_rsvp_contribution", {
-    p_contribution_id: contributionId,
-    p_provider_ref: providerRef,
-    p_charge_id: chargeId,
-    p_payment_method_type: methodType,
-  });
+  const { data: finalized, error } = await supabase.rpc(
+    "issue_1930_finalize_rsvp_contribution",
+    {
+      p_contribution_id: contributionId,
+      p_provider_ref: providerRef,
+      p_charge_id: chargeId,
+      p_payment_method_type: methodType,
+    },
+  );
   if (error) {
     throw new Error(`finalize_rsvp_contribution failed: ${error.message}`);
   }
+  if (finalized?.outcome === "paid_reversal_pending") return null;
 
   const { data: row } = await supabase
     .from("event_rsvp_contributions")
@@ -1434,6 +1438,20 @@ async function handleTicketCheckoutPaymentIntent(
       throw new Error(
         `ticket checkout finalize failed: ${finalizeError.message}`,
       );
+    }
+    const finalizeOutcome = typeof (finalized as Record<string, unknown> | null)
+        ?.outcome === "string"
+      ? String((finalized as Record<string, unknown>).outcome)
+      : null;
+    if (finalizeOutcome === "paid_reversal_pending") {
+      // Provider money succeeded after checkout authority closed. The DB has
+      // durably minted the reversal; do not dispatch tickets, tax, conversion,
+      // or ordinary purchase notifications for this bounded non-final state.
+      console.warn(
+        "[stripe-webhook] ticket payment entered paid_reversal_pending",
+        session.id,
+      );
+      return session.brand_id as string | null;
     }
     const orderId =
       typeof (finalized as Record<string, unknown> | null)?.orderId === "string"

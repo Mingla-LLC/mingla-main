@@ -69,7 +69,7 @@
  *       guardrail: one key acquiring a literal fallback would have retired the
  *       consumer half of this check in silence.
  *     · `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` — added at #1733, prefix-checked
- *       `pk_live_`. `app-mobile/app.config.ts` now emits it into `extra` with a
+ *       `pk_live_`. `app-mobile/app.config.js` now emits it into `extra` with a
  *       `null` (never literal) local fallback, so the key that actually went
  *       missing on 2026-08-06 is DIRECTLY measurable here instead of covered by
  *       the transitive argument below.
@@ -79,7 +79,7 @@
  *   would look like more coverage and would be none.
  *
  *   `business` deliberately EXCLUDES `EXPO_PUBLIC_POSTHOG_KEY`, which on that
- *   app has a committed literal fallback (`app.config.ts`) and therefore always
+ *   app has a committed literal fallback (`app.config.js`) and therefore always
  *   passes. It also excludes `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN`: SPEC §3.4-V1
  *   made that entry conditional on the variable existing in the EAS production
  *   environment, and the IMPLEMENT-phase read-only check (2026-08-09,
@@ -215,7 +215,7 @@ export const EXPECTATIONS = {
   consumer: [
     { name: "EXPO_PUBLIC_POSTHOG_KEY", required: true, prefix: "phc_" },
     // #1733 — the payment key, now emitted into `extra` by
-    // app-mobile/app.config.ts with a release-bound fail-loud guard and a
+    // app-mobile/app.config.js with a release-bound fail-loud guard and a
     // `null` (never literal) local fallback. Second, independent tripwire.
     {
       name: "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",

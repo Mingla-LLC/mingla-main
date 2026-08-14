@@ -6,7 +6,7 @@
  * under static libraries + New Architecture CocoaPods aborts `pod install`. The
  * fix is a config plugin (`withGooglePodsModularHeaders.js`) that injects targeted
  * `:modular_headers => true` for those three pods into the CNG Podfile, plus its
- * registration in `app.config.ts`.
+ * registration in `app.config.js`.
  *
  * SC-4 (a GREEN EAS iOS cloud build clearing Install pods) is NOT provable here —
  * local prebuild succeeds, only the cloud build reproduces the bug. That gate is
@@ -14,7 +14,7 @@
  * the plugin + directives + registration in source so a future build-config edit
  * can't silently drop them and re-break all iOS builds team-wide.
  *
- * Fails-on-revert: deleting the plugin registration from app.config.ts, or the
+ * Fails-on-revert: deleting the plugin registration from app.config.js, or the
  * `:modular_headers => true` directives / pod names from the plugin, makes the
  * relevant assertions below FAIL.
  *
@@ -31,13 +31,13 @@ const PLUGIN_PATH = path.join(
   "plugins",
   "withGooglePodsModularHeaders.js",
 );
-const APP_CONFIG_PATH = path.join(BUSINESS_ROOT, "app.config.ts");
+const APP_CONFIG_PATH = path.join(BUSINESS_ROOT, "app.config.js");
 
 const REQUIRED_PODS = ["GoogleUtilities", "RecaptchaInterop", "AppCheckCore"];
 
 describe("ORCH-1129 iOS Google-pods modular-headers gate", () => {
-  // ---- T-1: plugin registered in app.config.ts -----------------------------
-  test("T-1 — app.config.ts registers ./plugins/withGooglePodsModularHeaders", () => {
+  // ---- T-1: plugin registered in app.config.js -----------------------------
+  test("T-1 — app.config.js registers ./plugins/withGooglePodsModularHeaders", () => {
     const appConfig = fs.readFileSync(APP_CONFIG_PATH, "utf8");
     expect(appConfig).toContain('"./plugins/withGooglePodsModularHeaders"');
   });

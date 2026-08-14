@@ -10,10 +10,10 @@
  * NEVER `catch {}` — every failure either reaches the hook's error state or is
  * rethrown typed (Constitution #3).
  *
- * Subject discipline (P-41, I-PROPOSED-1734-SUBJECT-REF-APP-LANE-ONLY): run
- * WRITES send a `subject: {type, id}` OBJECT — the client NEVER composes a
- * `subject_ref` string on a write; the server resolves ownership and composes
- * it. READS may transmit the full string (P-43).
+ * Subject discipline (P-41, I-PROPOSED-1734-SUBJECT-REF-APP-LANE-ONLY): when
+ * a run is attached to a standing subject, WRITES send a `{type, id}` object;
+ * ambient #1008 draft forecasts are intentionally subjectless. The client
+ * never composes `subject_ref` on a write. READS may transmit it (P-43).
  *
  * State ownership (P-35, COMMS-0136): results returned here live in the React
  * Query cache / component state ONLY — never in any persisted zustand store.
@@ -138,19 +138,19 @@ export interface GrowthToolRunSubject {
   id: string;
 }
 
-export interface GrowthToolRunResult {
+export interface GrowthToolRunResult<TReport = GraderReport> {
   runId: string;
-  report: GraderReport;
+  report: TReport;
   /** P-22 — true when the server re-served an identical-input run (free). */
   cached: boolean;
 }
 
-export async function runGrowthTool(
+export async function runGrowthTool<TReport = GraderReport>(
   tool: GrowthToolName,
   brandId: string,
-  input: Record<string, unknown>,
+  input: object,
   options?: { clientRef?: string; subject?: GrowthToolRunSubject },
-): Promise<GrowthToolRunResult> {
+): Promise<GrowthToolRunResult<TReport>> {
   // P-41 / I-PROPOSED-1734-SUBJECT-REF-APP-LANE-ONLY: the write carries the
   // subject as an OBJECT — never a composed `subject_ref` string. The server
   // proves ownership (COMMS-0136: before EVERY success path) and composes it.
@@ -165,7 +165,7 @@ export async function runGrowthTool(
     },
   });
   if (error !== null) throw await toGrowthToolsAppError(error);
-  const body = data as { run_id?: string; report?: GraderReport; cached?: boolean };
+  const body = data as { run_id?: string; report?: TReport; cached?: boolean };
   if (typeof body?.run_id !== "string" || body.report === undefined) {
     throw new GrowthToolsAppError("server", { reason: "malformed_run_response" });
   }
@@ -178,15 +178,15 @@ export async function runGrowthTool(
 
 // ── Authenticated reads (P-43 / P-26 / P-27) ─────────────────────────────────
 
-export type ClientRefReadResult =
+export type ClientRefReadResult<TReport = GraderReport> =
   | { status: "created" | "failed"; reason: string | null }
-  | { status: "report_ready"; runId: string; createdAt: string; report: GraderReport };
+  | { status: "report_ready"; runId: string; createdAt: string; report: TReport };
 
 /** P-27 — the socket-drop resume read, keyed by the client-minted ref. */
-export async function readRunByClientRef(
+export async function readRunByClientRef<TReport = GraderReport>(
   brandId: string,
   clientRef: string,
-): Promise<ClientRefReadResult> {
+): Promise<ClientRefReadResult<TReport>> {
   const { data, error } = await supabase.functions.invoke("growth-tools-report", {
     body: { lane: "app", brand_id: brandId, client_ref: clientRef },
   });
@@ -196,7 +196,7 @@ export async function readRunByClientRef(
     reason?: string;
     run_id?: string;
     created_at?: string;
-    report?: GraderReport;
+    report?: TReport;
   };
   if (body?.status === "report_ready") {
     if (

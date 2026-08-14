@@ -61,7 +61,7 @@ type GiphyResult = {
 // manifest-backed, build-safe path. Do NOT revert to process.env[<var>].
 type GiphyKeyName = "EXPO_PUBLIC_GIPHY_API_KEY" | "EXPO_PUBLIC_GIPHY_KEY";
 
-// `extra` is a runtime object materialized from the resolved app.config.ts and
+// `extra` is a runtime object materialized from the resolved app.config.js and
 // baked into the app manifest at build time, so a dynamic key read here is safe
 // (it does not depend on babel inlining).
 const readExtra = (name: GiphyKeyName): string | undefined => {

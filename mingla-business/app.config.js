@@ -1,8 +1,12 @@
-import { ExpoConfig, ConfigContext } from "expo/config";
+// @ts-check
 
-type ExpoPluginEntry = NonNullable<ExpoConfig["plugins"]>[number];
+/** @typedef {NonNullable<import("expo/config").ExpoConfig["plugins"]>[number]} ExpoPluginEntry */
 
-const pluginName = (plugin: ExpoPluginEntry): string | null => {
+/**
+ * @param {ExpoPluginEntry} plugin
+ * @returns {string | null}
+ */
+const pluginName = (plugin) => {
   if (typeof plugin === "string") return plugin;
   if (Array.isArray(plugin) && typeof plugin[0] === "string") {
     return plugin[0];
@@ -10,14 +14,16 @@ const pluginName = (plugin: ExpoPluginEntry): string | null => {
   return null;
 };
 
-const hasAppsFlyerEnv = (): boolean =>
+/** @returns {boolean} */
+const hasAppsFlyerEnv = () =>
   Boolean(
     process.env.EXPO_PUBLIC_APPSFLYER_DEV_KEY &&
     process.env.EXPO_PUBLIC_APPSFLYER_IOS_APP_ID &&
     process.env.EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID,
   );
 
-const hasOneSignalEnv = (): boolean =>
+/** @returns {boolean} */
+const hasOneSignalEnv = () =>
   Boolean(process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID);
 
 /**
@@ -25,7 +31,7 @@ const hasOneSignalEnv = (): boolean =>
  *
  * ONE list, module-scope, because three separate guards in this file gate on it
  * (AppsFlyer ORCH-1313, Stripe #1732, GIPHY ORCH-1116) and a fourth copy is one
- * refactor away from drifting. `app-mobile/app.config.ts` carries the identical
+ * refactor away from drifting. `app-mobile/app.config.js` carries the identical
  * list for the same reason — the two apps are separate Expo projects, so the
  * constant cannot be shared across them, but within a file there is exactly one.
  *
@@ -40,9 +46,11 @@ const RELEASE_BOUND_EAS_PROFILES = [
   "preview-sim",
 ];
 
-const filterOptionalNativeStartupPlugins = (
-  plugins: ExpoPluginEntry[] | undefined,
-): ExpoPluginEntry[] =>
+/**
+ * @param {ExpoPluginEntry[] | undefined} plugins
+ * @returns {ExpoPluginEntry[]}
+ */
+const filterOptionalNativeStartupPlugins = (plugins) =>
   (plugins ?? []).filter((plugin) => {
     const name = pluginName(plugin);
     if (name === "react-native-appsflyer") return hasAppsFlyerEnv();
@@ -76,7 +84,11 @@ const iosUrlScheme = iosClientId
 // Re-add once approved. Used by Cycle 13 (Door Mode card-present payments).
 // Not needed for Cycles 0a–12.
 
-export default ({ config }: ConfigContext): ExpoConfig => {
+/**
+ * @param {import("expo/config").ConfigContext} context
+ * @returns {import("expo/config").ExpoConfig}
+ */
+module.exports = ({ config }) => {
   // ORCH-1313 (§4.C) — business AppsFlyer previously shipped DARK (G-2) because the
   // native plugin is SILENTLY stripped (filterOptionalNativeStartupPlugins) when the
   // env is absent. Flip it from silently-optional to LOUDLY-required on release-bound

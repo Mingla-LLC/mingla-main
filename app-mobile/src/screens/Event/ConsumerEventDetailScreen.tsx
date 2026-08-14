@@ -925,8 +925,11 @@ export default function ConsumerEventDetailScreen({
   // PaymentSheet (connected-account initStripe, mirroring nativeCheckoutFlow) for
   // native; opens the Paystack/hosted page in the in-app browser for redirects.
   const chipSheet = useStripePaymentSheet();
+  const chipInIdempotencyRef = useRef<string | null>(null);
   const handleChipIn = useCallback(
     async ({ amountCents }: { amountCents: number }): Promise<ChipInResult> => {
+      chipInIdempotencyRef.current ??=
+        `${eventId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
       const { data, error } = await supabase.functions.invoke("rsvp-contribution-create", {
         body: {
           eventId,
@@ -934,6 +937,7 @@ export default function ConsumerEventDetailScreen({
           surface: "native",
           rsvpId: null,
           returnContract: "host_v1",
+          callerIdempotencyKey: chipInIdempotencyRef.current,
         },
       });
       if (error) {
@@ -968,6 +972,7 @@ export default function ConsumerEventDetailScreen({
         if (present.error) {
           throw new Error(present.error.code === "Canceled" ? "cancelled" : present.error.message);
         }
+        chipInIdempotencyRef.current = null;
         return { kind: "paid" };
       }
       if (res.kind === "requires_paystack_redirect" && res.authorizationUrl) {

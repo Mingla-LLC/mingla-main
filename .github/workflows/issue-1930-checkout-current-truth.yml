@@ -1,0 +1,107 @@
+name: issue-1930-checkout-current-truth
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/ticket-checkout-**"
+      - "supabase/functions/reconcile-stuck-checkouts/**"
+      - "supabase/functions/rsvp-contribution-create/**"
+      - "supabase/functions/checkout-sale-revocation/**"
+      - "supabase/functions/_shared/*WebhookRouter.ts"
+      - "supabase/functions/_shared/checkoutSaleTruth.ts"
+      - "supabase/functions/_shared/sourceRefundControlPlane.ts"
+      - "supabase/functions/_shared/__tests__/issue_1930_transition_rework.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1930_second_rework.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1930_ci_integration_regressions.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1930_provider_unknown_failure_detail.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1930_legacy_checkout_protections.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1930_ticket_lost_race_identity.tester.adversarial.test.ts"
+      - "supabase/migrations/20270403001930_issue_1930_checkout_current_truth.sql"
+      - "supabase/migrations/__tests__/issue_1930_transition_races.test.sql"
+      - "supabase/security/anon_executable_definer_allowlist.txt"
+      - ".github/scripts/strict-grep/issue-1930-checkout-current-truth.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-1930-checkout-current-truth.yml"
+      - "docs/INVARIANT_REGISTRY.md"
+  workflow_dispatch:
+
+jobs:
+  issue-1930-checkout-current-truth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: node .github/scripts/strict-grep/issue-1930-checkout-current-truth.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-1930-checkout-current-truth.mjs
+      - run: >-
+          deno test --allow-read
+          supabase/functions/_shared/__tests__/issue_1930_checkout_sale_truth.test.ts
+          supabase/functions/_shared/__tests__/issue_1930_source_refund_dispatch.test.ts
+          supabase/functions/ticket-checkout-status/__tests__/issue_1930_preflight_contract.test.ts
+          supabase/functions/checkout-sale-revocation/issue_1930_revocation_worker.test.ts
+          supabase/functions/checkout-sale-revocation/issue_1930_ticket_lost_race_identity.implementor.test.ts
+          supabase/functions/rsvp-contribution-create/issue_1930_rsvp_truth.test.ts
+          supabase/migrations/__tests__/issue_1930_checkout_current_truth.test.ts
+          supabase/migrations/__tests__/issue_1930_transition_cas.tester.adversarial.test.ts
+          supabase/functions/_shared/__tests__/issue_1930_transition_rework.test.ts
+          supabase/functions/_shared/__tests__/issue_1930_second_rework.test.ts
+          supabase/functions/_shared/__tests__/issue_1930_ci_integration_regressions.test.ts
+          supabase/functions/_shared/__tests__/issue_1930_provider_unknown_failure_detail.test.ts
+          supabase/functions/_shared/__tests__/issue_1930_legacy_checkout_protections.implementor.test.ts
+          supabase/functions/_shared/__tests__/issue_1930_ticket_lost_race_identity.tester.adversarial.test.ts
+      - run: >-
+          deno check
+          supabase/functions/rsvp-contribution-create/index.ts
+          supabase/functions/checkout-sale-revocation/index.ts
+          supabase/functions/_shared/paystackWebhookRouter.ts
+          supabase/functions/_shared/stripeWebhookRouter.ts
+          supabase/functions/reconcile-stuck-checkouts/index.ts
+
+  issue-1930-postgres-races:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.98.2
+      - name: PostgreSQL 17 transition races
+        shell: bash
+        run: |
+          set -euo pipefail
+          sql_root="$(mktemp -d /tmp/issue-1930-sql.XXXXXX)"
+          cleanup() { supabase stop --workdir "$sql_root" --no-backup --yes || true; }
+          trap cleanup EXIT
+          supabase init --workdir "$sql_root" --yes
+          target="$sql_root/supabase/migrations"
+          rsync -a supabase/migrations/ "$target/"
+          mv "$target/20260612000001_tr4_revoke_rpc_anon_grants.sql" \
+             "$target/20260612000002_tr4_revoke_rpc_anon_grants.sql"
+          mv "$target/20260612000000_tr4_refund_tiers_booking_deadline.sql" \
+             "$target/20260612000001_tr4_refund_tiers_booking_deadline.sql"
+          mv "$target/20260615000000_orch_426_discover_cache_gzip.sql" \
+             "$target/20260615010000_orch_426_discover_cache_gzip.sql"
+          mv "$target/20261012000000_orch_1150_rsvp_maybe.sql" \
+             "$target/20261012010000_orch_1150_rsvp_maybe.sql"
+          mv "$target/20261113000000_orch_1172_rsvp_edit_privacy_settings.sql" \
+             "$target/20261113010000_orch_1172_rsvp_edit_privacy_settings.sql"
+          mv "$target/20261116000000_orch_1187_reconcile_stuck_checkouts_cron.sql" \
+             "$target/20261116010000_orch_1187_reconcile_stuck_checkouts_cron.sql"
+          mv "$target/20261117000001_orch_1188_finalize_persist_event_date_id.sql" \
+             "$target/20261117000002_orch_1188_finalize_persist_event_date_id.sql"
+          mv "$target/20261117000000_orch_1188_orders_event_date_id.sql" \
+             "$target/20261117000001_orch_1188_orders_event_date_id.sql"
+          supabase start --workdir "$sql_root" \
+            --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor \
+            --yes
+          db_container="$(docker ps --filter "label=com.supabase.cli.project=$(basename "$sql_root")" \
+            --format '{{.Names}}' | awk '/^supabase_db_/ { print; exit }')"
+          test -n "$db_container"
+          db_password="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' \
+            "$db_container" | sed -n 's/^POSTGRES_PASSWORD=//p')"
+          test -n "$db_password"
+          docker exec -i -e PGPASSWORD="$db_password" \
+            -e PGOPTIONS="-c issue_1930.test_db_password=$db_password" \
+            "$db_container" psql -U supabase_admin -d postgres \
+            -v ON_ERROR_STOP=1 -f - \
+            < supabase/migrations/__tests__/issue_1930_transition_races.test.sql

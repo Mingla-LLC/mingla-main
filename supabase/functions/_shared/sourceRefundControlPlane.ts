@@ -20,7 +20,9 @@ export interface SourceRefundOperation {
   source_type:
     | "venue_reservation"
     | "rsvp_contribution"
-    | "stay_reservation";
+    | "stay_reservation"
+    | "venue_menu_order"
+    | "ticket_checkout_session";
   source_id: string;
   subject_id: string;
   brand_id: string;
@@ -102,30 +104,63 @@ async function record(
     let buyerUserId: string | null = null;
     let buyerEmail: string | null = null;
     let buyerPhone: string | null = null;
-    if (operation.source_type === "venue_reservation") {
-      const { data } = await client.from("reservations")
-        .select("consumer_user_id,guest_email,guest_phone_e164")
-        .eq("id", operation.subject_id).maybeSingle();
-      buyerUserId = data?.consumer_user_id ?? null;
-      buyerEmail = data?.guest_email ?? null;
-      buyerPhone = data?.guest_phone_e164 ?? null;
-    } else if (operation.source_type === "stay_reservation") {
-      const { data } = await client.from("stay_reservation_groups")
-        .select("user_id,guest_snapshot")
-        .eq("id", operation.subject_id).maybeSingle();
-      const guest = data?.guest_snapshot &&
-          typeof data.guest_snapshot === "object"
-        ? data.guest_snapshot as Record<string, unknown>
-        : {};
-      buyerUserId = data?.user_id ?? null;
-      buyerEmail = typeof guest.email === "string" ? guest.email : null;
-      buyerPhone = typeof guest.phone === "string" ? guest.phone : null;
-    } else {
-      const { data } = await client.from("event_rsvp_contributions")
-        .select("user_id,guest_email")
-        .eq("id", operation.subject_id).maybeSingle();
-      buyerUserId = data?.user_id ?? null;
-      buyerEmail = data?.guest_email ?? null;
+    let sourceLabel: string;
+    switch (operation.source_type) {
+      case "venue_reservation": {
+        const { data } = await client.from("reservations")
+          .select("consumer_user_id,guest_email,guest_phone_e164")
+          .eq("id", operation.subject_id).maybeSingle();
+        buyerUserId = data?.consumer_user_id ?? null;
+        buyerEmail = data?.guest_email ?? null;
+        buyerPhone = data?.guest_phone_e164 ?? null;
+        sourceLabel = "Venue reservation";
+        break;
+      }
+      case "stay_reservation": {
+        const { data } = await client.from("stay_reservation_groups")
+          .select("user_id,guest_snapshot")
+          .eq("id", operation.subject_id).maybeSingle();
+        const guest = data?.guest_snapshot &&
+            typeof data.guest_snapshot === "object"
+          ? data.guest_snapshot as Record<string, unknown>
+          : {};
+        buyerUserId = data?.user_id ?? null;
+        buyerEmail = typeof guest.email === "string" ? guest.email : null;
+        buyerPhone = typeof guest.phone === "string" ? guest.phone : null;
+        sourceLabel = "Stay reservation";
+        break;
+      }
+      case "rsvp_contribution": {
+        const { data } = await client.from("event_rsvp_contributions")
+          .select("user_id,guest_email")
+          .eq("id", operation.subject_id).maybeSingle();
+        buyerUserId = data?.user_id ?? null;
+        buyerEmail = data?.guest_email ?? null;
+        sourceLabel = "RSVP contribution";
+        break;
+      }
+      case "venue_menu_order": {
+        const { data } = await client.from("venue_orders")
+          .select("buyer_user_id,buyer_email,buyer_phone_e164")
+          .eq("id", operation.subject_id).maybeSingle();
+        buyerUserId = data?.buyer_user_id ?? null;
+        buyerEmail = data?.buyer_email ?? null;
+        buyerPhone = data?.buyer_phone_e164 ?? null;
+        sourceLabel = "Venue order";
+        break;
+      }
+      case "ticket_checkout_session": {
+        const { data } = await client.from("ticket_checkout_sessions")
+          .select("buyer_user_id,buyer_email,buyer_phone_e164")
+          .eq("id", operation.subject_id).maybeSingle();
+        buyerUserId = data?.buyer_user_id ?? null;
+        buyerEmail = data?.buyer_email ?? null;
+        buyerPhone = data?.buyer_phone_e164 ?? null;
+        sourceLabel = "Event ticket payment";
+        break;
+      }
+      default:
+        throw new Error("source_refund_unknown_source_type");
     }
     let amountLabel = `${
       (operation.buyer_refund_requested_cents / 100).toFixed(2)
@@ -152,11 +187,7 @@ async function record(
         buyerPhone,
         brandId: operation.brand_id,
         amountLabel,
-        sourceLabel: operation.source_type === "venue_reservation"
-          ? "Venue reservation"
-          : operation.source_type === "stay_reservation"
-          ? "Stay reservation"
-          : "RSVP contribution",
+        sourceLabel,
       });
     } catch {
       console.warn("source_refund_notification_enqueue_failed");
