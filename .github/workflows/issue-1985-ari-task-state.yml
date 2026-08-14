@@ -14,6 +14,7 @@ on:
       - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1985_rework2_integrity.test.ts"
       - "mingla-business/src/components/ari/**"
       - "mingla-business/src/hooks/useAgentChat.ts"
       - "mingla-business/src/screens/ari/AriChatScreen.tsx"
@@ -35,6 +36,7 @@ on:
       - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1985_rework2_integrity.test.ts"
       - "mingla-business/src/components/ari/**"
       - "mingla-business/src/hooks/useAgentChat.ts"
       - "mingla-business/src/screens/ari/AriChatScreen.tsx"
@@ -57,7 +59,7 @@ jobs:
         with:
           deno-version: "1.46.x"
       - name: Run task reducer and planning regressions
-        run: deno test --allow-read supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts
+        run: deno test --allow-read supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts supabase/functions/_shared/__tests__/issue_1985_rework2_integrity.test.ts
       - name: Type-check edge and shared task boundaries
         run: deno check supabase/functions/_shared/agentConversationState.ts supabase/functions/_shared/agentRelativeTime.ts supabase/functions/_shared/agentConversationPlanner.ts supabase/functions/_shared/agentChoices.ts supabase/functions/_shared/agentSystemPrompt.ts supabase/functions/agent-chat/index.ts supabase/functions/agent-confirm-action/index.ts
       - name: Prove Class A task-state guard and protected security guards

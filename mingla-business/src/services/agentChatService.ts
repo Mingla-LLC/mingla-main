@@ -13,7 +13,7 @@ import { supabase } from "./supabase";
 
 export type AgentChoicePayload =
   | { type: "slot_patch"; slot_updates: Record<string, unknown> }
-  | { type: "task_command"; command: "pause" | "resume" | "cancel" | "start_new" | "continue_planning" }
+  | { type: "task_command"; command: "pause" | "resume" | "cancel" | "start_new" | "continue_planning"; replacement_request?: string }
   | { type: "handoff"; route: string };
 
 export interface AgentChoicesV2 {
@@ -53,6 +53,14 @@ export type AgentConfirmResponse =
       followup_text?: string;
     }
   | { kind: "cancelled"; pending_action_id: string }
+  | {
+      kind: "proposal_replaced";
+      pending_action_id: string;
+      replaced_pending_action_id: string;
+      tool_name: string;
+      tool_args: Record<string, unknown>;
+      task_state_revision: number;
+    }
   // META-ORCH-1009 Sub-E (C2): an expired Hub proposal no longer 410s — the
   // edge fn returns this so the Hub can render a regenerate / re-snap CTA.
   | {

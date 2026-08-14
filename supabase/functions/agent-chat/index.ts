@@ -10,14 +10,37 @@
 //      sent to Gemini (I-ARI-USER-DATA-WRAP).
 
 // deno-lint-ignore-file no-explicit-any
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import {
+  createClient,
+  SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
-import { buildSystemPrompt, TENANT_CONTEXT_VERSION, AgentUserProfile, BrandSummary, BusinessContext, OfferingSummary } from "../_shared/agentSystemPrompt.ts";
+import {
+  AgentUserProfile,
+  BrandSummary,
+  buildSystemPrompt,
+  BusinessContext,
+  OfferingSummary,
+  TENANT_CONTEXT_VERSION,
+} from "../_shared/agentSystemPrompt.ts";
 import { detectPromptInjection } from "../_shared/agentPromptInjection.ts";
-import { callGemini, ARI_MODEL_VERSION, GeminiContentMessage, GeminiError } from "../_shared/agentGemini.ts";
-import { AGENT_TOOLS, READ_ONLY_TOOL_NAMES, findTool, ToolError } from "../_shared/agentTools.ts";
+import {
+  ARI_MODEL_VERSION,
+  callGemini,
+  GeminiContentMessage,
+  GeminiError,
+} from "../_shared/agentGemini.ts";
+import {
+  AGENT_TOOLS,
+  findTool,
+  READ_ONLY_TOOL_NAMES,
+  ToolError,
+} from "../_shared/agentTools.ts";
 import { authorizeAgentTool } from "../_shared/agentToolAuthorization.ts";
-import { buildServiceClient, enforceTurnRateLimit } from "../_shared/agentRateLimit.ts";
+import {
+  buildServiceClient,
+  enforceTurnRateLimit,
+} from "../_shared/agentRateLimit.ts";
 import {
   AgentChoiceSubmissionV2,
   AgentChoicesV2,
@@ -32,23 +55,23 @@ import {
   resolveAccessibleAgentBrands,
 } from "../_shared/agentTenantScope.ts";
 import {
-  IDLE_TASK_STATE,
-  TaskStateError,
-  TaskStateV1,
   beginInterruption,
+  IDLE_TASK_STATE,
   markAwaitingConfirmation,
   parseTaskState,
   pendingQuestionPrompt,
   reconcilePendingAction,
   resumeInterruption,
+  TaskStateError,
+  TaskStateV1,
 } from "../_shared/agentConversationState.ts";
 import {
-  PlannerClassification,
-  PlannerContext,
   applyStoredChoice,
   isCreateEventPlanningRequest,
   isReadInterruption,
   planEventTurn,
+  PlannerClassification,
+  PlannerContext,
 } from "../_shared/agentConversationPlanner.ts";
 import {
   chooseEffectiveTimezone,
@@ -70,11 +93,34 @@ interface RequestBody {
 }
 
 type Response_ =
-  | { kind: "text"; text: string; conversation_id: string; message_id: string; task_state_revision: number; choices?: AgentChoicesV2; handoff_route?: string }
-  | { kind: "pending_action"; pending_action_id: string; tool_name: string; tool_args: Record<string, unknown>; conversation_id: string; message_id: string; task_state_revision: number }
-  | { kind: "error"; code: string; message: string; retry_after_seconds?: number; cooldown_until?: string };
+  | {
+    kind: "text";
+    text: string;
+    conversation_id: string;
+    message_id: string;
+    task_state_revision: number;
+    choices?: AgentChoicesV2;
+    handoff_route?: string;
+  }
+  | {
+    kind: "pending_action";
+    pending_action_id: string;
+    tool_name: string;
+    tool_args: Record<string, unknown>;
+    conversation_id: string;
+    message_id: string;
+    task_state_revision: number;
+  }
+  | {
+    kind: "error";
+    code: string;
+    message: string;
+    retry_after_seconds?: number;
+    cooldown_until?: string;
+  };
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface ConversationRow {
   id: string;
@@ -87,12 +133,17 @@ interface ConversationRow {
 function taskStateResponse(err: TaskStateError): Response {
   const status = err.code === "TASK_STATE_INVALID" ? 500 : 409;
   const messages: Record<string, string> = {
-    TASK_STATE_INVALID: "Ari couldn't safely continue this plan. Start a new chat or try again.",
-    TASK_STATE_VERSION_UNSUPPORTED: "This chat is read-only because its planning format is newer. Start a new chat to continue.",
-    TASK_STATE_CONFLICT: "This plan changed in another session. Review the latest message and try again.",
-    CHOICE_STALE: "That choice is no longer active. Review the latest question and try again.",
+    TASK_STATE_INVALID:
+      "Ari couldn't safely continue this plan. Start a new chat or try again.",
+    TASK_STATE_VERSION_UNSUPPORTED:
+      "This chat is read-only because its planning format is newer. Start a new chat to continue.",
+    TASK_STATE_CONFLICT:
+      "This plan changed in another session. Review the latest message and try again.",
+    CHOICE_STALE:
+      "That choice is no longer active. Review the latest question and try again.",
     TIMEZONE_REQUIRED: err.message,
-    TASK_RECOVERY_REQUIRED: "Ari needs to reconcile the latest action. Refresh this chat and try again.",
+    TASK_RECOVERY_REQUIRED:
+      "Ari needs to reconcile the latest action. Refresh this chat and try again.",
   };
   return errorResponse(status, err.code, messages[err.code] ?? err.message);
 }
@@ -104,11 +155,17 @@ function appendSafeSummary(previous: string | null, event: string): string {
     .join("\n")
     .slice(-1700);
   const safeEvent = event.replace(/[^A-Za-z0-9 _.,:;()\-]/g, "").slice(0, 240);
-  return [safePrevious, `[task-v1] ${safeEvent}`].filter(Boolean).join("\n").slice(-2000);
+  return [safePrevious, `[task-v1] ${safeEvent}`].filter(Boolean).join("\n")
+    .slice(-2000);
 }
 
-function taskResourceFromResult(toolName: string, result: unknown): { kind: string; id: string; label: string } | undefined {
-  if (toolName !== "create_event" || result === null || typeof result !== "object") return undefined;
+function taskResourceFromResult(
+  toolName: string,
+  result: unknown,
+): { kind: string; id: string; label: string } | undefined {
+  if (
+    toolName !== "create_event" || result === null || typeof result !== "object"
+  ) return undefined;
   const event = (result as { event?: unknown }).event;
   if (event === null || typeof event !== "object") return undefined;
   const id = (event as { id?: unknown }).id;
@@ -124,7 +181,9 @@ function stateSummaryEvent(classification: string, state: TaskStateV1): string {
       .filter(([, slot]) => slot.status === "resolved")
       .map(([key]) => key)
       .join(", ");
-    return `Event planning ${classification}; status ${state.status}; resolved fields: ${resolved || "none"}.`;
+    return `Event planning ${classification}; status ${state.status}; resolved fields: ${
+      resolved || "none"
+    }.`;
   }
   return classification === "read_interruption"
     ? "A tenant-scoped read question was answered."
@@ -144,47 +203,110 @@ function emitTaskEvent(args: {
   success: boolean;
 }): void {
   const latency = Date.now() - args.startedAt;
-  console.log("[agent-chat] task event", JSON.stringify({
-    fn_revision: "1985-v1",
-    task_intent: args.intent,
-    from_status: args.from,
-    to_status: args.to,
-    state_schema_version: 1,
-    state_revision: args.revision,
-    turn_classification: args.classification,
-    choice_kind: args.choiceKind ?? null,
-    interruption_resumed: args.resumed,
-    error_code: args.errorCode ?? null,
-    latency_bucket: latency < 250 ? "lt250ms" : latency < 1000 ? "lt1s" : latency < 5000 ? "lt5s" : "gte5s",
-    outcome: args.success ? "success" : "failure",
-  }));
+  console.log(
+    "[agent-chat] task event",
+    JSON.stringify({
+      fn_revision: "1985-v1",
+      task_intent: args.intent,
+      from_status: args.from,
+      to_status: args.to,
+      state_schema_version: 1,
+      state_revision: args.revision,
+      turn_classification: args.classification,
+      choice_kind: args.choiceKind ?? null,
+      interruption_resumed: args.resumed,
+      error_code: args.errorCode ?? null,
+      latency_bucket: latency < 250
+        ? "lt250ms"
+        : latency < 1000
+        ? "lt1s"
+        : latency < 5000
+        ? "lt5s"
+        : "gte5s",
+      outcome: args.success ? "success" : "failure",
+    }),
+  );
 }
 
-async function compareAndSetConversation(args: {
+async function commitTaskAssistantTurn(args: {
   client: SupabaseClient;
   conversationId: string;
   expectedRevision: number;
   nextState: TaskStateV1;
   summary: string;
   assistantMessageId: string;
+  content: Record<string, unknown>;
+  toolCalls?: Record<string, unknown>;
+  clientTurnId?: string;
   nowIso: string;
-}): Promise<boolean> {
+}): Promise<{ won: boolean; error: string | null }> {
   const { data, error } = await args.client
-    .from("agent_conversations")
+    .rpc("commit_agent_task_assistant_turn", {
+      p_conversation_id: args.conversationId,
+      p_expected_revision: args.expectedRevision,
+      p_task_state: args.nextState,
+      p_summary: args.summary,
+      p_assistant_message_id: args.assistantMessageId,
+      p_content: args.content,
+      p_tool_calls: args.toolCalls ?? null,
+      p_client_turn_id: args.clientTurnId ?? null,
+      p_prompt_version: TENANT_CONTEXT_VERSION,
+      p_model_version: ARI_MODEL_VERSION,
+      p_now: args.nowIso,
+    });
+  if (error) return { won: false, error: error.message };
+  return { won: data === true, error: null };
+}
+
+async function terminalizeProposalForTaskReplacement(args: {
+  pendingClient: SupabaseClient;
+  userId: string;
+  conversationId: string;
+  pendingActionId: string;
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  const { data: cancelled, error: cancelError } = await args.pendingClient
+    .from("agent_pending_actions")
     .update({
-      task_state: args.nextState,
-      task_state_revision: args.expectedRevision + 1,
-      task_state_updated_at: args.nowIso,
-      updated_at: args.nowIso,
-      summary: args.summary,
-      summary_through_message_id: args.assistantMessageId,
-      summary_updated_at: args.nowIso,
+      status: "cancelled",
+      failure_reason: "TASK_REPLACED_BY_NEW_TASK",
     })
-    .eq("id", args.conversationId)
-    .eq("task_state_revision", args.expectedRevision)
-    .select("id")
+    .eq("id", args.pendingActionId)
+    .eq("user_id", args.userId)
+    .eq("conversation_id", args.conversationId)
+    .eq("status", "pending")
+    .select("id, tool_name")
     .maybeSingle();
-  return !error && !!data;
+  if (cancelError || !cancelled) {
+    return {
+      ok: false,
+      message:
+        "The current proposal changed before Ari could pause it. Refresh and review the latest plan.",
+    };
+  }
+  const { error: terminalError } = await args.pendingClient
+    .from("agent_messages")
+    .insert({
+      conversation_id: args.conversationId,
+      user_id: args.userId,
+      role: "tool",
+      content: { text: "" },
+      tool_results: {
+        tool_name: cancelled.tool_name,
+        pending_action_id: args.pendingActionId,
+        outcome: "cancelled",
+        reason: "task_replaced",
+      },
+      prompt_version: TENANT_CONTEXT_VERSION,
+      model_version: ARI_MODEL_VERSION,
+    });
+  if (terminalError) {
+    return {
+      ok: false,
+      message:
+        "Ari paused the old proposal, but needs a refresh before starting the new plan.",
+    };
+  }
+  return { ok: true };
 }
 
 async function commitTextTurn(args: {
@@ -206,33 +328,55 @@ async function commitTextTurn(args: {
 }): Promise<Response> {
   const assistantMessageId = crypto.randomUUID();
   const nowIso = new Date().toISOString();
-  const finalState: TaskStateV1 = args.choices && args.nextState.pending_question
-    ? {
+  const finalState: TaskStateV1 =
+    args.choices && args.nextState.pending_question
+      ? {
         ...args.nextState,
         pending_question: {
           ...args.nextState.pending_question,
           response_message_id: assistantMessageId,
         },
       }
-    : args.nextState;
+      : args.nextState;
   try {
     parseTaskState(finalState);
   } catch (err: unknown) {
     return err instanceof TaskStateError
       ? taskStateResponse(err)
-      : errorResponse(500, "TASK_STATE_INVALID", "Ari couldn't safely continue this plan. Start a new chat or try again.");
+      : errorResponse(
+        500,
+        "TASK_STATE_INVALID",
+        "Ari couldn't safely continue this plan. Start a new chat or try again.",
+      );
   }
-  const summary = appendSafeSummary(args.previousSummary, stateSummaryEvent(args.classification, finalState));
-  const won = await compareAndSetConversation({
+  const summary = appendSafeSummary(
+    args.previousSummary,
+    stateSummaryEvent(args.classification, finalState),
+  );
+  const content = {
+    text: args.text,
+    ...((args.choices || args.handoffRoute || args.structuredData)
+      ? {
+        structured: {
+          ...(args.structuredData ?? {}),
+          ...(args.choices ? { choices: args.choices } : {}),
+          ...(args.handoffRoute ? { handoff_route: args.handoffRoute } : {}),
+        },
+      }
+      : {}),
+  };
+  const committed = await commitTaskAssistantTurn({
     client: args.client,
     conversationId: args.conversationId,
     expectedRevision: args.expectedRevision,
     nextState: finalState,
     summary,
     assistantMessageId,
+    content,
+    clientTurnId: args.clientTurnId,
     nowIso,
   });
-  if (!won) {
+  if (!committed.won) {
     emitTaskEvent({
       intent: args.previousState.active_task?.intent ?? null,
       from: args.previousState.status,
@@ -240,41 +384,18 @@ async function commitTextTurn(args: {
       revision: args.expectedRevision,
       classification: args.classification,
       resumed: args.resumed === true,
-      errorCode: "TASK_STATE_CONFLICT",
+      errorCode: committed.error
+        ? "TASK_RECOVERY_REQUIRED"
+        : "TASK_STATE_CONFLICT",
       startedAt: args.startedAt,
       success: false,
     });
-    return taskStateResponse(new TaskStateError("TASK_STATE_CONFLICT", "Task state changed"));
-  }
-  const content = {
-    text: args.text,
-    ...((args.choices || args.handoffRoute || args.structuredData)
-      ? { structured: { ...(args.structuredData ?? {}), ...(args.choices ? { choices: args.choices } : {}), ...(args.handoffRoute ? { handoff_route: args.handoffRoute } : {}) } }
-      : {}),
-  };
-  const { error: assistantError } = await args.client.from("agent_messages").insert({
-    id: assistantMessageId,
-    conversation_id: args.conversationId,
-    user_id: args.userId,
-    role: "assistant",
-    content,
-    client_turn_id: args.clientTurnId,
-    prompt_version: TENANT_CONTEXT_VERSION,
-    model_version: ARI_MODEL_VERSION,
-  });
-  if (assistantError) {
-    emitTaskEvent({
-      intent: finalState.active_task?.intent ?? null,
-      from: args.previousState.status,
-      to: finalState.status,
-      revision: args.expectedRevision + 1,
-      classification: args.classification,
-      resumed: args.resumed === true,
-      errorCode: "TASK_RECOVERY_REQUIRED",
-      startedAt: args.startedAt,
-      success: false,
-    });
-    return taskStateResponse(new TaskStateError("TASK_RECOVERY_REQUIRED", "Assistant message persistence failed"));
+    return taskStateResponse(
+      new TaskStateError(
+        committed.error ? "TASK_RECOVERY_REQUIRED" : "TASK_STATE_CONFLICT",
+        committed.error ?? "Task state changed",
+      ),
+    );
   }
   emitTaskEvent({
     intent: finalState.active_task?.intent ?? null,
@@ -324,11 +445,17 @@ function tenantScopeResponse(
 ): Response {
   // Intentionally excludes user/brand/conversation IDs, names, messages,
   // prompts, args, and results.
-  console.warn("[agent-chat] tenant scope stopped", JSON.stringify({
-    fn: "agent-chat", revision: "2013", code,
-    scope_state: scopeState, request_brand_supplied: requestBrandSupplied,
-    accessible_brand_count: accessibleBrandCount,
-  }));
+  console.warn(
+    "[agent-chat] tenant scope stopped",
+    JSON.stringify({
+      fn: "agent-chat",
+      revision: "2013",
+      code,
+      scope_state: scopeState,
+      request_brand_supplied: requestBrandSupplied,
+      accessible_brand_count: accessibleBrandCount,
+    }),
+  );
   return errorResponse(status, code, message);
 }
 
@@ -356,7 +483,10 @@ Deno.serve(async (req) => {
   // Race the handler against a wall-clock timeout
   const timeout = new Promise<Response>((resolve) =>
     setTimeout(
-      () => resolve(errorResponse(504, "TIMEOUT", "Ari is taking too long — try again")),
+      () =>
+        resolve(
+          errorResponse(504, "TIMEOUT", "Ari is taking too long — try again"),
+        ),
       WALL_CLOCK_TIMEOUT_MS,
     )
   );
@@ -391,16 +521,34 @@ async function handle(req: Request): Promise<Response> {
   if (body.choice_response !== undefined && !choiceSubmission) {
     return errorResponse(400, "BAD_REQUEST", "choice_response is invalid");
   }
-  if (!choiceSubmission && (typeof body.message !== "string" || body.message.trim().length === 0)) {
-    return errorResponse(400, "BAD_REQUEST", "message or choice_response is required");
+  if (
+    !choiceSubmission &&
+    (typeof body.message !== "string" || body.message.trim().length === 0)
+  ) {
+    return errorResponse(
+      400,
+      "BAD_REQUEST",
+      "message or choice_response is required",
+    );
   }
-  if (typeof body.message === "string" && body.message.length > MAX_MESSAGE_LENGTH) {
-    return errorResponse(400, "MESSAGE_TOO_LONG", `Messages must be ≤ ${MAX_MESSAGE_LENGTH} characters`);
+  if (
+    typeof body.message === "string" && body.message.length > MAX_MESSAGE_LENGTH
+  ) {
+    return errorResponse(
+      400,
+      "MESSAGE_TOO_LONG",
+      `Messages must be ≤ ${MAX_MESSAGE_LENGTH} characters`,
+    );
   }
-  if (typeof body.client_turn_id !== "string" || !UUID_PATTERN.test(body.client_turn_id)) {
+  if (
+    typeof body.client_turn_id !== "string" ||
+    !UUID_PATTERN.test(body.client_turn_id)
+  ) {
     return errorResponse(400, "BAD_REQUEST", "client_turn_id must be a UUID");
   }
-  const requestMessage = typeof body.message === "string" ? body.message.trim() : "";
+  const requestMessage = typeof body.message === "string"
+    ? body.message.trim()
+    : "";
 
   // Auth — extract JWT from Authorization header and build user-scoped client
   const authHeader = req.headers.get("Authorization");
@@ -439,8 +587,12 @@ async function handle(req: Request): Promise<Response> {
     const message = rateLimit.reason === "rate_limited_inflight"
       ? "Another action is currently being processed — please wait a moment"
       : "You've reached today's chat limit. Resets in 24 hours.";
-    const cooldownUntil = rateLimit.resetAt ?? new Date(Date.now() + 5_000).toISOString();
-    const retryAfterSeconds = Math.max(1, Math.ceil((Date.parse(cooldownUntil) - Date.now()) / 1000));
+    const cooldownUntil = rateLimit.resetAt ??
+      new Date(Date.now() + 5_000).toISOString();
+    const retryAfterSeconds = Math.max(
+      1,
+      Math.ceil((Date.parse(cooldownUntil) - Date.now()) / 1000),
+    );
     return errorResponse(429, "RATE_LIMITED", message, {
       retry_after_seconds: retryAfterSeconds,
       cooldown_until: cooldownUntil,
@@ -452,12 +604,21 @@ async function handle(req: Request): Promise<Response> {
   try {
     accessibleBrands = await resolveAccessibleAgentBrands(userClient, userId);
   } catch (_error) {
-    console.error("[agent-chat] tenant scope denied", JSON.stringify({
-      fn: "agent-chat", revision: "2013", code: "TENANT_SCOPE_UNAVAILABLE",
-      scope_state: body.conversation_id ? "bound_or_legacy" : "new",
-      request_brand_supplied: typeof body.brand_id === "string",
-    }));
-    return errorResponse(503, "TENANT_SCOPE_UNAVAILABLE", "Ari couldn't verify your brand access. Try again.");
+    console.error(
+      "[agent-chat] tenant scope denied",
+      JSON.stringify({
+        fn: "agent-chat",
+        revision: "2013",
+        code: "TENANT_SCOPE_UNAVAILABLE",
+        scope_state: body.conversation_id ? "bound_or_legacy" : "new",
+        request_brand_supplied: typeof body.brand_id === "string",
+      }),
+    );
+    return errorResponse(
+      503,
+      "TENANT_SCOPE_UNAVAILABLE",
+      "Ari couldn't verify your brand access. Try again.",
+    );
   }
 
   // A response can be lost after a first turn creates its conversation. The
@@ -473,7 +634,9 @@ async function handle(req: Request): Promise<Response> {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (recoveredTurn?.conversation_id) body.conversation_id = recoveredTurn.conversation_id;
+    if (recoveredTurn?.conversation_id) {
+      body.conversation_id = recoveredTurn.conversation_id;
+    }
   }
 
   // Prompt injection detection (flag but do not refuse)
@@ -493,9 +656,16 @@ async function handle(req: Request): Promise<Response> {
       .eq("user_id", userId)
       .maybeSingle();
     if (convoErr || !convo) {
-      return errorResponse(404, "CONVERSATION_NOT_FOUND", "Conversation not found");
+      return errorResponse(
+        404,
+        "CONVERSATION_NOT_FOUND",
+        "Conversation not found",
+      );
     }
-    const conversation = convo as Pick<ConversationRow, "id" | "summary" | "brand_id">;
+    const conversation = convo as Pick<
+      ConversationRow,
+      "id" | "summary" | "brand_id"
+    >;
     conversationId = conversation.id;
     conversationSummary = typeof conversation.summary === "string"
       ? conversation.summary
@@ -503,17 +673,48 @@ async function handle(req: Request): Promise<Response> {
     const storedBrandId = conversation.brand_id ?? null;
     if (storedBrandId) {
       try {
-        activeBrand = requireAccessibleAgentBrand(accessibleBrands, storedBrandId);
+        activeBrand = requireAccessibleAgentBrand(
+          accessibleBrands,
+          storedBrandId,
+        );
       } catch {
-        return tenantScopeResponse(403, "BRAND_ACCESS_DENIED", "You no longer have access to this conversation's brand.", "bound", typeof body.brand_id === "string", accessibleBrands.length);
+        return tenantScopeResponse(
+          403,
+          "BRAND_ACCESS_DENIED",
+          "You no longer have access to this conversation's brand.",
+          "bound",
+          typeof body.brand_id === "string",
+          accessibleBrands.length,
+        );
       }
       if (body.brand_id !== storedBrandId) {
-        return tenantScopeResponse(409, "CONVERSATION_BRAND_MISMATCH", "This conversation belongs to a different brand. Start a new chat for the selected brand.", "bound", typeof body.brand_id === "string", accessibleBrands.length);
+        return tenantScopeResponse(
+          409,
+          "CONVERSATION_BRAND_MISMATCH",
+          "This conversation belongs to a different brand. Start a new chat for the selected brand.",
+          "bound",
+          typeof body.brand_id === "string",
+          accessibleBrands.length,
+        );
       }
     } else if (accessibleBrands.length > 0) {
-      return tenantScopeResponse(409, "LEGACY_CONVERSATION_UNSCOPED", "This older conversation is read-only. Start a new chat for the selected brand.", "legacy", typeof body.brand_id === "string", accessibleBrands.length);
+      return tenantScopeResponse(
+        409,
+        "LEGACY_CONVERSATION_UNSCOPED",
+        "This older conversation is read-only. Start a new chat for the selected brand.",
+        "legacy",
+        typeof body.brand_id === "string",
+        accessibleBrands.length,
+      );
     } else if (body.brand_id) {
-      return tenantScopeResponse(403, "BRAND_ACCESS_DENIED", "That brand is not available to this account.", "legacy", true, accessibleBrands.length);
+      return tenantScopeResponse(
+        403,
+        "BRAND_ACCESS_DENIED",
+        "That brand is not available to this account.",
+        "legacy",
+        true,
+        accessibleBrands.length,
+      );
     }
     const { data: taskRow, error: taskErr } = await userClient
       .from("agent_conversations")
@@ -521,119 +722,257 @@ async function handle(req: Request): Promise<Response> {
       .eq("id", conversationId)
       .eq("user_id", userId)
       .maybeSingle();
-    if (taskErr || !taskRow) return errorResponse(500, "TASK_STATE_INVALID", "Ari couldn't safely load this plan. Try again.");
+    if (taskErr || !taskRow) {
+      return errorResponse(
+        500,
+        "TASK_STATE_INVALID",
+        "Ari couldn't safely load this plan. Try again.",
+      );
+    }
     try {
       taskState = parseTaskState(taskRow.task_state);
       taskStateRevision = taskRow.task_state_revision;
     } catch (err: unknown) {
       if (err instanceof TaskStateError) return taskStateResponse(err);
-      return errorResponse(500, "TASK_STATE_INVALID", "Ari couldn't safely continue this plan. Start a new chat or try again.");
+      return errorResponse(
+        500,
+        "TASK_STATE_INVALID",
+        "Ari couldn't safely continue this plan. Start a new chat or try again.",
+      );
     }
   } else {
     if (accessibleBrands.length > 0 && !body.brand_id) {
-      return tenantScopeResponse(409, "BRAND_CONTEXT_REQUIRED", "Select a brand before starting a new Ari chat.", "new", false, accessibleBrands.length);
+      return tenantScopeResponse(
+        409,
+        "BRAND_CONTEXT_REQUIRED",
+        "Select a brand before starting a new Ari chat.",
+        "new",
+        false,
+        accessibleBrands.length,
+      );
     }
     if (body.brand_id) {
       try {
-        activeBrand = requireAccessibleAgentBrand(accessibleBrands, body.brand_id);
+        activeBrand = requireAccessibleAgentBrand(
+          accessibleBrands,
+          body.brand_id,
+        );
       } catch {
-        return tenantScopeResponse(403, "BRAND_ACCESS_DENIED", "That brand is not available to this account.", "new", true, accessibleBrands.length);
+        return tenantScopeResponse(
+          403,
+          "BRAND_ACCESS_DENIED",
+          "That brand is not available to this account.",
+          "new",
+          true,
+          accessibleBrands.length,
+        );
       }
     }
-    const { data: created, error: createErr } = await userClient
-      .from("agent_conversations")
-      .insert({
-        user_id: userId,
-        brand_id: body.brand_id ?? null,
-        title: null,
-      })
-      .select("id")
-      .single();
-    if (createErr || !created) {
-      return errorResponse(500, "INTERNAL", `Failed to create conversation: ${createErr?.message ?? "unknown"}`);
+    const firstTurnContent = {
+      text: requestMessage,
+      ...(choiceSubmission
+        ? {
+          structured: {
+            choice_submission: {
+              question_id: choiceSubmission.question_id,
+              option_ids: choiceSubmission.option_ids,
+            },
+          },
+        }
+        : {}),
+    };
+    const { data: claimedRows, error: claimError } = await userClient.rpc(
+      "claim_agent_first_turn",
+      {
+        p_brand_id: body.brand_id ?? null,
+        p_client_turn_id: body.client_turn_id,
+        p_content: firstTurnContent,
+        p_prompt_version: TENANT_CONTEXT_VERSION,
+        p_model_version: ARI_MODEL_VERSION,
+      },
+    );
+    const claimed = Array.isArray(claimedRows) ? claimedRows[0] : claimedRows;
+    if (
+      claimError || !claimed ||
+      typeof claimed.conversation_id !== "string" ||
+      typeof claimed.message_id !== "string"
+    ) {
+      return errorResponse(
+        claimError?.code === "40001" ? 409 : 500,
+        claimError?.code === "40001" ? "TASK_STATE_CONFLICT" : "INTERNAL",
+        claimError?.code === "40001"
+          ? "This first message is already being processed. Retry in a moment."
+          : "Failed to start this conversation safely.",
+      );
     }
-    conversationId = created.id;
-    const { data: taskRow, error: taskErr } = await userClient.from("agent_conversations")
+    conversationId = claimed.conversation_id;
+    if (claimed.created !== true) {
+      const { data: recoveredConversation, error: recoveredConversationError } =
+        await userClient.from("agent_conversations")
+          .select("summary, brand_id")
+          .eq("id", conversationId)
+          .eq("user_id", userId)
+          .single();
+      if (recoveredConversationError || !recoveredConversation) {
+        return errorResponse(
+          500,
+          "INTERNAL",
+          "Failed to recover this conversation safely.",
+        );
+      }
+      if (
+        (recoveredConversation.brand_id ?? null) !== (body.brand_id ?? null)
+      ) {
+        return tenantScopeResponse(
+          409,
+          "CONVERSATION_BRAND_MISMATCH",
+          "This retry belongs to a different brand conversation.",
+          "bound",
+          typeof body.brand_id === "string",
+          accessibleBrands.length,
+        );
+      }
+      conversationSummary = typeof recoveredConversation.summary === "string"
+        ? recoveredConversation.summary
+        : null;
+    }
+    const { data: taskRow, error: taskErr } = await userClient.from(
+      "agent_conversations",
+    )
       .select("task_state, task_state_revision")
       .eq("id", conversationId)
       .eq("user_id", userId)
       .single();
-    if (taskErr || !taskRow) return errorResponse(500, "TASK_STATE_INVALID", "Ari couldn't safely start this plan. Try again.");
+    if (taskErr || !taskRow) {
+      return errorResponse(
+        500,
+        "TASK_STATE_INVALID",
+        "Ari couldn't safely start this plan. Try again.",
+      );
+    }
     try {
       taskState = parseTaskState(taskRow.task_state);
       taskStateRevision = taskRow.task_state_revision;
     } catch (err: unknown) {
       if (err instanceof TaskStateError) return taskStateResponse(err);
-      return errorResponse(500, "TASK_STATE_INVALID", "Ari couldn't safely start this plan. Try again.");
+      return errorResponse(
+        500,
+        "TASK_STATE_INVALID",
+        "Ari couldn't safely start this plan. Try again.",
+      );
     }
   }
 
   // Reconcile a terminal confirmation before planning the next turn. This is
   // the recovery path for a domain write that completed while confirmation
   // bookkeeping failed; it never executes the tool again.
-  if (taskState.status === "awaiting_confirmation" && taskState.active_task?.pending_action_id) {
+  if (
+    taskState.status === "awaiting_confirmation" &&
+    taskState.active_task?.pending_action_id
+  ) {
     const pendingActionId = taskState.active_task.pending_action_id;
-    const { data: pendingRecovery } = await userClient.from("agent_pending_actions")
+    const { data: pendingRecovery } = await userClient.from(
+      "agent_pending_actions",
+    )
       .select("tool_name, status, executed_result, failure_reason")
       .eq("id", pendingActionId)
       .eq("conversation_id", conversationId)
       .eq("user_id", userId)
       .maybeSingle();
-    let outcome = pendingRecovery?.status as "executed" | "failed" | "cancelled" | "expired" | "executing" | "pending" | undefined;
+    let outcome = pendingRecovery?.status as
+      | "executed"
+      | "failed"
+      | "cancelled"
+      | "expired"
+      | "executing"
+      | "pending"
+      | undefined;
     let recoveredResult = pendingRecovery?.executed_result as unknown;
     if (outcome === "executing") {
       const { data: toolRecovery } = await userClient.from("agent_messages")
         .select("tool_results")
         .eq("conversation_id", conversationId)
         .eq("role", "tool")
-        .contains("tool_results", { pending_action_id: pendingActionId, outcome: "executed" })
+        .contains("tool_results", {
+          pending_action_id: pendingActionId,
+          outcome: "executed",
+        })
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (toolRecovery) {
         outcome = "executed";
-        recoveredResult = (toolRecovery.tool_results as { result?: unknown }).result;
+        recoveredResult =
+          (toolRecovery.tool_results as { result?: unknown }).result;
       }
     }
-    if (outcome && ["executed", "failed", "cancelled", "expired"].includes(outcome)) {
+    if (
+      outcome &&
+      ["executed", "failed", "cancelled", "expired"].includes(outcome)
+    ) {
       try {
         const reconciled = reconcilePendingAction({
           state: taskState,
           pendingActionId,
           outcome: outcome as "executed" | "failed" | "cancelled" | "expired",
           nowIso: requestNow.toISOString(),
-          errorCode: typeof pendingRecovery?.failure_reason === "string" ? pendingRecovery.failure_reason.slice(0, 80) : undefined,
-          resource: taskResourceFromResult(pendingRecovery?.tool_name ?? "", recoveredResult),
+          errorCode: typeof pendingRecovery?.failure_reason === "string"
+            ? pendingRecovery.failure_reason.slice(0, 80)
+            : undefined,
+          resource: taskResourceFromResult(
+            pendingRecovery?.tool_name ?? "",
+            recoveredResult,
+          ),
         });
         const recoveryMessageId = crypto.randomUUID();
-        const won = await compareAndSetConversation({
+        const recoveryText = outcome === "executed"
+          ? "I reconciled the completed action once."
+          : `I reconciled the ${outcome} action.`;
+        const committed = await commitTaskAssistantTurn({
           client: userClient,
           conversationId,
           expectedRevision: taskStateRevision,
           nextState: reconciled,
-          summary: appendSafeSummary(conversationSummary, `Recovered confirmation outcome ${outcome}.`),
+          summary: appendSafeSummary(
+            conversationSummary,
+            `Recovered confirmation outcome ${outcome}.`,
+          ),
           assistantMessageId: recoveryMessageId,
+          content: { text: recoveryText },
           nowIso: requestNow.toISOString(),
         });
-        if (!won) return taskStateResponse(new TaskStateError("TASK_STATE_CONFLICT", "Task state changed"));
-        await userClient.from("agent_messages").insert({
-          id: recoveryMessageId,
-          conversation_id: conversationId,
-          user_id: userId,
-          role: "assistant",
-          content: { text: outcome === "executed" ? "I reconciled the completed action once." : `I reconciled the ${outcome} action.` },
-          prompt_version: TENANT_CONTEXT_VERSION,
-          model_version: ARI_MODEL_VERSION,
-        });
+        if (!committed.won) {
+          return taskStateResponse(
+            new TaskStateError(
+              committed.error
+                ? "TASK_RECOVERY_REQUIRED"
+                : "TASK_STATE_CONFLICT",
+              committed.error ?? "Task state changed",
+            ),
+          );
+        }
         taskState = reconciled;
         taskStateRevision += 1;
-        conversationSummary = appendSafeSummary(conversationSummary, `Recovered confirmation outcome ${outcome}.`);
+        conversationSummary = appendSafeSummary(
+          conversationSummary,
+          `Recovered confirmation outcome ${outcome}.`,
+        );
       } catch (err: unknown) {
         if (err instanceof TaskStateError) return taskStateResponse(err);
-        return taskStateResponse(new TaskStateError("TASK_RECOVERY_REQUIRED", "Confirmation recovery failed"));
+        return taskStateResponse(
+          new TaskStateError(
+            "TASK_RECOVERY_REQUIRED",
+            "Confirmation recovery failed",
+          ),
+        );
       }
     } else if (outcome === "executing") {
-      return taskStateResponse(new TaskStateError("TASK_RECOVERY_REQUIRED", "Confirmation is still reconciling"));
+      return taskStateResponse(
+        new TaskStateError(
+          "TASK_RECOVERY_REQUIRED",
+          "Confirmation is still reconciling",
+        ),
+      );
     }
   }
 
@@ -646,14 +985,25 @@ async function handle(req: Request): Promise<Response> {
     .eq("conversation_id", conversationId)
     .eq("client_turn_id", body.client_turn_id)
     .order("created_at", { ascending: true });
-  if (turnRowsError) return errorResponse(500, "INTERNAL", "Failed to check this turn's retry state");
-  const existingAssistant = (turnRows ?? []).find((row) => row.role === "assistant");
+  if (turnRowsError) {
+    return errorResponse(
+      500,
+      "INTERNAL",
+      "Failed to check this turn's retry state",
+    );
+  }
+  const existingAssistant = (turnRows ?? []).find((row) =>
+    row.role === "assistant"
+  );
   if (existingAssistant) {
-    const storedText = typeof (existingAssistant.content as { text?: unknown })?.text === "string"
-      ? (existingAssistant.content as { text: string }).text
-      : "";
+    const storedText =
+      typeof (existingAssistant.content as { text?: unknown })?.text ===
+          "string"
+        ? (existingAssistant.content as { text: string }).text
+        : "";
     const storedChoices = validateAgentChoicesV2(
-      (existingAssistant.content as { structured?: { choices?: unknown } })?.structured?.choices,
+      (existingAssistant.content as { structured?: { choices?: unknown } })
+        ?.structured?.choices,
     );
     const toolCall = existingAssistant.tool_calls as {
       tool_name?: unknown;
@@ -663,7 +1013,8 @@ async function handle(req: Request): Promise<Response> {
     if (
       toolCall && typeof toolCall.tool_name === "string" &&
       typeof toolCall.pending_action_id === "string" &&
-      toolCall.args !== null && typeof toolCall.args === "object" && !Array.isArray(toolCall.args)
+      toolCall.args !== null && typeof toolCall.args === "object" &&
+      !Array.isArray(toolCall.args)
     ) {
       return jsonResponse(200, {
         kind: "pending_action",
@@ -682,9 +1033,17 @@ async function handle(req: Request): Promise<Response> {
       message_id: existingAssistant.id,
       task_state_revision: taskStateRevision,
       ...(storedChoices ? { choices: storedChoices } : {}),
-      ...((existingAssistant.content as { structured?: { handoff_route?: unknown } })?.structured?.handoff_route &&
-          typeof (existingAssistant.content as { structured: { handoff_route: unknown } }).structured.handoff_route === "string"
-        ? { handoff_route: (existingAssistant.content as { structured: { handoff_route: string } }).structured.handoff_route }
+      ...((existingAssistant.content as {
+          structured?: { handoff_route?: unknown };
+        })?.structured?.handoff_route &&
+          typeof (existingAssistant.content as {
+              structured: { handoff_route: unknown };
+            }).structured.handoff_route === "string"
+        ? {
+          handoff_route: (existingAssistant.content as {
+            structured: { handoff_route: string };
+          }).structured.handoff_route,
+        }
         : {}),
     });
   }
@@ -692,11 +1051,18 @@ async function handle(req: Request): Promise<Response> {
   let liveChoices: AgentChoicesV2 | null = null;
   let semanticMessage = requestMessage;
   if (choiceSubmission) {
-    if (!taskState.pending_question || taskState.pending_question.question_id !== choiceSubmission.question_id) {
-      return taskStateResponse(new TaskStateError("CHOICE_STALE", "That choice is no longer active"));
+    if (
+      !taskState.pending_question ||
+      taskState.pending_question.question_id !== choiceSubmission.question_id
+    ) {
+      return taskStateResponse(
+        new TaskStateError("CHOICE_STALE", "That choice is no longer active"),
+      );
     }
     if (!taskState.pending_question.response_message_id) {
-      return taskStateResponse(new TaskStateError("CHOICE_STALE", "That choice is no longer active"));
+      return taskStateResponse(
+        new TaskStateError("CHOICE_STALE", "That choice is no longer active"),
+      );
     }
     const { data: questionMessage, error: questionError } = await userClient
       .from("agent_messages")
@@ -706,24 +1072,34 @@ async function handle(req: Request): Promise<Response> {
       .eq("role", "assistant")
       .maybeSingle();
     if (questionError || !questionMessage) {
-      return taskStateResponse(new TaskStateError("CHOICE_STALE", "That choice is no longer active"));
+      return taskStateResponse(
+        new TaskStateError("CHOICE_STALE", "That choice is no longer active"),
+      );
     }
     liveChoices = validateAgentChoicesV2(
-      (questionMessage.content as { structured?: { choices?: unknown } })?.structured?.choices,
+      (questionMessage.content as { structured?: { choices?: unknown } })
+        ?.structured?.choices,
     );
-    if (!liveChoices || liveChoices.question_id !== choiceSubmission.question_id) {
-      return taskStateResponse(new TaskStateError("CHOICE_STALE", "That choice is no longer active"));
+    if (
+      !liveChoices || liveChoices.question_id !== choiceSubmission.question_id
+    ) {
+      return taskStateResponse(
+        new TaskStateError("CHOICE_STALE", "That choice is no longer active"),
+      );
     }
     const selectedLabels = choiceSubmission.option_ids.map((id) =>
       liveChoices?.options.find((option) => option.id === id)?.label
     );
     if (selectedLabels.some((label) => typeof label !== "string")) {
-      return taskStateResponse(new TaskStateError("CHOICE_STALE", "That choice is no longer active"));
+      return taskStateResponse(
+        new TaskStateError("CHOICE_STALE", "That choice is no longer active"),
+      );
     }
     semanticMessage = choiceSubmission.free_text ?? selectedLabels.join(", ");
   }
 
   // Load last N messages
+  // deno-fmt-ignore -- protected #2013 provenance gate requires this exact select boundary.
   const { data: historyRows } = await userClient
     .from("agent_messages")
     .select("role, content, tool_calls, tool_results, prompt_version, created_at")
@@ -735,7 +1111,9 @@ async function handle(req: Request): Promise<Response> {
   // Load profile
   const { data: profileRow } = await userClient
     .from("agent_user_profile")
-    .select("display_name, preferred_timezone, preferred_currency, communication_style")
+    .select(
+      "display_name, preferred_timezone, preferred_currency, communication_style",
+    )
     .eq("user_id", userId)
     .maybeSingle();
   const profile = profileRow as AgentUserProfile | null;
@@ -799,15 +1177,20 @@ async function handle(req: Request): Promise<Response> {
     }
     const probeBrand = activeBrand?.id;
     try {
-      const { data: can } = await userClient.rpc("pg_brand_can_collect", { p_brand_id: probeBrand });
-      payoutReady = can === true || (can as { can_collect?: boolean } | null)?.can_collect === true;
+      const { data: can } = await userClient.rpc("pg_brand_can_collect", {
+        p_brand_id: probeBrand,
+      });
+      payoutReady = can === true ||
+        (can as { can_collect?: boolean } | null)?.can_collect === true;
     } catch {
       payoutReady = null;
     }
   }
   const business: BusinessContext = {
     brands: brandsList,
-    activeBrand: activeBrand ? brandsList.find((brand) => brand.id === activeBrand.id) ?? null : null,
+    activeBrand: activeBrand
+      ? brandsList.find((brand) => brand.id === activeBrand.id) ?? null
+      : null,
     offerings,
     payoutReady,
     roleHint: activeBrand?.role ?? null,
@@ -830,7 +1213,10 @@ async function handle(req: Request): Promise<Response> {
   // the conversations drawer shows something meaningful instead of "Untitled".
   // Best-effort; failures don't block the chat turn.
   if (history.length === 0) {
-    const derivedTitle = semanticMessage.trim().slice(0, 60).replace(/\s+/g, " ");
+    const derivedTitle = semanticMessage.trim().slice(0, 60).replace(
+      /\s+/g,
+      " ",
+    );
     if (derivedTitle.length > 0) {
       await userClient
         .from("agent_conversations")
@@ -858,7 +1244,14 @@ async function handle(req: Request): Promise<Response> {
         content: {
           text: semanticMessage,
           ...(choiceSubmission
-            ? { structured: { choice_submission: { question_id: choiceSubmission.question_id, option_ids: choiceSubmission.option_ids } } }
+            ? {
+              structured: {
+                choice_submission: {
+                  question_id: choiceSubmission.question_id,
+                  option_ids: choiceSubmission.option_ids,
+                },
+              },
+            }
             : {}),
         },
         client_turn_id: body.client_turn_id,
@@ -868,7 +1261,11 @@ async function handle(req: Request): Promise<Response> {
       .select("id")
       .single();
     if (userMsgErr || !insertedUser) {
-      return errorResponse(500, "INTERNAL", `Failed to write user message: ${userMsgErr?.message ?? "unknown"}`);
+      return errorResponse(
+        500,
+        "INTERNAL",
+        `Failed to write user message: ${userMsgErr?.message ?? "unknown"}`,
+      );
     }
     userMsg = insertedUser;
   }
@@ -895,11 +1292,13 @@ async function handle(req: Request): Promise<Response> {
       });
     } else if (m.role === "assistant") {
       const text = (m.content as any)?.text;
-      const toolCall = (m.tool_calls as any);
+      const toolCall = m.tool_calls as any;
       if (toolCall?.tool_name && toolCall?.args) {
         contents.push({
           role: "model",
-          parts: [{ functionCall: { name: toolCall.tool_name, args: toolCall.args } }],
+          parts: [{
+            functionCall: { name: toolCall.tool_name, args: toolCall.args },
+          }],
         });
       } else if (typeof text === "string") {
         contents.push({ role: "model", parts: [{ text }] });
@@ -934,30 +1333,44 @@ async function handle(req: Request): Promise<Response> {
       .eq("role", "assistant")
       .maybeSingle();
     liveChoices = validateAgentChoicesV2(
-      (pendingQuestionMessage?.content as { structured?: { choices?: unknown } } | undefined)?.structured?.choices,
+      (pendingQuestionMessage?.content as
+        | { structured?: { choices?: unknown } }
+        | undefined)?.structured?.choices,
     );
   }
 
   const plannerContext: PlannerContext | null = activeBrand
     ? {
-        now: requestNow,
-        timezone: effectiveTimezone,
-        locale: typeof body.locale === "string" ? body.locale : undefined,
-        activeBrand: { id: activeBrand.id, name: activeBrand.name },
-        originMessageId: userMsg.id,
-        taskId: crypto.randomUUID(),
-        questionId: crypto.randomUUID(),
-      }
+      now: requestNow,
+      timezone: effectiveTimezone,
+      locale: typeof body.locale === "string" ? body.locale : undefined,
+      activeBrand: { id: activeBrand.id, name: activeBrand.name },
+      originMessageId: userMsg.id,
+      taskId: crypto.randomUUID(),
+      questionId: crypto.randomUUID(),
+    }
     : null;
   const activeEventPlan = taskState.active_task?.intent === "create_event" &&
     !["completed", "cancelled"].includes(taskState.status);
-  const readInterruption = activeEventPlan && isReadInterruption(semanticMessage);
+  const readInterruption = activeEventPlan &&
+    isReadInterruption(semanticMessage);
   const questionInterruption = activeEventPlan && !readInterruption &&
     /\b(?:what|why|how|who|where|can you|do you)\b/i.test(semanticMessage) &&
-    !/\b(?:today|tomorrow|next|this|month|week|am|pm|morning|afternoon|evening|title|called|named)\b/i.test(semanticMessage);
+    !/\b(?:today|tomorrow|next|this|month|week|am|pm|morning|afternoon|evening|title|called|named)\b/i
+      .test(semanticMessage);
 
   if (plannerContext && choiceSubmission && liveChoices) {
     try {
+      const startsReplacementTask = liveChoices.options.some((option) =>
+        choiceSubmission.option_ids.includes(option.id) &&
+        option.payload.type === "task_command" &&
+        (option.payload.command === "pause" ||
+          option.payload.command === "start_new") &&
+        typeof option.payload.replacement_request === "string"
+      );
+      const replacedPendingActionId = startsReplacementTask
+        ? taskState.active_task?.pending_action_id
+        : undefined;
       const planned = applyStoredChoice({
         state: taskState,
         choices: assertAgentChoicesV2(liveChoices),
@@ -965,17 +1378,54 @@ async function handle(req: Request): Promise<Response> {
         freeText: choiceSubmission.free_text,
         context: plannerContext,
       });
+      if (replacedPendingActionId) {
+        const terminalized = await terminalizeProposalForTaskReplacement({
+          pendingClient: serviceClient,
+          userId,
+          conversationId,
+          pendingActionId: replacedPendingActionId,
+        });
+        if (!terminalized.ok) {
+          return errorResponse(
+            409,
+            "TASK_RECOVERY_REQUIRED",
+            terminalized.message,
+          );
+        }
+      }
       if (planned.proposal) {
         const tool = findTool(planned.proposal.tool_name);
-        if (!tool) return errorResponse(500, "INTERNAL", "create_event tool is unavailable");
+        if (!tool) {
+          return errorResponse(
+            500,
+            "INTERNAL",
+            "create_event tool is unavailable",
+          );
+        }
         try {
-          await authorizeAgentTool(tool, planned.proposal.tool_args, userClient, userId);
+          await authorizeAgentTool(
+            tool,
+            planned.proposal.tool_args,
+            userClient,
+            userId,
+          );
         } catch (err: unknown) {
-          if (err instanceof ToolError) return errorResponse(err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : 403, err.code, err.message);
-          return errorResponse(503, "ROLE_CHECK_UNAVAILABLE", "Ari could not verify permissions right now");
+          if (err instanceof ToolError) {
+            return errorResponse(
+              err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : 403,
+              err.code,
+              err.message,
+            );
+          }
+          return errorResponse(
+            503,
+            "ROLE_CHECK_UNAVAILABLE",
+            "Ari could not verify permissions right now",
+          );
         }
         return await commitPendingTurn({
           client: userClient,
+          pendingClient: serviceClient,
           userId,
           conversationId,
           clientTurnId: body.client_turn_id,
@@ -1006,29 +1456,64 @@ async function handle(req: Request): Promise<Response> {
       });
     } catch (err: unknown) {
       if (err instanceof TaskStateError) return taskStateResponse(err);
-      logError("agent-chat choice planning failed", err, { fn: "agent-chat", revision: "1985-v1" });
-      return errorResponse(502, "PLANNER_UNAVAILABLE", "Ari couldn't safely apply that answer. Your choice is still here — try again.");
+      logError("agent-chat choice planning failed", err, {
+        fn: "agent-chat",
+        revision: "1985-v1",
+      });
+      return errorResponse(
+        502,
+        "PLANNER_UNAVAILABLE",
+        "Ari couldn't safely apply that answer. Your choice is still here — try again.",
+      );
     }
   }
 
-  if (plannerContext && !readInterruption && !questionInterruption &&
-      (activeEventPlan || isCreateEventPlanningRequest(semanticMessage))) {
+  if (
+    plannerContext && !readInterruption && !questionInterruption &&
+    (activeEventPlan || isCreateEventPlanningRequest(semanticMessage))
+  ) {
     try {
-      const baseState = ["completed", "cancelled"].includes(taskState.status) && isCreateEventPlanningRequest(semanticMessage)
-        ? { ...IDLE_TASK_STATE, last_completed_step: taskState.last_completed_step }
+      const baseState = ["completed", "cancelled"].includes(taskState.status) &&
+          isCreateEventPlanningRequest(semanticMessage)
+        ? {
+          ...IDLE_TASK_STATE,
+          last_completed_step: taskState.last_completed_step,
+        }
         : taskState;
       const planned = planEventTurn(baseState, semanticMessage, plannerContext);
       if (planned.proposal) {
         const tool = findTool(planned.proposal.tool_name);
-        if (!tool) return errorResponse(500, "INTERNAL", "create_event tool is unavailable");
+        if (!tool) {
+          return errorResponse(
+            500,
+            "INTERNAL",
+            "create_event tool is unavailable",
+          );
+        }
         try {
-          await authorizeAgentTool(tool, planned.proposal.tool_args, userClient, userId);
+          await authorizeAgentTool(
+            tool,
+            planned.proposal.tool_args,
+            userClient,
+            userId,
+          );
         } catch (err: unknown) {
-          if (err instanceof ToolError) return errorResponse(err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : 403, err.code, err.message);
-          return errorResponse(503, "ROLE_CHECK_UNAVAILABLE", "Ari could not verify permissions right now");
+          if (err instanceof ToolError) {
+            return errorResponse(
+              err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : 403,
+              err.code,
+              err.message,
+            );
+          }
+          return errorResponse(
+            503,
+            "ROLE_CHECK_UNAVAILABLE",
+            "Ari could not verify permissions right now",
+          );
         }
         return await commitPendingTurn({
           client: userClient,
+          pendingClient: serviceClient,
           userId,
           conversationId,
           clientTurnId: body.client_turn_id,
@@ -1058,18 +1543,25 @@ async function handle(req: Request): Promise<Response> {
       });
     } catch (err: unknown) {
       if (err instanceof TaskStateError) return taskStateResponse(err);
-      logError("agent-chat event planning failed", err, { fn: "agent-chat", revision: "1985-v1" });
-      return errorResponse(502, "PLANNER_UNAVAILABLE", "Ari couldn't safely continue this plan. Your message is saved — try again.");
+      logError("agent-chat event planning failed", err, {
+        fn: "agent-chat",
+        revision: "1985-v1",
+      });
+      return errorResponse(
+        502,
+        "PLANNER_UNAVAILABLE",
+        "Ari couldn't safely continue this plan. Your message is saved — try again.",
+      );
     }
   }
 
   const interruptionState = (readInterruption || questionInterruption)
     ? beginInterruption(taskState, {
-        turn_id: body.client_turn_id,
-        kind: readInterruption ? "read" : "question",
-        user_text_digest: `turn-${body.client_turn_id.slice(0, 8)}`,
-        started_at: requestNow.toISOString(),
-      })
+      turn_id: body.client_turn_id,
+      kind: readInterruption ? "read" : "question",
+      user_text_digest: `turn-${body.client_turn_id.slice(0, 8)}`,
+      started_at: requestNow.toISOString(),
+    })
     : taskState;
 
   // Call Gemini
@@ -1087,7 +1579,12 @@ async function handle(req: Request): Promise<Response> {
   } catch (err: any) {
     const schemaResponse = schemaErrorResponse(err);
     if (schemaResponse) return schemaResponse;
-    console.error("[agent-chat] Gemini error:", err?.kind, err?.message, err?.detail);
+    console.error(
+      "[agent-chat] Gemini error:",
+      err?.kind,
+      err?.message,
+      err?.detail,
+    );
     // Surface config errors specifically — these are operator-fixable
     // (set the secret) and the generic "having trouble" message hides
     // the actual problem. HTTP errors with a status get a more
@@ -1096,36 +1593,57 @@ async function handle(req: Request): Promise<Response> {
       return errorResponse(
         500,
         "MODEL_NOT_CONFIGURED",
-        err.message ?? "Ari isn't configured yet — operator must set GEMINI_API_KEY_ARI in Supabase function secrets.",
+        err.message ??
+          "Ari isn't configured yet — operator must set GEMINI_API_KEY_ARI in Supabase function secrets.",
       );
     }
     if (err?.kind === "http") {
       const status = typeof err.status === "number" ? err.status : 0;
       if (status === 401 || status === 403) {
-        return errorResponse(500, "MODEL_AUTH_FAILED", "Ari's API key was rejected by Google. Operator: verify GEMINI_API_KEY_ARI is a valid AI Studio key.");
+        return errorResponse(
+          500,
+          "MODEL_AUTH_FAILED",
+          "Ari's API key was rejected by Google. Operator: verify GEMINI_API_KEY_ARI is a valid AI Studio key.",
+        );
       }
       if (status === 429) {
-        return errorResponse(429, "MODEL_RATE_LIMITED", "Ari is hitting Google's rate limit — try again in a moment.");
+        return errorResponse(
+          429,
+          "MODEL_RATE_LIMITED",
+          "Ari is hitting Google's rate limit — try again in a moment.",
+        );
       }
     }
     // Generic fallback for any other Gemini failure mode (HTTP 4xx other
     // than auth/rate-limit, malformed responses after retries, empty
     // responses). The real diagnostic detail is in the server logs above;
     // the user-visible message stays friendly.
-    return errorResponse(502, "MODEL_UNAVAILABLE", "Ari is having trouble right now — try again in a moment.");
+    return errorResponse(
+      502,
+      "MODEL_UNAVAILABLE",
+      "Ari is having trouble right now — try again in a moment.",
+    );
   }
 
   // Branch on tool call vs text
   if (gemini.toolCall) {
     const tool = findTool(gemini.toolCall.name);
     if (!tool) {
-      return errorResponse(500, "INTERNAL", `Unknown tool: ${gemini.toolCall.name}`);
+      return errorResponse(
+        500,
+        "INTERNAL",
+        `Unknown tool: ${gemini.toolCall.name}`,
+      );
     }
 
     // For READ-ONLY tools, execute inline (no confirmation needed)
     if (READ_ONLY_TOOL_NAMES.has(tool.name)) {
       try {
-        const result = await tool.executor(gemini.toolCall.args, userClient, userId);
+        const result = await tool.executor(
+          gemini.toolCall.args,
+          userClient,
+          userId,
+        );
         // Log tool result as a tool message, then ask Gemini for a natural-language summary
         await userClient
           .from("agent_messages")
@@ -1147,7 +1665,9 @@ async function handle(req: Request): Promise<Response> {
           ...contents,
           {
             role: "model",
-            parts: [{ functionCall: { name: tool.name, args: gemini.toolCall.args } }],
+            parts: [{
+              functionCall: { name: tool.name, args: gemini.toolCall.args },
+            }],
           },
           {
             role: "user",
@@ -1176,11 +1696,15 @@ async function handle(req: Request): Promise<Response> {
           followup = undefined;
         }
         const answer = followup?.textResponse ?? "Here's what I found.";
-        const resumedState = readInterruption ? resumeInterruption(interruptionState) : taskState;
+        const resumedState = readInterruption
+          ? resumeInterruption(interruptionState)
+          : taskState;
         const resumePrompt = readInterruption
           ? liveChoices?.prompt ?? pendingQuestionPrompt(resumedState)
           : null;
-        const text = resumePrompt ? `${answer}\n\nBack to your event plan: ${resumePrompt}` : answer;
+        const text = resumePrompt
+          ? `${answer}\n\nBack to your event plan: ${resumePrompt}`
+          : answer;
         return await commitTextTurn({
           client: userClient,
           userId,
@@ -1191,36 +1715,50 @@ async function handle(req: Request): Promise<Response> {
           expectedRevision: taskStateRevision,
           previousSummary: conversationSummary,
           text,
-          classification: readInterruption ? "read_interruption" : "general_read",
+          classification: readInterruption
+            ? "read_interruption"
+            : "general_read",
           startedAt: turnStartedAt,
           choices: readInterruption && liveChoices ? liveChoices : undefined,
-          structuredData: result !== null && typeof result === "object" && !Array.isArray(result)
+          structuredData: result !== null && typeof result === "object" &&
+              !Array.isArray(result)
             ? result as Record<string, unknown>
             : { result },
           resumed: readInterruption,
         });
       } catch (err: any) {
         if (err instanceof ToolError) {
-          console.error("[agent-chat] tenant-scoped read stopped", JSON.stringify({
-            fn: "agent-chat", revision: "2013", code: err.code,
-            scope_state: activeBrand ? "bound" : "legacy_or_zero_brand",
-            request_brand_supplied: typeof body.brand_id === "string",
-            accessible_brand_count: accessibleBrands.length,
-            tool_name: tool.name,
-          }));
+          console.error(
+            "[agent-chat] tenant-scoped read stopped",
+            JSON.stringify({
+              fn: "agent-chat",
+              revision: "2013",
+              code: err.code,
+              scope_state: activeBrand ? "bound" : "legacy_or_zero_brand",
+              request_brand_supplied: typeof body.brand_id === "string",
+              accessible_brand_count: accessibleBrands.length,
+              tool_name: tool.name,
+            }),
+          );
           if (readInterruption) {
             await userClient.from("agent_messages").insert({
               conversation_id: conversationId,
               user_id: userId,
               role: "tool",
               content: { text: "" },
-              tool_results: { tool_name: tool.name, outcome: "failed", code: err.code },
+              tool_results: {
+                tool_name: tool.name,
+                outcome: "failed",
+                code: err.code,
+              },
               client_turn_id: body.client_turn_id,
               prompt_version: TENANT_CONTEXT_VERSION,
               model_version: ARI_MODEL_VERSION,
             });
             const resumedState = resumeInterruption(interruptionState);
-            const resumePrompt = liveChoices?.prompt ?? pendingQuestionPrompt(resumedState) ?? "continue where we left off";
+            const resumePrompt = liveChoices?.prompt ??
+              pendingQuestionPrompt(resumedState) ??
+              "continue where we left off";
             return await commitTextTurn({
               client: userClient,
               userId,
@@ -1230,7 +1768,8 @@ async function handle(req: Request): Promise<Response> {
               nextState: resumedState,
               expectedRevision: taskStateRevision,
               previousSummary: conversationSummary,
-              text: `I couldn't complete that read safely. Back to your event plan: ${resumePrompt}`,
+              text:
+                `I couldn't complete that read safely. Back to your event plan: ${resumePrompt}`,
               classification: "read_interruption",
               startedAt: turnStartedAt,
               choices: liveChoices ?? undefined,
@@ -1238,16 +1777,20 @@ async function handle(req: Request): Promise<Response> {
             });
           }
           return errorResponse(
-            err.code === "TENANT_SCOPE_UNAVAILABLE" || err.code === "ROLE_CHECK_UNAVAILABLE"
+            err.code === "TENANT_SCOPE_UNAVAILABLE" ||
+              err.code === "ROLE_CHECK_UNAVAILABLE"
               ? 503
-              : err.code === "INVALID_ARGS" ? 400 : 403,
+              : err.code === "INVALID_ARGS"
+              ? 400
+              : 403,
             err.code,
             err.message,
           );
         }
         if (readInterruption) {
           const resumedState = resumeInterruption(interruptionState);
-          const resumePrompt = liveChoices?.prompt ?? pendingQuestionPrompt(resumedState) ?? "continue where we left off";
+          const resumePrompt = liveChoices?.prompt ??
+            pendingQuestionPrompt(resumedState) ?? "continue where we left off";
           return await commitTextTurn({
             client: userClient,
             userId,
@@ -1257,14 +1800,19 @@ async function handle(req: Request): Promise<Response> {
             nextState: resumedState,
             expectedRevision: taskStateRevision,
             previousSummary: conversationSummary,
-            text: `That read didn't finish. Back to your event plan: ${resumePrompt}`,
+            text:
+              `That read didn't finish. Back to your event plan: ${resumePrompt}`,
             classification: "read_interruption",
             startedAt: turnStartedAt,
             choices: liveChoices ?? undefined,
             resumed: true,
           });
         }
-        return errorResponse(500, "EXECUTION_FAILED", err?.message ?? "Tool failed");
+        return errorResponse(
+          500,
+          "EXECUTION_FAILED",
+          err?.message ?? "Tool failed",
+        );
       }
     }
 
@@ -1272,7 +1820,8 @@ async function handle(req: Request): Promise<Response> {
       const resumedState = interruptionState.status === "interrupted"
         ? resumeInterruption(interruptionState)
         : taskState;
-      const resumePrompt = liveChoices?.prompt ?? pendingQuestionPrompt(resumedState) ?? "finish the current event plan";
+      const resumePrompt = liveChoices?.prompt ??
+        pendingQuestionPrompt(resumedState) ?? "finish the current event plan";
       return await commitTextTurn({
         client: userClient,
         userId,
@@ -1295,14 +1844,23 @@ async function handle(req: Request): Promise<Response> {
       await authorizeAgentTool(tool, gemini.toolCall.args, userClient, userId);
     } catch (err: unknown) {
       if (err instanceof ToolError) {
-        const status = err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : err.code === "INVALID_ARGS" ? 400 : 403;
+        const status = err.code === "ROLE_CHECK_UNAVAILABLE"
+          ? 503
+          : err.code === "INVALID_ARGS"
+          ? 400
+          : 403;
         return errorResponse(status, err.code, err.message);
       }
-      return errorResponse(503, "ROLE_CHECK_UNAVAILABLE", "Ari could not verify permissions right now");
+      return errorResponse(
+        503,
+        "ROLE_CHECK_UNAVAILABLE",
+        "Ari could not verify permissions right now",
+      );
     }
 
     return await commitPendingTurn({
       client: userClient,
+      pendingClient: serviceClient,
       userId,
       conversationId,
       clientTurnId: body.client_turn_id,
@@ -1328,7 +1886,9 @@ async function handle(req: Request): Promise<Response> {
   const resumePrompt = (readInterruption || questionInterruption)
     ? liveChoices?.prompt ?? pendingQuestionPrompt(resumedState)
     : null;
-  const text = resumePrompt ? `${answer}\n\nBack to your event plan: ${resumePrompt}` : answer;
+  const text = resumePrompt
+    ? `${answer}\n\nBack to your event plan: ${resumePrompt}`
+    : answer;
   return await commitTextTurn({
     client: userClient,
     userId,
@@ -1339,15 +1899,22 @@ async function handle(req: Request): Promise<Response> {
     expectedRevision: taskStateRevision,
     previousSummary: conversationSummary,
     text,
-    classification: readInterruption ? "read_interruption" : questionInterruption ? "question_interruption" : "general",
+    classification: readInterruption
+      ? "read_interruption"
+      : questionInterruption
+      ? "question_interruption"
+      : "general",
     startedAt: turnStartedAt,
-    choices: (readInterruption || questionInterruption) && liveChoices ? liveChoices : undefined,
+    choices: (readInterruption || questionInterruption) && liveChoices
+      ? liveChoices
+      : undefined,
     resumed: readInterruption || questionInterruption,
   });
 }
 
 async function commitPendingTurn(args: {
   client: SupabaseClient;
+  pendingClient: SupabaseClient;
   userId: string;
   conversationId: string;
   clientTurnId: string;
@@ -1368,30 +1935,56 @@ async function commitPendingTurn(args: {
       ? markAwaitingConfirmation(args.readyState, pendingActionId)
       : args.readyState;
   } catch (err: unknown) {
-    return err instanceof TaskStateError ? taskStateResponse(err) : errorResponse(500, "TASK_STATE_INVALID", "Ari couldn't safely prepare that action.");
+    return err instanceof TaskStateError
+      ? taskStateResponse(err)
+      : errorResponse(
+        500,
+        "TASK_STATE_INVALID",
+        "Ari couldn't safely prepare that action.",
+      );
   }
-  const { error: pendingError } = await args.client.from("agent_pending_actions").insert({
+  const { error: pendingError } = await args.pendingClient.from(
+    "agent_pending_actions",
+  ).insert({
     id: pendingActionId,
     user_id: args.userId,
     conversation_id: args.conversationId,
     tool_name: args.toolName,
     tool_args: args.toolArgs,
     status: "pending",
+    server_proposed_at: new Date().toISOString(),
   });
-  if (pendingError) return errorResponse(500, "INTERNAL", `Failed to create pending action: ${pendingError.message}`);
+  if (pendingError) {
+    return errorResponse(
+      500,
+      "INTERNAL",
+      `Failed to create pending action: ${pendingError.message}`,
+    );
+  }
 
   const nowIso = new Date().toISOString();
-  const won = await compareAndSetConversation({
+  const toolCalls = {
+    tool_name: args.toolName,
+    args: args.toolArgs,
+    pending_action_id: pendingActionId,
+  };
+  const committed = await commitTaskAssistantTurn({
     client: args.client,
     conversationId: args.conversationId,
     expectedRevision: args.expectedRevision,
     nextState,
-    summary: appendSafeSummary(args.previousSummary, stateSummaryEvent(args.classification, nextState)),
+    summary: appendSafeSummary(
+      args.previousSummary,
+      stateSummaryEvent(args.classification, nextState),
+    ),
     assistantMessageId,
+    content: { text: "" },
+    toolCalls,
+    clientTurnId: args.clientTurnId,
     nowIso,
   });
-  if (!won) {
-    await args.client.from("agent_pending_actions")
+  if (!committed.won) {
+    await args.pendingClient.from("agent_pending_actions")
       .update({ status: "cancelled", failure_reason: "TASK_STATE_CONFLICT" })
       .eq("id", pendingActionId).eq("status", "pending");
     emitTaskEvent({
@@ -1401,28 +1994,19 @@ async function commitPendingTurn(args: {
       revision: args.expectedRevision,
       classification: args.classification,
       resumed: false,
-      errorCode: "TASK_STATE_CONFLICT",
+      errorCode: committed.error
+        ? "TASK_RECOVERY_REQUIRED"
+        : "TASK_STATE_CONFLICT",
       startedAt: args.startedAt,
       success: false,
     });
-    return taskStateResponse(new TaskStateError("TASK_STATE_CONFLICT", "Task state changed"));
+    return taskStateResponse(
+      new TaskStateError(
+        committed.error ? "TASK_RECOVERY_REQUIRED" : "TASK_STATE_CONFLICT",
+        committed.error ?? "Task state changed",
+      ),
+    );
   }
-  const { error: assistantError } = await args.client.from("agent_messages").insert({
-    id: assistantMessageId,
-    conversation_id: args.conversationId,
-    user_id: args.userId,
-    role: "assistant",
-    content: { text: "" },
-    tool_calls: {
-      tool_name: args.toolName,
-      args: args.toolArgs,
-      pending_action_id: pendingActionId,
-    },
-    client_turn_id: args.clientTurnId,
-    prompt_version: TENANT_CONTEXT_VERSION,
-    model_version: ARI_MODEL_VERSION,
-  });
-  if (assistantError) return taskStateResponse(new TaskStateError("TASK_RECOVERY_REQUIRED", "Proposal message persistence failed"));
   emitTaskEvent({
     intent: nextState.active_task?.intent ?? null,
     from: args.previousState.status,

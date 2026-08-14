@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 530,
+  "expectedStrictGrepMjsFiles": 531,
   "selfTestWiredFloor": 334,
   "unenforcedCap": 2,
   "fixtureCap": 10,

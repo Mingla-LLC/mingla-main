@@ -64,6 +64,12 @@ export function isCreateEventPlanningRequest(text: string): boolean {
       .test(text);
 }
 
+export function isExplicitReplacementTaskRequest(text: string): boolean {
+  return isCreateEventPlanningRequest(text) &&
+    /\b(?:another|new|different|second)\b[\s\S]{0,80}\b(?:event|gathering|party|show)\b/i
+      .test(text);
+}
+
 export function isReadInterruption(text: string): boolean {
   return /\b(?:how many|list|show|what are|which)\b[\s\S]{0,50}\b(?:brands?|events?|sales|orders|guests?)\b/i
     .test(text);
@@ -228,6 +234,35 @@ function pendingQuestion(choices: AgentChoicesV2): PendingQuestionV1 {
   };
 }
 
+function replacementTaskQuestion(
+  questionId: string,
+  replacementRequest: string,
+): AgentChoicesV2 {
+  return assertAgentChoicesV2({
+    schema_version: 2,
+    question_id: questionId,
+    kind: "next_step",
+    prompt: "Pause this event plan and start the new one?",
+    required_slot_keys: [],
+    options: [
+      {
+        id: "pause_and_start_new",
+        label: "Pause this plan and start the new event",
+        payload: {
+          type: "task_command",
+          command: "pause",
+          replacement_request: replacementRequest,
+        },
+      },
+      {
+        id: "keep_current_plan",
+        label: "Keep this event plan",
+        payload: { type: "task_command", command: "continue_planning" },
+      },
+    ],
+  });
+}
+
 function temporalSlots(
   temporal: TemporalSlotValue,
   nowIso: string,
@@ -370,6 +405,23 @@ export function planEventTurn(
     };
   }
 
+  if (
+    current.active_task?.intent === "create_event" &&
+    !["completed", "cancelled"].includes(current.status) &&
+    isExplicitReplacementTaskRequest(userText)
+  ) {
+    const choices = replacementTaskQuestion(context.questionId, userText);
+    return {
+      classification: "event_plan_continue",
+      state: {
+        ...current,
+        pending_question: pendingQuestion(choices),
+      },
+      text: choices.prompt,
+      choices,
+    };
+  }
+
   let state = current;
   let classification: PlannerClassification = "event_plan_continue";
   let intro = "I’ve updated the event plan.";
@@ -504,7 +556,8 @@ export function applyStoredChoice(args: {
   }
   let next = state;
   let handoffRoute: string | undefined;
-  let startNew = false;
+  let replacementRequest: string | undefined;
+  let continuePlanning = false;
   const updates: Record<string, TaskSlot> = {};
   for (const option of selected) {
     if (option.payload.type === "slot_patch") {
@@ -562,8 +615,16 @@ export function applyStoredChoice(args: {
       handoffRoute = option.payload.route;
     } else if (option.payload.command === "cancel") {
       next = cancelActiveTask(next, context.now.toISOString());
+    } else if (
+      (option.payload.command === "pause" ||
+        option.payload.command === "start_new") &&
+      option.payload.replacement_request
+    ) {
+      replacementRequest = option.payload.replacement_request;
     } else if (option.payload.command === "start_new") {
-      startNew = true;
+      replacementRequest = "";
+    } else if (option.payload.command === "continue_planning") {
+      continuePlanning = true;
     }
   }
   if (Object.keys(updates).length > 0) {
@@ -634,7 +695,18 @@ export function applyStoredChoice(args: {
       handoffRoute,
     };
   }
-  if (startNew) {
+  if (replacementRequest !== undefined) {
+    if (replacementRequest.length > 0) {
+      return planEventTurn(
+        { ...IDLE_TASK_STATE, last_completed_step: next.last_completed_step },
+        replacementRequest,
+        {
+          ...context,
+          taskId: `${context.taskId}_replacement`,
+          questionId: `${context.questionId}_replacement`,
+        },
+      );
+    }
     return {
       classification: "event_plan_continue",
       state: {
@@ -644,6 +716,17 @@ export function applyStoredChoice(args: {
       text:
         "Tell me the direction, date, and time for the next event. I’ll build the plan from there.",
     };
+  }
+  if (continuePlanning) {
+    next = { ...next, pending_question: null };
+    if (next.status === "awaiting_confirmation") {
+      return {
+        classification: "event_plan_continue",
+        state: next,
+        text:
+          "Keeping the current event proposal. Review it when you're ready.",
+      };
+    }
   }
   return planEventTurn(next, "", {
     ...context,

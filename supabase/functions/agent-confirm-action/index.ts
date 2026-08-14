@@ -18,11 +18,15 @@ import { TENANT_CONTEXT_VERSION } from "../_shared/agentSystemPrompt.ts";
 import { ARI_MODEL_VERSION } from "../_shared/agentGemini.ts";
 import { findTool, ToolError } from "../_shared/agentTools.ts";
 import { authorizeAgentTool } from "../_shared/agentToolAuthorization.ts";
+import { buildServiceClient } from "../_shared/agentRateLimit.ts";
 import {
-  TaskStateError,
-  TaskStateV1,
+  assertEditedCreateEventProposal,
+  markAwaitingConfirmation,
   parseTaskState,
   reconcilePendingAction,
+  replaceCreateEventProposalArgs,
+  TaskStateError,
+  TaskStateV1,
 } from "../_shared/agentConversationState.ts";
 import {
   AgentChoicesV2,
@@ -40,19 +44,34 @@ interface RequestBody {
 }
 
 type Response_ =
-  | { kind: "executed"; pending_action_id: string; tool_name: string; result: unknown; followup_text?: string; task_state_revision?: number }
+  | {
+    kind: "executed";
+    pending_action_id: string;
+    tool_name: string;
+    result: unknown;
+    followup_text?: string;
+    task_state_revision?: number;
+  }
   | { kind: "cancelled"; pending_action_id: string }
+  | {
+    kind: "proposal_replaced";
+    pending_action_id: string;
+    replaced_pending_action_id: string;
+    tool_name: string;
+    tool_args: Record<string, unknown>;
+    task_state_revision: number;
+  }
   // META-ORCH-1009 Sub-E (C2): expired Hub proposal -> in-Hub regenerate CTA
   // instead of the old 410 "Ask Ari" dead-end (this Hub flow never uses Ari).
   | {
-      kind: "expired_regenerate";
-      pending_action_id: string;
-      status: "expired";
-      parser_source: string | null;
-      tool_name: string;
-      brand_id: string | null;
-      regenerate: { cta: string; title: string; body: string };
-    }
+    kind: "expired_regenerate";
+    pending_action_id: string;
+    status: "expired";
+    parser_source: string | null;
+    tool_name: string;
+    brand_id: string | null;
+    regenerate: { cta: string; title: string; body: string };
+  }
   | { kind: "error"; code: string; message: string };
 
 function jsonResponse(status: number, body: Response_): Response {
@@ -62,7 +81,11 @@ function jsonResponse(status: number, body: Response_): Response {
   });
 }
 
-function errorResponse(status: number, code: string, message: string): Response {
+function errorResponse(
+  status: number,
+  code: string,
+  message: string,
+): Response {
   return jsonResponse(status, { kind: "error", code, message });
 }
 
@@ -81,11 +104,17 @@ function safeSummary(previous: string | null, event: string): string {
     .join("\n")
     .slice(-1700);
   const safeEvent = event.replace(/[^A-Za-z0-9 _.,:;()\-]/g, "").slice(0, 240);
-  return [safePrevious, `[task-v1] ${safeEvent}`].filter(Boolean).join("\n").slice(-2000);
+  return [safePrevious, `[task-v1] ${safeEvent}`].filter(Boolean).join("\n")
+    .slice(-2000);
 }
 
-function createdResource(toolName: string, result: unknown): { kind: string; id: string; label: string } | undefined {
-  if (toolName !== "create_event" || result === null || typeof result !== "object") return undefined;
+function createdResource(
+  toolName: string,
+  result: unknown,
+): { kind: string; id: string; label: string } | undefined {
+  if (
+    toolName !== "create_event" || result === null || typeof result !== "object"
+  ) return undefined;
   const event = (result as { event?: unknown }).event;
   if (event === null || typeof event !== "object") return undefined;
   const id = (event as { id?: unknown }).id;
@@ -95,7 +124,9 @@ function createdResource(toolName: string, result: unknown): { kind: string; id:
     : undefined;
 }
 
-function proactiveChoices(resource: { kind: string; id: string; label: string } | undefined): AgentChoicesV2 | undefined {
+function proactiveChoices(
+  resource: { kind: string; id: string; label: string } | undefined,
+): AgentChoicesV2 | undefined {
   if (!resource || resource.kind !== "event") return undefined;
   return assertAgentChoicesV2({
     schema_version: 2,
@@ -129,7 +160,12 @@ async function loadConversationTask(
     .eq("id", conversationId)
     .eq("user_id", userId)
     .maybeSingle();
-  if (error || !data) throw new TaskStateError("TASK_RECOVERY_REQUIRED", "Conversation task state is unavailable");
+  if (error || !data) {
+    throw new TaskStateError(
+      "TASK_RECOVERY_REQUIRED",
+      "Conversation task state is unavailable",
+    );
+  }
   const row = data as ConversationTaskRow;
   return { row, state: parseTaskState(row.task_state) };
 }
@@ -145,7 +181,11 @@ async function persistTaskOutcome(args: {
   assistantMessageId?: string;
   choices?: AgentChoicesV2;
 }): Promise<number | undefined> {
-  if (!args.conversation || args.conversation.state.active_task?.pending_action_id !== args.pendingActionId) return undefined;
+  if (
+    !args.conversation ||
+    args.conversation.state.active_task?.pending_action_id !==
+      args.pendingActionId
+  ) return undefined;
   const resource = createdResource(args.toolName, args.result);
   let next = reconcilePendingAction({
     state: args.conversation.state,
@@ -174,15 +214,25 @@ async function persistTaskOutcome(args: {
       task_state: next,
       task_state_revision: nextRevision,
       task_state_updated_at: new Date().toISOString(),
-      summary: safeSummary(args.conversation.row.summary, `Confirmation ${args.outcome} for ${args.toolName}.`),
+      summary: safeSummary(
+        args.conversation.row.summary,
+        `Confirmation ${args.outcome} for ${args.toolName}.`,
+      ),
       summary_updated_at: new Date().toISOString(),
-      ...(args.assistantMessageId ? { summary_through_message_id: args.assistantMessageId } : {}),
+      ...(args.assistantMessageId
+        ? { summary_through_message_id: args.assistantMessageId }
+        : {}),
     })
     .eq("id", args.conversation.row.id)
     .eq("task_state_revision", args.conversation.row.task_state_revision)
     .select("id")
     .maybeSingle();
-  if (error || !data) throw new TaskStateError("TASK_STATE_CONFLICT", "Task state changed during confirmation");
+  if (error || !data) {
+    throw new TaskStateError(
+      "TASK_STATE_CONFLICT",
+      "Task state changed during confirmation",
+    );
+  }
   return nextRevision;
 }
 
@@ -205,7 +255,11 @@ Deno.serve(async (req) => {
     return errorResponse(400, "BAD_REQUEST", "pending_action_id required");
   }
   if (body.action !== "confirm" && body.action !== "cancel") {
-    return errorResponse(400, "BAD_REQUEST", "action must be 'confirm' or 'cancel'");
+    return errorResponse(
+      400,
+      "BAD_REQUEST",
+      "action must be 'confirm' or 'cancel'",
+    );
   }
 
   const authHeader = req.headers.get("Authorization");
@@ -230,11 +284,23 @@ Deno.serve(async (req) => {
     return errorResponse(401, "UNAUTHORIZED", "Invalid or expired session");
   }
   const userId = userData.user.id;
+  let pendingStateClient: ReturnType<typeof buildServiceClient>;
+  try {
+    pendingStateClient = buildServiceClient();
+  } catch {
+    return errorResponse(
+      500,
+      "INTERNAL",
+      "Pending-action authority unavailable",
+    );
+  }
 
   // Load the pending action
   const { data: pending, error: pendingErr } = await userClient
     .from("agent_pending_actions")
-    .select("id, conversation_id, tool_name, tool_args, status, expires_at, source, related_brand_id")
+    .select(
+      "id, conversation_id, tool_name, tool_args, status, expires_at, source, related_brand_id",
+    )
     .eq("id", body.pending_action_id)
     .eq("user_id", userId)
     .maybeSingle();
@@ -243,31 +309,58 @@ Deno.serve(async (req) => {
   }
   let conversationTask: { row: ConversationTaskRow; state: TaskStateV1 } | null;
   try {
-    conversationTask = await loadConversationTask(userClient, pending.conversation_id, userId);
+    conversationTask = await loadConversationTask(
+      userClient,
+      pending.conversation_id,
+      userId,
+    );
     if (conversationTask?.row.brand_id) {
-      const accessibleBrands = await resolveAccessibleAgentBrands(userClient, userId);
-      requireAccessibleAgentBrand(accessibleBrands, conversationTask.row.brand_id);
+      const accessibleBrands = await resolveAccessibleAgentBrands(
+        userClient,
+        userId,
+      );
+      requireAccessibleAgentBrand(
+        accessibleBrands,
+        conversationTask.row.brand_id,
+      );
       if (
         conversationTask.state.active_task &&
-        conversationTask.state.active_task.brand_id !== conversationTask.row.brand_id
+        conversationTask.state.active_task.brand_id !==
+          conversationTask.row.brand_id
       ) {
-        return errorResponse(409, "TASK_STATE_INVALID", "Ari couldn't safely continue this plan. Start a new chat or try again.");
+        return errorResponse(
+          409,
+          "TASK_STATE_INVALID",
+          "Ari couldn't safely continue this plan. Start a new chat or try again.",
+        );
       }
     }
   } catch (err: unknown) {
     if (err instanceof TaskStateError) {
       const status = err.code === "TASK_STATE_INVALID" ? 500 : 409;
-      return errorResponse(status, err.code, err.code === "TASK_STATE_VERSION_UNSUPPORTED"
-        ? "This chat is read-only. Start a new chat to continue."
-        : "Ari needs to reconcile this action. Refresh the chat and try again.");
+      return errorResponse(
+        status,
+        err.code,
+        err.code === "TASK_STATE_VERSION_UNSUPPORTED"
+          ? "This chat is read-only. Start a new chat to continue."
+          : "Ari needs to reconcile this action. Refresh the chat and try again.",
+      );
     }
-    return errorResponse(403, "BRAND_ACCESS_DENIED", "You no longer have access to this conversation's brand.");
+    return errorResponse(
+      403,
+      "BRAND_ACCESS_DENIED",
+      "You no longer have access to this conversation's brand.",
+    );
   }
 
   // CANCEL path
   if (body.action === "cancel") {
     if (pending.status !== "pending") {
-      return errorResponse(400, "WRONG_STATE", `Cannot cancel — current status: ${pending.status}`);
+      return errorResponse(
+        400,
+        "WRONG_STATE",
+        `Cannot cancel — current status: ${pending.status}`,
+      );
     }
     const { data: cancelled, error: cancelErr } = await userClient
       .from("agent_pending_actions")
@@ -277,7 +370,11 @@ Deno.serve(async (req) => {
       .select("id")
       .maybeSingle();
     if (cancelErr || !cancelled) {
-      return errorResponse(500, "INTERNAL", `Cancel failed: ${cancelErr?.message ?? "state changed"}`);
+      return errorResponse(
+        500,
+        "INTERNAL",
+        `Cancel failed: ${cancelErr?.message ?? "state changed"}`,
+      );
     }
     // Ari-only audit trail in agent_messages (Hub proposals have no conversation).
     const toolMessageId = crypto.randomUUID();
@@ -308,16 +405,31 @@ Deno.serve(async (req) => {
       });
     } catch (err: unknown) {
       if (err instanceof TaskStateError) {
-        return errorResponse(409, err.code, "The action was cancelled, but Ari needs a refresh to reconcile the plan.");
+        return errorResponse(
+          409,
+          err.code,
+          "The action was cancelled, but Ari needs a refresh to reconcile the plan.",
+        );
       }
-      return errorResponse(409, "TASK_RECOVERY_REQUIRED", "The action was cancelled, but Ari needs a refresh to reconcile the plan.");
+      return errorResponse(
+        409,
+        "TASK_RECOVERY_REQUIRED",
+        "The action was cancelled, but Ari needs a refresh to reconcile the plan.",
+      );
     }
-    return jsonResponse(200, { kind: "cancelled", pending_action_id: pending.id });
+    return jsonResponse(200, {
+      kind: "cancelled",
+      pending_action_id: pending.id,
+    });
   }
 
   // CONFIRM path
   if (pending.status !== "pending") {
-    return errorResponse(400, "WRONG_STATE", `Cannot confirm — current status: ${pending.status}`);
+    return errorResponse(
+      400,
+      "WRONG_STATE",
+      `Cannot confirm — current status: ${pending.status}`,
+    );
   }
   if (new Date(pending.expires_at).getTime() < Date.now()) {
     // META-ORCH-1009 Sub-E (C2, SPEC §11.4): an expired Hub proposal must NOT
@@ -341,7 +453,11 @@ Deno.serve(async (req) => {
         });
       } catch (err: unknown) {
         if (err instanceof TaskStateError) {
-          return errorResponse(409, err.code, "This proposal expired. Refresh the chat to continue the plan.");
+          return errorResponse(
+            409,
+            err.code,
+            "This proposal expired. Refresh the chat to continue the plan.",
+          );
         }
       }
     }
@@ -350,13 +466,17 @@ Deno.serve(async (req) => {
       pending_action_id: pending.id,
       status: "expired",
       // Inputs the Hub re-snap path needs to regenerate the same proposal.
-      parser_source: ((pending.tool_args as Record<string, unknown> | null)?.parser_source as string | null) ?? null,
+      parser_source:
+        ((pending.tool_args as Record<string, unknown> | null)?.parser_source as
+          | string
+          | null) ?? null,
       tool_name: pending.tool_name,
       brand_id: (pending.related_brand_id as string | null) ?? null,
       regenerate: {
         cta: "regenerate",
         title: "This suggestion expired",
-        body: "Re-snap your menu or photos and we'll generate a fresh suggestion.",
+        body:
+          "Re-snap your menu or photos and we'll generate a fresh suggestion.",
       },
     });
   }
@@ -380,7 +500,11 @@ Deno.serve(async (req) => {
     await authorizeAgentTool(tool, finalArgs, userClient, userId);
   } catch (err: unknown) {
     const code = err instanceof ToolError ? err.code : "ROLE_CHECK_UNAVAILABLE";
-    const status = code === "ROLE_CHECK_UNAVAILABLE" ? 503 : code === "INVALID_ARGS" ? 400 : 403;
+    const status = code === "ROLE_CHECK_UNAVAILABLE"
+      ? 503
+      : code === "INVALID_ARGS"
+      ? 400
+      : 403;
     await userClient.from("agent_pending_actions")
       .update({ status: "failed", failure_reason: code })
       .eq("id", pending.id).eq("status", "pending");
@@ -395,12 +519,172 @@ Deno.serve(async (req) => {
           errorCode: code,
         });
       } catch {
-        return errorResponse(409, "TASK_RECOVERY_REQUIRED", "Permissions changed and the action was stopped. Refresh the chat to continue safely.");
+        return errorResponse(
+          409,
+          "TASK_RECOVERY_REQUIRED",
+          "Permissions changed and the action was stopped. Refresh the chat to continue safely.",
+        );
       }
     }
-    return errorResponse(status, code, code === "ROLE_CHECK_UNAVAILABLE"
-      ? "Ari could not verify permissions right now"
-      : "Your current access does not allow this action");
+    return errorResponse(
+      status,
+      code,
+      code === "ROLE_CHECK_UNAVAILABLE"
+        ? "Ari could not verify permissions right now"
+        : "Your current access does not allow this action",
+    );
+  }
+
+  if (
+    body.edited_args && pending.conversation_id &&
+    conversationTask?.state.active_task?.intent === "create_event"
+  ) {
+    const replacementPendingActionId = crypto.randomUUID();
+    const replacementMessageId = crypto.randomUUID();
+    const terminalMessageId = crypto.randomUUID();
+    const nowIso = new Date().toISOString();
+    let replacementState: TaskStateV1;
+    let canonicalArgs: Record<string, unknown>;
+    try {
+      const readyState = replaceCreateEventProposalArgs({
+        state: conversationTask.state,
+        pendingActionId: pending.id,
+        toolArgs: finalArgs,
+        nowIso,
+      });
+      canonicalArgs = assertEditedCreateEventProposal(readyState);
+      await authorizeAgentTool(tool, canonicalArgs, userClient, userId);
+      replacementState = markAwaitingConfirmation(
+        readyState,
+        replacementPendingActionId,
+      );
+    } catch (err: unknown) {
+      if (err instanceof TaskStateError) {
+        return errorResponse(
+          err.code === "TASK_STATE_INVALID" ? 400 : 409,
+          err.code,
+          err.message,
+        );
+      }
+      if (err instanceof ToolError) {
+        return errorResponse(400, err.code, err.message);
+      }
+      return errorResponse(
+        500,
+        "TASK_RECOVERY_REQUIRED",
+        "Ari could not safely replace this proposal.",
+      );
+    }
+
+    const { data: cancelled, error: cancelError } = await pendingStateClient
+      .from("agent_pending_actions")
+      .update({
+        status: "cancelled",
+        failure_reason: `EDITED_REPLACEMENT:${replacementPendingActionId}`,
+      })
+      .eq("id", pending.id)
+      .eq("user_id", userId)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (cancelError || !cancelled) {
+      return errorResponse(
+        409,
+        "WRONG_STATE",
+        "This proposal was already handled. Refresh the chat.",
+      );
+    }
+
+    const { error: terminalError } = await pendingStateClient
+      .from("agent_messages")
+      .insert({
+        id: terminalMessageId,
+        conversation_id: pending.conversation_id,
+        user_id: userId,
+        role: "tool",
+        content: { text: "" },
+        tool_results: {
+          tool_name: pending.tool_name,
+          pending_action_id: pending.id,
+          outcome: "cancelled",
+          reason: "edited_replacement",
+          replaced_by: replacementPendingActionId,
+        },
+        prompt_version: TENANT_CONTEXT_VERSION,
+        model_version: ARI_MODEL_VERSION,
+      });
+    if (terminalError) {
+      return errorResponse(
+        409,
+        "TASK_RECOVERY_REQUIRED",
+        "The old proposal was stopped. Refresh the chat to continue safely.",
+      );
+    }
+
+    const { error: replacementError } = await pendingStateClient
+      .from("agent_pending_actions")
+      .insert({
+        id: replacementPendingActionId,
+        user_id: userId,
+        conversation_id: pending.conversation_id,
+        tool_name: pending.tool_name,
+        tool_args: canonicalArgs,
+        status: "pending",
+        server_proposed_at: nowIso,
+      });
+    if (replacementError) {
+      return errorResponse(
+        409,
+        "TASK_RECOVERY_REQUIRED",
+        "The old proposal was stopped, but Ari could not save the replacement. Refresh the chat.",
+      );
+    }
+
+    const toolCalls = {
+      tool_name: pending.tool_name,
+      args: canonicalArgs,
+      pending_action_id: replacementPendingActionId,
+    };
+    const { data: committed, error: commitError } = await userClient.rpc(
+      "commit_agent_task_assistant_turn",
+      {
+        p_conversation_id: pending.conversation_id,
+        p_expected_revision: conversationTask.row.task_state_revision,
+        p_task_state: replacementState,
+        p_summary: safeSummary(
+          conversationTask.row.summary,
+          `Edited proposal replaced for ${pending.tool_name}.`,
+        ),
+        p_assistant_message_id: replacementMessageId,
+        p_content: { text: "" },
+        p_tool_calls: toolCalls,
+        p_client_turn_id: null,
+        p_prompt_version: TENANT_CONTEXT_VERSION,
+        p_model_version: ARI_MODEL_VERSION,
+        p_now: nowIso,
+      },
+    );
+    if (commitError || committed !== true) {
+      await pendingStateClient.from("agent_pending_actions")
+        .update({ status: "cancelled", failure_reason: "TASK_STATE_CONFLICT" })
+        .eq("id", replacementPendingActionId)
+        .eq("user_id", userId)
+        .eq("status", "pending");
+      return errorResponse(
+        409,
+        commitError ? "TASK_RECOVERY_REQUIRED" : "TASK_STATE_CONFLICT",
+        "The proposal changed in another session. Refresh the chat and review the latest plan.",
+      );
+    }
+
+    return jsonResponse(200, {
+      kind: "proposal_replaced",
+      pending_action_id: replacementPendingActionId,
+      replaced_pending_action_id: pending.id,
+      tool_name: pending.tool_name,
+      tool_args: canonicalArgs,
+      task_state_revision: conversationTask.row.task_state_revision + 1,
+    });
   }
 
   // Atomic flip pending -> executing only after final-argument authorization.
@@ -412,7 +696,11 @@ Deno.serve(async (req) => {
     .select("id")
     .maybeSingle();
   if (flipErr || !flipped) {
-    return errorResponse(409, "WRONG_STATE", "Race detected — this action was already handled");
+    return errorResponse(
+      409,
+      "WRONG_STATE",
+      "Race detected — this action was already handled",
+    );
   }
 
   // Execute
@@ -420,7 +708,9 @@ Deno.serve(async (req) => {
   try {
     result = await tool.executor(finalArgs, userClient, userId);
   } catch (err: any) {
-    const reason = err instanceof ToolError ? `${err.code}: ${err.message}` : (err?.message ?? "unknown");
+    const reason = err instanceof ToolError
+      ? `${err.code}: ${err.message}`
+      : (err?.message ?? "unknown");
     await userClient
       .from("agent_pending_actions")
       .update({ status: "failed", failure_reason: reason })
@@ -453,7 +743,11 @@ Deno.serve(async (req) => {
           assistantMessageId: failedMessageId,
         });
       } catch {
-        return errorResponse(409, "TASK_RECOVERY_REQUIRED", "The action failed safely, but Ari needs a refresh to continue the plan.");
+        return errorResponse(
+          409,
+          "TASK_RECOVERY_REQUIRED",
+          "The action failed safely, but Ari needs a refresh to continue the plan.",
+        );
       }
     }
     if (err instanceof ToolError) {
@@ -461,10 +755,15 @@ Deno.serve(async (req) => {
       // adjusting their request (rename the brand, pick a different event,
       // etc.). 5xx is reserved for genuine server-side issues.
       let status: number;
-      if (["OWNERSHIP_DENIED", "ROLE_DENIED", "BRAND_ACCESS_DENIED"].includes(err.code)) status = 403;
+      if (
+        ["OWNERSHIP_DENIED", "ROLE_DENIED", "BRAND_ACCESS_DENIED"].includes(
+          err.code,
+        )
+      ) status = 403;
       else if (err.code === "ROLE_CHECK_UNAVAILABLE") status = 503;
-      else if (err.code === "INVALID_ARGS" || err.code === "SLUG_TAKEN") status = 400;
-      // ORCH-1103 — delete refused because the brand has upcoming/live events.
+      else if (err.code === "INVALID_ARGS" || err.code === "SLUG_TAKEN") {
+        status = 400;
+      } // ORCH-1103 — delete refused because the brand has upcoming/live events.
       // Recoverable, user-actionable conflict (cancel/transfer first) → 409.
       else if (err.code === "DELETE_BLOCKED_BY_EVENTS") status = 409;
       else status = 500;
@@ -485,7 +784,10 @@ Deno.serve(async (req) => {
   if (doneErr) {
     // The domain write succeeded but action bookkeeping did not. Never invite
     // a retry that could duplicate it; the next chat turn must reconcile.
-    console.error("[agent-confirm-action] Failed to mark executed:", doneErr.message);
+    console.error(
+      "[agent-confirm-action] Failed to mark executed:",
+      doneErr.message,
+    );
   }
 
   const toolMessageId = crypto.randomUUID();
@@ -536,17 +838,31 @@ Deno.serve(async (req) => {
         outcome: "executed",
         toolName: tool.name,
         result,
-        assistantMessageId: followupText && pending.conversation_id ? assistantMessageId : toolMessageId,
+        assistantMessageId: followupText && pending.conversation_id
+          ? assistantMessageId
+          : toolMessageId,
         choices,
       });
     } catch (err: unknown) {
       if (err instanceof TaskStateError) {
-        return errorResponse(409, "TASK_RECOVERY_REQUIRED", "The action completed once, but Ari needs a refresh to reconcile the plan.");
+        return errorResponse(
+          409,
+          "TASK_RECOVERY_REQUIRED",
+          "The action completed once, but Ari needs a refresh to reconcile the plan.",
+        );
       }
-      return errorResponse(409, "TASK_RECOVERY_REQUIRED", "The action completed once, but Ari needs a refresh to reconcile the plan.");
+      return errorResponse(
+        409,
+        "TASK_RECOVERY_REQUIRED",
+        "The action completed once, but Ari needs a refresh to reconcile the plan.",
+      );
     }
   } else {
-    return errorResponse(409, "TASK_RECOVERY_REQUIRED", "The action completed once, but Ari needs a refresh to reconcile the plan.");
+    return errorResponse(
+      409,
+      "TASK_RECOVERY_REQUIRED",
+      "The action completed once, but Ari needs a refresh to reconcile the plan.",
+    );
   }
 
   return jsonResponse(200, {
@@ -555,16 +871,22 @@ Deno.serve(async (req) => {
     tool_name: tool.name,
     result,
     followup_text: followupText,
-    ...(nextTaskRevision !== undefined ? { task_state_revision: nextTaskRevision } : {}),
+    ...(nextTaskRevision !== undefined
+      ? { task_state_revision: nextTaskRevision }
+      : {}),
   });
 });
 
-function buildFollowupText(toolName: string, result: unknown): string | undefined {
+function buildFollowupText(
+  toolName: string,
+  result: unknown,
+): string | undefined {
   try {
     if (toolName === "create_brand") {
       const name = (result as any)?.brand?.name;
       if (!name) return undefined;
-      const base = `Created brand "${name}". Want to schedule an event under it?`;
+      const base =
+        `Created brand "${name}". Want to schedule an event under it?`;
       // ORCH-1103 — if this became the user's current brand, say so.
       return (result as any)?.set_as_default
         ? `${base} It's now your current brand.`
@@ -572,7 +894,9 @@ function buildFollowupText(toolName: string, result: unknown): string | undefine
     }
     if (toolName === "update_brand") {
       const name = (result as any)?.brand?.name;
-      return name ? `Updated "${name}". Anything else?` : `Updated. Anything else?`;
+      return name
+        ? `Updated "${name}". Anything else?`
+        : `Updated. Anything else?`;
     }
     if (toolName === "delete_brand") {
       return `Deleted that brand. It's recoverable for 30 days through support if you change your mind.`;
@@ -588,7 +912,9 @@ function buildFollowupText(toolName: string, result: unknown): string | undefine
     }
     if (toolName === "create_experience") {
       const title = (result as any)?.event?.title;
-      return title ? `Published experience "${title}" to your venue.` : undefined;
+      return title
+        ? `Published experience "${title}" to your venue.`
+        : undefined;
     }
   } catch {
     // ignore

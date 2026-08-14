@@ -2,6 +2,8 @@
 // Prose, model output, message history, and summaries are context only. Every
 // state transition passes through the validated reducer helpers in this file.
 
+import { isValidIanaTimezone } from "./agentRelativeTime.ts";
+
 export const TASK_STATE_SCHEMA_VERSION = 1 as const;
 export const MAX_TASK_STATE_BYTES = 16 * 1024;
 export const MAX_TASK_SLOTS = 20;
@@ -642,6 +644,132 @@ export function markAwaitingConfirmation(
   return next;
 }
 
+const CREATE_EVENT_OPTIONAL_ARG_KEYS = [
+  "description",
+  "location_text",
+  "is_online",
+  "online_url",
+  "visibility",
+] as const;
+const CREATE_EVENT_EDIT_ARG_KEYS = new Set([
+  "brand_id",
+  "title",
+  "start_at",
+  "timezone",
+  ...CREATE_EVENT_OPTIONAL_ARG_KEYS,
+]);
+
+export function replaceCreateEventProposalArgs(args: {
+  state: TaskStateV1;
+  pendingActionId: string;
+  toolArgs: Record<string, unknown>;
+  nowIso: string;
+}): TaskStateV1 {
+  const active = args.state.active_task;
+  if (
+    !active || active.intent !== "create_event" ||
+    args.state.status !== "awaiting_confirmation" ||
+    active.pending_action_id !== args.pendingActionId
+  ) {
+    throw new TaskStateError(
+      "TASK_RECOVERY_REQUIRED",
+      "Edited proposal does not match the active event task",
+    );
+  }
+  if (
+    Object.keys(args.toolArgs).some((key) =>
+      !CREATE_EVENT_EDIT_ARG_KEYS.has(key)
+    )
+  ) {
+    throw new TaskStateError(
+      "TASK_STATE_INVALID",
+      "Edited event proposal contains unsupported fields",
+    );
+  }
+  const brandId = args.toolArgs.brand_id;
+  const title = args.toolArgs.title;
+  const startAt = args.toolArgs.start_at;
+  if (
+    typeof brandId !== "string" || brandId !== active.brand_id ||
+    typeof title !== "string" || title.trim().length === 0 ||
+    typeof startAt !== "string" || !Number.isFinite(Date.parse(startAt)) ||
+    Date.parse(startAt) <= Date.parse(args.nowIso)
+  ) {
+    throw new TaskStateError(
+      "TASK_STATE_INVALID",
+      "Edited event proposal has invalid required values",
+    );
+  }
+  const timezone = typeof args.toolArgs.timezone === "string"
+    ? args.toolArgs.timezone
+    : active.slots.timezone?.value;
+  if (!isValidIanaTimezone(timezone)) {
+    throw new TaskStateError(
+      "TIMEZONE_REQUIRED",
+      "Choose a timezone before confirming this edit",
+    );
+  }
+  if (title.trim().length > 120) {
+    throw new TaskStateError(
+      "TASK_STATE_INVALID",
+      "Edited event title is longer than 120 characters",
+    );
+  }
+  const optionalRules: Record<
+    (typeof CREATE_EVENT_OPTIONAL_ARG_KEYS)[number],
+    (value: unknown) => boolean
+  > = {
+    description: (value) =>
+      typeof value === "string" && value.length <= MAX_STATE_STRING,
+    location_text: (value) => typeof value === "string" && value.length <= 200,
+    is_online: (value) => typeof value === "boolean",
+    online_url: (value) =>
+      typeof value === "string" && value.length <= MAX_STATE_STRING,
+    visibility: (value) =>
+      typeof value === "string" &&
+      ["draft", "public", "unlisted"].includes(value),
+  };
+  for (const key of CREATE_EVENT_OPTIONAL_ARG_KEYS) {
+    const value = args.toolArgs[key];
+    if (value !== undefined && !optionalRules[key](value)) {
+      throw new TaskStateError(
+        "TASK_STATE_INVALID",
+        `Edited event proposal has an invalid ${key}`,
+      );
+    }
+  }
+
+  const slots: Record<string, TaskSlot> = {
+    brand_id: resolvedSlot(brandId, "user", args.nowIso),
+    title: resolvedSlot(title.trim(), "user", args.nowIso, title),
+    start_at: resolvedSlot(
+      new Date(startAt).toISOString(),
+      "user",
+      args.nowIso,
+      startAt,
+    ),
+    timezone: resolvedSlot(timezone, "user", args.nowIso, timezone),
+  };
+  for (const key of CREATE_EVENT_OPTIONAL_ARG_KEYS) {
+    if (args.toolArgs[key] !== undefined) {
+      slots[key] = resolvedSlot(args.toolArgs[key], "user", args.nowIso);
+    }
+  }
+  const next: TaskStateV1 = {
+    ...args.state,
+    status: "ready_to_propose",
+    pending_question: null,
+    active_task: {
+      ...active,
+      stage: "ready_to_propose",
+      pending_action_id: undefined,
+      slots,
+    },
+  };
+  assertTaskState(next);
+  return next;
+}
+
 export function reconcilePendingAction(args: {
   state: TaskStateV1;
   pendingActionId: string;
@@ -777,6 +905,18 @@ export function assertCreateEventProposal(
     );
   }
   return { brand_id: brandId, title, start_at: startAt };
+}
+
+export function assertEditedCreateEventProposal(
+  state: TaskStateV1,
+): Record<string, unknown> {
+  const proposal: Record<string, unknown> = assertCreateEventProposal(state);
+  const slots = state.active_task?.slots ?? {};
+  for (const key of ["timezone", ...CREATE_EVENT_OPTIONAL_ARG_KEYS]) {
+    const slot = slots[key];
+    if (slot?.status === "resolved") proposal[key] = slot.value;
+  }
+  return proposal;
 }
 
 export function pendingQuestionPrompt(state: TaskStateV1): string | null {

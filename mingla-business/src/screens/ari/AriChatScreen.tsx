@@ -289,6 +289,10 @@ export const AriChatScreen: React.FC = () => {
       setLocalError(result.message);
       return { ok: false };
     }
+    if (result.kind === "proposal_replaced") {
+      chat.clearPendingAction();
+      return { ok: false };
+    }
     // ORCH-1103 — surface the freshly-created/updated brand id to the proposal
     // card so the Q7 create-row-first / attach-second cover flow can re-target
     // the picker to a real brandId. The executed result shape is
@@ -314,7 +318,7 @@ export const AriChatScreen: React.FC = () => {
     chat.clearPendingAction();
   };
 
-  const displayError = localError;
+  const displayError = localError ?? chat.errorMessage;
   const noMessages = chat.messages.length === 0 && chat.conversationId == null;
   const activeConversation = conversations.conversations.find((item) => item.id === chat.conversationId);
   const legacyReadOnly = !!selectedBrandId && activeConversation?.brand_id === null;
@@ -448,7 +452,13 @@ export const AriChatScreen: React.FC = () => {
                 setLocalError("You're offline. Reconnect to continue this plan.");
                 return;
               }
-              void chat.retryTurn(clientTurnId);
+              void chat.retryTurn(clientTurnId).then((result) => {
+                if (result?.kind === "error") setLocalError(result.message);
+              }).catch((error: unknown) => {
+                setLocalError(error instanceof Error
+                  ? error.message
+                  : "Ari could not retry that message. Try again.");
+              });
             }}
             choicesDisabled={chat.isSending || !online}
             attachedCovers={attachedCovers}
