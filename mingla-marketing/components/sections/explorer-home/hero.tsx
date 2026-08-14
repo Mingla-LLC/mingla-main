@@ -36,7 +36,7 @@ interface ChipLink {
 }
 
 const SITE_CHIPS: ChipLink[] = [
-  { href: '/business', label: 'Business', mobileOnly: true },
+  { href: '/host', label: 'Business', mobileOnly: true },
   // ORCH-1225 — 'Career' pill links to the careers subdomain. Always visible
   // (no mobileOnly) so it is discoverable on desktop too, where 'Business'
   // is hidden. ABSOLUTE external URL: a relative `/careers` 404s on the apex

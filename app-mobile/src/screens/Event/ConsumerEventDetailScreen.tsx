@@ -936,6 +936,7 @@ export default function ConsumerEventDetailScreen({
           amountCents,
           surface: "native",
           rsvpId: null,
+          returnContract: "host_v1",
           callerIdempotencyKey: chipInIdempotencyRef.current,
         },
       });

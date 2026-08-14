@@ -111,7 +111,7 @@ jobs:
               `   branded domain lost its app target. AppsFlyer → OneLink → Branded domains → that domain →`,
               `   check the Android app list and SHA-256 set. This is #1042 F-4's failure mode.`,
               `2. **NO_STATEMENT on a repo-backed host** (\`usemingla.com\`, \`www.usemingla.com\`,`,
-              `   \`business.usemingla.com\`): the served \`.well-known/assetlinks.json\` is missing or`,
+              `   \`host.usemingla.com\`): the served \`.well-known/assetlinks.json\` is missing or`,
               `   malformed. \`curl\` it directly — a trailing comma or a wrong Content-Type makes Google`,
               `   return ZERO statements for the whole host, taking every package on it down at once.`,
               `3. **DRIFT**: the live host publishes fewer fingerprints than the repo file declares. The repo`,

@@ -133,6 +133,7 @@ type CheckoutCreateResponse =
     checkoutSessionId: string;
     buyerStatusToken: string;
     authorizationUrl: string;
+    returnUrl: string;
     reference: string;
     totalCents: number;
     currency: string;
@@ -253,6 +254,7 @@ export const useNativeCheckoutFlow = (): (
         body: {
           eventId: input.eventId,
           surface: "native",
+          returnContract: "host_v1",
           buyer: {
             name: input.buyer.name,
             email: input.buyer.email,
@@ -425,7 +427,7 @@ export const useNativeCheckoutFlow = (): (
       try {
         await WebBrowser.openAuthSessionAsync(
           data.authorizationUrl,
-          "https://business.usemingla.com/pay/callback",
+          data.returnUrl,
         );
       } catch (err) {
         console.warn("[nativeCheckoutFlow:business] paystack browser error", err);

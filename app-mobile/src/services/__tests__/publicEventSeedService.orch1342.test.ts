@@ -96,7 +96,7 @@ Deno.test("ORCH-1342 T-8: RSVP row maps the §4.7 field table exactly", () => {
     currency: "GBP",
     // slugs are encodeURIComponent-encoded (never raw-concat).
     publicBuyerUrl:
-      "https://business.usemingla.com/e/sunset-collective/rooftop%20night",
+      "https://host.usemingla.com/e/sunset-collective/rooftop%20night",
     eventType: "rsvp",
     brandTheme: {
       color: "#ff6b35",

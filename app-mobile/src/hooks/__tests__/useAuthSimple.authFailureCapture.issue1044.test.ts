@@ -13,7 +13,7 @@
  * (CI wrapper: .github/workflows/issue-1044-auth-failure-capture-tests.yml)
  *
  * ─── WHAT WENT WRONG (#1038) ───────────────────────────────────────────────
- * Google sign-in was broken for EVERY Play-Store organizer on Mingla Business for
+ * Google sign-in was broken for EVERY Play-Store organizer on Mingla Host for
  * months and monitoring never saw it: the catch block Alerted the user and threw
  * the error away. THIS app has the same shape with an extra illusion on top —
  * `logger.error` reads like production telemetry but its breadcrumb buffer is

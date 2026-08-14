@@ -30,11 +30,11 @@ import { buttonClasses } from '@/components/ui/button'
 
 export function GlassNav() {
   const pathname = usePathname()
-  const surface: 'explorer' | 'organiser' = pathname.startsWith('/business')
+  const surface: 'explorer' | 'organiser' = pathname.startsWith('/host')
     ? 'organiser'
     : 'explorer'
 
-  const homeHref = surface === 'organiser' ? '/business' : '/'
+  const homeHref = surface === 'organiser' ? '/host' : '/'
 
   // ORCH-1010 — the logo + toggle + CTA float over the hero with NO background.
   // Once the page scrolls off the hero, a frosted band fades in behind the nav
@@ -150,7 +150,7 @@ export function GlassNav() {
         style={{ top: 'max(1rem, env(safe-area-inset-top))' }}
       >
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
-          {/* Logo — official Mingla Business lockup on the business surface,
+          {/* Logo — official Mingla Host lockup on the business surface,
               plain Mingla wordmark on the explorer surface.
 
               ORCH-1381 ADDENDUM D-A-2 — `shrink-0` is LOAD-BEARING, not cosmetic.
@@ -164,13 +164,13 @@ export function GlassNav() {
               one-action mobile nav below). */}
           <Link
             href={homeHref}
-            aria-label={surface === 'organiser' ? 'Mingla Business home' : 'Mingla home'}
+            aria-label={surface === 'organiser' ? 'Mingla Host home' : 'Mingla home'}
             className="inline-flex shrink-0 items-center gap-2 rounded-md px-0.5 transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring"
           >
             {surface === 'organiser' ? (
               <img
                 src="/brand/mingla-business-logo.png"
-                alt="Mingla Business"
+                alt="Mingla Host"
                 className="h-20 w-20 select-none"
                 draggable={false}
               />
@@ -195,7 +195,7 @@ export function GlassNav() {
                 nothing, so ONLY the web action renders — never a dead install
                 button. Both NAVIGATE (no dialog) so no aria-haspopup. The
                 app-does-more note is deliberately omitted here: the nav is a
-                shortcut with no room for it; the hero, /links and /business/download
+                shortcut with no room for it; the hero, /links and /host/download
                 surfaces carry it.
 
               ORCH-1381 ADDENDUM D-A-2 (Seth's OQ-1 ruling = option B) — on a PHONE

@@ -178,7 +178,7 @@ export function mapPublicEventSeedRow(
     displayPriceCents: row.display_price_cents ?? null,
     displayCurrency: row.pricing_currency ?? row.currency ?? null,
     currency: row.currency ?? "USD",
-    publicBuyerUrl: `https://business.usemingla.com/e/${encodeURIComponent(
+    publicBuyerUrl: `https://host.usemingla.com/e/${encodeURIComponent(
       row.brand_slug,
     )}/${encodeURIComponent(row.slug)}`,
     eventType: row.event_type,

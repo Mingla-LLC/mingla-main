@@ -4,7 +4,7 @@
 // fails-on-revert, per test:
 //   T-Q-URL-1/2/3 — delete the `?tab=menu` param, or swap the serving-venue
 //     slug for the physical home's, or point the host at anything but
-//     business.usemingla.com, and the assertion turns red. Each of those three
+//     host.usemingla.com, and the assertion turns red. Each of those three
 //     is a laminated card that opens the wrong thing.
 //   T-Q-PDF-1/2/3 — delete the one-card-per-spot loop, the empty-input guard,
 //     or the shared-rail reuse, and the assertion turns red.
@@ -39,7 +39,7 @@ Deno.test("T-Q-URL-1 — the printed URL is the canonical P-10 string", () => {
       servingVenueSlug: "kitchen",
       code: "kq7m3pd2xr",
     }),
-    "https://business.usemingla.com/b/brasserie/v/kitchen?tab=menu&spot=kq7m3pd2xr&src=qr",
+    "https://host.usemingla.com/b/brasserie/v/kitchen?tab=menu&spot=kq7m3pd2xr&src=qr",
   );
 });
 
@@ -56,12 +56,12 @@ Deno.test("T-Q-URL-2 — the SERVING venue's slug is printed, never the room's",
   assert(!url.includes("/v/rooms"));
 });
 
-Deno.test("T-Q-URL-3 — host + params: business.usemingla.com, tab=menu, src=qr", () => {
+Deno.test("T-Q-URL-3 — host + params: host.usemingla.com, tab=menu, src=qr", () => {
   const url = new URL(
     qrSpotUrl({ brandSlug: "b", servingVenueSlug: "v", code: "abcdefgh23" }),
   );
   // The ONLY host that app-opens on BOTH platforms today.
-  assertEquals(url.origin, "https://business.usemingla.com");
+  assertEquals(url.origin, "https://host.usemingla.com");
   assertEquals(url.searchParams.get("tab"), "menu");
   assertEquals(url.searchParams.get("spot"), "abcdefgh23");
   assertEquals(url.searchParams.get("src"), "qr");

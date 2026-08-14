@@ -594,7 +594,7 @@ describe("REWORK P1-1 — destination display host parity (implementor guard)", 
     assert.ok(serverConst, "server constant must exist");
     assert.ok(clientConst, "client constant must exist (a literal — the parity pins regex it)");
     assert.equal(clientConst[1], serverConst[1], "one owner per truth: the wizard must display the host the ad will actually carry (QA P1-1)");
-    assert.equal(clientConst[1], "https://business.usemingla.com", "the live-proven 200 host");
+    assert.equal(clientConst[1], "https://host.usemingla.com", "the live-proven 200 host");
   });
 
   it("no divergent public-host literal survives anywhere in the wizard trees", () => {
@@ -612,7 +612,7 @@ describe("REWORK P1-1 — destination display host parity (implementor guard)", 
       // the SPEC erratum name the bad literal — allow the word 'erratum' on
       // the same line).
       for (const line of source.split("\n")) {
-        if (line.includes("usemingla.com") && !line.includes("business.usemingla.com") && !/erratum/i.test(line)) {
+        if (line.includes("usemingla.com") && !line.includes("host.usemingla.com") && !/erratum/i.test(line)) {
           assert.fail(`${file} carries a non-business usemingla.com literal: ${line.trim()}`);
         }
       }

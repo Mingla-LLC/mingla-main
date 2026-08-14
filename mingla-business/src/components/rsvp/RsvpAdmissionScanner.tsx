@@ -13,7 +13,7 @@
  * connect-* .web.tsx route splits).
  *
  * Rather than strand a web operator on a dead camera screen, the web path is
- * an explicit, coherent end state: scanning happens in the Mingla Business
+ * an explicit, coherent end state: scanning happens in the Mingla Host
  * app. We keep the same chrome (close + title), reuse the kind-aware copy
  * lens, honor the replacement-event redirect, and offer a clear way forward
  * (back to the event dashboard). No camera, no permission prompt, no crash.
@@ -88,7 +88,7 @@ export default function ScannerCameraWebRoute(): React.ReactElement {
         <EmptyState
           illustration={<Icon name="qr" size={48} color={textTokens.primary} />}
           title="Scan RSVP invites in the app"
-          description="Door scanning uses your phone camera in the Mingla Business app. Open the app on your phone to scan RSVP invite QR codes; manage the guest list here on the web."
+          description="Door scanning uses your phone camera in the Mingla Host app. Open the app on your phone to scan RSVP invite QR codes; manage the guest list here on the web."
         />
         <View style={styles.actions}>
           <Button

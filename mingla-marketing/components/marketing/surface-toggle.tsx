@@ -11,12 +11,12 @@ interface Segment {
 
 const SEGMENTS: Segment[] = [
   { surface: 'explorer', label: 'Explorer', href: '/' },
-  { surface: 'organiser', label: 'Business', href: '/business' },
+  { surface: 'organiser', label: 'Business', href: '/host' },
 ]
 
 export function SurfaceToggle() {
   const pathname = usePathname()
-  const active: 'explorer' | 'organiser' = pathname.startsWith('/business')
+  const active: 'explorer' | 'organiser' = pathname.startsWith('/host')
     ? 'organiser'
     : 'explorer'
 

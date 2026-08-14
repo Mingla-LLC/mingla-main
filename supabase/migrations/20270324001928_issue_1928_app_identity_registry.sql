@@ -1,4 +1,4 @@
--- Issue #1928 — canonical Explorer/Business advertising identity registry.
+-- Issue #1928 — canonical Explorer/Host advertising identity registry.
 -- Public identity metadata is separate from the shared payer connection.
 
 CREATE TABLE IF NOT EXISTS public.ad_advertising_apps (
@@ -60,7 +60,7 @@ CREATE TRIGGER trg_ad_app_provider_identities_updated_at
 INSERT INTO public.ad_advertising_apps (app_key, display_name, active)
 VALUES
   ('explorer', 'Mingla Explorer', true),
-  ('business', 'Mingla Business', true)
+  ('business', 'Mingla Host', true)
 ON CONFLICT (app_key) DO UPDATE SET
   display_name = EXCLUDED.display_name,
   active = EXCLUDED.active,

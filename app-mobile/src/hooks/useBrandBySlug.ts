@@ -31,7 +31,7 @@ export const consumerBrandKeys = {
     [...consumerBrandKeys.all, "venues", slug] as const,
 };
 export const consumerBrandEventUrl = (event: PublicBrandEvent): string =>
-  `https://business.usemingla.com/e/${event.brandSlug}/${event.eventSlug}`;
+  `https://host.usemingla.com/e/${event.brandSlug}/${event.eventSlug}`;
 
 interface PublicBrandRow {
   id: string;

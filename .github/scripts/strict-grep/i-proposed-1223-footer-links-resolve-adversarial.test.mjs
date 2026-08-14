@@ -40,11 +40,11 @@ const W = (rel, body) => { mkdirSync(dirname(join(root, rel)), { recursive: true
 // --- synthetic marketing App Router tree (adversarial route shapes) ---------
 PAGE('mingla-marketing/app/(explorer)');                 // group index -> "/"
 PAGE('mingla-marketing/app/(blog)/blog/[slug]');         // group-wrapped nested dynamic -> "/blog/[slug]"
-PAGE('mingla-marketing/app/business');                   // -> "/business" (renamed from organisers, ORCH-1224)
+PAGE('mingla-marketing/app/host');                   // -> "/host" (renamed from organisers, ORCH-1224)
 PAGE('mingla-marketing/app/support');                    // -> "/support"
 PAGE('mingla-marketing/app/_draft/secret');              // private folder -> MUST NOT be a route
 
-W('mingla-marketing/lib/subdomain.ts', "export const BUSINESS_PATH = '/business'\n");
+W('mingla-marketing/lib/subdomain.ts', "export const BUSINESS_PATH = '/host'\n");
 
 // Stage the real gate inside the synthetic repo root (verbatim copy).
 mkdirSync(join(root, '.github/scripts/strict-grep'), { recursive: true });
@@ -87,7 +87,7 @@ const cases = [
   ['REJECT: plainly fake /ghost',
     ['/', '/ghost'], 1],
   ['ACCEPT: business nested static route, exact',
-    ['/business'], 0],
+    ['/host'], 0],
 ];
 
 let failures = 0;

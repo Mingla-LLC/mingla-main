@@ -1,8 +1,8 @@
-# Load profile — Mingla Business (#426)
+# Load profile — Mingla Host (#426)
 
 **Status:** Engineering baseline (Tier 1). Full 100k proof is a launch gate — see [LAUNCH_GATES.md](./LAUNCH_GATES.md).
 
-## What “100k users” means for Mingla Business
+## What “100k users” means for Mingla Host
 
 | Metric | Assumption (v1) | Notes |
 |--------|-----------------|-------|

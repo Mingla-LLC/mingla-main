@@ -1,5 +1,5 @@
 /**
- * Desktop web layout constants for the Mingla Business shell.
+ * Desktop web layout constants for the Mingla Host shell.
  *
  * These values are intentionally kept in a plain `.ts` module so regression
  * tests can import them without pulling JSX through the hook test runner.

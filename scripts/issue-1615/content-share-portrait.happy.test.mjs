@@ -17,7 +17,7 @@ test('P3 covered runtime renders the actual wordmark in an exact bounded JPEG po
 test('P4 all eight kinds build the same fixed portrait composition without fabricated copy',()=>{for(const kind of ['place','curated','event','rsvp_event','trip','experience','venue','brand'])assert.doesNotThrow(()=>renderer.contentSharePortraitElement(share(kind)));const source=fs.readFileSync(path.join(ROOT,'mingla-business/server/cardIdentityRenderer.js'),'utf8');assert.doesNotMatch(source,/Amazing experience|Date(?:s)? to be announced/)});
 // [TEST-MOD-APPROVED #1615] The public content page previously duplicated an
 // outer logo above the portrait; the portrait's measured logo pill is enough.
-test('P6 S6 removes the redundant outer brand header without changing portrait identity',()=>{const html=preview.renderContentShareHtml(share('brand',{kind:'photo',url:cover,posterUrl:cover}));assert.doesNotMatch(html,/class="brand(?:\s|\")/);assert.doesNotMatch(html,/mingla-business-logo/);assert.doesNotMatch(html,/>Mingla Business</);assert.ok(renderer.wordmarkSource().startsWith('data:image/svg+xml;base64,'))});
+test('P6 S6 removes the redundant outer brand header without changing portrait identity',()=>{const html=preview.renderContentShareHtml(share('brand',{kind:'photo',url:cover,posterUrl:cover}));assert.doesNotMatch(html,/class="brand(?:\s|\")/);assert.doesNotMatch(html,/mingla-business-logo/);assert.doesNotMatch(html,/>Mingla Host</);assert.ok(renderer.wordmarkSource().startsWith('data:image/svg+xml;base64,'))});
 // [TEST-MOD-APPROVED #1615] The old fixture used an arbitrary CDN host that
 // the approved public-media policy must reject. Use the governed storage host
 // and pin the independent play/sound controls added by the binding correction.

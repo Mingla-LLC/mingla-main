@@ -6,7 +6,7 @@
 ## Immediate (0–15 min)
 
 1. Confirm scope: [Supabase status](https://status.supabase.com/), project health in dashboard.
-2. Post internal status (Slack/email) — use template: *"Mingla Business DB incident — investigating."*
+2. Post internal status (Slack/email) — use template: *"Mingla Host DB incident — investigating."*
 3. Do **not** run destructive migrations during outage.
 
 ## Mitigation

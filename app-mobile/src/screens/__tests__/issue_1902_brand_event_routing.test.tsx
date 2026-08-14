@@ -34,6 +34,6 @@ test.each(["event", "rsvp"] as const)(
   (eventType) => {
     expect(
       consumerBrandEventUrl({ ...common, eventType, eventSlug: eventType }),
-    ).toBe(`https://business.usemingla.com/e/brand/${eventType}`);
+    ).toBe(`https://host.usemingla.com/e/brand/${eventType}`);
   },
 );

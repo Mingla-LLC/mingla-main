@@ -1,5 +1,5 @@
 export const PRODUCTION_BUSINESS_WEB_ORIGIN =
-  "https://business.usemingla.com" as const;
+  "https://host.usemingla.com" as const;
 
 const VERCEL_PREVIEW_BUSINESS_WEB_ORIGIN =
   /^https:\/\/mingla-business-[a-z0-9-]+\.vercel\.app$/;

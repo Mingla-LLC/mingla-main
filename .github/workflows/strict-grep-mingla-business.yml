@@ -1,4 +1,4 @@
-name: Strict Grep Gates (Mingla Business)
+name: Strict Grep Gates (Mingla Host)
 
 on:
   pull_request:

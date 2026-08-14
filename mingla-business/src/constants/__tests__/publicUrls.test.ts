@@ -5,7 +5,7 @@ jest.mock("expo-constants", () => ({
   default: {
     expoConfig: {
       extra: {
-        EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://business.usemingla.com",
+        EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://host.usemingla.com",
       },
     },
   },
@@ -30,20 +30,20 @@ import {
 
 describe("public business URL builders", () => {
   test("builds canonical public event, brand, and checkout URLs", () => {
-    expect(BUSINESS_PUBLIC_ORIGIN).toBe("https://business.usemingla.com");
+    expect(BUSINESS_PUBLIC_ORIGIN).toBe("https://host.usemingla.com");
     expect(
       eventPublicPath({ brandSlug: "my brand", eventSlug: "show one" }),
     ).toBe("/e/my%20brand/show%20one");
     expect(
       eventPublicUrl({ brandSlug: "my-brand", eventSlug: "show-one" }),
-    ).toBe("https://business.usemingla.com/e/my-brand/show-one");
+    ).toBe("https://host.usemingla.com/e/my-brand/show-one");
     expect(brandPublicPath("acme popups")).toBe("/b/acme%20popups");
     expect(brandPublicUrl("acme")).toBe(
-      "https://business.usemingla.com/b/acme",
+      "https://host.usemingla.com/b/acme",
     );
     expect(checkoutPublicPath("evt_123")).toBe("/checkout/evt_123");
     expect(checkoutPublicUrl("evt_123")).toBe(
-      "https://business.usemingla.com/checkout/evt_123",
+      "https://host.usemingla.com/checkout/evt_123",
     );
   });
 
@@ -58,11 +58,11 @@ describe("public business URL builders", () => {
   // ORCH-1114 — trip + experience public share-link URL builders.
   test("T-1/T-2: builds canonical public trip and experience URLs", () => {
     expect(tripPublicUrl({ brandSlug: "acme", tripSlug: "bali" })).toBe(
-      "https://business.usemingla.com/t/acme/bali",
+      "https://host.usemingla.com/t/acme/bali",
     );
     expect(
       experiencePublicUrl({ brandSlug: "acme", experienceSlug: "sunset-sail" }),
-    ).toBe("https://business.usemingla.com/exp/acme/sunset-sail");
+    ).toBe("https://host.usemingla.com/exp/acme/sunset-sail");
   });
 
   test("T-3: experience helper encodes path segments", () => {
@@ -89,7 +89,7 @@ describe("public business URL builders", () => {
         eventId: "event-1",
         coverMediaUrl: "https://cdn.usemingla.com/cover.png",
       }),
-    ).toBe("https://business.usemingla.com/og/event/event-1.png");
+    ).toBe("https://host.usemingla.com/og/event/event-1.png");
     expect(eventOgImageUrl({ eventId: "event-1" })).toBe("");
     expect(brandOgImageUrl({ brandSlug: "acme" })).toBe("");
     expect(
@@ -98,6 +98,6 @@ describe("public business URL builders", () => {
         venueSlug: "rooftop",
         coverMediaUrl: "https://cdn.usemingla.com/venue.jpg",
       }),
-    ).toBe("https://business.usemingla.com/og/venue/acme/rooftop.png");
+    ).toBe("https://host.usemingla.com/og/venue/acme/rooftop.png");
   });
 });

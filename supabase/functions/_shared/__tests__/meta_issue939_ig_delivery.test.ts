@@ -39,7 +39,7 @@ const IG = "17841477287060530"; // @usemingla — proven linked (PROOF, 2026-07-
 
 Deno.test("ISSUE-939 (a): IG id set ⇒ instagram_user_id in BOTH object_story_spec AND the top-level creative body", () => {
   const body = buildMetaCreativeBody("page_1", {
-    destUrl: "https://business.usemingla.com/e/lorne/tuesday-live",
+    destUrl: "https://host.usemingla.com/e/lorne/tuesday-live",
     message: "m",
     headline: "h",
     imageUrl: "https://img.example/x.jpg",
@@ -54,12 +54,12 @@ Deno.test("ISSUE-939 (a): IG id set ⇒ instagram_user_id in BOTH object_story_s
   // The IG identity does NOT displace the destination policy — dest_url is still
   // canonical (A4.f / D-P1 preserved).
   const linkData = spec.link_data as Record<string, unknown>;
-  assertEquals(linkData.link, "https://business.usemingla.com/e/lorne/tuesday-live");
+  assertEquals(linkData.link, "https://host.usemingla.com/e/lorne/tuesday-live");
 });
 
 Deno.test("ISSUE-939 (a): the video creative branch also carries the IG identity in BOTH placements", () => {
   const body = buildMetaCreativeBody("page_1", {
-    destUrl: "https://business.usemingla.com/e/b/e",
+    destUrl: "https://host.usemingla.com/e/b/e",
     message: "m",
     headline: "t",
     videoId: "vid_123",
@@ -78,7 +78,7 @@ Deno.test("ISSUE-939 (b): IG id unset/null/empty/whitespace ⇒ instagram_user_i
   const cases: Array<string | null | undefined> = [undefined, null, "", "   "];
   for (const ig of cases) {
     const body = buildMetaCreativeBody("page_1", {
-      destUrl: "https://business.usemingla.com/e/b/e",
+      destUrl: "https://host.usemingla.com/e/b/e",
       message: "m",
       imageUrl: "https://img.example/x.jpg",
     }, ig);
@@ -96,7 +96,7 @@ Deno.test("ISSUE-939 (b): IG id unset/null/empty/whitespace ⇒ instagram_user_i
 
 Deno.test("ISSUE-939 (b): omitting the igUserId argument entirely behaves exactly as today (Facebook-only)", () => {
   const body = buildMetaCreativeBody("page_1", {
-    destUrl: "https://business.usemingla.com/e/b/e",
+    destUrl: "https://host.usemingla.com/e/b/e",
     message: "m",
   });
   assertEquals("instagram_user_id" in body, false);

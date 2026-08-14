@@ -1,5 +1,5 @@
 /**
- * BusinessNotificationsScreen — Mingla Business notification inbox.
+ * BusinessNotificationsScreen — Mingla Host notification inbox.
  *
  * META-ORCH-1074 Sub-C — built to SPEC_META-ORCH-1074_SUB-C_DESIGN.md.
  *

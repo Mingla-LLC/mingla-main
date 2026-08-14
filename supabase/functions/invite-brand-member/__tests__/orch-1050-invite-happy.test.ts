@@ -107,7 +107,7 @@ Deno.test("buildInviteEmail — wires brand + role + acceptUrl into the body", (
     inviterName: "Seth",
     role: "event_manager",
     acceptUrl:
-      "https://business.usemingla.com/accept-brand-invitation?token=abc.def",
+      "https://host.usemingla.com/accept-brand-invitation?token=abc.def",
     from: "Mingla <noreply@usemingla.com>",
   });
   assertEquals(payload.to, ["tunde@example.com"]);
@@ -117,7 +117,7 @@ Deno.test("buildInviteEmail — wires brand + role + acceptUrl into the body", (
   assert(payload.html.includes("Event manager"));
   assert(
     payload.html.includes(
-      "https://business.usemingla.com/accept-brand-invitation?token=abc.def",
+      "https://host.usemingla.com/accept-brand-invitation?token=abc.def",
     ),
   );
   assert(payload.text.includes("Acme Events"));
@@ -134,7 +134,7 @@ Deno.test("buildInviteEmail — HTML-escapes brand name + inviter name", () => {
     brandName: "<script>x</script>",
     inviterName: "Bob & Alice",
     role: "brand_admin",
-    acceptUrl: "https://business.usemingla.com/accept-brand-invitation?token=t",
+    acceptUrl: "https://host.usemingla.com/accept-brand-invitation?token=t",
     from: "Mingla <noreply@usemingla.com>",
   });
   // Brand name is escaped in the HTML body.

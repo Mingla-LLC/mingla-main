@@ -42,15 +42,15 @@ export interface LinksTab {
 // not violate the no-hardcoded-store-URL guard.
 export const LINKS_DOWNLOAD_PATH = '/download'
 
-// Business landing lives on this same apex site (app/business) — derive the path
+// Business landing lives on this same apex site (app/host) — derive the path
 // from the shared surface constant instead of hardcoding, so usemingla.com/links
-// and usemingla.com/business can never drift.
+// and usemingla.com/host can never drift.
 export const LINKS_BUSINESS_PATH = BUSINESS_PATH
 
 // ORCH-1326 — the business DEVICE-SMART route (iPhone → business App Store,
-// else → business.usemingla.com). Mirrors LINKS_DOWNLOAD_PATH for the business
+// else → host.usemingla.com). Mirrors LINKS_DOWNLOAD_PATH for the business
 // surface; it is NOT a store URL, so it does not violate the SSOT guard.
-export const LINKS_BUSINESS_DOWNLOAD_PATH = '/business/download'
+export const LINKS_BUSINESS_DOWNLOAD_PATH = '/host/download'
 
 export const LINKS_TABS: readonly LinksTab[] = [
   {
@@ -68,7 +68,7 @@ export const LINKS_TABS: readonly LinksTab[] = [
   },
   {
     id: 'business',
-    label: 'For Business',
+    label: 'For Hosts',
     eyebrow: 'For venues & organizers',
     heading: 'Run a venue, event, or trip?',
     // ORCH-1381 — the trailing "Now on iPhone — or get started on the web." was
@@ -107,7 +107,7 @@ export type LinksSocialScope = 'per_surface' | 'neutral' | 'explorer_only'
 
 export type LinksSocial =
   /**
-   * A dedicated @minglabusiness account EXISTS — the URL swaps per tab.
+   * A dedicated @minglahost account exists — the URL swaps per tab.
    * `businessHref` is REQUIRED: omitting it is a compile error, not a silent
    * fallback to the consumer handle.
    */
@@ -120,7 +120,7 @@ export type LinksSocial =
   | { scope: 'neutral'; label: string; href: string }
   /**
    * Explorer tab ONLY — there is no business account on this network, so the
-   * Business tab must render NOTHING rather than link to the consumer handle.
+   * Host tab must render NOTHING rather than link to the consumer handle.
    */
   | { scope: 'explorer_only'; label: string; href: string }
 
@@ -132,19 +132,19 @@ export const LINKS_SOCIALS: readonly LinksSocial[] = [
     scope: 'per_surface',
     label: 'Instagram',
     href: 'https://www.instagram.com/usemingla',
-    businessHref: 'https://www.instagram.com/minglabusiness',
+    businessHref: 'https://www.instagram.com/minglahost',
   },
   {
     scope: 'per_surface',
     label: 'X',
     href: 'https://x.com/usemingla',
-    businessHref: 'https://x.com/MinglaBusiness',
+    businessHref: 'https://x.com/MinglaHost',
   },
   {
     scope: 'per_surface',
     label: 'TikTok',
     href: 'https://www.tiktok.com/@usemingla',
-    businessHref: 'https://www.tiktok.com/@minglabusiness',
+    businessHref: 'https://www.tiktok.com/@minglahost',
   },
   // NEUTRAL — investor & education. Same URL on both tabs, deliberately (Seth's
   // ruling). This is NOT the same thing as explorer_only, which is why the scope
@@ -155,17 +155,17 @@ export const LINKS_SOCIALS: readonly LinksSocial[] = [
     scope: 'per_surface',
     label: 'Facebook',
     href: 'https://www.facebook.com/usemingla',
-    businessHref: 'https://www.facebook.com/minglabusiness',
+    businessHref: 'https://www.facebook.com/minglahost',
   },
   {
     scope: 'per_surface',
     label: 'Threads',
     href: 'https://www.threads.com/@usemingla',
-    businessHref: 'https://www.threads.com/@minglabusiness',
+    businessHref: 'https://www.threads.com/@minglahost',
   },
   // ORCH-1399 (D) — EXPLORER ONLY. There is NO business Snapchat account, so the
-  // Business tab renders no Snapchat icon at all. Linking the consumer handle from
-  // the business tab IS the defect. Placed last so the business row simply ends one
+  // Host tab renders no Snapchat icon at all. Linking the consumer handle from
+  // the Host tab IS the defect. Placed last so the Host row simply ends one
   // icon earlier and the existing order stays stable.
   { scope: 'explorer_only', label: 'Snapchat', href: 'https://www.snapchat.com/add/usemingla' },
 ]

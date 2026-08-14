@@ -100,7 +100,7 @@ function inviteFixture(logoUrl?: string) {
     brandName: "Adversary Co",
     inviterName: "Seth",
     role: "manager",
-    acceptUrl: "https://business.usemingla.com/accept-invite?token=tok",
+    acceptUrl: "https://host.usemingla.com/accept-invite?token=tok",
     from: "Mingla <hello@usemingla.com>",
     ...(logoUrl !== undefined ? { logoUrl } : {}),
   });

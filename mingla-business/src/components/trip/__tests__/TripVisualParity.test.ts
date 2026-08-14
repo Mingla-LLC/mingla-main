@@ -255,7 +255,7 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
 
     it("ShareModal mounted (only when brandSlug present)", () => {
       expect(SRC).toMatch(/<ShareModal/);
-      expect(SRC).toMatch(/business\.usemingla\.com\/t\/\$\{trip\.brandSlug\}\/\$\{trip\.slug\}/);
+      expect(SRC).toMatch(/host\.usemingla\.com\/t\/\$\{trip\.brandSlug\}\/\$\{trip\.slug\}/);
     });
 
     it("Money tab content + retry logic UNCHANGED (no regression on ORCH-0873)", () => {

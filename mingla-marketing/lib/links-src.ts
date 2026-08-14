@@ -58,7 +58,7 @@ export const LINKS_SRC_FALLBACK = 'direct'
 export const LINKS_PID_PREFIX = 'bio_'
 
 /**
- * The `pid` for owned non-bio site surfaces (nav / hero / /business/download).
+ * The `pid` for owned non-bio site surfaces (nav / hero / /host/download).
  * Deliberately NOT `bio_*`: these are not bio traffic. Not a reserved SRN either, so
  * it cannot corrupt paid reporting (SPEC OQ-4).
  */

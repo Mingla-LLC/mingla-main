@@ -51,7 +51,7 @@ const mediaUrl = (value: unknown): boolean => {
   if (!httpsUrl(value)) return false;
   const parsed = new URL(value as string); if (parsed.port) return false; const host = parsed.hostname.toLowerCase();
   const bunnyHost = clean((globalThis as any).Deno?.env?.get?.("BUNNY_STREAM_CDN_HOSTNAME"), 255).toLowerCase();
-  return ["usemingla.com","www.usemingla.com","business.usemingla.com"].includes(host) || host === "images.pexels.com" || host === "videos.pexels.com"
+  return ["usemingla.com","www.usemingla.com","host.usemingla.com"].includes(host) || host === "images.pexels.com" || host === "videos.pexels.com"
     || host === "i.giphy.com" || host === "media.giphy.com" || host === "vz-a16fce08-6c6.b-cdn.net" || (bunnyHost.length > 0 && host === bunnyHost)
     || (host === "gqnoajqerqhnvulmnyvv.supabase.co" && parsed.pathname.startsWith("/storage/v1/object/public/"));
 };

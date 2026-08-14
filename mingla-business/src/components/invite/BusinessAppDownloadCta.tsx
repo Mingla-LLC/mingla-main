@@ -83,7 +83,7 @@ export function BusinessAppDownloadCta({
 
   return (
     <View style={styles.host} testID={testID}>
-      <Text style={styles.title}>Get the Mingla Business app</Text>
+      <Text style={styles.title}>Get the Mingla Host app</Text>
       <Text style={styles.body}>
         Manage your brand, take payments, and run the door from your phone.
       </Text>
@@ -93,7 +93,7 @@ export function BusinessAppDownloadCta({
         variant="secondary"
         size="lg"
         fullWidth
-        accessibilityLabel="Download the Mingla Business app"
+        accessibilityLabel="Download the Mingla Host app"
       />
     </View>
   );

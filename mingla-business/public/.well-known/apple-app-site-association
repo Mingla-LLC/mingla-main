@@ -4,47 +4,31 @@
       {
         "appIDs": ["782KVMY869.com.sethogieva.minglabusiness"],
         "components": [
-          {
-            "/": "/connect-onboarding",
-            "comment": "Stripe Connect onboarding return"
-          },
-          {
-            "/": "/onboarding-complete",
-            "comment": "Stripe onboarding completion deep link target"
-          },
-          {
-            "/": "/b/*",
-            "comment": "Public brand pages"
-          },
-          {
-            "/": "/e/*",
-            "comment": "Public event pages"
-          },
-          {
-            "/": "/checkout/*",
-            "comment": "Public checkout pages"
-          }
+          { "/": "/accept-brand-invitation", "comment": "Host team invitation" },
+          { "/": "/accept-brand-invitation/*", "comment": "Host team invitation subpath" },
+          { "/": "/accept-scanner-invitation", "comment": "Host scanner invitation" },
+          { "/": "/accept-scanner-invitation/*", "comment": "Host scanner invitation subpath" },
+          { "/": "/connect-onboarding", "comment": "Stripe Connect onboarding return" },
+          { "/": "/connect-onboarding/*", "comment": "Stripe Connect onboarding subpath" },
+          { "/": "/connect-account-management", "comment": "Stripe account management return" },
+          { "/": "/connect-account-management/*", "comment": "Stripe account management subpath" },
+          { "/": "/connect-partner-onboarding", "comment": "Partner Stripe onboarding return" },
+          { "/": "/connect-partner-onboarding/*", "comment": "Partner Stripe onboarding subpath" },
+          { "/": "/connect-partner-account-management", "comment": "Partner Stripe account management return" },
+          { "/": "/connect-partner-account-management/*", "comment": "Partner Stripe account management subpath" },
+          { "/": "/connect-tax-registrations", "comment": "Host tax registration return" },
+          { "/": "/connect-tax-registrations/*", "comment": "Host tax registration subpath" },
+          { "/": "/stripe-onboarding-return", "comment": "Legacy Host Stripe onboarding return" },
+          { "/": "/stripe-onboarding-return/*", "comment": "Legacy Host Stripe onboarding subpath" }
         ]
       },
       {
         "appIDs": ["782KVMY869.com.mingla.app.v2"],
         "components": [
-          {
-            "/": "/b/*",
-            "comment": "Consumer app public brand profile deep links"
-          },
-          {
-            "/": "/t/*",
-            "comment": "Consumer app public trip deep links (ORCH-1318)"
-          },
-          {
-            "/": "/exp/*",
-            "comment": "Consumer app public experience deep links (ORCH-1318)"
-          },
-          {
-            "/": "/e/*",
-            "comment": "Consumer app public event and RSVP deep links (issue #1957)"
-          }
+          { "/": "/b/*", "comment": "Consumer app public brand and venue links" },
+          { "/": "/e/*", "comment": "Consumer app public event links" },
+          { "/": "/t/*", "comment": "Consumer app public trip links" },
+          { "/": "/exp/*", "comment": "Consumer app public experience links" }
         ]
       }
     ]

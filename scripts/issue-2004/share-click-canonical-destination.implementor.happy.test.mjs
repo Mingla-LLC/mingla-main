@@ -39,12 +39,12 @@ const fixture = (kind, destination) => ({
 });
 
 const publicCases = [
-  ["event", { kind: "event", brandSlug: "art-roost", eventSlug: "new-forms", webPath: "/e/art-roost/new-forms" }, "https://business.usemingla.com/e/art-roost/new-forms"],
-  ["rsvp_event", { kind: "rsvp_event", brandSlug: "art-roost", eventSlug: "opening-night", webPath: "/e/art-roost/opening-night" }, "https://business.usemingla.com/e/art-roost/opening-night"],
-  ["trip", { kind: "trip", brandSlug: "lagos-art", eventSlug: "gallery-hop", webPath: "/t/lagos-art/gallery-hop" }, "https://business.usemingla.com/t/lagos-art/gallery-hop"],
-  ["experience", { kind: "experience", brandSlug: "art-roost", eventSlug: "studio-tour", webPath: "/exp/art-roost/studio-tour" }, "https://business.usemingla.com/exp/art-roost/studio-tour"],
-  ["venue", { kind: "venue", brandSlug: "art-roost", venueSlug: "lekki-gallery", webPath: "/b/art-roost/v/lekki-gallery" }, "https://business.usemingla.com/b/art-roost/v/lekki-gallery"],
-  ["brand", { kind: "brand", brandSlug: "art-roost", webPath: "/b/art-roost" }, "https://business.usemingla.com/b/art-roost"],
+  ["event", { kind: "event", brandSlug: "art-roost", eventSlug: "new-forms", webPath: "/e/art-roost/new-forms" }, "https://host.usemingla.com/e/art-roost/new-forms"],
+  ["rsvp_event", { kind: "rsvp_event", brandSlug: "art-roost", eventSlug: "opening-night", webPath: "/e/art-roost/opening-night" }, "https://host.usemingla.com/e/art-roost/opening-night"],
+  ["trip", { kind: "trip", brandSlug: "lagos-art", eventSlug: "gallery-hop", webPath: "/t/lagos-art/gallery-hop" }, "https://host.usemingla.com/t/lagos-art/gallery-hop"],
+  ["experience", { kind: "experience", brandSlug: "art-roost", eventSlug: "studio-tour", webPath: "/exp/art-roost/studio-tour" }, "https://host.usemingla.com/exp/art-roost/studio-tour"],
+  ["venue", { kind: "venue", brandSlug: "art-roost", venueSlug: "lekki-gallery", webPath: "/b/art-roost/v/lekki-gallery" }, "https://host.usemingla.com/b/art-roost/v/lekki-gallery"],
+  ["brand", { kind: "brand", brandSlug: "art-roost", webPath: "/b/art-roost" }, "https://host.usemingla.com/b/art-roost"],
 ];
 
 test("all six Business public-page families retain rich snippet metadata and continue to their exact canonical page", () => {

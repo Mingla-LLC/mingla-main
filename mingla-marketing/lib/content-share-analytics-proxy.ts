@@ -1,6 +1,6 @@
 const BUSINESS_ORIGIN = process.env.NODE_ENV === 'development' && process.env.SHARED_CARD_BUSINESS_ORIGIN
   ? process.env.SHARED_CARD_BUSINESS_ORIGIN.replace(/\/+$/, '')
-  : 'https://business.usemingla.com'
+  : 'https://host.usemingla.com'
 
 const response = (status: number) => new Response(null, {
   status,

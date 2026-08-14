@@ -122,7 +122,7 @@ describe("#1485 T3 — the ORCH-0964 404 family still reloads (no regression)", 
     const guard = mountGuard();
     guard.fireRejection(
       new Error(
-        "Failed to fetch dynamically imported module: https://business.usemingla.com/_expo/static/js/web/index-abc.js",
+        "Failed to fetch dynamically imported module: https://host.usemingla.com/_expo/static/js/web/index-abc.js",
       ),
     );
     expect(guard.reload).toHaveBeenCalledTimes(1);

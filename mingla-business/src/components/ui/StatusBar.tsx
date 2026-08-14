@@ -21,7 +21,7 @@ import { spacing, text as textTokens, typography } from "../../constants/designS
 import { Icon } from "./Icon";
 
 export interface NativeStatusBarProps {
-  /** Bar foreground style. Defaults to `"light"` to suit the dark Mingla Business canvas. */
+  /** Bar foreground style. Defaults to `"light"` to suit the dark Mingla Host canvas. */
   barStyle?: StatusBarStyle;
   translucent?: boolean;
 }

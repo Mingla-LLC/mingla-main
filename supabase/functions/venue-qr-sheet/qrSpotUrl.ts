@@ -1,10 +1,10 @@
 // Issue #1789 (#1767 Phase 1) — the CANONICAL printed QR URL (SPEC #1788 P-10).
 //
-//   https://business.usemingla.com/b/{brandSlug}/v/{servingVenueSlug}?tab=menu&spot={code}&src=qr
+//   https://host.usemingla.com/b/{brandSlug}/v/{servingVenueSlug}?tab=menu&spot={code}&src=qr
 //
 // Three things about this string are load-bearing:
 //
-// 1. The host. `business.usemingla.com/b/*` is the ONLY host that app-opens on
+// 1. The host. `host.usemingla.com/b/*` is the ONLY host that app-opens on
 //    BOTH platforms today (the business AASA grants the consumer bundle `/b/*`;
 //    Android lists the host with pathPrefix `/b`), and the same URL is the
 //    buyer-web page for a guest with no app. `usemingla.com`'s AASA does not

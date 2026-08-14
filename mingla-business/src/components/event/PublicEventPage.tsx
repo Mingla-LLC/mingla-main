@@ -869,17 +869,23 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const contributionParam = Array.isArray(routeParams.contribution)
     ? routeParams.contribution[0]
     : routeParams.contribution;
-  const [returnBanner, setReturnBanner] = useState<"paid" | "cancel" | null>(
+  const [returnBanner, setReturnBanner] = useState<"paid" | "cancel" | "return" | null>(
     contributionParam === "paid"
       ? "paid"
       : contributionParam === "cancel"
         ? "cancel"
-        : null,
+        : contributionParam === "return"
+          ? "return"
+          : null,
   );
   const returnBannerHandledRef = useRef<boolean>(false);
   useEffect(() => {
     if (returnBannerHandledRef.current) return;
-    if (contributionParam !== "paid" && contributionParam !== "cancel") return;
+    if (
+      contributionParam !== "paid" &&
+      contributionParam !== "cancel" &&
+      contributionParam !== "return"
+    ) return;
     returnBannerHandledRef.current = true;
     setReturnBanner(contributionParam);
     if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -1109,12 +1115,16 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
                 >
                   {returnBanner === "paid"
                     ? "Thanks for chipping in 💛"
-                    : "Payment canceled"}
+                    : returnBanner === "return"
+                      ? "Confirming your chip-in"
+                      : "Payment canceled"}
                 </Text>
                 <Text style={[styles.returnBannerBody, { color: palette.secondaryText }]}>
                   {returnBanner === "paid"
                     ? `Your gift to ${brand?.displayName ?? "the host"} came through — your RSVP's all set.`
-                    : "No charge was made. Your RSVP is still confirmed."}
+                    : returnBanner === "return"
+                      ? "We’re checking the payment securely. Your RSVP remains confirmed while this finishes."
+                      : "No charge was made. Your RSVP is still confirmed."}
                 </Text>
               </View>
               <Pressable

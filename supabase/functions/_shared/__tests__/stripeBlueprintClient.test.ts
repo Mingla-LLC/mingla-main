@@ -152,9 +152,9 @@ Deno.test("createRecipientAccountLink posts hosted account onboarding payload wi
     const link = await createRecipientAccountLink({
       accountId: "acct_123",
       refreshUrl:
-        "https://business.usemingla.com/stripe-onboarding-return?return_to=mingla-business%3A%2F%2Fonboarding-complete&stripe_onboarding_refresh=1",
+        "https://host.usemingla.com/stripe-onboarding-return?return_to=mingla-business%3A%2F%2Fonboarding-complete&stripe_onboarding_refresh=1",
       returnUrl:
-        "https://business.usemingla.com/stripe-onboarding-return?return_to=mingla-business%3A%2F%2Fonboarding-complete",
+        "https://host.usemingla.com/stripe-onboarding-return?return_to=mingla-business%3A%2F%2Fonboarding-complete",
       idempotencyKey: "brand:onboard_account_link:test",
     });
 
@@ -178,11 +178,11 @@ Deno.test("createRecipientAccountLink posts hosted account onboarding payload wi
     assertEquals(onboarding.configurations, ["recipient", "merchant"]);
     assertEquals(
       onboarding.return_url,
-      "https://business.usemingla.com/stripe-onboarding-return?return_to=mingla-business%3A%2F%2Fonboarding-complete",
+      "https://host.usemingla.com/stripe-onboarding-return?return_to=mingla-business%3A%2F%2Fonboarding-complete",
     );
     assertEquals(
       onboarding.refresh_url,
-      "https://business.usemingla.com/stripe-onboarding-return?return_to=mingla-business%3A%2F%2Fonboarding-complete&stripe_onboarding_refresh=1",
+      "https://host.usemingla.com/stripe-onboarding-return?return_to=mingla-business%3A%2F%2Fonboarding-complete&stripe_onboarding_refresh=1",
     );
     assertEquals(link.url, "https://connect.stripe.com/setup/mock");
   });

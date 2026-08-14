@@ -12,7 +12,7 @@
  * repo JSON file would be a copy checked against itself: it would print green while
  * the value it is guarding is wrong.
  *
- * That is not hypothetical. It is exactly what happened in #1038: Mingla Business was
+ * That is not hypothetical. It is exactly what happened in #1038: Mingla Host was
  * registered in Google Cloud under the UPLOAD certificate instead of the Play
  * app-signing certificate, Google sign-in failed for every Play-Store organiser for
  * months, and nothing in this repository could see the discrepancy — including
@@ -76,7 +76,7 @@ const FILES = [
   {
     key: "business",
     rel: "mingla-business/public/.well-known/assetlinks.json",
-    servedAt: "https://business.usemingla.com/.well-known/assetlinks.json",
+    servedAt: "https://host.usemingla.com/.well-known/assetlinks.json",
   },
 ];
 
@@ -235,7 +235,7 @@ function checkCrossFileParity(perFile) {
         `  served copies. They must be deep-equal, order included.\n` +
         `    mingla-marketing (${marketing.length}): ${JSON.stringify(marketing, null, 2).replace(/\n/g, "\n    ")}\n` +
         `    mingla-business  (${business.length}): ${JSON.stringify(business, null, 2).replace(/\n/g, "\n    ")}\n` +
-        `  Explorer autoVerifies BOTH usemingla.com and business.usemingla.com, so a fingerprint present\n` +
+        `  Explorer autoVerifies BOTH usemingla.com and host.usemingla.com, so a fingerprint present\n` +
         `  on one host and absent on the other verifies half the app's links and silently drops the rest.`,
     );
   }

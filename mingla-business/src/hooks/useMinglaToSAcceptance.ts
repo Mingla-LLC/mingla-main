@@ -1,5 +1,5 @@
 /**
- * useMinglaToSAcceptance — query + mutation pair for the Mingla Business
+ * useMinglaToSAcceptance — query + mutation pair for the Mingla Host
  * platform ToS acceptance gate.
  *
  * Per B2a Path C V3 SPEC §6 + I-PROPOSED-U.
@@ -92,7 +92,7 @@ export function useAcceptMinglaToS(): UseMutationResult<
 }
 
 /**
- * The current Mingla Business platform ToS version the gate enforces.
+ * The current Mingla Host platform ToS version the gate enforces.
  * Operator/legal swaps the placeholder copy and bumps this version when ToS
  * materially changes (forces re-acceptance). Sub-A migration grandfathered
  * existing rows with `pre-v3-grandfathered` — bumping to a real version

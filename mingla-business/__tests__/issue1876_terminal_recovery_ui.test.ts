@@ -288,7 +288,7 @@ type Harness = {
   clearRoot: () => void;
 };
 
-const CHECKOUT_URL = "https://business.usemingla.com/checkout/48db05a9-2b78";
+const CHECKOUT_URL = "https://host.usemingla.com/checkout/48db05a9-2b78";
 const realWindow = (global as unknown as { window?: unknown }).window;
 
 beforeEach(() => {

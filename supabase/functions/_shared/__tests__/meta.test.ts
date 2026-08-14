@@ -157,7 +157,7 @@ Deno.test("GR-11: campaign, ad set, and ad bodies are all explicitly PAUSED", ()
 // ── A4.f destination policy v1 (PROOF D-P1) ───────────────────────────────────
 
 Deno.test("A4.f: the creative link IS the canonical dest_url (link_data + CTA value)", () => {
-  const destUrl = "https://business.usemingla.com/e/lorne/tuesday-live";
+  const destUrl = "https://host.usemingla.com/e/lorne/tuesday-live";
   const body = buildMetaCreativeBody("page_1", {
     destUrl,
     message: "m",
@@ -177,7 +177,7 @@ Deno.test("A4.f: the creative link IS the canonical dest_url (link_data + CTA va
 
 Deno.test("A4.g: url_tags UTM template is always attached", () => {
   const body = buildMetaCreativeBody("page_1", {
-    destUrl: "https://business.usemingla.com/e/b/e",
+    destUrl: "https://host.usemingla.com/e/b/e",
     message: "m",
   });
   assertEquals(body.url_tags, META_URL_TAGS);
@@ -187,7 +187,7 @@ Deno.test("A4.g: url_tags UTM template is always attached", () => {
 
 Deno.test("A4.g: video_data branch — video_id present ⇒ video creative, no link_data", () => {
   const body = buildMetaCreativeBody("page_1", {
-    destUrl: "https://business.usemingla.com/e/b/e",
+    destUrl: "https://host.usemingla.com/e/b/e",
     message: "m",
     headline: "t",
     videoId: "vid_123",

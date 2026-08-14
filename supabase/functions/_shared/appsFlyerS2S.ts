@@ -60,7 +60,7 @@ interface AppsFlyerDeviceRow {
 
 /**
  * Look up the most-recent `business` AppsFlyer device row for a Supabase user.
- * Returns null if the user has never signed into the Mingla Business app on a
+ * Returns null if the user has never signed into the Mingla Host app on a
  * device, or if the row was not registered (env missing during install).
  */
 async function fetchBusinessDevice(
@@ -86,7 +86,7 @@ async function fetchBusinessDevice(
 }
 
 /**
- * Resolve the Mingla Business owner user_id for a brand via creator_accounts.
+ * Resolve the Mingla Host owner user_id for a brand via creator_accounts.
  * `brands.account_id` references `creator_accounts.id` which is the auth user
  * UUID. Returns null if the brand has no owner (data anomaly) or is missing.
  */

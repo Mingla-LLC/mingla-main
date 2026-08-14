@@ -2,7 +2,7 @@
  * ORCH-0887-A [Auth getSession Promise.race timeout] — implementor
  * happy-path regression test (SPEC §8.1).
  *
- * Parent ORCH: ORCH-0887 [Mingla Business Web Performance — slow page
+ * Parent ORCH: ORCH-0887 [Mingla Host Web Performance — slow page
  * loads + hanging loaders].
  * SPEC: /Users/sethogieva/Desktop/mingla-main/Mingla_Artifacts/specs/SPEC_ORCH-0887-A_AUTH_GETSESSION_TIMEOUT.md
  *

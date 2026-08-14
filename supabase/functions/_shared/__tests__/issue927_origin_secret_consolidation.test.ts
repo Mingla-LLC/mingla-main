@@ -103,7 +103,7 @@ Deno.test("927-P1: with neither set, the hardcoded canonical default holds", () 
   }, () => {
     assertEquals(
       defaultVenuePublicUrl("velvet-lounge"),
-      "https://business.usemingla.com/b/velvet-lounge",
+      "https://host.usemingla.com/b/velvet-lounge",
     );
   });
 });

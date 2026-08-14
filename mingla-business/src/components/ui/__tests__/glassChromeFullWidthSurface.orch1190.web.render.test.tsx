@@ -2,7 +2,7 @@
  * ORCH-1190 (attempt #5, the one that actually fixed it) — GlassChrome inner
  * surface MUST stretch to its outer View's width.
  *
- * THE BUG (4 prior fixes failed). On business.usemingla.com desktop, the venue
+ * THE BUG (4 prior fixes failed). On host.usemingla.com desktop, the venue
  * suite empty-state cards (Reservations / Waitlist / Menu) rendered NARROW +
  * CENTERED while the module header + Tables card rendered full workspace width.
  * R1–R4 all put `width:"100%"` / `alignSelf:"stretch"` on the empty CARD's outer

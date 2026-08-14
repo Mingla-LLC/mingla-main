@@ -2123,7 +2123,7 @@ async function loadEmbeddedEvents(
   }>;
 
   // Pull brand slugs for the URL. Public event URLs are
-  // `https://business.usemingla.com/e/<brand_slug>/<event_slug>` — both
+  // `https://host.usemingla.com/e/<brand_slug>/<event_slug>` — both
   // slugs required (see mingla-business/server/socialPreview.js and
   // utils/sharePublicUrl). Without the brand slug the public page 404s.
   const brandIds = Array.from(new Set(eventRows.map((r) => r.brand_id)));

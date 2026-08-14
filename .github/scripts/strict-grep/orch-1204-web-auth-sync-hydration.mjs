@@ -4,7 +4,7 @@
  * `session` / `user` / `loading` SYNCHRONOUSLY at mount via lazy useState
  * initializers derived from a single hoisted `readStoredWebSession()` read.
  *
- * WHY: on business.usemingla.com a slow/contended gotrue auth-token lock can make
+ * WHY: on host.usemingla.com a slow/contended gotrue auth-token lock can make
  * the async getSession() bootstrap exceed the 3s timeout, leaving `loading`
  * permanently true and `isAuthReady` false → `useBrands` disabled → the page wedges
  * on "Loading brands…" (the exact ORCH-1204 bug). The fix paints first-render auth

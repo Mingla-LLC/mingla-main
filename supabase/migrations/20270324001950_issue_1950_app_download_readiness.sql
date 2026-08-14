@@ -20,8 +20,8 @@ INSERT INTO public.ad_app_targets
 VALUES
   ('explorer','ios','Mingla Explorer','6760440898','id6760440898','https://go.usemingla.com/w36m',true),
   ('explorer','android','Mingla Explorer','com.mingla.app.v2','com.mingla.app.v2','https://go.usemingla.com/w36m',true),
-  ('business','ios','Mingla Business','6768737367','id6768737367','https://biz.usemingla.com/ZSCW',true),
-  ('business','android','Mingla Business','com.sethogieva.minglabusiness','com.sethogieva.minglabusiness','https://biz.usemingla.com/ZSCW',true)
+  ('business','ios','Mingla Host','6768737367','id6768737367','https://biz.usemingla.com/ZSCW',true),
+  ('business','android','Mingla Host','com.sethogieva.minglabusiness','com.sethogieva.minglabusiness','https://biz.usemingla.com/ZSCW',true)
 ON CONFLICT (app_key,os) DO UPDATE SET
   display_name=excluded.display_name,
   store_identifier=excluded.store_identifier,

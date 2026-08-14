@@ -70,19 +70,19 @@ const cases: ReadonlyArray<[string, () => void]> = [
     },
   ],
 
-  // ── Business CTA → the device-smart /business/download route (ORCH-1326) ─────
+  // ── Business CTA → the device-smart /host/download route (ORCH-1326) ─────
   // The business app is live on the App Store; the CTA now routes per device
-  // (iPhone → business App Store, else → business.usemingla.com) via the new
-  // /business/download server route — NOT the bare /business marketing page.
+  // (iPhone → business App Store, else → host.usemingla.com) via the new
+  // /host/download server route — NOT the bare /host marketing page.
   [
-    'Business CTA targets the device-smart /business/download route (ORCH-1326)',
+    'Business CTA targets the device-smart /host/download route (ORCH-1326)',
     () => {
       const biz = LINKS_TABS.find((t) => t.id === 'business')!
       assert(biz.cta.href === LINKS_BUSINESS_DOWNLOAD_PATH, `business href = ${biz.cta.href}`)
-      assert(biz.cta.href === '/business/download', `business href not /business/download: ${biz.cta.href}`)
-      assert(biz.cta.href !== '/business', 'business CTA must NOT be the bare /business page (app is live)')
+      assert(biz.cta.href === '/host/download', `business href not /host/download: ${biz.cta.href}`)
+      assert(biz.cta.href !== '/host', 'business CTA must NOT be the bare /host page (app is live)')
       assert(biz.cta.destination === 'business_download', `business destination = ${biz.cta.destination}`)
-      // The /business surface path constant still derives from the shared source.
+      // The /host surface path constant still derives from the shared source.
       assert(LINKS_BUSINESS_PATH === BUSINESS_PATH, 'links business path drifted from subdomain BUSINESS_PATH')
     },
   ],
@@ -112,18 +112,18 @@ const cases: ReadonlyArray<[string, () => void]> = [
     },
   ],
 
-  // ── Surface-aware socials: the Business tab swaps the 5 business-branded ─────
-  // networks to @minglabusiness; YouTube & LinkedIn stay universal on both tabs.
+  // ── Surface-aware socials: the Host tab swaps the 5 Host-branded ────────────
+  // networks to @minglahost; YouTube & LinkedIn stay universal on both tabs.
   [
-    'Business tab swaps IG/X/TikTok/Facebook/Threads to @minglabusiness handles',
+    'Host tab swaps IG/X/TikTok/Facebook/Threads to @minglahost handles',
     () => {
       const byLabel = Object.fromEntries(LINKS_SOCIALS.map((s) => [s.label, s]))
       const biz = (label: string) => socialHref(byLabel[label], 'business')
-      assert(biz('Instagram') === 'https://www.instagram.com/minglabusiness', `IG biz: ${biz('Instagram')}`)
-      assert(biz('X') === 'https://x.com/MinglaBusiness', `X biz: ${biz('X')}`)
-      assert(biz('TikTok') === 'https://www.tiktok.com/@minglabusiness', `TikTok biz: ${biz('TikTok')}`)
-      assert(biz('Facebook') === 'https://www.facebook.com/minglabusiness', `FB biz: ${biz('Facebook')}`)
-      assert(biz('Threads') === 'https://www.threads.com/@minglabusiness', `Threads biz: ${biz('Threads')}`)
+      assert(biz('Instagram') === 'https://www.instagram.com/minglahost', `IG Host: ${biz('Instagram')}`)
+      assert(biz('X') === 'https://x.com/MinglaHost', `X Host: ${biz('X')}`)
+      assert(biz('TikTok') === 'https://www.tiktok.com/@minglahost', `TikTok Host: ${biz('TikTok')}`)
+      assert(biz('Facebook') === 'https://www.facebook.com/minglahost', `FB Host: ${biz('Facebook')}`)
+      assert(biz('Threads') === 'https://www.threads.com/@minglahost', `Threads Host: ${biz('Threads')}`)
     },
   ],
   // ── T-8 NEUTRAL — investor & education, neither explorer nor business ───────
@@ -184,7 +184,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assert(socialsForTab('business').length === 7, `business socials = ${socialsForTab('business').length}, expected 7`)
       assert(
         socialsForTab('explorer').length === socialsForTab('business').length + 1,
-        'the explorer/business social counts no longer differ by exactly one (Snapchat)',
+        'the explorer/host social counts no longer differ by exactly one (Snapchat)',
       )
     },
   ],

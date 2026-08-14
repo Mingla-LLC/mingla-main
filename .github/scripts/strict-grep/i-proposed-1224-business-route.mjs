@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
  * ORCH-1224 [business route rename] — the marketing business surface moved
- * /organisers → /business (Seth 2026-06-22). This gate locks the rename:
+ * /organisers → /host (Seth 2026-06-22). This gate locks the rename:
  *
  * Invariant I-PROPOSED-1224-BUSINESS-ROUTE (DRAFT until ORCH-1224 CLOSE):
  *   (a) NO `/organisers` HREF survives in mingla-marketing component/lib source.
  *       Every navigable link (Link href, anchor href, SITE_CHIPS/SEGMENTS entry,
  *       BUSINESS_PATH constant, surface-detection `pathname.startsWith('/...')`)
- *       must point at /business. The ONLY tolerated `/organisers` strings are:
+ *       must point at /host. The ONLY tolerated `/organisers` strings are:
  *         - inside the redirect rule + comments in next.config.ts, and
  *         - bare historical code comments (comment-stripped before matching).
- *   (b) the PERMANENT /organisers → /business redirect EXISTS in next.config.ts
+ *   (b) the PERMANENT /organisers → /host redirect EXISTS in next.config.ts
  *       (both the bare path and the `/organisers/:path*` sub-path form), so
  *       existing links / the business app / campaigns keep resolving.
  *
@@ -63,7 +63,7 @@ const scanSourceForOrganisersHref = (absDirRoot) => {
       const src = stripComments(readFileSync(file, "utf8"));
       if (ORGANISERS_HREF_RE.test(src)) {
         failures.push(
-          `${file.slice(absDirRoot.length - MARKETING.length)}: a navigable \`/organisers\` href survived — must point at /business (ORCH-1224). I-PROPOSED-1224-BUSINESS-ROUTE.`,
+          `${file.slice(absDirRoot.length - MARKETING.length)}: a navigable \`/organisers\` href survived — must point at /host (ORCH-1224). I-PROPOSED-1224-BUSINESS-ROUTE.`,
         );
       }
     }
@@ -72,23 +72,23 @@ const scanSourceForOrganisersHref = (absDirRoot) => {
 };
 
 // (b) the redirect must exist in next.config.ts. Require BOTH the bare path and
-// the sub-path form, both mapping to /business, and `permanent: true`.
+// the sub-path form, both mapping to /host, and `permanent: true`.
 const checkRedirect = (configSrc) => {
   const failures = [];
   const src = stripComments(configSrc);
   const hasRedirectsBlock = /async\s+redirects\s*\(/.test(src) || /\bredirects\s*[:(]/.test(src);
   if (!hasRedirectsBlock) {
-    failures.push("next.config.ts: missing an `async redirects()` block — ORCH-1224 needs the /organisers → /business 301. I-PROPOSED-1224-BUSINESS-ROUTE.");
+    failures.push("next.config.ts: missing an `async redirects()` block — ORCH-1224 needs the /organisers → /host 301. I-PROPOSED-1224-BUSINESS-ROUTE.");
   }
-  // bare: source '/organisers' -> destination '/business', permanent
-  const bareRe = /source:\s*(['"`])\/organisers\1[\s\S]{0,80}?destination:\s*(['"`])\/business\2[\s\S]{0,80}?permanent:\s*true/;
+  // bare: source '/organisers' -> destination '/host', permanent
+  const bareRe = /source:\s*(['"`])\/organisers\1[\s\S]{0,80}?destination:\s*(['"`])\/host\2[\s\S]{0,80}?permanent:\s*true/;
   if (!bareRe.test(src)) {
-    failures.push("next.config.ts: missing the PERMANENT `/organisers` → `/business` redirect rule. I-PROPOSED-1224-BUSINESS-ROUTE.");
+    failures.push("next.config.ts: missing the PERMANENT `/organisers` → `/host` redirect rule. I-PROPOSED-1224-BUSINESS-ROUTE.");
   }
-  // sub-path: '/organisers/:path*' -> '/business/:path*', permanent
-  const subRe = /source:\s*(['"`])\/organisers\/:path\*\1[\s\S]{0,80}?destination:\s*(['"`])\/business\/:path\*\2[\s\S]{0,80}?permanent:\s*true/;
+  // sub-path: '/organisers/:path*' -> '/host/:path*', permanent
+  const subRe = /source:\s*(['"`])\/organisers\/:path\*\1[\s\S]{0,80}?destination:\s*(['"`])\/host\/:path\*\2[\s\S]{0,80}?permanent:\s*true/;
   if (!subRe.test(src)) {
-    failures.push("next.config.ts: missing the PERMANENT `/organisers/:path*` → `/business/:path*` sub-path redirect. I-PROPOSED-1224-BUSINESS-ROUTE.");
+    failures.push("next.config.ts: missing the PERMANENT `/organisers/:path*` → `/host/:path*` sub-path redirect. I-PROPOSED-1224-BUSINESS-ROUTE.");
   }
   return failures;
 };
@@ -99,14 +99,14 @@ const SELF_TEST = process.argv.includes("--self-test");
 if (SELF_TEST) {
   // (a) source scan
   const GOOD_SOURCE = `
-    const SEGMENTS = [{ surface: 'organiser', label: 'Business', href: '/business' }]
-    const active = pathname.startsWith('/business') ? 'organiser' : 'explorer'
+    const SEGMENTS = [{ surface: 'organiser', label: 'Business', href: '/host' }]
+    const active = pathname.startsWith('/host') ? 'organiser' : 'explorer'
     // historical: this used to live at /organisers (comment only — tolerated)
   `;
   const BAD_HREF = `const x = [{ href: '/organisers', label: 'Organiser' }]`;
   const BAD_STARTSWITH = `const a = pathname.startsWith('/organisers') ? 'organiser' : 'explorer'`;
   const BAD_SUBPATH = `const c = { href: '/organisers/case-studies/x' }`;
-  const COMMENT_ONLY = `// see the /organisers premium redesign\nconst y = '/business'`;
+  const COMMENT_ONLY = `// see the /organisers premium redesign\nconst y = '/host'`;
 
   const scanStr = (s) => (ORGANISERS_HREF_RE.test(stripComments(s)) ? ["hit"] : []);
 
@@ -115,15 +115,15 @@ if (SELF_TEST) {
     const config = {
       async redirects() {
         return [
-          { source: '/organisers', destination: '/business', permanent: true },
-          { source: '/organisers/:path*', destination: '/business/:path*', permanent: true },
+          { source: '/organisers', destination: '/host', permanent: true },
+          { source: '/organisers/:path*', destination: '/host/:path*', permanent: true },
         ]
       },
     }
   `;
   const BAD_NO_REDIRECTS = `const config = { async headers() { return [] } }`;
-  const BAD_TEMP = `const config = { async redirects() { return [{ source: '/organisers', destination: '/business', permanent: false }] } }`;
-  const BAD_NO_SUBPATH = `const config = { async redirects() { return [{ source: '/organisers', destination: '/business', permanent: true }] } }`;
+  const BAD_TEMP = `const config = { async redirects() { return [{ source: '/organisers', destination: '/host', permanent: false }] } }`;
+  const BAD_NO_SUBPATH = `const config = { async redirects() { return [{ source: '/organisers', destination: '/host', permanent: true }] } }`;
 
   const ok =
     scanStr(GOOD_SOURCE).length === 0 &&
@@ -158,14 +158,14 @@ const failures = [];
 
 const marketingAbs = join(root, MARKETING);
 if (!existsSync(marketingAbs)) {
-  failures.push(`${MARKETING}: marketing app not found — cannot verify the /organisers → /business rename.`);
+  failures.push(`${MARKETING}: marketing app not found — cannot verify the /organisers → /host rename.`);
 } else {
   failures.push(...scanSourceForOrganisersHref(marketingAbs));
 }
 
 const configAbs = join(root, NEXT_CONFIG);
 if (!existsSync(configAbs)) {
-  failures.push(`${NEXT_CONFIG}: next.config.ts not found — cannot verify the /organisers → /business redirect.`);
+  failures.push(`${NEXT_CONFIG}: next.config.ts not found — cannot verify the /organisers → /host redirect.`);
 } else {
   failures.push(...checkRedirect(readFileSync(configAbs, "utf8")));
 }

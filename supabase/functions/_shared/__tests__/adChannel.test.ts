@@ -229,7 +229,7 @@ const ATOMIC_INPUT = {
     billingEvent: "IMPRESSIONS",
     targeting: {},
   },
-  creative: { destUrl: "https://business.usemingla.com/e/b/e", message: "m" },
+  creative: { destUrl: "https://host.usemingla.com/e/b/e", message: "m" },
   ad: { name: "a" },
 };
 

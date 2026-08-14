@@ -365,7 +365,7 @@ describe("ISSUE-1184 adversarial: launch summary tells the truth about video rea
         { platform: "snapchat", dailyCents: 1000 },
       ],
       destinations: [
-        { title: "One", dest_url: "https://business.usemingla.com/e/a/one" },
+        { title: "One", dest_url: "https://host.usemingla.com/e/a/one" },
       ],
       creative: { kind: "video", name: "Hero" },
       preparationByPlatform: {

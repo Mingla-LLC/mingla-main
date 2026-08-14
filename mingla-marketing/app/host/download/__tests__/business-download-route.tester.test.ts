@@ -10,10 +10,10 @@
 // have locked the bug in place, so they are inverted here.
 //
 // Different angle than the links-config happy-path (which pins the CTA href). This
-// proves the /business/download ROUTE's negative space + correct shape:
+// proves the /host/download ROUTE's negative space + correct shape:
 //   (a) NO QR/badges — the route does NOT import DownloadQr / AppStoreBadges nor
 //       render a <QRCode (the deliberate difference from the explorer /download).
-//   (b) SSOT — NO `apps.apple.com` / `business.usemingla.com` / `play.google.com`
+//   (b) SSOT — NO `apps.apple.com` / `host.usemingla.com` / `play.google.com`
 //       literal (destinations come from the shared helper, never hardcoded).
 //   (c) NO bare CONSUMER `PLAY_STORE_URL` (owners must never be shipped the
 //       consumer app) — but BUSINESS_PLAY_STORE_URL via the helper is REQUIRED.
@@ -27,7 +27,7 @@
 // ABSENCE assertions.
 //
 // Run from mingla-marketing/ via the repo tsc+node pattern:
-//   npx tsc app/business/download/__tests__/business-download-route.tester.test.ts \
+//   npx tsc app/host/download/__tests__/business-download-route.tester.test.ts \
 //     --outDir /tmp/o --module commonjs --target es2020 --moduleResolution node \
 //     && node /tmp/o/business-download-route.tester.test.js
 // ---------------------------------------------------------------
@@ -35,7 +35,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
-const ROUTE = path.resolve(process.cwd(), 'app/business/download/page.tsx')
+const ROUTE = path.resolve(process.cwd(), 'app/host/download/page.tsx')
 
 const stripComments = (s: string): string =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
@@ -59,7 +59,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
   // ── ORCH-1399 T-11 ⭐ THE INSTALL HREF IS THE ATTRIBUTED ONELINK ────────────
   // And CRITICALLY: this route must self-attribute with NO query param. Its href is
   // BYTE-FROZEN in the partner-invite email to exactly
-  // `https://usemingla.com/business/download` with no query string
+  // `https://usemingla.com/host/download` with no query string
   // (orch-1329-invite-email.tester.test.ts). So attribution CANNOT ride in on the
   // URL — it must be composed server-side from this surface's own identity. Appending
   // a param to the invite-email href to carry it would break the byte-frozen pin and
@@ -182,7 +182,7 @@ declare const describe: undefined | ((name: string, fn: () => void) => void)
 declare const it: undefined | ((name: string, fn: () => void) => void)
 
 if (typeof describe === 'function' && typeof it === 'function') {
-  describe('ORCH-1326 /business/download route (adversarial)', () => {
+  describe('ORCH-1326 /host/download route (adversarial)', () => {
     for (const [name, fn] of cases) it(name, fn)
   })
 } else {

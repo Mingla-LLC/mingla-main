@@ -87,7 +87,7 @@ Deno.test("#1950 canonical verifier cannot manufacture Ready from stored setup",
     target: {
       app_key: "business",
       os: "ios",
-      display_name: "Mingla Business",
+      display_name: "Mingla Host",
       store_identifier: "6768737367",
       appsflyer_app_id: "id6768737367",
       onelink_url: "https://biz.usemingla.com/ZSCW",
@@ -164,7 +164,7 @@ Deno.test("#1950 AppsFlyer defaults non-ready and only an injected read authorit
   const target = {
     app_key: "business",
     os: "ios",
-    display_name: "Mingla Business",
+    display_name: "Mingla Host",
     store_identifier: "6768737367",
     appsflyer_app_id: "id6768737367",
     onelink_url: "https://biz.usemingla.com/ZSCW",
@@ -217,7 +217,7 @@ Deno.test("#1950 production AppsFlyer reader uses one bounded GET and never the 
   const snapshot = await reader({
     app_key: "business",
     os: "ios",
-    display_name: "Mingla Business",
+    display_name: "Mingla Host",
     store_identifier: "6768737367",
     appsflyer_app_id: "id6768737367",
     onelink_url: "https://biz.usemingla.com/ZSCW",
@@ -304,7 +304,7 @@ Deno.test("#1950 exact current dashboard attestation can prove binding but store
     target: {
       app_key: "business",
       os: "ios",
-      display_name: "Mingla Business",
+      display_name: "Mingla Host",
       store_identifier: "6768737367",
       appsflyer_app_id: "id6768737367",
       onelink_url: "https://biz.usemingla.com/ZSCW",

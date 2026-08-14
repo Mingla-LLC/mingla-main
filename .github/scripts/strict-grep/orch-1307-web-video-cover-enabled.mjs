@@ -100,7 +100,7 @@ if (process.argv.includes("--self-test")) {
     <Button label="Video" onPress={onPickVideo} disabled={uploading || disabled} />
     {Platform.OS === "web" ? (
       <Text>On the web, video covers upload the clip as-is, up to 30 seconds. To
-        trim a longer clip, use the Mingla Business app.</Text>
+        trim a longer clip, use the Mingla Host app.</Text>
     ) : null}`;
   const BAD_GATE_BACK = `
     const isPhoneWeb = Platform.OS === "web" && window.innerWidth < 768;

@@ -69,7 +69,7 @@ export function AriInput({ className }: { className?: string }) {
         className,
       )}
       role="img"
-      aria-label={`Ari, the Mingla Business AI, answering requests like: ${prompts.join('; ')}`}
+      aria-label={`Ari, the Mingla Host AI, answering requests like: ${prompts.join('; ')}`}
     >
       {/* warm Ari orb */}
       <span className="relative h-11 w-11 shrink-0" aria-hidden="true">

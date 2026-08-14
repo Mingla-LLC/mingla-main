@@ -282,7 +282,7 @@ const INPUT = {
     billingEvent: "IMPRESSIONS",
     targeting: {},
   },
-  creative: { destUrl: "https://business.usemingla.com/e/b/e", message: "m" },
+  creative: { destUrl: "https://host.usemingla.com/e/b/e", message: "m" },
   ad: { name: "a" },
 };
 
@@ -395,7 +395,7 @@ Deno.test("T-9: dailyBudgetCents=0 is non-CBO — M-13 flag present, no zero bud
 
 Deno.test("T-9: creative builder — image_hash wins over image_url when both are supplied", () => {
   const body = buildMetaCreativeBody("page_1", {
-    destUrl: "https://business.usemingla.com/e/b/e",
+    destUrl: "https://host.usemingla.com/e/b/e",
     message: "m",
     imageHash: "hash_1",
     imageUrl: "https://img.example/x.jpg",

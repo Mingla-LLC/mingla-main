@@ -254,13 +254,13 @@ export async function handler(req: Request): Promise<Response> {
       return json({ error: "server" }, 500);
     }
 
-    // Build the accept URL. business.usemingla.com is the canonical host;
+    // Build the accept URL. host.usemingla.com is the canonical host;
     // mirror the env-from-platform pattern.
     // ISSUE-927: BUSINESS_WEB_ORIGIN is the canonical secret; the old name is
     // a fallback so its deletion is safely decoupled (same digest, audited).
     const businessOrigin = Deno.env.get("BUSINESS_WEB_ORIGIN") ??
       Deno.env.get("MINGLA_BUSINESS_WEB_URL") ??
-      "https://business.usemingla.com";
+      "https://host.usemingla.com";
     const acceptUrl = `${
       businessOrigin.replace(/\/+$/, "")
     }/accept-brand-invitation?token=${encodeURIComponent(token)}`;

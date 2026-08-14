@@ -19,7 +19,7 @@ import React from "react";
 
 const BRAND_ID = "2b7c8f6a-1111-4a22-8333-123456789abc";
 const USER_ID = "79f45786-2222-4b33-8444-123456789abc";
-const ORIGIN = "https://business.usemingla.com";
+const ORIGIN = "https://host.usemingla.com";
 const ONBOARDING_URL =
   `${ORIGIN}/connect-onboarding?session=acct_session_secret&brand_id=${BRAND_ID}`;
 

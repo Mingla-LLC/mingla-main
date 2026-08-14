@@ -19,7 +19,7 @@ const DEFAULT_SUPABASE_ANON_KEY =
 
 const PUBLIC_ORIGIN = (
   process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL ||
-  "https://business.usemingla.com"
+  "https://host.usemingla.com"
 ).replace(/\/+$/, "");
 
 const SUPABASE_URL = (
@@ -165,7 +165,7 @@ const eventPublicPath = (row) =>
 
 const brandSlug = (row) => row?.slug || row?.brand_slug || "";
 
-const brandName = (row) => row?.name || row?.brand_name || "Mingla Business";
+const brandName = (row) => row?.name || row?.brand_name || "Mingla";
 
 const brandDescriptionText = (row) => row?.description || row?.brand_description || "";
 
@@ -452,7 +452,7 @@ const directEventBundleToPreviewRow = (payload) => {
     id,
     brand_id: asText(payload.brandId),
     brand_slug: brandSlugValue,
-    brand_name: asText(brand.name, "Mingla Business"),
+    brand_name: asText(brand.name, "Mingla"),
     brand_description: "",
     brand_profile_photo_url: asText(brand.profilePhotoUrl) || null,
     title,
@@ -679,7 +679,7 @@ const buildEventOgCardProps = (row) => {
   const subtitle =
     row?.description ||
     (row?.brand_name ? `Hosted by ${row.brand_name}` : "Discover events on Mingla.");
-  const kicker = row?.brand_name || "Mingla Business";
+  const kicker = row?.brand_name || "Mingla";
   const dateLabel =
     row !== null && row !== undefined
       ? formatDate(eventDate(row))
@@ -768,7 +768,7 @@ const buildTripOgCardProps = (row) => {
     (row?.brand_name
       ? `Hosted by ${row.brand_name}`
       : "Discover trips on Mingla.");
-  const kicker = row?.brand_name || "Mingla Business";
+  const kicker = row?.brand_name || "Mingla";
   const dateLabel =
     row !== null && row !== undefined
       ? tripDateLabel(row)
@@ -871,13 +871,13 @@ const buildBrandOgCardProps = (input) => {
         : null;
 
   const title =
-    brand !== null ? brandListingTitle(brand, venue) : "Mingla Business";
+    brand !== null ? brandListingTitle(brand, venue) : "Mingla";
   const subtitle =
     (brand !== null ? brandDescriptionText(brand) : "") ||
     (brand
       ? `Discover events from ${brandName(brand)} on Mingla.`
       : "Create and share events on Mingla.");
-  const kicker = "Mingla Business";
+  const kicker = "Mingla";
 
   return {
     cardKind: "brand",
@@ -898,7 +898,7 @@ const buildBrandOgCardProps = (input) => {
   };
 };
 
-const pageShell = ({ title, description, canonicalUrl, imageUrl, imageType = "image/png", imageWidth = 1200, imageHeight = 630, imageAlt = "", type, body, siteName = "Mingla Business", headerVariant = "business", showHeader = true, trustedHeadHtml = "" }) => `<!doctype html>
+const pageShell = ({ title, description, canonicalUrl, imageUrl, imageType = "image/png", imageWidth = 1200, imageHeight = 630, imageAlt = "", type, body, siteName = "Mingla", headerVariant = "mingla", showHeader = true, trustedHeadHtml = "" }) => `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -941,9 +941,9 @@ const pageShell = ({ title, description, canonicalUrl, imageUrl, imageType = "im
 </head>
 <body>
   <main class="page">
-    ${showHeader ? (headerVariant === "mingla" ? `<a class="brand mingla-wordmark-pill" href="${EXPLORER_PUBLIC_ORIGIN}" aria-label="Mingla"><img src="${wordmarkSource()}" alt="Mingla" /></a>` : `<a class="brand" href="${PUBLIC_ORIGIN}" aria-label="Mingla Business">
+    ${showHeader ? (headerVariant === "mingla" ? `<a class="brand mingla-wordmark-pill" href="${EXPLORER_PUBLIC_ORIGIN}" aria-label="Mingla"><img src="${wordmarkSource()}" alt="Mingla" /></a>` : `<a class="brand" href="${PUBLIC_ORIGIN}" aria-label="Mingla Host">
       <img src="${LOGO_PUBLIC_PATH}" alt="" />
-      <span>Mingla Business</span>
+      <span>Mingla Host</span>
     </a>`) : ""}
     ${body}
   </main>
@@ -1236,7 +1236,7 @@ const renderOgPng = async ({
   const primaryChip = isBrand ? eventCountLabel : dateLabel;
   const secondaryChip = isBrand ? nextEventLabel : locationLabel;
   const label = isBrand ? "Featured brand" : "Featured event";
-  const accentLabel = isBrand ? "Mingla Business" : truncate(kicker, 44);
+  const accentLabel = isBrand ? "Mingla" : truncate(kicker, 44);
   const textFit = buildOgTextFit({
     cardKind,
     title,
@@ -1471,7 +1471,7 @@ const renderOgPng = async ({
             fontWeight: 900,
           },
         },
-        "business.usemingla.com",
+        "host.usemingla.com",
       ),
     ),
     { width: 1200, height: 630 },

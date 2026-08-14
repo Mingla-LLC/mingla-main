@@ -173,7 +173,7 @@ export function renderMarketingEmail(
   // Step 3 — collect + rewrite links to trackable URLs.
   // Tracking origin defaults to the Supabase function endpoint so it works
   // without DNS rewrite. Operators who set up a clean `m.usemingla.com` or
-  // `business.usemingla.com/m/*` rewrite pointing at the marketing-track-
+  // `host.usemingla.com/m/*` rewrite pointing at the marketing-track-
   // click function can override via the MINGLA_TRACKING_LINK_ORIGIN env.
   const trackingOrigin = getTrackingLinkOrigin();
   const links: RenderedLink[] = [];

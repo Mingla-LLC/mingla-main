@@ -1,6 +1,6 @@
 /**
  * brand-mingla-tos-accept — records the calling user's acceptance of the
- * Mingla Business platform Terms of Service for a brand.
+ * Mingla Host platform Terms of Service for a brand.
  *
  * Per B2a Path C V3 SPEC §6 + I-PROPOSED-U (ToS gate before Stripe Connect).
  *

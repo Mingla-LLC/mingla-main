@@ -58,7 +58,7 @@ import {
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
 
-process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL = "https://business.usemingla.com";
+process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL = "https://host.usemingla.com";
 
 const viewport: { isDesktop: boolean; width: number } = {
   isDesktop: false,

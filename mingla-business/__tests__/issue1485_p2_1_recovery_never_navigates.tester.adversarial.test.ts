@@ -34,7 +34,7 @@
  *
  * WHAT IT CANNOT PROVE. Deployed production behaviour. Vercel has not built
  * this branch (the `[deploy]` ignoreCommand gate cancels preview builds), so
- * SC-1/SC-3 and the shipped `<head>` bytes on business.usemingla.com remain
+ * SC-1/SC-3 and the shipped `<head>` bytes on host.usemingla.com remain
  * unproven until the `[deploy]`-tagged squash reaches READY. This suite pins
  * the source and runtime contract only.
  *
@@ -93,7 +93,7 @@ const SCRIPT_BODY = SCRIPT_TAG.replace(/^<script[^>]*>/, "").replace(/<\/script>
 
 const CHUNK_URL = "/_expo/static/js/web/index-c71bd65d4564bece548e38b8d5512d1e.js";
 const ENTRY_URL = "/_expo/static/js/web/entry-0824756ecd6ed350ea9937412e972c32.js?v=orch1091";
-const CHECKOUT_URL = "https://business.usemingla.com/checkout/48db05a9-2b78-4af5-ada4-485b53aa26d1";
+const CHECKOUT_URL = "https://host.usemingla.com/checkout/48db05a9-2b78-4af5-ada4-485b53aa26d1";
 
 // --------------------------------------------------------------------------
 // A TAB. Unlike the implementor's single-document harness, storage here
@@ -729,7 +729,7 @@ describe("#1485 P2-1 tester S — hostile sessionStorage", () => {
 describe("#1485 P2-1 tester I — the build script against real HTML", () => {
   const RAW_MINIFIED =
     `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">` +
-    `<meta name="viewport" content="width=device-width"><title>Mingla Business</title></head>` +
+    `<meta name="viewport" content="width=device-width"><title>Mingla Host</title></head>` +
     `<body><div id="root"></div>` +
     `<script src="/_expo/static/js/web/entry-0824756ecd6ed350ea9937412e972c32.js" defer></script>` +
     `<script src="/_expo/static/js/web/_layout-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.js" defer></script>` +

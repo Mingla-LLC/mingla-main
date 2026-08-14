@@ -115,7 +115,7 @@ Deno.test("RT-B: creative AND campaign rollback both failing — both reported f
     () => createFullCampaignAtomic(adapter, CONN, {
       campaign: { name: "c", objective: "OUTCOME_TRAFFIC", dailyBudgetCents: 500 },
       adSet: { name: "s", optimizationGoal: "LINK_CLICKS", billingEvent: "IMPRESSIONS", targeting: {} },
-      creative: { destUrl: "https://business.usemingla.com/e/b/e", message: "m" },
+      creative: { destUrl: "https://host.usemingla.com/e/b/e", message: "m" },
       ad: { name: "a" },
     }),
     AtomicCreateError,

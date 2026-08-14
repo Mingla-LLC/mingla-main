@@ -55,9 +55,9 @@ import { buildLaunchSummary } from "../lib/adBuilder/launchSummary.js";
 
 // Same "Smoke & Rhythm" shape as the forensic: TWO live events under ONE brand
 // slug (they differ only by slug+id — the collision-prone case) + the brand page.
-const DEST_EVENT_A = { id: "e-aaa", page_type: "event", brand_slug: "smokerhythm", slug: "friday-live", title: "Friday Live", brand_name: "Smoke & Rhythm", dest_url: "https://business.usemingla.com/e/smokerhythm/friday-live" };
-const DEST_EVENT_B = { id: "e-bbb", page_type: "event", brand_slug: "smokerhythm", slug: "sunday-jazz", title: "Sunday Jazz", brand_name: "Smoke & Rhythm", dest_url: "https://business.usemingla.com/e/smokerhythm/sunday-jazz" };
-const DEST_BRAND = { id: "b-ccc", page_type: "brand", brand_slug: "smokerhythm", slug: "smokerhythm", title: "Smoke & Rhythm", brand_name: "Smoke & Rhythm", dest_url: "https://business.usemingla.com/b/smokerhythm" };
+const DEST_EVENT_A = { id: "e-aaa", page_type: "event", brand_slug: "smokerhythm", slug: "friday-live", title: "Friday Live", brand_name: "Smoke & Rhythm", dest_url: "https://host.usemingla.com/e/smokerhythm/friday-live" };
+const DEST_EVENT_B = { id: "e-bbb", page_type: "event", brand_slug: "smokerhythm", slug: "sunday-jazz", title: "Sunday Jazz", brand_name: "Smoke & Rhythm", dest_url: "https://host.usemingla.com/e/smokerhythm/sunday-jazz" };
+const DEST_BRAND = { id: "b-ccc", page_type: "brand", brand_slug: "smokerhythm", slug: "smokerhythm", title: "Smoke & Rhythm", brand_name: "Smoke & Rhythm", dest_url: "https://host.usemingla.com/b/smokerhythm" };
 
 const BASE_STATE = {
   lane: "consumer",
@@ -207,8 +207,8 @@ describe("ISSUE-1002 adversarial · ANTI-CROSS-CONTAMINATION across the N×M mat
     const urls = new Set(calls.map((c) => {
       const d = c.payload.destination;
       return d.entity_slug
-        ? `https://business.usemingla.com/e/${d.brand_slug}/${d.entity_slug}`
-        : `https://business.usemingla.com/b/${d.brand_slug}`;
+        ? `https://host.usemingla.com/e/${d.brand_slug}/${d.entity_slug}`
+        : `https://host.usemingla.com/b/${d.brand_slug}`;
     }));
     assert.equal(urls.size, 3, "exactly three distinct destination URLs across the fan-out");
   });

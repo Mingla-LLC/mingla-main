@@ -101,7 +101,7 @@ describe("CoverPicker dedicated trimmer wiring", () => {
     const editorModule = await import("../coverPickerVideoTrimEditor");
     await expect(
       editorModule.trimVideoWithDedicatedEditor("file:///clip.mov", 29_000),
-    ).rejects.toThrow("updated Mingla Business native build");
+    ).rejects.toThrow("updated Mingla Host native build");
     await expect(
       editorModule.trimVideoWithDedicatedEditor("file:///clip.mov", 29_000),
     ).rejects.toThrow(nativeModuleError);

@@ -28,7 +28,7 @@ function isAllowedReturnTo(value: string | null): value is string {
   if (value === null) return false;
   return (
     value.startsWith("mingla-business://") ||
-    value.startsWith("https://business.usemingla.com/")
+    value.startsWith("https://host.usemingla.com/")
   );
 }
 
@@ -56,9 +56,9 @@ export default function StripeOnboardingReturn(): React.ReactElement {
 
   return (
     <View style={styles.host}>
-      <Text style={styles.title}>Returning to Mingla Business...</Text>
+      <Text style={styles.title}>Returning to Mingla Host...</Text>
       <Text style={styles.body}>
-        If this page does not close automatically, reopen Mingla Business.
+        If this page does not close automatically, reopen Mingla Host.
       </Text>
     </View>
   );

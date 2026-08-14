@@ -95,13 +95,13 @@ function makeFixture() {
   });
   fs.writeFileSync(
     path.join(dir, "app-mobile/app.json"),
-    JSON.stringify(filters(CONSUMER_PKG, ["usemingla.com", "business.usemingla.com", "go.usemingla.com"]), null, 2),
+    JSON.stringify(filters(CONSUMER_PKG, ["usemingla.com", "host.usemingla.com", "go.usemingla.com"]), null, 2),
   );
   fs.writeFileSync(
     path.join(dir, "mingla-business/app.json"),
     // #1050 — the Business app now declares its OWN vouching branded domain
     // `biz.usemingla.com`, not the consumer domain `go.usemingla.com`.
-    JSON.stringify(filters(BUSINESS_PKG, ["business.usemingla.com", "biz.usemingla.com"]), null, 2),
+    JSON.stringify(filters(BUSINESS_PKG, ["host.usemingla.com", "biz.usemingla.com"]), null, 2),
   );
   return dir;
 }
@@ -136,7 +136,7 @@ const business = () => FIX.business.map((fp) => stmt(BUSINESS_PKG, fp));
 const HEALTHY = {
   "usemingla.com": consumer(),
   "www.usemingla.com": consumer(),
-  "business.usemingla.com": [...business(), ...consumer()],
+  "host.usemingla.com": [...business(), ...consumer()],
   "biz.usemingla.com": business(), // #1050 — business now declares biz.; biz. vouches for the business pkg
   "go.usemingla.com": consumer(), // #1050 — go. is consumer-only now; it vouches for the consumer pkg
 };

@@ -34,14 +34,14 @@ const config: NextConfig = {
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }]
   },
-  // ORCH-1224 — the business marketing surface moved /organisers → /business
-  // (Seth 2026-06-22). PERMANENT (301) redirects keep every existing link
-  // working: the business app, campaigns, and any external link pointing at
-  // usemingla.com/organisers (and its sub-paths) lands on /business.
+  // #2050 — the Host marketing surface is canonical at /host. Preserve both
+  // historical route families with permanent redirects and their sub-paths.
   async redirects() {
     return [
-      { source: '/organisers', destination: '/business', permanent: true },
-      { source: '/organisers/:path*', destination: '/business/:path*', permanent: true },
+      { source: '/organisers', destination: '/host', permanent: true },
+      { source: '/organisers/:path*', destination: '/host/:path*', permanent: true },
+      { source: '/business', destination: '/host', permanent: true },
+      { source: '/business/:path*', destination: '/host/:path*', permanent: true },
       // #1086 — the scheduler moved /tools/book → /schedule (top-level). Keep the
       // short-lived old path working (it shipped in #1084). Query string is
       // preserved automatically, so ?venue/?report_url/?source carry through.

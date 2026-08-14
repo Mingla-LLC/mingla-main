@@ -226,7 +226,7 @@ Deno.test("#1928 Meta exact probes use only the requested Page/Instagram pair an
       return Response.json({
         data: [{
           id: "1223994124127087",
-          name: "Mingla Business",
+          name: "Mingla Host",
           tasks: ["ADVERTISE"],
         }, { id: "797406353459597", tasks: ["ADVERTISE"] }],
       });

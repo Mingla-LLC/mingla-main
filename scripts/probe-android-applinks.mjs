@@ -26,7 +26,7 @@
  * statement for `com.sethogieva.minglabusiness`, while the shipped Business build
  * autoVerified against it. On Android 11 and below the legacy verifier is
  * all-or-nothing across an app's autoVerify hosts, so that single missing statement
- * dropped `business.usemingla.com` App Links to `Status: ask` for every Play-installed
+ * dropped `host.usemingla.com` App Links to `Status: ask` for every Play-installed
  * organiser on those devices. Nothing else told us. This is the thing that told us.
  * #1050 FIXED it at the source: the Business app now declares `biz.usemingla.com`
  * (its own vouching domain) and no longer declares `go.` at all, so the go.×business
@@ -92,7 +92,7 @@ const FAILURE_DETAIL_FILE = "/tmp/android-applinks-probe-failure.md";
 /** App configs are the SOURCE OF TRUTH for the host list. Never hardcode hosts. */
 const APP_CONFIGS = [
   { rel: "app-mobile/app.json", label: "Mingla Explorer" },
-  { rel: "mingla-business/app.json", label: "Mingla Business" },
+  { rel: "mingla-business/app.json", label: "Mingla Host" },
 ];
 
 /**
@@ -104,7 +104,7 @@ const APP_CONFIGS = [
 const REPO_BACKED_HOSTS = {
   "usemingla.com": "mingla-marketing/public/.well-known/assetlinks.json",
   "www.usemingla.com": "mingla-marketing/public/.well-known/assetlinks.json",
-  "business.usemingla.com": "mingla-business/public/.well-known/assetlinks.json",
+  "host.usemingla.com": "mingla-business/public/.well-known/assetlinks.json",
 };
 
 /**
@@ -120,7 +120,7 @@ const REPO_BACKED_HOSTS = {
  *
  * #1050 — do NOT re-add a go.×business suppression here. `go.` is CONSUMER-only;
  * re-declaring it in the Business config (and papering over it with a suppression)
- * re-breaks business.usemingla.com App Link verification on Android <=11.
+ * re-breaks host.usemingla.com App Link verification on Android <=11.
  *
  * If a future real, not-repo-fixable failure needs suppressing, add ONE narrow
  * (host, package, kind) triple with its owning issue and a one-line reason —

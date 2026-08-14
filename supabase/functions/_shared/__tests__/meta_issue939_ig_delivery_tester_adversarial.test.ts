@@ -69,7 +69,7 @@ function countOccurrences(haystack: string, needle: string): number {
 
 Deno.test("ISSUE-939 T1: IG set ⇒ 'instagram_user_id' appears EXACTLY twice in the serialized body and never inside link_data/call_to_action/url_tags (no leak)", () => {
   const body = buildMetaCreativeBody("page_1", {
-    destUrl: "https://business.usemingla.com/e/lorne/tuesday-live",
+    destUrl: "https://host.usemingla.com/e/lorne/tuesday-live",
     message: "m",
     headline: "h",
     description: "d",
@@ -96,12 +96,12 @@ Deno.test("ISSUE-939 T1: IG set ⇒ 'instagram_user_id' appears EXACTLY twice in
     "url_tags UTM template must not carry the IG id",
   );
   // dest policy untouched (D-P1): the ad-visible link is still the canonical page.
-  assertEquals(linkData.link, "https://business.usemingla.com/e/lorne/tuesday-live");
+  assertEquals(linkData.link, "https://host.usemingla.com/e/lorne/tuesday-live");
 });
 
 Deno.test("ISSUE-939 T1: the VIDEO branch also serializes exactly twice and never inside video_data/call_to_action", () => {
   const body = buildMetaCreativeBody("page_1", {
-    destUrl: "https://business.usemingla.com/e/b/e",
+    destUrl: "https://host.usemingla.com/e/b/e",
     message: "m",
     headline: "t",
     videoId: "vid_123",
@@ -121,7 +121,7 @@ Deno.test("ISSUE-939 T1: the VIDEO branch also serializes exactly twice and neve
 
 Deno.test("ISSUE-939 T2: the top-level instagram_user_id is a distinct OWN-property of the adcreatives body (deleting meta.ts:441 fails HERE, a different line than the implementor's both-lines revert)", () => {
   const body = buildMetaCreativeBody("page_1", {
-    destUrl: "https://business.usemingla.com/e/b/e",
+    destUrl: "https://host.usemingla.com/e/b/e",
     message: "m",
     imageUrl: "https://img.example/x.jpg",
   }, IG);
@@ -200,7 +200,7 @@ Deno.test("ISSUE-939 T4: business lane with META_MINGLABIZ_IG_USER_ID UNSET reso
 
     // A business-lane creative built from that config is Facebook-only on the wire.
     const bizBody = buildMetaCreativeBody(biz.pageId, {
-      destUrl: "https://business.usemingla.com/b/venue",
+      destUrl: "https://host.usemingla.com/b/venue",
       message: "m",
     }, biz.igUserId);
     assert(
@@ -230,7 +230,7 @@ Deno.test("ISSUE-939 T5: META_IG_USER_ID='   ' (whitespace only) resolves to nul
     const cfg = resolveMetaEnvConfig("consumer");
     assertEquals(cfg.igUserId, null);
     const body = buildMetaCreativeBody(cfg.pageId, {
-      destUrl: "https://business.usemingla.com/e/b/e",
+      destUrl: "https://host.usemingla.com/e/b/e",
       message: "m",
     }, cfg.igUserId);
     assertEquals(countOccurrences(JSON.stringify(body), "instagram_user_id"), 0);

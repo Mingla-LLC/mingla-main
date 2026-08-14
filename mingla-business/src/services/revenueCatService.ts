@@ -1,5 +1,5 @@
 /**
- * RevenueCat integration for Mingla Business (ORCH-0808-FOLLOWUP).
+ * RevenueCat integration for Mingla Host (ORCH-0808-FOLLOWUP).
  *
  * Scope (operator-confirmed 2026-05-12): install-only.
  * - No products configured yet

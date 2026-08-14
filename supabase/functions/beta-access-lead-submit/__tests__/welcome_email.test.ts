@@ -2,7 +2,7 @@
 //
 // Exercises buildWelcomeEmail (the pure builder the handler ships). This is the
 // CLOSE Step 0.5 implementor regression: it PASSES on the fixed code and MUST
-// FAIL on revert (e.g. if buildWelcomeEmail is removed, or the business.usemingla.com
+// FAIL on revert (e.g. if buildWelcomeEmail is removed, or the host.usemingla.com
 // link / Ari spotlight / mobile-in-the-works line is dropped).
 //
 // Run: /Users/sethogieva/.deno/bin/deno test --allow-env --allow-net \
@@ -44,15 +44,15 @@ Deno.test("welcome subject confirms the beta list", () => {
   );
 });
 
-Deno.test("welcome body links to the web app (business.usemingla.com)", () => {
+Deno.test("welcome body links to the web app (host.usemingla.com)", () => {
   const email = buildWelcomeEmail(lead(), FROM);
   assert(
-    email.html.includes("https://business.usemingla.com"),
-    "html missing business.usemingla.com link",
+    email.html.includes("https://host.usemingla.com"),
+    "html missing host.usemingla.com link",
   );
   assert(
-    email.text.includes("https://business.usemingla.com"),
-    "text missing business.usemingla.com link",
+    email.text.includes("https://host.usemingla.com"),
+    "text missing host.usemingla.com link",
   );
 });
 

@@ -14,7 +14,7 @@ export const PLAY_STORE_URL =
 // NEVER hardcode these inline in a component (mirrors the ORCH-1319 SSOT rule).
 // The platform→destination decision lives ONLY in lib/business-app-target.ts.
 export const BUSINESS_APP_STORE_URL = 'https://apps.apple.com/app/id6768737367'
-export const BUSINESS_WEB_URL = 'https://business.usemingla.com'
+export const BUSINESS_WEB_URL = 'https://host.usemingla.com'
 
 // ORCH-1381 — the business Play listing is LIVE (production versionCode 33 /
 // 1.1.2, status=completed, HTTP 200 — API-verified 2026-07-15, COMMS-0101).

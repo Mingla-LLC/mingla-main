@@ -345,7 +345,7 @@ test("H27 marketing proxy forwards only its secret and preserves allowlisted res
   assert.match(response.headers.get("content-type"), /^application\/json/);
   assert.match(response.headers.get("cache-control"), /no-store/);
   assert.equal(response.headers.get("x-hostile-upstream"), null);
-  assert.equal(calls[0].url, `https://business.usemingla.com/api/shared-card-data?shareId=${shareId}`);
+  assert.equal(calls[0].url, `https://host.usemingla.com/api/shared-card-data?shareId=${shareId}`);
   assert.deepEqual(calls[0].init.headers, { "x-mingla-shared-card-proxy": "proxy-secret" });
   assert.equal(calls[0].init.redirect, "manual");
   assert.equal(calls[0].init.cache, "no-store");

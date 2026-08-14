@@ -133,7 +133,7 @@ Both mobile apps are wired for automated store submission via `eas submit`. Subm
 
 | App | Android command (from app dir) | iOS command (from app dir) |
 |---|---|---|
-| Mingla Business | `cd mingla-business && eas submit --platform android --latest` | `cd mingla-business && eas submit --platform ios --latest` |
+| Mingla Host | `cd mingla-business && eas submit --platform android --latest` | `cd mingla-business && eas submit --platform ios --latest` |
 | Mingla Consumer | `cd app-mobile && eas submit --platform android --latest` | `cd app-mobile && eas submit --platform ios --latest` |
 
 Credential layout:

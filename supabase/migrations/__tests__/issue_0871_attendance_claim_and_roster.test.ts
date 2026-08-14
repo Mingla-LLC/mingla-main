@@ -46,7 +46,7 @@ Deno.test("#871 SC-8/9/10 preserves RSVP SHA-256 and domain-separated order HMAC
 
 Deno.test("#871 SC-12/13 bearers stay fragments and registered scheme only", () => {
   assertStringIncludes(helper, "com.mingla.app.v2://attendance-claim#");
-  assertStringIncludes(helper, "https://business.usemingla.com/attendance/claim#");
+  assertStringIncludes(helper, "https://host.usemingla.com/attendance/claim#");
   assertEquals(helper.includes("mingla://"), false);
   assertEquals(claim.includes("console."), false);
   assertEquals(link.includes("console."), false);

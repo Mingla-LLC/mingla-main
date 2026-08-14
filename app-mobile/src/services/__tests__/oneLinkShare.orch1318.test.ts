@@ -108,7 +108,7 @@ Deno.test("ORCH-1318 buildInviteUserParams: event missing entitySlug degrades to
 Deno.test("ORCH-1318 buildFallbackShareUrl: entity/referral/universal all non-empty", () => {
   assertEquals(
     buildFallbackShareUrl({ channel: "x", entity: { type: "event", brandSlug: "b", entitySlug: "e" } }),
-    "https://business.usemingla.com/e/b/e",
+    "https://host.usemingla.com/e/b/e",
   );
   assertEquals(
     buildFallbackShareUrl({ channel: "x", referralCode: "C" }),

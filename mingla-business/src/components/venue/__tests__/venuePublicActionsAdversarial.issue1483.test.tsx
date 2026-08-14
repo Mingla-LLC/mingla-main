@@ -67,7 +67,7 @@ jest.mock("expo-constants", () => ({
   default: {
     expoConfig: {
       extra: {
-        EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://business.usemingla.com",
+        EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://host.usemingla.com",
       },
     },
   },
@@ -303,9 +303,9 @@ const ACADEMY: FixtureVenue = {
   rejectionReason: null,
 };
 
-const VENUE_URL = "https://business.usemingla.com/b/smokerhythm/v/academystreetbistro";
+const VENUE_URL = "https://host.usemingla.com/b/smokerhythm/v/academystreetbistro";
 const VENUE_PATH = "/b/smokerhythm/v/academystreetbistro";
-const BRAND_URL = "https://business.usemingla.com/b/smokerhythm";
+const BRAND_URL = "https://host.usemingla.com/b/smokerhythm";
 
 const mount = (): Tree => {
   let tree: Tree | null = null;
@@ -548,7 +548,7 @@ describe("#1483 adversarial — claim-status boundary, late-brand race, path int
 
     const url = String(shareModals(tree)[0].props.url);
     expect(url).toBe(
-      "https://business.usemingla.com/b/smoke%20%26%20rhythm%20caf%C3%A9/v/academystreetbistro",
+      "https://host.usemingla.com/b/smoke%20%26%20rhythm%20caf%C3%A9/v/academystreetbistro",
     );
     // A raw space would break every SMS/WhatsApp/email share intent.
     expect(url).not.toContain(" ");

@@ -8,7 +8,7 @@
  * is the ONLY place that statically imports @stripe/*. DO NOT re-add a static
  * @stripe/connect-js / @stripe/react-connect-js import here. See SPEC §C-1.
  *
- * ROUTE: business.usemingla.com/connect-partner-onboarding?session=...&account_id=...&return_to=...
+ * ROUTE: host.usemingla.com/connect-partner-onboarding?session=...&account_id=...&return_to=...
  */
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — web-only Stripe Connect Embedded Components page; renders DOM elements (<div>) via @stripe/react-connect-js, NOT React Native primitives. Mirrors connect-onboarding.web.tsx per I-PROPOSED-O.

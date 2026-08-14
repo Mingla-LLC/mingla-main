@@ -225,6 +225,7 @@ export type SubmitRsvpContributionResult =
       kind: "requires_paystack_redirect";
       contributionId: string;
       authorizationUrl: string;
+      returnUrl: string;
       reference: string;
       amountCents: number;
       buyerTotalCents: number;
@@ -242,6 +243,7 @@ export const submitRsvpContribution = async (
       guestName: input.guestName,
       guestEmail: input.guestEmail,
       surface: input.surface,
+      returnContract: "host_v1",
       callerIdempotencyKey: input.callerIdempotencyKey,
     },
   });

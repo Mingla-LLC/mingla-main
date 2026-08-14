@@ -1,6 +1,6 @@
 # Load test harness (#426)
 
-k6 scripts for Mingla Business production-readiness. See [docs/load-profile.md](../../docs/load-profile.md).
+k6 scripts for Mingla Host production-readiness. See [docs/load-profile.md](../../docs/load-profile.md).
 
 ## Prerequisites
 

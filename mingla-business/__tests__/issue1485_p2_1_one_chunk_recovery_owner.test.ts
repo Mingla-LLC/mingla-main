@@ -103,7 +103,7 @@ const SCRIPT_BODY = SCRIPT_TAG.replace(/^<script[^>]*>/, "").replace(/<\/script>
 
 const CHUNK_URL = "/_expo/static/js/web/index-c71bd65d4564bece548e38b8d5512d1e.js";
 const ENTRY_URL = "/_expo/static/js/web/index-0824756ecd6ed350ea9937412e972c32.js?v=orch1091";
-const BUYER_URL = "https://business.usemingla.com/checkout/48db05a9-2b78-4af5-ada4-485b53aa26d1";
+const BUYER_URL = "https://host.usemingla.com/checkout/48db05a9-2b78-4af5-ada4-485b53aa26d1";
 
 type Listener = (event: unknown) => void;
 

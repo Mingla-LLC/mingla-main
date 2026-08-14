@@ -65,7 +65,7 @@ test('A2: onDeepLink is registered before initSdk (business has no manualStart)'
 // vouching branded domain), imported from the storeLinks SSOT as
 // BUSINESS_ONELINK_BRANDED_DOMAIN. `go.usemingla.com` is CONSUMER-only:
 // re-adding it here (or in the SDK registration, or in app.json) re-breaks
-// business.usemingla.com App Link verification on Android <=11 (the
+// host.usemingla.com App Link verification on Android <=11 (the
 // all-or-nothing legacy verifier fails the whole autoVerify set on a host that
 // publishes no Digital Asset Links statement for the Business package).
 test('A3: business registers the biz. branded OneLink domain via the storeLinks SSOT (no go. literal)', () => {

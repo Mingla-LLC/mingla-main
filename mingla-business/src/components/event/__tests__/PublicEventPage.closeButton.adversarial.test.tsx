@@ -334,7 +334,7 @@ const renderPublicEventPage = (
           }: {
             brandSlug: string;
             eventSlug: string;
-          }) => `https://business.usemingla.com/e/${brandSlug}/${eventSlug}`,
+          }) => `https://host.usemingla.com/e/${brandSlug}/${eventSlug}`,
         };
       case "../../constants/designSystem":
         return { spacing: { md: 16 } };

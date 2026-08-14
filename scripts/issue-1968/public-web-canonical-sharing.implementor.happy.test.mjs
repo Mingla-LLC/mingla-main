@@ -84,7 +84,7 @@ test("canonical experience URLs render rich chat metadata", () => {
   };
   const html = renderExperienceHtml(row);
   const canonical =
-    "https://business.usemingla.com/exp/art-roost-gallery/collectors-preview";
+    "https://host.usemingla.com/exp/art-roost-gallery/collectors-preview";
   assert.match(html, /property="og:title" content="Collector&#39;s Preview by Art Roost Gallery \| Mingla"/);
   assert.ok(html.includes(`property="og:url" content="${canonical}"`));
   assert.match(html, /property="og:description" content="An intimate guided look at new work\."/);

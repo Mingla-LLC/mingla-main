@@ -57,7 +57,7 @@ import { describe, expect, jest, test } from "@jest/globals";
 // `mingla-business/src/constants/platformUrl.ts` throws at module load without
 // this; the shared package chain reaches it through the offering-rendering
 // barrel used below.
-process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL = "https://business.usemingla.com";
+process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL = "https://host.usemingla.com";
 
 const REPO_ROOT = join(__dirname, "../../../../..");
 const CONSUMER_ROUTE = "../../../../../app-mobile/app/b/[brandSlug]/v/[venueSlug]";

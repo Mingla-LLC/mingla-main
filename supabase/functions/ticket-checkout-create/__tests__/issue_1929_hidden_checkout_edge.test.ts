@@ -205,7 +205,11 @@ Deno.test("#1929 hidden NGN session persists status/reference before mocked Pays
   assertEquals(payload.channels, ["card", "bank", "ussd", "bank_transfer"]);
   assertEquals(payload.subaccount, "ACCT_fixture");
   assertEquals(payload.transactionChargeSubunits, persisted.stripe_application_fee_amount_cents);
-  assertMatch(String(payload.callbackUrl), /^https:\/\/business\.usemingla\.com\/pay\/callback\?cs=/);
+  const callback = new URL(String(payload.callbackUrl));
+  assertEquals(callback.origin, "https://host.usemingla.com");
+  assertEquals(callback.pathname, `/checkout/${EVENT_ID}/confirm`);
+  assertEquals(callback.searchParams.get("cs"), "paystack");
+  assertEquals(callback.searchParams.get("csi"), SESSION_ID);
   assertEquals(payload.metadata, {
     mingla_checkout_session_id: SESSION_ID,
     mingla_event_id: EVENT_ID,

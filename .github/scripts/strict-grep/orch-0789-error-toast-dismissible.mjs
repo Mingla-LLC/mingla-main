@@ -21,7 +21,7 @@
  *      decline UX inside the hosted page. The error-code discriminator is
  *      no longer applicable to mingla-business.
  *   6. payment.tsx must NOT contain the legacy "Please complete checkout
- *      in the Mingla Business mobile app" copy (CF-790-2 — buyer-app
+ *      in the Mingla Host mobile app" copy (CF-790-2 — buyer-app
  *      naming confusion).
  *
  * Runs from repo root or mingla-business sub-tree.
@@ -115,8 +115,8 @@ assertRegexPresent(
 const PAYMENT = "mingla-business/app/checkout/[eventId]/payment.tsx";
 assertRegexAbsent(
   PAYMENT,
-  /Mingla Business mobile app/,
-  "payment.tsx must not tell ticket buyers to install the Mingla Business " +
+  /Mingla Host mobile app/,
+  "payment.tsx must not tell ticket buyers to install the Mingla Host " +
     "(organiser) app. CF-790-2.",
 );
 

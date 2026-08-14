@@ -42,7 +42,7 @@ function fakeDb(
 }
 
 Deno.test("ISSUE-1184 shared destination emits the canonical public event URL", async () => {
-  Deno.env.set("BUSINESS_WEB_ORIGIN", "https://business.usemingla.com");
+  Deno.env.set("BUSINESS_WEB_ORIGIN", "https://host.usemingla.com");
   const resolved = await resolveAdDestination(fakeDb({ id: "event-1" }), {
     page_type: "event",
     brand_slug: "mingla-house",
@@ -50,7 +50,7 @@ Deno.test("ISSUE-1184 shared destination emits the canonical public event URL", 
   });
   assertEquals(
     resolved.canonical_url,
-    "https://business.usemingla.com/e/mingla-house/friday-night",
+    "https://host.usemingla.com/e/mingla-house/friday-night",
   );
   assertEquals(resolved.event_id, "event-1");
 });

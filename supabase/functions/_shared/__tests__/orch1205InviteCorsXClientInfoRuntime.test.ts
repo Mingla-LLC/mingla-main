@@ -84,7 +84,7 @@ for (const fn of HANDLER_EXPORTED) {
   Deno.test(`ORCH-1205 RUNTIME — ${fn} OPTIONS Response actually allows x-client-info`, async () => {
     const handler = await loadExportedHandler(fn);
     const res = await handler(
-      new Request("https://business.usemingla.com/x", { method: "OPTIONS" }),
+      new Request("https://host.usemingla.com/x", { method: "OPTIONS" }),
     );
     // Preflight must be a success (2xx), not an error.
     assert(
@@ -128,7 +128,7 @@ Deno.test(`ORCH-1205 RUNTIME — ${SHIM_CAPTURED} OPTIONS Response actually allo
 Deno.test("ORCH-1205 RUNTIME — list-my-pending-invites still 405s a GET (method gate intact)", async () => {
   const handler = await loadExportedHandler("list-my-pending-invites");
   const res = await handler(
-    new Request("https://business.usemingla.com/x", { method: "GET" }),
+    new Request("https://host.usemingla.com/x", { method: "GET" }),
   );
   assertEquals(
     res.status,
@@ -146,7 +146,7 @@ Deno.test("ORCH-1205 RUNTIME — list-my-pending-invites still 405s a GET (metho
 Deno.test("ORCH-1205 RUNTIME — beta-access-lead-submit still 405s a GET (method gate intact)", async () => {
   const handler = await loadExportedHandler("beta-access-lead-submit");
   const res = await handler(
-    new Request("https://business.usemingla.com/x", { method: "GET" }),
+    new Request("https://host.usemingla.com/x", { method: "GET" }),
   );
   assertEquals(
     res.status,

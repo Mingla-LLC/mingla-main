@@ -177,7 +177,7 @@ interface NightOutCardData {
 
 type DateFilter = "any" | "today" | "tomorrow" | "weekend" | "next-week" | "month";
 // ORCH-0809 M2: Price filter deleted from Discover (TM has no price query param;
-// reintroduction is a separate ORCH when Mingla Business native events land in Discover).
+// reintroduction is a separate ORCH when Mingla Host native events land in Discover).
 // Genre slugs sourced from the shared DiscoverGenreSlug union (server-owned classification).
 type GenreFilter = DiscoverGenreSlug;
 type SegmentFilter = DiscoverSegmentSlug;
@@ -1279,7 +1279,7 @@ function DiscoverScreen({
   // returns a non-null meta.tmError (Ticketmaster upstream returned events=[]
   // with non-zero totalResults, or the TM call threw, or was rate-limited).
   // Lives separately from nightOutError (which is the hard fetch failure).
-  // Banner is non-blocking; Mingla business events continue to render. The
+  // Banner is non-blocking; first-party Mingla events continue to render. The
   // string value is currently informational only — render is just on
   // null-vs-non-null.
   const [tmError, setTmError] = useState<string | null>(
@@ -2436,8 +2436,8 @@ function DiscoverScreen({
               </View>
             ) : null}
             {/* ORCH-0839-A F-6: non-fatal banner when merged response carries
-                meta.tmError (Ticketmaster upstream had a hiccup but Mingla
-                business events still render). Banner clears automatically on
+                meta.tmError (Ticketmaster upstream had a hiccup but first-party
+                Mingla events still render). Banner clears automatically on
                 the next successful fetch via setTmError(null) in the success
                 branch. */}
             {tmError !== null ? (
@@ -2652,7 +2652,7 @@ function DiscoverScreen({
               {/* ORCH-0809 M2: Price filter section REMOVED — Ticketmaster has no
                   price query param; the prior client-side post-filter silently hid
                   results (Constitution #3 violation). Reintroduction is a separate
-                  ORCH when Mingla Business native events land in Discover. */}
+                  ORCH when Mingla Host native events land in Discover. */}
 
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>

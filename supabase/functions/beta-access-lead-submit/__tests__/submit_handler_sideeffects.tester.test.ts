@@ -176,7 +176,7 @@ Deno.test(
         "first email (notify) must be addressed to seth@usemingla.com",
       );
       assert(
-        log.resendBodies[1].includes("business.usemingla.com"),
+        log.resendBodies[1].includes("host.usemingla.com"),
         "second email (welcome) must link the lead to the web app",
       );
     } finally {

@@ -52,7 +52,7 @@
  * WHAT THIS SUITE CANNOT PROVE. It cannot prove DEPLOYED behaviour. Vercel
  * compiles `rewrites` at build time and only the live edge can answer SC-1…SC-6.
  * The deployed truth is captured post-merge with raw `curl -sSI` against
- * https://business.usemingla.com.
+ * https://host.usemingla.com.
  *
  * Fails-on-revert: restoring `"/(.*)"` fails B.1 and C.1; shipping the inert
  * `"/((?!^_expo/static/).*)"` fails B.1, C.1 and C.2; deleting `JSON_PARSE_RE`

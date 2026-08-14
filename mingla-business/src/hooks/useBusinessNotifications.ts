@@ -1,5 +1,5 @@
 /**
- * useBusinessNotifications — Mingla Business notification inbox.
+ * useBusinessNotifications — Mingla Host notification inbox.
  *
  * Per B2a Path C V3 SPEC §6 + I-PROPOSED-W (notifications app-type-prefix
  * filtering) + META-ORCH-1074 Sub-C (unread + mark-read).

@@ -155,7 +155,7 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
           },
           onOpenExperience: (experience: PublicBrandExperience) => {
             void WebBrowser.openBrowserAsync(
-              `https://business.usemingla.com/exp/${experience.brandSlug}/${experience.experienceSlug}`,
+              `https://host.usemingla.com/exp/${experience.brandSlug}/${experience.experienceSlug}`,
             );
           },
           onOpenUpcoming: (item: PublicBrandUpcoming) => {
@@ -166,7 +166,7 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
                   ? `/exp/${item.brandSlug}/${item.offeringSlug}`
                   : `/e/${item.brandSlug}/${item.offeringSlug}`;
             void WebBrowser.openBrowserAsync(
-              `https://business.usemingla.com${path}`,
+              `https://host.usemingla.com${path}`,
             );
           },
           onReservationsTabViewed: () => {

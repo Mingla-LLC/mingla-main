@@ -19,8 +19,8 @@ Run this checklist **once**, before flipping any environment from test mode to l
 - [ ] All 9 strict-grep gates passing on `Seth` branch
 - [ ] All migrations applied to remote DB
 - [ ] All edge functions deployed to Supabase
-- [ ] Mingla Business app TestFlight build available
-- [ ] Mingla legal/compliance has signed off on Mingla Business ToS copy (Phase 12 placeholder replaced with final text)
+- [ ] Mingla Host app TestFlight build available
+- [ ] Mingla legal/compliance has signed off on Mingla Host ToS copy (Phase 12 placeholder replaced with final text)
 
 ---
 
@@ -80,7 +80,7 @@ Per https://docs.stripe.com/get-started/checklist/go-live:
   - Mingla as merchant of record per `controller.fees.payer=application` + `controller.losses.payments=application`
   - Application fee disclosure (whatever the percentage is)
   - Dispute responsibility (Mingla absorbs chargebacks)
-- [ ] Mingla Business ToS Acceptance Gate copy reviewed by legal (Phase 12 deliverable)
+- [ ] Mingla Host ToS Acceptance Gate copy reviewed by legal (Phase 12 deliverable)
 - [ ] GDPR data-processing agreement (DPA) with Stripe in place (Stripe provides standard DPA)
 - [ ] Connect Platform Agreement T&Cs disclosure surfaces shipped (Phase 12 covers disclosure during onboarding)
 - [ ] DPO appointed (if Mingla has >250 employees OR processes systematic high-risk data)
@@ -112,7 +112,7 @@ Per https://docs.stripe.com/get-started/checklist/go-live:
 - [ ] Supabase edge fn logs accessible to ops team
 - [ ] Webhook silence alert (`stripe-webhook-health-check` cron) tested by killing the endpoint briefly in test mode + verifying ops@mingla.app receives the alert
 - [ ] Stripe Dashboard → Webhooks → endpoint metrics page bookmarked
-- [ ] Sentry / equivalent error tracking wired into Mingla Business + edge fns
+- [ ] Sentry / equivalent error tracking wired into Mingla Host + edge fns
 - [ ] On-call rotation / escalation contact list documented
 
 ---

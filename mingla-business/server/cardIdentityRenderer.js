@@ -30,7 +30,7 @@ const isAllowedPublicPoster = (value) => {
     if (url.protocol !== "https:" || hasUserInfo || url.port) return false;
     const host = url.hostname.toLowerCase();
     const bunnyHost = safeText(process.env.BUNNY_STREAM_CDN_HOSTNAME).toLowerCase();
-    return ["usemingla.com", "www.usemingla.com", "business.usemingla.com"].includes(host)
+    return ["usemingla.com", "www.usemingla.com", "host.usemingla.com"].includes(host)
       || host === "images.pexels.com" || host === "i.giphy.com" || host === "media.giphy.com"
       || host === MINGLA_BUNNY_DELIVERY_HOST || (bunnyHost && host === bunnyHost)
       || (host === MINGLA_STORAGE_HOST && url.pathname.startsWith("/storage/v1/object/public/"));

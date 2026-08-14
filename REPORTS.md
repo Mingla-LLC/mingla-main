@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-14 — Mingla Host now replaces the old Business product identity across app, web, splash, links and social destinations while preserving payment, advertising, attribution, notification and native identifiers; the operator web authority moves to host.usemingla.com with disjoint app-link ownership and a guarded one-host retirement plan. (#2050, PR #2065)
 - 2026-08-13 — Explorer and Host now open on distinct video-led welcome screens with the regular Mingla logo, platform-correct sign-in choices, readable copy, reduced-motion fallbacks, and guarded web/native video lifecycles. (#2052, PR #2061)
 - 2026-08-13 — Event and RSVP creators now see a live, metered turnout forecast inside the Business wizard, with one shared intelligence scaffold, resumable full reports, collision-safe real results, and no effect on publishing when intelligence is unavailable. (#1008, PR #2043)
 - 2026-08-13 — Mingla’s release instructions can no longer revive an obsolete global OTA freeze or confuse a built runtime with public reach; CI now requires dated Android/iOS reach truth, an immediate store/EAS re-check, and the existing per-platform, native-delta, served-manifest, and rollback safeguards. (#2028, PR #2033)

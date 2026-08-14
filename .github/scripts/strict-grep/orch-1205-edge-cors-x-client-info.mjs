@@ -6,7 +6,7 @@
  * WHY: supabase-js attaches an `x-client-info` request header on EVERY call
  * (browser + native). A hardcoded inline allow-list that omits it causes the
  * browser CORS preflight (OPTIONS) to be REJECTED with net::ERR_FAILED, silently
- * breaking every fetch from business.usemingla.com to that function (this is the
+ * breaking every fetch from host.usemingla.com to that function (this is the
  * exact ORCH-1205 bug: team/scanner invite list/send/accept/decline + the
  * beta-access lead form all died on web). The shared `_shared/cors.ts` allow-list
  * already includes `x-client-info`; importing it is the correct fix.

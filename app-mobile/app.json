@@ -33,7 +33,7 @@
       },
       "associatedDomains": [
         "applinks:usemingla.com",
-        "applinks:business.usemingla.com",
+        "applinks:host.usemingla.com",
         "applinks:go.usemingla.com"
       ]
     },
@@ -56,26 +56,6 @@
               "scheme": "https",
               "host": "usemingla.com",
               "pathPrefix": "/b"
-            },
-            {
-              "scheme": "https",
-              "host": "business.usemingla.com",
-              "pathPrefix": "/b"
-            },
-            {
-              "scheme": "https",
-              "host": "business.usemingla.com",
-              "pathPrefix": "/t"
-            },
-            {
-              "scheme": "https",
-              "host": "business.usemingla.com",
-              "pathPrefix": "/exp"
-            },
-            {
-              "scheme": "https",
-              "host": "business.usemingla.com",
-              "pathPrefix": "/e"
             },
             {
               "scheme": "https",
@@ -106,6 +86,36 @@
               "scheme": "https",
               "host": "usemingla.com",
               "pathPrefix": "/chat"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPrefix": "/b/"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPrefix": "/e/"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPrefix": "/t/"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPrefix": "/exp/"
             }
           ],
           "category": [
@@ -174,7 +184,18 @@
         "organization": "mingla-llc",
         "project": "react-native"
       }],
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 240,
+          "resizeMode": "contain",
+          "backgroundColor": "#FAFAFA",
+          "dark": {
+            "backgroundColor": "#FAFAFA"
+          }
+        }
+      ],
       "expo-location",
       "expo-camera",
       [

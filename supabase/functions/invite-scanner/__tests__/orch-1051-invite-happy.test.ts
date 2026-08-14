@@ -138,7 +138,7 @@ Deno.test("buildInviteEmail — event scope wires event name + acceptUrl", () =>
     inviterName: "Seth",
     scope: "event",
     acceptUrl:
-      "https://business.usemingla.com/accept-scanner-invitation?token=abc.def",
+      "https://host.usemingla.com/accept-scanner-invitation?token=abc.def",
     from: "Mingla <noreply@usemingla.com>",
   });
   assertEquals(payload.to, ["tunde@example.com"]);
@@ -147,7 +147,7 @@ Deno.test("buildInviteEmail — event scope wires event name + acceptUrl", () =>
   assert(payload.html.includes("Lagos Night"));
   assert(
     payload.html.includes(
-      "https://business.usemingla.com/accept-scanner-invitation?token=abc.def",
+      "https://host.usemingla.com/accept-scanner-invitation?token=abc.def",
     ),
   );
 });
@@ -161,7 +161,7 @@ Deno.test("buildInviteEmail — brand scope wires brand name + acceptUrl", () =>
     inviterName: "Seth",
     scope: "brand",
     acceptUrl:
-      "https://business.usemingla.com/accept-scanner-invitation?token=abc.def",
+      "https://host.usemingla.com/accept-scanner-invitation?token=abc.def",
     from: "Mingla <noreply@usemingla.com>",
   });
   assert(payload.subject.includes("Acme Events"));

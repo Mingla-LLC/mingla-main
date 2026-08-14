@@ -49,7 +49,7 @@ function assert(cond: boolean, msg: string): void {
 // (consent solicited); `false` = SUPPRESSED. ONLY `/links` may be false.
 const ROUTE_TABLE: ReadonlyArray<[string, boolean]> = [
   ['/', true],
-  ['/business', true],
+  ['/host', true],
   ['/download', true],
   ['/privacy-policy', true],
   ['/e/some-brand/some-event', true], // anon buyer event page family

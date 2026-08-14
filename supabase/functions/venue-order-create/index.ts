@@ -389,6 +389,14 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
       ?.payout_hold_cutover_at ?? null) !== null;
   if (movesMoney) {
     if (routing.provider === "paystack") {
+      // #2050: the old native return contract points at the retired Business
+      // hostname. Reject it before any order row or Paystack transaction exists.
+      if (surface === "native" && body.returnContract !== "host_v1") {
+        return jsonResponse(
+          { error: "upgrade_required", requiredReturnContract: "host_v1" },
+          426,
+        );
+      }
       if (!isCutover && !paystackSubaccount) {
         return fail("stripe_account_not_ready", { venue: ctx.venueName });
       }
@@ -620,7 +628,7 @@ serve(wrapEdgeHandler("venue-order-create", async (req) => {
     // the page is never actually fetched there.
     const callbackOrigin = Deno.env.get("BUSINESS_WEB_ORIGIN") ??
       Deno.env.get("MINGLA_PUBLIC_WEB_BASE_URL") ??
-      "https://business.usemingla.com";
+      "https://host.usemingla.com";
     const callbackUrl = `${callbackOrigin}/o/venue/${
       encodeURIComponent(orderId)
     }?bst=${encodeURIComponent(buyerStatusToken)}`;

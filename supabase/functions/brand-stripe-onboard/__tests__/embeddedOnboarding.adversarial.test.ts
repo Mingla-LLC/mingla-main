@@ -79,7 +79,7 @@ async function assertMissingBusinessOriginRejects(
     "BUSINESS_WEB_ORIGIN env var is not set",
   );
   assert(
-    !result.stderr.includes("https://business.usemingla.com"),
+    !result.stderr.includes("https://host.usemingla.com"),
     `${label} must not fall back to the production origin when the secret is missing`,
   );
 }

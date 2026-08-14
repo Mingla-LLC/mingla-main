@@ -4,7 +4,7 @@ const INTERNAL_PROXY_HEADER = 'x-mingla-internal-share-route'
 const DOWNSTREAM_PROXY_HEADER = 'x-mingla-shared-card-proxy'
 const BUSINESS_ORIGIN = process.env.NODE_ENV === 'development' && process.env.SHARED_CARD_BUSINESS_ORIGIN
   ? process.env.SHARED_CARD_BUSINESS_ORIGIN.replace(/\/+$/, '')
-  : 'https://business.usemingla.com'
+  : 'https://host.usemingla.com'
 const SHARE_ID = /^[a-f0-9]{36}$/
 const SHARE_CODE = /^[0-9A-Za-z]{16}$/
 const SHARE_VERSION = /^[1-9][0-9]*$/

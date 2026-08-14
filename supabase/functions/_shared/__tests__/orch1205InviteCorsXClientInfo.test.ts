@@ -5,7 +5,7 @@
 // call. Eight edge functions hardcoded an incomplete allow-list
 // ("authorization, apikey, content-type") that omitted `x-client-info`, so the
 // browser CORS preflight (OPTIONS) was rejected and every fetch from
-// business.usemingla.com to those functions failed with net::ERR_FAILED.
+// host.usemingla.com to those functions failed with net::ERR_FAILED.
 //
 // FIX: each function now serves the shared `_shared/cors.ts` allow-list, which
 // includes `x-client-info` (and `accept-language`).

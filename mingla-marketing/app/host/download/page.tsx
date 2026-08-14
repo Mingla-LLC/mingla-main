@@ -1,5 +1,5 @@
 // ORCH-1326 / ORCH-1381 [business-getapp-android-choice] — the business get-app
-// page (usemingla.com/business/download). This is the landing surface for the
+// page (usemingla.com/host/download). This is the landing surface for the
 // partner-invite email's secondary CTA, whose href is byte-frozen to this route.
 //
 // ORCH-1381 — this route NO LONGER REDIRECTS. It renders an explicit inline
@@ -24,7 +24,7 @@
 //
 // ⚠ THIS ROUTE SELF-ATTRIBUTES, SERVER-SIDE, WITH NO QUERY PARAM — AND MUST.
 // It is the landing surface for the partner-invite email's CTA, whose href is
-// BYTE-FROZEN to exactly `https://usemingla.com/business/download` with NO query
+// BYTE-FROZEN to exactly `https://usemingla.com/host/download` with NO query
 // string (pinned by orch-1329-invite-email.tester.test.ts). So attribution CANNOT
 // ride in on the URL: it is composed here, from this surface's own identity, via
 // siteAttribution('business_download'). NEVER append a query param to the invite
@@ -44,9 +44,9 @@ import { siteAttribution } from '@/lib/links-src'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Get Mingla Business',
+  title: 'Get Mingla Host',
   description:
-    'Get the Mingla Business app on iPhone or Android — or run your dashboard in the browser.',
+    'Get the Mingla Host app on iPhone or Android — or run your dashboard in the browser.',
 }
 
 export default async function BusinessDownloadPage() {
@@ -76,7 +76,7 @@ export default async function BusinessDownloadPage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/brand/mingla-business-logo.png"
-          alt="Mingla Business"
+          alt="Mingla Host"
           className="mx-auto h-24 w-24 select-none"
           draggable={false}
         />

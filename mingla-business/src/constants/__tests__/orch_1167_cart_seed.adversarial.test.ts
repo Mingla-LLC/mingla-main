@@ -28,7 +28,7 @@ jest.mock("expo-constants", () => ({
   default: {
     expoConfig: {
       extra: {
-        EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://business.usemingla.com",
+        EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://host.usemingla.com",
       },
     },
   },

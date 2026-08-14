@@ -15,7 +15,7 @@
 //  - The 4 Ticketmaster events are REAL — fetched live from the Ticketmaster
 //    edge function for Washington DC (real titles, venues, dates, cover-image
 //    CDN URLs, and ticket URLs). source: 'ticketmaster'.
-//  - The 2 Mingla Business events are REPRESENTATIVE samples (the real
+//  - The 2 Mingla Host events are REPRESENTATIVE samples (the real
 //    business events in the DB are test data, not showable). One ("Rooftop
 //    Vinyl Sundays") carries a photo cover; the other ("Lincoln Cottage Jazz
 //    Picnic") has NO cover media on purpose, to SHOWCASE the coverHue striped
@@ -66,7 +66,7 @@ export interface ShowcaseEvent {
   coverHue: number | null
   /** Ticket / event URL (presentational this run — not wired as a live link). */
   ticketUrl: string
-  /** True for Mingla Business events (renders the "On Mingla" ink chip). */
+  /** True for Mingla Host events (renders the "On Mingla" ink chip). */
   onMingla: boolean
   /**
    * Event kind (ORCH-1007 hero-pill sync). Drives the headline pill word
@@ -147,7 +147,7 @@ export const DC_SHOWCASE_EVENTS: readonly ShowcaseEvent[] = [
     kind: 'Party',
   },
 
-  // ---- Mingla Business events (REPRESENTATIVE samples — real DB events are test data) ----
+  // ---- Mingla Host events (REPRESENTATIVE samples — real DB events are test data) ----
   {
     source: 'mingla',
     title: 'Rooftop Vinyl Sundays',

@@ -223,7 +223,7 @@ Deno.test("#1950 AppsFlyer failure is consumed as blocked measurement in all fiv
         targets: [{
           app_key: "business",
           os: "android",
-          display_name: "Mingla Business",
+          display_name: "Mingla Host",
           store_identifier: "com.sethogieva.minglabusiness",
           appsflyer_app_id: "com.sethogieva.minglabusiness",
           onelink_url: "https://biz.usemingla.com/ZSCW",

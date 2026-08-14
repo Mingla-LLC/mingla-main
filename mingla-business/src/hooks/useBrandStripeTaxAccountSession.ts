@@ -12,9 +12,9 @@ import {
  *
  * That page is served ONLY by the mingla-business web export (the SPA
  * catch-all rewrite in `mingla-business/vercel.json`) at
- * `business.usemingla.com`. It does NOT exist on the marketing app at
+ * `host.usemingla.com`. It does NOT exist on the marketing app at
  * `usemingla.com`, which renders a 404 for it. So the base MUST resolve to the
- * canonical Mingla Business web URL — never the marketing apex. (ORCH-1284)
+ * canonical Mingla Host web URL — never the marketing apex. (ORCH-1284)
  *
  * Sourced from `MINGLA_BUSINESS_WEB_URL` (constants/platformUrl.ts), the single
  * source of truth for that domain — do NOT reintroduce bespoke env-var reads or

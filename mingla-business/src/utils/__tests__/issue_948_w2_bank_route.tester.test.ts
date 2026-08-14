@@ -24,7 +24,7 @@ import {
 
 const BRAND_ID = "2b7c8f6a-1111-4a22-8333-123456789abc";
 const USER_ID = "79f45786-2222-4b33-8444-123456789abc";
-const ORIGIN = "https://business.usemingla.com";
+const ORIGIN = "https://host.usemingla.com";
 const ONBOARDING_URL =
   `${ORIGIN}/connect-onboarding?session=acct_session_secret&brand_id=${BRAND_ID}`;
 
@@ -236,12 +236,12 @@ async function mountRoute(): Promise<TestTree> {
 
 describe("#948 W2 tester — hostile onboarding navigation", () => {
   test.each([
-    "http://business.usemingla.com/connect-onboarding?session=x",
+    "http://host.usemingla.com/connect-onboarding?session=x",
     "https://evil.example/connect-onboarding?session=x",
-    "https://business.usemingla.com.evil.example/connect-onboarding?session=x",
-    "https://business.usemingla.com/connect-onboarding-evil?session=x",
-    "https://business.usemingla.com/connect-onboarding",
-    "https://business.usemingla.com/connect-onboarding?session=%20%20",
+    "https://host.usemingla.com.evil.example/connect-onboarding?session=x",
+    "https://host.usemingla.com/connect-onboarding-evil?session=x",
+    "https://host.usemingla.com/connect-onboarding",
+    "https://host.usemingla.com/connect-onboarding?session=%20%20",
     "not a URL",
   ])("rejects %p before browser assignment", async (onboardingUrl) => {
     const assign = jest.fn();
@@ -452,7 +452,7 @@ describe("#948 W2 tester — rendered route failures and races", () => {
     tree = await mountRoute();
     expect(
       tree.root.findByProps({
-        accessibilityLabel: "Open Mingla Business Terms",
+        accessibilityLabel: "Open Mingla Host Terms",
       }).props.accessibilityRole,
     ).toBe("link");
     expect(

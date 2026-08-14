@@ -4,7 +4,7 @@
 //
 // WHY THIS MODULE EXISTS. Before ORCH-1381 the ternary
 // `platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL` was copy-pasted
-// across FIVE call sites (nav, hero, /links, /business/download, and the native
+// across FIVE call sites (nav, hero, /links, /host/download, and the native
 // success screen). That triplication IS the bug class: when the business Play
 // listing went live (2026-07-15, production versionCode 33 / 1.1.2 — COMMS-0101),
 // four surfaces silently stayed stale and every Android owner was denied the app.
@@ -32,7 +32,7 @@
 //    exact bug ORCH-1381 killed (guarded by the fails-on-revert test T-1 and the
 //    orch-1381 strict-grep gate).
 //
-// React-free and pure, so it is importable by the /business/download Server
+// React-free and pure, so it is importable by the /host/download Server
 // Component, the three Client Components, and a plain tsc+node test alike.
 
 import type { Platform } from './device-platform'

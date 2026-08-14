@@ -29,7 +29,7 @@ import {
   resolveStripeMode,
 } from "../_shared/stripeMode.ts";
 
-// CORS: business.usemingla.com (prod), *.vercel.app (Vercel previews), and
+// CORS: host.usemingla.com (prod), *.vercel.app (Vercel previews), and
 // localhost during dev. Matches the pattern used by other public edge fns
 // (e.g. check-launch-city). Echo the request Origin when it matches so that
 // authenticated browsers honor the Set-Cookie path the handshake uses.

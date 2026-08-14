@@ -4,7 +4,7 @@
  *
  * WHY THIS MODULE EXISTS (the class, not the instance).
  * `next` is ATTACKER-CONTROLLABLE: anyone can mail
- * `https://business.usemingla.com/auth?next=https://evil.example/phish`. A naive
+ * `https://host.usemingla.com/auth?next=https://evil.example/phish`. A naive
  * `router.replace(next)` is a CLASSIC OPEN REDIRECT — on the very domain we are
  * training users to trust with an auth flow, at the exact moment they are primed
  * to type a credential. That is the worst possible place to have one.

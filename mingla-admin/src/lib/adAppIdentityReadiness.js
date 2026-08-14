@@ -1,7 +1,7 @@
 export const FRESHNESS_MS = 15 * 60 * 1000;
 export const APP_IDENTITY_PRESENTATION = {
   explorer: { label: "Mingla Explorer", shortLabel: "Explorer", username: "usemingla", tiktokType: "TT_USER" },
-  business: { label: "Mingla Business", shortLabel: "Business", username: "minglahost", tiktokType: "BC_AUTH_TT" },
+  business: { label: "Mingla Host", shortLabel: "Business", username: "minglahost", tiktokType: "BC_AUTH_TT" },
 };
 export const IDENTITY_PROVIDERS = ["meta", "tiktok"];
 

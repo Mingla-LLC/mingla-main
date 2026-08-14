@@ -460,7 +460,7 @@ Deno.test("ISSUE-1184 adversarial: Retry-After parsing is clamped to [1,60]", ()
 
 // ── 6. Destination integrity — only page-type + slugs, never a client URL ────
 Deno.test("ISSUE-1184 adversarial: destination resolver rejects non-public and arbitrary URLs", async () => {
-  Deno.env.set("BUSINESS_WEB_ORIGIN", "https://business.usemingla.com");
+  Deno.env.set("BUSINESS_WEB_ORIGIN", "https://host.usemingla.com");
   const db = (
     result: {
       data?: Record<string, unknown> | null;
@@ -578,7 +578,7 @@ Deno.test("ISSUE-1184 adversarial: destination resolver rejects non-public and a
     db({ data: { id: "b1", slug: "a" } }),
     { page_type: "brand", brand_slug: "a" },
   );
-  assertEquals(resolved.canonical_url, "https://business.usemingla.com/b/a");
+  assertEquals(resolved.canonical_url, "https://host.usemingla.com/b/a");
   assertEquals(resolved.entity_slug, null);
   assert(!resolved.canonical_url.includes("attacker"));
 });

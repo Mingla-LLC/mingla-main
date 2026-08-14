@@ -65,6 +65,7 @@ import {
   paystackChannelsForCountry,
   resolveProviderRouting,
 } from "../_shared/paymentProvider.ts";
+import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
@@ -125,7 +126,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       Object.keys(body).some((key) => ![
         "venueId", "brandId", "surface", "reservedForUtc", "partySize",
         "buyer", "occasion", "guestNotes", "attributionClickId",
-        "organicJourneyToken",
+        "organicJourneyToken", "returnContract",
       ].includes(key))) {
     return jsonResponse({ error: "reservation_payload_invalid" }, 400);
   }
@@ -576,6 +577,14 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
 
   // ── PAYSTACK ARM (NG) — same provider-neutral reuse as ticket-checkout. ──────
   if (providerRouting.provider === "paystack") {
+    // #2050: stop old native clients before a reservation session or Paystack
+    // transaction is created. Web keeps its server-owned Host return URL.
+    if (surface === "native" && body.returnContract !== "host_v1") {
+      return jsonResponse(
+        { error: "upgrade_required", requiredReturnContract: "host_v1" },
+        426,
+      );
+    }
     const psCurrency = (providerRouting.currency || "NGN").toUpperCase();
     if (psCurrency !== "NGN") {
       return jsonResponse(
@@ -686,9 +695,9 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       })
       .eq("id", sessionId);
 
-    const callbackBase = Deno.env.get("PAYSTACK_CALLBACK_BASE") ??
-      "https://business.usemingla.com/pay/callback";
-    const callbackUrl = `${callbackBase}?rcs=${
+    const callbackUrl = `${PRODUCTION_BUSINESS_WEB_ORIGIN}/reserve/${
+      encodeURIComponent(brandId)
+    }/confirm?rcs=${
       encodeURIComponent(sessionId)
     }&bst=${encodeURIComponent(buyerStatusToken)}`;
 
@@ -735,6 +744,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       reservationDraftId: sessionId,
       buyerStatusToken,
       authorizationUrl: psInit.authorization_url,
+      returnUrl: callbackUrl,
       reference: psInit.reference,
       totalCents: psBuyerTotalCents,
       currency: "NGN",

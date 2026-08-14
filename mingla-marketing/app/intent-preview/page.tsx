@@ -98,8 +98,8 @@ export default function IntentPreviewPage() {
         </section>
 
         {/* Event cards — the THIRD marketing card type (ORCH-1007 §E.1–E.11).
-            All 6 DC showcase events: 4 real Ticketmaster events + 2 Mingla
-            Business samples (one photo cover, one coverHue striped fallback).
+            All 6 DC showcase events: 4 real Ticketmaster events + 2 Mingla Host
+            samples (one photo cover, one coverHue striped fallback).
             Rendered statically (like the intent grid) for the "let's see" pass. */}
         <section
           aria-label="Event card previews"

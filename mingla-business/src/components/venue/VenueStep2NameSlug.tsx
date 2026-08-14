@@ -183,7 +183,7 @@ export const VenueStep2NameSlug: React.FC<VenueStep2NameSlugProps> = ({
                 /b/{brandSlug}/v/{venueSlug} (D-2), not the pre-1255 /b/{slug}.
                 Degrade to the bare /b/ prefix only if the brand slug is
                 unavailable (the wizard is brand-scoped, so it never is). */}
-            business.usemingla.com/b/
+            host.usemingla.com/b/
             {brandSlug != null && brandSlug.length > 0 ? `${brandSlug}/v/` : ""}
             <Text style={styles.urlSlug}>{slug}</Text>
           </Text>

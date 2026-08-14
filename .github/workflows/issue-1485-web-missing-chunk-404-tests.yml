@@ -37,7 +37,7 @@ name: "Issue #1485 web missing chunk 404"
 # WHAT THIS GATE DOES *NOT* PROVE. It cannot prove the DEPLOYED behaviour. Vercel
 # compiles `rewrites` at build time; CI only pins the source string and the regex
 # it is known to compile to. The deployed truth (SC-1…SC-6) is captured by the
-# tester with raw `curl -sSI` against https://business.usemingla.com AFTER the
+# tester with raw `curl -sSI` against https://host.usemingla.com AFTER the
 # production build reaches READY and takes the alias.
 #
 # EXPLICIT registry (never a glob) — add a guarded path by appending it below.

@@ -2,7 +2,7 @@
  * ORCH-1190 R2 BUG-2 — venue empty-state FULL-WIDTH web render-proof
  * (implementor happy-path).
  *
- * THE BUG (Seth, business.usemingla.com): the Reservations, Waitlist and Menu
+ * THE BUG (Seth, host.usemingla.com): the Reservations, Waitlist and Menu
  * venue-suite modules rendered a NARROW, CENTERED card on the wide web shell
  * while Tables and Settings spanned the full workspace width. Root cause: those
  * three modules were showing their EMPTY STATE (no reservations / nobody waiting

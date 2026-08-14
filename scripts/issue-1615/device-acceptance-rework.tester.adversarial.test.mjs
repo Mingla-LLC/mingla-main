@@ -139,7 +139,7 @@ test('TA2 the protected historical /p handler emits crawler-truthful portrait HT
       '>Monday<',
       '>8 AM–9 PM<',
     ]) assert.ok(html.includes(token), token);
-    assert.doesNotMatch(html, /<pre>|&quot;(?:open|close|hour|minute)&quot;|<strong>mingla<|Mingla Business/);
+    assert.doesNotMatch(html, /<pre>|&quot;(?:open|close|hour|minute)&quot;|<strong>mingla<|Mingla Host/);
     assert.doesNotMatch(html, /Yonder <Coffee>/);
   });
 });
@@ -189,7 +189,7 @@ test('TA4 covered /s HTML stays portrait for all eight kinds and coverless /p em
     assert.match(html, /property="og:image:height" content="1350"/);
     assert.match(html, /property="og:image:alt"/);
     assert.match(html, /name="twitter:image:alt"/);
-    assert.doesNotMatch(html, /Mingla Business|<strong>mingla<|>mingla</i);
+    assert.doesNotMatch(html, /Mingla Host|<strong>mingla<|>mingla</i);
   }
 
   const shareId = 'c'.repeat(36);

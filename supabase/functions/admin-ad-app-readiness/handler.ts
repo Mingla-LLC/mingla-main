@@ -55,7 +55,7 @@ const CANONICAL_TARGETS: Record<string, TargetRow> = {
   "business:ios": {
     app_key: "business",
     os: "ios",
-    display_name: "Mingla Business",
+    display_name: "Mingla Host",
     store_identifier: "6768737367",
     appsflyer_app_id: "id6768737367",
     onelink_url: "https://biz.usemingla.com/ZSCW",
@@ -64,7 +64,7 @@ const CANONICAL_TARGETS: Record<string, TargetRow> = {
   "business:android": {
     app_key: "business",
     os: "android",
-    display_name: "Mingla Business",
+    display_name: "Mingla Host",
     store_identifier: "com.sethogieva.minglabusiness",
     appsflyer_app_id: "com.sethogieva.minglabusiness",
     onelink_url: "https://biz.usemingla.com/ZSCW",

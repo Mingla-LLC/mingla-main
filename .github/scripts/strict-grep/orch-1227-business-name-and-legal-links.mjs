@@ -7,7 +7,7 @@
  *  (1) Apple rejected the build with ITMS-90129 because the app's
  *      CFBundleDisplayName/CFBundleName resolved to the generic "Business"
  *      ("bundle name/display name already taken"). The fix renames the Expo
- *      top-level `name` to "Mingla Business". A revert back to the bare
+ *      top-level `name` to "Mingla Host". A revert back to the bare
  *      "Business" must FAIL CI.
  *  (2) the login footer legal links pointed at a DEAD domain
  *      (https://mingla.app/terms, https://mingla.app/privacy — both 000). The
@@ -16,7 +16,7 @@
  *
  * ASSERTS:
  *  A. mingla-business/app.json — the Expo top-level `name` is exactly
- *     "Mingla Business" (and is NOT the bare "Business").
+ *     "Mingla Host" (and is NOT the bare "Business").
  *  B. BusinessWelcomeScreen.tsx — TERMS_URL = the usemingla.com terms-of-service
  *     URL and PRIVACY_URL = the usemingla.com privacy-policy URL, and the dead
  *     mingla.app/terms + mingla.app/privacy strings are GONE.
@@ -33,13 +33,13 @@ const WELCOME = path.join(
   "mingla-business/src/components/auth/BusinessWelcomeScreen.tsx",
 );
 
-const EXPECTED_NAME = "Mingla Business";
+const EXPECTED_NAME = "Mingla Host";
 const TERMS_URL = "https://usemingla.com/terms-of-service";
 const PRIVACY_URL = "https://usemingla.com/privacy-policy";
 const DEAD_TERMS = "https://mingla.app/terms";
 const DEAD_PRIVACY = "https://mingla.app/privacy";
 
-// FIX 1 — app.json top-level Expo name must be "Mingla Business".
+// FIX 1 — app.json top-level Expo name must be "Mingla Host".
 function checkAppJson(appJsonSrc, failures) {
   let parsed;
   try {
@@ -88,7 +88,7 @@ if (process.argv.includes("--self-test")) {
   const self = [];
 
   const goodAppJson = JSON.stringify({
-    expo: { name: "Mingla Business", slug: "mingla-business" },
+    expo: { name: "Mingla Host", slug: "mingla-business" },
   });
   const goodWelcome = `
 const TERMS_URL = "https://usemingla.com/terms-of-service";
@@ -104,7 +104,7 @@ const PRIVACY_URL = "https://usemingla.com/privacy-policy";
   if (f.length) self.push("good welcome wrongly flagged: " + f.join("; "));
 
   // Revert A: app.json name back to the bare "Business".
-  const revertName = goodAppJson.replace('"Mingla Business"', '"Business"');
+  const revertName = goodAppJson.replace('"Mingla Host"', '"Business"');
   f = [];
   checkAppJson(revertName, f);
   if (f.length === 0) self.push("reverting app.json name to \"Business\" was not flagged");
@@ -151,5 +151,5 @@ if (failures.length > 0) {
 }
 console.log(
   "ORCH-1227 I-PROPOSED-1227-BUSINESS-NAME-AND-LEGAL-LINKS PASS — app name is " +
-    '"Mingla Business" and login legal links point at the live usemingla.com pages.',
+    '"Mingla Host" and login legal links point at the live usemingla.com pages.',
 );

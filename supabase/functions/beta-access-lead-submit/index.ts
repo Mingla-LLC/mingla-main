@@ -233,21 +233,21 @@ export function buildNotifyEmail(
 // ORCH-1056 — lead-facing welcome email. Pure → testable. Static marketing copy
 // only (no user-controlled field is interpolated into the HTML/text → no
 // injection surface, Constitution #9 — no fabricated data). Confirms the lead is
-// on the beta list, points them at the LIVE web app (business.usemingla.com),
+// on the beta list, points them at the LIVE web app (host.usemingla.com),
 // flags the mobile app as in-the-works, and previews capabilities incl. Ari.
 export function buildWelcomeEmail(
   lead: ValidatedLead,
   from: string,
 ): { from: string; to: string[]; subject: string; html: string; text: string } {
-  const BUSINESS_URL = "https://business.usemingla.com";
+  const BUSINESS_URL = "https://host.usemingla.com";
 
   const html =
     `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.55;color:#0e0e10;max-width:560px;">
   <h1 style="margin:0 0 12px;font-size:22px;">You're on the list.</h1>
-  <p style="margin:0 0 16px;">Thanks for joining the Mingla Business beta. Your place deserves to be found — and you don't have to wait.</p>
+  <p style="margin:0 0 16px;">Thanks for joining the Mingla Host beta. Your place deserves to be found — and you don't have to wait.</p>
   <p style="margin:0 0 8px;font-weight:600;">Start now, on the web:</p>
-  <p style="margin:0 0 16px;"><a href="${BUSINESS_URL}" style="display:inline-block;background:#eb7825;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:14px;">Open Mingla Business →</a></p>
-  <p style="margin:0 0 20px;color:#6b7280;font-size:13px;">That link (business.usemingla.com) is our web app. The mobile app is in the works — we'll email you the moment it lands.</p>
+  <p style="margin:0 0 16px;"><a href="${BUSINESS_URL}" style="display:inline-block;background:#eb7825;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:14px;">Open Mingla Host →</a></p>
+  <p style="margin:0 0 20px;color:#6b7280;font-size:13px;">That link (host.usemingla.com) is our web app. The mobile app is in the works — we'll email you the moment it lands.</p>
   <h2 style="margin:0 0 8px;font-size:16px;">What you can do today</h2>
   <ul style="margin:0 0 20px;padding-left:20px;">
     <li>Create and publish events, trips, and experiences</li>
@@ -268,7 +268,7 @@ export function buildWelcomeEmail(
   const text = [
     "You're on the list.",
     "",
-    "Thanks for joining the Mingla Business beta. Your place deserves to be found — and you don't have to wait.",
+    "Thanks for joining the Mingla Host beta. Your place deserves to be found — and you don't have to wait.",
     "",
     `Start now, on the web: ${BUSINESS_URL}`,
     "That link is our web app. The mobile app is in the works — we'll email you the moment it lands.",
@@ -292,7 +292,7 @@ export function buildWelcomeEmail(
   return {
     from,
     to: [lead.email],
-    subject: "You're on the list — start with Mingla Business on the web",
+    subject: "You're on the list — start with Mingla Host on the web",
     html,
     text,
   };

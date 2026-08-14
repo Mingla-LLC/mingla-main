@@ -190,7 +190,7 @@ export const attendanceClaimUrls = (input: {
     token: input.token,
   }).toString();
   return {
-    webClaimUrl: `https://business.usemingla.com/attendance/claim#${fragment}`,
+    webClaimUrl: `https://host.usemingla.com/attendance/claim#${fragment}`,
     appClaimUrl: `com.mingla.app.v2://attendance-claim#${fragment}`,
   };
 };

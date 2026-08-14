@@ -8,7 +8,7 @@
  *      `/b/{brandSlug}/v/{venueSlug}` — the per-venue route, never the brand
  *      page (the dead-code button in VenueListingContent pushed `/b/{slug}`);
  *   3. on web it opens EXACTLY
- *      `https://business.usemingla.com/b/{brandSlug}/v/{venueSlug}` through the
+ *      `https://host.usemingla.com/b/{brandSlug}/v/{venueSlug}` through the
  *      single-owner `openExternal` (never an inline
  *      `window.open(…, "noopener")` re-roll, which returns null even on
  *      success — ORCH-1381/1382);
@@ -49,7 +49,7 @@ jest.mock("expo-constants", () => ({
   default: {
     expoConfig: {
       extra: {
-        EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://business.usemingla.com",
+        EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://host.usemingla.com",
       },
     },
   },
@@ -448,7 +448,7 @@ describe("#1483 — venue page header + public-page actions", () => {
 
     expect(openExternalMock).toHaveBeenCalledTimes(1);
     expect(openExternalMock).toHaveBeenCalledWith(
-      "https://business.usemingla.com/b/smokerhythm/v/academystreetbistro",
+      "https://host.usemingla.com/b/smokerhythm/v/academystreetbistro",
     );
     expect(routerPush).not.toHaveBeenCalled();
 
@@ -475,7 +475,7 @@ describe("#1483 — venue page header + public-page actions", () => {
     const share = tree.root.findAll((node) => node.type === "ShareModalMock");
     expect(share).toHaveLength(1);
     expect(share[0].props.url).toBe(
-      "https://business.usemingla.com/b/smokerhythm/v/academystreetbistro",
+      "https://host.usemingla.com/b/smokerhythm/v/academystreetbistro",
     );
     expect(share[0].props.title).toBe("Academy Street Bistro");
 

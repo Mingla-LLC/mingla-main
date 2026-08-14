@@ -100,7 +100,7 @@ export default function BusinessLandingScreen({ onGetStarted, onSignIn }: Busine
           />
 
           <Text style={styles.kicker}>For experience creators</Text>
-          <Text style={styles.title}>Mingla Business</Text>
+          <Text style={styles.title}>Mingla Host</Text>
           <Text style={styles.subtitle}>
             List experiences, reach the right guests, and manage your presence — all in one place.
           </Text>

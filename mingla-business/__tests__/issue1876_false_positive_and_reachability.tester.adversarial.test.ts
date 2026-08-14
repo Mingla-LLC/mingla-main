@@ -263,7 +263,7 @@ function bootWithCooldownSpent(): Harness {
       listeners.set(type, existing);
     },
     document: doc,
-    location: { reload, replace: jest.fn(), assign: jest.fn(), href: "https://business.usemingla.com/checkout/abc" },
+    location: { reload, replace: jest.fn(), assign: jest.fn(), href: "https://host.usemingla.com/checkout/abc" },
     sessionStorage: {
       getItem: (key: string): string | null => store.get(key) ?? null,
       setItem: (key: string, value: string): void => void store.set(key, value),

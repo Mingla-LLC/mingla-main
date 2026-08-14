@@ -33,7 +33,7 @@ import { join } from "node:path";
 
 const BRAND_ID = "2b7c8f6a-1111-4a22-8333-123456789abc";
 const USER_ID = "79f45786-2222-4b33-8444-123456789abc";
-const ORIGIN = "https://business.usemingla.com";
+const ORIGIN = "https://host.usemingla.com";
 const BUSINESS_INVITE_CTA_URL =
   "https://biz.usemingla.com/ZSCW?pid=business_web&c=brand_invite_accept";
 
@@ -318,7 +318,7 @@ describe("#948 W4 render — invite bank screen Skip + Back-hide", () => {
     // The reused CTA renders and, when fired, opens exactly the one OneLink.
     expect(count(tree, "bank-connect-skip-download")).toBe(1);
     await pressOnly(tree, {
-      accessibilityLabel: "Download the Mingla Business app",
+      accessibilityLabel: "Download the Mingla Host app",
     });
     expect(mockedOpenExternal).toHaveBeenCalledTimes(1);
     expect(mockedOpenExternal).toHaveBeenCalledWith(BUSINESS_INVITE_CTA_URL);

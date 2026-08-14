@@ -181,7 +181,7 @@ export function singlePrintRequest(
  * `servingVenueSlug` — not the physical home's — is what makes a room QR open
  * the kitchen's menu.
  */
-export const BUSINESS_WEB_ORIGIN = "https://business.usemingla.com";
+export const BUSINESS_WEB_ORIGIN = "https://host.usemingla.com";
 
 export function spotScanUrl(input: {
   brandSlug: string;

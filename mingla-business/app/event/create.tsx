@@ -295,12 +295,12 @@ const terminalCopy: Record<
   },
   no_brand: {
     title: "Create or select a brand before starting an event.",
-    body: "Use desktop or the Mingla Business app if brand setup is not available on this phone browser.",
+    body: "Use desktop or the Mingla Host app if brand setup is not available on this phone browser.",
     primaryLabel: "Try again",
   },
   draft_hydration_timeout: {
     title: "This browser cannot save drafts right now.",
-    body: "Refresh, use desktop, or use the Mingla Business app before creating this listing.",
+    body: "Refresh, use desktop, or use the Mingla Host app before creating this listing.",
     primaryLabel: "Try again",
   },
 };

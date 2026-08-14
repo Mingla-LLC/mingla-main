@@ -98,7 +98,7 @@ const ANALYTICS_SURFACE = "consumer_native";
  * one. Exit condition: the shared `publicVenueUrls` module lands and every
  * consumer share surface adopts it together.
  */
-const BUYER_WEB_ORIGIN = "https://business.usemingla.com";
+const BUYER_WEB_ORIGIN = "https://host.usemingla.com";
 
 /**
  * Issue #1793 (#1767 Phase 4) — the ordering RENDERERS, behind a lazy boundary

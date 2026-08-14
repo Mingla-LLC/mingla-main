@@ -2,7 +2,7 @@
  * /accept-scanner-invitation — landing route for scanner-invite links
  * (ORCH-1051).
  *
- * URL: https://business.usemingla.com/accept-scanner-invitation?token=<raw>
+ * URL: https://host.usemingla.com/accept-scanner-invitation?token=<raw>
  *
  * Flow:
  *   1. Read `token` from the URL.

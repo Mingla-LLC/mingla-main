@@ -1,5 +1,5 @@
 /**
- * brandMinglaToSService — Mingla Business platform ToS acceptance surface.
+ * brandMinglaToSService — Mingla Host platform ToS acceptance surface.
  *
  * Per B2a Path C V3 SPEC §6 + I-PROPOSED-U.
  *

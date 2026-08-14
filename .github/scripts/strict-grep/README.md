@@ -1,7 +1,7 @@
-# Strict-Grep Hardening Registry — Mingla Business
+# Strict-Grep Hardening Registry — Mingla Host
 
 This directory holds the modular CI gate scripts that enforce Mingla
-Business invariants. Each script enforces ONE invariant.
+Host invariants. Each script enforces ONE invariant.
 
 ## 🔴 `MANIFEST.json` is the single source of truth (ORCH-1383)
 

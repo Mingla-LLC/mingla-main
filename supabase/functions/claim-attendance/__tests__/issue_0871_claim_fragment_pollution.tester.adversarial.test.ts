@@ -18,7 +18,7 @@ const exactFragment = new URLSearchParams({
   source: sourceId,
   token,
 }).toString();
-const webPrefix = "https://business.usemingla.com/attendance/claim#";
+const webPrefix = "https://host.usemingla.com/attendance/claim#";
 const nativePrefix = "com.mingla.app.v2://attendance-claim#";
 
 const assertRejectedEverywhere = (fragment: string): void => {
@@ -70,7 +70,7 @@ Deno.test("#871 TESTER: missing, unknown, and query-carried bearers fail closed"
   assertRejectedEverywhere(exactFragment.replace(`token=${token}`, `token=${token.slice(1)}`));
   assertEquals(
     parseAttendanceClaimUrl(
-      `https://business.usemingla.com/attendance/claim?${exactFragment}`,
+      `https://host.usemingla.com/attendance/claim?${exactFragment}`,
     ),
     null,
   );

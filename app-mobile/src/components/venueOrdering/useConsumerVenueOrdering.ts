@@ -70,7 +70,7 @@ const RETURN_URL = `${URL_SCHEME}://stripe-redirect`;
  * the instant the guest is sent back and the page itself is never fetched on
  * native. The webhook remains the truth; the poll below is what waits for it.
  */
-const NG_RETURN_PREFIX = "https://business.usemingla.com/o/venue/";
+const NG_RETURN_PREFIX = "https://host.usemingla.com/o/venue/";
 const STATUS_POLL_INTERVAL_MS = 4000;
 const SETTLE_POLL_INTERVAL_MS = 1500;
 const SETTLE_POLL_MAX_ATTEMPTS = 17;

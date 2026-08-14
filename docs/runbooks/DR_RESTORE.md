@@ -44,7 +44,7 @@
 
 ### 1. Declare and freeze (T0)
 
-1. Post: *"Mingla Business DB restore started — writes paused."*
+1. Post: *"Mingla Host DB restore started — writes paused."*
 2. Stop deploys and cron (marketing send, Ari batch jobs).
 3. Record **T0** = wall-clock UTC when decision to restore is made.
 

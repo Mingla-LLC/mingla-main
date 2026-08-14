@@ -32,7 +32,7 @@ async function notifyBrand(
   let count = 0;
   // ORCH-0785: opt into Mingla brand shell for the email path.
   const emailCta = input.emailCta ?? {
-    label: "Resolve in Mingla Business",
+    label: "Resolve in Mingla Host",
     url: `https://usemingla.com/business`,
   };
   for (let i = 0; i < userIds.length; i += 1) {

@@ -382,7 +382,7 @@ export async function handler(req: Request): Promise<Response> {
     // a fallback so its deletion is safely decoupled (same digest, audited).
     const businessOrigin = Deno.env.get("BUSINESS_WEB_ORIGIN") ??
       Deno.env.get("MINGLA_BUSINESS_WEB_URL") ??
-      "https://business.usemingla.com";
+      "https://host.usemingla.com";
     const acceptUrl = `${
       businessOrigin.replace(/\/+$/, "")
     }/accept-scanner-invitation?token=${encodeURIComponent(token)}`;

@@ -44,7 +44,7 @@ const APP_CONTRACTS = {
     package: "com.mingla.app.v2",
     associatedDomains: [
       "applinks:usemingla.com",
-      "applinks:business.usemingla.com",
+      "applinks:host.usemingla.com",
       "applinks:go.usemingla.com",
     ],
     customPlugins: [
@@ -59,13 +59,13 @@ const APP_CONTRACTS = {
     },
   },
   "mingla-business": {
-    name: "Mingla Business",
+    name: "Mingla Host",
     slug: "mingla-business",
     scheme: "mingla-business",
     bundleIdentifier: "com.sethogieva.minglabusiness",
     package: "com.sethogieva.minglabusiness",
     associatedDomains: [
-      "applinks:business.usemingla.com",
+      "applinks:host.usemingla.com",
       "applinks:biz.usemingla.com",
     ],
     customPlugins: [

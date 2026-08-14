@@ -1,5 +1,5 @@
 /**
- * Mixpanel integration for Mingla Business (ORCH-0808-FOLLOWUP).
+ * Mixpanel integration for Mingla Host (ORCH-0808-FOLLOWUP).
  *
  * Mirrors the consumer-side service shape (app-mobile/src/services/mixpanelService.ts)
  * but slimmed to the core surface — business-specific tracking helpers will be

@@ -6,7 +6,7 @@ import { cn } from '@/lib/cn'
 //
 // Wraps a section in data-theme="dark" + the --bg-spotlight night-canvas,
 // restoring the consumer hero's dark surface inside the otherwise-light
-// /business page. Used by the two "argument" crescendos: Comparison
+// /host page. Used by the two "argument" crescendos: Comparison
 // (optional) + CTA (required). data-theme="dark" flips every theme-aware
 // token (text, glass, dividers) back to the dark recipe for descendants,
 // so glass-strong cards and white text read correctly without per-element

@@ -97,7 +97,7 @@ import type { VenueCategory } from "@mingla/brand-rendering/venueCategoryProfile
 
 // `src/constants/platformUrl.ts` throws at module load without this — the same
 // production canonical every other suite pins (publicUrls.test.ts et al).
-process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL = "https://business.usemingla.com";
+process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL = "https://host.usemingla.com";
 
 // ---------------------------------------------------------------------------
 // Harness plumbing

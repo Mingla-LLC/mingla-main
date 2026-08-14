@@ -58,7 +58,7 @@ export function rsvpRecoveryUrl(
     entity: entityId,
     token,
   }).toString();
-  return `https://business.usemingla.com/rsvp/pass#${fragment}`;
+  return `https://host.usemingla.com/rsvp/pass#${fragment}`;
 }
 
 export function constantTimeHexEqual(left: string, right: string): boolean {

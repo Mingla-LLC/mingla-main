@@ -294,7 +294,7 @@ const Step1Warn: React.FC<Step1WarnProps> = ({
     <View style={styles.warnIconWrap}>
       <Icon name="trash" size={48} color={accent.warm} />
     </View>
-    <Text style={styles.warnTitle}>Delete your Mingla Business account?</Text>
+    <Text style={styles.warnTitle}>Delete your Mingla Host account?</Text>
     <Text style={styles.warnBody}>
       You'll lose access to all your brands, events, ticket data, team
       memberships, and history. You have 30 days to recover by signing in

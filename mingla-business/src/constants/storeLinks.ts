@@ -91,7 +91,7 @@ export const BUSINESS_INVITE_ONELINK_URL = "https://biz.usemingla.com/ZSCW";
  *
  * #1050 — the Business app's OneLink host is `biz.` (its OWN vouching domain);
  * `go.usemingla.com` is CONSUMER-only. Registering `go.` here (or declaring it
- * in app.json) re-breaks `business.usemingla.com` App Link verification on
+ * in app.json) re-breaks `host.usemingla.com` App Link verification on
  * Android <=11 (the all-or-nothing verifier fails the whole autoVerify set when
  * a declared host has no Digital Asset Links statement for the Business package).
  *
