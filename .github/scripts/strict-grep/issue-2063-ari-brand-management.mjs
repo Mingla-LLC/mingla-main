@@ -11,6 +11,9 @@ const PATHS = Object.freeze({
   auth: "supabase/functions/_shared/agentToolAuthorization.ts",
   prompt: "supabase/functions/_shared/agentSystemPrompt.ts",
   card: "mingla-business/src/components/ari/ToolProposalCard.tsx",
+  edit: "mingla-business/src/components/ari/ToolEditForm.tsx",
+  confirmHook: "mingla-business/src/hooks/useConfirmPendingAction.ts",
+  chat: "supabase/functions/agent-chat/index.ts",
   ledger: "docs/contracts/ari-capability-ledger.json",
   test: "supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.test.ts",
   pgTest: "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql",
@@ -30,6 +33,9 @@ function audit(overrides = {}) {
   const auth = overrides.auth ?? read(PATHS.auth);
   const prompt = overrides.prompt ?? read(PATHS.prompt);
   const card = overrides.card ?? read(PATHS.card);
+  const edit = overrides.edit ?? read(PATHS.edit);
+  const confirmHook = overrides.confirmHook ?? read(PATHS.confirmHook);
+  const chat = overrides.chat ?? read(PATHS.chat);
   const ledger = overrides.ledger ?? JSON.parse(read(PATHS.ledger));
   const brandExecutorStart = tools.indexOf("async function executeBrandOperation(");
   const brandExecutorEnd = tools.indexOf("// Legacy append-only source-test marker: const createBrand", brandExecutorStart);
@@ -63,6 +69,18 @@ function audit(overrides = {}) {
   requireText(failures, migration, "d.end_at > statement_timestamp()", "delete guard lost canonical end-time test");
   requireText(failures, migration, "brand_name_confirmation_mismatch", "delete lost server-side typed confirmation");
   requireText(failures, migration, "v_venue_brand_id IS DISTINCT FROM v_brand_id", "hours lost venue-brand binding");
+  if (migration.includes("(item ->> 'open_time')::time >= (item ->> 'close_time')::time")) {
+    failures.push("overnight hours rejected");
+  }
+  requireText(
+    failures,
+    migration,
+    "RAISE EXCEPTION 'expected_state_version_required'",
+    "currency write accepts a missing expected version",
+  );
+  if (/SELECT COALESCE\([\s\S]*?discovery_currency_state_version[\s\S]*?INTO v_expected_version/.test(migration)) {
+    failures.push("currency write falls back to live state");
+  }
   requireText(failures, migration, "biz_role_rank('finance_manager'::text)", "currency lost finance role floor");
   requireText(failures, migration, "REVOKE ALL ON FUNCTION public.ari_execute_brand_operation", "brand wrapper grants are not fail closed");
 
@@ -85,6 +103,18 @@ function audit(overrides = {}) {
   requireText(failures, tools, '"ari_execute_brand_operation"', "executors bypass atomic brand wrapper");
   requireText(failures, tools, 'name: "list_brand_audit_log"', "missing audit read tool");
   requireText(failures, tools, '.from("audit_log")', "audit tool bypasses canonical audit table");
+  requireText(failures, tools, '.order("id", { ascending: false })', "audit order lacks stable id tie-breaker");
+  requireText(failures, tools, "created_at.eq", "audit cursor loses tied timestamps");
+  requireText(failures, tools, "id.lt", "audit cursor loses tied row ids");
+  requireText(failures, tools, 'if (args.action === "get_state") {', "currency state read action missing");
+  requireText(failures, tools, '"issue_1384_brand_currency_state"', "currency state read bypasses canonical owner");
+  requireText(failures, chat, "isReadOnlyAgentToolCall(tool.name, gemini.toolCall.args)", "currency state read can become a pending mutation");
+  requireText(
+    failures,
+    chat,
+    "gemini.toolCall.args = await bindAgentProposalState(",
+    "currency state version is not bound into the persisted proposal",
+  );
   requireText(failures, tools, '"list_brand_audit_log"', "audit read is not registered");
   requireText(failures, prompt, "- list_brand_audit_log —", "prompt missing audit read");
 
@@ -99,6 +129,32 @@ function audit(overrides = {}) {
   ]) requireText(failures, auth, declaration, `authorization drift: ${declaration}`);
 
   requireText(failures, card, "confirm_phrase: typedName.trim()", "typed brand name not sent to executor");
+  requireText(failures, card, 'toolName === "manage_brand_hours" && Array.isArray(args.hours)', "hours replacement is hidden at confirmation");
+  requireText(failures, edit, "const hours = Array.isArray(args.hours)", "hours proposal edit is a dead end");
+  requireText(failures, edit, 'toolName === "update_brand"', "brand update proposal edit is a dead end");
+  requireText(failures, edit, 'toolName === "manage_brand_discovery_currency"', "currency proposal edit is a dead end");
+  for (const factory of [
+    "brandKeys",
+    "brandHoursKeys",
+    "venueAvailabilityKeys",
+    "brandDiscoveryCurrencyKeys",
+    "creatorAccountKeys",
+  ]) requireText(failures, confirmHook, factory, `confirmation cache bypasses ${factory}`);
+  for (const invocation of [
+    "brandKeys.detail(brandId)",
+    "brandHoursKeys.byBrand(brandId)",
+    "venueAvailabilityKeys.config(brandId)",
+    "brandDiscoveryCurrencyKeys.all",
+    "creatorAccountKeys.all",
+  ]) requireText(failures, confirmHook, invocation, `confirmation cache missing ${invocation}`);
+  for (const literal of [
+    '["brandHours", brandId]',
+    '["venueAvailabilityConfig", brandId]',
+    '["brand-discovery-currency"]',
+    '["brands", "detail", brandId]',
+  ]) {
+    if (confirmHook.includes(literal)) failures.push(`hardcoded confirmation cache key: ${literal}`);
+  }
 
   const expectedMappings = new Map([
     ["ari.brand.create", "create_brand"],
@@ -143,7 +199,19 @@ if (process.argv.includes("--self-test")) {
   );
   expectMutation("server confirmation", "migration", "brand_name_confirmation_mismatch", "typed confirmation");
   expectMutation("UI confirmation", "card", "confirm_phrase: typedName.trim()", "typed brand name");
-  console.log("[issue-2063-ari-brand-management] self-test PASS (7 hostile reversions)");
+  expectMutation("hours review", "card", 'toolName === "manage_brand_hours" && Array.isArray(args.hours)', "hours replacement");
+  expectMutation("hours edit", "edit", "const hours = Array.isArray(args.hours)", "hours proposal edit");
+  expectMutation("currency state read", "tools", 'if (args.action === "get_state") {', "currency state read action");
+  expectMutation(
+    "currency proposal bind",
+    "chat",
+    "gemini.toolCall.args = await bindAgentProposalState(",
+    "not bound into the persisted proposal",
+  );
+  expectMutation("stable audit order", "tools", '.order("id", { ascending: false })', "stable id tie-breaker");
+  expectMutation("currency required version", "migration", "RAISE EXCEPTION 'expected_state_version_required'", "missing expected version");
+  expectMutation("factory cache", "confirmHook", "brandHoursKeys.byBrand(brandId)", "missing brandHoursKeys.byBrand");
+  console.log("[issue-2063-ari-brand-management] self-test PASS (14 hostile reversions)");
 } else {
   const failures = audit();
   if (failures.length) {

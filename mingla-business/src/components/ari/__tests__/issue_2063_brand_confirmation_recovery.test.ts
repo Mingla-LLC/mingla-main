@@ -40,9 +40,11 @@ describe("#2063 shared Business brand confirmation recovery", () => {
 
   test("successful hours and currency confirmations invalidate canonical read caches", () => {
     expect(confirmHook).toContain('response.tool_name === "manage_brand_hours"');
-    expect(confirmHook).toContain('["brandHours", brandId]');
-    expect(confirmHook).toContain('["venueAvailabilityConfig", brandId]');
+    expect(confirmHook).toContain("brandHoursKeys.byBrand(brandId)");
+    expect(confirmHook).toContain("venueAvailabilityKeys.config(brandId)");
     expect(confirmHook).toContain('response.tool_name === "manage_brand_discovery_currency"');
-    expect(confirmHook).toContain('["brand-discovery-currency"]');
+    expect(confirmHook).toContain("brandDiscoveryCurrencyKeys.all");
+    expect(confirmHook).toContain("brandKeys.detail(brandId)");
+    expect(confirmHook).toContain("creatorAccountKeys.all");
   });
 });

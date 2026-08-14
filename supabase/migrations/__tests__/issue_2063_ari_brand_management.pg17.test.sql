@@ -20,6 +20,9 @@ DECLARE
   v_wrong_delete_op constant uuid := '20630000-0000-4000-8000-000000000107';
   v_delete_op constant uuid := '20630000-0000-4000-8000-000000000108';
   v_forged_op constant uuid := '20630000-0000-4000-8000-000000000109';
+  v_overnight_op constant uuid := '20630000-0000-4000-8000-000000000110';
+  v_equal_hours_op constant uuid := '20630000-0000-4000-8000-000000000111';
+  v_missing_version_op constant uuid := '20630000-0000-4000-8000-000000000112';
   v_venue constant uuid := '20630000-0000-4000-8000-000000000201';
   v_other_brand constant uuid := '20630000-0000-4000-8000-000000000202';
   v_other_venue constant uuid := '20630000-0000-4000-8000-000000000203';
@@ -135,6 +138,44 @@ BEGIN
     RAISE EXCEPTION '#2063 hours write/readback/replay mismatch';
   END IF;
 
+  -- Overnight spans are canonical Business behavior; equal times remain
+  -- invalid because they cannot communicate a usable service window.
+  v_hours := jsonb_set(
+    jsonb_set(v_hours, '{5,open_time}', '"22:00"'::jsonb),
+    '{5,close_time}',
+    '"02:00"'::jsonb
+  );
+  v_args := jsonb_build_object('brand_id', v_brand_id, 'venue_id', v_venue, 'hours', v_hours);
+  INSERT INTO public.agent_pending_actions
+    (id, user_id, tool_name, tool_args, status, source, server_proposed_at, execution_attested_at)
+  VALUES (v_overnight_op, v_admin, 'manage_brand_hours', v_args, 'executing', 'hub_experience', now(), now());
+  v_result := public.ari_execute_brand_operation(v_overnight_op, 'manage_brand_hours', v_args);
+  IF v_result #>> '{hours,5,open_time}' IS DISTINCT FROM '22:00:00'
+     OR v_result #>> '{hours,5,close_time}' IS DISTINCT FROM '02:00:00' THEN
+    RAISE EXCEPTION '#2063 canonical overnight hours were not preserved';
+  END IF;
+
+  v_hours := jsonb_set(
+    jsonb_set(v_hours, '{5,open_time}', '"09:00"'::jsonb),
+    '{5,close_time}',
+    '"09:00"'::jsonb
+  );
+  v_args := jsonb_build_object('brand_id', v_brand_id, 'venue_id', v_venue, 'hours', v_hours);
+  INSERT INTO public.agent_pending_actions
+    (id, user_id, tool_name, tool_args, status, source, server_proposed_at, execution_attested_at)
+  VALUES (v_equal_hours_op, v_admin, 'manage_brand_hours', v_args, 'executing', 'hub_experience', now(), now());
+  BEGIN
+    PERFORM public.ari_execute_brand_operation(v_equal_hours_op, 'manage_brand_hours', v_args);
+    RAISE EXCEPTION '#2063 equal open/close hours unexpectedly succeeded';
+  EXCEPTION WHEN invalid_parameter_value THEN
+    NULL;
+  END;
+  IF EXISTS (SELECT 1 FROM public.agent_operation_receipts WHERE operation_id = v_equal_hours_op) THEN
+    RAISE EXCEPTION '#2063 rejected equal hours produced a receipt';
+  END IF;
+
+  v_hours := jsonb_set(v_hours, '{5,close_time}', '"17:00"'::jsonb);
+
   -- A venue id from another brand is rejected before any hours row can move.
   v_args := jsonb_build_object('brand_id', v_brand_id, 'venue_id', v_other_venue, 'hours', v_hours);
   INSERT INTO public.agent_pending_actions
@@ -154,13 +195,31 @@ BEGIN
   v_args := jsonb_build_object(
     'brand_id', v_brand_id,
     'action', 'set_provisional_currency',
+    'currency_code', 'usd'
+  );
+  INSERT INTO public.agent_pending_actions
+    (id, user_id, tool_name, tool_args, status, source, server_proposed_at, execution_attested_at)
+  VALUES (v_missing_version_op, v_finance, 'manage_brand_discovery_currency', v_args, 'executing', 'hub_experience', now(), now());
+  PERFORM set_config('request.jwt.claim.sub', v_finance::text, true);
+  BEGIN
+    PERFORM public.ari_execute_brand_operation(v_missing_version_op, 'manage_brand_discovery_currency', v_args);
+    RAISE EXCEPTION '#2063 missing expected currency version unexpectedly succeeded';
+  EXCEPTION WHEN invalid_parameter_value THEN
+    NULL;
+  END;
+  IF EXISTS (SELECT 1 FROM public.agent_operation_receipts WHERE operation_id = v_missing_version_op) THEN
+    RAISE EXCEPTION '#2063 missing currency version produced a receipt';
+  END IF;
+
+  v_args := jsonb_build_object(
+    'brand_id', v_brand_id,
+    'action', 'set_provisional_currency',
     'currency_code', 'usd',
     'expected_state_version', 1
   );
   INSERT INTO public.agent_pending_actions
     (id, user_id, tool_name, tool_args, status, source, server_proposed_at, execution_attested_at)
   VALUES (v_currency_op, v_finance, 'manage_brand_discovery_currency', v_args, 'executing', 'hub_experience', now(), now());
-  PERFORM set_config('request.jwt.claim.sub', v_finance::text, true);
   v_result := public.ari_execute_brand_operation(v_currency_op, 'manage_brand_discovery_currency', v_args);
   v_replay := public.ari_execute_brand_operation(v_currency_op, 'manage_brand_discovery_currency', v_args);
   IF v_replay IS DISTINCT FROM v_result

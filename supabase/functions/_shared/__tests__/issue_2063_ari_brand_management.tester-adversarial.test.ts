@@ -79,9 +79,19 @@ Deno.test("#2063 tester: Ari preserves the canonical Business overnight-hours co
     { operationId: OPERATION_ID },
   );
 
-  assertEquals(fixture.calls.length, 1);
-  assertEquals(fixture.calls[0]?.name, "ari_execute_brand_operation");
-  assertEquals(fixture.calls[0]?.params.p_args, args);
+  const operationCalls = fixture.calls.filter((call) =>
+    call.name === "ari_execute_brand_operation"
+  );
+  assertEquals(operationCalls.length, 1);
+  assertEquals(operationCalls[0]?.params.p_args, args);
+  assertEquals(
+    fixture.calls.filter((call) =>
+      call.name === "biz_brand_effective_rank_for_caller" ||
+      call.name === "biz_role_rank"
+    ).length,
+    2,
+    "the tester fixture must retain the #2019 execution-time authorization guard",
+  );
 
   const migration = await Deno.readTextFile(
     new URL(

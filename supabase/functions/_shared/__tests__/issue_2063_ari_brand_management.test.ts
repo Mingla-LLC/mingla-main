@@ -3,7 +3,11 @@ import {
   assertEquals,
   assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { findTool, ToolError } from "../agentTools.ts";
+import {
+  bindAgentProposalState,
+  findTool,
+  ToolError,
+} from "../agentTools.ts";
 
 const USER_ID = "20630000-0000-4000-8000-000000000001";
 const BRAND_ID = "20630000-0000-4000-8000-000000000002";
@@ -14,7 +18,7 @@ type RpcCall = { name: string; params: Record<string, unknown> };
 
 function thenableQuery(result: { data: unknown; error: unknown }) {
   const query: Record<string, unknown> = {};
-  for (const method of ["select", "eq", "is", "not", "order", "limit", "lt"]) {
+  for (const method of ["select", "eq", "is", "not", "order", "limit", "lt", "or"]) {
     query[method] = () => query;
   }
   query.maybeSingle = () => Promise.resolve(result);
@@ -41,6 +45,12 @@ function clientFixture(options: { auditRows?: unknown[]; withScope?: boolean } =
             brand: { id: BRAND_ID, name: "North Star" },
             operation_id: params.p_operation_id,
           },
+          error: null,
+        };
+      }
+      if (name === "issue_1384_brand_currency_state") {
+        return {
+          data: { brandId: BRAND_ID, stateVersion: 7, currencyCode: "USD" },
           error: null,
         };
       }
@@ -236,5 +246,69 @@ Deno.test("#2063 discovery-currency updates preserve the explicit optimistic ver
     action: "set_provisional_currency",
     currency_code: "ngn",
     expected_state_version: 7,
+  });
+});
+
+Deno.test("#2063 discovery-currency state is a read-only finance-gated action", async () => {
+  const tool = findTool("manage_brand_discovery_currency");
+  assert(tool);
+  const fixture = clientFixture();
+  await tool.executor(
+    { brand_id: BRAND_ID, action: "get_state" },
+    fixture.client as never,
+    USER_ID,
+    { operationId: null },
+  );
+  assertEquals(
+    fixture.rpcCalls.filter((call) => call.name === "issue_1384_brand_currency_state").length,
+    1,
+  );
+  assertEquals(
+    fixture.rpcCalls.some((call) => call.name === "ari_execute_brand_operation"),
+    false,
+  );
+});
+
+Deno.test("#2063 proposal preparation binds canonical currency state instead of model input", async () => {
+  const fixture = clientFixture();
+  const bound = await bindAgentProposalState(
+    "manage_brand_discovery_currency",
+    {
+      brand_id: BRAND_ID,
+      action: "set_provisional_currency",
+      currency_code: "USD",
+      expected_state_version: 999,
+    },
+    fixture.client as never,
+  );
+  assertEquals(bound.expected_state_version, 7);
+  assertEquals(
+    fixture.rpcCalls.filter((call) => call.name === "issue_1384_brand_currency_state").length,
+    1,
+  );
+  assertEquals(
+    fixture.rpcCalls.some((call) => call.name === "ari_execute_brand_operation"),
+    false,
+  );
+});
+
+Deno.test("#2063 audit next cursor carries the stable timestamp and row id", async () => {
+  const tool = findTool("list_brand_audit_log");
+  assert(tool);
+  const tiedAt = "2026-08-14T01:00:00.000Z";
+  const rows = [
+    { id: "20630000-0000-4000-8000-000000000010", created_at: tiedAt },
+    { id: "20630000-0000-4000-8000-000000000009", created_at: tiedAt },
+  ];
+  const fixture = clientFixture({ auditRows: rows, withScope: true });
+  const result = await tool.executor(
+    { brand_id: BRAND_ID, limit: 2 },
+    fixture.client as never,
+    USER_ID,
+    { operationId: null },
+  ) as { next_cursor: { before_created_at: string; before_id: string } | null };
+  assertEquals(result.next_cursor, {
+    before_created_at: tiedAt,
+    before_id: rows[1].id,
   });
 });

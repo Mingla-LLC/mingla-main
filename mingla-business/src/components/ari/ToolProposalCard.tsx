@@ -39,7 +39,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { AriOrb } from "./AriOrb";
-import { ToolEditForm } from "./ToolEditForm";
+import { isToolProposalEditable, ToolEditForm } from "./ToolEditForm";
 import { GlassChrome } from "../ui/GlassChrome";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
@@ -178,6 +178,34 @@ function coverTypeLabel(type: unknown): string | null {
 
 function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
   const out: Field[] = [];
+  if (toolName === "manage_brand_hours" && Array.isArray(args.hours)) {
+    const weekdayLabels = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const rows = args.hours
+      .filter((raw): raw is Record<string, unknown> => typeof raw === "object" && raw !== null)
+      .slice()
+      .sort((a, b) => Number(a.weekday) - Number(b.weekday));
+    for (const row of rows) {
+      const weekday = Number(row.weekday);
+      const label = weekdayLabels[weekday] ?? `Day ${weekday}`;
+      const value = row.is_closed === true
+        ? "Closed"
+        : `${String(row.open_time ?? "—")}–${String(row.close_time ?? "—")}`;
+      out.push({ label, value });
+    }
+    return out;
+  }
+  if (toolName === "manage_brand_discovery_currency") {
+    if (typeof args.currency_code === "string") {
+      out.push({ label: "Currency", value: args.currency_code.toUpperCase() });
+    }
+    if (typeof args.expected_state_version === "number") {
+      out.push({ label: "State version", value: String(args.expected_state_version) });
+    }
+    if (typeof args.decision === "string") {
+      out.push({ label: "Decision", value: args.decision.replace(/_/g, " ") });
+    }
+    return out;
+  }
   if (toolName === "create_event" || toolName === "update_event") {
     if (typeof args.start_at === "string") {
       const d = new Date(args.start_at);
@@ -203,6 +231,15 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
     }
   }
   if (toolName === "create_brand" || toolName === "update_brand") {
+    if (typeof args.name === "string" && args.name) {
+      out.push({ label: "Name", value: args.name });
+    }
+    if (typeof args.description === "string" && args.description) {
+      out.push({ label: "Description", value: args.description });
+    }
+    if (typeof args.contact_email === "string" && args.contact_email) {
+      out.push({ label: "Contact email", value: args.contact_email });
+    }
     if (typeof args.default_currency === "string") {
       out.push({ label: "Currency", value: args.default_currency });
     }
@@ -631,6 +668,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   };
 
   const confirmDisabled = isExecuting || creatingForCover || coverUploadState !== "idle";
+  const canEditProposal = isToolProposalEditable(toolName, liveArgs);
 
   return (
     <GlassChrome
@@ -890,21 +928,23 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             </Pressable>
           ) : (
             <>
-              <Pressable
-                onPress={() => setEditing((e) => !e)}
-                disabled={isExecuting}
-                hitSlop={{ top: 5, bottom: 5 }}
-                style={({ pressed }) => [
-                  styles.actionBtn,
-                  styles.editBtn,
-                  pressed && styles.btnPressed,
-                  isExecuting && styles.btnDisabled,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={editing ? "Stop editing" : "Edit proposal"}
-              >
-                <Text style={styles.editText}>{editing ? "Done editing" : "Edit"}</Text>
-              </Pressable>
+              {canEditProposal ? (
+                <Pressable
+                  onPress={() => setEditing((e) => !e)}
+                  disabled={isExecuting}
+                  hitSlop={{ top: 5, bottom: 5 }}
+                  style={({ pressed }) => [
+                    styles.actionBtn,
+                    styles.editBtn,
+                    pressed && styles.btnPressed,
+                    isExecuting && styles.btnDisabled,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={editing ? "Stop editing" : "Edit proposal"}
+                >
+                  <Text style={styles.editText}>{editing ? "Done editing" : "Edit"}</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 onPress={() => void confirmProposal(editing ? editedArgs : undefined)}
                 disabled={confirmDisabled}

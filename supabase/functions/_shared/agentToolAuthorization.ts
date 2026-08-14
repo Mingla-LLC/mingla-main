@@ -407,7 +407,7 @@ export async function authorizeAgentTool(
 }
 
 function validateBeforeAuthorization(
-  tool: Pick<AgentToolDefinition, "parameters">,
+  tool: Pick<AgentToolDefinition, "name" | "parameters">,
   args: Record<string, unknown>,
 ): void {
   const schema = tool.parameters as any;
@@ -424,6 +424,19 @@ function validateBeforeAuthorization(
           : `${key} is required`,
       );
     }
+  }
+  if (
+    tool.name === "manage_brand_discovery_currency" &&
+    args.action === "set_provisional_currency" &&
+    (
+      !Number.isInteger(args.expected_state_version) ||
+      Number(args.expected_state_version) < 1
+    )
+  ) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "Read the current discovery-currency state first, then include its positive expected_state_version.",
+    );
   }
   if (schema.additionalProperties === false) {
     const allowed = new Set(Object.keys(schema.properties ?? {}));

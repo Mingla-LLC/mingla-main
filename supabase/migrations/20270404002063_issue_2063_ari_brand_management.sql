@@ -457,7 +457,7 @@ BEGIN
            ELSE
              COALESCE(item ->> 'open_time', '') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
              OR COALESCE(item ->> 'close_time', '') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
-             OR (item ->> 'open_time')::time >= (item ->> 'close_time')::time
+             OR (item ->> 'open_time')::time = (item ->> 'close_time')::time
          END
     ) THEN
       RAISE EXCEPTION 'invalid_brand_hours' USING ERRCODE = '22023';
@@ -499,15 +499,9 @@ BEGIN
     END IF;
     CASE p_args ->> 'action'
       WHEN 'set_provisional_currency' THEN
-        SELECT COALESCE(
-          NULLIF(p_args ->> 'expected_state_version', '')::bigint,
-          b.discovery_currency_state_version
-        )
-        INTO v_expected_version
-        FROM public.brands b
-        WHERE b.id = v_brand_id AND b.deleted_at IS NULL;
-        IF v_expected_version IS NULL THEN
-          RAISE EXCEPTION 'brand_not_found' USING ERRCODE = 'P0002';
+        v_expected_version := NULLIF(p_args ->> 'expected_state_version', '')::bigint;
+        IF v_expected_version IS NULL OR v_expected_version < 1 THEN
+          RAISE EXCEPTION 'expected_state_version_required' USING ERRCODE = '22023';
         END IF;
         v_result := public.issue_1384_set_provisional_currency(
           v_brand_id,

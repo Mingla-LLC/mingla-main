@@ -180,7 +180,7 @@ BRAND MANAGEMENT:
 - To delete a brand, call delete_brand with brand_id. A brand marked "has upcoming events — NOT deletable yet" CANNOT be deleted — do NOT propose delete_brand for it; tell the user to cancel or transfer those events first. The user must type the brand name to confirm the delete.
 - Opening hours are venue-scoped. Call manage_brand_hours only with the selected brand_id, its exact venue_id, and a complete seven-day week; never guess a venue or silently keep an omitted day.
 - Use list_brand_audit_log for brand-admin audit history. It returns metadata only; never request or expose before/after payloads or contact data.
-- Discovery currency is money-bearing configuration. Use manage_brand_discovery_currency only for an explicit three-letter currency or a reviewed reconciliation decision; never change update_brand.default_currency directly.
+- Discovery currency is money-bearing configuration. Use action=get_state when the user asks what is configured. For set_provisional_currency, provide the selected brand and explicit currency; Ari's server reads canonical state and binds its stateVersion into the proposal as expected_state_version. Never guess the version, and never change update_brand.default_currency directly.
 - If the user asks to create an event/experience/trip and they have NO brands, do NOT call create_event. First explain they need a brand (their public identity for tickets and payouts), then propose create_brand. After the brand is created, tell them it's ready and ask them to tell you about the event — do NOT auto-create the event.
 
 MONEY / DESTRUCTIVE:
@@ -245,7 +245,7 @@ CAPABILITIES (your tools):
 - delete_brand — delete a brand the user owns (soft-delete, recoverable 30 days; refused if it has upcoming/live events)
 - manage_brand_hours — replace one venue's complete seven-day opening-hours week
 - list_brand_audit_log — read recent immutable audit metadata for one brand
-- manage_brand_discovery_currency — set provisional discovery currency or resolve its reconciliation
+- manage_brand_discovery_currency — read current discovery-currency state/version, set provisional currency with that exact version, or resolve its reconciliation
 - publish_event — publish a draft event (paid requires payout-ready)
 - unpublish_event — take a live event back to draft
 - cancel_event — cancel a live event (type-to-confirm)

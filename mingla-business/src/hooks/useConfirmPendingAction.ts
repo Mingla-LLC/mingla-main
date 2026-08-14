@@ -14,6 +14,11 @@ import {
   confirmAgentAction,
 } from "../services/agentChatService";
 import { agentQueryKeys } from "./useAgentChat";
+import { brandKeys } from "./brandKeys";
+import { creatorAccountKeys } from "./creatorAccountKeys";
+import { brandHoursKeys } from "./useBrandHours";
+import { brandDiscoveryCurrencyKeys } from "./useBrandDiscoveryCurrency";
+import { venueAvailabilityKeys } from "./useVenueAvailability";
 
 export interface UseConfirmPendingActionResult {
   confirm: (
@@ -53,15 +58,24 @@ export function useConfirmPendingAction(
           response.tool_name === "update_brand" ||
           response.tool_name === "delete_brand"
         ) {
-          qc.invalidateQueries({ queryKey: ["brands"] });
+          qc.invalidateQueries({ queryKey: brandKeys.all });
+          if (brandId) {
+            qc.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
+          }
+          if (
+            response.tool_name === "create_brand" ||
+            response.tool_name === "delete_brand"
+          ) {
+            qc.invalidateQueries({ queryKey: creatorAccountKeys.all });
+          }
         }
         if (response.tool_name === "manage_brand_hours" && brandId) {
-          qc.invalidateQueries({ queryKey: ["brandHours", brandId] });
-          qc.invalidateQueries({ queryKey: ["venueAvailabilityConfig", brandId] });
+          qc.invalidateQueries({ queryKey: brandHoursKeys.byBrand(brandId) });
+          qc.invalidateQueries({ queryKey: venueAvailabilityKeys.config(brandId) });
         }
         if (response.tool_name === "manage_brand_discovery_currency") {
-          qc.invalidateQueries({ queryKey: ["brand-discovery-currency"] });
-          if (brandId) qc.invalidateQueries({ queryKey: ["brands", "detail", brandId] });
+          qc.invalidateQueries({ queryKey: brandDiscoveryCurrencyKeys.all });
+          if (brandId) qc.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
         }
         if (response.tool_name === "create_event" || response.tool_name === "update_event") {
           qc.invalidateQueries({ queryKey: ["events"] });

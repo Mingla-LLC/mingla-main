@@ -101,6 +101,12 @@ async function executeBrandOperation(
     if (message.includes("idempotency_conflict")) {
       throw new ToolError("IDEMPOTENCY_CONFLICT", "This confirmation no longer matches its proposal.");
     }
+    if (message.includes("range_version_conflict")) {
+      throw new ToolError(
+        "STALE_STATE",
+        "Discovery-currency settings changed after this proposal. Refresh the state and ask Ari to prepare it again.",
+      );
+    }
     throw new ToolError("WRITE_FAILED", message);
   }
   if (data === null) throw new ToolError("WRITE_FAILED", "Brand operation returned no readback.");
@@ -1014,11 +1020,17 @@ const manageBrandHours: AgentToolDefinition = {
       const isClosed = row.is_closed === true;
       const openTime = typeof row.open_time === "string" ? row.open_time : null;
       const closeTime = typeof row.close_time === "string" ? row.close_time : null;
-      if (!isClosed && (!/^\d{2}:\d{2}$/.test(openTime ?? "") || !/^\d{2}:\d{2}$/.test(closeTime ?? ""))) {
+      if (
+        !isClosed &&
+        (
+          !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(openTime ?? "") ||
+          !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(closeTime ?? "")
+        )
+      ) {
         throw new ToolError("INVALID_ARGS", "Open days need local open_time and close_time in HH:MM format.");
       }
-      if (!isClosed && (openTime ?? "") >= (closeTime ?? "")) {
-        throw new ToolError("INVALID_ARGS", "close_time must be later than open_time.");
+      if (!isClosed && openTime === closeTime) {
+        throw new ToolError("INVALID_ARGS", "Open and close time cannot be the same.");
       }
       return {
         weekday,
@@ -1028,8 +1040,12 @@ const manageBrandHours: AgentToolDefinition = {
       };
     }).sort((a, b) => a.weekday - b.weekday);
     if (weekdays.size !== 7) throw new ToolError("INVALID_ARGS", "All seven weekdays are required.");
-    void normalized;
-    return await executeBrandOperation("manage_brand_hours", args, client, context);
+    return await executeBrandOperation(
+      "manage_brand_hours",
+      { ...args, hours: normalized },
+      client,
+      context,
+    );
   },
 };
 
@@ -1043,7 +1059,16 @@ const listBrandAuditLog: AgentToolDefinition = {
     required: ["brand_id"],
     properties: {
       brand_id: { type: "string", format: "uuid" },
-      before_created_at: { type: "string", format: "date-time", description: "Optional pagination cursor." },
+      before_created_at: {
+        type: "string",
+        format: "date-time",
+        description: "Compound cursor timestamp returned by the prior page; pass with before_id.",
+      },
+      before_id: {
+        type: "string",
+        format: "uuid",
+        description: "Compound cursor row id returned by the prior page; pass with before_created_at.",
+      },
       limit: { type: "integer", minimum: 1, maximum: 50 },
     },
   },
@@ -1051,14 +1076,34 @@ const listBrandAuditLog: AgentToolDefinition = {
     if (!isUuid(args.brand_id)) throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
     await assertAgentReadBrand(client, userId, args.brand_id);
     const limit = typeof args.limit === "number" ? Math.min(50, Math.max(1, args.limit)) : 25;
+    const hasBeforeCreatedAt = typeof args.before_created_at === "string";
+    const hasBeforeId = typeof args.before_id === "string";
+    if (hasBeforeCreatedAt !== hasBeforeId) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Audit pagination requires both before_created_at and before_id from the prior page.",
+      );
+    }
+    if (
+      hasBeforeCreatedAt &&
+      (Number.isNaN(Date.parse(args.before_created_at as string)) || !isUuid(args.before_id))
+    ) {
+      throw new ToolError("INVALID_ARGS", "The audit pagination cursor is invalid.");
+    }
+    const beforeCreatedAt = hasBeforeCreatedAt
+      ? new Date(args.before_created_at as string).toISOString()
+      : null;
     let query = client
       .from("audit_log")
       .select("id, user_id, action, target_type, target_id, created_at")
       .eq("brand_id", args.brand_id)
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .limit(limit);
-    if (typeof args.before_created_at === "string") {
-      query = query.lt("created_at", args.before_created_at);
+    if (beforeCreatedAt !== null && hasBeforeId) {
+      query = query.or(
+        `created_at.lt.${beforeCreatedAt},and(created_at.eq.${beforeCreatedAt},id.lt.${args.before_id})`,
+      );
     }
     const { data, error } = await query;
     if (error) throw new ToolError("READ_FAILED", error.message);
@@ -1067,7 +1112,11 @@ const listBrandAuditLog: AgentToolDefinition = {
       brand_id: args.brand_id,
       entries: rows,
       next_cursor: rows.length === limit
-        ? (rows[rows.length - 1] as { created_at?: string }).created_at ?? null
+        ? {
+          before_created_at:
+            (rows[rows.length - 1] as { created_at?: string }).created_at ?? null,
+          before_id: (rows[rows.length - 1] as { id?: string }).id ?? null,
+        }
         : null,
     };
   },
@@ -1076,14 +1125,17 @@ const listBrandAuditLog: AgentToolDefinition = {
 const manageBrandDiscoveryCurrency: AgentToolDefinition = {
   name: "manage_brand_discovery_currency",
   description:
-    "Set provisional discovery currency or resolve a pending discovery-currency reconciliation through the same guarded owner as Business Settings.",
+    "Read current discovery-currency state, set provisional currency, or resolve a pending reconciliation through the same guarded owner as Business Settings. Read state before proposing a currency write.",
   parameters: {
     type: "object",
     additionalProperties: false,
     required: ["brand_id", "action"],
     properties: {
       brand_id: { type: "string", format: "uuid" },
-      action: { type: "string", enum: ["set_provisional_currency", "resolve_reconciliation"] },
+      action: {
+        type: "string",
+        enum: ["get_state", "set_provisional_currency", "resolve_reconciliation"],
+      },
       currency_code: { type: "string", minLength: 3, maxLength: 3 },
       expected_state_version: { type: "integer", minimum: 1 },
       reconciliation_id: { type: "string", format: "uuid" },
@@ -1108,15 +1160,25 @@ const manageBrandDiscoveryCurrency: AgentToolDefinition = {
   },
   executor: async (args, client, _userId, context) => {
     if (!isUuid(args.brand_id)) throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
-    if (args.action === "set_provisional_currency") {
+    if (args.action === "get_state") {
+      const { data, error } = await client.rpc("issue_1384_brand_currency_state", {
+        p_brand_id: args.brand_id,
+      });
+      if (error) throw new ToolError("READ_FAILED", error.message);
+      if (data === null) throw new ToolError("READ_FAILED", "Currency state returned no readback.");
+      return data;
+    } else if (args.action === "set_provisional_currency") {
       if (!isString(args.currency_code) || !/^[A-Za-z]{3}$/.test(args.currency_code)) {
         throw new ToolError("INVALID_ARGS", "currency_code must be a 3-letter ISO code.");
       }
       if (
-        args.expected_state_version !== undefined &&
-        (!Number.isInteger(args.expected_state_version) || Number(args.expected_state_version) < 1)
+        !Number.isInteger(args.expected_state_version) ||
+        Number(args.expected_state_version) < 1
       ) {
-        throw new ToolError("INVALID_ARGS", "expected_state_version must be a positive integer.");
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Read the current discovery-currency state first, then include its positive expected_state_version.",
+        );
       }
     } else if (args.action === "resolve_reconciliation") {
       if (!isUuid(args.reconciliation_id) || !isString(args.decision)) {
@@ -1128,6 +1190,44 @@ const manageBrandDiscoveryCurrency: AgentToolDefinition = {
     return await executeBrandOperation("manage_brand_discovery_currency", args, client, context);
   },
 };
+
+/**
+ * Bind server-owned optimistic state before a write proposal is persisted.
+ * The model may request a currency change, but it never chooses the version
+ * that protects that change from overwriting newer Business settings.
+ */
+export async function bindAgentProposalState(
+  toolName: string,
+  args: Record<string, unknown>,
+  client: SupabaseClient,
+): Promise<Record<string, unknown>> {
+  if (
+    toolName !== "manage_brand_discovery_currency" ||
+    args.action !== "set_provisional_currency"
+  ) {
+    return args;
+  }
+  if (!isUuid(args.brand_id)) {
+    throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+  }
+  const { data, error } = await client.rpc("issue_1384_brand_currency_state", {
+    p_brand_id: args.brand_id,
+  });
+  if (error) {
+    throw new ToolError(
+      "ROLE_CHECK_UNAVAILABLE",
+      "Ari could not read the current discovery-currency state.",
+    );
+  }
+  const stateVersion = (data as { stateVersion?: unknown } | null)?.stateVersion;
+  if (!Number.isInteger(stateVersion) || Number(stateVersion) < 1) {
+    throw new ToolError(
+      "ROLE_CHECK_UNAVAILABLE",
+      "Ari could not read a valid discovery-currency state version.",
+    );
+  }
+  return { ...args, expected_state_version: stateVersion };
+}
 
 // ----------------------------------------------------------------------------
 // 6. create_experience (ORCH-0881 Ve5)
@@ -1319,3 +1419,12 @@ export const READ_ONLY_TOOL_NAMES = new Set<string>([
   "list_events",
   ...DOMAIN_READ_ONLY,
 ]);
+
+/** Server-owned call classification for tools with both read and write actions. */
+export function isReadOnlyAgentToolCall(
+  toolName: string,
+  args: Record<string, unknown>,
+): boolean {
+  return READ_ONLY_TOOL_NAMES.has(toolName) ||
+    (toolName === "manage_brand_discovery_currency" && args.action === "get_state");
+}
