@@ -95,6 +95,11 @@ function isAlreadyResolvedError(message: string): boolean {
   );
 }
 
+function isExpiredActionError(code: string, message: string): boolean {
+  return code === "EXPIRED" || message.toLowerCase().includes("status: expired") ||
+    message.toLowerCase().includes("proposal expired");
+}
+
 type Recovery = { code: string; title: string; body: string; action?: string };
 
 const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({ recovery, onAction }) => {
@@ -240,8 +245,23 @@ export const AriChatScreen: React.FC = () => {
   ): Promise<ConfirmOutcome> => {
     if (!chat.pendingAction) return { ok: false };
     setLocalError(null);
-    const result = await confirm.confirm(chat.pendingAction.pending_action_id, editedArgs);
+    let result: Awaited<ReturnType<typeof confirm.confirm>>;
+    try {
+      result = await confirm.confirm(chat.pendingAction.pending_action_id, editedArgs);
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "Couldn't complete that action — try again.";
+      setLocalError(message);
+      return { ok: false, error: message };
+    }
     if (result.kind === "error") {
+      if (isExpiredActionError(result.code, result.message)) {
+        const message = "This proposal expired. Ask Ari to propose it again.";
+        setLocalError(message);
+        chat.clearPendingAction();
+        return { ok: false, error: message, terminal: "expired" };
+      }
       // ORCH-1103 REWORK 3 — guard the already-executed / expired / raced case.
       // If the pending action is no longer "pending" the edge fn returns
       // WRONG_STATE ("Cannot confirm — current status: executed" / "…cancelled"
@@ -252,10 +272,10 @@ export const AriChatScreen: React.FC = () => {
       // other path that lands on a non-pending action.)
       if (isAlreadyResolvedError(result.message)) {
         chat.clearPendingAction();
-        return { ok: false };
+        return { ok: false, terminal: "resolved" };
       }
       setLocalError(result.message);
-      return { ok: false };
+      return { ok: false, error: result.message };
     }
     // ORCH-1103 — surface the freshly-created/updated brand id to the proposal
     // card so the Q7 create-row-first / attach-second cover flow can re-target
@@ -273,8 +293,16 @@ export const AriChatScreen: React.FC = () => {
   const handleCancelProposal = async (): Promise<void> => {
     if (!chat.pendingAction) return;
     setLocalError(null);
-    await confirm.cancel(chat.pendingAction.pending_action_id);
-    chat.clearPendingAction();
+    try {
+      const result = await confirm.cancel(chat.pendingAction.pending_action_id);
+      if (result.kind === "error") {
+        setLocalError(result.message);
+        return;
+      }
+      chat.clearPendingAction();
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : "Couldn't cancel — try again.");
+    }
   };
 
   const handleSelectConversation = (id: string | null): void => {

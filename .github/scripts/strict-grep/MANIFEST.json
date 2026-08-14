@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 529,
-  "selfTestWiredFloor": 334,
+  "expectedStrictGrepMjsFiles": 530,
+  "selfTestWiredFloor": 335,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -25,6 +25,20 @@
     "scripts/ota"
   ],
   "gates": [
+    {
+      "script": ".github/scripts/strict-grep/issue-2063-ari-brand-management.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2063-contracts"
+      ]
+    },
     {
       "script": ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs",
       "kind": "file",

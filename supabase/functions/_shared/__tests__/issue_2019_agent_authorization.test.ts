@@ -13,9 +13,10 @@ const tool = (name: string) => {
 };
 
 Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
-  assert(AGENT_TOOLS.length === 64, `expected 64 tools, got ${AGENT_TOOLS.length}`);
-  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 64, "duplicate tool");
-  assert(Object.keys(AGENT_TOOL_AUTHORIZATION).length === 64, "authorization registry drift");
+  // [TEST-MOD-APPROVED #2063] Exactly three certified brand tools raise the registry denominator 64 -> 67.
+  assert(AGENT_TOOLS.length === 67, `expected 67 tools, got ${AGENT_TOOLS.length}`);
+  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 67, "duplicate tool");
+  assert(Object.keys(AGENT_TOOL_AUTHORIZATION).length === 67, "authorization registry drift");
   for (const tool of AGENT_TOOLS) {
     const expected = AGENT_TOOL_AUTHORIZATION[tool.name];
     assert(expected?.requiredRole === tool.requiredRole, `${tool.name}: role drift`);
@@ -35,7 +36,7 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
     owner_or_admin: "brand_admin", owner: "deed_owner",
   };
   const rows = ledger.capabilities.filter((row: any) => AGENT_TOOL_AUTHORIZATION[row.ari_tool]);
-  assert(rows.length === 64, `expected 64 ledger rows, got ${rows.length}`);
+  assert(rows.length === 67, `expected 67 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole === translate[row.required_role],

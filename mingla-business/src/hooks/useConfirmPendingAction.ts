@@ -35,6 +35,16 @@ export function useConfirmPendingAction(
     onSuccess: (response) => {
       qc.invalidateQueries({ queryKey: agentQueryKeys.messages(conversationId) });
       if (response.kind === "executed") {
+        const result = response.result as {
+          brand?: { id?: string };
+          brand_id?: string;
+          venue_id?: string;
+        } | null;
+        const brandId = typeof result?.brand?.id === "string"
+          ? result.brand.id
+          : typeof result?.brand_id === "string"
+            ? result.brand_id
+            : null;
         // Invalidate downstream caches that other parts of the app rely on.
         // (These keys are owned by elsewhere in the app; we invalidate broadly
         // because tool writes may affect brands or events lists.)
@@ -44,6 +54,14 @@ export function useConfirmPendingAction(
           response.tool_name === "delete_brand"
         ) {
           qc.invalidateQueries({ queryKey: ["brands"] });
+        }
+        if (response.tool_name === "manage_brand_hours" && brandId) {
+          qc.invalidateQueries({ queryKey: ["brandHours", brandId] });
+          qc.invalidateQueries({ queryKey: ["venueAvailabilityConfig", brandId] });
+        }
+        if (response.tool_name === "manage_brand_discovery_currency") {
+          qc.invalidateQueries({ queryKey: ["brand-discovery-currency"] });
+          if (brandId) qc.invalidateQueries({ queryKey: ["brands", "detail", brandId] });
         }
         if (response.tool_name === "create_event" || response.tool_name === "update_event") {
           qc.invalidateQueries({ queryKey: ["events"] });

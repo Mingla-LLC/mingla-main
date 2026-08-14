@@ -113,6 +113,8 @@ function humanizeToolName(toolName: string): string {
     case "create_brand": return "Create brand";
     case "update_brand": return "Update brand";
     case "delete_brand": return "Delete brand";
+    case "manage_brand_hours": return "Update venue hours";
+    case "manage_brand_discovery_currency": return "Update discovery currency";
     case "create_event": return "Create event";
     case "update_event": return "Update event";
     case "cancel_event": return "Cancel event";
@@ -370,6 +372,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const [createdBrandId, setCreatedBrandId] = useState<string | null>(null);
   const [createDescription, setCreateDescription] = useState<string | null>(null);
   const [creatingForCover, setCreatingForCover] = useState(false);
+  const [proposalError, setProposalError] = useState<string | null>(null);
 
   const verb = humanizeToolName(toolName);
   // ORCH-1103 REWORK 3 — after a "Create & attach" commit the picker writes the
@@ -474,6 +477,26 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     // host always passes accountId + brand_id for an update proposal).
   };
 
+  const confirmProposal = async (
+    nextArgs?: Record<string, unknown>,
+    keepPending?: boolean,
+  ): Promise<ConfirmOutcome> => {
+    setProposalError(null);
+    try {
+      const outcome = await onConfirm(nextArgs, keepPending);
+      if (!outcome.ok && outcome.error && outcome.terminal !== "expired") {
+        setProposalError(outcome.error);
+      }
+      return outcome;
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "Couldn't complete that action — try again.";
+      setProposalError(message);
+      return { ok: false, error: message };
+    }
+  };
+
   // ORCH-1103 Q7 — mint the brand, then open the full picker against it. The
   // picker can't have its target swapped while mounted, so we close it (it is
   // not yet open here), set the new brandId (which builds coverTarget), and
@@ -493,7 +516,11 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
       // keepPending = true → the host does NOT clear the pending action, so this
       // card stays mounted to host the picker and run the attach. We clear it
       // ourselves (onAttachDone) once the cover sheet closes.
+      setProposalError(null);
       const outcome = await onConfirm(editing ? editedArgs : undefined, true);
+      if (!outcome.ok && outcome.error && outcome.terminal !== "expired") {
+        setProposalError(outcome.error);
+      }
       if (outcome.ok && outcome.brandId) {
         setCreatedBrandId(outcome.brandId);
         // Open the full picker against the freshly-minted brand. coverTarget is
@@ -507,6 +534,10 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
       }
       // If the commit failed (outcome.ok false) the screen toast already shows;
       // the card stays put with the Add-cover affordance still live.
+    } catch (error) {
+      setProposalError(error instanceof Error
+        ? error.message
+        : "Couldn't complete that action — try again.");
     } finally {
       setCreatingForCover(false);
     }
@@ -717,6 +748,12 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           )
         )}
 
+        {proposalError ? (
+          <Text style={styles.proposalError} accessibilityRole="alert">
+            {proposalError} Confirm again to retry safely.
+          </Text>
+        ) : null}
+
         <View style={styles.actions}>
           {/* ORCH-1103 REWORK 3 — POST-COMMIT (create-and-attach minted the
               brand): the pending action is EXECUTED. The ONLY action is "Done"
@@ -761,7 +798,12 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           {/* Delete-variant has no Edit button; the typed-name field is the gate */}
           {isBrandDelete ? (
             <Pressable
-              onPress={() => onConfirm(editing ? editedArgs : undefined)}
+              onPress={() =>
+                void confirmProposal({
+                  ...args,
+                  confirm_phrase: typedName.trim(),
+                })
+              }
               disabled={isExecuting || !canDelete}
               hitSlop={{ top: 5, bottom: 5 }}
               style={({ pressed }) => [
@@ -781,7 +823,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           ) : isMoneyConfirm && moneyPhrase ? (
             <Pressable
               onPress={() =>
-                onConfirm({
+                void confirmProposal({
                   ...(editing ? editedArgs : args),
                   confirm_phrase: moneyPhrase,
                 })
@@ -820,7 +862,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
                 <Text style={styles.editText}>{editing ? "Done editing" : "Edit"}</Text>
               </Pressable>
               <Pressable
-                onPress={() => onConfirm(editing ? editedArgs : undefined)}
+                onPress={() => void confirmProposal(editing ? editedArgs : undefined)}
                 disabled={confirmDisabled}
                 hitSlop={{ top: 5, bottom: 5 }}
                 style={({ pressed }) => [
@@ -1127,6 +1169,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 13,
     color: textTokens.primary,
+  },
+  proposalError: {
+    marginTop: spacing.sm,
+    color: semantic.error,
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
   },
   // ----- actions -----------------------------------------------------------
   actions: {
