@@ -8,16 +8,16 @@
     "product_operations": "declared Business source roots below"
   },
   "audit": {
-    "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
-    "verified_at": "2026-08-13T12:00:00Z",
-    "registered_tool_count": 64,
-    "capability_count": 116,
+    "baseline_sha": "52622a3f0576c6a313386a6b3619442bfb8fdc3a",
+    "verified_at": "2026-08-14T12:00:00Z",
+    "registered_tool_count": 66,
+    "capability_count": 117,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 16,
-      "broken": 47,
-      "guided_handoff": 7,
-      "unsupported": 42,
+      "registered_unverified": 21,
+      "broken": 44,
+      "guided_handoff": 8,
+      "unsupported": 40,
       "in_flight": 4
     }
   },
@@ -349,8 +349,8 @@
           "guard_role": "implementor"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["No exact-revision runtime proof"],
+      "owning_issues": [1973, 2000],
+      "blockers": ["No deployed runtime or cross-surface parity proof after #1972 integration"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -727,7 +727,7 @@
         ]
       },
       "ari_tool": "publish_experience",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -735,8 +735,8 @@
           "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["Delegated event managers blocked"],
+      "owning_issues": [1973, 2000],
+      "blockers": ["No deployed runtime or cross-surface parity proof after #1972 integration"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -759,7 +759,7 @@
         ]
       },
       "ari_tool": "update_experience",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -767,15 +767,15 @@
           "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["Delegated event managers blocked"],
+      "owning_issues": [1973, 2000],
+      "blockers": ["No deployed runtime or cross-surface parity proof after #1972 integration"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
     {
       "id": "ari.experience.delete",
       "domain": "experiences",
-      "outcome": "Soft-delete an experience",
+      "outcome": "Discard a draft experience",
       "safety": "destructive",
       "required_role": "owner_or_event_manager",
       "confirmation": "standard",
@@ -791,7 +791,7 @@
         ]
       },
       "ari_tool": "delete_experience",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -799,10 +799,43 @@
           "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["Delegated event managers blocked"],
+      "owning_issues": [1973, 2000],
+      "blockers": ["No deployed runtime or cross-surface parity proof after #1972 integration"],
       "confidence": "high",
       "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.experience.unpublish",
+      "domain": "experiences",
+      "outcome": "Return an eligible scheduled experience to a private draft",
+      "safety": "destructive",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": ["business_ios", "business_android", "business_web"],
+      "provenance": { "phase": "issue_1973", "introduced_by": "ISSUE-1973" },
+      "owners": {
+        "ui": ["mingla-business/app/experience/[id]/index.tsx"],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const unpublishExperience"
+          }
+        ]
+      },
+      "ari_tool": "unpublish_experience",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "52622a3f0576c6a313386a6b3619442bfb8fdc3a",
+          "reference": "issue_1973_ari_experience_lifecycle.test.ts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [1973],
+      "blockers": ["No deployed runtime or cross-surface parity proof after #1972 integration"],
+      "confidence": "high",
+      "verified_at": "2026-08-14"
     },
     {
       "id": "ari.trip.create",
@@ -3664,7 +3697,7 @@
       "outcome": "Generate an experience draft from a venue snap",
       "safety": "write",
       "required_role": "owner_or_event_manager",
-      "confirmation": "standard",
+      "confirmation": "guided_handoff",
       "surfaces": ["business_ios", "business_android", "business_web"],
       "provenance": { "phase": "pre_1986", "introduced_by": "product_source" },
       "owners": {
@@ -3677,7 +3710,11 @@
         ]
       },
       "ari_tool": null,
-      "status": "unsupported",
+      "status": "guided_handoff",
+      "guided_handoff": {
+        "path": "mingla-business/app/experience/snap.tsx",
+        "symbol": "ExperienceSnapRoute"
+      },
       "evidence": [
         {
           "tier": "source_contract",
@@ -3685,8 +3722,8 @@
           "reference": "experience generation service"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["create_experience does not cover snap generation"],
+      "owning_issues": [1973, 2000],
+      "blockers": ["No cross-surface runtime proof after #1972 integration"],
       "confidence": "medium",
       "verified_at": "2026-08-13"
     },
@@ -3708,8 +3745,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_experience_stops",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -3717,8 +3754,8 @@
           "reference": "experience edit/stop-media surface"
         }
       ],
-      "owning_issues": [2000],
-      "blockers": ["update_experience does not establish full stop parity"],
+      "owning_issues": [1973, 2000],
+      "blockers": ["No deployed runtime or cross-surface parity proof after #1972 integration"],
       "confidence": "medium",
       "verified_at": "2026-08-13"
     },

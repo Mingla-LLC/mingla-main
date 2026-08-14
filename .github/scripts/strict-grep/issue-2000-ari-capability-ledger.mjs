@@ -46,6 +46,7 @@ ari.ticket.pricing_switches
 ari.experience.publish
 ari.experience.update
 ari.experience.delete
+ari.experience.unpublish
 ari.trip.create
 ari.trip.update
 ari.trip.publish
@@ -146,7 +147,7 @@ ari.partner.splits
 // Independent classification authority established by the source-contract
 // reconciliation at this immutable revision. Ledger prose may explain a defect,
 // but it cannot remove one from this set or create a new proven-broken claim.
-const PROVEN_BROKEN_AUDIT_SHA = "829c46fc319c34452e18876b728b6d840f95b904";
+const PROVEN_BROKEN_AUDIT_SHA = "52622a3f0576c6a313386a6b3619442bfb8fdc3a";
 const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
 ari.event.publish
 ari.event.unpublish
@@ -158,9 +159,6 @@ ari.event.cover
 ari.event.guest_privacy
 ari.ticket.upsert_tier
 ari.ticket.pricing_switches
-ari.experience.publish
-ari.experience.update
-ari.experience.delete
 ari.trip.create
 ari.trip.update
 ari.trip.publish
@@ -207,7 +205,7 @@ const STATUSES = new Set([
 ]);
 const SAFETY = new Set(["read", "write", "money", "destructive"]);
 const CONFIRMATION = new Set(["none", "standard", "type_to_confirm", "guided_handoff"]);
-const PHASES = new Set(["pre_1986", "pr_1986", "post_1986", "open_work"]);
+const PHASES = new Set(["pre_1986", "pr_1986", "post_1986", "open_work", "issue_1973"]);
 const CONFIDENCE = new Set(["high", "medium", "low"]);
 const SURFACES = new Set(["business_ios", "business_android", "business_web"]);
 const EVIDENCE_TIERS = new Set([
@@ -335,9 +333,9 @@ function validateRef(root, auditSha, ref, label, failures) {
 
 export function validateLedger({ root, ledger, registered, advertised }) {
   const failures = [];
-  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 47) {
+  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 44) {
     failures.push(
-      `proven-broken authority must contain 47 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
+      `proven-broken authority must contain 44 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
     );
   }
   addSetDiff(

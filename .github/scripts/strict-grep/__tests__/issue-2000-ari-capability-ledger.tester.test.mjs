@@ -17,33 +17,33 @@ const EXPECTED_TOOL_NAMES = [
   "duplicate_event", "end_event_sales", "export_brand_people",
   "get_brand_analytics", "get_operator_snapshot", "get_partner_status",
   "get_payout_status", "get_tax_status", "invite_brand_member", "invite_scanner",
-  "list_brands", "list_events", "list_guest_roster", "mark_claim_feedback_fixed",
+  "list_brands", "list_events", "list_guest_roster", "manage_experience_stops", "mark_claim_feedback_fixed",
   "patch_event_when", "publish_event", "publish_experience", "publish_rsvp",
   "publish_trip", "quote_stay", "refund_order", "refund_rsvp_contribution",
   "request_account_deletion", "retry_installment", "revoke_brand_member",
   "run_growth_tool", "schedule_campaign", "send_campaign_now", "send_venue_sms",
   "set_event_cover", "set_event_guest_privacy", "set_guest_approval",
   "set_pricing_switches", "set_rsvp_guest_status", "submit_venue_claim",
-  "transition_stay", "transition_venue_reservation", "unpublish_event",
+  "transition_stay", "transition_venue_reservation", "unpublish_event", "unpublish_experience",
   "update_ari_prefs", "update_brand", "update_event", "update_experience",
   "update_notification_prefs", "update_trip", "upsert_ticket_tier",
   "venue_ops_action",
 ];
 
 const EXPECTED = Object.freeze({
-  capabilityCount: 116,
+  capabilityCount: 117,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 16,
-    broken: 47,
-    guided_handoff: 7,
-    unsupported: 42,
+    registered_unverified: 21,
+    broken: 44,
+    guided_handoff: 8,
+    unsupported: 40,
     in_flight: 4,
   }),
-  idDigest: "a63afe467e81ac3fd2441d0ccbc92dcb8c8afea8fd8ee4327c3f6fdb1a8a95c0",
-  statusDigest: "c69ab7aa28dbaf38d027c00fc7d184f6ee93ee2ae52e1fa48ffc570ad297db0a",
-  mappingDigest: "4f9babfa94a8a97bdfd6f2043d5f6ebdf6a1ba4057d5321468341c3bcef6fe6f",
-  sourceRefDigest: "2e2c112c814af4b5bf9607e0d497d40bbba22e7234ff79317b95a8ef86f8dd6f",
+  idDigest: "9366acdea4ba816a7b69b6cdc970b9b75ec705eba0832683013397bd9ad6e05b",
+  statusDigest: "9f84a49c0eb0d8dc1bb2dbda44e7d410deff871dfe7bc519201e58a07e657e00",
+  mappingDigest: "c2dd35b8115f92298c8d464b4a09eb6ef54088aeac13584f96c4aa06d6caa59c",
+  sourceRefDigest: "761d3cf68c6f5e0ff8060e8d7f070a452c1f1de15856467a40e0b6e175298012",
 });
 
 function readLedger() {
@@ -69,8 +69,8 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("64-tool set changed");
-  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("47/16/42/7/4/0 classification changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("66-tool set changed");
+  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("44/21/40/8/4/0 classification changed");
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");
   if (digest(mapped.map((capability) => `${capability.ari_tool}\t${capability.id}`)) !== EXPECTED.mappingDigest) failures.push("tool-to-capability mapping changed");
