@@ -21,6 +21,7 @@
 import React, { Suspense, useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 
 import {
   accent,
@@ -78,6 +79,8 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   coverMediaEventId,
   brandDefaultCurrency,
 }) => {
+  const intelPriceHighlight = useTurnoutFocusTarget("price");
+  const intelCapacityHighlight = useTurnoutFocusTarget("capacity");
   // ORCH-0704 v2 — sold-count map. Empty in create-flow + ORCH-0704 stub mode.
   const soldCountByTier = editMode?.soldCountByTier ?? {};
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
@@ -236,7 +239,8 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   // Representative single-ticket base for the live preview = the lowest paid
   // tier (mirrors the buyer's "From £X"). Major-units → cents.
   const lowestPaidMajor = draft.tickets.reduce<number | null>((min, t) => {
-    if (t.isFree || typeof t.priceGbp !== "number" || t.priceGbp <= 0) return min;
+    if (t.isFree || typeof t.priceGbp !== "number" || t.priceGbp <= 0)
+      return min;
     return min === null ? t.priceGbp : Math.min(min, t.priceGbp);
   }, null);
   const previewBaseCents =
@@ -258,7 +262,18 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   );
 
   return (
-    <View>
+    <View
+      style={
+        intelPriceHighlight || intelCapacityHighlight
+          ? {
+              borderColor: accent.warm,
+              borderWidth: 2,
+              borderRadius: radiusTokens.md,
+              padding: spacing.xs,
+            }
+          : undefined
+      }
+    >
       {/* Existing tickets — sorted by displayOrder */}
       {sortedTickets.length > 0 ? (
         <View style={styles.ticketsCol}>
@@ -359,7 +374,9 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           onChange={handleSwitchesChange}
           previewBaseCents={previewBaseCents}
           currency={switchesCurrency}
-          effectiveTakeRateBps={brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS}
+          effectiveTakeRateBps={
+            brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS
+          }
           locked={pricingLocked}
           onEditDefaults={() =>
             router.push(`/brand/${brand.id}/pricing-defaults` as never)
@@ -368,9 +385,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           // active Stripe tax registration; otherwise it shows the "Set up
           // VAT" nudge. The engine independently fail-closes at checkout.
           vatRegistered={taxRegistration.data?.hasActiveRegistration === true}
-          onSetupVat={() =>
-            router.push("/connect-tax-registrations" as never)
-          }
+          onSetupVat={() => router.push("/connect-tax-registrations" as never)}
         />
       ) : null}
 
@@ -384,7 +399,9 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           initial={editingTicket}
           nextOrder={nextOrder}
           soldCount={
-            editingTicket !== null ? (soldCountByTier[editingTicket.id] ?? 0) : 0
+            editingTicket !== null
+              ? (soldCountByTier[editingTicket.id] ?? 0)
+              : 0
           }
           canEditPrice={canEditTicketPrice}
           eventCurrency={hasDisplayCurrency ? displayCurrency : undefined}

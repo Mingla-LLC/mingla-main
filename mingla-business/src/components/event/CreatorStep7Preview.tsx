@@ -47,7 +47,7 @@ import { formatEventLevelTicketBadges } from "../../utils/ticketDisplay";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
-import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
+import { TurnoutGateSection } from "../intel/TurnoutGateSection";
 import { Pill } from "../ui/Pill";
 // ORCH-1076 Stream B — the Stripe-blocked status card is now the shared
 // offering primitive; this Step-7 render is a byte-identical refactor (the
@@ -137,6 +137,7 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
 
   return (
     <View>
+      <TurnoutGateSection />
       {/* #1022 — second touchpoint: last chance to fix the look before
           publishing. variant="review" swaps the chevron for the word Edit. */}
       <ThemeControlRow
@@ -220,8 +221,6 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
           <ErrorsBlockedCard count={publishability.errorCount} />
         )}
       </View>
-
-      <TurnoutForecastCard surface="preview" />
 
       {/* Preview public page — relocated from dock to content flow.
           Sits directly under the Ready-to-publish status card so it

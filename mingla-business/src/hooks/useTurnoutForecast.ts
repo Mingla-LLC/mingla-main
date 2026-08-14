@@ -35,9 +35,9 @@ export type TurnoutForecastState =
   | "error-hidden"
   | "rate_limited"
   | "offline";
-export type TurnoutWizard = "event" | "rsvp";
+export type TurnoutWizard = "event" | "rsvp" | "experience";
 export type TurnoutSurface =
-  "when" | "where" | "tickets" | "rsvp_setup" | "preview";
+  "when" | "where" | "tickets" | "rsvp_setup" | "preview" | "experience_cover";
 
 export interface TurnoutCachedResult extends GrowthToolRunResult<TurnoutReport> {
   inputKey: string;
@@ -52,6 +52,8 @@ export interface UseTurnoutForecastArgs {
   wizard: TurnoutWizard;
   surface: TurnoutSurface;
   previewActive: boolean;
+  /** #1742 Experience prewarms only at Cover/publish; no ambient auto spend. */
+  autoRunEnabled?: boolean;
 }
 
 export interface TurnoutForecastController {
@@ -63,21 +65,25 @@ export interface TurnoutForecastController {
   inputKey: string | null;
   inputHash: string | null;
   run: (trigger: TurnoutRunTrigger) => Promise<void>;
-  trackReportOpened: () => void;
+  trackReportOpened: (door?: "ambient" | "gate") => void;
   updateFailureCount: number;
+  gateFailureCount: number;
+  fresh: boolean;
 }
 
 const FRESH_WINDOW_MS = 24 * 60 * 60 * 1_000;
 const RESUME_POLL_MS = 5_000;
 const RESUME_DEADLINE_MS = 130_000;
 
-const isFresh = (result: TurnoutCachedResult, key: string): boolean => {
+export const isTurnoutResultFresh = (
+  result: TurnoutCachedResult,
+  key: string,
+  now = Date.now(),
+): boolean => {
   const generatedAt = result.report.meta?.generated_at;
   if (result.inputKey !== key || generatedAt === undefined) return false;
   const timestamp = Date.parse(generatedAt);
-  return (
-    Number.isFinite(timestamp) && Date.now() - timestamp <= FRESH_WINDOW_MS
-  );
+  return Number.isFinite(timestamp) && now - timestamp <= FRESH_WINDOW_MS;
 };
 
 const wait = (ms: number): Promise<void> =>
@@ -158,6 +164,7 @@ export const useTurnoutForecast = (
   );
   const [result, setResult] = useState<TurnoutCachedResult | null>(null);
   const [updateFailureCount, setUpdateFailureCount] = useState(0);
+  const [gateFailureCount, setGateFailureCount] = useState(0);
   const runBudget = useRef(new TurnoutRunBudget());
   const latestAttempt = useRef(0);
   const followedResultRef = useRef<string | null>(null);
@@ -204,7 +211,7 @@ export const useTurnoutForecast = (
         const outcome =
           cached !== undefined &&
           trigger !== "update" &&
-          isFresh(cached, inputKey)
+          isTurnoutResultFresh(cached, inputKey)
             ? cached
             : await queryClient.fetchQuery<TurnoutCachedResult>({
                 queryKey: growthToolsKeys.run(args.brandId, "events", inputKey),
@@ -247,6 +254,7 @@ export const useTurnoutForecast = (
         setResult(outcome);
         setState("result");
         setUpdateFailureCount(0);
+        setGateFailureCount(0);
         postHogService.capture(
           "intel_run_completed",
           analyticsProps(trigger, outcome),
@@ -278,6 +286,7 @@ export const useTurnoutForecast = (
           setState("rate_limited");
           return;
         }
+        if (trigger === "gate") setGateFailureCount((count) => count + 1);
         if (trigger === "update") {
           setUpdateFailureCount((count) => {
             const next = count + 1;
@@ -309,10 +318,14 @@ export const useTurnoutForecast = (
       setState("idle");
       return;
     }
-    if (!args.previewActive && runBudget.current.spendAuto()) {
+    if (
+      (args.autoRunEnabled ?? true) &&
+      !args.previewActive &&
+      runBudget.current.spendAuto()
+    ) {
       void run("auto");
     }
-  }, [args.previewActive, built.ok, run]);
+  }, [args.autoRunEnabled, args.previewActive, built.ok, run]);
 
   useEffect(() => {
     if (inputKey === null || materialKey === null || result === null) return;
@@ -347,7 +360,7 @@ export const useTurnoutForecast = (
     const cached = queryClient.getQueryData<TurnoutCachedResult>(
       growthToolsKeys.run(args.brandId, "events", inputKey),
     );
-    if (cached !== undefined && isFresh(cached, inputKey)) {
+    if (cached !== undefined && isTurnoutResultFresh(cached, inputKey)) {
       setResult(cached);
       setState("result");
       return;
@@ -357,13 +370,16 @@ export const useTurnoutForecast = (
     }
   }, [args.brandId, args.previewActive, inputKey, queryClient, run]);
 
-  const trackReportOpened = useCallback((): void => {
+  const trackReportOpened = useCallback(
+    (door: "ambient" | "gate" = "ambient"): void => {
     if (result === null) return;
-    postHogService.capture(
-      "intel_report_opened",
-      analyticsProps(result.trigger, result),
+      postHogService.capture("intel_report_opened", {
+        ...analyticsProps(result.trigger, result),
+        door,
+      });
+    },
+    [analyticsProps, result],
     );
-  }, [analyticsProps, result]);
 
   return {
     state,
@@ -376,5 +392,10 @@ export const useTurnoutForecast = (
     run,
     trackReportOpened,
     updateFailureCount,
+    gateFailureCount,
+    fresh:
+      result !== null && inputKey !== null
+        ? isTurnoutResultFresh(result, inputKey)
+        : false,
   };
 };

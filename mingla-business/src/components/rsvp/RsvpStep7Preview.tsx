@@ -30,7 +30,7 @@ import {
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
-import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
+import { TurnoutGateSection } from "../intel/TurnoutGateSection";
 import { useMemo as useThemeMemo } from "react";
 
 import { createThemePalette } from "../../../../packages/offering-rendering/themePalette";
@@ -80,6 +80,7 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
 
   return (
     <View>
+      <TurnoutGateSection />
       {/* #1022 — second touchpoint before publishing. */}
       <ThemeControlRow
         value={draft.themeOverrides}
@@ -166,8 +167,6 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
           </GlassCard>
         )}
       </View>
-
-      <TurnoutForecastCard surface="preview" />
 
       <Pressable
         onPress={handleMiniCardPress}

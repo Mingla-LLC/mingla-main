@@ -1,11 +1,6 @@
-import React, {
-  Suspense,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { Suspense, useMemo, useRef, useState } from "react";
 
-import type { DraftEvent } from "../../store/draftEventStore";
+import type { TurnoutInputSource } from "../../utils/turnoutInput";
 import type {
   TurnoutForecastController,
   TurnoutSurface,
@@ -32,24 +27,31 @@ const LazyTurnoutIntelObserver = React.lazy(
 
 export interface TurnoutIntelProviderProps {
   children: React.ReactNode;
-  draft: DraftEvent;
+  source: TurnoutInputSource;
   brandId: string;
-  brandDefaultCurrency: string | null;
   wizard: TurnoutWizard;
   surface: TurnoutSurface;
   previewActive: boolean;
   keyboardVisible: boolean;
+  autoRunEnabled?: boolean;
+  controllerRef?: React.MutableRefObject<TurnoutForecastController | null>;
+  navigateTo?: (
+    step: number,
+    focus: "name" | "date" | "city" | "price" | "capacity",
+  ) => void;
 }
 
 export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
   children,
-  draft,
+  source,
   brandId,
-  brandDefaultCurrency,
   wizard,
   surface,
   previewActive,
   keyboardVisible,
+  autoRunEnabled,
+  controllerRef,
+  navigateTo,
 }) => {
   const [controller, setController] =
     useState<TurnoutForecastController | null>(null);
@@ -64,19 +66,39 @@ export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
   }
   const display = keyboardVisible ? displayedController.current : controller;
   const [reportOpen, setReportOpen] = useState(false);
+  const [focusHint, setFocusHint] = useState<
+    "name" | "date" | "city" | "price" | "capacity" | null
+  >(null);
+  const [reportContext, setReportContext] = useState<string | undefined>();
+  if (controllerRef !== undefined) controllerRef.current = controller;
   const value = useMemo<TurnoutIntelContextValue | null>(
     () =>
       display === null || controller === null
         ? null
         : ({
             ...display,
+            wizard,
+            navigateTo:
+              navigateTo === undefined
+                ? undefined
+                : (step, focus) => {
+                    setFocusHint(focus);
+                    navigateTo(step, focus);
+                  },
+            focusHint,
+            consumeFocusHint: (focus) => {
+              if (focusHint !== focus) return false;
+              setFocusHint(null);
+              return true;
+            },
             run: controller.run,
-            openReport: () => {
-              controller.trackReportOpened();
+            openReport: (contextLabel?: string, door = "ambient") => {
+              controller.trackReportOpened(door);
+              setReportContext(contextLabel);
               setReportOpen(true);
             },
           } satisfies TurnoutIntelContextValue),
-    [controller, display],
+    [controller, display, focusHint, navigateTo, wizard],
   );
   return (
     <TurnoutIntelContext.Provider value={value}>
@@ -84,10 +106,11 @@ export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
       <Suspense fallback={null}>
         <LazyTurnoutIntelObserver
           brandId={brandId}
-          source={{ kind: wizard, draft, brandDefaultCurrency }}
+          source={source}
           wizard={wizard}
           surface={surface}
           previewActive={previewActive}
+          autoRunEnabled={autoRunEnabled}
           onController={setController}
         />
         {reportOpen && controller !== null ? (
@@ -95,6 +118,7 @@ export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
             visible
             report={controller.report}
             onClose={() => setReportOpen(false)}
+            contextLabel={reportContext}
           />
         ) : null}
       </Suspense>

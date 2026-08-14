@@ -12,7 +12,13 @@
  * ORCH-1150: do NOT merge back into the event/ticket wizard. See SPEC §4.2.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   AppState,
   Image,
@@ -213,20 +219,28 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
 
   const [currentStep, setCurrentStep] = useState<number>(() => {
     const fallback = liveDraft.lastStepReached;
-    return initialStep !== undefined && initialStep >= 0 && initialStep < TOTAL_STEPS
+    return initialStep !== undefined &&
+      initialStep >= 0 &&
+      initialStep < TOTAL_STEPS
       ? initialStep
       : fallback;
   });
   const [showStepErrors, setShowStepErrors] = useState<boolean>(false);
-  const [discardDialogVisible, setDiscardDialogVisible] = useState<boolean>(false);
-  const [publishConfirmVisible, setPublishConfirmVisible] = useState<boolean>(false);
+  const [discardDialogVisible, setDiscardDialogVisible] =
+    useState<boolean>(false);
+  const [publishConfirmVisible, setPublishConfirmVisible] =
+    useState<boolean>(false);
   const [errorsSheetVisible, setErrorsSheetVisible] = useState<boolean>(false);
   const [pendingErrors, setPendingErrors] = useState<ValidationError[]>([]);
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
   const [isDiscarding, setIsDiscarding] = useState<boolean>(false);
-  const [coverVideoProcessing, setCoverVideoProcessing] = useState<boolean>(false);
+  const [coverVideoProcessing, setCoverVideoProcessing] =
+    useState<boolean>(false);
   const [discardError, setDiscardError] = useState<string | null>(null);
-  const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
+  const [toast, setToast] = useState<ToastState>({
+    visible: false,
+    message: "",
+  });
   // Track keyboard state — used to (a) hide the bottom dock during
   // typing so it doesn't take space between focused input and keyboard,
   // (b) apply dynamic paddingBottom to the ScrollView so manual scroll
@@ -449,7 +463,9 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   // one identity across keystrokes/taps. See I-PROPOSED-1355-WIZARD-UPDATE-CALLBACK-STABLE.
   const draftId = initialDraft.id;
   const handleUpdate = useCallback(
-    (patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>): void => {
+    (
+      patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>,
+    ): void => {
       const nextRevision = clientRevisionRef.current + 1;
       clientRevisionRef.current = nextRevision;
       const revisionedPatch = {
@@ -459,7 +475,8 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       markDraftDirty(draftId, nextRevision);
       updateDraft(draftId, revisionedPatch);
       const fresh =
-        useDraftEventStore.getState().getDraft(draftId) ?? latestDraftRef.current;
+        useDraftEventStore.getState().getDraft(draftId) ??
+        latestDraftRef.current;
       const nextDraft: DraftEvent = {
         ...fresh,
         updatedAt: new Date().toISOString(),
@@ -636,7 +653,9 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         return;
       }
       if (code.includes("offering_date_past")) {
-        handleShowToast("A discoverable RSVP needs a future date. Update the date to publish.");
+        handleShowToast(
+          "A discoverable RSVP needs a future date. Update the date to publish.",
+        );
         setShowStepErrors(true);
         setCurrentStep(1);
         return;
@@ -775,7 +794,10 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
           return (
             <View
               key={step.title}
-              style={[styles.desktopStepItem, active ? styles.desktopStepItemActive : null]}
+              style={[
+                styles.desktopStepItem,
+                active ? styles.desktopStepItemActive : null,
+              ]}
             >
               <View
                 style={[
@@ -815,13 +837,30 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
 
   return (
     <TurnoutIntelProvider
-      draft={liveDraft}
+      source={{
+        kind: "rsvp",
+        draft: liveDraft,
+        brandDefaultCurrency: brand?.defaultCurrency ?? null,
+      }}
       brandId={liveDraft.brandId}
-      brandDefaultCurrency={brand?.defaultCurrency ?? null}
       wizard="rsvp"
-      surface={currentStep === 1 ? "when" : currentStep === 2 ? "where" : currentStep === 4 ? "rsvp_setup" : "preview"}
+      surface={
+        currentStep === 1
+          ? "when"
+          : currentStep === 2
+            ? "where"
+            : currentStep === 4
+              ? "rsvp_setup"
+              : "preview"
+      }
       previewActive={currentStep === 5}
       keyboardVisible={keyboardVisible}
+      navigateTo={(step, _focus) => {
+        setCurrentStep(step);
+        requestAnimationFrame(() =>
+          scrollViewRef.current?.scrollTo({ y: 0, animated: true }),
+        );
+      }}
     >
     <View
       style={[
@@ -874,7 +913,8 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
       {isWideDesktop ? null : (
       <View style={styles.subtitleRow}>
         <Text style={styles.subtitle}>
-          {brand?.displayName ?? "Brand"} · Step {currentStep + 1} of {TOTAL_STEPS}
+              {brand?.displayName ?? "Brand"} · Step {currentStep + 1} of{" "}
+              {TOTAL_STEPS}
         </Text>
         {serverSaveState !== undefined ? (
           <Text
@@ -897,8 +937,11 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
 
       <View style={isWideDesktop ? styles.desktopShell : styles.mobileShell}>
         {isWideDesktop ? renderDesktopStepRail() : null}
-        <View style={isWideDesktop ? styles.desktopFormPane : styles.mobileFormPane}>
-
+          <View
+            style={
+              isWideDesktop ? styles.desktopFormPane : styles.mobileFormPane
+            }
+          >
       {/* ORCH-0892-B v2: SmartScrollView (KAS on native) computes precise
           overlap between focused TextInput bottom edge and keyboard top,
           and scrolls exactly that amount. Replaces the old
@@ -917,8 +960,12 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         <Text style={styles.eyebrow}>
           Step {currentStep + 1} of {TOTAL_STEPS}
         </Text>
-        <Text style={styles.stepTitle}>{STEP_DEFS[currentStep].title}</Text>
-        <Text style={styles.stepSub}>{STEP_DEFS[currentStep].subtitle}</Text>
+              <Text style={styles.stepTitle}>
+                {STEP_DEFS[currentStep].title}
+              </Text>
+              <Text style={styles.stepSub}>
+                {STEP_DEFS[currentStep].subtitle}
+              </Text>
         <View style={styles.stepBodyWrap}>{renderStepBody()}</View>
       </ScrollView>
 
@@ -933,7 +980,10 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         variant="elevated"
         padding={0}
         radius="xxl"
-        style={[styles.dock, { marginBottom: insets.bottom + spacing.lg }]}
+                style={[
+                  styles.dock,
+                  { marginBottom: insets.bottom + spacing.lg },
+                ]}
       >
         {isLastStep ? (
           // Step 7 — uniform Back + Publish dock. The Stripe-blocked

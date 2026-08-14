@@ -1,5 +1,11 @@
 // orch-strict-grep-allow orch-0892 — wizard uses a single ScrollView + keyboardShouldPersistTaps; SmartScrollView migration is a deferred keyboard-hygiene follow-up (token in first 3 lines: gate's multiline-import line-finder returns -1)
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 // ORCH-1165: library-backed keyboard-visibility read (gate-clean wrapper).
@@ -42,6 +48,11 @@ import { postHogService } from "../../services/postHogService";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
+import { TurnoutIntelProvider } from "../intel/TurnoutIntelProvider";
+import { PrePublishGateSheet } from "../intel/PrePublishGateSheet";
+import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
+import type { TurnoutForecastController } from "../../hooks/useTurnoutForecast";
+import type { TurnoutInputSource } from "../../utils/turnoutInput";
 import { Stepper } from "../ui/Stepper";
 import { Toast } from "../ui/Toast";
 import { CreatorStep2When } from "../event/CreatorStep2When";
@@ -119,6 +130,27 @@ export interface ExperienceCreatorWizardProps {
   liveSoldCount?: number;
 }
 
+const ExperienceTitleInput: React.FC<{
+  value: string;
+  onChangeText: (value: string) => void;
+}> = ({ value, onChangeText }) => {
+  const ref = useRef<TextInput>(null);
+  const focus = useCallback(() => ref.current?.focus(), []);
+  const highlighted = useTurnoutFocusTarget("name", focus);
+  return (
+    <Input
+      ref={ref}
+      variant="text"
+      value={value}
+      onChangeText={onChangeText}
+      placeholder="e.g. Friday Night Jazz Crawl"
+      accessibilityLabel="Experience title"
+      clearable
+      style={highlighted ? styles.intelHighlight : undefined}
+    />
+  );
+};
+
 /** META-ORCH-1059 Sub-B — edit-mode seed for the whole wizard. */
 export interface ExperienceWizardInitialDraft {
   title: string;
@@ -159,29 +191,41 @@ const STEPS = [
 const RPC_ERROR_COPY: Record<string, string> = {
   not_authenticated: "Please sign in again.",
   brand_not_found: "We couldn't find your brand.",
-  insufficient_event_permission: "You don't have permission to publish for this brand.",
+  insufficient_event_permission:
+    "You don't have permission to publish for this brand.",
   experience_title_required: "Give your experience a title.",
   experience_description_invalid: "Description must be 10–500 characters.",
   event_currency_unsupported: "That currency isn't supported yet.",
-  invalid_mode: "Something went wrong with the pricing/location setup. Try again.",
+  invalid_mode:
+    "Something went wrong with the pricing/location setup. Try again.",
   experience_stop_count_invalid: "An experience needs 2–5 stops.",
   stop_name_required: "Every stop needs a name.",
   stop_description_required: "Every stop needs a short description.",
   experience_intent_required: "Pick the best vibe for this experience.",
-  experience_intent_invalid: "That vibe isn't recognised. Pick one from the list.",
+  experience_intent_invalid:
+    "That vibe isn't recognised. Pick one from the list.",
   stop_address_unvalidated: "Pick each stop's address from the suggestions.",
   stop_too_many_images: "Each stop can have up to 5 photos.",
   experience_price_invalid: "Set a valid price, or mark the experience free.",
   event_date_required: "Pick at least one date.",
-  slug_taken: "An experience with that name already exists. Try a small variation.",
-  experience_not_found: "We couldn't find this experience. It may have been deleted.",
+  slug_taken:
+    "An experience with that name already exists. Try a small variation.",
+  experience_not_found:
+    "We couldn't find this experience. It may have been deleted.",
   event_not_an_experience: "That isn't an editable experience.",
   // META-ORCH-1059 Sub-E — live-edit refund-gate + lifecycle copy.
-  experience_not_editable_status: "This experience can't be edited in its current state.",
+  experience_not_editable_status:
+    "This experience can't be edited in its current state.",
 };
 
 const currencySymbolFor = (currency: string): string =>
-  currency === "GBP" ? "£" : currency === "EUR" ? "€" : currency === "USD" ? "$" : `${currency} `;
+  currency === "GBP"
+    ? "£"
+    : currency === "EUR"
+      ? "€"
+      : currency === "USD"
+        ? "$"
+        : `${currency} `;
 
 const EMPTY_COVER: CoverPatch = {
   coverMediaUrl: null,
@@ -194,7 +238,9 @@ const EMPTY_COVER: CoverPatch = {
   coverMediaAlt: null,
 };
 
-export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = ({
+export const ExperienceCreatorWizard: React.FC<
+  ExperienceCreatorWizardProps
+> = ({
   brandId,
   onComplete,
   onCancel,
@@ -221,7 +267,13 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   const currencySymbol = currencySymbolFor(currency);
 
   const [step, setStep] = useState<StepIndex>(1);
-  const [title, setTitle] = useState(initialDraft?.title ?? prefill?.title ?? "");
+  const [intelGateOpen, setIntelGateOpen] = useState(false);
+  const [turnoutEstimate, setTurnoutEstimate] = useState<number | null>(null);
+  const intelControllerRef = useRef<TurnoutForecastController | null>(null);
+  const shownGateKeys = useRef(new Set<string>());
+  const [title, setTitle] = useState(
+    initialDraft?.title ?? prefill?.title ?? "",
+  );
   const [description, setDescription] = useState(
     initialDraft?.description ?? prefill?.description ?? "",
   );
@@ -258,7 +310,8 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   const [isFree, setIsFree] = useState(initialDraft?.isFree ?? false);
   const [capacity, setCapacity] = useState(initialDraft?.capacity ?? "20");
   const [unlimited, setUnlimited] = useState(initialDraft?.unlimited ?? false);
-  const [pricingSwitches, setPricingSwitches] = useState<PricingSwitchOverrides>(
+  const [pricingSwitches, setPricingSwitches] =
+    useState<PricingSwitchOverrides>(
     initialDraft?.pricingSwitches ?? {
       passTax: null,
       passMinglaFee: null,
@@ -346,10 +399,12 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
 
   // ORCH-1339 (D5) — the two guest-privacy display gates (wizard-owned state;
   // Pricing-step accordion is their single home for create AND edit).
-  const [guestPrivacy, setGuestPrivacy] = useState<ExperienceGuestPrivacyState>({
+  const [guestPrivacy, setGuestPrivacy] = useState<ExperienceGuestPrivacyState>(
+    {
     privateGuestList: false,
     hideRemainingCount: false,
-  });
+    },
+  );
   // ORCH-1339 — edit-mode hydration. SPEC §4.5-D routes hydration through the
   // experience mappers, but the edit route's initialDraft is built from
   // experienceDetailService (outside this leg's allowlist), so the wizard
@@ -357,7 +412,10 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   // events.theme path the RPCs read; RLS: brand members read their own rows).
   // Create mode keeps the false defaults.
   useEffect(() => {
-    if (existingExperienceId === undefined || existingExperienceId.length === 0) {
+    if (
+      existingExperienceId === undefined ||
+      existingExperienceId.length === 0
+    ) {
       return;
     }
     let cancelled = false;
@@ -371,7 +429,9 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       const theme = data.theme as Record<string, unknown> | null;
       const be = theme?.business_event;
       const beObj =
-        be !== null && typeof be === "object" ? (be as Record<string, unknown>) : {};
+        be !== null && typeof be === "object"
+          ? (be as Record<string, unknown>)
+          : {};
       const settings = beObj.settings;
       const s =
         settings !== null && typeof settings === "object"
@@ -398,10 +458,17 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   // Seed stop 1 from the brand venue default (design §2.7): name/address text
   // only; placeId stays null so the brand must confirm a real Mapbox pick.
   useEffect(() => {
-    if (venueDefault.hasPrefill && venueDefault.defaultVenue.trim().length > 0) {
+    if (
+      venueDefault.hasPrefill &&
+      venueDefault.defaultVenue.trim().length > 0
+    ) {
       setStops((prev) => {
         if (prev.length === 0) return prev;
-        if (prev[0].address.trim().length > 0 || prev[0].placeName.trim().length > 0) return prev;
+        if (
+          prev[0].address.trim().length > 0 ||
+          prev[0].placeName.trim().length > 0
+        )
+          return prev;
         const seeded = [...prev];
         seeded[0] = { ...seeded[0], address: venueDefault.defaultVenue.trim() };
         return seeded;
@@ -421,6 +488,35 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       return sum + (Number.isFinite(v) && v >= 0 ? v : 0);
     }, 0);
   }, [isFree, pricingMode, stops, wholePriceMajor]);
+
+  const turnoutSource = useMemo<TurnoutInputSource>(
+    () => ({
+      kind: "experience",
+      title,
+      intents,
+      stops,
+      when: whenAdapter.whenState,
+      pricingMode,
+      resolvedTotalMajor,
+      isFree,
+      capacity: turnoutEstimate === null ? capacity : String(turnoutEstimate),
+      unlimited: turnoutEstimate === null ? unlimited : false,
+      brandDefaultCurrency: brand?.defaultCurrency ?? null,
+    }),
+    [
+      brand?.defaultCurrency,
+      capacity,
+      intents,
+      isFree,
+      pricingMode,
+      resolvedTotalMajor,
+      stops,
+      title,
+      turnoutEstimate,
+      unlimited,
+      whenAdapter.whenState,
+    ],
+  );
 
   // ORCH-1076 Stream B — proactive Stripe gate. A paid experience
   // (!isFree && resolvedTotalMajor > 0, mirroring the ORCH-1075 server
@@ -476,7 +572,15 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
     if (step === 3) return whenAdapter.isValid;
     if (step === 4) return pricingValid;
     return true;
-  }, [step, title, description, intents, stopsValid, whenAdapter.isValid, pricingValid]);
+  }, [
+    step,
+    title,
+    description,
+    intents,
+    stopsValid,
+    whenAdapter.isValid,
+    pricingValid,
+  ]);
 
   const goBack = useCallback((): void => {
     if (step === 1) onCancel?.();
@@ -579,7 +683,9 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       });
       if (error !== null) {
         const code = error.message ?? "";
-        throw new Error(RPC_ERROR_COPY[code] ?? "Couldn't start your draft. Tap to retry.");
+        throw new Error(
+          RPC_ERROR_COPY[code] ?? "Couldn't start your draft. Tap to retry.",
+        );
       }
       const result = data as { event?: { id?: string } } | null;
       const newId = result?.event?.id;
@@ -591,7 +697,11 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       void flushThemeWrite(newId);
       return newId;
     } catch (e) {
-      setToast(e instanceof Error ? e.message : "Couldn't start your draft. Tap to retry.");
+      setToast(
+        e instanceof Error
+          ? e.message
+          : "Couldn't start your draft. Tap to retry.",
+      );
       return null;
     } finally {
       draftCreateInFlight.current = false;
@@ -653,7 +763,10 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       }
       if (
         publish &&
-        (intents.length === 0 || !stopsValid || !pricingValid || !whenAdapter.isValid)
+        (intents.length === 0 ||
+          !stopsValid ||
+          !pricingValid ||
+          !whenAdapter.isValid)
       ) {
         setShowStepErrors(true);
         whenAdapter.setShowErrors(true);
@@ -679,11 +792,14 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         if (targetId === null) {
           throw new Error("Couldn't save experience. Tap to retry.");
         }
-        const { data, error } = await supabase.rpc("issue_1719_publish_experience_with_poster", {
+        const { data, error } = await supabase.rpc(
+          "issue_1719_publish_experience_with_poster",
+          {
           p_event_id: targetId,
           p_payload: buildPayload(publish),
           p_publish: publish,
-        });
+          },
+        );
         if (error !== null) {
           // META-ORCH-1059 BUG 5 — NEVER fail silently. Prefer mapped copy;
           // otherwise surface the raw reason so the operator sees SOMETHING
@@ -716,7 +832,9 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
             hideRemainingCount: guestPrivacy.hideRemainingCount,
           });
         } catch {
-          setToast("Couldn't save guest privacy — check Settings after publishing.");
+          setToast(
+            "Couldn't save guest privacy — check Settings after publishing.",
+          );
         }
         // META-ORCH-1187 — offering-published conversion (SC-6). Only on a real
         // PUBLISH (not a draft save), mirroring biz_publish_experience semantics.
@@ -730,13 +848,18 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         }
         onComplete(savedId);
       } catch (e) {
-        setToast(e instanceof Error ? e.message : "Couldn't save experience. Tap to retry.");
+        setToast(
+          e instanceof Error
+            ? e.message
+            : "Couldn't save experience. Tap to retry.",
+        );
       } finally {
         setSubmitting(false);
       }
     },
     [
       brand,
+      brandId,
       buildPayload,
       ensureDraft,
       flushThemeWrite,
@@ -752,6 +875,63 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
     ],
   );
 
+  const currentIntelGateKey = useCallback((): string => {
+    const controller = intelControllerRef.current;
+    return (
+      controller?.inputKey ??
+      `blocked:${controller?.blockReason ?? "loading"}:${title}:${intents.join(",")}:${stops[0]?.city ?? ""}:${whenAdapter.whenState.date ?? ""}`
+    );
+  }, [intents, stops, title, whenAdapter.whenState.date]);
+
+  const maybeOpenIntelGate = useCallback((): void => {
+    const controller = intelControllerRef.current;
+    const reason = controller?.blockReason ?? null;
+    const supported =
+      reason === null ||
+      [
+        "missing_title",
+        "missing_category",
+        "missing_city",
+        "missing_date",
+        "invalid_date",
+        "missing_capacity",
+        "unlimited_capacity",
+      ].includes(reason);
+    if (controller === null || !supported) {
+      void handleSubmit(true);
+      return;
+    }
+    const key = currentIntelGateKey();
+    if (shownGateKeys.current.has(key)) {
+      void handleSubmit(true);
+      return;
+    }
+    setIntelGateOpen(true);
+    postHogService.capture("intel_gate_shown", {
+      wizard: "experience",
+      gate_state: controller.fresh ? "fresh" : controller.state,
+      estimate_used: turnoutEstimate !== null,
+    });
+  }, [currentIntelGateKey, handleSubmit, turnoutEstimate]);
+
+  const closeIntelGate = useCallback((): void => {
+    shownGateKeys.current.add(currentIntelGateKey());
+    setIntelGateOpen(false);
+  }, [currentIntelGateKey]);
+
+  const publishFromIntelGate = useCallback((): void => {
+    const controller = intelControllerRef.current;
+    postHogService.capture("intel_gate_published_anyway", {
+      wizard: "experience",
+      gate_state: controller?.fresh
+        ? "fresh"
+        : (controller?.state ?? "loading"),
+      estimate_used: turnoutEstimate !== null,
+    });
+    closeIntelGate();
+    void handleSubmit(true);
+  }, [closeIntelGate, handleSubmit, turnoutEstimate]);
+
   // META-ORCH-1059 Sub-E — live-experience save. Builds the LiveExperiencePatch
   // from the SAME wizard state buildPayload uses, runs the client guard (UX
   // fast-path), then routes through biz_update_live_experience. The server
@@ -763,7 +943,12 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
 
     // Step-level completeness still required for a live experience (published
     // rows must stay valid). Reuse the same publish-readiness checks.
-    if (intents.length === 0 || !stopsValid || !pricingValid || !whenAdapter.isValid) {
+    if (
+      intents.length === 0 ||
+      !stopsValid ||
+      !pricingValid ||
+      !whenAdapter.isValid
+    ) {
       setShowStepErrors(true);
       whenAdapter.setShowErrors(true);
       const reason =
@@ -802,7 +987,10 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       liveEditReason,
     );
     if (!guard.ok) {
-      const copy = liveExperienceRejectCopy(guard.reason, guard.affectedOrderCount);
+      const copy = liveExperienceRejectCopy(
+        guard.reason,
+        guard.affectedOrderCount,
+      );
       setLiveEditError(copy);
       setToast(copy);
       return;
@@ -829,9 +1017,12 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
               : "Couldn't save experience. Tap to retry."),
         );
       }
-      const result = data as
-        | { ok?: boolean; reason?: string; affected_order_count?: number; event?: { id?: string } }
-        | null;
+      const result = data as {
+        ok?: boolean;
+        reason?: string;
+        affected_order_count?: number;
+        event?: { id?: string };
+      } | null;
       // ORCH-1075 — Stripe-readiness / past-date guard (structured return).
       if (
         result !== null &&
@@ -841,7 +1032,11 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         return;
       }
       // Server-side refund-gate rejection (canonical).
-      if (result !== null && result.ok === false && typeof result.reason === "string") {
+      if (
+        result !== null &&
+        result.ok === false &&
+        typeof result.reason === "string"
+      ) {
         const copy = liveExperienceRejectCopy(
           result.reason as UpdateLiveExperienceRejectReason,
           result.affected_order_count,
@@ -859,11 +1054,17 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
           hideRemainingCount: guestPrivacy.hideRemainingCount,
         });
       } catch {
-        setToast("Couldn't save guest privacy — check Settings after publishing.");
+        setToast(
+          "Couldn't save guest privacy — check Settings after publishing.",
+        );
       }
       onComplete(savedId);
     } catch (e) {
-      setToast(e instanceof Error ? e.message : "Couldn't save experience. Tap to retry.");
+      setToast(
+        e instanceof Error
+          ? e.message
+          : "Couldn't save experience. Tap to retry.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -890,15 +1091,37 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   ]);
 
   return (
+    <TurnoutIntelProvider
+      source={turnoutSource}
+      brandId={brandId}
+      wizard="experience"
+      surface="experience_cover"
+      previewActive={step === 5}
+      keyboardVisible={keyboardVisible}
+      autoRunEnabled={false}
+      controllerRef={intelControllerRef}
+      navigateTo={(targetStep) => {
+        setStep((targetStep + 1) as StepIndex);
+        requestAnimationFrame(() =>
+          scrollRef.current?.scrollTo({ y: 0, animated: true }),
+        );
+      }}
+    >
     <View style={styles.host}>
       <View style={styles.header}>
         <Pressable
           onPress={goBack}
           accessibilityRole="button"
-          accessibilityLabel={step === 1 ? "Cancel experience creation" : "Back"}
+            accessibilityLabel={
+              step === 1 ? "Cancel experience creation" : "Back"
+            }
           style={styles.backTouch}
         >
-          <Icon name={step === 1 ? "close" : "chevL"} size={18} color={textTokens.secondary} />
+            <Icon
+              name={step === 1 ? "close" : "chevL"}
+              size={18}
+              color={textTokens.secondary}
+            />
         </Pressable>
         <Stepper steps={STEPS} currentIndex={step - 1} />
       </View>
@@ -933,14 +1156,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
           <View style={styles.stepBody}>
             <Text style={styles.title}>Create experience</Text>
             <Text style={styles.label}>Experience title</Text>
-            <Input
-              variant="text"
-              value={title}
-              onChangeText={setTitle}
-              placeholder="e.g. Friday Night Jazz Crawl"
-              accessibilityLabel="Experience title"
-              clearable
-            />
+              <ExperienceTitleInput value={title} onChangeText={setTitle} />
             <Text style={styles.label}>What&apos;s it about?</Text>
             <TextInput
               value={description}
@@ -955,8 +1171,8 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
             {/* META-ORCH-1059 CHANGE 2 — curated vibes picker (MULTI; ≥1 required) */}
             <Text style={styles.label}>Which vibes fit this experience?</Text>
             <Text style={styles.helperBody}>
-              Pick every vibe that fits — buyers find your experience under each one on
-              the Mingla deck. Choose at least one.
+                Pick every vibe that fits — buyers find your experience under
+                each one on the Mingla deck. Choose at least one.
             </Text>
             <View style={styles.intentGrid}>
               {EXPERIENCE_INTENTS.map((opt) => {
@@ -968,7 +1184,10 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: selected }}
                     accessibilityLabel={`${opt.label} — ${opt.description}`}
-                    style={[styles.intentChip, selected && styles.intentChipActive]}
+                      style={[
+                        styles.intentChip,
+                        selected && styles.intentChipActive,
+                      ]}
                   >
                     <Icon
                       name={selected ? "check" : opt.icon}
@@ -993,7 +1212,9 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
               })}
             </View>
             {showStepErrors && intents.length === 0 ? (
-              <Text style={styles.inlineError}>Pick at least one vibe for this experience.</Text>
+                <Text style={styles.inlineError}>
+                  Pick at least one vibe for this experience.
+                </Text>
             ) : null}
           </View>
         ) : null}
@@ -1021,7 +1242,9 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
               errors={whenAdapter.errors}
               showErrors={whenAdapter.showErrors}
               onShowToast={setToast}
-              scrollToBottom={() => scrollRef.current?.scrollToEnd({ animated: true })}
+                scrollToBottom={() =>
+                  scrollRef.current?.scrollToEnd({ animated: true })
+                }
               // META-ORCH-1059 — experiences can recur with no end.
               allowNeverEnds
             />
@@ -1061,9 +1284,15 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
               passServiceFee: brand.defaultPassServiceFee ?? false,
             }}
             takeRateBps={brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS}
-            vatRegistered={taxRegistration.data?.hasActiveRegistration === true}
-            onEditDefaults={() => router.push(`/brand/${brand.id}/pricing-defaults` as never)}
-            onSetupVat={() => router.push("/connect-tax-registrations" as never)}
+              vatRegistered={
+                taxRegistration.data?.hasActiveRegistration === true
+              }
+              onEditDefaults={() =>
+                router.push(`/brand/${brand.id}/pricing-defaults` as never)
+              }
+              onSetupVat={() =>
+                router.push("/connect-tax-registrations" as never)
+              }
             showErrors={showStepErrors}
           />
         ) : null}
@@ -1111,9 +1340,16 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
           </View>
         ) : null}
       </ScrollView>
-      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
+        <View
+          style={[styles.footer, { paddingBottom: insets.bottom + spacing.lg }]}
+        >
         {step < 5 ? (
-          <Button label="Continue" onPress={goNext} variant="primary" size="lg" />
+            <Button
+              label="Continue"
+              onPress={goNext}
+              variant="primary"
+              size="lg"
+            />
         ) : isLiveEdit ? (
           // META-ORCH-1059 Sub-E — live experiences are already published, so
           // there's one "Save changes" action routed through the refund-gate RPC
@@ -1139,7 +1375,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
             />
             <Button
               label="Publish"
-              onPress={() => void handleSubmit(true)}
+                onPress={maybeOpenIntelGate}
               variant="primary"
               size="lg"
               loading={submitting}
@@ -1153,8 +1389,21 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
           </View>
         )}
       </View>
-      <Toast visible={toast !== null} kind="error" message={toast ?? ""} onDismiss={() => setToast(null)} />
+        <Toast
+          visible={toast !== null}
+          kind="error"
+          message={toast ?? ""}
+          onDismiss={() => setToast(null)}
+        />
+        <PrePublishGateSheet
+          visible={intelGateOpen}
+          onClose={closeIntelGate}
+          onPublish={publishFromIntelGate}
+          estimate={turnoutEstimate}
+          onEstimate={setTurnoutEstimate}
+        />
     </View>
+    </TurnoutIntelProvider>
   );
 };
 
@@ -1263,6 +1512,7 @@ const styles = StyleSheet.create({
     color: semantic.error,
     marginTop: spacing.xxs,
   },
+  intelHighlight: { borderColor: accent.warm, borderWidth: 2 },
 });
 
 export default ExperienceCreatorWizard;

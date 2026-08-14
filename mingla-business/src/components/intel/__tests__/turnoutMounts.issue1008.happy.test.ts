@@ -7,7 +7,7 @@ const read = (relative: string): string =>
   fs.readFileSync(path.join(root, relative), "utf8");
 
 describe("#1008 turnout surface wiring", () => {
-  it("mounts one provider at each wizard root and cards at all six locked surfaces", () => {
+  it("mounts one provider at each wizard root, ambient cards in-flow, and enriched gates at Review", () => {
     const eventWizard = read("src/components/event/EventCreatorWizard.tsx");
     const rsvpWizard = read("src/components/rsvp/RsvpCreatorWizard.tsx");
     expect(eventWizard.match(/<TurnoutIntelProvider/g)).toHaveLength(1);
@@ -24,12 +24,19 @@ describe("#1008 turnout surface wiring", () => {
       ["src/components/rsvp/RsvpStep7Preview.tsx", 'surface="preview"'],
     ];
     for (const [file, marker] of mounts) {
-      expect(read(file).match(/<TurnoutForecastCard/g)).toHaveLength(1);
-      expect(read(file)).toContain(marker);
+      const source = read(file);
+      if (marker === 'surface="preview"') {
+        expect(source.match(/<TurnoutGateSection/g)).toHaveLength(1);
+      } else {
+        expect(source.match(/<TurnoutForecastCard/g)).toHaveLength(1);
+        expect(source).toContain(marker);
+      }
     }
   });
 
-  it("does not alter validators, publish guards, stores, or experience creator files", () => {
+  // [TEST-MOD-APPROVED #1742] #1008 intentionally reserved Experience for the
+  // approved follow-up gate. #1742 now owns that exact, previously excluded seam.
+  it("does not alter validators, publish guards, or stores, and mounts the approved Experience follow-up", () => {
     const changed = execFileSync("git", ["diff", "--name-only"], {
       cwd: path.resolve(root, ".."),
     })
@@ -42,8 +49,13 @@ describe("#1008 turnout surface wiring", () => {
     expect(changed).not.toContain(
       "mingla-business/src/store/draftEventStore.ts",
     );
-    expect(
-      changed.some((file: string) => file.includes("ExperienceCreatorWizard")),
-    ).toBe(false);
+    expect(changed).toContain(
+      "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx",
+    );
+    const experienceWizard = read(
+      "src/components/experience/ExperienceCreatorWizard.tsx",
+    );
+    expect(experienceWizard.match(/<TurnoutIntelProvider/g)).toHaveLength(1);
+    expect(experienceWizard).toContain("autoRunEnabled={false}");
   });
 });

@@ -14,6 +14,7 @@ interface TurnoutIntelObserverProps {
   wizard: TurnoutWizard;
   surface: TurnoutSurface;
   previewActive: boolean;
+  autoRunEnabled?: boolean;
   onController: (controller: TurnoutForecastController) => void;
 }
 
@@ -37,7 +38,9 @@ const TurnoutIntelObserver = ({
       previous.inputHash === controller.inputHash &&
       previous.run === controller.run &&
       previous.trackReportOpened === controller.trackReportOpened &&
-      previous.updateFailureCount === controller.updateFailureCount
+      previous.updateFailureCount === controller.updateFailureCount &&
+      previous.gateFailureCount === controller.gateFailureCount &&
+      previous.fresh === controller.fresh
     ) {
       return;
     }
