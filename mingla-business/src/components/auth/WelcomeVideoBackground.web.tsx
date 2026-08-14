@@ -12,6 +12,7 @@ import { useVideoPlayer, VideoView } from "expo-video";
 
 const LANDSCAPE_VIDEO = require("../../../assets/welcome/mingla-welcome-landscape.mp4");
 const LANDSCAPE_POSTER = require("../../../assets/welcome/mingla-welcome-landscape-poster.jpg");
+const MEDIA_FILL_STYLE = { width: "100%", height: "100%" } as const;
 
 type NetworkInformation = {
   saveData?: boolean;
@@ -128,11 +129,11 @@ export function WelcomeVideoBackground() {
 
   return (
     <View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>
-      <Image source={LANDSCAPE_POSTER} resizeMode="cover" accessible={false} style={StyleSheet.absoluteFill} />
+      <Image source={LANDSCAPE_POSTER} resizeMode="cover" accessible={false} style={[StyleSheet.absoluteFill, MEDIA_FILL_STYLE]} />
       <Animated.View style={[StyleSheet.absoluteFill, { opacity }]}>
         <VideoView
           player={player}
-          style={StyleSheet.absoluteFill}
+          style={[StyleSheet.absoluteFill, MEDIA_FILL_STYLE]}
           contentFit="cover"
           nativeControls={false}
           playsInline
