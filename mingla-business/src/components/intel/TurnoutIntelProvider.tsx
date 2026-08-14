@@ -1,6 +1,5 @@
 import React, {
-  createContext,
-  useContext,
+  Suspense,
   useMemo,
   useRef,
   useState,
@@ -9,20 +8,21 @@ import React, {
 import type { DraftEvent } from "../../store/draftEventStore";
 import {
   useTurnoutForecast,
-  type TurnoutForecastController,
   type TurnoutSurface,
   type TurnoutWizard,
 } from "../../hooks/useTurnoutForecast";
 import { postHogService } from "../../services/postHogService";
-import { IntelReportSheet } from "./IntelReportSheet";
+import {
+  TurnoutIntelContext,
+  type TurnoutIntelContextValue,
+} from "./TurnoutIntelContext";
 
-interface TurnoutIntelContextValue extends TurnoutForecastController {
-  openReport: () => void;
-}
+export { useTurnoutIntel } from "./TurnoutIntelContext";
 
-const TurnoutIntelContext = createContext<TurnoutIntelContextValue | null>(
-  null,
-);
+const LazyIntelReportSheet = React.lazy(async () => {
+  const module = await import("./IntelReportSheet");
+  return { default: module.IntelReportSheet };
+});
 
 export interface TurnoutIntelProviderProps {
   children: React.ReactNode;
@@ -90,14 +90,13 @@ export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
   return (
     <TurnoutIntelContext.Provider value={value}>
       {children}
-      <IntelReportSheet
-        visible={reportOpen}
-        report={controller.report}
-        onClose={() => setReportOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <LazyIntelReportSheet
+          visible={reportOpen}
+          report={controller.report}
+          onClose={() => setReportOpen(false)}
+        />
+      </Suspense>
     </TurnoutIntelContext.Provider>
   );
 };
-
-export const useTurnoutIntel = (): TurnoutIntelContextValue | null =>
-  useContext(TurnoutIntelContext);
