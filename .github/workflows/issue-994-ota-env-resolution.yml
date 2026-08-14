@@ -31,6 +31,7 @@ on:
     branches: [main, Seth]
     paths:
       - "scripts/ci/issue-2062-expo-config-node20.mjs"
+      - "scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs"
       - "app-mobile/app.config.js"
       - "app-mobile/app.config.ts"
       - "app-mobile/app.json"
@@ -44,6 +45,7 @@ on:
     branches: [main, Seth]
     paths:
       - "scripts/ci/issue-2062-expo-config-node20.mjs"
+      - "scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs"
       - "app-mobile/app.config.js"
       - "app-mobile/app.config.ts"
       - "app-mobile/app.json"
@@ -83,6 +85,8 @@ jobs:
         run: node .github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs --self-test
       - name: "#2062 Expo config Node 20.19.4 boundary: self-test"
         run: node scripts/ci/issue-2062-expo-config-node20.mjs --self-test
+      - name: "#2062 independent adversarial workflow/runtime guard"
+        run: node --test scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs
       - name: "#2062 Expo config Node 20.19.4 boundary: real app"
         run: node scripts/ci/issue-2062-expo-config-node20.mjs --app ${{ matrix.app }}
       - name: "#994 env-resolution gate: blind vs applied differential"
