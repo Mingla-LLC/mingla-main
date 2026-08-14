@@ -47,12 +47,11 @@ describe("META-ORCH-0972 Sub-B Android optional SDK startup isolation", () => {
     expect(names).toContain("@stripe/stripe-react-native");
   });
 
-  it("excludes env-absent optional install SDKs from Android native autolinking", () => {
+  it("keeps unrelated optional install SDKs excluded from Android native autolinking", () => {
     const packageJson = JSON.parse(read("package.json"));
 
     expect(packageJson.expo?.autolinking?.android?.exclude).toEqual(
       expect.arrayContaining([
-        "react-native-appsflyer",
         "react-native-onesignal",
         "react-native-purchases",
       ]),

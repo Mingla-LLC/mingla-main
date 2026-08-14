@@ -132,7 +132,7 @@ test('H9 Consumer and Business ship the same new runtime version', () => {
   const consumer = JSON.parse(read('app-mobile/app.json')).expo.version;
   const business = JSON.parse(read('mingla-business/app.json')).expo.version;
   assert.equal(consumer, business);
-  assert.equal(consumer, '1.1.4');
+  assert.equal(consumer, '1.1.5');
 });
 
 test('H10 delivery rejects revoked and deleted links at the mutation boundary', () => {
