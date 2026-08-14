@@ -15,7 +15,6 @@ import {
   AccessibilityInfo,
   Keyboard,
   TextInput,
-  ScrollView,
   useWindowDimensions,
 } from "react-native";
 import { AppleLogo } from "../ui/BrandIcons";
@@ -32,6 +31,7 @@ import {
 } from "../../constants/designSystem";
 import { s, vs } from "../../utils/responsive";
 import { MINGLA_WORDMARK } from "@mingla/brand-assets";
+import { ScrollView } from "../../wrappers/SmartScrollView";
 // @ts-ignore -- Expo resolves the required .native/.web implementation per platform.
 import { WelcomeVideoBackground } from "./WelcomeVideoBackground";
 
@@ -262,12 +262,8 @@ export default function BusinessWelcomeScreen({
     return () => backHandler.remove();
   }, [onBack]);
 
-  // Sign-in screen has no ScrollView (bottom-anchored action zone with
-  // email/OTP inputs at viewport bottom). SmartScrollView/KAS doesn't fit
-  // — wrapping would change anchored → scrollable layout. JS-side
-  // keyboardPad remains until a `useKeyboardHeightJs()` wrapper hook is
-  // added (ORCH-0892-Bz follow-up; Discovery for Orchestrator).
-  // Per SPEC_ORCH-0892-B_v2 §7.F deviation note.
+  // Email/OTP inputs remain bottom-anchored rather than moving into the idle
+  // SmartScrollView. JS-side keyboardPad preserves that existing mode layout.
   useEffect(() => {
     if (Platform.OS === "web") return;
     // orch-strict-grep-allow orch-0892 — anchored sign-in (no ScrollView)
