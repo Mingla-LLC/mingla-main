@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-14 — Host web welcome video and its fallback poster now cover the full browser viewport at every desktop size instead of stopping at the media's intrinsic 1280×720 frame. (#2073, PR #2076)
 - 2026-08-14 — Host web now reveals its already-playing welcome video as soon as accessibility and lifecycle checks allow it, instead of leaving the moving background permanently hidden behind the poster. (#2071, PR #2072)
 - 2026-08-14 — Mingla Host now replaces the old Business product identity across app, web, splash, links and social destinations while preserving payment, advertising, attribution, notification and native identifiers; the operator web authority moves to host.usemingla.com with disjoint app-link ownership and a guarded one-host retirement plan. (#2050, PR #2065)
 - 2026-08-13 — Explorer and Host now open on distinct video-led welcome screens with the regular Mingla logo, platform-correct sign-in choices, readable copy, reduced-motion fallbacks, and guarded web/native video lifecycles. (#2052, PR #2061)
