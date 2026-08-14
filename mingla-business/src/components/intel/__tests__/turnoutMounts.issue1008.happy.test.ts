@@ -37,9 +37,19 @@ describe("#1008 turnout surface wiring", () => {
   // [TEST-MOD-APPROVED #1742] #1008 intentionally reserved Experience for the
   // approved follow-up gate. #1742 now owns that exact, previously excluded seam.
   it("does not alter validators, publish guards, or stores, and mounts the approved Experience follow-up", () => {
-    const changed = execFileSync("git", ["diff", "--name-only"], {
-      cwd: path.resolve(root, ".."),
-    })
+    const repoRoot = path.resolve(root, "..");
+    const base = execFileSync(
+      "git",
+      ["merge-base", "HEAD", "origin/main"],
+      { cwd: repoRoot },
+    )
+      .toString()
+      .trim();
+    const changed = execFileSync(
+      "git",
+      ["diff", "--name-only", base, "HEAD"],
+      { cwd: repoRoot },
+    )
       .toString()
       .trim()
       .split("\n");

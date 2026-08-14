@@ -97,9 +97,11 @@ describe("#1742 pre-publish intelligence happy path", () => {
     expect(gate).toContain("you can publish anyway");
     const sheet = read("src/components/intel/PrePublishGateSheet.tsx");
     expect(sheet).toContain('label="Publish now"');
+    // [TEST-MOD-APPROVED #1742] Finite Experiences use the normal band;
+    // only a provider-owned unlimited estimate uses the demand-read headline.
+    expect(sheet).toContain('testID="experience-gate-band"');
     expect(sheet).toContain(
-      "~{forecast?.total_low}–{forecast?.total_high} people expected",
+      "people expected`",
     );
-    expect(sheet).not.toContain("of {forecast");
   });
 });

@@ -17,6 +17,7 @@ import {
   turnoutInputHash,
   turnoutInputKey,
   turnoutMaterialKey,
+  type TurnoutGateAnalyticsState,
   TurnoutRunBudget,
   type TurnoutBlockReason,
   type TurnoutEngineInput,
@@ -36,6 +37,12 @@ export type TurnoutForecastState =
   | "rate_limited"
   | "offline";
 export type TurnoutWizard = "event" | "rsvp" | "experience";
+export type TurnoutGateState = TurnoutGateAnalyticsState;
+export type TurnoutAnalyticsProps = Record<
+  string,
+  string | number | boolean | null | undefined
+>;
+
 export type TurnoutSurface =
   "when" | "where" | "tickets" | "rsvp_setup" | "preview" | "experience_cover";
 
@@ -69,6 +76,9 @@ export interface TurnoutForecastController {
   updateFailureCount: number;
   gateFailureCount: number;
   fresh: boolean;
+  gateState: (estimateUsed?: boolean) => TurnoutGateState;
+  gateAnalyticsProps: (estimateUsed?: boolean) => TurnoutAnalyticsProps;
+  cancelPending: () => void;
 }
 
 const FRESH_WINDOW_MS = 24 * 60 * 60 * 1_000;
@@ -381,6 +391,34 @@ export const useTurnoutForecast = (
     [analyticsProps, result],
     );
 
+  const gateState = useCallback(
+    (estimateUsed = false): TurnoutGateState => {
+      if (!built.ok) return "blocked";
+      if (state === "running") return "running";
+      if (state === "rate_limited") return "rate_limited";
+      if (state === "error-hidden" || state === "offline") return "failed";
+      if (estimateUsed && result !== null) return "demand_read";
+      if (result !== null && inputKey !== null && isTurnoutResultFresh(result, inputKey)) {
+        return "fresh";
+      }
+      return "ran";
+    },
+    [built.ok, inputKey, result, state],
+  );
+
+  const gateAnalyticsProps = useCallback(
+    (estimateUsed = false): TurnoutAnalyticsProps => ({
+      ...analyticsProps(result?.trigger ?? "gate", result ?? undefined),
+      gate_state: gateState(estimateUsed),
+      estimate_used: estimateUsed,
+    }),
+    [analyticsProps, gateState, result],
+  );
+
+  const cancelPending = useCallback((): void => {
+    latestAttempt.current += 1;
+  }, []);
+
   return {
     state,
     report: result?.report ?? null,
@@ -397,5 +435,8 @@ export const useTurnoutForecast = (
       result !== null && inputKey !== null
         ? isTurnoutResultFresh(result, inputKey)
         : false,
+    gateState,
+    gateAnalyticsProps,
+    cancelPending,
   };
 };

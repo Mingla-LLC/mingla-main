@@ -4,10 +4,14 @@ import {
   accent,
   glass,
   radius,
+  semantic,
   spacing,
   text,
   typography,
 } from "../../constants/designSystem";
+import { postHogService } from "../../services/postHogService";
+import { formatRelativeTime } from "../../utils/relativeTime";
+import { buildTurnoutGateRecommendations } from "../../utils/turnoutInput";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
 import { IntelProgress } from "./IntelProgress";
@@ -17,25 +21,33 @@ export interface PrePublishGateSheetProps {
   visible: boolean;
   onClose: () => void;
   onPublish: () => void;
-  onEstimate: (value: number | null) => void;
-  estimate: number | null;
+  /** Legacy test-only shape; provider session remains the production owner. */
+  estimate?: number | null;
+  onEstimate?: (value: number | null) => void;
 }
 
 export const PrePublishGateSheet: React.FC<PrePublishGateSheetProps> = ({
   visible,
   onClose,
   onPublish,
-  onEstimate,
-  estimate,
 }) => {
   const intel = useTurnoutIntel();
   const [custom, setCustom] = useState("");
   if (intel === null) return null;
+  const estimateState = intel.estimate ?? { kind: "unanswered" as const };
   const forecast = intel.report?.forecast;
   const hasBand =
     typeof forecast?.total_low === "number" &&
-    typeof forecast.total_high === "number";
-  const unlimited = intel.blockReason === "unlimited_capacity";
+    typeof forecast.total_high === "number" &&
+    typeof forecast.capacity === "number";
+  const demandRead = estimateState.kind === "answered";
+  const unlimited =
+    intel.blockReason === "unlimited_capacity" && !demandRead;
+  const recommendations = buildTurnoutGateRecommendations(
+    intel.report,
+    intel.input,
+    intel.wizard,
+  );
   const blockedTarget =
     intel.blockReason === "missing_title" ||
     intel.blockReason === "missing_category"
@@ -69,10 +81,22 @@ export const PrePublishGateSheet: React.FC<PrePublishGateSheetProps> = ({
               }
             : null;
   const failure = intel.state === "error-hidden";
-  const context =
-    estimate === null
-      ? undefined
-      : `Modeled on your estimate of ~${estimate} spots`;
+  const context = demandRead
+    ? `Modeled on your estimate of ~${estimateState.value} spots`
+    : undefined;
+  const benchmark = intel.report?.meta?.research_source === "fallback";
+  const generatedAt = intel.report?.meta?.generated_at;
+  const finiteBand = hasBand
+    ? `${forecast.total_low}–${forecast.total_high} of ${forecast.capacity}`
+    : "";
+  const demandBand = hasBand
+    ? `~${forecast.total_low}–${forecast.total_high} people expected`
+    : "";
+  const showCheckFirst =
+    intel.state === "eligible" &&
+    intel.gateFailureCount === 0 &&
+    !unlimited &&
+    blockedTarget === null;
   return (
     <Sheet
       visible={visible}
@@ -83,7 +107,7 @@ export const PrePublishGateSheet: React.FC<PrePublishGateSheetProps> = ({
       <View style={styles.root}>
         <Text style={styles.eyebrow}>MINGLA INTELLIGENCE</Text>
         <Text style={styles.title}>A quick turnout read</Text>
-        {unlimited ? (
+        {unlimited && estimateState.kind === "unanswered" ? (
           <View style={styles.stack}>
             <Text style={styles.body}>About how many people could join?</Text>
             <View style={styles.chips}>
@@ -92,10 +116,10 @@ export const PrePublishGateSheet: React.FC<PrePublishGateSheetProps> = ({
                   key={value}
                   accessibilityRole="button"
                   accessibilityLabel={`Estimate ${value} spots`}
-                  onPress={() => onEstimate(value)}
+                  onPress={() => intel.setEstimate(value)}
                   style={[
                     styles.chip,
-                    estimate === value ? styles.chipActive : null,
+                    false,
                   ]}
                 >
                   <Text style={styles.chipText}>{value}</Text>
@@ -116,17 +140,23 @@ export const PrePublishGateSheet: React.FC<PrePublishGateSheetProps> = ({
               variant="secondary"
               size="md"
               disabled={!Number.isInteger(Number(custom)) || Number(custom) < 1}
-              onPress={() => onEstimate(Number(custom))}
+              onPress={() => intel.setEstimate(Number(custom))}
             />
             <Button
               label="Skip estimate"
               variant="ghost"
               size="sm"
-              onPress={() => onEstimate(null)}
+              onPress={intel.skipEstimate}
             />
-            <Text style={styles.note}>
-              Turnout modeling needs a rough headcount — skipped.
-            </Text>
+          </View>
+        ) : unlimited && estimateState.kind === "skipped" ? (
+          <Text style={styles.body}>
+            Turnout modeling needs a rough headcount — skipped.
+          </Text>
+        ) : demandRead && intel.blockReason === "unlimited_capacity" ? (
+          <View style={styles.stack}>
+            <IntelProgress />
+            <Text style={styles.body}>Checking your estimated headcount…</Text>
           </View>
         ) : blockedTarget !== null ? (
           <View style={styles.stack}>
@@ -141,13 +171,17 @@ export const PrePublishGateSheet: React.FC<PrePublishGateSheetProps> = ({
               }}
             />
           </View>
-        ) : intel.state === "running" || intel.state === "eligible" ? (
+        ) : intel.state === "running" ? (
           <View style={styles.stack}>
             <IntelProgress />
             <Text style={styles.body}>
               {"It'll keep working — publish whenever you're ready"}
             </Text>
           </View>
+        ) : intel.state === "eligible" ? (
+          <Text style={styles.body}>
+            Check turnout now, or publish without waiting.
+          </Text>
         ) : intel.state === "offline" ? (
           <Text style={styles.body}>
             {"You're offline — publish works; checks need a connection."}
@@ -174,12 +208,81 @@ export const PrePublishGateSheet: React.FC<PrePublishGateSheetProps> = ({
           </View>
         ) : hasBand ? (
           <View style={styles.stack}>
-            <Text style={styles.band}>
-              ~{forecast?.total_low}–{forecast?.total_high} people expected
-            </Text>
+            {demandRead ? (
+              <Text style={styles.band}>
+                  {demandBand}
+              </Text>
+            ) : (
+              <View style={styles.bandRow}>
+                <Text style={styles.band} testID="experience-gate-band">
+                  {finiteBand}
+                </Text>
+                <Text style={styles.modePill}>
+                  {benchmark ? "BENCHMARK" : "MODELED"}
+                </Text>
+              </View>
+            )}
             {context !== undefined ? (
               <Text style={styles.note}>{context}</Text>
             ) : null}
+            <View style={styles.truthRow}>
+              {forecast.confidence !== undefined ? (
+                <Text style={styles.note}>{forecast.confidence} confidence</Text>
+              ) : null}
+              {generatedAt !== undefined ? (
+                <Text style={styles.note}>
+                  Checked {formatRelativeTime(generatedAt)}
+                </Text>
+              ) : null}
+            </View>
+            {intel.sessionHonesty != null ? (
+              <Text style={styles.note}>{intel.sessionHonesty}</Text>
+            ) : null}
+            {demandRead && intel.report?.demand_read !== undefined ? (
+              <Text style={styles.body}>{intel.report.demand_read}</Text>
+            ) : null}
+            {recommendations.map((row) => (
+              <View
+                key={row.id}
+                style={styles.reco}
+                accessible
+                accessibilityLabel={`${row.severityWord}: ${row.copy}`}
+              >
+                <Text
+                  style={[
+                    styles.severity,
+                    row.severity === "warning"
+                      ? styles.warning
+                      : styles.info,
+                  ]}
+                >
+                  {row.severity === "warning" ? "⚠" : "ⓘ"} {row.severityWord}
+                </Text>
+                <Text style={styles.body} numberOfLines={2}>
+                  {row.copy}
+                </Text>
+                {row.target !== null && intel.navigateTo !== undefined ? (
+                  <Button
+                    label={row.target.label}
+                    variant="ghost"
+                    size="sm"
+                    onPress={() => {
+                      postHogService.capture("intel_reco_followed", {
+                        ...(intel.gateAnalyticsProps?.(demandRead) ?? {
+                          wizard: intel.wizard,
+                          gate_state: demandRead ? "demand_read" : "ran",
+                          estimate_used: demandRead,
+                        }),
+                        door: "gate",
+                        target_step: row.target?.step,
+                      });
+                      onClose();
+                      intel.navigateTo?.(row.target!.step, row.target!.focus);
+                    }}
+                  />
+                ) : null}
+              </View>
+            ))}
             <Button
               label="See full forecast"
               variant="ghost"
@@ -190,17 +293,16 @@ export const PrePublishGateSheet: React.FC<PrePublishGateSheetProps> = ({
               }}
             />
           </View>
-        ) : (
+        ) : showCheckFirst ? (
           <Text style={styles.body}>Check first (~30s), or publish now.</Text>
-        )}
+        ) : null}
         <View style={styles.actions}>
-          {blockedTarget === null ? (
+          {showCheckFirst ? (
             <Button
               label="Check first (~30s)"
               variant="secondary"
               size="lg"
               onPress={() => intel.run("gate")}
-              disabled={unlimited && estimate === null}
               style={styles.action}
             />
           ) : null}
@@ -228,6 +330,13 @@ const styles = StyleSheet.create({
   note: { ...typography.caption, color: text.tertiary },
   band: { ...typography.h2, color: text.primary },
   stack: { gap: spacing.sm },
+  reco: { gap: spacing.xs },
+  truthRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  bandRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  modePill: { ...typography.micro, color: text.secondary },
+  severity: { ...typography.caption, fontWeight: "700" },
+  warning: { color: semantic.warning },
+  info: { color: semantic.info },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   chip: {
     minWidth: 52,

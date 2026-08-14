@@ -40,7 +40,10 @@ const TurnoutIntelObserver = ({
       previous.trackReportOpened === controller.trackReportOpened &&
       previous.updateFailureCount === controller.updateFailureCount &&
       previous.gateFailureCount === controller.gateFailureCount &&
-      previous.fresh === controller.fresh
+      previous.fresh === controller.fresh &&
+      previous.gateState === controller.gateState &&
+      previous.gateAnalyticsProps === controller.gateAnalyticsProps &&
+      previous.cancelPending === controller.cancelPending
     ) {
       return;
     }

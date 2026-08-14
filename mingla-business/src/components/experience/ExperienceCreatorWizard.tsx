@@ -49,10 +49,14 @@ import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { TurnoutIntelProvider } from "../intel/TurnoutIntelProvider";
+import type { TurnoutIntelSessionController } from "../intel/TurnoutIntelContext";
 import { PrePublishGateSheet } from "../intel/PrePublishGateSheet";
 import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 import type { TurnoutForecastController } from "../../hooks/useTurnoutForecast";
-import type { TurnoutInputSource } from "../../utils/turnoutInput";
+import {
+  shouldTrackGatePublishedAnyway,
+  type TurnoutInputSource,
+} from "../../utils/turnoutInput";
 import { Stepper } from "../ui/Stepper";
 import { Toast } from "../ui/Toast";
 import { CreatorStep2When } from "../event/CreatorStep2When";
@@ -268,9 +272,8 @@ export const ExperienceCreatorWizard: React.FC<
 
   const [step, setStep] = useState<StepIndex>(1);
   const [intelGateOpen, setIntelGateOpen] = useState(false);
-  const [turnoutEstimate, setTurnoutEstimate] = useState<number | null>(null);
   const intelControllerRef = useRef<TurnoutForecastController | null>(null);
-  const shownGateKeys = useRef(new Set<string>());
+  const intelSessionRef = useRef<TurnoutIntelSessionController | null>(null);
   const [title, setTitle] = useState(
     initialDraft?.title ?? prefill?.title ?? "",
   );
@@ -499,8 +502,8 @@ export const ExperienceCreatorWizard: React.FC<
       pricingMode,
       resolvedTotalMajor,
       isFree,
-      capacity: turnoutEstimate === null ? capacity : String(turnoutEstimate),
-      unlimited: turnoutEstimate === null ? unlimited : false,
+      capacity,
+      unlimited,
       brandDefaultCurrency: brand?.defaultCurrency ?? null,
     }),
     [
@@ -512,7 +515,6 @@ export const ExperienceCreatorWizard: React.FC<
       resolvedTotalMajor,
       stops,
       title,
-      turnoutEstimate,
       unlimited,
       whenAdapter.whenState,
     ],
@@ -792,14 +794,11 @@ export const ExperienceCreatorWizard: React.FC<
         if (targetId === null) {
           throw new Error("Couldn't save experience. Tap to retry.");
         }
-        const { data, error } = await supabase.rpc(
-          "issue_1719_publish_experience_with_poster",
-          {
+        const { data, error } = await supabase.rpc("issue_1719_publish_experience_with_poster", {
           p_event_id: targetId,
           p_payload: buildPayload(publish),
           p_publish: publish,
-          },
-        );
+        });
         if (error !== null) {
           // META-ORCH-1059 BUG 5 — NEVER fail silently. Prefer mapped copy;
           // otherwise surface the raw reason so the operator sees SOMETHING
@@ -897,40 +896,50 @@ export const ExperienceCreatorWizard: React.FC<
         "missing_capacity",
         "unlimited_capacity",
       ].includes(reason);
-    if (controller === null || !supported) {
+    if (isLiveEdit || controller === null || !supported) {
+      controller?.cancelPending();
       void handleSubmit(true);
       return;
     }
     const key = currentIntelGateKey();
-    if (shownGateKeys.current.has(key)) {
+    const claim = intelSessionRef.current?.claimGate(key) ?? "seen";
+    if (claim === "active") return;
+    if (claim === "seen") {
+      controller.cancelPending();
       void handleSubmit(true);
       return;
     }
     setIntelGateOpen(true);
-    postHogService.capture("intel_gate_shown", {
-      wizard: "experience",
-      gate_state: controller.fresh ? "fresh" : controller.state,
-      estimate_used: turnoutEstimate !== null,
-    });
-  }, [currentIntelGateKey, handleSubmit, turnoutEstimate]);
+    const estimateUsed =
+      intelSessionRef.current?.estimate.kind === "answered";
+    postHogService.capture(
+      "intel_gate_shown",
+      controller.gateAnalyticsProps(estimateUsed),
+    );
+  }, [currentIntelGateKey, handleSubmit, isLiveEdit]);
 
   const closeIntelGate = useCallback((): void => {
-    shownGateKeys.current.add(currentIntelGateKey());
+    intelSessionRef.current?.dismissGate(currentIntelGateKey());
     setIntelGateOpen(false);
   }, [currentIntelGateKey]);
 
   const publishFromIntelGate = useCallback((): void => {
     const controller = intelControllerRef.current;
-    postHogService.capture("intel_gate_published_anyway", {
-      wizard: "experience",
-      gate_state: controller?.fresh
-        ? "fresh"
-        : (controller?.state ?? "loading"),
-      estimate_used: turnoutEstimate !== null,
-    });
+    const estimateUsed =
+      intelSessionRef.current?.estimate.kind === "answered";
+    if (controller !== null) {
+      const gateState = controller.gateState(estimateUsed);
+      if (shouldTrackGatePublishedAnyway(gateState)) {
+        postHogService.capture(
+          "intel_gate_published_anyway",
+          controller.gateAnalyticsProps(estimateUsed),
+        );
+      }
+      controller.cancelPending();
+    }
     closeIntelGate();
     void handleSubmit(true);
-  }, [closeIntelGate, handleSubmit, turnoutEstimate]);
+  }, [closeIntelGate, handleSubmit]);
 
   // META-ORCH-1059 Sub-E — live-experience save. Builds the LiveExperiencePatch
   // from the SAME wizard state buildPayload uses, runs the client guard (UX
@@ -1100,6 +1109,7 @@ export const ExperienceCreatorWizard: React.FC<
       keyboardVisible={keyboardVisible}
       autoRunEnabled={false}
       controllerRef={intelControllerRef}
+      sessionRef={intelSessionRef}
       navigateTo={(targetStep) => {
         setStep((targetStep + 1) as StepIndex);
         requestAnimationFrame(() =>
@@ -1399,8 +1409,6 @@ export const ExperienceCreatorWizard: React.FC<
           visible={intelGateOpen}
           onClose={closeIntelGate}
           onPublish={publishFromIntelGate}
-          estimate={turnoutEstimate}
-          onEstimate={setTurnoutEstimate}
         />
     </View>
     </TurnoutIntelProvider>

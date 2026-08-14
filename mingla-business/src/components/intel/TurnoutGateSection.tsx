@@ -2,53 +2,20 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import {
   accent,
+  semantic,
   spacing,
   text,
   typography,
 } from "../../constants/designSystem";
 import { postHogService } from "../../services/postHogService";
+import { formatRelativeTime } from "../../utils/relativeTime";
+import { buildTurnoutGateRecommendations } from "../../utils/turnoutInput";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { IntelCard } from "./IntelCard";
 import { IntelProgress } from "./IntelProgress";
 import { useTurnoutIntel } from "./TurnoutIntelContext";
 
-type Focus = "name" | "date" | "city" | "price" | "capacity";
-const targetFor = (
-  copy: string,
-  wizard: "event" | "rsvp" | "experience",
-): { step: number; focus: Focus; label: string } | null => {
-  const value = copy.toLowerCase();
-  if (/date|day|week|time|lead|runway|schedul/.test(value))
-    return {
-      step: wizard === "experience" ? 2 : 1,
-      focus: "date",
-      label: "Review when",
-    };
-  if (/price|ticket|fee|cost|charg/.test(value))
-    return wizard === "rsvp"
-      ? null
-      : {
-          step: wizard === "experience" ? 3 : 4,
-          focus: "price",
-          label: "Review pricing",
-        };
-  if (/capacity|seat|spot|room\b/.test(value))
-    return {
-      step: wizard === "experience" ? 3 : 4,
-      focus: "capacity",
-      label: "Review capacity",
-    };
-  if (/title|name|listing|copy|descri|tagline/.test(value))
-    return { step: 0, focus: "name", label: "Review basics" };
-  if (/venue|location|city|area|neighborhood/.test(value))
-    return {
-      step: wizard === "experience" ? 1 : 2,
-      focus: "city",
-      label: "Review location",
-    };
-  return null;
-};
 const blockCopy = (wizard: string, reason: string | null): string | null => {
   if (reason === "online_event") return null;
   if (reason === "unlimited_capacity")
@@ -70,43 +37,28 @@ export const TurnoutGateSection: React.FC = () => {
   const intel = useTurnoutIntel();
   const shownKey = useRef<string | null | undefined>(undefined);
   const recommendations = useMemo(() => {
-    if (intel?.report == null) return [];
-    const rows: { copy: string; target: ReturnType<typeof targetFor> }[] = [];
-    const fix = intel.report.fixes?.[0];
-    if (fix?.title)
-      rows.push({
-        copy: fix.title,
-        target: targetFor(
-          `${fix.title} ${fix.why ?? ""} ${fix.change ?? ""}`,
-          intel.wizard,
-        ),
-      });
-    const hurt = intel.report.factors?.find((item) => item.status === "hurt");
-    if (hurt?.label)
-      rows.push({
-        copy: hurt.label,
-        target: targetFor(`${hurt.label} ${hurt.detail ?? ""}`, intel.wizard),
-      });
-    if ((intel.report.competitors?.length ?? 0) > 0)
-      rows.push({
-        copy: `${intel.report.competitors?.length ?? 0} competing events found`,
-        target: null,
-      });
-    if ((intel.input?.ticket_price ?? 0) > 0 && intel.report.plan?.read)
-      rows.push({
-        copy: intel.report.plan.read,
-        target: targetFor(intel.report.plan.read, intel.wizard),
-      });
-    return rows.slice(0, 4);
+    if (intel === null) return [];
+    return buildTurnoutGateRecommendations(
+      intel.report,
+      intel.input,
+      intel.wizard,
+    );
   }, [intel]);
   useEffect(() => {
-    if (intel !== null && shownKey.current !== intel.inputKey) {
+    if (
+      intel !== null &&
+      intel.report !== null &&
+      shownKey.current !== intel.inputKey
+    ) {
       shownKey.current = intel.inputKey;
-      postHogService.capture("intel_gate_shown", {
-        wizard: intel.wizard,
-        gate_state: intel.fresh ? "fresh" : intel.state,
-        estimate_used: false,
-      });
+      postHogService.capture(
+        "intel_gate_shown",
+        intel.gateAnalyticsProps?.() ?? {
+          wizard: intel.wizard,
+          gate_state: intel.fresh ? "fresh" : "ran",
+          estimate_used: false,
+        },
+      );
     }
   }, [intel]);
   if (intel === null || intel.blockReason === "online_event") return null;
@@ -127,7 +79,13 @@ export const TurnoutGateSection: React.FC = () => {
   const forecast = intel.report?.forecast;
   const hasBand =
     typeof forecast?.total_low === "number" &&
-    typeof forecast.total_high === "number";
+    typeof forecast.total_high === "number" &&
+    typeof forecast.capacity === "number";
+  const benchmark = intel.report?.meta?.research_source === "fallback";
+  const generatedAt = intel.report?.meta?.generated_at;
+  const finiteBand = hasBand
+    ? `${forecast.total_low}–${forecast.total_high} of ${forecast.capacity}`
+    : "";
   return (
     <IntelCard
       testID="turnout-gate-section"
@@ -183,12 +141,47 @@ export const TurnoutGateSection: React.FC = () => {
         </View>
       ) : hasBand ? (
         <View style={styles.stack}>
-          <Text style={styles.band}>
-            {forecast?.total_low}–{forecast?.total_high} expected
-          </Text>
-          {recommendations.map((row, index) => (
-            <View key={`${row.copy}-${index}`} style={styles.reco}>
-              <Text style={styles.body}>{row.copy}</Text>
+          <View style={styles.bandRow}>
+            <Text style={styles.band} testID="turnout-gate-band">
+              {finiteBand}
+            </Text>
+            <Text style={styles.modePill}>
+              {benchmark ? "BENCHMARK" : "MODELED"}
+            </Text>
+          </View>
+          <View style={styles.truthRow}>
+            {forecast.confidence !== undefined ? (
+              <Text style={styles.note}>{forecast.confidence} confidence</Text>
+            ) : null}
+            {generatedAt !== undefined ? (
+              <Text style={styles.note}>
+                Checked {formatRelativeTime(generatedAt)}
+              </Text>
+            ) : null}
+          </View>
+          {intel.sessionHonesty != null ? (
+            <Text style={styles.note}>{intel.sessionHonesty}</Text>
+          ) : null}
+          {recommendations.map((row) => (
+            <View
+              key={row.id}
+              style={styles.reco}
+              accessible
+              accessibilityLabel={`${row.severityWord}: ${row.copy}`}
+            >
+              <Text
+                style={[
+                  styles.severity,
+                  row.severity === "warning"
+                    ? styles.warning
+                    : styles.info,
+                ]}
+              >
+                {row.severity === "warning" ? "⚠" : "ⓘ"} {row.severityWord}
+              </Text>
+              <Text style={styles.body} numberOfLines={2}>
+                {row.copy}
+              </Text>
               {row.target !== null && intel.navigateTo !== undefined ? (
                 <Button
                   label={row.target.label}
@@ -196,13 +189,15 @@ export const TurnoutGateSection: React.FC = () => {
                   size="sm"
                   onPress={() => {
                     postHogService.capture("intel_reco_followed", {
-                      wizard: intel.wizard,
+                      ...(intel.gateAnalyticsProps?.() ?? {
+                        wizard: intel.wizard,
+                        gate_state: intel.fresh ? "fresh" : "ran",
+                        estimate_used: false,
+                      }),
                       door: "gate",
                       target_step: row.target?.step,
-                      gate_state: intel.state,
-                      estimate_used: false,
                     });
-                  intel.navigateTo?.(row.target!.step, row.target!.focus);
+                    intel.navigateTo?.(row.target!.step, row.target!.focus);
                   }}
                 />
               ) : null}
@@ -226,8 +221,14 @@ const styles = StyleSheet.create({
   eyebrow: { ...typography.labelCap, color: text.secondary },
   stack: { gap: spacing.sm },
   reco: { gap: spacing.xs },
+  truthRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  bandRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  band: { ...typography.h2, color: text.primary, flex: 1 },
+  modePill: { ...typography.micro, color: text.secondary },
+  severity: { ...typography.caption, fontWeight: "700" },
+  warning: { color: semantic.warning },
+  info: { color: semantic.info },
   body: { ...typography.bodySm, color: text.primary },
-  band: { ...typography.h2, color: text.primary },
   note: { ...typography.caption, color: text.tertiary },
 });
 export default TurnoutGateSection;
