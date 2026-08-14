@@ -163,6 +163,17 @@ async function pollPaystackOrder(
   return null;
 }
 
+async function preflightPaymentSheet(
+  checkoutSessionId: string,
+  buyerStatusToken: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.functions.invoke<{ status?: string }>(
+    "ticket-checkout-status",
+    { body: { checkoutSessionId, buyerStatusToken, preflight: true } },
+  );
+  return error == null && data?.status === "present_allowed";
+}
+
 // ORCH-0849: business merchant identifier + URL scheme. Must match the
 // Stripe Dashboard registration AND the <StripeNativeProvider> mount in
 // StripeProviderWrapper.native.tsx AND the Stripe plugin entry in
@@ -375,6 +386,19 @@ export const useNativeCheckoutFlow = (): (
         };
       }
 
+      // #1930: fail closed before presenting. Stripe still confirms client-side,
+      // so server finalize/reversal owns any closure-after-preflight race.
+      if (
+        !await preflightPaymentSheet(
+          data.checkoutSessionId,
+          data.buyerStatusToken,
+        )
+      ) {
+        return {
+          outcome: "failed",
+          message: "This sale is no longer available.",
+        };
+      }
       const presentResult = await presentPaymentSheet();
       if (presentResult.error) {
         if (presentResult.error.code === "Canceled") {

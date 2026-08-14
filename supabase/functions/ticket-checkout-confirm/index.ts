@@ -422,7 +422,7 @@ serve(async (req) => {
     // Real fix is ORCH-0925 [ticket-checkout-create must attach Stripe Customer
     // to plan PIs explicitly] — once it ships, ORCH-0921 can re-ship.
     // orch-strict-grep-allow finalize-no-plan-root — ORCH-0924 rollback of ORCH-0921; real fix is ORCH-0925
-    const { error: finalizeError } = await supabase.rpc(
+    const { data: finalizeResult, error: finalizeError } = await supabase.rpc(
       "biz_ticket_checkout_finalize",
       {
         p_checkout_session_id: session.id,
@@ -442,6 +442,14 @@ serve(async (req) => {
         { error: "finalize_failed", detail: finalizeError.message },
         500,
       );
+    }
+    if (finalizeResult?.outcome === "paid_reversal_pending") {
+      return jsonResponse({
+        checkoutSessionId: session.id,
+        status: "failed" as FinalizeStatus,
+        order: null,
+        error: "checkout_unavailable",
+      }, 409);
     }
 
     // ORCH-0808 parity: notification dispatch is fired by the webhook path

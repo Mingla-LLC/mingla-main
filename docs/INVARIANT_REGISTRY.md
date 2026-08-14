@@ -8519,6 +8519,20 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 ---
 
+### I-PROPOSED-1930-ACTIVE-ON-CLOSE (ACTIVE)
+
+- **Rule:** A ticket or RSVP payment continuation is usable only while its event, inventory,
+  occurrence, and admission epoch remain current. Closure atomically revokes unfinished attempts;
+  a provider success that loses the event-first finalize race creates no order, ticket, QR,
+  notification, split, or payout source and converges to one durable full reversal.
+- **Enforcement:** database event/child triggers and epoch-CAS finalize, service-only checkout
+  definers, token-bounded native preflight, the default-dark revocation worker, canonical
+  source-refund dispatch, and `.github/scripts/strict-grep/issue-1930-checkout-current-truth.mjs`.
+- **Established:** issue #1930; readiness remains default false until the compatibility set and
+  provider test-mode matrix are independently verified.
+
+---
+
 ## ACTIVE — issue #1995 (sealed Your Book marketing blasts)
 
 ### I-PROPOSED-1995-BOOK-BLAST-SEAL-ONLY (ACTIVE)

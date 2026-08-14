@@ -50,6 +50,7 @@ export interface PaystackChargeResult {
     | "amount_mismatch"
     | "currency_mismatch"
     | "verify_not_success"
+    | "paid_reversal_pending"
     // ISSUE-1326 — the paid-NG-reservation rail. These are DISTINCT from the
     // ticket "finalized"/"replayed" statuses so the edge fn NEVER treats a
     // reservation as an order (no dispatchTicketConfirmation, no partner-split
@@ -118,7 +119,9 @@ export async function handlePaystackChargeSuccess(
     .eq("stripe_payment_intent_id", reference)
     .maybeSingle();
   if (contributionError) {
-    throw new Error(`paystack_contribution_lookup_failed: ${contributionError.message}`);
+    throw new Error(
+      `paystack_contribution_lookup_failed: ${contributionError.message}`,
+    );
   }
   if (contribution) {
     if (contribution.status === "paid") {
@@ -135,7 +138,11 @@ export async function handlePaystackChargeSuccess(
         action: "paystack.contribution_amount_mismatch",
         target_type: "event_rsvp_contribution",
         target_id: String(contribution.id),
-        after: { reference, verified_amount: cAmount, contribution_total: cTotal },
+        after: {
+          reference,
+          verified_amount: cAmount,
+          contribution_total: cTotal,
+        },
       });
       return { status: "amount_mismatch" };
     }
@@ -152,15 +159,25 @@ export async function handlePaystackChargeSuccess(
       return { status: "currency_mismatch" };
     }
     const cChannel = typeof txn?.channel === "string" ? txn.channel : "card";
-    const cTxnId = txn?.id !== undefined && txn?.id !== null ? String(txn.id) : null;
-    const { error: cFinalizeError } = await supabase.rpc("finalize_rsvp_contribution", {
-      p_contribution_id: String(contribution.id),
-      p_provider_ref: reference,
-      p_charge_id: cTxnId,
-      p_payment_method_type: cChannel,
-    });
+    const cTxnId = txn?.id !== undefined && txn?.id !== null
+      ? String(txn.id)
+      : null;
+    const { data: cFinalized, error: cFinalizeError } = await supabase.rpc(
+      "issue_1930_finalize_rsvp_contribution",
+      {
+        p_contribution_id: String(contribution.id),
+        p_provider_ref: reference,
+        p_charge_id: cTxnId,
+        p_payment_method_type: cChannel,
+      },
+    );
     if (cFinalizeError) {
-      throw new Error(`paystack_contribution_finalize_failed: ${cFinalizeError.message}`);
+      throw new Error(
+        `paystack_contribution_finalize_failed: ${cFinalizeError.message}`,
+      );
+    }
+    if (cFinalized?.outcome === "paid_reversal_pending") {
+      return { status: "paid_reversal_pending" };
     }
     return { status: "finalized" };
   }
@@ -174,7 +191,11 @@ export async function handlePaystackChargeSuccess(
   // arms and their tests are untouched. Paystack's verify response carries the
   // real `fees`, so this rail lands its payout fee snapshot immediately.
   if (isVenueOrderPaystackReference(reference)) {
-    const outcome = await handleVenueOrderPaystackCharge(supabase, reference, txn);
+    const outcome = await handleVenueOrderPaystackCharge(
+      supabase,
+      reference,
+      txn,
+    );
     if (!outcome.matched) {
       await writeAudit(supabase, {
         user_id: null,
@@ -316,7 +337,11 @@ export async function handlePaystackChargeSuccess(
       action: "paystack.charge_amount_mismatch",
       target_type: "ticket_checkout_session",
       target_id: String(session.id),
-      after: { reference, verified_amount: verifiedAmount, session_total: sessionTotal },
+      after: {
+        reference,
+        verified_amount: verifiedAmount,
+        session_total: sessionTotal,
+      },
     });
     return { status: "amount_mismatch" };
   }
@@ -339,9 +364,11 @@ export async function handlePaystackChargeSuccess(
   // slot; data.channel → payment_method type (card|bank|ussd|bank_transfer all
   // fall to online_card inside the RPC, acceptable v1).
   const channel = typeof txn?.channel === "string" ? txn.channel : "card";
-  const txnId = txn?.id !== undefined && txn?.id !== null ? String(txn.id) : null;
+  const txnId = txn?.id !== undefined && txn?.id !== null
+    ? String(txn.id)
+    : null;
   const { data: finalized, error: finalizeError } = await supabase.rpc(
-    "biz_ticket_checkout_finalize",
+      "biz_ticket_checkout_finalize",
     {
       p_checkout_session_id: String(session.id),
       p_stripe_payment_intent_id: reference,
@@ -358,6 +385,12 @@ export async function handlePaystackChargeSuccess(
     throw new Error(
       `paystack_finalize_failed: ${finalizeError?.message ?? "no result"}`,
     );
+  }
+  if (
+    (finalized as Record<string, unknown>).outcome ===
+      "paid_reversal_pending"
+  ) {
+    return { status: "paid_reversal_pending", paidAtIso };
   }
 
   const orderId = String((finalized as Record<string, unknown>).orderId ?? "");
