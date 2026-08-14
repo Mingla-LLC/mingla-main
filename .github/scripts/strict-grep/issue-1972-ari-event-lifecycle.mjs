@@ -112,6 +112,7 @@ export function check(sources) {
     "issue_1972_ari_event_lifecycle.round3.implementor.test.sql",
     "issue_1972_ari_event_lifecycle.tester_round3.adversarial.test.sql",
     "issue_1972_ari_event_lifecycle.round4.implementor.test.sql",
+    "issue_1972_ari_event_lifecycle.tester_round4.adversarial.test.sql",
     "issue-1972-ari-event-lifecycle.mjs --self-test",
   ]) if (!workflow.includes(token)) failures.push(`CI proof missing ${token}`);
   return failures;
@@ -146,6 +147,7 @@ if (process.argv.includes("--self-test")) {
     { ...sources, migration: sources.migration.replace("v_event.theme#>'{business_draft,location}'", "'null'::jsonb") },
     { ...sources, migration: sources.migration.replace("v_core ? 'visibility'", "false") },
     { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester_round3.adversarial.test.sql", "removed-round3.sql") },
+    { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester_round4.adversarial.test.sql", "removed-round4.sql") },
   ];
   const undetected = mutations.filter((mutation) => check(mutation).length === 0);
   if (good.length || undetected.length) {
