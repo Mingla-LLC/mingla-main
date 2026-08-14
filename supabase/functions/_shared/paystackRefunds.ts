@@ -215,6 +215,7 @@ async function findExistingRefund(params: {
 
 async function resolveAndFindExistingRefund(params: {
   transaction: string;
+  expectedTransactionId?: number;
   merchantNote: string;
   amountSubunits?: number;
   currency?: string;
@@ -227,6 +228,12 @@ async function resolveAndFindExistingRefund(params: {
     reference: params.transaction,
     currency: params.currency,
   });
+  if (
+    params.expectedTransactionId !== undefined &&
+    identity.id !== params.expectedTransactionId
+  ) {
+    throw new PaystackApiError("Paystack transaction identity mismatch", 502);
+  }
   const existing = await findExistingRefund({
     transactionId: identity.id,
     merchantNote: params.merchantNote,
@@ -238,6 +245,7 @@ async function resolveAndFindExistingRefund(params: {
 
 export async function reconcilePaystackRefund(params: {
   transaction: string;
+  expectedTransactionId?: number;
   merchantNote: string;
   amountSubunits?: number;
   currency?: string;
@@ -260,6 +268,7 @@ function isDuplicateRefundSignal(
 
 export async function createPaystackRefund(params: {
   transaction: string;
+  expectedTransactionId?: number;
   merchantNote: string;
   amountSubunits?: number;
   currency?: string;

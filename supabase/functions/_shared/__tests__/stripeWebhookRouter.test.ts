@@ -109,6 +109,9 @@ class FakeDb {
 
   rpc(fn: string, args: Record<string, unknown>) {
     this.rpcs.push({ fn, args });
+    if (fn === "issue_2079_verify_ticket_paid_identity") {
+      return Promise.resolve({ data: { outcome: "verified" }, error: null });
+    }
     return Promise.resolve({ data: { orderId: "order_123" }, error: null });
   }
 }
@@ -159,7 +162,9 @@ Deno.test("payment_intent.succeeded finalizes checkout with bounded QR pepper RP
   Deno.env.set("app.qr_token_pepper", "12345678901234567890123456789012");
   Deno.env.set("SUPABASE_URL", "https://example.supabase.co");
   Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "service-role-test");
-  globalThis.fetch = (() => Promise.resolve(new Response("{}", { status: 200 }))) as typeof fetch;
+  globalThis.fetch =
+    (() =>
+      Promise.resolve(new Response("{}", { status: 200 }))) as typeof fetch;
   try {
     const db = new FakeDb();
     const result = await routeStripeEvent(db as never, {} as never, {
@@ -174,17 +179,28 @@ Deno.test("payment_intent.succeeded finalizes checkout with bounded QR pepper RP
       },
     });
     assertEquals(result.brandId, "brand_123");
-    assertEquals(db.rpcs[0].fn, "biz_ticket_checkout_finalize");
-    assertEquals(db.rpcs[0].args.p_checkout_session_id, "session_123");
-    assertEquals(db.rpcs[0].args.p_qr_token_pepper, "12345678901234567890123456789012");
+    assertEquals(db.rpcs[0].fn, "issue_2079_verify_ticket_paid_identity");
+    const finalizeIndex = db.rpcs.findIndex((call) =>
+      call.fn === "biz_ticket_checkout_finalize"
+    );
+    assertEquals(finalizeIndex > 0, true);
+    assertEquals(
+      db.rpcs[finalizeIndex].args.p_checkout_session_id,
+      "session_123",
+    );
+    assertEquals(
+      db.rpcs[finalizeIndex].args.p_qr_token_pepper,
+      "12345678901234567890123456789012",
+    );
   } finally {
     globalThis.fetch = originalFetch;
     if (priorPepper === undefined) Deno.env.delete("app.qr_token_pepper");
     else Deno.env.set("app.qr_token_pepper", priorPepper);
     if (priorSupabaseUrl === undefined) Deno.env.delete("SUPABASE_URL");
     else Deno.env.set("SUPABASE_URL", priorSupabaseUrl);
-    if (priorServiceKey === undefined) Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
-    else Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", priorServiceKey);
+    if (priorServiceKey === undefined) {
+      Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+    } else Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", priorServiceKey);
   }
 });
 

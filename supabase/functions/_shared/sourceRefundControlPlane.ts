@@ -37,6 +37,8 @@ export interface SourceRefundOperation {
   active_buyer_attempt_no: number;
   active_fee_attempt_no: number;
   provider_payment_reference: string;
+  paystack_transaction_id?: number | string | null;
+  stripe_charge_id?: string | null;
   provider_account_reference: string | null;
   stripe_application_fee_id: string | null;
   provider_refund_id: string | null;
@@ -239,6 +241,10 @@ async function reconcileAdoptedPaystackAttempt(params: {
 }> {
   const match = await reconcilePaystackRefund({
     transaction: params.operation.provider_payment_reference,
+    expectedTransactionId: params.operation.source_type ===
+        "ticket_checkout_session"
+      ? Number(params.operation.paystack_transaction_id)
+      : undefined,
     merchantNote: params.merchantNote,
     amountSubunits: params.operation.buyer_refund_requested_cents,
     currency: params.operation.currency,
@@ -415,6 +421,47 @@ export async function runSourceRefundOperation(
         return;
       }
       const stripe = stripeTicketRefund();
+      if (operation.source_type === "ticket_checkout_session") {
+        if (
+          !operation.provider_payment_reference.startsWith("pi_") ||
+          !operation.stripe_charge_id?.startsWith("ch_")
+        ) {
+          await record(
+            client,
+            operation,
+            "buyer_refund",
+            attempt.attemptNo,
+            "needs_attention",
+            0,
+            null,
+            "stripe_ticket_identity_incomplete",
+          );
+          return;
+        }
+        // @ts-ignore Stripe's Deno SDK types are runtime provided.
+        const paymentIntent = await stripe.paymentIntents.retrieve(
+          operation.provider_payment_reference,
+          { expand: ["latest_charge"] },
+          { stripeAccount: operation.provider_account_reference },
+        );
+        const latestCharge = typeof paymentIntent.latest_charge === "string"
+          ? paymentIntent.latest_charge
+          : paymentIntent.latest_charge?.id ??
+            paymentIntent.charges?.data?.[0]?.id ?? null;
+        if (latestCharge !== operation.stripe_charge_id) {
+          await record(
+            client,
+            operation,
+            "buyer_refund",
+            attempt.attemptNo,
+            "needs_attention",
+            0,
+            null,
+            "stripe_ticket_charge_mismatch",
+          );
+          return;
+        }
+      }
       // @ts-ignore Stripe's Deno SDK types are runtime provided.
       const refund = await stripe.refunds.create({
         payment_intent: operation.provider_payment_reference,
@@ -450,6 +497,10 @@ export async function runSourceRefundOperation(
         })
         : await createPaystackRefund({
           transaction: operation.provider_payment_reference,
+          expectedTransactionId: operation.source_type ===
+              "ticket_checkout_session"
+            ? Number(operation.paystack_transaction_id)
+            : undefined,
           merchantNote,
           amountSubunits: operation.buyer_refund_requested_cents,
           currency: operation.currency,

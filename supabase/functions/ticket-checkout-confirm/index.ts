@@ -286,11 +286,12 @@ serve(async (req) => {
       session.stripe_payment_intent_id.length > 0
     ? session.stripe_payment_intent_id
     : null;
+  const persistedPaymentIntentId = paymentIntentId;
   const stripeAccountId = session.stripe_account_id;
   let paymentIntentFromCheckoutSession: StripePaymentIntentLike | null = null;
+  let hostedRelationConflict = false;
 
   if (
-    paymentIntentId === null &&
     typeof stripeAccountId === "string" &&
     stripeAccountId.length > 0 &&
     typeof session.stripe_checkout_session_id === "string" &&
@@ -323,9 +324,15 @@ serve(async (req) => {
         });
       }
 
-      paymentIntentId = paymentIntentIdFromCheckoutSession(checkoutSession);
+      const hostedPaymentIntentId = paymentIntentIdFromCheckoutSession(
+        checkoutSession,
+      );
       paymentIntentFromCheckoutSession =
         expandedPaymentIntentFromCheckoutSession(checkoutSession);
+      hostedRelationConflict = persistedPaymentIntentId !== null &&
+        hostedPaymentIntentId !== null &&
+        persistedPaymentIntentId !== hostedPaymentIntentId;
+      paymentIntentId = hostedPaymentIntentId;
 
       if (paymentIntentId !== null) {
         const { error: persistPaymentIntentError } = await supabase
@@ -398,6 +405,56 @@ serve(async (req) => {
         ? paymentIntent.payment_method_types[0]
         : null;
     const latestCharge = latestChargeId(paymentIntent);
+
+    if (hostedRelationConflict) {
+      const { error: captureError } = await supabase.rpc(
+        "issue_2079_capture_ticket_paid_identity_attention",
+        {
+          p_checkout_session_id: session.id,
+          p_observed_provider: "stripe",
+          p_payment_reference: paymentIntentId,
+          p_paystack_transaction_id: null,
+          p_stripe_charge_id: latestCharge,
+          p_observed_account_reference: stripeAccountId,
+          p_reason_code: "paid_provider_checkout_conflict",
+        },
+      );
+      if (captureError) {
+        return jsonResponse({ error: "paid_identity_capture_failed" }, 502);
+      }
+      return jsonResponse({
+        checkoutSessionId: session.id,
+        status: "failed" as FinalizeStatus,
+        order: null,
+        error: "checkout_unavailable",
+      }, 409);
+    }
+
+    const { data: identityTruth, error: identityError } = await supabase.rpc(
+      "issue_2079_verify_ticket_paid_identity",
+      {
+        p_checkout_session_id: session.id,
+        p_provider: "stripe",
+        p_payment_reference: paymentIntentId,
+        p_paystack_transaction_id: null,
+        p_stripe_charge_id: latestCharge,
+        p_observed_account_reference: stripeAccountId,
+      },
+    );
+    if (identityError) {
+      return jsonResponse(
+        { error: "paid_identity_capture_failed" },
+        502,
+      );
+    }
+    if (identityTruth?.outcome !== "verified") {
+      return jsonResponse({
+        checkoutSessionId: session.id,
+        status: "failed" as FinalizeStatus,
+        order: null,
+        error: "checkout_unavailable",
+      }, 409);
+    }
 
     let pepper: string;
     try {

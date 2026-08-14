@@ -1343,7 +1343,7 @@ async function handleTicketCheckoutPaymentIntent(
   let { data: session, error: sessionError } = await supabase
     .from("ticket_checkout_sessions")
     .select(
-      "id, brand_id, event_id, order_id, tax_amount_cents, tax_calculation_id",
+      "id, brand_id, event_id, order_id, tax_amount_cents, tax_calculation_id, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id, provider_flow",
     )
     .eq("stripe_payment_intent_id", paymentIntentId)
     .maybeSingle();
@@ -1369,7 +1369,7 @@ async function handleTicketCheckoutPaymentIntent(
       const fallback = await supabase
         .from("ticket_checkout_sessions")
         .select(
-          "id, brand_id, event_id, order_id, tax_amount_cents, tax_calculation_id",
+          "id, brand_id, event_id, order_id, tax_amount_cents, tax_calculation_id, stripe_checkout_session_id, stripe_payment_intent_id, stripe_account_id, provider_flow",
         )
         .eq("id", mingleCheckoutSessionId)
         .maybeSingle();
@@ -1380,14 +1380,6 @@ async function handleTicketCheckoutPaymentIntent(
       }
       if (fallback.data) {
         session = fallback.data;
-        await supabase
-          .from("ticket_checkout_sessions")
-          .update({
-            stripe_payment_intent_id: paymentIntentId,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", session.id)
-          .is("stripe_payment_intent_id", null);
       }
     }
   }
@@ -1419,14 +1411,93 @@ async function handleTicketCheckoutPaymentIntent(
     const savedPaymentMethodId = isInstallmentPlanRoot
       ? objectString(paymentIntent, "payment_method")
       : null;
+    const observedAccount = typeof event.account === "string"
+      ? event.account
+      : objectString(session, "stripe_account_id");
+    const observedChargeId = latestCharge
+      ? objectString(latestCharge, "id")
+      : null;
+    const hostedCheckoutId = objectString(
+      session,
+      "stripe_checkout_session_id",
+    );
+    if (hostedCheckoutId) {
+      if (!observedAccount) {
+        throw new Error("ticket hosted Stripe account missing");
+      }
+      const stripe = stripeTicketCheckout();
+      // orch-strict-grep-allow stripe-no-idempotency-key — authenticated read-only relation proof
+      const checkoutSession = await stripe.checkout.sessions.retrieve(
+        hostedCheckoutId,
+        { expand: ["payment_intent"] },
+        { stripeAccount: observedAccount },
+      );
+      const hostedPi = typeof checkoutSession.payment_intent === "string"
+        ? checkoutSession.payment_intent
+        : checkoutSession.payment_intent?.id ?? null;
+      if (hostedPi !== paymentIntentId) {
+        const { error: captureError } = await supabase.rpc(
+          "issue_2079_capture_ticket_paid_identity_attention",
+          {
+            p_checkout_session_id: session.id,
+            p_observed_provider: "stripe",
+            p_payment_reference: paymentIntentId,
+            p_paystack_transaction_id: null,
+            p_stripe_charge_id: observedChargeId,
+            p_observed_account_reference: observedAccount,
+            p_reason_code: "paid_provider_checkout_conflict",
+          },
+        );
+        if (captureError) {
+          throw new Error(
+            `ticket paid identity capture failed: ${captureError.message}`,
+          );
+        }
+        return session.brand_id as string | null;
+      }
+      const { error: persistError } = await supabase
+        .from("ticket_checkout_sessions")
+        .update({
+          stripe_payment_intent_id: hostedPi,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", session.id)
+        .is("stripe_payment_intent_id", null);
+      if (persistError) {
+        throw new Error(
+          `ticket hosted Stripe PI persist failed: ${persistError.message}`,
+        );
+      }
+    }
+    const { data: identityTruth, error: identityError } = await supabase.rpc(
+      "issue_2079_verify_ticket_paid_identity",
+      {
+        p_checkout_session_id: session.id,
+        p_provider: "stripe",
+        p_payment_reference: paymentIntentId,
+        p_paystack_transaction_id: null,
+        p_stripe_charge_id: observedChargeId,
+        p_observed_account_reference: observedAccount,
+      },
+    );
+    if (identityError) {
+      throw new Error(
+        `ticket paid identity capture failed: ${identityError.message}`,
+      );
+    }
+    if (identityTruth?.outcome !== "verified") {
+      console.warn(
+        "[stripe-webhook] ticket payment identity held for review",
+        session.id,
+      );
+      return session.brand_id as string | null;
+    }
     const { data: finalized, error: finalizeError } = await supabase.rpc(
       "biz_ticket_checkout_finalize",
       {
         p_checkout_session_id: session.id,
         p_stripe_payment_intent_id: paymentIntentId,
-        p_stripe_charge_id: latestCharge
-          ? objectString(latestCharge, "id")
-          : null,
+        p_stripe_charge_id: observedChargeId,
         p_stripe_payment_method_type: methodType,
         p_qr_token_pepper: qrTokenPepper(),
         p_stripe_customer_id_on_connected_account: stripeCustomerId,

@@ -170,9 +170,27 @@ serve(async (req) => {
       let truth: StripeTruth = {};
       let pi: PaymentIntentLike | null = null;
       let piId: string | null = null;
+      let hostedRelationConflict = false;
 
       if (refClass === "STRIPE_PI") {
         piId = piRef as string; // non-null + `pi_`-prefixed by classification
+        if (csId) {
+          const cs = await retrieveCheckoutSessionReadOnly(
+            stripe,
+            csId,
+            stripeAccountId,
+          );
+          const rawCsPi = cs.payment_intent;
+          const resolvedPiId = typeof rawCsPi === "string"
+            ? rawCsPi
+            : rawCsPi?.id ?? null;
+          if (resolvedPiId === null) {
+            hostedRelationConflict = true;
+          } else {
+            hostedRelationConflict = resolvedPiId !== piId;
+            piId = resolvedPiId;
+          }
+        }
         const retrievedPi = await retrievePaymentIntentReadOnly(
           stripe,
           piId,
@@ -206,6 +224,22 @@ serve(async (req) => {
           );
           pi = retrievedPi;
           truth = { piStatus: retrievedPi.status };
+          const { error: persistError } = await supabase
+            .from("ticket_checkout_sessions")
+            .update({
+              stripe_payment_intent_id: piId,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", sessionId)
+            .is("stripe_payment_intent_id", null);
+          if (persistError) {
+            results.push({
+              sessionId,
+              piId,
+              error: "paid_identity_persist_failed",
+            });
+            continue;
+          }
         } else {
           truth = { csPaymentStatus: cs.payment_status };
         }
@@ -233,13 +267,67 @@ serve(async (req) => {
           : [];
         const methodType = (pmTypes[0] as string | undefined) ?? "card";
 
+        if (hostedRelationConflict) {
+          const { error: captureError } = await supabase.rpc(
+            "issue_2079_capture_ticket_paid_identity_attention",
+            {
+              p_checkout_session_id: sessionId,
+              p_observed_provider: "stripe",
+              p_payment_reference: piId,
+              p_paystack_transaction_id: null,
+              p_stripe_charge_id: chargeId,
+              p_observed_account_reference: stripeAccountId,
+              p_reason_code: "paid_provider_checkout_conflict",
+            },
+          );
+          results.push({
+            sessionId,
+            piId,
+            ...(captureError ? { error: "paid_identity_capture_failed" } : {
+              status: "paid_reversal_pending",
+              skip: "paid_identity_attention",
+            }),
+          });
+          continue;
+        }
+
+        const { data: identityTruth, error: identityError } = await supabase
+          .rpc(
+            "issue_2079_verify_ticket_paid_identity",
+            {
+              p_checkout_session_id: sessionId,
+              p_provider: "stripe",
+              p_payment_reference: piId,
+              p_paystack_transaction_id: null,
+              p_stripe_charge_id: chargeId,
+              p_observed_account_reference: stripeAccountId,
+            },
+          );
+        if (identityError) {
+          results.push({
+            sessionId,
+            piId,
+            error: "paid_identity_capture_failed",
+          });
+          continue;
+        }
+        if (identityTruth?.outcome !== "verified") {
+          results.push({
+            sessionId,
+            piId,
+            status: "paid_reversal_pending",
+            skip: "paid_identity_attention",
+          });
+          continue;
+        }
+
         // ORCH-0924 ROLLBACK of ORCH-0921 — see ticket-checkout-confirm/index.ts
         // for the full rationale. Reverted to pre-ORCH-0921 5-param shape to
         // unblock production. Real fix is ORCH-0925 [ticket-checkout-create
         // must attach Stripe Customer to plan PIs explicitly].
         // orch-strict-grep-allow finalize-no-plan-root — ORCH-0924 rollback of ORCH-0921; real fix is ORCH-0925
         const { data: finalized, error: finalizeError } = await supabase.rpc(
-      "biz_ticket_checkout_finalize",
+          "biz_ticket_checkout_finalize",
           {
             p_checkout_session_id: sessionId,
             p_stripe_payment_intent_id: piId,

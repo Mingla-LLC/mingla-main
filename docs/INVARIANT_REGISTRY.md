@@ -8635,3 +8635,12 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 ### I-PROPOSED-1742-GATE-NAVIGATE-ONLY (DRAFT)
 - **Rule:** Intelligence recommendations can navigate to and focus an existing authoring field, but never mutate draft, store, validator, payload, or published data. Experience capacity estimates are provider-session model input only.
 - **Enforcement:** the shared keyword target classifier, focus-hint context, unchanged draft/publish writers, and Experience estimate state held outside all persistence payloads.
+
+---
+
+## DRAFT — issue #2079 (provider-correct late ticket refunds)
+
+### I-PROPOSED-2079-LATE-PAID-IDENTITY-NEVER-DROPS (DRAFT)
+
+- **Rule:** Provider-authenticated late ticket money creates exactly one payout-blocking refund obligation before acknowledgment. Missing or conflicting identity never mints value, calls a provider, or terminalizes as neutralized.
+- **Enforcement:** the #2079 migration's service-only capture/verify RPCs, ticket-only claim predicate, dual-provider secondary identity constraints, refund-worker corroboration, checkout revocation non-terminal branch, three capture-before-finalize callers, and the CI-wired issue #2079 guard/tests.
