@@ -87,7 +87,7 @@ describe("ORCH-1171 Done-bar mount coverage (consumer)", () => {
   });
 
   it("app.config registers withGooglePodsModularHeaders plugin", () => {
-    const cfg = read("app.config.ts");
+    const cfg = read("app.config.js");
     assert.match(cfg, /"\.\/plugins\/withGooglePodsModularHeaders"/);
   });
 

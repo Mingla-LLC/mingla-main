@@ -9,7 +9,7 @@
  * GIF tab on the affected build. This gate asserts the repo-side wiring that
  * prevents that recurrence cannot be silently removed:
  *
- *   1. mingla-business/app.config.ts carries the GIPHY fail-loud config-eval
+ *   1. mingla-business/app.config.js carries the GIPHY fail-loud config-eval
  *      guard — it references EXPO_PUBLIC_GIPHY_API_KEY AND throws when the key
  *      is absent on a release-bound profile.
  *   2. mingla-business/.env.example documents EXPO_PUBLIC_GIPHY_API_KEY.
@@ -35,7 +35,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 
-const APP_CONFIG = path.join(REPO_ROOT, "mingla-business/app.config.ts");
+const APP_CONFIG = path.join(REPO_ROOT, "mingla-business/app.config.js");
 const ENV_EXAMPLE = path.join(REPO_ROOT, "mingla-business/.env.example");
 // ORCH-1127 — the two client-direct GIPHY services that read the public key.
 const GIPHY_SERVICES = [
@@ -180,9 +180,9 @@ if (process.argv.includes("--self-test")) {
   runSelfTest();
 }
 
-// Check 1 — app.config.ts fail-loud guard present
+// Check 1 — app.config.js fail-loud guard present
 if (!fs.existsSync(APP_CONFIG)) {
-  fail("INV-1: app-config-present", "mingla-business/app.config.ts missing");
+  fail("INV-1: app-config-present", "mingla-business/app.config.js missing");
 } else {
   const src = readSource(APP_CONFIG);
   const hasKeyRef = KEY_REF_RE.test(src);
@@ -190,12 +190,12 @@ if (!fs.existsSync(APP_CONFIG)) {
   if (hasKeyRef && hasGuardThrow) {
     ok(
       "INV-1: giphy-fail-loud-guard",
-      "app.config.ts references EXPO_PUBLIC_GIPHY_API_KEY and throws when it is absent on a release-bound profile",
+      "app.config.js references EXPO_PUBLIC_GIPHY_API_KEY and throws when it is absent on a release-bound profile",
     );
   } else {
     fail(
       "INV-1: giphy-fail-loud-guard",
-      `app.config.ts is missing the GIPHY fail-loud guard (keyRef=${hasKeyRef}, guardThrow=${hasGuardThrow}) — see SPEC_ORCH-1116 §4.B`,
+      `app.config.js is missing the GIPHY fail-loud guard (keyRef=${hasKeyRef}, guardThrow=${hasGuardThrow}) — see SPEC_ORCH-1116 §4.B`,
     );
   }
 }

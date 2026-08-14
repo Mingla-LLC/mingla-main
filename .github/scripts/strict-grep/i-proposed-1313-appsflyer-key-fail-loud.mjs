@@ -7,9 +7,9 @@
  * The AppsFlyer dev key + app IDs are env-driven with a RELEASE-BOUND fail-loud
  * guard so a release build can never silently ship AppsFlyer dark. This gate
  * asserts the SOURCE wiring cannot be reverted without CI catching it:
- *   1. app-mobile/app.config.ts — release-bound throw guard (throws on a missing
+ *   1. app-mobile/app.config.js — release-bound throw guard (throws on a missing
  *      key on a release EAS_BUILD_PROFILE) that references EXPO_PUBLIC_APPSFLYER_DEV_KEY.
- *   2. mingla-business/app.config.ts — symmetric release-bound throw guard tied to
+ *   2. mingla-business/app.config.js — symmetric release-bound throw guard tied to
  *      hasAppsFlyerEnv() + EAS_BUILD_PROFILE.
  *   3. app-mobile/src/services/appsFlyerService.ts — reads the key from
  *      Constants.expoConfig.extra FIRST (build-safe) and carries a hasAppsFlyerEnv guard.
@@ -27,8 +27,8 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
-const CONSUMER_CONFIG = path.join(REPO_ROOT, "app-mobile/app.config.ts");
-const BUSINESS_CONFIG = path.join(REPO_ROOT, "mingla-business/app.config.ts");
+const CONSUMER_CONFIG = path.join(REPO_ROOT, "app-mobile/app.config.js");
+const BUSINESS_CONFIG = path.join(REPO_ROOT, "mingla-business/app.config.js");
 const CONSUMER_SERVICE = path.join(REPO_ROOT, "app-mobile/src/services/appsFlyerService.ts");
 
 const KEY_REF_RE = /EXPO_PUBLIC_APPSFLYER_DEV_KEY/;
@@ -106,27 +106,27 @@ function runSelfTest() {
 
 if (process.argv.includes("--self-test")) runSelfTest();
 
-// Check 1 — consumer app.config.ts release-bound fail-loud guard
+// Check 1 — consumer app.config.js release-bound fail-loud guard
 if (!fs.existsSync(CONSUMER_CONFIG)) {
-  fail("INV-1: consumer-config-present", "app-mobile/app.config.ts missing");
+  fail("INV-1: consumer-config-present", "app-mobile/app.config.js missing");
 } else {
   const src = readSource(CONSUMER_CONFIG);
   if (KEY_REF_RE.test(src) && GUARD_THROW_RE.test(src) && EAS_PROFILE_RE.test(src)) {
-    ok("INV-1: consumer-fail-loud", "app-mobile/app.config.ts throws ORCH-1313 on a missing key for a release EAS_BUILD_PROFILE");
+    ok("INV-1: consumer-fail-loud", "app-mobile/app.config.js throws ORCH-1313 on a missing key for a release EAS_BUILD_PROFILE");
   } else {
-    fail("INV-1: consumer-fail-loud", "app-mobile/app.config.ts is missing the release-bound AppsFlyer fail-loud guard — SPEC_ORCH-1313 §4.C File 1");
+    fail("INV-1: consumer-fail-loud", "app-mobile/app.config.js is missing the release-bound AppsFlyer fail-loud guard — SPEC_ORCH-1313 §4.C File 1");
   }
 }
 
-// Check 2 — business app.config.ts symmetric guard
+// Check 2 — business app.config.js symmetric guard
 if (!fs.existsSync(BUSINESS_CONFIG)) {
-  fail("INV-2: business-config-present", "mingla-business/app.config.ts missing");
+  fail("INV-2: business-config-present", "mingla-business/app.config.js missing");
 } else {
   const src = readSource(BUSINESS_CONFIG);
   if (GUARD_THROW_RE.test(src) && HAS_ENV_RE.test(src) && EAS_PROFILE_RE.test(src)) {
-    ok("INV-2: business-fail-loud", "mingla-business/app.config.ts throws ORCH-1313 when hasAppsFlyerEnv() is false on a release EAS_BUILD_PROFILE");
+    ok("INV-2: business-fail-loud", "mingla-business/app.config.js throws ORCH-1313 when hasAppsFlyerEnv() is false on a release EAS_BUILD_PROFILE");
   } else {
-    fail("INV-2: business-fail-loud", "mingla-business/app.config.ts is missing the symmetric release-bound AppsFlyer fail-loud guard — SPEC_ORCH-1313 §4.C File 3");
+    fail("INV-2: business-fail-loud", "mingla-business/app.config.js is missing the symmetric release-bound AppsFlyer fail-loud guard — SPEC_ORCH-1313 §4.C File 3");
   }
 }
 

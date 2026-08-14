@@ -40,7 +40,7 @@ const checks = [
   {
     name: "withGooglePodsModularHeaders plugin registered",
     pass: () =>
-      read("app.config.ts").includes('"./plugins/withGooglePodsModularHeaders"') &&
+      read("app.config.js").includes('"./plugins/withGooglePodsModularHeaders"') &&
       fs.existsSync(path.join(ROOT, "plugins/withGooglePodsModularHeaders.js")),
   },
   {

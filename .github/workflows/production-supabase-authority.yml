@@ -25,6 +25,7 @@ on:
       - "backend/supabase/config.toml"
       - "app-mobile/src/services/supabase.ts"
       - "app-mobile/eas.json"
+      - "mingla-business/app.config.js"
       - "mingla-business/app.config.ts"
       - "mingla-business/src/services/supabase.ts"
       - "mingla-business/public/auth/callback.html"

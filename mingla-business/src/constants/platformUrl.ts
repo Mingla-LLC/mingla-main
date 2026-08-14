@@ -5,7 +5,7 @@
  * (Mingla_Artifacts/reports/INVESTIGATION_B2A_PATH_C_V3_CONFIG_DRIFT.md).
  *
  * Reads at runtime from EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL — set in
- * mingla-business/app.config.ts `extra` block which Expo bakes into the
+ * mingla-business/app.config.js `extra` block which Expo bakes into the
  * native bundle, AND set as a Vercel env var for the web export.
  *
  * Production canonical: `https://business.usemingla.com`.
@@ -25,9 +25,9 @@ const RESOLVED = FROM_EXTRA ?? FROM_PROCESS_ENV;
 if (!RESOLVED || RESOLVED.length === 0) {
   // Fail loud at module load — better than silent fallback to a broken URL.
   // [TRANSITIONAL] removed in v1.0 once env is guaranteed in all build paths.
-  // Exit condition: app.config.ts asserts the env at config-resolve time.
+  // Exit condition: app.config.js asserts the env at config-resolve time.
   throw new Error(
-    "EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL is not set. Configure in mingla-business/app.config.ts extra block or .env.local for dev.",
+    "EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL is not set. Configure in mingla-business/app.config.js extra block or .env.local for dev.",
   );
 }
 

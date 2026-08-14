@@ -11,7 +11,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const paths = {
   layout: join(root, "mingla-business/app/_layout.tsx"),
-  appConfig: join(root, "mingla-business/app.config.ts"),
+  appConfig: join(root, "mingla-business/app.config.js"),
   envExample: join(root, "mingla-business/.env.example"),
   eas: join(root, "mingla-business/eas.json"),
   sentryEdge: join(root, "supabase/functions/_shared/sentryEdge.ts"),

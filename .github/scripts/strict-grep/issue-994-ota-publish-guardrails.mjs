@@ -60,9 +60,9 @@
  *      `MINGLA_EAS_BIN` with a default that is the REAL binary, so the tester's
  *      seam cannot be repurposed as a bypass, and neither may grow a rehearsal /
  *      no-op mode.
- *   4. TRIPWIRE INTEGRITY. `app-mobile/app.config.ts` must keep
+ *   4. TRIPWIRE INTEGRITY. `app-mobile/app.config.js` must keep
  *      `EXPO_PUBLIC_POSTHOG_KEY: process.env.… ?? null` — with NO string
- *      literal fallback — and `mingla-business/app.config.ts` must keep
+ *      literal fallback — and `mingla-business/app.config.js` must keep
  *      `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: process.env.… ?? null`.
  *   5. THE HANDBOOK KEEPS POINTING AT THE TRUTH. §7.6 must name BOTH wrapper
  *      scripts and must keep the literal `"EXPO_PUBLIC_POSTHOG_KEY":{}` — the
@@ -119,8 +119,8 @@ const repoRoot = path.resolve(
 const PATHS = {
   bizScript: "mingla-business/scripts/ota/publish-production-ota.sh",
   consumerScript: "app-mobile/scripts/ota/publish-production-ota.sh",
-  consumerConfig: "app-mobile/app.config.ts",
-  bizConfig: "mingla-business/app.config.ts",
+  consumerConfig: "app-mobile/app.config.js",
+  bizConfig: "mingla-business/app.config.js",
   handbook: "docs/MINGLA_ENGINEERING_HANDBOOK.md",
 };
 
@@ -853,7 +853,7 @@ export function runGate({ scanned, targets }) {
         `${productionShapes} production publish shape(s) found and every one carries ` +
         "`--environment production`; both canonical wrappers present with their preflight, " +
         "served-manifest verification, `--json` and real MINGLA_EAS_BIN default intact; " +
-        "both app.config.ts tripwires still fall back to null; the handbook still names both " +
+        "both app.config.js tripwires still fall back to null; the handbook still names both " +
         "wrappers and the unset signature.",
     ],
   };

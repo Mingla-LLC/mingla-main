@@ -128,7 +128,7 @@ function buildSyntheticTree() {
   mk("mingla-business/scripts/ota/publish-production-ota.sh", wrapper("eas", "business"));
   mk("app-mobile/scripts/ota/publish-production-ota.sh", wrapper("npx -y eas-cli@latest", "consumer"));
   mk(
-    "app-mobile/app.config.ts",
+    "app-mobile/app.config.js",
     [
       "export default { extra: {",
       "  EXPO_PUBLIC_POSTHOG_KEY: process.env.EXPO_PUBLIC_POSTHOG_KEY ?? null,",
@@ -137,7 +137,7 @@ function buildSyntheticTree() {
     ].join("\n"),
   );
   mk(
-    "mingla-business/app.config.ts",
+    "mingla-business/app.config.js",
     [
       "export default { extra: {",
       "  EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN: process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? null,",

@@ -33,7 +33,7 @@ function runAgainstRepo(appConfig, envExample, services) {
       ".github/scripts/strict-grep/i-giphy-key-wired.mjs",
       SCRIPT_SOURCE,
     );
-    writeFixture(root, "mingla-business/app.config.ts", appConfig);
+    writeFixture(root, "mingla-business/app.config.js", appConfig);
     writeFixture(root, "mingla-business/.env.example", envExample);
     // ORCH-1127 — INV-3 reads the two giphy services; provide them so the gate
     // doesn't fail merely because the fixture files are absent.
@@ -58,7 +58,7 @@ function runAgainstRepo(appConfig, envExample, services) {
 }
 
 const GOOD_APP_CONFIG = `
-export default () => ({
+module.exports = () => ({
   extra: {
     EXPO_PUBLIC_GIPHY_API_KEY: (() => {
       const fromEnv = process.env.EXPO_PUBLIC_GIPHY_API_KEY ?? null;
@@ -74,7 +74,7 @@ export default () => ({
 `;
 
 const PASSTHROUGH_ONLY_APP_CONFIG = `
-export default () => ({
+module.exports = () => ({
   extra: {
     EXPO_PUBLIC_GIPHY_API_KEY: process.env.EXPO_PUBLIC_GIPHY_API_KEY ?? null,
   },

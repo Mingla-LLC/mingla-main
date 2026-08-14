@@ -4,7 +4,7 @@
  * Strict-grep gate — ORCH-1214 [business-prod-pk-live-validator]
  * I-ORCH-1214-BUSINESS-PK-LIVE-BUILD-ACCEPTS-LIVE (DRAFT until CLOSE)
  *
- * mingla-business/app.config.ts resolves EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY via
+ * mingla-business/app.config.js resolves EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY via
  * an IIFE branching on process.env.VERCEL_ENV. Branch 4 (VERCEL_ENV undefined)
  * is the NATIVE EAS build + local-dev path. It previously HARDCODED a pk_test_
  * requirement:
@@ -18,7 +18,7 @@
  *
  * ORCH-1214 changed branch 4 to accept the mode-appropriate prefix: pk_live_
  * only when MINGLA_STRIPE_MODE=live, pk_test_ otherwise. This gate asserts that
- * acceptance cannot be silently reverted — branch 4 of app.config.ts MUST:
+ * acceptance cannot be silently reverted — branch 4 of app.config.js MUST:
  *   (a) accept a pk_live_ value: a `localValue.startsWith("pk_live_")` branch
  *       that returns the value, AND
  *   (b) guard it on live mode: a `stripeMode !== "live"` throw inside that
@@ -39,7 +39,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 
-const APP_CONFIG = path.join(REPO_ROOT, "mingla-business/app.config.ts");
+const APP_CONFIG = path.join(REPO_ROOT, "mingla-business/app.config.js");
 
 // (a) Branch 4 accepts a pk_live_ value — `localValue.startsWith("pk_live_")`.
 const PK_LIVE_ACCEPT_RE = /localValue\.startsWith\(\s*["']pk_live_["']\s*\)/;
@@ -143,7 +143,7 @@ if (process.argv.includes("--self-test")) {
 }
 
 if (!fs.existsSync(APP_CONFIG)) {
-  fail("INV-1: app-config-present", "mingla-business/app.config.ts missing");
+  fail("INV-1: app-config-present", "mingla-business/app.config.js missing");
 } else {
   const code = stripComments(readSource(APP_CONFIG));
   const acceptsPkLive = PK_LIVE_ACCEPT_RE.test(code);
@@ -153,24 +153,24 @@ if (!fs.existsSync(APP_CONFIG)) {
   if (acceptsPkLive && guardsLiveMode) {
     ok(
       "INV-1: pk-live-accepted-under-live-mode",
-      "app.config.ts branch 4 accepts a pk_live_ key (localValue.startsWith(\"pk_live_\")) and guards it on stripeMode !== \"live\"",
+      "app.config.js branch 4 accepts a pk_live_ key (localValue.startsWith(\"pk_live_\")) and guards it on stripeMode !== \"live\"",
     );
   } else {
     fail(
       "INV-1: pk-live-accepted-under-live-mode",
-      `app.config.ts branch 4 must accept pk_live_ under live mode (acceptsPkLive=${acceptsPkLive}, guardsLiveMode=${guardsLiveMode}) — see IMPLEMENTATION_ORCH-1214. The native EAS production build injects a pk_live_ key; rejecting it kills every business production build.`,
+      `app.config.js branch 4 must accept pk_live_ under live mode (acceptsPkLive=${acceptsPkLive}, guardsLiveMode=${guardsLiveMode}) — see IMPLEMENTATION_ORCH-1214. The native EAS production build injects a pk_live_ key; rejecting it kills every business production build.`,
     );
   }
 
   if (hasOldHardcode) {
     fail(
       "INV-2: no-hardcoded-pk-test-local-dev",
-      "app.config.ts still carries the OLD branch-4 message \"must be a pk_test_ value for local development.\" — the pk_test_-only hardcode (build-killing regression) is back.",
+      "app.config.js still carries the OLD branch-4 message \"must be a pk_test_ value for local development.\" — the pk_test_-only hardcode (build-killing regression) is back.",
     );
   } else {
     ok(
       "INV-2: no-hardcoded-pk-test-local-dev",
-      "app.config.ts no longer hardcodes the pk_test_-only branch-4 requirement",
+      "app.config.js no longer hardcodes the pk_test_-only branch-4 requirement",
     );
   }
 }
