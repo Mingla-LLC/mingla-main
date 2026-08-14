@@ -36,6 +36,7 @@ const TurnoutIntelObserver = ({
       previous.inputKey === controller.inputKey &&
       previous.inputHash === controller.inputHash &&
       previous.run === controller.run &&
+      previous.trackReportOpened === controller.trackReportOpened &&
       previous.updateFailureCount === controller.updateFailureCount
     ) {
       return;

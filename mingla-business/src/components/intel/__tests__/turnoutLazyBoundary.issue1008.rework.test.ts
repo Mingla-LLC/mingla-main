@@ -19,6 +19,7 @@ describe("#1008 turnout card eager dependency boundary", () => {
     expect(providerSource).not.toMatch(
       /import\s+\{[^}]*useTurnoutForecast[^}]*\}\s+from\s+["']\.\.\/\.\.\/hooks\/useTurnoutForecast["']/,
     );
+    expect(providerSource).not.toContain('from "../../services/postHogService"');
     expect(providerSource).toContain("reportOpen && controller !== null");
   });
 });

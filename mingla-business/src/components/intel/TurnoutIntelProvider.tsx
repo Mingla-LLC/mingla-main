@@ -11,7 +11,6 @@ import type {
   TurnoutSurface,
   TurnoutWizard,
 } from "../../hooks/useTurnoutForecast";
-import { postHogService } from "../../services/postHogService";
 import {
   TurnoutIntelContext,
   type TurnoutIntelContextValue,
@@ -73,30 +72,11 @@ export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
             ...display,
             run: controller.run,
             openReport: () => {
-              if (controller.result !== null) {
-                postHogService.capture("intel_report_opened", {
-                  tool: "events",
-                  wizard,
-                  surface,
-                  trigger: controller.result.trigger,
-                  input_hash: controller.inputHash,
-                  band_low: controller.report?.forecast?.total_low ?? null,
-                  band_high: controller.report?.forecast?.total_high ?? null,
-                  capacity:
-                    controller.report?.forecast?.capacity ??
-                    controller.input?.capacity ??
-                    null,
-                  confidence:
-                    controller.report?.forecast?.confidence ?? null,
-                  research_source:
-                    controller.report?.meta?.research_source ?? null,
-                  cached: controller.result.cached,
-                });
-              }
+              controller.trackReportOpened();
               setReportOpen(true);
             },
           } satisfies TurnoutIntelContextValue),
-    [controller, display, surface, wizard],
+    [controller, display],
   );
   return (
     <TurnoutIntelContext.Provider value={value}>

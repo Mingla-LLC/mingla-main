@@ -63,6 +63,7 @@ export interface TurnoutForecastController {
   inputKey: string | null;
   inputHash: string | null;
   run: (trigger: TurnoutRunTrigger) => Promise<void>;
+  trackReportOpened: () => void;
   updateFailureCount: number;
 }
 
@@ -356,6 +357,14 @@ export const useTurnoutForecast = (
     }
   }, [args.brandId, args.previewActive, inputKey, queryClient, run]);
 
+  const trackReportOpened = useCallback((): void => {
+    if (result === null) return;
+    postHogService.capture(
+      "intel_report_opened",
+      analyticsProps(result.trigger, result),
+    );
+  }, [analyticsProps, result]);
+
   return {
     state,
     report: result?.report ?? null,
@@ -365,6 +374,7 @@ export const useTurnoutForecast = (
     inputKey,
     inputHash,
     run,
+    trackReportOpened,
     updateFailureCount,
   };
 };
