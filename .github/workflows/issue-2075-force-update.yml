@@ -19,6 +19,7 @@ on:
       - "supabase/config.toml"
       - "supabase/functions/_shared/appVersionPolicy.ts"
       - "supabase/functions/_shared/appVersionPolicy.test.ts"
+      - "supabase/functions/_shared/appVersionPolicy.tester-adversarial.test.ts"
       - "supabase/functions/app-version-policy/**"
       - "supabase/functions/brand-stripe-onboard/index.ts"
       - "supabase/functions/brand-stripe-account-session/index.ts"
@@ -89,7 +90,10 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - run: deno test --allow-env supabase/functions/_shared/appVersionPolicy.test.ts
+      - run: >-
+          deno test --allow-env
+          supabase/functions/_shared/appVersionPolicy.test.ts
+          supabase/functions/_shared/appVersionPolicy.tester-adversarial.test.ts
       - run: >-
           deno check
           supabase/functions/app-version-policy/index.ts
