@@ -20,6 +20,7 @@ on:
       - "supabase/migrations/__tests__/issue_1930_transition_races.test.sql"
       - "supabase/migrations/__tests__/issue_1930_ticket_revocation_writeback.test.sql"
       - "supabase/migrations/__tests__/issue_1930_ticket_revocation_writeback.test.ts"
+      - "supabase/migrations/__tests__/issue_1930_ticket_revocation_writeback.tester.adversarial.test.ts"
       - "supabase/security/anon_executable_definer_allowlist.txt"
       - ".github/scripts/strict-grep/issue-1930-checkout-current-truth.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
@@ -48,6 +49,7 @@ jobs:
           supabase/functions/rsvp-contribution-create/issue_1930_rsvp_truth.test.ts
           supabase/migrations/__tests__/issue_1930_checkout_current_truth.test.ts
           supabase/migrations/__tests__/issue_1930_ticket_revocation_writeback.test.ts
+          supabase/migrations/__tests__/issue_1930_ticket_revocation_writeback.tester.adversarial.test.ts
           supabase/migrations/__tests__/issue_1930_transition_cas.tester.adversarial.test.ts
           supabase/functions/_shared/__tests__/issue_1930_transition_rework.test.ts
           supabase/functions/_shared/__tests__/issue_1930_second_rework.test.ts
