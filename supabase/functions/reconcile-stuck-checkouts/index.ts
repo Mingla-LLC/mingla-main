@@ -184,7 +184,9 @@ serve(async (req) => {
           const resolvedPiId = typeof rawCsPi === "string"
             ? rawCsPi
             : rawCsPi?.id ?? null;
-          if (resolvedPiId) {
+          if (resolvedPiId === null) {
+            hostedRelationConflict = true;
+          } else {
             hostedRelationConflict = resolvedPiId !== piId;
             piId = resolvedPiId;
           }
