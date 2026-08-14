@@ -117,14 +117,14 @@ export function WelcomeVideoBackground() {
   }, [failed, failSafely, isActive, opacity, player, reduceMotion, saveData]);
 
   const revealVideo = useCallback(() => {
-    if (failed || reduceMotion || saveData || !isActive) return;
+    if (!eligibleRef.current) return;
     Animated.timing(opacity, {
       toValue: 1,
       duration: 200,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [failed, isActive, opacity, reduceMotion, saveData]);
+  }, [opacity]);
 
   return (
     <View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>

@@ -161,6 +161,12 @@ export function checkContract(fixture) {
   requireNeedles(s.explorerBackground, [...backgroundCommon, ...nativeLifecycle, "PORTRAIT_VIDEO", "PORTRAIT_POSTER", '"textureView"', "eligibleRef.current = reduceMotion === false && isActive && !failed", "!eligibleRef.current"], "explorer background");
   requireNeedles(s.hostNative, [...backgroundCommon, ...nativeLifecycle, "PORTRAIT_VIDEO", "PORTRAIT_POSTER", '"textureView"', "eligibleRef.current = reduceMotion === false && isActive && !failed", "!eligibleRef.current"], "host native background");
   requireNeedles(s.hostWeb, [...backgroundCommon, "LANDSCAPE_VIDEO", "LANDSCAPE_POSTER", "saveData", "matchMedia", "onConnectionChange", "playsInline", "eligibleRef.current = !reduceMotion && !saveData && isActive && !failed", "!eligibleRef.current"], "host web background");
+  const hostWebReveal = s.hostWeb.match(
+    /const revealVideo = useCallback\(\(\) => \{([\s\S]*?)\n\s*\}, \[([^\]]*)\]\);/,
+  );
+  assert.ok(hostWebReveal, "host web background: missing stable revealVideo callback");
+  requireNeedles(hostWebReveal[1], ["if (!eligibleRef.current) return;"], "host web reveal callback");
+  assert.equal(hostWebReveal[2].trim(), "opacity", "host web reveal callback must not capture eligibility state");
   forbidNeedles(s.explorerBackground, ["landscape"], "explorer background orientation");
   forbidNeedles(s.hostNative, ["landscape"], "host native orientation");
   forbidNeedles(s.hostWeb, ["portrait"], "host web orientation");
@@ -201,8 +207,9 @@ function selfTest() {
   expectMutationToFail(good, (x) => { x.source.hostWeb = x.source.hostWeb.replace("status === \"error\"", "status === \"never\""); }, "error fallback family");
   expectMutationToFail(good, (x) => { x.source.hostNative = x.source.hostNative.replace("eligibleRef.current = reduceMotion === false", "eligibleRef.current = true || reduceMotion === false"); }, "reduced motion family");
   expectMutationToFail(good, (x) => { x.source.hostNative = x.source.hostNative.replace("{shouldRenderVideo ? (", "{true ? ("); }, "native lifecycle family");
+  expectMutationToFail(good, (x) => { x.source.hostWeb = x.source.hostWeb.replace("if (!eligibleRef.current) return;", "if (failed || reduceMotion || saveData || !isActive) return;").replace("}, [opacity]);", "}, [failed, isActive, opacity, reduceMotion, saveData]);"); }, "host web retained reveal callback family");
   expectMutationToFail(good, (x) => { x.assetBytes.hostLandscapeVideo = Buffer.from(x.assetBytes.hostLandscapeVideo); x.assetBytes.hostLandscapeVideo[100] ^= 1; }, "asset family");
-  process.stdout.write("issue-2052 self-test: 1 GOOD + 9 BAD fixtures passed\n");
+  process.stdout.write("issue-2052 self-test: 1 GOOD + 10 BAD fixtures passed\n");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
