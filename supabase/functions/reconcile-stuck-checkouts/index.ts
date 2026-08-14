@@ -233,13 +233,43 @@ serve(async (req) => {
           : [];
         const methodType = (pmTypes[0] as string | undefined) ?? "card";
 
+        const { data: identityTruth, error: identityError } = await supabase
+          .rpc(
+            "issue_2079_verify_ticket_paid_identity",
+            {
+              p_checkout_session_id: sessionId,
+              p_provider: "stripe",
+              p_payment_reference: piId,
+              p_paystack_transaction_id: null,
+              p_stripe_charge_id: chargeId,
+              p_observed_account_reference: stripeAccountId,
+            },
+          );
+        if (identityError) {
+          results.push({
+            sessionId,
+            piId,
+            error: "paid_identity_capture_failed",
+          });
+          continue;
+        }
+        if (identityTruth?.outcome !== "verified") {
+          results.push({
+            sessionId,
+            piId,
+            status: "paid_reversal_pending",
+            skip: "paid_identity_attention",
+          });
+          continue;
+        }
+
         // ORCH-0924 ROLLBACK of ORCH-0921 — see ticket-checkout-confirm/index.ts
         // for the full rationale. Reverted to pre-ORCH-0921 5-param shape to
         // unblock production. Real fix is ORCH-0925 [ticket-checkout-create
         // must attach Stripe Customer to plan PIs explicitly].
         // orch-strict-grep-allow finalize-no-plan-root — ORCH-0924 rollback of ORCH-0921; real fix is ORCH-0925
         const { data: finalized, error: finalizeError } = await supabase.rpc(
-      "biz_ticket_checkout_finalize",
+          "biz_ticket_checkout_finalize",
           {
             p_checkout_session_id: sessionId,
             p_stripe_payment_intent_id: piId,

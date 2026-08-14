@@ -1419,14 +1419,41 @@ async function handleTicketCheckoutPaymentIntent(
     const savedPaymentMethodId = isInstallmentPlanRoot
       ? objectString(paymentIntent, "payment_method")
       : null;
+    const observedAccount = typeof event.account === "string"
+      ? event.account
+      : objectString(session, "stripe_account_id");
+    const observedChargeId = latestCharge
+      ? objectString(latestCharge, "id")
+      : null;
+    const { data: identityTruth, error: identityError } = await supabase.rpc(
+      "issue_2079_verify_ticket_paid_identity",
+      {
+        p_checkout_session_id: session.id,
+        p_provider: "stripe",
+        p_payment_reference: paymentIntentId,
+        p_paystack_transaction_id: null,
+        p_stripe_charge_id: observedChargeId,
+        p_observed_account_reference: observedAccount,
+      },
+    );
+    if (identityError) {
+      throw new Error(
+        `ticket paid identity capture failed: ${identityError.message}`,
+      );
+    }
+    if (identityTruth?.outcome !== "verified") {
+      console.warn(
+        "[stripe-webhook] ticket payment identity held for review",
+        session.id,
+      );
+      return session.brand_id as string | null;
+    }
     const { data: finalized, error: finalizeError } = await supabase.rpc(
       "biz_ticket_checkout_finalize",
       {
         p_checkout_session_id: session.id,
         p_stripe_payment_intent_id: paymentIntentId,
-        p_stripe_charge_id: latestCharge
-          ? objectString(latestCharge, "id")
-          : null,
+        p_stripe_charge_id: observedChargeId,
         p_stripe_payment_method_type: methodType,
         p_qr_token_pepper: qrTokenPepper(),
         p_stripe_customer_id_on_connected_account: stripeCustomerId,

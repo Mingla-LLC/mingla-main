@@ -8,6 +8,8 @@ type Revocation = {
   subject_type: "ticket_checkout_session" | "rsvp_contribution";
   subject_id: string;
   provider_attempt_id: string | null;
+  state: string;
+  reason: string;
 };
 
 serve(async (req) => {
@@ -99,6 +101,15 @@ serve(async (req) => {
           .eq("id", row.provider_attempt_id).maybeSingle();
         if (!attempt) {
           state = "neutralized";
+        } else if (
+          attempt.provider === "paystack" &&
+          (row.state === "provider_unknown" ||
+            row.reason.startsWith("paid_provider_"))
+        ) {
+          // Paid provider evidence is a refund obligation, never ordinary
+          // continuation suppression. Keep it retryable until the authenticated
+          // finalize boundary supplies a canonical identity.
+          throw new Error("paid_provider_identity_pending");
         } else if (attempt.provider === "paystack") {
           state = "neutralized";
         } else if (!session?.stripe_account_id) {

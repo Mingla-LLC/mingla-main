@@ -399,6 +399,32 @@ serve(async (req) => {
         : null;
     const latestCharge = latestChargeId(paymentIntent);
 
+    const { data: identityTruth, error: identityError } = await supabase.rpc(
+      "issue_2079_verify_ticket_paid_identity",
+      {
+        p_checkout_session_id: session.id,
+        p_provider: "stripe",
+        p_payment_reference: paymentIntentId,
+        p_paystack_transaction_id: null,
+        p_stripe_charge_id: latestCharge,
+        p_observed_account_reference: stripeAccountId,
+      },
+    );
+    if (identityError) {
+      return jsonResponse(
+        { error: "paid_identity_capture_failed" },
+        502,
+      );
+    }
+    if (identityTruth?.outcome !== "verified") {
+      return jsonResponse({
+        checkoutSessionId: session.id,
+        status: "failed" as FinalizeStatus,
+        order: null,
+        error: "checkout_unavailable",
+      }, 409);
+    }
+
     let pepper: string;
     try {
       pepper = qrTokenPepper();

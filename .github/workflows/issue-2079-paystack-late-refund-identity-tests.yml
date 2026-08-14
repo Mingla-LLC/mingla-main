@@ -1,0 +1,73 @@
+name: issue-2079-provider-correct-late-refund
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20270411002079_issue_2079_paystack_late_refund_identity.sql"
+      - "supabase/migrations/__tests__/issue_2079_paystack_late_refund_identity.test.sql"
+      - "supabase/functions/_shared/paystackRefunds.ts"
+      - "supabase/functions/_shared/sourceRefundControlPlane.ts"
+      - "supabase/functions/checkout-sale-revocation/**"
+      - "supabase/functions/ticket-checkout-confirm/**"
+      - "supabase/functions/_shared/stripeWebhookRouter.ts"
+      - "supabase/functions/reconcile-stuck-checkouts/**"
+      - ".github/scripts/strict-grep/issue-2079-paystack-late-refund-identity.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2079-paystack-late-refund-identity-tests.yml"
+      - "docs/INVARIANT_REGISTRY.md"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270411002079_issue_2079_paystack_late_refund_identity.sql"
+      - "supabase/functions/_shared/sourceRefundControlPlane.ts"
+      - ".github/scripts/strict-grep/issue-2079-paystack-late-refund-identity.mjs"
+  workflow_dispatch:
+
+jobs:
+  issue-2079-provider-correct-late-refund:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: node .github/scripts/strict-grep/issue-2079-paystack-late-refund-identity.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-2079-paystack-late-refund-identity.mjs
+      - run: >-
+          deno test --allow-env --allow-read
+          supabase/functions/_shared/__tests__/issue_2079_paystack_late_refund_identity.happy.test.ts
+          supabase/functions/_shared/__tests__/stripeWebhookRouter.test.ts
+          supabase/functions/_shared/__tests__/issue_1221_source_refund_control_plane.test.ts
+          supabase/functions/_shared/__tests__/issue_1221_source_refund_control_plane.tester.adversarial.test.ts
+          supabase/functions/_shared/__tests__/issue_1930_source_refund_dispatch.test.ts
+      - run: deno check supabase/functions/_shared/paystackRefunds.ts supabase/functions/_shared/sourceRefundControlPlane.ts supabase/functions/checkout-sale-revocation/index.ts supabase/functions/ticket-checkout-confirm/index.ts supabase/functions/_shared/stripeWebhookRouter.ts supabase/functions/reconcile-stuck-checkouts/index.ts
+
+  issue-2079-postgres-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.98.2
+      - name: PostgreSQL 17 full-chain identity contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          sql_root="$(mktemp -d /tmp/issue-2079-sql.XXXXXX)"
+          cleanup() { supabase stop --workdir "$sql_root" --no-backup --yes || true; }
+          trap cleanup EXIT
+          supabase init --workdir "$sql_root" --yes
+          target="$sql_root/supabase/migrations"
+          rsync -a supabase/migrations/ "$target/"
+          mv "$target/20260612000001_tr4_revoke_rpc_anon_grants.sql" "$target/20260612000002_tr4_revoke_rpc_anon_grants.sql"
+          mv "$target/20260612000000_tr4_refund_tiers_booking_deadline.sql" "$target/20260612000001_tr4_refund_tiers_booking_deadline.sql"
+          mv "$target/20260615000000_orch_426_discover_cache_gzip.sql" "$target/20260615010000_orch_426_discover_cache_gzip.sql"
+          mv "$target/20261012000000_orch_1150_rsvp_maybe.sql" "$target/20261012010000_orch_1150_rsvp_maybe.sql"
+          mv "$target/20261113000000_orch_1172_rsvp_edit_privacy_settings.sql" "$target/20261113010000_orch_1172_rsvp_edit_privacy_settings.sql"
+          mv "$target/20261116000000_orch_1187_reconcile_stuck_checkouts_cron.sql" "$target/20261116010000_orch_1187_reconcile_stuck_checkouts_cron.sql"
+          mv "$target/20261117000001_orch_1188_finalize_persist_event_date_id.sql" "$target/20261117000002_orch_1188_finalize_persist_event_date_id.sql"
+          mv "$target/20261117000000_orch_1188_orders_event_date_id.sql" "$target/20261117000001_orch_1188_orders_event_date_id.sql"
+          supabase start --workdir "$sql_root" --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor --yes
+          db_container="$(docker ps --filter "label=com.supabase.cli.project=$(basename "$sql_root")" --format '{{.Names}}' | awk '/^supabase_db_/ {print; exit}')"
+          test -n "$db_container"
+          db_password="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$db_container" | sed -n 's/^POSTGRES_PASSWORD=//p')"
+          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f - < supabase/migrations/__tests__/issue_2079_paystack_late_refund_identity.test.sql
