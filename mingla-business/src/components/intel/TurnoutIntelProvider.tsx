@@ -1,4 +1,11 @@
-import React, { Suspense, useCallback, useMemo, useRef, useState } from "react";
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   withExperienceModelEstimate,
@@ -81,6 +88,19 @@ export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
   const [estimate, setEstimateState] = useState<TurnoutEstimateState>({
     kind: "unanswered",
   });
+  const estimateSourceCompatible =
+    source.kind === "experience" && source.unlimited;
+  const effectiveEstimate = useMemo<TurnoutEstimateState>(
+    () =>
+      estimateSourceCompatible ? estimate : { kind: "unanswered" },
+    [estimate, estimateSourceCompatible],
+  );
+  const estimateApplied = effectiveEstimate.kind === "answered";
+  useEffect(() => {
+    if (!estimateSourceCompatible && estimate.kind !== "unanswered") {
+      setEstimateState({ kind: "unanswered" });
+    }
+  }, [estimate.kind, estimateSourceCompatible]);
   const gateClaims = useRef(new TurnoutGateSessionClaims());
   const setEstimate = useCallback((value: number): void => {
     if (Number.isInteger(value) && value > 0) {
@@ -102,9 +122,11 @@ export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
   const modeledSource = useMemo<TurnoutInputSource>(() => {
     return withExperienceModelEstimate(
       source,
-      estimate.kind === "answered" ? estimate.value : null,
+      estimateApplied && effectiveEstimate.kind === "answered"
+        ? effectiveEstimate.value
+        : null,
     );
-  }, [estimate, source]);
+  }, [effectiveEstimate, estimateApplied, source]);
   const sessionHonesty = useMemo((): string | null => {
     if (controller?.input?.date === undefined) return null;
     if (source.kind === "experience") {
@@ -119,7 +141,8 @@ export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
   if (controllerRef !== undefined) controllerRef.current = controller;
   if (sessionRef !== undefined) {
     sessionRef.current = {
-      estimate,
+      estimate: effectiveEstimate,
+      estimateApplied,
       setEstimate,
       skipEstimate,
       claimGate,
@@ -146,7 +169,8 @@ export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
               setFocusHint(null);
               return true;
             },
-            estimate,
+            estimate: effectiveEstimate,
+            estimateApplied,
             setEstimate,
             skipEstimate,
             sessionHonesty,
@@ -160,7 +184,8 @@ export const TurnoutIntelProvider: React.FC<TurnoutIntelProviderProps> = ({
     [
       controller,
       display,
-      estimate,
+      effectiveEstimate,
+      estimateApplied,
       focusHint,
       navigateTo,
       sessionHonesty,

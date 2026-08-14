@@ -9,6 +9,7 @@ type EstimateState =
   | { kind: "skipped" };
 
 let estimate: EstimateState = { kind: "unanswered" };
+let estimateApplied = false;
 let blockReason: string | null = null;
 let wizard: "event" | "experience" = "experience";
 
@@ -51,6 +52,9 @@ const mockIntel = {
   },
   get estimate(): EstimateState {
     return estimate;
+  },
+  get estimateApplied(): boolean {
+    return estimateApplied;
   },
   get blockReason(): string | null {
     return blockReason;
@@ -180,12 +184,14 @@ const expectSeparateRecommendationFocus = (
 describe("#1742 demand truth and recommendation accessibility rework", () => {
   afterEach(() => {
     estimate = { kind: "unanswered" };
+    estimateApplied = false;
     blockReason = null;
     wizard = "experience";
   });
 
   it("shows the exact estimate pill only for an answered unlimited demand read", () => {
     estimate = { kind: "answered", value: 50 };
+    estimateApplied = true;
     const answered = render(
       <PrePublishGateSheet
         visible
@@ -220,6 +226,7 @@ describe("#1742 demand truth and recommendation accessibility rework", () => {
 
   it("keeps Experience recommendation copy and buttons as separate focus stops", () => {
     estimate = { kind: "answered", value: 50 };
+    estimateApplied = true;
     const renderer = render(
       <PrePublishGateSheet
         visible

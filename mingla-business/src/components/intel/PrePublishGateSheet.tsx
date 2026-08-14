@@ -40,7 +40,8 @@ export const PrePublishGateSheet: React.FC<PrePublishGateSheetProps> = ({
     typeof forecast?.total_low === "number" &&
     typeof forecast.total_high === "number" &&
     typeof forecast.capacity === "number";
-  const demandRead = estimateState.kind === "answered";
+  const demandRead =
+    intel.estimateApplied === true && estimateState.kind === "answered";
   const unlimited =
     intel.blockReason === "unlimited_capacity" && !demandRead;
   const recommendations = buildTurnoutGateRecommendations(

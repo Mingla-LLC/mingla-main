@@ -910,8 +910,7 @@ export const ExperienceCreatorWizard: React.FC<
       return;
     }
     setIntelGateOpen(true);
-    const estimateUsed =
-      intelSessionRef.current?.estimate.kind === "answered";
+    const estimateUsed = intelSessionRef.current?.estimateApplied === true;
     postHogService.capture(
       "intel_gate_shown",
       controller.gateAnalyticsProps(estimateUsed),
@@ -925,8 +924,7 @@ export const ExperienceCreatorWizard: React.FC<
 
   const publishFromIntelGate = useCallback((): void => {
     const controller = intelControllerRef.current;
-    const estimateUsed =
-      intelSessionRef.current?.estimate.kind === "answered";
+    const estimateUsed = intelSessionRef.current?.estimateApplied === true;
     if (controller !== null) {
       const gateState = controller.gateState(estimateUsed);
       if (shouldTrackGatePublishedAnyway(gateState)) {

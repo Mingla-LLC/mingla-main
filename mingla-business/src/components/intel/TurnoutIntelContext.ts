@@ -9,6 +9,7 @@ export type TurnoutEstimateState =
 
 export interface TurnoutIntelSessionController {
   estimate: TurnoutEstimateState;
+  estimateApplied: boolean;
   setEstimate: (value: number) => void;
   skipEstimate: () => void;
   claimGate: (inputKey: string) => "claimed" | "active" | "seen";
@@ -44,6 +45,7 @@ export interface TurnoutIntelContextValue extends TurnoutForecastController {
     focus: "name" | "date" | "city" | "price" | "capacity",
   ) => boolean;
   estimate: TurnoutEstimateState;
+  estimateApplied: boolean;
   setEstimate: (value: number) => void;
   skipEstimate: () => void;
   sessionHonesty: string | null;
