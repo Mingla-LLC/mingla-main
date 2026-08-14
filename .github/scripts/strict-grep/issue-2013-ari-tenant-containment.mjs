@@ -8,7 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
 const NAMES = [
   "list_brands", "list_events", "quote_stay", "get_payout_status", "get_partner_status",
-  "get_tax_status", "get_brand_analytics", "list_guest_roster", "get_operator_snapshot",
+  "get_tax_status", "get_brand_analytics", "list_brand_audit_log", "list_guest_roster", "get_operator_snapshot",
 ];
 
 export function twoAccountPublicRlsProof(ownerId, memberRows, publicBrands) {

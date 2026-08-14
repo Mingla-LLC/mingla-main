@@ -92,11 +92,12 @@ function actualRegistry(): GeminiToolDef[] {
   }));
 }
 
-Deno.test("#1999 happy: all 64 actual Ari tools compile for Gemini typed parameters", () => {
+Deno.test("#1999 happy: all 68 actual Ari tools compile for Gemini typed parameters", () => {
   const tools = actualRegistry();
+  // [TEST-MOD-APPROVED #2063] #1972 seals 65 tools; #2063 adds exactly three certified brand tools.
   assertEquals(
     tools.length,
-    64,
+    68,
     "registry baseline changed; provider coverage must be reviewed",
   );
 
