@@ -5,7 +5,6 @@
 // deno-lint-ignore-file no-explicit-any
 import type { AgentToolDefinition } from "./agentToolHelpers.ts";
 import {
-  ToolError,
   assertCanCollect,
   callRpc,
   invokeFn,
@@ -13,6 +12,7 @@ import {
   isUuid,
   newIdempotencyKey,
   resolveEventBrand,
+  ToolError,
 } from "./agentToolHelpers.ts";
 import {
   assertAgentReadBrand,
@@ -32,7 +32,10 @@ function writeTool(
   confirmPhrase?: string,
 ): AgentToolDefinition {
   const props = confirmPhrase
-    ? { ...properties, confirm_phrase: { type: "string", enum: [confirmPhrase] } }
+    ? {
+      ...properties,
+      confirm_phrase: { type: "string", enum: [confirmPhrase] },
+    }
     : properties;
   const req = confirmPhrase && !required.includes("confirm_phrase")
     ? [...required, "confirm_phrase"]
@@ -47,24 +50,39 @@ function writeTool(
       required: req,
     },
     executor: confirmPhrase
-      ? async (args, client, userId) => {
+      ? async (args, client, userId, context) => {
         if (args.confirm_phrase !== confirmPhrase) {
-          throw new ToolError("INVALID_ARGS", `confirm_phrase must be ${confirmPhrase}`);
+          throw new ToolError(
+            "INVALID_ARGS",
+            `confirm_phrase must be ${confirmPhrase}`,
+          );
         }
-        return await executor(args, client, userId);
+        return await executor(args, client, userId, context);
       }
       : executor,
   };
 }
 
-async function requireEvent(args: Record<string, unknown>, client: any, _userId: string): Promise<{ eventId: string; brandId: string }> {
-  if (!isUuid(args.event_id)) throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
+async function requireEvent(
+  args: Record<string, unknown>,
+  client: any,
+  _userId: string,
+): Promise<{ eventId: string; brandId: string }> {
+  if (!isUuid(args.event_id)) {
+    throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
+  }
   const brandId = await resolveEventBrand(client, args.event_id);
   return { eventId: args.event_id, brandId };
 }
 
-function requireBrand(args: Record<string, unknown>, _client: any, _userId: string): string {
-  if (!isUuid(args.brand_id)) throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+function requireBrand(
+  args: Record<string, unknown>,
+  _client: any,
+  _userId: string,
+): string {
+  if (!isUuid(args.brand_id)) {
+    throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+  }
   return args.brand_id;
 }
 
@@ -75,7 +93,10 @@ function requireBrand(args: Record<string, unknown>, _client: any, _userId: stri
 const publishEvent = writeTool(
   "publish_event",
   "Publish a draft event the user owns. Uses issue_1719_publish_event_with_poster. Paid events require payout-ready brand.",
-  { event_id: UUID, visibility: { type: "string", enum: ["public", "unlisted", "private"] } },
+  {
+    event_id: UUID,
+    visibility: { type: "string", enum: ["public", "unlisted", "private"] },
+  },
   ["event_id"],
   async (args, client, userId) => {
     const { eventId, brandId } = await requireEvent(args, client, userId);
@@ -119,7 +140,9 @@ const cancelEvent = writeTool(
   ["event_id"],
   async (args, client, userId) => {
     const { eventId } = await requireEvent(args, client, userId);
-    return await callRpc(client, "business_cancel_event", { p_event_id: eventId });
+    return await callRpc(client, "business_cancel_event", {
+      p_event_id: eventId,
+    });
   },
   "CANCEL",
 );
@@ -131,7 +154,9 @@ const endEventSales = writeTool(
   ["event_id"],
   async (args, client, userId) => {
     const { eventId } = await requireEvent(args, client, userId);
-    return await callRpc(client, "business_end_event_ticket_sales", { p_event_id: eventId });
+    return await callRpc(client, "business_end_event_ticket_sales", {
+      p_event_id: eventId,
+    });
   },
 );
 
@@ -147,7 +172,9 @@ const duplicateEvent = writeTool(
       .select("title, description, location_text, timezone, event_type")
       .eq("id", eventId)
       .maybeSingle();
-    if (error || !src) throw new ToolError("OWNERSHIP_DENIED", "Source event not found");
+    if (error || !src) {
+      throw new ToolError("OWNERSHIP_DENIED", "Source event not found");
+    }
     const { data, error: insErr } = await client
       .from("events")
       .insert({
@@ -205,7 +232,8 @@ const setEventCover = writeTool(
       .update({
         cover_media_url: args.cover_media_url,
         cover_media_type: args.cover_media_type,
-        cover_media_poster_url: args.cover_media_poster_url ?? args.cover_media_url,
+        cover_media_poster_url: args.cover_media_poster_url ??
+          args.cover_media_url,
       })
       .eq("id", eventId)
       .select("id, cover_media_url")
@@ -218,7 +246,10 @@ const setEventCover = writeTool(
 const setEventGuestPrivacy = writeTool(
   "set_event_guest_privacy",
   "Set guest-list privacy on an owned event via biz_set_event_guest_privacy.",
-  { event_id: UUID, privacy: { type: "string", enum: ["private", "attendees", "public"] } },
+  {
+    event_id: UUID,
+    privacy: { type: "string", enum: ["private", "attendees", "public"] },
+  },
   ["event_id", "privacy"],
   async (args, client, userId) => {
     const { eventId } = await requireEvent(args, client, userId);
@@ -247,14 +278,26 @@ const upsertTicketTier = writeTool(
   ["event_id", "name", "price_cents"],
   async (args, client, userId) => {
     const price = Number(args.price_cents);
-    if (!Number.isFinite(price) || price < 0) throw new ToolError("INVALID_ARGS", "price_cents must be ≥ 0");
-    if (args.quantity !== undefined && (typeof args.quantity !== "number" || args.quantity < 1)) {
-      throw new ToolError("INVALID_ARGS", "quantity must be ≥ 1 when set (omit for unlimited)");
+    if (!Number.isFinite(price) || price < 0) {
+      throw new ToolError("INVALID_ARGS", "price_cents must be ≥ 0");
+    }
+    if (
+      args.quantity !== undefined &&
+      (typeof args.quantity !== "number" || args.quantity < 1)
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "quantity must be ≥ 1 when set (omit for unlimited)",
+      );
     }
     const { eventId, brandId } = await requireEvent(args, client, userId);
     if (price > 0) await assertCanCollect(client, brandId);
-    const currency = typeof args.currency === "string" ? args.currency.toUpperCase() : "USD";
-    if (!/^[A-Z]{3}$/.test(currency)) throw new ToolError("INVALID_ARGS", "currency must be a 3-letter code");
+    const currency = typeof args.currency === "string"
+      ? args.currency.toUpperCase()
+      : "USD";
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      throw new ToolError("INVALID_ARGS", "currency must be a 3-letter code");
+    }
     const row: Record<string, unknown> = {
       event_id: eventId,
       name: args.name,
@@ -316,7 +359,10 @@ const publishExperience = writeTool(
   ["event_id"],
   async (args, client, userId) => {
     const { eventId, brandId } = await requireEvent(args, client, userId);
-    const { data: paid } = await client.from("ticket_types").select("id").eq("event_id", eventId).gt("price_cents", 0).limit(1);
+    const { data: paid } = await client.from("ticket_types").select("id").eq(
+      "event_id",
+      eventId,
+    ).gt("price_cents", 0).limit(1);
     if (paid && paid.length > 0) await assertCanCollect(client, brandId);
     return await callRpc(client, "issue_1719_publish_experience_with_poster", {
       p_event_id: eventId,
@@ -335,9 +381,16 @@ const updateExperience = writeTool(
     const { eventId } = await requireEvent(args, client, userId);
     const patch: Record<string, unknown> = {};
     if (isString(args.title)) patch.title = args.title;
-    if (typeof args.description === "string") patch.description = args.description;
-    if (Object.keys(patch).length === 0) throw new ToolError("INVALID_ARGS", "Nothing to update");
-    const { data, error } = await client.from("events").update(patch).eq("id", eventId).select("id, title").single();
+    if (typeof args.description === "string") {
+      patch.description = args.description;
+    }
+    if (Object.keys(patch).length === 0) {
+      throw new ToolError("INVALID_ARGS", "Nothing to update");
+    }
+    const { data, error } = await client.from("events").update(patch).eq(
+      "id",
+      eventId,
+    ).select("id, title").single();
     if (error) throw new ToolError("RPC_FAILED", error.message);
     return data;
   },
@@ -350,7 +403,9 @@ const deleteExperience = writeTool(
   ["event_id"],
   async (args, client, userId) => {
     const { eventId } = await requireEvent(args, client, userId);
-    const { error } = await client.from("events").update({ deleted_at: new Date().toISOString() }).eq("id", eventId);
+    const { error } = await client.from("events").update({
+      deleted_at: new Date().toISOString(),
+    }).eq("id", eventId);
     if (error) throw new ToolError("RPC_FAILED", error.message);
     return { id: eventId, deleted: true };
   },
@@ -393,9 +448,16 @@ const updateTrip = writeTool(
     const { eventId } = await requireEvent(args, client, userId);
     const patch: Record<string, unknown> = {};
     if (isString(args.title)) patch.title = args.title;
-    if (typeof args.description === "string") patch.description = args.description;
-    if (Object.keys(patch).length === 0) throw new ToolError("INVALID_ARGS", "Nothing to update");
-    const { data, error } = await client.from("events").update(patch).eq("id", eventId).select("id, title").single();
+    if (typeof args.description === "string") {
+      patch.description = args.description;
+    }
+    if (Object.keys(patch).length === 0) {
+      throw new ToolError("INVALID_ARGS", "Nothing to update");
+    }
+    const { data, error } = await client.from("events").update(patch).eq(
+      "id",
+      eventId,
+    ).select("id, title").single();
     if (error) throw new ToolError("RPC_FAILED", error.message);
     return data;
   },
@@ -408,7 +470,10 @@ const publishTrip = writeTool(
   ["event_id"],
   async (args, client, userId) => {
     const { eventId, brandId } = await requireEvent(args, client, userId);
-    const { data: paid } = await client.from("ticket_types").select("id").eq("event_id", eventId).gt("price_cents", 0).limit(1);
+    const { data: paid } = await client.from("ticket_types").select("id").eq(
+      "event_id",
+      eventId,
+    ).gt("price_cents", 0).limit(1);
     if (paid && paid.length > 0) await assertCanCollect(client, brandId);
     return await callRpc(client, "issue_1719_publish_trip_with_poster", {
       p_event_id: eventId,
@@ -425,7 +490,9 @@ const deleteTrip = writeTool(
   ["event_id"],
   async (args, client, userId) => {
     const { eventId } = await requireEvent(args, client, userId);
-    const { error } = await client.from("events").update({ deleted_at: new Date().toISOString() }).eq("id", eventId);
+    const { error } = await client.from("events").update({
+      deleted_at: new Date().toISOString(),
+    }).eq("id", eventId);
     if (error) throw new ToolError("RPC_FAILED", error.message);
     return { id: eventId, deleted: true };
   },
@@ -465,7 +532,9 @@ const publishRsvp = writeTool(
   ["event_id"],
   async (args, client, userId) => {
     const { eventId } = await requireEvent(args, client, userId);
-    return await callRpc(client, "business_publish_rsvp_draft", { p_event_id: eventId });
+    return await callRpc(client, "business_publish_rsvp_draft", {
+      p_event_id: eventId,
+    });
   },
 );
 
@@ -488,9 +557,13 @@ const setRsvpGuestStatus = writeTool(
           "guest_ids bulk path only approves. Pass status=approved, or a single guest_id to deny/pend.",
         );
       }
-      return await callRpc(client, "host_bulk_approve_rsvps", { p_event_id: eventId });
+      return await callRpc(client, "host_bulk_approve_rsvps", {
+        p_event_id: eventId,
+      });
     }
-    if (!isUuid(args.guest_id)) throw new ToolError("INVALID_ARGS", "guest_id or guest_ids required");
+    if (!isUuid(args.guest_id)) {
+      throw new ToolError("INVALID_ARGS", "guest_id or guest_ids required");
+    }
     return await callRpc(client, "host_set_rsvp_status", {
       p_rsvp_id: args.guest_id,
       p_status: args.status,
@@ -501,11 +574,17 @@ const setRsvpGuestStatus = writeTool(
 const refundRsvpContribution = writeTool(
   "refund_rsvp_contribution",
   "Refund an RSVP chip-in via rsvp-contribution-create refund path / refund-order. Destructive.",
-  { event_id: UUID, order_id: UUID, amount_cents: { type: "integer", minimum: 1 } },
+  {
+    event_id: UUID,
+    order_id: UUID,
+    amount_cents: { type: "integer", minimum: 1 },
+  },
   ["event_id", "order_id"],
   async (args, client, userId) => {
     await requireEvent(args, client, userId);
-    if (!isUuid(args.order_id)) throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
+    if (!isUuid(args.order_id)) {
+      throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
+    }
     return await invokeFn(client, "refund-order", {
       order_id: args.order_id,
       amount_cents: args.amount_cents ?? null,
@@ -521,7 +600,12 @@ const refundRsvpContribution = writeTool(
 const quoteStay = writeTool(
   "quote_stay",
   "Quote a stay reservation via stay-reservations (read quote, no write until create).",
-  { brand_id: UUID, listing_id: UUID, check_in: { type: "string" }, check_out: { type: "string" } },
+  {
+    brand_id: UUID,
+    listing_id: UUID,
+    check_in: { type: "string" },
+    check_out: { type: "string" },
+  },
   ["brand_id", "listing_id", "check_in", "check_out"],
   async (args, client, userId) => {
     await assertAgentReadBrand(client, userId, args.brand_id);
@@ -538,7 +622,12 @@ const quoteStay = writeTool(
 const createStayReservation = writeTool(
   "create_stay_reservation",
   "Create a stay reservation via stay-reservations. Sends Idempotency-Key.",
-  { brand_id: UUID, listing_id: UUID, check_in: { type: "string" }, check_out: { type: "string" } },
+  {
+    brand_id: UUID,
+    listing_id: UUID,
+    check_in: { type: "string" },
+    check_out: { type: "string" },
+  },
   ["brand_id", "listing_id", "check_in", "check_out"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
@@ -566,7 +655,9 @@ const transitionStay = writeTool(
   },
   ["reservation_id", "action"],
   async (args, client, _userId) => {
-    if (!isUuid(args.reservation_id)) throw new ToolError("INVALID_ARGS", "reservation_id must be a uuid");
+    if (!isUuid(args.reservation_id)) {
+      throw new ToolError("INVALID_ARGS", "reservation_id must be a uuid");
+    }
     return await invokeFn(
       client,
       "stay-reservations",
@@ -583,7 +674,12 @@ const transitionStay = writeTool(
 const createVenueReservation = writeTool(
   "create_venue_reservation",
   "Create a venue table reservation via biz_reservation_create.",
-  { brand_id: UUID, venue_id: UUID, party_size: { type: "integer", minimum: 1 }, start_at: { type: "string", format: "date-time" } },
+  {
+    brand_id: UUID,
+    venue_id: UUID,
+    party_size: { type: "integer", minimum: 1 },
+    start_at: { type: "string", format: "date-time" },
+  },
   ["brand_id", "venue_id", "party_size", "start_at"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
@@ -598,10 +694,18 @@ const createVenueReservation = writeTool(
 const transitionVenueReservation = writeTool(
   "transition_venue_reservation",
   "Transition a venue reservation via biz_reservation_transition.",
-  { reservation_id: UUID, to_status: { type: "string", enum: ["approved", "declined", "cancelled", "seated", "completed"] } },
+  {
+    reservation_id: UUID,
+    to_status: {
+      type: "string",
+      enum: ["approved", "declined", "cancelled", "seated", "completed"],
+    },
+  },
   ["reservation_id", "to_status"],
   async (args, client, _userId) => {
-    if (!isUuid(args.reservation_id)) throw new ToolError("INVALID_ARGS", "reservation_id must be a uuid");
+    if (!isUuid(args.reservation_id)) {
+      throw new ToolError("INVALID_ARGS", "reservation_id must be a uuid");
+    }
     return await callRpc(client, "biz_reservation_transition", {
       p_reservation_id: args.reservation_id,
       p_to_status: args.to_status,
@@ -635,7 +739,9 @@ const submitVenueClaim = writeTool(
   ["brand_id", "claim_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    return await callRpc(client, "biz_resubmit_venue_claim", { p_claim_id: args.claim_id });
+    return await callRpc(client, "biz_resubmit_venue_claim", {
+      p_claim_id: args.claim_id,
+    });
   },
 );
 
@@ -646,7 +752,9 @@ const markClaimFeedbackFixed = writeTool(
   ["brand_id", "feedback_item_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    return await callRpc(client, "biz_mark_feedback_item_fixed", { p_feedback_item_id: args.feedback_item_id });
+    return await callRpc(client, "biz_mark_feedback_item_fixed", {
+      p_feedback_item_id: args.feedback_item_id,
+    });
   },
 );
 
@@ -662,7 +770,15 @@ const venueOpsAction = writeTool(
     venue_id: UUID,
     action: {
       type: "string",
-      enum: ["list_tables", "open_tab", "close_tab", "add_item", "send_to_kitchen", "seat_waitlist", "list_waitlist"],
+      enum: [
+        "list_tables",
+        "open_tab",
+        "close_tab",
+        "add_item",
+        "send_to_kitchen",
+        "seat_waitlist",
+        "list_waitlist",
+      ],
     },
     payload: { type: "object" },
   },
@@ -699,11 +815,18 @@ const sendVenueSms = writeTool(
 const draftCampaign = writeTool(
   "draft_campaign",
   "Create a marketing campaign draft (RLS insert). Does not send.",
-  { brand_id: UUID, title: STR, body: { type: "string" }, channel: { type: "string", enum: ["email", "sms", "rcs"] } },
+  {
+    brand_id: UUID,
+    title: STR,
+    body: { type: "string" },
+    channel: { type: "string", enum: ["email", "sms", "rcs"] },
+  },
   ["brand_id", "title"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    const channel = args.channel === "sms" || args.channel === "rcs" ? args.channel : "email";
+    const channel = args.channel === "sms" || args.channel === "rcs"
+      ? args.channel
+      : "email";
     let audienceId: string | null = null;
     const { data: audiences, error: audErr } = await client
       .from("marketing_audiences")
@@ -711,7 +834,11 @@ const draftCampaign = writeTool(
       .eq("brand_id", args.brand_id)
       .eq("is_system_generated", true);
     if (audErr) throw new ToolError("RPC_FAILED", audErr.message);
-    for (const row of (audiences ?? []) as Array<{ id: string; query_definition: { kind?: string } }>) {
+    for (
+      const row of (audiences ?? []) as Array<
+        { id: string; query_definition: { kind?: string } }
+      >
+    ) {
       if (row.query_definition?.kind === "brand_buyers") {
         audienceId = row.id;
         break;
@@ -733,7 +860,12 @@ const draftCampaign = writeTool(
         })
         .select("id")
         .single();
-      if (createAudErr || !created) throw new ToolError("RPC_FAILED", createAudErr?.message ?? "audience create failed");
+      if (createAudErr || !created) {
+        throw new ToolError(
+          "RPC_FAILED",
+          createAudErr?.message ?? "audience create failed",
+        );
+      }
       audienceId = created.id as string;
     }
     const { data, error } = await client
@@ -744,7 +876,10 @@ const draftCampaign = writeTool(
         audience_id: audienceId,
         name: args.title,
         channel,
-        channel_payload: { kind: channel, body: typeof args.body === "string" ? args.body : "" },
+        channel_payload: {
+          kind: channel,
+          body: typeof args.body === "string" ? args.body : "",
+        },
         status: "draft",
       })
       .select("id, name, status, channel")
@@ -760,7 +895,9 @@ const scheduleCampaign = writeTool(
   { campaign_id: UUID, scheduled_for: { type: "string", format: "date-time" } },
   ["campaign_id", "scheduled_for"],
   async (args, client, _userId) => {
-    if (!isUuid(args.campaign_id)) throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    if (!isUuid(args.campaign_id)) {
+      throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    }
     const { data, error } = await client
       .from("marketing_campaigns")
       .update({
@@ -773,7 +910,12 @@ const scheduleCampaign = writeTool(
       .select("id, status, scheduled_for")
       .maybeSingle();
     if (error) throw new ToolError("RPC_FAILED", error.message);
-    if (!data) throw new ToolError("INVALID_ARGS", "Campaign is not a draft/scheduled row");
+    if (!data) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Campaign is not a draft/scheduled row",
+      );
+    }
     return data;
   },
 );
@@ -784,8 +926,13 @@ const sendCampaignNow = writeTool(
   { campaign_id: UUID },
   ["campaign_id"],
   async (args, client, _userId) => {
-    if (!isUuid(args.campaign_id)) throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
-    return await invokeFn(client, "marketing-send", { campaign_id: args.campaign_id, sendNow: true });
+    if (!isUuid(args.campaign_id)) {
+      throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    }
+    return await invokeFn(client, "marketing-send", {
+      campaign_id: args.campaign_id,
+      sendNow: true,
+    });
   },
   "SEND",
 );
@@ -796,7 +943,9 @@ const cancelCampaign = writeTool(
   { campaign_id: UUID },
   ["campaign_id"],
   async (args, client, _userId) => {
-    if (!isUuid(args.campaign_id)) throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    if (!isUuid(args.campaign_id)) {
+      throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    }
     const { data, error } = await client
       .from("marketing_campaigns")
       .update({ status: "cancelled", updated_at: new Date().toISOString() })
@@ -805,7 +954,12 @@ const cancelCampaign = writeTool(
       .select("id, status")
       .maybeSingle();
     if (error) throw new ToolError("RPC_FAILED", error.message);
-    if (!data) throw new ToolError("INVALID_ARGS", "Only a scheduled campaign can be cancelled");
+    if (!data) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Only a scheduled campaign can be cancelled",
+      );
+    }
     return data;
   },
 );
@@ -817,7 +971,10 @@ const runGrowthTool = writeTool(
   ["brand_id", "tool_key"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    return await invokeFn(client, "growth-tools-run", { brand_id: args.brand_id, tool_key: args.tool_key });
+    return await invokeFn(client, "growth-tools-run", {
+      brand_id: args.brand_id,
+      tool_key: args.tool_key,
+    });
   },
 );
 
@@ -833,11 +990,14 @@ const getPayoutStatus = writeTool(
   async (args, client, userId) => {
     await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
-    const can = await callRpc(client, "pg_brand_can_collect", { p_brand_id: args.brand_id });
+    const can = await callRpc(client, "pg_brand_can_collect", {
+      p_brand_id: args.brand_id,
+    });
     return {
       brand_id: args.brand_id,
       can_collect: can === true || (can as any)?.can_collect === true,
-      guide: "Open Brand → Payouts to finish Stripe or Paystack KYC. Ari cannot complete hosted KYC in chat.",
+      guide:
+        "Open Brand → Payouts to finish Stripe or Paystack KYC. Ari cannot complete hosted KYC in chat.",
     };
   },
 );
@@ -869,7 +1029,10 @@ const disconnectPartner = writeTool(
     await requireBrand(args, client, userId);
     const { error } = await client
       .from("brand_partners")
-      .update({ status: "disconnected", disconnected_at: new Date().toISOString() })
+      .update({
+        status: "disconnected",
+        disconnected_at: new Date().toISOString(),
+      })
       .eq("id", args.partner_id)
       .eq("brand_id", args.brand_id);
     if (error) throw new ToolError("RPC_FAILED", error.message);
@@ -888,7 +1051,8 @@ const getTaxStatus = writeTool(
     await requireBrand(args, client, userId);
     return {
       brand_id: args.brand_id,
-      guide: "Open Brand → Tax / Connect tax to register. Ari cannot complete hosted tax onboarding in chat.",
+      guide:
+        "Open Brand → Tax / Connect tax to register. Ari cannot complete hosted tax onboarding in chat.",
     };
   },
 );
@@ -900,11 +1064,17 @@ const getTaxStatus = writeTool(
 const refundOrder = writeTool(
   "refund_order",
   "Refund an order via refund-order. Finance-role gated. Idempotency-Key required.",
-  { brand_id: UUID, order_id: UUID, amount_cents: { type: "integer", minimum: 1 } },
+  {
+    brand_id: UUID,
+    order_id: UUID,
+    amount_cents: { type: "integer", minimum: 1 },
+  },
   ["brand_id", "order_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    if (!isUuid(args.order_id)) throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
+    if (!isUuid(args.order_id)) {
+      throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
+    }
     return await invokeFn(
       client,
       "refund-order",
@@ -956,7 +1126,9 @@ const retryInstallment = writeTool(
   ["brand_id", "installment_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    return await callRpc(client, "biz_retry_installment", { p_installment_id: args.installment_id });
+    return await callRpc(client, "biz_retry_installment", {
+      p_installment_id: args.installment_id,
+    });
   },
 );
 
@@ -973,10 +1145,18 @@ const getBrandAnalytics = writeTool(
     await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
     const [conv, intel] = await Promise.all([
-      callRpc(client, "brand_conversion_rollup", { p_brand_id: args.brand_id }).catch((e) => ({ error: String(e) })),
-      callRpc(client, "venue_intelligence_overview", { p_brand_id: args.brand_id }).catch((e) => ({ error: String(e) })),
+      callRpc(client, "brand_conversion_rollup", { p_brand_id: args.brand_id })
+        .catch((e) => ({ error: String(e) })),
+      callRpc(client, "venue_intelligence_overview", {
+        p_brand_id: args.brand_id,
+      }).catch((e) => ({ error: String(e) })),
     ]);
-    return { brand_id: args.brand_id, question: args.question ?? null, conversion: conv, venue: intel };
+    return {
+      brand_id: args.brand_id,
+      question: args.question ?? null,
+      conversion: conv,
+      venue: intel,
+    };
   },
 );
 
@@ -987,7 +1167,19 @@ const getBrandAnalytics = writeTool(
 const inviteBrandMember = writeTool(
   "invite_brand_member",
   "Invite a brand member via existing invitations table / service.",
-  { brand_id: UUID, email: STR, role: { type: "string", enum: ["brand_admin", "event_manager", "finance_manager", "marketing_manager"] } },
+  {
+    brand_id: UUID,
+    email: STR,
+    role: {
+      type: "string",
+      enum: [
+        "brand_admin",
+        "event_manager",
+        "finance_manager",
+        "marketing_manager",
+      ],
+    },
+  },
   ["brand_id", "email", "role"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
@@ -1041,7 +1233,9 @@ const listGuestRoster = writeTool(
   async (args, client, userId) => {
     await assertAgentReadEvent(client, userId, args.event_id);
     await requireEvent(args, client, userId);
-    return await callRpc(client, "biz_guest_roster_list", { p_event_id: args.event_id });
+    return await callRpc(client, "biz_guest_roster_list", {
+      p_event_id: args.event_id,
+    });
   },
 );
 
@@ -1067,7 +1261,9 @@ const exportBrandPeople = writeTool(
   ["brand_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    return await invokeFn(client, "brand-people-export", { brand_id: args.brand_id });
+    return await invokeFn(client, "brand-people-export", {
+      brand_id: args.brand_id,
+    });
   },
   "EXPORT",
 );
@@ -1086,10 +1282,20 @@ const updateAriPrefs = writeTool(
   },
   [],
   async (args, client, userId) => {
-    const patch: Record<string, unknown> = { user_id: userId, updated_at: new Date().toISOString() };
-    if (typeof args.preferred_timezone === "string") patch.preferred_timezone = args.preferred_timezone;
-    if (typeof args.preferred_currency === "string") patch.preferred_currency = args.preferred_currency;
-    if (args.communication_style === "concise" || args.communication_style === "detailed") {
+    const patch: Record<string, unknown> = {
+      user_id: userId,
+      updated_at: new Date().toISOString(),
+    };
+    if (typeof args.preferred_timezone === "string") {
+      patch.preferred_timezone = args.preferred_timezone;
+    }
+    if (typeof args.preferred_currency === "string") {
+      patch.preferred_currency = args.preferred_currency;
+    }
+    if (
+      args.communication_style === "concise" ||
+      args.communication_style === "detailed"
+    ) {
       patch.communication_style = args.communication_style;
     }
     const { data, error } = await client
@@ -1105,13 +1311,32 @@ const updateAriPrefs = writeTool(
 const updateNotificationPrefs = writeTool(
   "update_notification_prefs",
   "Update notification type preferences for the signed-in operator.",
-  { email_enabled: { type: "boolean" }, push_enabled: { type: "boolean" }, sms_enabled: { type: "boolean" } },
+  {
+    email_enabled: { type: "boolean" },
+    push_enabled: { type: "boolean" },
+    sms_enabled: { type: "boolean" },
+  },
   [],
   async (args, client, userId) => {
     const rows = [
-      { user_id: userId, channel: "email", type: "order", opt_in: args.email_enabled ?? true },
-      { user_id: userId, channel: "push", type: "order", opt_in: args.push_enabled ?? true },
-      { user_id: userId, channel: "sms", type: "order", opt_in: args.sms_enabled ?? false },
+      {
+        user_id: userId,
+        channel: "email",
+        type: "order",
+        opt_in: args.email_enabled ?? true,
+      },
+      {
+        user_id: userId,
+        channel: "push",
+        type: "order",
+        opt_in: args.push_enabled ?? true,
+      },
+      {
+        user_id: userId,
+        channel: "sms",
+        type: "order",
+        opt_in: args.sms_enabled ?? false,
+      },
     ];
     const { data, error } = await client
       .from("business_notification_type_preferences")
@@ -1141,7 +1366,10 @@ const requestAccountDeletion = writeTool(
   { legal_name: STR },
   ["legal_name"],
   async (args, client, _userId) => {
-    return await invokeFn(client, "delete-user", { legal_name: args.legal_name, confirm: "DELETE" });
+    return await invokeFn(client, "delete-user", {
+      legal_name: args.legal_name,
+      confirm: "DELETE",
+    });
   },
   "DELETE",
 );
@@ -1156,18 +1384,30 @@ const getOperatorSnapshot = writeTool(
   { brand_id: UUID },
   [],
   async (args, client, userId) => {
-    const scope = await resolveAccessibleAgentBrands(client, userId).catch((error) => {
-      throw new ToolError("TENANT_SCOPE_UNAVAILABLE", error instanceof Error ? error.message : "Brand scope unavailable");
-    });
+    const scope = await resolveAccessibleAgentBrands(client, userId).catch(
+      (error) => {
+        throw new ToolError(
+          "TENANT_SCOPE_UNAVAILABLE",
+          error instanceof Error ? error.message : "Brand scope unavailable",
+        );
+      },
+    );
     let brandId: string | null = isUuid(args.brand_id) ? args.brand_id : null;
-    if (args.brand_id !== undefined && !brandId) throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    if (args.brand_id !== undefined && !brandId) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
     if (brandId) {
       await assertAgentReadBrand(client, userId, brandId);
     }
     // Preserve this tool's pre-existing owner-only detail semantics after the
     // broader accessibility guard; delegated roles are not silently promoted.
     const brands = scope.filter((brand) => brand.role === "owner").slice(0, 8)
-      .map(({ id, name, role, effective_rank }) => ({ id, name, role, effective_rank }));
+      .map(({ id, name, role, effective_rank }) => ({
+        id,
+        name,
+        role,
+        effective_rank,
+      }));
     if (!brandId && brands.length === 1) brandId = brands[0].id;
     let offerings: unknown[] = [];
     let canCollect: unknown = null;
@@ -1180,17 +1420,20 @@ const getOperatorSnapshot = writeTool(
         .order("created_at", { ascending: false })
         .limit(8);
       offerings = ev ?? [];
-      canCollect = await callRpc(client, "pg_brand_can_collect", { p_brand_id: brandId }).catch(() => null);
+      canCollect = await callRpc(client, "pg_brand_can_collect", {
+        p_brand_id: brandId,
+      }).catch(() => null);
     }
     return {
       brands,
       offerings,
-      payout_ready: canCollect === true || (canCollect as any)?.can_collect === true,
+      payout_ready: canCollect === true ||
+        (canCollect as any)?.can_collect === true,
       next_step_hint: !brands.length
         ? "create_brand"
         : offerings.length === 0
-          ? "create_event"
-          : "publish_event or upsert_ticket_tier or draft_campaign",
+        ? "create_event"
+        : "publish_event or upsert_ticket_tier or draft_campaign",
     };
   },
 );

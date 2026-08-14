@@ -23,19 +23,25 @@ interface RequestBody {
 }
 
 type Response_ =
-  | { kind: "executed"; pending_action_id: string; tool_name: string; result: unknown; followup_text?: string }
+  | {
+    kind: "executed";
+    pending_action_id: string;
+    tool_name: string;
+    result: unknown;
+    followup_text?: string;
+  }
   | { kind: "cancelled"; pending_action_id: string }
   // META-ORCH-1009 Sub-E (C2): expired Hub proposal -> in-Hub regenerate CTA
   // instead of the old 410 "Ask Ari" dead-end (this Hub flow never uses Ari).
   | {
-      kind: "expired_regenerate";
-      pending_action_id: string;
-      status: "expired";
-      parser_source: string | null;
-      tool_name: string;
-      brand_id: string | null;
-      regenerate: { cta: string; title: string; body: string };
-    }
+    kind: "expired_regenerate";
+    pending_action_id: string;
+    status: "expired";
+    parser_source: string | null;
+    tool_name: string;
+    brand_id: string | null;
+    regenerate: { cta: string; title: string; body: string };
+  }
   | { kind: "error"; code: string; message: string };
 
 function jsonResponse(status: number, body: Response_): Response {
@@ -45,7 +51,11 @@ function jsonResponse(status: number, body: Response_): Response {
   });
 }
 
-function errorResponse(status: number, code: string, message: string): Response {
+function errorResponse(
+  status: number,
+  code: string,
+  message: string,
+): Response {
   return jsonResponse(status, { kind: "error", code, message });
 }
 
@@ -68,7 +78,11 @@ Deno.serve(async (req) => {
     return errorResponse(400, "BAD_REQUEST", "pending_action_id required");
   }
   if (body.action !== "confirm" && body.action !== "cancel") {
-    return errorResponse(400, "BAD_REQUEST", "action must be 'confirm' or 'cancel'");
+    return errorResponse(
+      400,
+      "BAD_REQUEST",
+      "action must be 'confirm' or 'cancel'",
+    );
   }
 
   const authHeader = req.headers.get("Authorization");
@@ -97,7 +111,9 @@ Deno.serve(async (req) => {
   // Load the pending action
   const { data: pending, error: pendingErr } = await userClient
     .from("agent_pending_actions")
-    .select("id, conversation_id, tool_name, tool_args, status, expires_at, source, related_brand_id")
+    .select(
+      "id, conversation_id, tool_name, tool_args, status, expires_at, source, related_brand_id",
+    )
     .eq("id", body.pending_action_id)
     .eq("user_id", userId)
     .maybeSingle();
@@ -108,7 +124,11 @@ Deno.serve(async (req) => {
   // CANCEL path
   if (body.action === "cancel") {
     if (pending.status !== "pending") {
-      return errorResponse(400, "WRONG_STATE", `Cannot cancel — current status: ${pending.status}`);
+      return errorResponse(
+        400,
+        "WRONG_STATE",
+        `Cannot cancel — current status: ${pending.status}`,
+      );
     }
     const { error: cancelErr } = await userClient
       .from("agent_pending_actions")
@@ -116,7 +136,11 @@ Deno.serve(async (req) => {
       .eq("id", pending.id)
       .eq("status", "pending");
     if (cancelErr) {
-      return errorResponse(500, "INTERNAL", `Cancel failed: ${cancelErr.message}`);
+      return errorResponse(
+        500,
+        "INTERNAL",
+        `Cancel failed: ${cancelErr.message}`,
+      );
     }
     // Ari-only audit trail in agent_messages (Hub proposals have no conversation).
     if (pending.conversation_id) {
@@ -134,14 +158,26 @@ Deno.serve(async (req) => {
         model_version: ARI_MODEL_VERSION,
       });
     }
-    return jsonResponse(200, { kind: "cancelled", pending_action_id: pending.id });
+    return jsonResponse(200, {
+      kind: "cancelled",
+      pending_action_id: pending.id,
+    });
   }
 
-  // CONFIRM path
-  if (pending.status !== "pending") {
-    return errorResponse(400, "WRONG_STATE", `Cannot confirm — current status: ${pending.status}`);
+  // CONFIRM path. `executing` is deliberately recoverable: the prior request
+  // may have committed the domain write and lost its HTTP response. The domain
+  // receipt turns this retry into a read of the committed result.
+  if (pending.status !== "pending" && pending.status !== "executing") {
+    return errorResponse(
+      400,
+      "WRONG_STATE",
+      `Cannot confirm — current status: ${pending.status}`,
+    );
   }
-  if (new Date(pending.expires_at).getTime() < Date.now()) {
+  if (
+    pending.status === "pending" &&
+    new Date(pending.expires_at).getTime() < Date.now()
+  ) {
     // META-ORCH-1009 Sub-E (C2, SPEC §11.4): an expired Hub proposal must NOT
     // dead-end with a 410 "Ask Ari" redirect — this Hub flow never uses Ari.
     // Lazy-expire (preserves the I-ARI-PENDING-STATE-MACHINE pending->expired
@@ -157,19 +193,24 @@ Deno.serve(async (req) => {
       pending_action_id: pending.id,
       status: "expired",
       // Inputs the Hub re-snap path needs to regenerate the same proposal.
-      parser_source: ((pending.tool_args as Record<string, unknown> | null)?.parser_source as string | null) ?? null,
+      parser_source:
+        ((pending.tool_args as Record<string, unknown> | null)?.parser_source as
+          | string
+          | null) ?? null,
       tool_name: pending.tool_name,
       brand_id: (pending.related_brand_id as string | null) ?? null,
       regenerate: {
         cta: "regenerate",
         title: "This suggestion expired",
-        body: "Re-snap your menu or photos and we'll generate a fresh suggestion.",
+        body:
+          "Re-snap your menu or photos and we'll generate a fresh suggestion.",
       },
     });
   }
 
   // #2019: resolve and authorize final edited scope while still pending.
-  const finalArgs = body.edited_args && typeof body.edited_args === "object"
+  const finalArgs = pending.status === "pending" && body.edited_args &&
+      typeof body.edited_args === "object"
     ? body.edited_args
     : (pending.tool_args as Record<string, unknown>);
 
@@ -187,37 +228,65 @@ Deno.serve(async (req) => {
     await authorizeAgentTool(tool, finalArgs, userClient, userId);
   } catch (err: unknown) {
     const code = err instanceof ToolError ? err.code : "ROLE_CHECK_UNAVAILABLE";
-    const status = code === "ROLE_CHECK_UNAVAILABLE" ? 503 : code === "INVALID_ARGS" ? 400 : 403;
+    const status = code === "ROLE_CHECK_UNAVAILABLE"
+      ? 503
+      : code === "INVALID_ARGS"
+      ? 400
+      : 403;
     await userClient.from("agent_pending_actions")
       .update({ status: "failed", failure_reason: code })
       .eq("id", pending.id).eq("status", "pending");
-    return errorResponse(status, code, code === "ROLE_CHECK_UNAVAILABLE"
-      ? "Ari could not verify permissions right now"
-      : "Your current access does not allow this action");
+    return errorResponse(
+      status,
+      code,
+      code === "ROLE_CHECK_UNAVAILABLE"
+        ? "Ari could not verify permissions right now"
+        : "Your current access does not allow this action",
+    );
   }
 
-  // Atomic flip pending -> executing only after final-argument authorization.
-  const { data: flipped, error: flipErr } = await userClient
-    .from("agent_pending_actions")
-    .update({ status: "executing" })
-    .eq("id", pending.id)
-    .eq("status", "pending")
-    .select("id")
-    .maybeSingle();
-  if (flipErr || !flipped) {
-    return errorResponse(409, "WRONG_STATE", "Race detected — this action was already handled");
+  // Persist edited args together with the atomic pending -> executing flip.
+  // A recovery request therefore replays the exact confirmed payload.
+  if (pending.status === "pending") {
+    const { data: flipped, error: flipErr } = await userClient
+      .from("agent_pending_actions")
+      .update({ status: "executing", tool_args: finalArgs })
+      .eq("id", pending.id)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (flipErr || !flipped) {
+      return errorResponse(
+        409,
+        "WRONG_STATE",
+        "Race detected — this action was already handled",
+      );
+    }
   }
 
   // Execute
   let result: unknown;
   try {
-    result = await tool.executor(finalArgs, userClient, userId);
+    result = await tool.executor(finalArgs, userClient, userId, {
+      operationId: pending.id,
+    });
   } catch (err: any) {
-    const reason = err instanceof ToolError ? `${err.code}: ${err.message}` : (err?.message ?? "unknown");
-    await userClient
-      .from("agent_pending_actions")
-      .update({ status: "failed", failure_reason: reason })
-      .eq("id", pending.id);
+    const reason = err instanceof ToolError
+      ? `${err.code}: ${err.message}`
+      : (err?.message ?? "unknown");
+    // Transport/RPC failures are ambiguous: the database transaction may have
+    // committed before the response was lost. Keep `executing` so confirm can
+    // safely recover through the operation receipt. Deterministic pre-write
+    // validation failures remain terminal.
+    const isAmbiguous = !(err instanceof ToolError) ||
+      ["RPC_FAILED", "EDGE_FAILED", "WRITE_FAILED"].includes(err.code);
+    if (!isAmbiguous) {
+      await userClient
+        .from("agent_pending_actions")
+        .update({ status: "failed", failure_reason: reason })
+        .eq("id", pending.id)
+        .eq("status", "executing");
+    }
     if (pending.conversation_id) {
       await userClient.from("agent_messages").insert({
         conversation_id: pending.conversation_id,
@@ -227,7 +296,7 @@ Deno.serve(async (req) => {
         tool_results: {
           tool_name: tool.name,
           pending_action_id: pending.id,
-          outcome: "failed",
+          outcome: isAmbiguous ? "executing" : "failed",
           reason,
         },
         prompt_version: TENANT_CONTEXT_VERSION,
@@ -239,10 +308,15 @@ Deno.serve(async (req) => {
       // adjusting their request (rename the brand, pick a different event,
       // etc.). 5xx is reserved for genuine server-side issues.
       let status: number;
-      if (["OWNERSHIP_DENIED", "ROLE_DENIED", "BRAND_ACCESS_DENIED"].includes(err.code)) status = 403;
+      if (
+        ["OWNERSHIP_DENIED", "ROLE_DENIED", "BRAND_ACCESS_DENIED"].includes(
+          err.code,
+        )
+      ) status = 403;
       else if (err.code === "ROLE_CHECK_UNAVAILABLE") status = 503;
-      else if (err.code === "INVALID_ARGS" || err.code === "SLUG_TAKEN") status = 400;
-      // ORCH-1103 — delete refused because the brand has upcoming/live events.
+      else if (err.code === "INVALID_ARGS" || err.code === "SLUG_TAKEN") {
+        status = 400;
+      } // ORCH-1103 — delete refused because the brand has upcoming/live events.
       // Recoverable, user-actionable conflict (cancel/transfer first) → 409.
       else if (err.code === "DELETE_BLOCKED_BY_EVENTS") status = 409;
       else status = 500;
@@ -262,7 +336,10 @@ Deno.serve(async (req) => {
     .eq("id", pending.id);
   if (doneErr) {
     // Write succeeded but bookkeeping failed — log but still return success
-    console.error("[agent-confirm-action] Failed to mark executed:", doneErr.message);
+    console.error(
+      "[agent-confirm-action] Failed to mark executed:",
+      doneErr.message,
+    );
   }
 
   if (pending.conversation_id) {
@@ -303,12 +380,16 @@ Deno.serve(async (req) => {
   });
 });
 
-function buildFollowupText(toolName: string, result: unknown): string | undefined {
+function buildFollowupText(
+  toolName: string,
+  result: unknown,
+): string | undefined {
   try {
     if (toolName === "create_brand") {
       const name = (result as any)?.brand?.name;
       if (!name) return undefined;
-      const base = `Created brand "${name}". Want to schedule an event under it?`;
+      const base =
+        `Created brand "${name}". Want to schedule an event under it?`;
       // ORCH-1103 — if this became the user's current brand, say so.
       return (result as any)?.set_as_default
         ? `${base} It's now your current brand.`
@@ -316,21 +397,27 @@ function buildFollowupText(toolName: string, result: unknown): string | undefine
     }
     if (toolName === "update_brand") {
       const name = (result as any)?.brand?.name;
-      return name ? `Updated "${name}". Anything else?` : `Updated. Anything else?`;
+      return name
+        ? `Updated "${name}". Anything else?`
+        : `Updated. Anything else?`;
     }
     if (toolName === "delete_brand") {
       return `Deleted that brand. It's recoverable for 30 days through support if you change your mind.`;
     }
     if (toolName === "create_event") {
       const title = (result as any)?.event?.title;
-      return title ? `Created "${title}". Want to set ticket tiers?` : undefined;
+      return title
+        ? `Created "${title}". Want to set ticket tiers?`
+        : undefined;
     }
     if (toolName === "update_event") {
       return `Updated. Anything else to change?`;
     }
     if (toolName === "create_experience") {
       const title = (result as any)?.event?.title;
-      return title ? `Published experience "${title}" to your venue.` : undefined;
+      return title
+        ? `Published experience "${title}" to your venue.`
+        : undefined;
     }
   } catch {
     // ignore

@@ -10,15 +10,38 @@
 //      sent to Gemini (I-ARI-USER-DATA-WRAP).
 
 // deno-lint-ignore-file no-explicit-any
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import {
+  createClient,
+  SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
-import { buildSystemPrompt, TENANT_CONTEXT_VERSION, AgentUserProfile, BrandSummary, BusinessContext, OfferingSummary } from "../_shared/agentSystemPrompt.ts";
+import {
+  AgentUserProfile,
+  BrandSummary,
+  buildSystemPrompt,
+  BusinessContext,
+  OfferingSummary,
+  TENANT_CONTEXT_VERSION,
+} from "../_shared/agentSystemPrompt.ts";
 import { detectPromptInjection } from "../_shared/agentPromptInjection.ts";
-import { callGemini, ARI_MODEL_VERSION, GeminiContentMessage, GeminiError } from "../_shared/agentGemini.ts";
-import { AGENT_TOOLS, READ_ONLY_TOOL_NAMES, findTool, ToolError } from "../_shared/agentTools.ts";
+import {
+  ARI_MODEL_VERSION,
+  callGemini,
+  GeminiContentMessage,
+  GeminiError,
+} from "../_shared/agentGemini.ts";
+import {
+  AGENT_TOOLS,
+  findTool,
+  READ_ONLY_TOOL_NAMES,
+  ToolError,
+} from "../_shared/agentTools.ts";
 import { authorizeAgentTool } from "../_shared/agentToolAuthorization.ts";
-import { buildServiceClient, enforceTurnRateLimit } from "../_shared/agentRateLimit.ts";
-import { detectChoices, AgentChoices } from "../_shared/agentChoices.ts";
+import {
+  buildServiceClient,
+  enforceTurnRateLimit,
+} from "../_shared/agentRateLimit.ts";
+import { AgentChoices, detectChoices } from "../_shared/agentChoices.ts";
 import { logError } from "../_shared/structuredLog.ts";
 import {
   AccessibleAgentBrand,
@@ -37,9 +60,28 @@ interface RequestBody {
 }
 
 type Response_ =
-  | { kind: "text"; text: string; conversation_id: string; message_id: string; choices?: AgentChoices }
-  | { kind: "pending_action"; pending_action_id: string; tool_name: string; tool_args: Record<string, unknown>; conversation_id: string; message_id: string }
-  | { kind: "error"; code: string; message: string; retry_after_seconds?: number; cooldown_until?: string };
+  | {
+    kind: "text";
+    text: string;
+    conversation_id: string;
+    message_id: string;
+    choices?: AgentChoices;
+  }
+  | {
+    kind: "pending_action";
+    pending_action_id: string;
+    tool_name: string;
+    tool_args: Record<string, unknown>;
+    conversation_id: string;
+    message_id: string;
+  }
+  | {
+    kind: "error";
+    code: string;
+    message: string;
+    retry_after_seconds?: number;
+    cooldown_until?: string;
+  };
 
 function jsonResponse(status: number, body: Response_): Response {
   return new Response(JSON.stringify(body), {
@@ -67,11 +109,17 @@ function tenantScopeResponse(
 ): Response {
   // Intentionally excludes user/brand/conversation IDs, names, messages,
   // prompts, args, and results.
-  console.warn("[agent-chat] tenant scope stopped", JSON.stringify({
-    fn: "agent-chat", revision: "2013", code,
-    scope_state: scopeState, request_brand_supplied: requestBrandSupplied,
-    accessible_brand_count: accessibleBrandCount,
-  }));
+  console.warn(
+    "[agent-chat] tenant scope stopped",
+    JSON.stringify({
+      fn: "agent-chat",
+      revision: "2013",
+      code,
+      scope_state: scopeState,
+      request_brand_supplied: requestBrandSupplied,
+      accessible_brand_count: accessibleBrandCount,
+    }),
+  );
   return errorResponse(status, code, message);
 }
 
@@ -99,7 +147,10 @@ Deno.serve(async (req) => {
   // Race the handler against a wall-clock timeout
   const timeout = new Promise<Response>((resolve) =>
     setTimeout(
-      () => resolve(errorResponse(504, "TIMEOUT", "Ari is taking too long — try again")),
+      () =>
+        resolve(
+          errorResponse(504, "TIMEOUT", "Ari is taking too long — try again"),
+        ),
       WALL_CLOCK_TIMEOUT_MS,
     )
   );
@@ -130,7 +181,11 @@ async function handle(req: Request): Promise<Response> {
     return errorResponse(400, "BAD_REQUEST", "message is required");
   }
   if (body.message.length > MAX_MESSAGE_LENGTH) {
-    return errorResponse(400, "MESSAGE_TOO_LONG", `Messages must be ≤ ${MAX_MESSAGE_LENGTH} characters`);
+    return errorResponse(
+      400,
+      "MESSAGE_TOO_LONG",
+      `Messages must be ≤ ${MAX_MESSAGE_LENGTH} characters`,
+    );
   }
 
   // Auth — extract JWT from Authorization header and build user-scoped client
@@ -170,8 +225,12 @@ async function handle(req: Request): Promise<Response> {
     const message = rateLimit.reason === "rate_limited_inflight"
       ? "Another action is currently being processed — please wait a moment"
       : "You've reached today's chat limit. Resets in 24 hours.";
-    const cooldownUntil = rateLimit.resetAt ?? new Date(Date.now() + 5_000).toISOString();
-    const retryAfterSeconds = Math.max(1, Math.ceil((Date.parse(cooldownUntil) - Date.now()) / 1000));
+    const cooldownUntil = rateLimit.resetAt ??
+      new Date(Date.now() + 5_000).toISOString();
+    const retryAfterSeconds = Math.max(
+      1,
+      Math.ceil((Date.parse(cooldownUntil) - Date.now()) / 1000),
+    );
     return errorResponse(429, "RATE_LIMITED", message, {
       retry_after_seconds: retryAfterSeconds,
       cooldown_until: cooldownUntil,
@@ -183,12 +242,21 @@ async function handle(req: Request): Promise<Response> {
   try {
     accessibleBrands = await resolveAccessibleAgentBrands(userClient, userId);
   } catch (_error) {
-    console.error("[agent-chat] tenant scope denied", JSON.stringify({
-      fn: "agent-chat", revision: "2013", code: "TENANT_SCOPE_UNAVAILABLE",
-      scope_state: body.conversation_id ? "bound_or_legacy" : "new",
-      request_brand_supplied: typeof body.brand_id === "string",
-    }));
-    return errorResponse(503, "TENANT_SCOPE_UNAVAILABLE", "Ari couldn't verify your brand access. Try again.");
+    console.error(
+      "[agent-chat] tenant scope denied",
+      JSON.stringify({
+        fn: "agent-chat",
+        revision: "2013",
+        code: "TENANT_SCOPE_UNAVAILABLE",
+        scope_state: body.conversation_id ? "bound_or_legacy" : "new",
+        request_brand_supplied: typeof body.brand_id === "string",
+      }),
+    );
+    return errorResponse(
+      503,
+      "TENANT_SCOPE_UNAVAILABLE",
+      "Ari couldn't verify your brand access. Try again.",
+    );
   }
 
   // Prompt injection detection (flag but do not refuse)
@@ -206,36 +274,90 @@ async function handle(req: Request): Promise<Response> {
       .eq("user_id", userId)
       .maybeSingle();
     if (convoErr || !convo) {
-      return errorResponse(404, "CONVERSATION_NOT_FOUND", "Conversation not found");
+      return errorResponse(
+        404,
+        "CONVERSATION_NOT_FOUND",
+        "Conversation not found",
+      );
     }
     conversationId = convo.id;
-    conversationSummary = typeof (convo as { summary?: unknown }).summary === "string"
-      ? (convo as { summary: string }).summary
-      : null;
-    const storedBrandId = (convo as { brand_id?: string | null }).brand_id ?? null;
+    conversationSummary =
+      typeof (convo as { summary?: unknown }).summary === "string"
+        ? (convo as { summary: string }).summary
+        : null;
+    const storedBrandId = (convo as { brand_id?: string | null }).brand_id ??
+      null;
     if (storedBrandId) {
       try {
-        activeBrand = requireAccessibleAgentBrand(accessibleBrands, storedBrandId);
+        activeBrand = requireAccessibleAgentBrand(
+          accessibleBrands,
+          storedBrandId,
+        );
       } catch {
-        return tenantScopeResponse(403, "BRAND_ACCESS_DENIED", "You no longer have access to this conversation's brand.", "bound", typeof body.brand_id === "string", accessibleBrands.length);
+        return tenantScopeResponse(
+          403,
+          "BRAND_ACCESS_DENIED",
+          "You no longer have access to this conversation's brand.",
+          "bound",
+          typeof body.brand_id === "string",
+          accessibleBrands.length,
+        );
       }
       if (body.brand_id !== storedBrandId) {
-        return tenantScopeResponse(409, "CONVERSATION_BRAND_MISMATCH", "This conversation belongs to a different brand. Start a new chat for the selected brand.", "bound", typeof body.brand_id === "string", accessibleBrands.length);
+        return tenantScopeResponse(
+          409,
+          "CONVERSATION_BRAND_MISMATCH",
+          "This conversation belongs to a different brand. Start a new chat for the selected brand.",
+          "bound",
+          typeof body.brand_id === "string",
+          accessibleBrands.length,
+        );
       }
     } else if (accessibleBrands.length > 0) {
-      return tenantScopeResponse(409, "LEGACY_CONVERSATION_UNSCOPED", "This older conversation is read-only. Start a new chat for the selected brand.", "legacy", typeof body.brand_id === "string", accessibleBrands.length);
+      return tenantScopeResponse(
+        409,
+        "LEGACY_CONVERSATION_UNSCOPED",
+        "This older conversation is read-only. Start a new chat for the selected brand.",
+        "legacy",
+        typeof body.brand_id === "string",
+        accessibleBrands.length,
+      );
     } else if (body.brand_id) {
-      return tenantScopeResponse(403, "BRAND_ACCESS_DENIED", "That brand is not available to this account.", "legacy", true, accessibleBrands.length);
+      return tenantScopeResponse(
+        403,
+        "BRAND_ACCESS_DENIED",
+        "That brand is not available to this account.",
+        "legacy",
+        true,
+        accessibleBrands.length,
+      );
     }
   } else {
     if (accessibleBrands.length > 0 && !body.brand_id) {
-      return tenantScopeResponse(409, "BRAND_CONTEXT_REQUIRED", "Select a brand before starting a new Ari chat.", "new", false, accessibleBrands.length);
+      return tenantScopeResponse(
+        409,
+        "BRAND_CONTEXT_REQUIRED",
+        "Select a brand before starting a new Ari chat.",
+        "new",
+        false,
+        accessibleBrands.length,
+      );
     }
     if (body.brand_id) {
       try {
-        activeBrand = requireAccessibleAgentBrand(accessibleBrands, body.brand_id);
+        activeBrand = requireAccessibleAgentBrand(
+          accessibleBrands,
+          body.brand_id,
+        );
       } catch {
-        return tenantScopeResponse(403, "BRAND_ACCESS_DENIED", "That brand is not available to this account.", "new", true, accessibleBrands.length);
+        return tenantScopeResponse(
+          403,
+          "BRAND_ACCESS_DENIED",
+          "That brand is not available to this account.",
+          "new",
+          true,
+          accessibleBrands.length,
+        );
       }
     }
     const { data: created, error: createErr } = await userClient
@@ -248,7 +370,11 @@ async function handle(req: Request): Promise<Response> {
       .select("id")
       .single();
     if (createErr || !created) {
-      return errorResponse(500, "INTERNAL", `Failed to create conversation: ${createErr?.message ?? "unknown"}`);
+      return errorResponse(
+        500,
+        "INTERNAL",
+        `Failed to create conversation: ${createErr?.message ?? "unknown"}`,
+      );
     }
     conversationId = created.id;
   }
@@ -256,7 +382,9 @@ async function handle(req: Request): Promise<Response> {
   // Load last N messages
   const { data: historyRows } = await userClient
     .from("agent_messages")
-    .select("role, content, tool_calls, tool_results, prompt_version, created_at")
+    .select(
+      "role, content, tool_calls, tool_results, prompt_version, created_at",
+    )
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(HISTORY_WINDOW);
@@ -265,7 +393,9 @@ async function handle(req: Request): Promise<Response> {
   // Load profile
   const { data: profileRow } = await userClient
     .from("agent_user_profile")
-    .select("display_name, preferred_timezone, preferred_currency, communication_style")
+    .select(
+      "display_name, preferred_timezone, preferred_currency, communication_style",
+    )
     .eq("user_id", userId)
     .maybeSingle();
   const profile = profileRow as AgentUserProfile | null;
@@ -323,15 +453,20 @@ async function handle(req: Request): Promise<Response> {
     }
     const probeBrand = activeBrand?.id;
     try {
-      const { data: can } = await userClient.rpc("pg_brand_can_collect", { p_brand_id: probeBrand });
-      payoutReady = can === true || (can as { can_collect?: boolean } | null)?.can_collect === true;
+      const { data: can } = await userClient.rpc("pg_brand_can_collect", {
+        p_brand_id: probeBrand,
+      });
+      payoutReady = can === true ||
+        (can as { can_collect?: boolean } | null)?.can_collect === true;
     } catch {
       payoutReady = null;
     }
   }
   const business: BusinessContext = {
     brands: brandsList,
-    activeBrand: activeBrand ? brandsList.find((brand) => brand.id === activeBrand.id) ?? null : null,
+    activeBrand: activeBrand
+      ? brandsList.find((brand) => brand.id === activeBrand.id) ?? null
+      : null,
     offerings,
     payoutReady,
     roleHint: activeBrand?.role ?? null,
@@ -367,7 +502,11 @@ async function handle(req: Request): Promise<Response> {
     .select("id")
     .single();
   if (userMsgErr || !userMsg) {
-    return errorResponse(500, "INTERNAL", `Failed to write user message: ${userMsgErr?.message ?? "unknown"}`);
+    return errorResponse(
+      500,
+      "INTERNAL",
+      `Failed to write user message: ${userMsgErr?.message ?? "unknown"}`,
+    );
   }
 
   // Build system prompt
@@ -392,11 +531,13 @@ async function handle(req: Request): Promise<Response> {
       });
     } else if (m.role === "assistant") {
       const text = (m.content as any)?.text;
-      const toolCall = (m.tool_calls as any);
+      const toolCall = m.tool_calls as any;
       if (toolCall?.tool_name && toolCall?.args) {
         contents.push({
           role: "model",
-          parts: [{ functionCall: { name: toolCall.tool_name, args: toolCall.args } }],
+          parts: [{
+            functionCall: { name: toolCall.tool_name, args: toolCall.args },
+          }],
         });
       } else if (typeof text === "string") {
         contents.push({ role: "model", parts: [{ text }] });
@@ -437,7 +578,12 @@ async function handle(req: Request): Promise<Response> {
   } catch (err: any) {
     const schemaResponse = schemaErrorResponse(err);
     if (schemaResponse) return schemaResponse;
-    console.error("[agent-chat] Gemini error:", err?.kind, err?.message, err?.detail);
+    console.error(
+      "[agent-chat] Gemini error:",
+      err?.kind,
+      err?.message,
+      err?.detail,
+    );
     // Surface config errors specifically — these are operator-fixable
     // (set the secret) and the generic "having trouble" message hides
     // the actual problem. HTTP errors with a status get a more
@@ -446,36 +592,60 @@ async function handle(req: Request): Promise<Response> {
       return errorResponse(
         500,
         "MODEL_NOT_CONFIGURED",
-        err.message ?? "Ari isn't configured yet — operator must set GEMINI_API_KEY_ARI in Supabase function secrets.",
+        err.message ??
+          "Ari isn't configured yet — operator must set GEMINI_API_KEY_ARI in Supabase function secrets.",
       );
     }
     if (err?.kind === "http") {
       const status = typeof err.status === "number" ? err.status : 0;
       if (status === 401 || status === 403) {
-        return errorResponse(500, "MODEL_AUTH_FAILED", "Ari's API key was rejected by Google. Operator: verify GEMINI_API_KEY_ARI is a valid AI Studio key.");
+        return errorResponse(
+          500,
+          "MODEL_AUTH_FAILED",
+          "Ari's API key was rejected by Google. Operator: verify GEMINI_API_KEY_ARI is a valid AI Studio key.",
+        );
       }
       if (status === 429) {
-        return errorResponse(429, "MODEL_RATE_LIMITED", "Ari is hitting Google's rate limit — try again in a moment.");
+        return errorResponse(
+          429,
+          "MODEL_RATE_LIMITED",
+          "Ari is hitting Google's rate limit — try again in a moment.",
+        );
       }
     }
     // Generic fallback for any other Gemini failure mode (HTTP 4xx other
     // than auth/rate-limit, malformed responses after retries, empty
     // responses). The real diagnostic detail is in the server logs above;
     // the user-visible message stays friendly.
-    return errorResponse(502, "MODEL_UNAVAILABLE", "Ari is having trouble right now — try again in a moment.");
+    return errorResponse(
+      502,
+      "MODEL_UNAVAILABLE",
+      "Ari is having trouble right now — try again in a moment.",
+    );
   }
 
   // Branch on tool call vs text
   if (gemini.toolCall) {
     const tool = findTool(gemini.toolCall.name);
     if (!tool) {
-      return errorResponse(500, "INTERNAL", `Unknown tool: ${gemini.toolCall.name}`);
+      return errorResponse(
+        500,
+        "INTERNAL",
+        `Unknown tool: ${gemini.toolCall.name}`,
+      );
     }
 
     // For READ-ONLY tools, execute inline (no confirmation needed)
     if (READ_ONLY_TOOL_NAMES.has(tool.name)) {
       try {
-        const result = await tool.executor(gemini.toolCall.args, userClient, userId);
+        const result = await tool.executor(
+          gemini.toolCall.args,
+          userClient,
+          userId,
+          {
+            operationId: null,
+          },
+        );
         // Log tool result as a tool message, then ask Gemini for a natural-language summary
         await userClient
           .from("agent_messages")
@@ -496,7 +666,9 @@ async function handle(req: Request): Promise<Response> {
           ...contents,
           {
             role: "model",
-            parts: [{ functionCall: { name: tool.name, args: gemini.toolCall.args } }],
+            parts: [{
+              functionCall: { name: tool.name, args: gemini.toolCall.args },
+            }],
           },
           {
             role: "user",
@@ -539,7 +711,11 @@ async function handle(req: Request): Promise<Response> {
           .select("id")
           .single();
         if (asstErr || !asstMsg) {
-          return errorResponse(500, "INTERNAL", "Failed to write assistant message");
+          return errorResponse(
+            500,
+            "INTERNAL",
+            "Failed to write assistant message",
+          );
         }
         return jsonResponse(200, {
           kind: "text",
@@ -549,22 +725,34 @@ async function handle(req: Request): Promise<Response> {
         });
       } catch (err: any) {
         if (err instanceof ToolError) {
-          console.error("[agent-chat] tenant-scoped read stopped", JSON.stringify({
-            fn: "agent-chat", revision: "2013", code: err.code,
-            scope_state: activeBrand ? "bound" : "legacy_or_zero_brand",
-            request_brand_supplied: typeof body.brand_id === "string",
-            accessible_brand_count: accessibleBrands.length,
-            tool_name: tool.name,
-          }));
+          console.error(
+            "[agent-chat] tenant-scoped read stopped",
+            JSON.stringify({
+              fn: "agent-chat",
+              revision: "2013",
+              code: err.code,
+              scope_state: activeBrand ? "bound" : "legacy_or_zero_brand",
+              request_brand_supplied: typeof body.brand_id === "string",
+              accessible_brand_count: accessibleBrands.length,
+              tool_name: tool.name,
+            }),
+          );
           return errorResponse(
-            err.code === "TENANT_SCOPE_UNAVAILABLE" || err.code === "ROLE_CHECK_UNAVAILABLE"
+            err.code === "TENANT_SCOPE_UNAVAILABLE" ||
+              err.code === "ROLE_CHECK_UNAVAILABLE"
               ? 503
-              : err.code === "INVALID_ARGS" ? 400 : 403,
+              : err.code === "INVALID_ARGS"
+              ? 400
+              : 403,
             err.code,
             err.message,
           );
         }
-        return errorResponse(500, "EXECUTION_FAILED", err?.message ?? "Tool failed");
+        return errorResponse(
+          500,
+          "EXECUTION_FAILED",
+          err?.message ?? "Tool failed",
+        );
       }
     }
 
@@ -573,10 +761,18 @@ async function handle(req: Request): Promise<Response> {
       await authorizeAgentTool(tool, gemini.toolCall.args, userClient, userId);
     } catch (err: unknown) {
       if (err instanceof ToolError) {
-        const status = err.code === "ROLE_CHECK_UNAVAILABLE" ? 503 : err.code === "INVALID_ARGS" ? 400 : 403;
+        const status = err.code === "ROLE_CHECK_UNAVAILABLE"
+          ? 503
+          : err.code === "INVALID_ARGS"
+          ? 400
+          : 403;
         return errorResponse(status, err.code, err.message);
       }
-      return errorResponse(503, "ROLE_CHECK_UNAVAILABLE", "Ari could not verify permissions right now");
+      return errorResponse(
+        503,
+        "ROLE_CHECK_UNAVAILABLE",
+        "Ari could not verify permissions right now",
+      );
     }
 
     // For WRITE tools, register a pending action (NOT execute)
@@ -592,7 +788,11 @@ async function handle(req: Request): Promise<Response> {
       .select("id, tool_name, tool_args")
       .single();
     if (pendingErr || !pending) {
-      return errorResponse(500, "INTERNAL", `Failed to create pending action: ${pendingErr?.message ?? "unknown"}`);
+      return errorResponse(
+        500,
+        "INTERNAL",
+        `Failed to create pending action: ${pendingErr?.message ?? "unknown"}`,
+      );
     }
 
     const { data: asstMsg, error: asstErr } = await userClient
@@ -613,7 +813,11 @@ async function handle(req: Request): Promise<Response> {
       .select("id")
       .single();
     if (asstErr || !asstMsg) {
-      return errorResponse(500, "INTERNAL", "Failed to write assistant message");
+      return errorResponse(
+        500,
+        "INTERNAL",
+        "Failed to write assistant message",
+      );
     }
 
     return jsonResponse(200, {
@@ -656,7 +860,8 @@ async function handle(req: Request): Promise<Response> {
   }
 
   // Wave 0 / child O — compress last turn into reserved summary columns.
-  const nextSummary = `${body.message.slice(0, 160)} → ${text.slice(0, 160)}`.slice(0, 400);
+  const nextSummary = `${body.message.slice(0, 160)} → ${text.slice(0, 160)}`
+    .slice(0, 400);
   await userClient
     .from("agent_conversations")
     .update({
