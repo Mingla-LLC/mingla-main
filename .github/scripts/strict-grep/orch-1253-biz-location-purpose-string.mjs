@@ -50,10 +50,10 @@ function evaluate(infoPlist) {
 function selfTest() {
   const good = evaluate({
     [KEY]:
-      "Mingla Business uses your location to help measure the performance of our marketing and improve our services.",
+      "Mingla Host uses your location to help measure the performance of our marketing and improve our services.",
   });
   const missing = evaluate({
-    NSCameraUsageDescription: "Mingla Business uses your camera.",
+    NSCameraUsageDescription: "Mingla Host uses your camera.",
   });
   const empty = evaluate({ [KEY]: "   " });
   const ok = good.length === 0 && missing.length > 0 && empty.length > 0;

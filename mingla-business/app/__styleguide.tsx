@@ -1,7 +1,7 @@
 /**
  * Hidden dev-only styleguide route — `/__styleguide`.
  *
- * Renders every primitive in the Mingla Business kit on a single
+ * Renders every primitive in the Mingla Host kit on a single
  * scrollable page so the founder can QA all 24 components on real
  * devices (iOS / Android / web) before Cycle 1 starts consuming the
  * kit at scale.
@@ -569,7 +569,7 @@ export default function StyleguideScreen(): React.ReactElement {
           </SectionRow>
           <SectionRow label="no illustration">
             <EmptyState
-              title="Welcome to Mingla Business"
+              title="Welcome to Mingla Host"
               description="Spin up a brand to begin."
             />
           </SectionRow>

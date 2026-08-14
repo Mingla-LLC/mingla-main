@@ -143,7 +143,7 @@ test('ST12 same-origin analytics delivery, endpoint schema and privacy are fail 
   assert.doesNotMatch(analyticsRoute,/export async function POST\([^)]*,/);
   let forwarded;
   const proxied=await proxyContentShareAnalytics(new Request('https://usemingla.com/api/content-share-analytics',{method:'POST',headers:{'content-type':'text/plain;charset=UTF-8'},body:JSON.stringify({event:'share_public_page_viewed',code:'Aa0Bb1Cc2Dd3Ee4F',version:2,kind:'event'})}),async(url,init)=>{forwarded={url,init};return new Response(null,{status:204})});
-  assert.equal(proxied.status,204);assert.equal(forwarded.url,'https://business.usemingla.com/api/content-share-analytics');assert.equal(forwarded.init.headers.origin,'https://usemingla.com');
+  assert.equal(proxied.status,204);assert.equal(forwarded.url,'https://host.usemingla.com/api/content-share-analytics');assert.equal(forwarded.init.headers.origin,'https://usemingla.com');
   const {createContentShareAnalyticsHandler}=require(path.join(ROOT,'mingla-business/api/content-share-analytics.js'));
   const call=async(body)=>{let sent;const handler=createContentShareAnalyticsHandler(async(_url,init)=>{sent=JSON.parse(init.body);return new Response(null,{status:200})});const res={setHeader(){},end(){}};await handler({method:'POST',headers:{origin:'https://usemingla.com'},body},res);return{status:res.statusCode,sent}};
   const previous=process.env.EXPO_PUBLIC_POSTHOG_KEY;process.env.EXPO_PUBLIC_POSTHOG_KEY='phc_test';

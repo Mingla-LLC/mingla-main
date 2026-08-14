@@ -55,6 +55,7 @@ import {
   resolveProviderRouting,
 } from "../_shared/paymentProvider.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
+import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 import {
   cancelPaymentIntentIfClientAvailable,
   classifyStripeCheckoutSessionCreateFailure,
@@ -65,7 +66,10 @@ import {
 // ORCH-1295 [chip-in-post-payment-polish] — pure builder for the web return URLs
 // (fixes BUG 1: brandSlug was omitted → dead page). Kept in a sibling module so
 // it is unit-testable without importing this serve()-on-load entry.
-import { buildContributionWebReturnUrls } from "./returnUrls.ts";
+import {
+  buildContributionPaystackReturnUrl,
+  buildContributionWebReturnUrls,
+} from "./returnUrls.ts";
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackContributionSplitFields } from "./ngPaystackSplit.ts";
@@ -257,6 +261,14 @@ serve(async (req: Request): Promise<Response> => {
   // PAYSTACK ARM (NGN) — mirrors ticket-checkout-create's Paystack arm.
   // =====================================================================
   if (routing.provider === "paystack") {
+    // #2050: old native binaries cannot safely complete the retired Business
+    // callback. Fail before persisting a contribution or calling Paystack.
+    if (surface === "native" && body.returnContract !== "host_v1") {
+      return jsonResponse(
+        { error: "upgrade_required", requiredReturnContract: "host_v1" },
+        426,
+      );
+    }
     const psCurrency = (routing.currency || "NGN").toUpperCase();
     if (psCurrency !== "NGN") {
       return jsonResponse({ error: "paystack_currency_must_be_ngn" }, 409);
@@ -316,9 +328,21 @@ serve(async (req: Request): Promise<Response> => {
       return jsonResponse({ error: "contribution_persist_failed" }, 500);
     }
 
-    const callbackBase = Deno.env.get("PAYSTACK_CALLBACK_BASE") ??
-      "https://business.usemingla.com/pay/callback";
-    const callbackUrl = `${callbackBase}?contrib=${encodeURIComponent(contributionId)}`;
+    const eventSlug = typeof eventRow.slug === "string" && eventRow.slug.length > 0
+      ? eventRow.slug
+      : eventId;
+    const callbackUrl = buildContributionPaystackReturnUrl(
+      PRODUCTION_BUSINESS_WEB_ORIGIN,
+      brandSlug,
+      eventSlug,
+      contributionId,
+    );
+    if (callbackUrl === null) {
+      await supabase.from("event_rsvp_contributions")
+        .update({ status: "failed", updated_at: new Date().toISOString() })
+        .eq("id", contributionId);
+      return jsonResponse({ error: "brand_slug_unavailable" }, 500);
+    }
 
     let init: { authorization_url: string; reference: string; access_code: string };
     try {
@@ -363,6 +387,7 @@ serve(async (req: Request): Promise<Response> => {
       kind: "requires_paystack_redirect",
       contributionId,
       authorizationUrl: init.authorization_url,
+      returnUrl: callbackUrl,
       reference: init.reference,
       amountCents,
       buyerTotalCents,

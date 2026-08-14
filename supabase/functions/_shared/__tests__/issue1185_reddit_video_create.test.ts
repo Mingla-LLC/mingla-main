@@ -28,7 +28,7 @@ import {
   validateRedditCreative,
 } from "../reddit.ts";
 
-const CANONICAL_URL = "https://business.usemingla.com/e/rooftop/summer-jam";
+const CANONICAL_URL = "https://host.usemingla.com/e/rooftop/summer-jam";
 const MASTER_MP4 = "https://cdn.mingla.test/bunny/master.mp4";
 const POSTER = "https://cdn.mingla.test/bunny/thumbnail.jpg";
 // A verbatim Title-Case CTA from the 24-string enum (GR-29).

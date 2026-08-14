@@ -1925,7 +1925,7 @@ BEGIN
     )
   ) THEN RAISE EXCEPTION 'offering_send_selection_invalid' USING ERRCODE='22023'; END IF;
   IF cardinality(v_ids)>500 THEN RAISE EXCEPTION 'offering_send_selection_too_large' USING ERRCODE='22023'; END IF;
-  SELECT format('https://business.usemingla.com/e/%s/%s',b.slug,e.slug) INTO v_event_url
+  SELECT format('https://host.usemingla.com/e/%s/%s',b.slug,e.slug) INTO v_event_url
     FROM public.events e JOIN public.brands b ON b.id=e.brand_id WHERE e.id=p_event_id;
   v_selected:=cardinality(v_ids);
   WITH requested AS (

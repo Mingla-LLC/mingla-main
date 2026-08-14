@@ -56,12 +56,12 @@ function extractEagerScripts(html, buildDir) {
     if (src === undefined || src === null) continue;
     let parsed;
     try {
-      parsed = new URL(src, "https://business.usemingla.com");
+      parsed = new URL(src, "https://host.usemingla.com");
     } catch {
       fail(`invalid script URL: ${src}`);
     }
     if (!/^\/_expo\/static\/js\/web\/.+\.js$/.test(parsed.pathname)) continue;
-    if (parsed.origin !== "https://business.usemingla.com") fail(`external eager script: ${src}`);
+    if (parsed.origin !== "https://host.usemingla.com") fail(`external eager script: ${src}`);
     if (attrs.some(({ name }) => name.toLowerCase() === "async")) {
       fail("an eager script uses async, which cannot be preserved with ordered fallback boot");
     }
@@ -80,7 +80,7 @@ function extractEagerScripts(html, buildDir) {
   }
   if (found.length !== 3) fail(`expected exactly 3 eager Expo scripts, found ${found.length}`);
   const actualRoles = found.map(({ src }) => {
-    const basename = new URL(src, "https://business.usemingla.com").pathname.split("/").at(-1) ?? "";
+    const basename = new URL(src, "https://host.usemingla.com").pathname.split("/").at(-1) ?? "";
     return EAGER_SCRIPT_ROLES.find(({ pattern }) => pattern.test(basename))?.label ?? `unknown (${basename})`;
   });
   const expectedRoles = EAGER_SCRIPT_ROLES.map(({ label }) => label);

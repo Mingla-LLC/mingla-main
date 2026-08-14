@@ -142,6 +142,7 @@ export const createTicketCheckout = async (
 ): Promise<TicketCheckoutCreateResult> =>
   invokeOrThrow<TicketCheckoutCreateResult>("ticket-checkout-create", {
     eventId: input.eventId,
+    returnContract: "host_v1",
     buyer: input.buyer,
     lines: input.lines.map((line) => ({
       ticketTypeId: line.ticketTypeId,

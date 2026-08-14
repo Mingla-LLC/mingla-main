@@ -2,7 +2,7 @@
  * BrandBankConnectBody — bank-first partner setup body (web).
  *
  * Loads the canonical brand row, pre-resolves Stripe vs Paystack, records the
- * approved Mingla Business clickwrap before minting a Stripe AccountSession,
+ * approved Mingla Host clickwrap before minting a Stripe AccountSession,
  * then performs a same-tab navigation to the existing embedded Connect form.
  */
 
@@ -465,7 +465,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
               <Pressable
                 onPress={handleOpenTerms}
                 accessibilityRole="link"
-                accessibilityLabel="Open Mingla Business Terms"
+                accessibilityLabel="Open Mingla Host Terms"
                 style={styles.legalPressable}
               >
                 <Text style={styles.legal}>

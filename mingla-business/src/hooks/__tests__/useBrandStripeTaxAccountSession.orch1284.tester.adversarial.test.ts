@@ -17,7 +17,7 @@ import { afterEach, describe, expect, jest, test } from "@jest/globals";
  *   A — WIRING/RUNTIME (preferred): drive the REAL hook's `onSuccess` closure
  *       (captured off the actual `useMutation(options)` call the shipped hook
  *       makes) and assert `WebBrowser.openAuthSessionAsync` is invoked with a
- *       `business.usemingla.com/connect-tax-registrations?...` URL and NEVER the
+ *       `host.usemingla.com/connect-tax-registrations?...` URL and NEVER the
  *       marketing apex. Also asserts `mutationFn` calls the service. Validates
  *       I-PROPOSED-EMBEDDED-TAX-UI (CTA → openAuthSessionAsync on the Mingla-
  *       hosted URL). The implementor's pure-builder test cannot reach this path.
@@ -42,7 +42,7 @@ import { afterEach, describe, expect, jest, test } from "@jest/globals";
 // platformUrl.ts throws at module load unless the business web URL is set; feed
 // the canonical production value via a MUTABLE expo-constants `extra` getter so
 // the trailing-slash case (C) can re-resolve the constant under jest.isolateModules.
-const constantsState = { businessWebUrl: "https://business.usemingla.com" };
+const constantsState = { businessWebUrl: "https://host.usemingla.com" };
 jest.mock("expo-constants", () => ({
   __esModule: true,
   default: {
@@ -111,7 +111,7 @@ afterEach(() => {
 
 describe("ORCH-1284 adversarial — tax CTA wiring, dead-env immunity, slash normalization", () => {
   // ---- A: WIRING / RUNTIME ----------------------------------------------------
-  test("A — the shipped hook's onSuccess opens business.usemingla.com (never the marketing apex), and mutationFn calls the service", async () => {
+  test("A — the shipped hook's onSuccess opens host.usemingla.com (never the marketing apex), and mutationFn calls the service", async () => {
     useBrandStripeTaxAccountSession();
 
     // The hook must have registered exactly one mutation with mutationFn + onSuccess.
@@ -144,7 +144,7 @@ describe("ORCH-1284 adversarial — tax CTA wiring, dead-env immunity, slash nor
     const openedUrl = (WebBrowser.openAuthSessionAsync as jest.Mock).mock
       .calls[0][0] as string;
     const parsed = new URL(openedUrl);
-    expect(parsed.host).toBe("business.usemingla.com");
+    expect(parsed.host).toBe("host.usemingla.com");
     expect(parsed.pathname).toBe("/connect-tax-registrations");
     // The marketing 404 form is `://usemingla.com/connect-...`; must never appear.
     expect(openedUrl).not.toContain("://usemingla.com/connect-tax-registrations");
@@ -169,7 +169,7 @@ describe("ORCH-1284 adversarial — tax CTA wiring, dead-env immunity, slash nor
     });
 
     const parsed = new URL(url);
-    expect(parsed.host).toBe("business.usemingla.com");
+    expect(parsed.host).toBe("host.usemingla.com");
     // Neither dead var may leak into the output.
     expect(url).not.toContain("garbage-marketing.example");
     expect(url).not.toContain("://usemingla.com/connect-tax-registrations");
@@ -178,7 +178,7 @@ describe("ORCH-1284 adversarial — tax CTA wiring, dead-env immunity, slash nor
   // ---- C: TRAILING-SLASH NORMALIZATION ---------------------------------------
   test("C — a business URL with a trailing slash normalizes to exactly one slash before the path", () => {
     const prev = constantsState.businessWebUrl;
-    constantsState.businessWebUrl = "https://business.usemingla.com/";
+    constantsState.businessWebUrl = "https://host.usemingla.com/";
     try {
       jest.isolateModules(() => {
         // Re-resolve MINGLA_BUSINESS_WEB_URL + the builder under the slashed value.
@@ -193,11 +193,11 @@ describe("ORCH-1284 adversarial — tax CTA wiring, dead-env immunity, slash nor
           brandStripeAccountId: "acct_c",
         });
         expect(url).toContain(
-          "https://business.usemingla.com/connect-tax-registrations",
+          "https://host.usemingla.com/connect-tax-registrations",
         );
         // The bug we guard against: a double slash from an un-normalized base.
         expect(url).not.toContain(
-          "business.usemingla.com//connect-tax-registrations",
+          "host.usemingla.com//connect-tax-registrations",
         );
         expect(new URL(url).pathname).toBe("/connect-tax-registrations");
       });

@@ -24,7 +24,7 @@ const CONFETTI_COLORS = ['#f97316', '#ea580c', '#f4d679', '#5C7A5A', '#f5f0ea']
 
 export function WaitlistHero({
   onSubmit,
-  title = 'Be first when Mingla Business opens.',
+  title = 'Be first when Mingla Host opens.',
   subtitle = 'Get early access — list your venue, your events, and your activations on the experience app explorers actually use.',
   monogram = 'M',
   buttonLabel = 'Join early access',
@@ -264,7 +264,7 @@ export function WaitlistHero({
             {/* FORM STATE */}
             <form
               onSubmit={handleSubmit}
-              aria-label="Mingla Business early access waitlist"
+              aria-label="Mingla Host early access waitlist"
               className={`relative h-full w-full transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${
                 status === 'success'
                   ? 'pointer-events-none scale-95 opacity-0'

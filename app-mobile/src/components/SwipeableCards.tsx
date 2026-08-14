@@ -288,7 +288,7 @@ function experienceRecToBusinessEventCard(rec: any): BusinessEventCard {
     displayPriceCents: null,
     displayCurrency: null,
     currency: typeof rec?.currency === 'string' ? rec.currency : 'USD',
-    publicBuyerUrl: `https://business.usemingla.com/e/${brandSlug}/${eventSlug}`,
+    publicBuyerUrl: `https://host.usemingla.com/e/${brandSlug}/${eventSlug}`,
     // ORCH-1072: carry the multi-stop itinerary + upcoming occurrences so the
     // detail sheet renders the route + the date picker. Experience-only (an
     // event/trip card never sets these → undefined → no itinerary/picker).

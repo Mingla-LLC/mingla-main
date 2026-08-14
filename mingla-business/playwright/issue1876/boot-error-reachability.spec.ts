@@ -81,7 +81,7 @@ const SHARED_KEY = stringConst("CHUNK_RECOVERY_KEY");
 
 /**
  * The deployed shell's own reset, transcribed from
- * https://business.usemingla.com/ on 2026-08-11. These three rules ARE the bug:
+ * https://host.usemingla.com/ on 2026-08-11. These three rules ARE the bug:
  * they make an empty `#root` fill the viewport and stop the page scrolling.
  */
 const EXPO_RESET = `<style id="expo-reset">

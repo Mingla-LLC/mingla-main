@@ -34,7 +34,7 @@ Deno.test("ORCH-1065 T-03a: experienceRecToBusinessEventCard mapper sets eventId
   assertStringIncludes(mapper, "coverHue: hueFromId(eventId)");
   // single ticket: priceMin/priceMax both come from totalPrice.
   assertStringIncludes(mapper, "priceMin: typeof rec?.totalPriceMin");
-  assertStringIncludes(mapper, "publicBuyerUrl: `https://business.usemingla.com/e/");
+  assertStringIncludes(mapper, "publicBuyerUrl: `https://host.usemingla.com/e/");
 });
 
 Deno.test("ORCH-1065 T-03b: 3-way renderer switch — experience branch with brand badge + Book CTA", () => {

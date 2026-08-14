@@ -233,7 +233,7 @@ function assertContent(value: string, maxBytes: number): void {
     if (
       url.protocol !== "https:" ||
       ![
-        "business.usemingla.com",
+        "host.usemingla.com",
         "cdn.usemingla.com",
         "mingla.app",
         "usemingla.com",
@@ -474,7 +474,7 @@ export async function buildOfferingExecutionSnapshot(input: {
     const eventUrl = new URL(source.eventUrl);
     if (
       eventUrl.protocol !== "https:" ||
-      eventUrl.hostname !== "business.usemingla.com" ||
+      eventUrl.hostname !== "host.usemingla.com" ||
       !eventUrl.pathname.startsWith("/e/") || eventUrl.search !== "" ||
       eventUrl.hash !== "" || eventUrl.username !== "" ||
       eventUrl.password !== ""

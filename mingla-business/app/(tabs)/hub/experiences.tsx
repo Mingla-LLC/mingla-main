@@ -488,7 +488,7 @@ export default function HubExperiencesRoute(): React.ReactElement {
           preloadContent
           visible
           onClose={() => setShareExp(null)}
-          url={`https://business.usemingla.com/exp/${brandSlug}/${shareExp.slug}`}
+          url={`https://host.usemingla.com/exp/${brandSlug}/${shareExp.slug}`}
           contentKind="experience"
           title={`${shareExp.title} on Mingla`}
           description={

@@ -22,7 +22,7 @@ export const provider = (name, verdict = "ready") => ({
 });
 
 const target = (app_key, os, store_identifier, appsflyer_app_id) => ({
-  app_key, os, display_name: app_key === "explorer" ? "Mingla Explorer" : "Mingla Business",
+  app_key, os, display_name: app_key === "explorer" ? "Mingla Explorer" : "Mingla Host",
   store_identifier, appsflyer_app_id, needs_check: false,
   latest: { run_id: `${app_key}-${os}`, checked_at: "2026-08-12T12:00:00.000Z", stale_at: "2026-08-12T12:15:00.000Z", duration_ms: 200, results: ["meta","tiktok","snapchat","google","reddit"].map((name) => provider(name)) },
 });

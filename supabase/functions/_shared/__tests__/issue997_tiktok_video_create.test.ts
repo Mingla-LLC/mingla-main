@@ -19,7 +19,7 @@ import { buildTikTokAdBody } from "../tiktok.ts";
 
 const ADVERTISER = "7627974536397766673";
 const IDENTITY = "b3f0f8f4-1beb-5c23-8a2c-9f440cec58a5";
-const LANDING = "https://business.usemingla.com/e/brand/event";
+const LANDING = "https://host.usemingla.com/e/brand/event";
 
 const tiktokConnection: AdConnectionRow = {
   id: "connection",

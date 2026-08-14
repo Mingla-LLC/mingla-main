@@ -1029,7 +1029,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           tone: "error",
           text: isNative
             ? "Please trim to 29 seconds first."
-            : "This video is over 30 seconds. Pick a shorter clip, or trim it in the Mingla Business app.",
+            : "This video is over 30 seconds. Pick a shorter clip, or trim it in the Mingla Host app.",
         });
         return;
       }
@@ -1749,7 +1749,7 @@ const LibraryTab: React.FC<{
         {Platform.OS === "web" ? (
           <Text style={styles.helperText}>
             On the web, video covers upload the clip as-is, up to 30 seconds. To
-            trim a longer clip, use the Mingla Business app.
+            trim a longer clip, use the Mingla Host app.
           </Text>
         ) : null}
 

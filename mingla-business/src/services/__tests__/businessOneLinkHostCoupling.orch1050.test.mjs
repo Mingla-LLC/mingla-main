@@ -50,7 +50,7 @@ const read = (rel) => fs.readFileSync(path.join(BIZ_ROOT, rel), 'utf8');
 const stripComments = (s) =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const WORKING_HOST = 'business.usemingla.com'; // the always-declared, always-vouching host
+const WORKING_HOST = 'host.usemingla.com'; // the always-declared, always-vouching host
 const CONSUMER_HOST = 'go.usemingla.com'; // Explorer-only; must never touch the Business package
 
 // ── SSOT value (comments stripped: storeLinks.ts mentions go. in JSDoc; only a real code

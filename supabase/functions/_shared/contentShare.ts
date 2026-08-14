@@ -93,7 +93,7 @@ const publicMediaUrl = (value: unknown): string | null => {
     if (url.protocol !== "https:" || hasUserInfo || url.port) return null;
     const host = url.hostname.toLowerCase();
     const bunnyHost = clean((globalThis as any).Deno?.env?.get?.("BUNNY_STREAM_CDN_HOSTNAME"), 255).toLowerCase();
-    const allowed = ["usemingla.com","www.usemingla.com","business.usemingla.com"].includes(host)
+    const allowed = ["usemingla.com","www.usemingla.com","host.usemingla.com"].includes(host)
       || host === "images.pexels.com" || host === "videos.pexels.com"
       || host === "i.giphy.com" || host === "media.giphy.com"
       || host === "vz-a16fce08-6c6.b-cdn.net" || (bunnyHost.length > 0 && host === bunnyHost)

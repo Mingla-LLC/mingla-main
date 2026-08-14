@@ -10,7 +10,7 @@
  *
  *   Consumer app reads (app-mobile/src/) MUST exclude rows where type matches
  *     `stripe.%` or `business.%`.
- *   Mingla Business app reads (mingla-business/src/) MUST include only rows
+ *   Mingla Host app reads (mingla-business/src/) MUST include only rows
  *     where type matches `stripe.%` or `business.%`.
  *
  *   For each `.from('notifications')` chain, look forward up to 25 lines for the
@@ -39,8 +39,8 @@
  *   confusing UX and a privacy/intent leak across product surfaces.
  *
  * NAMING CONVENTION:
- *   stripe.* — Mingla Business only (B2 cycle types)
- *   business.* — Mingla Business only (future B2/B3/B5 types)
+ *   stripe.* — Mingla Host only (B2 cycle types)
+ *   business.* — Mingla Host only (future B2/B3/B5 types)
  *   anything else — Mingla consumer only
  *
  * SCAN SURFACES:
@@ -236,7 +236,7 @@ function scanFile(filePath, side) {
         i + 1,
         line,
         side,
-        "Mingla Business notifications query does not include stripe.% or business.% prefix.",
+        "Mingla Host notifications query does not include stripe.% or business.% prefix.",
       );
     }
   }

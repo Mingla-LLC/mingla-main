@@ -369,7 +369,7 @@ export function renderCategoryMessage(
           subject: `${guest} chipped in ${amount} to ${eventTitle}`,
           body:
             `Good news — ${guest} just chipped in ${amount} to ${eventTitle}.\n\n` +
-            `It's on its way to your connected account. See the details in Mingla Business.`,
+            `It's on its way to your connected account. See the details in Mingla Host.`,
         },
         sms: `${brand}: ${guest} chipped in ${amount} to ${eventTitle}.`,
       };

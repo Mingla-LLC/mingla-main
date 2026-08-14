@@ -83,7 +83,7 @@ const root = process.cwd().endsWith("mingla-marketing")
 
 const HELPER = "mingla-marketing/lib/business-app-target.ts";
 const SURFACES = [
-  "mingla-marketing/app/business/download/page.tsx",
+  "mingla-marketing/app/host/download/page.tsx",
   "mingla-marketing/components/marketing/glass-nav.tsx",
   "mingla-marketing/components/sections/organiser-home/hero.tsx",
   "mingla-marketing/components/marketing/links-experience.tsx",

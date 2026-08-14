@@ -173,7 +173,7 @@ Deno.test("generic_notification routes to system sender + renders paragraphs", (
       title: "Heads up",
       paragraphs: ["Para1", "Para2"],
       cta: {
-        label: "Open Mingla Business",
+        label: "Open Mingla Host",
         url: "https://usemingla.com/business",
       },
     },
@@ -181,7 +181,7 @@ Deno.test("generic_notification routes to system sender + renders paragraphs", (
   assertEquals(result.from.address, "notifications@usemingla.com");
   assertStringIncludes(result.html, "Para1");
   assertStringIncludes(result.html, "Para2");
-  assertStringIncludes(result.html, "Open Mingla Business");
+  assertStringIncludes(result.html, "Open Mingla Host");
 });
 
 Deno.test("admin_compose routes to admin sender", () => {

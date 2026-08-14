@@ -59,7 +59,7 @@ const unavailableNativeTrimError = (cause?: unknown): Error => {
   const detail =
     cause instanceof Error ? cause.message : String(cause ?? "unknown error");
   return new Error(
-    `Video trimming requires an updated Mingla Business native build with the VideoTrim module installed. ${detail}`,
+    `Video trimming requires an updated Mingla Host native build with the VideoTrim module installed. ${detail}`,
   );
 };
 

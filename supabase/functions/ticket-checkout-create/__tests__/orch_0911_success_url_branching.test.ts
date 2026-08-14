@@ -24,7 +24,7 @@ const activeSource = stripComments(source);
 function hostedCheckoutUrlParts(
   eventType: "event" | "trip" | null | undefined,
   eventId: string,
-  baseUrl = "https://business.usemingla.com",
+  baseUrl = "https://host.usemingla.com",
 ): { successUrl: string; cancelUrl: string } {
   const isTrip = eventType === "trip";
   const surfacePath = isTrip ? "checkout-trip" : "checkout";
@@ -49,25 +49,25 @@ Deno.test("ORCH-0911 T-01 — web trip rows branch success_url to /checkout-trip
 
   assertEquals(
     hostedCheckoutUrlParts("trip", "abc").successUrl,
-    "https://business.usemingla.com/checkout-trip/abc/confirm?cs={CHECKOUT_SESSION_ID}",
+    "https://host.usemingla.com/checkout-trip/abc/confirm?cs={CHECKOUT_SESSION_ID}",
   );
 });
 
 Deno.test("ORCH-0911 T-02 — web event rows keep /checkout/{id}/confirm", () => {
   assertEquals(
     hostedCheckoutUrlParts("event", "abc").successUrl,
-    "https://business.usemingla.com/checkout/abc/confirm?cs={CHECKOUT_SESSION_ID}",
+    "https://host.usemingla.com/checkout/abc/confirm?cs={CHECKOUT_SESSION_ID}",
   );
 });
 
 Deno.test("ORCH-0911 T-03 — null or missing event_type defensively defaults to event checkout path", () => {
   assertEquals(
     hostedCheckoutUrlParts(null, "abc").successUrl,
-    "https://business.usemingla.com/checkout/abc/confirm?cs={CHECKOUT_SESSION_ID}",
+    "https://host.usemingla.com/checkout/abc/confirm?cs={CHECKOUT_SESSION_ID}",
   );
   assertEquals(
     hostedCheckoutUrlParts(undefined, "abc").successUrl,
-    "https://business.usemingla.com/checkout/abc/confirm?cs={CHECKOUT_SESSION_ID}",
+    "https://host.usemingla.com/checkout/abc/confirm?cs={CHECKOUT_SESSION_ID}",
   );
 });
 
@@ -79,7 +79,7 @@ Deno.test("ORCH-0911 T-04 — web trip cancel_url mirrors /checkout-trip/{id}/pa
   );
   assertEquals(
     hostedCheckoutUrlParts("trip", "abc").cancelUrl,
-    "https://business.usemingla.com/checkout-trip/abc/payment",
+    "https://host.usemingla.com/checkout-trip/abc/payment",
   );
 });
 

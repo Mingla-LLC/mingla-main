@@ -25,7 +25,7 @@ beforeEach(() => {
     data: {
       client_secret: "acs_test_secret",
       account_id: "acct_test",
-      target_url: "https://business.usemingla.com/connect-account-management",
+      target_url: "https://host.usemingla.com/connect-account-management",
     },
     error: null,
   });

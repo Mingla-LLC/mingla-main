@@ -1,4 +1,4 @@
-# Cost model at 100k — Mingla Business (#426)
+# Cost model at 100k — Mingla Host (#426)
 
 **Template.** Fill assumptions with staging load-test results before launch sign-off.
 

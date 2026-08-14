@@ -16,7 +16,7 @@ import {
 
 // ORCH-1010 — "What is Mingla?" Split column: the explainer on the left, an
 // adapted vertical auto-advancing Stepper on the right showing how consumer
-// Mingla and Mingla Business connect — vibe matching, one AI (Ari) across both
+// Mingla and Mingla Host connect — vibe matching, one AI (Ari) across both
 // sides, and the marketing tools.
 
 interface Step {
@@ -39,7 +39,7 @@ const STEPS: Step[] = [
     icon: Bot,
     title: 'One AI, both sides',
     description:
-      'Ari, your AI partner in Mingla Business, names your vibe, builds your page, and runs your marketing. The same intelligence powers the consumer side — placing you in front of the right people at the right moment. One brain, working both ends.',
+      'Ari, your AI partner in Mingla Host, names your vibe, builds your page, and runs your marketing. The same intelligence powers the consumer side — placing you in front of the right people at the right moment. One brain, working both ends.',
   },
   {
     step: 3,

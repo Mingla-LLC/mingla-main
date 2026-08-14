@@ -18,9 +18,9 @@
  *   - Route groups `(group)` are organizational only: their segment is stripped
  *     from the URL (e.g. app/(explorer)/page.tsx => `/`).
  *   - The (explorer) index `app/(explorer)/page.tsx` => `/` (home).
- *   - BUSINESS_PATH ('/business') is the cross-link target (renamed from
+ *   - BUSINESS_PATH ('/host') is the cross-link target (renamed from
  *     ORGANISER_PATH '/organisers' by ORCH-1224); it resolves via
- *     app/business/page.tsx and is validated like any other href.
+ *     app/host/page.tsx and is validated like any other href.
  *
  * Only internal hrefs (those starting with '/') are checked. External/protocol
  * hrefs (http, mailto, #, etc.) are out of scope. Dynamic segments ([slug]) are
@@ -136,7 +136,7 @@ if (SELF_TEST) {
     "/support",
     "/privacy-policy",
     "/terms-of-service",
-    "/business",
+    "/host",
   ]);
 
   // GOOD: every internal href resolves (mirrors the post-fix footer).
@@ -171,9 +171,9 @@ if (SELF_TEST) {
     const crossLink = { href: '/', label: 'Back' };
   `;
 
-  const goodFails = evaluate({ footerCode: GOOD, businessPath: "/business", routes: FAKE_ROUTES });
-  const badAFails = evaluate({ footerCode: BAD_A, businessPath: "/business", routes: FAKE_ROUTES });
-  const badBFails = evaluate({ footerCode: BAD_B, businessPath: "/business", routes: FAKE_ROUTES });
+  const goodFails = evaluate({ footerCode: GOOD, businessPath: "/host", routes: FAKE_ROUTES });
+  const badAFails = evaluate({ footerCode: BAD_A, businessPath: "/host", routes: FAKE_ROUTES });
+  const badBFails = evaluate({ footerCode: BAD_B, businessPath: "/host", routes: FAKE_ROUTES });
 
   // Also exercise the real route-set builder against a synthetic tree shape:
   // a route group (explorer) contributing '/' and a nested business route.
@@ -182,7 +182,7 @@ if (SELF_TEST) {
     const appAbs = join(root, APP_DIR);
     if (!existsSync(appAbs)) return true;
     const live = buildRouteSet(appAbs);
-    return live.has("/") && live.has("/business") && live.has("/support");
+    return live.has("/") && live.has("/host") && live.has("/support");
   })();
 
   const ok =
@@ -216,7 +216,7 @@ if (!existsSync(footerAbs)) {
   failures.push(`${APP_DIR}: expected marketing App Router dir not found.`);
 } else {
   const footerCode = readFileSync(footerAbs, "utf8");
-  let businessPath = "/business";
+  let businessPath = "/host";
   if (existsSync(subdomainAbs)) {
     const sub = readFileSync(subdomainAbs, "utf8");
     const mm = sub.match(/BUSINESS_PATH\s*=\s*(['"`])([^'"`]+)\1/);

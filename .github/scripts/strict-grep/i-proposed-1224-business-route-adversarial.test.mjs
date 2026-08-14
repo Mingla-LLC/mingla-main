@@ -30,7 +30,7 @@ const ROOT = join(import.meta.dirname, "..", "..", "..");
 const GATE = join(ROOT, ".github/scripts/strict-grep/i-proposed-1224-business-route.mjs");
 const TOGGLE = join(ROOT, "mingla-marketing/components/marketing/surface-toggle.tsx");
 const CONFIG = join(ROOT, "mingla-marketing/next.config.ts");
-const APP_PAGE = join(ROOT, "mingla-marketing/app/business/page.tsx");
+const APP_PAGE = join(ROOT, "mingla-marketing/app/host/page.tsx");
 
 const runGate = () => {
   try {
@@ -65,7 +65,7 @@ check(
   "T1 fails-on-revert: /organisers href in surface-toggle.tsx -> gate EXIT 1",
   withPerturbation(
     TOGGLE,
-    (src) => src.replace("href: '/business'", "href: '/organisers'"),
+    (src) => src.replace("href: '/host'", "href: '/organisers'"),
     () => runGate() === 1,
   ),
 );
@@ -84,7 +84,7 @@ check(
 // caught (gate scans only components+lib). Asserting the gappy status quo so a
 // future widening is a deliberate, visible change. P2 in the test report.
 check(
-  "T4 documented scope gap: /organisers href in app/business/page.tsx -> gate STILL EXIT 0 (P2)",
+  "T4 documented scope gap: /organisers href in app/host/page.tsx -> gate STILL EXIT 0 (P2)",
   withPerturbation(
     APP_PAGE,
     (src) => src + '\nexport const STRAY = <a href="/organisers/x">x</a>\n',

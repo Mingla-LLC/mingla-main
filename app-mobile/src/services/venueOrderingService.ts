@@ -211,12 +211,15 @@ export async function createVenueOrder(
     // P-23 layer 1 — the client MUST send a per-tap key. The server's derived
     // composite is the crash-safety floor beneath it, not the mechanism: two
     // identical rounds inside one sitting are exactly why.
-    body: venueOrderCreateBody({
-      request,
-      mode: "create",
-      surface: "native",
-      idempotencyKey,
-    }),
+    body: {
+      ...venueOrderCreateBody({
+        request,
+        mode: "create",
+        surface: "native",
+        idempotencyKey,
+      }),
+      returnContract: "host_v1",
+    },
   });
   if (error !== null) throw new VenueOrderError(await readFailure(error));
   if (data === null) throw new VenueOrderError(VENUE_ORDER_GENERIC_FAILURE);

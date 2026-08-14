@@ -151,12 +151,12 @@ check('C-B: glass-nav binds business_nav / explorer_nav to the right resolvers',
   assert(f.length === 0, f.join(' | '))
 })
 
-check('C-C: hero binds business_hero; /business/download binds business_download', () => {
+check('C-C: hero binds business_hero; /host/download binds business_download', () => {
   const f: string[] = []
   assertEveryCallBinds('hero', readSurface('components/sections/organiser-home/hero.tsx'),
     'resolveBusinessAppTarget', "siteAttribution('business_hero')",
     ["'business_nav'", "'business_download'", "'business_bio'", "'explorer_bio'"], f)
-  assertEveryCallBinds('/business/download', readSurface('app/business/download/page.tsx'),
+  assertEveryCallBinds('/host/download', readSurface('app/host/download/page.tsx'),
     'resolveBusinessAppTarget', "siteAttribution('business_download')",
     ["'business_nav'", "'business_hero'", "'business_bio'", "'explorer_bio'"], f)
   assert(f.length === 0, f.join(' | '))

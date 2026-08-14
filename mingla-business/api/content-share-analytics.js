@@ -1,4 +1,4 @@
-const ALLOWED_ORIGINS=new Set(["https://usemingla.com","https://www.usemingla.com","https://business.usemingla.com"]);
+const ALLOWED_ORIGINS=new Set(["https://usemingla.com","https://www.usemingla.com","https://host.usemingla.com"]);
 const EVENTS=new Set(["share_public_page_viewed","share_install_cta_opened","share_destination_action"]);
 const KINDS=new Set(["place","curated","event","rsvp_event","trip","experience","venue","brand"]);
 const ACTIONS=new Set(["buy_tickets","rsvp","book_trip","book_experience","view_event","view_rsvp_event","view_trip","view_experience","view_venue","view_brand","directions","website","call","view_offering"]);

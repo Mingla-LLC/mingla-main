@@ -147,7 +147,7 @@ describe("META-ORCH-1255(R) — step-2 preview renders the D-2 venue route (sour
   it("no longer renders the bare pre-1255 `/b/{venueSlug}` shape (the /b/ prefix is immediately followed by the brand segment)", () => {
     // The literal prefix must be followed by the brandSlug interpolation line,
     // never directly by the venue slug Text node.
-    const prefixIdx = src.indexOf("business.usemingla.com/b/");
+    const prefixIdx = src.indexOf("host.usemingla.com/b/");
     expect(prefixIdx).toBeGreaterThan(-1);
     const after = src.slice(prefixIdx, prefixIdx + 300);
     expect(after).toContain("${brandSlug}/v/");

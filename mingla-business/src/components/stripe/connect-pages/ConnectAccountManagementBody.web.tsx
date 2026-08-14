@@ -117,7 +117,7 @@ export default function ConnectAccountManagementBody(): React.ReactElement {
         <div style={connectEmbeddedPageStyles.errorCardStyle}>
           <h2 style={connectEmbeddedPageStyles.errorTitleStyle}>Invalid management link</h2>
           <p style={connectEmbeddedPageStyles.errorBodyStyle}>
-            This link is missing a required parameter. Return to Mingla Business
+            This link is missing a required parameter. Return to Mingla Host
             and tap &ldquo;Manage payouts &amp; tax&rdquo; again.
           </p>
         </div>

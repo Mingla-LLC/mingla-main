@@ -1,5 +1,5 @@
 /**
- * Single source of truth for the Mingla Business public web URL.
+ * Single source of truth for the Mingla Host public web URL.
  *
  * Per B2a Path C V3 forensics — config-drift fix R-1
  * (Mingla_Artifacts/reports/INVESTIGATION_B2A_PATH_C_V3_CONFIG_DRIFT.md).
@@ -8,7 +8,7 @@
  * mingla-business/app.config.ts `extra` block which Expo bakes into the
  * native bundle, AND set as a Vercel env var for the web export.
  *
- * Production canonical: `https://business.usemingla.com`.
+ * Production canonical: `https://host.usemingla.com`.
  *
  * NEVER hardcode `business.mingla.com` or `mingla.com` anywhere; both are
  * not Mingla-owned and trigger I-PROPOSED-Y CI gate failures.

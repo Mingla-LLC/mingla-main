@@ -11,9 +11,9 @@
 //
 // One intentionally RED pin (P1-1, QA_ISSUE-864_WP4): the builder displays
 // destination URLs on https://usemingla.com while the server-of-record
-// resolves https://business.usemingla.com (live-proven: usemingla.com/e/* =
-// HTTP 404, business.usemingla.com/e/* = 200, and the REAL Google ad created
-// in QA carried finalUrls=[business.usemingla.com/...]). The pin goes green
+// resolves https://host.usemingla.com (live-proven: usemingla.com/e/* =
+// HTTP 404, host.usemingla.com/e/* = 200, and the REAL Google ad created
+// in QA carried finalUrls=[host.usemingla.com/...]). The pin goes green
 // when the client host matches the server constant. Everything else passes.
 //
 // fails-on-revert (tester anchor, different module than the implementor's
@@ -469,7 +469,7 @@ describe("launch summary — blocked reasons are INLINE (tester revert anchor)",
       channelRows: rows,
       allocations: [{ platform: "meta", dailyCents: 1000 }, { platform: "google", dailyCents: 1000 }],
       goalIds: ["traffic"],
-      destination: { title: "T", dest_url: "https://business.usemingla.com/e/b/e" },
+      destination: { title: "T", dest_url: "https://host.usemingla.com/e/b/e" },
       creative: { kind: "image", name: "hero", width: 1080, height: 1080 },
       copyCheck: { policyFindings: 0, copyHardBlocks: 0 },
       totalDailyCents: 2000,
@@ -610,7 +610,7 @@ describe("SC-10 + destination-filter source traps", () => {
 // The builder's displayed destination host MUST match the server of record.
 // Live-proven 2026-07-16: https://usemingla.com/e/smokerhythm/fifa-grill-night
 // → HTTP 404, while the deployed create endpoint resolves and persists
-// https://business.usemingla.com/... (the REAL Google ad's finalUrls carried it).
+// https://host.usemingla.com/... (the REAL Google ad's finalUrls carried it).
 // SC-3 requires "the correct resolved URL" — a 404 host is not it.
 
 describe("P1-1 pin — destination display host parity with the server", () => {
@@ -626,7 +626,7 @@ describe("P1-1 pin — destination display host parity with the server", () => {
     assert.equal(
       clientConst[1],
       serverConst[1],
-      "the wizard shows operators a URL on a host the ad will never use — usemingla.com/e/* is a live 404 while the ad's real final URL is business.usemingla.com/e/* (P1-1)",
+      "the wizard shows operators a URL on a host the ad will never use — usemingla.com/e/* is a live 404 while the ad's real final URL is host.usemingla.com/e/* (P1-1)",
     );
   });
 });

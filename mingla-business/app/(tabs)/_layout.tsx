@@ -4,7 +4,7 @@
  *
  * Per DEC-073: was 3 fixed tabs (Home / Events / Account). Updated to
  * 4 tabs in ORCH-0815-B (Cycle B5 — Marketing Hub, DEC-149 dual-surface).
- * Updated to current 5 tabs in ORCH-0826 (Mingla Business 1.2 M0): the
+ * Updated to current 5 tabs in ORCH-0826 (Mingla Host 1.2 M0): the
  * "Events" tab was renamed to "Hub" with three sub-routes (events /
  * experiences / trips). The Hub tab id is `hub`; the `detectActiveTab`
  * logic resolves nested routes (`/hub/events`, `/hub/experiences`, etc.)
@@ -47,7 +47,7 @@ import { GlobalSearchSheetHost } from "../../src/components/ui/GlobalSearchSheet
 
 const TABS: BottomNavTab[] = [
   { id: "home", icon: "home", label: "Home" },
-  // ORCH-0826 (Mingla Business 1.2 M0): tab id `events` renamed to `hub`,
+  // ORCH-0826 (Mingla Host 1.2 M0): tab id `events` renamed to `hub`,
   // label "Events" → "Hub". Hub houses three sub-routes: Events
   // (relocated, today's content unchanged), Experiences (placeholder for
   // Ve5+), Trips (placeholder for Tr2+). The `calendar` icon is preserved

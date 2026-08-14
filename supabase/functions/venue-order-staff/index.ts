@@ -55,6 +55,7 @@ import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
 import { resolvePublishableKey } from "../_shared/stripeMode.ts";
+import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 import {
   classifyStripePaymentIntentCreateFailure,
   jsonResponse,
@@ -665,15 +666,15 @@ async function billToPhone(
     const reference = venueOrderPaystackReference(input.orderId);
     await supabase.from("venue_orders").update({ paystack_reference: reference })
       .eq("id", input.orderId);
-    const callbackBase = Deno.env.get("PAYSTACK_CALLBACK_BASE") ??
-      "https://business.usemingla.com/pay/callback";
     try {
       const init = await paystackInitializeTransaction({
         email: buyerEmail,
         amountSubunits: money.totalCents,
         currency: "NGN",
         reference,
-        callbackUrl: `${callbackBase}?vo=${encodeURIComponent(input.orderId)}&bst=${
+        callbackUrl: `${PRODUCTION_BUSINESS_WEB_ORIGIN}/o/venue/${
+          encodeURIComponent(input.orderId)
+        }?bst=${
           encodeURIComponent(buyerStatusToken)
         }`,
         channels: paystackChannelsForCountry("NG"),

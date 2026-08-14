@@ -48,7 +48,7 @@ const EVENT_TYPES: readonly EventType[] = [
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ALLOWED_ORIGINS = new Set([
-  "https://business.usemingla.com",
+  "https://host.usemingla.com",
   "https://usemingla.com",
   "https://www.usemingla.com",
 ]);
@@ -62,7 +62,7 @@ function originHeaders(req: Request): HeadersInit {
     "Access-Control-Allow-Origin":
       origin !== null && ALLOWED_ORIGINS.has(origin)
         ? origin
-        : "https://business.usemingla.com",
+        : "https://host.usemingla.com",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Vary": "Origin",

@@ -122,7 +122,7 @@ test('D4 legacy S6 metadata is truthful and raw provider hours become seven huma
   }, 'https://go.usemingla.com/w36m');
   for (const token of ['og:image:width" content="1080', 'og:image:height" content="1350', 'og:image:alt', 'twitter:image:alt', 'Monday', 'Sunday', '8 AM–9 PM', 'Closed', 'share-identity-pill']) assert.ok(html.includes(token), token);
   assert.ok(html.includes(preview.normalizeLegacyHours({ periods })[0].day));
-  assert.doesNotMatch(html, /<pre>|&quot;open&quot;|&quot;hour&quot;|mingla-business-logo|>Mingla Business<|>mingla</i);
+  assert.doesNotMatch(html, /<pre>|&quot;open&quot;|&quot;hour&quot;|mingla-business-logo|>Mingla Host<|>mingla</i);
   assert.match(html, /<span class="share-plate-kind">Place<\/span><span class="share-plate-facts">Coffee shop · Durham<\/span>/);
 
   const coverless = preview.renderSharedCardHtml({ share_id: 'b'.repeat(36), kind: 'place', title: 'Plain', cover_url: null, metadata: {}, stops: [] }, 'https://go.usemingla.com/w36m');

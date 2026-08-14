@@ -21,7 +21,7 @@
  * THUMB from a SEPARATE prop, `activeThumbColor` (default `#009688`, teal-green),
  * and the ON-state TRACK from `activeTrackColor` (default `#A3D3CF`) when
  * `trackColor` is a string. The first cut set only `thumbColor`/`trackColor`, so
- * on business WEB (business.usemingla.com) the HANDLE rendered teal-green when ON
+ * on business WEB (host.usemingla.com) the HANDLE rendered teal-green when ON
  * (the track was correctly orange) — the off-brand toggle Seth flagged. The
  * native jest render tests run on the `ios` platform, where one `thumbColor`
  * covers both states, so they passed while web stayed broken. We now ALSO set the

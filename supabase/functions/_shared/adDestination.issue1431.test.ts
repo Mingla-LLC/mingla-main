@@ -64,7 +64,7 @@ Deno.test("issue #1431 resolves one public Stay to the canonical venue route", a
     event_id: null,
     venue_id: "venue-1",
     canonical_url:
-      "https://business.usemingla.com/b/truthful-brand/v/ocean-stay",
+      "https://host.usemingla.com/b/truthful-brand/v/ocean-stay",
   });
 });
 
@@ -113,13 +113,13 @@ Deno.test("issue #1431 keeps Event and Brand URL shapes unchanged", async () => 
       brand_slug: "brand",
       entity_slug: "event",
     })).canonical_url,
-    "https://business.usemingla.com/e/brand/event",
+    "https://host.usemingla.com/e/brand/event",
   );
   assertEquals(
     (await resolveAdDestination(database, {
       page_type: "brand",
       brand_slug: "brand",
     })).canonical_url,
-    "https://business.usemingla.com/b/brand",
+    "https://host.usemingla.com/b/brand",
   );
 });

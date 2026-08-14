@@ -17,8 +17,8 @@
  *   1. GET /          renders EXACTLY ONE  <a href="https://career.usemingla.com">Career</a>
  *   2. GET /          renders NO relative   href="/careers"  anchor
  *   3. GET /          renders NO <footer>   (explorer is footer-less, ORCH-1224)
- *   4. GET /business  renders EXACTLY ONE  <a href="https://career.usemingla.com">Careers</a> inside <footer>
- *   5. GET /business  renders NO relative   href="/careers"  anchor
+ *   4. GET /host  renders EXACTLY ONE  <a href="https://career.usemingla.com">Careers</a> inside <footer>
+ *   5. GET /host  renders NO relative   href="/careers"  anchor
  *   6. apex GET /careers (no career. host)  is NOT a 200 careers page (404 / not-found)
  *   7. subdomain GET /careers (Host: career.usemingla.com) IS a 200 careers page
  *      (proves the apex 404 in #6 is the guard, not a build break)
@@ -74,14 +74,14 @@ const assertHomeHtml = (html, failures) => {
 const assertBusinessHtml = (html, failures) => {
   const n = countCareersAnchors(html, "Careers");
   if (n !== 1)
-    failures.push(`/business : expected EXACTLY ONE "Careers" anchor at ${CAREERS_URL}, found ${n}.`);
+    failures.push(`/host : expected EXACTLY ONE "Careers" anchor at ${CAREERS_URL}, found ${n}.`);
   if (hasRelativeCareersAnchor(html))
-    failures.push(`/business : found a relative href="/careers" anchor (would 404 on apex).`);
+    failures.push(`/host : found a relative href="/careers" anchor (would 404 on apex).`);
   const foot = footerSlice(html);
   if (!foot) {
-    failures.push(`/business : expected a <footer> — none found.`);
+    failures.push(`/host : expected a <footer> — none found.`);
   } else if (countCareersAnchors(foot, "Careers") !== 1) {
-    failures.push(`/business : the "Careers" anchor must live INSIDE <footer>.`);
+    failures.push(`/host : the "Careers" anchor must live INSIDE <footer>.`);
   }
 };
 
@@ -89,7 +89,7 @@ const assertBusinessHtml = (html, failures) => {
 
 const SELF_TEST = process.argv.includes("--self-test");
 if (SELF_TEST) {
-  const GOOD_HOME = `<nav><a href="/business">Business</a><a href="${CAREERS_URL}">Career</a><button>Support</button></nav>`;
+  const GOOD_HOME = `<nav><a href="/host">Business</a><a href="${CAREERS_URL}">Career</a><button>Support</button></nav>`;
   const GOOD_BIZ = `<main></main><footer><h3>Company</h3><a href="${CAREERS_URL}">Careers</a><a href="/privacy-policy">Privacy</a></footer>`;
 
   const BAD_HOME_RELATIVE = `<nav><a href="/careers">Career</a></nav>`;
@@ -155,8 +155,8 @@ const main = async () => {
   if (home.status !== 200) failures.push(`/ returned ${home.status} (expected 200).`);
   assertHomeHtml(home.body, failures);
 
-  const biz = await fetchText("/business");
-  if (biz.status !== 200) failures.push(`/business returned ${biz.status} (expected 200).`);
+  const biz = await fetchText("/host");
+  if (biz.status !== 200) failures.push(`/host returned ${biz.status} (expected 200).`);
   assertBusinessHtml(biz.body, failures);
 
   // load-bearing: apex /careers must NOT serve a real 200 careers page.

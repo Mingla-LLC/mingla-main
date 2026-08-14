@@ -52,7 +52,7 @@ After this step, the handler still verifies against the same secret in the prima
 ### Step 2 — Roll the secret in Stripe
 
 1. Open https://dashboard.stripe.com/webhooks (live) or `/test/webhooks` (test mode).
-2. Click into the Connect endpoint (description: `Mingla Business V3 — Connect events (brand admin connected accounts)`; ID like `we_*`).
+2. Click into the Connect endpoint (description: `Mingla Host V3 — Connect events (brand admin connected accounts)`; ID like `we_*`).
 3. In the "Signing secret" panel, click **"Roll secret"** → confirm.
 4. Stripe issues a new `whsec_*` value. Copy it.
 

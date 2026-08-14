@@ -85,7 +85,7 @@ const BANNED = [
  * so the exemption is DELETED and the gate now polices that file like any other.
  * #1050 — `biz.` is the Business app's OWN vouching host; `go.` is CONSUMER-only
  * and re-introducing it (here or in mingla-business/app.json) re-breaks
- * business.usemingla.com App Link verification on Android <=11.
+ * host.usemingla.com App Link verification on Android <=11.
  *
  * ─── ORCH-1378 — accept-brand-invitation/success.tsx REMOVED from this map ──
  * Its entry read: "carries the BUSINESS store listing URLs inline — predates

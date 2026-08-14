@@ -289,7 +289,7 @@ export async function processSource(
         generation: Number(claim.generation),
         key: tokenKey,
       });
-      attentionUrl = `https://business.usemingla.com/refund/${
+      attentionUrl = `https://host.usemingla.com/refund/${
         String(claim.refundId)
       }/attention#attentionToken=${encodeURIComponent(token)}`;
     }

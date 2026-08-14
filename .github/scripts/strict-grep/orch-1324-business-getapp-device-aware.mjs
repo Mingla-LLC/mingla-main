@@ -4,7 +4,7 @@
  * AMENDED BY ORCH-1381 [business-getapp-android-choice].
  * Invariant: I-PROPOSED-1324-BUSINESS-GETAPP-DEVICE-AWARE.
  *
- * The business (organiser / usemingla.com/business) marketing CTAs — the
+ * The business (organiser / usemingla.com/host) marketing CTAs — the
  * glass-nav.tsx `surface === 'organiser'` branch AND the organiser hero
  * (components/sections/organiser-home/hero.tsx) — must present an explicit inline
  * CHOICE rather than guessing one destination: "Download the app" (iOS → the live

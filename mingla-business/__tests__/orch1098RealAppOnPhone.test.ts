@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-// ORCH-1098 Stage 3 — the REAL Mingla Business Expo app now boots on phone
+// ORCH-1098 Stage 3 — the REAL Mingla Host Expo app now boots on phone
 // browsers. The device-proven root cause was BottomNav's react-native-reanimated
 // machinery driving an unbounded re-render/fiber loop on the phone renderer
 // (heap → ~1 GB → "Aw, Snap") the instant it mounted in the tabs layout — so it

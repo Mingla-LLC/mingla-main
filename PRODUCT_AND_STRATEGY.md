@@ -50,7 +50,7 @@ planning features. The initial consumer ICP is the **Social Plan Captain**: an u
 new-city weekend happens — date-night planners, friend-group plan captains, and
 new-city social rebuilders.
 
-**Mingla Business** — the business app (iOS + Android) plus the buyer-facing web.
+**Mingla Host** — the business app (iOS + Android) plus the buyer-facing web.
 For event organisers, venues, restaurants, bars, activity spaces, and experience
 brands. Create a brand and as many venue listings as it really has; author events,
 RSVP parties, trips, and experiences; sell tickets with honest all-in pricing; take
@@ -63,7 +63,7 @@ reaches supply without needing the app first.
 ### The two-sided thesis
 
 Consumer Mingla builds a **demand graph** — real signals about vibes, places, events,
-friends, and plans. Mingla Business turns that demand into bookable, sellable
+friends, and plans. Mingla Host turns that demand into bookable, sellable
 experiences. Every other tool sells software to the same supply side; only Mingla owns
 the demand side. **Demand-graph integration is the defensible wedge**: your event or
 venue does not just get a page, it meets people already looking for that kind of
@@ -83,7 +83,7 @@ night.
 ## 2. Current Live State (2026-07-19)
 
 **Fully launched.** All four store listings — Mingla Explorer (iOS + Android) and
-Mingla Business (iOS + Android) — are live on the App Store and Google Play at
+Mingla Host (iOS + Android) — are live on the App Store and Google Play at
 version 1.1.2. The two apps always ship the same version number, together. The
 buyer-facing web (public event/brand/venue pages, checkout, RSVP, invite accept) is
 live, along with the marketing site and a careers site.
@@ -260,7 +260,7 @@ Initiative-level view. Statuses of individual items live on the Avengers board.
 ### Later
 
 - **Marketing Hub for businesses.** Blasts, CRM, consent management, tracking, and
-  managed ads inside Mingla Business — strategy locked, gated on stable commerce
+  managed ads inside Mingla Host — strategy locked, gated on stable commerce
   volume and a consent/contact foundation.
 - **Mingla Brain.** The conversational agent across consumer, business, and admin,
   built on the proven mechanical rails (events, tickets, payments, ads), with

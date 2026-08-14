@@ -15,7 +15,7 @@
 
 Mingla is a date-planning and social-experiences app. Not a dating app. The business side (the app this handbook is for) is the seller surface — brands, events, ticketing, payments, and (in 1.2) physical venues, trip planners, and AI-generated experiences.
 
-If you're picking up a milestone in Mingla Business 1.2, you'll be working from a milestone brief in `Mingla_Artifacts/milestones/`. Read your brief first. Read this handbook second. Then code.
+If you're picking up a milestone in Mingla Host 1.2, you'll be working from a milestone brief in `Mingla_Artifacts/milestones/`. Read your brief first. Read this handbook second. Then code.
 
 This handbook tells you:
 1. How the codebase is structured
@@ -172,7 +172,7 @@ Detail + examples in `Mingla_Artifacts/INVARIANT_REGISTRY.md`.
 
 ---
 
-## 5. Hard Rules Specific to Mingla Business 1.2
+## 5. Hard Rules Specific to Mingla Host 1.2
 
 These are inherited from the 1.2 architecture. Read the project spec for context.
 

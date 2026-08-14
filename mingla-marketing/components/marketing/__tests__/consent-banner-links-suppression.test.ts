@@ -54,7 +54,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
   [
     'shouldRenderConsentBanner is true on /, /business, /download, /privacy-policy',
     () => {
-      for (const route of ['/', '/business', '/download', '/privacy-policy']) {
+      for (const route of ['/', '/host', '/download', '/privacy-policy']) {
         assert(
           shouldRenderConsentBanner(route) === true,
           `${route} must SHOW the banner (returned false)`,

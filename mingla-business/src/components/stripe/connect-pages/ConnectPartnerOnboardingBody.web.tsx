@@ -130,7 +130,7 @@ export default function ConnectPartnerOnboardingBody(): React.ReactElement {
           <h2 style={errorTitleStyle}>Invalid onboarding link</h2>
           <p style={errorBodyStyle}>
             This partner-onboarding link is missing a required parameter.
-            Return to Mingla Business and tap &ldquo;Set up partner
+            Return to Mingla Host and tap &ldquo;Set up partner
             payouts&rdquo; again to start fresh.
           </p>
         </div>

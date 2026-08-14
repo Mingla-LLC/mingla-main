@@ -9,7 +9,7 @@
  *   the prod web bug went undetected: react-native-web's `Switch` paints the
  *   ON-state THUMB from `activeThumbColor` (default `#009688`, teal-green) and
  *   the ON-state TRACK from `activeTrackColor` (default `#A3D3CF`) — props the R1
- *   BrandSwitch never set. On business.usemingla.com the handle rendered
+ *   BrandSwitch never set. On host.usemingla.com the handle rendered
  *   teal-green when ON (the off-brand toggle Seth flagged) while every native
  *   render test stayed green (native uses one `thumbColor` for both states).
  *

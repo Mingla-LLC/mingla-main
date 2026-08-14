@@ -3,7 +3,7 @@
 //
 // Proves the /links per-tab CTA is a device-aware client <button> that opens the
 // store/web app DIRECTLY on the tap (so /links stays mounted) — NOT the old Next
-// <Link> soft-navigation into the /download|/business/download external-redirect
+// <Link> soft-navigation into the /download|/host/download external-redirect
 // route (which stranded the tab on a blank Explorer / footer-only Business shell —
 // INVESTIGATION_ORCH-1328). Asserts PRESENCE in links-experience.tsx:
 //   - detectClientPlatform imported; all four store consts referenced.

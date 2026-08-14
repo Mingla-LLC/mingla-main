@@ -22,7 +22,7 @@ import {
 
 // Nigeria default channels — NO mobile_money (that is Ghana-only).
 const NG_CHANNELS = ["card", "bank", "ussd", "bank_transfer"];
-const DEFAULT_CALLBACK = "https://business.usemingla.com/pay/callback";
+const DEFAULT_CALLBACK = "https://host.usemingla.com";
 
 function genReference(): string {
   // Unique per attempt; allowed chars are alnum + - . =

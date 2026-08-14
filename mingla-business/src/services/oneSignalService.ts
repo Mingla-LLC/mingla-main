@@ -1,5 +1,5 @@
 /**
- * OneSignal integration for Mingla Business.
+ * OneSignal integration for Mingla Host.
  *
  * ORCH-0808-FOLLOWUP installed identity-only (init + login + logout).
  * META-ORCH-1074 Sub-B completes the receive path:

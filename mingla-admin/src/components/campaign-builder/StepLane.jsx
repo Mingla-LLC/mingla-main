@@ -17,7 +17,7 @@ const LANES = [
   {
     id: "business",
     label: "Businesses",
-    description: "Ads drive businesses to the Mingla Business signup/claim flow.",
+    description: "Ads drive businesses to the Mingla Host signup/claim flow.",
     disabled: true,
     disabledReason: "Business web traffic campaigns are not enabled in this builder yet.",
   },

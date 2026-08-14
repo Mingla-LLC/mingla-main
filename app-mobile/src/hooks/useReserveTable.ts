@@ -186,7 +186,7 @@ export const useReserveTable = (
       try {
         await WebBrowser.openAuthSessionAsync(
           created.authorizationUrl,
-          "https://business.usemingla.com/pay/callback",
+          created.returnUrl,
         );
       } catch {
         // Still confirm — the buyer may have paid before the browser errored.

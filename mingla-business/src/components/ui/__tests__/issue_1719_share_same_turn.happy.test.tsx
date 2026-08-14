@@ -89,7 +89,7 @@ test('two Share presses in one turn start one platform-share call', async () => 
     tree = TestRenderer.create(React.createElement(ShareModal, {
       visible: true,
       onClose: () => undefined,
-      url: 'https://business.usemingla.com/b/yonder',
+      url: 'https://host.usemingla.com/b/yonder',
       title: 'Yonder Coffee',
       contentKind: 'place',
     }));

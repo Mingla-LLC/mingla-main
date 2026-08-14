@@ -1,7 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import { resolveBusinessWebOrigin } from "../businessWebOrigin.ts";
 
-const configuredOrigin = "https://business.usemingla.com";
+const configuredOrigin = "https://host.usemingla.com";
 const rejected = {
   ok: false,
   detail: "business_web_origin_override_unrecognized",
@@ -28,7 +28,7 @@ Deno.test("ORCH-0954 adversarial - rejects unsafe business_web_origin_override v
   }
 });
 
-Deno.test("ORCH-0954 adversarial - accepts only production and Mingla business preview origins", () => {
+Deno.test("ORCH-0954 adversarial - accepts only production and Mingla Host preview origins", () => {
   assertEquals(
     resolveBusinessWebOrigin({
       configuredOrigin,

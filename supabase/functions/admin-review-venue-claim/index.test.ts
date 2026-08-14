@@ -68,10 +68,10 @@ Deno.test("pushCopyForReview only for notify actions", () => {
 Deno.test("buildClaimApprovedEmail includes public CTA", () => {
   const body = buildClaimApprovedEmail({
     brandName: "Joe's Pizza",
-    publicVenueUrl: "https://business.usemingla.com/b/joes-pizza",
+    publicVenueUrl: "https://host.usemingla.com/b/joes-pizza",
   });
   assertEquals(body.title, "Your venue is live on Mingla");
-  assertEquals(body.cta?.url, "https://business.usemingla.com/b/joes-pizza");
+  assertEquals(body.cta?.url, "https://host.usemingla.com/b/joes-pizza");
 });
 
 Deno.test("buildClaimRejectedEmail includes rejection reason", () => {

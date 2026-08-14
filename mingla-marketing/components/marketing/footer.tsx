@@ -54,7 +54,7 @@ export function Footer({ surface }: FooterProps) {
   const crossLink =
     surface === 'organiser'
       ? { href: '/', label: 'Looking for the consumer app? → Back to Mingla' }
-      : { href: BUSINESS_PATH, label: 'Are you a venue or organiser? → Mingla Business' }
+      : { href: BUSINESS_PATH, label: 'Are you a venue or organiser? → Mingla Host' }
 
   return (
     <footer className="border-t border-divider bg-vellum px-6 py-16 md:px-10 md:py-24">

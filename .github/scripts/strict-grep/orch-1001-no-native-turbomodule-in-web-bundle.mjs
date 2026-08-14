@@ -7,7 +7,7 @@
  * An eager top-level `import` of such a package in a web-reachable file gets
  * evaluated the instant the web bundle loads, `getEnforcing` throws (no native
  * runtime on web), and the entire app crashes to a blank #root (white page).
- * That is exactly what shipped with ORCH-0989 and blanked business.usemingla.com.
+ * That is exactly what shipped with ORCH-0989 and blanked host.usemingla.com.
  *
  * RULE: a native-only package on the denylist may be EAGERLY imported only from
  *   (a) a `*.native.ts|tsx|js|jsx` file (Metro never bundles it on web), or

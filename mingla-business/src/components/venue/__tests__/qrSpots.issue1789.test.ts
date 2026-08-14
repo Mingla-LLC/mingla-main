@@ -161,7 +161,7 @@ describe("#1789 Spots inventory", () => {
         code: "kq7m3pd2xr",
       }),
     ).toBe(
-      "https://business.usemingla.com/b/brasserie/v/kitchen?tab=menu&spot=kq7m3pd2xr&src=qr",
+      "https://host.usemingla.com/b/brasserie/v/kitchen?tab=menu&spot=kq7m3pd2xr&src=qr",
     );
   });
 

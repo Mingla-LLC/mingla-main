@@ -124,7 +124,7 @@ export default function ExperienceDeepLinkScreen(): React.ReactElement | null {
     displayPriceCents: detail.ticket?.priceCents ?? null,
     displayCurrency: detail.currency,
     currency: detail.currency,
-    publicBuyerUrl: `https://business.usemingla.com/exp/${detail.brandSlug}/${detail.experienceSlug}`,
+    publicBuyerUrl: `https://host.usemingla.com/exp/${detail.brandSlug}/${detail.experienceSlug}`,
     experienceStops: detail.stops.map((s, idx) => ({
       stopNumber: s.stopOrder + 1,
       placeName: s.placeName,

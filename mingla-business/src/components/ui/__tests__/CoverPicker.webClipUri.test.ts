@@ -24,7 +24,7 @@ const repoFile = (relativePath: string): string =>
 // through UNMANGLED; on native still normalize the real file path. The call
 // site passes `Platform.OS === "web"`.
 describe("ORCH-1303 web raw-clip cover video uri is not file://-mangled", () => {
-  const WEB_BLOB_URI = "blob:https://business.usemingla.com/2f0c-4b21-uuid";
+  const WEB_BLOB_URI = "blob:https://host.usemingla.com/2f0c-4b21-uuid";
   const NATIVE_BARE_PATH = "/var/mobile/Containers/Data/tmp/clip.mp4";
   const NATIVE_FILE_URI = "file:///var/mobile/Containers/Data/tmp/clip.mp4";
 

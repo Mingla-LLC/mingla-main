@@ -1,5 +1,5 @@
 /**
- * ORCH-0824 — Discover grid card for first-party Mingla business events.
+ * ORCH-0824 — Discover grid card for first-party Mingla events.
  *
  * Sibling to the Ticketmaster grid card in DiscoverScreen. Same cell
  * dimensions (GRID_CARD_WIDTH × GRID_CARD_HEIGHT, passed in via props

@@ -1,5 +1,5 @@
 /**
- * GlobalSearchSheet — the single global search surface for Mingla Business.
+ * GlobalSearchSheet — the single global search surface for Mingla Host.
  *
  * META-ORCH-1073 Sub-A. SPEC §3.7 + DESIGN (full visual contract). Mounted
  * ONCE at app/(tabs)/_layout.tsx, opened via useGlobalSearchSheet().isOpen

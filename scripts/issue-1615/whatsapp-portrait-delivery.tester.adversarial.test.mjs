@@ -293,7 +293,7 @@ test('T7 all eight covered kinds advertise the same JPEG portrait; coverless and
     assert.match(html, /og:image:type" content="image\/jpeg"/);
     assert.match(html, /og:image:width" content="1080"/);
     assert.match(html, /og:image:height" content="1350"/);
-    assert.doesNotMatch(html, /class="brand(?:\s|")|>Mingla Business</);
+    assert.doesNotMatch(html, /class="brand(?:\s|")|>Mingla Host</);
   }
 
   const coverless = preview.renderContentShareHtml(share('place', null));
@@ -307,10 +307,10 @@ test('T7 all eight covered kinds advertise the same JPEG portrait; coverless and
   }
 });
 
-test('T8 consumer share pages lose only the redundant outer logo; portraits and Business pages keep their intended brands', () => {
+test('T8 public share and event pages keep the plain Mingla identity, never the Host descriptor', () => {
   const content = preview.renderContentShareHtml(share('brand'));
   const legacy = preview.renderSharedCardHtml({ share_id: 'a'.repeat(36), kind: 'place', title: 'Legacy', cover_url: POSTER, metadata: {}, stops: [] }, 'https://go.usemingla.com/w36m');
-  for (const html of [content, legacy]) assert.doesNotMatch(html, /class="brand(?:\s|")|>Mingla Business</);
+  for (const html of [content, legacy]) assert.doesNotMatch(html, /class="brand(?:\s|")|>Mingla Host</);
 
   const portrait = renderer.contentSharePortraitElement(share('place'));
   const walk = (node, out = []) => {
@@ -327,6 +327,6 @@ test('T8 consumer share pages lose only the redundant outer logo; portraits and 
     id: 'event-id', title: 'Business event', brand_name: 'Acme', brand_slug: 'acme', slug: 'event',
     starts_at: '2027-01-01T12:00:00Z', cover_media_url: null, location_text: 'Durham',
   });
-  assert.match(business, /aria-label="Mingla Business"/);
-  assert.match(business, />Mingla Business<\/span>/);
+  assert.match(business, /aria-label="Mingla"/);
+  assert.doesNotMatch(business, /Mingla Host/);
 });

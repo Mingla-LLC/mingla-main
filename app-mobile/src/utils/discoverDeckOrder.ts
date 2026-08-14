@@ -42,7 +42,7 @@ export type DiscoverDeckEntry<
 /**
  * Build the ordered Discover deck.
  *
- * ORCH-0824 ranking is unchanged: Mingla business events rank above the
+ * ORCH-0824 ranking is unchanged: first-party Mingla events rank above the
  * Ticketmaster block. The keys are the SAME values the two former `.map()`
  * calls used (`be.eventId` / `card.id`), so React reconciliation is identical
  * and no card remounts as a result of this refactor.

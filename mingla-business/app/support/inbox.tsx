@@ -309,7 +309,7 @@ export default function SupportInboxRoute(): React.ReactElement {
             </View>
             <Text style={styles.degradeNote}>
               On the web, the queue still updates live — but push alerts only
-              reach the Mingla Business app on your phone.
+              reach the Mingla Host app on your phone.
             </Text>
           </GlassCard>
 

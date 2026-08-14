@@ -10,7 +10,7 @@ import { resolveBankConnectRail } from "../bankConnectRail";
 
 const BRAND_ID = "2b7c8f6a-1111-4a22-8333-123456789abc";
 const USER_ID = "79f45786-2222-4b33-8444-123456789abc";
-const ORIGIN = "https://business.usemingla.com";
+const ORIGIN = "https://host.usemingla.com";
 const ONBOARDING_URL =
   `${ORIGIN}/connect-onboarding?session=acct_session_secret&brand_id=${BRAND_ID}`;
 
@@ -84,7 +84,7 @@ describe("#948 W2 implementor — bank-first web happy path", () => {
       `${ORIGIN}/brand/${BRAND_ID}/payments`,
     );
     expect(() =>
-      buildBankConnectWebReturnUrl("http://business.usemingla.com", BRAND_ID)
+      buildBankConnectWebReturnUrl("http://host.usemingla.com", BRAND_ID)
     ).toThrow("secure HTTPS");
   });
 

@@ -35,7 +35,7 @@ const activeSource = stripComments(source);
 function buildWebUrls(
   eventType: unknown,
   eventId: string,
-  baseUrl = "https://business.usemingla.com",
+  baseUrl = "https://host.usemingla.com",
 ): { successUrl: string; cancelUrl: string; surfacePath: string } {
   const isTrip = (eventType as { event_type?: unknown })?.event_type === "trip"
     ? true
@@ -110,7 +110,7 @@ Deno.test("ORCH-0911 TA-02 — malformed/uppercase/whitespace event_type strings
     );
     assertEquals(
       built.successUrl,
-      "https://business.usemingla.com/checkout/abc/confirm?cs={CHECKOUT_SESSION_ID}",
+      "https://host.usemingla.com/checkout/abc/confirm?cs={CHECKOUT_SESSION_ID}",
     );
   }
   // Positive control: only exact-literal "trip" triggers the branch.

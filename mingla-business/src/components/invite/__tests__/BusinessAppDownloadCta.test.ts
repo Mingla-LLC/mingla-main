@@ -98,12 +98,12 @@ describe("ORCH-1378 BusinessAppDownloadCta — T-23: web-only + open discipline"
   });
 
   it("a11y — the button carries an explicit accessibility label", () => {
-    expect(source()).toMatch(/accessibilityLabel="Download the Mingla Business app"/);
+    expect(source()).toMatch(/accessibilityLabel="Download the Mingla Host app"/);
   });
 
   it("copy matches the approved strings verbatim", () => {
     const s = source();
-    expect(s).toContain("Get the Mingla Business app");
+    expect(s).toContain("Get the Mingla Host app");
     expect(s).toContain(
       "Manage your brand, take payments, and run the door from your phone.",
     );

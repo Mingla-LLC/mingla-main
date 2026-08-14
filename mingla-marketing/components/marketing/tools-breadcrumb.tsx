@@ -5,9 +5,9 @@
 // and the token-gated report pages) automatically. Derives the trail from the
 // pathname, always rooted at the business page:
 //
-//   Mingla Business › Free tools › <this tool> [› Your report]
+//   Mingla Host › Free tools › <this tool> [› Your report]
 //
-// Each ancestor is a link (all the way back to /business); the current page is
+// Each ancestor is a link (all the way back to /host); the current page is
 // plain text with aria-current. Client component — it reads usePathname().
 
 import Link from 'next/link'
@@ -36,7 +36,7 @@ export function ToolsBreadcrumb() {
   const toolsIndex = segments.indexOf('tools')
   const relevant = toolsIndex === -1 ? segments : segments.slice(toolsIndex)
 
-  const crumbs: Crumb[] = [{ label: 'Mingla Business', href: '/business' }]
+  const crumbs: Crumb[] = [{ label: 'Mingla Host', href: '/host' }]
   let acc = ''
   for (const seg of relevant) {
     acc += `/${seg}`

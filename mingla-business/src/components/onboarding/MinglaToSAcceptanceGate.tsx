@@ -1,5 +1,5 @@
 /**
- * MinglaToSAcceptanceGate — pre-Stripe gate for Mingla Business platform ToS.
+ * MinglaToSAcceptanceGate — pre-Stripe gate for Mingla Host platform ToS.
  *
  * Per B2a Path C V3 SPEC §6 + DEC-V3-17 + I-PROPOSED-U.
  *
@@ -54,7 +54,7 @@ interface MinglaToSAcceptanceGateProps {
 // bumps CURRENT_MINGLA_TOS_VERSION to a real version (e.g. "v1.0.0") before
 // the B2 cycle ships to public TestFlight (Cycle B2 close).
 const PLACEHOLDER_TOS_BODY = [
-  "Mingla Business is a marketplace platform that helps you accept payments for events. By using Mingla Business, you agree to the terms below.",
+  "Mingla Host is a marketplace platform that helps you accept payments for events. By using Mingla Host, you agree to the terms below.",
   "",
   "1. Mingla acts as the merchant of record for ticket sales processed through this platform. You are the seller of record for the events themselves.",
   "",
@@ -66,7 +66,7 @@ const PLACEHOLDER_TOS_BODY = [
   "",
   "5. You acknowledge that Stripe is the 1099-K filer for US sellers; Mingla does not file tax forms on your behalf.",
   "",
-  "6. You may disconnect your Stripe Connect account at any time via the Mingla Business app. Pending payouts and refunds in flight will continue to settle.",
+  "6. You may disconnect your Stripe Connect account at any time via the Mingla Host app. Pending payouts and refunds in flight will continue to settle.",
   "",
   "7. Mingla may update these terms; material changes require re-acceptance before further onboarding actions.",
   "",
@@ -149,7 +149,7 @@ export function MinglaToSAcceptanceGate({
   return (
     <Sheet visible onClose={() => undefined}>
       <View style={styles.body}>
-        <Text style={styles.title}>Accept Mingla Business terms</Text>
+        <Text style={styles.title}>Accept Mingla Host terms</Text>
         <Text style={styles.subtitle}>
           A quick read before we connect your Stripe account.
         </Text>
@@ -168,14 +168,14 @@ export function MinglaToSAcceptanceGate({
           }}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: agreed }}
-          accessibilityLabel="I agree to the Mingla Business Platform Terms"
+          accessibilityLabel="I agree to the Mingla Host Platform Terms"
           style={styles.agreeRow}
         >
           <View style={[styles.checkbox, agreed ? styles.checkboxOn : null]}>
             {agreed ? <Text style={styles.checkboxMark}>✓</Text> : null}
           </View>
           <Text style={styles.agreeText}>
-            I agree to the Mingla Business Platform Terms.
+            I agree to the Mingla Host Platform Terms.
           </Text>
         </Pressable>
 

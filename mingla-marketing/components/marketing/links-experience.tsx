@@ -301,7 +301,7 @@ export function LinksExperience({
   const onSocialClick = useCallback(
     (network: string) => {
       // `surface` distinguishes an @usemingla tap (explorer) from an
-      // @minglabusiness tap (business) on the same network icon.
+      // @minglahost tap (Host) on the same network icon.
       captureMarketing('links_page_social_clicked', { network, surface: activeId })
     },
     [activeId],
@@ -516,7 +516,7 @@ export function LinksExperience({
 
       {/* Socials — pinned to the bottom of the viewport (§3).
           The row is SURFACE-AWARE in TWO ways now (ORCH-1399):
-           - the five business-branded networks swap to @minglabusiness, while the
+           - the five Host-branded networks swap to @minglahost, while the
              NEUTRAL YouTube & LinkedIn stay universal (resolved by `socialHref`);
            - `socialsForTab` FILTERS the row: Snapchat is explorer_only (there is no
              business Snapchat account), so Explorer shows 8 and Business shows 7.
@@ -525,7 +525,7 @@ export function LinksExperience({
           devices — never forcing a scroll (§1). */}
       <motion.nav
         aria-label={
-          activeId === 'business' ? 'Mingla Business on social media' : 'Mingla on social media'
+          activeId === 'business' ? 'Mingla Host on social media' : 'Mingla on social media'
         }
         initial={reduced ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -538,7 +538,7 @@ export function LinksExperience({
             href={socialHref(s, activeId)}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label={`${activeId === 'business' ? 'Mingla Business' : 'Mingla'} on ${s.label}`}
+            aria-label={`${activeId === 'business' ? 'Mingla Host' : 'Mingla'} on ${s.label}`}
             onClick={() => onSocialClick(s.label)}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/70 transition-all duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.08] hover:text-white focus-ring"
           >

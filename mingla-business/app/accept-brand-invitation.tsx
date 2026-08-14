@@ -2,7 +2,7 @@
  * /accept-brand-invitation — landing route for brand-team invite links
  * (ORCH-1050).
  *
- * URL: https://business.usemingla.com/accept-brand-invitation?token=<raw>
+ * URL: https://host.usemingla.com/accept-brand-invitation?token=<raw>
  *
  * ─── ORCH-1373 [accept-invite-infinite-loader] — WHAT WAS BROKEN ───────────
  * Every logged-out invitee — i.e. essentially EVERY invitee, since an invitee is

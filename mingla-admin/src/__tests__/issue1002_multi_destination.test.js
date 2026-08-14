@@ -97,7 +97,7 @@ function expectedPayloadDest(dest) {
 
 /** Server-of-record URL formula (mirror of adDestinationsService / businessWebOrigin). */
 function reconstructUrl(dest) {
-  const origin = "https://business.usemingla.com";
+  const origin = "https://host.usemingla.com";
   return dest.page_type === "event"
     ? `${origin}/e/${dest.brand_slug}/${dest.slug}`
     : `${origin}/b/${dest.brand_slug}`;
@@ -235,8 +235,8 @@ describe("ISSUE-1002 · launchSummary renders the multi-destination line", () =>
     const summary = buildLaunchSummary({
       ...base,
       destinations: [
-        { title: "Friday Live", dest_url: "https://business.usemingla.com/e/smokerhythm/friday-live" },
-        { title: "Sunday Jazz", dest_url: "https://business.usemingla.com/e/smokerhythm/sunday-jazz" },
+        { title: "Friday Live", dest_url: "https://host.usemingla.com/e/smokerhythm/friday-live" },
+        { title: "Sunday Jazz", dest_url: "https://host.usemingla.com/e/smokerhythm/sunday-jazz" },
       ],
     });
     assert.match(summary.destinationLine, /2 destinations/);
@@ -245,10 +245,10 @@ describe("ISSUE-1002 · launchSummary renders the multi-destination line", () =>
   });
 
   it("a single destination (via destinations[] OR legacy destination) renders '{title} — {url}' — backward compat", () => {
-    const one = { title: "Friday Live", dest_url: "https://business.usemingla.com/e/smokerhythm/friday-live" };
+    const one = { title: "Friday Live", dest_url: "https://host.usemingla.com/e/smokerhythm/friday-live" };
     const viaArray = buildLaunchSummary({ ...base, destinations: [one] });
     const viaLegacy = buildLaunchSummary({ ...base, destination: one });
-    assert.equal(viaArray.destinationLine, "Friday Live — https://business.usemingla.com/e/smokerhythm/friday-live");
+    assert.equal(viaArray.destinationLine, "Friday Live — https://host.usemingla.com/e/smokerhythm/friday-live");
     assert.equal(viaLegacy.destinationLine, viaArray.destinationLine);
   });
 

@@ -5,7 +5,7 @@ name: Issue 1044 Native Auth Failure Capture Tests
 # gated by a single named predicate `shouldReportAuthFailure(code)`.
 #
 # WHY THIS GATE EXISTS: #1038 broke Google sign-in for EVERY Play-Store organizer
-# on Mingla Business for months. A 90-day Sentry search for DEVELOPER_ERROR
+# on Mingla Host for months. A 90-day Sentry search for DEVELOPER_ERROR
 # returned zero issues while the Android native pipeline was demonstrably live —
 # the code caught the error, alerted the user, and discarded it. A human found the
 # bug; monitoring never did. These suites are the fails-on-revert lock on the fix,

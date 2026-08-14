@@ -25,7 +25,7 @@ export interface ContributionWebReturnUrls {
 /**
  * Build the success/cancel return URLs for the web hosted-Checkout flow.
  *
- * @param baseUrl   validated https origin (e.g. https://business.usemingla.com)
+ * @param baseUrl   validated https origin (e.g. https://host.usemingla.com)
  * @param brandSlug the brand's URL slug — REQUIRED (the segment ORCH-1291 dropped)
  * @param eventSlug the event's URL slug (the caller may pass the event id as a
  *                  last-resort fallback; still non-empty)
@@ -46,4 +46,18 @@ export function buildContributionWebReturnUrls(
     successUrl: `${path}?contribution=paid`,
     cancelUrl: `${path}?contribution=cancel`,
   };
+}
+
+export function buildContributionPaystackReturnUrl(
+  baseUrl: string,
+  brandSlug: string | null | undefined,
+  eventSlug: string | null | undefined,
+  contributionId: string,
+): string | null {
+  const urls = buildContributionWebReturnUrls(baseUrl, brandSlug, eventSlug);
+  if (urls === null || contributionId.trim().length === 0) return null;
+  const url = new URL(urls.successUrl);
+  url.searchParams.set("contribution", "return");
+  url.searchParams.set("contrib", contributionId);
+  return url.toString();
 }

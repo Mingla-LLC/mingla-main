@@ -137,8 +137,8 @@ describe("ISSUE-1184 build and review count only prepared destinations × platfo
         { platform: "snapchat", dailyCents: 1000 },
       ],
       destinations: [
-        { title: "One", dest_url: "https://business.usemingla.com/e/a/one" },
-        { title: "Two", dest_url: "https://business.usemingla.com/e/a/two" },
+        { title: "One", dest_url: "https://host.usemingla.com/e/a/one" },
+        { title: "Two", dest_url: "https://host.usemingla.com/e/a/two" },
       ],
       creative: { kind: "video", name: "Hero" },
       preparationByPlatform: rows,

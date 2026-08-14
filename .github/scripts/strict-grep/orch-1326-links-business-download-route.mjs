@@ -4,24 +4,24 @@
  * [business-getapp-android-choice].
  * Invariant: I-PROPOSED-1326-LINKS-BUSINESS-DOWNLOAD-DEVICE-AWARE.
  *
- * The /links Business tab CTA targets `/business/download`. ORCH-1381 changed what
+ * The /links Business tab CTA targets `/host/download`. ORCH-1381 changed what
  * that route IS: it no longer REDIRECTS — it renders an explicit inline choice
  * ("Download the app": iOS → business App Store, Android → the LIVE business Play
  * listing; plus "Use on web"). The old redirect requirement and the blanket
  * "never a Play listing" ban are SUPERSEDED (the business Play listing went live
  * 2026-07-15 — COMMS-0101).
  *
- * Over mingla-marketing/app/business/download/page.tsx (comment-stripped) REQUIRE:
+ * Over mingla-marketing/app/host/download/page.tsx (comment-stripped) REQUIRE:
  *   (a) reads the request UA via headers() and resolves it with
  *       resolvePlatformFromUa (SSR-safe, UA-only).
  *   (b) delegates the destination decision to resolveBusinessAppTarget( — the
- *       consts now live in lib/business-app-target.ts; requiring them HERE would
+ *       consts now live in lib/host-app-target.ts; requiring them HERE would
  *       re-create the very triplication ORCH-1381 removed.
  *   (c) renders the choice as plain <a> anchors and branches on `canInstall`
  *       (desktop has no install action).
  *
  * Route BAN (the deliberate business differences + SSOT):
- *   - apps.apple.com / business.usemingla.com literals (must use the consts).
+ *   - apps.apple.com / host.usemingla.com literals (must use the consts).
  *   - navigator / window (Server Component must be SSR-safe).
  *   - DownloadQr / AppStoreBadges / <QRCode (NO QR — the difference vs /download:
  *     business owners on desktop go straight to the web app).
@@ -40,9 +40,9 @@
  * exact bug ORCH-1381 killed (it sends every Android owner to the web app).
  *
  * Over mingla-marketing/lib/links-config.ts (comment-stripped) REQUIRE:
- *   references LINKS_BUSINESS_DOWNLOAD_PATH AND the string '/business/download'
+ *   references LINKS_BUSINESS_DOWNLOAD_PATH AND the string '/host/download'
  *   AND `destination: 'business_download'` (the business tab is NOT wired back to
- *   the bare /business CTA — the app is live).
+ *   the bare /host CTA — the app is live).
  *
  * --self-test injects fixtures (compliant → pass; each violation → fire).
  */
@@ -53,7 +53,7 @@ const root = process.cwd().endsWith("mingla-marketing")
   ? path.resolve(process.cwd(), "..")
   : process.cwd();
 
-const ROUTE = "mingla-marketing/app/business/download/page.tsx";
+const ROUTE = "mingla-marketing/app/host/download/page.tsx";
 const CONFIG = "mingla-marketing/lib/links-config.ts";
 
 const stripComments = (src) =>
@@ -63,7 +63,7 @@ const stripComments = (src) =>
 
 const ROUTE_BANNED = [
   { re: /apps\.apple\.com/, why: "inlines a literal App Store URL — use BUSINESS_APP_STORE_URL from lib/store-links" },
-  { re: /business\.usemingla\.com/, why: "inlines the literal business web URL — use BUSINESS_WEB_URL from lib/store-links" },
+  { re: /host\.usemingla\.com/, why: "inlines the literal business web URL — use BUSINESS_WEB_URL from lib/store-links" },
   { re: /\bnavigator\b/, why: "reads `navigator` in a Server Component (SSR-unsafe)" },
   { re: /\bwindow\b/, why: "reads `window` in a Server Component (SSR-unsafe)" },
   { re: /DownloadQr/, why: "imports DownloadQr — the business route has NO QR (owners on desktop go straight to the web app)" },
@@ -96,7 +96,7 @@ function checkRoute(rawSrc, failures) {
   if (!/resolveBusinessAppTarget\(/.test(src)) {
     failures.push(
       `${ROUTE}: must resolve its destinations via resolveBusinessAppTarget( from ` +
-        `lib/business-app-target — the platform→destination decision lives in exactly ` +
+        `lib/host-app-target — the platform→destination decision lives in exactly ` +
         `ONE module (ORCH-1381).`,
     );
   }
@@ -122,13 +122,13 @@ function checkConfig(rawSrc, failures) {
   if (!/LINKS_BUSINESS_DOWNLOAD_PATH/.test(src)) {
     failures.push(`${CONFIG}: must reference LINKS_BUSINESS_DOWNLOAD_PATH (the business device-smart path).`);
   }
-  if (!/'\/business\/download'/.test(src)) {
-    failures.push(`${CONFIG}: must define the '/business/download' path string.`);
+  if (!/'\/host\/download'/.test(src)) {
+    failures.push(`${CONFIG}: must define the '/host/download' path string.`);
   }
   if (!/destination: 'business_download'/.test(src)) {
     failures.push(
       `${CONFIG}: the business tab CTA must carry \`destination: 'business_download'\` — it ` +
-        `must NOT be wired back to the bare /business CTA (the business app is live).`,
+        `must NOT be wired back to the bare /host CTA (the business app is live).`,
     );
   }
 }
@@ -143,7 +143,7 @@ if (process.argv.includes("--self-test")) {
   const goodRoute = `
 import { headers } from 'next/headers'
 import { resolvePlatformFromUa } from '@/lib/device-platform'
-import { BUSINESS_APP_CHOICE_COPY, resolveBusinessAppTarget } from '@/lib/business-app-target'
+import { BUSINESS_APP_CHOICE_COPY, resolveBusinessAppTarget } from '@/lib/host-app-target'
 export const dynamic = 'force-dynamic'
 export default async function BusinessDownloadPage() {
   const ua = (await headers()).get('user-agent') ?? ''
@@ -163,7 +163,7 @@ export default async function BusinessDownloadPage() {
   if (runRoute(goodRoute).length !== 0) selfFailures.push("compliant route wrongly flagged: " + JSON.stringify(runRoute(goodRoute)));
 
   const goodConfig = `
-export const LINKS_BUSINESS_DOWNLOAD_PATH = '/business/download'
+export const LINKS_BUSINESS_DOWNLOAD_PATH = '/host/download'
 export const LINKS_TABS = [
   { id: 'business', cta: { label: 'Get the app', href: LINKS_BUSINESS_DOWNLOAD_PATH, destination: 'business_download', intent: 'glass' } },
 ]
@@ -217,11 +217,11 @@ export const LINKS_TABS = [
   );
   if (runRoute(play).length === 0) selfFailures.push("bare consumer PLAY_STORE_URL not flagged");
 
-  // Config missing '/business/download' → fire.
-  const noPath = goodConfig.replace(/'\/business\/download'/g, "'/business'");
-  if (runConfig(noPath).length === 0) selfFailures.push("config missing '/business/download' not flagged");
+  // Config missing '/host/download' → fire.
+  const noPath = goodConfig.replace(/'\/host\/download'/g, "'/host'");
+  if (runConfig(noPath).length === 0) selfFailures.push("config missing '/host/download' not flagged");
 
-  // Config reverted to bare /business CTA (no business_download destination) → fire.
+  // Config reverted to bare /host CTA (no business_download destination) → fire.
   const bareCta = goodConfig.replace("destination: 'business_download'", "destination: 'business'");
   if (runConfig(bareCta).length === 0) selfFailures.push("config reverted business_download destination not flagged");
 
@@ -258,22 +258,22 @@ checkConfig(fs.readFileSync(configAbs, "utf8"), failures);
 if (failures.length > 0) {
   console.error(
     "ORCH-1326 (I-PROPOSED-1326-LINKS-BUSINESS-DOWNLOAD-DEVICE-AWARE, ORCH-1381-amended)\n" +
-      "FAIL — the /business/download route must READ the UA via headers()+\n" +
+      "FAIL — the /host/download route must READ the UA via headers()+\n" +
       "resolvePlatformFromUa, resolve its destinations through resolveBusinessAppTarget(\n" +
       "(the ONE decision module), and RENDER the inline choice as plain <a> anchors\n" +
       "branching on canInstall — SSR-safe, no redirect, no QR/badges/form, no consumer\n" +
       "PLAY_STORE_URL, and never the ORCH-1324 collapsed ternary; the /links business CTA\n" +
-      "must target LINKS_BUSINESS_DOWNLOAD_PATH ('/business/download', destination\n" +
+      "must target LINKS_BUSINESS_DOWNLOAD_PATH ('/host/download', destination\n" +
       "'business_download').\n\nFailures:\n  " +
       failures.join("\n  "),
   );
   process.exit(1);
 }
 console.log(
-  "ORCH-1326 PASS (ORCH-1381-amended) — /business/download resolves the UA via\n" +
+  "ORCH-1326 PASS (ORCH-1381-amended) — /host/download resolves the UA via\n" +
     "resolvePlatformFromUa, delegates to resolveBusinessAppTarget, and renders the inline\n" +
     "choice as plain <a> anchors branching on canInstall (iOS → business App Store,\n" +
     "Android → business Play, desktop → web only); SSR-safe, no redirect/QR/badges/form,\n" +
     "no consumer PLAY_STORE_URL, no collapsed ternary; the /links business CTA targets\n" +
-    "'/business/download' (destination 'business_download').",
+    "'/host/download' (destination 'business_download').",
 );

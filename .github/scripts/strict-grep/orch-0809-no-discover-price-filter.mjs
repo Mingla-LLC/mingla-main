@@ -6,7 +6,7 @@
  * Ticketmaster's Discovery API has no price query parameter — the prior
  * client-side post-filter silently hid results with zero UX signal,
  * violating Constitution #3 (no silent failures). Reintroduction is
- * gated on a separate ORCH when Mingla Business native events (with
+ * gated on a separate ORCH when Mingla Host native events (with
  * structured ticket_types.unit_price_cents pricing) are integrated
  * into Discover.
  *

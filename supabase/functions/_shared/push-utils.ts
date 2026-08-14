@@ -5,7 +5,7 @@
 // OneSignal manages FCM/APNs tokens internally — no token storage needed.
 //
 // META-ORCH-1074 Sub-A [dual-app routing]: Mingla runs TWO separate OneSignal
-// applications — one for the consumer app, one for the Mingla Business app.
+// applications — one for the consumer app, one for the Mingla Host app.
 // Each application has its own (app_id, REST API Key) pair; there is NO
 // cross-app send — to reach business devices you MUST send with the business
 // app's app_id + business key.

@@ -24,7 +24,7 @@ export const ONELINK_BRAND_DOMAIN = 'go.usemingla.com';
 // Consumer entity share pages live on this origin (parity with
 // mingla-business publicUrls.ts BUSINESS_PUBLIC_ORIGIN) — used only for the
 // static fallback URL when the native OneLink call is unavailable.
-const BUSINESS_PUBLIC_ORIGIN = 'https://business.usemingla.com';
+const BUSINESS_PUBLIC_ORIGIN = 'https://host.usemingla.com';
 const EXPLORER_PUBLIC_ORIGIN = 'https://usemingla.com';
 // The share sheet must never hang on a slow native round-trip.
 const GENERATE_TIMEOUT_MS = 4000;

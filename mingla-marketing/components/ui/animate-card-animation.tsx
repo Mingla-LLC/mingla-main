@@ -28,7 +28,7 @@ const DEFAULT_CASES: CaseStudyCard[] = [
     result: 'From dead Tuesdays to 70-cover wait-list nights.',
     image:
       'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=1200&q=80',
-    href: '/business/case-studies/the-90-atlanta',
+    href: '/host/case-studies/the-90-atlanta',
   },
   {
     id: 'lagos-open-mic',
@@ -36,7 +36,7 @@ const DEFAULT_CASES: CaseStudyCard[] = [
     result: 'From IG-only to 1,200 RSVPs in six weeks.',
     image:
       'https://images.unsplash.com/photo-1525268323446-0505b6fe7778?w=1200&q=80',
-    href: '/business/case-studies/lagos-open-mic',
+    href: '/host/case-studies/lagos-open-mic',
   },
   {
     id: 'brand-x-activation',
@@ -44,7 +44,7 @@ const DEFAULT_CASES: CaseStudyCard[] = [
     result: 'Mingla pre-sold the room before doors opened.',
     image:
       'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1200&q=80',
-    href: '/business/case-studies/brand-x',
+    href: '/host/case-studies/brand-x',
   },
 ]
 
@@ -121,7 +121,7 @@ export default function AnimatedCardStack({
       ref={containerRef}
       tabIndex={0}
       role="region"
-      aria-label="Mingla Business case studies"
+      aria-label="Mingla Host case studies"
       aria-roledescription="Case study carousel — left and right arrow keys to navigate"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}

@@ -18,9 +18,9 @@
  *   `business.mingla.com` (NXDOMAIN) + `mingla.com` (non-Mingla third-party
  *   site) across the codebase. The drift caused Phase 16 in-app onboarding to
  *   fail completely because `brand-stripe-onboard` returned a non-resolvable
- *   host as the `onboarding_url`. The canonical Mingla Business public web URL
+ *   host as the `onboarding_url`. The canonical Mingla Host public web URL
  *   is sourced from `mingla-business/src/constants/platformUrl.ts` which reads
- *   `EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL` env var (production: `business.usemingla.com`).
+ *   `EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL` env var (production: `host.usemingla.com`).
  *
  *   This gate prevents regression: future implementors cannot accidentally
  *   re-introduce hardcoded `business.mingla.com` or `https://mingla.com` without

@@ -8,7 +8,7 @@ Deno.test("Provider body and attention credential never cross the source safe ad
   Deno.env.set("RESEND_API_KEY", "re_test_fixture");
   Deno.env.set("DENO_TESTING", "1");
   const credential =
-    "https://business.usemingla.com/refund/id/attention#attentionToken=do-not-leak";
+    "https://host.usemingla.com/refund/id/attention#attentionToken=do-not-leak";
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (() =>
     Promise.resolve(

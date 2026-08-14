@@ -58,7 +58,7 @@ function input() {
     delivery_id: "12210000-0000-4000-8000-000000000028",
     delivery_claim_id: "12210000-0000-4000-8000-000000000029",
     attention_url:
-      "https://business.usemingla.com/refund/id/attention#attentionToken=secret",
+      "https://host.usemingla.com/refund/id/attention#attentionToken=secret",
   };
 }
 

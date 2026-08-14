@@ -66,12 +66,12 @@ describe("issue #1957 event HTTPS ownership", () => {
   });
 
   it("gives the native Explorer Android manifest /e ownership on the canonical buyer host", () => {
-    expect(ownsAndroidPath("business.usemingla.com", "/e")).toBe(true);
+    expect(ownsAndroidPath("host.usemingla.com", "/e")).toBe(true);
   });
 
   it("preserves every pre-existing Business-host Explorer route", () => {
     for (const prefix of ["/b", "/t", "/exp"]) {
-      expect(ownsAndroidPath("business.usemingla.com", prefix)).toBe(true);
+      expect(ownsAndroidPath("host.usemingla.com", prefix)).toBe(true);
     }
   });
 
@@ -91,7 +91,7 @@ describe("issue #1957 event HTTPS ownership", () => {
     expect(consumerApp.expo.ios.associatedDomains).toEqual(
       expect.arrayContaining([
         "applinks:usemingla.com",
-        "applinks:business.usemingla.com",
+        "applinks:host.usemingla.com",
         "applinks:go.usemingla.com",
       ]),
     );

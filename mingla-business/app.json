@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Mingla Business",
+    "name": "Mingla Host",
     "slug": "mingla-business",
     "version": "1.1.5",
     "orientation": "portrait",
@@ -12,12 +12,12 @@
       "bundleIdentifier": "com.sethogieva.minglabusiness",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "Mingla Business uses your camera to scan attendee tickets at the door.",
-        "NSPhotoLibraryUsageDescription": "Mingla Business uses your photo library to upload brand and event imagery.",
-        "NSPhotoLibraryAddUsageDescription": "Mingla Business saves event tickets to your photo library when you tap Save.",
-        "NSFaceIDUsageDescription": "Mingla Business uses Face ID to confirm Apple Pay transactions at the door.",
-        "NSUserTrackingUsageDescription": "Mingla Business uses your advertising identifier to measure the performance of our ads and help us reach more organizers like you.",
-        "NSLocationWhenInUseUsageDescription": "Mingla Business uses your location to help measure the performance of our marketing and improve our services.",
+        "NSCameraUsageDescription": "Mingla Host uses your camera to scan attendee tickets at the door.",
+        "NSPhotoLibraryUsageDescription": "Mingla Host uses your photo library to upload brand and event imagery.",
+        "NSPhotoLibraryAddUsageDescription": "Mingla Host saves event tickets to your photo library when you tap Save.",
+        "NSFaceIDUsageDescription": "Mingla Host uses Face ID to confirm Apple Pay transactions at the door.",
+        "NSUserTrackingUsageDescription": "Mingla Host uses your advertising identifier to measure the performance of our ads and help us reach more organizers like you.",
+        "NSLocationWhenInUseUsageDescription": "Mingla Host uses your location to help measure the performance of our marketing and improve our services.",
         "SKAdNetworkItems": [
           { "SKAdNetworkIdentifier": "v9wttpbfk9.skadnetwork" }
         ]
@@ -32,7 +32,7 @@
         ]
       },
       "associatedDomains": [
-        "applinks:business.usemingla.com",
+        "applinks:host.usemingla.com",
         "applinks:biz.usemingla.com"
       ],
       "runtimeVersion": {
@@ -67,7 +67,83 @@
           "data": [
             {
               "scheme": "https",
-              "host": "business.usemingla.com"
+              "host": "host.usemingla.com",
+              "path": "/accept-brand-invitation"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPrefix": "/accept-brand-invitation/"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "path": "/accept-scanner-invitation"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPrefix": "/accept-scanner-invitation/"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "path": "/connect-onboarding"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPrefix": "/connect-onboarding/"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "path": "/connect-account-management"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPrefix": "/connect-account-management/"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "path": "/connect-partner-onboarding"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPrefix": "/connect-partner-onboarding/"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "path": "/connect-partner-account-management"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPrefix": "/connect-partner-account-management/"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "path": "/connect-tax-registrations"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPrefix": "/connect-tax-registrations/"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "path": "/stripe-onboarding-return"
+            },
+            {
+              "scheme": "https",
+              "host": "host.usemingla.com",
+              "pathPrefix": "/stripe-onboarding-return/"
             }
           ],
           "category": [

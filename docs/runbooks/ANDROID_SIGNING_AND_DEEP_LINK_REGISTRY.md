@@ -9,7 +9,7 @@
 
 ## Why this runbook exists
 
-In #1038, Mingla Business's Android OAuth client in Google Cloud held the **upload-key** SHA-1 instead of the **Play app-signing** SHA-1. Every organiser who installed Mingla Business from the Play Store got `DEVELOPER_ERROR` on Google sign-in, for an unknown number of months. Every sideloaded EAS build worked perfectly, because sideloads are signed with the upload key that *was* registered — so every internal test passed and only real users failed.
+In #1038, Mingla Host's Android OAuth client in Google Cloud held the **upload-key** SHA-1 instead of the **Play app-signing** SHA-1. Every organiser who installed Mingla Host from the Play Store got `DEVELOPER_ERROR` on Google sign-in, for an unknown number of months. Every sideloaded EAS build worked perfectly, because sideloads are signed with the upload key that *was* registered — so every internal test passed and only real users failed.
 
 Nothing in this repository could see the discrepancy. There was no file that said which certificate was which, no file that said where each one had to be registered, and the one test that asserted fingerprints compared a hardcoded array against the very JSON file that array had been copied from — and no workflow ever ran it (#1042 F-6).
 
@@ -19,7 +19,7 @@ This file is the artefact whose absence made that invisible. It exists so the ne
 
 ## Pre-flight
 
-- [ ] Play Console admin access for **both** apps (Mingla Explorer and Mingla Business).
+- [ ] Play Console admin access for **both** apps (Mingla Explorer and Mingla Host).
 - [ ] Google Cloud access to project **`169132274606` / `mingla-dev`** (NOT `mingla-analytics`).
 - [ ] `npx eas-cli` authenticated against the Mingla Expo account.
 - [ ] AppsFlyer dashboard access (branded domains `go.usemingla.com` and `biz.usemingla.com` are served from there, not from this repo).
@@ -49,7 +49,7 @@ A binary is recognised by **exactly one** of these three at a time, decided by h
 
 **`90:28:F8:B1:…` IS NOT STALE. DO NOT DELETE IT.** #1042 F-2 proved this from commit `b9be365a4` (2026-04-12, *"fix: use App Signing SHA-1 for Android OAuth (not upload key)"*): that commit swapped `google-services.json`'s `certificate_hash` from `d01942e6250fd130d767e3cc6a4d3b9e7273431f` to `44105699ec81a9470abd4558cd1fa95ed78b82d0` — which are byte-for-byte Explorer's **current** upload-key and app-signing SHA-1s. Both Play certificates have therefore been unchanged since at least 2026-04-12, so **no key rotation and no upload-key reset ever happened** and `90:28:F8:B1:…` cannot be a former upload cert. It is the EAS debug keystore, introduced at ORCH-0964 from an operator readback described in that close note as *"dev + production keystores"*. Deleting it breaks App Links on every `development`-profile dev-client build.
 
-### 1.2 Mingla Business — `com.sethogieva.minglabusiness`
+### 1.2 Mingla Host — `com.sethogieva.minglabusiness`
 
 | Identity | SHA-1 | SHA-256 |
 |---|---|---|
@@ -89,8 +89,8 @@ Every host either app declares `autoVerify: true` against. The parity gate reads
 | Host | Package that declares it | Statement served by | Publishes a statement for that package? |
 |---|---|---|---|
 | `usemingla.com` | `com.mingla.app.v2` | This repo — `mingla-marketing/public/.well-known/assetlinks.json` (Vercel) | Yes |
-| `business.usemingla.com` | `com.mingla.app.v2` | This repo — `mingla-business/public/.well-known/assetlinks.json` (Vercel) | Yes |
-| `business.usemingla.com` | `com.sethogieva.minglabusiness` | This repo — `mingla-business/public/.well-known/assetlinks.json` (Vercel) | Yes |
+| `host.usemingla.com` | `com.mingla.app.v2` | This repo — `mingla-business/public/.well-known/assetlinks.json` (Vercel) | Yes |
+| `host.usemingla.com` | `com.sethogieva.minglabusiness` | This repo — `mingla-business/public/.well-known/assetlinks.json` (Vercel) | Yes |
 | `go.usemingla.com` | `com.mingla.app.v2` | **AppsFlyer branded domain** — invisible to this repo | Yes |
 | `biz.usemingla.com` | `com.sethogieva.minglabusiness` | **AppsFlyer branded domain** — invisible to this repo | Yes |
 
@@ -118,7 +118,7 @@ Every host either app declares `autoVerify: true` against. The parity gate reads
 |---|---|---|
 | S-1 | `https://usemingla.com/.well-known/assetlinks.json` | Yes — A-1 |
 | S-2 | `https://www.usemingla.com/.well-known/assetlinks.json` | Yes — A-1 |
-| S-3 | `https://business.usemingla.com/.well-known/assetlinks.json` | Yes — A-2 + A-3 |
+| S-3 | `https://host.usemingla.com/.well-known/assetlinks.json` | Yes — A-2 + A-3 |
 | S-4 | `https://go.usemingla.com/.well-known/assetlinks.json` | **No — AppsFlyer dashboard** |
 | S-5 | `https://biz.usemingla.com/.well-known/assetlinks.json` | **No — AppsFlyer dashboard** |
 
@@ -190,7 +190,7 @@ A drifted registry is worse than no registry: it launders a wrong value into "do
 
 **OP-3 — read the AppsFlyer branded-domain Android config** (AppsFlyer → OneLink → Branded domains). Informational only now (see F-4 below): confirm `biz.usemingla.com` carries `com.sethogieva.minglabusiness` + its two SHA-256s (it does — live-readback-confirmed at #1050) and that `go.usemingla.com` carries only `com.mingla.app.v2`. No longer blocks anything.
 
-**F-4 — RESOLVED by #1050 (2026-07-21).** The shipped Business build declared `go.usemingla.com` (the CONSUMER OneLink domain, which never vouches for `com.sethogieva.minglabusiness`) as an autoVerify host. On Android 12+ each host verifies independently so only `go.` links were affected; on **Android 11 and below** the legacy verifier is all-or-nothing across an app's autoVerify hosts, so it un-verified `business.usemingla.com` for every Play-installed organiser on those devices — **tester-proven on an Android 11 (API 30) AVD** (`Verification 1 complete. Success:false. Failed hosts:go.usemingla.com` → `Status: ask`). Fix (#1050): the Business app now declares its OWN already-vouching domain `biz.usemingla.com` instead of `go.` — the swap covered the Android intentFilter, the iOS `associatedDomains`, and the AppsFlyer SDK's `setOneLinkCustomDomains` registration in lockstep. This was fix-direction (2) below (the ORCH-1346 branded-domain swap), not (1). **Ships at the next Business native build** (`autoVerify`/`associatedDomains`/SDK-domain bake into the binary; no OTA) — installed organisers stay affected until they update, even though the repo-read probe re-arms at merge.
+**F-4 — RESOLVED by #1050 (2026-07-21).** The shipped Business build declared `go.usemingla.com` (the CONSUMER OneLink domain, which never vouches for `com.sethogieva.minglabusiness`) as an autoVerify host. On Android 12+ each host verifies independently so only `go.` links were affected; on **Android 11 and below** the legacy verifier is all-or-nothing across an app's autoVerify hosts, so it un-verified `host.usemingla.com` for every Play-installed organiser on those devices — **tester-proven on an Android 11 (API 30) AVD** (`Verification 1 complete. Success:false. Failed hosts:go.usemingla.com` → `Status: ask`). Fix (#1050): the Business app now declares its OWN already-vouching domain `biz.usemingla.com` instead of `go.` — the swap covered the Android intentFilter, the iOS `associatedDomains`, and the AppsFlyer SDK's `setOneLinkCustomDomains` registration in lockstep. This was fix-direction (2) below (the ORCH-1346 branded-domain swap), not (1). **Ships at the next Business native build** (`autoVerify`/`associatedDomains`/SDK-domain bake into the binary; no OTA) — installed organisers stay affected until they update, even though the repo-read probe re-arms at merge.
 
 Historical fix options (F-4's original framing, retained for the record — option 2 was taken):
 

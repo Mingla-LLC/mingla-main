@@ -26,7 +26,7 @@ function build(partnerSetup: boolean) {
     inviterName: "David Okon",
     role: "event_manager",
     acceptUrl:
-      "https://business.usemingla.com/accept-brand-invitation?token=abc.def",
+      "https://host.usemingla.com/accept-brand-invitation?token=abc.def",
     from: "Mingla <noreply@usemingla.com>",
     partnerSetup,
     personalNote: partnerSetup ? "Take it live!" : null,
@@ -40,7 +40,7 @@ Deno.test("#948 W3 — partner-setup variant has one bank-first CTA (html + text
   assertStringIncludes(p.html, PRIMARY_FILL);
   assert(!p.html.includes("business/download"));
   assert(!p.text.includes("business/download"));
-  assert(!p.html.includes("Get the Mingla Business app"));
+  assert(!p.html.includes("Get the Mingla Host app"));
   // No white-text button remains on the failing #FF6B2C fill.
   assert(
     !p.html.includes("background:#FF6B2C"),
@@ -63,7 +63,7 @@ Deno.test("#948 W3 — standard team-invite keeps Accept invitation and no secon
   assertStringIncludes(p.html, PRIMARY_FILL);
   assert(!p.html.includes("business/download"));
   assert(!p.text.includes("business/download"));
-  assert(!p.html.includes("Get the Mingla Business app"));
+  assert(!p.html.includes("Get the Mingla Host app"));
   assert(
     !p.html.includes("background:#FF6B2C"),
     "no CTA button fill may remain on #FF6B2C (fails WCAG AA)",
@@ -82,7 +82,7 @@ Deno.test("#948 W3 — both variants preserve the accept URL/token as the only d
     const p = build(partnerSetup);
     assertStringIncludes(
       p.html,
-      "https://business.usemingla.com/accept-brand-invitation?token=abc.def",
+      "https://host.usemingla.com/accept-brand-invitation?token=abc.def",
     );
     assertStringIncludes(p.text, "token=abc.def");
   }

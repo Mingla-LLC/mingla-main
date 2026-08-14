@@ -75,7 +75,7 @@ const { renderExperienceConfirmationEmail } = await import(
 // ---------------------------------------------------------------------------
 
 const ACCEPT_URL =
-  "https://business.usemingla.com/accept-brand-invitation?token=SECRET_TOKEN_9f3a";
+  "https://host.usemingla.com/accept-brand-invitation?token=SECRET_TOKEN_9f3a";
 
 // Attribute-breakout + script-injection payloads. Each is distinct so we can
 // tell which field leaked if an assertion fires.
@@ -193,7 +193,7 @@ for (const partnerSetup of [true, false]) {
       `${variant} text restored the retired download secondary`,
     );
     assert(
-      !p.html.includes("Get the Mingla Business app"),
+      !p.html.includes("Get the Mingla Host app"),
       `${variant} html restored the retired download label`,
     );
     assertStringIncludes(
@@ -241,7 +241,7 @@ for (const partnerSetup of [true, false]) {
       assert(
         !p.html.includes("business/download") &&
           !p.text.includes("business/download") &&
-          !p.html.includes("Get the Mingla Business app"),
+          !p.html.includes("Get the Mingla Host app"),
         `${variant}/${role} must remain single-CTA`,
       );
       assertStringIncludes(
@@ -375,7 +375,7 @@ Deno.test("ORCH-1329 tester — cross-surface: generic email complete (1 doctype
       variant: "generic_notification" as const,
       title: "Heads up",
       paragraphs: ["Para1", "Para2"],
-      cta: { label: "Open Mingla Business", url: "https://usemingla.com/business" },
+      cta: { label: "Open Mingla Host", url: "https://usemingla.com/business" },
     },
   });
   assertEquals(countDoctypes(r.html), 1, "generic email must have exactly one doctype");
@@ -384,7 +384,7 @@ Deno.test("ORCH-1329 tester — cross-surface: generic email complete (1 doctype
   assert(!r.html.includes("background:#F97316"), "generic CTA still on #F97316");
   assertStringIncludes(r.html, "Heads up");
   assertStringIncludes(r.html, "Para1");
-  assertStringIncludes(r.html, "Open Mingla Business");
+  assertStringIncludes(r.html, "Open Mingla Host");
 });
 
 Deno.test("ORCH-1329 tester — cross-surface: trip email complete (1 doctype), CTA fill #C4471A, content intact", () => {

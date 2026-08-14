@@ -25,7 +25,7 @@
  * Inactive icons: `#b9b9c2`. Inactive labels: `#a1a1aa`.
  *
  * /ui-ux-pro-max iteration (2026-05-19): the temporary "M" gradient badge
- * was replaced with the official Mingla Business logo asset, and the active
+ * was replaced with the official Mingla Host logo asset, and the active
  * tab was tightened after operator feedback that the glow looked too
  * heavy/AI-generated.
  *

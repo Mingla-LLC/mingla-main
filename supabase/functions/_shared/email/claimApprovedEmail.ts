@@ -11,7 +11,7 @@ export function buildClaimApprovedEmail(input: {
     title: "Your venue is live on Mingla",
     paragraphs: [
       `Good news — ${input.brandName} has been approved.`,
-      "Your venue profile is now visible to guests. Sign in to Mingla Business to manage events and your profile.",
+      "Your venue profile is now visible to guests. Sign in to Mingla Host to manage events and your profile.",
     ],
     cta: {
       label: "View your venue page",
@@ -25,7 +25,7 @@ export function defaultVenuePublicUrl(slug: string): string {
   // a fallback so its deletion is safely decoupled (same digest, audited).
   const base = (Deno.env.get("BUSINESS_WEB_ORIGIN") ??
     Deno.env.get("MINGLA_BUSINESS_WEB_URL") ??
-    "https://business.usemingla.com").replace(/\/+$/, "");
+    "https://host.usemingla.com").replace(/\/+$/, "");
   const safeSlug = encodeURIComponent(slug.trim());
   return `${base}/b/${safeSlug}`;
 }

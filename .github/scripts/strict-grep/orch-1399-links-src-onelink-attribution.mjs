@@ -63,7 +63,7 @@ const SURFACES = [
   "mingla-marketing/components/marketing/links-experience.tsx",
   "mingla-marketing/components/marketing/glass-nav.tsx",
   "mingla-marketing/components/sections/organiser-home/hero.tsx",
-  "mingla-marketing/app/business/download/page.tsx",
+  "mingla-marketing/app/host/download/page.tsx",
 ];
 
 const stripComments = (src) =>

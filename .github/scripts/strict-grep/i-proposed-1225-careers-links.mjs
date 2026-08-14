@@ -97,7 +97,7 @@ if (SELF_TEST) {
   // GOOD: both links present at the absolute URL (mirrors the shipped fix).
   const GOOD_HERO = `
     const SITE_CHIPS = [
-      { href: '/business', label: 'Business', mobileOnly: true },
+      { href: '/host', label: 'Business', mobileOnly: true },
       { href: 'https://career.usemingla.com', label: 'Career', external: true },
       { href: '/support', label: 'Support' },
     ]
@@ -114,7 +114,7 @@ if (SELF_TEST) {
   // BAD_HERO_REMOVED: the Career chip is gone.
   const BAD_HERO_REMOVED = `
     const SITE_CHIPS = [
-      { href: '/business', label: 'Business', mobileOnly: true },
+      { href: '/host', label: 'Business', mobileOnly: true },
       { href: '/support', label: 'Support' },
     ]
   `;

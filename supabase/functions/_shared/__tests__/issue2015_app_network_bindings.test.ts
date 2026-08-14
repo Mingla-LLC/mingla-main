@@ -28,7 +28,7 @@ import { runAllowedProviderOperation } from "../adAppReadinessProviders/common.t
 const BUSINESS_ANDROID = {
   app_key: "business",
   os: "android",
-  display_name: "Mingla Business",
+  display_name: "Mingla Host",
   store_identifier: "com.sethogieva.minglabusiness",
   appsflyer_app_id: "com.sethogieva.minglabusiness",
   onelink_url: "https://biz.usemingla.com/ZSCW",

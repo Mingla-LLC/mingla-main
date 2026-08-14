@@ -82,14 +82,14 @@ describe("social preview metadata renderers", () => {
     const html = renderEventHtml(row);
 
     expect(eventPublicUrl(row)).toBe(
-      "https://business.usemingla.com/e/test-stripe/great-free-event",
+      "https://host.usemingla.com/e/test-stripe/great-free-event",
     );
     // [TEST-MOD-APPROVED #1615] The former fallback fabricated cover art for a
     // coverless event; Direction C requires image metadata to disappear.
     expect(eventImageUrl(row)).toBe("");
     expect(html).toContain("<title>Great Free Event by Test Stripe | Mingla</title>");
     expect(html).toContain('property="og:title" content="Great Free Event by Test Stripe | Mingla"');
-    expect(html).toContain('property="og:url" content="https://business.usemingla.com/e/test-stripe/great-free-event"');
+    expect(html).toContain('property="og:url" content="https://host.usemingla.com/e/test-stripe/great-free-event"');
     expect(html).not.toContain('property="og:image"');
     expect(html).not.toContain('name="twitter:image"');
     expect(html).toContain("<span class=\"pill\">May 8, 2026</span>");
@@ -119,7 +119,7 @@ describe("social preview metadata renderers", () => {
     expect(html).toContain("No upcoming events from this venue");
   });
 
-  test("renders brand metadata with the Mingla Business OG fallback", () => {
+  test("renders guest-facing brand metadata with the plain Mingla OG fallback", () => {
     const html = renderBrandHtml({
       brand: {
         ...brand,
@@ -131,7 +131,7 @@ describe("social preview metadata renderers", () => {
     });
 
     expect(brandPublicUrl({ slug: "test-stripe" })).toBe(
-      "https://business.usemingla.com/b/test-stripe",
+      "https://host.usemingla.com/b/test-stripe",
     );
     // [TEST-MOD-APPROVED #1615] The former fallback fabricated a brand image;
     // the approved coverless state emits no OG image metadata.
@@ -151,13 +151,13 @@ describe("social preview metadata renderers", () => {
         cover_media_url: "https://cdn.example.com/event-cover.png",
         cover_media_type: "image",
       }),
-    ).toBe("https://business.usemingla.com/og/event/event-1.png");
+    ).toBe("https://host.usemingla.com/og/event/event-1.png");
     expect(
       brandImageUrl({
         ...brand,
         profile_photo_url: "https://cdn.example.com/brand-profile.png",
       }),
-    ).toBe("https://business.usemingla.com/og/brand/brand-3.png");
+    ).toBe("https://host.usemingla.com/og/brand/brand-3.png");
     expect(
       brandImageUrl({
         ...brand,
@@ -165,7 +165,7 @@ describe("social preview metadata renderers", () => {
         cover_media_url: "https://cdn.example.com/brand-cover.png",
         cover_media_type: "image",
       }),
-    ).toBe("https://business.usemingla.com/og/brand/brand-3.png");
+    ).toBe("https://host.usemingla.com/og/brand/brand-3.png");
   });
 
   test("builds event OG card props with event date and location", () => {
@@ -222,7 +222,7 @@ describe("social preview metadata renderers", () => {
       expect.objectContaining({
         cardKind: "brand",
         title: "Test Stripe",
-        kicker: "Mingla Business",
+        kicker: "Mingla",
         eventCountLabel: "2 events",
         nextEventLabel: "Summer Rooftop - May 1, 2026",
         coverUrl: "https://cdn.example.com/cover.png",
@@ -264,7 +264,7 @@ describe("social preview metadata renderers", () => {
     expect(html).toContain("<span class=\"pill\">0 events</span>");
     expect(html).toContain("No upcoming events yet");
     expect(html).toContain(
-      'property="og:url" content="https://business.usemingla.com/b/brand-3"',
+      'property="og:url" content="https://host.usemingla.com/b/brand-3"',
     );
     expect(html).not.toContain("Brand not found");
   });
@@ -275,7 +275,7 @@ describe("social preview metadata renderers", () => {
         cardKind: "brand",
         title: "Brand 3",
         subtitle: "Small-room popups and careful hosting.",
-        kicker: "Mingla Business",
+        kicker: "Mingla",
         eventCountLabel: "0 events",
         nextEventLabel: "",
         coverUrl: null,
@@ -336,7 +336,7 @@ describe("social preview metadata renderers", () => {
     const fit = buildOgTextFit({
       cardKind: "event",
       title: "Runtime Share Test FreeTA throwaway free-ticket QA and then an even longer suffix",
-      subtitle: "A long but still honest event description that should never collide with the Mingla Business mark.",
+      subtitle: "A long but still honest event description that should never collide with the Mingla mark.",
       primaryChip: "Nov 9, 2026",
       secondaryChip: "The venue - The place with a very long neighbourhood label",
       accentLabel: "Leggo This",

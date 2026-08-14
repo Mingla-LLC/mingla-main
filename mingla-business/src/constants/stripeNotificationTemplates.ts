@@ -1,5 +1,5 @@
 /**
- * Stripe-triggered notification templates for Mingla Business.
+ * Stripe-triggered notification templates for Mingla Host.
  *
  * Per B2a Path C V3 SPEC §6 + I-PROPOSED-V (notifications via shared dispatcher) +
  * I-PROPOSED-W (app-type-prefix filtering).
@@ -9,8 +9,8 @@
  * the right channel without knowing the type.
  *
  * Type prefixes:
- *  - `stripe.*` — Mingla Business only (filtered into business app inbox per I-PROPOSED-W)
- *  - `business.*` — Mingla Business only (reserved for non-Stripe business types)
+ *  - `stripe.*` — Mingla Host only (filtered into business app inbox per I-PROPOSED-W)
+ *  - `business.*` — Mingla Host only (reserved for non-Stripe business types)
  *
  * Variable interpolation: `{key}` placeholders are substituted from the
  * notify-dispatch payload's `vars` object at send time. Missing variables

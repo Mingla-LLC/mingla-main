@@ -9,7 +9,7 @@
  * /assets tree is deliberately still shell-served; out of scope." Eight days
  * after that shipped, #1876 re-probed production and D-1 was still live:
  *
- *   GET https://business.usemingla.com/assets/fake-bundle-0000.js
+ *   GET https://host.usemingla.com/assets/fake-bundle-0000.js
  *     HTTP/2 200 · content-type: text/html; charset=utf-8 · x-vercel-cache: HIT
  *     <!DOCTYPE html> …the SPA shell…
  *

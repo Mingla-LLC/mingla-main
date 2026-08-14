@@ -37,7 +37,7 @@
 import { sanitizeNextRoute, NEXT_ROUTE_ALLOWLIST } from "../nextRoute";
 
 /** The real production origin the business web app is served from. */
-const ORIGIN = "https://business.usemingla.com";
+const ORIGIN = "https://host.usemingla.com";
 
 /**
  * A deliberately hostile corpus. It INTENTIONALLY goes beyond the implementor's
@@ -103,7 +103,7 @@ describe("ORCH-1375 ADVERSARIAL — the security property survives the REAL URL 
       const resolved = new URL(accepted, ORIGIN);
       expect(resolved.origin).toBe(ORIGIN);
       expect(resolved.protocol).toBe("https:");
-      expect(resolved.host).toBe("business.usemingla.com");
+      expect(resolved.host).toBe("host.usemingla.com");
     },
   );
 
@@ -114,7 +114,7 @@ describe("ORCH-1375 ADVERSARIAL — the security property survives the REAL URL 
       const resolved = new URL(accepted, ORIGIN);
       expect(resolved.username).toBe("");
       expect(resolved.password).toBe("");
-      expect(resolved.hostname).toBe("business.usemingla.com");
+      expect(resolved.hostname).toBe("host.usemingla.com");
     }
   });
 

@@ -53,6 +53,7 @@ import {
   resolveProviderRouting,
 } from "../_shared/paymentProvider.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
+import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
@@ -688,6 +689,15 @@ export const createTicketCheckoutCreateHandler = (
     : { provider: "stripe" as const, country: "", currency: "" };
 
   if (providerRouting.provider === "paystack") {
+    // #2050 hard-host cutover: an old native binary would wait for
+    // the retired hostname after Paystack. Refuse only that unsafe rail,
+    // before Paystack is initialized; Stripe and browser checkout are intact.
+    if (surface === "native" && body.returnContract !== "host_v1") {
+      return jsonResponse(
+        { error: "upgrade_required", requiredReturnContract: "host_v1" },
+        426,
+      );
+    }
     // Full Paystack create flow. All-in math via the SAME engine
     // (computeBuyerSubtotal + computeConfigVat); finalize is deferred to
     // paystack-webhook → biz_ticket_checkout_finalize (no order minted here).
@@ -779,15 +789,17 @@ export const createTicketCheckoutCreateHandler = (
 
     // Callback the in-app browser intercepts. The buyer never parses payment
     // state from this URL — the client polls ticket-checkout-status, driven by
-    // the verified charge.success webhook (the source of truth). The dashboard
-    // default is https://business.usemingla.com/pay/callback; we pass a
-    // per-transaction callback_url that overrides it and carries the session id
-    // + status token so the success screen can resolve.
+    // the verified charge.success webhook (the source of truth). We pass a
+    // per-transaction callback_url to the real Host confirmation surface with
+    // the session id + status token so the success screen can resolve.
     //   https://paystack.com/docs/payments/accept-payments/ (callback_url)
-    const callbackBase = Deno.env.get("PAYSTACK_CALLBACK_BASE") ??
-      "https://business.usemingla.com/pay/callback";
+    const callbackSurface = tripGateRow?.event_type === "trip"
+      ? "checkout-trip"
+      : "checkout";
     const callbackUrl =
-      `${callbackBase}?cs=${encodeURIComponent(checkoutSessionId)}&bst=${encodeURIComponent(buyerStatusToken)}`;
+      `${PRODUCTION_BUSINESS_WEB_ORIGIN}/${callbackSurface}/${eventId}/confirm?cs=paystack&csi=${
+        encodeURIComponent(checkoutSessionId)
+      }&bst=${encodeURIComponent(buyerStatusToken)}`;
 
     // Channels: NG = card|bank|ussd|bank_transfer — NEVER mobile_money
     // (Ghana-only). https://paystack.com/docs/payments/payment-channels/
@@ -877,6 +889,7 @@ export const createTicketCheckoutCreateHandler = (
       checkoutSessionId,
       buyerStatusToken,
       authorizationUrl: psInit.authorization_url,
+      returnUrl: callbackUrl,
       reference: psInit.reference,
       // buyer_total is the inclusive all-in NGN total (kobo).
       totalCents: psBuyerTotalCents,

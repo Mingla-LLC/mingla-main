@@ -341,7 +341,7 @@ async function main() {
   if (!session || session === "{}" || !session.includes("access_token")) {
     console.log("\n========================================================");
     console.log("[harness] NOT SIGNED IN. On the phone Chrome tab now showing");
-    console.log("          the Mingla Business sign-in, sign in as the operator");
+    console.log("          the Mingla Host sign-in, sign in as the operator");
     console.log("          (sethogieva@gmail.com). The harness will poll for a");
     console.log("          Supabase session and continue automatically.");
     console.log("========================================================\n");

@@ -74,7 +74,7 @@ export const composeEmailPayload = (
       ``,
       `Tap here to review your order: <web-link-resolved-by-9c>`,
       ``,
-      `— Mingla Business`,
+      `— Mingla Host`,
     ].join("\n");
     return { subject, body };
   }
@@ -92,7 +92,7 @@ export const composeEmailPayload = (
     ``,
     `Tap here to review your order: <web-link-resolved-by-9c>`,
     ``,
-    `— Mingla Business`,
+    `— Mingla Host`,
   ].join("\n");
   return { subject, body };
 };

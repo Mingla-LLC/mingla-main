@@ -9,7 +9,7 @@
  *
  * Signals shown:
  *  - Supabase backend mode (via public `stripe-mode` edge fn)
- *  - mingla-business publishable key prefix (probe business.usemingla.com
+ *  - mingla-business publishable key prefix (probe host.usemingla.com
  *    bundle for `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` — best effort; falls
  *    back to "unverifiable" if CORS blocks the probe)
  *  - Vercel MINGLA_STRIPE_MODE (cannot be read client-side without an
@@ -28,7 +28,7 @@ import { Spinner } from "../components/ui/Spinner";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const BUSINESS_WEB_URL = "https://business.usemingla.com";
+const BUSINESS_WEB_URL = "https://host.usemingla.com";
 
 async function fetchBackendMode() {
   if (!SUPABASE_URL) {
@@ -89,7 +89,7 @@ async function probeBusinessWebClientPrefix() {
       mode: "no-cors",
     });
     void res;
-    return { status: "unverifiable", detail: "CORS-opaque response — client-side probe cannot read the bundled pk; verify by opening business.usemingla.com and inspecting EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY." };
+    return { status: "unverifiable", detail: "CORS-opaque response — client-side probe cannot read the bundled pk; verify by opening host.usemingla.com and inspecting EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY." };
   } catch (err) {
     return {
       status: "unverifiable",
@@ -236,7 +236,7 @@ export function StripeModePage() {
               status={webClient?.status}
               detail={
                 webClient?.detail ??
-                "Open business.usemingla.com in a new tab + run `window.__EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` (or inspect the Constants.expoConfig.extra in DevTools) — must start with the same prefix as the backend above."
+                "Open host.usemingla.com in a new tab + run `window.__EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` (or inspect the Constants.expoConfig.extra in DevTools) — must start with the same prefix as the backend above."
               }
             />
             <SignalRow

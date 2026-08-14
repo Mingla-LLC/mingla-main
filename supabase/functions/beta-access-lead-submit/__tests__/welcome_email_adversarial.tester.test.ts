@@ -47,7 +47,7 @@ Deno.test("[adversarial] link + Ari + mobile message present in BOTH channels", 
   const email = buildWelcomeEmail(hostileLead(), FROM);
   for (const [name, body] of [["html", email.html], ["text", email.text]]) {
     assert(
-      body.includes("business.usemingla.com"),
+      body.includes("host.usemingla.com"),
       `${name} channel missing web-app link`,
     );
     assert(body.includes("Ari"), `${name} channel missing Ari`);

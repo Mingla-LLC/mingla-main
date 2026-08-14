@@ -34,7 +34,7 @@ import {
 const repoFile = (relativePath: string): string =>
   readFileSync(path.join(process.cwd(), relativePath), "utf8");
 
-const canonicalUrl = "https://business.usemingla.com/e/test-stripe/great-free-event";
+const canonicalUrl = "https://host.usemingla.com/e/test-stripe/great-free-event";
 
 const countOccurrences = (source: string, needle: string): number =>
   source.split(needle).length - 1;

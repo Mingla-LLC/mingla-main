@@ -847,7 +847,7 @@ export const uploadEventCoverVideoSourceViaTus = async (input: {
     } catch {
       throw new EventCoverVideoProcessingError(
         "source_upload_failed",
-        "Could not read the selected video in your browser. Try a shorter MP4, or upload the cover from the Mingla Business app.",
+        "Could not read the selected video in your browser. Try a shorter MP4, or upload the cover from the Mingla Host app.",
       );
     }
     if (bytes <= 0) bytes = webBlob.size;

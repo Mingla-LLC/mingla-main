@@ -72,7 +72,7 @@ Deno.test("clients explicitly negotiate metadata versus PDF", () => {
 Deno.test("anonymous recovery proof stays out of request URLs and analytics", () => {
   assert(
     recoveryPrimitives.includes(
-      "return `https://business.usemingla.com/rsvp/pass#${fragment}`;",
+      "return `https://host.usemingla.com/rsvp/pass#${fragment}`;",
     ),
     "recovery proof must be placed after the URL fragment marker",
   );

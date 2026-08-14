@@ -86,7 +86,7 @@ export const composeTripEmailPayload = (
     p.severity === "material"
       ? `This is a material change. Please review the updated trip details at:`
       : `Updated details available at:`,
-    `https://business.usemingla.com/t/${p.brandSlug}/${p.tripSlug}`,
+    `https://host.usemingla.com/t/${p.brandSlug}/${p.tripSlug}`,
     ``,
     `Your reservation is unchanged — same tier, same price.`,
     ``,
@@ -100,7 +100,7 @@ export const composeTripEmailPayload = (
  * TRANSITIONAL: B-cycle replaces with Twilio template.
  */
 export const composeTripSmsPayload = (p: TripNotificationPayload): string =>
-  `Update to your trip "${p.tripTitle}" by ${p.brandName}. Reason: ${p.reason}. Details: https://business.usemingla.com/t/${p.brandSlug}/${p.tripSlug}`;
+  `Update to your trip "${p.tripTitle}" by ${p.brandName}. Reason: ${p.reason}. Details: https://host.usemingla.com/t/${p.brandSlug}/${p.tripSlug}`;
 
 /**
  * Fire-and-forget multi-channel dispatch. Never throws. Failures inside

@@ -24,7 +24,7 @@
  * The usemingla.com/links per-tab CTA must open the store / web app DIRECTLY on
  * the tap gesture (client-side, device-aware, from the store-links SSOT) so
  * /links stays mounted — it must NEVER again be a Next `<Link>` soft-navigation
- * into the /download or /business/download external-redirect route, which
+ * into the /download or /host/download external-redirect route, which
  * stranded the tab on a blank (Explorer) / footer-only (Business) route shell
  * (INVESTIGATION_ORCH-1328).
  *
@@ -57,7 +57,7 @@
  * BAN (the exact regression this ORCH kills):
  *   - a `next/link` import AND the `<Link` JSX element — the CTA must never
  *     soft-navigate again (this file needs no next/link).
- *   - `<a href="/download"` / `<a href="/business/download"` — no anchor
+ *   - `<a href="/download"` / `<a href="/host/download"` — no anchor
  *     navigation into the external-redirect routes.
  *   - hardcoded store literals: `apps.apple.com`, `play.google.com` (URLs only
  *     via the store-links consts).
@@ -107,7 +107,7 @@ const BANNED = [
   { re: /from\s+['"]next\/link['"]/, why: "imports next/link — the CTA must not soft-navigate" },
   { re: /<Link[\s/>]/, why: "renders a next/link <Link> element — the CTA must not soft-navigate" },
   { re: /<a\s+href="\/download"/, why: 'anchors <a href="/download"> into the external-redirect route' },
-  { re: /<a\s+href="\/business\/download"/, why: 'anchors <a href="/business/download"> into the external-redirect route' },
+  { re: /<a\s+href="\/host\/download"/, why: 'anchors <a href="/host/download"> into the external-redirect route' },
   { re: /apps\.apple\.com/, why: "hardcodes an apps.apple.com store literal (use the store-links consts)" },
   { re: /play\.google\.com/, why: "hardcodes a play.google.com store literal (use the store-links consts)" },
   // ORCH-1381 ADDENDUM D-B — the double-navigation teeth.
@@ -143,7 +143,7 @@ function checkCta(rawSrc, failures) {
   if (!/resolveBusinessAppTarget\(/.test(src)) {
     failures.push(
       `${TARGET}: the business branch must resolve via resolveBusinessAppTarget( from ` +
-        `lib/business-app-target — the platform→destination decision lives in exactly ONE ` +
+        `lib/host-app-target — the platform→destination decision lives in exactly ONE ` +
         `module (ORCH-1381), never re-derived here.`,
     );
   }
@@ -250,7 +250,7 @@ if (process.argv.includes("--self-test")) {
   // offers two actions; the explorer branch is unchanged.
   const good = `
 import { detectClientPlatform } from '@/lib/device-platform'
-import { BUSINESS_APP_CHOICE_COPY, resolveBusinessAppTarget } from '@/lib/business-app-target'
+import { BUSINESS_APP_CHOICE_COPY, resolveBusinessAppTarget } from '@/lib/host-app-target'
 import { resolveExplorerAppTarget } from '@/lib/explorer-app-target'
 import { linksAttribution } from '@/lib/links-src'
 import { openExternal } from '@/lib/open-external'
@@ -356,7 +356,7 @@ const desktopCta = (<button type="button" onClick={() => onCtaDesktop(activeTab)
   // It must now FAIL.
   const ctaIsADivButTabsAreButtons = `
 import { detectClientPlatform } from '@/lib/device-platform'
-import { BUSINESS_APP_CHOICE_COPY, resolveBusinessAppTarget } from '@/lib/business-app-target'
+import { BUSINESS_APP_CHOICE_COPY, resolveBusinessAppTarget } from '@/lib/host-app-target'
 import { resolveExplorerAppTarget } from '@/lib/explorer-app-target'
 import { openExternal } from '@/lib/open-external'
 const onCtaTrack = (tab) => { const platform = detectClientPlatform(); if (platform === 'ios') {} captureMarketing('links_page_cta_clicked', {}) }
@@ -434,7 +434,7 @@ if (failures.length > 0) {
       "resolveExplorerAppTarget / resolveBusinessAppTarget), carrying target=\"_blank\" +\n" +
       "rel=\"noopener\" and firing onCtaTrack( — so the store app opens with no intermediate\n" +
       "web page, /links stays mounted, and the tap analytics survive. It must NEVER\n" +
-      "soft-navigate into the /download|/business/download route nor hardcode a store literal.\n\nFailures:\n  " +
+      "soft-navigate into the /download|/host/download route nor hardcode a store literal.\n\nFailures:\n  " +
       failures.join("\n  "),
   );
   process.exit(1);
@@ -445,5 +445,5 @@ console.log(
     "detectClientPlatform, with BOTH decisions delegated (resolveExplorerAppTarget /\n" +
     "resolveBusinessAppTarget); openExternal( survives for the desktop /download QR page;\n" +
     "it fires links_page_cta_clicked via onCtaTrack( and never soft-navigates into the\n" +
-    "/download|/business/download route nor hardcodes a store literal.",
+    "/download|/host/download route nor hardcodes a store literal.",
 );

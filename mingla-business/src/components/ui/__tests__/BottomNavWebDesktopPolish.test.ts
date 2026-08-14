@@ -9,7 +9,7 @@ describe("BottomNav.web desktop rail polish", () => {
     "utf8",
   );
 
-  it("uses the official Mingla Business logo instead of a temporary letter mark", () => {
+  it("uses the official Mingla Host logo instead of a temporary letter mark", () => {
     expect(source).toContain("mingla-business-logo.png");
     expect(source).toContain("<Image");
     expect(source).not.toContain("LinearGradient");

@@ -27,7 +27,7 @@ Deno.env.set("SUPABASE_URL", "http://mock.local");
 Deno.env.set("SUPABASE_ANON_KEY", "anon-key");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "service-key");
 Deno.env.set("RESEND_API_KEY", "re_test_key");
-Deno.env.set("MINGLA_BUSINESS_WEB_URL", "https://business.usemingla.com");
+Deno.env.set("MINGLA_BUSINESS_WEB_URL", "https://host.usemingla.com");
 
 const { handler } = await import("../index.ts");
 

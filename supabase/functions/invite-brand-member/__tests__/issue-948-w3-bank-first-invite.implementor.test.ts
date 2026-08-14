@@ -82,7 +82,7 @@ for (
       inviterName: "David",
       role: fixture.partnerSetup ? "brand_owner" : "scanner",
       acceptUrl:
-        "https://business.usemingla.com/accept-brand-invitation?token=W3_TOKEN",
+        "https://host.usemingla.com/accept-brand-invitation?token=W3_TOKEN",
       from: "Mingla <noreply@usemingla.com>",
       partnerSetup: fixture.partnerSetup,
     });
@@ -93,6 +93,6 @@ for (
     assertStringIncludes(payload.text, "token=W3_TOKEN");
     assert(!payload.html.includes("business/download"));
     assert(!payload.text.includes("business/download"));
-    assert(!payload.html.includes("Get the Mingla Business app"));
+    assert(!payload.html.includes("Get the Mingla Host app"));
   });
 }

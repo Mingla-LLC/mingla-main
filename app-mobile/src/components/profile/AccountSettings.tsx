@@ -1015,7 +1015,7 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                   <Text style={styles.cardTitle}>Switch to Business</Text>
                 </View>
                 <Text style={styles.rowHint}>
-                  Coming soon — opens the Mingla Business app on the same login.
+                  Coming soon — opens the Mingla Host app on the same login.
                 </Text>
                 <TouchableOpacity
                   style={[styles.deleteButton, styles.deleteButtonDisabled]}

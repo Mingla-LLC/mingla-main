@@ -1,5 +1,5 @@
 /**
- * ErrorBoundary — wraps `react-error-boundary` with the Mingla Business
+ * ErrorBoundary — wraps `react-error-boundary` with the Mingla Host
  * default fallback UI.
  *
  * Sentry hook is the optional `onError` prop — Cycle 14 wires

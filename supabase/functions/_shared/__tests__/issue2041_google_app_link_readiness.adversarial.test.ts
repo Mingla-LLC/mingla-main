@@ -25,7 +25,7 @@ function target(os: SupportedOs): TargetRow {
   return {
     app_key: "business",
     os,
-    display_name: "Mingla Business",
+    display_name: "Mingla Host",
     store_identifier: fixture.appId,
     appsflyer_app_id: os === "ios" ? `id${fixture.appId}` : fixture.appId,
     onelink_url: "https://biz.usemingla.com/ZSCW",

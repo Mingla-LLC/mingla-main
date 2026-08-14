@@ -52,7 +52,7 @@ export function createStripeClient(envVarName: string): Stripe {
       // B2a Path C V3 forensics C-1: was `name: "Mingla", url: "https://mingla.com"` —
       // domain isn't Mingla-owned. Canonical is usemingla.com per ORCH-0350 +
       // Stripe platform business_profile.url.
-      name: "Mingla Business",
+      name: "Mingla Host",
       version: "1.0.0",
       url: "https://usemingla.com",
     },
@@ -69,7 +69,7 @@ export function createStripeClientForRole(role: StripeRole): Stripe {
   return new Stripe(key, {
     apiVersion: STRIPE_API_VERSION,
     appInfo: {
-      name: "Mingla Business",
+      name: "Mingla Host",
       version: "1.0.0",
       url: "https://usemingla.com",
     },

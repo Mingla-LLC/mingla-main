@@ -3,7 +3,7 @@ import { describe, expect, jest, test } from "@jest/globals";
 /**
  * ORCH-1284 — the "Manage tax and registrations" CTA opened
  * `usemingla.com/connect-tax-registrations` (the marketing app, which 404s that
- * route) instead of `business.usemingla.com/connect-tax-registrations` (the
+ * route) instead of `host.usemingla.com/connect-tax-registrations` (the
  * mingla-business web export, the ONLY surface that serves it). This regression
  * test pins the URL builder to the canonical business domain.
  *
@@ -19,7 +19,7 @@ jest.mock("expo-constants", () => ({
   default: {
     expoConfig: {
       extra: {
-        EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://business.usemingla.com",
+        EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL: "https://host.usemingla.com",
       },
     },
   },
@@ -40,7 +40,7 @@ jest.mock("../../services/brandStripeTaxAccountSessionService", () => ({
 
 import { taxToolsUrl } from "../useBrandStripeTaxAccountSession";
 
-describe("ORCH-1284 — tax-registrations CTA targets business.usemingla.com, not the marketing apex", () => {
+describe("ORCH-1284 — tax-registrations CTA targets host.usemingla.com, not the marketing apex", () => {
   // Synthetic values chosen with a slash + space so encoding is exercised.
   const result = {
     clientSecret: "cs_test_abc/123 secret",
@@ -48,20 +48,20 @@ describe("ORCH-1284 — tax-registrations CTA targets business.usemingla.com, no
     brandStripeAccountId: "acct_1XYZ",
   };
 
-  test("origin is https://business.usemingla.com and path is /connect-tax-registrations", () => {
+  test("origin is https://host.usemingla.com and path is /connect-tax-registrations", () => {
     const parsed = new URL(taxToolsUrl(result));
-    expect(parsed.origin).toBe("https://business.usemingla.com");
-    expect(parsed.host).toBe("business.usemingla.com");
+    expect(parsed.origin).toBe("https://host.usemingla.com");
+    expect(parsed.host).toBe("host.usemingla.com");
     expect(parsed.pathname).toBe("/connect-tax-registrations");
   });
 
   test("never emits the marketing apex usemingla.com/connect-tax-registrations", () => {
     const url = taxToolsUrl(result);
     expect(
-      url.startsWith("https://business.usemingla.com/connect-tax-registrations"),
+      url.startsWith("https://host.usemingla.com/connect-tax-registrations"),
     ).toBe(true);
     // The apex form (marketing 404) has `://usemingla.com/...`; the business
-    // form has `://business.usemingla.com/...` and must never match this.
+    // form has `://host.usemingla.com/...` and must never match this.
     expect(url).not.toContain("://usemingla.com/connect-tax-registrations");
   });
 

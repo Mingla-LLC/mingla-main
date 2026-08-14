@@ -928,7 +928,13 @@ export default function ConsumerEventDetailScreen({
   const handleChipIn = useCallback(
     async ({ amountCents }: { amountCents: number }): Promise<ChipInResult> => {
       const { data, error } = await supabase.functions.invoke("rsvp-contribution-create", {
-        body: { eventId, amountCents, surface: "native", rsvpId: null },
+        body: {
+          eventId,
+          amountCents,
+          surface: "native",
+          rsvpId: null,
+          returnContract: "host_v1",
+        },
       });
       if (error) {
         throw new Error(String((error as { message?: string }).message ?? "contribution_failed"));

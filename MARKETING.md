@@ -27,7 +27,7 @@
 | Side | App | Who it serves |
 |---|---|---|
 | Consumer (Explorer) | Mingla | Date-night planners, friend groups, solo explorers, people new to a city |
-| Supply (Business) | Mingla Business | Restaurants, bars, venues, cafés, activity spaces, event organisers, creators |
+| Supply (Business) | Mingla Host | Restaurants, bars, venues, cafés, activity spaces, event organisers, creators |
 
 ### Voice
 
@@ -56,7 +56,7 @@ sight, in both founder content and creator collaborations.
 
 ### App stores
 
-- **Fully launched.** All four listings (Mingla + Mingla Business, App Store + Google Play) are
+- **Fully launched.** All four listings (Mingla + Mingla Host, App Store + Google Play) are
   LIVE at version 1.1.2. Both apps always ship the same version number.
 - Store creative (screenshots, feature banners) exists only in the store consoles; it is
   recoverable read-only via the App Store Connect and Play APIs if assets are ever needed again.
@@ -79,7 +79,7 @@ sight, in both founder content and creator collaborations.
 
 ### Attribution stack (LIVE as of 2026-07-19)
 
-- **Browser pixels:** 4 live on `business.usemingla.com` — Meta, TikTok, Reddit, Snap.
+- **Browser pixels:** 4 live on `host.usemingla.com` — Meta, TikTok, Reddit, Snap.
 - **Server-side:** 4 conversion-API (CAPI) senders mirror those networks from the backend.
 - All senders are **fail-open** — attribution failures never block a user-facing flow.
 - All CAPI tokens are consolidated in the single `AD_CONVERSION_TOKENS` secret.
@@ -91,7 +91,7 @@ sight, in both founder content and creator collaborations.
 
 | Property | What it is |
 |---|---|
-| `business.usemingla.com` | Marketing site (source in `mingla-marketing/`; the `mingla-business` folder is the app itself) |
+| `host.usemingla.com` | Marketing site (source in `mingla-marketing/`; the `mingla-business` folder is the app itself) |
 | `career.usemingla.com` | Careers site, live |
 | `go.usemingla.com` / `biz.usemingla.com` | Branded smart-link subdomains (above) |
 
@@ -105,7 +105,7 @@ sight, in both founder content and creator collaborations.
 
 ### In-product Marketing Hub (adjacent, for clarity)
 
-The **Marketing Hub inside Mingla Business** (blasts, brand CRM, managed ads for organisers) is a
+The **Marketing Hub inside Mingla Host** (blasts, brand CRM, managed ads for organisers) is a
 product feature, not Mingla's own marketing. Its first phase shipped; the remaining phases are
 gated behind commerce, consent, and delivery infrastructure per the gap analysis. Do not conflate
 its status with the company marketing stack described in this document.

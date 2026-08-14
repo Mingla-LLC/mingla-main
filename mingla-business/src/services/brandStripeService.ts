@@ -252,7 +252,7 @@ export async function unwrapFunctionError(
  *
  * @param brandId — UUID of the brand initiating onboarding
  * @param returnUrl — Deep link or web URL to return to after onboarding
- *   Must start with "mingla-business://" or the configured Mingla Business URL.
+ *   Must start with "mingla-business://" or the configured Mingla Host URL.
  * @throws on edge fn error, validation error, or permission denial
  */
 export async function startBrandStripeOnboarding(

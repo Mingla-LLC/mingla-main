@@ -103,7 +103,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   return {
     ...config,
-    name: config.name ?? "Mingla Business",
+    name: config.name ?? "Mingla Host",
     slug: config.slug ?? "mingla-business",
     // Cycle B2a — deep link scheme for Stripe Connect onboarding return.
     // expo-web-browser.openAuthSessionAsync requires this scheme to redirect
@@ -131,7 +131,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "expo-tracking-transparency",
         {
           userTrackingPermission:
-            "Mingla Business uses your advertising identifier to measure the performance of our ads and help us reach more organizers like you.",
+            "Mingla Host uses your advertising identifier to measure the performance of our ads and help us reach more organizers like you.",
         },
       ],
       // expo-blur 15.0.8 has no config plugin — auto-links via React Native
@@ -142,7 +142,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "expo-image-picker",
         {
           photosPermission:
-            "Mingla Business uses your photo library to upload brand and event imagery.",
+            "Mingla Host uses your photo library to upload brand and event imagery.",
         },
       ],
       "expo-video",
@@ -387,13 +387,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         process.env.EXPO_PUBLIC_POSTHOG_HOST ?? "https://us.i.posthog.com",
       EXPO_PUBLIC_GA4_MEASUREMENT_ID:
         process.env.EXPO_PUBLIC_GA4_MEASUREMENT_ID ?? "G-Z4W3B9900S",
-      // B2a Path C V3 forensics R-1: canonical Mingla Business public web URL.
+      // B2a Path C V3 forensics R-1: canonical Mingla Host public web URL.
       // Single source of truth read by mingla-business/src/constants/platformUrl.ts.
-      // Production canonical: https://business.usemingla.com (Vercel-hosted Expo Web export).
+      // Production canonical: https://host.usemingla.com (Vercel-hosted Expo Web export).
       // Vercel build also sets this in env so the web bundle reads consistently.
       EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL:
         process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL ??
-        "https://business.usemingla.com",
+        "https://host.usemingla.com",
       googleWebClientId:
         process.env.GOOGLE_WEB_CLIENT_ID ??
         "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com",

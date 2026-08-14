@@ -220,7 +220,7 @@ export default function ConnectOnboardingBody(): React.ReactElement {
           <h2 style={connectEmbeddedPageStyles.errorTitleStyle}>Invalid onboarding link</h2>
           <p style={connectEmbeddedPageStyles.errorBodyStyle}>
             This onboarding link is missing a required parameter. Return to
-            Mingla Business and tap &ldquo;Set up payments&rdquo; again to start
+            Mingla Host and tap &ldquo;Set up payments&rdquo; again to start
             fresh.
           </p>
         </div>

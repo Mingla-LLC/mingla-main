@@ -101,6 +101,7 @@ export type CreateVenueReservationResult =
       reservationDraftId: string;
       buyerStatusToken: string;
       authorizationUrl: string;
+      returnUrl: string;
       reference: string;
       totalCents: number;
       currency: string;
@@ -142,6 +143,7 @@ export async function createVenueReservation(
         venueId: input.venueId,
         brandId: input.brandId,
         surface: "native",
+        returnContract: "host_v1",
         reservedForUtc: input.reservedForUtc,
         partySize: input.partySize,
         buyer: {

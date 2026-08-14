@@ -239,7 +239,7 @@ function publicBuyerBaseUrl(): string {
   const raw = Deno.env.get("PUBLIC_BUYER_BASE_URL") ??
     Deno.env.get("BUSINESS_WEB_ORIGIN") ??
     Deno.env.get("MINGLA_BUSINESS_WEB_URL") ??
-    "https://business.usemingla.com";
+    "https://host.usemingla.com";
   return raw.replace(/\/+$/, "");
 }
 

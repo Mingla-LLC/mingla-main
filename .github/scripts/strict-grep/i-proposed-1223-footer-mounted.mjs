@@ -3,7 +3,7 @@
  * ORCH-1223 [footer re-mount] — AMENDED by ORCH-1224.
  *
  * The cleaned marketing footer must stay MOUNTED on the BUSINESS surface
- * (app/business/layout.tsx) and must NOT be mounted on the EXPLORER surface
+ * (app/host/layout.tsx) and must NOT be mounted on the EXPLORER surface
  * (app/(explorer)/layout.tsx).
  *
  * Why the change (Seth 2026-06-22, ORCH-1224): the explorer (consumer) page is a
@@ -13,7 +13,7 @@
  * still needs visible Privacy/Terms links for the store launch.
  *
  * Invariant I-PROPOSED-1223-FOOTER-MOUNTED (DRAFT until ORCH-1224 CLOSE):
- *   - mingla-marketing/app/business/layout.tsx MUST import `Footer` from
+ *   - mingla-marketing/app/host/layout.tsx MUST import `Footer` from
  *     '@/components/marketing/footer' AND render `<Footer surface="organiser" ...>`.
  *   - mingla-marketing/app/(explorer)/layout.tsx MUST NOT mount a footer
  *     (no `<Footer .../>` render after comment-stripping). It returns to its
@@ -30,7 +30,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const EXPLORER_LAYOUT = "mingla-marketing/app/(explorer)/layout.tsx";
-const BUSINESS_LAYOUT = "mingla-marketing/app/business/layout.tsx";
+const BUSINESS_LAYOUT = "mingla-marketing/app/host/layout.tsx";
 const FOOTER_MODULE = "@/components/marketing/footer";
 
 const root = process.cwd().endsWith("mingla-business")

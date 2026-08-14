@@ -34,7 +34,7 @@ const executeHeadContinuation = (html) => {
 };
 
 test("the shipped head executes one history-replacing continuation, not an intermediate-page navigation", () => {
-  const expected = "https://business.usemingla.com/exp/art-roost/private-view";
+  const expected = "https://host.usemingla.com/exp/art-roost/private-view";
   const html = renderContentShareHtml(share("experience", {
     kind: "experience",
     brandSlug: "art-roost",
@@ -47,7 +47,7 @@ test("the shipped head executes one history-replacing continuation, not an inter
 });
 
 test("encoded slugs cannot turn the same-origin continuation into an open redirect", () => {
-  const expected = "https://business.usemingla.com/b/gallery%20lagos/v/room%231";
+  const expected = "https://host.usemingla.com/b/gallery%20lagos/v/room%231";
   const html = renderContentShareHtml(share("venue", {
     kind: "venue",
     brandSlug: "gallery lagos",

@@ -85,7 +85,7 @@ function validateEntry(source, entry) {
   invariant(JSON.stringify(metadata) === JSON.stringify(sourceTags.map(scriptAttributes)), "fallback attributes/order drifted from index.html");
   const actualRoles = metadata.map((attrs) => {
     const src = attrs.find(({ name }) => name.toLowerCase() === "src")?.value ?? "";
-    const basename = new URL(src, "https://business.usemingla.com").pathname.split("/").at(-1) ?? "";
+    const basename = new URL(src, "https://host.usemingla.com").pathname.split("/").at(-1) ?? "";
     return eagerRolePatterns.find(([, pattern]) => pattern.test(basename))?.[0] ?? `unknown (${basename})`;
   });
   const expectedRoles = eagerRolePatterns.map(([label]) => label);

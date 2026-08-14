@@ -1,7 +1,7 @@
 /**
  * Edit profile route — Cycle 14 J-A1 (DEC-096 D-14-1 + D-14-2 + D-14-3).
  *
- * D-14-1: email read-only via OAuth (Mingla Business is Google + Apple only)
+ * D-14-1: email read-only via OAuth (Mingla Host is Google + Apple only)
  * D-14-2: profile photo via NEW creator_avatars bucket per SPEC §1.5 SPEC-pivot
  * D-14-3: persistence via direct React Query mutation (useUpdateCreatorAccount)
  *

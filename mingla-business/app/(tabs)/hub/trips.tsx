@@ -424,7 +424,7 @@ export default function HubTripsRoute(): React.ReactElement {
             visible
             contentKind="trip"
             onClose={() => setShareTrip(null)}
-            url={`https://business.usemingla.com/t/${shareTrip.brandSlug}/${shareTrip.slug}`}
+            url={`https://host.usemingla.com/t/${shareTrip.brandSlug}/${shareTrip.slug}`}
             title={`${shareTrip.title} on Mingla`}
             description={
               shareTrip.description !== null && shareTrip.description.length > 0

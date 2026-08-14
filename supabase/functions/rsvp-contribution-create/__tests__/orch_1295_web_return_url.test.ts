@@ -14,9 +14,12 @@
  */
 
 import { assertEquals } from "https://deno.land/std@0.168.0/testing/asserts.ts";
-import { buildContributionWebReturnUrls } from "../returnUrls.ts";
+import {
+  buildContributionPaystackReturnUrl,
+  buildContributionWebReturnUrls,
+} from "../returnUrls.ts";
 
-const BASE = "https://business.usemingla.com";
+const BASE = "https://host.usemingla.com";
 const BRAND = "acme-events";
 const EVENT = "july-4th-bbq-pool-party";
 
@@ -47,4 +50,19 @@ Deno.test("ORCH-1295 returns null when brandSlug is missing (fail closed — nev
 Deno.test("ORCH-1295 returns null when eventSlug is missing (never emit a partial path)", () => {
   assertEquals(buildContributionWebReturnUrls(BASE, BRAND, null), null);
   assertEquals(buildContributionWebReturnUrls(BASE, BRAND, ""), null);
+});
+
+Deno.test("#2050 Paystack returns to the real Host event page without asserting payment success", () => {
+  const url = buildContributionPaystackReturnUrl(
+    BASE,
+    BRAND,
+    EVENT,
+    "contribution-id",
+  );
+  assertEquals(
+    url,
+    `${BASE}/e/${BRAND}/${EVENT}?contribution=return&contrib=contribution-id`,
+  );
+  assertEquals(buildContributionPaystackReturnUrl(BASE, null, EVENT, "id"), null);
+  assertEquals(buildContributionPaystackReturnUrl(BASE, BRAND, EVENT, ""), null);
 });

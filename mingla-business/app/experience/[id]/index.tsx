@@ -487,7 +487,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           preloadContent
           visible={shareModalVisible}
           onClose={() => setShareModalVisible(false)}
-          url={`https://business.usemingla.com/exp/${experience.brandSlug}/${experience.slug}`}
+          url={`https://host.usemingla.com/exp/${experience.brandSlug}/${experience.slug}`}
           contentKind="experience"
           title={`${experience.title} on Mingla`}
           description={

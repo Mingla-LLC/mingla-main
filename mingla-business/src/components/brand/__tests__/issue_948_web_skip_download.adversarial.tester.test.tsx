@@ -42,7 +42,7 @@ import React from "react";
 
 const BRAND_ID = "9c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f";
 const USER_ID = "11112222-3333-4444-5555-666677778888";
-const ORIGIN = "https://business.usemingla.com";
+const ORIGIN = "https://host.usemingla.com";
 
 interface BrandSeed {
   id: string;

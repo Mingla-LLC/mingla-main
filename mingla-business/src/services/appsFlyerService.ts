@@ -1,5 +1,5 @@
 /**
- * AppsFlyer integration for Mingla Business (ORCH-0808).
+ * AppsFlyer integration for Mingla Host (ORCH-0808).
  *
  * Mirrors the consumer-side service at `app-mobile/src/services/appsFlyerService.ts`
  * with two adjustments:
