@@ -9,7 +9,7 @@ import {
 } from "../../constants/designSystem";
 import { postHogService } from "../../services/postHogService";
 import { formatRelativeTime } from "../../utils/relativeTime";
-import { buildTurnoutGateRecommendations } from "../../utils/turnoutInput";
+import { buildTurnoutGateRecommendations } from "../../utils/turnoutGateRecommendations";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { IntelCard } from "./IntelCard";

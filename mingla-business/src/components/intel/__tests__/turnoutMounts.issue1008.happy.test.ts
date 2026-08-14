@@ -10,8 +10,8 @@ describe("#1008 turnout surface wiring", () => {
   it("mounts one provider at each wizard root, ambient cards in-flow, and enriched gates at Review", () => {
     const eventWizard = read("src/components/event/EventCreatorWizard.tsx");
     const rsvpWizard = read("src/components/rsvp/RsvpCreatorWizard.tsx");
-    expect(eventWizard.match(/<TurnoutIntelProvider/g)).toHaveLength(1);
-    expect(rsvpWizard.match(/<TurnoutIntelProvider/g)).toHaveLength(1);
+    expect(eventWizard.match(/<LazyTurnoutIntelProvider/g)).toHaveLength(1);
+    expect(rsvpWizard.match(/<LazyTurnoutIntelProvider/g)).toHaveLength(1);
     expect(eventWizard).toContain("previewActive={currentStep === 6}");
     expect(rsvpWizard).toContain("previewActive={currentStep === 5}");
 
@@ -26,7 +26,7 @@ describe("#1008 turnout surface wiring", () => {
     for (const [file, marker] of mounts) {
       const source = read(file);
       if (marker === 'surface="preview"') {
-        expect(source.match(/<TurnoutGateSection/g)).toHaveLength(1);
+        expect(source.match(/<LazyTurnoutGateSection/g)).toHaveLength(1);
       } else {
         expect(source.match(/<TurnoutForecastCard/g)).toHaveLength(1);
         expect(source).toContain(marker);
@@ -65,7 +65,7 @@ describe("#1008 turnout surface wiring", () => {
     const experienceWizard = read(
       "src/components/experience/ExperienceCreatorWizard.tsx",
     );
-    expect(experienceWizard.match(/<TurnoutIntelProvider/g)).toHaveLength(1);
+    expect(experienceWizard.match(/<LazyTurnoutIntelProvider/g)).toHaveLength(1);
     expect(experienceWizard).toContain("autoRunEnabled={false}");
   });
 });

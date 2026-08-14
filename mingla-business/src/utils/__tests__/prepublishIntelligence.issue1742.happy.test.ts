@@ -85,8 +85,8 @@ describe("#1742 pre-publish intelligence happy path", () => {
       "src/components/rsvp/RsvpStep7Preview.tsx",
     ]) {
       const source = read(file);
-      expect(source).toContain("<TurnoutGateSection />");
-      expect(source.indexOf("<TurnoutGateSection />")).toBeLessThan(
+      expect(source).toContain("<LazyTurnoutGateSection />");
+      expect(source.indexOf("<LazyTurnoutGateSection />")).toBeLessThan(
         source.indexOf("<ThemeControlRow"),
       );
       expect(source).not.toContain('<TurnoutForecastCard surface="preview" />');

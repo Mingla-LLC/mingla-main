@@ -2,7 +2,7 @@ import React, { useCallback } from "react";
 import { ActivityIndicator, StyleSheet, Text } from "react-native";
 import { useRouter } from "expo-router";
 
-import { ExperienceCreatorWizard } from "../../src/components/experience/ExperienceCreatorWizard";
+import { LazyExperienceCreatorWizard } from "../../src/components/experience/LazyExperienceCreatorWizard";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
 import {
   canvas,
@@ -39,11 +39,13 @@ export default function ExperienceCreateRoute(): React.ReactElement {
 
   return (
     <SafeScreen style={styles.host}>
-      <ExperienceCreatorWizard
-        brandId={currentBrand.id}
-        onComplete={handleComplete}
-        onCancel={handleExit}
-      />
+      <React.Suspense fallback={<ActivityIndicator />}>
+        <LazyExperienceCreatorWizard
+          brandId={currentBrand.id}
+          onComplete={handleComplete}
+          onCancel={handleExit}
+        />
+      </React.Suspense>
     </SafeScreen>
   );
 }

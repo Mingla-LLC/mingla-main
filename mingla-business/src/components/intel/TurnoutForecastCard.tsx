@@ -11,9 +11,10 @@ export interface TurnoutForecastCardProps {
 // step's eager module graph. The card still uses the approved shared
 // primitives once eligible, while unrelated form/render lanes can load
 // without evaluating expo-blur or react-native-reanimated.
-const LazyTurnoutForecastCardContent = React.lazy(
-  () => import("./TurnoutForecastCardContent"),
-);
+const LazyTurnoutForecastCardContent = React.lazy(async () => {
+  const module = await import("./PrePublishIntelligenceSurfaces");
+  return { default: module.TurnoutForecastCardContent };
+});
 
 export const TurnoutForecastCard: React.FC<TurnoutForecastCardProps> = (
   props,

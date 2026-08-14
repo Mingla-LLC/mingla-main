@@ -7,10 +7,8 @@ import React, {
   useState,
 } from "react";
 
-import {
-  withExperienceModelEstimate,
-  type TurnoutInputSource,
-} from "../../utils/turnoutInput";
+import { withExperienceModelEstimate } from "../../utils/experienceTurnoutModel";
+import type { TurnoutInputSource } from "../../utils/turnoutInput";
 import type {
   TurnoutForecastController,
   TurnoutSurface,

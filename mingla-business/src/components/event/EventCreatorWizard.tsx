@@ -97,7 +97,6 @@ import { Stepper } from "../ui/Stepper";
 import type { StepperStep } from "../ui/Stepper";
 import { TopBar } from "../ui/TopBar";
 import { Toast } from "../ui/Toast";
-import { TurnoutIntelProvider } from "../intel/TurnoutIntelProvider";
 
 /*
  * Desktop web wizard contract restored after regression:
@@ -116,11 +115,18 @@ import { CreatorStep4Cover } from "./CreatorStep4Cover";
 import { CreatorStep5Tickets } from "./CreatorStep5Tickets";
 import { CreatorStep6Settings } from "./CreatorStep6Settings";
 import { CreatorStep7Preview } from "./CreatorStep7Preview";
+
 import { PublishErrorsSheet } from "./PublishErrorsSheet";
 // ISSUE-1001 — the official business lockup now imports from the canonical
 // master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
 // the app-local copy is deleted.
 import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
+
+// #1742 / ORCH-1083 — creator intelligence is not app-startup UI.
+const LazyTurnoutIntelProvider = React.lazy(async () => {
+  const module = await import("../intel/TurnoutIntelProvider");
+  return { default: module.TurnoutIntelProvider };
+});
 
 const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
   { title: "Basics", subtitle: "Name, format, and category" },
@@ -900,7 +906,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   );
 
   return (
-    <TurnoutIntelProvider
+    <React.Suspense fallback={null}>
+      <LazyTurnoutIntelProvider
       source={{
         kind: "event",
         draft: liveDraft,
@@ -1159,7 +1166,8 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         />
       </View>
     </View>
-    </TurnoutIntelProvider>
+      </LazyTurnoutIntelProvider>
+    </React.Suspense>
   );
 };
 

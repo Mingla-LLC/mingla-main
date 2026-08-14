@@ -48,15 +48,11 @@ import { postHogService } from "../../services/postHogService";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
-import { TurnoutIntelProvider } from "../intel/TurnoutIntelProvider";
 import type { TurnoutIntelSessionController } from "../intel/TurnoutIntelContext";
-import { PrePublishGateSheet } from "../intel/PrePublishGateSheet";
 import { useTurnoutFocusTarget } from "../intel/useTurnoutFocusTarget";
 import type { TurnoutForecastController } from "../../hooks/useTurnoutForecast";
-import {
-  shouldTrackGatePublishedAnyway,
-  type TurnoutInputSource,
-} from "../../utils/turnoutInput";
+import type { TurnoutInputSource } from "../../utils/turnoutInput";
+import { shouldTrackGatePublishedAnyway } from "../../utils/turnoutGateAnalytics";
 import { Stepper } from "../ui/Stepper";
 import { Toast } from "../ui/Toast";
 import { CreatorStep2When } from "../event/CreatorStep2When";
@@ -86,6 +82,7 @@ import {
   normalizeExperienceIntents,
   type ExperienceIntentId,
 } from "../../constants/experienceIntents";
+
 import { EditAfterPublishExperienceBanner } from "./EditAfterPublishExperienceBanner";
 import {
   validateLiveExperienceFieldUpdate,
@@ -103,6 +100,19 @@ import {
   normalizeThemeOverrides,
   patchOfferingTheme,
 } from "../../services/offeringTheme";
+
+// #1742 / ORCH-1083 — the gate sheet is needed only at the final publish door.
+// Preload its async chunk one step early so opening it remains immediate while
+// keeping the entire presentation/recommendation graph out of app startup.
+const loadPrePublishGateSheet = async () => {
+  const module = await import("../intel/PrePublishIntelligenceSurfaces");
+  return { default: module.PrePublishGateSheet };
+};
+const LazyPrePublishGateSheet = React.lazy(loadPrePublishGateSheet);
+const LazyTurnoutIntelProvider = React.lazy(async () => {
+  const module = await import("../intel/TurnoutIntelProvider");
+  return { default: module.TurnoutIntelProvider };
+});
 
 export interface ExperienceCreatorWizardProps {
   brandId: string;
@@ -272,6 +282,9 @@ export const ExperienceCreatorWizard: React.FC<
 
   const [step, setStep] = useState<StepIndex>(1);
   const [intelGateOpen, setIntelGateOpen] = useState(false);
+  useEffect(() => {
+    if (step >= 4) void loadPrePublishGateSheet();
+  }, [step]);
   const intelControllerRef = useRef<TurnoutForecastController | null>(null);
   const intelSessionRef = useRef<TurnoutIntelSessionController | null>(null);
   const [title, setTitle] = useState(
@@ -1098,7 +1111,8 @@ export const ExperienceCreatorWizard: React.FC<
   ]);
 
   return (
-    <TurnoutIntelProvider
+    <React.Suspense fallback={null}>
+      <LazyTurnoutIntelProvider
       source={turnoutSource}
       brandId={brandId}
       wizard="experience"
@@ -1403,13 +1417,18 @@ export const ExperienceCreatorWizard: React.FC<
           message={toast ?? ""}
           onDismiss={() => setToast(null)}
         />
-        <PrePublishGateSheet
-          visible={intelGateOpen}
-          onClose={closeIntelGate}
-          onPublish={publishFromIntelGate}
-        />
+        {step >= 4 || intelGateOpen ? (
+          <React.Suspense fallback={null}>
+            <LazyPrePublishGateSheet
+              visible={intelGateOpen}
+              onClose={closeIntelGate}
+              onPublish={publishFromIntelGate}
+            />
+          </React.Suspense>
+        ) : null}
     </View>
-    </TurnoutIntelProvider>
+      </LazyTurnoutIntelProvider>
+    </React.Suspense>
   );
 };
 

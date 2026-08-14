@@ -28,9 +28,9 @@ import {
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
 import { Button } from "../../../src/components/ui/Button";
 import {
-  ExperienceCreatorWizard,
+  LazyExperienceCreatorWizard,
   type ExperienceWizardInitialDraft,
-} from "../../../src/components/experience/ExperienceCreatorWizard";
+} from "../../../src/components/experience/LazyExperienceCreatorWizard";
 import {
   newStopClientId,
   type ExperienceStopDraft,
@@ -323,19 +323,21 @@ export default function ExperienceEditRoute(): React.ReactElement {
 
   return (
     <SafeScreen style={styles.editHost}>
-      <ExperienceCreatorWizard
-        brandId={experience.brandId}
-        existingExperienceId={experience.id}
-        initialDraft={initialDraft}
-        initialCover={initialCover}
-        liveExperience={isLive ? experience : undefined}
-        liveSoldCount={isLive ? soldCountQuery.data ?? 0 : undefined}
-        onComplete={(id) => router.replace(`/experience/${id}` as never)}
-        onCancel={() => {
-          if (router.canGoBack()) router.back();
-          else router.replace(`/experience/${experience.id}` as never);
-        }}
-      />
+      <React.Suspense fallback={<ActivityIndicator />}>
+        <LazyExperienceCreatorWizard
+          brandId={experience.brandId}
+          existingExperienceId={experience.id}
+          initialDraft={initialDraft}
+          initialCover={initialCover}
+          liveExperience={isLive ? experience : undefined}
+          liveSoldCount={isLive ? soldCountQuery.data ?? 0 : undefined}
+          onComplete={(id) => router.replace(`/experience/${id}` as never)}
+          onCancel={() => {
+            if (router.canGoBack()) router.back();
+            else router.replace(`/experience/${experience.id}` as never);
+          }}
+        />
+      </React.Suspense>
     </SafeScreen>
   );
 }
