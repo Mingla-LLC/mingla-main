@@ -166,22 +166,27 @@ export const TurnoutGateSection: React.FC = () => {
             <View
               key={row.id}
               style={styles.reco}
-              accessible
-              accessibilityLabel={`${row.severityWord}: ${row.copy}`}
+              testID={`turnout-gate-reco-${row.id}`}
             >
-              <Text
-                style={[
-                  styles.severity,
-                  row.severity === "warning"
-                    ? styles.warning
-                    : styles.info,
-                ]}
+              <View
+                accessible
+                accessibilityLabel={`${row.severityWord}: ${row.copy}`}
+                testID={`turnout-gate-reco-${row.id}-copy`}
               >
-                {row.severity === "warning" ? "⚠" : "ⓘ"} {row.severityWord}
-              </Text>
-              <Text style={styles.body} numberOfLines={2}>
-                {row.copy}
-              </Text>
+                <Text
+                  style={[
+                    styles.severity,
+                    row.severity === "warning"
+                      ? styles.warning
+                      : styles.info,
+                  ]}
+                >
+                  {row.severity === "warning" ? "⚠" : "ⓘ"} {row.severityWord}
+                </Text>
+                <Text style={styles.body} numberOfLines={2}>
+                  {row.copy}
+                </Text>
+              </View>
               {row.target !== null && intel.navigateTo !== undefined ? (
                 <Button
                   label={row.target.label}
@@ -209,7 +214,7 @@ export const TurnoutGateSection: React.FC = () => {
             size="sm"
             onPress={() => intel.openReport(undefined, "gate")}
           />
-          <Text style={styles.note}>Modeled range — not a promise.</Text>
+          <Text style={styles.note}>Modeled band — not a promise.</Text>
         </View>
       ) : null}
     </IntelCard>

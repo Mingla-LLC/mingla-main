@@ -209,9 +209,15 @@ export const PrePublishGateSheet: React.FC<PrePublishGateSheetProps> = ({
         ) : hasBand ? (
           <View style={styles.stack}>
             {demandRead ? (
-              <Text style={styles.band}>
-                  {demandBand}
-              </Text>
+              <View style={styles.bandRow}>
+                <Text style={styles.band}>{demandBand}</Text>
+                <Text
+                  style={styles.modePill}
+                  testID="experience-demand-model-pill"
+                >
+                  MODELED · your estimate of ~{estimateState.value}
+                </Text>
+              </View>
             ) : (
               <View style={styles.bandRow}>
                 <Text style={styles.band} testID="experience-gate-band">
@@ -245,22 +251,28 @@ export const PrePublishGateSheet: React.FC<PrePublishGateSheetProps> = ({
               <View
                 key={row.id}
                 style={styles.reco}
-                accessible
-                accessibilityLabel={`${row.severityWord}: ${row.copy}`}
+                testID={`experience-gate-reco-${row.id}`}
               >
-                <Text
-                  style={[
-                    styles.severity,
-                    row.severity === "warning"
-                      ? styles.warning
-                      : styles.info,
-                  ]}
+                <View
+                  accessible
+                  accessibilityLabel={`${row.severityWord}: ${row.copy}`}
+                  testID={`experience-gate-reco-${row.id}-copy`}
                 >
-                  {row.severity === "warning" ? "⚠" : "ⓘ"} {row.severityWord}
-                </Text>
-                <Text style={styles.body} numberOfLines={2}>
-                  {row.copy}
-                </Text>
+                  <Text
+                    style={[
+                      styles.severity,
+                      row.severity === "warning"
+                        ? styles.warning
+                        : styles.info,
+                    ]}
+                  >
+                    {row.severity === "warning" ? "⚠" : "ⓘ"}{" "}
+                    {row.severityWord}
+                  </Text>
+                  <Text style={styles.body} numberOfLines={2}>
+                    {row.copy}
+                  </Text>
+                </View>
                 {row.target !== null && intel.navigateTo !== undefined ? (
                   <Button
                     label={row.target.label}
