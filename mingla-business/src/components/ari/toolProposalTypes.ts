@@ -11,4 +11,7 @@
 export interface ConfirmOutcome {
   ok: boolean;
   brandId?: string;
+  /** User-safe failure copy. The proposal stays mounted so Confirm is retryable. */
+  error?: string;
+  terminal?: "expired" | "resolved";
 }

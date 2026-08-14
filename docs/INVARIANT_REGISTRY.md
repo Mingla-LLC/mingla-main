@@ -1,5 +1,13 @@
 # Invariant Registry
 
+## DRAFT — issue #2063 (Ari brand-management certification)
+
+### I-PROPOSED-2063-ARI-BRAND-MANAGEMENT-CANONICAL-EXACTLY-ONCE (DRAFT)
+
+- **Rule:** Ari brand create, update, delete, venue-scoped hours, and discovery-currency writes execute only after explicit confirmation through one caller-JWT brand transaction wrapper bound to the immutable pending-action operation ID. The wrapper reuses the canonical Business domain owners, enforces current deed-owner/delegated-role and brand/resource containment at execution time, returns stored readback, and replays a completed operation without repeating its mutation. Brand list and metadata-only audit reads remain non-mutating; pricing defaults remain outside #2063.
+- **Enforcement:** the issue #2063 additive migration, the #1972 shared operation-receipt contract already present on main, the #2063 Deno/PG17 regressions, `.github/scripts/strict-grep/issue-2063-ari-brand-management.mjs`, and `.github/workflows/issue-2063-ari-brand-management.yml`. The capability ledger keeps all seven rows `registered_unverified` until independent runtime evidence exists on Business web, iOS, and Android.
+- **Status:** DRAFT at IMPLEMENT; activate only after independent tester PASS, all-green merge, exact-revision database/Edge deployment, and production readback on every required Business surface.
+
 ## ACTIVE — issues #2264 / #2265 / #2253 (the buyer was told nothing, then told something false)
 
 ### I-2264-CHECKOUT-STATUS-ANSWER-NOT-DISCARDED (ACTIVE)
@@ -176,7 +184,7 @@
 ### I-PROPOSED-2000-ARI-CAPABILITY-LEDGER-FAIL-CLOSED (DRAFT)
 
 - **Rule:** `docs/contracts/ari-capability-ledger.json` is the canonical statement of what Ari can and cannot do across Host iOS, Android, and web. Registration is not verification: every Host operation has one stable row and one of `verified`, `registered_unverified`, `broken`, `guided_handoff`, `unsupported`, or `in_flight`; every registered tool maps exactly once; no row may claim `verified` without distinct implementor/tester regressions, exact-revision deployment evidence, and production observation on every required surface.
-- **Current audited truth:** 116 operations across 21 domains: 47 broken, 16 registered-unverified, 42 unsupported, 7 guided handoffs, 4 in flight, and 0 verified. All 64 registered tools map exactly once. The 47 broken IDs are independently pinned at the immutable audit baseline, preventing status/blocker/counter laundering.
+- **Current audited truth:** 116 operations across 21 domains: 39 broken, 28 registered-unverified, 38 unsupported, 7 guided handoffs, 4 in flight, and 0 verified. All 68 registered tools map exactly once. The 39 broken IDs are independently pinned at the immutable audit baseline, preventing status/blocker/counter laundering.
 - **Enforcement:** `.github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs` validates the explicit operation universe, registry↔prompt parity, tool bijection, status/evidence rules, exact code symbols at current and audit revisions, and proven-broken authority. The independently authored `.github/scripts/strict-grep/__tests__/issue-2000-ari-capability-ledger.tester.test.mjs` pins the reviewed denominator, mappings, classifications, and source evidence. Both run in Class A.
 - **Regression:** Implementor self-test has 10 hostile mutations; tester has 5 independent attacks. True deletion/status-laundering reversions make both guards fail, then pass on restore. Full Class A passes 846/846.
 - **Scope:** Truth inventory and CI enforcement only. This invariant does not repair or newly enable any Ari runtime operation.
@@ -191,7 +199,7 @@
 - **Rule:** Every Ari tool declaration sent to Gemini MUST pass through the single recursive compiler in `supabase/functions/_shared/agentGemini.ts`. The compiler may consume only canonical `additionalProperties: false`, MUST reject every other unsupported keyword or value before secret lookup/network access, MUST normalize Gemini typed-schema int64 fields to canonical decimal strings, and MUST NOT mutate the canonical schemas used by Ari's execution layer.
 - **Failure contract:** Provider-schema drift returns HTTP 500 code `MODEL_SCHEMA_INVALID` with fixed provider-neutral user copy. Logs may identify the static tool name, JSON pointer, keyword, and classification, but never schema values, prompts, or user data.
 - **Enforcement:** `.github/workflows/issue-1999-ari-provider-schema-tests.yml` runs the implementor contract and independently authored tester adversarial suite; `.github/scripts/strict-grep/issue-1999-ari-provider-schema-ci-wiring.mjs` pins both tests and both `callGemini` boundaries.
-- **Regression:** 64/64 real registered tool schemas compile. True reversions of `additionalProperties: false` consumption and unknown-keyword rejection make their respective suites fail, then pass after restoration.
+- **Regression:** 68/68 real registered tool schemas compile. True reversions of `additionalProperties: false` consumption and unknown-keyword rejection make their respective suites fail, then pass after restoration.
 - **Scope:** Provider-boundary translation only. Confirmation, JWT/RLS, prompts, models/keys, domain executors, migrations, and native/web clients are unchanged.
 - **Established:** DRAFT at #1999 IMPLEMENT/TEST 2026-08-13; flip to ACTIVE only after all-green PR, exact merged-main edge deployment, and production live-fire.
 
