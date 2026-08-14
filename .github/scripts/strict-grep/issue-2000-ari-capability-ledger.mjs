@@ -51,9 +51,11 @@ ari.trip.update
 ari.trip.publish
 ari.trip.delete
 ari.rsvp.create
+ari.rsvp.update
 ari.rsvp.publish
 ari.rsvp.bulk_status
 ari.rsvp.refund_contribution
+ari.rsvp.list_contributions
 ari.stay.quote
 ari.stay.create_reservation
 ari.stay.transition
@@ -82,7 +84,6 @@ ari.team.invite_member
 ari.team.invite_scanner
 ari.team.revoke_member
 ari.guests.list_roster
-ari.guests.set_approval
 ari.people.export
 ari.settings.preferences
 ari.settings.notifications
@@ -146,7 +147,7 @@ ari.partner.splits
 // Independent classification authority established by the source-contract
 // reconciliation at this immutable revision. Ledger prose may explain a defect,
 // but it cannot remove one from this set or create a new proven-broken claim.
-const PROVEN_BROKEN_AUDIT_SHA = "829c46fc319c34452e18876b728b6d840f95b904";
+const PROVEN_BROKEN_AUDIT_SHA = "0eafa5d37d0a5f3776cc733a630497794b389c41";
 const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
 ari.event.publish
 ari.event.unpublish
@@ -165,10 +166,6 @@ ari.trip.create
 ari.trip.update
 ari.trip.publish
 ari.trip.delete
-ari.rsvp.create
-ari.rsvp.publish
-ari.rsvp.bulk_status
-ari.rsvp.refund_contribution
 ari.stay.quote
 ari.stay.create_reservation
 ari.stay.transition
@@ -191,8 +188,6 @@ ari.analytics.brand
 ari.team.invite_member
 ari.team.invite_scanner
 ari.team.revoke_member
-ari.guests.list_roster
-ari.guests.set_approval
 ari.people.export
 ari.operator.snapshot
 `.trim().split(/\s+/));
@@ -335,9 +330,9 @@ function validateRef(root, auditSha, ref, label, failures) {
 
 export function validateLedger({ root, ledger, registered, advertised }) {
   const failures = [];
-  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 47) {
+  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 41) {
     failures.push(
-      `proven-broken authority must contain 47 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
+      `proven-broken authority must contain 41 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
     );
   }
   addSetDiff(

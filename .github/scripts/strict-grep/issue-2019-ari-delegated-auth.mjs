@@ -14,7 +14,7 @@ const sources = {
 function check(s) {
   const failures = [];
   const declarationCount = (s.auth.match(/:\s*role\("/g) ?? []).length;
-  if (declarationCount !== 64) failures.push(`expected 64 declarations, got ${declarationCount}`);
+  if (declarationCount !== 66) failures.push(`expected 66 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }
