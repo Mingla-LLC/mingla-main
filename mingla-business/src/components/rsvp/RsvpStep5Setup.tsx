@@ -398,8 +398,7 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
                   <Text style={styles.readyHeading}>Payouts are on</Text>
                 </View>
                 <Text style={styles.readySub}>
-                  Guests can chip in the moment you publish — no extra setup
-                  needed.
+                  Guests can chip in the moment you publish — no extra setup needed.
                 </Text>
               </View>
             ) : (

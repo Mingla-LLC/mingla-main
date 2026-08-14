@@ -17,12 +17,12 @@ import {
   turnoutInputHash,
   turnoutInputKey,
   turnoutMaterialKey,
-  type TurnoutGateAnalyticsState,
   TurnoutRunBudget,
   type TurnoutBlockReason,
   type TurnoutEngineInput,
   type TurnoutInputSource,
 } from "../utils/turnoutInput";
+import type { TurnoutGateAnalyticsState } from "../utils/turnoutGateAnalytics";
 import { useShareNetworkState } from "../components/ui/useShareNetworkState";
 import { growthToolsKeys } from "./growthToolsKeys";
 
