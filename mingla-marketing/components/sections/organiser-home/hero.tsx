@@ -28,22 +28,13 @@ import { captureMarketing } from '@/components/marketing/posthog-provider'
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
-export type HostHeroVariant = 'city' | 'world'
-
-const HERO_MEDIA: Record<HostHeroVariant, { video: string; poster: string }> = {
-  city: {
-    video: '/marketing/host-hero/city-waking-up-preview.mp4',
-    poster: '/marketing/host-hero/city-waking-up-poster.jpg',
-  },
-  world: {
-    video: '/marketing/host-hero/world-hosts-create-preview.mp4',
-    poster: '/marketing/host-hero/world-hosts-create-poster.jpg',
-  },
+const HERO_MEDIA = {
+  video: '/marketing/host-hero/world-hosts-create-preview.mp4',
+  poster: '/marketing/host-hero/world-hosts-create-poster.jpg',
 }
 
-export function OrganiserHero({ variant = 'city' }: { variant?: HostHeroVariant }) {
+export function OrganiserHero() {
   const reduced = useMinglaReducedMotion()
-  const media = HERO_MEDIA[variant]
 
   // ORCH-1381 — the RENDERED choice is device-aware, so it must resolve AFTER
   // mount: detectClientPlatform() reads navigator, absent during SSR. Seeding
@@ -86,11 +77,10 @@ export function OrganiserHero({ variant = 'city' }: { variant?: HostHeroVariant 
 
   return (
     <section
-      data-host-hero-variant={variant}
+      data-host-hero="world-hosts-create"
       className="relative flex min-h-[100svh] overflow-hidden bg-parchment px-6 pb-24 pt-32 md:px-10 md:pb-32 md:pt-40 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]"
     >
       <video
-        key={variant}
         aria-hidden="true"
         tabIndex={-1}
         autoPlay={!reduced}
@@ -98,10 +88,10 @@ export function OrganiserHero({ variant = 'city' }: { variant?: HostHeroVariant 
         loop
         playsInline
         preload="metadata"
-        poster={media.poster}
+        poster={HERO_MEDIA.poster}
         className="pointer-events-none absolute inset-0 h-full w-full object-cover object-bottom"
       >
-        <source src={media.video} type="video/mp4" />
+        <source src={HERO_MEDIA.video} type="video/mp4" />
       </video>
 
       {/* The video carries atmosphere, never contrast responsibility. The fixed
@@ -111,9 +101,7 @@ export function OrganiserHero({ variant = 'city' }: { variant?: HostHeroVariant 
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            variant === 'city'
-              ? 'linear-gradient(180deg, rgba(250,248,244,0.98) 0%, rgba(250,248,244,0.92) 42%, rgba(250,248,244,0.48) 68%, rgba(250,248,244,0.06) 100%)'
-              : 'linear-gradient(180deg, rgba(250,248,244,0.34) 0%, rgba(250,248,244,0.16) 48%, rgba(250,248,244,0.02) 78%)',
+            'linear-gradient(180deg, rgba(250,248,244,0.34) 0%, rgba(250,248,244,0.16) 48%, rgba(250,248,244,0.02) 78%)',
         }}
       />
       <div

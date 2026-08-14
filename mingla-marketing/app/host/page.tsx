@@ -1,7 +1,4 @@
-import {
-  OrganiserHero,
-  type HostHeroVariant,
-} from '@/components/sections/organiser-home/hero'
+import { OrganiserHero } from '@/components/sections/organiser-home/hero'
 import { OrganiserWhatIsMingla } from '@/components/sections/organiser-home/what-is-mingla'
 import { OrganiserImpactStats } from '@/components/sections/organiser-home/impact-stats'
 import { OrganiserAudienceTabs } from '@/components/sections/organiser-home/audience-tabs'
@@ -14,18 +11,10 @@ export const metadata = {
     'The businesses with the most soul are the hardest to find. Mingla Host changes that — we take what makes your place, event, or experience special and put it in front of the people already looking for exactly that. Your business has a vibe. Your community is looking for it. Mingla helps them find you.',
 }
 
-interface OrganiserHomePageProps {
-  searchParams: Promise<{ hero?: string | string[] }>
-}
-
-export default async function OrganiserHomePage({ searchParams }: OrganiserHomePageProps) {
-  const params = await searchParams
-  const requested = Array.isArray(params.hero) ? params.hero[0] : params.hero
-  const heroVariant: HostHeroVariant = requested === 'world' ? 'world' : 'city'
-
+export default function OrganiserHomePage() {
   return (
     <>
-      <OrganiserHero variant={heroVariant} />
+      <OrganiserHero />
       <OrganiserWhatIsMingla />
       <OrganiserImpactStats />
       <OrganiserAudiences />
