@@ -65,7 +65,7 @@ if (webClientId) {
  * not get quietly re-scattered across the individual catch branches.
  *
  * Why it exists: #1038 broke Google sign-in for EVERY Play-Store organizer on
- * Mingla Host for months and monitoring never saw it, because the catch block
+ * Mingla Business for months and monitoring never saw it, because the catch block
  * Alerted the user and discarded the error. This app has the same shape with an
  * extra illusion on top — `logger.error` LOOKS like production telemetry but its
  * breadcrumb buffer is `__DEV__`-only (`src/utils/breadcrumbs.ts`), and

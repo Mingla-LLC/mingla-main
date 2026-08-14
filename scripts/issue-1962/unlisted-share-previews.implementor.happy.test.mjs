@@ -131,7 +131,7 @@ test("H3 the pure exact-event adapter supplies real crawler metadata", () => {
   assert.equal(row.event_type, "event");
   const html = renderEventHtml(row);
   assert.match(html, /Collector&#39;s Preview by Mingla Nigeria \| Mingla/);
-  assert.match(html, /property="og:image" content="https:\/\/business\.usemingla\.com\/og\/event\/event-id\.png"/);
+  assert.match(html, /property="og:image" content="https:\/\/host\.usemingla\.com\/og\/event\/event-id\.png"/);
 });
 
 test("H3b video covers use a real authored gallery image and local event date", () => {
