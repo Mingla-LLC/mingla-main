@@ -43,10 +43,12 @@ const PRIVACY_URL = "https://usemingla.com/privacy-policy";
 const WELCOME_TAGLINE = "Great places and experiences\ndeserve to be discovered.";
 const WELCOME_TAGLINE_ACCESSIBILITY =
   "Great places and experiences deserve to be discovered.";
-const WELCOME_VIDEO_VEIL = "rgba(255,255,255,0.64)";
+const WELCOME_VIDEO_VEIL = "rgba(0, 0, 0, 0.74)";
 const WELCOME_CONTENT_GUTTER = 24;
-const WELCOME_NATIVE_LOGO_CAP = 320;
-const WELCOME_DESKTOP_LOGO_CAP = 420;
+const WELCOME_LOGO_PILL_WIDTH = 140;
+const WELCOME_LOGO_PILL_HEIGHT = 54;
+const WELCOME_WORDMARK_WIDTH = 108;
+const WELCOME_DESKTOP_PILL_SCALE = 1.2;
 const WELCOME_DESKTOP_BREAKPOINT = 768;
 
 export interface BusinessWelcomeScreenProps {
@@ -460,10 +462,15 @@ export default function BusinessWelcomeScreen({
   };
 
   const desktop = Platform.OS === "web" && width >= WELCOME_DESKTOP_BREAKPOINT;
-  const logoWidth = Math.min(
+  const logoPillScale = desktop ? WELCOME_DESKTOP_PILL_SCALE : 1;
+  const logoPillWidth = Math.min(
     width - WELCOME_CONTENT_GUTTER * 2,
-    desktop ? WELCOME_DESKTOP_LOGO_CAP : WELCOME_NATIVE_LOGO_CAP,
+    WELCOME_LOGO_PILL_WIDTH * logoPillScale,
   );
+  const logoPillHeight =
+    (logoPillWidth * WELCOME_LOGO_PILL_HEIGHT) / WELCOME_LOGO_PILL_WIDTH;
+  const logoWidth =
+    (logoPillWidth * WELCOME_WORDMARK_WIDTH) / WELCOME_LOGO_PILL_WIDTH;
   const logoHeight = logoWidth * 480 / 1356;
   const webLogoSource = Image.resolveAssetSource(MINGLA_WORDMARK).uri;
 
@@ -471,7 +478,7 @@ export default function BusinessWelcomeScreen({
     <Animated.View
       style={[
         styles.logoContainer,
-        { width: logoWidth, height: logoHeight },
+        { width: logoPillWidth, height: logoPillHeight },
         { opacity: logoOpacity, transform: [{ scale: logoScale }] },
       ]}
     >
@@ -525,9 +532,9 @@ export default function BusinessWelcomeScreen({
             }}
           >
             {isAppleSignInInProgress ? (
-              <ActivityIndicator size="small" color="#ffffff" />
+              <ActivityIndicator size="small" color="#111827" />
             ) : (
-              <AppleLogo size={22} color="#ffffff" />
+              <AppleLogo size={22} color="#111827" />
             )}
             <Text style={styles.appleButtonText}>
               {isAppleSignInInProgress ? "Connecting..." : "Continue with Apple"}
@@ -739,7 +746,7 @@ export default function BusinessWelcomeScreen({
       <WelcomeVideoBackground />
       <View pointerEvents="none" style={styles.videoVeil} />
       <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+        <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
         {onBack ? (
           <View style={[styles.topBar, { paddingLeft: Math.max(insets.left, spacing.md) }]}>
@@ -752,7 +759,7 @@ export default function BusinessWelcomeScreen({
               accessibilityLabel="Go back"
               accessibilityRole="button"
             >
-              <Icon name="chevL" size={28} color={colors.text.primary} />
+              <Icon name="chevL" size={28} color="#ffffff" />
             </TouchableOpacity>
           </View>
         ) : null}
@@ -1002,6 +1009,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+    backgroundColor: "#ffffff",
+    borderRadius: 999,
   },
   logo: {
     aspectRatio: 1356 / 480,
@@ -1012,9 +1021,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 28,
     fontWeight: fontWeights.bold,
-    color: "#111827",
+    color: "#ffffff",
     letterSpacing: 0,
     textAlign: "center",
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   taglineDesktop: {
     maxWidth: 430,
@@ -1040,16 +1052,18 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: s(400),
     height: vs(56),
-    backgroundColor: "#000000",
+    backgroundColor: "#ffffff",
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
     borderRadius: radius.lg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
-    ...shadows.md,
+    ...shadows.sm,
   },
   appleButtonText: {
-    color: colors.text.inverse,
+    color: colors.text.primary,
     fontSize: 17,
     fontWeight: fontWeights.semibold,
     letterSpacing: 0.3,
@@ -1088,14 +1102,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     fontWeight: fontWeights.regular,
-    color: colors.text.primary,
+    color: "#ffffff",
     textAlign: "center",
     paddingHorizontal: spacing.xl,
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   termsLink: {
-    color: colors.text.primary,
+    color: "#ffffff",
     fontWeight: fontWeights.semibold,
     textDecorationLine: "underline",
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   // Cycle 15 — email + OTP styles (DEC-097).
   emailButton: {
@@ -1122,23 +1142,29 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 30,
     fontWeight: fontWeights.bold,
-    color: colors.text.primary,
+    color: "#ffffff",
     textAlign: "center",
     marginTop: vs(8),
     paddingHorizontal: spacing.xl,
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   modeSubtext: {
     fontSize: 15,
     lineHeight: 22,
     fontWeight: fontWeights.regular,
-    color: colors.text.secondary,
+    color: "#ffffff",
     textAlign: "center",
     marginTop: vs(8),
     paddingHorizontal: spacing.xl,
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   modeSubtextEmail: {
     fontWeight: fontWeights.semibold,
-    color: colors.text.primary,
+    color: "#ffffff",
   },
   modeWrapper: {
     width: "100%",
@@ -1198,15 +1224,21 @@ const styles = StyleSheet.create({
   linkButtonText: {
     fontSize: 15,
     fontWeight: fontWeights.semibold,
-    color: colors.primary[700],
+    color: "#ffffff",
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   linkButtonTextDisabled: {
-    color: colors.text.tertiary,
+    color: "rgba(255, 255, 255, 0.65)",
   },
   linkButtonTextSubtle: {
     fontSize: 14,
     fontWeight: fontWeights.medium,
-    color: colors.text.secondary,
+    color: "#ffffff",
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   verifyingWrapper: {
     width: "100%",

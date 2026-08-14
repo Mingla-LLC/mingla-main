@@ -27,7 +27,7 @@ describe("issue #2052 Business welcome wordmark adversarial contract", () => {
     expect(source).not.toContain("const LOGO_SIZE");
   });
 
-  test("native and web image boxes bind the same computed wide dimensions", () => {
+  test("native and web image boxes bind the same contained wordmark dimensions", () => {
     const nativeImage = source.match(/<Image\s+source=\{logo\}[\s\S]*?\/>/);
     expect(nativeImage).not.toBeNull();
     expect(nativeImage![0]).toContain("width: logoWidth");
@@ -39,5 +39,8 @@ describe("issue #2052 Business welcome wordmark adversarial contract", () => {
     expect(webImage![0]).toContain("width: logoWidth");
     expect(webImage![0]).toContain("height: logoHeight");
     expect(webImage![0]).toContain("opacity: 1");
+    expect(source).toContain(
+      "(logoPillWidth * WELCOME_WORDMARK_WIDTH) / WELCOME_LOGO_PILL_WIDTH",
+    );
   });
 });

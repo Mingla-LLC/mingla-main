@@ -35,6 +35,11 @@ const forbidNeedles = (source, needles, label) => {
     assert.ok(!source.includes(needle), `${label}: forbidden ${needle}`);
   }
 };
+const requireStyleNeedles = (source, styleName, needles, label) => {
+  const match = source.match(new RegExp(`${styleName}:\\s*\\{([\\s\\S]*?)\\n\\s*\\},`));
+  assert.ok(match, `${label}: missing style ${styleName}`);
+  requireNeedles(match[1], needles, `${label} ${styleName}`);
+};
 
 function readLive() {
   return {
@@ -66,7 +71,15 @@ export function checkContract(fixture) {
     "styles.tagline",
     "styles.authGroup",
     'backgroundColor: WELCOME_VIDEO_VEIL',
-    'const WELCOME_VIDEO_VEIL = "rgba(255,255,255,0.64)"',
+    'const WELCOME_VIDEO_VEIL = "rgba(0, 0, 0, 0.74)"',
+    "const WELCOME_LOGO_PILL_WIDTH = 140",
+    "const WELCOME_LOGO_PILL_HEIGHT = 54",
+    "const WELCOME_WORDMARK_WIDTH = 108",
+    'backgroundColor: "#ffffff"',
+    'barStyle="light-content"',
+    'color: "#ffffff"',
+    'textShadowColor: "rgba(0, 0, 0, 0.45)"',
+    '<AppleLogo size={22} color="#111827" />',
     "Math.max(insets.bottom, WELCOME_CONTENT_GUTTER)",
     "<WelcomeVideoBackground />",
     'accessibilityLabel={t(\'auth:welcome.continue_with_google\')}',
@@ -75,6 +88,12 @@ export function checkContract(fixture) {
     "LEGAL_URLS.privacyPolicy",
   ], "explorer owner");
   forbidNeedles(s.explorerOwner, ["LinearGradient", "HEADLINE_WORDS", "Dates,", "headlineAccent"], "explorer owner");
+  requireStyleNeedles(s.explorerOwner, "logoContainer", ['backgroundColor: "#ffffff"', "borderRadius: 999"], "explorer owner");
+  requireStyleNeedles(s.explorerOwner, "tagline", ['color: "#ffffff"', 'textShadowColor: "rgba(0, 0, 0, 0.45)"'], "explorer owner");
+  requireStyleNeedles(s.explorerOwner, "appleButton", ['backgroundColor: "#ffffff"'], "explorer owner");
+  requireStyleNeedles(s.explorerOwner, "appleButtonText", ["color: colors.text.primary"], "explorer owner");
+  requireStyleNeedles(s.explorerOwner, "googleButton", ["backgroundColor: colors.background.primary"], "explorer owner");
+  requireStyleNeedles(s.explorerOwner, "termsText", ['color: "#ffffff"', 'textShadowColor: "rgba(0, 0, 0, 0.45)"'], "explorer owner");
 
   requireNeedles(s.hostOwner, [
     'const WELCOME_TAGLINE = "Great places and experiences\\ndeserve to be discovered."',
@@ -83,12 +102,19 @@ export function checkContract(fixture) {
     "Image.resolveAssetSource(MINGLA_WORDMARK).uri",
     'alt: "Mingla"',
     'accessibilityLabel="Mingla"',
-    "const WELCOME_NATIVE_LOGO_CAP = 320",
-    "const WELCOME_DESKTOP_LOGO_CAP = 420",
+    "const WELCOME_LOGO_PILL_WIDTH = 140",
+    "const WELCOME_LOGO_PILL_HEIGHT = 54",
+    "const WELCOME_WORDMARK_WIDTH = 108",
+    "const WELCOME_DESKTOP_PILL_SCALE = 1.2",
     "const logoHeight = logoWidth * 480 / 1356",
     'justifyContent: "space-evenly"',
-    'const WELCOME_VIDEO_VEIL = "rgba(255,255,255,0.64)"',
+    'const WELCOME_VIDEO_VEIL = "rgba(0, 0, 0, 0.74)"',
     'backgroundColor: WELCOME_VIDEO_VEIL',
+    'backgroundColor: "#ffffff"',
+    'barStyle="light-content"',
+    'color: "#ffffff"',
+    'textShadowColor: "rgba(0, 0, 0, 0.45)"',
+    '<AppleLogo size={22} color="#111827" />',
     'accessibilityLabel="Continue with Apple"',
     'accessibilityLabel="Continue with Google"',
     'accessibilityLabel="Continue with Email"',
@@ -98,6 +124,13 @@ export function checkContract(fixture) {
     "keyboardPad > 0 ? keyboardPad + 42 : 0",
   ], "host owner");
   forbidNeedles(s.hostOwner, ["MINGLA_BUSINESS_LOGO", "mingla-business-logo.png", "HEADLINE_WORDS", "List experiences", "LinearGradient"], "host owner");
+  requireStyleNeedles(s.hostOwner, "logoContainer", ['backgroundColor: "#ffffff"', "borderRadius: 999"], "host owner");
+  requireStyleNeedles(s.hostOwner, "tagline", ['color: "#ffffff"', 'textShadowColor: "rgba(0, 0, 0, 0.45)"'], "host owner");
+  requireStyleNeedles(s.hostOwner, "appleButton", ['backgroundColor: "#ffffff"'], "host owner");
+  requireStyleNeedles(s.hostOwner, "appleButtonText", ["color: colors.text.primary"], "host owner");
+  requireStyleNeedles(s.hostOwner, "googleButton", ["backgroundColor: colors.background.primary"], "host owner");
+  requireStyleNeedles(s.hostOwner, "emailButton", ["backgroundColor: colors.background.primary"], "host owner");
+  requireStyleNeedles(s.hostOwner, "termsText", ['color: "#ffffff"', 'textShadowColor: "rgba(0, 0, 0, 0.45)"'], "host owner");
 
   const backgroundCommon = [
     "useVideoPlayer(null",
@@ -156,12 +189,13 @@ function selfTest() {
   checkContract(good);
   expectMutationToFail(good, (x) => { x.source.explorerOwner = x.source.explorerOwner.replace("Places, plans, and experiences\\nworth showing up for", "Dates and hangouts"); }, "copy/gradient family");
   expectMutationToFail(good, (x) => { x.source.hostOwner = x.source.hostOwner.replace(/MINGLA_WORDMARK/g, "MINGLA_BUSINESS_LOGO"); }, "logo family");
+  expectMutationToFail(good, (x) => { x.source.hostOwner = x.source.hostOwner.replace(/(appleButton:\s*\{[\s\S]*?)backgroundColor: "#ffffff"/, '$1backgroundColor: "#000000"'); }, "capsule/button contrast family");
   expectMutationToFail(good, (x) => { x.source.hostNative = x.source.hostNative.replace(/portrait/g, "landscape"); }, "orientation family");
-  expectMutationToFail(good, (x) => { x.source.hostOwner = x.source.hostOwner.replace("rgba(255,255,255,0.64)", "rgba(0,0,0,0.64)"); }, "overlay family");
+  expectMutationToFail(good, (x) => { x.source.hostOwner = x.source.hostOwner.replace("rgba(0, 0, 0, 0.74)", "rgba(255, 255, 255, 0.64)"); }, "overlay family");
   expectMutationToFail(good, (x) => { x.source.hostWeb = x.source.hostWeb.replace("status === \"error\"", "status === \"never\""); }, "error fallback family");
   expectMutationToFail(good, (x) => { x.source.hostNative = x.source.hostNative.replace("eligibleRef.current = reduceMotion === false", "eligibleRef.current = true || reduceMotion === false"); }, "reduced motion family");
   expectMutationToFail(good, (x) => { x.assetBytes.hostLandscapeVideo = Buffer.from(x.assetBytes.hostLandscapeVideo); x.assetBytes.hostLandscapeVideo[100] ^= 1; }, "asset family");
-  process.stdout.write("issue-2052 self-test: 1 GOOD + 7 BAD fixtures passed\n");
+  process.stdout.write("issue-2052 self-test: 1 GOOD + 8 BAD fixtures passed\n");
 }
 
 if (process.argv.includes("--self-test")) selfTest();

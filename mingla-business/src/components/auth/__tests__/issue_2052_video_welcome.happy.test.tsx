@@ -102,6 +102,9 @@ const flush = async () => {
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 };
 
+const flattenStyle = (style: unknown) =>
+  Object.assign({}, ...((Array.isArray(style) ? style : [style]).filter(Boolean)));
+
 describe("issue #2052 video welcome happy path", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -163,6 +166,26 @@ describe("issue #2052 video welcome happy path", () => {
       "Continue with Google",
       "Continue with Email",
     ]));
+
+    const wordmark = tree!.root.findByProps({ accessibilityLabel: "Mingla" });
+    expect(flattenStyle(wordmark.props.style)).toMatchObject({ width: 108 });
+    expect(flattenStyle(wordmark.parent?.props.style)).toMatchObject({
+      width: 140,
+      height: 54,
+      backgroundColor: "#ffffff",
+      borderRadius: 999,
+    });
+    const tagline = tree!.root.findByProps({
+      accessibilityLabel: "Great places and experiences deserve to be discovered.",
+    });
+    expect(flattenStyle(tagline.props.style)).toMatchObject({
+      color: "#ffffff",
+      textShadowColor: "rgba(0, 0, 0, 0.45)",
+    });
+    const appleButton = tree!.root.findByProps({ accessibilityLabel: "Continue with Apple" });
+    expect(flattenStyle(appleButton.props.style)).toMatchObject({
+      backgroundColor: "#ffffff",
+    });
 
     await act(async () => tree!.root.findByProps({ accessibilityLabel: "Continue with Apple" }).props.onPress());
     await act(async () => tree!.root.findByProps({ accessibilityLabel: "Continue with Google" }).props.onPress());

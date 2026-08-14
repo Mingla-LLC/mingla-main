@@ -26,10 +26,15 @@ describe("issue #2052 Business welcome canonical wordmark", () => {
     expect(source).toContain('resizeMode="contain"');
   });
 
-  test("uses the approved wide dimensions and responsive caps", () => {
-    expect(source).toContain("const WELCOME_NATIVE_LOGO_CAP = 320;");
-    expect(source).toContain("const WELCOME_DESKTOP_LOGO_CAP = 420;");
+  test("uses the approved compact capsule and fully contained wordmark", () => {
+    expect(source).toContain("const WELCOME_LOGO_PILL_WIDTH = 140;");
+    expect(source).toContain("const WELCOME_LOGO_PILL_HEIGHT = 54;");
+    expect(source).toContain("const WELCOME_WORDMARK_WIDTH = 108;");
+    expect(source).toContain("const WELCOME_DESKTOP_PILL_SCALE = 1.2;");
+    expect(source).toContain("{ width: logoPillWidth, height: logoPillHeight }");
     expect(source).toContain("const logoHeight = logoWidth * 480 / 1356;");
+    expect(source).toContain('backgroundColor: "#ffffff"');
+    expect(source).toContain("borderRadius: 999");
     expect(source).toContain("aspectRatio: 1356 / 480");
     expect(source).not.toMatch(/aspectRatio:\s*1\s*,/);
   });

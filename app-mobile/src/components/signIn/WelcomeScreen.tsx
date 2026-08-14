@@ -47,9 +47,11 @@ interface WelcomeScreenProps {
 const WELCOME_TAGLINE = "Places, plans, and experiences\nworth showing up for";
 const WELCOME_TAGLINE_ACCESSIBILITY =
   "Places, plans, and experiences worth showing up for";
-const WELCOME_VIDEO_VEIL = "rgba(255,255,255,0.64)";
+const WELCOME_VIDEO_VEIL = "rgba(0, 0, 0, 0.74)";
 const WELCOME_CONTENT_GUTTER = 24;
-const WELCOME_NATIVE_LOGO_CAP = 320;
+const WELCOME_LOGO_PILL_WIDTH = 140;
+const WELCOME_LOGO_PILL_HEIGHT = 54;
+const WELCOME_WORDMARK_WIDTH = 108;
 
 export default function WelcomeScreen({
   onGoogleSignIn,
@@ -259,7 +261,15 @@ export default function WelcomeScreen({
     await WebBrowser.openBrowserAsync(LEGAL_URLS.privacyPolicy);
   };
 
-  const logoWidth = Math.min(width - WELCOME_CONTENT_GUTTER * 2, WELCOME_NATIVE_LOGO_CAP);
+  const logoPillWidth = Math.min(
+    width - WELCOME_CONTENT_GUTTER * 2,
+    WELCOME_LOGO_PILL_WIDTH,
+  );
+  const logoPillHeight =
+    (logoPillWidth * WELCOME_LOGO_PILL_HEIGHT) / WELCOME_LOGO_PILL_WIDTH;
+  const logoWidth =
+    (logoPillWidth * WELCOME_WORDMARK_WIDTH) / WELCOME_LOGO_PILL_WIDTH;
+  const logoHeight = logoWidth * 480 / 1356;
 
   return (
     <View style={styles.root}>
@@ -267,7 +277,7 @@ export default function WelcomeScreen({
       <View pointerEvents="none" style={styles.videoVeil} />
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <StatusBar
-          barStyle="dark-content"
+          barStyle="light-content"
           backgroundColor="transparent"
           translucent
         />
@@ -283,6 +293,7 @@ export default function WelcomeScreen({
           <Animated.View
             style={[
               styles.logoContainer,
+              { width: logoPillWidth, height: logoPillHeight },
               {
                 opacity: logoOpacity,
                 transform: [{ scale: logoScale }],
@@ -291,7 +302,7 @@ export default function WelcomeScreen({
           >
             <Image
               source={logo}
-              style={[styles.logo, { width: logoWidth, height: logoWidth * 480 / 1356 }]}
+              style={[styles.logo, { width: logoWidth, height: logoHeight }]}
               resizeMode="contain"
               accessibilityLabel="Mingla"
               accessibilityRole="image"
@@ -343,9 +354,9 @@ export default function WelcomeScreen({
                 }}
               >
                 {isAppleSignInInProgress ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
+                  <ActivityIndicator size="small" color="#111827" />
                 ) : (
-                  <AppleLogo size={22} color="#ffffff" />
+                  <AppleLogo size={22} color="#111827" />
                 )}
                 <Text style={styles.appleButtonText}>
                   {isAppleSignInInProgress
@@ -454,7 +465,10 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: "center",
+    justifyContent: "center",
     flexShrink: 1,
+    backgroundColor: "#ffffff",
+    borderRadius: 999,
   },
   logo: {
     aspectRatio: 1356 / 480,
@@ -465,9 +479,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 28,
     fontWeight: fontWeights.bold,
-    color: "#111827",
+    color: "#ffffff",
     letterSpacing: 0,
     textAlign: "center",
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   authGroup: {
     width: "100%",
@@ -483,16 +500,18 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: s(400),
     height: vs(56),
-    backgroundColor: "#000000",
+    backgroundColor: "#ffffff",
+    borderWidth: 1.5,
+    borderColor: colors.gray[200],
     borderRadius: radius.lg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 12,
-    ...shadows.md,
+    ...shadows.sm,
   },
   appleButtonText: {
-    color: colors.text.inverse,
+    color: colors.text.primary,
     fontSize: 17,
     fontWeight: fontWeights.semibold,
     letterSpacing: 0.3,
@@ -531,13 +550,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     fontWeight: fontWeights.regular,
-    color: colors.text.primary,
+    color: "#ffffff",
     textAlign: "center",
     paddingHorizontal: spacing.xl,
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   termsLink: {
-    color: colors.text.primary,
+    color: "#ffffff",
     fontWeight: fontWeights.semibold,
     textDecorationLine: "underline",
+    textShadowColor: "rgba(0, 0, 0, 0.45)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
 });
