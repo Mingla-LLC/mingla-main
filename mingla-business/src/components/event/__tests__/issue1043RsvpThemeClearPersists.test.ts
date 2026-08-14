@@ -82,10 +82,12 @@ describe("#1043 (tester) — clearing an RSVP theme persists as explicit nulls",
   test("FAILS-ON-REVERT: the rsvpMode branch forwards `patch.themeOverrides ?? null` (a null clear is forwarded, not dropped)", () => {
     const source = stripComments(readFileSync(SCREEN_PATH, "utf8"));
     const rsvpBranchStart = source.indexOf("if (rsvpMode) {");
-    const eventThemeMarker = source.indexOf("const themePatchPresent");
+    const eventPathMarker = source.indexOf(
+      "const validation = validateLiveEventFieldUpdate",
+    );
     expect(rsvpBranchStart).toBeGreaterThanOrEqual(0);
-    expect(eventThemeMarker).toBeGreaterThan(rsvpBranchStart);
-    const rsvpRegion = source.slice(rsvpBranchStart, eventThemeMarker);
+    expect(eventPathMarker).toBeGreaterThan(rsvpBranchStart);
+    const rsvpRegion = source.slice(rsvpBranchStart, eventPathMarker);
     // The clear-forwarding coalesce — the implementor's `patch.themeOverrides`
     // substring would match with OR without `?? null`; this pins the coalesce.
     expect(rsvpRegion).toMatch(/themeOverrides:\s*patch\.themeOverrides\s*\?\?\s*null/);

@@ -49,25 +49,25 @@ function stripComments(src: string): string {
 describe("#1043 — RSVP save path writes the theme override columns", () => {
   const source = stripComments(fs.readFileSync(SCREEN_PATH, "utf8"));
 
-  // The rsvp branch runs from `if (rsvpMode) {` up to the event-path theme
-  // block, which begins at `const themePatchPresent`. The rsvp branch returns
-  // before the event path, and the event-path theme call sits AFTER that
-  // marker, so any patchPublishedEventTheme( in this region is the rsvp one.
+  // The RSVP branch runs from `if (rsvpMode) {` up to the canonical non-RSVP
+  // validation path. Any patchPublishedEventTheme( in this region is the RSVP
+  // write; ticketed events now include theme in the atomic #1972 patch owner.
   const rsvpBranchStart = source.indexOf("if (rsvpMode) {");
-  const eventThemeMarker = source.indexOf("const themePatchPresent");
+  const eventPathMarker = source.indexOf(
+    "const validation = validateLiveEventFieldUpdate",
+  );
 
   test("source loads and both landmarks are locatable, in order", () => {
     expect(rsvpBranchStart).toBeGreaterThanOrEqual(0);
-    expect(eventThemeMarker).toBeGreaterThan(rsvpBranchStart);
+    expect(eventPathMarker).toBeGreaterThan(rsvpBranchStart);
   });
 
   test("FAILS-ON-REVERT: the rsvpMode branch calls patchPublishedEventTheme, gated on a theme patch", () => {
-    const rsvpRegion = source.slice(rsvpBranchStart, eventThemeMarker);
+    const rsvpRegion = source.slice(rsvpBranchStart, eventPathMarker);
     // The load-bearing write — deleting it empties this assertion.
     expect(rsvpRegion).toContain("patchPublishedEventTheme(");
     // Gated so an RSVP edit that didn't touch the theme emits no write. This
-    // exact `if (` form is unique to the rsvp branch (the event path uses
-    // `const themePatchPresent = patch.themeOverrides !== undefined`).
+    // exact `if (` form is unique to the RSVP branch.
     expect(rsvpRegion).toMatch(/if\s*\(\s*patch\.themeOverrides\s*!==\s*undefined\s*\)/);
     // Writes the edited overrides against the server event id.
     expect(rsvpRegion).toContain("eventId: liveEvent.serverEventId");
@@ -81,16 +81,17 @@ describe("#1043 — RSVP save path writes the theme override columns", () => {
       rsvpBranchStart,
     );
     expect(gateIdx).toBeGreaterThan(rsvpBranchStart);
-    expect(gateIdx).toBeLessThan(eventThemeMarker);
+    expect(gateIdx).toBeLessThan(eventPathMarker);
     expect(rsvpCallIdx).toBeGreaterThan(gateIdx);
-    expect(rsvpCallIdx).toBeLessThan(eventThemeMarker);
+    expect(rsvpCallIdx).toBeLessThan(eventPathMarker);
   });
 
-  test("no regression: the non-RSVP event path still writes the theme too (two call sites total)", () => {
+  test("no regression: the non-RSVP event path writes theme through the atomic owner", () => {
     const occurrences = source.match(/patchPublishedEventTheme\(/g) ?? [];
-    expect(occurrences).toHaveLength(2);
-    // The event-path call remains after the marker.
-    expect(source.slice(eventThemeMarker)).toContain("patchPublishedEventTheme(");
+    expect(occurrences).toHaveLength(1);
+    const eventRegion = source.slice(eventPathMarker);
+    expect(eventRegion).toContain("atomicPatch.theme = patch.themeOverrides ?? null");
+    expect(eventRegion).toContain("patchPublishedEventAtomically(");
   });
 });
 
