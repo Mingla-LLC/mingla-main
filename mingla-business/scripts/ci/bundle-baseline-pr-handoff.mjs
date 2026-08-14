@@ -114,7 +114,7 @@ export function makeRestAdapter({ token, owner, repo, fetchImpl = fetch }) {
     }
     if (!response.ok) {
       const safeMessage = payload?.message ?? `GitHub REST request failed (${response.status}).`;
-      throw new HandoffError("REST_FAILURE", `${method} ${path}: ${safeMessage}`, {
+      throw new HandoffError("REST_FAILURE", `${method} ${url}: ${safeMessage}`, {
         status: response.status,
       });
     }
