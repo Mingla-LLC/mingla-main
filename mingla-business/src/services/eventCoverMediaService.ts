@@ -293,42 +293,47 @@ export const setEventCover = async (
     metadata,
     stablePosterUrl,
   );
-  const { data, error } = await supabase.rpc("business_set_event_cover_media", {
-    p_event_id: serverEventId,
-    p_selection_ref: attested.selectionRef,
-    p_url: mediaUrl,
-    p_type: mediaType,
-    p_poster_url: stablePosterUrl,
-    p_provider: attested.metadata.provider ?? null,
-    p_source_url: attested.metadata.sourceUrl ?? null,
-    p_credit: attested.metadata.credit ?? null,
-    p_credit_url: attested.metadata.creditUrl ?? null,
-    p_alt: attested.metadata.alt ?? null,
-  });
+  const { data: responseData, error } = await supabase.rpc(
+    "business_set_event_cover_media",
+    {
+      p_event_id: serverEventId,
+      p_selection_ref: attested.selectionRef,
+      p_url: mediaUrl,
+      p_type: mediaType,
+      p_poster_url: stablePosterUrl,
+      p_provider: attested.metadata.provider ?? null,
+      p_source_url: attested.metadata.sourceUrl ?? null,
+      p_credit: attested.metadata.credit ?? null,
+      p_credit_url: attested.metadata.creditUrl ?? null,
+      p_alt: attested.metadata.alt ?? null,
+    },
+  );
 
   if (error !== null) {
     throw new EventCoverMediaError("upload_failed", error.message);
   }
-  const event =
-    data !== null && typeof data === "object" && !Array.isArray(data)
-      ? (data as { event?: Record<string, unknown> }).event
+  const data =
+    responseData !== null &&
+    typeof responseData === "object" &&
+    !Array.isArray(responseData)
+      ? (responseData as { event?: Record<string, unknown> }).event
       : null;
-  if (event === null || event === undefined) {
+  if (data === null || data === undefined) {
     throw new EventCoverMediaError(
       "missing_server_event_id",
       "Save failed because this event could not be found.",
     );
   }
   if (
-    event.cover_media_url !== mediaUrl ||
-    event.cover_media_poster_url !== stablePosterUrl
+    data.cover_media_url !== mediaUrl ||
+    data.cover_media_poster_url !== stablePosterUrl
   ) {
     throw new EventCoverMediaError(
       "persist_mismatch",
       "Save succeeded but the cover did not persist. Refresh and try again.",
     );
   }
-  return event as {
+  return data as {
     id: string;
     cover_media_url: string;
     cover_media_poster_url: string;

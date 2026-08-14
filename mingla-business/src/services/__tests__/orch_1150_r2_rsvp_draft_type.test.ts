@@ -25,11 +25,13 @@ const mockGetUser = jest.fn<
   () => Promise<{ data: { user: { id: string } | null }; error: Error | null }>
 >();
 const mockFrom = jest.fn();
+const mockRpc = jest.fn();
 
 jest.mock("../supabase", () => ({
   supabase: {
     auth: { getUser: mockGetUser },
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
@@ -138,6 +140,7 @@ const baseDraft = (patch: Partial<DraftEvent> = {}): DraftEvent =>
 beforeEach(() => {
   mockFrom.mockReset();
   mockGetUser.mockReset();
+  mockRpc.mockReset();
   mockGetUser.mockResolvedValue({
     data: { user: { id: "user-1" } },
     error: null,
@@ -147,8 +150,9 @@ beforeEach(() => {
 describe("ORCH-1150-R2 D-2 — createServerDraft types the server row by RSVP-ness", () => {
   const runCreate = async (
     source: DraftEvent,
-  ): Promise<{ insertPayloads: unknown[] }> => {
+  ): Promise<{ insertPayloads: unknown[]; rpcNames: unknown[] }> => {
     const capture = { inFilters: [] as InFilter[], insertPayloads: [] as unknown[] };
+    const rpcNames: unknown[] = [];
     const insertedRow = {
       id: "00000000-0000-4000-8000-0000000000aa",
       brand_id: source.brandId,
@@ -178,8 +182,17 @@ describe("ORCH-1150-R2 D-2 — createServerDraft types the server row by RSVP-ne
         capture,
       );
     });
+    mockRpc.mockImplementation(
+      async (name: unknown, rawArgs: unknown) => {
+        const args = rawArgs as { p_payload?: unknown };
+        rpcNames.push(name);
+        expect(name).toBe("business_create_event_draft");
+        capture.insertPayloads.push(args.p_payload);
+        return { data: { event: insertedRow }, error: null };
+      },
+    );
     await createServerDraft(source.brandId, source);
-    return { insertPayloads: capture.insertPayloads };
+    return { insertPayloads: capture.insertPayloads, rpcNames };
   };
 
   test("RSVP draft (isRsvp:true) → server row inserted with event_type:'rsvp'", async () => {
@@ -191,10 +204,13 @@ describe("ORCH-1150-R2 D-2 — createServerDraft types the server row by RSVP-ne
   });
 
   test("ticketed draft (isRsvp:false) → server row stays event_type:'event'", async () => {
-    const { insertPayloads } = await runCreate(baseDraft({ isRsvp: false }));
-    expect((insertPayloads[0] as { event_type?: string }).event_type).toBe(
-      "event",
+    const { insertPayloads, rpcNames } = await runCreate(
+      baseDraft({ isRsvp: false }),
     );
+    expect(rpcNames).toEqual(["business_create_event_draft"]);
+    expect(insertPayloads[0]).toMatchObject({
+      brand_id: "00000000-0000-4000-8000-000000000002",
+    });
   });
 });
 

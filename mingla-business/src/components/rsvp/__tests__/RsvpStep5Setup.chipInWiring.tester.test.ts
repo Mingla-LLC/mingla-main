@@ -84,7 +84,7 @@ describe("ORCH-1335 [tester] — EditPublishedScreen is symmetric AND stale-clos
   it("computes readiness from the fresh hook (useBrand + useBrandStripeStatus), not the cache", () => {
     expect(editSrc).toContain("useBrandStripeStatus(chipInBrandId)");
     expect(editSrc).toMatch(
-      /isChipInPayoutReady\(\s*chipInBrandQuery\.data\s*\?\?\s*null\s*,\s*chipInStripeStatus\.data\?\.status\s*\)/,
+      /isChipInPayoutReady\(\s*chipInBrandQuery\.data\s*\?\?\s*null\s*,\s*chipInStripeStatus\.data\?\.status\s*,?\s*\)/,
     );
     expect(editSrc).not.toMatch(/isChipInPayoutReady\([^)]*\.stripeStatus/);
   });

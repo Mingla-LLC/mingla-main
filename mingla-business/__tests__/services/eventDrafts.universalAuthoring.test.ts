@@ -6,6 +6,7 @@ const mockGetUser = jest.fn<
   () => Promise<{ data: { user: { id: string } | null }; error: Error | null }>
 >();
 const mockFrom = jest.fn();
+const mockRpc = jest.fn();
 
 jest.mock("../../src/services/supabase", () => ({
   supabase: {
@@ -13,6 +14,7 @@ jest.mock("../../src/services/supabase", () => ({
       getUser: mockGetUser,
     },
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
@@ -89,6 +91,7 @@ const queueFrom = (
 beforeEach(() => {
   mockFrom.mockReset();
   mockGetUser.mockReset();
+  mockRpc.mockReset();
   mockGetUser.mockResolvedValue({
     data: { user: { id: "user-1" } },
     error: null,
@@ -120,22 +123,23 @@ describe("META-ORCH-0972 universal event draft authoring", () => {
           },
         }),
       },
-      {
-        table: "events",
-        builder: queryBuilder(
-          {
-            method: "single",
-            result: { data: { draft }, error: null },
-          },
-          (payload) => insertPayloads.push(payload as Record<string, unknown>),
-        ),
-      },
     ]);
+    mockRpc.mockImplementationOnce(
+      async (name: unknown, rawArgs: unknown) => {
+        const args = rawArgs as { p_payload?: unknown };
+        expect(name).toBe("business_create_event_draft");
+        insertPayloads.push(args.p_payload as Record<string, unknown>);
+        return { data: { event: { draft } }, error: null };
+      },
+    );
 
     await expect(createServerDraft(brandId)).resolves.toEqual(draft);
     expect(insertPayloads[0]).toMatchObject({
       brand_id: brandId,
-      event_type: "event",
     });
+    expect(mockRpc).toHaveBeenCalledWith(
+      "business_create_event_draft",
+      expect.objectContaining({ p_brand_id: brandId }),
+    );
   });
 });

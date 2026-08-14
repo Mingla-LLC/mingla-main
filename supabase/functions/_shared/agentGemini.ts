@@ -114,7 +114,6 @@ const STRING_SCHEMA_FIELDS = new Set([
 ]);
 
 const STRING_ARRAY_SCHEMA_FIELDS = new Set([
-  "enum",
   "required",
   "propertyOrdering",
 ]);
@@ -206,6 +205,43 @@ function normalizeInt64(
   return normalized;
 }
 
+function normalizeProviderEnum(
+  value: unknown,
+  schemaType: unknown,
+  toolName: string,
+  pointer: string,
+): string[] {
+  if (!Array.isArray(value)) {
+    throw schemaError(toolName, pointer, "enum", "must be an array");
+  }
+  if (value.every((entry) => typeof entry === "string")) {
+    return [...value];
+  }
+
+  const normalizedType =
+    typeof schemaType === "string" ? schemaType.toUpperCase() : null;
+  if (
+    normalizedType === "INTEGER" &&
+    value.every((entry) =>
+      typeof entry === "number" && Number.isSafeInteger(entry)
+    )
+  ) {
+    return value.map(String);
+  }
+  if (
+    normalizedType === "NUMBER" &&
+    value.every((entry) => typeof entry === "number" && Number.isFinite(entry))
+  ) {
+    return value.map(String);
+  }
+  throw schemaError(
+    toolName,
+    pointer,
+    "enum",
+    "must be all strings or finite numbers matching the schema type",
+  );
+}
+
 function compileProviderSchema(
   schema: unknown,
   toolName: string,
@@ -244,6 +280,13 @@ function compileProviderSchema(
         throw schemaError(toolName, keywordPointer, keyword, "must be a boolean");
       }
       compiled[keyword] = value;
+    } else if (keyword === "enum") {
+      compiled[keyword] = normalizeProviderEnum(
+        value,
+        schema.type,
+        toolName,
+        keywordPointer,
+      );
     } else if (STRING_ARRAY_SCHEMA_FIELDS.has(keyword)) {
       if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
         throw schemaError(toolName, keywordPointer, keyword, "must be an array of strings");
