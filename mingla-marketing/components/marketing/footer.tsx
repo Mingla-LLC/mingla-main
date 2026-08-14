@@ -1,41 +1,121 @@
 import Link from 'next/link'
-import { ArrowUpRight } from 'lucide-react'
-import type { Surface } from '@/lib/subdomain'
-import { socialHref, socialsForTab } from '@/lib/links-config'
+import { BUSINESS_PATH, type Surface } from '@/lib/subdomain'
 
-interface FooterProps { surface: Surface }
+interface FooterProps {
+  surface: Surface
+}
 
-const productLinks = [
-  { href: '/', label: 'Mingla' },
-  { href: '/host', label: 'Mingla Host' },
-  { href: '/tools', label: 'Free tools' },
+interface FooterColumn {
+  title: string
+  links: Array<{ href: string; label: string; external?: boolean }>
+}
+
+const explorerColumns: FooterColumn[] = [
+  {
+    title: 'Company',
+    links: [
+      { href: '/support', label: 'Support' },
+      // #1003 — the free growth tools hub (Venue Website Grader et al.).
+      { href: '/tools', label: 'Free tools' },
+    ],
+  },
+  {
+    title: 'Legal',
+    links: [
+      { href: '/privacy-policy', label: 'Privacy' },
+      { href: '/terms-of-service', label: 'Terms' },
+    ],
+  },
 ]
-const exploreLinks = [
-  { href: '/download', label: 'Get Mingla' },
-  { href: '/host/download', label: 'Get Mingla Host' },
-  { href: '/support', label: 'Support' },
-]
-const legalLinks = [
-  { href: '/privacy-policy', label: 'Privacy' },
-  { href: '/terms-of-service', label: 'Terms' },
+
+const organiserColumns: FooterColumn[] = [
+  {
+    title: 'Company',
+    // ORCH-1225 — Careers points at the careers subdomain. ABSOLUTE external
+    // URL: a relative `/careers` 404s on the apex (the marketing middleware
+    // host-rewrites `career.usemingla.com` only). Business footer ONLY.
+    links: [
+      { href: 'https://career.usemingla.com', label: 'Careers', external: true },
+      // #1003 — the free growth tools hub (Venue Website Grader et al.).
+      { href: '/tools', label: 'Free tools' },
+    ],
+  },
+  {
+    title: 'Legal',
+    links: [
+      { href: '/privacy-policy', label: 'Privacy' },
+      { href: '/terms-of-service', label: 'Terms' },
+    ],
+  },
 ]
 
 export function Footer({ surface }: FooterProps) {
-  const host = surface === 'organiser'
-  const socials = socialsForTab(host ? 'business' : 'explorer')
-  return <footer data-theme="dark" className="border-t border-white/8 bg-obsidian px-5 py-20 text-white md:px-10 md:py-24">
-    <div className="mx-auto max-w-[1184px]">
-      <div className="grid gap-14 lg:grid-cols-[1.3fr_2fr]">
-        <div className="max-w-md">
-          <img src={host ? '/brand/mingla-business-logo.svg' : '/brand/mingla-wordmark.svg'} alt={host ? 'Mingla Host' : 'Mingla'} className={host ? 'h-32 w-32 object-contain' : 'h-8 w-auto'} />
-          <p className="mt-6 text-base leading-7 text-white/62">{host ? 'Create, publish and run the places, events, trips and experiences people want to show up for.' : 'Find places, events, trips and experiences that fit the vibe—then turn them into a real plan.'}</p>
+  const cols = surface === 'organiser' ? organiserColumns : explorerColumns
+  const crossLink =
+    surface === 'organiser'
+      ? { href: '/', label: 'Looking for the consumer app? → Back to Mingla' }
+      : { href: BUSINESS_PATH, label: 'Are you a venue or organiser? → Mingla Host' }
+
+  return (
+    <footer className="border-t border-divider bg-vellum px-6 py-16 md:px-10 md:py-24">
+      <div className="mx-auto max-w-6xl">
+        <div className="flex flex-col gap-12 md:flex-row md:items-start md:justify-between md:gap-16">
+          <div className="flex max-w-md flex-col gap-3">
+            <span className="font-display text-2xl font-semibold tracking-[-0.02em] text-text-primary">
+              Mingla{surface === 'organiser' ? ' Business' : ''}
+            </span>
+            <p className="max-w-xs text-sm text-text-secondary">
+              Find a vibe, not a venue. Mingla is the experience-discovery app for hangouts, dates, group outings, and slow Sundays.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-x-16 gap-y-10 md:justify-end">
+            {cols.map((col) => (
+              <div key={col.title} className="flex min-w-[7rem] flex-col gap-3">
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                  {col.title}
+                </span>
+                <ul className="flex flex-col gap-2">
+                  {col.links.map((l) => (
+                    <li key={l.href}>
+                      {/* ORCH-1225 — external absolute URLs (careers subdomain)
+                          render as a real anchor, same tab; internal routes
+                          stay Next.js <Link>. */}
+                      {l.external ? (
+                        <a
+                          href={l.href}
+                          className="rounded-sm text-sm text-text-secondary transition-colors hover:text-text-primary focus-ring"
+                        >
+                          {l.label}
+                        </a>
+                      ) : (
+                        <Link
+                          href={l.href}
+                          className="rounded-sm text-sm text-text-secondary transition-colors hover:text-text-primary focus-ring"
+                        >
+                          {l.label}
+                        </Link>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-10 sm:grid-cols-4">
-          {[['Products',productLinks],['Explore',exploreLinks],['Legal',legalLinks]].map(([title,links]) => <div key={title as string}><h2 className="text-xs font-bold uppercase tracking-[.18em] text-white/45">{title as string}</h2><ul className="mt-5 space-y-3">{(links as typeof productLinks).map(link=><li key={link.href}><Link href={link.href} className="text-sm text-white/70 transition-colors hover:text-white focus-ring">{link.label}</Link></li>)}</ul></div>)}
-          <div><h2 className="text-xs font-bold uppercase tracking-[.18em] text-white/45">Social</h2><ul className="mt-5 space-y-3">{socials.map(s=><li key={s.label}><a href={socialHref(s,host?'business':'explorer')} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm text-white/70 transition-colors hover:text-white focus-ring">{s.label}<ArrowUpRight className="h-3 w-3"/></a></li>)}</ul></div>
+
+        <div className="mt-14 flex flex-col items-start justify-between gap-4 border-t border-divider-strong pt-8 md:flex-row md:items-center">
+          <Link
+            href={crossLink.href}
+            className="rounded-sm text-sm font-medium text-warm transition-colors hover:brightness-110 focus-ring"
+          >
+            {crossLink.label}
+          </Link>
+          <span className="text-xs text-text-muted">
+            © {new Date().getFullYear()} Mingla. All rights reserved.
+          </span>
         </div>
       </div>
-      <div className="mt-16 flex flex-col gap-5 border-t border-white/10 pt-8 md:flex-row md:items-center md:justify-between"><Link href={host ? '/' : '/host'} className="font-display text-sm text-warm transition-colors hover:text-white">{host ? 'Planning something? Meet Mingla →' : 'Create the place people find. Meet Mingla Host →'}</Link><p className="text-xs text-white/40">© {new Date().getFullYear()} Mingla. All rights reserved.</p></div>
-    </div>
-  </footer>
+    </footer>
+  )
 }

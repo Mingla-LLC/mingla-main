@@ -1,5 +1,5 @@
 import { headers } from 'next/headers'
-import { ExplorerExperienceHome } from '@/components/sections/explorer-home/experience-home'
+import { ExplorerHero } from '@/components/sections/explorer-home/hero'
 import { resolveCityKey } from '@/lib/city-decks'
 
 // ORCH-1007 location-aware hero: resolve the marketing city SERVER-SIDE from
@@ -34,5 +34,5 @@ export default async function ExplorerHomePage({
     country: headerList.get('x-vercel-ip-country'),
   })
 
-  return <ExplorerExperienceHome cityKey={cityKey} />
+  return <ExplorerHero cityKey={cityKey} />
 }
