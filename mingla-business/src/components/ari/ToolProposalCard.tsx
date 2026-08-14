@@ -46,7 +46,6 @@ import type { CoverPatch } from "../ui/CoverPicker";
 import type { CoverTarget } from "../ui/coverTarget";
 import { useBrandCascadePreview } from "../../hooks/useBrands";
 import { randomId } from "../../utils/randomId";
-import { registerEventCoverSelection } from "../../services/eventCoverMediaService";
 import type { ConfirmOutcome } from "./toolProposalTypes";
 
 // Premium proposal-card metrics — tighter than the default kit values.
@@ -413,6 +412,9 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     const selectionRef = patch.coverMediaUrl ? randomId() : undefined;
     if (selectionRef && typeof liveArgs.event_id === "string") {
       try {
+        const { registerEventCoverSelection } = await import(
+          "../../services/eventCoverMediaService"
+        );
         await registerEventCoverSelection(
           liveArgs.event_id,
           selectionRef,

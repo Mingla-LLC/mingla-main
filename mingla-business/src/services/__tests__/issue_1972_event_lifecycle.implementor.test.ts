@@ -56,4 +56,14 @@ describe("#1972 canonical event lifecycle Business surfaces", () => {
       'supabase.rpc("business_register_event_cover_selection"',
     );
   });
+
+  test("Ari defers native cover file machinery until the operator selects a cover", () => {
+    const source = read("src/components/ari/ToolProposalCard.tsx");
+    expect(source).not.toContain(
+      'import { registerEventCoverSelection } from "../../services/eventCoverMediaService"',
+    );
+    expect(source).toContain(
+      'await import(\n          "../../services/eventCoverMediaService"\n        )',
+    );
+  });
 });
