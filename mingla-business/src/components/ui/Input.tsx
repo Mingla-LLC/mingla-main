@@ -22,7 +22,13 @@
  * the password variant to avoid visual conflict with the eye toggle.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 // Picker dropdown overlay (scrolls dropdown option list inside an
 // absolute-positioned modal, not form content). Parent screen's
 // SmartScrollView handles keyboard avoidance for the TextInput.
@@ -43,6 +49,7 @@ import {
   durations,
   glass,
   radius as radiusTokens,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -391,6 +398,15 @@ export interface InputProps
   testID?: string;
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
+  /** Generic inline validation contract; callers own copy and timing. */
+  error?: string | null;
+  /** Stable id used by web's aria-describedby relationship. */
+  errorId?: string;
+  /**
+   * Keep validation semantics on the field while a form renders the error in
+   * its own full-width row. Defaults to true for existing callers.
+   */
+  renderErrorMessage?: boolean;
 
   // Phone-only ----------------------------------------------------------
   /** Default country ISO (alpha-2). Defaults to "GB". Phone variant only. */
@@ -474,23 +490,30 @@ const PickerSearchInput: React.FC<PickerSearchInputProps> = ({
 // Main Input component
 // ---------------------------------------------------------------------------
 
-export const Input: React.FC<InputProps> = ({
-  value,
-  onChangeText,
-  variant = "text",
-  placeholder,
-  leadingIcon,
-  clearable = false,
-  disabled = false,
-  testID,
-  style,
-  accessibilityLabel,
-  defaultCountryIso,
-  onCountryChange,
-  onFocus,
-  onBlur,
-  ...rest
-}) => {
+export const Input = forwardRef<TextInput, InputProps>(function Input(
+  {
+    value,
+    onChangeText,
+    variant = "text",
+    placeholder,
+    leadingIcon,
+    clearable = false,
+    disabled = false,
+    testID,
+    style,
+    accessibilityLabel,
+    error = null,
+    errorId,
+    renderErrorMessage = true,
+    defaultCountryIso,
+    onCountryChange,
+    onFocus,
+    onBlur,
+    accessibilityHint,
+    ...rest
+  },
+  forwardedRef,
+) {
   const [focused, setFocused] = useState(false);
   const [secureRevealed, setSecureRevealed] = useState(false);
   const [country, setCountry] = useState<PhoneCountry>(() =>
@@ -527,7 +550,7 @@ export const Input: React.FC<InputProps> = ({
   // that slot. For other variants, fall back to the search auto-icon.
   const resolvedLeadingIcon: IconName | undefined = isPhone
     ? undefined
-    : leadingIcon ?? (variant === "search" ? "search" : undefined);
+    : (leadingIcon ?? (variant === "search" ? "search" : undefined));
 
   const handleFocus = useCallback(
     (event: TextInputFocusEvent): void => {
@@ -573,6 +596,14 @@ export const Input: React.FC<InputProps> = ({
   // Trailing slot priority: password eye > clear button.
   const showPasswordToggle = isPassword && !disabled;
   const showClear = !isPassword && clearable && value.length > 0 && !disabled;
+  const hasError = error !== null && error.length > 0;
+  const resolvedHint = hasError
+    ? [accessibilityHint, error].filter(Boolean).join(". ")
+    : accessibilityHint;
+  const webInvalidProps =
+    Platform.OS === "web" && hasError
+      ? { "aria-invalid": true, "aria-describedby": errorId }
+      : {};
 
   return (
     <>
@@ -581,10 +612,22 @@ export const Input: React.FC<InputProps> = ({
         style={[
           styles.container,
           {
-            borderColor: focused ? accent.warm : IDLE_BORDER,
+            borderColor: hasError
+              ? semantic.error
+              : focused
+                ? accent.warm
+                : IDLE_BORDER,
             borderWidth: focused ? 1.5 : 1,
             opacity: disabled ? 0.5 : 1,
           },
+          Platform.OS === "web" && focused
+            ? ({
+                outlineColor: accent.warm,
+                outlineOffset: 2,
+                outlineStyle: "solid",
+                outlineWidth: 2,
+              } as unknown as ViewStyle)
+            : null,
           style,
         ]}
       >
@@ -603,11 +646,16 @@ export const Input: React.FC<InputProps> = ({
 
         {resolvedLeadingIcon !== undefined ? (
           <View style={styles.leadingIcon}>
-            <Icon name={resolvedLeadingIcon} size={ICON_SIZE} color={textTokens.tertiary} />
+            <Icon
+              name={resolvedLeadingIcon}
+              size={ICON_SIZE}
+              color={textTokens.tertiary}
+            />
           </View>
         ) : null}
 
         <TextInput
+          ref={forwardedRef}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
@@ -618,6 +666,8 @@ export const Input: React.FC<InputProps> = ({
           secureTextEntry={secureTextEntry}
           underlineColorAndroid="transparent"
           accessibilityLabel={accessibilityLabel ?? placeholder}
+          accessibilityHint={resolvedHint}
+          accessibilityState={{ disabled }}
           style={[
             styles.input,
             {
@@ -628,18 +678,15 @@ export const Input: React.FC<InputProps> = ({
               // line-box height, drifting the text baseline toward the
               // bottom (visible bottom-skew on the text variant). Container
               // already centers via `alignItems: "center"` + height: 100%.
-              paddingLeft:
-                resolvedLeadingIcon !== undefined ? 0 : PADDING_X,
+              paddingLeft: resolvedLeadingIcon !== undefined ? 0 : PADDING_X,
               paddingRight: showClear || showPasswordToggle ? 0 : PADDING_X,
             },
-            Platform.OS === "android"
-              ? styles.inputAndroid
-              : null,
+            Platform.OS === "android" ? styles.inputAndroid : null,
             // Search variant on web (META-ORCH-1073 Sub-A3): drop the browser's
             // default blue focus outline (the design's accent.warm border is the
             // focus indicator) and give the blinking caret the accent colour so
             // typing is clearly indicated.
-            variant === "search" && Platform.OS === "web"
+            Platform.OS === "web"
               ? ({
                   outlineWidth: 0,
                   outlineStyle: "none",
@@ -649,13 +696,16 @@ export const Input: React.FC<InputProps> = ({
           ]}
           {...behaviour}
           {...rest}
+          {...webInvalidProps}
         />
 
         {showPasswordToggle ? (
           <Pressable
             onPress={handleToggleSecure}
             accessibilityRole="button"
-            accessibilityLabel={secureRevealed ? "Hide password" : "Show password"}
+            accessibilityLabel={
+              secureRevealed ? "Hide password" : "Show password"
+            }
             style={styles.trailingButton}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
@@ -680,8 +730,23 @@ export const Input: React.FC<InputProps> = ({
         ) : null}
       </View>
 
+      {hasError && renderErrorMessage ? (
+        <Text
+          accessibilityRole="alert"
+          aria-live="assertive"
+          nativeID={errorId}
+          style={styles.errorText}
+        >
+          {error}
+        </Text>
+      ) : null}
+
       {isPhone ? (
-        <Sheet visible={pickerOpen} onClose={handleClosePicker} snapPoint="full">
+        <Sheet
+          visible={pickerOpen}
+          onClose={handleClosePicker}
+          snapPoint="full"
+        >
           {/*
             Flex-column wrapper guarantees the ScrollView gets remaining
             vertical space after the search bar takes its natural height.
@@ -707,37 +772,37 @@ export const Input: React.FC<InputProps> = ({
                 <Text style={styles.pickerEmpty}>No matches</Text>
               ) : null}
               {filteredCountries.map((c) => {
-              const isSelected = c.iso === country.iso;
-              return (
-                <Pressable
-                  key={c.iso}
-                  onPress={() => handlePickCountry(c)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isSelected }}
-                  accessibilityLabel={`${c.name}, ${c.dialCode}`}
-                  style={({ pressed }) => [
-                    styles.pickerRow,
-                    pressed ? styles.pickerRowPressed : null,
-                  ]}
-                >
-                  <Text style={styles.pickerFlag}>{c.flag}</Text>
-                  <View style={styles.pickerLabelCol}>
-                    <Text style={styles.pickerName}>{c.name}</Text>
-                    <Text style={styles.pickerDialCode}>{c.dialCode}</Text>
-                  </View>
-                  {isSelected ? (
-                    <Icon name="check" size={ICON_SIZE} color={accent.warm} />
-                  ) : null}
-                </Pressable>
-              );
-            })}
+                const isSelected = c.iso === country.iso;
+                return (
+                  <Pressable
+                    key={c.iso}
+                    onPress={() => handlePickCountry(c)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    accessibilityLabel={`${c.name}, ${c.dialCode}`}
+                    style={({ pressed }) => [
+                      styles.pickerRow,
+                      pressed ? styles.pickerRowPressed : null,
+                    ]}
+                  >
+                    <Text style={styles.pickerFlag}>{c.flag}</Text>
+                    <View style={styles.pickerLabelCol}>
+                      <Text style={styles.pickerName}>{c.name}</Text>
+                      <Text style={styles.pickerDialCode}>{c.dialCode}</Text>
+                    </View>
+                    {isSelected ? (
+                      <Icon name="check" size={ICON_SIZE} color={accent.warm} />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           </View>
         </Sheet>
       ) : null}
     </>
   );
-};
+});
 
 // ---------------------------------------------------------------------------
 // Styles
@@ -776,6 +841,12 @@ const styles = StyleSheet.create({
     // down + force vertical centering even when paddingVertical is 0.
     includeFontPadding: false,
     textAlignVertical: "center",
+  },
+  errorText: {
+    ...typography.bodySm,
+    color: semantic.error,
+    fontWeight: "600",
+    marginTop: spacing.xs,
   },
   trailingButton: {
     paddingLeft: 8,

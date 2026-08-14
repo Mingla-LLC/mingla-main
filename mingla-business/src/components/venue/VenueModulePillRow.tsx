@@ -14,7 +14,16 @@
  */
 
 import React, { useCallback, useEffect, useRef } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  AccessibilityInfo,
+  findNodeHandle,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 
 import {
@@ -31,10 +40,23 @@ import type { VenueModule } from "../../types/venueReservation";
 export interface VenueModulePillRowProps {
   modules: readonly VenueModule[];
   activeModule: VenueModule;
-  onSelect: (module: VenueModule) => void;
+  onSelect: (module: VenueModule, restoreFocus?: () => void) => void;
   /** Return to the Hub offering pills (Events / Experiences / Trips). */
-  onBackToHub?: () => void;
+  onBackToHub?: (restoreFocus?: () => void) => void;
   testID?: string;
+}
+
+interface FocusCapable {
+  focus: () => void;
+}
+
+function hasFocusCapability(value: unknown): value is FocusCapable {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    "focus" in value &&
+    typeof value.focus === "function"
+  );
 }
 
 /**
@@ -59,6 +81,8 @@ export function VenueModulePillRow({
   // layout x and scroll the ACTIVE one into view: instantly on its first
   // layout (mount), animated on later activeModule changes.
   const scrollRef = useRef<ScrollView | null>(null);
+  const backRef = useRef<View | null>(null);
+  const pillRefs = useRef<Partial<Record<VenueModule, View | null>>>({});
   const pillXRef = useRef<Partial<Record<VenueModule, number>>>({});
   const revealActive = useCallback(
     (module: VenueModule, animated: boolean): void => {
@@ -78,6 +102,15 @@ export function VenueModulePillRow({
   useEffect(() => {
     revealActive(activeModule, true);
   }, [activeModule, revealActive]);
+  const focusControl = useCallback((control: View | null): void => {
+    if (control === null) return;
+    if (Platform.OS === "web") {
+      if (hasFocusCapability(control)) control.focus();
+      return;
+    }
+    const handle = findNodeHandle(control);
+    if (handle !== null) AccessibilityInfo.setAccessibilityFocus(handle);
+  }, []);
 
   return (
     <View style={styles.host} testID={testID ?? "venue-module-pill-row"}>
@@ -89,9 +122,10 @@ export function VenueModulePillRow({
       >
         {onBackToHub !== undefined ? (
           <Pressable
+            ref={backRef}
             accessibilityRole="button"
             accessibilityLabel="Back to Hub"
-            onPress={onBackToHub}
+            onPress={() => onBackToHub(() => focusControl(backRef.current))}
             style={[styles.pill, styles.pillInactive]}
             testID="venue-module-back-to-hub"
           >
@@ -102,11 +136,16 @@ export function VenueModulePillRow({
           const isActive = id === activeModule;
           return (
             <Pressable
+              ref={(instance) => {
+                pillRefs.current[id] = instance;
+              }}
               key={id}
               accessibilityRole="tab"
               accessibilityLabel={`${VENUE_MODULES[id].label} module`}
               accessibilityState={{ selected: isActive }}
-              onPress={() => onSelect(id)}
+              onPress={() =>
+                onSelect(id, () => focusControl(pillRefs.current[id] ?? null))
+              }
               onLayout={(event) => handlePillLayout(id, event)}
               style={[
                 styles.pill,

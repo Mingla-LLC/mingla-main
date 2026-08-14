@@ -11,8 +11,16 @@
  * collapses to opacity 0.7. Light haptic on native press-down.
  */
 
-import React, { useCallback } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
+import {
+  AccessibilityInfo,
+  findNodeHandle,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import type {
   PressableProps,
   PressableStateCallbackType,
@@ -52,7 +60,7 @@ export interface IconChromeProps {
    */
   badgeCap?: number;
   active?: boolean;
-  onPress?: () => void | Promise<void>;
+  onPress?: (restoreFocus?: () => void) => void | Promise<void>;
   size?: number;
   disabled?: boolean;
   /**
@@ -79,7 +87,20 @@ const BADGE_SIZE = 18;
 // Cycle 17c §A.1 — effective touch area = 36 + 4×2 = 44 per side (WCAG AA + Apple HIG floor).
 const DEFAULT_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 
-export const IconChrome: React.FC<IconChromeProps> = ({
+interface FocusCapable {
+  focus: () => void;
+}
+
+function hasFocusCapability(value: unknown): value is FocusCapable {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    "focus" in value &&
+    typeof value.focus === "function"
+  );
+}
+
+export const IconChrome = forwardRef<View, IconChromeProps>(function IconChrome({
   icon,
   badge,
   badgeCap = 99,
@@ -91,7 +112,9 @@ export const IconChrome: React.FC<IconChromeProps> = ({
   hitSlop = DEFAULT_HIT_SLOP,
   testID,
   style,
-}) => {
+}, forwardedRef) {
+  const pressableRef = useRef<View | null>(null);
+  useImperativeHandle(forwardedRef, () => pressableRef.current as View, []);
   const scale = useSharedValue(1);
   const opacity = useSharedValue(1);
   const reduceMotion = useReducedMotion();
@@ -117,17 +140,27 @@ export const IconChrome: React.FC<IconChromeProps> = ({
     }
   }, [opacity, reduceMotion, scale]);
 
+  const restoreFocus = useCallback((): void => {
+    const control = pressableRef.current;
+    if (control === null) return;
+    if (Platform.OS === "web") {
+      if (hasFocusCapability(control)) control.focus();
+      return;
+    }
+    const handle = findNodeHandle(control);
+    if (handle !== null) AccessibilityInfo.setAccessibilityFocus(handle);
+  }, []);
+
   const handlePress = useCallback(async (): Promise<void> => {
     if (onPress === undefined) return;
     try {
-      await onPress();
+      await onPress(restoreFocus);
     } catch (error) {
       if (__DEV__) {
-        // eslint-disable-next-line no-console
         console.error("[IconChrome] onPress threw:", error);
       }
     }
-  }, [onPress]);
+  }, [onPress, restoreFocus]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -181,6 +214,7 @@ export const IconChrome: React.FC<IconChromeProps> = ({
 
   return (
     <Pressable
+      ref={pressableRef}
       onPress={handlePress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
@@ -195,7 +229,7 @@ export const IconChrome: React.FC<IconChromeProps> = ({
       {renderInteractive}
     </Pressable>
   );
-};
+});
 
 const styles = StyleSheet.create({
   glass: {

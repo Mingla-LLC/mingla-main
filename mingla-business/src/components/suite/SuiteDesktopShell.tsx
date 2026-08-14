@@ -33,7 +33,7 @@
  * HOOK). It never gates itself, so it stays free of platform checks.
  */
 
-import React from "react";
+import React, { useCallback, useRef } from "react";
 import {
   Platform,
   Pressable,
@@ -63,7 +63,7 @@ export interface SuiteDesktopShellProps {
   /** Rail entries IN RENDER ORDER — the caller owns ordering/grouping. */
   modules: readonly SuiteDesktopModule[];
   activeModule: string;
-  onSelect: (key: string) => void;
+  onSelect: (key: string, restoreFocus?: () => void) => void;
   /** The workspace body for `activeModule`. */
   children: React.ReactNode;
   /** True when `children` owns its own ScrollView (no outer scroll wrapper). */
@@ -73,6 +73,19 @@ export interface SuiteDesktopShellProps {
   /** testID prefix for rail rows, e.g. `"venue-rail-"` → `venue-rail-overview`. */
   railTestIdPrefix: string;
   testID?: string;
+}
+
+interface FocusCapable {
+  focus: () => void;
+}
+
+function hasFocusCapability(value: unknown): value is FocusCapable {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    "focus" in value &&
+    typeof value.focus === "function"
+  );
 }
 
 export function SuiteDesktopShell({
@@ -119,7 +132,7 @@ export function SuiteDesktopShell({
 interface SuiteDesktopRailProps {
   modules: readonly SuiteDesktopModule[];
   activeModule: string;
-  onSelect: (key: string) => void;
+  onSelect: (key: string, restoreFocus?: () => void) => void;
   testIdPrefix: string;
 }
 
@@ -129,6 +142,10 @@ function SuiteDesktopRail({
   onSelect,
   testIdPrefix,
 }: SuiteDesktopRailProps): React.ReactElement {
+  const controlRefs = useRef<Record<string, View | null>>({});
+  const focusControl = useCallback((control: View | null): void => {
+    if (hasFocusCapability(control)) control.focus();
+  }, []);
   // ORCH-1184 — no grey uppercase section captions: the rail reads as ONE
   // clean, uniformly-spaced list. Ordering/grouping is the caller's job.
   return (
@@ -137,11 +154,18 @@ function SuiteDesktopRail({
         const isActive = module.key === activeModule;
         return (
           <Pressable
+            ref={(instance) => {
+              controlRefs.current[module.key] = instance;
+            }}
             key={module.key}
             accessibilityRole="tab"
             accessibilityState={{ selected: isActive }}
             accessibilityLabel={`${module.label} module`}
-            onPress={() => onSelect(module.key)}
+            onPress={() =>
+              onSelect(module.key, () =>
+                focusControl(controlRefs.current[module.key] ?? null)
+              )
+            }
             style={[styles.railRow, isActive ? styles.railRowActive : null]}
             testID={`${testIdPrefix}${module.key}`}
           >

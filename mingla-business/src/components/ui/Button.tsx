@@ -15,7 +15,7 @@
  * `:focus-visible`).
  */
 
-import React, { useCallback } from "react";
+import React, { forwardRef, useCallback } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type {
   GestureResponderEvent,
@@ -141,23 +141,29 @@ const VARIANT_TOKENS: Record<ButtonVariant, VariantTokens> = {
 
 const PRESS_TIMING = { duration: durations.fast } as const;
 
-export const Button: React.FC<ButtonProps> = ({
-  label,
-  onPress,
-  variant = "primary",
-  size = "md",
-  shape = "pill",
-  accentColor,
-  leadingIcon,
-  trailingIcon,
-  loading = false,
-  disabled = false,
-  fullWidth = false,
-  accessibilityLabel,
-  testID,
-  style,
-  labelStyle,
-}) => {
+export const Button = forwardRef<
+  React.ElementRef<typeof Pressable>,
+  ButtonProps
+>(function Button(
+  {
+    label,
+    onPress,
+    variant = "primary",
+    size = "md",
+    shape = "pill",
+    accentColor,
+    leadingIcon,
+    trailingIcon,
+    loading = false,
+    disabled = false,
+    fullWidth = false,
+    accessibilityLabel,
+    testID,
+    style,
+    labelStyle,
+  },
+  forwardedRef,
+) {
   const scale = useSharedValue(1);
   const opacity = useSharedValue(1);
   const reduceMotion = useReducedMotion();
@@ -293,6 +299,7 @@ export const Button: React.FC<ButtonProps> = ({
 
   return (
     <Pressable
+      ref={forwardedRef}
       onPress={interactive ? handlePress : undefined}
       onPressIn={interactive ? handlePressIn : undefined}
       onPressOut={interactive ? handlePressOut : undefined}
@@ -306,7 +313,7 @@ export const Button: React.FC<ButtonProps> = ({
       {renderInteractiveContent}
     </Pressable>
   );
-};
+});
 
 const styles = StyleSheet.create({
   fullWidth: {

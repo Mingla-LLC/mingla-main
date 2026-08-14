@@ -195,10 +195,20 @@ export const buildVenueAvailabilityConfigRow = (
 export function useUpsertVenueAvailabilityConfig(
   brandId: string | null,
   venueId: string | null,
-): UseMutationResult<void, Error, VenueAvailabilityConfigPatch> {
+): UseMutationResult<
+  VenueAvailabilityConfig,
+  Error,
+  VenueAvailabilityConfigPatch
+> {
   const queryClient = useQueryClient();
-  return useMutation<void, Error, VenueAvailabilityConfigPatch>({
-    mutationFn: async (patch: VenueAvailabilityConfigPatch): Promise<void> => {
+  return useMutation<
+    VenueAvailabilityConfig,
+    Error,
+    VenueAvailabilityConfigPatch
+  >({
+    mutationFn: async (
+      patch: VenueAvailabilityConfigPatch,
+    ): Promise<VenueAvailabilityConfig> => {
       if (brandId === null) throw new Error("brand_required");
       if (venueId === null) throw new Error("venue_required");
       const row = buildVenueAvailabilityConfigRow(brandId, venueId, patch);
@@ -207,13 +217,24 @@ export function useUpsertVenueAvailabilityConfig(
         // META-ORCH-1255 — the UNIQUE moved brand→venue (M3).
         .upsert(row, { onConflict: "venue_id" });
       if (error !== null) throw error as unknown as Error;
-    },
-    onSuccess: () => {
-      if (brandId !== null && venueId !== null) {
-        void queryClient.invalidateQueries({
-          queryKey: venueAvailabilityKeys.config(brandId, venueId),
-        });
+
+      // Issue #2011 tester rework: a successful write is not yet authoritative
+      // UI truth. Read the persisted row back before resolving the mutation so
+      // server normalization, triggers, and concurrent writes own the clean
+      // baseline. A failed/missing read rejects the save and leaves the draft
+      // dirty for an explicit retry.
+      const authoritative = await fetchVenueAvailabilityConfig(
+        brandId,
+        venueId,
+      );
+      if (authoritative === null) {
+        throw new Error("availability_refetch_missing");
       }
+      queryClient.setQueryData(
+        venueAvailabilityKeys.config(brandId, venueId),
+        authoritative,
+      );
+      return authoritative;
     },
   });
 }

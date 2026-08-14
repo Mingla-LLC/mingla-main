@@ -140,11 +140,15 @@ export default function VenueManagementPage(): React.ReactElement {
   const venueActiveModule = useVenueSuiteStore((s) => s.activeModule);
   const venueVisibleModules = useVenueSuiteStore((s) => s.visibleModules);
   const venueSelectModule = useVenueSuiteStore((s) => s.selectModule);
+  const setPendingLeaveFocus = useVenueSuiteStore(
+    (s) => s.setPendingLeaveFocus,
+  );
 
-  const handleBack = useCallback((): void => {
+  const handleBack = useCallback((restoreFocus?: () => void): void => {
+    setPendingLeaveFocus(restoreFocus ?? null);
     if (router.canGoBack()) router.back();
     else router.replace("/(tabs)/hub/listing" as never);
-  }, [router]);
+  }, [router, setPendingLeaveFocus]);
 
   // ----- public-page actions (#1483) -----
   // `venue_public_view` is defined `WHERE claim_status = 'verified'`, so any
@@ -248,7 +252,7 @@ export default function VenueManagementPage(): React.ReactElement {
             label="Back to your venues"
             variant="secondary"
             size="md"
-            onPress={handleBack}
+            onPress={() => handleBack()}
           />
         </View>
       </View>

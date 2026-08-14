@@ -264,7 +264,9 @@ function blankComments(content) {
   );
   return blockBlanked
     .split("\n")
-    .map((line) => (line.trim().startsWith("//") ? " ".repeat(line.length) : line))
+    .map((line) =>
+      line.trim().startsWith("//") ? " ".repeat(line.length) : line,
+    )
     .join("\n");
 }
 
@@ -448,8 +450,7 @@ function escapeRe(text) {
 // Import parsing (value bindings only — `import type` stays invisible)
 // ---------------------------------------------------------------------------
 
-const RE_IMPORT_STMT =
-  /import\s+(type\s+)?([^;]*?)\s+from\s*["']([^"']+)["']/g;
+const RE_IMPORT_STMT = /import\s+(type\s+)?([^;]*?)\s+from\s*["']([^"']+)["']/g;
 
 /**
  * B1-6 — type-only imports must stay invisible, in BOTH spellings:
@@ -698,12 +699,62 @@ function blankBoundaries(text) {
 }
 
 const RE_RENDERED_COMPONENT = /<([A-Z][\w$]*)[\s/>]/g;
+const RE_LOCAL_RENDER_CALL = /\{\s*([A-Za-z_$][\w$]*)\s*\(\s*\)\s*\}/g;
 
 function renderedComponentsIn(text) {
   const out = new Set();
   RE_RENDERED_COMPONENT.lastIndex = 0;
   let m;
   while ((m = RE_RENDERED_COMPONENT.exec(text)) !== null) out.add(m[1]);
+  return out;
+}
+
+/**
+ * Issue #2011 — a local renderer call is a real child of its container even
+ * though no JSX component tag appears in the span. Resolve the renderer's
+ * declaration and inspect that declaration's body; this closes the exact
+ * `{renderWorkspace()}` blind spot without pretending arbitrary functions are
+ * imported components.
+ */
+function localRendererBodiesIn(text, source) {
+  const out = [];
+  RE_LOCAL_RENDER_CALL.lastIndex = 0;
+  let match;
+  while ((match = RE_LOCAL_RENDER_CALL.exec(text)) !== null) {
+    const name = match[1];
+    const declaration = new RegExp(
+      `(?:const\\s+${escapeRe(name)}\\s*=|function\\s+${escapeRe(name)}\\s*\\()`,
+    ).exec(source);
+    if (declaration === null) continue;
+    const declarationEnd = declaration.index + declaration[0].length;
+    const arrowIndex = source.indexOf("=>", declarationEnd);
+    const isArrow = declaration[0].startsWith("const");
+    if (isArrow && arrowIndex === -1) continue;
+    const bodySearchStart = isArrow ? arrowIndex + 2 : declarationEnd;
+    const bodyStart = source.indexOf("{", bodySearchStart);
+    if (
+      isArrow &&
+      (bodyStart === -1 || /\S/.test(source.slice(bodySearchStart, bodyStart)))
+    ) {
+      const expressionEnd = source.indexOf(";", bodySearchStart);
+      out.push(
+        source.slice(
+          bodySearchStart,
+          expressionEnd === -1 ? source.length : expressionEnd,
+        ),
+      );
+      continue;
+    }
+    if (bodyStart === -1) continue;
+    let depth = 1;
+    let cursor = bodyStart + 1;
+    while (cursor < source.length && depth > 0) {
+      if (source[cursor] === "{") depth += 1;
+      else if (source[cursor] === "}") depth -= 1;
+      cursor += 1;
+    }
+    out.push(source.slice(bodyStart, cursor));
+  }
   return out;
 }
 
@@ -947,6 +998,22 @@ export function scanKeyboardPlumbing({
               }
             }
           }
+          if (!hosts) {
+            for (const rendererBody of localRendererBodiesIn(body, flow)) {
+              if (RE_INPUT_LEAF.test(rendererBody)) {
+                hosts = true;
+                break;
+              }
+              for (const child of renderedComponentsIn(rendererBody)) {
+                const target = map.get(child);
+                if (target !== undefined && providesInput.has(target)) {
+                  hosts = true;
+                  break;
+                }
+              }
+              if (hosts) break;
+            }
+          }
           if (hosts) offending.push(offsetToLine(containerFlow, span.start));
         }
       }
@@ -1028,6 +1095,24 @@ export const Input = (props) => <TextInput {...props} />;
  * unrelated one still firing.
  */
 const BAD_FIXTURES = [
+  {
+    id: "G-15",
+    why: "issue #2011 — an input-bearing child returned by a local renderer function must not disappear behind `{renderWorkspace()}`",
+    expect: /bare react-native container/,
+    files: {
+      ...GOOD_FIXTURE,
+      [`${FIXTURE_ROOT}/src/bad/LocalRendererForm.tsx`]: `
+import React from "react";
+import { ScrollView } from "react-native";
+import { Input } from "../ui/Input";
+
+export const LocalRendererForm = () => {
+  const renderWorkspace = () => <Input value="" onChangeText={() => undefined} />;
+  return <ScrollView>{renderWorkspace()}</ScrollView>;
+};
+`,
+    },
+  },
   {
     id: "G-1",
     why: "H1 — inputs rendered through the `Input` primitive, so the file has no TextInput token at all",
@@ -1345,7 +1430,10 @@ function selfTest() {
       );
       continue;
     }
-    if (fixture.expectLineAbove !== undefined && hit.line <= fixture.expectLineAbove) {
+    if (
+      fixture.expectLineAbove !== undefined &&
+      hit.line <= fixture.expectLineAbove
+    ) {
       failures.push(
         `${fixture.id} reported line ${hit.line}; the :0 defect is back (expected a line above ${fixture.expectLineAbove}).`,
       );
@@ -1437,7 +1525,8 @@ function runCli() {
 }
 
 const invokedDirectly =
-  process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedDirectly) {
   if (process.argv.includes("--self-test")) selfTest();
   else runCli();

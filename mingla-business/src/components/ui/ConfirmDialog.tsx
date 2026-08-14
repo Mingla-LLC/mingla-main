@@ -13,8 +13,16 @@
  * the hold time). Other variants have no animation to honour.
  */
 
-import React, { useCallback, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  AccessibilityInfo,
+  findNodeHandle,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import Animated, {
   Easing,
@@ -60,6 +68,14 @@ export interface ConfirmDialogProps {
   cancelTestID?: string;
   testID?: string;
   style?: StyleProp<ViewStyle>;
+  /** Optional initial screen-reader/keyboard focus target. Existing callers omit it. */
+  initialFocus?: "cancel" | "confirm";
+  /** Optional native restoration seam; web also restores the element active before open. */
+  restoreFocus?: () => void;
+}
+
+interface FocusableTarget {
+  focus?: () => void;
 }
 
 const HOLD_DURATION_MS = 1500;
@@ -84,10 +100,51 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   cancelTestID,
   testID,
   style,
+  initialFocus,
+  restoreFocus,
 }) => {
   const [typedValue, setTypedValue] = useState("");
   const [isHolding, setIsHolding] = useState(false);
   const progress = useSharedValue(0);
+  const cancelFocusRef = useRef<React.ElementRef<typeof Pressable> | null>(
+    null,
+  );
+  const confirmFocusRef = useRef<React.ElementRef<typeof Pressable> | null>(
+    null,
+  );
+  const webOriginRef = useRef<FocusableTarget | null>(null);
+  const wasVisibleRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (visible && !wasVisibleRef.current) {
+      if (Platform.OS === "web") {
+        const doc = globalThis as unknown as {
+          document?: { activeElement?: FocusableTarget | null };
+        };
+        webOriginRef.current = doc.document?.activeElement ?? null;
+      }
+      if (initialFocus !== undefined) {
+        const target =
+          initialFocus === "cancel" ? cancelFocusRef : confirmFocusRef;
+        const frame = requestAnimationFrame(() => {
+          if (Platform.OS === "web") {
+            (target.current as FocusableTarget | null)?.focus?.();
+            return;
+          }
+          const node = findNodeHandle(target.current);
+          if (node !== null) AccessibilityInfo.setAccessibilityFocus(node);
+        });
+        wasVisibleRef.current = true;
+        return (): void => cancelAnimationFrame(frame);
+      }
+    }
+    if (!visible && wasVisibleRef.current) {
+      if (restoreFocus !== undefined) restoreFocus();
+      else if (Platform.OS === "web") webOriginRef.current?.focus?.();
+      webOriginRef.current = null;
+    }
+    wasVisibleRef.current = visible;
+  }, [initialFocus, restoreFocus, visible]);
 
   const handleConfirm = useCallback(async (): Promise<void> => {
     if (confirmDisabled || confirmLoading) return;
@@ -133,11 +190,17 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   }));
 
   const typeMatches =
-    variant !== "typeToConfirm" || (confirmText !== undefined && typedValue === confirmText);
+    variant !== "typeToConfirm" ||
+    (confirmText !== undefined && typedValue === confirmText);
   const confirmBlocked = confirmDisabled || confirmLoading || !typeMatches;
 
   return (
-    <Modal visible={visible} onClose={handleClose} testID={testID} style={style}>
+    <Modal
+      visible={visible}
+      onClose={handleClose}
+      testID={testID}
+      style={style}
+    >
       <View style={styles.body}>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.description}>{description}</Text>
@@ -150,7 +213,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <View style={styles.inputWrap}>
             {confirmText !== undefined ? (
               <Text style={styles.hint}>
-                Type <Text style={styles.hintEmph}>{confirmText}</Text> to confirm.
+                Type <Text style={styles.hintEmph}>{confirmText}</Text> to
+                confirm.
               </Text>
             ) : null}
             <Input
@@ -165,6 +229,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <View style={styles.actions}>
           <View style={styles.actionFlex}>
             <Button
+              ref={cancelFocusRef}
               label={cancelLabel}
               onPress={handleClose}
               variant="secondary"
@@ -177,11 +242,15 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           {variant === "holdToConfirm" ? (
             <View style={styles.actionFlex}>
               <Pressable
+                ref={confirmFocusRef}
                 onPressIn={confirmBlocked ? undefined : handleHoldStart}
                 onPressOut={confirmBlocked ? undefined : handleHoldEnd}
                 disabled={confirmBlocked}
                 accessibilityRole="button"
-                accessibilityState={{ disabled: confirmBlocked, busy: confirmLoading }}
+                accessibilityState={{
+                  disabled: confirmBlocked,
+                  busy: confirmLoading,
+                }}
                 accessibilityLabel={`Hold to ${confirmLabel.toLowerCase()}`}
                 testID={confirmTestID}
                 style={styles.holdButton}
@@ -195,6 +264,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           ) : (
             <View style={styles.actionFlex}>
               <Button
+                ref={confirmFocusRef}
                 label={confirmLabel}
                 onPress={triggerConfirm}
                 variant={destructive ? "destructive" : "primary"}

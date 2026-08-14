@@ -9,4 +9,17 @@
 
 import React from "react";
 
+export interface AvailabilityNumericToolbarState {
+  previousDisabled: boolean;
+  nextDisabled: boolean;
+  focusPrevious: () => void;
+  focusNext: () => void;
+}
+
+export function setAvailabilityNumericToolbarState(
+  _next: AvailabilityNumericToolbarState | null,
+): void {
+  // Browsers use their native Tab / Shift+Tab flow and have no soft-keyboard bar.
+}
+
 export const KeyboardToolbarRoot: React.FC = () => null;

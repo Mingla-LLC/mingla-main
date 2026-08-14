@@ -34,14 +34,14 @@
  * stays brand-keyed ([TRANSITIONAL-3] — menus are brand-level content).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -56,11 +56,15 @@ import {
 } from "../../hooks/useVenueReservationSettings";
 import { useVenueSuiteStore } from "../../store/venueSuiteStore";
 import type { VenueModule } from "../../types/venueReservation";
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import type { SuiteDesktopModule } from "../suite/SuiteDesktopShell";
 import { SuiteDesktopShell } from "../suite/SuiteDesktopShell";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
-import { VenueAvailabilityModule } from "./VenueAvailabilityModule";
+import {
+  VenueAvailabilityModule,
+  type VenueAvailabilityLeaveHandle,
+} from "./VenueAvailabilityModule";
 import { VenueIntelligenceModule } from "./VenueIntelligenceModule";
 import { VenueMenuModule } from "./VenueMenuModule";
 import { VenueReservationsModule } from "./VenueReservationsModule";
@@ -137,19 +141,32 @@ export function VenueSuiteShell({
   );
 
   const [activeModule, setActiveModule] = useState<VenueModule>(initialModule);
+  const availabilityRef = useRef<VenueAvailabilityLeaveHandle | null>(null);
+
+  const selectModule = useCallback(
+    (nextModule: VenueModule, restoreFocus?: () => void): void => {
+      if (nextModule === activeModule) return;
+      if (activeModule === "availability" && availabilityRef.current !== null) {
+        availabilityRef.current.requestLeave(
+          () => setActiveModule(nextModule),
+          restoreFocus,
+        );
+        return;
+      }
+      setActiveModule(nextModule);
+    },
+    [activeModule],
+  );
 
   // Guard: if the toggle flips OFF while on a booking module, snap to overview.
   useEffect(() => {
     if (isBookingModule(activeModule) && !reservationsEnabled) {
-      setActiveModule("overview");
+      selectModule("overview");
     }
-  }, [activeModule, reservationsEnabled]);
+  }, [activeModule, reservationsEnabled, selectModule]);
 
   // Bridge to the layout's pill row (native/web-phone REPLACE the Hub pills).
   const syncStore = useVenueSuiteStore((s) => s.sync);
-  const selectModule = useCallback((m: VenueModule): void => {
-    setActiveModule(m);
-  }, []);
   useEffect(() => {
     syncStore({ activeModule, visibleModules, selectModule });
   }, [syncStore, activeModule, visibleModules, selectModule]);
@@ -179,11 +196,11 @@ export function VenueSuiteShell({
     [visibleModules],
   );
   const handleRailSelect = useCallback(
-    (key: string): void => {
+    (key: string, restoreFocus?: () => void): void => {
       const next = visibleModules.find((m) => m === key);
-      if (next !== undefined) setActiveModule(next);
+      if (next !== undefined) selectModule(next, restoreFocus);
     },
-    [visibleModules],
+    [selectModule, visibleModules],
   );
 
   const renderWorkspace = (): React.ReactElement => {
@@ -280,7 +297,13 @@ export function VenueSuiteShell({
       return <VenueTablesModule brandId={brandId} venueId={venueId} />;
     }
     if (activeModule === "availability") {
-      return <VenueAvailabilityModule brandId={brandId} venueId={venueId} />;
+      return (
+        <VenueAvailabilityModule
+          ref={availabilityRef}
+          brandId={brandId}
+          venueId={venueId}
+        />
+      );
     }
     if (activeModule === "reservations") {
       return <VenueReservationsModule brandId={brandId} venueId={venueId} />;

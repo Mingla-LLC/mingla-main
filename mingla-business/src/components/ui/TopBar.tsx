@@ -55,7 +55,7 @@ export interface TopBarProps {
   /** Title text (`back` variant). Ignored for other variants. */
   title?: string;
   /** Back-button handler (`back` variant). */
-  onBack?: () => void;
+  onBack?: (restoreFocus?: () => void) => void;
   /**
    * Right slot content. If defined, REPLACES the default `[search, bell]`
    * cluster.
