@@ -73,6 +73,7 @@ import {
 
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
@@ -1692,6 +1693,8 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
         cancelLabel="Cancel"
         destructive
       />
+
+      <TurnoutForecastCard surface="when" />
 
     </View>
   );

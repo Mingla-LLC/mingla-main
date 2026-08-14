@@ -28,6 +28,7 @@ import {
 import type { DraftEventVisibility } from "../../store/draftEventStore";
 import { type StepBodyProps } from "../event/types";
 import { Icon } from "../ui/Icon";
+import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
 
 const ROW_BG = Platform.select({
   ios: glass.tint.profileBase,
@@ -412,6 +413,7 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
           testID="rsvp-discoverable-toggle"
         />
       </View>
+      <TurnoutForecastCard surface="rsvp_setup" />
     </View>
   );
 };

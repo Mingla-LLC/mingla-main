@@ -74,6 +74,7 @@ import { Stepper } from "../ui/Stepper";
 import type { StepperStep } from "../ui/Stepper";
 import { TopBar } from "../ui/TopBar";
 import { Toast } from "../ui/Toast";
+import { TurnoutIntelProvider } from "../intel/TurnoutIntelProvider";
 
 /*
  * Desktop web wizard contract restored after regression:
@@ -813,6 +814,15 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   );
 
   return (
+    <TurnoutIntelProvider
+      draft={liveDraft}
+      brandId={liveDraft.brandId}
+      brandDefaultCurrency={brand?.defaultCurrency ?? null}
+      wizard="rsvp"
+      surface={currentStep === 1 ? "when" : currentStep === 2 ? "where" : currentStep === 4 ? "rsvp_setup" : "preview"}
+      previewActive={currentStep === 5}
+      keyboardVisible={keyboardVisible}
+    >
     <View
       style={[
         styles.host,
@@ -1035,6 +1045,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         />
       </View>
     </View>
+    </TurnoutIntelProvider>
   );
 };
 

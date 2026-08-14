@@ -30,6 +30,7 @@ import {
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
+import { TurnoutForecastCard } from "../intel/TurnoutForecastCard";
 import { useMemo as useThemeMemo } from "react";
 
 import { createThemePalette } from "../../../../packages/offering-rendering/themePalette";
@@ -165,6 +166,8 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
           </GlassCard>
         )}
       </View>
+
+      <TurnoutForecastCard surface="preview" />
 
       <Pressable
         onPress={handleMiniCardPress}

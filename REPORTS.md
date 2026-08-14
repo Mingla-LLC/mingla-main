@@ -19,6 +19,7 @@ parentheses for traceability.
 
 ## Shipped
 - 2026-08-13 — Explorer and Host now open on distinct video-led welcome screens with the regular Mingla logo, platform-correct sign-in choices, readable copy, reduced-motion fallbacks, and guarded web/native video lifecycles. (#2052, PR #2061)
+- 2026-08-13 — Event and RSVP creators now see a live, metered turnout forecast inside the Business wizard, with one shared intelligence scaffold, resumable full reports, collision-safe real results, and no effect on publishing when intelligence is unavailable. (#1008, PR #2043)
 - 2026-08-13 — Mingla’s release instructions can no longer revive an obsolete global OTA freeze or confuse a built runtime with public reach; CI now requires dated Android/iOS reach truth, an immediate store/EAS re-check, and the existing per-platform, native-delta, served-manifest, and rollback safeguards. (#2028, PR #2033)
 - 2026-08-13 — The Business People page now uses the full workspace, keeps only the real Book and Groups sections, and adds the same seamless floating New campaign action as the other Blast tabs, live across web, iPhone, and Android. (#2024, PR #2027)
 - 2026-08-13 — Selecting a valid video cover no longer falsely reports that the upload failed when only the local preview renderer has a transient error; real compression and persisted-cover failures still remain visible, verified on Business iOS, Android, and web. (#1958, PR #2021)

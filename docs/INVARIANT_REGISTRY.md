@@ -8567,3 +8567,19 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 - **Rule:** Brand deletion requires the exact `brands.account_id = auth.uid()` deed. Rank 60, `brand_owner` membership, `owner`, and `account_owner` cannot substitute.
 - **Enforcement:** `agentToolAuthorization.ts` deed-owner branch and issue #2019 adversarial tests.
+
+---
+
+## DRAFT — issue #1008 (in-flow Event/RSVP turnout forecast)
+
+### I-PROPOSED-1008-TURNOUT-AUTO-RUN-METERED (DRAFT)
+- **Rule:** The in-flow turnout card fires at most one automatic run per mounted wizard session and at most one Preview-arrival refresh per distinct canonical input key. All further runs require an explicit operator tap; no debounce, timer, or input-change effect may spend another run.
+- **Enforcement:** disabled-by-default query cache access plus imperative `run()`, `autoRunFired`, and `gateRunKeys`; issue #1008 hook tests bind the once-per-session and once-per-key laws.
+
+### I-PROPOSED-1008-TURNOUT-CARD-AMBIENT-SILENT (DRAFT)
+- **Rule:** Auto- and Preview-gate-triggered intelligence failures render no card, toast, validator, dock state, or publish blocker. The creator remains fully usable when intelligence is unavailable.
+- **Enforcement:** issue #1008 component/static regression tests and unchanged wizard validation/publish expressions.
+
+### I-PROPOSED-1008-TURNOUT-INPUT-SINGLE-SOURCE (DRAFT)
+- **Rule:** Every turnout run for the in-flow card, the #1742 gate, and future Business creator surfaces builds its engine payload and collision-free cache key exclusively through `turnoutInput.ts`.
+- **Enforcement:** the issue #1734 store-isolation strict-grep guard includes the turnout client modules; issue #1008 tests pin canonical payload, date, capacity, price, and key behavior.
