@@ -35,6 +35,7 @@ jobs:
       - run: >-
           deno test --allow-env --allow-read
           supabase/functions/_shared/__tests__/issue_2079_paystack_late_refund_identity.happy.test.ts
+          supabase/functions/_shared/__tests__/issue_2079_paystack_late_refund_identity.tester.adversarial.test.ts
           supabase/functions/_shared/__tests__/stripeWebhookRouter.test.ts
           supabase/functions/_shared/__tests__/issue_1221_source_refund_control_plane.test.ts
           supabase/functions/_shared/__tests__/issue_1221_source_refund_control_plane.tester.adversarial.test.ts
