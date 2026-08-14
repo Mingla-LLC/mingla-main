@@ -39,6 +39,7 @@ jobs:
           supabase/functions/_shared/__tests__/issue_1930_source_refund_dispatch.test.ts
           supabase/functions/ticket-checkout-status/__tests__/issue_1930_preflight_contract.test.ts
           supabase/functions/checkout-sale-revocation/issue_1930_revocation_worker.test.ts
+          supabase/functions/checkout-sale-revocation/issue_1930_ticket_lost_race_identity.implementor.test.ts
           supabase/functions/rsvp-contribution-create/issue_1930_rsvp_truth.test.ts
           supabase/migrations/__tests__/issue_1930_checkout_current_truth.test.ts
           supabase/migrations/__tests__/issue_1930_transition_cas.tester.adversarial.test.ts

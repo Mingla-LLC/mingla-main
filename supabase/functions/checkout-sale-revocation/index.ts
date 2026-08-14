@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import { serviceClient } from "../_shared/ticketCheckout.ts";
+import { neutralizeTicketStripeAttempt } from "./ticketProviderNeutralization.ts";
 
 type Revocation = {
   id: string;
@@ -105,23 +106,55 @@ serve(async (req) => {
         } else {
           const stripe = stripeTicketCheckout();
           if (
-            attempt.flow === "stripe_checkout" && attempt.provider_checkout_id
+            (attempt.flow === "stripe_checkout" &&
+              attempt.provider_checkout_id) ||
+            (attempt.flow === "stripe_native" && attempt.provider_object_id)
           ) {
-            // Expire is a provider mutation, keyed to the stable logical attempt.
-            // @ts-ignore Stripe runtime namespace.
-            await stripe.checkout.sessions.expire(
-              attempt.provider_checkout_id,
-              {},
+            await neutralizeTicketStripeAttempt(
+              attempt,
+              session.stripe_account_id,
               {
-                stripeAccount: session.stripe_account_id,
-                idempotencyKey: `${attempt.provider_idempotency_key}:expire`,
+                expireCheckout: async (input) => {
+                  const operationKey =
+                    `${attempt.provider_idempotency_key}:expire`;
+                  if (input.operationKey !== operationKey) {
+                    throw new Error("provider_operation_key_mismatch");
+                  }
+                  if (input.stripeAccountId !== session.stripe_account_id) {
+                    throw new Error("stripe_account_mismatch");
+                  }
+                  // @ts-ignore Stripe runtime namespace.
+                  await stripe.checkout.sessions.expire(
+                    input.checkoutSessionId,
+                    {},
+                    {
+                      stripeAccount: session.stripe_account_id,
+                      idempotencyKey: operationKey,
+                    },
+                  );
+                },
+                cancelPaymentIntent: async (input) => {
+                  const operationKey =
+                    `${attempt.provider_idempotency_key}:cancel`;
+                  if (input.operationKey !== operationKey) {
+                    throw new Error("provider_operation_key_mismatch");
+                  }
+                  if (input.stripeAccountId !== session.stripe_account_id) {
+                    throw new Error("stripe_account_mismatch");
+                  }
+                  await stripe.paymentIntents.cancel(
+                    input.paymentIntentId,
+                    {},
+                    {
+                      stripeAccount: session.stripe_account_id,
+                      idempotencyKey: operationKey,
+                    },
+                  );
+                },
               },
             );
-          } else if (attempt.provider_object_id) {
-            await stripe.paymentIntents.cancel(attempt.provider_object_id, {}, {
-              stripeAccount: session.stripe_account_id,
-              idempotencyKey: `${attempt.provider_idempotency_key}:cancel`,
-            });
+          } else {
+            throw new Error("provider_identity_missing");
           }
           state = "neutralized";
         }

@@ -298,7 +298,12 @@ BEGIN
   IF v_attempt.claimed_epoch<>p_claimed_epoch OR v_admission.epoch<>p_claimed_epoch
      OR public.issue_1930_event_sale_reason(v_event)<>'sellable'
      OR NOT public.issue_1930_ticket_session_authorized(v_attempt.checkout_session_id,v_event.id) THEN
-    UPDATE public.ticket_checkout_provider_attempts SET state='neutralization_pending',updated_at=now()
+    UPDATE public.ticket_checkout_provider_attempts SET state='neutralization_pending',
+      provider_object_id=COALESCE(provider_object_id,p_provider_object_id),
+      provider_checkout_id=COALESCE(provider_checkout_id,p_provider_checkout_id),
+      provider_reference=COALESCE(provider_reference,p_provider_reference),
+      continuation_fingerprint=COALESCE(continuation_fingerprint,p_continuation_fingerprint),
+      updated_at=now()
       WHERE id=p_attempt_id AND state NOT IN ('neutralized','paid_reversed');
     INSERT INTO public.checkout_sale_revocation_outbox(
       subject_type,subject_id,event_id,provider_attempt_id,target_epoch,reason)
