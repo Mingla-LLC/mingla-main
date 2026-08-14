@@ -14,8 +14,18 @@ import { assertAgentReadBrand } from "./agentTenantScope.ts";
 type AuthContext = { brandId: string | null; resource: AgentResourceKind };
 
 const EVENT_TYPE_BY_TOOL: Readonly<
-  Record<string, "experience" | "rsvp" | "trip">
+  Record<string, "event" | "experience" | "rsvp" | "trip">
 > = Object.freeze({
+  update_event: "event",
+  publish_event: "event",
+  unpublish_event: "event",
+  cancel_event: "event",
+  end_event_sales: "event",
+  duplicate_event: "event",
+  patch_event_when: "event",
+  set_event_cover: "event",
+  set_event_guest_privacy: "event",
+  discard_event_draft: "event",
   publish_experience: "experience",
   update_experience: "experience",
   delete_experience: "experience",
@@ -56,6 +66,7 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   patch_event_when: role("event_manager", "event"),
   set_event_cover: role("event_manager", "event"),
   set_event_guest_privacy: role("event_manager", "event"),
+  discard_event_draft: role("event_manager", "event"),
   upsert_ticket_tier: role("event_manager", "event"),
   set_pricing_switches: role("event_manager", "event"),
   publish_experience: role("event_manager", "event"),

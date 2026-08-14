@@ -776,7 +776,7 @@ async function handle(req: Request): Promise<Response> {
     }
 
     // For WRITE tools, register a pending action (NOT execute)
-    const { data: pending, error: pendingErr } = await userClient
+    const { data: pending, error: pendingErr } = await serviceClient
       .from("agent_pending_actions")
       .insert({
         user_id: userId,
@@ -784,6 +784,7 @@ async function handle(req: Request): Promise<Response> {
         tool_name: tool.name,
         tool_args: gemini.toolCall.args,
         status: "pending",
+        server_proposed_at: new Date().toISOString(),
       })
       .select("id, tool_name, tool_args")
       .single();

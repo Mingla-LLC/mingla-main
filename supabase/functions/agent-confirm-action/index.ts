@@ -15,6 +15,7 @@ import { TENANT_CONTEXT_VERSION } from "../_shared/agentSystemPrompt.ts";
 import { ARI_MODEL_VERSION } from "../_shared/agentGemini.ts";
 import { findTool, ToolError } from "../_shared/agentTools.ts";
 import { authorizeAgentTool } from "../_shared/agentToolAuthorization.ts";
+import { buildServiceClient } from "../_shared/agentRateLimit.ts";
 
 interface RequestBody {
   action: "confirm" | "cancel";
@@ -107,18 +108,27 @@ Deno.serve(async (req) => {
     return errorResponse(401, "UNAUTHORIZED", "Invalid or expired session");
   }
   const userId = userData.user.id;
+  let pendingStateClient: ReturnType<typeof buildServiceClient>;
+  try {
+    pendingStateClient = buildServiceClient();
+  } catch {
+    return errorResponse(500, "INTERNAL", "Pending-action authority unavailable");
+  }
 
   // Load the pending action
   const { data: pending, error: pendingErr } = await userClient
     .from("agent_pending_actions")
     .select(
-      "id, conversation_id, tool_name, tool_args, status, expires_at, source, related_brand_id",
+      "id, conversation_id, tool_name, tool_args, status, expires_at, source, related_brand_id, server_proposed_at",
     )
     .eq("id", body.pending_action_id)
     .eq("user_id", userId)
     .maybeSingle();
   if (pendingErr || !pending) {
     return errorResponse(404, "NOT_FOUND", "Pending action not found");
+  }
+  if (pending.server_proposed_at === null) {
+    return errorResponse(400, "WRONG_STATE", "Pending action is not server-attested");
   }
 
   // CANCEL path
@@ -130,10 +140,11 @@ Deno.serve(async (req) => {
         `Cannot cancel — current status: ${pending.status}`,
       );
     }
-    const { error: cancelErr } = await userClient
+    const { error: cancelErr } = await pendingStateClient
       .from("agent_pending_actions")
       .update({ status: "cancelled" })
       .eq("id", pending.id)
+      .eq("user_id", userId)
       .eq("status", "pending");
     if (cancelErr) {
       return errorResponse(
@@ -183,11 +194,33 @@ Deno.serve(async (req) => {
     // Lazy-expire (preserves the I-ARI-PENDING-STATE-MACHINE pending->expired
     // transition) then return an in-Hub regenerate contract the client renders
     // as a "regenerate / re-snap" CTA instead of an Accept button that 410s.
-    await userClient
+    const { error: expireErr } = await pendingStateClient
       .from("agent_pending_actions")
       .update({ status: "expired" })
       .eq("id", pending.id)
+      .eq("user_id", userId)
       .eq("status", "pending");
+    if (expireErr) {
+      return errorResponse(500, "INTERNAL", `Expire failed: ${expireErr.message}`);
+    }
+    if (pending.conversation_id) {
+      const { error: terminalErr } = await userClient.from("agent_messages").insert({
+        conversation_id: pending.conversation_id,
+        user_id: userId,
+        role: "tool",
+        content: { text: "" },
+        tool_results: {
+          tool_name: pending.tool_name,
+          pending_action_id: pending.id,
+          outcome: "expired",
+        },
+        prompt_version: TENANT_CONTEXT_VERSION,
+        model_version: ARI_MODEL_VERSION,
+      });
+      if (terminalErr) {
+        return errorResponse(500, "INTERNAL", `Expire receipt failed: ${terminalErr.message}`);
+      }
+    }
     return jsonResponse(200, {
       kind: "expired_regenerate",
       pending_action_id: pending.id,
@@ -217,10 +250,11 @@ Deno.serve(async (req) => {
   // Find tool + validate
   const tool = findTool(pending.tool_name);
   if (!tool) {
-    await userClient
+    await pendingStateClient
       .from("agent_pending_actions")
       .update({ status: "failed", failure_reason: "Unknown tool" })
-      .eq("id", pending.id);
+      .eq("id", pending.id)
+      .eq("user_id", userId);
     return errorResponse(500, "INTERNAL", "Unknown tool");
   }
 
@@ -233,9 +267,9 @@ Deno.serve(async (req) => {
       : code === "INVALID_ARGS"
       ? 400
       : 403;
-    await userClient.from("agent_pending_actions")
+    await pendingStateClient.from("agent_pending_actions")
       .update({ status: "failed", failure_reason: code })
-      .eq("id", pending.id).eq("status", "pending");
+      .eq("id", pending.id).eq("user_id", userId).eq("status", "pending");
     return errorResponse(
       status,
       code,
@@ -248,10 +282,34 @@ Deno.serve(async (req) => {
   // Persist edited args together with the atomic pending -> executing flip.
   // A recovery request therefore replays the exact confirmed payload.
   if (pending.status === "pending") {
-    const { data: flipped, error: flipErr } = await userClient
+    // #1985 retest coordination: the assistant proposal row is the canonical
+    // refresh surface. Replace its structured args before execution so a
+    // reload cannot resurrect the model's pre-edit slots as confirmable.
+    if (pending.conversation_id) {
+      const { error: proposalErr } = await userClient
+        .from("agent_messages")
+        .update({
+          tool_calls: {
+            tool_name: pending.tool_name,
+            args: finalArgs,
+            pending_action_id: pending.id,
+          },
+        })
+        .eq("conversation_id", pending.conversation_id)
+        .contains("tool_calls", { pending_action_id: pending.id });
+      if (proposalErr) {
+        return errorResponse(500, "INTERNAL", `Proposal update failed: ${proposalErr.message}`);
+      }
+    }
+    const { data: flipped, error: flipErr } = await pendingStateClient
       .from("agent_pending_actions")
-      .update({ status: "executing", tool_args: finalArgs })
+      .update({
+        status: "executing",
+        tool_args: finalArgs,
+        execution_attested_at: new Date().toISOString(),
+      })
       .eq("id", pending.id)
+      .eq("user_id", userId)
       .eq("status", "pending")
       .select("id")
       .maybeSingle();
@@ -281,10 +339,11 @@ Deno.serve(async (req) => {
     const isAmbiguous = !(err instanceof ToolError) ||
       ["RPC_FAILED", "EDGE_FAILED", "WRITE_FAILED"].includes(err.code);
     if (!isAmbiguous) {
-      await userClient
+      await pendingStateClient
         .from("agent_pending_actions")
         .update({ status: "failed", failure_reason: reason })
         .eq("id", pending.id)
+        .eq("user_id", userId)
         .eq("status", "executing");
     }
     if (pending.conversation_id) {
@@ -326,14 +385,15 @@ Deno.serve(async (req) => {
   }
 
   // Mark executed
-  const { error: doneErr } = await userClient
+  const { error: doneErr } = await pendingStateClient
     .from("agent_pending_actions")
     .update({
       status: "executed",
       executed_at: new Date().toISOString(),
       executed_result: result as any,
     })
-    .eq("id", pending.id);
+    .eq("id", pending.id)
+    .eq("user_id", userId);
   if (doneErr) {
     // Write succeeded but bookkeeping failed — log but still return success
     console.error(

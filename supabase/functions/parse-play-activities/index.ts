@@ -1,6 +1,7 @@
 // Ve6 — parse-play-activities
 //
-// SECURITY: caller JWT only (I-ARI-USER-JWT-ONLY). No service role. No file Storage.
+// SECURITY: caller JWT owns all domain reads; service role is limited to the
+// server-authoritative pending-proposal insert. No file Storage.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
@@ -8,6 +9,7 @@ import {
   parseActivitiesWithGemini,
   type ActivitiesFileInput,
 } from "../_shared/geminiActivitiesParser.ts";
+import { buildServiceClient } from "../_shared/agentRateLimit.ts";
 
 // I-BRAND-UNIVERSAL-AUTHORING (META-ORCH-0972) — no kind gate.
 
@@ -106,6 +108,7 @@ Deno.serve(async (req) => {
     return errorResponse(401, "UNAUTHORIZED", "Invalid or expired session");
   }
   const userId = userData.user.id;
+  const pendingStateClient = buildServiceClient();
 
   if (!checkRateLimit(userId)) {
     return errorResponse(
@@ -223,7 +226,7 @@ Deno.serve(async (req) => {
       stops: exp.stops,
     };
 
-    const { data: inserted, error: insertErr } = await userClient
+    const { data: inserted, error: insertErr } = await pendingStateClient
       .from("agent_pending_actions")
       .insert({
         user_id: userId,
@@ -233,6 +236,7 @@ Deno.serve(async (req) => {
         tool_name: "create_experience",
         tool_args,
         status: "pending",
+        server_proposed_at: new Date().toISOString(),
         expires_at: expiresAt,
       })
       .select("id, tool_name, tool_args, expires_at")

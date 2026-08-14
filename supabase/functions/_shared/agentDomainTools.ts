@@ -11,6 +11,7 @@ import {
   isString,
   isUuid,
   newIdempotencyKey,
+  requireAgentOperationId,
   resolveEventBrand,
   ToolError,
 } from "./agentToolHelpers.ts";
@@ -86,32 +87,35 @@ function requireBrand(
   return args.brand_id;
 }
 
+async function executeEventWrite(
+  name: string,
+  args: Record<string, unknown>,
+  client: any,
+  context: Parameters<AgentToolDefinition["executor"]>[3],
+): Promise<unknown> {
+  return await callRpc(client, "ari_execute_event_operation", {
+    p_operation_id: requireAgentOperationId(context),
+    p_tool_name: name,
+    p_args: args,
+  });
+}
+
 // ----------------------------------------------------------------------------
 // A. Events
 // ----------------------------------------------------------------------------
 
 const publishEvent = writeTool(
   "publish_event",
-  "Publish a draft event the user owns. Uses issue_1719_publish_event_with_poster. Paid events require payout-ready brand.",
+  "Publish the complete stored event draft through the canonical publish owner.",
   {
     event_id: UUID,
+    brand_id: UUID,
     visibility: { type: "string", enum: ["public", "unlisted", "private"] },
   },
   ["event_id"],
-  async (args, client, userId) => {
-    const { eventId, brandId } = await requireEvent(args, client, userId);
-    const { data: paid } = await client
-      .from("ticket_types")
-      .select("id")
-      .eq("event_id", eventId)
-      .gt("price_cents", 0)
-      .limit(1);
-    if (paid && paid.length > 0) await assertCanCollect(client, brandId);
-    return await callRpc(client, "issue_1719_publish_event_with_poster", {
-      p_event_id: eventId,
-      p_draft_payload: { visibility: args.visibility ?? "public" },
-      p_client_revision: null,
-    });
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    return await executeEventWrite("publish_event", args, client, context);
   },
 );
 
@@ -120,16 +124,9 @@ const unpublishEvent = writeTool(
   "Take a live event back to draft (unpublish). Same events row the UI edits.",
   { event_id: UUID },
   ["event_id"],
-  async (args, client, userId) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    const { data, error } = await client
-      .from("events")
-      .update({ status: "draft" })
-      .eq("id", eventId)
-      .select("id, status")
-      .maybeSingle();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    return await executeEventWrite("unpublish_event", args, client, context);
   },
 );
 
@@ -138,11 +135,9 @@ const cancelEvent = writeTool(
   "Cancel a live event via business_cancel_event. Destructive — type-to-confirm in the card.",
   { event_id: UUID },
   ["event_id"],
-  async (args, client, userId) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    return await callRpc(client, "business_cancel_event", {
-      p_event_id: eventId,
-    });
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    return await executeEventWrite("cancel_event", args, client, context);
   },
   "CANCEL",
 );
@@ -152,11 +147,9 @@ const endEventSales = writeTool(
   "Stop ticket sales on a live event via business_end_event_ticket_sales.",
   { event_id: UUID },
   ["event_id"],
-  async (args, client, userId) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    return await callRpc(client, "business_end_event_ticket_sales", {
-      p_event_id: eventId,
-    });
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    return await executeEventWrite("end_event_sales", args, client, context);
   },
 );
 
@@ -165,32 +158,9 @@ const duplicateEvent = writeTool(
   "Duplicate an owned event as a new draft (same brand, title + ' (copy)').",
   { event_id: UUID },
   ["event_id"],
-  async (args, client, userId) => {
-    const { eventId, brandId } = await requireEvent(args, client, userId);
-    const { data: src, error } = await client
-      .from("events")
-      .select("title, description, location_text, timezone, event_type")
-      .eq("id", eventId)
-      .maybeSingle();
-    if (error || !src) {
-      throw new ToolError("OWNERSHIP_DENIED", "Source event not found");
-    }
-    const { data, error: insErr } = await client
-      .from("events")
-      .insert({
-        brand_id: brandId,
-        created_by: userId,
-        title: `${src.title} (copy)`,
-        description: src.description,
-        location_text: src.location_text,
-        timezone: src.timezone,
-        event_type: src.event_type ?? "ticketed",
-        status: "draft",
-      })
-      .select("id, title, status")
-      .single();
-    if (insErr) throw new ToolError("RPC_FAILED", insErr.message);
-    return data;
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    return await executeEventWrite("duplicate_event", args, client, context);
   },
 );
 
@@ -199,19 +169,14 @@ const patchEventWhen = writeTool(
   "Change an event's date/time via business_patch_event_when.",
   {
     event_id: UUID,
-    start_at: { type: "string", format: "date-time" },
-    end_at: { type: "string", format: "date-time" },
-    timezone: STR,
+    when_payload: { type: "object" },
+    reason: { type: "string", minLength: 10, maxLength: 200 },
+    client_revision: { type: "integer", minimum: 0 },
   },
-  ["event_id", "start_at"],
-  async (args, client, userId) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    return await callRpc(client, "business_patch_event_when", {
-      p_event_id: eventId,
-      p_start_at: args.start_at,
-      p_end_at: args.end_at ?? null,
-      p_timezone: args.timezone ?? null,
-    });
+  ["event_id", "when_payload", "reason"],
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    return await executeEventWrite("patch_event_when", args, client, context);
   },
 );
 
@@ -223,41 +188,48 @@ const setEventCover = writeTool(
     cover_media_url: { type: "string" },
     cover_media_type: { type: "string", enum: ["image", "gif", "video"] },
     cover_media_poster_url: { type: "string" },
+    selection_ref: STR,
+    cover_media_provider: { type: "string" },
+    cover_media_source_url: { type: "string" },
+    cover_media_credit: { type: "string" },
+    cover_media_credit_url: { type: "string" },
+    cover_media_alt: { type: "string" },
   },
-  ["event_id", "cover_media_url", "cover_media_type"],
-  async (args, client, userId) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    const { data, error } = await client
-      .from("events")
-      .update({
-        cover_media_url: args.cover_media_url,
-        cover_media_type: args.cover_media_type,
-        cover_media_poster_url: args.cover_media_poster_url ??
-          args.cover_media_url,
-      })
-      .eq("id", eventId)
-      .select("id, cover_media_url")
-      .single();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+  ["event_id", "brand_id"],
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    if (!isString(args.selection_ref) || !isString(args.cover_media_url) ||
+      !isString(args.cover_media_type) || !isString(args.cover_media_poster_url)) {
+      throw new ToolError("INVALID_ARGS", "Choose a cover in the proposal card before confirming");
+    }
+    return await executeEventWrite("set_event_cover", args, client, context);
   },
 );
 
 const setEventGuestPrivacy = writeTool(
   "set_event_guest_privacy",
   "Set guest-list privacy on an owned event via biz_set_event_guest_privacy.",
-  {
-    event_id: UUID,
-    privacy: { type: "string", enum: ["private", "attendees", "public"] },
+  { event_id: UUID, private_guest_list: { type: "boolean" }, hide_remaining_count: { type: "boolean" } },
+  ["event_id"],
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    if (typeof args.private_guest_list !== "boolean" && typeof args.hide_remaining_count !== "boolean") {
+      throw new ToolError("INVALID_ARGS", "At least one guest privacy setting is required");
+    }
+    return await executeEventWrite("set_event_guest_privacy", args, client, context);
   },
-  ["event_id", "privacy"],
-  async (args, client, userId) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    return await callRpc(client, "biz_set_event_guest_privacy", {
-      p_event_id: eventId,
-      p_privacy: args.privacy,
-    });
+);
+
+const discardEventDraft = writeTool(
+  "discard_event_draft",
+  "Discard an event draft. Destructive — type-to-confirm in the card.",
+  { event_id: UUID },
+  ["event_id"],
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    return await executeEventWrite("discard_event_draft", args, client, context);
   },
+  "DISCARD",
 );
 
 // ----------------------------------------------------------------------------
@@ -1447,6 +1419,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   patchEventWhen,
   setEventCover,
   setEventGuestPrivacy,
+  discardEventDraft,
   upsertTicketTier,
   setPricingSwitches,
   publishExperience,
@@ -1509,6 +1482,7 @@ export const DOMAIN_READ_ONLY = new Set<string>([
 
 export const MONEY_CONFIRM_TOOLS = new Set<string>([
   "cancel_event",
+  "discard_event_draft",
   "refund_rsvp_contribution",
   "send_campaign_now",
   "disconnect_partner",

@@ -10,14 +10,14 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-13T12:00:00Z",
-    "registered_tool_count": 64,
+    "registered_tool_count": 65,
     "capability_count": 116,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 16,
-      "broken": 47,
+      "registered_unverified": 25,
+      "broken": 39,
       "guided_handoff": 7,
-      "unsupported": 42,
+      "unsupported": 41,
       "in_flight": 4
     }
   },
@@ -378,7 +378,7 @@
         ]
       },
       "ari_tool": "publish_event",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -387,9 +387,7 @@
         }
       ],
       "owning_issues": [2000],
-      "blockers": [
-        "Delegated event managers are rejected before role/RLS authority"
-      ],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -412,7 +410,7 @@
         ]
       },
       "ari_tool": "unpublish_event",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -421,7 +419,7 @@
         }
       ],
       "owning_issues": [2000],
-      "blockers": ["Delegated event managers blocked"],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -448,7 +446,7 @@
         ]
       },
       "ari_tool": "cancel_event",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -457,7 +455,7 @@
         }
       ],
       "owning_issues": [2000],
-      "blockers": ["Delegated event managers blocked"],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -484,7 +482,7 @@
         ]
       },
       "ari_tool": "end_event_sales",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -493,7 +491,7 @@
         }
       ],
       "owning_issues": [2000],
-      "blockers": ["Delegated event managers blocked"],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -516,7 +514,7 @@
         ]
       },
       "ari_tool": "duplicate_event",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -525,7 +523,7 @@
         }
       ],
       "owning_issues": [2000],
-      "blockers": ["Does not duplicate the canonical draft graph"],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -552,7 +550,7 @@
         ]
       },
       "ari_tool": "patch_event_when",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -561,7 +559,7 @@
         }
       ],
       "owning_issues": [2000],
-      "blockers": ["Delegated event managers blocked"],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -588,7 +586,7 @@
         ]
       },
       "ari_tool": "set_event_cover",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -597,9 +595,7 @@
         }
       ],
       "owning_issues": [2000],
-      "blockers": [
-        "Delegated event managers blocked; picker remains a separate guided handoff"
-      ],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -626,7 +622,7 @@
         ]
       },
       "ari_tool": "set_event_guest_privacy",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -635,7 +631,7 @@
         }
       ],
       "owning_issues": [2000],
-      "blockers": ["Delegated event managers blocked"],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },
@@ -2403,8 +2399,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "discard_event_draft",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -2413,7 +2409,7 @@
         }
       ],
       "owning_issues": [2000],
-      "blockers": ["No registered tool"],
+      "blockers": ["No exact-revision runtime evidence on all required surfaces"],
       "confidence": "high",
       "verified_at": "2026-08-13"
     },

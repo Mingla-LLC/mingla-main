@@ -15,7 +15,15 @@ import { mapToCanonicalExperienceIntents } from "./canonicalExperienceIntents.ts
 import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "./agentDomainTools.ts";
 import { assertAgentReadBrand, resolveAccessibleAgentBrands } from "./agentTenantScope.ts";
 import type { AgentTool, AgentToolDefinition } from "./agentToolHelpers.ts";
-import { deriveSlug, isString, isUuid, resolveEventBrand, ToolError } from "./agentToolHelpers.ts";
+import {
+  callRpc,
+  deriveSlug,
+  isString,
+  isUuid,
+  requireAgentOperationId,
+  resolveEventBrand,
+  ToolError,
+} from "./agentToolHelpers.ts";
 import { secureAgentTools } from "./agentToolAuthorization.ts";
 
 export { ToolError } from "./agentToolHelpers.ts";
@@ -105,7 +113,7 @@ const createBrand: AgentToolDefinition = {
       cover_media_poster_url: { type: "string", description: "Stable cover still — set by the Add cover picker alongside GIF/video media." },
     },
   },
-  executor: async (args, client, userId) => {
+  executor: async (args, client, userId, _context) => {
     const name = args.name;
     if (!isString(name) || name.length > 80) {
       throw new ToolError("INVALID_ARGS", "name is required (1-80 chars)");
@@ -207,15 +215,22 @@ const createEvent: AgentToolDefinition = {
       brand_id: { type: "string", description: "UUID of a brand owned by the user" },
       title: { type: "string", description: "Event name (1-120 chars)" },
       start_at: { type: "string", description: "ISO 8601 datetime in the future (e.g., 2026-05-17T21:00:00Z)" },
+      end_at: { type: "string", description: "Optional ISO 8601 end datetime after start_at" },
       description: { type: "string", description: "Optional event description (<=2000 chars)" },
       location_text: { type: "string", description: "Optional venue name or address (<=200 chars)" },
       is_online: { type: "boolean", description: "True if the event is online-only" },
       online_url: { type: "string", description: "URL if is_online" },
       timezone: { type: "string", description: "IANA timezone (e.g., America/New_York). Defaults to UTC." },
       visibility: { type: "string", enum: ["draft", "public", "unlisted"], description: "Defaults to draft." },
+      city: { type: "string", description: "Event city" },
+      currency: { type: "string", description: "Optional ISO 4217 currency" },
+      party_types: { type: "array", items: { type: "string" } },
+      vibe_tags: { type: "array", items: { type: "string" } },
+      music_genres: { type: "array", items: { type: "string" } },
+      tickets: { type: "array", items: { type: "object" }, description: "Optional canonical ticket draft rows" },
     },
   },
-  executor: async (args, client, userId) => {
+  executor: async (args, client, _userId, context) => {
     if (!isUuid(args.brand_id)) {
       throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
     }
@@ -232,38 +247,12 @@ const createEvent: AgentToolDefinition = {
     if (startDate.getTime() < Date.now() - 60 * 1000) {
       throw new ToolError("INVALID_ARGS", "start_at must be in the future");
     }
-
-
-    const slug = deriveSlug(args.title) || `event-${Date.now()}`;
-    const row = {
-      brand_id: args.brand_id,
-      created_by: userId,
-      title: args.title.trim(),
-      slug,
-      description: isString(args.description) ? args.description : null,
-      location_text: isString(args.location_text) ? args.location_text : null,
-      is_online: args.is_online === true,
-      online_url: isString(args.online_url) ? args.online_url : null,
-      timezone: isString(args.timezone) ? args.timezone : "UTC",
-      visibility: isString(args.visibility) ? args.visibility : "draft",
-      status: "draft",
-    };
-
-    const { data, error } = await client
-      .from("events")
-      .insert(row)
-      .select("id, brand_id, title, slug, visibility, status, created_at")
-      .single();
-    if (error) {
-      if ((error as { code?: string }).code === "23505") {
-        throw new ToolError(
-          "SLUG_TAKEN",
-          `An event titled "${args.title}" already exists under that brand. Try a small variation.`,
-        );
-      }
-      throw new ToolError("WRITE_FAILED", error.message);
-    }
-    return { event: data, start_at: args.start_at };
+    const operationId = requireAgentOperationId(context);
+    return await callRpc(client, "ari_execute_event_operation", {
+      p_operation_id: operationId,
+      p_tool_name: "create_event",
+      p_args: args,
+    });
   },
 };
 
@@ -317,16 +306,11 @@ const listEvents: AgentToolDefinition = {
     if (isUuid(args.brand_id)) await assertAgentReadBrand(client, userId, args.brand_id);
     const allowedBrandIds = isUuid(args.brand_id) ? [args.brand_id] : scope.map((brand) => brand.id);
     if (allowedBrandIds.length === 0) return { events: [] };
-    const q = client
-      .from("events")
-      .select("id, brand_id, title, slug, visibility, status, created_at, timezone")
-      .in("brand_id", allowedBrandIds)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    const { data, error } = await q;
-    if (error) throw new ToolError("READ_FAILED", error.message);
-    return { events: data ?? [] };
+    const events = await callRpc(client, "business_list_events_for_ari", {
+      p_brand_ids: allowedBrandIds,
+      p_limit: limit,
+    });
+    return { events: Array.isArray(events) ? events : [] };
   },
 };
 
@@ -351,37 +335,26 @@ const updateEvent: AgentToolDefinition = {
       is_online: { type: "boolean" },
       online_url: { type: "string" },
       visibility: { type: "string", enum: ["draft", "public", "unlisted"] },
-      status: { type: "string", enum: ["draft", "live", "cancelled", "ended"] },
+      end_at: { type: "string", description: "Optional ISO 8601 end datetime" },
+      timezone: { type: "string", description: "IANA timezone for the event" },
+      client_revision: { type: "integer", minimum: 0 },
+      reason: { type: "string", description: "Required 10–200 character reason when editing a scheduled or live event" },
     },
   },
-  executor: async (args, client, _userId) => {
+  executor: async (args, client, _userId, context) => {
     if (!isUuid(args.event_id)) {
       throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
     }
-    await resolveEventBrand(client, args.event_id);
-
-    const updates: Record<string, unknown> = {};
-    if (isString(args.title)) updates.title = args.title.trim();
-    if (isString(args.description)) updates.description = args.description;
-    if (isString(args.location_text)) updates.location_text = args.location_text;
-    if (typeof args.is_online === "boolean") updates.is_online = args.is_online;
-    if (isString(args.online_url)) updates.online_url = args.online_url;
-    if (isString(args.visibility)) updates.visibility = args.visibility;
-    if (isString(args.status)) updates.status = args.status;
-
-    if (Object.keys(updates).length === 0) {
+    const mutableKeys = ["title", "start_at", "end_at", "description", "location_text", "is_online", "online_url", "visibility", "timezone"];
+    if (!mutableKeys.some((key) => args[key] !== undefined)) {
       throw new ToolError("INVALID_ARGS", "No fields provided to update");
     }
-    updates.updated_at = new Date().toISOString();
-
-    const { data, error } = await client
-      .from("events")
-      .update(updates)
-      .eq("id", args.event_id)
-      .select("id, brand_id, title, visibility, status, updated_at")
-      .single();
-    if (error) throw new ToolError("WRITE_FAILED", error.message);
-    return { event: data };
+    const operationId = requireAgentOperationId(context);
+    return await callRpc(client, "ari_execute_event_operation", {
+      p_operation_id: operationId,
+      p_tool_name: "update_event",
+      p_args: args,
+    });
   },
 };
 
