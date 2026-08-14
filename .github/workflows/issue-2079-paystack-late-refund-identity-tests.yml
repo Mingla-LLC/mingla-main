@@ -13,6 +13,7 @@ on:
       - "supabase/functions/_shared/__tests__/issue_2079_paystack_late_refund_identity.tester.adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2079_stripe_webhook_identity.test.ts"
       - "supabase/functions/reconcile-stuck-checkouts/**"
+      - "supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2079_stripe_hosted_null_relation.tester.adversarial.test.ts"
       - ".github/scripts/strict-grep/issue-2079-paystack-late-refund-identity.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-2079-paystack-late-refund-identity-tests.yml"
@@ -28,6 +29,7 @@ on:
       - "supabase/functions/ticket-checkout-confirm/**"
       - "supabase/functions/_shared/stripeWebhookRouter.ts"
       - "supabase/functions/reconcile-stuck-checkouts/**"
+      - "supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2079_stripe_hosted_null_relation.tester.adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2079_paystack_late_refund_identity.happy.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2079_paystack_late_refund_identity.tester.adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2079_stripe_webhook_identity.test.ts"
@@ -59,6 +61,7 @@ jobs:
           supabase/functions/ticket-checkout-confirm/__tests__/issue_2079_stripe_hosted_identity.test.ts
           supabase/functions/_shared/__tests__/issue_2079_stripe_webhook_identity.test.ts
           supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2079_stripe_hosted_identity.test.ts
+          supabase/functions/reconcile-stuck-checkouts/__tests__/issue_2079_stripe_hosted_null_relation.tester.adversarial.test.ts
       - run: deno check supabase/functions/_shared/paystackRefunds.ts supabase/functions/_shared/sourceRefundControlPlane.ts supabase/functions/checkout-sale-revocation/index.ts supabase/functions/ticket-checkout-confirm/index.ts supabase/functions/_shared/stripeWebhookRouter.ts supabase/functions/reconcile-stuck-checkouts/index.ts
 
   issue-2079-postgres-contract:
