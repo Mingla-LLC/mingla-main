@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 
 const root = path.resolve(__dirname, "../../../..");
 const read = (relative: string): string =>
@@ -35,33 +34,9 @@ describe("#1008 turnout surface wiring", () => {
   });
 
   // [TEST-MOD-APPROVED #1742] #1008 intentionally reserved Experience for the
-  // approved follow-up gate. #1742 now owns that exact, previously excluded seam.
-  it("does not alter validators, publish guards, or stores, and mounts the approved Experience follow-up", () => {
-    const repoRoot = path.resolve(root, "..");
-    const base = execFileSync(
-      "git",
-      ["merge-base", "HEAD", "origin/main"],
-      { cwd: repoRoot },
-    )
-      .toString()
-      .trim();
-    const changed = execFileSync(
-      "git",
-      ["diff", "--name-only", base, "HEAD"],
-      { cwd: repoRoot },
-    )
-      .toString()
-      .trim()
-      .split("\n");
-    expect(changed).not.toContain(
-      "mingla-business/src/utils/draftEventValidation.ts",
-    );
-    expect(changed).not.toContain(
-      "mingla-business/src/store/draftEventStore.ts",
-    );
-    expect(changed).toContain(
-      "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx",
-    );
+  // approved follow-up gate. #1742 owns the lasting source-shape contract: one
+  // lazy provider with automatic execution disabled, independent of PR composition.
+  it("mounts the approved Experience follow-up with automatic execution disabled", () => {
     const experienceWizard = read(
       "src/components/experience/ExperienceCreatorWizard.tsx",
     );
