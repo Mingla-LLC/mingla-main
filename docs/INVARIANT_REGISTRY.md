@@ -159,18 +159,18 @@
 
 ---
 
-## DRAFT — issue #1856 (dangerous public-schema table grants)
+## ACTIVE — issue #1856 (dangerous public-schema table grants)
 
-> Registered DRAFT at issue #1856 IMPLEMENT. The orchestrator flips DRAFT → ACTIVE only after independent tester PASS, an all-green merge, production migration application, and live catalog verification.
+> Activated at issue #1856 CLOSE after independent tester PASS, an all-green merge, production migration application, and live catalog verification.
 
-### I-PROPOSED-1856-PUBLIC-TABLE-GRANTS-FAIL-CLOSED (DRAFT)
+### I-1856-PUBLIC-TABLE-GRANTS-FAIL-CLOSED (ACTIVE)
 
 - **Rule:** `PUBLIC`, `anon`, and `authenticated` may never regain a table privilege that exceeds the relation's intentional client contract. In particular, neither `anon` nor `authenticated` may hold `TRUNCATE`, `REFERENCES`, `TRIGGER`, or PostgreSQL 17 `MAINTAIN` on `qr_spots`, `menu_modifier_groups`, `menu_modifiers`, or `venue_ordering_settings`; the thirteen repaired public views remain read-only; and any write grant on an auto-updatable owner view that is not `security_invoker` is an un-baselineable RLS-bypass finding. `venue_ordering_settings` is authenticated-readable but service-role-writable under ordering ruling OQ-7.
 - **Why the catalog is authoritative:** `information_schema.role_table_grants` is filtered through the current role, does not model the effective `PUBLIC` inheritance boundary cleanly, and does not cover PostgreSQL 17 `MAINTAIN`. The guard therefore reads `pg_class.relacl` through `aclexplode()` and tests effective privileges separately. A frozen baseline records the pre-existing grant backlog but is not an allowlist: new findings and all `rls_bypass_view_write` findings are never excused by it.
 - **Enforcement:** Migration `20270322001856_issue_1856_ordering_table_grants_and_grant_class_guard.sql` narrows the four ordering-table grants, removes writes from the thirteen read views, and installs service-role-only `public.audit_overbroad_table_grants()`. The migration self-check hard-fails a target regression or owner-view bypass and surfaces any newly overbroad grant. `.github/workflows/supabase-migrations-and-stripe-deno.yml` executes both the implementor and independent tester SQL suites against PostgreSQL 17.
 - **Regression:** `supabase/migrations/__tests__/issue_1856_ordering_table_grants_and_grant_class.test.sql` proves target privileges, required product access, class detection, baseline behavior, and a real TRUNCATE revert. Independent `supabase/migrations/__tests__/issue_1856_grant_guard.tester_adversarial.test.sql` mutates live ACLs, proves the exact TRUNCATE regression fails with the offender named, behaviorally inserts through an owner view over deny-all RLS, proves the `security_invoker` twin is refused with `42501`, and verifies the audit function is executable only by `service_role`.
 - **Scope:** Backend ACLs, catalog audit, migration assertions, and CI only. The broader pre-existing public-schema grant backlog remains explicit follow-up debt; this invariant prevents growth but does not silently revoke unreviewed product access. Conditional PostGIS-owned `geometry_columns` and `geography_columns` exceptions survive only while their owner is not manageable by the migration role.
-- **Established:** DRAFT at issue #1856 IMPLEMENT 2026-08-11; independent tester local PASS at commit `4b57afedd` with final activation contingent on all-green merge and verified production state.
+- **Established:** DRAFT at issue #1856 IMPLEMENT 2026-08-11; ACTIVE at CLOSE 2026-08-11 after independent tester PASS, all-green PR #1864 merge `056ae4030`, production migration `20270322001856`, and four live read-backs proving one migration stamp plus zero target-grant, repaired-view, new-finding, or RLS-bypass failures.
 
 ---
 
