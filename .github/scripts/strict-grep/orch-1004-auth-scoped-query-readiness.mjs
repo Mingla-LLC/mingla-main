@@ -184,6 +184,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #1403 — private listing and exact-venue aggregate RPCs.
   "useListingInsights.ts",
   "useVenueReservationMetrics.ts",
+  // #1795 — exact-brand/exact-venue member-authenticated order rollup;
+  // both single and fanout query paths already wait for isAuthReady.
+  "useVenueOrderMetrics.ts",
   // #1421 — exact-venue organic aggregate RPC is active-member/auth scoped.
   "useVenueOrganicInsights.ts",
   // #1775 — import status is actor/brand scoped and must not cache a pre-auth

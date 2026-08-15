@@ -34,6 +34,7 @@ import {
   buildBusinessTodos,
   type BusinessTodo,
   type InsightsNudgeTodo,
+  type VenueOrderCompletenessTodo,
   type VenueTodoClaim,
   type VenueTodoDraft,
   type VenueTodoPipeline,
@@ -45,6 +46,7 @@ import {
 import { routeForPipelineStateFix } from "../utils/deckReadinessRoutes";
 import { venueClaimBannerVariant } from "../services/venueClaimBannerLogic";
 import { useVenueClaimOpenCountsByVenue } from "./useVenueClaimFeedback";
+import { useVenueOrderMetricsForVenues } from "./useVenueOrderMetrics";
 
 export function useBusinessTodos(): BusinessTodo[] {
   const { user, isAuthReady } = useAuth();
@@ -124,7 +126,63 @@ export function useBusinessTodos(): BusinessTodo[] {
   // unchanged, fed each VENUE row's claim fields (the brand claim columns are
   // legacy-inert). Open-feedback counts come from ONE brand-level read,
   // grouped per venue — enabled only when some venue carries a follow-up.
-  const venues = venueListings.data ?? [];
+  const venues = useMemo(() => venueListings.data ?? [], [venueListings.data]);
+  const orderMetricScopes = useMemo(
+    () =>
+      currentBrand === null
+        ? []
+        : venues
+            .filter((venue) => venue.venueCategory !== "stay")
+            .map((venue) => ({ brandId: currentBrand.id, venueId: venue.id })),
+    [currentBrand, venues],
+  );
+  const orderMetricQueries = useVenueOrderMetricsForVenues(
+    orderMetricScopes,
+    isAuthReady,
+  );
+  const venueOrderCompleteness = useMemo<VenueOrderCompletenessTodo[]>(() => {
+    const nameByVenue = new Map(venues.map((venue) => [venue.id, venue.name]));
+    const rows: VenueOrderCompletenessTodo[] = [];
+    orderMetricQueries.forEach((query, index) => {
+      const scope = orderMetricScopes[index];
+      const metrics = query.data;
+      if (
+        scope === undefined ||
+        query.isError ||
+        metrics === undefined ||
+        !metrics.authorized ||
+        metrics.orders30d === 0
+      ) {
+        return;
+      }
+      const venueName = nameByVenue.get(scope.venueId) ?? "your venue";
+      if (
+        metrics.dataCompleteness.showZoneTodo &&
+        metrics.dataCompleteness.activeTablesMissingZone > 0
+      ) {
+        rows.push({
+          venueId: scope.venueId,
+          venueName,
+          kind: "zones",
+          count: metrics.dataCompleteness.activeTablesMissingZone,
+          route: `/venue/${scope.venueId}?module=tables`,
+        });
+      }
+      if (
+        metrics.dataCompleteness.showItemCostTodo &&
+        metrics.dataCompleteness.soldItemsMissingCost > 0
+      ) {
+        rows.push({
+          venueId: scope.venueId,
+          venueName,
+          kind: "item_costs",
+          count: metrics.dataCompleteness.soldItemsMissingCost,
+          route: `/venue/${scope.venueId}?module=menu`,
+        });
+      }
+    });
+    return rows;
+  }, [orderMetricQueries, orderMetricScopes, venues]);
   const hasAnyFollowUp = venues.some((v) => v.claimFollowUpAt !== null);
   const openCountsByVenue = useVenueClaimOpenCountsByVenue(
     currentBrand?.id ?? null,
@@ -266,6 +324,7 @@ export function useBusinessTodos(): BusinessTodo[] {
             : "",
         profile,
         insightsNudges,
+        venueOrderCompleteness,
       }),
     [
       profile,
@@ -281,6 +340,7 @@ export function useBusinessTodos(): BusinessTodo[] {
       upcoming.counts,
       drafts,
       insightsNudges,
+      venueOrderCompleteness,
     ],
   );
 }

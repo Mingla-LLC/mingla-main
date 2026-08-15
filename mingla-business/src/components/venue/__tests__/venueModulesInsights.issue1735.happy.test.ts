@@ -137,10 +137,11 @@ describe("issue #1735 — Insights module registration (T-G1/T-G2)", () => {
     expect(rail[0]).toBe("overview");
   });
 
-  it("the #1737 extension point registers ONLY the site instrument today", () => {
-    expect(INSIGHT_INSTRUMENTS).toEqual(["site"]);
+  it("#1795 appends Orders while preserving the #1737 pricing extension point", () => {
+    expect(INSIGHT_INSTRUMENTS).toEqual(["site", "orders"]);
     expect(insightInstrumentRegistered("site")).toBe(true);
-    // The pricing to-do row + read stay dark until #1737 appends "pricing".
+    expect(insightInstrumentRegistered("orders")).toBe(true);
+    // The pricing to-do row + read remain dark until #1737 appends "pricing".
     expect(insightInstrumentRegistered("pricing")).toBe(false);
   });
 });

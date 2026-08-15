@@ -24,7 +24,7 @@
  * silent).
  */
 
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
@@ -51,15 +51,19 @@ import {
   captureIntelRunStarted,
 } from "../../../analytics/businessAnalyticsEvents";
 import { useBrandPlaceAuthoringContext } from "../../../hooks/useBrandPlacePipelineState";
+import { useAuth } from "../../../context/AuthContext";
 import { useIntelRun, useIntelSubjectLatest } from "../../../hooks/useGrowthTools";
+import { useVenueOrderMetrics } from "../../../hooks/useVenueOrderMetrics";
 import { useVenueListing } from "../../../hooks/useVenueListings";
 import type { CompetitorWatchRow } from "../../../services/growthToolsService";
 import { useShareNetworkState } from "../../ui/useShareNetworkState";
 import { Button } from "../../ui/Button";
+import { GlassCard } from "../../ui/GlassCard";
 import { Sheet } from "../../ui/Sheet";
 import { CompetitorAddSheet } from "./CompetitorAddSheet";
 import { CompetitorWatchSection } from "./CompetitorWatchSection";
 import { GraderReportSections } from "./GraderReportSections";
+import { OrderInsightsInstrument } from "./OrderInsightsInstrument";
 import {
   SiteCheckInstrument,
   type SiteCheckVerdict,
@@ -71,7 +75,7 @@ import {
   formatCheckedDate,
 } from "./insightsInstruments";
 
-type InsightsView = "home" | "site" | "pricing";
+type InsightsView = "home" | "site" | "orders" | "pricing";
 
 export interface VenueInsightsModuleProps {
   brandId: string | null;
@@ -153,8 +157,11 @@ export function VenueInsightsModule({
 }: VenueInsightsModuleProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ instrument?: string }>();
   const online = useShareNetworkState();
   const offline = !online;
+  const { isAuthReady } = useAuth();
+  const ordersQuery = useVenueOrderMetrics(brandId, venueId, isAuthReady);
 
   const venueQuery = useVenueListing(venueId);
   const venue = venueQuery.data ?? null;
@@ -174,7 +181,9 @@ export function VenueInsightsModule({
   const latestQuery = useIntelSubjectLatest(brandId, "venues", subjectRef);
 
   const run = useIntelRun();
-  const [view, setView] = useState<InsightsView>("home");
+  const [view, setView] = useState<InsightsView>(
+    params.instrument === "orders" ? "orders" : "home",
+  );
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [reportRow, setReportRow] = useState<CompetitorWatchRow | null>(null);
 
@@ -347,6 +356,29 @@ export function VenueInsightsModule({
                   </React.Fragment>
                 );
               }
+              if (instrumentId === "orders") {
+                const orderData = ordersQuery.data;
+                if (orderData !== undefined && !orderData.authorized) return null;
+                return (
+                  <Pressable
+                    key={instrumentId}
+                    onPress={() => setView("orders")}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open venue order insights"
+                    style={styles.instrumentPressable}
+                    testID="insights-orders-entry"
+                  >
+                    <GlassCard variant="base" padding={spacing.lg}>
+                      <Text style={styles.instrumentTitle}>Orders</Text>
+                      <Text style={styles.quiet}>
+                        {orderData === undefined
+                          ? "See what sells, where, and when."
+                          : `${orderData.orders30d} orders in the last 30 days`}
+                      </Text>
+                    </GlassCard>
+                  </Pressable>
+                );
+              }
               return null;
             })}
             <CompetitorWatchSection
@@ -379,6 +411,28 @@ export function VenueInsightsModule({
             {/* G-2 binding: header at top, G-8 report sections below, SAME
                 scroll; "Re-check my site" lives in the header. */}
             {siteInstrument(true)}
+          </View>
+        ) : view === "orders" ? (
+          <View style={styles.column}>
+            <Pressable
+              style={styles.backRow}
+              onPress={() => setView("home")}
+              accessibilityRole="button"
+              accessibilityLabel="Back to Insights"
+              hitSlop={8}
+              testID="venue-order-insights-back"
+            >
+              <ArrowLeft size={20} color={textTokens.secondary} />
+              <Text style={styles.backLabel}>Insights</Text>
+            </Pressable>
+            <Text style={styles.headerTitle}>Venue orders</Text>
+            <OrderInsightsInstrument
+              query={ordersQuery}
+              offline={offline}
+              onRetry={() => {
+                void ordersQuery.refetch();
+              }}
+            />
           </View>
         ) : (
           // "pricing" — the #1737 seam. Structurally unreachable until its
@@ -444,6 +498,13 @@ const styles = StyleSheet.create({
   ariFooter: {
     ...typography.caption,
     color: textTokens.tertiary,
+  },
+  instrumentPressable: {
+    minHeight: 44,
+  },
+  instrumentTitle: {
+    ...typography.h3,
+    color: textTokens.primary,
   },
   backRow: {
     minHeight: 44,

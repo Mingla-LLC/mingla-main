@@ -15,10 +15,10 @@
  * row must never deep-link to a surface that doesn't render).
  */
 
-export type InsightInstrumentId = "site" | "pricing";
+export type InsightInstrumentId = "site" | "orders" | "pricing";
 
 /** Ordered. #1737 appends "pricing" — one-line diff, same array. */
-export const INSIGHT_INSTRUMENTS: readonly InsightInstrumentId[] = ["site"];
+export const INSIGHT_INSTRUMENTS: readonly InsightInstrumentId[] = ["site", "orders"];
 
 export function insightInstrumentRegistered(id: InsightInstrumentId): boolean {
   return INSIGHT_INSTRUMENTS.includes(id);
