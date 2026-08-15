@@ -77,11 +77,11 @@ const metrics: VenueOrderMetrics = {
     { daypart: "late_night", orders: 0 },
   ],
   placedAtByIsoWeekday: Array.from({ length: 7 }, (_, index) => ({ isoWeekday: index + 1, orders: 0 })),
-  daily30d: Array.from({ length: 30 }, (_, index) => ({
+  daily30d: Array.from({ length: 30 }, (_, index): VenueOrderMetrics["daily30d"][number] => ({
     localDate: `2026-07-${String(index + 1).padStart(2, "0")}`,
-    orders: 0,
-    salesCents: {},
-    tipsCents: {},
+    orders: index === 0 ? 2 : 0,
+    salesCents: index === 0 ? { GBP: 2400 } : {},
+    tipsCents: index === 0 ? { GBP: 200 } : {},
     moneyStateByCurrency: { GBP: "complete", USD: "partial_refund_unallocated" },
   })),
   itemsByVelocity: [
@@ -102,8 +102,27 @@ const metrics: VenueOrderMetrics = {
       moneyStateByCurrency: { GBP: "complete" },
     },
   ],
-  revenueByZone: [],
-  revenueByRoom: [],
+  revenueByZone: [
+    {
+      zone: "Dining room",
+      orders: 2,
+      sessions: 1,
+      currentSeatCapacity: 2,
+      salesCents: { GBP: 2400 },
+      salesPerCurrentSeatCents: { GBP: 1200 },
+      moneyStateByCurrency: { GBP: "complete", USD: "partial_refund_unallocated" },
+    },
+  ],
+  revenueByRoom: [
+    {
+      stayUnitId: "room-1",
+      spotLabelSnapshot: "Room 204 at order",
+      orders: 2,
+      sessions: 1,
+      salesCents: { GBP: 2400 },
+      moneyStateByCurrency: { GBP: "complete", USD: "partial_refund_unallocated" },
+    },
+  ],
   dataCompleteness: {
     activeTablesMissingZone: 1,
     soldItemsMissingCost: 1,
@@ -141,8 +160,19 @@ describe("#1795 Orders instrument states and honesty", () => {
     expect(text).toContain("Measured on 4 covers");
     expect(text).toContain("partial refund has no recorded split");
     expect(text).toContain("Burger snapshot");
+    expect(text).toContain("GBP item sales: £24");
+    expect(text).toContain("GBP sales per current seat: £12");
+    expect(text).toContain("GBP room sales: £24");
+    expect(text).toContain("2026-07-01: 2 orders");
+    expect(text).toContain("GBP sales: £24");
+    expect(text).toContain("GBP tips: £2");
     expect(text).toContain("ISO weekday 7: 0");
     expect(text).not.toContain("USD $0");
+    expect(text).not.toContain("USD item sales:");
+    expect(text).not.toContain("USD sales per current seat:");
+    expect(text).not.toContain("USD room sales:");
+    expect(text).not.toContain("USD sales:");
+    expect(text).not.toContain("USD tips:");
   });
 
   it("renders actionable cold loading/error/offline states and hides permission state", async () => {

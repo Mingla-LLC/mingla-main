@@ -34,6 +34,33 @@ const moneyRows = (money: Record<string, number>): React.ReactElement[] =>
     </Text>
   ));
 
+const labeledMoneyRows = (
+  label: string,
+  money: Record<string, number>,
+): React.ReactElement[] =>
+  Object.entries(money).map(([currency, cents]) => (
+    <Text key={`${label}-${currency}`} style={styles.body}>
+      {`${currency} ${label}: ${formatCurrencyRound(cents, currency, true)}`}
+    </Text>
+  ));
+
+const moneyAccessibility = (
+  label: string,
+  money: Record<string, number>,
+): string =>
+  Object.entries(money)
+    .map(([currency, cents]) => `${currency} ${label} ${formatCurrencyRound(cents, currency, true)}`)
+    .join(", ");
+
+const withMoneyAccessibility = (
+  prefix: string,
+  label: string,
+  money: Record<string, number>,
+): string => {
+  const values = moneyAccessibility(label, money);
+  return values.length > 0 ? `${prefix}, ${values}` : prefix;
+};
+
 const Section = ({ title, children }: { title: string; children: React.ReactNode }): React.ReactElement => (
   <GlassCard variant="base" padding={spacing.lg}>
     <Text style={styles.sectionTitle}>{title}</Text>
@@ -139,9 +166,12 @@ export function OrderInsightsInstrument({
 
       <Section title="Item velocity">
         {data.itemsByVelocity.map((item) => (
-          <View key={item.menuItemId} style={styles.tableRow} accessibilityLabel={`${item.itemNameSnapshot}, ${item.quantity} sold across ${item.orders} orders`}>
+          <View key={item.menuItemId} style={styles.tableRow} accessibilityLabel={withMoneyAccessibility(`${item.itemNameSnapshot}, ${item.quantity} sold across ${item.orders} orders`, "item sales", item.salesCents)}>
             <Text style={styles.rowLabel}>{item.itemNameSnapshot}</Text>
-            <Text style={styles.rowValue}>{`${item.quantity} sold · ${item.unitsPerServiceDay}/service day`}</Text>
+            <View style={styles.stack}>
+              <Text style={styles.rowValue}>{`${item.quantity} sold · ${item.unitsPerServiceDay}/service day`}</Text>
+              {labeledMoneyRows("item sales", item.salesCents)}
+            </View>
           </View>
         ))}
         {data.itemsByVelocity.length === 0 ? <Text style={styles.body}>Sold items will appear here.</Text> : null}
@@ -149,11 +179,12 @@ export function OrderInsightsInstrument({
 
       <Section title="Zones and current seats">
         {data.revenueByZone.map((zone) => (
-          <View key={zone.zone} style={styles.stack} accessibilityLabel={`${zone.zone}, ${zone.orders} orders, ${zone.sessions} sessions`}>
+          <View key={zone.zone} style={styles.stack} accessibilityLabel={withMoneyAccessibility(`${zone.zone}, ${zone.orders} orders, ${zone.sessions} sessions`, "sales per current seat", zone.salesPerCurrentSeatCents)}>
             <Text style={styles.rowLabel}>{zone.zone}</Text>
             <Text style={styles.body}>{`${zone.orders} orders · ${zone.sessions} sessions`}</Text>
             <Text style={styles.body}>{zone.currentSeatCapacity === null ? "Current seats unavailable" : `${zone.currentSeatCapacity} current active seats`}</Text>
             {moneyRows(zone.salesCents)}
+            {labeledMoneyRows("sales per current seat", zone.salesPerCurrentSeatCents)}
           </View>
         ))}
         {data.revenueByZone.length === 0 ? <Text style={styles.body}>Zone performance appears after orders.</Text> : null}
@@ -161,9 +192,12 @@ export function OrderInsightsInstrument({
 
       <Section title="Rooms">
         {data.revenueByRoom.map((room) => (
-          <View key={room.stayUnitId} style={styles.tableRow} accessibilityLabel={`${room.spotLabelSnapshot}, ${room.orders} orders`}>
+          <View key={room.stayUnitId} style={styles.tableRow} accessibilityLabel={withMoneyAccessibility(`${room.spotLabelSnapshot}, ${room.orders} orders`, "room sales", room.salesCents)}>
             <Text style={styles.rowLabel}>{room.spotLabelSnapshot}</Text>
-            <Text style={styles.rowValue}>{`${room.orders} orders · ${room.sessions} sessions`}</Text>
+            <View style={styles.stack}>
+              <Text style={styles.rowValue}>{`${room.orders} orders · ${room.sessions} sessions`}</Text>
+              {labeledMoneyRows("room sales", room.salesCents)}
+            </View>
           </View>
         ))}
         {data.revenueByRoom.length === 0 ? <Text style={styles.body}>Room orders will appear here.</Text> : null}
@@ -173,7 +207,13 @@ export function OrderInsightsInstrument({
         {data.placedAtByDaypart.map((row) => <Text key={row.daypart} style={styles.body}>{`${row.daypart.replace("_", " ")}: ${row.orders}`}</Text>)}
         {data.placedAtByIsoWeekday.map((row) => <Text key={row.isoWeekday} style={styles.body}>{`ISO weekday ${row.isoWeekday}: ${row.orders}`}</Text>)}
         <Text style={styles.caption}>The daily table includes every venue-local date in the last 30 days, including zero-order dates.</Text>
-        {data.daily30d.map((row) => <Text key={row.localDate} style={styles.body}>{`${row.localDate}: ${row.orders} orders`}</Text>)}
+        {data.daily30d.map((row) => (
+          <View key={row.localDate} style={styles.stack}>
+            <Text style={styles.body}>{`${row.localDate}: ${row.orders} orders`}</Text>
+            {labeledMoneyRows("sales", row.salesCents)}
+            {labeledMoneyRows("tips", row.tipsCents)}
+          </View>
+        ))}
       </Section>
 
       <Section title="Channels">
