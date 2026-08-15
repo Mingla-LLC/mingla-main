@@ -1,6 +1,7 @@
 'use client'
 import { Zap, Ticket, Users, Sparkles, type LucideIcon } from 'lucide-react'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+import { AnimatedBar, ChartEntrance } from '@/components/ui/chart-entrance'
 
 // ORCH-1010 — Pop-ups tab chart. Sells the pop-up story: spin up fast, scarcity,
 // fast sell-out. A "Selling fast" drop with an almost-full spots bar, speed/
@@ -75,8 +76,8 @@ export function PopupCard() {
   const loop = [...CLAIMS, ...CLAIMS]
 
   return (
-    <div
-      data-theme="light"
+    <ChartEntrance
+      lightTheme
       className="font-dashboard w-full overflow-hidden rounded-2xl bg-white text-left ring-1 ring-[rgba(14,14,16,0.05)]"
       style={{ boxShadow: 'var(--elev-3)' }}
     >
@@ -113,7 +114,12 @@ export function PopupCard() {
             </span>
           </div>
           <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-black/[0.06]">
-            <div className="h-full rounded-full" style={{ width: '92%', background: 'var(--color-warm)' }} />
+            <AnimatedBar
+              className="block h-full rounded-full"
+              size="92%"
+              delay={0.18}
+              style={{ background: 'var(--color-warm)' }}
+            />
           </div>
         </div>
       </div>
@@ -149,6 +155,6 @@ export function PopupCard() {
           <span className="font-semibold text-text-primary">Built with Ari</span> — idea to live in minutes.
         </p>
       </div>
-    </div>
+    </ChartEntrance>
   )
 }

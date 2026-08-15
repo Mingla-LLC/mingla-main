@@ -1,5 +1,6 @@
 'use client'
 import { ArrowRight, Users, Eye, Wallet, Sparkles, type LucideIcon } from 'lucide-react'
+import { AnimatedBar, ChartEntrance } from '@/components/ui/chart-entrance'
 
 // ORCH-1010 — Experiences tab chart. A packed trip-planner dashboard: route,
 // dates, capacity, who's going, live analytics, and a 4-day itinerary — to show
@@ -30,8 +31,8 @@ function Stat({ icon: Icon, value, label }: { icon: LucideIcon; value: string; l
 
 export function TripPlannerCard() {
   return (
-    <div
-      data-theme="light"
+    <ChartEntrance
+      lightTheme
       className="font-dashboard w-full overflow-hidden rounded-2xl bg-white text-left ring-1 ring-[rgba(14,14,16,0.05)]"
       style={{ boxShadow: 'var(--elev-3)' }}
     >
@@ -66,7 +67,12 @@ export function TripPlannerCard() {
           <span className="font-semibold text-text-primary tabular-nums">18 / 24</span>
         </div>
         <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-black/[0.06]">
-          <div className="h-full rounded-full" style={{ width: '75%', background: 'var(--color-warm)' }} />
+          <AnimatedBar
+            className="block h-full rounded-full"
+            size="75%"
+            delay={0.18}
+            style={{ background: 'var(--color-warm)' }}
+          />
         </div>
       </div>
 
@@ -123,6 +129,6 @@ export function TripPlannerCard() {
           <span className="font-semibold text-text-primary">Page built by Ari</span> — in minutes, not weeks.
         </p>
       </div>
-    </div>
+    </ChartEntrance>
   )
 }

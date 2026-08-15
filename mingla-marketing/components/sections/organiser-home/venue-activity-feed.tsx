@@ -9,6 +9,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+import { ChartEntrance } from '@/components/ui/chart-entrance'
 
 // ORCH-1010 — Venues tab chart: a live "Your business, right now" feed. New
 // activity arrives at the bottom and the list scrolls up continuously (vertical
@@ -70,8 +71,8 @@ export function VenueActivityFeed() {
   const loop = [...ITEMS, ...ITEMS]
 
   return (
-    <div
-      data-theme="light"
+    <ChartEntrance
+      lightTheme
       className="font-dashboard w-full overflow-hidden rounded-2xl bg-white ring-1 ring-[rgba(14,14,16,0.05)]"
       style={{ boxShadow: 'var(--elev-3)' }}
     >
@@ -98,6 +99,6 @@ export function VenueActivityFeed() {
           ))}
         </div>
       </div>
-    </div>
+    </ChartEntrance>
   )
 }

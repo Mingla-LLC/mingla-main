@@ -36,19 +36,19 @@ const TABS: Tab[] = [
   {
     id: 'venues',
     label: 'Venues',
-    heading: 'turn your room into the plan.',
+    heading: 'turn your space into the plan.',
     intro:
-      "The room that feels perfect on a Friday night shouldn't be the city's best-kept secret. Mingla turns your space, your nights, and your energy into a plan people actively choose — and fills the room with the crowd that fits it.",
+      'Bowling alleys, climbing gyms, pool halls, galleries, studios, cinemas, museums, resorts, spas, wellness spaces, and the places that resist a neat label all give people something real to do. Mingla turns that into a plan people can discover, book, and share.',
     steps: [
-      { title: 'name your vibe', body: 'Tell Mingla the energy of your place in plain words — cozy, lively, late-night, high-energy — and Ari builds you a page that looks and feels like the room.' },
-      { title: 'get matched', body: "Your place reaches people by vibe, taste, location, and timing — not just who's nearby, but who's looking for exactly this tonight." },
-      { title: 'fill the room', body: 'They book a table, a spot, or a night right inside Mingla — and you watch the right crowd walk through the door.' },
+      { title: 'show what happens here', body: 'Tell Ari what people can see, make, play, learn, celebrate, or come to restore at your venue. It shapes the page, visuals, and offer around the actual reason to visit.' },
+      { title: 'meet matching demand', body: 'Mingla’s AI brain connects your venue with people looking by activity, vibe, location, group size, and timing — even when they do not know your name yet.' },
+      { title: 'turn interest into visits', body: 'People can understand the plan, book a visit or spot, and share it with their group without piecing the experience together across different sites.' },
     ],
     features: [
-      { title: 'a page that feels like the room', body: 'Your colors, your photos and video, your story — the page people actually want to send to the group chat, not just another listing.' },
-      { title: 'matched to the right crowd', body: "Reach the people already looking for a place like yours tonight, instead of paying to chase strangers who'll never come back." },
-      { title: 'know which nights work', body: 'Your dashboard shows the guest list, check-ins, and what sold — so you finally know which nights, offers, and crowds are working.' },
-      { title: 'bring them back', body: "Email the people who actually showed up — no list to build, no extra tool to learn. They're already there, and the slow nights are next." },
+      { title: 'a page built around the experience', body: 'Show the space, activities, packages, photos, video, and practical details that help someone decide this is their plan.' },
+      { title: 'AI-powered discovery', body: 'Reach people whose real intent matches what your venue offers instead of competing only on a generic nearby list.' },
+      { title: 'bookings and activity in one view', body: 'See visits, reservations, tickets, check-ins, and what sold in the same Host dashboard.' },
+      { title: 'guest relationships you can grow', body: 'Keep the connection with people who visited and bring the right groups back for what comes next.' },
     ],
   },
   {
@@ -167,14 +167,11 @@ export function OrganiserAudienceTabs() {
           </div>
 
           {/* Earnings chart (after the title on mobile; right column on desktop) */}
-          <Reveal
-            delay={0.1}
-            className="flex justify-center lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:items-center lg:justify-end"
-          >
+          <div className="flex justify-center lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:items-center lg:justify-end">
             <div data-theme="light" className="w-full">
               <EarningsCard />
             </div>
-          </Reveal>
+          </div>
 
           {/* Tabs */}
           <div

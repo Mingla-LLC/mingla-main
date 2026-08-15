@@ -20,9 +20,9 @@ export function OrganiserFeatures() {
         </Reveal>
       </div>
 
-      <Reveal delay={0.1} className="mt-12">
+      <div className="mt-12">
         <GrowthOsDashboard />
-      </Reveal>
+      </div>
     </section>
   )
 }
