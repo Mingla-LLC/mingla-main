@@ -106,6 +106,11 @@ export function OrderInsightsInstrument({
   const incompleteCurrencies = Object.entries(data.moneyStateByCurrency)
     .filter(([, state]) => state === "partial_refund_unallocated")
     .map(([currency]) => currency);
+  const emptySpendPerOrderMessage = incompleteCurrencies.length > 0
+    ? "Unavailable while a partial refund is unallocated."
+    : data.orders30d === 0
+      ? "Your order numbers will appear after your first completed order."
+      : "No spend-per-order number is available.";
   const refreshing = query.isFetching && !query.isLoading;
   const status = offline ? "Offline — showing saved order numbers." : refreshing ? "Updating order numbers." : "";
 
@@ -141,7 +146,9 @@ export function OrderInsightsInstrument({
             {`${currency} ${formatCurrencyRound(row.averageCents, currency, true)} across ${row.orders} orders`}
           </Text>
         ))}
-        {Object.keys(data.spendPerOrder).length === 0 ? <Text style={styles.body}>Unavailable while a partial refund is unallocated.</Text> : null}
+        {Object.keys(data.spendPerOrder).length === 0 ? (
+          <Text style={styles.body}>{emptySpendPerOrderMessage}</Text>
+        ) : null}
       </Section>
 
       <Section title="Measured spend per cover">
