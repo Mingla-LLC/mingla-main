@@ -17,6 +17,7 @@ import { Button } from "../components/ui/Button";
 import { StayOperationsPanel } from "../components/stay/StayOperationsPanel";
 import { listRefunds, listDisputes, getDispute, listPayouts, listRevenueLog } from "../services/adminMoneyService";
 import { annotateDispute } from "../services/adminMoneyActService";
+import { reconcileTicketRefund } from "../services/adminRefundReconciliationService";
 import { timeAgo, formatDateTime, formatDate } from "../lib/formatters";
 
 // ── Money formatter (cents + currency → string; never throws — I-1152 lesson) ──
@@ -34,6 +35,19 @@ function formatMoney(cents, currency) {
 
 function brandCell(val) {
   return val || <span className="text-[var(--color-text-muted)]">—</span>;
+}
+
+function RefundReconcileButton({ row }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const actionable = ["awaiting_application_fee", "pending_visibility"].includes(row.application_fee_refund_status);
+  if (!actionable) return <span className="text-[var(--color-text-muted)]">—</span>;
+  return <div className="flex flex-col gap-1"><Button disabled={busy} onClick={async () => {
+    setBusy(true); setError("");
+    try { await reconcileTicketRefund(row.id); window.location.reload(); }
+    catch { setError("Still pending — try again later."); }
+    finally { setBusy(false); }
+  }}>{busy ? "Checking…" : "Reconcile"}</Button>{error ? <span role="alert" className="text-xs text-[var(--color-error)]">{error}</span> : null}</div>;
 }
 
 // ── Evidence-due countdown (red if <72h or overdue) ───────────────────────────
@@ -57,6 +71,9 @@ const REFUND_COLUMNS = [
   { key: "status", label: "Status", render: (v) => <Badge variant={v === "succeeded" ? "success" : "warning"} dot>{v || "—"}</Badge> },
   { key: "reason", label: "Reason", render: (v) => v || <span className="text-[var(--color-text-muted)]">—</span> },
   { key: "application_fee_refunded_cents", label: "App-fee refunded", render: (v, row) => (v != null ? formatMoney(v, row.currency) : "—") },
+  { key: "application_fee_refund_status", label: "Fee truth", render: (v) => <Badge variant={v === "succeeded_positive" || v === "not_applicable" ? "success" : "warning"} dot>{v || "unknown_legacy"}</Badge> },
+  { key: "application_fee_refund_terminal_reason", label: "Fee detail", render: (v) => v || "—" },
+  { key: "id", label: "Recovery", render: (_v, row) => <RefundReconcileButton row={row} /> },
 ];
 const REFUND_CSV = {
   columns: [

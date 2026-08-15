@@ -30,11 +30,12 @@ export interface RefundOrderResult {
   orderId: string;
   amountCents: number;
   currency: string;
-  status: "succeeded";
-  stripeRefundId: string;
-  applicationFeeRefundedCents: number;
-  newPaymentStatus: "partial_refund" | "refunded";
-  processedAt: string;
+  status: "pending_visibility" | "succeeded_positive" | "not_applicable";
+  stripeRefundId: string | null;
+  applicationFeeRefundedCents: number | null;
+  applicationFeeRefundStatus: string;
+  newPaymentStatus: "partial_refund" | "refunded" | null;
+  processedAt: string | null;
   idempotentReplay: boolean;
 }
 
@@ -119,16 +120,34 @@ export const issueOrderRefund = async (
   }
 
   const data = response.data as Record<string, unknown>;
+  const feeStatus = String(data.application_fee_refund_status ?? data.status ?? "unknown_legacy");
+  if (["awaiting_application_fee", "pending_visibility"].includes(feeStatus)) {
+    throw refundOrderError(
+      "internal_error",
+      "The buyer refund was issued. Mingla is still confirming the Stripe fee refund; tickets are safely blocked while this finishes.",
+      feeStatus,
+      202,
+    );
+  }
+  if (["application_fee_timeout", "application_fee_conflict", "fee_evidence_unavailable", "evidence_conflict", "rejected_preflight"].includes(feeStatus)) {
+    throw refundOrderError(
+      "internal_error",
+      "The buyer refund is recorded, but the platform-fee evidence needs review. No amount has been guessed.",
+      feeStatus,
+      409,
+    );
+  }
   return {
     refundId: String(data.refund_id ?? ""),
     orderId: String(data.order_id ?? input.orderId),
     amountCents: Number(data.amount_cents ?? 0),
     currency: String(data.currency ?? "GBP"),
-    status: "succeeded",
-    stripeRefundId: String(data.stripe_refund_id ?? ""),
-    applicationFeeRefundedCents: Number(data.application_fee_refunded_cents ?? 0),
+    status: String(data.application_fee_refund_status ?? data.status) as RefundOrderResult["status"],
+    stripeRefundId: data.stripe_refund_id == null ? null : String(data.stripe_refund_id),
+    applicationFeeRefundedCents: data.application_fee_refunded_cents == null ? null : Number(data.application_fee_refunded_cents),
+    applicationFeeRefundStatus: feeStatus,
     newPaymentStatus: data.new_payment_status as RefundOrderResult["newPaymentStatus"],
-    processedAt: String(data.processed_at ?? new Date().toISOString()),
+    processedAt: data.processed_at == null ? null : String(data.processed_at),
     idempotentReplay: data.idempotent_replay === true,
   };
 };

@@ -8681,3 +8681,13 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 - **Rule:** Provider-authenticated late ticket money creates exactly one payout-blocking refund obligation before acknowledgment. Missing or conflicting identity never mints value, calls a provider, or terminalizes as neutralized.
 - **Enforcement:** the #2079 migration's service-only capture/verify RPCs, ticket-only claim predicate, dual-provider secondary identity constraints, refund-worker corroboration, checkout revocation non-terminal branch, three capture-before-finalize callers, and the CI-wired issue #2079 guard/tests.
+
+---
+
+## DRAFT — issue #2097 (provider-authentic Stripe ticket fee-refund truth)
+
+### I-PROPOSED-2097-FEE-REFUND-TRUTH-NEVER-FABRICATES (DRAFT)
+
+- **Rule:** A Stripe ticket refund may report an Application Fee Refund amount only after one exact positive Fee Refund object is proven against the durable before-image; missing, zero, partial-visibility, or conflicting evidence remains explicitly unknown and never becomes fabricated zero.
+- **Enforcement:** the single `issue2097TicketRefundTruth` resolver, service-only fenced attempt/evidence/quarantine RPCs, all four refund callers, Stripe webhook recovery, and nullable Business/Admin/revenue projections.
+- **Regression:** issue #2097 Deno executor and adversarial contracts, PostgreSQL 17 migration test, strict-grep mutation self-test, Business money-summary tests, and Admin build/test lanes. Activate only after independent tester PASS, all-green merge, migration apply, Edge rollout, and runtime verification at CLOSE.
