@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { ChartEntrance } from '@/components/ui/chart-entrance'
+import { useActiveInViewport } from '@/lib/use-active-in-viewport'
 
 // ORCH-1010 — Venues tab chart: a live "Your business, right now" feed. New
 // activity arrives at the bottom and the list scrolls up continuously (vertical
@@ -69,6 +70,7 @@ function Row({ it }: { it: FeedItem }) {
 export function VenueActivityFeed() {
   const reduced = useMinglaReducedMotion()
   const loop = [...ITEMS, ...ITEMS]
+  const { ref: marqueeRef, active: animationActive } = useActiveInViewport<HTMLDivElement>()
 
   return (
     <ChartEntrance
@@ -78,7 +80,7 @@ export function VenueActivityFeed() {
     >
       <div className="flex items-center gap-2.5 px-6 pb-3 pt-6">
         <span className="relative inline-flex h-2.5 w-2.5">
-          {!reduced ? (
+          {!reduced && animationActive ? (
             <span
               className="absolute inset-0 rounded-full"
               style={{ background: 'var(--color-success)', animation: 'mingla-chip-pulse 2s ease-in-out infinite' }}
@@ -91,8 +93,9 @@ export function VenueActivityFeed() {
 
       <div className="relative h-[424px] overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,#000_7%,#000_90%,transparent)]">
         <div
+          ref={marqueeRef}
           className="flex flex-col"
-          style={{ animation: reduced ? undefined : 'mingla-marquee-y 26s linear infinite', willChange: 'transform' }}
+          style={{ animation: reduced ? undefined : 'mingla-marquee-y 26s linear infinite', animationPlayState: animationActive ? 'running' : 'paused', willChange: animationActive ? 'transform' : undefined }}
         >
           {loop.map((it, i) => (
             <Row key={`${it.action}-${it.subject}-${i}`} it={it} />

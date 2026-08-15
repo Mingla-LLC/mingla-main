@@ -135,9 +135,9 @@ export function GlassNav() {
           scrolled ? 'opacity-100' : 'opacity-0',
         )}
         style={{
-          backdropFilter: 'blur(18px) saturate(1.4)',
-          WebkitBackdropFilter: 'blur(18px) saturate(1.4)',
-          background: 'rgba(250, 247, 242, 0.62)',
+          backdropFilter: surface === 'organiser' ? 'none' : 'blur(18px) saturate(1.4)',
+          WebkitBackdropFilter: surface === 'organiser' ? 'none' : 'blur(18px) saturate(1.4)',
+          background: surface === 'organiser' ? 'rgba(250, 247, 242, 0.94)' : 'rgba(250, 247, 242, 0.62)',
           borderColor: 'rgba(14, 14, 16, 0.06)',
           boxShadow: '0 1px 24px rgba(14,14,16,0.05)',
           maskImage: 'linear-gradient(to bottom, #000 62%, transparent)',

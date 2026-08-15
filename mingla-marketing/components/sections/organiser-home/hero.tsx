@@ -1,6 +1,8 @@
 'use client'
+import { useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+import { useActiveInViewport } from '@/lib/use-active-in-viewport'
 
 // #2083 keeps the generated loop decorative and the message in semantic HTML.
 // The fixed navigation owns the page's single app/web action.
@@ -14,6 +16,19 @@ const HERO_MEDIA = {
 
 export function OrganiserHero() {
   const reduced = useMinglaReducedMotion()
+  const { ref: videoRef, active: videoVisible } = useActiveInViewport<HTMLVideoElement>()
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    if (reduced || !videoVisible) {
+      video.pause()
+      return
+    }
+    void video.play().catch(() => {
+      // Autoplay can be denied by browser policy; the poster remains the fallback.
+    })
+  }, [reduced, videoRef, videoVisible])
 
   return (
     <section
@@ -21,9 +36,10 @@ export function OrganiserHero() {
       className="relative flex min-h-[100svh] overflow-hidden bg-parchment px-6 pb-24 pt-32 md:px-10 md:pb-32 md:pt-40 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]"
     >
       <video
+        ref={videoRef}
         aria-hidden="true"
         tabIndex={-1}
-        autoPlay={!reduced}
+        autoPlay={false}
         muted
         loop
         playsInline

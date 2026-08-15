@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+import { useActiveInViewport } from '@/lib/use-active-in-viewport'
 
 // ORCH-1010 — "Ari" typing bar. A presentational Ari composer (NOT a live input —
 // avoids a dead tap) that typewrites through real business requests, one after
@@ -31,9 +32,10 @@ export function AriInput({ className }: { className?: string }) {
   const [typing, setTyping] = useState(!reduced)
   const intervalRef = useRef<number | null>(null)
   const timeoutRef = useRef<number | null>(null)
+  const { ref: containerRef, active: animationActive } = useActiveInViewport<HTMLDivElement>()
 
   useEffect(() => {
-    if (reduced) return
+    if (reduced || !animationActive) return
     if (intervalRef.current) window.clearInterval(intervalRef.current)
     if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
 
@@ -60,10 +62,11 @@ export function AriInput({ className }: { className?: string }) {
       if (intervalRef.current) window.clearInterval(intervalRef.current)
       if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
     }
-  }, [index, prompts, reduced])
+  }, [animationActive, index, prompts, reduced])
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         'font-dashboard flex items-center gap-3.5 rounded-[1.6rem] border border-white/10 bg-[#15120f] p-3 pr-5 shadow-xl',
         className,
@@ -73,7 +76,7 @@ export function AriInput({ className }: { className?: string }) {
     >
       {/* warm Ari orb */}
       <span className="relative h-11 w-11 shrink-0" aria-hidden="true">
-        {!reduced ? (
+        {!reduced && animationActive ? (
           <span
             className="absolute inset-0 rounded-full opacity-50"
             style={{ background: 'var(--color-warm)', animation: 'mingla-orb-pulse 2.4s ease-in-out infinite' }}
@@ -95,7 +98,7 @@ export function AriInput({ className }: { className?: string }) {
       <span className="min-h-[1.6rem] flex-1 text-[15px] leading-snug text-white/90 md:text-base">
         {text}
         <span
-          className={cn('ml-0.5 inline-block w-[2px] -translate-y-[1px] align-middle', !reduced && 'animate-pulse')}
+          className={cn('ml-0.5 inline-block w-[2px] -translate-y-[1px] align-middle', !reduced && animationActive && 'animate-pulse')}
           style={{ height: '1.05em', background: 'var(--color-warm)' }}
           aria-hidden="true"
         />
