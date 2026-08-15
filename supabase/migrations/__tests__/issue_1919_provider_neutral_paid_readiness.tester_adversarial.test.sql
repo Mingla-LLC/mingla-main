@@ -58,6 +58,7 @@ BEGIN
         'name', 'Paid online', 'isFree', false, 'price', 100,
         'capacity', 10, 'availableAt', 'online')),
       'city', 'Lagos', 'partyTypes', jsonb_build_array('club-night'),
+      'requestedVisibility', 'public',
       'whenMode', 'single',
       'when', jsonb_build_object(
         'date', to_char(now() + interval '10 days', 'YYYY-MM-DD'),
