@@ -1,16 +1,23 @@
-const read = (path: string) => Deno.readTextFile(new URL(path, import.meta.url));
+const read = (path: string) =>
+  Deno.readTextFile(new URL(path, import.meta.url));
 
-const migration = await read("../../../migrations/20270404001972_issue_1972_ari_event_lifecycle.sql");
+const migration = await read(
+  "../../../migrations/20270404001972_issue_1972_ari_event_lifecycle.sql",
+);
 const confirm = await read("../../agent-confirm-action/index.ts");
 const chat = await read("../../agent-chat/index.ts");
 const domains = await read("../agentDomainTools.ts");
 const prompt = await read("../agentSystemPrompt.ts");
 const tools = await read("../agentTools.ts");
-const coverAttestation = await read("../../event-cover-attest-selection/index.ts");
+const coverAttestation = await read(
+  "../../event-cover-attest-selection/index.ts",
+);
 
 function includesAll(source: string, needles: string[]): void {
   for (const needle of needles) {
-    if (!source.includes(needle)) throw new Error(`missing contract: ${needle}`);
+    if (!source.includes(needle)) {
+      throw new Error(`missing contract: ${needle}`);
+    }
   }
 }
 
@@ -53,7 +60,7 @@ Deno.test("#1972 event writes dispatch through one exact-once operation receipt"
   ]);
   includesAll(domains, [
     'callRpc(client, "ari_execute_event_operation"',
-    'const discardEventDraft = writeTool(',
+    "const discardEventDraft = writeTool(",
   ]);
   const eventLifecycleRegion = domains.slice(
     domains.indexOf("const publishEvent"),

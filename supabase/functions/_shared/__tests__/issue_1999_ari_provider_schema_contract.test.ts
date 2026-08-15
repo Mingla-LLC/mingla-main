@@ -184,14 +184,15 @@ Deno.test("#1999 happy: numeric enums normalize narrowly and invalid enum member
 
   for (const invalidEnum of [[1, "2"], [true], [Number.NaN], [1.5]]) {
     assertThrows(
-      () => compileGeminiToolDeclarations([{
-        name: "invalid_numeric_enum",
-        description: "Invalid numeric enum",
-        parameters: {
-          type: "integer",
-          enum: invalidEnum,
-        },
-      }]),
+      () =>
+        compileGeminiToolDeclarations([{
+          name: "invalid_numeric_enum",
+          description: "Invalid numeric enum",
+          parameters: {
+            type: "integer",
+            enum: invalidEnum,
+          },
+        }]),
       Error,
       "keyword=enum",
     );
