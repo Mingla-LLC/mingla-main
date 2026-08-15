@@ -8656,22 +8656,22 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 ---
 
-## DRAFT — issue #1795 (venue order intelligence)
+## ACTIVE — issue #1795 (venue order intelligence)
 
-### I-PROPOSED-1795-VENUE-ORDER-METRICS-ONE-TRUTH (DRAFT)
+### I-PROPOSED-1795-VENUE-ORDER-METRICS-ONE-TRUTH (ACTIVE)
 
 - **Rule:** One venue-exact RPC owns created-at placement, timezone resolution, the zero-filled venue-local calendar, per-currency maps, exact query key, and every order-intelligence calculation. Clients select and format fields but never re-aggregate them.
-- **Enforcement:** `venue_order_metrics_rollup(uuid,uuid)`, `venueOrderMetricsKeys`, the issue #1795 PostgreSQL suite, and Business service/render tests. Activate only after independent PASS and production verification.
+- **Enforcement:** `venue_order_metrics_rollup(uuid,uuid)`, `venueOrderMetricsKeys`, the issue #1795 PostgreSQL suite, and Business service/render tests. Activated after independent PASS, all-green PR #2093, exact production migration apply, source/ACL verification, and authenticated web/iOS/Android runtime proof.
 
-### I-PROPOSED-1795-ORDER-MONEY-EXACT-ONCE (DRAFT)
+### I-PROPOSED-1795-ORDER-MONEY-EXACT-ONCE (ACTIVE)
 
 - **Rule:** Tab settlement instruments never count and their children count once. Sales exclude tips, tax, and platform fees; when a partial refund cannot be allocated, the affected currency's money is withheld while exact refund and demand truth remains visible.
-- **Enforcement:** the RPC's eligible-child spine and currency-withholding CTEs plus the issue #1795 implementor and tester PostgreSQL suites. Activate only after independent PASS and production verification.
+- **Enforcement:** the RPC's eligible-child spine and currency-withholding CTEs plus the issue #1795 implementor and tester PostgreSQL suites. Activated with the same #1795 independent PASS and production verification.
 
-### I-PROPOSED-1795-MEASURED-COVERS-NO-INFERENCE (DRAFT)
+### I-PROPOSED-1795-MEASURED-COVERS-NO-INFERENCE (ACTIVE)
 
 - **Rule:** Tier-A cover spend is distinct-reservation grain across every linked eligible session, with stored party size counted once. Claimed party size, proximity, buyer/contact matching, and cross-currency denominator reuse are forbidden.
-- **Enforcement:** the RPC's reservation-currency aggregation and issue #1795 PostgreSQL fixtures. Activate only after independent PASS and production verification.
+- **Enforcement:** the RPC's reservation-currency aggregation and issue #1795 PostgreSQL fixtures. Activated with the same #1795 independent PASS and production verification.
 
 ---
 
