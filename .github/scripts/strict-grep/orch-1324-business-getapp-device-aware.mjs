@@ -5,8 +5,7 @@
  * Invariant: I-PROPOSED-1324-BUSINESS-GETAPP-DEVICE-AWARE.
  *
  * The business (organiser / usemingla.com/host) marketing CTAs — the
- * glass-nav.tsx `surface === 'organiser'` branch AND the organiser hero
- * (components/sections/organiser-home/hero.tsx) — must present an explicit inline
+ * glass-nav.tsx `surface === 'organiser'` branch — must present an explicit inline
  * CHOICE rather than guessing one destination: "Download the app" (iOS → the live
  * business App Store, Android → the LIVE business Play listing) AND "Use on web",
  * driven by detectClientPlatform() through the shared lib/business-app-target.ts
@@ -18,7 +17,8 @@
  * renders exactly ONE action — the logo + both pinned-copy pills provably cannot fit
  * at 360px at any text size. BOTH handlers (and therefore both `action:` captures)
  * still exist on the surface, which is what check (c) pins; the second action simply
- * returns at `sm`. The HERO always carries the full two-action choice.
+ * returns at `sm`. #2083 removed the duplicate hero actions after operator review;
+ * the fixed nav is now the page's single CTA owner and the hero must stay CTA-free.
  *
  * ORCH-1324's original clause "Android + desktop/other → the business web app" is
  * SUPERSEDED: the business Play listing went live 2026-07-15 (COMMS-0101), so
@@ -73,8 +73,8 @@ const root = process.cwd().endsWith("mingla-marketing")
 
 const TARGETS = [
   "mingla-marketing/components/marketing/glass-nav.tsx",
-  "mingla-marketing/components/sections/organiser-home/hero.tsx",
 ];
+const HERO = "mingla-marketing/components/sections/organiser-home/hero.tsx";
 
 const stripComments = (src) =>
   src
@@ -199,12 +199,39 @@ function checkTarget(label, rawSrc, failures) {
   }
 }
 
+function checkHeroHasNoDuplicateCta(rawSrc, failures) {
+  const src = stripComments(rawSrc);
+  for (const token of [
+    "resolveBusinessAppTarget",
+    "BUSINESS_APP_CHOICE_COPY",
+    "get_the_app_clicked",
+  ]) {
+    if (src.includes(token)) {
+      failures.push(
+        `${HERO}: must remain CTA-free because the fixed Host nav is the page's single ` +
+          `app/web action owner (#2083); found duplicate CTA token ${token}.`,
+      );
+    }
+  }
+  if (/<a\s+[^>]*href=/.test(src)) {
+    failures.push(
+      `${HERO}: must not render an inline anchor; the fixed Host nav owns the single ` +
+        `app/web action after #2083 operator review.`,
+    );
+  }
+}
+
 // ---- Self-test
 if (process.argv.includes("--self-test")) {
   const selfFailures = [];
   const run = (s) => {
     const f = [];
     checkTarget("fixture", s, f);
+    return f;
+  };
+  const runHero = (s) => {
+    const f = [];
+    checkHeroHasNoDuplicateCta(s, f);
     return f;
   };
 
@@ -349,12 +376,17 @@ const jsx = (
   const commented = good + "\n// note: no more Get Beta Access / testflight beta funnel here\n";
   if (run(commented).length !== 0) selfFailures.push("commented banned token wrongly flagged (comment-strip broken)");
 
+  const goodHero = `<section><h1>Your place deserves to be found.</h1></section>`;
+  if (runHero(goodHero).length !== 0) selfFailures.push("CTA-free Host hero wrongly flagged");
+  const duplicateHero = goodHero + `\n<a href={target.webHref}>{BUSINESS_APP_CHOICE_COPY.useWeb}</a>`;
+  if (runHero(duplicateHero).length === 0) selfFailures.push("duplicate Host hero CTA not flagged");
+
   if (selfFailures.length) {
     console.error("ORCH-1324 business-getapp-device-aware self-test FAIL:");
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1324 business-getapp-device-aware self-test PASS (19/19 cases, ORCH-1399-amended: incl. the §5.1 rel-on-anchor pin).");
+  console.log("ORCH-1324 business-getapp-device-aware self-test PASS (21/21 cases, #2083 single-CTA-owner amendment).");
   process.exit(0);
 }
 
@@ -368,12 +400,19 @@ for (const rel of TARGETS) {
   }
   checkTarget(rel, fs.readFileSync(abs, "utf8"), failures);
 }
+const heroAbs = path.join(root, HERO);
+if (!fs.existsSync(heroAbs)) {
+  console.error(`ORCH-1324 FAIL — target not found at ${HERO} (gate path out of sync).`);
+  process.exit(1);
+}
+checkHeroHasNoDuplicateCta(fs.readFileSync(heroAbs, "utf8"), failures);
 
 if (failures.length > 0) {
   console.error(
     "ORCH-1324 (I-PROPOSED-1324-BUSINESS-GETAPP-DEVICE-AWARE, ORCH-1381-amended) FAIL —\n" +
-      "the business nav + hero CTAs must present an explicit inline CHOICE via the shared\n" +
-      "decision module: resolveBusinessAppTarget( + BUSINESS_APP_CHOICE_COPY, driven by\n" +
+      "the fixed business nav must present the protected inline CHOICE while the Host hero\n" +
+      "remains CTA-free as the page's single-action-owner contract. The nav uses\n" +
+      "resolveBusinessAppTarget( + BUSINESS_APP_CHOICE_COPY, driven by\n" +
       "detectClientPlatform, firing get_the_app_clicked { surface:'organiser' } with BOTH\n" +
       "action:'download' and action:'use_web', a window.location.assign fallback, NO beta\n" +
       "funnel / QR token, and NEVER the ORCH-1324 collapsed ternary (which sends every\n" +
@@ -383,8 +422,9 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "ORCH-1324 PASS (ORCH-1381-amended) — the business nav + hero CTAs present the inline\n" +
-    "choice via resolveBusinessAppTarget + BUSINESS_APP_CHOICE_COPY (iOS → business App\n" +
+  "ORCH-1324 PASS (#2083-amended) — the fixed business nav presents the inline choice\n" +
+    "via resolveBusinessAppTarget + BUSINESS_APP_CHOICE_COPY while the Host hero remains\n" +
+    "CTA-free (iOS → business App\n" +
     "Store, Android → business Play, desktop → web only), fire get_the_app_clicked\n" +
     "{ surface:'organiser' } with both action:'download' and action:'use_web', keep the\n" +
     "window.location.assign fallback, and carry no beta-funnel / TestFlight token nor the\n" +
