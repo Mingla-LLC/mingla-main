@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-15 — Host’s dashboard selectors now reflow into readable touch-safe grids, while off-screen video, typing, marquee and pulse effects pause so the marketing page scrolls smoothly without changing user-controlled tabs. (#2096, PR #2098)
 - 2026-08-14 — Mingla Host’s marketing page now leads with the approved video hero, explains how Ari and Mingla’s AI drive relevant discovery, presents host types in a responsive premium grid, and keeps dashboard tabs user-controlled while charts animate once. (#2083, PR #2094)
 - 2026-08-14 — Mingla and Host now fetch one backend-owned native support floor, block unsupported installs behind the same full-screen update experience, open the correct app store, retain required state offline and across foreground races, and protect four bounded Host onboarding/session APIs; production is deployed safely at minimum 1.1.4 in observe mode. (#2075, PR #2078)
 - 2026-08-14 — Business CI no longer requires every unrelated pull request to modify the Experience creator merely to satisfy a historical turnout test; the durable provider behavior remains protected by an independent branch-neutral regression guard. (#2080, PR #2082)
