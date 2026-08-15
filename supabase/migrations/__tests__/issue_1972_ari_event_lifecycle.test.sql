@@ -55,6 +55,7 @@ BEGIN
     RAISE EXCEPTION 'same operation did not replay exactly once';
   END IF;
   PERFORM set_config('request.jwt.claim.role','service_role',true);
+  PERFORM set_config('request.jwt.claims','{"role":"service_role"}',true);
   SELECT to_jsonb(row) INTO v_terminal FROM public.terminalize_agent_pending_action(
     v_operation,v_user,'executing','executed',NULL,NULL,'tenant-v1','test-model',true
   ) row;
@@ -67,6 +68,7 @@ BEGIN
     RAISE EXCEPTION 'atomic terminalization or same-outcome replay failed';
   END IF;
   PERFORM set_config('request.jwt.claim.role','authenticated',true);
+  PERFORM set_config('request.jwt.claims','{"role":"authenticated"}',true);
   v_graph:=public.business_event_draft_payload_from_graph(v_event_id);
   BEGIN
     PERFORM public.business_update_event_draft(v_event_id,v_graph,0);
@@ -113,12 +115,14 @@ BEGIN
   INSERT INTO storage.objects(bucket_id,name,owner)
   VALUES('event_covers',v_brand::text||'/'||v_event_id::text||'/cover.jpg',v_user);
   PERFORM set_config('request.jwt.claim.role','service_role',true);
+  PERFORM set_config('request.jwt.claims','{"role":"service_role"}',true);
   PERFORM public.business_register_event_cover_selection(v_user,v_event_id,v_selection,
     'https://local.invalid/storage/v1/object/public/event_covers/'||v_brand::text||'/'||v_event_id::text||'/cover.jpg',
     'image',
     'https://local.invalid/storage/v1/object/public/event_covers/'||v_brand::text||'/'||v_event_id::text||'/cover.jpg',
     'upload',NULL,NULL,NULL,'Launch cover');
   PERFORM set_config('request.jwt.claim.role','authenticated',true);
+  PERFORM set_config('request.jwt.claims','{"role":"authenticated"}',true);
   PERFORM public.business_set_event_cover_media(v_event_id,v_selection,
     'https://local.invalid/storage/v1/object/public/event_covers/'||v_brand::text||'/'||v_event_id::text||'/cover.jpg',
     'image',

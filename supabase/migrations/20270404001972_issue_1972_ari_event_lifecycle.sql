@@ -183,8 +183,18 @@ DECLARE
   v_terminal public.agent_pending_action_terminal_receipts%ROWTYPE;
   v_operation public.agent_operation_receipts%ROWTYPE;
   v_result jsonb:=p_result;
+  v_claims jsonb;
 BEGIN
-  IF current_setting('request.jwt.claim.role',true) IS DISTINCT FROM 'service_role' THEN
+  -- PostgREST's signed JWT authority is the request.jwt.claims JSON object.
+  -- The legacy dotted scalar is not populated consistently and must never be
+  -- accepted as an independent privilege source.
+  BEGIN
+    v_claims:=NULLIF(current_setting('request.jwt.claims',true),'')::jsonb;
+  EXCEPTION WHEN invalid_text_representation THEN
+    RAISE EXCEPTION 'trusted_terminal_attestation_required';
+  END;
+  IF jsonb_typeof(v_claims) IS DISTINCT FROM 'object'
+     OR v_claims->>'role' IS DISTINCT FROM 'service_role' THEN
     RAISE EXCEPTION 'trusted_terminal_attestation_required';
   END IF;
   IF p_outcome NOT IN('executed','failed','cancelled','expired')
@@ -356,10 +366,18 @@ CREATE OR REPLACE FUNCTION public.business_register_event_cover_selection(
   p_provider text DEFAULT NULL,p_source_url text DEFAULT NULL,p_credit text DEFAULT NULL,
   p_credit_url text DEFAULT NULL,p_alt text DEFAULT NULL
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
-DECLARE v_brand_id uuid;
+DECLARE v_brand_id uuid;v_claims jsonb;
 BEGIN
-  IF current_setting('request.jwt.claim.role',true) IS DISTINCT FROM 'service_role'
-     OR p_user_id IS NULL THEN RAISE EXCEPTION 'trusted_cover_attestation_required';END IF;
+  BEGIN
+    v_claims:=NULLIF(current_setting('request.jwt.claims',true),'')::jsonb;
+  EXCEPTION WHEN invalid_text_representation THEN
+    RAISE EXCEPTION 'trusted_cover_attestation_required';
+  END;
+  IF jsonb_typeof(v_claims) IS DISTINCT FROM 'object'
+     OR v_claims->>'role' IS DISTINCT FROM 'service_role'
+     OR p_user_id IS NULL THEN
+    RAISE EXCEPTION 'trusted_cover_attestation_required';
+  END IF;
   IF length(COALESCE(p_selection_ref,'')) NOT BETWEEN 8 AND 128 THEN RAISE EXCEPTION 'cover_selection_invalid';END IF;
   SELECT brand_id INTO v_brand_id FROM public.events WHERE id=p_event_id AND event_type='event' AND deleted_at IS NULL;
   IF NOT FOUND THEN RAISE EXCEPTION 'event_not_found';END IF;

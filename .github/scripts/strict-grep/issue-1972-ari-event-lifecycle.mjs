@@ -67,10 +67,31 @@ export function check(sources) {
   for (const token of [
     "CREATE OR REPLACE FUNCTION public.terminalize_agent_pending_action",
     "agent_pending_action_terminal_receipts",
+    "current_setting('request.jwt.claims',true)",
+    "v_claims->>'role' IS DISTINCT FROM 'service_role'",
     "trusted_terminal_attestation_required",
     "pending_action_cas_conflict",
     "operation_receipt_required",
   ]) if (!migration.includes(token)) failures.push(`atomic terminal owner missing ${token}`);
+  const terminalOwner = migration.slice(
+    migration.indexOf("CREATE OR REPLACE FUNCTION public.terminalize_agent_pending_action"),
+    migration.indexOf("CREATE TABLE IF NOT EXISTS public.event_cover_selections"),
+  );
+  if (terminalOwner.includes("request.jwt.claim.role"))
+    failures.push("terminal owner trusts the legacy dotted scalar role");
+  const coverAttestationOwner = migration.slice(
+    migration.indexOf("CREATE OR REPLACE FUNCTION public.business_register_event_cover_selection"),
+    migration.indexOf("CREATE OR REPLACE FUNCTION public.business_assert_event_visibility"),
+  );
+  for (const token of [
+    "current_setting('request.jwt.claims',true)",
+    "v_claims->>'role' IS DISTINCT FROM 'service_role'",
+    "OR p_user_id IS NULL",
+    "trusted_cover_attestation_required",
+  ]) if (!coverAttestationOwner.includes(token))
+    failures.push(`cover attestation authority missing ${token}`);
+  if (coverAttestationOwner.includes("request.jwt.claim.role"))
+    failures.push("cover attestation trusts the legacy dotted scalar role");
   for (const token of [
     "RECEIPT_BACKED_EVENT_TOOL_NAMES",
     "RECEIPT_BACKED_EVENT_TOOL_NAMES.has(pending.tool_name)",
@@ -130,6 +151,7 @@ export function check(sources) {
     "issue_1972_ari_event_lifecycle.tester_round4.adversarial.test.sql",
     "issue_1972_ari_event_lifecycle.round5.implementor.test.sql",
     "issue_1972_ari_event_lifecycle.tester_round5.adversarial.test.sql",
+    "issue_1972_terminalization_claims.implementor.test.sql",
     "issue-1972-ari-event-lifecycle.mjs --self-test",
   ]) if (!workflow.includes(token)) failures.push(`CI proof missing ${token}`);
   return failures;
@@ -171,6 +193,12 @@ if (process.argv.includes("--self-test")) {
     { ...sources, tools: sources.tools.replace('required: ["brand_id", "title", "when_mode", "visibility"]', 'required: ["brand_id", "title", "when_mode"]') },
     { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.round5.implementor.test.sql", "removed-round5.sql") },
     { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester_round5.adversarial.test.sql", "removed-round5-tester.sql") },
+    { ...sources, migration: sources.migration.replace("current_setting('request.jwt.claims',true)", "current_setting('request.jwt.claim.role',true)") },
+    { ...sources, migration: sources.migration.replace(
+      "DECLARE v_brand_id uuid;v_claims jsonb;",
+      "DECLARE v_brand_id uuid;v_claims jsonb; -- request.jwt.claim.role",
+    ) },
+    { ...sources, workflow: sources.workflow.replaceAll("issue_1972_terminalization_claims.implementor.test.sql", "removed-terminalization-claims.sql") },
   ];
   const undetected = mutations.filter((mutation) => check(mutation).length === 0);
   if (good.length || undetected.length) {
