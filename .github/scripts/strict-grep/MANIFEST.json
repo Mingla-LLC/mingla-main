@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 572,
-  "selfTestWiredFloor": 367,
+  "expectedStrictGrepMjsFiles": 573,
+  "selfTestWiredFloor": 368,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -8230,6 +8230,18 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-2050-paystack-host-return-contract.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2097-stripe-fee-refund-truth.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",

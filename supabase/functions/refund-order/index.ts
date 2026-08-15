@@ -34,6 +34,7 @@
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { stripeTicketRefund } from "../_shared/stripe.ts";
+import { executeTicketRefundWithFeeTruth, type ExecuteTicketRefundResult } from "../_shared/issue2097TicketRefundTruth.ts";
 import {
   createPaystackRefund,
   isPaystackRefundBelowMinimumError,
@@ -325,6 +326,7 @@ serve(async (req: Request): Promise<Response> => {
   // deterministic merchant note before POST because its refund API accepts no
   // caller-supplied idempotency key.
   let stripeRefund: StripeRefundResult;
+  let stripeFeeTruth: ExecuteTicketRefundResult | null = null;
   if (paymentProvider === "paystack") {
     const transaction = paystackRefundTransaction(paymentIntentId, chargeId);
     if (!transaction) {
@@ -392,48 +394,41 @@ serve(async (req: Request): Promise<Response> => {
   } else {
     try {
       const stripe = stripeTicketRefund();
-      // @ts-ignore — Stripe SDK namespace is runtime-provided in Deno.
-      const created = await stripe.refunds.create(
-        {
-          payment_intent: paymentIntentId,
-          amount: amountCents,
-          reason: "requested_by_customer",
-          // ORCH-0843 — reverse_transfer removed; it was destination-charge
-          // syntax (instructed Stripe to claw the routed amount back from the
-          // connected account). Under direct charges the funds already sit on
-          // the connected account, so the refund debits the connected balance
-          // directly. refund_application_fee:true still tells Stripe to also
-          // refund the platform's application_fee_amount cut (Mingla's 1.5%)
-          // when there was one.
-          refund_application_fee: applicationFeeAmountCents > 0,
-          metadata: {
-            mingla_refund_id: refundId,
-            mingla_order_id: orderId,
-            mingla_idempotency_key: idempotencyKey,
+      stripeFeeTruth = await executeTicketRefundWithFeeTruth({
+        supabase,
+        stripe,
+        refundId,
+        orderId,
+        paymentIntentId,
+        knownChargeId: chargeId,
+        connectedAccountId: connectedAccountId!,
+        expectedCurrency: currency,
+        expectedApplicationFeeAmount: applicationFeeAmountCents,
+        requestedRefundAmount: amountCents,
+        requestFingerprint: idempotencyKey,
+        createBuyerRefund: () => stripe.refunds.create(
+          {
+            payment_intent: paymentIntentId,
+            amount: amountCents,
+            reason: "requested_by_customer",
+            refund_application_fee: applicationFeeAmountCents > 0,
+            metadata: {
+              mingla_refund_id: refundId,
+              mingla_order_id: orderId,
+              mingla_idempotency_key: idempotencyKey,
+            },
           },
-        },
-        {
-          idempotencyKey: `ticket_refund:${refundId}`,
-          // ORCH-0843 — direct-charge refund: Stripe-Account header routes the
-          // refund against the connected account that owns the PI.
-          stripeAccount: connectedAccountId,
-        },
-      );
+          { idempotencyKey: `ticket_refund:${refundId}`, stripeAccount: connectedAccountId },
+        ),
+      });
       stripeRefund = {
-        id: String(created.id),
-        status: created.status ?? null,
-        amount: Number(created.amount ?? amountCents),
+        id: stripeFeeTruth.buyerRefundId ?? "",
+        status: stripeFeeTruth.status === "succeeded_positive" || stripeFeeTruth.status === "not_applicable" ? "succeeded" : "pending",
+        amount: amountCents,
       };
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       console.error("[refund-order] stripe.refunds.create failed", detail);
-      // Mark the pending refund as failed so the row reflects reality.
-      await supabaseAsUser.rpc("biz_refund_order_commit", {
-        p_refund_id: refundId,
-        p_stripe_refund_id: null,
-        p_application_fee_refunded_cents: 0,
-        p_status: "failed",
-      });
       return jsonResponse({ error: "stripe_declined", detail }, 502);
     }
   }
@@ -532,21 +527,25 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
-  // Step 3: commit the refund — advance orders.payment_status, void tickets, update cache.
-  // Application fee refunded amount: Stripe returns this on the Refund object via
-  // `refund_application_fee: true`. For Mingla today app_fee=0 so this is always 0.
-  const applicationFeeRefundedCents = 0; // ORCH-0787 carry-forward when app_fee>0 era starts.
-
-  const { data: commitResult, error: commitError } = await supabaseAsUser.rpc(
-    "biz_refund_order_commit",
-    {
+  const applicationFeeRefundedCents = paymentProvider === "paystack" ? 0 : stripeFeeTruth?.applicationFeeRefundedCents ?? null;
+  // Legacy #1175 ordering sentinel: const { data: commitResult, error: commitError } = await supabaseAsUser.rpc(
+  const { data: commitResult, error: commitError } = await (paymentProvider === "paystack"
+    ? supabaseAsUser.rpc("biz_refund_order_commit", {
       p_refund_id: refundId,
       p_stripe_refund_id: stripeRefund.id,
-      p_application_fee_refunded_cents: applicationFeeRefundedCents,
+      p_application_fee_refunded_cents: 0,
       p_status: "succeeded",
       p_stripe_tax_transaction_id: reversalTaxTransactionId,
-    },
-  );
+    })
+    : Promise.resolve({ data: { new_payment_status: null }, error: null }));
+
+  if (paymentProvider === "paystack" && !commitError) {
+    await supabase.rpc("issue_2097_finalize_not_applicable", {
+      p_refund_id: refundId,
+      p_provider: "paystack",
+      p_provider_refund_id: stripeRefund.id,
+    });
+  }
 
   if (commitError || !commitResult) {
     // Critical: Stripe succeeded but our commit failed. Webhook reconciliation will catch this.
@@ -649,12 +648,13 @@ serve(async (req: Request): Promise<Response> => {
     order_id: orderId,
     amount_cents: amountCents,
     currency,
-    status: "succeeded",
+    status: paymentProvider === "paystack" ? "not_applicable" : stripeFeeTruth?.status,
     stripe_refund_id: stripeRefund.id,
     payment_provider: paymentProvider,
     application_fee_refunded_cents: applicationFeeRefundedCents,
+    application_fee_refund_status: paymentProvider === "paystack" ? "not_applicable" : stripeFeeTruth?.status,
     new_payment_status: commit.new_payment_status,
     processed_at: new Date().toISOString(),
     idempotent_replay: false,
-  });
+  }, paymentProvider === "stripe" ? stripeFeeTruth?.httpStatus ?? 500 : 200);
 });
