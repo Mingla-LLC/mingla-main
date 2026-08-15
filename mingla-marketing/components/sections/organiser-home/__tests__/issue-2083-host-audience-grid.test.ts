@@ -19,9 +19,9 @@ for (const category of [
   assert.match(source, new RegExp(category.replace(/[&]/g, '\\&')))
 }
 
-assert.match(source, /md:grid-cols-2 xl:grid-cols-4 xl:grid-rows-\[repeat\(2,320px\)\]/)
-assert.match(source, /xl:row-span-2/)
-assert.match(source, /xl:col-span-2/)
+assert.match(source, /md:grid-cols-4 md:grid-rows-\[repeat\(2,320px\)\]/)
+assert.match(source, /md:row-span-2/)
+assert.match(source, /md:col-span-2/)
 assert.match(source, /rounded-\[28px\]/)
 assert.match(source, /backdrop-blur-xl/)
 assert.match(source, /capabilities/)

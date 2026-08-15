@@ -4,6 +4,7 @@ import { Reveal } from '@/components/ui/reveal'
 
 interface Audience {
   eyebrow: string
+  shortEyebrow: string
   title: string
   body: string
   image: string
@@ -22,52 +23,58 @@ const AUDIENCES: Audience[] = [
     body: 'Shape your space, packages, and group moments into plans people actively choose.',
     image: IMG('1492684223066-81342ee5ff30'),
     capabilities: ['Packages', 'Bookings', 'People'],
-    placement: 'xl:col-start-1 xl:row-start-1 xl:row-span-2',
+    shortEyebrow: 'Venues',
+    placement: 'md:col-start-1 md:row-start-1 md:row-span-2',
     emphasis: 'feature',
   },
   {
     eyebrow: 'Restaurants & cafés',
+    shortEyebrow: 'Dining',
     title: 'make your menu the reason.',
     body: 'Turn your menu, your room, and your best nights into plans people can discover and book.',
     image: IMG('1517248135467-4c7edcad34c4'),
     capabilities: ['Pages', 'Reservations', 'AI reach'],
-    placement: 'xl:col-start-2 xl:col-span-2 xl:row-start-1',
+    placement: 'md:col-start-2 md:col-span-2 md:row-start-1',
     emphasis: 'feature',
   },
   {
     eyebrow: 'Bars, clubs & nightlife',
+    shortEyebrow: 'Nightlife',
     title: 'give people a night they brag about.',
     body: 'Package your energy into the kind of night the right crowd wants to join — and return to.',
     image: IMG('1545128485-c400e7702796'),
     capabilities: ['Events', 'Guest lists', 'Blasts'],
-    placement: 'xl:col-start-4 xl:row-start-1',
+    placement: 'md:col-start-4 md:row-start-1',
     emphasis: 'compact',
   },
   {
     eyebrow: 'Events & promoters',
+    shortEyebrow: 'Events',
     title: 'sell the night, not just the ticket.',
     body: 'Show people why the lineup, crowd, culture, and timing make your event worth joining.',
     image: IMG('1459749411175-04bf5292ceea'),
     capabilities: ['Tickets', 'QR entry', 'Campaigns'],
-    placement: 'xl:col-start-2 xl:row-start-2',
+    placement: 'md:col-start-2 md:row-start-2',
     emphasis: 'compact',
   },
   {
     eyebrow: 'Experiences, trips & adventures',
+    shortEyebrow: 'Experiences',
     title: 'turn a thing-to-do into a must-do.',
     body: 'Transform tours, classes, tastings, and adventures into experiences people can find and book.',
     image: IMG('1556910103-1c02745aae4d'),
     capabilities: ['Itineraries', 'Packages', 'Payments'],
-    placement: 'xl:col-start-3 xl:row-start-2',
+    placement: 'md:col-start-3 md:row-start-2',
     emphasis: 'compact',
   },
   {
     eyebrow: 'Pop-ups & independent creators',
+    shortEyebrow: 'Pop-ups',
     title: 'land fast. land hard.',
     body: 'Turn concept, scarcity, and timing into a launch people understand before the moment passes.',
     image: IMG('1555396273-367ea4eb4db5'),
     capabilities: ['Launch pages', 'Tickets', 'Reach'],
-    placement: 'xl:col-start-4 xl:row-start-2',
+    placement: 'md:col-start-4 md:row-start-2',
     emphasis: 'compact',
   },
 ]
@@ -77,7 +84,8 @@ function AudienceCard({ audience }: { audience: Audience }) {
 
   return (
     <article
-      className="group relative h-full min-h-[390px] w-full overflow-hidden rounded-[28px] border border-black/[0.06] bg-[#111114] shadow-[var(--elev-2)] motion-safe:transition-[transform,box-shadow] motion-safe:duration-300 motion-safe:ease-out motion-safe:hover:-translate-y-1.5 motion-safe:hover:shadow-[0_24px_58px_rgba(48,22,6,0.2)] xl:min-h-0"
+      aria-label={audience.eyebrow}
+      className="group relative h-full min-h-[390px] w-full overflow-hidden rounded-[28px] border border-black/[0.06] bg-[#111114] shadow-[var(--elev-2)] motion-safe:transition-[transform,box-shadow] motion-safe:duration-300 motion-safe:ease-out motion-safe:hover:-translate-y-1.5 motion-safe:hover:shadow-[0_24px_58px_rgba(48,22,6,0.2)] md:min-h-0"
     >
       {/* The photograph is atmospheric; the category and value remain real text. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -101,8 +109,11 @@ function AudienceCard({ audience }: { audience: Audience }) {
         }}
       />
 
-      <span className="absolute left-5 top-5 inline-flex rounded-full bg-warm px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-sm md:left-6 md:top-6">
+      <span className="absolute left-5 top-5 inline-flex rounded-full bg-warm px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-sm md:hidden xl:inline-flex">
         {audience.eyebrow}
+      </span>
+      <span className="absolute left-4 top-4 hidden rounded-full bg-warm px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-white shadow-sm md:inline-flex xl:hidden">
+        {audience.shortEyebrow}
       </span>
 
       <div className="absolute inset-x-3 bottom-3 rounded-[22px] border border-white/15 bg-[#0c0e12]/72 p-4 shadow-[0_12px_36px_rgba(0,0,0,0.28)] backdrop-blur-xl motion-safe:transition-[transform,background-color,border-color] motion-safe:duration-300 motion-safe:ease-out motion-safe:group-hover:-translate-y-1 motion-safe:group-hover:border-white/25 motion-safe:group-hover:bg-[#0c0e12]/82 md:inset-x-4 md:bottom-4 md:p-5">
@@ -115,11 +126,17 @@ function AudienceCard({ audience }: { audience: Audience }) {
         >
           {audience.title}
         </h3>
-        <p className="mt-2.5 max-w-[52ch] text-[13px] leading-relaxed text-white/78 md:text-sm">
+        <p
+          className={`mt-2.5 max-w-[52ch] text-[13px] leading-relaxed text-white/78 md:text-sm ${isFeature ? '' : 'md:hidden xl:block'}`}
+        >
           {audience.body}
         </p>
         <div
-          className={isFeature ? 'mt-5 flex flex-wrap gap-2' : 'mt-3 flex flex-wrap gap-1.5'}
+          className={
+            isFeature
+              ? 'mt-5 flex flex-wrap gap-2'
+              : 'mt-3 flex flex-wrap gap-1.5 md:hidden xl:flex'
+          }
           aria-label={`${audience.eyebrow} capabilities`}
         >
           {audience.capabilities.map((capability) => (
@@ -159,7 +176,7 @@ export function OrganiserAudiences() {
         </div>
 
         <div
-          className="mt-12 grid gap-5 md:mt-16 md:grid-cols-2 xl:grid-cols-4 xl:grid-rows-[repeat(2,320px)]"
+          className="mt-12 grid gap-5 md:mt-16 md:grid-cols-4 md:grid-rows-[repeat(2,320px)]"
           aria-label="Host types Mingla is built for"
         >
           {AUDIENCES.map((audience, index) => (
