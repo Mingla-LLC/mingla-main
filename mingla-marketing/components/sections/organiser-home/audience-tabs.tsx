@@ -70,6 +70,24 @@ const TABS: Tab[] = [
     ],
   },
   {
+    id: 'nightlife',
+    label: 'Nightlife',
+    heading: 'give people a night they brag about.',
+    intro:
+      'The sound, the room, the crowd, the moment it all clicks. Mingla turns that energy into a night people can understand, join, and share — then its AI brain puts it in front of the people already looking for that exact vibe.',
+    steps: [
+      { title: 'name the energy', body: 'Tell Ari what the night should feel like. It helps shape the page, the story, and the offer without turning you into a full-time marketer.' },
+      { title: 'find the crowd', body: 'Mingla’s AI brain matches the night to people by vibe, taste, location, and timing — and can drive that real intent back to your door.' },
+      { title: 'run the door', body: 'Sell tickets or tables, manage the guest list, and scan people in from one connected flow — then see what worked.' },
+    ],
+    features: [
+      { title: 'your night, made clear', body: 'The music, dress, crowd, and reason to come are presented as one story people can understand before they commit.' },
+      { title: 'AI-powered discovery', body: 'Mingla understands what people want to do and routes the right demand toward the hosts who can deliver it.' },
+      { title: 'the door, connected', body: 'Tickets, tables, guest lists, and QR entry stay connected from discovery through arrival.' },
+      { title: 'grow the nights that work', body: 'See who bought and checked in, then reach those real guests again for the next night.' },
+    ],
+  },
+  {
     id: 'events',
     label: 'Events',
     heading: 'sell the night, not just the ticket.',
@@ -221,7 +239,7 @@ export function OrganiserAudienceTabs() {
             <div className="flex justify-center lg:justify-end">
               {tab.id === 'venues' ? (
                 <VenueActivityFeed />
-              ) : tab.id === 'events' ? (
+              ) : tab.id === 'events' || tab.id === 'nightlife' ? (
                 <EventAttendeesCard />
               ) : tab.id === 'dining' ? (
                 <DiningDashboardCard />

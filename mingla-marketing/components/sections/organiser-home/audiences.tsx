@@ -8,6 +8,8 @@ interface Audience {
   body: string
   image: string
   capabilities: readonly string[]
+  placement: string
+  emphasis: 'feature' | 'compact'
 }
 
 const IMG = (id: string): string =>
@@ -15,11 +17,22 @@ const IMG = (id: string): string =>
 
 const AUDIENCES: Audience[] = [
   {
+    eyebrow: 'Venues & activity spaces',
+    title: 'be the plan, not the afterthought.',
+    body: 'Shape your space, packages, and group moments into plans people actively choose.',
+    image: IMG('1492684223066-81342ee5ff30'),
+    capabilities: ['Packages', 'Bookings', 'People'],
+    placement: 'xl:col-start-1 xl:row-start-1 xl:row-span-2',
+    emphasis: 'feature',
+  },
+  {
     eyebrow: 'Restaurants & cafés',
     title: 'make your menu the reason.',
     body: 'Turn your menu, your room, and your best nights into plans people can discover and book.',
     image: IMG('1517248135467-4c7edcad34c4'),
     capabilities: ['Pages', 'Reservations', 'AI reach'],
+    placement: 'xl:col-start-2 xl:col-span-2 xl:row-start-1',
+    emphasis: 'feature',
   },
   {
     eyebrow: 'Bars, clubs & nightlife',
@@ -27,13 +40,8 @@ const AUDIENCES: Audience[] = [
     body: 'Package your energy into the kind of night the right crowd wants to join — and return to.',
     image: IMG('1545128485-c400e7702796'),
     capabilities: ['Events', 'Guest lists', 'Blasts'],
-  },
-  {
-    eyebrow: 'Venues & activity spaces',
-    title: 'be the plan, not the afterthought.',
-    body: 'Shape your space, packages, and group moments into plans people actively choose.',
-    image: IMG('1492684223066-81342ee5ff30'),
-    capabilities: ['Packages', 'Bookings', 'People'],
+    placement: 'xl:col-start-4 xl:row-start-1',
+    emphasis: 'compact',
   },
   {
     eyebrow: 'Events & promoters',
@@ -41,6 +49,8 @@ const AUDIENCES: Audience[] = [
     body: 'Show people why the lineup, crowd, culture, and timing make your event worth joining.',
     image: IMG('1459749411175-04bf5292ceea'),
     capabilities: ['Tickets', 'QR entry', 'Campaigns'],
+    placement: 'xl:col-start-2 xl:row-start-2',
+    emphasis: 'compact',
   },
   {
     eyebrow: 'Experiences, trips & adventures',
@@ -48,6 +58,8 @@ const AUDIENCES: Audience[] = [
     body: 'Transform tours, classes, tastings, and adventures into experiences people can find and book.',
     image: IMG('1556910103-1c02745aae4d'),
     capabilities: ['Itineraries', 'Packages', 'Payments'],
+    placement: 'xl:col-start-3 xl:row-start-2',
+    emphasis: 'compact',
   },
   {
     eyebrow: 'Pop-ups & independent creators',
@@ -55,13 +67,17 @@ const AUDIENCES: Audience[] = [
     body: 'Turn concept, scarcity, and timing into a launch people understand before the moment passes.',
     image: IMG('1555396273-367ea4eb4db5'),
     capabilities: ['Launch pages', 'Tickets', 'Reach'],
+    placement: 'xl:col-start-4 xl:row-start-2',
+    emphasis: 'compact',
   },
 ]
 
 function AudienceCard({ audience }: { audience: Audience }) {
+  const isFeature = audience.emphasis === 'feature'
+
   return (
     <article
-      className="group relative h-[400px] w-full overflow-hidden rounded-[28px] border border-black/[0.06] bg-[#111114] shadow-[var(--elev-2)] motion-safe:transition-[transform,box-shadow] motion-safe:duration-300 motion-safe:ease-out motion-safe:hover:-translate-y-1.5 motion-safe:hover:shadow-[0_24px_58px_rgba(48,22,6,0.2)] md:h-[390px] lg:h-[410px]"
+      className="group relative h-full min-h-[390px] w-full overflow-hidden rounded-[28px] border border-black/[0.06] bg-[#111114] shadow-[var(--elev-2)] motion-safe:transition-[transform,box-shadow] motion-safe:duration-300 motion-safe:ease-out motion-safe:hover:-translate-y-1.5 motion-safe:hover:shadow-[0_24px_58px_rgba(48,22,6,0.2)] xl:min-h-0"
     >
       {/* The photograph is atmospheric; the category and value remain real text. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -89,18 +105,27 @@ function AudienceCard({ audience }: { audience: Audience }) {
         {audience.eyebrow}
       </span>
 
-      <div className="absolute inset-x-3 bottom-3 rounded-[22px] border border-white/15 bg-[#0c0e12]/72 p-5 shadow-[0_12px_36px_rgba(0,0,0,0.28)] backdrop-blur-xl motion-safe:transition-[transform,background-color,border-color] motion-safe:duration-300 motion-safe:ease-out motion-safe:group-hover:-translate-y-1 motion-safe:group-hover:border-white/25 motion-safe:group-hover:bg-[#0c0e12]/82 md:inset-x-4 md:bottom-4">
-        <h3 className="max-w-[22ch] font-display text-2xl leading-[1.08] tracking-[-0.01em] text-white md:text-[1.75rem]">
+      <div className="absolute inset-x-3 bottom-3 rounded-[22px] border border-white/15 bg-[#0c0e12]/72 p-4 shadow-[0_12px_36px_rgba(0,0,0,0.28)] backdrop-blur-xl motion-safe:transition-[transform,background-color,border-color] motion-safe:duration-300 motion-safe:ease-out motion-safe:group-hover:-translate-y-1 motion-safe:group-hover:border-white/25 motion-safe:group-hover:bg-[#0c0e12]/82 md:inset-x-4 md:bottom-4 md:p-5">
+        <h3
+          className={
+            isFeature
+              ? 'max-w-[22ch] font-display text-2xl leading-[1.08] tracking-[-0.01em] text-white md:text-[1.75rem]'
+              : 'max-w-[22ch] font-display text-xl leading-[1.08] tracking-[-0.01em] text-white'
+          }
+        >
           {audience.title}
         </h3>
-        <p className="mt-3 max-w-[52ch] text-sm leading-relaxed text-white/78 md:text-[15px]">
+        <p className="mt-2.5 max-w-[52ch] text-[13px] leading-relaxed text-white/78 md:text-sm">
           {audience.body}
         </p>
-        <div className="mt-5 flex flex-wrap gap-2" aria-label={`${audience.eyebrow} capabilities`}>
+        <div
+          className={isFeature ? 'mt-5 flex flex-wrap gap-2' : 'mt-3 flex flex-wrap gap-1.5'}
+          aria-label={`${audience.eyebrow} capabilities`}
+        >
           {audience.capabilities.map((capability) => (
             <span
               key={capability}
-              className="rounded-full border border-white/12 bg-white/[0.08] px-2.5 py-1 text-[11px] font-semibold text-white/72"
+              className="rounded-full border border-white/12 bg-white/[0.08] px-2.5 py-1 text-[10px] font-semibold text-white/72"
             >
               {capability}
             </span>
@@ -127,21 +152,21 @@ export function OrganiserAudiences() {
           </Reveal>
           <Reveal delay={0.08}>
             <p className="max-w-xl text-base leading-relaxed text-text-secondary md:text-lg lg:pb-1">
-              Choose your world to see how Mingla helps you create, reach the right people, sell,
-              and grow.
+              Six ways to host. One connected system for creating, reaching the right people,
+              selling, and growing.
             </p>
           </Reveal>
         </div>
 
         <div
-          className="mt-12 grid gap-5 md:mt-16 md:grid-cols-2 lg:grid-cols-3"
+          className="mt-12 grid gap-5 md:mt-16 md:grid-cols-2 xl:grid-cols-4 xl:grid-rows-[repeat(2,320px)]"
           aria-label="Host types Mingla is built for"
         >
           {AUDIENCES.map((audience, index) => (
             <Reveal
               key={audience.eyebrow}
               delay={Math.min(index * 0.06, 0.3)}
-              className="min-w-0"
+              className={`min-w-0 ${audience.placement}`}
             >
               <AudienceCard audience={audience} />
             </Reveal>
