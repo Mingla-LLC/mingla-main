@@ -19,6 +19,7 @@ const CLAIM_SELECT = `
   country_code,
   address,
   created_at,
+  updated_at,
   contact_email,
   contact_phone,
   google_place_id,
@@ -61,6 +62,38 @@ const CLAIM_SELECT = `
     updated_at
   )
 `;
+
+export async function previewPendingVenueIdentityCorrection(venueId) {
+  const { data, error } = await supabase.rpc(
+    "preview_pending_venue_identity_correction",
+    { p_venue_id: venueId },
+  );
+  if (error) throw error;
+  return data;
+}
+
+export async function correctPendingVenueIdentity({ preview, name, slug, category, reason, requestId }) {
+  const { data, error } = await supabase.rpc("correct_pending_venue_identity", {
+    p_venue_id: preview.venue_id,
+    p_expected_brand_id: preview.brand_id,
+    p_expected_place_pool_id: preview.place_pool_id,
+    p_expected_updated_at: preview.current.updated_at,
+    p_expected_name: preview.current.name,
+    p_expected_slug: preview.current.slug,
+    p_expected_category: preview.current.category,
+    p_new_name: name.trim(),
+    p_new_slug: slug.trim(),
+    p_new_category: category,
+    p_reason: reason.trim(),
+    p_request_id: requestId,
+    p_expected_schema_fingerprint: preview.schema_fingerprint,
+    p_expected_state_fingerprint: preview.state_fingerprint,
+    p_mode: "forward",
+    p_source_audit_id: null,
+  });
+  if (error) throw error;
+  return data;
+}
 
 export async function listPendingClaims() {
   const { data, error } = await supabase

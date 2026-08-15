@@ -37,6 +37,7 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -57,6 +58,8 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { VenueClaimFeedbackSheet } from "../brand/VenueClaimFeedbackSheet";
 import { VenueClaimStatusBanner } from "../brand/VenueClaimStatusBanner";
 import { Button } from "../ui/Button";
+import { Input } from "../ui/Input";
+import { Modal } from "../ui/Modal";
 import { ArrowLeft, Sparkles } from "lucide-react-native";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
@@ -80,6 +83,11 @@ import {
 } from "../../hooks/useBrandPlacePipelineState";
 import { useVenueListing } from "../../hooks/useVenueListings";
 import { useVenueClaimOpenCount } from "../../hooks/useVenueClaimFeedback";
+import {
+  correctPendingVenueIdentity,
+  previewPendingVenueIdentityCorrection,
+  type PendingVenueIdentityPreview,
+} from "../../services/venueListingsService";
 import {
   fetchVenuePitchSource,
   runTier2Pipeline,
@@ -168,6 +176,7 @@ export function VenueListingContent({
     kind: "success" | "error";
     message: string;
   } | null>(null);
+  const [correctionOpen, setCorrectionOpen] = useState(false);
 
   const handleOpenFeedback = useCallback((): void => {
     setFeedbackVisible(true);
@@ -597,6 +606,16 @@ export function VenueListingContent({
                 onPress={handleEdit}
                 accessibilityLabel="Edit your venue listing"
               />
+              {Platform.OS === "web" && venue?.claimStatus === "pending_review" ? (
+                <Button
+                  label="Correct venue identity"
+                  variant="secondary"
+                  size="md"
+                  leadingIcon="edit"
+                  onPress={() => setCorrectionOpen(true)}
+                  accessibilityLabel="Correct this pending venue identity"
+                />
+              ) : null}
               {isLive ? (
                 <Button
                   label="View public page"
@@ -624,6 +643,18 @@ export function VenueListingContent({
         onResubmitted={handleResubmitted}
         onActionError={handleFeedbackError}
       />
+      {Platform.OS === "web" && venue?.claimStatus === "pending_review" ? (
+        <PendingIdentityCorrectionDialog
+          visible={correctionOpen}
+          venueId={venue.id}
+          onClose={() => setCorrectionOpen(false)}
+          onSuccess={() => {
+            setCorrectionOpen(false);
+            setToast({ kind: "success", message: "Pending venue identity corrected." });
+            void Promise.all([venueQuery.refetch(), pipeline.refetch(), ctx.refetch()]);
+          }}
+        />
+      ) : null}
       <Toast
         visible={toast !== null}
         kind={toast?.kind ?? "success"}
@@ -631,6 +662,138 @@ export function VenueListingContent({
         onDismiss={handleDismissToast}
       />
     </View>
+  );
+}
+
+function PendingIdentityCorrectionDialog({
+  visible,
+  venueId,
+  onClose,
+  onSuccess,
+}: {
+  visible: boolean;
+  venueId: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}): React.ReactElement {
+  const [preview, setPreview] = useState<PendingVenueIdentityPreview | null>(null);
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [category, setCategory] = useState<"restaurant" | "play" | "creative_and_arts" | "stay">("play");
+  const [reason, setReason] = useState("");
+  const [status, setStatus] = useState("Checking whether this venue can be corrected.");
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const loadPreview = useCallback(async (): Promise<void> => {
+    setLoading(true);
+    setStatus("Checking whether this venue can be corrected.");
+    try {
+      const next = await previewPendingVenueIdentityCorrection(venueId);
+      setPreview(next);
+      if (next.eligible) {
+        setName((current) => current || next.current.name);
+        setSlug((current) => current || next.current.slug);
+        setCategory(next.current.category);
+        setStatus("This unused pending venue can be corrected.");
+      } else {
+        setStatus(`This venue cannot be corrected (${next.code ?? "UNKNOWN"}).`);
+      }
+    } catch {
+      setPreview(null);
+      setStatus("Couldn't check this venue. Check your connection and retry.");
+    } finally {
+      setLoading(false);
+    }
+  }, [venueId]);
+
+  useEffect(() => {
+    if (visible) void loadPreview();
+  }, [loadPreview, visible]);
+
+  useEffect(() => {
+    if (!visible || Platform.OS !== "web" || globalThis.document === undefined) return;
+    const previous = globalThis.document.activeElement as HTMLElement | null;
+    const panel = globalThis.document.querySelector('[data-testid="issue-2099-correction-dialog"]');
+    const focusable = (): HTMLElement[] => Array.from(
+      panel?.querySelectorAll<HTMLElement>('button,input,select,[tabindex]:not([tabindex="-1"])') ?? [],
+    ).filter((element) => !element.hasAttribute("disabled"));
+    focusable()[0]?.focus();
+    const trap = (event: KeyboardEvent): void => {
+      if (event.key !== "Tab") return;
+      const nodes = focusable();
+      if (nodes.length === 0) return;
+      const first = nodes[0]!;
+      const last = nodes[nodes.length - 1]!;
+      if (event.shiftKey && globalThis.document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && globalThis.document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    globalThis.document.addEventListener("keydown", trap);
+    return (): void => {
+      globalThis.document.removeEventListener("keydown", trap);
+      previous?.focus();
+    };
+  }, [visible]);
+
+  const submit = useCallback(async (): Promise<void> => {
+    if (preview?.eligible !== true || submitting) return;
+    setSubmitting(true);
+    setStatus("Correcting the pending venue identity.");
+    try {
+      const cryptoLike = globalThis.crypto as unknown as { randomUUID?: () => string } | undefined;
+      const requestId = cryptoLike?.randomUUID?.()
+        ?? `00000000-0000-4000-8000-${String(Date.now()).padStart(12, "0").slice(-12)}`;
+      const result = await correctPendingVenueIdentity({ preview, name, slug, category, reason, requestId });
+      if (!result.ok) {
+        if (result.code === "STALE_VERSION" || result.code === "DEPENDENCY_SCHEMA_CHANGED") {
+          setStatus("The venue changed while this form was open. Review the refreshed values and confirm again.");
+          await loadPreview();
+        } else {
+          setStatus(`Couldn't correct this venue (${result.code ?? "UNKNOWN"}).`);
+        }
+        return;
+      }
+      onSuccess();
+    } catch {
+      setStatus("Couldn't correct this venue. Your entries are preserved; retry when you're online.");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [category, loadPreview, name, onSuccess, preview, reason, slug, submitting]);
+
+  const canSubmit = preview?.eligible === true && name.trim().length > 0 && /^[a-z0-9]{1,32}$/.test(slug) && reason.trim().length > 0 && !submitting;
+  return (
+    <Modal visible={visible} onClose={submitting ? () => undefined : onClose} dismissOnScrimTap={!submitting} testID="issue-2099-correction-dialog">
+      <View accessibilityViewIsModal style={styles.correctionForm}>
+        <Text style={styles.correctionTitle} accessibilityRole="header">Correct venue identity</Text>
+        <Text style={styles.body}>This keeps the same venue, owner and location. Only its pending name, URL and category change.</Text>
+        {preview ? <Text style={styles.correctionComparison}>Current: {preview.current.name} · {preview.current.slug} · {preview.current.category}</Text> : null}
+        <Text style={styles.fieldLabel}>Proposed name</Text>
+        <Input value={name} onChangeText={setName} accessibilityLabel="Proposed venue name" disabled={submitting} />
+        <Text style={styles.fieldLabel}>Proposed URL slug</Text>
+        <Input value={slug} onChangeText={setSlug} accessibilityLabel="Proposed venue URL slug" autoCapitalize="none" disabled={submitting} error={slug.length > 0 && !/^[a-z0-9]{1,32}$/.test(slug) ? "Use 1–32 lowercase letters or numbers." : null} errorId="issue-2099-slug-error" />
+        <Text style={styles.fieldLabel}>Proposed category</Text>
+        <View style={styles.categoryRow} accessibilityLabel="Proposed venue category">
+          {(["restaurant", "play", "creative_and_arts", "stay"] as const).map((value) => (
+            <Pressable key={value} onPress={() => setCategory(value)} disabled={submitting} accessibilityRole="radio" accessibilityState={{ checked: category === value }} style={[styles.categoryChoice, category === value ? styles.categoryChoiceSelected : null]}>
+              <Text style={styles.body}>{value.replaceAll("_", " ")}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.fieldLabel}>Reason</Text>
+        <Input value={reason} onChangeText={setReason} accessibilityLabel="Reason for correcting this venue" disabled={submitting} />
+        <Text accessibilityLiveRegion="polite" style={styles.correctionStatus}>{status}</Text>
+        <View style={styles.correctionActions}>
+          <Button label={loading ? "Checking…" : "Retry check"} variant="secondary" onPress={() => void loadPreview()} disabled={loading || submitting} />
+          <Button label={submitting ? "Correcting…" : "Correct pending venue"} variant="primary" onPress={() => void submit()} disabled={!canSubmit} accessibilityLabel="Correct pending venue" />
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -767,6 +930,14 @@ const styles = StyleSheet.create({
   },
   actionRow: { marginTop: spacing.md, alignItems: "flex-start" },
   actionsCol: { gap: spacing.sm, marginTop: spacing.xs },
+  correctionForm: { gap: spacing.sm, minWidth: 320 },
+  correctionTitle: { fontSize: typography.h3.fontSize, fontWeight: "700", color: textTokens.primary },
+  correctionComparison: { fontSize: typography.caption.fontSize, color: textTokens.secondary, padding: spacing.sm, backgroundColor: "rgba(255,255,255,0.06)", borderRadius: 10 },
+  categoryRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  categoryChoice: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.sm, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)" },
+  categoryChoiceSelected: { borderColor: accent.warm, backgroundColor: "rgba(235,120,37,0.14)" },
+  correctionStatus: { minHeight: 20, color: textTokens.secondary, fontSize: typography.bodySm.fontSize },
+  correctionActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, marginTop: spacing.sm },
   // ORCH-1064 — cancel the banner's own marginHorizontal so the re-homed
   // follow_up tile aligns flush with the surrounding GlassCards; trim its
   // marginBottom (the scroll already supplies `gap: spacing.md`).
