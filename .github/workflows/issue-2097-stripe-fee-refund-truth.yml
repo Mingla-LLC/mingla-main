@@ -34,7 +34,7 @@ jobs:
         with: { deno-version: v2.x }
       - run: node .github/scripts/strict-grep/issue-2097-stripe-fee-refund-truth.mjs --self-test
       - run: node .github/scripts/strict-grep/issue-2097-stripe-fee-refund-truth.mjs
-      - run: deno test --allow-read supabase/functions/_shared/issue2097TicketRefundTruth.test.ts supabase/functions/_shared/__tests__/issue_2097_stripe_fee_refund_truth.happy.test.ts
+      - run: deno test --allow-read supabase/functions/_shared/issue2097TicketRefundTruth.test.ts supabase/functions/_shared/__tests__/issue_2097_stripe_fee_refund_truth.happy.test.ts supabase/functions/_shared/__tests__/issue_2097_fee_refund_truth.tester.test.ts
       - run: deno check supabase/functions/refund-order/index.ts supabase/functions/admin-refund-order/index.ts supabase/functions/event-cancel-refund-fanout/index.ts supabase/functions/cancel-trip-booking/index.ts supabase/functions/admin-reconcile-ticket-refund/index.ts supabase/functions/_shared/stripeWebhookRouter.ts
 
   issue-2097-postgres-17:
