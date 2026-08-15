@@ -461,6 +461,10 @@ jobs:
           # room fixtures. The independent tester appends its own invocation.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1795_venue_order_metrics_rollup.test.sql
+          # Issue #1795 tester adversarial — a plausible room-origin settlement
+          # plus a same-time unrelated reservation can affect no aggregate.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1795_venue_order_metrics_rollup.tester_adversarial.test.sql
           # Issue #1792 (#1767 Phase 3b) — WAITER MODE, against the REAL applied
           # schema. Behavioural: it opens and closes real tabs through the real
           # SECURITY DEFINER RPCs as a real auth.uid() with a real rank, runs
