@@ -47,7 +47,7 @@
  *   2. BOTH branches explicit: `platform === 'ios'` AND `platform === 'android'`.
  *   3. `canInstall` (desktop has no install action).
  *
- * Over the helper AND all 4 CTA surfaces BAN:
+ * Over the helper AND all 3 CTA surfaces BAN:
  *   4. the ORCH-1324 collapsed ternary
  *      `platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL` — THE BUG.
  *   5. minglabiz.onelink.me — DEAD on Android (AppsFlyer app status Pending,
@@ -56,7 +56,7 @@
  *      (AppsFlyer → My Apps → Refresh Status) + an Android curl returning the 301.
  *   6. go.usemingla.com — consumer-owned (1 branded domain = 1 template, ORCH-1346).
  *
- * Over each of the 4 CTA surfaces REQUIRE: resolveBusinessAppTarget( AND
+ * Over each of the 3 CTA surfaces REQUIRE: resolveBusinessAppTarget( AND
  * BUSINESS_APP_CHOICE_COPY (the note is a CLAIM pinned to the shared constant — a
  * hand-written variant is how a verified claim silently becomes an invented one).
  *
@@ -85,7 +85,6 @@ const HELPER = "mingla-marketing/lib/business-app-target.ts";
 const SURFACES = [
   "mingla-marketing/app/host/download/page.tsx",
   "mingla-marketing/components/marketing/glass-nav.tsx",
-  "mingla-marketing/components/sections/organiser-home/hero.tsx",
   "mingla-marketing/components/marketing/links-experience.tsx",
 ];
 
@@ -415,7 +414,7 @@ if (failures.length > 0) {
 console.log(
   "ORCH-1381 PASS (ORCH-1399-amended) — the business get-app decision lives in ONE module\n" +
     "(lib/business-app-target.ts: both phones → the ATTRIBUTED business OneLink, which 301s\n" +
-    "per device; desktop → web only, canInstall-gated), all 4 CTA surfaces delegate to it\n" +
+    "per device; desktop → web only, canInstall-gated), all 3 CTA surfaces delegate to it\n" +
     "WITH an attribution argument and render BUSINESS_APP_CHOICE_COPY, and no surface\n" +
     "carries the ORCH-1324 collapsed ternary, a raw *.onelink.me domain, the consumer\n" +
     "go.usemingla.com domain, or a hardcoded branded-domain literal.",

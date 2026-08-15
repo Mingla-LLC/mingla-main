@@ -1,6 +1,7 @@
 'use client'
 import { Ticket, Users, Sparkles, Send, type LucideIcon } from 'lucide-react'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+import { AnimatedBar, ChartEntrance } from '@/components/ui/chart-entrance'
 
 // ORCH-1010 — Events tab chart. A live "your event, filling up" card: venue
 // capacity bar, headline KPIs (tickets sold / reach / fans acquired by Ari), a
@@ -82,8 +83,8 @@ export function EventAttendeesCard() {
   const loop = [...BUYERS, ...BUYERS]
 
   return (
-    <div
-      data-theme="light"
+    <ChartEntrance
+      lightTheme
       className="font-dashboard w-full overflow-hidden rounded-2xl bg-white ring-1 ring-[rgba(14,14,16,0.05)]"
       style={{ boxShadow: 'var(--elev-3)' }}
     >
@@ -108,7 +109,12 @@ export function EventAttendeesCard() {
           <span className="font-semibold text-text-primary tabular-nums">86% full</span>
         </div>
         <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-black/[0.06]">
-          <div className="h-full rounded-full" style={{ width: '86%', background: 'var(--color-warm)' }} />
+          <AnimatedBar
+            className="block h-full rounded-full"
+            size="86%"
+            delay={0.18}
+            style={{ background: 'var(--color-warm)' }}
+          />
         </div>
         <div className="mt-4 grid grid-cols-3 gap-3">
           <Stat icon={Ticket} value="248" label="tickets sold" />
@@ -141,6 +147,6 @@ export function EventAttendeesCard() {
           <span className="font-semibold text-text-primary">Blast sent</span> — 3,200 reached · 31% opened
         </p>
       </div>
-    </div>
+    </ChartEntrance>
   )
 }

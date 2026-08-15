@@ -168,10 +168,13 @@ export function GlassNav() {
             className="inline-flex shrink-0 items-center gap-2 rounded-md px-0.5 transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring"
           >
             {surface === 'organiser' ? (
+              // The square source canvas is 2000px, while its visible lockup is
+              // only 1387px wide. 1.44x makes that visible width match the
+              // Explorer wordmark without changing the load-bearing 80px flex box.
               <img
                 src="/brand/mingla-business-logo.png"
                 alt="Mingla Host"
-                className="h-20 w-20 select-none"
+                className="h-20 w-20 scale-[1.44] select-none"
                 draggable={false}
               />
             ) : (

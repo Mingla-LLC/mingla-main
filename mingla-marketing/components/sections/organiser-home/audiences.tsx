@@ -1,216 +1,197 @@
 'use client'
-import { ArrowRight } from 'lucide-react'
-import { cn } from '@/lib/cn'
-import { Reveal } from '@/components/ui/reveal'
-import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 
-// ORCH-1010 — "Built for". The FULL experience economy across 6 image cards that
-// drift slowly to the right (marquee), with a pin-dot chip cloud of business
-// types around the heading. Make the owner say "that's me".
-//
-// Photos: Unsplash (free license) — hotlinked CDN, verified to load. Swap freely.
+import { Reveal } from '@/components/ui/reveal'
 
 interface Audience {
   eyebrow: string
+  shortEyebrow: string
   title: string
   body: string
-  cta: string
   image: string
+  capabilities: readonly string[]
+  placement: string
+  shape: 'tall' | 'wide' | 'compact'
 }
 
 const IMG = (id: string): string =>
-  `https://images.unsplash.com/photo-${id}?w=1100&q=70&auto=format&fit=crop`
+  `https://images.unsplash.com/photo-${id}?w=1400&q=78&auto=format&fit=crop`
 
 const AUDIENCES: Audience[] = [
   {
+    eyebrow: 'Venues & activity spaces',
+    title: 'be the plan, not the afterthought.',
+    body: 'Shape your space, packages, and group moments into plans people actively choose.',
+    image: IMG('1492684223066-81342ee5ff30'),
+    capabilities: ['Packages', 'Bookings', 'People'],
+    shortEyebrow: 'Venues',
+    placement: 'md:col-start-1 md:row-start-1 md:row-span-2',
+    shape: 'tall',
+  },
+  {
     eyebrow: 'Restaurants & cafés',
+    shortEyebrow: 'Dining',
     title: 'make your menu the reason.',
-    body: 'The handmade pasta. The patio at golden hour. The cocktail only your bartender can make. Mingla turns your menu, your room, and your best nights into something people book a table for.',
-    cta: 'Fill more tables',
+    body: 'Turn your menu, your room, and your best nights into plans people can discover and book.',
     image: IMG('1517248135467-4c7edcad34c4'),
+    capabilities: ['Pages', 'Reservations', 'AI reach'],
+    placement: 'md:col-start-2 md:col-span-2 md:row-start-1',
+    shape: 'wide',
   },
   {
     eyebrow: 'Bars, clubs & nightlife',
+    shortEyebrow: 'Nightlife',
     title: 'give people a night they brag about.',
-    body: "The DJ. The sound. The room when it's full. The thing everyone wants to be in. Mingla turns your energy into a crowd that shows up — and comes back.",
-    cta: 'Build the crowd',
+    body: 'Package your energy into the kind of night the right crowd wants to join — and return to.',
     image: IMG('1545128485-c400e7702796'),
-  },
-  {
-    eyebrow: 'Venues & activity spaces',
-    title: 'be the plan, not the afterthought.',
-    body: 'A date. A birthday. A team night. A weekend ritual. Mingla shapes your space and packages into plans people actively choose — and pay for up front.',
-    cta: 'Sell more group plans',
-    image: IMG('1492684223066-81342ee5ff30'),
+    capabilities: ['Events', 'Guest lists', 'Blasts'],
+    placement: 'md:col-start-4 md:row-start-1',
+    shape: 'compact',
   },
   {
     eyebrow: 'Events & promoters',
+    shortEyebrow: 'Events',
     title: 'sell the night, not just the ticket.',
-    body: 'A flyer says what’s happening. Mingla says why it matters — the lineup, the crowd, the culture, the timing — and lets people buy in seconds.',
-    cta: 'Sell out your event',
+    body: 'Show people why the lineup, crowd, culture, and timing make your event worth joining.',
     image: IMG('1459749411175-04bf5292ceea'),
+    capabilities: ['Tickets', 'QR entry', 'Campaigns'],
+    placement: 'md:col-start-2 md:row-start-2',
+    shape: 'compact',
   },
   {
     eyebrow: 'Experiences, trips & adventures',
+    shortEyebrow: 'Experiences',
     title: 'turn a thing-to-do into a must-do.',
-    body: 'Cooking classes, horseback rides, tours, day trips, tastings, outdoor adventures. Mingla helps experience and trip organizers turn “that sounds fun” into a booking — matched to the people already looking for exactly this.',
-    cta: 'Book out your experience',
+    body: 'Transform tours, classes, tastings, and adventures into experiences people can find and book.',
     image: IMG('1556910103-1c02745aae4d'),
+    capabilities: ['Itineraries', 'Packages', 'Payments'],
+    placement: 'md:col-start-3 md:row-start-2',
+    shape: 'compact',
   },
   {
     eyebrow: 'Pop-ups & independent creators',
+    shortEyebrow: 'Pop-ups',
     title: 'land fast. land hard.',
-    body: 'A pop-up has one shot. Mingla helps chefs, artists, makers, and curators turn concept, scarcity, and timing into something people feel they cannot miss.',
-    cta: 'Launch your pop-up',
+    body: 'Turn concept, scarcity, and timing into a launch people understand before the moment passes.',
     image: IMG('1555396273-367ea4eb4db5'),
+    capabilities: ['Launch pages', 'Tickets', 'Reach'],
+    placement: 'md:col-start-4 md:row-start-2',
+    shape: 'compact',
   },
 ]
 
-// Pin-dot chips — business types that could use Mingla, scattered around the
-// heading like map pins.
-// Business-type pins, scattered ABOVE and BELOW the heading only (never over the
-// text) so nothing overlaps the headline on mobile or desktop.
-const CHIPS: { label: string; s: React.CSSProperties }[] = [
-  // above
-  { label: 'Restaurant', s: { top: '-20%', left: '-2%' } },
-  { label: 'Taco truck', s: { top: '-40%', left: '22%' } },
-  { label: 'Pottery studio', s: { top: '-22%', left: '48%' } },
-  { label: 'Trip planners', s: { top: '-42%', left: '68%' } },
-  { label: 'Rooftop bar', s: { top: '-26%', right: '-3%' } },
-  // below
-  { label: 'Sunday market', s: { top: '116%', left: '-2%' } },
-  { label: 'Comedy night', s: { top: '140%', left: '22%' } },
-  { label: 'Wine tasting', s: { top: '120%', left: '48%' } },
-  { label: 'Supper club', s: { top: '142%', left: '66%' } },
-  { label: 'Food festival', s: { top: '122%', right: '-3%' } },
-]
+function AudienceCard({ audience }: { audience: Audience }) {
+  const isTall = audience.shape === 'tall'
+  const isWide = audience.shape === 'wide'
 
-function Pin({
-  label,
-  index,
-  reduced,
-  className,
-  style,
-}: {
-  label: string
-  index: number
-  reduced: boolean
-  className?: string
-  style?: React.CSSProperties
-}) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-medium text-text-secondary shadow-sm ring-1 ring-black/[0.06] backdrop-blur',
-        className,
-      )}
-      style={{
-        ...style,
-        animation: reduced ? undefined : `mingla-chip-pulse 4.5s ease-in-out ${index * 0.4}s infinite`,
-      }}
-    >
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'var(--color-success)' }} />
-      {label}
-    </span>
-  )
-}
-
-function AudienceCard({ a }: { a: Audience }) {
   return (
     <article
-      className="group relative h-[430px] w-[300px] shrink-0 overflow-hidden rounded-2xl sm:w-[340px]"
-      style={{ boxShadow: 'var(--elev-2)' }}
+      aria-label={audience.eyebrow}
+      className="group relative h-full min-h-[390px] w-full overflow-hidden rounded-[20px] border border-black/[0.06] bg-[#111114] shadow-[var(--elev-2)] motion-safe:transition-[transform,box-shadow] motion-safe:duration-300 motion-safe:ease-out motion-safe:hover:-translate-y-1.5 motion-safe:hover:shadow-[0_24px_58px_rgba(48,22,6,0.2)] md:min-h-0 lg:rounded-[24px] xl:rounded-[28px]"
     >
+      {/* The photograph is atmospheric; the category and value remain real text. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={a.image}
+        src={audience.image}
         alt=""
         loading="lazy"
         draggable={false}
-        className="absolute inset-0 h-full w-full select-none object-cover transition-transform duration-500 ease-out-quart group-hover:scale-105"
+        className="absolute inset-0 h-full w-full select-none object-cover motion-safe:transition-transform motion-safe:duration-500 motion-safe:ease-out-quart motion-safe:group-hover:scale-[1.045]"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 rounded-[20px] ring-1 ring-inset ring-warm/0 motion-safe:transition-[box-shadow] motion-safe:duration-300 motion-safe:group-hover:ring-warm/55 lg:rounded-[24px] xl:rounded-[28px]"
       />
       <div
         aria-hidden="true"
         className="absolute inset-0"
         style={{
           background:
-            'linear-gradient(to top, rgba(8,9,12,0.97) 0%, rgba(8,9,12,0.9) 28%, rgba(8,9,12,0.5) 54%, rgba(8,9,12,0) 100%)',
+            'linear-gradient(180deg, rgba(8,9,12,0.08) 0%, rgba(8,9,12,0.18) 42%, rgba(8,9,12,0.82) 100%)',
         }}
       />
-      {/* Category — orange chip, white text, top of the card. */}
-      <span
-        className="absolute left-5 top-5 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white shadow-sm"
-        style={{ background: 'var(--color-warm)' }}
-      >
-        {a.eyebrow}
+
+      <span className="absolute left-5 top-5 inline-flex rounded-full bg-warm px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-sm md:hidden xl:inline-flex">
+        {audience.eyebrow}
       </span>
-      <div className="absolute inset-x-0 bottom-0 flex flex-col justify-end p-6">
-        <h3 className="font-display text-2xl leading-tight tracking-[-0.005em] text-white">
-          {a.title}
+      <span className="absolute left-3 top-3 hidden whitespace-nowrap rounded-full bg-warm px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.1em] text-white shadow-sm md:inline-flex lg:left-4 lg:top-4 lg:px-2.5 lg:py-1.5 lg:text-[9px] lg:tracking-[0.12em] xl:hidden">
+        {audience.shortEyebrow}
+      </span>
+
+      <div className="absolute inset-x-2 bottom-2 rounded-[16px] border border-white/15 bg-[#0c0e12]/72 p-3 shadow-[0_12px_36px_rgba(0,0,0,0.28)] backdrop-blur-xl motion-safe:transition-[transform,background-color,border-color] motion-safe:duration-300 motion-safe:ease-out motion-safe:group-hover:-translate-y-1 motion-safe:group-hover:border-white/25 motion-safe:group-hover:bg-[#0c0e12]/82 md:inset-x-2.5 md:bottom-2.5 lg:inset-x-3 lg:bottom-3 lg:rounded-[18px] lg:p-4 xl:inset-x-4 xl:bottom-4 xl:rounded-[22px] xl:p-5">
+        <h3
+          className={
+            isTall
+              ? 'max-w-[22ch] font-display text-2xl leading-[1.06] tracking-[-0.01em] text-white [overflow-wrap:anywhere] md:text-[17px] md:leading-[1.04] lg:text-xl xl:text-[1.75rem] xl:leading-[1.08]'
+              : isWide
+                ? 'max-w-[22ch] font-display text-2xl leading-[1.06] tracking-[-0.01em] text-white md:text-xl lg:text-2xl xl:text-[1.75rem] xl:leading-[1.08]'
+                : 'max-w-[22ch] font-display text-xl leading-[1.06] tracking-[-0.01em] text-white [overflow-wrap:anywhere] md:text-[15px] md:leading-[1.02] lg:text-[17px] xl:text-xl xl:leading-[1.08]'
+          }
+        >
+          {audience.title}
         </h3>
-        <p className="mt-2.5 line-clamp-2 text-sm leading-snug text-white/80">{a.body}</p>
-        <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-white">
-          {a.cta}
-          <ArrowRight
-            className="h-4 w-4 transition-transform duration-200 ease-out-quart group-hover:translate-x-1"
-            aria-hidden="true"
-          />
-        </span>
+        <p
+          className={`mt-2.5 max-w-[52ch] text-[13px] leading-relaxed text-white/78 ${isTall ? 'md:text-[11px] md:leading-[1.55] lg:text-xs xl:text-sm xl:leading-relaxed' : isWide ? 'md:text-xs lg:text-[13px] xl:text-sm' : 'md:hidden xl:block'}`}
+        >
+          {audience.body}
+        </p>
+        <div
+          className={
+            isTall
+              ? 'mt-4 flex flex-wrap gap-1.5 md:hidden xl:flex xl:gap-2'
+              : isWide
+                ? 'mt-4 flex flex-wrap gap-1.5 xl:mt-5 xl:gap-2'
+                : 'mt-3 flex flex-wrap gap-1.5 md:hidden xl:flex'
+          }
+          aria-label={`${audience.eyebrow} capabilities`}
+        >
+          {audience.capabilities.map((capability) => (
+            <span
+              key={capability}
+              className="rounded-full border border-white/12 bg-white/[0.08] px-2.5 py-1 text-[10px] font-semibold text-white/72"
+            >
+              {capability}
+            </span>
+          ))}
+        </div>
       </div>
     </article>
   )
 }
 
 export function OrganiserAudiences() {
-  const reduced = useMinglaReducedMotion()
-  const loop = [...AUDIENCES, ...AUDIENCES]
-
   return (
-    <section className="seam-top relative overflow-hidden pb-24 pt-24 md:pb-32 lg:pt-48 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))]">
-      {/* Heading + pin-dot chip cloud */}
-      <div className="relative mx-auto max-w-3xl px-6 text-center md:px-10">
-        {/* Desktop: scattered pin cloud around the heading. */}
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 hidden lg:block">
-          {CHIPS.map((c, i) => (
-            <Pin key={c.label} label={c.label} index={i} reduced={reduced} className="absolute" style={c.s} />
-          ))}
+    <section className="seam-top relative overflow-hidden px-6 py-24 md:px-10 md:py-32 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]">
+      <div className="mx-auto max-w-6xl">
+        <div className="grid items-end gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)] lg:gap-16">
+          <Reveal>
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-warm-ink">
+              Built for how you host
+            </span>
+            <h2 className="mt-4 max-w-3xl font-display text-4xl leading-[1.05] tracking-[-0.02em] text-text-primary md:text-6xl">
+              whatever you create,{' '}
+              <span className="text-warm-ink">Mingla makes it the plan.</span>
+            </h2>
+          </Reveal>
+          <Reveal delay={0.08}>
+            <p className="max-w-xl text-base leading-relaxed text-text-secondary md:text-lg lg:pb-1">
+              Six ways to host. One connected system for creating, reaching the right people,
+              selling, and growing.
+            </p>
+          </Reveal>
         </div>
 
-        {/* Mobile: clean wrapped rows above + below the heading (no overlap). */}
-        <div aria-hidden="true" className="mb-8 flex flex-wrap justify-center gap-2 lg:hidden">
-          {CHIPS.slice(0, 5).map((c, i) => (
-            <Pin key={c.label} label={c.label} index={i} reduced={reduced} />
-          ))}
-        </div>
-
-        <Reveal>
-          <h2 className="mx-auto max-w-2xl font-display text-4xl leading-[1.05] tracking-[-0.02em] text-text-primary md:text-6xl">
-            whatever you create,{' '}
-            <span className="text-warm-ink">Mingla makes it the plan.</span>
-          </h2>
-        </Reveal>
-
-        <div aria-hidden="true" className="mt-8 flex flex-wrap justify-center gap-2 lg:hidden">
-          {CHIPS.slice(5).map((c, i) => (
-            <Pin key={c.label} label={c.label} index={i + 5} reduced={reduced} />
-          ))}
-        </div>
-      </div>
-
-      {/* Right-drifting marquee of image cards, edge-faded. Generous gap below
-          the heading so the pin chips don't crowd the cards. */}
-      <div
-        className="group relative mt-16 [mask-image:linear-gradient(90deg,transparent,#000_7%,#000_93%,transparent)] lg:mt-44"
-        aria-label="Business types Mingla is built for"
-      >
         <div
-          className="flex w-max gap-5 group-hover:[animation-play-state:paused]"
-          style={{ animation: reduced ? undefined : 'mingla-marquee-x 60s linear infinite' }}
+          className="mt-12 grid gap-5 md:mt-16 md:grid-cols-4 md:grid-rows-[repeat(2,280px)] md:gap-3 lg:grid-rows-[repeat(2,300px)] lg:gap-4 xl:grid-rows-[repeat(2,320px)] xl:gap-5"
+          aria-label="Host types Mingla is built for"
         >
-          {loop.map((a, i) => (
-            <div key={`${a.eyebrow}-${i}`} aria-hidden={i >= AUDIENCES.length}>
-              <AudienceCard a={a} />
-            </div>
+          {AUDIENCES.map((audience, index) => (
+            <Reveal
+              key={audience.eyebrow}
+              delay={Math.min(index * 0.06, 0.3)}
+              className={`min-w-0 ${audience.placement}`}
+            >
+              <AudienceCard audience={audience} />
+            </Reveal>
           ))}
         </div>
       </div>

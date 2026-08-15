@@ -1,8 +1,7 @@
 'use client'
-import { motion } from 'framer-motion'
 import { TrendingUp } from 'lucide-react'
-import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { cn } from '@/lib/cn'
+import { AnimatedBar, ChartEntrance } from '@/components/ui/chart-entrance'
 
 // ORCH-1010 — adapted from 21st.dev StatisticCard5 (reui) balance card into an
 // "Earnings" card. The source ships as a zinc-900 dark card with a big balance,
@@ -29,10 +28,9 @@ const SEGMENTS: Segment[] = [
 ]
 
 export function EarningsCard() {
-  const reduced = useMinglaReducedMotion()
-
   return (
-    <div
+    <ChartEntrance
+      lightTheme
       className="font-dashboard w-full overflow-hidden rounded-2xl bg-white p-6 ring-1 ring-[rgba(14,14,16,0.05)] md:p-7"
       style={{ boxShadow: 'var(--elev-3)' }}
     >
@@ -61,13 +59,12 @@ export function EarningsCard() {
       {/* Revenue-by-category segmented bar */}
       <div className="mt-7 flex h-2.5 w-full overflow-hidden rounded-full bg-[rgba(14,14,16,0.05)]">
         {SEGMENTS.map((seg, i) => (
-          <motion.div
+          <AnimatedBar
             key={seg.code}
             className={cn('h-full', i > 0 && 'border-l-2 border-white')}
-            style={reduced ? { background: seg.color, width: `${seg.pct}%` } : { background: seg.color }}
-            initial={reduced ? false : { width: 0 }}
-            animate={reduced ? false : { width: `${seg.pct}%` }}
-            transition={reduced ? undefined : { duration: 0.7, delay: 0.1 + i * 0.08, ease: 'easeOut' }}
+            size={`${seg.pct}%`}
+            delay={0.12 + i * 0.08}
+            style={{ background: seg.color }}
           />
         ))}
       </div>
@@ -90,6 +87,6 @@ export function EarningsCard() {
           </div>
         ))}
       </div>
-    </div>
+    </ChartEntrance>
   )
 }
