@@ -215,11 +215,11 @@ export function GrowthOsDashboard() {
   return (
     <ChartEntrance
       lightTheme
-      className="font-dashboard mx-auto w-full max-w-xl overflow-hidden rounded-2xl bg-white p-6 text-left ring-1 ring-[rgba(14,14,16,0.05)] md:p-7"
+      className="font-dashboard mx-auto w-full max-w-xl overflow-hidden rounded-2xl bg-white p-4 text-left ring-1 ring-[rgba(14,14,16,0.05)] sm:p-6 md:p-7"
       style={{ boxShadow: 'var(--elev-3)' }}
     >
       {/* View switcher */}
-      <div role="tablist" aria-label="Capability" className="flex flex-nowrap gap-1.5 sm:gap-2">
+      <div role="tablist" aria-label="Capability" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {VIEWS.map((v, i) => {
           const Icon = v.icon
           const isActive = i === active
@@ -230,7 +230,7 @@ export function GrowthOsDashboard() {
               aria-selected={isActive}
               onClick={() => setActive(i)}
               className={cn(
-                'inline-flex flex-1 items-center justify-center gap-1.5 rounded-full px-2 py-2 text-[11px] font-semibold transition-colors duration-200 focus-ring sm:text-xs',
+                'inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-full px-2 py-2 text-xs font-semibold transition-colors duration-200 focus-ring',
                 isActive
                   ? 'bg-warm text-white'
                   : 'bg-black/[0.04] text-text-secondary hover:bg-black/[0.07]',
