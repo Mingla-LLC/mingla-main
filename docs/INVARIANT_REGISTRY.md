@@ -8579,21 +8579,21 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 ---
 
-## DRAFT — issue #2075 (bounded native force-update policy)
+## ACTIVE — issue #2075 (bounded native force-update policy; merged, deployed, and production-verified 2026-08-14)
 
-### I-APP-VERSION-POLICY-SINGLE-OWNER (DRAFT)
+### I-APP-VERSION-POLICY-SINGLE-OWNER (ACTIVE)
 
 - **Rule:** Native support floors are owned only by `app_version_policies` and served only through `app-version-policy`; client constants and source marketing versions are never support-policy owners.
 - **Enforcement:** Issue #2075 migration constraints and update trigger, the public `app-version-policy` Edge function, each native app's single version-identity/policy coordinator, and `.github/scripts/strict-grep/issue-2075-force-update.mjs` wired through the dedicated workflow.
 - **Regression:** Consumer and Host policy suites cover exact-schema validation, numeric SemVer, sticky cached-required behavior, lowered-floor recovery, malformed cache, cache-write failure, timeout generation safety, and single-flight; the strict gate proves both roots mount the native-only full-screen gate and fails on a simulated root-gate revert.
-- **Established:** DRAFT at issue #2075 implementation 2026-08-14; activate only after independent tester PASS, all-green merge, migration/Edge rollout verification, and native runtime verification at CLOSE.
+- **Established:** ACTIVE at issue #2075 CLOSE 2026-08-14 after independent native runtime PASS, all-green PR #2078 merge, production migration and five-function Edge rollout, and live four-policy verification at minimum `1.1.4` in `observe` mode.
 
-### I-APP-VERSION-EDGE-ENFORCEMENT-BOUNDED (DRAFT)
+### I-APP-VERSION-EDGE-ENFORCEMENT-BOUNDED (ACTIVE)
 
 - **Rule:** Only `brand-stripe-onboard`, `brand-paystack-onboard`, `brand-stripe-account-session`, and `brand-stripe-tax-account-session` evaluate the shared Business-native version policy before side effects; buyer checkout is outside this boundary, and only explicitly trusted Mingla browser origins are exempt.
 - **Enforcement:** The shared #2075 evaluator owns observe/enforce semantics and structured HTTP 426 responses; each named function invokes it before authentication/body parsing or provider side effects, and all required native headers remain in CORS allow-lists.
 - **Regression:** Deno tests cover numeric comparison, trusted-origin exemption, observe permit, and enforce rejection; the issue workflow type-checks the public endpoint and all four bounded functions, while the strict gate rejects missing entrypoint enforcement, permissive arbitrary-origin bypass, or lost CORS headers.
-- **Established:** DRAFT at issue #2075 implementation 2026-08-14; activate only after independent tester PASS, all-green merge, migration/Edge rollout verification, and native runtime verification at CLOSE.
+- **Established:** ACTIVE at issue #2075 CLOSE 2026-08-14 after independent adversarial and runtime PASS, all-green PR #2078 merge, exact production deployment of the bounded functions, and live observe-mode probes confirming no current client is blocked.
 
 ---
 

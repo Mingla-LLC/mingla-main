@@ -18,6 +18,8 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-14 — Mingla and Host now fetch one backend-owned native support floor, block unsupported installs behind the same full-screen update experience, open the correct app store, retain required state offline and across foreground races, and protect four bounded Host onboarding/session APIs; production is deployed safely at minimum 1.1.4 in observe mode. (#2075, PR #2078)
+- 2026-08-14 — Business CI no longer requires every unrelated pull request to modify the Experience creator merely to satisfy a historical turnout test; the durable provider behavior remains protected by an independent branch-neutral regression guard. (#2080, PR #2082)
 - 2026-08-14 — Host web welcome video and its fallback poster now cover the full browser viewport at every desktop size instead of stopping at the media's intrinsic 1280×720 frame. (#2073, PR #2076)
 - 2026-08-14 — Host web now reveals its already-playing welcome video as soon as accessibility and lifecycle checks allow it, instead of leaving the moving background permanently hidden behind the poster. (#2071, PR #2072)
 - 2026-08-14 — Mingla Host now replaces the old Business product identity across app, web, splash, links and social destinations while preserving payment, advertising, attribution, notification and native identifiers; the operator web authority moves to host.usemingla.com with disjoint app-link ownership and a guarded one-host retirement plan. (#2050, PR #2065)
