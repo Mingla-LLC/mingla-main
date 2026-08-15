@@ -77,6 +77,15 @@
 | `all(userId)` | `['notifications', userId]` |
 | `unreadCount(userId)` | `['notifications', 'unread', userId]` |
 
+### venueOrderMetricsKeys (useVenueOrderMetrics.ts)
+
+| Sub-key | Shape |
+|---------|-------|
+| `all` | `['venue-order-metrics']` |
+| `detail(brandId, venueId)` | `['venue-order-metrics', brandId, venueId]` |
+
+**Invalidation rule:** venue-order reads and completeness consumers share the exact `detail` key; broad venue-order refreshes use `venueOrderMetricsKeys.all`.
+
 ### phoneLookupKeys (usePhoneLookup.ts)
 
 | Sub-key | Shape |

@@ -8656,6 +8656,25 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 ---
 
+## DRAFT — issue #1795 (venue order intelligence)
+
+### I-PROPOSED-1795-VENUE-ORDER-METRICS-ONE-TRUTH (DRAFT)
+
+- **Rule:** One venue-exact RPC owns created-at placement, timezone resolution, the zero-filled venue-local calendar, per-currency maps, exact query key, and every order-intelligence calculation. Clients select and format fields but never re-aggregate them.
+- **Enforcement:** `venue_order_metrics_rollup(uuid,uuid)`, `venueOrderMetricsKeys`, the issue #1795 PostgreSQL suite, and Business service/render tests. Activate only after independent PASS and production verification.
+
+### I-PROPOSED-1795-ORDER-MONEY-EXACT-ONCE (DRAFT)
+
+- **Rule:** Tab settlement instruments never count and their children count once. Sales exclude tips, tax, and platform fees; when a partial refund cannot be allocated, the affected currency's money is withheld while exact refund and demand truth remains visible.
+- **Enforcement:** the RPC's eligible-child spine and currency-withholding CTEs plus the issue #1795 implementor and tester PostgreSQL suites. Activate only after independent PASS and production verification.
+
+### I-PROPOSED-1795-MEASURED-COVERS-NO-INFERENCE (DRAFT)
+
+- **Rule:** Tier-A cover spend is distinct-reservation grain across every linked eligible session, with stored party size counted once. Claimed party size, proximity, buyer/contact matching, and cross-currency denominator reuse are forbidden.
+- **Enforcement:** the RPC's reservation-currency aggregation and issue #1795 PostgreSQL fixtures. Activate only after independent PASS and production verification.
+
+---
+
 ## DRAFT — issue #2079 (provider-correct late ticket refunds)
 
 ### I-PROPOSED-2079-LATE-PAID-IDENTITY-NEVER-DROPS (DRAFT)
