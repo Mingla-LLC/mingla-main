@@ -19,11 +19,17 @@ for (const category of [
   assert.match(source, new RegExp(category.replace(/[&]/g, '\\&')))
 }
 
-assert.match(source, /md:grid-cols-4 md:grid-rows-\[repeat\(2,320px\)\]/)
+assert.match(source, /md:grid-cols-4 md:grid-rows-\[repeat\(2,280px\)\]/)
+assert.match(source, /lg:grid-rows-\[repeat\(2,300px\)\]/)
+assert.match(source, /xl:grid-rows-\[repeat\(2,320px\)\]/)
 assert.match(source, /md:row-span-2/)
 assert.match(source, /md:col-span-2/)
 assert.match(source, /rounded-\[28px\]/)
 assert.match(source, /backdrop-blur-xl/)
+assert.match(source, /shape: 'tall' \| 'wide' \| 'compact'/)
+assert.match(source, /md:text-\[17px\].*lg:text-xl.*xl:text-\[1\.75rem\]/)
+assert.match(source, /md:text-\[15px\].*lg:text-\[17px\].*xl:text-xl/)
+assert.match(source, /md:inset-x-2\.5.*lg:inset-x-3.*xl:inset-x-4/)
 assert.match(source, /capabilities/)
 assert.match(source, /Built for how you host/)
 assert.match(source, /Six ways to host\. One connected system/)

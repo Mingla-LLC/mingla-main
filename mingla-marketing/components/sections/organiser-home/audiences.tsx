@@ -10,7 +10,7 @@ interface Audience {
   image: string
   capabilities: readonly string[]
   placement: string
-  emphasis: 'feature' | 'compact'
+  shape: 'tall' | 'wide' | 'compact'
 }
 
 const IMG = (id: string): string =>
@@ -25,7 +25,7 @@ const AUDIENCES: Audience[] = [
     capabilities: ['Packages', 'Bookings', 'People'],
     shortEyebrow: 'Venues',
     placement: 'md:col-start-1 md:row-start-1 md:row-span-2',
-    emphasis: 'feature',
+    shape: 'tall',
   },
   {
     eyebrow: 'Restaurants & cafés',
@@ -35,7 +35,7 @@ const AUDIENCES: Audience[] = [
     image: IMG('1517248135467-4c7edcad34c4'),
     capabilities: ['Pages', 'Reservations', 'AI reach'],
     placement: 'md:col-start-2 md:col-span-2 md:row-start-1',
-    emphasis: 'feature',
+    shape: 'wide',
   },
   {
     eyebrow: 'Bars, clubs & nightlife',
@@ -45,7 +45,7 @@ const AUDIENCES: Audience[] = [
     image: IMG('1545128485-c400e7702796'),
     capabilities: ['Events', 'Guest lists', 'Blasts'],
     placement: 'md:col-start-4 md:row-start-1',
-    emphasis: 'compact',
+    shape: 'compact',
   },
   {
     eyebrow: 'Events & promoters',
@@ -55,7 +55,7 @@ const AUDIENCES: Audience[] = [
     image: IMG('1459749411175-04bf5292ceea'),
     capabilities: ['Tickets', 'QR entry', 'Campaigns'],
     placement: 'md:col-start-2 md:row-start-2',
-    emphasis: 'compact',
+    shape: 'compact',
   },
   {
     eyebrow: 'Experiences, trips & adventures',
@@ -65,7 +65,7 @@ const AUDIENCES: Audience[] = [
     image: IMG('1556910103-1c02745aae4d'),
     capabilities: ['Itineraries', 'Packages', 'Payments'],
     placement: 'md:col-start-3 md:row-start-2',
-    emphasis: 'compact',
+    shape: 'compact',
   },
   {
     eyebrow: 'Pop-ups & independent creators',
@@ -75,17 +75,18 @@ const AUDIENCES: Audience[] = [
     image: IMG('1555396273-367ea4eb4db5'),
     capabilities: ['Launch pages', 'Tickets', 'Reach'],
     placement: 'md:col-start-4 md:row-start-2',
-    emphasis: 'compact',
+    shape: 'compact',
   },
 ]
 
 function AudienceCard({ audience }: { audience: Audience }) {
-  const isFeature = audience.emphasis === 'feature'
+  const isTall = audience.shape === 'tall'
+  const isWide = audience.shape === 'wide'
 
   return (
     <article
       aria-label={audience.eyebrow}
-      className="group relative h-full min-h-[390px] w-full overflow-hidden rounded-[28px] border border-black/[0.06] bg-[#111114] shadow-[var(--elev-2)] motion-safe:transition-[transform,box-shadow] motion-safe:duration-300 motion-safe:ease-out motion-safe:hover:-translate-y-1.5 motion-safe:hover:shadow-[0_24px_58px_rgba(48,22,6,0.2)] md:min-h-0"
+      className="group relative h-full min-h-[390px] w-full overflow-hidden rounded-[20px] border border-black/[0.06] bg-[#111114] shadow-[var(--elev-2)] motion-safe:transition-[transform,box-shadow] motion-safe:duration-300 motion-safe:ease-out motion-safe:hover:-translate-y-1.5 motion-safe:hover:shadow-[0_24px_58px_rgba(48,22,6,0.2)] md:min-h-0 lg:rounded-[24px] xl:rounded-[28px]"
     >
       {/* The photograph is atmospheric; the category and value remain real text. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -98,7 +99,7 @@ function AudienceCard({ audience }: { audience: Audience }) {
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 rounded-[28px] ring-1 ring-inset ring-warm/0 motion-safe:transition-[box-shadow] motion-safe:duration-300 motion-safe:group-hover:ring-warm/55"
+        className="pointer-events-none absolute inset-0 rounded-[20px] ring-1 ring-inset ring-warm/0 motion-safe:transition-[box-shadow] motion-safe:duration-300 motion-safe:group-hover:ring-warm/55 lg:rounded-[24px] xl:rounded-[28px]"
       />
       <div
         aria-hidden="true"
@@ -112,30 +113,34 @@ function AudienceCard({ audience }: { audience: Audience }) {
       <span className="absolute left-5 top-5 inline-flex rounded-full bg-warm px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-sm md:hidden xl:inline-flex">
         {audience.eyebrow}
       </span>
-      <span className="absolute left-4 top-4 hidden rounded-full bg-warm px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-white shadow-sm md:inline-flex xl:hidden">
+      <span className="absolute left-3 top-3 hidden whitespace-nowrap rounded-full bg-warm px-2 py-1 text-[8px] font-semibold uppercase tracking-[0.1em] text-white shadow-sm md:inline-flex lg:left-4 lg:top-4 lg:px-2.5 lg:py-1.5 lg:text-[9px] lg:tracking-[0.12em] xl:hidden">
         {audience.shortEyebrow}
       </span>
 
-      <div className="absolute inset-x-3 bottom-3 rounded-[22px] border border-white/15 bg-[#0c0e12]/72 p-4 shadow-[0_12px_36px_rgba(0,0,0,0.28)] backdrop-blur-xl motion-safe:transition-[transform,background-color,border-color] motion-safe:duration-300 motion-safe:ease-out motion-safe:group-hover:-translate-y-1 motion-safe:group-hover:border-white/25 motion-safe:group-hover:bg-[#0c0e12]/82 md:inset-x-4 md:bottom-4 md:p-5">
+      <div className="absolute inset-x-2 bottom-2 rounded-[16px] border border-white/15 bg-[#0c0e12]/72 p-3 shadow-[0_12px_36px_rgba(0,0,0,0.28)] backdrop-blur-xl motion-safe:transition-[transform,background-color,border-color] motion-safe:duration-300 motion-safe:ease-out motion-safe:group-hover:-translate-y-1 motion-safe:group-hover:border-white/25 motion-safe:group-hover:bg-[#0c0e12]/82 md:inset-x-2.5 md:bottom-2.5 lg:inset-x-3 lg:bottom-3 lg:rounded-[18px] lg:p-4 xl:inset-x-4 xl:bottom-4 xl:rounded-[22px] xl:p-5">
         <h3
           className={
-            isFeature
-              ? 'max-w-[22ch] font-display text-2xl leading-[1.08] tracking-[-0.01em] text-white md:text-[1.75rem]'
-              : 'max-w-[22ch] font-display text-xl leading-[1.08] tracking-[-0.01em] text-white'
+            isTall
+              ? 'max-w-[22ch] font-display text-2xl leading-[1.06] tracking-[-0.01em] text-white [overflow-wrap:anywhere] md:text-[17px] md:leading-[1.04] lg:text-xl xl:text-[1.75rem] xl:leading-[1.08]'
+              : isWide
+                ? 'max-w-[22ch] font-display text-2xl leading-[1.06] tracking-[-0.01em] text-white md:text-xl lg:text-2xl xl:text-[1.75rem] xl:leading-[1.08]'
+                : 'max-w-[22ch] font-display text-xl leading-[1.06] tracking-[-0.01em] text-white [overflow-wrap:anywhere] md:text-[15px] md:leading-[1.02] lg:text-[17px] xl:text-xl xl:leading-[1.08]'
           }
         >
           {audience.title}
         </h3>
         <p
-          className={`mt-2.5 max-w-[52ch] text-[13px] leading-relaxed text-white/78 md:text-sm ${isFeature ? '' : 'md:hidden xl:block'}`}
+          className={`mt-2.5 max-w-[52ch] text-[13px] leading-relaxed text-white/78 ${isTall ? 'md:text-[11px] md:leading-[1.55] lg:text-xs xl:text-sm xl:leading-relaxed' : isWide ? 'md:text-xs lg:text-[13px] xl:text-sm' : 'md:hidden xl:block'}`}
         >
           {audience.body}
         </p>
         <div
           className={
-            isFeature
-              ? 'mt-5 flex flex-wrap gap-2'
-              : 'mt-3 flex flex-wrap gap-1.5 md:hidden xl:flex'
+            isTall
+              ? 'mt-4 flex flex-wrap gap-1.5 md:hidden xl:flex xl:gap-2'
+              : isWide
+                ? 'mt-4 flex flex-wrap gap-1.5 xl:mt-5 xl:gap-2'
+                : 'mt-3 flex flex-wrap gap-1.5 md:hidden xl:flex'
           }
           aria-label={`${audience.eyebrow} capabilities`}
         >
@@ -176,7 +181,7 @@ export function OrganiserAudiences() {
         </div>
 
         <div
-          className="mt-12 grid gap-5 md:mt-16 md:grid-cols-4 md:grid-rows-[repeat(2,320px)]"
+          className="mt-12 grid gap-5 md:mt-16 md:grid-cols-4 md:grid-rows-[repeat(2,280px)] md:gap-3 lg:grid-rows-[repeat(2,300px)] lg:gap-4 xl:grid-rows-[repeat(2,320px)] xl:gap-5"
           aria-label="Host types Mingla is built for"
         >
           {AUDIENCES.map((audience, index) => (
