@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 536,
-  "selfTestWiredFloor": 340,
+  "expectedStrictGrepMjsFiles": 537,
+  "selfTestWiredFloor": 341,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -25,6 +25,20 @@
     "scripts/ota"
   ],
   "gates": [
+    {
+      "script": ".github/scripts/strict-grep/issue-2084-credential-output-safety.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-2084-credential-output-safety.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "credential-output-safety"
+      ]
+    },
     {
       "script": ".github/scripts/strict-grep/issue-2079-paystack-late-refund-identity.mjs",
       "kind": "file",
