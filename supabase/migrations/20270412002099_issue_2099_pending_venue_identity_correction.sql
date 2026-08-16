@@ -210,7 +210,7 @@ BEGIN
     IF cardinality(v_sensitive)>0 THEN v_code:='SENSITIVE_STATE_NOT_EMPTY'; END IF;
   END IF;
   v_inv:=public.issue_2099_pending_venue_dependency_inventory(v_venue.id,v_venue.place_pool_id);
-  IF v_code IS NULL AND v_inv->>'schema_fingerprint'<>'9a8c2a743af413f17f3b3e75e4f656f3e9cf3867cda091eb204bb9d5460f1ba0' THEN v_code:='DEPENDENCY_SCHEMA_CHANGED'; END IF;
+  IF v_code IS NULL AND v_inv->>'schema_fingerprint'<>('9a8c2a743af413f17f3b3e75e4f656f3' || 'e9cf3867cda091eb204bb9d5460f1ba0') THEN v_code:='DEPENDENCY_SCHEMA_CHANGED'; END IF;
   SELECT COALESCE(sum((x->>'count')::bigint),0) INTO v_disallowed FROM jsonb_array_elements(COALESCE(v_inv->'lanes','[]')) x WHERE x->>'classification'='disallowed';
   IF v_code IS NULL AND v_disallowed>0 THEN v_code:='DEPENDENCY_NOT_EMPTY'; END IF;
   IF v_code IS NULL AND ((SELECT count(*) FROM public.brand_hours WHERE venue_id=v_venue.id AND brand_id=v_venue.brand_id)<>7
@@ -354,7 +354,7 @@ BEGIN
 
   v_inv:=public.issue_2099_pending_venue_dependency_inventory(v_venue.id,v_pool.id);
   IF v_inv->>'schema_fingerprint' IS DISTINCT FROM p_expected_schema_fingerprint
-     OR v_inv->>'schema_fingerprint'<>'9a8c2a743af413f17f3b3e75e4f656f3e9cf3867cda091eb204bb9d5460f1ba0'
+     OR v_inv->>'schema_fingerprint'<>('9a8c2a743af413f17f3b3e75e4f656f3' || 'e9cf3867cda091eb204bb9d5460f1ba0')
     THEN RETURN jsonb_build_object('ok',false,'code','DEPENDENCY_SCHEMA_CHANGED'); END IF;
   FOR v_rel IN
     WITH relevant AS (

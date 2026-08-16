@@ -15,15 +15,14 @@ import { useToast } from "../context/ToastContext";
 import { logAdminAction } from "../lib/auditLog";
 import { resolveClaimDisplayPhone, formatPhoneHref } from "../lib/claimsPhone";
 import { ClaimRow } from "../components/claims/ClaimRow";
+import { PendingVenueIdentityCorrectionPanel } from "../components/claims/PendingVenueIdentityCorrectionPanel";
 import {
   addClaimFeedback,
-  correctPendingVenueIdentity,
   getClaimReviewBundle,
   groupClaimsByGooglePlaceId,
   listPendingClaims,
   listRejectedClaims,
   listVerifiedClaims,
-  previewPendingVenueIdentityCorrection,
   reviewClaim,
   tweakClaimFields,
 } from "../services/adminClaimsService";
@@ -96,14 +95,6 @@ export function ClaimsPage() {
   const [tweakAddress, setTweakAddress] = useState("");
   const [tweakCategory, setTweakCategory] = useState("");
   const [tweakPriceLevel, setTweakPriceLevel] = useState("");
-  const [identityPreview, setIdentityPreview] = useState(null);
-  const [identityChecking, setIdentityChecking] = useState(false);
-  const [identitySubmitting, setIdentitySubmitting] = useState(false);
-  const [identityName, setIdentityName] = useState("");
-  const [identitySlug, setIdentitySlug] = useState("");
-  const [identityCategory, setIdentityCategory] = useState("play");
-  const [identityReason, setIdentityReason] = useState("");
-  const [identityStatus, setIdentityStatus] = useState("");
   // ORCH-1066 — active-signal catalog (the 16 dials), fetched once + cached, so
   // the tuner can show a row for every signal even when the place has 0 scores.
   const [activeSignals, setActiveSignals] = useState([]);
@@ -214,6 +205,16 @@ export function ClaimsPage() {
       setHoursLoading(false);
     }
   };
+
+  // #2099 — the panel's single success reload: exactly one detail reload and one
+  // list reload (Amendment 5 §E2). Nothing here runs on a stale/failed attempt.
+  const reloadAfterIdentityCorrection = useCallback(async () => {
+    const venueId = detail?.id;
+    await load();
+    const refreshed = (await listPendingClaims()).find((row) => row.id === venueId);
+    if (refreshed) await openDetail(refreshed);
+    else closeDetail();
+  }, [detail, load]);
 
   const closeDetail = () => {
     setDetail(null);
@@ -388,65 +389,6 @@ export function ClaimsPage() {
     }
   };
 
-  const checkIdentityCorrection = async () => {
-    if (!detail) return;
-    setIdentityChecking(true);
-    setIdentityStatus("Checking whether this venue can be corrected.");
-    try {
-      const preview = await previewPendingVenueIdentityCorrection(detail.id);
-      setIdentityPreview(preview);
-      if (preview?.eligible) {
-        setIdentityName((value) => value || preview.current.name);
-        setIdentitySlug((value) => value || preview.current.slug);
-        setIdentityCategory(preview.current.category);
-        setIdentityStatus("This unused pending venue can be corrected.");
-      } else {
-        setIdentityStatus(`This venue cannot be corrected (${preview?.code ?? "UNKNOWN"}).`);
-      }
-    } catch {
-      setIdentityPreview(null);
-      setIdentityStatus("Couldn't check this venue. Retry when the connection is available.");
-    } finally {
-      setIdentityChecking(false);
-    }
-  };
-
-  const submitIdentityCorrection = async () => {
-    if (!detail || !identityPreview?.eligible || identitySubmitting) return;
-    setIdentitySubmitting(true);
-    setIdentityStatus("Correcting the pending venue identity.");
-    try {
-      const requestId = globalThis.crypto?.randomUUID?.()
-        ?? `00000000-0000-4000-8000-${String(Date.now()).padStart(12, "0").slice(-12)}`;
-      const result = await correctPendingVenueIdentity({
-        preview: identityPreview,
-        name: identityName,
-        slug: identitySlug,
-        category: identityCategory,
-        reason: identityReason,
-        requestId,
-      });
-      if (!result?.ok) {
-        setIdentityStatus(
-          result?.code === "STALE_VERSION"
-            ? "The venue changed. Review the refreshed values and confirm again."
-            : `Couldn't correct this venue (${result?.code ?? "UNKNOWN"}).`,
-        );
-        if (result?.code === "STALE_VERSION") await checkIdentityCorrection();
-        return;
-      }
-      addToast({ variant: "info", title: "Pending venue identity corrected" });
-      const venueId = detail.id;
-      await load();
-      const refreshed = (await listPendingClaims()).find((row) => row.id === venueId);
-      if (refreshed) await openDetail(refreshed);
-      else closeDetail();
-    } catch {
-      setIdentityStatus("Couldn't correct this venue. Your entries are preserved; retry when you're online.");
-    } finally {
-      setIdentitySubmitting(false);
-    }
-  };
 
   // ORCH-1066 — score editing moved to <ScoreTunerPanel> (place-keyed set/pin,
   // works from zero, with live preview + projected rank). The brand-keyed
@@ -853,50 +795,13 @@ export function ClaimsPage() {
                     Admin adjustments
                   </div>
 
-                  <div className="space-y-3 rounded-lg border border-white/10 bg-black/10 p-3">
-                    <div className="text-xs font-semibold text-[var(--color-text-primary)]">
-                      Correct venue identity
-                    </div>
-                    <p className="text-xs text-[var(--color-text-secondary)]">
-                      Keeps the same venue, owner and location. Only the unused pending name, URL and category change.
-                    </p>
-                    {!identityPreview ? (
-                      <Button variant="secondary" onClick={() => void checkIdentityCorrection()} disabled={identityChecking || acting}>
-                        {identityChecking ? "Checking…" : "Check eligibility"}
-                      </Button>
-                    ) : (
-                      <>
-                        <p className="rounded-lg bg-white/5 p-2 text-xs text-[var(--color-text-secondary)]">
-                          Current: {identityPreview.current?.name} · {identityPreview.current?.slug} · {identityPreview.current?.category}
-                        </p>
-                        <label className="block text-xs text-[var(--color-text-tertiary)]">
-                          Proposed name
-                          <input aria-describedby="issue-2099-admin-status" value={identityName} onChange={(e) => setIdentityName(e.target.value)} disabled={identitySubmitting} className="mt-1 min-h-11 w-full rounded-lg border border-white/10 bg-white/5 px-2 text-sm text-[var(--color-text-primary)]" />
-                        </label>
-                        <label className="block text-xs text-[var(--color-text-tertiary)]">
-                          Proposed URL slug
-                          <input aria-describedby="issue-2099-admin-status" value={identitySlug} onChange={(e) => setIdentitySlug(e.target.value)} disabled={identitySubmitting} className="mt-1 min-h-11 w-full rounded-lg border border-white/10 bg-white/5 px-2 text-sm text-[var(--color-text-primary)]" />
-                        </label>
-                        <label className="block text-xs text-[var(--color-text-tertiary)]">
-                          Proposed category
-                          <select aria-describedby="issue-2099-admin-status" value={identityCategory} onChange={(e) => setIdentityCategory(e.target.value)} disabled={identitySubmitting} className="mt-1 min-h-11 w-full rounded-lg border border-white/10 bg-white/5 px-2 text-sm text-[var(--color-text-primary)]">
-                            {Object.entries(CAT_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                          </select>
-                        </label>
-                        <label className="block text-xs text-[var(--color-text-tertiary)]">
-                          Reason
-                          <input aria-describedby="issue-2099-admin-status" value={identityReason} onChange={(e) => setIdentityReason(e.target.value)} disabled={identitySubmitting} className="mt-1 min-h-11 w-full rounded-lg border border-white/10 bg-white/5 px-2 text-sm text-[var(--color-text-primary)]" />
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                          <Button variant="secondary" onClick={() => void checkIdentityCorrection()} disabled={identityChecking || identitySubmitting}>Retry check</Button>
-                          <Button onClick={() => void submitIdentityCorrection()} disabled={!identityPreview.eligible || !identityName.trim() || !/^[a-z0-9]{1,32}$/.test(identitySlug) || !identityReason.trim() || identitySubmitting}>
-                            {identitySubmitting ? "Correcting…" : "Correct pending venue"}
-                          </Button>
-                        </div>
-                      </>
-                    )}
-                    <p id="issue-2099-admin-status" aria-live="polite" className="min-h-5 text-xs text-[var(--color-text-secondary)]">{identityStatus}</p>
-                  </div>
+                  {/* #2099 — extracted panel (Amendment 4 §D3). ClaimsPage only
+                      supplies the selected venue and the reload callbacks; the panel
+                      owns preview/proposal state and the HighRiskActionModal review. */}
+                  <PendingVenueIdentityCorrectionPanel
+                    venue={detail}
+                    onCorrected={reloadAfterIdentityCorrection}
+                  />
 
                   <div className="space-y-2">
                     <div className="text-xs text-[var(--color-text-secondary)]">

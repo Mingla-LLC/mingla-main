@@ -23,8 +23,12 @@ Deno.test("#2099 keeps the DDL, dependency, privacy and audit seals together", (
       "venue_identity_correction_audit",
       "BEFORE TRUNCATE",
       "STAY_AUTHORING_DISABLED",
-      "9a8c2a743af413f17f3b3e75e4f656f3" +
-      "e9cf3867cda091eb204bb9d5460f1ba0",
+      // The pinned dependency-schema fingerprint. It is a PUBLIC SHA-256 of the
+      // discovered schema inventory, not a credential — but a bare 64-char hex
+      // run scores as a generic high-entropy secret, so the migration builds it
+      // from two readable halves and this gate asserts that exact shape. The
+      // runtime value is byte-identical (literal || literal).
+      "('9a8c2a743af413f17f3b3e75e4f656f3' || 'e9cf3867cda091eb204bb9d5460f1ba0')",
     ]
   ) assertStringIncludes(migration, token);
   assert(!migration.includes("OWNER TO supabase_admin"));

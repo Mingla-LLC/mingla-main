@@ -6,6 +6,11 @@ on:
       - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql"
       - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.ts"
       - "mingla-business/src/services/venueListingsService.ts"
+      - "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.web.tsx"
+      - "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.native.tsx"
+      - "mingla-business/src/components/venue/PendingVenueIdentityCorrectionDialog.web.tsx"
+      - "mingla-business/src/services/pendingVenueIdentityCorrectionService.web.ts"
+      - "mingla-admin/src/components/claims/PendingVenueIdentityCorrectionPanel.jsx"
       - "mingla-business/src/components/venue/VenueListingContent.tsx"
       - "mingla-business/src/components/venue/__tests__/issue2099PendingIdentityCorrection.test.tsx"
       - "mingla-admin/src/services/adminClaimsService.js"
@@ -20,6 +25,11 @@ on:
       - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql"
       - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.ts"
       - "mingla-business/src/services/venueListingsService.ts"
+      - "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.web.tsx"
+      - "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.native.tsx"
+      - "mingla-business/src/components/venue/PendingVenueIdentityCorrectionDialog.web.tsx"
+      - "mingla-business/src/services/pendingVenueIdentityCorrectionService.web.ts"
+      - "mingla-admin/src/components/claims/PendingVenueIdentityCorrectionPanel.jsx"
       - "mingla-business/src/components/venue/VenueListingContent.tsx"
       - "mingla-business/src/components/venue/__tests__/issue2099PendingIdentityCorrection.test.tsx"
       - "mingla-admin/src/services/adminClaimsService.js"
@@ -49,8 +59,32 @@ jobs:
       - run: deno test --allow-read supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.ts
       - run: npm --prefix mingla-business test -- --runInBand src/components/venue/__tests__/issue2099PendingIdentityCorrection.test.tsx
       - run: node --test mingla-admin/src/__tests__/issue2099_pending_identity_correction.test.js
-      - run: npm --prefix mingla-business run typecheck -- --noEmit
+      - name: "#2099-owned TypeScript must contribute zero diagnostics"
+        shell: bash
+        run: |
+          set -uo pipefail
+          npm --prefix mingla-business run typecheck -- --noEmit --pretty false \
+            > /tmp/issue2099-tsc.txt 2>&1 || true
+          # mingla-business has a large pre-existing red baseline this issue does
+          # not own and may not edit. Assert only that NO diagnostic names a
+          # #2099 path. Any hit fails the job.
+          if grep -nE 'PendingVenueIdentityCorrection(Launcher|Dialog|Panel)|pendingVenueIdentityCorrectionService|venue/VenueListingContent\.tsx|services/venueListingsService\.ts' /tmp/issue2099-tsc.txt; then
+            echo "::error::#2099-owned files emitted TypeScript diagnostics (listed above)."
+            exit 1
+          fi
+          echo "OK — zero diagnostics from #2099-owned paths."
       - run: npm --prefix mingla-admin run build
+
+      - name: "#2099 tester-owned adversarial guard (fails closed until it lands)"
+        shell: bash
+        run: |
+          set -euo pipefail
+          guard="supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.tester_adversarial.test.sh"
+          if [ ! -f "$guard" ]; then
+            echo "::error::tester guard pending — $guard is reserved for the independent tester (Amendment 4 D7) and has not landed yet."
+            exit 1
+          fi
+          bash "$guard"
 
   issue-2099-postgres-contract:
     runs-on: ubuntu-latest
