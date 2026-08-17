@@ -292,17 +292,59 @@ END $a2$;
 -- payload must still carry the contracted keys, and its tier/ticket
 -- pricing must agree with the independent all-in oracle. A silent field
 -- strip reds here and is invisible to a served/not-served assertion.
+--
+-- RETEST FIX (#issuecomment-5313257745 §3). This assertion had the identical
+-- LOWER-BOUND shape and the identical blind spot as the happy path's, and I
+-- said so in the retest rather than grade another file by a standard my own
+-- did not meet: it asserted "every recorded key is present", so a reader that
+-- emitted an ADDITIONAL field to an unauthenticated caller stayed green.
+-- Verified by execution: the same public reader made to emit an extra field
+-- carrying organiser-side content was confirmed present in the anon payload
+-- and this suite passed. Detecting REMOVALS guards availability; detecting
+-- ADDITIONS guards DISCLOSURE, and #2117 is a disclosure issue. The
+-- comparison is now SET EQUALITY against the recorded key set, both
+-- directions, and the recorded set is the reader's COMPLETE emitted set
+-- measured from the reader -- not the hand-picked subset it used to be.
+--
+-- THE PERMITTED DIRECTION OF EDIT, because equality reds both ways: A
+-- RECORDED KEY SET MAY GAIN A KEY WHEN THE READER GAINS ONE, AND MAY NEVER
+-- LOSE A KEY TO SILENCE A FAILURE. An UNRECORDED-key red means the reader
+-- started emitting something new -- establish what it emits and to whom
+-- before recording it. A MISSING-key red means the reader stopped emitting
+-- something contracted; deleting the key to clear the red is the wrong
+-- repair and is out of contract.
 -- ---------------------------------------------------------------------
 DO $a5$
-DECLARE r record; ok boolean := true; d text := ''; j jsonb; k text; n int;
+DECLARE r record; ok boolean := true; d text := ''; j jsonb; n int;
+        v_keys text[]; v_missing text[]; v_extra text[];
 BEGIN
   FOR r IN SELECT * FROM i2117adv.offering
            WHERE visibility='public' AND etype='trip' AND status IN ('scheduled','live') ORDER BY key LOOP
     j := public.pg_public_trip_by_slug('i2117adv-brand', r.slug)::jsonb;
     IF j IS NULL THEN ok := false; d := d||format(' trip/%s not served;', r.status); CONTINUE; END IF;
-    FOREACH k IN ARRAY ARRAY['id','brandSlug','tripSlug','title','status','currency','brand','days','inclusions','tiers','refundPolicy','bookingsClosed'] LOOP
-      IF NOT (j ? k) THEN ok := false; d := d||format(' trip/%s payload lost key %s;', r.status, k); END IF;
-    END LOOP;
+    -- The reader's COMPLETE emitted key set, measured from the reader.
+    v_keys := ARRAY['bookingDeadline','bookingsClosed','brand','brandId','brandSlug',
+                    'coverGallery','coverMediaType','coverMediaUrl','currency','days',
+                    'departureLat','departureLng','departureText','description',
+                    'destinationLat','destinationLng','destinationText','endAt','id',
+                    'inclusions','refundPolicy','startAt','status',
+                    'themeAnimationOverride','themeColorOverride','themeFontOverride',
+                    'tiers','timezone','title','tripSlug'];
+    SELECT COALESCE(array_agg(x ORDER BY x), '{}') INTO v_missing
+    FROM unnest(v_keys) AS x WHERE NOT (j ? x);
+    SELECT COALESCE(array_agg(x ORDER BY x), '{}') INTO v_extra
+    FROM jsonb_object_keys(j) AS x WHERE NOT (x = ANY (v_keys));
+    IF cardinality(v_missing) > 0 THEN
+      ok := false; d := d||format(' trip/%s payload LOST keys %s;', r.status, v_missing);
+    END IF;
+    IF cardinality(v_extra) > 0 THEN
+      ok := false; d := d||format(' trip/%s payload GAINED unrecorded keys %s -- widened to the governed audience;', r.status, v_extra);
+    END IF;
+    -- Two empty sets agree with each other; the equality needs a floor.
+    IF cardinality(v_keys) = 0 OR (SELECT count(*) FROM jsonb_object_keys(j)) = 0 THEN
+      ok := false; d := d||format(' trip/%s KEY EQUALITY VACUOUS -- recorded=%s emitted=%s;',
+                                  r.status, cardinality(v_keys), (SELECT count(*) FROM jsonb_object_keys(j)));
+    END IF;
     IF jsonb_array_length(COALESCE(j->'tiers','[]'::jsonb)) = 0 THEN
       ok := false; d := d||format(' trip/%s payload carries zero tiers;', r.status);
     END IF;
@@ -312,9 +354,27 @@ BEGIN
            WHERE visibility='public' AND etype='experience' ORDER BY key LOOP
     j := public.pg_public_experience_by_slug('i2117adv-brand', r.slug)::jsonb;
     IF j IS NULL THEN ok := false; d := d||format(' experience/%s not served;', r.status); CONTINUE; END IF;
-    FOREACH k IN ARRAY ARRAY['id','brandSlug','experienceSlug','title','status','visibility','brand','stops','ticket','dates','bookable'] LOOP
-      IF NOT (j ? k) THEN ok := false; d := d||format(' experience/%s payload lost key %s;', r.status, k); END IF;
-    END LOOP;
+    -- The reader's COMPLETE emitted key set, measured from the reader.
+    v_keys := ARRAY['bookable','brand','brandId','brandSlug','coverGallery',
+                    'coverMediaType','coverMediaUrl','currency','dates','description',
+                    'experienceSlug','hideAddressUntilTicket','id','intents','isMultiDate',
+                    'isRecurring','recurrenceRules','status','stops',
+                    'themeAnimationOverride','themeColorOverride','themeFontOverride',
+                    'ticket','timezone','title','venueText','visibility'];
+    SELECT COALESCE(array_agg(x ORDER BY x), '{}') INTO v_missing
+    FROM unnest(v_keys) AS x WHERE NOT (j ? x);
+    SELECT COALESCE(array_agg(x ORDER BY x), '{}') INTO v_extra
+    FROM jsonb_object_keys(j) AS x WHERE NOT (x = ANY (v_keys));
+    IF cardinality(v_missing) > 0 THEN
+      ok := false; d := d||format(' experience/%s payload LOST keys %s;', r.status, v_missing);
+    END IF;
+    IF cardinality(v_extra) > 0 THEN
+      ok := false; d := d||format(' experience/%s payload GAINED unrecorded keys %s -- widened to the governed audience;', r.status, v_extra);
+    END IF;
+    IF cardinality(v_keys) = 0 OR (SELECT count(*) FROM jsonb_object_keys(j)) = 0 THEN
+      ok := false; d := d||format(' experience/%s KEY EQUALITY VACUOUS -- recorded=%s emitted=%s;',
+                                  r.status, cardinality(v_keys), (SELECT count(*) FROM jsonb_object_keys(j)));
+    END IF;
     -- the emitted visibility value must be the publicly visible one, never leaked from another state
     IF (j->>'visibility') IS DISTINCT FROM 'public' THEN
       ok := false; d := d||format(' experience/%s emitted visibility=%s;', r.status, j->>'visibility');
@@ -325,8 +385,8 @@ BEGIN
     END IF;
   END LOOP;
 
-  PERFORM i2117adv.assert('A5','public by-slug payloads are key-complete and price-consistent',
-    ok, COALESCE(NULLIF(d,''),'every contracted key present at every public status; emitted visibility correct'));
+  PERFORM i2117adv.assert('A5','public by-slug payload key set EQUALS the recorded set, both directions',
+    ok, COALESCE(NULLIF(d,''),'no key lost and no unrecorded key gained at any public status; emitted visibility correct'));
 END $a5$;
 
 -- ---------------------------------------------------------------------

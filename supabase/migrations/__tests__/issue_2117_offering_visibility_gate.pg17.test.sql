@@ -399,10 +399,29 @@ END $asc3b$;
 -- is checkable from the migration diff), so they are a genuine pre-change
 -- reference living in the same cluster -- not a re-statement of the
 -- post-change behaviour.
+--
+-- RETEST FIX (#issuecomment-5313257745 §3). The key assertion below was a
+-- LOWER BOUND -- "every recorded key must be present" -- so a reader that
+-- emitted an ADDITIONAL field to an unauthenticated caller stayed GREEN.
+-- Proven by execution, not argued: a public reader made to emit an extra
+-- field carrying organiser-side content to an anon caller was confirmed
+-- present in the anon payload and the suite passed. Detecting REMOVALS
+-- guards availability; detecting ADDITIONS guards DISCLOSURE, and #2117 is
+-- a disclosure issue. The comparison is therefore SET EQUALITY against the
+-- recorded key set, in both directions.
+--
+-- THE PERMITTED DIRECTION OF EDIT, because equality now reds both ways and
+-- the guidance is load-bearing: A RECORDED KEY SET MAY GAIN A KEY WHEN THE
+-- READER GAINS ONE, AND MAY NEVER LOSE A KEY TO SILENCE A FAILURE. A red on
+-- an UNRECORDED key means the reader started emitting something new -- ask
+-- what it emits and to whom BEFORE recording it. A red on a MISSING key
+-- means the reader stopped emitting something contracted; deleting that key
+-- from the list to clear the red is the wrong repair and is out of contract.
 DO $asc4$
 DECLARE r record; ok boolean := true; d text := '';
         v_served boolean; v_expected boolean;
         v_fwd int; v_rev int; v_missing text[];
+        v_extra text[]; v_payload jsonb; v_keys text[];
 BEGIN
   FOR r IN SELECT * FROM i2117t.offering WHERE visibility='public' ORDER BY key LOOP
 
@@ -446,22 +465,43 @@ BEGIN
         ok := false; d := d || format(' trip/%s served=%s expected=%s;', r.status, v_served, v_expected);
       END IF;
       IF v_served THEN
-        SELECT COALESCE(array_agg(k), '{}') INTO v_missing
+        v_payload := public.pg_public_trip_by_slug('i2117t-brand', r.slug)::jsonb;
         -- The COMPLETE key set this reader emits at this head, locked. Not a
-        -- hand-picked subset: any strip of pricing, inventory or itinerary
-        -- removes a key from this list and reds.
-        FROM unnest(ARRAY['bookingDeadline','bookingsClosed','brand','brandId','brandSlug',
-                          'coverGallery','coverMediaType','coverMediaUrl','currency','days',
-                          'departureLat','departureLng','departureText','description',
-                          'destinationLat','destinationLng','destinationText','endAt','id',
-                          'inclusions','refundPolicy','startAt','status',
-                          'themeAnimationOverride','themeColorOverride','themeFontOverride',
-                          'tiers','timezone','title','tripSlug']) AS k
-        WHERE NOT (public.pg_public_trip_by_slug('i2117t-brand', r.slug)::jsonb ? k);
+        -- hand-picked subset -- measured from the reader itself. See the
+        -- permitted-edit-direction rule in this block's header before
+        -- touching it.
+        v_keys := ARRAY['bookingDeadline','bookingsClosed','brand','brandId','brandSlug',
+                        'coverGallery','coverMediaType','coverMediaUrl','currency','days',
+                        'departureLat','departureLng','departureText','description',
+                        'destinationLat','destinationLng','destinationText','endAt','id',
+                        'inclusions','refundPolicy','startAt','status',
+                        'themeAnimationOverride','themeColorOverride','themeFontOverride',
+                        'tiers','timezone','title','tripSlug'];
+        -- Direction 1 -- REMOVALS. A strip of pricing, inventory or itinerary
+        -- takes a key off the payload and reds here. Guards availability.
+        SELECT COALESCE(array_agg(k ORDER BY k), '{}') INTO v_missing
+        FROM unnest(v_keys) AS k WHERE NOT (v_payload ? k);
+        -- Direction 2 -- ADDITIONS. A reader that starts emitting a field the
+        -- contract never recorded is handing an unauthenticated caller
+        -- something nobody reviewed. Guards DISCLOSURE, which is what #2117
+        -- is about, and is the direction the lower-bound form could not see.
+        SELECT COALESCE(array_agg(k ORDER BY k), '{}') INTO v_extra
+        FROM jsonb_object_keys(v_payload) AS k WHERE NOT (k = ANY (v_keys));
         IF cardinality(v_missing) > 0 THEN
           ok := false; d := d || format(' trip/%s MISSING KEYS %s;', r.status, v_missing);
         END IF;
-        IF jsonb_array_length(COALESCE(public.pg_public_trip_by_slug('i2117t-brand', r.slug)::jsonb->'tiers','[]'::jsonb)) = 0 THEN
+        IF cardinality(v_extra) > 0 THEN
+          ok := false; d := d || format(' trip/%s UNRECORDED KEYS %s -- payload widened to the governed audience;', r.status, v_extra);
+        END IF;
+        -- Non-vacuity floor for the equality itself: two empty sets agree with
+        -- each other, so an empty payload or an empty recorded set would make
+        -- both directions vacuously true.
+        IF cardinality(v_keys) = 0 OR (SELECT count(*) FROM jsonb_object_keys(v_payload)) = 0 THEN
+          ok := false; d := d || format(' trip/%s KEY EQUALITY VACUOUS -- recorded=%s emitted=%s;',
+                                        r.status, cardinality(v_keys),
+                                        (SELECT count(*) FROM jsonb_object_keys(v_payload)));
+        END IF;
+        IF jsonb_array_length(COALESCE(v_payload->'tiers','[]'::jsonb)) = 0 THEN
           ok := false; d := d || format(' trip/%s tiers block EMPTY -- fixture or payload defect;', r.status);
         END IF;
       END IF;
@@ -473,24 +513,36 @@ BEGIN
         ok := false; d := d || format(' experience/%s served=%s expected=%s;', r.status, v_served, v_expected);
       END IF;
       IF v_served THEN
-        SELECT COALESCE(array_agg(k), '{}') INTO v_missing
+        v_payload := public.pg_public_experience_by_slug('i2117t-brand', r.slug)::jsonb;
         -- The COMPLETE key set this reader emits at this head, locked.
-        FROM unnest(ARRAY['bookable','brand','brandId','brandSlug','coverGallery',
-                          'coverMediaType','coverMediaUrl','currency','dates','description',
-                          'experienceSlug','hideAddressUntilTicket','id','intents','isMultiDate',
-                          'isRecurring','recurrenceRules','status','stops',
-                          'themeAnimationOverride','themeColorOverride','themeFontOverride',
-                          'ticket','timezone','title','venueText','visibility']) AS k
-        WHERE NOT (public.pg_public_experience_by_slug('i2117t-brand', r.slug)::jsonb ? k);
+        -- Permitted-edit-direction rule: see this block's header.
+        v_keys := ARRAY['bookable','brand','brandId','brandSlug','coverGallery',
+                        'coverMediaType','coverMediaUrl','currency','dates','description',
+                        'experienceSlug','hideAddressUntilTicket','id','intents','isMultiDate',
+                        'isRecurring','recurrenceRules','status','stops',
+                        'themeAnimationOverride','themeColorOverride','themeFontOverride',
+                        'ticket','timezone','title','venueText','visibility'];
+        SELECT COALESCE(array_agg(k ORDER BY k), '{}') INTO v_missing
+        FROM unnest(v_keys) AS k WHERE NOT (v_payload ? k);
+        SELECT COALESCE(array_agg(k ORDER BY k), '{}') INTO v_extra
+        FROM jsonb_object_keys(v_payload) AS k WHERE NOT (k = ANY (v_keys));
         IF cardinality(v_missing) > 0 THEN
           ok := false; d := d || format(' experience/%s MISSING KEYS %s;', r.status, v_missing);
+        END IF;
+        IF cardinality(v_extra) > 0 THEN
+          ok := false; d := d || format(' experience/%s UNRECORDED KEYS %s -- payload widened to the governed audience;', r.status, v_extra);
+        END IF;
+        IF cardinality(v_keys) = 0 OR (SELECT count(*) FROM jsonb_object_keys(v_payload)) = 0 THEN
+          ok := false; d := d || format(' experience/%s KEY EQUALITY VACUOUS -- recorded=%s emitted=%s;',
+                                        r.status, cardinality(v_keys),
+                                        (SELECT count(*) FROM jsonb_object_keys(v_payload)));
         END IF;
       END IF;
     END IF;
   END LOOP;
 
   PERFORM i2117t.assert('A-SC-4','public path EXCEPT ALL-equal to the pre-change oracle, both directions, status-complete',
-    ok, COALESCE(NULLIF(d,''),'every public (type x status) pair: 0 rows each way vs the oracle, payload keys complete, tier block non-empty'), 'ALLOW');
+    ok, COALESCE(NULLIF(d,''),'every public (type x status) pair: 0 rows each way vs the oracle, payload key set EQUAL to the recorded set in both directions, tier block non-empty'), 'ALLOW');
 END $asc4$;
 
 -- ---------------------------------------------------------------------
