@@ -141,7 +141,16 @@ self.onmessage = async (event: MessageEvent) => {
   const cacheKey = buildDiscoverCacheKey({ ...BASE, discoveryGeneration });
 
   try {
-    const entry = await resolveDiscoverEntry(supabase, cacheKey, buildCtx);
+    // pass-2 TEST REPORT D-1 — `uncacheable` is now a PARAMETER carried as data
+    // from the generation read, not re-derived downstream by pattern-matching a
+    // cache key that contains client input. In this harness `message.failClosed`
+    // IS that data: it is exactly what decided the slot minted above.
+    const entry = await resolveDiscoverEntry(
+      supabase,
+      cacheKey,
+      buildCtx,
+      message.failClosed === true,
+    );
     post({
       type: "done",
       isolate: ISOLATE_ID,

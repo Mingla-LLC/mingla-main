@@ -18,6 +18,7 @@ on:
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_coalescing.rework.test.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.rework.test.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.worker.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_poisoned_cache_key_signal.rework.test.ts"
       - "supabase/functions/agent-confirm-action/index.ts"
       - "supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts"
       - "mingla-business/src/services/businessEvents.ts"
@@ -45,6 +46,7 @@ on:
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_coalescing.rework.test.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.rework.test.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.worker.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_poisoned_cache_key_signal.rework.test.ts"
       - "supabase/functions/agent-confirm-action/index.ts"
       - "supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts"
       - "mingla-business/src/services/businessEvents.ts"
@@ -243,6 +245,20 @@ jobs:
         run: |
           deno test --no-check --allow-env --allow-read \
             supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.rework.test.ts
+      # IMPLEMENTOR REWORK COVERAGE (pass-2 TEST REPORT D-1). Every suite above
+      # sends ORDINARY client input, so none of them can see a HEALTHY request
+      # being misclassified as fail-closed. `uncacheable` used to be regexed out
+      # of the whole cache key, which carries unsanitised client input, so a
+      # client keyword shaped like `unavailable:<uuid>` shed 11 of 12 concurrent
+      # requests with a 503 and suppressed the L2 write on generation g7 —
+      # anonymously, since verify_jwt is false. This suite drives the real
+      # `resolveDiscoverEntry` against a modelled database with the poison in a
+      # client field, and fuzzes the SAFE direction to prove no fail-closed
+      # request can ever be classified cacheable.
+      - name: "#2009 D-1 — a poisoned client field cannot degrade a readable generation"
+        run: |
+          deno test --no-check --allow-env \
+            supabase/functions/discover-merged-events/__tests__/issue_2009_poisoned_cache_key_signal.rework.test.ts
       # IMPLEMENTOR REWORK COVERAGE (pass-1 TEST REPORT P2-2). One stable code,
       # two directions: the approved entering sentence stays verbatim and the
       # exit leg gets copy that is true of the exit leg. Driven through the real

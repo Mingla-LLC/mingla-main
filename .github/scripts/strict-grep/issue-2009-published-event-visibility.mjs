@@ -272,7 +272,7 @@ const check = (s) => {
   // misses, so it gets its own pin (fixture M35).
   if (
     !/now\s*-\s*memo\.readAt\s*<\s*DISCOVER_GENERATION_TTL_MS/.test(cache) ||
-    !/return memo\.slot;/.test(cache)
+    !/return \{ slot: memo\.slot, readable: true \};/.test(cache)
   ) {
     fail(
       "_cache.ts: the generation memo short-circuit is gone — every discover request pays a database round-trip again, in front of L1 (Amendment 3B Defect 3)",
@@ -286,9 +286,69 @@ const check = (s) => {
       "_cache.ts: the generation memo is no longer cleared on every unreadable read — a failed read could be remembered and served (fail-closed, Amendment 3A/3B)",
     );
   }
-  if (!/resolveDiscoveryGenerationSlot\(/.test(index)) {
+  if (!/resolveDiscoveryGeneration\(/.test(index)) {
     fail(
       "discover-merged-events/index.ts no longer resolves the generation through the bounded resolver — either the epoch is gone (Defect 2) or the read is unbounded again (Defect 3)",
+    );
+  }
+  // ---- 9c. PASS-2 TEST REPORT D-1 — the fail-closed signal is DATA ---------
+  // Behavioural proof:
+  //   supabase/functions/discover-merged-events/__tests__/issue_2009_poisoned_cache_key_signal.rework.test.ts
+  //
+  // `_resolve-entry.ts` used to recover "is this request fail-closed?" by
+  // regexing the FULL cache key — a JSON blob of unsanitised client input
+  // (keywords, cityName, sort, segmentSlug, timezone, three slug arrays). A
+  // client field shaped like `unavailable:<uuid>` therefore flipped the flag on
+  // a perfectly readable generation: measured 1 build / 0 L2 rows / 1 served /
+  // 11 x 503 against a control of 1 / 1 / 12 / 0, anonymously (verify_jwt is
+  // false). The signal now travels as a boolean from the ONE place that knows
+  // it. Everything below pins that it keeps travelling that way.
+  if (!/export async function resolveDiscoveryGeneration\(/.test(cache)) {
+    fail(
+      "_cache.ts lost resolveDiscoveryGeneration — the readability boolean has no single home, so the fail-closed signal has to be re-derived downstream from a string that carries client input (D-1)",
+    );
+  }
+  if (!/readable: boolean;/.test(cache)) {
+    fail(
+      "_cache.ts: the resolver no longer reports readability alongside the slot — the fail-closed signal is text again (D-1)",
+    );
+  }
+  // Fail-closed returns must ALL report readable:false, and only the memo hit
+  // and the confirmed read may report true. A miscount either lets an
+  // unconfirmed generation be classified cacheable (the one direction #2009 must
+  // never allow) or makes the healthy path permanently uncacheable.
+  if ((cache.match(/readable: false/g) ?? []).length < 3) {
+    fail(
+      "_cache.ts: a fail-closed return no longer reports readable:false — a generation this isolate could not confirm would be classified CACHEABLE, which is the stale-privacy read #2009 exists to close (D-1)",
+    );
+  }
+  if ((cache.match(/readable: true/g) ?? []).length !== 2) {
+    fail(
+      "_cache.ts: the readable:true returns changed — exactly two paths (the memo hit and the confirmed read) may report a confirmed generation (D-1)",
+    );
+  }
+  // The slot-only view must stay a PROJECTION. A second implementation is a
+  // second copy of the bound and the fail-closed rule, free to drift.
+  if (
+    !/return \(await resolveDiscoveryGeneration\(readGeneration, now\)\)\.slot;/.test(cache)
+  ) {
+    fail(
+      "_cache.ts: resolveDiscoveryGenerationSlot is no longer a projection of resolveDiscoveryGeneration — the bounded read now has two implementations that can drift apart (D-1)",
+    );
+  }
+  // index.ts must TAKE the boolean and PASS it. Pinned literals first, so a
+  // vacuous flag is reported as vacuous rather than as a shape mismatch (#2113).
+  if (/resolveDiscoverEntry\([^)]*,\s*(?:true|false)\s*\)/.test(index)) {
+    fail(
+      "discover-merged-events/index.ts pins the fail-closed flag to a literal — either every fail-closed guard in _resolve-entry.ts can never fire, or the healthy path never publishes an L2 row again (#2113, D-1)",
+    );
+  }
+  if (
+    !/const \{ slot: discoveryGeneration, readable: generationReadable \} =/.test(index) ||
+    !/resolveDiscoverEntry\(supabase, cacheKey, buildCtx, !generationReadable\)/.test(index)
+  ) {
+    fail(
+      "discover-merged-events/index.ts no longer threads the generation's readability into the entry resolver — the fail-closed signal has to be re-derived from the cache key, which carries unsanitised client input, so any client can put discovery into its degraded branch (D-1)",
     );
   }
   if (!/issue_2009_event_discovery_generation/.test(index)) {
@@ -299,7 +359,11 @@ const check = (s) => {
   if (l1Index >= 0 && genReadIndex > l1Index) {
     fail("discover-merged-events/index.ts reads the generation AFTER serving from L1 — the stale deck would go out first (Defect 2)");
   }
-  if (!/discoveryGeneration,/.test(index)) {
+  // Anchored to the DiscoverCacheParams field itself. A bare
+  // /discoveryGeneration,/ would also be satisfied by the D-1 destructuring
+  // above (`const { slot: discoveryGeneration, readable: ... } =`), which would
+  // make this a check that cannot fail (#2113).
+  if (!/^ {4}discoveryGeneration,$/m.test(index)) {
     fail("discover-merged-events/index.ts no longer passes discoveryGeneration into DiscoverCacheParams (Defect 2)");
   }
 
@@ -467,15 +531,35 @@ const check = (s) => {
       "_resolve-entry.ts no longer imports discoverBuildCoalesceKey — the distributed build lock has no coalescing namespace and every fail-closed isolate builds its own deck (Amendment 3C Defect 5)",
     );
   }
-  // The identity must be DERIVED from the one shared normaliser, not re-tested
-  // against a second copy of the fail-closed rule (which could drift, or be
-  // pinned true/false and make the guards below vacuous — #2113).
+  // ---- 11c. PASS-2 TEST REPORT D-1 — `uncacheable` ARRIVES, it is not -------
+  //           re-derived from a string that carries client input.
+  //
+  // ORDER MATTERS (#2113). The RE-DERIVATION check runs FIRST, because it names
+  // the actual D-1 regression; with the shape check first, a re-derivation would
+  // be reported as a missing parameter and the branch that names the defect
+  // would be one no fixture ever reaches.
   if (
-    !/const buildKey = discoverBuildCoalesceKey\(cacheKey\);/.test(resolve) ||
-    !/uncacheable: buildKey !== cacheKey/.test(resolve)
+    /\buncacheable\s*=\s*[^;\n]*\b(?:cacheKey|buildKey)\b/.test(resolve) ||
+    /\buncacheable:\s*[^,;\n]*\b(?:cacheKey|buildKey)\b/.test(resolve)
   ) {
     fail(
-      "_resolve-entry.ts no longer derives `uncacheable` from discoverBuildCoalesceKey — either the fail-closed rule now has two definitions that can drift apart, or the flag is pinned and every guard below it is vacuous (Amendment 3C Defect 5)",
+      "_resolve-entry.ts derives `uncacheable` from the cache key again — the key is a JSON blob of unsanitised client input (keywords, cityName, sort, segmentSlug, timezone, slug arrays), so a client field shaped like `unavailable:<uuid>` makes a perfectly readable generation look fail-closed and sheds the herd with 503s (D-1)",
+    );
+  }
+  if (!/buildCtx: BuildDiscoverContext,\s*uncacheable: boolean,/.test(resolve)) {
+    fail(
+      "_resolve-entry.ts no longer takes `uncacheable` as a parameter — the fail-closed signal is no longer carried as data from the generation read, which is the whole of the D-1 fix",
+    );
+  }
+  // The COLLAPSE is gated on the same boolean. Unconditional collapsing puts a
+  // client-controlled string back into the distributed lock namespace, so the
+  // healthy path stops being byte-for-byte what ORCH-426 shipped.
+  if (
+    !/const buildKey = uncacheable \? discoverBuildCoalesceKey\(cacheKey\) : cacheKey;/
+      .test(resolve)
+  ) {
+    fail(
+      "_resolve-entry.ts no longer gates the coalescing collapse on the threaded fail-closed boolean — either the collapse is gone (a fail-closed herd re-splits into one build per request) or it is unconditional (a client-supplied `unavailable:<uuid>` re-enters the build-lock namespace on the healthy path) (D-1 / Amendment 3C Defect 5)",
     );
   }
   // BOTH lock attempts, and the release, on the COALESCING key.
@@ -919,11 +1003,11 @@ if (process.argv.includes("--self-test")) {
       apply: (s) => ({
         ...s,
         discoverCache: s.discoverCache.replace(
-          "export async function resolveDiscoveryGenerationSlot",
-          "async function unboundedGenerationRead",
+          "export async function resolveDiscoveryGeneration(",
+          "async function unboundedGenerationRead(",
         ),
         discoverIndex: s.discoverIndex.replace(
-          "await resolveDiscoveryGenerationSlot(",
+          "await resolveDiscoveryGeneration(",
           "await unboundedGenerationRead(",
         ),
       }),
@@ -937,7 +1021,7 @@ if (process.argv.includes("--self-test")) {
     memo !== null && now >= memo.readAt &&
     now - memo.readAt < DISCOVER_GENERATION_TTL_MS
   ) {
-    return memo.slot;
+    return { slot: memo.slot, readable: true };
   }
 
 `;
@@ -1224,23 +1308,23 @@ if (process.argv.includes("--self-test")) {
     },
     {
       label:
-        "M62 — `uncacheable` is pinned false: both guards survive as SOURCE TEXT but neither can ever fire (#2113)",
+        "M62 — the fail-closed flag is pinned FALSE at the call site: both guards survive as SOURCE TEXT but neither can ever fire (#2113)",
       apply: (s) => ({
         ...s,
-        discoverResolve: s.discoverResolve.replace(
-          "return { buildKey, uncacheable: buildKey !== cacheKey };",
-          "return { buildKey, uncacheable: false };",
+        discoverIndex: s.discoverIndex.replace(
+          "resolveDiscoverEntry(supabase, cacheKey, buildCtx, !generationReadable)",
+          "resolveDiscoverEntry(supabase, cacheKey, buildCtx, false)",
         ),
       }),
     },
     {
       label:
-        "M63 — `uncacheable` is pinned true: over-broad, the HEALTHY path stops publishing an L2 row at all",
+        "M63 — the fail-closed flag is pinned TRUE at the call site: over-broad, the HEALTHY path stops publishing an L2 row at all",
       apply: (s) => ({
         ...s,
-        discoverResolve: s.discoverResolve.replace(
-          "return { buildKey, uncacheable: buildKey !== cacheKey };",
-          "return { buildKey, uncacheable: true };",
+        discoverIndex: s.discoverIndex.replace(
+          "resolveDiscoverEntry(supabase, cacheKey, buildCtx, !generationReadable)",
+          "resolveDiscoverEntry(supabase, cacheKey, buildCtx, true)",
         ),
       }),
     },
@@ -1333,6 +1417,147 @@ if (process.argv.includes("--self-test")) {
             "  let holdsLock = await tryDistributedBuildLock(supabase, cacheKey);",
         ),
       }),
+    },
+    // ---- PASS-2 TEST REPORT D-1 — the fail-closed signal is DATA -----------
+    {
+      label:
+        "M69 — `uncacheable` is re-derived from the cache key (the EXACT D-1 regression: a client keyword shaped like the sentinel sheds 11 of 12 concurrent requests on a readable generation)",
+      apply: (s) => {
+        const marker =
+          "  const buildKey = uncacheable ? discoverBuildCoalesceKey(cacheKey) : cacheKey;";
+        if (!s.discoverResolve.includes(marker)) {
+          throw new Error("M69 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          discoverResolve: s.discoverResolve.replace(
+            marker,
+            "  const collapsed = discoverBuildCoalesceKey(cacheKey);\n" +
+              "  const uncacheable = collapsed !== cacheKey;\n" +
+              "  const buildKey = collapsed;",
+          ),
+        };
+      },
+    },
+    {
+      label:
+        "M70 — the resolver stops taking the flag at all, so every caller is back to inferring it from the key",
+      apply: (s) => ({
+        ...s,
+        discoverResolve: s.discoverResolve.replace("  uncacheable: boolean,\n", ""),
+      }),
+    },
+    {
+      label:
+        "M71 — the coalescing collapse is UNCONDITIONAL again: `uncacheable` is right, but a client-supplied `unavailable:<uuid>` re-enters the distributed build-lock namespace on the HEALTHY path",
+      apply: (s) => {
+        const marker =
+          "  const buildKey = uncacheable ? discoverBuildCoalesceKey(cacheKey) : cacheKey;";
+        if (!s.discoverResolve.includes(marker)) {
+          throw new Error("M71 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          discoverResolve: s.discoverResolve.replace(
+            marker,
+            "  const buildKey = discoverBuildCoalesceKey(cacheKey);",
+          ),
+        };
+      },
+    },
+    {
+      label:
+        "M72 — index.ts threads the boolean but INVERTED: the healthy path degrades and the fail-closed path starts caching (the one direction #2009 must never allow)",
+      apply: (s) => ({
+        ...s,
+        discoverIndex: s.discoverIndex.replace(
+          "resolveDiscoverEntry(supabase, cacheKey, buildCtx, !generationReadable)",
+          "resolveDiscoverEntry(supabase, cacheKey, buildCtx, generationReadable)",
+        ),
+      }),
+    },
+    {
+      label: "M73 — index.ts stops reading the readability out of the resolver at all",
+      apply: (s) => {
+        const marker = "const { slot: discoveryGeneration, readable: generationReadable } =";
+        if (!s.discoverIndex.includes(marker)) {
+          throw new Error("M73 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          discoverIndex: s.discoverIndex.replace(marker, "const { slot: discoveryGeneration } ="),
+        };
+      },
+    },
+    {
+      label:
+        "M74 — a fail-closed read reports `readable: true`: an unconfirmed generation becomes CACHEABLE, which is the stale-privacy read the whole issue exists to close",
+      apply: (s) => ({
+        ...s,
+        discoverCache: s.discoverCache.replaceAll("readable: false", "readable: true"),
+      }),
+    },
+    {
+      label:
+        "M77 — a CONFIRMED read reports `readable: false`: over-broad in the safe direction, so discovery never publishes an L2 row again and ORCH-426's cache stops being a cache (reaches the readable:true count pin, which M74 fires the readable:false pin before)",
+      apply: (s) => {
+        const marker = "  generationMemo = { slot, readAt: now };\n  return { slot, readable: true };";
+        if (!s.discoverCache.includes(marker)) {
+          throw new Error("M77 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          discoverCache: s.discoverCache.replace(
+            marker,
+            "  generationMemo = { slot, readAt: now };\n  return { slot, readable: false };",
+          ),
+        };
+      },
+    },
+    {
+      label:
+        "M75 — the slot-only view becomes a SECOND implementation instead of a projection, so the bound and the fail-closed rule can drift apart",
+      apply: (s) => {
+        const marker = "  return (await resolveDiscoveryGeneration(readGeneration, now)).slot;";
+        if (!s.discoverCache.includes(marker)) {
+          throw new Error("M75 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          discoverCache: s.discoverCache.replace(
+            marker,
+            "  const read = await readGeneration();\n" +
+              "  return discoveryGenerationSlot(read.data);",
+          ),
+        };
+      },
+    },
+    {
+      label:
+        "M76 — the readability field is dropped from the resolution type, so the signal has nowhere to travel as data",
+      apply: (s) => ({
+        ...s,
+        discoverCache: s.discoverCache.replace("  readable: boolean;\n", ""),
+      }),
+    },
+    {
+      label:
+        "COMMENT-FORGERY — `uncacheable` is re-derived from the key while a comment quotes the threaded parameter verbatim",
+      apply: (s) => {
+        const marker =
+          "  const buildKey = uncacheable ? discoverBuildCoalesceKey(cacheKey) : cacheKey;";
+        if (!s.discoverResolve.includes(marker)) {
+          throw new Error("COMMENT-FORGERY (D-1) fixture marker drifted — update it");
+        }
+        return {
+          ...s,
+          discoverResolve: s.discoverResolve.replace(
+            marker,
+            "  // const buildKey = uncacheable ? discoverBuildCoalesceKey(cacheKey) : cacheKey;\n" +
+              "  const buildKey = discoverBuildCoalesceKey(cacheKey);",
+          ),
+        };
+      },
     },
     // ---- PASS-1 TEST REPORT P2-2 — one code, two directions ----------------
     {

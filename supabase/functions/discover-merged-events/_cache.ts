@@ -170,6 +170,34 @@ export interface DiscoveryGenerationRead {
 }
 
 /**
+ * issue #2009 (pass-2 TEST REPORT, Defect D-1) — THE FAIL-CLOSED SIGNAL, AS
+ * DATA.
+ *
+ * The resolver below is the ONLY place in the system that knows whether this
+ * isolate currently holds a confirmed discovery generation. Before this pass it
+ * told nobody: `_resolve-entry.ts` recovered the answer by regexing the
+ * `unavailable:<uuid>` sentinel out of the FULL cache key — and that key is a
+ * JSON blob of unsanitised client input (`keywords`, `cityName`, `sort`,
+ * `segmentSlug`, `timezone` and three slug arrays all land in it). A client
+ * field shaped like the sentinel therefore made `uncacheable` true with a
+ * perfectly readable generation. Measured on `resolveDiscoverEntry`: 12
+ * concurrent requests on generation `g7` went from 1 build / 1 L2 row / 12
+ * served / 0x503 to 1 build / 0 L2 rows / 1 served / 11x503, anonymously
+ * (`verify_jwt = false`), on the consumer app's hottest endpoint.
+ *
+ * So the answer travels as a BOOLEAN from the one place that knows it, rather
+ * than being re-derived from a string an attacker can write into. `readable` is
+ * true if and only if `slot` was built from a generation this isolate actually
+ * read (or memoized inside the ceiling); no client-supplied value can move it.
+ */
+export interface DiscoveryGenerationResolution {
+  /** `g<n>` when the generation was read, `unavailable:<uuid>` when it was not. */
+  slot: string;
+  /** TRUE only when `slot` names a generation this isolate has confirmed. */
+  readable: boolean;
+}
+
+/**
  * issue #2009 — the isolate-local memo of the last successfully-read
  * generation. Same lifetime and same blast radius as the L1 map in
  * `_memory-cache.ts`: per isolate, dropped when the isolate is recycled.
@@ -196,16 +224,16 @@ let generationMemo: { slot: string; readAt: number } | null = null;
  * served an entry keyed on a generation this isolate cannot currently confirm,
  * and the next request re-reads rather than coasting on an unconfirmed value.
  */
-export async function resolveDiscoveryGenerationSlot(
+export async function resolveDiscoveryGeneration(
   readGeneration: () => Promise<DiscoveryGenerationRead>,
   now: number = Date.now(),
-): Promise<string> {
+): Promise<DiscoveryGenerationResolution> {
   const memo = generationMemo;
   if (
     memo !== null && now >= memo.readAt &&
     now - memo.readAt < DISCOVER_GENERATION_TTL_MS
   ) {
-    return memo.slot;
+    return { slot: memo.slot, readable: true };
   }
 
   let read: DiscoveryGenerationRead;
@@ -217,7 +245,7 @@ export async function resolveDiscoveryGenerationSlot(
       err instanceof Error ? err.message : String(err),
     );
     generationMemo = null;
-    return discoveryGenerationSlot(null);
+    return { slot: discoveryGenerationSlot(null), readable: false };
   }
 
   if (read.error) {
@@ -226,17 +254,30 @@ export async function resolveDiscoveryGenerationSlot(
       read.error.message,
     );
     generationMemo = null;
-    return discoveryGenerationSlot(null);
+    return { slot: discoveryGenerationSlot(null), readable: false };
   }
 
   const slot = discoveryGenerationSlot(read.data);
   if (slot.startsWith(UNAVAILABLE_GENERATION_PREFIX)) {
     generationMemo = null;
-    return slot;
+    return { slot, readable: false };
   }
 
   generationMemo = { slot, readAt: now };
-  return slot;
+  return { slot, readable: true };
+}
+
+/**
+ * issue #2009 — the SLOT-ONLY VIEW of the resolver above, for callers that only
+ * need the cache-key slot. It is a projection, never a second implementation:
+ * the bound, the fail-closed rule and the memo all have exactly one home, so
+ * the two answers cannot drift apart.
+ */
+export async function resolveDiscoveryGenerationSlot(
+  readGeneration: () => Promise<DiscoveryGenerationRead>,
+  now: number = Date.now(),
+): Promise<string> {
+  return (await resolveDiscoveryGeneration(readGeneration, now)).slot;
 }
 
 export function buildDiscoverCacheKey(p: DiscoverCacheParams): string {

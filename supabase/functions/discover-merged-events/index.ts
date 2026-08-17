@@ -17,7 +17,7 @@ import { parseLocalStartEndDateTime } from "../_shared/timezone.ts";
 import {
   buildDiscoverCacheKey,
   type DiscoverCacheParams,
-  resolveDiscoveryGenerationSlot,
+  resolveDiscoveryGeneration,
 } from "./_cache.ts";
 import {
   coalesceDiscoverBuild,
@@ -201,9 +201,19 @@ serve(async (req: Request): Promise<Response> => {
   //
   // It still fails closed: an unreadable generation yields a per-call unique
   // slot, so that request costs a cache miss, never a stale-privacy hit.
-  const discoveryGeneration = await resolveDiscoveryGenerationSlot(
-    async () => await supabase.rpc("issue_2009_event_discovery_generation"),
-  );
+  //
+  // `readable` is the FAIL-CLOSED SIGNAL ITSELF, carried as data out of the one
+  // place that knows it (pass-2 TEST REPORT D-1). It used to be re-derived
+  // downstream by pattern-matching the cache key, which is a JSON blob of
+  // unsanitised client input — so a client field shaped like the
+  // `unavailable:<uuid>` sentinel made a healthy request look fail-closed and
+  // shed 11 of 12 concurrent requests with a 503. Threading the boolean is what
+  // makes `uncacheable` true if and ONLY if the generation was genuinely
+  // unreadable, whatever the client puts in the key.
+  const { slot: discoveryGeneration, readable: generationReadable } =
+    await resolveDiscoveryGeneration(
+      async () => await supabase.rpc("issue_2009_event_discovery_generation"),
+    );
 
   const cacheParams: DiscoverCacheParams = {
     discoveryGeneration,
@@ -248,7 +258,8 @@ serve(async (req: Request): Promise<Response> => {
     sort: body.sort,
   };
 
-  const resolveEntry = () => resolveDiscoverEntry(supabase, cacheKey, buildCtx);
+  const resolveEntry = () =>
+    resolveDiscoverEntry(supabase, cacheKey, buildCtx, !generationReadable);
 
   const now = Date.now();
   const l1Hit = l1Get(cacheKey, now);

@@ -62,10 +62,30 @@ function entryFromDbGzip(
  *
  * They diverge in exactly one state — the discovery generation could not be
  * read — because the fail-closed slot carries a per-call uuid to make the
- * response uncacheable. THAT DIVERGENCE IS THE FAIL-CLOSED SIGNAL, derived here
- * from the one shared normaliser rather than re-tested against a second copy of
- * the rule, so "is this key uncacheable?" keeps exactly one definition in the
- * codebase.
+ * response uncacheable.
+ *
+ * PASS-2 TEST REPORT, DEFECT D-1 — THE SIGNAL ARRIVES AS DATA, NOT AS TEXT.
+ * `uncacheable` used to be recovered here by asking whether
+ * `discoverBuildCoalesceKey` had changed the string. That made the fail-closed
+ * classification a function of the WHOLE cache key — which is a JSON blob of
+ * unsanitised client input (`keywords`, `cityName`, `sort`, `segmentSlug`,
+ * `timezone`, three slug arrays). A client field shaped like `unavailable:<uuid>`
+ * therefore flipped `uncacheable` true on a perfectly readable generation:
+ * measured at 1 build / 0 L2 rows / 1 served / 11x503 against a control of
+ * 1 / 1 / 12 / 0, reachable anonymously (`verify_jwt = false`).
+ *
+ * It is now a PARAMETER, supplied by `index.ts` from
+ * `resolveDiscoveryGeneration`'s `readable` boolean — the one place that knows
+ * whether this isolate confirmed a generation. `uncacheable` is therefore true
+ * if and only if the generation was genuinely unreadable, whatever the client
+ * put in the key. The COLLAPSE itself is likewise gated on that boolean, so for
+ * a readable generation `buildKey` is `cacheKey` ITSELF and the healthy path is
+ * byte-for-byte what ORCH-426 shipped — which is the claim D-1 falsified.
+ *
+ * THE ONE-WAY PROPERTY IS PRESERVED AND TIGHTENED. Nothing a client writes can
+ * make a fail-closed request look cacheable (it could not before either, and
+ * that is why D-1 was a P2 rather than a P1); what changes is that nothing a
+ * client writes can make a HEALTHY request look fail-closed either.
  *
  * AMENDMENT 3B collapsed the ISOLATE-LOCAL single-flight map onto the
  * coalescing identity. This file still used the raw per-call key for the
@@ -78,21 +98,14 @@ function entryFromDbGzip(
  * amplification on the consumer app's hottest path at that exact moment is how
  * a slow period becomes an outage. A fail-closed path must DEGRADE, NOT AMPLIFY.
  */
-function coalescingIdentity(cacheKey: string): {
-  buildKey: string;
-  uncacheable: boolean;
-} {
-  const buildKey = discoverBuildCoalesceKey(cacheKey);
-  return { buildKey, uncacheable: buildKey !== cacheKey };
-}
-
 export async function resolveDiscoverEntry(
   supabase: SupabaseClient,
   cacheKey: string,
   buildCtx: BuildDiscoverContext,
+  uncacheable: boolean,
 ): Promise<L1Entry> {
   const now = Date.now();
-  const { buildKey, uncacheable } = coalescingIdentity(cacheKey);
+  const buildKey = uncacheable ? discoverBuildCoalesceKey(cacheKey) : cacheKey;
 
   const dbBytes = await readDbDiscoverCacheGzip(supabase, cacheKey);
   if (dbBytes) {
