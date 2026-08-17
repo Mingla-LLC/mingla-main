@@ -36,10 +36,54 @@ export interface DiscoverCacheParams {
   fallbackLat?: number | null;
   fallbackLng?: number | null;
   fallbackRadiusKm?: number | null;
+  /**
+   * issue #2009 (BINDING SPEC AMENDMENT 3A, Defect 2) — the discovery
+   * generation slot, produced by `discoveryGenerationSlot()` below.
+   *
+   * `pg_discover_business_events` filters `e.visibility = 'public'` at source,
+   * so an Unlisted row leaves the QUERY immediately — but this function serves
+   * from an L1 memory cache, an L2 DB cache and a cross-isolate build lock, all
+   * keyed by this key, under stale-while-revalidate. Without a generation in
+   * the key a Public -> Unlisted flip kept being served for up to
+   * DISCOVER_CACHE_TTL_MS fresh (120s) and DISCOVER_STALE_TTL_MS stale (600s).
+   *
+   * Every real standard-event visibility transition increments
+   * `event_discovery_generation` in the SAME transaction as the row write, so a
+   * flip mints a brand-new key here and the pre-change response can never be
+   * served from any of the three layers.
+   */
+  discoveryGeneration?: string;
+}
+
+/**
+ * issue #2009 — turn a raw `event_discovery_generation` read into the cache-key
+ * slot, FAIL CLOSED.
+ *
+ * A valid positive integer generation produces a shared, stable slot — that is
+ * what makes the cache a cache. Anything else (RPC error, null, NaN, a
+ * non-integer, a non-positive value) means the generation COULD NOT BE READ,
+ * and the amendment is explicit that such a request must not be served a cached
+ * entry keyed on a stale or absent generation. It therefore gets a per-call
+ * unique slot: the key it mints cannot collide with any entry that exists or
+ * will ever exist, so L1, L2 and the build lock all miss and the response is
+ * built fresh. Availability is preserved; a stale-privacy read is not possible.
+ */
+export function discoveryGenerationSlot(raw: unknown): string {
+  const value = typeof raw === "string" ? Number(raw) : raw;
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return `g${value}`;
+  }
+  return `unavailable:${crypto.randomUUID()}`;
 }
 
 export function buildDiscoverCacheKey(p: DiscoverCacheParams): string {
   const normalized = {
+    // issue #2009 — the visibility epoch. FIRST slot so a generation change is
+    // visible at the head of every key. `null` only ever occurs for a caller
+    // that supplied no generation at all; the edge handler always supplies one
+    // via discoveryGenerationSlot(), and the #2009 strict-grep gate fails if
+    // that threading is removed.
+    gen: p.discoveryGeneration ?? null,
     // #1637 — null (not "") for a coords-anchored request, so a coords key can
     // never collide with a city key and JSON.stringify keeps the slot explicit.
     // The client snaps device coordinates to ~110m before they arrive here, so

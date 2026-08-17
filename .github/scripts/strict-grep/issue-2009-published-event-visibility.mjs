@@ -34,6 +34,11 @@ const SCREEN = "mingla-business/src/components/event/EditPublishedScreen.tsx";
 const SERVICE = "mingla-business/src/services/businessEvents.ts";
 const ADMIN_SERVICE = "mingla-admin/src/services/offeringsService.js";
 const BUSINESS_SRC = "mingla-business/src";
+// AMENDMENT 3A (#issuecomment-5317431821) — the two files the narrowed
+// Amendment 3 §4 allowlist had omitted, restored for this pass only.
+const AGENT_TOOLS = "supabase/functions/_shared/agentTools.ts";
+const DISCOVER_CACHE = "supabase/functions/discover-merged-events/_cache.ts";
+const DISCOVER_INDEX = "supabase/functions/discover-merged-events/index.ts";
 
 const PRIVATE_COPY =
   "Private events are not ready to accept invited guests yet. Choose Public or Unlisted for now.";
@@ -176,6 +181,76 @@ const check = (s) => {
   if (!s.adminService.includes("private_transition_requires_business")) {
     fail("mingla-admin/src/services/offeringsService.js lost the private_transition_requires_business mapping (SC-29)");
   }
+
+  // ---- 8. AMENDMENT 3A Defect 1 — Ari's visibility write is ROUTED ---------
+  // The behavioural proof is
+  //   supabase/functions/_shared/__tests__/issue_2009_ari_visibility_via_rpc.test.ts
+  //   supabase/migrations/__tests__/issue_2009_ari_visibility_rpc.pg17.test.sql
+  // What this gate adds is the wiring those cannot see: that nobody reinstates
+  // the direct column write that the database now refuses.
+  const ari = s.agentToolsNoComments;
+  if (ari === "") fail("supabase/functions/_shared/agentTools.ts is missing");
+  if (!/\.rpc\(\s*["'`]business_set_event_visibility["'`]/.test(ari)) {
+    fail("agentTools.ts no longer routes visibility through business_set_event_visibility — Ari's write returns event_visibility_direct_update_blocked (Defect 1)");
+  }
+  for (const block of ari.match(/\.from\(\s*["'`]events["'`]\s*\)[\s\S]{0,600}?\.update\(([\s\S]{0,400}?)\)/g) ?? []) {
+    // The sparse non-visibility update passes an `updates` object by
+    // reference; a literal `visibility:` inside an events update is the
+    // regression. `updates.visibility = …` for a NON-'event' offering is
+    // allowed and lives outside any `.update(` block.
+    if (/\bvisibility\s*:/.test(block)) {
+      fail("agentTools.ts performs a direct events.visibility table update — the RPC is the only authority (Defect 1)");
+    }
+  }
+  if (!/VISIBILITY_CHANGE_MUST_BE_SEPARATE/.test(ari)) {
+    fail("agentTools.ts lost the mixed-action refusal — a mixed call could partially execute (Amendment 1 §B.3)");
+  }
+  if (/SERVICE_ROLE|service_role/.test(ari)) {
+    fail("agentTools.ts references a service-role credential — Ari is caller-JWT-only (I-ARI-USER-JWT-ONLY)");
+  }
+  if (/issue_1931_/.test(ari)) {
+    fail("agentTools.ts calls an issue_1931_* primitive — out of scope for this pass (Amendment 3 §4)");
+  }
+
+  // ---- 9. AMENDMENT 3A Defect 2 — the discovery generation is threaded -----
+  // Behavioural proof:
+  //   supabase/functions/discover-merged-events/__tests__/issue_2009_discovery_generation_cache_key.test.ts
+  const cache = s.discoverCacheNoComments;
+  const index = s.discoverIndexNoComments;
+  if (cache === "") fail("discover-merged-events/_cache.ts is missing");
+  if (!/discoveryGeneration\??\s*:/.test(cache)) {
+    fail("_cache.ts: DiscoverCacheParams no longer carries discoveryGeneration (SC-14/SC-15)");
+  }
+  if (!/gen:\s*p\.discoveryGeneration/.test(cache)) {
+    fail("_cache.ts: buildDiscoverCacheKey no longer folds the generation into the key — an Unlisted event stays discoverable for the stale TTL (SC-14/SC-15)");
+  }
+  if (!/export function discoveryGenerationSlot/.test(cache)) {
+    fail("_cache.ts lost discoveryGenerationSlot — the fail-closed rule has no single home (Amendment 3A)");
+  }
+  if (!/randomUUID/.test(cache)) {
+    fail("_cache.ts: the unreadable-generation fallback is no longer per-call unique, so a failed read could be served a cached entry (fail-closed)");
+  }
+  // The TTLs are explicitly OUT of scope for this pass — a 'fix' that just
+  // shortens the exposure window instead of keying on the generation is the
+  // exact substitution Amendment 3A forbids.
+  if (!/DISCOVER_MERGED_CACHE_TTL_MS["'`]\s*\)\s*\?\?\s*["'`]120000/.test(cache) ||
+      !/DISCOVER_MERGED_STALE_MS["'`]\s*\)\s*\?\?\s*["'`]600000/.test(cache)) {
+    fail("_cache.ts: a discover cache TTL default changed — TTLs are out of scope for this pass (Amendment 3A)");
+  }
+  if (!/discoveryGenerationSlot/.test(index)) {
+    fail("discover-merged-events/index.ts no longer builds the generation slot (Defect 2)");
+  }
+  if (!/issue_2009_event_discovery_generation/.test(index)) {
+    fail("discover-merged-events/index.ts no longer reads the discovery generation (Defect 2)");
+  }
+  const genReadIndex = index.indexOf("issue_2009_event_discovery_generation");
+  const l1Index = index.indexOf("l1Get(cacheKey");
+  if (l1Index >= 0 && genReadIndex > l1Index) {
+    fail("discover-merged-events/index.ts reads the generation AFTER serving from L1 — the stale deck would go out first (Defect 2)");
+  }
+  if (!/discoveryGeneration,/.test(index)) {
+    fail("discover-merged-events/index.ts no longer passes discoveryGeneration into DiscoverCacheParams (Defect 2)");
+  }
 };
 
 const readIf = (p) => (fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "");
@@ -189,7 +264,16 @@ for (const f of walk(BUSINESS_SRC)) {
 
 const migrationRaw = readIf(MIGRATION);
 const screenRaw = readIf(SCREEN);
+const agentToolsRaw = readIf(AGENT_TOOLS);
+const discoverCacheRaw = readIf(DISCOVER_CACHE);
+const discoverIndexRaw = readIf(DISCOVER_INDEX);
 const sources = {
+  agentTools: agentToolsRaw,
+  agentToolsNoComments: stripJsComments(agentToolsRaw),
+  discoverCache: discoverCacheRaw,
+  discoverCacheNoComments: stripJsComments(discoverCacheRaw),
+  discoverIndex: discoverIndexRaw,
+  discoverIndexNoComments: stripJsComments(discoverIndexRaw),
   migration: migrationRaw,
   migrationNoComments: stripSqlComments(migrationRaw),
   migrationList: fs.existsSync("supabase/migrations")
@@ -351,6 +435,99 @@ if (process.argv.includes("--self-test")) {
         migrationList: [...s.migrationList, "20270419002009_issue_2009_extra.sql"],
       }),
     },
+    // ---- AMENDMENT 3A Defect 1 — Ari routing --------------------------------
+    {
+      label: "M20 — Ari stops routing through the RPC (the exact Defect 1 regression)",
+      apply: (s) => ({
+        ...s,
+        agentTools: s.agentTools.replace(
+          'client.rpc("business_set_event_visibility"',
+          'client.rpc("some_other_rpc"',
+        ),
+      }),
+    },
+    {
+      label: "M21 — a direct events.visibility table update is reintroduced into agentTools",
+      apply: (s) => ({
+        ...s,
+        agentTools: s.agentTools +
+          '\nawait client.from("events").update({ visibility: "hidden" }).eq("id", id);\n',
+      }),
+    },
+    {
+      label: "M22 — the mixed-action refusal is removed (a mixed call could partially execute)",
+      apply: (s) => ({
+        ...s,
+        agentTools: s.agentTools.replaceAll("VISIBILITY_CHANGE_MUST_BE_SEPARATE", "SOMETHING_ELSE"),
+      }),
+    },
+    {
+      label: "M23 — Ari escalates to a service-role credential",
+      apply: (s) => ({
+        ...s,
+        agentTools: s.agentTools + '\nconst k = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");\n',
+      }),
+    },
+    // ---- AMENDMENT 3A Defect 2 — discovery generation ----------------------
+    {
+      label: "M24 — the generation is dropped from the cache key (the exact Defect 2 regression)",
+      apply: (s) => ({
+        ...s,
+        discoverCache: s.discoverCache.replace("    gen: p.discoveryGeneration ?? null,\n", ""),
+      }),
+    },
+    {
+      label: "M25 — DiscoverCacheParams loses the generation field",
+      apply: (s) => ({
+        ...s,
+        discoverCache: s.discoverCache.replace("discoveryGeneration?: string;", ""),
+      }),
+    },
+    {
+      label: "M26 — the fail-closed fallback stops being per-call unique",
+      apply: (s) => ({
+        ...s,
+        discoverCache: s.discoverCache.replace(
+          "`unavailable:${crypto.randomUUID()}`",
+          '"unavailable:fixed"',
+        ),
+      }),
+    },
+    {
+      label: "M27 — the exposure is 'fixed' by shortening a TTL instead of keying on the generation",
+      apply: (s) => ({
+        ...s,
+        discoverCache: s.discoverCache.replace('?? "600000"', '?? "5000"'),
+      }),
+    },
+    {
+      label: "M28 — the edge handler stops reading the generation",
+      apply: (s) => ({
+        ...s,
+        discoverIndex: s.discoverIndex.replaceAll(
+          "issue_2009_event_discovery_generation",
+          "some_other_reader",
+        ),
+      }),
+    },
+    {
+      label: "M29 — the generation is read AFTER the L1 serve, so the stale deck goes out first",
+      apply: (s) => {
+        const marker = "  const generationRead = await supabase.rpc(\"issue_2009_event_discovery_generation\");";
+        return {
+          ...s,
+          discoverIndex: s.discoverIndex.replace(marker, "") +
+            "\n" + marker + "\n",
+        };
+      },
+    },
+    {
+      label: "M30 — the slot is built but never threaded into DiscoverCacheParams",
+      apply: (s) => ({
+        ...s,
+        discoverIndex: s.discoverIndex.replace("    discoveryGeneration,\n", ""),
+      }),
+    },
     {
       label: "COMMENT-FORGERY — the RPC call is deleted but a comment quotes it verbatim",
       apply: (s) => ({
@@ -381,6 +558,9 @@ if (process.argv.includes("--self-test")) {
       ...mutated,
       migrationNoComments: stripSqlComments(mutated.migration),
       screenNoComments: stripJsComments(mutated.screen),
+      agentToolsNoComments: stripJsComments(mutated.agentTools),
+      discoverCacheNoComments: stripJsComments(mutated.discoverCache),
+      discoverIndexNoComments: stripJsComments(mutated.discoverIndex),
     };
     let rejected = false;
     try {

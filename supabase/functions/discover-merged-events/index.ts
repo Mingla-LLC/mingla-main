@@ -17,6 +17,7 @@ import { parseLocalStartEndDateTime } from "../_shared/timezone.ts";
 import {
   buildDiscoverCacheKey,
   type DiscoverCacheParams,
+  discoveryGenerationSlot,
 } from "./_cache.ts";
 import {
   coalesceDiscoverBuild,
@@ -183,7 +184,30 @@ serve(async (req: Request): Promise<Response> => {
     auth: { persistSession: false },
   });
 
+  // ── issue #2009 (Amendment 3A, Defect 2): the visibility epoch ────────────
+  // Read the current discovery generation BEFORE the key is built. Every real
+  // standard-event visibility transition increments it in the same transaction
+  // as the row write, so a Public -> Unlisted flip mints a new key and the
+  // pre-change deck can never be served from L1, L2 or behind the build lock.
+  //
+  // The read is a single primary-key row on a service-only singleton. It runs
+  // on every request INCLUDING the L1-hit path — deliberately: caching the
+  // generation itself would reintroduce exactly the staleness window this
+  // closes. `discoveryGenerationSlot` fails closed on any error, so a failed
+  // read costs a cache miss, never a stale-privacy hit.
+  const generationRead = await supabase.rpc("issue_2009_event_discovery_generation");
+  if (generationRead.error) {
+    console.warn(
+      "[discover-merged-events] issue #2009 discovery generation unreadable; failing closed to an uncacheable key:",
+      generationRead.error.message,
+    );
+  }
+  const discoveryGeneration = discoveryGenerationSlot(
+    generationRead.error ? null : generationRead.data,
+  );
+
   const cacheParams: DiscoverCacheParams = {
+    discoveryGeneration,
     cityName,
     stateCode: body.city.stateCode,
     countryCode: body.city.countryCode,
