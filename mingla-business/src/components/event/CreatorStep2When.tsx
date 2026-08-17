@@ -224,27 +224,6 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   >(null);
   const [addDateTempValue, setAddDateTempValue] = useState<Date | null>(null);
 
-  // ---- issue #2160: multi-day pricing mode ----
-  // Read through the total coercion so a draft persisted before #2160
-  // (`undefined`) resolves to "per_day" — byte-identical to the database
-  // column's DEFAULT, which is why no persist migrator was needed.
-  const pricingMode = draftMultiDatePricingMode(draft.multiDatePricingMode);
-  // Drives which helper line each option shows. A free event has no price to
-  // qualify, so it gets the pass-count wording instead of the money wording.
-  const eventHasPaidTicket = (draft.tickets ?? []).some(
-    (t) => (t.priceGbp ?? 0) > 0,
-  );
-  const handlePricingModeChange = useCallback(
-    (next: MultiDatePricingMode): void => {
-      // The database trigger is the authority and is fail-closed; this guard
-      // exists so the organiser is never shown a control that then errors.
-      if (multiDatePricingModeLocked) return;
-      if (next === draftMultiDatePricingMode(draft.multiDatePricingMode)) return;
-      updateDraft({ multiDatePricingMode: next });
-    },
-    [draft.multiDatePricingMode, multiDatePricingModeLocked, updateDraft],
-  );
-
   // ---- Mode-switch confirm ----
   const [pendingMode, setPendingMode] = useState<WhenMode | null>(null);
 
@@ -1219,10 +1198,12 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
           {showMultiDatePricingMode && (draft.multiDates?.length ?? 0) > 1 ? (
             <React.Suspense fallback={null}>
               <MultiDatePricingModeField
-                pricingMode={pricingMode}
-                eventHasPaidTicket={eventHasPaidTicket}
+                pricingModeRaw={draft.multiDatePricingMode}
+                tickets={draft.tickets ?? []}
                 locked={multiDatePricingModeLocked}
-                onChange={handlePricingModeChange}
+                onChange={(next) =>
+                  updateDraft({ multiDatePricingMode: next })
+                }
               />
             </React.Suspense>
           ) : null}

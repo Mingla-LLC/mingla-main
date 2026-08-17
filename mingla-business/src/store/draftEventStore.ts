@@ -26,13 +26,10 @@
 import { useMemo } from "react";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-// issue #2160 — re-exported from a LEAF module (zero imports) so a consumer can
-// take the coercion WITHOUT taking this store, and the AsyncStorage-backed
-// persist behind it, at runtime. See the header of that file.
-export {
-  draftMultiDatePricingMode,
-  type MultiDatePricingMode,
-} from "../utils/multiDatePricingMode";
+// issue #2160 — the coercion is NOT re-exported here. A re-export would put a
+// second import path in the eager `__common` chunk for a two-state helper that
+// already has one, and this store is organiser state a buyer never needs. Take
+// it from `../utils/multiDatePricingMode` directly.
 import type { MultiDatePricingMode } from "../utils/multiDatePricingMode";
 import { create } from "zustand";
 import {

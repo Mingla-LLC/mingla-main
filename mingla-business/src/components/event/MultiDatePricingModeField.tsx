@@ -21,7 +21,10 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { accent, glass, text as textTokens } from "../../constants/designSystem";
-import type { MultiDatePricingMode } from "../../utils/multiDatePricingMode";
+import {
+  draftMultiDatePricingMode,
+  type MultiDatePricingMode,
+} from "../../utils/multiDatePricingMode";
 
 /**
  * issue #2160 — SPEC amendment §6, verbatim. The implementor invents nothing
@@ -50,9 +53,16 @@ const PRICING_MODE_OPTIONS: ReadonlyArray<{
 ];
 
 export interface MultiDatePricingModeFieldProps {
-  pricingMode: MultiDatePricingMode;
-  /** Drives which helper line each option shows — a free event has no price to qualify. */
-  eventHasPaidTicket: boolean;
+  /**
+   * The RAW draft field. Coerced in here, not by the caller: a draft persisted
+   * before #2160 carries `undefined`, and the wizard step should not have to
+   * know that. Keeping the coercion, the paid/free decision and the write
+   * guards inside the control is also what keeps them OUT of the eager
+   * `__common` chunk — the wizard step is already eager, this file is not.
+   */
+  pricingModeRaw: unknown;
+  /** The draft's tickets — a free event has no price to qualify. */
+  tickets: ReadonlyArray<{ priceGbp?: number | null }>;
   /**
    * TRUE once the event holds a live ticket. The database trigger
    * `events_multi_date_pricing_mode_locked` is the authority and is
@@ -60,12 +70,23 @@ export interface MultiDatePricingModeFieldProps {
    * a control that then errors.
    */
   locked: boolean;
+  /** Called ONLY for a real change on an unlocked control. */
   onChange: (next: MultiDatePricingMode) => void;
 }
 
 export const MultiDatePricingModeField: React.FC<
   MultiDatePricingModeFieldProps
-> = ({ pricingMode, eventHasPaidTicket, locked, onChange }) => (
+> = ({ pricingModeRaw, tickets, locked, onChange }) => {
+  const pricingMode = draftMultiDatePricingMode(pricingModeRaw);
+  const eventHasPaidTicket = tickets.some((t) => (t.priceGbp ?? 0) > 0);
+  const handlePress = (next: MultiDatePricingMode): void => {
+    // The database trigger is the authority and is fail-closed; this guard
+    // exists so the organiser is never shown a control that then errors.
+    if (locked) return;
+    if (next === pricingMode) return;
+    onChange(next);
+  };
+  return (
   <View style={styles.pricingModeBlock} testID="issue-2160-pricing-mode">
     <Text style={styles.fieldLabel}>How guests pay for multiple days</Text>
     {/* Sibling radio rows inside one radiogroup — never nested Pressables,
@@ -77,7 +98,7 @@ export const MultiDatePricingModeField: React.FC<
         return (
           <Pressable
             key={option.value}
-            onPress={() => onChange(option.value)}
+            onPress={() => handlePress(option.value)}
             disabled={locked}
             accessibilityRole="radio"
             accessibilityState={{ checked, disabled: locked }}
@@ -113,7 +134,8 @@ export const MultiDatePricingModeField: React.FC<
         : "You can't change this once a guest has a ticket."}
     </Text>
   </View>
-);
+  );
+};
 
 const styles = StyleSheet.create({
   fieldLabel: {

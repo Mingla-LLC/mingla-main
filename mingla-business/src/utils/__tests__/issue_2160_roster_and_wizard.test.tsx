@@ -28,7 +28,7 @@ import {
   type ExportGuestRow,
 } from "../guestCsvExport";
 import { dayHeadCount, orderMatchesDay } from "../guestDayFilter";
-import { draftMultiDatePricingMode } from "../../store/draftEventStore";
+import { draftMultiDatePricingMode } from "../multiDatePricingMode";
 
 const repoRead = (rel: string): string =>
   fs.readFileSync(path.resolve(__dirname, "../../..", rel), "utf8");
