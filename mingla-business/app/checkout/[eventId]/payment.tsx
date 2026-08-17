@@ -140,7 +140,10 @@ function CheckoutPaymentScreenContent({
           eventThemeOverrides: event.themeOverrides ?? null,
         }) ?? undefined)
       : undefined;
-  const { lines, buyer, setLineQuantity, setBuyer } = useCart();
+  // issue #2135 [multi-date public day picker] — `eventDateId` is the occurrence
+  // the guest chose on the public page, seeded into the cart by the cart step.
+  // null on every single-date checkout, which keeps the request byte-identical.
+  const { lines, buyer, setLineQuantity, setBuyer, eventDateId } = useCart();
   const totals = useCartTotals();
 
   // ORCH-0789/0790 REWORK: on web, the buyer may be returning from a
@@ -373,6 +376,10 @@ function CheckoutPaymentScreenContent({
           buyer,
           lines,
           surface,
+          // issue #2135 — forward the chosen occurrence ONLY when present. The
+          // service already omits the field for an empty value, so a single-date
+          // request is byte-identical; `orders.event_date_id` (#1188) persists it.
+          ...(eventDateId !== null ? { eventDateId } : {}),
         });
         if (checkout.kind !== "requires_web_redirect") {
           throw new Error("Hosted checkout did not return a redirect URL.");
@@ -448,6 +455,10 @@ function CheckoutPaymentScreenContent({
         ...(previewCalculationId
           ? { taxCalculationId: previewCalculationId }
           : {}),
+        // issue #2135 — the chosen occurrence, forwarded ONLY when present.
+        // `useNativeCheckoutFlow` already accepts and omits it the same way, so
+        // a single-date native charge is byte-identical.
+        ...(eventDateId !== null ? { eventDateId } : {}),
       });
 
       mixpanelService.track("ticket_checkout_sheet_opened", {
@@ -561,6 +572,8 @@ function CheckoutPaymentScreenContent({
     buyer,
     event,
     eventId,
+    // issue #2135 — the chosen occurrence is read inside this handler.
+    eventDateId,
     lines,
     nativeCheckout,
     previewCalculationId,

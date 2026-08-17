@@ -297,6 +297,27 @@ export const formatEventDoorsTimes = (
 };
 
 /**
+ * issue #2135 [multi-date public day picker] — the short day label for ONE
+ * materialised `event_dates` occurrence, e.g. "Sat 22 Aug", rendered in the
+ * event's IANA timezone.
+ *
+ * Lives here, not in the component, because I-14 makes this file the single
+ * owner of event date display (never a local ISO-to-label formatter in a
+ * component). Returns null on an unparseable instant — NEVER a fabricated
+ * label (Constitution #9); callers omit the affordance instead.
+ */
+export const formatOccurrenceDayLabel = (
+  startAtUtc: string | null | undefined,
+  timezone: string | null | undefined,
+): string | null => {
+  if (typeof startAtUtc !== "string" || startAtUtc.length === 0) return null;
+  if (Number.isNaN(new Date(startAtUtc).getTime())) return null;
+  const tz =
+    typeof timezone === "string" && timezone.length > 0 ? timezone : "UTC";
+  return formatShortDateInTz(startAtUtc, tz);
+};
+
+/**
  * ORCH-0877 — Single-event date line. Renders one of three forms:
  *   1. Date TBD                              — when date is null
  *   2. "Sat 18 May · 10 PM"                  — when endsAt is null
