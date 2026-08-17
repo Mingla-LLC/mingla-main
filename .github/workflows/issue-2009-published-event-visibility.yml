@@ -10,11 +10,14 @@ on:
       - "supabase/functions/_shared/__tests__/issue_2009_private_exit_copy.rework.test.ts"
       - "supabase/functions/discover-merged-events/_cache.ts"
       - "supabase/functions/discover-merged-events/_memory-cache.ts"
+      - "supabase/functions/discover-merged-events/_resolve-entry.ts"
       - "supabase/functions/discover-merged-events/index.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_discovery_generation_cache_key.test.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_generation_read_ceiling.test.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_generation_failclosed_herd.tester_adversarial.test.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_coalescing.rework.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.rework.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.worker.ts"
       - "supabase/functions/agent-confirm-action/index.ts"
       - "supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts"
       - "mingla-business/src/services/businessEvents.ts"
@@ -34,11 +37,14 @@ on:
       - "supabase/functions/_shared/__tests__/issue_2009_private_exit_copy.rework.test.ts"
       - "supabase/functions/discover-merged-events/_cache.ts"
       - "supabase/functions/discover-merged-events/_memory-cache.ts"
+      - "supabase/functions/discover-merged-events/_resolve-entry.ts"
       - "supabase/functions/discover-merged-events/index.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_discovery_generation_cache_key.test.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_generation_read_ceiling.test.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_generation_failclosed_herd.tester_adversarial.test.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_coalescing.rework.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.rework.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.worker.ts"
       - "supabase/functions/agent-confirm-action/index.ts"
       - "supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts"
       - "mingla-business/src/services/businessEvents.ts"
@@ -224,6 +230,19 @@ jobs:
         run: |
           deno test --no-check --allow-env \
             supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_coalescing.rework.test.ts
+      # IMPLEMENTOR REWORK COVERAGE (AMENDMENT 3C Defect 5). The suite above runs
+      # in ONE process, so it shares one `_memory-cache.ts` module instance and
+      # cannot tell "the isolate-local single-flight map caught the herd" from
+      # "the isolates agreed at the database". That distinction IS Defect 5, so
+      # this suite runs each request in a real Deno Worker — a separate V8
+      # isolate with its own module graph — against one modelled database, and
+      # counts the `pg_discover_business_events` calls that ARRIVE there.
+      # Measured: 12 isolates -> 1 build and 0 cache rows with the fix, 12 and 12
+      # without. `--allow-read` is for the worker module only.
+      - name: "#2009 Defect 5 — the fail-closed herd collapses ACROSS isolates, and writes no unreadable row"
+        run: |
+          deno test --no-check --allow-env --allow-read \
+            supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.rework.test.ts
       # IMPLEMENTOR REWORK COVERAGE (pass-1 TEST REPORT P2-2). One stable code,
       # two directions: the approved entering sentence stays verbatim and the
       # exit leg gets copy that is true of the exit leg. Driven through the real

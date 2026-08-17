@@ -40,6 +40,9 @@ const AGENT_TOOLS = "supabase/functions/_shared/agentTools.ts";
 const DISCOVER_CACHE = "supabase/functions/discover-merged-events/_cache.ts";
 const DISCOVER_INDEX = "supabase/functions/discover-merged-events/index.ts";
 const DISCOVER_MEMORY = "supabase/functions/discover-merged-events/_memory-cache.ts";
+// AMENDMENT 3C (#issuecomment-5318285509) — the one-file allowlist delta, for
+// the build-lock and L2-write identity only.
+const DISCOVER_RESOLVE = "supabase/functions/discover-merged-events/_resolve-entry.ts";
 
 const PRIVATE_COPY =
   "Private events are not ready to accept invited guests yet. Choose Public or Unlisted for now.";
@@ -444,6 +447,111 @@ const check = (s) => {
     );
   }
 
+  // ---- 11b. AMENDMENT 3C Defect 5 — the SAME separation, one layer down ----
+  // Behavioural proof:
+  //   supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.rework.test.ts
+  //     — 12 requests in 12 REAL Deno Worker isolates against one modelled
+  //       database: 1 build and 0 cache rows with the fix, 12 and 12 without.
+  //
+  // 3B collapsed the ISOLATE-LOCAL single-flight map (section 11 above).
+  // `_resolve-entry.ts` still handed the per-call-unique cache key to the
+  // CROSS-ISOLATE build lock and to the L2 write, so N isolates still ran N
+  // builds and wrote N rows nothing could ever read. What this gate adds is
+  // that the two identities do not silently re-merge in EITHER direction: the
+  // lock must stay on the coalescing key, and the SERVE side (L1, the L2 read,
+  // the L2 write) must stay on the cache key.
+  const resolve = s.discoverResolveNoComments;
+  if (resolve === "") fail("discover-merged-events/_resolve-entry.ts is missing");
+  if (!/import \{[^}]*discoverBuildCoalesceKey[^}]*\} from "\.\/_cache\.ts";/.test(resolve)) {
+    fail(
+      "_resolve-entry.ts no longer imports discoverBuildCoalesceKey — the distributed build lock has no coalescing namespace and every fail-closed isolate builds its own deck (Amendment 3C Defect 5)",
+    );
+  }
+  // The identity must be DERIVED from the one shared normaliser, not re-tested
+  // against a second copy of the fail-closed rule (which could drift, or be
+  // pinned true/false and make the guards below vacuous — #2113).
+  if (
+    !/const buildKey = discoverBuildCoalesceKey\(cacheKey\);/.test(resolve) ||
+    !/uncacheable: buildKey !== cacheKey/.test(resolve)
+  ) {
+    fail(
+      "_resolve-entry.ts no longer derives `uncacheable` from discoverBuildCoalesceKey — either the fail-closed rule now has two definitions that can drift apart, or the flag is pinned and every guard below it is vacuous (Amendment 3C Defect 5)",
+    );
+  }
+  // BOTH lock attempts, and the release, on the COALESCING key.
+  //
+  // ORDER MATTERS HERE (#2113). The RAW-key check runs BEFORE the count check,
+  // because the raw-key check is the one that names the actual Defect 5
+  // regression. With the cheaper count check first it would fire on every
+  // realistic mutation and the raw-key branch would be a line no fixture ever
+  // reaches — a check carrying no information. The self-test asserts the
+  // attribution: M55/M56 must reach this branch, M56b must reach the count.
+  if (/tryDistributedBuildLock\(\s*supabase,\s*cacheKey/.test(resolve)) {
+    fail(
+      "_resolve-entry.ts takes the distributed build lock on the RAW per-call-unique cache key — every fail-closed isolate wins its own lock, so N concurrent requests are N independent database builds on the consumer app's hottest path (Amendment 3C Defect 5)",
+    );
+  }
+  const lockOnBuildKey = (resolve.match(/tryDistributedBuildLock\(supabase, buildKey\)/g) ?? []).length;
+  if (lockOnBuildKey < 2) {
+    fail(
+      `_resolve-entry.ts takes the distributed build lock on the coalescing key only ${lockOnBuildKey} time(s) — both attempts must, or a fail-closed herd re-splits at the retry (Amendment 3C Defect 5)`,
+    );
+  }
+  if (!/releaseDistributedBuildLock\(supabase, buildKey\)/.test(resolve)) {
+    fail(
+      "_resolve-entry.ts no longer releases the distributed build lock on the coalescing key — the lock it took is never freed and discovery stays unavailable for the whole lock TTL (Amendment 3C Defect 5)",
+    );
+  }
+  const writeCalls = (resolve.match(/await writeDbDiscoverCache\(/g) ?? []).length;
+  if (writeCalls !== 1) {
+    fail(
+      `_resolve-entry.ts calls writeDbDiscoverCache ${writeCalls} time(s); exactly one guarded call is expected (Amendment 3C Defect 5)`,
+    );
+  }
+  // The SERVE side must stay on the CACHE key. Any of these would make a
+  // response built while the generation was unreadable servable to a later
+  // request, which is the privacy trade every amendment in this chain forbids.
+  // Checked BEFORE the guard shape below, so a redirect to the collapsed
+  // namespace is reported as what it is rather than as a missing guard.
+  for (
+    const [re, what] of [
+      [/readDbDiscoverCacheGzip\(\s*supabase,\s*buildKey/, "the L2 read"],
+      [/waitForDbDiscoverCacheGzip\(\s*supabase,\s*buildKey/, "the L2 poll"],
+      [/writeDbDiscoverCache\(\s*supabase,\s*buildKey/, "the L2 write"],
+      [/l1SetBytes\(\s*buildKey/, "the L1 store"],
+      [/entryFromDbGzip\(\s*buildKey/, "the L1 store"],
+    ]
+  ) {
+    if (re.test(resolve)) {
+      fail(
+        `_resolve-entry.ts points ${what} at the COLLAPSED namespace — a deck built while the generation was unreadable becomes servable to later requests, which is exactly the stale-privacy read #2009 exists to close (Amendment 3C)`,
+      );
+    }
+  }
+  // The L2 write is GUARDED, and still writes on the healthy path.
+  if (
+    !/if \(!uncacheable\) \{\s*await writeDbDiscoverCache\(supabase, cacheKey, built, discoverStaleExpiresAt, bytes\);\s*\}/
+      .test(resolve)
+  ) {
+    fail(
+      "_resolve-entry.ts writes the L2 cache row unconditionally — a fail-closed build upserts a row keyed on a per-call uuid that nothing can ever read, so discover_merged_events_cache accumulates permanent garbage exactly when the database can least absorb it (Amendment 3C Defect 5)",
+    );
+  }
+  // The fail-closed loser sheds IMMEDIATELY: before any poll for a row that,
+  // by the guard above, will never be published.
+  const shedIndex = resolve.indexOf("if (uncacheable) {");
+  const firstWaitIndex = resolve.indexOf("waitForDbDiscoverCacheGzip(supabase, cacheKey)");
+  if (shedIndex < 0) {
+    fail(
+      "_resolve-entry.ts no longer sheds a fail-closed lock loser — it falls through to the wait path and polls the database 250 more times for a row that cannot exist (Amendment 3C Defect 5)",
+    );
+  }
+  if (firstWaitIndex >= 0 && shedIndex > firstWaitIndex) {
+    fail(
+      "_resolve-entry.ts sheds the fail-closed lock loser only AFTER the 20s poll — the amplification moves from builds to polls instead of degrading (Amendment 3C Defect 5)",
+    );
+  }
+
   // ---- 12. PASS-1 TEST REPORT P2-2 — one code, two directions --------------
   // Behavioural proof:
   //   mingla-business/src/services/__tests__/businessEventVisibilityExitCopy.issue2009.rework.test.ts
@@ -502,7 +610,10 @@ const agentToolsRaw = readIf(AGENT_TOOLS);
 const discoverCacheRaw = readIf(DISCOVER_CACHE);
 const discoverIndexRaw = readIf(DISCOVER_INDEX);
 const discoverMemoryRaw = readIf(DISCOVER_MEMORY);
+const discoverResolveRaw = readIf(DISCOVER_RESOLVE);
 const sources = {
+  discoverResolve: discoverResolveRaw,
+  discoverResolveNoComments: stripJsComments(discoverResolveRaw),
   agentTools: agentToolsRaw,
   agentToolsNoComments: stripJsComments(agentToolsRaw),
   discoverCache: discoverCacheRaw,
@@ -998,6 +1109,231 @@ if (process.argv.includes("--self-test")) {
         ),
       }),
     },
+    // ---- AMENDMENT 3C Defect 5 — the cross-isolate half of the separation --
+    {
+      label:
+        "M55 — the DISTRIBUTED build lock goes back to the raw cache key (the EXACT Defect 5 regression: 12 isolates, 12 builds)",
+      apply: (s) => {
+        const marker = "  let holdsLock = await tryDistributedBuildLock(supabase, buildKey);";
+        if (!s.discoverResolve.includes(marker)) {
+          throw new Error("M55 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          discoverResolve: s.discoverResolve.replace(
+            marker,
+            "  let holdsLock = await tryDistributedBuildLock(supabase, cacheKey);",
+          ),
+        };
+      },
+    },
+    {
+      label:
+        "M56 — only the FIRST lock attempt is collapsed; the retry re-splits the fail-closed herd",
+      apply: (s) => {
+        const marker = "    holdsLock = await tryDistributedBuildLock(supabase, buildKey);";
+        if (!s.discoverResolve.includes(marker)) {
+          throw new Error("M56 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          discoverResolve: s.discoverResolve.replace(
+            marker,
+            "    holdsLock = await tryDistributedBuildLock(supabase, cacheKey);",
+          ),
+        };
+      },
+    },
+    {
+      label:
+        "M56b — the retry lock attempt is DELETED outright, so only one of the two is collapsed (exercises the count pin, which M55/M56 reach the raw-key pin before)",
+      apply: (s) => {
+        const marker = "    holdsLock = await tryDistributedBuildLock(supabase, buildKey);";
+        if (!s.discoverResolve.includes(marker)) {
+          throw new Error("M56b fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          discoverResolve: s.discoverResolve.replace(marker, "    holdsLock = false;"),
+        };
+      },
+    },
+    {
+      label: "M57 — the lock is taken on the coalescing key but never released, wedging discovery",
+      apply: (s) => ({
+        ...s,
+        discoverResolve: s.discoverResolve.replace(
+          "await releaseDistributedBuildLock(supabase, buildKey);",
+          "void 0;",
+        ),
+      }),
+    },
+    {
+      label:
+        "M58 — the L2 write guard is deleted, so every fail-closed build upserts a row nothing can ever read",
+      apply: (s) => {
+        const marker = `    if (!uncacheable) {
+      await writeDbDiscoverCache(supabase, cacheKey, built, discoverStaleExpiresAt, bytes);
+    }`;
+        if (!s.discoverResolve.includes(marker)) {
+          throw new Error("M58 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          discoverResolve: s.discoverResolve.replace(
+            marker,
+            "    await writeDbDiscoverCache(supabase, cacheKey, built, discoverStaleExpiresAt, bytes);",
+          ),
+        };
+      },
+    },
+    {
+      label:
+        "M59 — the L2 write is redirected to the COLLAPSED namespace, making a fail-closed deck servable (the privacy trade)",
+      apply: (s) => ({
+        ...s,
+        discoverResolve: s.discoverResolve.replace(
+          "await writeDbDiscoverCache(supabase, cacheKey, built, discoverStaleExpiresAt, bytes);",
+          "await writeDbDiscoverCache(supabase, buildKey, built, discoverStaleExpiresAt, bytes);",
+        ),
+      }),
+    },
+    {
+      label:
+        "M60 — L1 in the resolver is keyed on the COLLAPSED namespace, so a later fail-closed request reads a deck built under an unconfirmed generation",
+      apply: (s) => ({
+        ...s,
+        discoverResolve: s.discoverResolve.replace(
+          "    return l1SetBytes(cacheKey, bytes, cached, now);",
+          "    return l1SetBytes(buildKey, bytes, cached, now);",
+        ),
+      }),
+    },
+    {
+      label:
+        "M61 — the fail-closed lock loser stops shedding and falls through to a 20s poll for a row that cannot exist",
+      apply: (s) => {
+        const marker = `    if (uncacheable) {
+      throw new DiscoverOverloadedError();
+    }`;
+        if (!s.discoverResolve.includes(marker)) {
+          throw new Error("M61 fixture marker drifted — update it, do not let it no-op");
+        }
+        return { ...s, discoverResolve: s.discoverResolve.replace(marker, "") };
+      },
+    },
+    {
+      label:
+        "M62 — `uncacheable` is pinned false: both guards survive as SOURCE TEXT but neither can ever fire (#2113)",
+      apply: (s) => ({
+        ...s,
+        discoverResolve: s.discoverResolve.replace(
+          "return { buildKey, uncacheable: buildKey !== cacheKey };",
+          "return { buildKey, uncacheable: false };",
+        ),
+      }),
+    },
+    {
+      label:
+        "M63 — `uncacheable` is pinned true: over-broad, the HEALTHY path stops publishing an L2 row at all",
+      apply: (s) => ({
+        ...s,
+        discoverResolve: s.discoverResolve.replace(
+          "return { buildKey, uncacheable: buildKey !== cacheKey };",
+          "return { buildKey, uncacheable: true };",
+        ),
+      }),
+    },
+    {
+      label:
+        "M65 — the L2 READ is redirected to the COLLAPSED namespace, so a fail-closed request is served a deck built under a generation nobody confirmed",
+      apply: (s) => {
+        const marker = "  const dbBytes = await readDbDiscoverCacheGzip(supabase, cacheKey);";
+        if (!s.discoverResolve.includes(marker)) {
+          throw new Error("M65 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          discoverResolve: s.discoverResolve.replace(
+            marker,
+            "  const dbBytes = await readDbDiscoverCacheGzip(supabase, buildKey);",
+          ),
+        };
+      },
+    },
+    {
+      label: "M66 — the 20s L2 POLL is redirected to the COLLAPSED namespace (the same read, one branch over)",
+      apply: (s) => {
+        const marker = "await waitForDbDiscoverCacheGzip(supabase, cacheKey);";
+        if (!s.discoverResolve.includes(marker)) {
+          throw new Error("M66 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          discoverResolve: s.discoverResolve.replace(
+            marker,
+            "await waitForDbDiscoverCacheGzip(supabase, buildKey);",
+          ),
+        };
+      },
+    },
+    {
+      label: "M67 — the L1 entry built from an L2 hit is stored under the COLLAPSED namespace",
+      apply: (s) => {
+        const marker = "    return entryFromDbGzip(cacheKey, dbBytes, now);";
+        if (!s.discoverResolve.includes(marker)) {
+          throw new Error("M67 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          discoverResolve: s.discoverResolve.replace(
+            marker,
+            "    return entryFromDbGzip(buildKey, dbBytes, now);",
+          ),
+        };
+      },
+    },
+    {
+      label:
+        "M68 — the fail-closed shed is MOVED BELOW the 20s poll: still present as source text, but the amplification has merely moved from builds to polls",
+      apply: (s) => {
+        const shed = `    if (uncacheable) {
+      throw new DiscoverOverloadedError();
+    }
+
+`;
+        const retry = "    holdsLock = await tryDistributedBuildLock(supabase, buildKey);";
+        if (!s.discoverResolve.includes(shed) || !s.discoverResolve.includes(retry)) {
+          throw new Error("M68 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          discoverResolve: s.discoverResolve.replace(shed, "").replace(retry, shed + retry),
+        };
+      },
+    },
+    {
+      label: "M64 — the coalescing normaliser is no longer imported into the resolver at all",
+      apply: (s) => ({
+        ...s,
+        discoverResolve: s.discoverResolve.replace(
+          'import { discoverBuildCoalesceKey, discoverStaleExpiresAt } from "./_cache.ts";',
+          'import { discoverStaleExpiresAt } from "./_cache.ts";',
+        ),
+      }),
+    },
+    {
+      label:
+        "COMMENT-FORGERY — the distributed lock reverts to the raw cache key while a comment quotes the buildKey call verbatim",
+      apply: (s) => ({
+        ...s,
+        discoverResolve: s.discoverResolve.replace(
+          "  let holdsLock = await tryDistributedBuildLock(supabase, buildKey);",
+          "  // let holdsLock = await tryDistributedBuildLock(supabase, buildKey);\n" +
+            "  let holdsLock = await tryDistributedBuildLock(supabase, cacheKey);",
+        ),
+      }),
+    },
     // ---- PASS-1 TEST REPORT P2-2 — one code, two directions ----------------
     {
       label: "M49 — the leg-aware copy map is removed, so both Private directions read the same again",
@@ -1090,6 +1426,7 @@ if (process.argv.includes("--self-test")) {
       discoverCacheNoComments: stripJsComments(mutated.discoverCache),
       discoverIndexNoComments: stripJsComments(mutated.discoverIndex),
       discoverMemoryNoComments: stripJsComments(mutated.discoverMemory),
+      discoverResolveNoComments: stripJsComments(mutated.discoverResolve),
     };
     let rejected = false;
     try {
