@@ -50,6 +50,10 @@ import { usePublicEventById } from "../../../../src/hooks/usePublicEvents";
 import type { PublicEventOccurrence } from "../../../../src/services/publicEventOccurrencesService";
 import { formatOccurrenceDayLabel } from "../../../../src/utils/eventDateDisplay";
 import {
+  dayHeadCount,
+  orderMatchesDay,
+} from "../../../../src/utils/guestDayFilter";
+import {
   capitalizeNoun,
   offeringKindConfig,
   offeringKindFromEventType,
@@ -336,45 +340,23 @@ export default function EventGuestsListRoute(): React.ReactElement {
     return map;
   }, [occurrences]);
 
-  /**
-   * Does this row belong under `dayId`?
-   *
-   * A guest holding passes for BOTH days appears under BOTH chips — that is the
-   * whole point of the issue, not a double-count, and they still appear ONCE
-   * under "All". A pass with NO days is not day-scoped: it admits on any
-   * occurrence, so it appears under every chip rather than disappearing from
-   * all of them. Comps and door sales carry no chosen day and are treated the
-   * same way, because they are equally admissible on any day.
-   */
+  // The rule itself lives in `src/utils/guestDayFilter.ts` so it can be called
+  // by a test with real rows instead of asserted by regex over this screen.
+  // Comps and door sales carry no chosen day and are equally admissible on any
+  // day, so they show under every chip.
   const rowMatchesDay = useCallback(
-    (row: GuestRow, dayId: string): boolean => {
-      if (row.kind !== "order") return true;
-      const days = row.order.ticketDays ?? [];
-      if (days.length === 0) return true;
-      const bound = days.filter((t) => t.eventDateIds.length > 0);
-      if (bound.length === 0) return true;
-      return bound.some((t) => t.eventDateIds.includes(dayId));
-    },
+    (row: GuestRow, dayId: string): boolean =>
+      row.kind !== "order" || orderMatchesDay(row.order.ticketDays, dayId),
     [],
   );
 
-  // Per-chip head count = passes bound to that day, plus every not-day-scoped
-  // pass (which is genuinely admissible on it). Counted from real ticket rows,
-  // never fabricated.
   const dayHeadCounts = useMemo<Map<string, number>>(() => {
+    const orders = merged
+      .filter((r) => r.kind === "order")
+      .map((r) => (r as Extract<GuestRow, { kind: "order" }>).order);
     const counts = new Map<string, number>();
     for (const occ of occurrences) {
-      let n = 0;
-      for (const row of merged) {
-        if (row.kind !== "order") continue;
-        const days = row.order.ticketDays ?? [];
-        for (const t of days) {
-          if (t.eventDateIds.length === 0 || t.eventDateIds.includes(occ.id)) {
-            n += 1;
-          }
-        }
-      }
-      counts.set(occ.id, n);
+      counts.set(occ.id, dayHeadCount(orders, occ.id));
     }
     return counts;
   }, [occurrences, merged]);

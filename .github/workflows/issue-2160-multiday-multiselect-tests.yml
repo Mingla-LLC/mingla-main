@@ -154,6 +154,31 @@ jobs:
         run: >-
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
           -f supabase/migrations/__tests__/issue_2160_pricing_mode_setter.test.sql
+      # N-1..N-5. THE MONEY CASE: an organiser flipping the pricing mode WHILE A
+      # GUEST IS IN CHECKOUT. The lock cannot cover this — it fires on an
+      # existing ticket and an in-flight session has none — so the mode is
+      # snapshotted onto the session at create and finalize mints under the
+      # snapshot. Both directions executed through the shipped RPC, plus the
+      # #2150 disclosure COALESCE case.
+      - name: "#2160 — a guest is issued under the mode they were QUOTED under"
+        env:
+          PGPASSWORD: ${{ format('issue-2160-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_2160_pricing_mode_snapshot.test.sql
+      # Every suite RE-RUN on the now non-virgin database. A suite that only
+      # passes once is not a suite you can trust, and this lane caught exactly
+      # that (a fixture seeding a fixed qr_code).
+      - name: "Re-run every #2160 suite on a NON-VIRGIN database"
+        env:
+          PGPASSWORD: ${{ format('issue-2160-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          for f in issue_2160_multiday_admission issue_2160_unlisted_occurrences \
+                   issue_2160_pricing_mode_setter issue_2160_pricing_mode_snapshot; do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+              -f "supabase/migrations/__tests__/$f.test.sql" >/dev/null
+          done
       # The neighbours this issue re-emits into must stay green under the change.
       - name: "#2150 suite stays green under the wrapper re-emit"
         env:

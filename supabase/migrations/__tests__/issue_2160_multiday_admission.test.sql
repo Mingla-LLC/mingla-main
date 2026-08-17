@@ -536,4 +536,104 @@ BEGIN
     'H-07 stale non-anchor day: finalize is refused, so no pass mints for a day that is over');
 END $$;
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- H-08 — CAPACITY AGGREGATES PER TICKET TYPE ACROSS THE WHOLE CART.
+-- I-PROPOSED-2160-C. THIS ONE PROTECTS MONEY.
+--
+-- ⚠️  ADDED AFTER A TESTER FINDING, AND THE FINDING WAS FAIR. The tester
+-- deleted the 5-line aggregation from the create-session base and THIS SUITE
+-- STAYED GREEN — the invariant the spec calls the one that protects money had
+-- only a strict-grep regex behind it, not an executable guard. A regex goes red
+-- on a reformat and green on a real regression. That is the #2175 bug class
+-- (a check that carries no information) sitting inside the fix for it.
+--
+-- THE HOLE: the pre-#2160 check compared `v_sold + v_reserved + v_qty` where
+-- v_qty is THIS LINE alone, and the session's own items are inserted AFTER the
+-- validation loop — so a second line of the SAME ticket_type was invisible to
+-- the first line's check and both passed independently. This EXECUTES that
+-- shape against a real cap and counts real rows.
+-- ═══════════════════════════════════════════════════════════════════════════
+DO $$
+DECLARE
+  f record; v_err text; v_session jsonb; v_minted int; v_reserved int;
+BEGIN
+  -- quantity_total = 1: exactly one admission may ever be sold.
+  SELECT * INTO f FROM pg_temp.i2160_event('capacity', 'per_day', 2, 1);
+
+  BEGIN
+    v_session := public.biz_ticket_checkout_create_session(
+      f.o_event, NULL, 'Oversell Guest', 'oversell@example.com', '+15550008888', false,
+      -- TWO LINES OF THE SAME TICKET TYPE. Unreachable from today's client, and
+      -- exactly the shape any future bundle / add-on feature will send.
+      jsonb_build_array(
+        jsonb_build_object('ticketTypeId', f.o_ticket_type, 'quantity', 1),
+        jsonb_build_object('ticketTypeId', f.o_ticket_type, 'quantity', 1)),
+      'i2160:capacity:' || f.o_event::text, now() + interval '15 minutes', 0, 'auto', NULL);
+    v_err := NULL;
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+  END;
+
+  PERFORM pg_temp.i2160_assert(v_err LIKE '%ticket_capacity_exceeded%',
+    'H-08a two lines of one ticket type against quantity_total=1 are REFUSED (got '
+    || COALESCE(v_err, 'NO ERROR — THE CART WAS ACCEPTED') || ')');
+
+  -- ...and nothing was reserved. A refusal that still holds inventory is an
+  -- oversell with extra steps.
+  SELECT COALESCE(SUM(i.quantity), 0)::int INTO v_reserved
+    FROM public.ticket_checkout_session_items i
+    JOIN public.ticket_checkout_sessions ss ON ss.id = i.checkout_session_id
+   WHERE i.ticket_type_id = f.o_ticket_type;
+  PERFORM pg_temp.i2160_assert(v_reserved = 0,
+    'H-08b and ZERO units were reserved (got ' || v_reserved || ')');
+
+  SELECT count(*) INTO v_minted FROM public.tickets WHERE event_id = f.o_event;
+  PERFORM pg_temp.i2160_assert(v_minted = 0,
+    'H-08c and ZERO tickets exist (got ' || v_minted || ')');
+
+  -- The control: ONE line of quantity 1 against the same cap still succeeds, so
+  -- H-08a is not passing because the whole cart path is broken.
+  v_session := public.biz_ticket_checkout_create_session(
+    f.o_event, NULL, 'Honest Guest', 'honest@example.com', '+15550009999', false,
+    jsonb_build_array(jsonb_build_object('ticketTypeId', f.o_ticket_type, 'quantity', 1)),
+    'i2160:capacity-ok:' || f.o_event::text, now() + interval '15 minutes', 0, 'auto', NULL);
+  PERFORM pg_temp.i2160_assert(
+    (v_session ->> 'checkoutSessionId') IS NOT NULL,
+    'H-08d CONTROL: a single honest line against the same cap still succeeds');
+END $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- H-09 — THE PER-DAY MULTIPLIER IS ALSO CAPACITY. A guest picking 2 days of a
+-- quantity_total=1 ticket consumes 2 units under per_day and is refused.
+-- ═══════════════════════════════════════════════════════════════════════════
+DO $$
+DECLARE f record; v_days uuid[]; v_err text; v_n int;
+BEGIN
+  SELECT * INTO f FROM pg_temp.i2160_event('capacity-days', 'per_day', 2, 1);
+  v_days := pg_temp.i2160_days(f.o_event);
+  BEGIN
+    PERFORM public.biz_ticket_checkout_create_session(
+      f.o_event, NULL, 'Two Day Guest', 'twoday@example.com', '+15550001010', false,
+      jsonb_build_array(jsonb_build_object('ticketTypeId', f.o_ticket_type, 'quantity', 1)),
+      'i2160:capdays:' || f.o_event::text, now() + interval '15 minutes', 0, 'auto',
+      ARRAY[v_days[1], v_days[2]]);
+    v_err := NULL;
+  EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+  END;
+  PERFORM pg_temp.i2160_assert(v_err LIKE '%ticket_capacity_exceeded%',
+    'H-09a per_day: 2 days x qty 1 needs 2 units and a cap of 1 REFUSES it (got '
+    || COALESCE(v_err,'NO ERROR') || ')');
+  SELECT count(*) INTO v_n FROM public.tickets WHERE event_id = f.o_event;
+  PERFORM pg_temp.i2160_assert(v_n = 0, 'H-09b and zero tickets exist');
+
+  -- all_days consumes ONE unit for the same two days — one pass sold once.
+  UPDATE public.events SET multi_date_pricing_mode = 'all_days' WHERE id = f.o_event;
+  PERFORM pg_temp.i2160_assert(
+    (public.biz_ticket_checkout_create_session(
+      f.o_event, NULL, 'All Days Guest', 'alldays2@example.com', '+15550001111', false,
+      jsonb_build_array(jsonb_build_object('ticketTypeId', f.o_ticket_type, 'quantity', 1)),
+      'i2160:capdays2:' || f.o_event::text, now() + interval '15 minutes', 0, 'auto',
+      ARRAY[v_days[1], v_days[2]]) ->> 'checkoutSessionId') IS NOT NULL,
+    'H-09c all_days: the SAME two days consume ONE unit and fit the cap of 1');
+END $$;
+
 DO $$ BEGIN RAISE NOTICE 'issue #2160 multiday admission suite: ALL CHECKS PASSED'; END $$;

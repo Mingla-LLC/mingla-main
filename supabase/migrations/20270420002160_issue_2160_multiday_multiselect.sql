@@ -258,6 +258,52 @@ REVOKE ALL ON TABLE public.ticket_checkout_session_event_dates
   FROM PUBLIC, anon, authenticated;
 GRANT ALL ON TABLE public.ticket_checkout_session_event_dates TO service_role;
 
+-- §A.7 — THE PRICING MODE IS SNAPSHOTTED ONTO THE SESSION AT CREATE.
+--
+-- ⚠️  THIS CLOSES A REAL, REPRODUCED MONEY BUG. Without it the mode is read
+-- TWICE and independently: once at create-session (where it sets the
+-- multiplier that PRICES and SIZES the reservation) and again at finalize
+-- (where it decides how entitlement rows are distributed). Nothing carried the
+-- value between them, so an organiser flipping the mode while a guest was in
+-- checkout produced a reservation priced under one rule and issued under the
+-- other:
+--
+--   all_days -> per_day mid-session: the guest is quoted ONE price for BOTH
+--     days, pays it, and receives ONE pass with ONE entitlement row. At the
+--     day-2 door they paid for, the scanner says `event_ended`.
+--   per_day -> all_days mid-session: the guest pays for TWO days and receives
+--     TWO passes EACH admitting BOTH days — four admissions sold as two, with
+--     `quantity_total` decremented by 2 for 4 bodies in the room.
+--
+-- THE LOCK CANNOT COVER THIS, and it is important to say why rather than
+-- assume it does: `events_multi_date_pricing_mode_locked` fires on
+-- `EXISTS(tickets … status IN ('valid','used','transferred'))`, and an
+-- IN-FLIGHT session has minted no ticket yet. The flip is therefore PERMITTED
+-- during exactly the window in which it does damage, and once the guest's
+-- ticket mints the lock engages and the damage cannot be undone. §5's
+-- guarantee holds only AFTER issuance; this column is what covers the window
+-- before it.
+--
+-- THE SHAPE IS NOT INVENTED. `ticket_checkout_sessions` already snapshots
+-- policy-at-create for precisely this reason —
+-- `checkout_access_mode_snapshot`, `checkout_access_restrictive_epoch_snapshot`
+-- and their siblings (#2101). This is the same pattern, one column wider.
+--
+-- NULLABLE, and NULL means "created before this column existed": the finalize
+-- base falls back to reading `events` exactly as it did, so a session already
+-- in flight at deploy finalizes rather than failing. New sessions always carry
+-- it.
+ALTER TABLE public.ticket_checkout_sessions
+  ADD COLUMN IF NOT EXISTS multi_date_pricing_mode_snapshot text;
+
+COMMENT ON COLUMN public.ticket_checkout_sessions.multi_date_pricing_mode_snapshot IS
+  'issue #2160 — the event''s multi_date_pricing_mode AS AT SESSION CREATE. The '
+  'session is priced and sized under this value, so finalize MUST mint under the '
+  'same one: reading events again at finalize lets an organiser flip the mode '
+  'mid-checkout and issue a pass that does not match what the guest paid for. '
+  'The lock cannot prevent that flip because an in-flight session holds no '
+  'ticket yet. NULL only for sessions created before this column existed.';
+
 -- §A.6 — THE LOCK. Enforced in the database, not the wizard.
 --
 -- A trigger rather than an RPC-level check because it is fail-closed against
@@ -1166,7 +1212,10 @@ BEGIN
     marketing_opt_in, subtotal_cents, application_fee_amount_cents, total_cents,
     currency, status, idempotency_key, cart_fingerprint, expires_at,
     stripe_account_id, stripe_application_fee_amount_cents,
-    installment_schedule
+    installment_schedule,
+    -- issue #2160 — the mode this reservation was PRICED under. Finalize mints
+    -- under this value, never a fresh read (§A.7).
+    multi_date_pricing_mode_snapshot
   ) VALUES (
     v_session_id, p_event_id, v_event.brand_id, p_buyer_user_id, trim(p_buyer_name),
     lower(trim(p_buyer_email)), p_buyer_phone_e164, COALESCE(p_marketing_opt_in, false),
@@ -1182,7 +1231,8 @@ BEGIN
           'installments', v_unioned
         )
       ELSE NULL
-    END
+    END,
+    v_pricing_mode
   );
 
   FOR v_line IN SELECT * FROM jsonb_array_elements(v_items)
@@ -1849,12 +1899,30 @@ BEGIN
     FROM public.ticket_checkout_session_items
    WHERE checkout_session_id = v_session.id;
 
-  -- ══ issue #2160 DELTA 3 of 4 — READ THE MODE AND THE DAY SET, ONCE ═════
-  -- Ordered by start_at so the per_day round-robin below is deterministic
-  -- and testable, not incidental.
-  SELECT COALESCE(e.multi_date_pricing_mode, 'per_day')
-    INTO v_pricing_mode
-    FROM public.events e WHERE e.id = v_session.event_id;
+  -- ══ issue #2160 DELTA 3 of 4 — MINT UNDER THE MODE THE GUEST WAS QUOTED ═
+  --
+  -- THE SNAPSHOT, NOT A FRESH READ OF `events`. The session was PRICED and
+  -- SIZED under `multi_date_pricing_mode_snapshot` at create; minting under a
+  -- different value issues a pass that does not match what the guest paid for,
+  -- in both directions (§A.7 states the two reproductions). The lock cannot
+  -- prevent the flip, because an in-flight session holds no ticket yet — which
+  -- is precisely the window this line closes.
+  --
+  -- DELETE THE SNAPSHOT READ and an organiser flipping the mode mid-checkout
+  -- either takes a two-day guest's money and admits them on one day, or sells
+  -- two admissions and lets four people in.
+  --
+  -- COALESCE to the live event ONLY for a session created before the column
+  -- existed, so anything already in flight at deploy still finalizes.
+  SELECT COALESCE(
+           v_session.multi_date_pricing_mode_snapshot,
+           (SELECT e.multi_date_pricing_mode FROM public.events e
+             WHERE e.id = v_session.event_id),
+           'per_day')
+    INTO v_pricing_mode;
+
+  -- The day set, ordered by start_at so the per_day round-robin below is
+  -- deterministic and testable, not incidental.
 
   SELECT ARRAY(
            SELECT d.event_date_id
@@ -2597,4 +2665,109 @@ BEGIN
     RAISE EXCEPTION 'issue #2160 probe: the organiser pricing-mode setter is missing — the column would be inert';
   END IF;
   RAISE NOTICE 'issue #2160 §H: organiser pricing-mode setter installed.';
+END $$;
+
+-- ===========================================================================
+-- §I — issue_2150_free_replay_disclosure_authorized: FAIL CLOSED BY VALUE,
+--      NOT BY THE CALLER REMEMBERING TO.
+--
+-- Re-emitted VERBATIM from 20270419002150_issue_2150_free_resubmit_idempotent
+-- .sql:113-142 with ONE change: the signed-in comparison is wrapped in
+-- COALESCE(..., false).
+--
+-- This does NOT weaken #2150 — it is strictly stronger, and both of that
+-- issue's strict-grep gates pass against this file unchanged (the disclosure
+-- function is still defined, and it still compares the presented buyer status
+-- token hash against `ticket_checkout_sessions.buyer_status_token_hash`). The
+-- possession requirement, the anonymous-token binding and the fail-closed
+-- disclosure contract are all byte-preserved.
+--
+-- WHY IT IS RE-EMITTED HERE RATHER THAN EDITED IN PLACE: #2150's migration has
+-- already been applied on the deploy path this branch builds on, so the fix has
+-- to land as a new definition. This file becomes the latest definer.
+-- ===========================================================================
+
+CREATE OR REPLACE FUNCTION public.issue_2150_free_replay_disclosure_authorized(
+  p_session_id uuid,
+  p_buyer_user_id uuid,
+  p_buyer_status_token_hash text
+) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path=public,auth,pg_temp AS $function$
+DECLARE v_session public.ticket_checkout_sessions%ROWTYPE;
+BEGIN
+  SELECT * INTO v_session FROM public.ticket_checkout_sessions WHERE id=p_session_id;
+  IF NOT FOUND THEN RETURN false; END IF;
+
+  -- Only a completed, live, zero-total reservation is ever disclosable here.
+  -- Mirrors the create-session exemption so the two cannot drift apart.
+  IF v_session.status<>'free_completed'
+     OR COALESCE(v_session.total_cents,0)<>0
+     OR v_session.order_id IS NULL
+     OR v_session.revoked_at IS NOT NULL THEN
+    RETURN false;
+  END IF;
+
+  -- Signed-in reservation: the authenticated identity IS the possession proof.
+  --
+  -- ⚠️  COALESCE IS LOAD-BEARING, NOT DEFENSIVE NOISE. `uuid = NULL` is NULL,
+  -- not false, so an ANONYMOUS caller (p_buyer_user_id IS NULL) asking about a
+  -- SIGNED-IN guest's reservation used to return NULL from a function whose
+  -- return type says boolean. That is reachable: an attacker who knows a
+  -- signed-in guest's email and phone derives the same idempotency key and
+  -- submits the form anonymously.
+  --
+  -- It failed closed ONLY because the single caller happens to write
+  -- `replayAuthorized !== true`. Any future caller writing the natural
+  -- `IF NOT authorized THEN refuse` would fail OPEN, because `NOT NULL` is
+  -- NULL and the refusal branch never runs — handing over another guest's
+  -- order id and QR payloads. A three-valued answer to a two-valued question
+  -- is the bug; the fix is to stop returning one, not to require every caller
+  -- to remember.
+  IF v_session.buyer_user_id IS NOT NULL THEN
+    RETURN COALESCE(v_session.buyer_user_id = p_buyer_user_id, false);
+  END IF;
+
+  -- Anonymous reservation: the buyer status token must be PRESENTED, not known.
+  RETURN v_session.buyer_status_token_hash IS NOT NULL
+     AND COALESCE(p_buyer_status_token_hash,'')<>''
+     AND v_session.buyer_status_token_hash = p_buyer_status_token_hash;
+END $function$;
+REVOKE ALL ON FUNCTION public.issue_2150_free_replay_disclosure_authorized(uuid,uuid,text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_2150_free_replay_disclosure_authorized(uuid,uuid,text)
+  TO service_role;
+
+DO $$
+DECLARE v_def text;
+BEGIN
+  SELECT pg_get_functiondef(p.oid) INTO v_def
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+   WHERE n.nspname='public' AND p.proname='issue_2150_free_replay_disclosure_authorized';
+  IF position('COALESCE' IN v_def) = 0 THEN
+    RAISE EXCEPTION 'issue #2160 probe: the #2150 disclosure check can still return NULL — a future caller writing IF NOT authorized would fail OPEN';
+  END IF;
+  IF position('buyer_status_token_hash' IN v_def) = 0 THEN
+    RAISE EXCEPTION 'issue #2160 probe: the #2150 anonymous possession binding was lost in the re-emit';
+  END IF;
+
+  -- The pricing-mode snapshot: the column, the write, and the read.
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='ticket_checkout_sessions'
+                    AND column_name='multi_date_pricing_mode_snapshot') THEN
+    RAISE EXCEPTION 'issue #2160 probe: ticket_checkout_sessions.multi_date_pricing_mode_snapshot missing';
+  END IF;
+  SELECT pg_get_functiondef(p.oid) INTO v_def
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+   WHERE n.nspname='public' AND p.proname='issue_1930_ticket_checkout_create_session_base';
+  IF position('multi_date_pricing_mode_snapshot' IN v_def) = 0 THEN
+    RAISE EXCEPTION 'issue #2160 probe: create-session does not snapshot the pricing mode';
+  END IF;
+  SELECT pg_get_functiondef(p.oid) INTO v_def
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+   WHERE n.nspname='public' AND p.proname='issue_1930_ticket_checkout_finalize_base';
+  IF position('v_session.multi_date_pricing_mode_snapshot' IN v_def) = 0 THEN
+    RAISE EXCEPTION 'issue #2160 probe: finalize re-reads events.multi_date_pricing_mode instead of the session snapshot — an organiser can reprice a guest mid-checkout';
+  END IF;
+
+  RAISE NOTICE 'issue #2160 §I: disclosure fails closed by value; pricing mode is snapshotted.';
 END $$;

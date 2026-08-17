@@ -1,107 +1,201 @@
 // issue #2160 — a guest attending two days gets TWO calendar entries.
 //
-// ── WHY THIS IS THE SAME BUG CLASS AS #2162 ────────────────────────────────
-// #2162 was a surface rendering ONE date for an order that covers several: the
-// confirmation email read the MASTER occurrence, so a day-2 guest was told to
-// arrive on day 1. The consumer calendar had the identical shape — one entry
-// per ORDER, dated from one occurrence.
+// ── WHY THIS FILE WAS REWRITTEN ────────────────────────────────────────────
+// Its first version was 100% regex over `calendarService.ts`. The tester was
+// right to reject that: `/\.flatMap\(/` goes RED on a reformat and GREEN on a
+// real regression, and it left the consumer-calendar change — the one that
+// would have had a guest miss a day they paid for — with no behavioural
+// coverage at all. Its header also cited H-01 as the executed proof, which was
+// wrong: H-01 proves the DATABASE holds two day-bound passes, not that the
+// calendar EMITS two entries.
 //
-// It bites HARDER here than the email did. Under #2160 `orders.event_date_id`
-// is the LATEST-ENDING chosen day (the payout anchor, D-2), and the calendar
-// preferred exactly that column. So a both-days guest would have seen ONLY
-// day 2 in their calendar — and could have missed day 1 entirely, having paid
-// for it. A "the entry has a date" test passes on that.
+// The rule now lives in `calendarOrderDays.ts`, an RN-free module, so every
+// check below CALLS it with real order shapes and asserts on the emitted
+// array. `calendarService.ts` keeps the query and the row assembly; two source
+// pins at the end assert it is really wired to this rule, which is all a source
+// pin is honestly good for.
 //
-// ── THE REST OF THE SERVICE, CHECKED AS ASKED ──────────────────────────────
-// `masterDateUtc` / `masterDateEndUtc` are the only per-order date fields on
-// the row, and both the upcoming/archive partition and `computeEntryEffective-
-// End` read them PER ROW — so emitting one row per day partitions each day
-// independently, with no change to either. The RSVP and trip fetchers carry no
-// day set at all (RSVP is single-date by product decision, #2131), so they are
-// genuinely unaffected rather than skipped. C-5 pins that.
+// ── THE BUG BEING GUARDED ──────────────────────────────────────────────────
+// Same class as #2162 — a surface rendering ONE date for an order covering
+// several — and worse here: under #2160 `orders.event_date_id` is the
+// LATEST-ENDING chosen day (the payout anchor), and the calendar preferred
+// exactly that column. A both-days guest would have seen ONLY day 2.
 //
-// SOURCE-CONTRACT, matching this directory's convention (orch_1188_calendar_
-// url_and_date.test.ts): `calendarService.ts` imports the React-Native
-// `./supabase` client, so it cannot be imported under `deno test`. The
-// EXECUTED proof that a two-day order really holds two day-bound passes is
-// supabase/migrations/__tests__/issue_2160_multiday_admission.test.sql (H-01).
-//
-// FAILS-ON-REVERT: change the `flatMap` back to `map`, or drop `daysToEmit`,
-// and C-1/C-2 go red.
+// FAILS-ON-REVERT: return `[input.fallback]` unconditionally (the pre-#2160
+// behaviour) and E-1/E-2/E-3 go red on VALUES, not on text.
 
 import {
   assert,
-  assertStringIncludes,
+  assertEquals,
+  assertNotEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  calendarDayWindowsForOrder,
+  type CalendarOccurrenceRow,
+} from "../calendarOrderDays.ts";
 
-const SRC = await Deno.readTextFile(
-  new URL("../calendarService.ts", import.meta.url),
-);
+const DAY_1: CalendarOccurrenceRow = {
+  id: "occ-1",
+  start_at: "2026-08-22T10:00:00.000Z",
+  end_at: "2026-08-22T18:00:00.000Z",
+  is_master: true,
+};
+const DAY_2: CalendarOccurrenceRow = {
+  id: "occ-2",
+  start_at: "2026-08-23T10:00:00.000Z",
+  end_at: "2026-08-23T18:00:00.000Z",
+  is_master: false,
+};
+const DAY_3: CalendarOccurrenceRow = {
+  id: "occ-3",
+  start_at: "2026-08-24T10:00:00.000Z",
+  end_at: "2026-08-24T18:00:00.000Z",
+  is_master: false,
+};
+const ALL = [DAY_1, DAY_2, DAY_3];
+// What the pre-#2160 code would have emitted: ONE window, from the anchor —
+// which under #2160 is the LATEST-ending day. Every multi-day check below
+// asserts the result is not this.
+const ANCHOR_ONLY = { start_at: DAY_2.start_at, end_at: DAY_2.end_at };
 
-Deno.test("C-1 the order fetcher emits one row PER DAY, not one per order", () => {
-  // `flatMap` is the mechanism: `map` cannot produce two entries from one order.
+Deno.test("E-1 per_day, two days -> TWO entries, one per day, chronological", () => {
+  const windows = calendarDayWindowsForOrder({
+    occurrences: ALL,
+    // per_day mints one pass per day, each with one entitlement row.
+    tickets: [
+      { ticket_event_dates: [{ event_date_id: "occ-2" }] },
+      { ticket_event_dates: [{ event_date_id: "occ-1" }] },
+    ],
+    fallback: ANCHOR_ONLY,
+  });
+
+  assertEquals(windows.length, 2, "a two-day guest must get TWO calendar entries");
+  // Chronological, regardless of the order the passes came back in.
+  assertEquals(windows[0].start_at, DAY_1.start_at);
+  assertEquals(windows[0].end_at, DAY_1.end_at);
+  assertEquals(windows[1].start_at, DAY_2.start_at);
+  assertEquals(windows[1].end_at, DAY_2.end_at);
+  // THE NEGATIVE THAT CATCHES THE REGRESSION: the pre-#2160 result was exactly
+  // the anchor alone, and day 1 — the one the guest could have missed — was
+  // absent. A test asserting only "an entry has a date" passes on that.
+  assertNotEquals(windows.length, 1);
   assert(
-    /as unknown as OrderRow\[\]\)\.flatMap\(/.test(SRC),
-    "the business-event order fetcher must flatMap so a two-day order yields two entries",
-  );
-  assert(
-    /\(order\): BusinessEventCalendarRow\[\] =>/.test(SRC),
-    "the mapper must return an ARRAY of rows per order",
+    windows.some((w) => w.start_at === DAY_1.start_at),
+    "day 1 must be present — its absence is the whole defect",
   );
 });
 
-Deno.test("C-2 the days come from the PASSES, which is the only authority for what a guest may attend", () => {
-  assertStringIncludes(SRC, "ticket_event_dates ( event_date_id )");
+Deno.test("E-2 all_days, ONE pass admitting two days -> still TWO entries", () => {
+  // The mode does not reach this rule and must not: a pass admits the days it
+  // has rows for, however it was minted.
+  const windows = calendarDayWindowsForOrder({
+    occurrences: ALL,
+    tickets: [{
+      ticket_event_dates: [{ event_date_id: "occ-1" }, { event_date_id: "occ-2" }],
+    }],
+    fallback: ANCHOR_ONLY,
+  });
+  assertEquals(windows.length, 2);
+  assertEquals(windows.map((w) => w.start_at), [DAY_1.start_at, DAY_2.start_at]);
+});
+
+Deno.test("E-3 a day the guest did NOT pick never produces an entry", () => {
+  const windows = calendarDayWindowsForOrder({
+    occurrences: ALL,
+    tickets: [{ ticket_event_dates: [{ event_date_id: "occ-1" }] }],
+    fallback: ANCHOR_ONLY,
+  });
+  assertEquals(windows.length, 1);
+  assertEquals(windows[0].start_at, DAY_1.start_at);
   assert(
-    /const bookedDayIds = Array\.from\(\s*new Set\(/.test(SRC),
-    "the distinct day set must be derived from the order's passes",
-  );
-  assert(
-    /bookedDays[\s\S]{0,400}?\.sort\(/.test(SRC),
-    "the emitted entries must be chronological, not database order",
+    !windows.some((w) => w.start_at === DAY_3.start_at),
+    "day 3 was never booked and must not appear in the calendar",
   );
 });
 
-Deno.test("C-3 a LEGACY / single-date order still emits exactly ONE entry, from the unchanged fallback", () => {
-  // The pre-#2160 chain — booked occurrence, else is_master — must survive
-  // verbatim, because that is what every order issued before this change has.
-  assert(
-    /bookedDays\.length > 0[\s\S]{0,400}?:\s*\[\{[\s\S]{0,200}?masterDate\?\.start_at/.test(SRC),
-    "with no day-bound pass the single-entry master fallback must run unchanged",
-  );
-  assertStringIncludes(SRC, "const bookedOccurrence = order.event_date_id");
-  assertStringIncludes(SRC, "(ed) => ed?.is_master === true");
+Deno.test("E-4 LEGACY: a pass with no days emits the caller's fallback, unchanged", () => {
+  // This is the pre-#2160 answer and it must survive byte-for-byte: every order
+  // issued before this change is on this path, and nothing is backfilled.
+  const windows = calendarDayWindowsForOrder({
+    occurrences: ALL,
+    tickets: [{ ticket_event_dates: [] }, { ticket_event_dates: null }],
+    fallback: ANCHOR_ONLY,
+  });
+  assertEquals(windows.length, 1);
+  assertEquals(windows[0], ANCHOR_ONLY);
 });
 
-Deno.test("C-4 each entry is dated from ITS OWN day, not from the order anchor", () => {
-  // This is the assertion that fails on the reverted code: leaving
-  // `masterDateUtc: masterDate?.start_at` would date every entry from the
-  // order's LATEST-ending day and hide day 1 completely.
-  assert(
-    /masterDateUtc: day\.start_at,/.test(SRC),
-    "each entry's start must be its own day's start",
+Deno.test("E-5 an order with no tickets at all still emits exactly one entry", () => {
+  // An order that vanishes from the calendar is worse than one dated from its
+  // anchor, so the rule always returns at least one window.
+  assertEquals(
+    calendarDayWindowsForOrder({ occurrences: ALL, tickets: null, fallback: ANCHOR_ONLY }),
+    [ANCHOR_ONLY],
   );
-  assert(
-    /masterDateEndUtc: day\.end_at,/.test(SRC),
-    "each entry's end must be its own day's end",
-  );
-  assert(
-    !/masterDateUtc: masterDate\?\.start_at/.test(SRC),
-    "the order-anchored start must be GONE from the emitted row — otherwise a " +
-      "two-day guest sees only the last day and can miss the first",
+  assertEquals(
+    calendarDayWindowsForOrder({ occurrences: null, tickets: [], fallback: ANCHOR_ONLY }),
+    [ANCHOR_ONLY],
   );
 });
 
-Deno.test("C-5 the END is still the END — the ORCH-0853 partition contract is untouched", () => {
-  // The i-consumer-calendar-uses-end-not-start gate guards this; #2160 changes
-  // WHICH occurrence's end it is, never that it is an end.
-  assertStringIncludes(SRC, "masterDateEndUtc");
+Deno.test("E-6 entitlement ids the query did not return fall back rather than emit nothing", () => {
+  const windows = calendarDayWindowsForOrder({
+    occurrences: [DAY_1],
+    tickets: [{ ticket_event_dates: [{ event_date_id: "occ-not-loaded" }] }],
+    fallback: ANCHOR_ONLY,
+  });
+  assertEquals(windows.length, 1, "never zero entries");
+  assertEquals(windows[0], ANCHOR_ONLY);
+});
+
+Deno.test("E-7 duplicate entitlement rows across passes do not duplicate entries", () => {
+  // per_day qty 2 x 2 days mints FOUR passes — two per day. The guest attends
+  // two days, so they get two entries, not four.
+  const windows = calendarDayWindowsForOrder({
+    occurrences: ALL,
+    tickets: [
+      { ticket_event_dates: [{ event_date_id: "occ-1" }] },
+      { ticket_event_dates: [{ event_date_id: "occ-2" }] },
+      { ticket_event_dates: [{ event_date_id: "occ-1" }] },
+      { ticket_event_dates: [{ event_date_id: "occ-2" }] },
+    ],
+    fallback: ANCHOR_ONLY,
+  });
+  assertEquals(windows.length, 2, "two days attended -> two entries, not four");
+});
+
+Deno.test("E-8 each entry carries its OWN end, never another day's", () => {
+  // The ORCH-0853 partition reads `masterDateEndUtc` per row, so a window
+  // carrying the wrong end mis-partitions that day into upcoming or archive.
+  const windows = calendarDayWindowsForOrder({
+    occurrences: ALL,
+    tickets: [{
+      ticket_event_dates: [{ event_date_id: "occ-1" }, { event_date_id: "occ-3" }],
+    }],
+    fallback: ANCHOR_ONLY,
+  });
+  assertEquals(windows[0].end_at, DAY_1.end_at);
+  assertEquals(windows[1].end_at, DAY_3.end_at);
+  assertNotEquals(windows[0].end_at, windows[1].end_at);
+});
+
+// ── the only two source pins, and they pin WIRING, not behaviour ───────────
+Deno.test("E-9 calendarService is really wired to this rule", () => {
+  const src = Deno.readTextFileSync(new URL("../calendarService.ts", import.meta.url));
   assert(
-    /computeEntryEffectiveEnd/.test(SRC),
-    "the effective-end helper must survive",
+    /calendarDayWindowsForOrder\(\{/.test(src),
+    "the order fetcher must call the rule rather than re-deriving it inline",
   );
   assert(
-    !/masterDateEndUtc: day\.start_at/.test(SRC),
-    "the end field must never be fed a start",
+    /as unknown as OrderRow\[\]\)\.flatMap\(/.test(src),
+    "and flatMap it, because `map` cannot turn one order into two entries",
+  );
+  assert(
+    /masterDateUtc: day\.start_at,/.test(src) && /masterDateEndUtc: day\.end_at,/.test(src),
+    "each emitted row must be dated from ITS OWN window",
+  );
+  assert(
+    /ticket_event_dates \( event_date_id \)/.test(src),
+    "the query must actually select the days each pass admits",
   );
 });

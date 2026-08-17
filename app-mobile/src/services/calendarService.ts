@@ -1,4 +1,8 @@
 import { supabase } from "./supabase";
+// issue #2160 — the "how many calendar entries does this order produce"
+// rule lives in its own RN-free module so it can actually be CALLED by a
+// test. This file imports ./supabase at module scope and cannot be.
+import { calendarDayWindowsForOrder } from "./calendarOrderDays";
 import { userActivityService } from "./userActivityService";
 import { recordCardSchedule } from "./cardEngagementService";
 
@@ -523,21 +527,6 @@ export class CalendarService {
             attendeeEmail: t.attendee_email ?? null,
           }),
         );
-        // The distinct occurrences this order's passes admit, chronological.
-        // EMPTY on every pre-#2160 order and every single-date event, which is
-        // exactly when the verbatim single-entry path below runs.
-        const bookedDayIds = Array.from(
-          new Set(
-            (order.tickets ?? []).flatMap((t) =>
-              (t.ticket_event_dates ?? []).map((link) => link.event_date_id),
-            ),
-          ),
-        );
-        const bookedDays = (event?.event_dates ?? [])
-          .filter((ed) => ed !== null && bookedDayIds.includes(ed.id))
-          .sort((a, b) =>
-            String(a?.start_at ?? "").localeCompare(String(b?.start_at ?? "")),
-          );
         const geo = parseLocationGeo(event?.location_geo);
         const venue: BusinessEventVenue = {
           locationText: event?.location_text ?? null,
@@ -546,19 +535,20 @@ export class CalendarService {
           isOnline: Boolean(event?.is_online),
           onlineUrl: event?.online_url ?? null,
         };
-        // One entry per DAY when the passes carry days; otherwise exactly one
-        // entry built from the existing booked-occurrence -> master fallback,
-        // byte-identical to pre-#2160.
-        const daysToEmit: Array<{ start_at: string | null; end_at: string | null }> =
-          bookedDays.length > 0
-            ? bookedDays.map((ed) => ({
-              start_at: ed?.start_at ?? null,
-              end_at: ed?.end_at ?? null,
-            }))
-            : [{
-              start_at: masterDate?.start_at ?? null,
-              end_at: masterDate?.end_at ?? null,
-            }];
+        // ONE entry per day the guest is attending. The rule itself lives in
+        // `calendarOrderDays.ts` so it is directly testable; this call site is
+        // deliberately thin.
+        const daysToEmit = calendarDayWindowsForOrder({
+          occurrences: event?.event_dates ?? null,
+          tickets: order.tickets ?? null,
+          // The ORCH-1188 answer, unchanged and still live: the order's own
+          // booked occurrence, else the master. #2160 only decides whether one
+          // window is enough.
+          fallback: {
+            start_at: masterDate?.start_at ?? null,
+            end_at: masterDate?.end_at ?? null,
+          },
+        });
 
         return daysToEmit.map((day) => ({
           orderId: order.id,
