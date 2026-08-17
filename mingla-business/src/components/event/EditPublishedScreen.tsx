@@ -138,13 +138,6 @@ import {
   patchPublishedEventTaxonomy,
   patchPublishedEventTheme,
   patchPublishedEventWhen,
-  // issue #2009 [published-event visibility] — the ONLY authoritative write.
-  setPublishedEventVisibility,
-  // P2-2 — the leg-aware map: `private_visibility_unavailable` is raised both
-  // entering AND leaving Private, and the two need different sentences.
-  issue2009VisibilityErrorCopyForLeg,
-  issue2009VisibilitySuccessCopy,
-  ISSUE_2009_PRIVATE_UNAVAILABLE_COPY,
 } from "../../services/businessEvents";
 import { updateLiveRsvp } from "../../services/rsvpEvents";
 import { buildRsvpUpdatePayloadDiff } from "../../utils/serverDraftEventMapper";
@@ -247,6 +240,22 @@ const ORCH_1006_PRICING_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
 const ISSUE_2009_VISIBILITY_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "visibility",
 ]);
+
+/**
+ * issue #2009 — the visibility write, its copy and its error mapping live in an
+ * ON-INTENT async chunk, loaded only when an organiser actually saves.
+ *
+ * This screen sits in the eager `__common` boot chunk, so anything it imports
+ * STATICALLY is downloaded by every visitor before any route renders. #2009's
+ * first shape did exactly that and cost 3,379 B against issue #2099's 1,024 B
+ * boot-payload ceiling. Loading it here instead costs one already-resolved
+ * dynamic import on the save path and nothing at boot.
+ *
+ * Do NOT convert this into a static `import` — that silently undoes the split.
+ */
+const loadIssue2009Visibility = (): Promise<
+  typeof import("../../services/publishedEventVisibility.issue2009")
+> => import("../../services/publishedEventVisibility.issue2009");
 
 const SERVER_EDITABLE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   ...COVER_MEDIA_PATCH_KEYS,
@@ -601,7 +610,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     // hand a Private event to. Refuse here with the approved copy, and refuse
     // again on the server if this client's capability state is stale.
     if (!rsvpMode && patch.visibility === "private") {
-      showToast(ISSUE_2009_PRIVATE_UNAVAILABLE_COPY);
+      void loadIssue2009Visibility().then((m) =>
+        showToast(m.ISSUE_2009_PRIVATE_UNAVAILABLE_COPY),
+      );
       return;
     }
     if (
@@ -1345,47 +1356,29 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       // Server-success-then-local: an RPC failure aborts and NEVER claims a
       // partial success. There is deliberately no `.from("events").update(...)`
       // fallback — the database refuses one.
-      if (!rsvpMode && patch.visibility !== undefined) {
-        if (liveEvent.serverEventId === null) {
-          setSubmitting(false);
-          setModal((prev) => ({ ...prev, visible: false }));
-          showToast("Save failed because this event is missing its server id.");
-          return;
-        }
-        try {
-          await setPublishedEventVisibility({
-            eventId: liveEvent.serverEventId,
-            requestedVisibility: patch.visibility,
-            reason: validation.trimmedReason,
-            // The optimistic-concurrency boundary is the value this editor
-            // LOADED, so a concurrent edit elsewhere is rejected rather than
-            // silently overwritten.
-            expectedUpdatedAt: liveEvent.updatedAt,
-          });
-          invalidateServerEventCaches();
-        } catch (error) {
-          setSubmitting(false);
-          setModal((prev) => ({ ...prev, visible: false }));
-          const code =
-            error instanceof Error ? error.message : "set_event_visibility_failed";
-          // issue #2009 (pass-1 TEST REPORT P2-2) — `private_visibility_unavailable`
-          // is raised on BOTH legs of the boundary, so hand the copy map the
-          // visibility this event is currently stored at. Without it an organiser
-          // moving OFF Private is told to "Choose Public or Unlisted", which is
-          // exactly what they just tried.
-          showToast(issue2009VisibilityErrorCopyForLeg(code, liveEvent.visibility));
-          return;
-        }
-      }
-
       // issue #2009 — SPEC §6 requires EXACTLY ONE success signal, and for a
       // visibility-only save it names the persisted label. Any wider patch
-      // keeps the existing generic confirmation, spelled out inline in both
-      // success paths so ORCH-0980's no-silent-success proof still reads it.
-      const visibilityOnlySave =
-        !rsvpMode &&
-        patch.visibility !== undefined &&
-        Object.keys(patch).length === 1;
+      // keeps the existing generic confirmation, so this stays null and both
+      // success paths below fall back to it.
+      let issue2009VisibilitySuccessToast: string | null = null;
+
+      if (!rsvpMode && patch.visibility !== undefined) {
+        const { issue2009ApplyEditorVisibility } =
+          await loadIssue2009Visibility();
+        const outcome = await issue2009ApplyEditorVisibility(
+          liveEvent,
+          patch,
+          validation.trimmedReason,
+        );
+        if (!outcome.ok) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast(outcome.toast);
+          return;
+        }
+        issue2009VisibilitySuccessToast = outcome.successToast;
+        invalidateServerEventCaches();
+      }
 
       // ORCH-0824 hotfix: unified early-return for server-editable-only
       // patches when the local Zustand event isn't available
@@ -1403,8 +1396,11 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         invalidateServerEventCaches();
         setSubmitting(false);
         setModal((prev) => ({ ...prev, visible: false }));
-        if (visibilityOnlySave && patch.visibility !== undefined) {
-          showToast(issue2009VisibilitySuccessCopy(patch.visibility));
+        // ORCH-0980 pins the literal `showToast("Saved. Live now.");` in this
+        // path, so both branches are spelled out rather than collapsed into a
+        // `??`. issue #2009 SPEC §6: a visibility-ONLY save names the label.
+        if (issue2009VisibilitySuccessToast !== null) {
+          showToast(issue2009VisibilitySuccessToast);
         } else {
           showToast("Saved. Live now.");
         }
@@ -1428,8 +1424,11 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       setSubmitting(false);
       setModal((prev) => ({ ...prev, visible: false }));
       if (result.ok) {
-        if (visibilityOnlySave && patch.visibility !== undefined) {
-          showToast(issue2009VisibilitySuccessCopy(patch.visibility));
+        // ORCH-0980 pins the literal `showToast("Saved. Live now.");` in this
+        // path, so both branches are spelled out rather than collapsed into a
+        // `??`. issue #2009 SPEC §6: a visibility-ONLY save names the label.
+        if (issue2009VisibilitySuccessToast !== null) {
+          showToast(issue2009VisibilitySuccessToast);
         } else {
           showToast("Saved. Live now.");
         }

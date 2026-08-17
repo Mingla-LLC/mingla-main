@@ -24,7 +24,7 @@ import {
   ISSUE_2009_VISIBILITY_ERROR_CODES,
   issue2009VisibilityErrorCopy,
   issue2009VisibilityErrorCopyForLeg,
-} from "../businessEvents";
+} from "../publishedEventVisibility.issue2009";
 
 /** The BINDING SPEC §6 sentence, transcribed here rather than imported, so a
  *  reword of the exported constant cannot make this assertion agree with it. */

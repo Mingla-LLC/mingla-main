@@ -24,7 +24,7 @@ import {
   issue2009VisibilityErrorCopy,
   issue2009VisibilitySuccessCopy,
   setPublishedEventVisibility,
-} from "../businessEvents";
+} from "../publishedEventVisibility.issue2009";
 import { supabase } from "../supabase";
 
 jest.mock("../supabase", () => ({

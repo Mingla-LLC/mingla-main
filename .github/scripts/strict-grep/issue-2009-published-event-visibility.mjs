@@ -31,7 +31,14 @@ import path from "node:path";
 const MIGRATION = "supabase/migrations/20270418002009_issue_2009_business_event_visibility.sql";
 const MIGRATION_FLOOR = "20270415002117";
 const SCREEN = "mingla-business/src/components/event/EditPublishedScreen.tsx";
-const SERVICE = "mingla-business/src/services/businessEvents.ts";
+// issue #2099 SC-4 — the visibility write, its copy and its error mapping live
+// in their OWN module because `businessEvents.ts` sits in the eager `__common`
+// boot chunk and this code is only ever needed once an organiser opens a
+// published event's editor. The editor reaches it through a DYNAMIC import; a
+// static one would silently return all of it to the boot payload, which is what
+// `issue-2009-editor-loads-visibility-on-intent` below refuses.
+const SERVICE = "mingla-business/src/services/publishedEventVisibility.issue2009.ts";
+const SERVICE_SPECIFIER = "../../services/publishedEventVisibility.issue2009";
 const ADMIN_SERVICE = "mingla-admin/src/services/offeringsService.js";
 const BUSINESS_SRC = "mingla-business/src";
 // AMENDMENT 3A (#issuecomment-5317431821) — the two files the narrowed
@@ -145,11 +152,31 @@ const check = (s) => {
   if (!/SERVER_EDITABLE_PATCH_KEYS[\s\S]{0,400}\.\.\.ISSUE_2009_VISIBILITY_PATCH_KEYS/.test(screen)) {
     fail("SERVER_EDITABLE_PATCH_KEYS no longer unions ISSUE_2009_VISIBILITY_PATCH_KEYS — Save would disable again (SC-1)");
   }
-  const rpcIndex = screen.indexOf("await setPublishedEventVisibility({");
-  if (rpcIndex < 0) fail("the editor no longer calls setPublishedEventVisibility (SC-3)");
+  // The RPC itself lives in the on-intent module (issue #2099 SC-4); what the
+  // screen owns is INVOKING that leg, and doing it above the early return.
+  const serviceNoComments = stripJsComments(s.service);
+  if (!serviceNoComments.includes("await setPublishedEventVisibility({")) {
+    fail("the visibility leg no longer calls setPublishedEventVisibility (SC-3)");
+  }
+  const rpcIndex = screen.indexOf("issue2009ApplyEditorVisibility(");
+  if (rpcIndex < 0) fail("the editor no longer invokes the visibility save leg (SC-3)");
   const earlyReturnIndex = screen.indexOf("isServerEditableOnlyPatch(patch)\n      ) {");
   if (earlyReturnIndex >= 0 && rpcIndex > earlyReturnIndex) {
     fail("the visibility RPC call sits BELOW the unified server-editable early-return, so it would never run (SC-3)");
+  }
+  // issue #2099 SC-4 — the leg must stay OFF the eager boot path. A static
+  // import of the module from this screen puts the RPC, both approved Private
+  // sentences and the whole error map back into `__common`, which every
+  // visitor downloads before any route renders.
+  if (new RegExp(`^\\s*import\\s[^;]*from\\s*["']${SERVICE_SPECIFIER}["']`, "m").test(screen)) {
+    fail(
+      "EditPublishedScreen imports the visibility module STATICALLY — that returns the whole leg to the eager __common boot chunk (issue #2099 SC-4)",
+    );
+  }
+  if (!new RegExp(`import\\(\\s*\\n?\\s*["']${SERVICE_SPECIFIER}["']`).test(screen)) {
+    fail(
+      "EditPublishedScreen no longer loads the visibility module on intent — the on-intent async chunk is gone (issue #2099 SC-4)",
+    );
   }
   if (!/Object\.keys\(currentPatch\)\.length === 0/.test(screen)) {
     fail("the Save dock no longer disables on an empty diff (SC-2)");
@@ -160,7 +187,7 @@ const check = (s) => {
 
   // ---- 5. The approved Private copy is verbatim ----------------------------
   if (!s.service.includes(PRIVATE_COPY)) {
-    fail("the approved Private prerequisite copy is not present verbatim in businessEvents.ts (SC-12)");
+    fail("the approved Private prerequisite copy is not present verbatim in publishedEventVisibility.issue2009.ts (SC-12)");
   }
 
   // ---- 6. Nothing in the Business app writes events.visibility directly -----
@@ -642,17 +669,17 @@ const check = (s) => {
   //   supabase/functions/_shared/__tests__/issue_2009_private_exit_copy.rework.test.ts
   if (!/export const issue2009VisibilityErrorCopyForLeg/.test(s.service)) {
     fail(
-      "businessEvents.ts lost the leg-aware copy map — an organiser LEAVING Private is told to 'Choose Public or Unlisted', which is what they just tried (P2-2)",
+      "publishedEventVisibility.issue2009.ts lost the leg-aware copy map — an organiser LEAVING Private is told to 'Choose Public or Unlisted', which is what they just tried (P2-2)",
     );
   }
   if (!/ISSUE_2009_PRIVATE_EXIT_UNAVAILABLE_COPY/.test(s.service)) {
-    fail("businessEvents.ts lost the exit-leg Private copy (P2-2)");
+    fail("publishedEventVisibility.issue2009.ts lost the exit-leg Private copy (P2-2)");
   }
   // The two sentences must actually differ. A "split" that maps both legs to
   // the same string is the vacuous shape this whole rework exists to reject.
   const exitCopy = /export const ISSUE_2009_PRIVATE_EXIT_UNAVAILABLE_COPY\s*=\s*\n?\s*"([^"]+)"/
     .exec(s.service)?.[1];
-  if (!exitCopy) fail("could not read the exit-leg Private copy out of businessEvents.ts (P2-2)");
+  if (!exitCopy) fail("could not read the exit-leg Private copy out of publishedEventVisibility.issue2009.ts (P2-2)");
   if (exitCopy === PRIVATE_COPY) {
     fail("the exit-leg Private copy is identical to the entering copy — the split is vacuous (P2-2)");
   }
@@ -661,9 +688,9 @@ const check = (s) => {
       "the exit-leg Private copy still tells the organiser to choose Public or Unlisted — that is the sentence P2-2 reported as wrong (P2-2)",
     );
   }
-  if (!/issue2009VisibilityErrorCopyForLeg\(\s*code,\s*liveEvent\.visibility\s*\)/.test(screen)) {
+  if (!/issue2009VisibilityErrorCopyForLeg\(\s*code,\s*liveEvent\.visibility\s*\)/.test(serviceNoComments)) {
     fail(
-      "EditPublishedScreen no longer tells the copy map which leg the refusal came from, so both legs read the same again (P2-2)",
+      "the visibility leg no longer tells the copy map which leg the refusal came from, so both legs read the same again (P2-2)",
     );
   }
   // Ari's half: the same direction must reach its copy mapper.
@@ -742,7 +769,7 @@ if (process.argv.includes("--self-test")) {
       label: "M3 — the RPC call is removed from the editor",
       apply: (s) => ({
         ...s,
-        screen: s.screen.replace("await setPublishedEventVisibility({", "await Promise.resolve({"),
+        service: s.service.replace("await setPublishedEventVisibility({", "await Promise.resolve({"),
       }),
     },
     {
@@ -1594,7 +1621,7 @@ if (process.argv.includes("--self-test")) {
       label: "M52 — the editor stops telling the copy map which leg the refusal came from",
       apply: (s) => ({
         ...s,
-        screen: s.screen.replace(
+        service: s.service.replace(
           "issue2009VisibilityErrorCopyForLeg(code, liveEvent.visibility)",
           "issue2009VisibilityErrorCopyForLeg(code, null)",
         ),
@@ -1621,9 +1648,9 @@ if (process.argv.includes("--self-test")) {
       label: "COMMENT-FORGERY — the RPC call is deleted but a comment quotes it verbatim",
       apply: (s) => ({
         ...s,
-        screen: s.screen.replace(
+        service: s.service.replace(
           "await setPublishedEventVisibility({",
-          "// await setPublishedEventVisibility({\n          await Promise.resolve({",
+          "// await setPublishedEventVisibility({\n    await Promise.resolve({",
         ),
       }),
     },
@@ -1635,6 +1662,24 @@ if (process.argv.includes("--self-test")) {
           "CREATE TRIGGER issue_2009_events_visibility_guard",
           "-- CREATE TRIGGER issue_2009_events_visibility_guard\nCREATE TRIGGER issue_2009_renamed_away",
         ),
+      }),
+    },
+    // ---- issue #2099 SC-4 — the leg must stay OFF the eager boot path ------
+    // Behavioural proof: the `issue-2099-boot-payload-ceiling` job measures a
+    // real web export. What these two add is the wiring that job cannot name:
+    // WHICH edit reintroduced the bytes.
+    {
+      label: "M55 (#2099 SC-4) — the visibility module is imported STATICALLY, returning the whole leg to the eager __common chunk",
+      apply: (s) => ({
+        ...s,
+        screen: `import { issue2009ApplyEditorVisibility } from "${SERVICE_SPECIFIER}";\n${s.screen}`,
+      }),
+    },
+    {
+      label: "M56 (#2099 SC-4) — the on-intent async load is removed, so nothing code-splits the leg",
+      apply: (s) => ({
+        ...s,
+        screen: s.screen.split(SERVICE_SPECIFIER).join("../../services/businessEvents"),
       }),
     },
   ];
