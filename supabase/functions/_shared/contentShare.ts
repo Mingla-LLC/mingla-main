@@ -782,8 +782,14 @@ export async function loadAuthoritativeContentShare(
     const [datesResult, ticketsResult, remainingResult, allInResult, rsvpResult] = await Promise.all([
       db.from("event_dates").select("start_at,end_at,timezone,is_master").eq("event_id", row.id).order("start_at", { ascending: true }),
       db.from("ticket_types").select("id,price_cents,currency,is_free,is_hidden,is_disabled,available_online,is_unlimited,sale_start_at,sale_end_at,display_order").eq("event_id", row.id).is("deleted_at", null).order("display_order", { ascending: true }),
-      db.rpc("pg_public_ticket_types_remaining", { p_event_id: row.id }),
-      db.rpc("pg_public_event_tier_allin", { p_event_id: row.id }),
+      // issue #2117 §4.5 — repointed to the privileged siblings. This share
+      // preview admits THREE visibility states where the public readers'
+      // 'direct' audience admits two, so the narrowed public readers would
+      // silently strip pricing and inventory from this released surface for
+      // the extra state. The siblings preserve the pre-#2117 behaviour
+      // verbatim and are service_role-only.
+      db.rpc("pg_privileged_ticket_types_remaining", { p_event_id: row.id }),
+      db.rpc("pg_privileged_event_tier_allin", { p_event_id: row.id }),
       expectedType === "rsvp"
         ? db.from("event_rsvps").select("id,plus_count").eq("event_id", row.id).eq("rsvp_status", "going").eq("approval_status", "approved")
         : Promise.resolve({ data: [], error: null }),

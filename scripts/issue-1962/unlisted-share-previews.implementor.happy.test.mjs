@@ -67,7 +67,18 @@ class ShareDb {
   }
   from(table) { return new Query(this, table); }
   async rpc(name, args) {
-    if (name === "pg_public_ticket_types_remaining" || name === "pg_public_event_tier_allin") return { data: [], error: null };
+    // [TEST-MOD-APPROVED #2117] The share-preview path is a privileged
+    // service_role consumer whose admitted visibility set is strictly wider
+    // than the public readers' audience, so #2117 §4.5 repoints it at the
+    // privileged siblings. Model the repointed contract. The public names are
+    // retained so this fake still models the pre-#2117 shape for any caller
+    // that has not been repointed.
+    if (
+      name === "pg_privileged_ticket_types_remaining" ||
+      name === "pg_privileged_event_tier_allin" ||
+      name === "pg_public_ticket_types_remaining" ||
+      name === "pg_public_event_tier_allin"
+    ) return { data: [], error: null };
     if (name === "resolve_content_share_message") return { data: `Collector's Preview\n\nhttps://usemingla.com/s/${args.p_code}`, error: null };
     assert.equal(name, "upsert_content_share_version");
     return { data: { shortCode: "Aa0Bb1Cc2Dd3Ee4F", version: 1, versionCreated: true }, error: null };
