@@ -203,6 +203,20 @@ test('production commit batches visible history with removal and defers only I/O
     source.swipeable.indexOf('const handleSwipe = async'),
     source.swipeable.indexOf('// Sync gesture-boundary function refs'),
   );
+  // Issue #2113 EMPTY-WINDOW GUARD. This window ends on the LINE COMMENT
+  // `// Sync gesture-boundary function refs`. Adding a second copy of that
+  // comment as handleSwipe's first line shrinks the window to 122 chars — the
+  // banned calls then sit outside it and the doesNotMatch below passes.
+  // Proven: with that comment added AND `appendDeckSessionHistory(card)` +
+  // `addSwipedCard(card.id)` executing synchronously at the top of handleSwipe —
+  // the exact swipe-hot-path stall #1481 exists to prevent — this suite reported
+  // 10 passed, 0 failed. Note the band is load-bearing: a bare `length > 0`
+  // check would ALSO have passed at 122 chars.
+  assert.ok(
+    deferredBusiness.length > 1000 && deferredBusiness.length < 20000,
+    `handleSwipe window collapsed or ran away (${deferredBusiness.length} chars) — the "// Sync gesture-boundary function refs" boundary comment moved, or one was added inside handleSwipe`,
+  );
+  assert.match(deferredBusiness, /rollbackDeckSessionHistory/, 'the window must contain the real handleSwipe body');
   assert.doesNotMatch(deferredBusiness, /appendDeckSessionHistory|addSwipedCard/);
   assert.match(source.swipeable, /rollbackDeckSessionHistory\(card\.id\)[\s\S]*rolledBack\.delete\(card\.id\)/);
   assert.match(source.swipeable, /InteractionManager\.runAfterInteractions/);
@@ -404,6 +418,16 @@ test('current and behind are the only stable bounded poster loads', () => {
     source.swipeable.indexOf('Next card is a poster-only'),
     source.swipeable.indexOf('{/* Current Card */}'),
   );
+  // Issue #2113 EMPTY-WINDOW GUARD. BOTH boundaries are JSX COMMENTS. Deleting
+  // the start comment makes indexOf() return -1, so slice(-1, end) yields "" and
+  // both doesNotMatch calls below pass unconditionally. Proven: with the start
+  // comment deleted and a real `<CardHeroImage ...>` duplicate poster mounted in
+  // the behind layer, this suite reported 10 passed, 0 failed.
+  assert.ok(
+    preview.length > 1000 && preview.length < 20000,
+    `behind-preview window collapsed or ran away (${preview.length} chars) — a boundary JSX comment in SwipeableCards.tsx moved or was deleted`,
+  );
+  assert.match(preview, /pointerEvents="none"/, 'the window must contain the real non-interactive behind layer');
   assert.doesNotMatch(preview, /<CardHeroImage/);
   assert.match(source.swipeable, /posterCards=\{\[[\s\S]*id: nextRec\.id[\s\S]*id: currentRec\.id/);
   assert.doesNotMatch(preview, /EventCoverMedia|<CardHero\b/);
