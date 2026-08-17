@@ -8681,3 +8681,31 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 - **Rule:** Provider-authenticated late ticket money creates exactly one payout-blocking refund obligation before acknowledgment. Missing or conflicting identity never mints value, calls a provider, or terminalizes as neutralized.
 - **Enforcement:** the #2079 migration's service-only capture/verify RPCs, ticket-only claim predicate, dual-provider secondary identity constraints, refund-worker corroboration, checkout revocation non-terminal branch, three capture-before-finalize callers, and the CI-wired issue #2079 guard/tests.
+
+---
+
+## DRAFT — issue #2113 (green CI does not currently prove anything)
+
+### I-PROPOSED-2113-ASSERTION-NOT-COMMENT-SATISFIED (DRAFT)
+
+- **Rule:** A test that reads a file as text and asserts the text contains
+  something must have at least one satisfying occurrence in EXECUTABLE
+  territory. An assertion whose only satisfying occurrences in the target are
+  comments — or narrating string literals that talk about the behaviour rather
+  than being it — is not evidence of the behaviour it names, and a legitimate
+  comment/annotation assertion must say so in the allowlist with a written
+  reason.
+- **Enforcement:** `.github/scripts/strict-grep/issue-2113-comment-satisfied-assertion.mjs`
+  (class A, `--self-test` wired, 28/28) plus
+  `.github/scripts/strict-grep/issue-2113-comment-satisfied-allowlist.json`
+  (exact {test, target, pattern} triples, `reason` >= 20 characters, wildcards
+  rejected). **REPORT MODE at landing** — the gate prints every violation with
+  file:line for both the assertion and its non-executable match and exits 0,
+  because the class predates the gate; the #2113 sweep ranks and dispatches the
+  backlog separately. It flips to blocking by changing `ENFORCEMENT_MODE` to
+  `"block"` once the count on `main` is zero. DRAFT until that flip.
+- **Explicitly NOT guaranteed:** the gate proves an assertion has executable
+  ground, NOT that the assertion is behavioural. Instances 5–8 in #2113
+  (criteria that cannot pass, mutually-propping checks, circular evidence,
+  layout-gated blindness) are out of static reach; the control for those is the
+  review-step amendment that requires the mutation to be executed.
