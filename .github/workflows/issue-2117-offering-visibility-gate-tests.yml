@@ -1,0 +1,102 @@
+name: "Issue #2117 offering visibility gate"
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20270415002117_issue_2117_offering_visibility_gate.sql"
+      - "supabase/migrations/__tests__/issue_2117_offering_visibility_gate*"
+      - "supabase/functions/_shared/contentShare.ts"
+      - "supabase/functions/_shared/businessNotifyTriggers.ts"
+      - "supabase/security/anon_executable_definer_allowlist.txt"
+      - "docs/INVARIANT_REGISTRY.md"
+      - ".github/workflows/issue-2117-offering-visibility-gate-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270415002117_issue_2117_offering_visibility_gate.sql"
+      - "supabase/migrations/__tests__/issue_2117_offering_visibility_gate*"
+      - "supabase/functions/_shared/contentShare.ts"
+      - "supabase/functions/_shared/businessNotifyTriggers.ts"
+      - "supabase/security/anon_executable_definer_allowlist.txt"
+      - ".github/workflows/issue-2117-offering-visibility-gate-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.sha }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Canonical full migration replay
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for f in $(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
+      # Every assertion in this suite EXECUTES an object against real rows.
+      # Per #2113, nothing here is satisfiable by source text. The suite also
+      # self-fails (A-SC-10) if the fixture matrix is incomplete, if any
+      # reader produced no ALLOW outcome, or if any produced no DENY outcome.
+      - name: "#2117 executable suite (implementor happy path)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2117_offering_visibility_gate.pg17.test.sql
+
+      # The suite is idempotent: it pre-cleans and tears down its own fixtures.
+      # Running it twice proves it, and proves the first run left no residue
+      # that a later suite in the same job would trip over.
+      - name: "#2117 suite is idempotent (second consecutive run)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2117_offering_visibility_gate.pg17.test.sql
+
+      # SC-9 / A-SC-9: the shipped anon-definer gate must stay green with the
+      # allowlist UNMODIFIED. No object created by #2117 is anon-executable,
+      # so the allowlist gains zero entries.
+      - name: Anonymous SECURITY DEFINER allowlist gate
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: bash scripts/ci/security_definer_anon_gate.sh
+
+      # A-SC-9 also requires the allowlist FILE itself to be untouched by this
+      # change. Assert it rather than trusting it.
+      - name: Allowlist file is unmodified by this change
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet origin/${{ github.base_ref || 'main' }} -- \
+                 supabase/security/anon_executable_definer_allowlist.txt 2>/dev/null; then
+            echo "A-SC-9 FAILED: the anon-definer allowlist was modified; #2117 requires zero added or removed lines."
+            git diff origin/${{ github.base_ref || 'main' }} -- supabase/security/anon_executable_definer_allowlist.txt
+            exit 1
+          fi
+          echo "OK: allowlist file unmodified."
+
+  edge-typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+      # §4.5 repointing: the two privileged consumers must still type-check
+      # after being pointed at the service_role-only siblings.
+      - run: deno check supabase/functions/_shared/contentShare.ts
+      - run: deno check supabase/functions/_shared/businessNotifyTriggers.ts

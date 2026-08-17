@@ -8731,3 +8731,22 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 - **Rule:** `sanitizeNextRoute` in `mingla-business/src/utils/nextRoute.ts` remains the ONE `?next=` validator. Its authorized set is the union of the five exported static workflow prefixes and exactly three internal public offering families — `/t`, `/exp`, `/e` — matched segment-safely by the SAME `isAllowlistedPath`. The internal tuple is never exported, no second sanitizer or decision owner exists, the exported five-entry registry is unchanged, and no `/event/*` organiser path is an accepted resume target.
 - **Enforcement:** `nextRoute.ts`, the append-only `nextRoute.issue2101.test.ts`, and the unchanged ORCH-1373 / ORCH-1375 / ORCH-1404 suites. Preserves ACTIVE `I-PROPOSED-1404-WRONG-ACCOUNT-RECOVERABLE`: `buildSwitchAccountResume` stays byte-identical because its hardcoded `/accept-brand-invitation?token=…` candidate is admitted solely by the five-entry registry.
+
+---
+
+## DRAFT — issue #2117 (public offering reads consistently respect offering visibility)
+
+### I-PROPOSED-2117-ONE-OFFERING-VISIBILITY-GATE (DRAFT)
+
+- **Rule:** Every read path that serves an unauthenticated or unauthorised caller and returns offering-derived data expresses the offering's public readability through the Offering Visibility Gate, never through a locally written predicate. The rule the gate owns is **visibility and soft-delete only** — status is deliberately not folded in, because the readers do not share a status set and one per-audience status set cannot preserve both. Deliberate exceptions exist only in the four recorded forms E-1/E-2/E-3/E-4 and are recorded at the site.
+- **Enforcement:** the #2117 migration's two gate forms and their adoption at every Class A and Class B site, plus the executable PostgreSQL suite (SC-1, SC-2, A-SC-4, SC-5, SC-6, A-SC-13), each criterion proven to red on its named revert mutation and green on the correct implementation against a real applied schema.
+
+### I-PROPOSED-2117-GATE-CANNOT-DENY-ON-PRIVILEGE (DRAFT)
+
+- **Rule:** No gate used on a public read path may depend on the caller holding a privilege, and none may branch on the caller's role. A role-introspecting gate raises outside a `SET ROLE` session (the role GUC is literally `none`) and is the next outage rather than a defence against one.
+- **Enforcement:** SC-1 and SC-2 execute both gate forms from a role stripped of every privilege on the offering relation, in the same run that proves a direct table read raises. A-SC-3 asserts the *property* — no changed object's result varies with the caller's role, measured across two distinct roles with the caller's identity claim held constant — rather than banning named mechanisms, because the named-mechanism form was independently forged twice during review and both forgeries pass a mechanism ban while leaking.
+
+### I-PROPOSED-2117-VISIBILITY-NEVER-GATES-A-DECISION-INPUT (DRAFT)
+
+- **Rule:** No object whose result is consumed as an authorisation identity, a guard boolean or a capacity count may carry a **visibility gate**, and none may have its `EXECUTE` narrowed where any consumer is caller-evaluated. Both directions are outages and both are measured. Such an object is routed by the A-4.9 remedy ladder — visibility gate, `EXECUTE`-narrowing, authorisation arm, full exclusion — and the rung is chosen **per object by execution, never by kind**: two objects of the same kind take different rungs, and on one of them the rung correct for its twin is worse than the visibility gate. An object left at full exclusion carries a measured, recorded residual and a linked follow-up issue.
+- **Enforcement:** A-SC-11 exercises every enumerated consumer, read path *and* write path with affected-row-count comparison, with an authorised caller at every visibility state; A-SC-12 demonstrates the empty value is observed as absence rather than a changed decision; A-SC-14 executes every change-set object as an unauthenticated caller and as a signed-in stranger and compares the result against the recorded residual in both directions, so the bottom rung cannot become a way to do nothing quietly.
