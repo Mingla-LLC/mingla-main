@@ -215,6 +215,12 @@ jest.mock("../../experience/ExperienceReservePicker", () => ({
         <Pressable
           key={d.id}
           testID={`issue-2135-occurrence-${d.id}`}
+          // I-39 — every Pressable carries an accessible name, stand-in or not.
+          // The REAL picker labels each occurrence row with its formatted date
+          // and a radio role; this stand-in mirrors that contract rather than
+          // shipping an unlabelled control the gate would (rightly) reject.
+          accessibilityRole="radio"
+          accessibilityLabel={`Occurrence ${d.id}`}
           onPress={() => props.onConfirm({ eventDateId: d.id, quantity: 1 })}
         />
       ))}

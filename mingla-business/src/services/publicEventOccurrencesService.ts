@@ -14,10 +14,10 @@
  * Anon-tolerant per feedback_anon_buyer_routes.md: no useAuth, no sign-in
  * redirect — anyone with the share link sees every date.
  *
- * The returned row shape is DELIBERATELY the experience surface's
- * `PublicExperienceDate` (imported, not re-declared) so the SAME
- * `ExperienceReservePicker` (mode="slots") renders it with zero duplication —
- * one occurrence-picker pattern in the codebase, not two.
+ * The returned row shape is DELIBERATELY the shape the SAME
+ * `ExperienceReservePicker` (mode="slots") already renders, so there is one
+ * occurrence-picker pattern in the codebase, not two. See `PublicEventOccurrence`
+ * below for why it is declared here instead of aliased across services.
  *
  * `ticketsRemaining` is ALWAYS null here (Constitution #9 — missing is hidden,
  * never faked). `event_dates` carries NO per-occurrence capacity column and
@@ -33,13 +33,35 @@
  */
 
 import { supabase } from "./supabase";
-import type { PublicExperienceDate } from "./publicExperienceService";
 
 /**
- * One materialised `event_dates` row for a published event, in the shared
- * occurrence shape the slots picker already consumes.
+ * One materialised `event_dates` row for a published event.
+ *
+ * This is declared here rather than aliased to the experience service's
+ * `PublicExperienceDate`. That alias was the first thing written, and it closed
+ * a REQUIRE CYCLE (I-PROPOSED-K): an *event* service importing from the
+ * *experience* service completed
+ * `usePublicEvents → publicEventOccurrencesService → publicExperienceService →
+ * publicEventsService → … → usePublicEvents`. A public-event reader has no
+ * business depending on the experience reader, so the dependency is gone rather
+ * than baselined.
+ *
+ * The two shapes stay compatible BY COMPILATION, not by convention: this type is
+ * what `MultiDateOccurrencePicker` hands to `ExperienceReservePicker`'s
+ * `dates: ReadonlyArray<PublicExperienceDate>` prop, so tsc fails the moment
+ * either side drifts. TypeScript is structural — no alias is required for that
+ * guarantee, only for the (cyclic) import.
  */
-export type PublicEventOccurrence = PublicExperienceDate;
+export interface PublicEventOccurrence {
+  /** `event_dates.id` — the value that rides through to `orders.event_date_id`. */
+  id: string;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  isMaster: boolean;
+  /** Always null here — see the file header (no per-occurrence capacity exists). */
+  ticketsRemaining: number | null;
+}
 
 interface EventDateRow {
   id: string;
