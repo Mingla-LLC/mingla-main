@@ -261,6 +261,19 @@ const check = (s) => {
       "_cache.ts lost resolveDiscoveryGenerationSlot — the bounded read has no single home (Amendment 3B Defect 3)",
     );
   }
+  // The memo SHORT-CIRCUIT is the bound. Without it the resolver still exists,
+  // still fails closed and still returns the right slot — it just reads the
+  // database every single time again, which is Defect 3 exactly. Deleting it is
+  // the one revert the behavioural suite catches and every other pin here
+  // misses, so it gets its own pin (fixture M35).
+  if (
+    !/now\s*-\s*memo\.readAt\s*<\s*DISCOVER_GENERATION_TTL_MS/.test(cache) ||
+    !/return memo\.slot;/.test(cache)
+  ) {
+    fail(
+      "_cache.ts: the generation memo short-circuit is gone — every discover request pays a database round-trip again, in front of L1 (Amendment 3B Defect 3)",
+    );
+  }
   // Fail closed: an unreadable generation must CLEAR the memo, never be
   // remembered. Remembering it would serve later requests an entry keyed on a
   // generation the isolate cannot confirm.
@@ -613,6 +626,25 @@ if (process.argv.includes("--self-test")) {
           "await unboundedGenerationRead(",
         ),
       }),
+    },
+    {
+      label:
+        "M35 — the memo short-circuit is deleted, so the generation is read on EVERY request again (the exact Defect 3 regression, and the fails-on-revert this pass performed)",
+      apply: (s) => {
+        const block = `  const memo = generationMemo;
+  if (
+    memo !== null && now >= memo.readAt &&
+    now - memo.readAt < DISCOVER_GENERATION_TTL_MS
+  ) {
+    return memo.slot;
+  }
+
+`;
+        if (!s.discoverCache.includes(block)) {
+          throw new Error("M35 fixture marker drifted — update it, do not let it no-op");
+        }
+        return { ...s, discoverCache: s.discoverCache.replace(block, "") };
+      },
     },
     {
       label: "COMMENT-FORGERY — the RPC call is deleted but a comment quotes it verbatim",
