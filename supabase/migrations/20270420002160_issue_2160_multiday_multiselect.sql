@@ -355,7 +355,7 @@ CREATE TRIGGER events_multi_date_pricing_mode_locked
 -- 20270413001931_issue_1931_private_event_access.sql:974-1204, with THREE
 -- named deltas marked inline (DELTA 1/2/3 of 3).
 --
--- ⚠️  WHERE THE SPEC IS WRONG, AND IT MATTERS.
+-- ⚠️  WHERE THE SPEC IS WRONG, AND WHAT I COULD NOT ACT ON.
 -- SPEC §0 D-4 and §F both assert that since #2117 this function's visibility
 -- rule "is expressed only through pg_offering_visibility_gate(e.visibility,
 -- e.deleted_at, 'direct')" at 20270415002117:341, and the §6 invariant table
@@ -368,14 +368,14 @@ CREATE TRIGGER events_multi_date_pricing_mode_locked
 --       FROM pg_proc WHERE proname='pg_direct_event_checkout_bundle';
 --     -> f      (and the literal `visibility IN (...)` predicate -> t)
 --
--- The spec's PREMISE about the current state was wrong; its DEMANDED END STATE
--- (I-PROPOSED-2117-ONE-OFFERING-VISIBILITY-GATE, and SPEC test T-14 "exactly
--- one pg_offering_visibility_gate call in the bundle; no local visibility
--- predicate") is unambiguous. DELTA 2 makes it true. The substitution is
--- behaviour-identical — `pg_offering_visibility_gate(v, d, 'direct')` returns
--- COALESCE(d IS NULL AND v IN ('public','hidden'), false) — and is proved so in
+-- The spec's PREMISE about the current state was wrong. Its DEMANDED END STATE
+-- (I-PROPOSED-2117-ONE-OFFERING-VISIBILITY-GATE, SPEC test T-14) is
+-- unambiguous but turns out to be STRUCTURALLY UNAVAILABLE here — see DELTA 2
+-- for the two mutually exclusive CI constraints that make it so. The literal
+-- predicate stays, and the BEHAVIOUR is proved either way in
 -- supabase/migrations/__tests__/issue_2160_unlisted_occurrences.test.sql, which
--- exercises public / hidden / private / deleted / draft through the real reader.
+-- exercises public / hidden / private / deleted / unknown through the real
+-- reader. #2161 is closed by the `occurrences` key, not by this clause.
 -- ===========================================================================
 
 CREATE OR REPLACE FUNCTION public.pg_direct_event_checkout_bundle(
@@ -463,15 +463,35 @@ AS $function$
        AND e.slug = p_event_slug)
     )
       AND e.event_type = 'event'
-      -- issue #2160 DELTA 2 of 3 — ONE VISIBILITY AUTHORITY, NOT TWO.
-      -- Behaviour-identical substitution: pg_offering_visibility_gate(v,d,'direct')
-      -- is COALESCE(d IS NULL AND v IN ('public','hidden'), false), which is
-      -- exactly the two literal clauses it replaces. See §F in the header for
-      -- why this was NOT already here despite the SPEC saying it was.
-      -- Fully qualified because this function is SET search_path = ''.
-      -- The gate's EXECUTE grant is not consulted: this body is SECURITY
-      -- DEFINER, so the executing role is the owner (#2117 documents this).
-      AND public.pg_offering_visibility_gate(e.visibility, e.deleted_at, 'direct')
+      -- issue #2160 DELTA 2 of 3 — WITHDRAWN. The literal predicate STAYS.
+      --
+      -- This clause was briefly `pg_offering_visibility_gate(e.visibility,
+      -- e.deleted_at, 'direct')`, to make the SPEC's demanded end state
+      -- (T-14 / I-PROPOSED-2117-ONE-OFFERING-VISIBILITY-GATE) true — the SPEC
+      -- asserted the gate was ALREADY here and it was not. The substitution was
+      -- behaviour-identical and proved so. It is withdrawn anyway, because it
+      -- is STRUCTURALLY UNAVAILABLE to any migration that lands after #2117:
+      --
+      --   `.github/workflows/issue-2117-offering-visibility-gate-tests.yml`
+      --   applies THE WHOLE CHAIN EXCEPT #2117, captures the A-SC-9 baseline,
+      --   then applies #2117. Calling the gate makes this file fail phase 1
+      --   with "function public.pg_offering_visibility_gate(...) does not
+      --   exist" — a `LANGUAGE sql` body is validated at CREATE time. Moving
+      --   this file to phase 2 fixes that and then fails A-SC-9(a), because
+      --   §H's `authenticated` grant is no longer in the BEFORE snapshot and
+      --   is reported as having "arrived" with #2117.
+      --
+      -- Both constraints cannot hold at once, so the gate is not reusable by
+      -- anything downstream of it until that lane's baseline capture is
+      -- restructured. That is #2117's own decision to make, not this issue's,
+      -- and it is recorded in the implementation report rather than worked
+      -- around here: a payment-adjacent public reader is the wrong place to
+      -- carry a CI-shaped compromise.
+      --
+      -- The literal below is what #1929/#1931 shipped and is byte-identical to
+      -- what the gate would have returned for audience 'direct'.
+      AND e.visibility IN ('public'::text, 'hidden'::text)
+      AND e.deleted_at IS NULL
       AND b.deleted_at IS NULL
       AND e.status = ANY (ARRAY['scheduled'::text, 'live'::text, 'ended'::text, 'cancelled'::text])
       AND NOT public.issue_1931_event_ordinary_read_blocked(e.id)
@@ -668,7 +688,7 @@ AS $function$
 $function$;
 
 COMMENT ON FUNCTION public.pg_direct_event_checkout_bundle(uuid, text, text) IS
-  'Issue #1929 exact-key public/hidden standard-event bundle; non-enumerable and NULL on denial; contains no authoring or management fields. issue #2160: additionally carries `occurrences` (every event_dates row, chronological) plus `isMultiDate`, `isRecurring` and `multiDatePricingMode`, so a guest surface never reads public.event_dates directly (I-PROPOSED-2160-D) and the day chooser is reachable on unlisted events. Visibility is decided by pg_offering_visibility_gate(…, ''direct'') and nowhere else (I-PROPOSED-2117).';
+  'Issue #1929 exact-key public/hidden standard-event bundle; non-enumerable and NULL on denial; contains no authoring or management fields. issue #2160: additionally carries `occurrences` (every event_dates row, chronological) plus `isMultiDate`, `isRecurring` and `multiDatePricingMode`, so a guest surface never reads public.event_dates directly (I-PROPOSED-2160-D) and the day chooser is reachable on unlisted events. Visibility keeps the #1929/#1931 literal predicate; routing it through pg_offering_visibility_gate is structurally unavailable to any migration after #2117 (see DELTA 2).';
 REVOKE ALL ON FUNCTION public.pg_direct_event_checkout_bundle(uuid, text, text) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.pg_direct_event_checkout_bundle(uuid, text, text) TO anon, authenticated, service_role;
 
@@ -2554,8 +2574,11 @@ BEGIN
   IF position('isMultiDate' IN v_def) = 0 THEN
     RAISE EXCEPTION 'issue #2160 probe: pg_direct_event_checkout_bundle lost the multi-date signal — the day chooser becomes unreachable';
   END IF;
-  IF position('pg_offering_visibility_gate' IN v_def) = 0 THEN
-    RAISE EXCEPTION 'issue #2160 probe: pg_direct_event_checkout_bundle no longer routes through the ONE visibility gate (I-PROPOSED-2117)';
+  -- The visibility predicate must still ADMIT unlisted events and REFUSE
+  -- deleted ones — that behaviour is what #2161 depends on, however it is
+  -- spelled. See DELTA 2 for why it is the literal and not the #2117 gate.
+  IF position('''hidden''' IN v_def) = 0 THEN
+    RAISE EXCEPTION 'issue #2160 probe: pg_direct_event_checkout_bundle no longer admits unlisted events — #2161 regression';
   END IF;
 
   -- P9 — #2150 survived the wrapper re-emit.

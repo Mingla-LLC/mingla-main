@@ -10,9 +10,9 @@
 -- ── WHAT IS PROVED ─────────────────────────────────────────────────────────
 --   U-1  an UNLISTED (visibility='hidden') event returns its occurrences
 --   U-2  a PUBLIC event returns them identically (the control)
---   U-3  the visibility gate substitution is BEHAVIOUR-IDENTICAL: private,
---        deleted and draft events are still refused (NULL), exactly as the
---        literal `visibility IN ('public','hidden')` predicate refused them
+--   U-3  the visibility predicate still ADMITS unlisted and REFUSES private,
+--        deleted and unknown — the behaviour #2161 depends on, asserted on
+--        RESULTS so it holds however the predicate is spelled
 --   U-4  the MULTI-DATE SIGNAL rides the bundle — without it the day chooser is
 --        unreachable no matter how many occurrences are returned
 --   U-5  the pricing mode rides the bundle and defaults to 'per_day'
@@ -98,12 +98,13 @@ BEGIN
     jsonb_array_length((v_b::jsonb) -> 'occurrences') = 2,
     'U-2 a PUBLIC 2-date event returns both occurrences (the control)');
 
-  -- ── U-3 — the gate substitution is BEHAVIOUR-IDENTICAL. ──────────────────
+  -- ── U-3 — VISIBILITY BEHAVIOUR, asserted on RESULTS not on spelling. ─────
   -- The SPEC asserted this function already routed through
-  -- pg_offering_visibility_gate; it did not (it carried a literal
-  -- `visibility IN ('public','hidden')` predicate). #2160 makes the spec's
-  -- demanded end state true. These checks prove the substitution changed
-  -- nothing observable: everything the literal refused is still refused.
+  -- pg_offering_visibility_gate; it did not, and it still does not — see
+  -- DELTA 2 of the migration for the two mutually exclusive CI constraints
+  -- that make the gate unavailable to anything landing after #2117. These
+  -- checks pin the BEHAVIOUR, so they hold under either spelling and would
+  -- catch a real widening or narrowing either way.
   v_private := pg_temp.u2160_event('private', 'private');
   PERFORM pg_temp.u2160_assert(
     public.pg_direct_event_checkout_bundle(v_private, NULL, NULL) IS NULL,

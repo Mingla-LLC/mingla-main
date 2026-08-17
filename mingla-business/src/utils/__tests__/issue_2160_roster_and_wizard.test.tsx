@@ -559,7 +559,10 @@ describe("issue #2160 §7(a) — the multiplier is visible on the ticket row its
 // ═══════════════════════════════════════════ legitimately textual, and only these
 describe("issue #2160 — the two properties that are genuinely text", () => {
   test("the SPEC's copy ships verbatim — the point IS the exact approved words", () => {
-    const src = repoRead("src/components/event/CreatorStep2When.tsx");
+    // The copy moved with the control into its own LAZY chunk — organiser-only
+    // text and styles do not belong in the eager payload every anonymous buyer
+    // downloads. Same file, same strings.
+    const src = repoRead("src/components/event/MultiDatePricingModeField.tsx");
     for (const line of [
       "How guests pay for multiple days",
       "Per day",

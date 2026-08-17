@@ -1165,6 +1165,10 @@ const TicketStepperRow: React.FC<{
           : null;
 
   const priceLabel = formatTicketPrice(ticket, fallbackCurrency);
+  // issue #2160 — explicitly typed so the render below never does a property
+  // access on an un-inferable prop. See the comment at the render site.
+  const pricingNoteText: string =
+    typeof pricingNote === "string" ? pricingNote : "";
   // Cap: unlimited → 99; else remaining capacity (capacity field carries remaining).
   const cap = ticket.isUnlimited ? 99 : Math.max(0, ticket.capacity ?? 0);
   const canIncrement = sellable && !disabled && quantity < cap;
@@ -1219,12 +1223,18 @@ const TicketStepperRow: React.FC<{
         {/* issue #2160 — the multiplier, said in words, next to the number it
             multiplies. Omitted entirely when null, which is every pre-#2160
             caller and every free ticket, so the tree is byte-identical there. */}
-        {pricingNote !== null && pricingNote.length > 0 && !ticket.isFree ? (
+        {/* NO `.length` HERE, DELIBERATELY. This package has no local `react`
+            types, so in the full-graph tsc run that
+            issue-1403-typecheck-delta performs the prop resolves to `never`,
+            and ANY property access on it — `.length`, even behind a `typeof`
+            narrow — is a NEW diagnostic. `pricingNoteText` below is an
+            explicitly typed local, so the comparison needs no inference. */}
+        {pricingNoteText !== "" && !ticket.isFree ? (
           <Text
             style={[styles.tierPricingNote, surface.tertiaryText]}
             testID={`issue-2160-pricing-note-${ticket.id}`}
           >
-            {pricingNote}
+            {pricingNoteText}
           </Text>
         ) : null}
         {sellable ? (
