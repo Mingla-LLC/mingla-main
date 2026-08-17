@@ -92,6 +92,19 @@ jobs:
           cache: npm
           cache-dependency-path: mingla-business/package-lock.json
       - run: npm ci
+      # `@testing-library/react-native` is NOT a declared dependency and is NOT
+      # in package-lock.json, so `npm ci` never installs it. The tester-owned
+      # adversarial suite imports it, so this lane must provision it exactly the
+      # way the #1486 render lane does — same pinned versions. Without this the
+      # suite cannot compile and the step fails on a missing package rather than
+      # on anything it asserts.
+      #
+      # NOTE: this is only correct while that suite runs under the DEFAULT
+      # node/ts-jest config. If it is ever moved behind a dedicated render
+      # config (the pattern every other RTL suite here uses, via
+      # jest.config.cjs testPathIgnorePatterns), this step must move with it.
+      - name: Install render-only test dependencies
+        run: npm install --no-save react-test-renderer@19.1.0 @testing-library/react-native@13.3.3
       # The mandated Event render-proof: both layouts, all three checkout
       # entries, per-control and per-handler revert isolation.
       - run: npx jest src/components/event/__tests__/PublicEventPage.issue2101.test.tsx --runInBand
