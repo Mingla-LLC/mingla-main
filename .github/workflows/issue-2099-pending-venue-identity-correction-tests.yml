@@ -25,6 +25,8 @@ on:
       - "mingla-business/src/components/venue/__tests__/venuePublicPageActions.issue1483.test.tsx"
       - "mingla-business/src/components/venue/__tests__/venuePublicActionsAdversarial.issue1483.test.tsx"
       - "mingla-business/jest.issue2099.web.render.cjs"
+      - "mingla-business/playwright.issue2099.config.ts"
+      - "mingla-business/playwright/issue2099/**"
       - "mingla-admin/src/components/claims/PendingVenueIdentityCorrectionPanel.jsx"
       - "mingla-admin/src/services/adminClaimsService.js"
       - "mingla-admin/src/pages/ClaimsPage.jsx"
@@ -169,6 +171,32 @@ jobs:
           bash "$guard"
 
       - run: npm --prefix mingla-admin run build
+
+  issue-2099-browser-geometry:
+    # P1-A. The only #2099 gate with a LAYOUT ENGINE. Check H mounts under
+    # `react-test-renderer`, which has no viewport, no scroll and no bounding
+    # boxes — so it proved the control was PRESENT while the independent tester
+    # found its primary action 1155px below an 800px fold on a page that does
+    # not scroll, reachable by neither pointer nor keyboard. Presence and
+    # reachability are different axes and only this job can see the second one.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.4
+          cache: npm
+          cache-dependency-path: |
+            mingla-business/package-lock.json
+            mingla-admin/package-lock.json
+      - run: npm --prefix mingla-business ci
+      # esbuild comes from mingla-admin's already-installed tree, so the harness
+      # adds no dependency and neither manifest nor lockfile is touched.
+      - run: npm --prefix mingla-admin ci
+      - run: npx --prefix mingla-business playwright install --with-deps chromium-headless-shell
+      - name: "P1-A — the correction dialog is OPERABLE at 1280x800 and 390x844"
+        working-directory: mingla-business
+        run: npx playwright test -c playwright.issue2099.config.ts
 
   issue-2099-boot-payload-ceiling:
     runs-on: ubuntu-latest

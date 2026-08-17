@@ -108,6 +108,8 @@ Deno.test("#2099 workflow actually executes every gate this issue rests on", () 
       "issue2099PendingIdentityCorrection.native-absence.test.ts",
       // Admin
       "issue2099_pending_identity_correction.test.js",
+      // P1-A — the only gate with a layout engine
+      "playwright.issue2099.config.ts",
       // SC-7 needs origin/main present in the runner's checkout
       "fetch-depth: 0",
       "mingla-admin/src/components/entity/HighRiskActionModal.jsx",

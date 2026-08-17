@@ -18,16 +18,32 @@
 # bounded completion afterwards, and every losing correction is proved to have
 # made ZERO product writes and ZERO audit rows.
 #
-# Runs against the disposable PostgreSQL 17 fixture the issue workflow starts.
+# RUN-SCOPED AND LANE-SCOPED, and that is a correctness requirement rather than
+# tidiness. The first version of this harness re-seeded ONE venue between races
+# and began by deleting its audit rows — and `venue_identity_correction_audit`
+# is immutable by trigger, for the table owner and for a superuser alike. Race 1
+# commits an audit row, race 2 tries to delete it, the trigger refuses, and
+# `ON_ERROR_STOP=1` + `set -e` take the harness down before races 2-6 ever run.
+# It was written, wired into CI, and never executed once. So: every race now
+# owns its own brand/pool/venue, `request_id` is globally UNIQUE and therefore
+# derived from a per-run token, and NOTHING here ever deletes an audit row.
 set -euo pipefail
 
 DB_CONTAINER="${ISSUE2099_DB_CONTAINER:-$(cat /tmp/issue2099-db-container)}"
 DB_PASSWORD="${ISSUE2099_DB_PASSWORD:-$(cat /tmp/issue2099-db-password)}"
 
-OWNER='20990000-0000-0000-0000-000000000001'
-BRAND='20990000-0000-0000-0000-000000000003'
-POOL='20990000-0000-0000-0000-000000000010'
-VENUE='20990000-0000-0000-0000-000000000020'
+# Per-run token. `venue_identity_correction_audit.request_id` is globally
+# UNIQUE, so a fixed request id succeeds exactly once per database and returns
+# REQUEST_CONFLICT for ever after — which would make a second run of this
+# harness fail for a reason that has nothing to do with the product.
+RUN_TOKEN="${ISSUE2099_RUN_TOKEN:-$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')}"
+OWNER="20990001-0000-4000-8000-$RUN_TOKEN"
+
+# Set by seed_fixture for the current race.
+BRAND=""
+POOL=""
+VENUE=""
+LANE=""
 
 psql_raw() {
   docker exec -i -e PGPASSWORD="$DB_PASSWORD" "$DB_CONTAINER" \
@@ -42,28 +58,22 @@ fail() { echo "issue-2099 concurrency FAIL: $*" >&2; exit 1; }
 ok() { echo "  ok  $*"; }
 
 # ---------------------------------------------------------------------------
-# Durable, COMMITTED fixture. Two connections cannot see one another's
-# uncommitted rows, so the fixture cannot live in a transaction the way the
-# single-session SQL contract's does.
+# Durable, COMMITTED fixture, ONE PER RACE. Two connections cannot see each
+# other's uncommitted rows, so the fixture cannot live in a transaction the way
+# the single-session SQL contract's does — and it cannot be shared between
+# races either, because tearing one down would mean deleting audit rows.
 # ---------------------------------------------------------------------------
 seed_fixture() {
+  LANE="$1"
+  BRAND="20990003-0000-4000-80${LANE}0-$RUN_TOKEN"
+  POOL="20990010-0000-4000-80${LANE}0-$RUN_TOKEN"
+  VENUE="20990020-0000-4000-80${LANE}0-$RUN_TOKEN"
   psql_raw <<SQL
-DELETE FROM public.brand_hours WHERE venue_id='$VENUE';
-DELETE FROM public.brand_place_pipeline_state WHERE venue_id='$VENUE';
-DELETE FROM public.venue_availability_config WHERE venue_id='$VENUE';
-DELETE FROM public.venue_reservation_settings WHERE venue_id='$VENUE';
-DELETE FROM public.venue_identity_correction_audit WHERE corrected_venue_id='$VENUE';
-DELETE FROM public.venue_listings WHERE id='$VENUE';
-DELETE FROM public.place_pool WHERE id='$POOL';
-DELETE FROM public.brand_team_members WHERE brand_id='$BRAND';
-DELETE FROM public.brands WHERE id='$BRAND';
-DELETE FROM public.creator_accounts WHERE id='$OWNER';
-DELETE FROM auth.users WHERE id='$OWNER';
-
-INSERT INTO auth.users(id,email) VALUES('$OWNER','owner-2099-race@example.test');
-INSERT INTO public.creator_accounts(id) VALUES('$OWNER');
+INSERT INTO auth.users(id,email) VALUES('$OWNER','owner-2099-race-$RUN_TOKEN@example.test')
+  ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.creator_accounts(id) VALUES('$OWNER') ON CONFLICT (id) DO NOTHING;
 INSERT INTO public.brands(id,account_id,name,slug,default_currency,pricing_currency)
-VALUES('$BRAND','$OWNER','Issue 2099 race brand','issue-2099-race-brand','USD','USD');
+VALUES('$BRAND','$OWNER','Issue 2099 race brand $LANE','issue-2099-race-$RUN_TOKEN-$LANE','USD','USD');
 UPDATE public.brand_team_members SET role='brand_owner',accepted_at=now(),removed_at=NULL
 WHERE brand_id='$BRAND' AND user_id='$OWNER';
 INSERT INTO public.place_pool(id,name,lat,lng,types,primary_type,is_active,is_claimed,is_servable,fetched_via,
@@ -85,11 +95,11 @@ ON CONFLICT(flag_key) DO UPDATE SET is_enabled=true;
 SQL
 }
 
-# One AUTHENTICATED correction lane. \$1 = request id, \$2 = new slug,
-# \$3 = extra SQL executed INSIDE the same transaction after the RPC (so the
-# transaction's locks are still held), \$4 = commit|rollback.
+# One AUTHENTICATED correction lane. $1 = request suffix, $2 = new slug,
+# $3 = extra SQL executed INSIDE the same transaction after the RPC (so the
+# transaction's locks are still held), $4 = commit|rollback.
 correction_lane() {
-  local request_id="$1" new_slug="$2" inside="$3" finish="$4"
+  local request_id="20990100-0000-4000-8$1-$RUN_TOKEN" new_slug="$2" inside="$3" finish="$4"
   psql_soft <<SQL
 BEGIN;
 SET LOCAL ROLE authenticated;
@@ -128,8 +138,8 @@ echo "#2099 §D5 — authenticated two-connection race matrix"
 # RACE 1 — CORRECTION FIRST vs DDL. The correction's SHARE lock on the guard
 # makes the competitor's CREATE TABLE wait at ddl_command_start until commit.
 # ---------------------------------------------------------------------------
-seed_fixture
-( correction_lane '20990000-0000-0000-0000-0000000001a1' 'raceonea' 'SELECT pg_sleep(4);' 'COMMIT' \
+seed_fixture 1
+( correction_lane '11a' 'raceonea' 'SELECT pg_sleep(4);' 'COMMIT' \
     > /tmp/issue2099-race1-correction.out 2>&1 ) &
 correction_pid=$!
 sleep 1
@@ -160,7 +170,7 @@ ok "race 1: correction-first wins, competitor DDL waits, exactly one audit row"
 # RACE 2 — DDL FIRST. The event trigger's EXCLUSIVE lock makes the correction's
 # SHARE ... NOWAIT return the stable CORRECTION_BUSY with ZERO writes.
 # ---------------------------------------------------------------------------
-seed_fixture
+seed_fixture 2
 before_audit="$(audit_count)"
 before_identity="$(venue_identity)"
 ( psql_soft > /tmp/issue2099-race2-ddl.out 2>&1 <<SQL
@@ -172,7 +182,7 @@ SQL
 ) &
 ddl_pid=$!
 sleep 1
-correction_lane '20990000-0000-0000-0000-0000000001b1' 'racetwob' '' 'ROLLBACK' \
+correction_lane '22b' 'racetwob' '' 'ROLLBACK' \
   > /tmp/issue2099-race2-correction.out 2>&1
 grep -q "LANE_RESULT CORRECTION_BUSY" /tmp/issue2099-race2-correction.out \
   || fail "race 2: expected CORRECTION_BUSY, got: $(cat /tmp/issue2099-race2-correction.out)"
@@ -188,14 +198,14 @@ ok "race 2: DDL-first makes the correction CORRECTION_BUSY with zero writes and 
 # RACE 3 — a COMMITTED disallowed dependency must make the correction ineligible
 # rather than silently correcting a venue that is now in use.
 # ---------------------------------------------------------------------------
-seed_fixture
+seed_fixture 3
 psql_raw <<SQL
 CREATE TABLE IF NOT EXISTS public.issue_2099_race_semantic(id serial PRIMARY KEY, venue_id uuid);
 INSERT INTO public.issue_2099_race_semantic(venue_id) VALUES('$VENUE');
 SQL
 before_identity="$(venue_identity)"
 before_audit="$(audit_count)"
-correction_lane '20990000-0000-0000-0000-0000000001c1' 'racethree' '' 'ROLLBACK' \
+correction_lane '33c' 'racethree' '' 'ROLLBACK' \
   > /tmp/issue2099-race3.out 2>&1
 grep -qE "LANE_RESULT (DEPENDENCY_NOT_EMPTY|DEPENDENCY_SCHEMA_CHANGED|CORRECTION_BUSY)" /tmp/issue2099-race3.out \
   || fail "race 3: a new semantic venue_id lane did not stop the correction: $(cat /tmp/issue2099-race3.out)"
@@ -210,13 +220,13 @@ ok "race 3: an unknown/occupied dependency lane fails closed with zero writes"
 # RACE 4 — a sensitive field that turns non-empty between preview and correction
 # can never be erased by the correction.
 # ---------------------------------------------------------------------------
-seed_fixture
+seed_fixture 4
 psql_raw <<SQL
 UPDATE public.place_pool SET ai_signal_scores='{"private":"must-not-leak"}' WHERE id='$POOL';
 SQL
 before_identity="$(venue_identity)"
 before_audit="$(audit_count)"
-correction_lane '20990000-0000-0000-0000-0000000001d1' 'racefour' '' 'ROLLBACK' \
+correction_lane '44d' 'racefour' '' 'ROLLBACK' \
   > /tmp/issue2099-race4.out 2>&1
 grep -q "LANE_RESULT SENSITIVE_STATE_NOT_EMPTY" /tmp/issue2099-race4.out \
   || fail "race 4: expected SENSITIVE_STATE_NOT_EMPTY, got: $(cat /tmp/issue2099-race4.out)"
@@ -234,10 +244,10 @@ ok "race 4: an empty→non-empty sensitive transition wins; the correction canno
 # RACE 5 — two SIMULTANEOUS byte-equivalent same-request writers: exactly one
 # mutation, exactly one audit row, identical recorded success.
 # ---------------------------------------------------------------------------
-seed_fixture
-( correction_lane '20990000-0000-0000-0000-0000000001e1' 'racefive' '' 'COMMIT' > /tmp/issue2099-race5-a.out 2>&1 ) &
+seed_fixture 5
+( correction_lane '55e' 'racefive' '' 'COMMIT' > /tmp/issue2099-race5-a.out 2>&1 ) &
 a_pid=$!
-( correction_lane '20990000-0000-0000-0000-0000000001e1' 'racefive' '' 'COMMIT' > /tmp/issue2099-race5-b.out 2>&1 ) &
+( correction_lane '55e' 'racefive' '' 'COMMIT' > /tmp/issue2099-race5-b.out 2>&1 ) &
 b_pid=$!
 wait "$a_pid"; wait "$b_pid"
 grep -q "LANE_RESULT ok" /tmp/issue2099-race5-a.out || fail "race 5: session A did not succeed"
@@ -249,10 +259,10 @@ ok "race 5: simultaneous byte-equivalent writers produce one mutation and one au
 # RACE 6 — two SIMULTANEOUS distinct-request writers over the same CAS: one
 # success, one STALE_VERSION, one audit row.
 # ---------------------------------------------------------------------------
-seed_fixture
-( correction_lane '20990000-0000-0000-0000-0000000001f1' 'racesixa' '' 'COMMIT' > /tmp/issue2099-race6-a.out 2>&1 ) &
+seed_fixture 6
+( correction_lane '66f' 'racesixa' '' 'COMMIT' > /tmp/issue2099-race6-a.out 2>&1 ) &
 a_pid=$!
-( correction_lane '20990000-0000-0000-0000-0000000001f2' 'racesixb' '' 'COMMIT' > /tmp/issue2099-race6-b.out 2>&1 ) &
+( correction_lane '67f' 'racesixb' '' 'COMMIT' > /tmp/issue2099-race6-b.out 2>&1 ) &
 b_pid=$!
 wait "$a_pid"; wait "$b_pid"
 wins="$(grep -l "LANE_RESULT ok" /tmp/issue2099-race6-a.out /tmp/issue2099-race6-b.out | wc -l | tr -d ' ')"
@@ -263,19 +273,25 @@ grep -hqE "LANE_RESULT (STALE_VERSION|CORRECTION_BUSY)" /tmp/issue2099-race6-a.o
 ok "race 6: distinct-request writers over one CAS produce one winner and one audit row"
 
 # ---------------------------------------------------------------------------
-# Cleanup — the disposable fixture never outlives the harness.
+# Cleanup — product rows for all six lanes. Audit rows are NEVER deleted: the
+# migration's immutability trigger refuses that for the table owner too, which
+# is the product being right and was the defect that stopped this harness at
+# race 2. The fixture database is disposable, so the rows simply stay.
 # ---------------------------------------------------------------------------
-psql_raw <<SQL
-DELETE FROM public.brand_hours WHERE venue_id='$VENUE';
-DELETE FROM public.brand_place_pipeline_state WHERE venue_id='$VENUE';
-DELETE FROM public.venue_availability_config WHERE venue_id='$VENUE';
-DELETE FROM public.venue_reservation_settings WHERE venue_id='$VENUE';
-DELETE FROM public.venue_listings WHERE id='$VENUE';
-DELETE FROM public.place_pool WHERE id='$POOL';
-DELETE FROM public.brand_team_members WHERE brand_id='$BRAND';
-DELETE FROM public.brands WHERE id='$BRAND';
-DELETE FROM public.creator_accounts WHERE id='$OWNER';
-DELETE FROM auth.users WHERE id='$OWNER';
+for lane in 1 2 3 4 5 6; do
+  v="20990020-0000-4000-80${lane}0-$RUN_TOKEN"
+  b="20990003-0000-4000-80${lane}0-$RUN_TOKEN"
+  pl="20990010-0000-4000-80${lane}0-$RUN_TOKEN"
+  psql_raw <<SQL
+DELETE FROM public.brand_hours WHERE venue_id='$v';
+DELETE FROM public.brand_place_pipeline_state WHERE venue_id='$v';
+DELETE FROM public.venue_availability_config WHERE venue_id='$v';
+DELETE FROM public.venue_reservation_settings WHERE venue_id='$v';
+DELETE FROM public.venue_listings WHERE id='$v';
+DELETE FROM public.place_pool WHERE id='$pl';
+DELETE FROM public.brand_team_members WHERE brand_id='$b';
+DELETE FROM public.brands WHERE id='$b';
 SQL
+done
 
 echo "#2099 §D5 — all six authenticated races passed."

@@ -19,7 +19,15 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 
 // Amendment 7 §G5 / Amendment 8 §H7 — KEY FACTORIES ONLY, read-only. React
@@ -37,6 +45,7 @@ import { Input } from "../ui/Input";
 import { Modal } from "../ui/Modal";
 import {
   accent,
+  canvas,
   spacing,
   text as textTokens,
   typography,
@@ -128,6 +137,12 @@ export function PendingVenueIdentityCorrectionDialog({
   const [submitting, setSubmitting] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const queryClient = useQueryClient();
+  // P1-A — the shared `Modal` centres an UNBOUNDED card: it grows with content
+  // and the page behind it does not scroll (`body { overflow: hidden }`), so a
+  // tall form pushes its own primary action past the fold with nothing able to
+  // reach it. The Modal primitive is out of scope, so the bound and the scroller
+  // live HERE, on the dialog's own content.
+  const { height: viewportHeight } = useWindowDimensions();
 
   // Guards a second submit from an in-flight one even before React commits
   // `submitting` — Constitution #1/#3: the action can never double-fire.
@@ -356,7 +371,19 @@ export function PendingVenueIdentityCorrectionDialog({
       dismissOnScrimTap={!submitting}
       testID="issue-2099-correction-dialog"
     >
-      <View accessibilityViewIsModal style={styles.form}>
+      <ScrollView
+        accessibilityViewIsModal
+        testID="issue-2099-correction-scroll"
+        style={[
+          styles.scroll,
+          // Bounded by the VIEWPORT, not by the content: this is what makes the
+          // container actually scroll instead of simply growing. `Modal` adds
+          // its own `spacing.lg` padding on each side, so leave room for it.
+          { maxHeight: Math.max(240, viewportHeight - spacing.lg * 6) },
+        ]}
+        contentContainerStyle={styles.form}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.title} accessibilityRole="header">
           Correct venue identity
         </Text>
@@ -512,7 +539,7 @@ export function PendingVenueIdentityCorrectionDialog({
             />
           )}
         </View>
-      </View>
+      </ScrollView>
     </Modal>
   );
 }
@@ -523,20 +550,40 @@ function DependencyCounts({
   counts: readonly { safe_label: string; count: number; classification: string }[];
 }): React.ReactElement | null {
   if (counts.length === 0) return null;
+  // P2-1 — the server returns EVERY discovered lane, and on a genuinely unused
+  // venue all but four of them are zero. Rendering 58 identical
+  // `dependency: 0 (disallowed)` rows buries the three that carry information
+  // and, at 390x844, fills the whole dialog. Show the non-zero lanes; summarise
+  // the rest in one line. Nothing is hidden: the empty count is stated.
+  const present = counts.filter((lane) => lane.count > 0);
+  const empty = counts.length - present.length;
   return (
     <View testID="issue-2099-dependency-counts" style={styles.dependencyBlock}>
       <Text style={styles.fieldLabel}>What this venue currently has</Text>
-      {counts.map((lane) => (
+      {present.map((lane) => (
         <Text key={lane.safe_label} style={styles.body}>
           {lane.safe_label}: {lane.count} ({lane.classification})
         </Text>
       ))}
+      {empty > 0 ? (
+        <Text style={styles.body} testID="issue-2099-dependency-empty">
+          {empty} other checked {empty === 1 ? "area is" : "areas are"} empty.
+        </Text>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  form: { gap: spacing.sm, minWidth: 320 },
+  // P1-A / P2-2 — the scroll host owns the bound AND the opaque surface. The
+  // shared `GlassCard` the Modal wraps children in is translucent, so page
+  // content read straight through the form.
+  scroll: {
+    alignSelf: "stretch",
+    backgroundColor: canvas.depth,
+    borderRadius: 12,
+  },
+  form: { gap: spacing.sm, minWidth: 320, padding: spacing.sm },
   title: {
     fontSize: typography.h3.fontSize,
     fontWeight: "700",

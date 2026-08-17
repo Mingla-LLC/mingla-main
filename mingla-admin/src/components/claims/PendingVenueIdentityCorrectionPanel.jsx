@@ -362,14 +362,26 @@ export function PendingVenueIdentityCorrectionPanel({ venue, onCorrected }) {
 
 function DependencyCounts({ counts, testId }) {
   if (!counts || counts.length === 0) return null;
+  // P2-1 — the server returns EVERY discovered lane, and on a genuinely unused
+  // venue all but four are zero. Rendering ~58 identical
+  // `dependency: 0 (disallowed)` rows buries the three that carry information.
+  // Show the non-zero lanes and summarise the rest in one line; nothing is
+  // hidden, the empty count is stated.
+  const present = counts.filter((lane) => lane.count > 0);
+  const empty = counts.length - present.length;
   return (
     <div className="space-y-0.5 text-xs text-[var(--color-text-secondary)]" data-testid={testId}>
       <div className="text-[var(--color-text-tertiary)]">What this venue currently has</div>
-      {counts.map((lane) => (
+      {present.map((lane) => (
         <div key={lane.safe_label}>
           {lane.safe_label}: {lane.count} ({lane.classification})
         </div>
       ))}
+      {empty > 0 ? (
+        <div data-testid="issue-2099-dependency-empty">
+          {empty} other checked {empty === 1 ? "area is" : "areas are"} empty.
+        </div>
+      ) : null}
     </div>
   );
 }

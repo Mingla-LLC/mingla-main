@@ -88,6 +88,12 @@ export async function correctPendingVenueIdentity({ preview, name, slug, categor
     p_request_id: requestId,
     p_expected_schema_fingerprint: preview.schema_fingerprint,
     p_expected_state_fingerprint: preview.state_fingerprint,
+    // [TRANSITIONAL] forward only — see the matching note in
+    // mingla-business/src/services/pendingVenueIdentityCorrectionService.web.ts.
+    // The RPC supports rollback; no amendment specifies a rollback SURFACE, and
+    // an Admin cannot read the audit table to obtain a source audit id either.
+    // EXIT CONDITION: a reviewed amendment that either specifies the rollback
+    // surface or drops the rollback leg from §D6.
     p_mode: "forward",
     p_source_audit_id: null,
   });

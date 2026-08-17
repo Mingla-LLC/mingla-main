@@ -68,6 +68,26 @@ export async function previewPendingVenueIdentityCorrection(
   return data as PendingVenueIdentityPreview;
 }
 
+/**
+ * FORWARD ONLY, and deliberately so.
+ *
+ * [TRANSITIONAL] the RPC implements `p_mode='rollback'` (Amendment 1 §A5) and it
+ * is proven to work end to end, but NO surface can invoke it and this client
+ * does not pretend otherwise. Two things are missing and neither is an
+ * implementation detail:
+ *   1. no amendment specifies a rollback UI — there is no eligibility rule, no
+ *      entry point, no copy, no confirmation semantics (what would the Admin
+ *      `confirmPhrase` be for a rollback?), no state matrix and no a11y
+ *      contract. §D3 and §E1 specify the CORRECTION flow only;
+ *   2. an owner cannot obtain `p_source_audit_id`: reading
+ *      `venue_identity_correction_audit` correctly returns 42501 to an
+ *      authenticated session, so the preview RPC would have to return the
+ *      rollback handle — a change to the server contract, not to this file.
+ * EXIT CONDITION: a reviewed amendment either specifies the rollback surface
+ * (then this function gains a mode parameter and the preview gains the handle)
+ * or rules the rollback leg out of §D6's surface requirement. Until then this
+ * signature cannot express a rollback, which is the honest shape.
+ */
 export async function correctPendingVenueIdentity(
   input: CorrectPendingVenueIdentityInput,
 ): Promise<CorrectPendingVenueIdentityResult> {
