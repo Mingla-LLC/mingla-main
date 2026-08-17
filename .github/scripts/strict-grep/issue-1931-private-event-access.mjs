@@ -117,6 +117,29 @@ const check = (s) => {
   // Read-only references, including a foreign key, are explicitly NOT prohibited.
   // Checked over the NORMALISED migration so comments and string concatenation cannot
   // hide the verb. `migrationNorm` is comment-free, concat-folded and quote-free.
+  //
+  // P3-B — READ THIS BEFORE TOUCHING THE PROBE THIS COMMENT NAMES.
+  //
+  // This grep is DEFENCE IN DEPTH, not the load-bearing detector. The independent tester
+  // executed three evasions that still slip past it, all of them GREEN here:
+  //     1. format('%I', 'brand_offering_invite_tokens')
+  //     2. chr()-built identifiers concatenated at runtime
+  //     3. a table name held in a variable
+  // A source-text scan cannot close those in general — the identifier does not exist
+  // until execution.
+  //
+  // ALL THREE DIE on the behavioural detector instead: the non-transactional sequence
+  // probe in
+  //     supabase/migrations/__tests__/issue_1931_private_event_access.test.sql  (SC-55(c))
+  // which counts write ATTEMPTS via nextval() — surviving subtransaction rollback, so it
+  // catches write-then-raise — together with the durable pre-migration seed in
+  //     supabase/migrations/__tests__/issue_1931_migration_time_probe.{seed,verify}.sql
+  // which catches writes performed BY the migration itself, when both tables would
+  // otherwise be empty and every row assertion vacuous.
+  //
+  // So: do NOT delete or weaken those probes on the belief that this grep covers the
+  // #1770 rail. It does not. The probes are the guarantee; this grep only makes the
+  // obvious spelling fail fast and early, in CI, without a database.
   for (const table of ["brand_offering_invite_tokens", "brand_offering_invites"]) {
     const writeVerb = new RegExp(
       `(INSERT\\s+INTO|UPDATE|DELETE\\s+FROM|TRUNCATE)\\s+(public\\.)?${table}\\b`, "i");
@@ -128,7 +151,7 @@ const check = (s) => {
     fail("released #1931 SQL references biz_validate_offering_invite_token( — indirect #1770 token consumption (SC-55(c), review Finding B)");
   }
   // SC-55(d) — #1931 must not re-emit the validator at all.
-  if (/(CREATE|ALTER|DROP)\s+FUNCTION\s+(public\.)?biz_validate_offering_invite_token/i.test(s.migration)) {
+  if (/(CREATE|ALTER|DROP)\s+FUNCTION\s+(public\.)?biz_validate_offering_invite_token/i.test(s.migrationNorm)) {
     fail("released #1931 SQL re-emits biz_validate_offering_invite_token (SC-55(d))");
   }
 
@@ -235,18 +258,23 @@ const check = (s) => {
   if (/\bRETURN\s+true\b/i.test(operatorBody)) {
     fail("the operator RPC has a path that returns true (SC-45)");
   }
-  if (!/CREATE OR REPLACE FUNCTION public\.issue_1931_event_ordinary_read_blocked/.test(s.migration)) {
+  // P3-A — EVERY presence assertion below runs on `migrationNoComments`, never on the raw
+  // text. A presence assertion over raw SQL is satisfiable by a COMMENT: the tester
+  // executed exactly that against the publish-block check and the gate went GREEN. The
+  // operator-RPC check above already stripped comments, so this was an inconsistency
+  // inside this file rather than a design question. Both are consistent now.
+  if (!/CREATE OR REPLACE FUNCTION public\.issue_1931_event_ordinary_read_blocked/.test(s.migrationNoComments)) {
     fail("the single ordinary-read helper is missing (Amendment 4 §B.3.1)");
   }
   // P1-1 — the AUTHORITATIVE legacy-Private-draft publish block. The client hook is a
   // convenience; this is the half that actually prevents a Private publish, and the
   // tester proved a client-only helper nothing invokes is worthless.
-  if (!/IF v_visibility = 'private' AND NOT public\.issue_1931_private_event_access_ready\(\) THEN/.test(s.migration)) {
+  if (!/IF v_visibility = 'private' AND NOT public\.issue_1931_private_event_access_ready\(\) THEN/.test(s.migrationNoComments)) {
     fail("business_publish_event_draft is missing the Private publish block (Amendment 1 §3)");
   }
   // The predicate is exposed through EXACTLY ONE helper: the jobs table may be named in
   // the migration only by its own DDL and by that helper.
-  if (/CREATE POLICY[\s\S]{0,400}event_private_media_transition_jobs/.test(s.migration)) {
+  if (/CREATE POLICY[\s\S]{0,400}event_private_media_transition_jobs/.test(s.migrationNoComments)) {
     fail("an RLS policy names event_private_media_transition_jobs directly (SC-53(a))");
   }
 };
@@ -325,6 +353,15 @@ if (process.argv.includes("--self-test")) {
       apply: (s) => ({ ...s, apiHandlers: { ...s.apiHandlers, "api/invite-ingress.js": "const u=new URL(req.url); const t=u.searchParams.get('oi');" } }) },
     { label: "TESTER E6 — a second migration sharing the same timestamp prefix",
       apply: (s) => ({ ...s, migrationList: [...s.migrationList, "20270413001931_issue_2222_other.sql"] }) },
+    // ---- P3-A: a COMMENT must never satisfy a presence assertion --------------------
+    { label: "P3-A — publish block DELETED but a comment quotes it verbatim",
+      apply: (s) => ({ ...s, migration: s.migration.replace(
+        "  IF v_visibility = 'private' AND NOT public.issue_1931_private_event_access_ready() THEN\n    RAISE EXCEPTION 'private_access_not_ready';\n  END IF;\n",
+        "  -- IF v_visibility = 'private' AND NOT public.issue_1931_private_event_access_ready() THEN\n  --   RAISE EXCEPTION 'private_access_not_ready';\n  -- END IF;\n") }) },
+    { label: "P3-A — ordinary-read helper DELETED but a comment quotes its CREATE",
+      apply: (s) => ({ ...s, migration: s.migration.replace(
+        "CREATE OR REPLACE FUNCTION public.issue_1931_event_ordinary_read_blocked(p_event_id uuid)",
+        "-- CREATE OR REPLACE FUNCTION public.issue_1931_event_ordinary_read_blocked(p_event_id uuid)\nCREATE OR REPLACE FUNCTION public.issue_1931_helper_renamed_away(p_event_id uuid)") }) },
     { label: "P1-1 — the authoritative publish block is deleted from the migration",
       apply: (s) => ({ ...s, migration: s.migration.replace("  IF v_visibility = 'private' AND NOT public.issue_1931_private_event_access_ready() THEN\n    RAISE EXCEPTION 'private_access_not_ready';\n  END IF;\n", "") }) },
     { label: "SC-51 a second #1931 migration appears",
