@@ -71,6 +71,9 @@ jest.mock("../../components/event/MultiDateOverrideSheet", () => ({
   __esModule: true,
   MultiDateOverrideSheet: (): null => null,
 }));
+// react-native-svg is not installed in this workspace; the shared package's
+// icon module is the only thing that needs it and it renders no #2160 copy.
+jest.mock("react-native-svg", () => ({ __esModule: true, default: (): null => null, Svg: (): null => null, Path: (): null => null }), { virtual: true });
 
 // `@types/react-test-renderer` is not installed in this workspace, so the
 // module is required with a local shape exactly as
@@ -445,6 +448,111 @@ describe("issue #2160 — the pricing mode is a TOTAL function with no third sta
   });
   test("all_days is preserved", () => {
     expect(draftMultiDatePricingMode("all_days")).toBe("all_days");
+  });
+});
+
+// ═══════════════════════════════════════ §7(a) the price qualifier, MOUNTED
+//
+// Restored after I dropped it in this file's rewrite — a real coverage
+// regression, caught by re-running the fails-on-revert harness rather than by
+// assuming the rewrite was a superset. Now behavioural rather than the regex it
+// replaced: the shared package is MOUNTED with and without the prop.
+describe("issue #2160 §7(a) — the multiplier is visible on the ticket row itself", () => {
+  const ticket = {
+    id: "tt_1",
+    name: "General",
+    description: null,
+    saleStartAt: null,
+    saleEndAt: null,
+    minPurchaseQty: 1,
+    maxPurchaseQty: null,
+    passwordConfigured: false,
+    waitlistEnabled: false,
+    requiresApproval: false,
+    priceGbp: 10,
+    priceAllInGbp: 10,
+    currency: "GBP",
+    isFree: false,
+    isUnlimited: true,
+    capacity: null,
+    visibility: "public",
+    availableAt: "online",
+  };
+
+  const mountBox = async (pricingNote?: string | null): Promise<Tree> => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // The @mingla/offering-rendering BARREL is manual-mocked in jest.config.cjs
+    // (it eagerly re-exports RN .tsx), so mounting through it yields null. The
+    // real module is required BY PATH — the mapper is an exact-match on the
+    // barrel specifier, so a deep import gets the shipped component.
+    const pkg = require("../../../../packages/offering-rendering/EventOfferingBody") as {
+      EventTicketBox: React.FC<Record<string, unknown>>;
+    };
+    const themeMod = require("../../../../packages/offering-rendering/themeResolver") as {
+      resolveTheme: (b: unknown, o: unknown) => unknown;
+    };
+    const paletteMod = require("../../../../packages/offering-rendering/themePalette") as {
+      createThemePalette: (t: unknown) => unknown;
+    };
+    const theme = themeMod.resolveTheme(null, null);
+    let created: Tree | undefined;
+    await TestRenderer.act(() => {
+      created = TestRenderer.create(
+        React.createElement(pkg.EventTicketBox, {
+          event: { id: "e1", name: "Two Day", currency: "GBP", tickets: [ticket] },
+          bookable: true,
+          palette: paletteMod.createThemePalette(theme),
+          theme,
+          variant: "event",
+          ticketQuantities: {},
+          onChangeTicketQuantity: (): void => undefined,
+          onProceedToCart: (): void => undefined,
+          ...(pricingNote === undefined ? {} : { pricingNote }),
+        }),
+      );
+    });
+    return created as Tree;
+  };
+
+  test("with the prop, the qualifier RENDERS next to the price", async () => {
+    const tree = await mountBox("per day");
+    const note = findByTestID(tree, "issue-2160-pricing-note-tt_1");
+    expect(note.length).toBe(1);
+    expect(JSON.stringify(tree.toJSON())).toContain("per day");
+    tree.unmount();
+  });
+
+  test("all_days renders its own wording", async () => {
+    const tree = await mountBox("for all days");
+    expect(JSON.stringify(tree.toJSON())).toContain("for all days");
+    tree.unmount();
+  });
+
+  test("WITHOUT the prop the tree is byte-identical — the shared package stays additive", async () => {
+    // This is the contract that keeps consumer native and every other caller
+    // untouched, and it is asserted on the rendered TREE, not on the source.
+    const omitted = await mountBox();
+    const explicitNull = await mountBox(null);
+    expect(JSON.stringify(omitted.toJSON())).toEqual(
+      JSON.stringify(explicitNull.toJSON()),
+    );
+    expect(findByTestID(omitted, "issue-2160-pricing-note-tt_1").length).toBe(0);
+    omitted.unmount();
+    explicitNull.unmount();
+  });
+
+  test("the page supplies the wording, and null when there is nothing to qualify", () => {
+    const page = repoRead("src/components/event/PublicEventPage.tsx");
+    expect(page).toMatch(/"for all days"/);
+    expect(page).toMatch(/"per day"/);
+    // BOTH surfaces: the phone inline box as well as the desktop panel.
+    expect((page.match(/pricingNote=\{ticketPricingNote\}/g) ?? []).length).toBe(2);
+  });
+
+  test("the chooser says it too, before any total is rendered", () => {
+    const chooser = repoRead("src/components/event/MultiDateDayChooser.tsx");
+    expect(chooser).toContain("Priced per day");
+    expect(chooser).toContain("One price for all days");
   });
 });
 
