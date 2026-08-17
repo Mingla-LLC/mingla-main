@@ -32,6 +32,13 @@ on:
       - "supabase/migrations/20270417002136_issue_2136_free_checkout_finalize_contract.sql"
       - "supabase/functions/ticket-checkout-create/**"
       - "supabase/functions/_shared/ticketCheckout.ts"
+      # The anonymous replay's possession binding reaches the client: the guest's
+      # browser has to hold the buyer status token for a legitimate resubmit to
+      # be distinguishable from someone who merely knows their email and phone.
+      - "mingla-business/src/services/ticketCheckoutService.ts"
+      - "mingla-business/src/components/checkout/checkoutPersistence.ts"
+      - "mingla-business/app/checkout/**"
+      - "mingla-business/src/services/__tests__/issue_2150_free_resubmit_client_guard.test.ts"
       - ".github/scripts/strict-grep/issue-2150-free-completed-session-returned-not-tombstoned.mjs"
       - ".github/scripts/strict-grep/orch-0791-checkout-session-never-reused-post-terminal.mjs"
       - ".github/workflows/issue-2150-free-resubmit-idempotent-tests.yml"
@@ -65,6 +72,30 @@ jobs:
           supabase/functions/ticket-checkout-create/__tests__/issue_2136_free_checkout_contract.test.ts
           supabase/functions/ticket-checkout-create/__tests__/issue_2101_named_buyer_access.test.ts
       - run: deno check supabase/functions/ticket-checkout-create/index.ts
+
+  issue-2150-client-guard:
+    name: "#2150 Client — the guest holds the token, and 'already reserved' is not 'failed'"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # 7 tests. Fails on a true line deletion of the free path's status-token
+      # persist (the guest can then never prove possession and every legitimate
+      # resubmit is refused) or of the dedicated already-reserved copy (the
+      # guest is told "nothing was reserved" about a ticket they hold).
+      - name: "#2150 free-resubmit client guard suite"
+        run: npx jest issue_2150 --runInBand
+      - name: "#2136 sibling client guard stays green"
+        run: npx jest issue_2136 --runInBand
 
   issue-2150-strict-grep:
     name: "#2150 Gates — the exemption AND the ORCH-0791 tombstone both survive"

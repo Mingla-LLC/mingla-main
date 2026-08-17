@@ -69,7 +69,91 @@
 -- gate, `issue-2150-free-completed-session-returned-not-tombstoned.mjs`,
 -- asserts this exemption so a silent revert is caught at CI.
 --
+-- ── DISCLOSURE IS A SEPARATE DECISION FROM IDEMPOTENCY ─────────────────────
+-- NOT minting a duplicate and HANDING BACK the existing order are two different
+-- things, and only the first is safe to do for an unidentified caller. The
+-- idempotency key is derived from (eventId, buyerEmail, buyerPhoneE164, lines,
+-- paymentPlanChoice) — all of which an attacker who knows a guest's email and
+-- phone can simply type into the form. If completing that form returned the
+-- guest's order and QR payloads, the attacker could attend on the guest's pass;
+-- `biz_ticket_scan` marks it `used`, and the real guest is refused at the door
+-- as a `duplicate`. That is a DENIAL OF ADMISSION against the guest which did
+-- NOT exist before this issue — pre-#2150 the same attacker minted their own
+-- separate ticket and the guest's pass still worked. It is worse in kind, not
+-- merely in degree, and it is not acceptable in service of a fix whose primary
+-- use case is anonymous free reservations.
+--
+-- So the exemption below still refuses to mint a duplicate for ANY caller — that
+-- is the defect being fixed and it is not a disclosure — while this function
+-- decides, separately, whether the caller has proven they are the guest and may
+-- be handed the order id and the passes. `ticket-checkout-create` calls it
+-- before it discloses anything.
+--
+-- PROOF OF POSSESSION, NOT PROOF OF KNOWLEDGE:
+--   * A session with a `buyer_user_id` is bound to an authenticated identity.
+--     The JWT is the possession proof; the caller must be that user.
+--   * An ANONYMOUS session is bound to `buyer_status_token_hash` — the same
+--     secret that already gates `ticket-checkout-status`
+--     (`ticket-checkout-status/index.ts:58` -> 403 `buyer_status_token_invalid`),
+--     minted per session and returned exactly once to the browser that created
+--     it. The caller must present the token itself.
+--
+-- The comparison is over the SHA-256 hash, never the token, so it is not a
+-- timing oracle worth defending against: a perfect one would leak bits of a
+-- hash that cannot be inverted, and the token is 256 bits of crypto randomness.
+-- `buyer_status_token_hash IS NOT NULL` is required explicitly so a session with
+-- no hash can never be matched by an empty presented hash.
+--
+-- FAIL CLOSED ON DISCLOSURE, FAIL SAFE ON STATE. When possession is not proven
+-- the Edge refuses to disclose — it does NOT fall back to tombstone-and-mint.
+-- Falling back would hand the attacker nothing but would hand the GUEST a
+-- duplicate order, pass and confirmation, which is the entire defect. Refusing
+-- the disclosure costs the unproven caller a re-render of a screen; falling back
+-- costs the guest a duplicate. Nothing is minted and nothing is destroyed.
+CREATE OR REPLACE FUNCTION public.issue_2150_free_replay_disclosure_authorized(
+  p_session_id uuid,
+  p_buyer_user_id uuid,
+  p_buyer_status_token_hash text
+) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER
+SET search_path=public,auth,pg_temp AS $function$
+DECLARE v_session public.ticket_checkout_sessions%ROWTYPE;
+BEGIN
+  SELECT * INTO v_session FROM public.ticket_checkout_sessions WHERE id=p_session_id;
+  IF NOT FOUND THEN RETURN false; END IF;
+
+  -- Only a completed, live, zero-total reservation is ever disclosable here.
+  -- Mirrors the create-session exemption so the two cannot drift apart.
+  IF v_session.status<>'free_completed'
+     OR COALESCE(v_session.total_cents,0)<>0
+     OR v_session.order_id IS NULL
+     OR v_session.revoked_at IS NOT NULL THEN
+    RETURN false;
+  END IF;
+
+  -- Signed-in reservation: the authenticated identity IS the possession proof.
+  IF v_session.buyer_user_id IS NOT NULL THEN
+    RETURN v_session.buyer_user_id = p_buyer_user_id;
+  END IF;
+
+  -- Anonymous reservation: the buyer status token must be PRESENTED, not known.
+  RETURN v_session.buyer_status_token_hash IS NOT NULL
+     AND COALESCE(p_buyer_status_token_hash,'')<>''
+     AND v_session.buyer_status_token_hash = p_buyer_status_token_hash;
+END $function$;
+REVOKE ALL ON FUNCTION public.issue_2150_free_replay_disclosure_authorized(uuid,uuid,text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_2150_free_replay_disclosure_authorized(uuid,uuid,text)
+  TO service_role;
+
+COMMENT ON FUNCTION public.issue_2150_free_replay_disclosure_authorized(uuid,uuid,text) IS
+  '#2150: may this caller be handed the completed FREE reservation''s order id and QR payloads? '
+  'A signed-in session requires the matching buyer_user_id; an ANONYMOUS session requires the '
+  'buyer status token to be PRESENTED (email + phone + cart are knowledge, not possession, and '
+  'must never be sufficient). Refusing disclosure never mints a duplicate — the create-session '
+  'exemption declines to tombstone regardless of who is asking.';
+
 -- INVARIANT: I-PROPOSED-2150-FREE-COMPLETED-SESSION-IDEMPOTENT (DRAFT).
+-- INVARIANT: I-PROPOSED-2150-ANON-FREE-REPLAY-REQUIRES-POSSESSION (DRAFT).
 
 CREATE OR REPLACE FUNCTION public.biz_ticket_checkout_create_session(
   p_event_id uuid,p_buyer_user_id uuid,p_buyer_name text,p_buyer_email text,

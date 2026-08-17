@@ -35,6 +35,7 @@ import {
   createTicketCheckoutCreateHandler,
   type TicketCheckoutCreateDeps,
 } from "../index.ts";
+import { sha256Hex } from "../../_shared/ticketCheckout.ts";
 
 const EVENT_ID = "10000000-0000-4000-8000-000000002150";
 const TIER_ID = "20000000-0000-4000-8000-000000002151";
@@ -120,12 +121,18 @@ class FakeQuery implements PromiseLike<DbResult> {
  * on a resubmit: the guest's ORIGINAL session, untombstoned, terminal, with the
  * order it already minted.
  */
+const VALID_STATUS_TOKEN = "issue2150validbuyerstatustoken0123456789abcdef";
+
 class FakeResubmitDb {
   readonly operations: string[] = [];
   alreadyCompleted = false;
   /** Simulates an order whose passes were all voided/refunded. */
   orderHasLiveTickets = true;
   finalizeCalls = 0;
+  /** The hash the DB holds for the anonymous session, as the Edge stores it. */
+  storedStatusTokenHash: string | null = null;
+  /** Every hash the Edge asked the DB to authorize, in order. */
+  readonly presentedHashes: string[] = [];
   readonly tickets: TicketRow[] = [{
     id: TICKET_ID,
     order_id: ORDER_ID,
@@ -173,6 +180,21 @@ class FakeResubmitDb {
         // is NOT authorized — which is why the Edge must never reach here on a
         // resubmit.
         return { data: !this.alreadyCompleted, error: null };
+      case "issue_2150_free_replay_disclosure_authorized": {
+        // Models the REAL function's anonymous branch: the presented hash must
+        // be non-empty AND equal the stored one. The executed PostgreSQL suite
+        // (H-08..H-10) proves the function itself; this fake exists only so the
+        // Edge's wiring — that it asks at all, and refuses on `false` — is
+        // provable here.
+        const presented = String(_args.p_buyer_status_token_hash ?? "");
+        this.presentedHashes.push(presented);
+        return {
+          data: this.storedStatusTokenHash !== null &&
+            presented.length > 0 &&
+            presented === this.storedStatusTokenHash,
+          error: null,
+        };
+      }
       case "biz_ticket_checkout_finalize":
         this.finalizeCalls += 1;
         return {
@@ -211,7 +233,7 @@ const makeDeps = (client: FakeResubmitDb): TicketCheckoutCreateDeps => ({
   }) as never,
 });
 
-const freeRequest = (): Request =>
+const freeRequest = (buyerStatusToken?: string): Request =>
   new Request("https://edge.test/ticket-checkout-create", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -225,14 +247,16 @@ const freeRequest = (): Request =>
         phone: "+15551234567",
       },
       lines: [{ ticketTypeId: TIER_ID, quantity: 1, expectedUnitPriceCents: 0 }],
+      ...(buyerStatusToken !== undefined ? { buyerStatusToken } : {}),
     }),
   });
 
-Deno.test("#2150 REPLAY-01: a resubmit onto a completed free session returns THAT order's passes, and never re-finalizes", async () => {
+Deno.test("#2150 REPLAY-01: a resubmit PRESENTING the guest's token returns THAT order's passes, and never re-finalizes", async () => {
   const db = new FakeResubmitDb();
   db.alreadyCompleted = true;
+  db.storedStatusTokenHash = await sha256Hex(VALID_STATUS_TOKEN);
   const res = await createTicketCheckoutCreateHandler(makeDeps(db))(
-    freeRequest(),
+    freeRequest(VALID_STATUS_TOKEN),
   );
 
   assertEquals(res.status, 200);
@@ -269,6 +293,107 @@ Deno.test("#2150 REPLAY-01: a resubmit onto a completed free session returns THA
     db.operations.includes("select:tickets"),
     "the issued-ticket read-back never ran",
   );
+  // The token is echoed, never re-minted — and the status-token UPDATE must NOT
+  // have run, or it would have rotated the hash the guest just proved against.
+  assertEquals(body.buyerStatusToken, VALID_STATUS_TOKEN);
+  assertFalse(
+    db.operations.includes("update:ticket_checkout_sessions"),
+    "the completed session's buyer_status_token_hash was overwritten — the " +
+      "guest's real token from their first submit is now invalid",
+  );
+});
+
+Deno.test("#2150 REPLAY-04: an anonymous resubmit with NO token is refused, and leaks no order id and no QR", async () => {
+  const db = new FakeResubmitDb();
+  db.alreadyCompleted = true;
+  db.storedStatusTokenHash = await sha256Hex(VALID_STATUS_TOKEN);
+  // No token presented — this is anyone who knows the guest's email + phone.
+  const res = await createTicketCheckoutCreateHandler(makeDeps(db))(
+    freeRequest(),
+  );
+
+  assertEquals(res.status, 409);
+  const body = await res.json() as Record<string, unknown>;
+  assertEquals(body.error, "free_reservation_already_exists");
+
+  // The assertions the guard exists for. Checking the order id alone would pass
+  // while the pass itself still leaked, so the QR is asserted specifically.
+  const serialized = JSON.stringify(body);
+  assertFalse(
+    serialized.includes(ORDER_ID),
+    "the refusal disclosed the order id",
+  );
+  assertFalse(
+    serialized.includes("mgl_free_2150_qr"),
+    "the refusal LEAKED THE QR PAYLOAD — the caller could scan the guest's " +
+      "pass and the guest would be refused at the door as a duplicate",
+  );
+  assertFalse(
+    serialized.includes(TICKET_ID) || serialized.includes(SESSION_ID),
+    "the refusal disclosed the ticket id or the checkout session id",
+  );
+
+  // FAIL SAFE ON STATE: nothing minted, nothing re-sent, nothing rotated.
+  assertEquals(db.finalizeCalls, 0);
+  assertFalse(
+    db.operations.includes("update:ticket_checkout_sessions"),
+    "the refused caller rotated the guest's status token",
+  );
+  assertFalse(
+    db.operations.includes("select:tickets"),
+    "the passes were read back for a caller who could not prove possession",
+  );
+});
+
+Deno.test("#2150 REPLAY-05: a WRONG token is refused — possession must be proven, not asserted", async () => {
+  const db = new FakeResubmitDb();
+  db.alreadyCompleted = true;
+  db.storedStatusTokenHash = await sha256Hex(VALID_STATUS_TOKEN);
+  const res = await createTicketCheckoutCreateHandler(makeDeps(db))(
+    freeRequest("not-the-guests-token-0000000000000000000000"),
+  );
+
+  assertEquals(res.status, 409);
+  const body = await res.json() as Record<string, unknown>;
+  assertEquals(body.error, "free_reservation_already_exists");
+  // The Edge must HASH what it presents, never forward the raw token.
+  assertEquals(db.presentedHashes.length, 1);
+  assertEquals(
+    db.presentedHashes[0],
+    await sha256Hex("not-the-guests-token-0000000000000000000000"),
+  );
+  assertEquals(db.finalizeCalls, 0);
+});
+
+Deno.test("#2150 REPLAY-06: the possession check is ASKED on every replay, and a DB error fails closed", async () => {
+  const db = new FakeResubmitDb();
+  db.alreadyCompleted = true;
+  db.storedStatusTokenHash = await sha256Hex(VALID_STATUS_TOKEN);
+  // Force the authorization RPC itself to fail. An unavailable decision must
+  // never be read as permission.
+  const failing = new Proxy(db, {
+    get(target, prop, receiver) {
+      if (prop === "rpc") {
+        return (name: string, args: Record<string, unknown>) =>
+          name === "issue_2150_free_replay_disclosure_authorized"
+            ? Promise.resolve({
+              data: null,
+              error: { message: "connection reset" },
+            })
+            : (target.rpc as (n: string, a: Record<string, unknown>) => unknown)
+              .call(target, name, args);
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+  const res = await createTicketCheckoutCreateHandler(
+    makeDeps(failing as FakeResubmitDb),
+  )(freeRequest(VALID_STATUS_TOKEN));
+
+  assertEquals(res.status, 409);
+  const body = await res.json() as Record<string, unknown>;
+  assertEquals(body.error, "free_reservation_already_exists");
+  assertEquals(db.finalizeCalls, 0);
 });
 
 Deno.test("#2150 REPLAY-02: the FIRST submit is unchanged — authorize, finalize, tickets", async () => {
@@ -294,8 +419,9 @@ Deno.test("#2150 REPLAY-03: a completed session whose order has NO live passes i
   const db = new FakeResubmitDb();
   db.alreadyCompleted = true;
   db.orderHasLiveTickets = false;
+  db.storedStatusTokenHash = await sha256Hex(VALID_STATUS_TOKEN);
   const res = await createTicketCheckoutCreateHandler(makeDeps(db))(
-    freeRequest(),
+    freeRequest(VALID_STATUS_TOKEN),
   );
 
   assertEquals(res.status, 409);

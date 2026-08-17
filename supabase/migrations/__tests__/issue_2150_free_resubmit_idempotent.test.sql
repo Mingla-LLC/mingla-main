@@ -101,18 +101,37 @@ END $$;
 CREATE OR REPLACE FUNCTION pg_temp.i2150_pepper() RETURNS text
   LANGUAGE sql IMMUTABLE AS $$ SELECT 'issue-2150-implementor-happy-path-pepper-0123456789'::text $$;
 
+-- The Edge hashes the presented token with SHA-256 before comparing, exactly as
+-- `ticket-checkout-status/index.ts:58` does. Same primitive here.
+CREATE OR REPLACE FUNCTION pg_temp.i2150_hash(p_token text) RETURNS text
+  LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE WHEN COALESCE(p_token,'')='' THEN ''
+              ELSE encode(digest(p_token,'sha256'),'hex') END $$;
+
 -- ── The Edge free arm, transcribed. `ticket-checkout-create/index.ts`:
 --      session := biz_ticket_checkout_create_session(...)
---      if session.status == 'free_completed' && session.orderId  -> #2150 replay,
---          return that order's issued tickets; NO finalize, NO confirmation
---          dispatch, NO ad-conversion fire.
---      if session.totalCents == 0 -> issue_1930_ticket_session_authorized,
---          then biz_ticket_checkout_finalize, then dispatch the confirmation.
+--      if session.status == 'free_completed' && session.orderId:      -- #2150
+--          if NOT issue_2150_free_replay_disclosure_authorized(...)
+--              -> 200 {kind:'free_already_reserved'} — NO orderId, NO QR
+--          else -> that order's issued tickets; NO finalize, NO confirmation
+--              dispatch, NO ad-conversion fire.
+--      else:                                                          -- fresh
+--          persist sha256(new buyer status token) onto the session, then
+--          issue_1930_ticket_session_authorized -> biz_ticket_checkout_finalize
+--          -> dispatch the confirmation.
+--
+-- The token round-trip is modelled faithfully: a FRESH submit mints a token and
+-- stores only its hash (as the Edge does) and returns the plaintext ONCE, and a
+-- resubmit must PRESENT that plaintext to be given the order back. The
+-- possession decision itself is the real `issue_2150_free_replay_disclosure_
+-- authorized` executing against the real row — not a transcription.
 CREATE OR REPLACE FUNCTION pg_temp.i2150_submit_free(
   p_event uuid, p_ticket_type uuid, p_key text,
-  p_buyer_user uuid DEFAULT NULL, p_qty int DEFAULT 1
+  p_buyer_user uuid DEFAULT NULL, p_qty int DEFAULT 1,
+  p_presented_token text DEFAULT NULL
 ) RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE v_session jsonb; v_session_id uuid; v_order uuid; v_total int; v_fin jsonb;
+        v_new_token text;
 BEGIN
   v_session := public.biz_ticket_checkout_create_session(
     p_event, p_buyer_user, 'Resubmitting Guest', 'i2150-guest@tester.test', '+14155550150',
@@ -122,19 +141,33 @@ BEGIN
   v_session_id := (v_session->>'checkoutSessionId')::uuid;
   v_total := COALESCE((v_session->>'totalCents')::int, 0);
 
-  -- #2150 Edge short-circuit.
+  -- #2150 Edge replay branch, ABOVE the status-token UPDATE.
   IF v_session->>'status' = 'free_completed'
      AND NULLIF(v_session->>'orderId','') IS NOT NULL THEN
+    IF NOT public.issue_2150_free_replay_disclosure_authorized(
+             v_session_id, p_buyer_user, pg_temp.i2150_hash(p_presented_token)) THEN
+      -- Fail closed on disclosure: no orderId, no ticket, no QR payload.
+      RETURN jsonb_build_object('kind','free_already_reserved');
+    END IF;
     v_order := (v_session->>'orderId')::uuid;
     RETURN jsonb_build_object(
       'kind','free_completed','replayed',true,
       'checkoutSessionId',v_session_id,'orderId',v_order,
+      'buyerStatusToken',p_presented_token,
+      'qrPayloads',(SELECT COALESCE(jsonb_agg(t.qr_code ORDER BY t.created_at),'[]'::jsonb)
+                      FROM public.tickets t WHERE t.order_id = v_order),
       'ticketCount',(SELECT count(*) FROM public.tickets t WHERE t.order_id = v_order));
   END IF;
 
   IF v_total <> 0 THEN
     RAISE EXCEPTION 'FIXTURE BROKEN: expected a zero-total session, got %', v_total;
   END IF;
+  -- Fresh submit: the Edge mints a buyer status token and persists ONLY its hash.
+  v_new_token := replace(gen_random_uuid()::text,'-','') || replace(gen_random_uuid()::text,'-','');
+  UPDATE public.ticket_checkout_sessions
+     SET buyer_status_token_hash = pg_temp.i2150_hash(v_new_token), updated_at = now()
+   WHERE id = v_session_id;
+
   IF NOT public.issue_1930_ticket_session_authorized(v_session_id, p_event) THEN
     RETURN jsonb_build_object('kind','unavailable','checkoutSessionId',v_session_id);
   END IF;
@@ -148,6 +181,9 @@ BEGIN
   RETURN jsonb_build_object(
     'kind','free_completed','replayed',false,
     'checkoutSessionId',v_session_id,'orderId',v_order,
+    'buyerStatusToken',v_new_token,
+    'qrPayloads',(SELECT COALESCE(jsonb_agg(t.qr_code ORDER BY t.created_at),'[]'::jsonb)
+                    FROM public.tickets t WHERE t.order_id = v_order),
     'ticketCount',(SELECT count(*) FROM public.tickets t WHERE t.order_id = v_order));
 END $$;
 
@@ -174,13 +210,16 @@ CREATE OR REPLACE FUNCTION pg_temp.i2150_sessions(p_event uuid) RETURNS bigint
 -- ═══════════════════════════════════════════════════════════════════════════
 BEGIN;
 DO $$
-DECLARE f record; v_key text; r jsonb; v_first uuid; i int;
+DECLARE f record; v_key text; r jsonb; v_first uuid; i int; v_token text;
 BEGIN
   SELECT * INTO f FROM pg_temp.i2150_free_event('h01');
   v_key := 'i2150-h01-' || f.o_event::text;
 
   FOR i IN 1..4 LOOP
-    r := pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key);
+    -- The real guest's browser holds the token from its first submit (the web
+    -- client persists it to sessionStorage), so every resubmit presents it.
+    r := pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key, NULL, 1, v_token);
+    IF i = 1 THEN v_token := r->>'buyerStatusToken'; END IF;
     IF r->>'kind' <> 'free_completed' THEN
       RAISE EXCEPTION 'H-01 FAIL: submit % answered kind=% (outcome=%). A guest resubmitting '
         'their own free reservation must be given that reservation back, not an error.',
@@ -247,12 +286,13 @@ ROLLBACK;
 -- ═══════════════════════════════════════════════════════════════════════════
 BEGIN;
 DO $$
-DECLARE f record; v_key text; r jsonb; i int;
+DECLARE f record; v_key text; r jsonb; i int; v_token text;
 BEGIN
   SELECT * INTO f FROM pg_temp.i2150_free_event('h02', 1);
   v_key := 'i2150-h02-' || f.o_event::text;
   FOR i IN 1..3 LOOP
-    r := pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key);
+    r := pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key, NULL, 1, v_token);
+    IF i = 1 THEN v_token := r->>'buyerStatusToken'; END IF;
     IF r->>'kind' <> 'free_completed' THEN
       RAISE EXCEPTION 'H-02 FAIL: submit % on a single-capacity free ticket answered kind=%.',
         i, r->>'kind';
@@ -433,7 +473,10 @@ BEGIN
   -- The organiser cancels the reservation: the pass is voided.
   UPDATE public.tickets SET status = 'void' WHERE order_id = (r1->>'orderId')::uuid;
 
-  r2 := pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key);
+  -- Presented WITH the guest's own token, so this proves the fall-through is
+  -- driven by the dead pass and not by a failed possession check.
+  r2 := pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key, NULL, 1,
+                                  r1->>'buyerStatusToken');
   IF r2->>'kind' <> 'free_completed' THEN
     RAISE EXCEPTION 'H-06 FAIL: after their pass was voided the guest could not re-reserve (kind=%).',
       r2->>'kind';
@@ -480,4 +523,226 @@ BEGIN
 END $$;
 ROLLBACK;
 
-\echo 'issue #2150 implementor happy-path suite: H-01..H-07 PASS'
+-- ═══════════════════════════════════════════════════════════════════════════
+-- H-08 — THE ATTACK. An anonymous replay WITHOUT the buyer status token is
+--        refused, and NO order id and NO QR PAYLOAD are returned.
+--
+--        The idempotency key is derived from (event, email, phone, lines), so
+--        anyone who KNOWS a guest's email and phone can reproduce it by typing
+--        it into the form. If that were enough to be handed the guest's order,
+--        the attacker could attend on the guest's pass — `biz_ticket_scan`
+--        marks it `used` — and the real guest would be refused at the door as a
+--        `duplicate`. That denial of admission did NOT exist before #2150, so
+--        the fix must not create it.
+--
+--        The QR is asserted SPECIFICALLY. A check that only looked at the order
+--        id would pass while the pass itself still leaked.
+-- ═══════════════════════════════════════════════════════════════════════════
+BEGIN;
+DO $$
+DECLARE f record; v_key text; r1 jsonb; r_attacker jsonb; v_qr text;
+BEGIN
+  SELECT * INTO f FROM pg_temp.i2150_free_event('h08');
+  v_key := 'i2150-h08-' || f.o_event::text;
+
+  r1 := pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key);
+  IF r1->>'kind' <> 'free_completed' THEN
+    RAISE EXCEPTION 'FIXTURE BROKEN: the guest''s first submit answered %.', r1->>'kind';
+  END IF;
+  SELECT qr_code INTO v_qr FROM public.tickets WHERE order_id = (r1->>'orderId')::uuid LIMIT 1;
+  IF COALESCE(v_qr,'') = '' THEN
+    RAISE EXCEPTION 'FIXTURE BROKEN: the issued pass carries no QR payload to leak.';
+  END IF;
+
+  -- Someone who knows the guest's email + phone submits the identical cart.
+  -- They hold no token.
+  r_attacker := pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key);
+
+  IF r_attacker->>'kind' <> 'free_already_reserved' THEN
+    RAISE EXCEPTION 'H-08 FAIL: an anonymous caller with NO buyer status token was answered '
+      'kind=%, expected free_already_reserved. Knowledge of an email and a phone number must '
+      'never be sufficient to be handed an existing reservation.', r_attacker->>'kind';
+  END IF;
+  IF r_attacker ? 'orderId' THEN
+    RAISE EXCEPTION 'H-08 FAIL: the refusal disclosed an orderId (%).', r_attacker->>'orderId';
+  END IF;
+  -- The specific assertion the whole guard exists for.
+  IF r_attacker ? 'qrPayloads' OR r_attacker::text LIKE '%' || v_qr || '%' THEN
+    RAISE EXCEPTION 'H-08 FAIL: the refusal LEAKED THE QR PAYLOAD. The guest''s pass could be '
+      'scanned by the caller and the guest refused at the door as a duplicate.';
+  END IF;
+  IF r_attacker ? 'checkoutSessionId' THEN
+    RAISE EXCEPTION 'H-08 FAIL: the refusal disclosed a checkoutSessionId, which is the subject '
+      'of ticket-checkout-status and a capability in its own right.';
+  END IF;
+
+  -- FAIL SAFE ON STATE: still no duplicate, and the guest still holds exactly
+  -- what they held. Refusing disclosure must never fall back to minting.
+  IF pg_temp.i2150_orders(f.o_event) <> 1 OR pg_temp.i2150_tickets(f.o_event) <> 1 THEN
+    RAISE EXCEPTION 'H-08 FAIL: the refused caller changed state — % orders, % tickets; '
+      'expected the guest''s original 1 / 1.',
+      pg_temp.i2150_orders(f.o_event), pg_temp.i2150_tickets(f.o_event);
+  END IF;
+  IF pg_temp.i2150_notifs(f.o_event) <> 2 THEN
+    RAISE EXCEPTION 'H-08 FAIL: the refused caller produced % notification rows, expected 2.',
+      pg_temp.i2150_notifs(f.o_event);
+  END IF;
+  -- And the guest's own token still works — the refusal must not have rotated it.
+  IF pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key, NULL, 1,
+                               r1->>'buyerStatusToken')->>'kind' <> 'free_completed' THEN
+    RAISE EXCEPTION 'H-08 FAIL: after the refused attempt the REAL guest''s token no longer '
+      'proves possession — the attacker locked the guest out of their own reservation.';
+  END IF;
+  RAISE NOTICE 'H-08 PASS: anonymous replay without the token is refused; no orderId, no QR, no '
+    'session id, no duplicate, and the guest''s own token still works.';
+END $$;
+ROLLBACK;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- H-09 — THE GUEST. An anonymous replay WITH the token returns the same single
+--        order, one ticket, one email and one SMS — H-01's guarantee preserved
+--        for the real person, with the same QR they already hold.
+-- ═══════════════════════════════════════════════════════════════════════════
+BEGIN;
+DO $$
+DECLARE f record; v_key text; r1 jsonb; r2 jsonb; v_qr text;
+BEGIN
+  SELECT * INTO f FROM pg_temp.i2150_free_event('h09');
+  v_key := 'i2150-h09-' || f.o_event::text;
+  r1 := pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key);
+  SELECT qr_code INTO v_qr FROM public.tickets WHERE order_id = (r1->>'orderId')::uuid LIMIT 1;
+
+  r2 := pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key, NULL, 1,
+                                  r1->>'buyerStatusToken');
+  IF r2->>'kind' <> 'free_completed' THEN
+    RAISE EXCEPTION 'H-09 FAIL: the guest presented their own token and was still refused '
+      '(kind=%). The fix must not break the person it exists for.', r2->>'kind';
+  END IF;
+  IF (r2->>'replayed')::boolean IS NOT TRUE THEN
+    RAISE EXCEPTION 'H-09 FAIL: the authorized replay did not take the #2150 arm.';
+  END IF;
+  IF (r2->>'orderId')::uuid <> (r1->>'orderId')::uuid THEN
+    RAISE EXCEPTION 'H-09 FAIL: the guest was given a DIFFERENT order (% vs %).',
+      r2->>'orderId', r1->>'orderId';
+  END IF;
+  IF r2->'qrPayloads'->>0 IS DISTINCT FROM v_qr THEN
+    RAISE EXCEPTION 'H-09 FAIL: the guest was not given back the pass they already hold.';
+  END IF;
+  IF pg_temp.i2150_orders(f.o_event) <> 1 OR pg_temp.i2150_tickets(f.o_event) <> 1
+     OR pg_temp.i2150_notifs(f.o_event,'email') <> 1
+     OR pg_temp.i2150_notifs(f.o_event,'sms') <> 1 THEN
+    RAISE EXCEPTION 'H-09 FAIL: % orders, % tickets, % emails, % SMS; expected 1 / 1 / 1 / 1.',
+      pg_temp.i2150_orders(f.o_event), pg_temp.i2150_tickets(f.o_event),
+      pg_temp.i2150_notifs(f.o_event,'email'), pg_temp.i2150_notifs(f.o_event,'sms');
+  END IF;
+  RAISE NOTICE 'H-09 PASS: the guest presenting their own token gets their order, their pass, '
+    'and exactly 1 order / 1 ticket / 1 email / 1 SMS.';
+END $$;
+ROLLBACK;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- H-10 — A WRONG OR FOREIGN TOKEN IS NOT A TOKEN. Possession must be proven,
+--        not asserted: a random token, and a VALID token minted for a different
+--        guest's session, are both refused.
+-- ═══════════════════════════════════════════════════════════════════════════
+BEGIN;
+DO $$
+DECLARE f record; g record; v_key text; v_other_key text;
+        r1 jsonb; r_other jsonb; r_bad jsonb; r_foreign jsonb;
+BEGIN
+  SELECT * INTO f FROM pg_temp.i2150_free_event('h10a');
+  SELECT * INTO g FROM pg_temp.i2150_free_event('h10b');
+  v_key := 'i2150-h10a-' || f.o_event::text;
+  v_other_key := 'i2150-h10b-' || g.o_event::text;
+
+  r1 := pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key);
+  r_other := pg_temp.i2150_submit_free(g.o_event, g.o_ticket_type, v_other_key);
+
+  -- A guessed/random token.
+  r_bad := pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key, NULL, 1,
+             replace(gen_random_uuid()::text,'-','') || replace(gen_random_uuid()::text,'-',''));
+  IF r_bad->>'kind' <> 'free_already_reserved' THEN
+    RAISE EXCEPTION 'H-10 FAIL: a RANDOM token was accepted as proof of possession (kind=%).',
+      r_bad->>'kind';
+  END IF;
+
+  -- A real token — for someone else's session.
+  r_foreign := pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key, NULL, 1,
+                                         r_other->>'buyerStatusToken');
+  IF r_foreign->>'kind' <> 'free_already_reserved' THEN
+    RAISE EXCEPTION 'H-10 FAIL: a token belonging to a DIFFERENT session was accepted (kind=%).',
+      r_foreign->>'kind';
+  END IF;
+
+  -- An empty string must never match a session whose hash is somehow absent.
+  UPDATE public.ticket_checkout_sessions SET buyer_status_token_hash = NULL
+   WHERE id = (r1->>'checkoutSessionId')::uuid;
+  IF pg_temp.i2150_submit_free(f.o_event, f.o_ticket_type, v_key)->>'kind'
+     <> 'free_already_reserved' THEN
+    RAISE EXCEPTION 'H-10 FAIL: an absent token hash was matched by an empty presented hash.';
+  END IF;
+  RAISE NOTICE 'H-10 PASS: random, foreign and empty tokens are all refused.';
+END $$;
+ROLLBACK;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- H-11 — THE CONCURRENT DOUBLE-TAP IS UNTOUCHED AND NEEDS NO TOKEN. While the
+--        first request is still in flight the session is `pending_free`, so the
+--        RPC's pre-existing in-flight arm returns it with a NULL orderId and the
+--        normal free arm runs. This is the highest-frequency legitimate resubmit
+--        and it must not have been made to depend on a token the browser cannot
+--        possibly hold yet.
+-- ═══════════════════════════════════════════════════════════════════════════
+BEGIN;
+DO $$
+DECLARE f record; v_key text; s1 jsonb; s2 jsonb; v_id1 uuid; v_id2 uuid; fin1 jsonb; fin2 jsonb;
+BEGIN
+  SELECT * INTO f FROM pg_temp.i2150_free_event('h11');
+  v_key := 'i2150-h11-' || f.o_event::text;
+
+  -- Two creates land before either finalizes — the real shape of a double tap.
+  s1 := public.biz_ticket_checkout_create_session(
+    f.o_event, NULL, 'Tapping Guest', 'i2150-tap@tester.test', '+14155550154', false,
+    jsonb_build_array(jsonb_build_object('ticketTypeId', f.o_ticket_type, 'quantity', 1)),
+    v_key, now() + interval '15 minutes', 0, 'auto');
+  s2 := public.biz_ticket_checkout_create_session(
+    f.o_event, NULL, 'Tapping Guest', 'i2150-tap@tester.test', '+14155550154', false,
+    jsonb_build_array(jsonb_build_object('ticketTypeId', f.o_ticket_type, 'quantity', 1)),
+    v_key, now() + interval '15 minutes', 0, 'auto');
+  v_id1 := (s1->>'checkoutSessionId')::uuid;
+  v_id2 := (s2->>'checkoutSessionId')::uuid;
+
+  IF v_id2 <> v_id1 THEN
+    RAISE EXCEPTION 'H-11 FAIL: the in-flight dedupe arm regressed — a concurrent double tap '
+      'produced two sessions (% and %).', v_id1, v_id2;
+  END IF;
+  IF s2->>'status' <> 'pending_free' OR NULLIF(s2->>'orderId','') IS NOT NULL THEN
+    RAISE EXCEPTION 'H-11 FAIL: the in-flight arm answered status=% orderId=%; the #2150 replay '
+      'branch must NOT be entered while the session is still in flight.',
+      s2->>'status', COALESCE(s2->>'orderId','<null>');
+  END IF;
+
+  -- Both requests then finalize the SAME session; the second is idempotent.
+  fin1 := public.biz_ticket_checkout_finalize(
+    v_id1, NULL, NULL, 'free', pg_temp.i2150_pepper(), NULL, NULL, false);
+  fin2 := public.biz_ticket_checkout_finalize(
+    v_id2, NULL, NULL, 'free', pg_temp.i2150_pepper(), NULL, NULL, false);
+  IF fin1->>'outcome' <> 'finalized' OR fin2->>'outcome' <> 'finalized'
+     OR fin1->>'orderId' <> fin2->>'orderId' THEN
+    RAISE EXCEPTION 'H-11 FAIL: the concurrent double tap did not converge on one order (%/%).',
+      fin1->>'orderId', fin2->>'orderId';
+  END IF;
+  IF pg_temp.i2150_orders(f.o_event) <> 1 OR pg_temp.i2150_tickets(f.o_event) <> 1
+     OR pg_temp.i2150_notifs(f.o_event) <> 2 THEN
+    RAISE EXCEPTION 'H-11 FAIL: % orders, % tickets, % notification rows; expected 1 / 1 / 2.',
+      pg_temp.i2150_orders(f.o_event), pg_temp.i2150_tickets(f.o_event),
+      pg_temp.i2150_notifs(f.o_event);
+  END IF;
+  RAISE NOTICE 'H-11 PASS: a concurrent double tap still converges on one order with no token.';
+END $$;
+ROLLBACK;
+
+\echo 'issue #2150 implementor happy-path suite: H-01..H-11 PASS'
