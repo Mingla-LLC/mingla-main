@@ -44,6 +44,7 @@ import {
   type EventTicketCheckoutAccessMutationResult,
   type PublicTicketCheckoutAccess,
 } from "../services/eventTicketCheckoutAccessService";
+import { isBusinessAuthScopeResolved } from "../utils/authReadiness";
 
 export const eventTicketCheckoutAccessKeys = {
   all: ["eventTicketCheckoutAccess"] as const,
@@ -66,35 +67,58 @@ export interface PublicTicketCheckoutEligibility {
 }
 
 /**
- * The anon-tolerant public eligibility read. Never calls `useAuth` for
- * gating — it reads the identity purely to scope the cache key.
+ * The anon-tolerant public eligibility read. It reads `useAuth` ONLY to learn
+ * WHICH identity it is reading for — never to require one.
+ *
+ * issue #2181 [anon checkout gate]. This used to gate on `isAuthReady`, which
+ * means "a usable bearer token is attached" and is permanently FALSE for a
+ * signed-out visitor. The read therefore never fired for exactly the visitors
+ * it was written to serve: the query stayed disabled, `loading` never cleared,
+ * and the fail-closed consumers disabled every purchase entry forever. The
+ * gate is now `isBusinessAuthScopeResolved`, which treats a resolved
+ * signed-out visitor as a KNOWN identity ('anon') rather than an unresolved
+ * one. `bootstrapping`, `refreshing` and `error` remain unresolved and remain
+ * fail-closed — no eligibility is ever fabricated before the identity settles.
  */
 export const usePublicTicketCheckoutEligibility = (
   eventId: string,
 ): PublicTicketCheckoutEligibility => {
-  const { user, isAuthReady } = useAuth();
+  const { user, authStatus, isAuthReady } = useAuth();
   const queryClient = useQueryClient();
+  // Identity is settled for a ready signed-in session OR a resolved signed-out
+  // visitor. This is the ONE gate for both `enabled` and `loading` below.
+  const isAuthScopeResolved = isBusinessAuthScopeResolved(
+    authStatus,
+    isAuthReady,
+  );
+  // Unchanged. The scope still names the identity the SERVER decides for,
+  // because the query only ever runs in a resolved state: `isAuthReady` means a
+  // token is attached and `user.id` is the scope, while `signed_out` always
+  // carries a null `user` and so scopes to 'anon'. A key/identity mismatch is
+  // therefore not reachable through the gate above.
   const authScope = user?.id ?? "anon";
   const previousScopeRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!isAuthReady) return;
+    if (!isAuthScopeResolved) return;
     const previous = previousScopeRef.current;
     previousScopeRef.current = authScope;
     if (previous === null || previous === authScope) return;
     // Identity changed: drop every decision computed for the old scope before
-    // the new scoped key fetches.
+    // the new scoped key fetches. Because a resolved sign-OUT is now an
+    // identity transition too, signing out purges the signed-in decision
+    // instead of leaving it cached (Constitution #6).
     const key = eventTicketCheckoutAccessKeys.eligibility(eventId);
     void queryClient.cancelQueries({ queryKey: key });
     queryClient.removeQueries({ queryKey: key });
-  }, [authScope, eventId, isAuthReady, queryClient]);
+  }, [authScope, eventId, isAuthScopeResolved, queryClient]);
 
   const query = useQuery({
     queryKey: eventTicketCheckoutAccessKeys.eligibilityFor(eventId, authScope),
-    // Anon-tolerant, but only once auth resolution has SETTLED — querying
-    // before that would key a decision under 'anon' for a user who is in fact
-    // signed in, and then serve it from cache.
-    enabled: eventId.length > 0 && isAuthReady,
+    // Anon-tolerant, and fired as soon as the IDENTITY has settled — signed-in
+    // or signed-out. Firing before that would key a decision under 'anon' for
+    // a user who is in fact signed in, and then serve it from cache.
+    enabled: eventId.length > 0 && isAuthScopeResolved,
     staleTime: 0,
     refetchOnMount: "always",
     queryFn: () => fetchPublicTicketCheckoutAccess(eventId),
@@ -106,7 +130,8 @@ export const usePublicTicketCheckoutEligibility = (
 
   return {
     // Initial resolution ONLY. `isFetching` is deliberately NOT read here.
-    loading: !isAuthReady || (query.data === undefined && !query.isError),
+    loading:
+      !isAuthScopeResolved || (query.data === undefined && !query.isError),
     error: query.isError,
     data: query.data,
     refetch,
