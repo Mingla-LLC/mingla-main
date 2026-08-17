@@ -17,6 +17,9 @@ on:
       - "supabase/migrations/__tests__/issue_1175_paystack_refunds.test.ts"
       - "supabase/migrations/__tests__/issue_1175_immutable_manifest_pg17.test.sql"
       - ".github/workflows/issue-1175-paystack-refunds-tests.yml"
+      # #2148 — this suite now gets its database from a shared composite action;
+      # without this path a change to that action would not re-run it.
+      - ".github/actions/migrated-postgres/**"
 
 jobs:
   issue-1175-paystack-refunds:
@@ -49,48 +52,26 @@ jobs:
   issue-1175-pg17:
     name: "Issue 1175 executable manifest proof (PG17)"
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: supabase/postgres:17.4.1.075
-        env:
-          POSTGRES_PASSWORD: ${{ format('issue-1175-ci-{0}', github.run_id) }}
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-          --health-start-period 30s
+    # #2148 — the `services:` block that used to live here is gone. A service
+    # container is started by the runner BEFORE any step runs, so nothing can
+    # place a pre-migrated data directory into it; owning the container from a
+    # step is what makes the cached snapshot possible. It still listens on
+    # localhost:5432 with the same password, so every step below is unchanged.
     steps:
       - uses: actions/checkout@v4
-      - name: Wait for PostgreSQL 17
-        env:
-          PGPASSWORD: ${{ format('issue-1175-ci-{0}', github.run_id) }}
-        run: |
-          for i in {1..90}; do
-            if psql -h localhost -U postgres -d postgres -Atc \
-              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
-              2>/dev/null | grep -qx t; then
-              echo "postgres ready"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "postgres did not become ready in 90s"
-          exit 1
-      - name: Apply all migrations in timestamp order
-        env:
-          PGPASSWORD: ${{ format('issue-1175-ci-{0}', github.run_id) }}
-        run: |
-          set -euo pipefail
-          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
-            | sort -z \
-            | while IFS= read -r -d '' migration; do
-                echo "::group::Applying $migration"
-                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
-                echo "::endgroup::"
-              done
+      # #2148 — replaces this job's postgres bring-up: a service container plus a
+      # full replay of every migration (MEASURED ~75s boot + ~105s replay). The
+      # shared action restores a cached snapshot of the already-migrated cluster
+      # and applies only what landed since, falling back to a full replay on any
+      # doubt. It verifies policy/trigger/index/RLS counts against the snapshot's
+      # build-time manifest before any test runs.
+      - name: PostgreSQL 17 with every migration applied
+        uses: ./.github/actions/migrated-postgres
+        with:
+          # Pinned at the call site, not inherited from the action default, so this
+          # workflow still states the database it certifies against.
+          image: supabase/postgres:17.4.1.075
+          password: ${{ format('issue-1175-ci-{0}', github.run_id) }}
       - name: Execute issue 1175 immutable-manifest proof
         env:
           PGPASSWORD: ${{ format('issue-1175-ci-{0}', github.run_id) }}

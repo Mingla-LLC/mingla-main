@@ -175,12 +175,20 @@ runs:
         # superuser: that line is `trust`, and supabase_admin can alter the role.
         # Verified end to end with a negative control — after this runs, the OLD
         # password is REJECTED, which proves the change actually took.
+        # BOTH roles, not just postgres. A fresh container sets `postgres` AND
+        # `supabase_admin` from POSTGRES_PASSWORD, and the workflows use both —
+        # measured across the converted set: 139 connections as postgres, 5 as
+        # supabase_admin. Adopting only `postgres` left the other on the snapshot's
+        # old password, and three suites failed with
+        #     FATAL:  password authentication failed for user "supabase_admin"
+        # after the database had otherwise restored perfectly.
         adopt_password() {
           local last=""
           for _ in $(seq 1 120); do
             if docker exec "$CNAME" pg_isready -U postgres -q 2>/dev/null; then
-              last="$(docker exec "$CNAME" psql -h 127.0.0.1 -U supabase_admin -d postgres -q -c \
-                "ALTER USER postgres WITH PASSWORD '$PGPASSWORD'" 2>&1)" && return 0
+              last="$(docker exec "$CNAME" psql -h 127.0.0.1 -U supabase_admin -d postgres -q \
+                -c "ALTER USER postgres WITH PASSWORD '$PGPASSWORD'" \
+                -c "ALTER USER supabase_admin WITH PASSWORD '$PGPASSWORD'" 2>&1)" && return 0
             fi
             sleep 1
           done
