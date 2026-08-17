@@ -74,7 +74,12 @@ import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 import { resolveCheckoutBrandAccent } from "../../../src/utils/checkoutBrandAccent";
 import { formatCurrency } from "../../../src/utils/currency";
 import { isValidE164, composeE164 } from "../../../src/utils/phone";
-import { createTicketCheckout } from "../../../src/services/ticketCheckoutService";
+import {
+  createTicketCheckout,
+  FREE_CHECKOUT_FAILED_MESSAGE,
+  freeCheckoutErrorMessage,
+  isCompletedFreeOrder,
+} from "../../../src/services/ticketCheckoutService";
 // META-ORCH-1161 Sub-A.2 — bundled-mandatory consent (DEC-186): shared writer +
 // verbatim disclosure copy + the §2 T&C sheet.
 import { recordConsent } from "../../../src/services/consentService";
@@ -423,6 +428,15 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         if (result.kind !== "free_completed") {
           throw new Error("Free checkout unexpectedly required payment.");
         }
+        // issue #2136 [free-ticket checkout] — the envelope is only a
+        // confirmation if it actually carries an order AND its issued tickets.
+        // `result.tickets.map(...)` used to run unguarded, so a server envelope
+        // with no tickets threw a raw TypeError into the guest's face. Refusing
+        // the envelope is deliberate: navigating to the confirm screen for a
+        // ticket that was never minted would hide the failure instead.
+        if (!isCompletedFreeOrder(result)) {
+          throw new Error(FREE_CHECKOUT_FAILED_MESSAGE);
+        }
         recordResult({
           orderId: result.orderId,
           ticketIds: result.tickets.map((ticket) => ticket.ticketId),
@@ -438,11 +452,10 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         });
         router.replace(`/checkout/${eventId}/confirm` as never);
       } catch (error) {
-        setSubmitError(
-          error instanceof Error
-            ? error.message
-            : "Could not reserve tickets. Please try again.",
-        );
+        // issue #2136 — never render a raw runtime string. `freeCheckoutErrorMessage`
+        // is total: a handled 409 becomes the "no longer available" copy, and
+        // everything else becomes the generic "nothing was reserved" copy.
+        setSubmitError(freeCheckoutErrorMessage(error));
       } finally {
         setSubmitting(false);
       }

@@ -157,6 +157,86 @@ export const ticketCheckoutAccessError = (
   return null;
 };
 
+/**
+ * issue #2136 [free-ticket checkout] — the guest-facing copy for a free
+ * reservation that did not complete.
+ *
+ * WHY THIS EXISTS. The free branch of `app/checkout/[eventId]/buyer.tsx` used
+ * to render whatever string landed in its `catch` straight into the submit
+ * error. Two of those strings are not English:
+ *   - `Cannot read properties of undefined (reading 'map')` — the raw
+ *     TypeError from `result.tickets.map(...)` when the server sent no tickets;
+ *   - `Edge Function returned a non-2xx status code` — the opaque message
+ *     `supabase.functions.invoke` produces for EVERY handled server refusal,
+ *     including the 409 the server now returns when the sale is gone.
+ *
+ * Both are replaced with copy that says what happened and what to do, and that
+ * is explicit that nothing was reserved — a guest must never be left unsure
+ * whether they hold a ticket.
+ */
+export const FREE_CHECKOUT_UNAVAILABLE_MESSAGE =
+  "This free ticket is no longer available — the organizer may have paused or changed this event. Nothing was reserved.";
+
+export const FREE_CHECKOUT_FAILED_MESSAGE =
+  "We could not reserve your free ticket. Nothing was reserved — please try again.";
+
+/**
+ * The bounded HTTP statuses the server uses to refuse a free reservation.
+ * 409 is `checkout_unavailable` (the sale is gone); 401/403 are the #2101
+ * access denials, which keep their own dedicated copy upstream.
+ */
+const httpStatusOf = (error: unknown): number | null => {
+  if (typeof error !== "object" || error === null) return null;
+  const direct = (error as { status?: unknown }).status;
+  if (typeof direct === "number") return direct;
+  const context = (error as { context?: unknown }).context;
+  if (typeof context === "object" && context !== null) {
+    const contextStatus = (context as { status?: unknown }).status;
+    if (typeof contextStatus === "number") return contextStatus;
+  }
+  return null;
+};
+
+/**
+ * Map ANY free-checkout failure to guest-readable copy. Pure and total: it
+ * never returns a raw runtime message, so a future TypeError on this path
+ * cannot leak to a buyer either.
+ */
+export const freeCheckoutErrorMessage = (error: unknown): string => {
+  if (httpStatusOf(error) === 409) return FREE_CHECKOUT_UNAVAILABLE_MESSAGE;
+  const message =
+    typeof (error as { message?: unknown })?.message === "string"
+      ? (error as { message: string }).message
+      : "";
+  if (
+    message === FREE_CHECKOUT_UNAVAILABLE_MESSAGE ||
+    message === FREE_CHECKOUT_FAILED_MESSAGE
+  ) {
+    return message;
+  }
+  if (message.includes("checkout_unavailable")) {
+    return FREE_CHECKOUT_UNAVAILABLE_MESSAGE;
+  }
+  return FREE_CHECKOUT_FAILED_MESSAGE;
+};
+
+/**
+ * issue #2136 — the server's `free_completed` envelope is only trustworthy when
+ * it carries at least one issued ticket. `biz_ticket_checkout_finalize` has an
+ * idempotent-replay arm that answers `{outcome,orderId}` with no tickets, and
+ * before #2136 the Edge also relabelled a NO-ORDER finalize as `free_completed`.
+ * A confirmation screen for a ticket that does not exist is strictly worse than
+ * a visible error, so the client refuses the envelope rather than rendering it.
+ */
+export const isCompletedFreeOrder = (
+  result: TicketCheckoutCreateResult,
+): result is TicketCheckoutFreeCompleted =>
+  result.kind === "free_completed" &&
+  typeof result.orderId === "string" &&
+  result.orderId.length > 0 &&
+  Array.isArray(result.tickets) &&
+  result.tickets.length > 0;
+
 const invokeOrThrow = async <T>(
   functionName: string,
   body: Record<string, unknown>,
