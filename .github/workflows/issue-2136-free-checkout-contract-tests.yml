@@ -34,6 +34,9 @@ on:
       - "mingla-business/src/services/__tests__/issue_2136_free_checkout_client_guard.test.ts"
       - "mingla-business/app/checkout/**"
       - ".github/workflows/issue-2136-free-checkout-contract-tests.yml"
+      # #2148 — this suite now gets its database from a shared composite action;
+      # without this path a change to that action would not re-run it.
+      - ".github/actions/migrated-postgres/**"
       - "docs/INVARIANT_REGISTRY.md"
   push:
     branches: [main]
@@ -88,50 +91,29 @@ jobs:
     name: "#2136 PostgreSQL 17 — the no-value arm, executed (tester adversarial)"
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    services:
-      postgres:
-        # The same Supabase-flavored image the #2101 lane and the
-        # repository-wide migration lane pin.
-        image: supabase/postgres:17.4.1.075
-        env:
-          POSTGRES_PASSWORD: ${{ format('issue-2136-ci-{0}', github.run_id) }}
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-          --health-start-period 30s
+    # #2148 — the `services:` block that used to live here is gone. A service
+    # container is started by the runner BEFORE any step runs, so nothing can
+    # place a pre-migrated data directory into it; owning the container from a
+    # step is what makes the cached snapshot possible. It still listens on
+    # localhost:5432 with the same password, so every step below is unchanged.
     steps:
       - uses: actions/checkout@v4
       # Wait for the image's OWN bootstrap, not merely for the socket: accepting
       # connections before `vault` / `supabase_admin` exist lets the baseline
       # squash abort on a graphql schema-version race. Same probe #2101 uses.
-      - name: Wait for PostgreSQL 17 bootstrap to complete
-        env:
-          PGPASSWORD: ${{ format('issue-2136-ci-{0}', github.run_id) }}
-        run: |
-          for attempt in {1..90}; do
-            if psql -h localhost -U postgres -d postgres -Atc \
-              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
-              2>/dev/null | grep -qx t; then
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "postgres did not finish bootstrapping in 90s"; exit 1
-      - name: Apply migrations in timestamp order
-        env:
-          PGPASSWORD: ${{ format('issue-2136-ci-{0}', github.run_id) }}
-        run: |
-          set -euo pipefail
-          for f in $(ls supabase/migrations/*.sql | sort); do
-            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$f" >/dev/null
-          done
-      # `auth.users` in this image is the pre-GoTrue stub; the fixture inserts
-      # brand-owner rows through it. Provisioned as the owning role exactly as
-      # #2101, #873 and #1529 do.
+      # #2148 — replaces this job's postgres bring-up: a service container plus a
+      # full replay of every migration (MEASURED ~75s boot + ~105s replay). The
+      # shared action restores a cached snapshot of the already-migrated cluster
+      # and applies only what landed since, falling back to a full replay on any
+      # doubt. It verifies policy/trigger/index/RLS counts against the snapshot's
+      # build-time manifest before any test runs.
+      - name: PostgreSQL 17 with every migration applied
+        uses: ./.github/actions/migrated-postgres
+        with:
+          # Pinned at the call site, not inherited from the action default, so this
+          # workflow still states the database it certifies against.
+          image: supabase/postgres:17.4.1.075
+          password: ${{ format('issue-2136-ci-{0}', github.run_id) }}
       - name: Match hosted Supabase Auth user shape
         env:
           PGPASSWORD: ${{ format('issue-2136-ci-{0}', github.run_id) }}

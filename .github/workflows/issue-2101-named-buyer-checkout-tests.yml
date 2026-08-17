@@ -40,6 +40,9 @@ on:
       - "mingla-business/src/utils/__tests__/nextRoute*.ts"
       - "scripts/ci/issue-2101-named-buyer-checkout.mjs"
       - ".github/workflows/issue-2101-named-buyer-checkout-tests.yml"
+      # #2148 — this suite now gets its database from a shared composite action;
+      # without this path a change to that action would not re-run it.
+      - ".github/actions/migrated-postgres/**"
       - "docs/INVARIANT_REGISTRY.md"
       - "docs/QUERY_KEY_REGISTRY.md"
   push:
@@ -133,53 +136,30 @@ jobs:
   issue-2101-postgres-contract:
     name: "#2101 PostgreSQL 17 — decision, identity, blocks, epochs, ACLs, audit, transfer guard"
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        # Same Supabase-flavored image the repository-wide migration lane pins.
-        image: supabase/postgres:17.4.1.075
-        env:
-          POSTGRES_PASSWORD: ${{ format('issue-2101-ci-{0}', github.run_id) }}
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-          --health-start-period 30s
+    # #2148 — the `services:` block that used to live here is gone. A service
+    # container is started by the runner BEFORE any step runs, so nothing can
+    # place a pre-migrated data directory into it; owning the container from a
+    # step is what makes the cached snapshot possible. It still listens on
+    # localhost:5432 with the same password, so every step below is unchanged.
     steps:
       - uses: actions/checkout@v4
       # Wait for the image's OWN bootstrap to finish, not merely for the socket:
       # accepting connections before `vault` / `supabase_admin` exist lets the
       # baseline squash abort on a graphql schema-version race. Same probe #873
       # uses; reproduced locally on this exact image.
-      - name: Wait for PostgreSQL 17 bootstrap to complete
-        env:
-          PGPASSWORD: ${{ format('issue-2101-ci-{0}', github.run_id) }}
-        run: |
-          for attempt in {1..90}; do
-            if psql -h localhost -U postgres -d postgres -Atc \
-              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
-              2>/dev/null | grep -qx t; then
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "postgres did not finish bootstrapping in 90s"; exit 1
-      - name: Apply migrations in timestamp order
-        env:
-          PGPASSWORD: ${{ format('issue-2101-ci-{0}', github.run_id) }}
-        run: |
-          set -euo pipefail
-          for f in $(ls supabase/migrations/*.sql | sort); do
-            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$f" >/dev/null
-          done
-      # `auth.users` in this image is the pre-GoTrue stub. Hosted Supabase
-      # carries these four GoTrue-managed columns; the behavioural contract
-      # below needs them, so they are provisioned as the owning role exactly as
-      # #873 and #1529 do. The migration itself must NOT depend on them being
-      # present — that is what the catalog-tolerant access path is for, and the
-      # repository-wide "Migrations apply cleanly from baseline" lane proves it.
+      # #2148 — replaces this job's postgres bring-up: a service container plus a
+      # full replay of every migration (MEASURED ~75s boot + ~105s replay). The
+      # shared action restores a cached snapshot of the already-migrated cluster
+      # and applies only what landed since, falling back to a full replay on any
+      # doubt. It verifies policy/trigger/index/RLS counts against the snapshot's
+      # build-time manifest before any test runs.
+      - name: PostgreSQL 17 with every migration applied
+        uses: ./.github/actions/migrated-postgres
+        with:
+          # Pinned at the call site, not inherited from the action default, so this
+          # workflow still states the database it certifies against.
+          image: supabase/postgres:17.4.1.075
+          password: ${{ format('issue-2101-ci-{0}', github.run_id) }}
       - name: Match hosted Supabase Auth user shape
         env:
           PGPASSWORD: ${{ format('issue-2101-ci-{0}', github.run_id) }}
