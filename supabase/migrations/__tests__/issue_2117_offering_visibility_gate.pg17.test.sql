@@ -133,6 +133,19 @@ BEGIN
     INSERT INTO public.tickets(order_id,ticket_type_id,event_id,qr_code,status)
       VALUES (v_or,v_tt,v_ev,'i2117t-'||r.key||'-1','valid'),
              (v_or,v_tt,v_ev,'i2117t-'||r.key||'-2','valid');
+    -- P1-2 FIX. The trip render reader's `tiers` block reads
+    -- trip_pricing_tiers. Without a row here that block is an empty array in
+    -- EVERY assertion -- a vacuous fixture underneath the assertion, so the
+    -- richest part of the payload was never exercised and a strip of it
+    -- could not be detected. Populated for trips, which is the only family
+    -- whose reader joins this table.
+    IF r.etype = 'trip' THEN
+      INSERT INTO public.trip_pricing_tiers(event_id,ticket_type_id,tier_name,tier_metadata)
+        VALUES (v_ev, v_tt, 'Standard',
+                jsonb_build_object('installments', jsonb_build_array(
+                  jsonb_build_object('label','Deposit','amountCents',2500),
+                  jsonb_build_object('label','Balance','amountCents',2500))));
+    END IF;
     INSERT INTO i2117t.offering VALUES (r.key,v_ev,v_tt,v_or,r.etype,r.vis,r.st, replace(r.key,'_','-'));
   END LOOP;
 END $fx$;
@@ -237,6 +250,19 @@ END $sc2$;
 -- what catches the named mechanism, which raises `role "none" does not
 -- exist`), but is no longer sufficient on its own.
 -- ---------------------------------------------------------------------
+-- P1-1 FIX. This compares the FULL PAYLOAD, digested, cell for cell.
+--
+-- The previous form compared cardinality for the event-keyed readers and
+-- null-ness for the by-slug readers. Both are LOSSY PROJECTIONS of the
+-- result, and a projection is exactly where a role-dependent VALUE hides:
+-- a reader that quotes an anonymous buyer one price and a signed-in buyer
+-- another returns the same ROW COUNT and the same NOT-NULL-ness to both, so
+-- a count/null-ness comparison greens on the precise forgery Amendment 1
+-- named and this criterion was created to kill.
+--
+-- This is the same defect class the whole issue has been fighting -- assert
+-- over the value, not over a summary of it -- appearing one level in, inside
+-- a criterion that was itself the fix for a previous instance of it.
 CREATE FUNCTION i2117t.crossrole(p_role text, p_roleclaim text)
 RETURNS TABLE(obj text, okey text, val text) LANGUAGE plpgsql AS $$
 DECLARE r record; v_org uuid; v_out text;
@@ -247,29 +273,57 @@ BEGIN
     PERFORM set_config('request.jwt.claim.sub', v_org::text, true);
     PERFORM set_config('request.jwt.claims', json_build_object('sub',v_org,'role',p_roleclaim)::text, true);
     PERFORM set_config('request.jwt.claim.role', p_roleclaim, true);
-    BEGIN EXECUTE 'SELECT count(*)::text FROM public.pg_public_event_tier_allin($1)' INTO v_out USING r.event_id;
+
+    -- Set-returning readers: digest EVERY column of EVERY row, in the
+    -- reader's own declared order. Not a count.
+    BEGIN EXECUTE $q$
+      SELECT COALESCE(md5(string_agg(t.*::text, '|')), '<empty>')
+      FROM public.pg_public_event_tier_allin($1) t
+    $q$ INTO v_out USING r.event_id;
     EXCEPTION WHEN OTHERS THEN v_out := 'ERR:'||SQLERRM; END;
     obj:='tier_allin'; okey:=r.key; val:=v_out; RETURN NEXT;
-    BEGIN EXECUTE 'SELECT count(*)::text FROM public.pg_public_ticket_types_remaining($1)' INTO v_out USING r.event_id;
+
+    BEGIN EXECUTE $q$
+      SELECT COALESCE(md5(string_agg(t.*::text, '|')), '<empty>')
+      FROM public.pg_public_ticket_types_remaining($1) t
+    $q$ INTO v_out USING r.event_id;
     EXCEPTION WHEN OTHERS THEN v_out := 'ERR:'||SQLERRM; END;
     obj:='remaining'; okey:=r.key; val:=v_out; RETURN NEXT;
+
+    -- Scalar readers: the VALUE, never a predicate over it.
     BEGIN EXECUTE 'SELECT public.biz_experience_sold_count($1)::text' INTO v_out USING r.event_id;
     EXCEPTION WHEN OTHERS THEN v_out := 'ERR:'||SQLERRM; END;
     obj:='exp_sold'; okey:=r.key; val:=v_out; RETURN NEXT;
+    BEGIN EXECUTE 'SELECT public.biz_trip_sold_count_by_tier($1)::text' INTO v_out USING r.event_id;
+    EXCEPTION WHEN OTHERS THEN v_out := 'ERR:'||SQLERRM; END;
+    obj:='sold_by_tier'; okey:=r.key; val:=v_out; RETURN NEXT;
     BEGIN EXECUTE 'SELECT public.biz_trip_tickets_sold_by_tier($1)::text' INTO v_out USING r.event_id;
     EXCEPTION WHEN OTHERS THEN v_out := 'ERR:'||SQLERRM; END;
     obj:='tickets_by_tier'; okey:=r.key; val:=v_out; RETURN NEXT;
     BEGIN EXECUTE 'SELECT public.biz_trip_has_web_purchases($1)::text' INTO v_out USING r.event_id;
     EXCEPTION WHEN OTHERS THEN v_out := 'ERR:'||SQLERRM; END;
     obj:='has_web_purch'; okey:=r.key; val:=v_out; RETURN NEXT;
-    BEGIN EXECUTE 'SELECT (public.pg_public_trip_by_slug($1,$2) IS NOT NULL)::text' INTO v_out
+
+    -- JSON readers: digest the WHOLE payload, never IS NOT NULL. A reader
+    -- that keeps returning a payload while changing what is inside it is
+    -- invisible to a null-ness test and visible here.
+    BEGIN EXECUTE 'SELECT COALESCE(md5(public.pg_public_trip_by_slug($1,$2)::text), ''<null>'')' INTO v_out
       USING 'i2117t-brand', r.slug;
     EXCEPTION WHEN OTHERS THEN v_out := 'ERR:'||SQLERRM; END;
     obj:='trip_by_slug'; okey:=r.key; val:=v_out; RETURN NEXT;
-    BEGIN EXECUTE 'SELECT (public.pg_public_experience_by_slug($1,$2) IS NOT NULL)::text' INTO v_out
+    BEGIN EXECUTE 'SELECT COALESCE(md5(public.pg_public_experience_by_slug($1,$2)::text), ''<null>'')' INTO v_out
       USING 'i2117t-brand', r.slug;
     EXCEPTION WHEN OTHERS THEN v_out := 'ERR:'||SQLERRM; END;
     obj:='exp_by_slug'; okey:=r.key; val:=v_out; RETURN NEXT;
+
+    -- The gate itself, both audiences.
+    BEGIN EXECUTE 'SELECT public.pg_offering_passes_visibility_gate($1,''listing'')::text' INTO v_out USING r.event_id;
+    EXCEPTION WHEN OTHERS THEN v_out := 'ERR:'||SQLERRM; END;
+    obj:='gate_listing'; okey:=r.key; val:=v_out; RETURN NEXT;
+    BEGIN EXECUTE 'SELECT public.pg_offering_passes_visibility_gate($1,''direct'')::text' INTO v_out USING r.event_id;
+    EXCEPTION WHEN OTHERS THEN v_out := 'ERR:'||SQLERRM; END;
+    obj:='gate_direct'; okey:=r.key; val:=v_out; RETURN NEXT;
+
     RESET ROLE;
   END LOOP;
 END $$;
@@ -333,34 +387,110 @@ END $asc3b$;
 -- reader whose derivation says 'direct', or fold status into the audience.
 -- MUST RED.
 -- ---------------------------------------------------------------------
+-- P1-2 FIX. The previous form asserted served/not-served plus a non-zero row
+-- count. Both are BOOLEANS over the payload, so a publicly visible offering
+-- could be stripped of its pricing block, its inventory and its whole
+-- itinerary and still satisfy them. Amendment 1 fixed this criterion's
+-- STATUS dimension; its PAYLOAD dimension was still a boolean.
+--
+-- Replaced by the two-directional EXCEPT ALL the contract actually requires,
+-- against an IN-CLUSTER ORACLE: the §4.5 privileged siblings are the
+-- PRE-CHANGE BODIES VERBATIM (byte-identical apart from their names, which
+-- is checkable from the migration diff), so they are a genuine pre-change
+-- reference living in the same cluster -- not a re-statement of the
+-- post-change behaviour.
 DO $asc4$
-DECLARE r record; ok boolean := true; d text := ''; v_served boolean; v_expected boolean;
+DECLARE r record; ok boolean := true; d text := '';
+        v_served boolean; v_expected boolean;
+        v_fwd int; v_rev int; v_missing text[];
 BEGIN
   FOR r IN SELECT * FROM i2117t.offering WHERE visibility='public' ORDER BY key LOOP
+
+    -- (i) EXCEPT ALL, BOTH DIRECTIONS, against the pre-change oracle, for
+    --     every public (type x status) pair. Zero rows each way or fail.
+    EXECUTE 'SELECT count(*) FROM ((SELECT * FROM public.pg_public_event_tier_allin($1))
+             EXCEPT ALL (SELECT * FROM public.pg_privileged_event_tier_allin($1))) x'
+      INTO v_fwd USING r.event_id;
+    EXECUTE 'SELECT count(*) FROM ((SELECT * FROM public.pg_privileged_event_tier_allin($1))
+             EXCEPT ALL (SELECT * FROM public.pg_public_event_tier_allin($1))) x'
+      INTO v_rev USING r.event_id;
+    IF v_fwd <> 0 OR v_rev <> 0 THEN
+      ok := false; d := d || format(' tier_allin public/%s/%s EXCEPT ALL fwd=%s rev=%s;', r.etype, r.status, v_fwd, v_rev);
+    END IF;
+
+    EXECUTE 'SELECT count(*) FROM ((SELECT * FROM public.pg_public_ticket_types_remaining($1))
+             EXCEPT ALL (SELECT * FROM public.pg_privileged_ticket_types_remaining($1))) x'
+      INTO v_fwd USING r.event_id;
+    EXECUTE 'SELECT count(*) FROM ((SELECT * FROM public.pg_privileged_ticket_types_remaining($1))
+             EXCEPT ALL (SELECT * FROM public.pg_public_ticket_types_remaining($1))) x'
+      INTO v_rev USING r.event_id;
+    IF v_fwd <> 0 OR v_rev <> 0 THEN
+      ok := false; d := d || format(' remaining public/%s/%s EXCEPT ALL fwd=%s rev=%s;', r.etype, r.status, v_fwd, v_rev);
+    END IF;
+
+    -- ...and the oracle must actually RETURN something on the public path,
+    -- or the equality above is two empty sets agreeing with each other.
+    IF (SELECT count(*) FROM public.pg_privileged_event_tier_allin(r.event_id)) = 0
+       OR (SELECT count(*) FROM public.pg_privileged_ticket_types_remaining(r.event_id)) = 0 THEN
+      ok := false; d := d || format(' ORACLE EMPTY at public/%s/%s -- the equality is vacuous;', r.etype, r.status);
+    END IF;
+
+    -- (ii) The by-slug readers have no sibling oracle, so the payload is
+    --      held by KEY-COMPLETENESS plus a non-empty tier block. A strip of
+    --      pricing, inventory or itinerary removes keys and is caught here;
+    --      IS NOT NULL is not.
     IF r.etype = 'trip' THEN
       v_expected := r.status IN ('scheduled','live');
       v_served := public.pg_public_trip_by_slug('i2117t-brand', r.slug) IS NOT NULL;
       IF v_served <> v_expected THEN
         ok := false; d := d || format(' trip/%s served=%s expected=%s;', r.status, v_served, v_expected);
       END IF;
+      IF v_served THEN
+        SELECT COALESCE(array_agg(k), '{}') INTO v_missing
+        -- The COMPLETE key set this reader emits at this head, locked. Not a
+        -- hand-picked subset: any strip of pricing, inventory or itinerary
+        -- removes a key from this list and reds.
+        FROM unnest(ARRAY['bookingDeadline','bookingsClosed','brand','brandId','brandSlug',
+                          'coverGallery','coverMediaType','coverMediaUrl','currency','days',
+                          'departureLat','departureLng','departureText','description',
+                          'destinationLat','destinationLng','destinationText','endAt','id',
+                          'inclusions','refundPolicy','startAt','status',
+                          'themeAnimationOverride','themeColorOverride','themeFontOverride',
+                          'tiers','timezone','title','tripSlug']) AS k
+        WHERE NOT (public.pg_public_trip_by_slug('i2117t-brand', r.slug)::jsonb ? k);
+        IF cardinality(v_missing) > 0 THEN
+          ok := false; d := d || format(' trip/%s MISSING KEYS %s;', r.status, v_missing);
+        END IF;
+        IF jsonb_array_length(COALESCE(public.pg_public_trip_by_slug('i2117t-brand', r.slug)::jsonb->'tiers','[]'::jsonb)) = 0 THEN
+          ok := false; d := d || format(' trip/%s tiers block EMPTY -- fixture or payload defect;', r.status);
+        END IF;
+      END IF;
+
     ELSIF r.etype = 'experience' THEN
       v_expected := r.status IN ('scheduled','live','ended','cancelled');
       v_served := public.pg_public_experience_by_slug('i2117t-brand', r.slug) IS NOT NULL;
       IF v_served <> v_expected THEN
         ok := false; d := d || format(' experience/%s served=%s expected=%s;', r.status, v_served, v_expected);
       END IF;
-    END IF;
-    -- the event-keyed readers carry no status predicate; a publicly
-    -- visible offering must return its rows at EVERY status.
-    IF (SELECT count(*) FROM public.pg_public_event_tier_allin(r.event_id)) = 0 THEN
-      ok := false; d := d || format(' tier_allin public/%s/%s returned 0 rows;', r.etype, r.status);
-    END IF;
-    IF (SELECT count(*) FROM public.pg_public_ticket_types_remaining(r.event_id)) = 0 THEN
-      ok := false; d := d || format(' remaining public/%s/%s returned 0 rows;', r.etype, r.status);
+      IF v_served THEN
+        SELECT COALESCE(array_agg(k), '{}') INTO v_missing
+        -- The COMPLETE key set this reader emits at this head, locked.
+        FROM unnest(ARRAY['bookable','brand','brandId','brandSlug','coverGallery',
+                          'coverMediaType','coverMediaUrl','currency','dates','description',
+                          'experienceSlug','hideAddressUntilTicket','id','intents','isMultiDate',
+                          'isRecurring','recurrenceRules','status','stops',
+                          'themeAnimationOverride','themeColorOverride','themeFontOverride',
+                          'ticket','timezone','title','venueText','visibility']) AS k
+        WHERE NOT (public.pg_public_experience_by_slug('i2117t-brand', r.slug)::jsonb ? k);
+        IF cardinality(v_missing) > 0 THEN
+          ok := false; d := d || format(' experience/%s MISSING KEYS %s;', r.status, v_missing);
+        END IF;
+      END IF;
     END IF;
   END LOOP;
-  PERFORM i2117t.assert('A-SC-4','public path status-complete and unchanged',
-    ok, COALESCE(NULLIF(d,''),'every public (type x status) pair matches the pre-change behaviour'), 'ALLOW');
+
+  PERFORM i2117t.assert('A-SC-4','public path EXCEPT ALL-equal to the pre-change oracle, both directions, status-complete',
+    ok, COALESCE(NULLIF(d,''),'every public (type x status) pair: 0 rows each way vs the oracle, payload keys complete, tier block non-empty'), 'ALLOW');
 END $asc4$;
 
 -- ---------------------------------------------------------------------
@@ -566,11 +696,19 @@ END $asc8$;
 -- reference set of a merge-gating criterion. A set assertion whose
 -- reference list the implementor can edit is a scalar again, in better
 -- clothes.
-CREATE TABLE i2117t.recorded_r2(sig text primary key);
-INSERT INTO i2117t.recorded_r2(sig) VALUES
+CREATE TABLE i2117t.recorded_r2_sig(sig text primary key);
+INSERT INTO i2117t.recorded_r2_sig(sig) VALUES
   ('pg_recurrence_is_terminated(p_rule jsonb, p_event_id uuid, p_now timestamp with time zone)'),
   ('biz_trip_sold_count_by_tier(p_event_id uuid)'),
   ('resolve_event_pricing_inputs(p_event_id uuid)');
+
+-- Membership is per role, so the recorded R-2 set expands to (role, signature)
+-- pairs: the rung removes each object from BOTH halves of the governed
+-- audience, and clause (b) must see both removals, not one.
+CREATE VIEW i2117t.recorded_r2 AS
+  SELECT r.role_name, s.sig
+  FROM i2117t.recorded_r2_sig s
+  CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(role_name);
 
 -- Non-vacuity gate for the whole criterion: without a genuine BEFORE
 -- snapshot every set difference is vacuously satisfiable, so a skipped
@@ -593,22 +731,30 @@ DECLARE
   v_departed   text[];
   v_recorded   text[];
   v_stale_gone text[];
+  v_departed_anon text[];
   v_stale_new  text[];
   v_badshape   text[];
   v_unallow    text[];
 BEGIN
-  SELECT COALESCE(array_agg(sig ORDER BY sig), '{}') INTO v_arrived
-  FROM (SELECT sig FROM i2117_asc9.probe_now EXCEPT SELECT sig FROM i2117_asc9.probe_before) x;
+  SELECT COALESCE(array_agg(role_name||' :: '||sig ORDER BY role_name, sig), '{}') INTO v_arrived
+  FROM (SELECT role_name, sig FROM i2117_asc9.probe_now
+        EXCEPT SELECT role_name, sig FROM i2117_asc9.probe_before) x;
 
-  SELECT COALESCE(array_agg(sig ORDER BY sig), '{}') INTO v_departed
-  FROM (SELECT sig FROM i2117_asc9.probe_before EXCEPT SELECT sig FROM i2117_asc9.probe_now) x;
+  SELECT COALESCE(array_agg(role_name||' :: '||sig ORDER BY role_name, sig), '{}') INTO v_departed
+  FROM (SELECT role_name, sig FROM i2117_asc9.probe_before
+        EXCEPT SELECT role_name, sig FROM i2117_asc9.probe_now) x;
 
-  SELECT COALESCE(array_agg(sig ORDER BY sig), '{}') INTO v_recorded
-  FROM (SELECT sig FROM i2117t.recorded_r2) x;
+  SELECT COALESCE(array_agg(role_name||' :: '||sig ORDER BY role_name, sig), '{}') INTO v_recorded
+  FROM (SELECT role_name, sig FROM i2117t.recorded_r2) x;
 
   -- (a) NOTHING ENTERS. Unconditional -- no allowance, no exceptions.
+  --     Computed over BOTH governed roles (see the capture file). An
+  --     anon-only probe cannot see a dormant allowlisted STATE-MUTATING
+  --     definer silently regaining SIGNED-IN access, which is the worst
+  --     re-exposure in the class and leaves both scalars and the shipped
+  --     forward gate identical to a correct run.
   --     Revert mutation: grant EXECUTE on a gate form or a privileged
-  --     sibling to the governed audience. MUST RED.
+  --     sibling to EITHER governed role. MUST RED.
   PERFORM i2117t.assert('A-SC-9(a)','nothing enters the governed audience',
     cardinality(v_arrived) = 0,
     format('arrived=%s (must be empty)', v_arrived), 'DENY');
@@ -636,7 +782,8 @@ BEGIN
   --     every deliberate narrowing produces this same shape. Do not lean
   --     on it for anything else.
   SELECT COALESCE(array_agg(d.sig ORDER BY d.sig), '{}') INTO v_badshape
-  FROM unnest(v_departed) AS d(sig)
+  FROM (SELECT DISTINCT sig FROM i2117_asc9.probe_before
+        EXCEPT SELECT DISTINCT sig FROM i2117_asc9.probe_now) AS d(sig)
   WHERE NOT EXISTS (SELECT 1 FROM i2117_asc9.allowlist a WHERE a.sig = d.sig)
      OR NOT EXISTS (
           SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -670,29 +817,45 @@ BEGIN
   --     produced a wrong table row. On A-SC-14's mutation the correct
   --     measured result is (a) green, (b) RED, (c) green, (d) green,
   --     (e) green -- only (b) fires.
+  --     The stale sets are the SHIPPED GATE's own notion and are therefore
+  --     taken against the ANON-scoped probe -- that is what the gate prints.
+  --     The departed set they are compared against is the governed-audience
+  --     one, deliberately: an object that leaves only the signed-in half
+  --     departs without becoming stale, and d2 reds on it. That is the second
+  --     half of the P2-1 defect and it is a feature, not a mismatch.
   SELECT COALESCE(array_agg(sig ORDER BY sig), '{}') INTO v_stale_gone
   FROM (SELECT sig FROM i2117_asc9.stale_before
         EXCEPT
         SELECT a.sig FROM i2117_asc9.allowlist a
-        WHERE a.sig NOT IN (SELECT sig FROM i2117_asc9.probe_now)) x;
+        WHERE a.sig NOT IN (SELECT sig FROM i2117_asc9.probe_now_anon)) x;
 
   SELECT COALESCE(array_agg(sig ORDER BY sig), '{}') INTO v_stale_new
   FROM (SELECT a.sig FROM i2117_asc9.allowlist a
-        WHERE a.sig NOT IN (SELECT sig FROM i2117_asc9.probe_now)
+        WHERE a.sig NOT IN (SELECT sig FROM i2117_asc9.probe_now_anon)
         EXCEPT
         SELECT sig FROM i2117_asc9.stale_before) x;
 
-  PERFORM i2117t.assert('A-SC-9(d)','no stale warning vanished; gained stale equals the departed set',
-    cardinality(v_stale_gone) = 0 AND v_stale_new = v_departed,
-    format('vanished=%s gained=%s departed=%s', v_stale_gone, v_stale_new, v_departed), 'DENY');
+  -- The stale set is gate-scoped (anon), so it is compared against the
+  -- signatures that left the ANON half specifically. Comparing it against the
+  -- full pair set would red whenever an object legitimately leaves only the
+  -- signed-in half -- which clause (b) is the right place to catch.
+  SELECT COALESCE(array_agg(sig ORDER BY sig), '{}') INTO v_departed_anon
+  FROM (SELECT sig FROM i2117_asc9.probe_before WHERE role_name='anon'
+        EXCEPT SELECT sig FROM i2117_asc9.probe_now WHERE role_name='anon') x;
+
+  PERFORM i2117t.assert('A-SC-9(d)','no stale warning vanished; gained stale equals the anon-half departures',
+    cardinality(v_stale_gone) = 0 AND v_stale_new = v_departed_anon,
+    format('vanished=%s gained=%s departed_anon=%s', v_stale_gone, v_stale_new, v_departed_anon), 'DENY');
 
   -- (e) THE SHIPPED FORWARD GATE STILL PASSES: zero anon-executable definer
-  --     functions outside the allowlist. The workflow additionally runs the
-  --     real shipped script, so this is asserted twice by two independent
-  --     implementations. Revert mutation: grant EXECUTE on a gate form to
-  --     the governed audience. MUST RED.
+  --     functions outside the allowlist. Deliberately ANON-scoped, because
+  --     this clause reproduces the SHIPPED GATE rather than the governed
+  --     audience -- (a), (b) and (d) are the clauses that cover both roles.
+  --     The workflow additionally runs the real shipped script, so this is
+  --     asserted twice by two independent implementations. Revert mutation:
+  --     grant EXECUTE on a gate form to the governed audience. MUST RED.
   SELECT COALESCE(array_agg(sig ORDER BY sig), '{}') INTO v_unallow
-  FROM (SELECT sig FROM i2117_asc9.probe_now
+  FROM (SELECT sig FROM i2117_asc9.probe_now_anon
         EXCEPT SELECT sig FROM i2117_asc9.allowlist) x;
   PERFORM i2117t.assert('A-SC-9(e)','forward gate: no unallowlisted anon-executable definer',
     cardinality(v_unallow) = 0,
@@ -998,12 +1161,54 @@ END $asc14b$;
 -- every case allows is a FAILING suite. This clause is itself covered:
 -- deleting all fixtures must produce a RED run, not a green one.
 -- ---------------------------------------------------------------------
+-- P2-2 FIX. Clauses 1 and 5 previously counted distinct values from the
+-- suite's OWN bookkeeping table, which is written from its own hardcoded
+-- list -- so they asserted that the suite INTENDED a complete matrix, never
+-- that one LANDED. A trigger silently rewriting every draft fixture to
+-- another state left the gate still reporting five visibility states and the
+-- suite green. A non-vacuity guard that cannot fail on a real fixture defect
+-- is the #2113 shape one level up, inside the clause meant to prevent it.
+--
+-- Every count below is now taken from public.events -- the real table, the
+-- state that actually landed -- and the ledger is separately reconciled
+-- against it, so a divergence between what the suite believes it built and
+-- what exists is itself a failure.
 DO $asc10$
 DECLARE v_vis int; v_types int; v_status int; v_allow int; v_deny int; v_asserts int;
+        v_drift text[]; v_absent int;
 BEGIN
-  SELECT count(DISTINCT visibility) INTO v_vis    FROM i2117t.offering;
-  SELECT count(DISTINCT etype)      INTO v_types  FROM i2117t.offering;
-  SELECT count(DISTINCT status)     INTO v_status FROM i2117t.offering;
+  -- Reconcile the ledger against reality FIRST: every fixture the ledger
+  -- claims must exist and must carry the type, visibility and status it is
+  -- recorded with.
+  SELECT COALESCE(array_agg(format('%s(want %s/%s/%s got %s/%s/%s)',
+           o.key, o.etype, o.visibility, o.status,
+           COALESCE(e.event_type,'<absent>'), COALESCE(e.visibility,'<absent>'), COALESCE(e.status,'<absent>'))
+         ORDER BY o.key), '{}')
+    INTO v_drift
+  FROM i2117t.offering o
+  LEFT JOIN public.events e ON e.id = o.event_id
+  WHERE e.id IS NULL
+     OR e.event_type IS DISTINCT FROM o.etype
+     OR e.visibility IS DISTINCT FROM o.visibility
+     OR e.status     IS DISTINCT FROM o.status;
+  IF cardinality(v_drift) > 0 THEN
+    RAISE EXCEPTION 'A-SC-10 NON-VACUITY FAILURE (fixture reconciliation): % fixture(s) do not carry the state the suite records for them: %',
+      cardinality(v_drift), v_drift;
+  END IF;
+
+  SELECT count(*) INTO v_absent FROM i2117t.offering o
+  WHERE NOT EXISTS (SELECT 1 FROM public.events e WHERE e.id = o.event_id AND e.deleted_at IS NULL);
+  IF v_absent > 0 THEN
+    RAISE EXCEPTION 'A-SC-10 NON-VACUITY FAILURE (fixture reconciliation): % recorded fixture(s) are absent or soft-deleted in public.events', v_absent;
+  END IF;
+
+  -- Counts taken from the REAL table, scoped to this suite's brand.
+  SELECT count(DISTINCT e.visibility), count(DISTINCT e.event_type), count(DISTINCT e.status)
+    INTO v_vis, v_types, v_status
+  FROM public.events e
+  WHERE e.brand_id = (SELECT v FROM i2117t.ids WHERE k='brand')
+    AND e.deleted_at IS NULL;
+
   SELECT count(*) INTO v_asserts FROM i2117t.result;
   SELECT count(*) INTO v_allow FROM i2117t.result WHERE verdict='ALLOW' AND outcome='PASS';
   SELECT count(*) INTO v_deny  FROM i2117t.result WHERE verdict='DENY'  AND outcome='PASS';
@@ -1028,7 +1233,7 @@ BEGIN
     RAISE EXCEPTION 'A-SC-10 NON-VACUITY FAILURE (clause 3): NO DENY outcome anywhere in the run -- a suite in which every case allows is a failing suite';
   END IF;
 
-  RAISE NOTICE 'A-SC-10 non-vacuity: % visibility states, % offering types, % status values, % assertions, % allow, % deny',
+  RAISE NOTICE 'A-SC-10 non-vacuity (measured from public.events, ledger reconciled): % visibility states, % offering types, % status values, % assertions, % allow, % deny',
     v_vis, v_types, v_status, v_asserts, v_allow, v_deny;
 END $asc10$;
 
