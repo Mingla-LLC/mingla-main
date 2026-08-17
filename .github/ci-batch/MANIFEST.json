@@ -44,6 +44,11 @@
     "job that would become the new critical path \u2014 a regression, since today they run",
     "suite-results.json precisely so the shards can be rebalanced from evidence after",
     "the first CI run rather than guessed at again.",
+    "  * Suites pinned by .github/scripts/strict-grep/MANIFEST.json. It names workflows",
+    "    as `external:<file>.yml` with no directory prefix, so a scan for the literal",
+    "    string '.github/workflows/<file>.yml' MISSES them \u2014 orch-1386-tester-adversarial",
+    "    slipped through that way and failed META-1383 parity check P4. Check BOTH the",
+    "    `external:` field and `jobKeys` before batching anything.",
     "",
     "SHARDING IS BIN-PACKED FROM MEASURED COST, not by counting suites. The 14 business",
     "suites are far from equal (113s and 98s at the top, 35s at the bottom, 673s total),",
@@ -51,7 +56,7 @@
     "Longest-first into the lightest shard balances them to ~176s. suite-results.json",
     "carries per-suite seconds, so re-run this packing whenever suites are added."
   ],
-  "expectedSuites": 21,
+  "expectedSuites": 20,
   "classes": [
     "business-node20-1",
     "business-node20-2",
@@ -161,32 +166,6 @@
           "name": "Run ISSUE-995 campaign-builder creative suite",
           "cwd": "mingla-admin",
           "run": "node --test src/__tests__/issue995_creative_video_variants.test.js src/__tests__/issue995_creative_video_honesty.tester_adversarial.test.js src/__tests__/issue995_creative_video_not_creatable.test.js"
-        }
-      ]
-    },
-    {
-      "id": "orch-1386-tester-adversarial",
-      "class": "node20-noinstall",
-      "origin": ".github/workflows/orch-1386-tester-adversarial.yml",
-      "originPaths": [
-        "app-mobile/package.json",
-        "app-mobile/package-lock.json",
-        "mingla-business/package.json",
-        "mingla-business/package-lock.json",
-        "mingla-admin/package.json",
-        "mingla-admin/package-lock.json",
-        "mingla-marketing/package.json",
-        "mingla-marketing/package-lock.json",
-        ".github/scripts/strict-grep/orch-1386-framework-major-guard.mjs",
-        ".github/scripts/strict-grep/orch-1386-framework-major-guard.adversarial.test.mjs",
-        ".github/scripts/strict-grep/orch-1386-framework-major-registry.json",
-        ".github/workflows/orch-1386-tester-adversarial.yml"
-      ],
-      "steps": [
-        {
-          "name": "Run ORCH-1386 tester adversarial suite",
-          "cwd": ".",
-          "run": "node --test .github/scripts/strict-grep/orch-1386-framework-major-guard.adversarial.test.mjs"
         }
       ]
     },

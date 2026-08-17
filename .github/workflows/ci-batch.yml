@@ -70,7 +70,18 @@ jobs:
             node: "20"
             install: mingla-business
     steps:
+      # fetch-depth: 0 is REQUIRED, not incidental. Three batched suites
+      # (#1881, #1532, #1996) run `git show <baseline>` / `git diff <baseline>` to
+      # pin a byte-level patch, and their own workflows each asked for full history.
+      # The batch originally used the default shallow clone and #1881 went red on
+      # CI while passing locally, because a depth-1 clone has no baseline commit to
+      # diff against. The generator refused workflows using an ACTION it could not
+      # reproduce, but said nothing about the OPTIONS on the actions it kept — this
+      # is that gap, closed. Any future suite needing deeper checkout config must be
+      # checked here before being folded in.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
