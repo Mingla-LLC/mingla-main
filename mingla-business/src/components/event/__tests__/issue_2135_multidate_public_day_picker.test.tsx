@@ -19,12 +19,16 @@
  *      `/checkout/{id}` it has always been.
  *   3. The URL helper + the cart/session seam that carries the id onward.
  *
+ * The chooser is rendered FOR REAL here (only its data hook is stood in), so the
+ * day rows, their accessible names and their checked state are the actual
+ * shipped component — not a stand-in agreeing with itself.
+ *
  * FAILS-ON-REVERT: delete the `hasOccurrenceChoice && selectedOccurrenceId ===
  * null` gate + the third `checkoutPublicPathWithSeed` argument in
- * `PublicEventPage.handleProceedToCart` and case 1's navigation assertions go
- * red (checkout is entered immediately, with no `eventDateId` in the path).
- * Delete `multiDateDayStrip` / the `ExperienceReservePicker` mount and the
- * exposure assertions go red. See the implementation report for the hash.
+ * `PublicEventPage.handleProceedToCart` and the navigation assertions go red
+ * (checkout is entered immediately, with no `eventDateId` in the path). Delete
+ * the `multiDateDayChooser` mount and the exposure assertions go red. See the
+ * implementation report for the hash.
  *
  * Owner: mingla-implementor.
  */
@@ -192,40 +196,6 @@ jest.mock("../../waitlist/JoinWaitlistSheet", () => ({
 jest.mock("../SeeWhosGoingGate", () => ({
   __esModule: true,
   default: () => null,
-}));
-
-// The SHARED occurrence picker, reused verbatim from the /exp/ surface. Stood in
-// for here so the test can read the occurrences it was handed and drive its
-// `onConfirm` contract — the same `{ eventDateId, quantity }` selection the
-// experience route already consumes.
-jest.mock("../../experience/ExperienceReservePicker", () => ({
-  ExperienceReservePicker: (props: {
-    visible: boolean;
-    mode: string;
-    dates: ReadonlyArray<{ id: string }>;
-    onConfirm: (s: { eventDateId: string; quantity: number }) => void;
-  }) => (
-    <View testID="issue-2135-picker">
-      <Text testID="issue-2135-picker-mode">{props.mode}</Text>
-      <Text testID="issue-2135-picker-visible">{String(props.visible)}</Text>
-      <Text testID="issue-2135-picker-date-count">
-        {String(props.dates.length)}
-      </Text>
-      {props.dates.map((d) => (
-        <Pressable
-          key={d.id}
-          testID={`issue-2135-occurrence-${d.id}`}
-          // I-39 — every Pressable carries an accessible name, stand-in or not.
-          // The REAL picker labels each occurrence row with its formatted date
-          // and a radio role; this stand-in mirrors that contract rather than
-          // shipping an unlabelled control the gate would (rightly) reject.
-          accessibilityRole="radio"
-          accessibilityLabel={`Occurrence ${d.id}`}
-          onPress={() => props.onConfirm({ eventDateId: d.id, quantity: 1 })}
-        />
-      ))}
-    </View>
-  ),
 }));
 
 jest.mock("../FoundationEventPreview", () => ({
@@ -404,55 +374,72 @@ afterEach(async () => {
 // ───────────────────────────────────────────────────────────────────────────
 
 describe("issue #2135 — a multi-date event exposes every occurrence", () => {
-  test("the page NAMES both days (the second day was previously absent everywhere)", async () => {
+  // Accessible name of one day row, which is also what a screen reader announces.
+  const rowLabel = (tree: Renderer, id: string): string => {
+    const node = tree.root.findAllByProps({ testID: `issue-2135-day-row-${id}` })[0];
+    if (node === undefined) throw new Error(`no row for ${id}`);
+    return String(node.props.accessibilityLabel ?? "");
+  };
+  const rowChecked = (tree: Renderer, id: string): boolean => {
+    const node = tree.root.findAllByProps({ testID: `issue-2135-day-row-${id}` })[0];
+    if (node === undefined) throw new Error(`no row for ${id}`);
+    return (node.props.accessibilityState as { checked?: boolean }).checked === true;
+  };
+
+  test("BOTH days are on the page with no tap — the exact thing that was missing", async () => {
     occurrenceData = TWO_DAY_OCCURRENCES;
     const tree = await mount("multi_date");
 
-    const summary = textOf(tree, "issue-2135-multidate-day-strip-summary");
-    // The live repro's whole DOM contained "22 Aug" and nothing at all for the
-    // 23rd. Both days must now be rendered text on the page itself.
-    expect(summary).toContain("Sat 22 Aug");
-    expect(summary).toContain("Sun 23 Aug");
+    // The live repro's whole accessibility tree contained one date node and no
+    // occurrence of the 23rd anywhere. Both days are now rendered rows, present
+    // on first paint — not behind a sheet the guest has to know to open.
+    expect(rowLabel(tree, OCC_DAY_ONE)).toContain("Sat 22 Aug");
+    expect(rowLabel(tree, OCC_DAY_TWO)).toContain("Sun 23 Aug");
     expect(
-      tree.root.findAllByProps({ testID: "issue-2135-multidate-day-strip" })
-        .length,
+      tree.root.findAllByProps({ testID: "issue-2135-day-chooser" }).length,
     ).toBeGreaterThan(0);
   });
 
-  test("EVERY materialised occurrence is handed to the shared slots picker", async () => {
+  test("EVERY materialised occurrence gets its own selectable row", async () => {
     occurrenceData = TWO_DAY_OCCURRENCES;
     const tree = await mount("multi_date");
 
-    expect(textOf(tree, "issue-2135-picker-mode")).toBe("slots");
-    expect(textOf(tree, "issue-2135-picker-date-count")).toBe("2");
-    expect(
-      tree.root.findAllByProps({ testID: `issue-2135-occurrence-${OCC_DAY_ONE}` })
-        .length,
-    ).toBeGreaterThan(0);
-    expect(
-      tree.root.findAllByProps({ testID: `issue-2135-occurrence-${OCC_DAY_TWO}` })
-        .length,
-    ).toBeGreaterThan(0);
+    for (const id of [OCC_DAY_ONE, OCC_DAY_TWO]) {
+      const rows = tree.root.findAllByProps({ testID: `issue-2135-day-row-${id}` });
+      expect(rows.length).toBeGreaterThan(0);
+      // I-39 + the a11y contract: named, radio-roled, and unchecked to start.
+      expect(rows[0].props.accessibilityRole).toBe("radio");
+      expect(String(rows[0].props.accessibilityLabel ?? "").length).toBeGreaterThan(0);
+    }
+    expect(rowChecked(tree, OCC_DAY_ONE)).toBe(false);
+    expect(rowChecked(tree, OCC_DAY_TWO)).toBe(false);
   });
 
-  test("checkout is not entered until a day is chosen — it opens the picker instead", async () => {
+  test("checkout is refused until a day is chosen, with an explicit prompt", async () => {
     occurrenceData = TWO_DAY_OCCURRENCES;
     const tree = await mount("multi_date");
 
-    expect(textOf(tree, "issue-2135-picker-visible")).toBe("false");
+    expect(
+      tree.root.findAllByProps({ testID: "issue-2135-day-chooser-prompt" }),
+    ).toHaveLength(0);
     await act(async () => press(tree, "issue-2135-proceed"));
 
     // The old behaviour silently sold day one here.
     expect(router.push).not.toHaveBeenCalled();
-    expect(textOf(tree, "issue-2135-picker-visible")).toBe("true");
+    expect(
+      tree.root.findAllByProps({ testID: "issue-2135-day-chooser-prompt" }).length,
+    ).toBeGreaterThan(0);
   });
 
   test("choosing the SECOND day carries THAT occurrence id into checkout", async () => {
     occurrenceData = TWO_DAY_OCCURRENCES;
     const tree = await mount("multi_date");
 
+    await act(async () => press(tree, `issue-2135-day-row-${OCC_DAY_TWO}`));
+    expect(rowChecked(tree, OCC_DAY_TWO)).toBe(true);
+    expect(rowChecked(tree, OCC_DAY_ONE)).toBe(false);
+
     await act(async () => press(tree, "issue-2135-proceed"));
-    await act(async () => press(tree, `issue-2135-occurrence-${OCC_DAY_TWO}`));
 
     expect(router.push).toHaveBeenCalledTimes(1);
     const pushed = String(router.push.mock.calls[0][0]);
@@ -462,21 +449,20 @@ describe("issue #2135 — a multi-date event exposes every occurrence", () => {
     expect(pushed).not.toContain(OCC_DAY_ONE);
   });
 
-  test("the strip names the chosen day after the pick (and stops nagging)", async () => {
+  test("picking clears the prompt and the choice survives to the next attempt", async () => {
     occurrenceData = TWO_DAY_OCCURRENCES;
     const tree = await mount("multi_date");
 
-    await act(async () => press(tree, "issue-2135-multidate-day-strip-open"));
-    expect(textOf(tree, "issue-2135-picker-visible")).toBe("true");
-    await act(async () => press(tree, `issue-2135-occurrence-${OCC_DAY_TWO}`));
+    await act(async () => press(tree, "issue-2135-proceed"));
+    expect(
+      tree.root.findAllByProps({ testID: "issue-2135-day-chooser-prompt" }).length,
+    ).toBeGreaterThan(0);
 
-    // Opened by "browse", so confirming records the day WITHOUT navigating.
-    expect(router.push).not.toHaveBeenCalled();
-    expect(textOf(tree, "issue-2135-multidate-day-strip-summary")).toBe(
-      "Sun 23 Aug",
-    );
+    await act(async () => press(tree, `issue-2135-day-row-${OCC_DAY_TWO}`));
+    expect(
+      tree.root.findAllByProps({ testID: "issue-2135-day-chooser-prompt" }),
+    ).toHaveLength(0);
 
-    // …and the next purchase attempt goes straight through with that day.
     await act(async () => press(tree, "issue-2135-proceed"));
     expect(String(router.push.mock.calls[0][0])).toContain(
       `eventDateId=${OCC_DAY_TWO}`,
@@ -488,11 +474,8 @@ describe("issue #2135 — a multi-date event exposes every occurrence", () => {
     const tree = await mount("multi_date");
 
     expect(
-      tree.root.findAllByProps({ testID: "issue-2135-multidate-day-strip" }),
+      tree.root.findAllByProps({ testID: "issue-2135-day-chooser" }),
     ).toHaveLength(0);
-    expect(tree.root.findAllByProps({ testID: "issue-2135-picker" })).toHaveLength(
-      0,
-    );
     await act(async () => press(tree, "issue-2135-proceed"));
     expect(router.push).toHaveBeenCalledWith("/checkout/evt-2135");
   });
@@ -503,16 +486,16 @@ describe("issue #2135 — a multi-date event exposes every occurrence", () => {
 // ───────────────────────────────────────────────────────────────────────────
 
 describe("issue #2135 — a single-date event is unchanged", () => {
-  test("renders NO day strip and NO picker", async () => {
+  test("renders NO day chooser and NO day rows", async () => {
     const tree = await mount("single");
 
     expect(
-      tree.root.findAllByProps({ testID: "issue-2135-multidate-day-strip" }),
+      tree.root.findAllByProps({ testID: "issue-2135-day-chooser" }),
     ).toHaveLength(0);
-    expect(tree.root.findAllByProps({ testID: "issue-2135-picker" })).toHaveLength(
-      0,
-    );
-    // The page still renders its body — this is "no picker", not "no page".
+    expect(
+      tree.root.findAllByProps({ testID: "issue-2135-day-chooser-prompt" }),
+    ).toHaveLength(0);
+    // The page still renders its body — this is "no chooser", not "no page".
     expect(
       tree.root.findAllByProps({ testID: "issue-2135-foundation" }).length,
     ).toBeGreaterThan(0);
