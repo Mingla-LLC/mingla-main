@@ -220,6 +220,94 @@ function isIntakeAnswerEmpty(type: string, answer: unknown): boolean {
   }
 }
 
+/**
+ * issue #2136 [free-ticket checkout] — the issued-ticket shape the buyer
+ * contract (`TicketCheckoutFreeCompleted.tickets` in
+ * `mingla-business/src/services/ticketCheckoutService.ts`) declares. Kept
+ * structurally identical to what `issue_1930_ticket_checkout_finalize_base`
+ * builds, so the read-back below and the RPC's own fresh-mint envelope are
+ * interchangeable.
+ */
+export interface IssuedTicketSummary {
+  ticketId: string;
+  ticketTypeId: string | null;
+  ticketName: string;
+  qrPayload: string;
+  status: string;
+}
+
+function normalizeIssuedTickets(value: unknown): IssuedTicketSummary[] {
+  if (!Array.isArray(value)) return [];
+  const rows: IssuedTicketSummary[] = [];
+  for (const entry of value) {
+    if (entry === null || typeof entry !== "object") continue;
+    const row = entry as Record<string, unknown>;
+    const ticketId = typeof row.ticketId === "string" ? row.ticketId : "";
+    if (ticketId.length === 0) continue;
+    rows.push({
+      ticketId,
+      ticketTypeId: typeof row.ticketTypeId === "string"
+        ? row.ticketTypeId
+        : null,
+      ticketName: typeof row.ticketName === "string" ? row.ticketName : "",
+      qrPayload: typeof row.qrPayload === "string" ? row.qrPayload : "",
+      status: typeof row.status === "string" ? row.status : "valid",
+    });
+  }
+  return rows;
+}
+
+/**
+ * issue #2136 — resolve the tickets an order actually issued.
+ *
+ * `biz_ticket_checkout_finalize` returns tickets only on its fresh-mint arm;
+ * its idempotent-replay arm (`order_id IS NOT NULL`) answers `{outcome,orderId}`
+ * with none. Prefer the envelope when it carries them (no extra round trip on
+ * the common path) and otherwise read the canonical `tickets` rows by order id.
+ * Returning `[]` is meaningful: the caller REFUSES to report a completed free
+ * checkout without at least one issued ticket.
+ */
+export async function readIssuedTicketsForOrder(
+  // deno-lint-ignore no-explicit-any
+  client: any,
+  orderId: string,
+  envelopeTickets: unknown,
+): Promise<IssuedTicketSummary[]> {
+  const fromEnvelope = normalizeIssuedTickets(envelopeTickets);
+  if (fromEnvelope.length > 0) return fromEnvelope;
+  const { data, error } = await client
+    .from("tickets")
+    .select("id, ticket_type_id, qr_code, status, ticket_types(name)")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.error(
+      "[ticket-checkout-create] issued-ticket read-back failed",
+      orderId,
+      error.message,
+    );
+    return [];
+  }
+  const rows = Array.isArray(data) ? data : [];
+  return normalizeIssuedTickets(
+    rows.map((row: Record<string, unknown>) => {
+      const joined = row.ticket_types;
+      const ticketTypeName = joined !== null && typeof joined === "object"
+        ? (Array.isArray(joined)
+          ? (joined[0] as Record<string, unknown> | undefined)?.name
+          : (joined as Record<string, unknown>).name)
+        : undefined;
+      return {
+        ticketId: row.id,
+        ticketTypeId: row.ticket_type_id,
+        ticketName: typeof ticketTypeName === "string" ? ticketTypeName : "",
+        qrPayload: row.qr_code,
+        status: row.status,
+      };
+    }),
+  );
+}
+
 export interface TicketCheckoutCreateDeps {
   userIdFromAuthHeader: typeof userIdFromAuthHeader;
   serviceClient: typeof serviceClient;
@@ -717,31 +805,135 @@ export const createTicketCheckoutCreateHandler = (
           409,
         );
       }
-      const orderId = String(
-        (finalized as Record<string, unknown>).orderId ?? "",
+      // issue #2136 [free-ticket checkout] — BRANCH ON THE OUTCOME, NOT ON
+      // OBJECT TRUTHINESS.
+      //
+      // `biz_ticket_checkout_finalize` always resolves to a jsonb envelope, so
+      // the `!finalized` guard above can only ever catch a transport failure.
+      // `{"outcome":"unavailable"}` and `{"outcome":"paid_reversal_pending"}`
+      // are BOTH truthy objects that describe a finalize which created NO
+      // order — and until this change they fell straight through into a 200
+      // labelled `free_completed`. The guest was told a ticket that does not
+      // exist had been reserved. Only `outcome === 'finalized'` may be
+      // reported as a completed free checkout.
+      const finalizedRecord = finalized as Record<string, unknown>;
+      const finalizeOutcome = typeof finalizedRecord.outcome === "string"
+        ? finalizedRecord.outcome
+        : "";
+      if (finalizeOutcome === "unavailable") {
+        // The sale lost current truth between session-create and finalize (or
+        // the session vanished). Nothing was minted and nothing was charged.
+        console.error(
+          "[ticket-checkout-create] free finalize unavailable",
+          checkoutSessionId,
+        );
+        return jsonResponse(checkoutUnavailableResponse(), 409);
+      }
+      if (finalizeOutcome === "paid_reversal_pending") {
+        // Mirrors the paid path's handling verbatim in shape:
+        // ticket-checkout-confirm/index.ts returns HTTP 409 with the bounded
+        // `checkout_unavailable` token for this exact outcome. The database
+        // owns the reversal/revocation bookkeeping; the Edge only reports the
+        // bounded state. Post-#2136 a free session cannot reach this outcome
+        // (the no-value arm answers `unavailable` instead) — it is kept as an
+        // explicit handled branch so a future contract change surfaces here
+        // rather than as a fake success.
+        console.error(
+          "[ticket-checkout-create] free finalize reversal-pending",
+          checkoutSessionId,
+          String(finalizedRecord.reversalReason ?? ""),
+        );
+        return jsonResponse(checkoutUnavailableResponse(), 409);
+      }
+      if (finalizeOutcome !== "finalized") {
+        console.error(
+          "[ticket-checkout-create] free finalize unknown outcome",
+          checkoutSessionId,
+          finalizeOutcome,
+        );
+        return jsonResponse(
+          {
+            error: "checkout_finalize_failed",
+            detail: finalizeOutcome.length > 0
+              ? `unexpected_outcome:${finalizeOutcome}`
+              : "missing_outcome",
+          },
+          409,
+        );
+      }
+      const orderId = String(finalizedRecord.orderId ?? "");
+      if (orderId.length === 0) {
+        console.error(
+          "[ticket-checkout-create] free finalize returned no order",
+          checkoutSessionId,
+        );
+        return jsonResponse(
+          { error: "checkout_finalize_failed", detail: "order_missing" },
+          409,
+        );
+      }
+      // issue #2136 — SUPPLY `tickets`, read back from the canonical rows.
+      //
+      // The wrapper's fresh-mint arm merges the base RPC's envelope (which DOES
+      // carry `tickets`), but its idempotent-replay arm — the `order_id IS NOT
+      // NULL` early return — answers `{outcome,orderId}` with no tickets at
+      // all. A retried tap therefore produced a `free_completed` body whose
+      // `tickets` was undefined, which is what the buyer screen crashed on.
+      // Reading the issued rows by order id covers BOTH arms with one code
+      // path, and does not change the shared RPC's return shape (which the
+      // Stripe webhook, the Paystack webhook, ticket-checkout-confirm and
+      // reconcile-stuck-checkouts all consume).
+      const freeTickets = await readIssuedTicketsForOrder(
+        supabase,
+        orderId,
+        finalizedRecord.tickets,
       );
-      if (orderId) await dispatchTicketConfirmation(orderId);
+      if (freeTickets.length === 0) {
+        console.error(
+          "[ticket-checkout-create] free finalize order has no tickets",
+          checkoutSessionId,
+          orderId,
+        );
+        return jsonResponse(
+          { error: "checkout_finalize_failed", detail: "tickets_missing" },
+          409,
+        );
+      }
+      await dispatchTicketConfirmation(orderId);
       // ISSUE-865 WP-B — ad-conversion CAPI send for the FREE-order path (its own
       // finalize; no webhook backup). FIRE-AND-FORGET (NOT awaited) so the buyer's
       // create response is never delayed — this path is on the buyer's tap→confirm
       // wait. Idempotent + fail-open; value_cents = 0 for a free RSVP. event_id
       // = orderId.
-      if (orderId) {
-        void fireAdConversion(supabase as never, { orderId, surface: "web" })
-          .catch(
-            (adConvErr) => {
-              console.warn(
-                "[ticket-checkout-create] ad-conversion fire failed (non-fatal):",
-                adConvErr instanceof Error
-                  ? adConvErr.message
-                  : String(adConvErr),
-              );
-            },
-          );
-      }
+      void fireAdConversion(supabase as never, { orderId, surface: "web" })
+        .catch(
+          (adConvErr) => {
+            console.warn(
+              "[ticket-checkout-create] ad-conversion fire failed (non-fatal):",
+              adConvErr instanceof Error
+                ? adConvErr.message
+                : String(adConvErr),
+            );
+          },
+        );
+      // issue #2136 — the envelope is spread FIRST and every field the buyer
+      // contract (`TicketCheckoutFreeCompleted`) declares is then written
+      // explicitly, so the idempotent-replay arm — which answers only
+      // `{outcome,orderId}` — can no longer produce `tickets: undefined`,
+      // `totalCents: NaN` or a missing currency on the confirm screen.
       return jsonResponse({
         kind: "free_completed",
-        ...finalized,
+        ...finalizedRecord,
+        orderId,
+        checkoutSessionId,
+        eventId: String(finalizedRecord.eventId ?? eventId),
+        paymentStatus: "paid",
+        totalCents: Number(finalizedRecord.totalCents ?? totalCents),
+        currency: String(finalizedRecord.currency ?? session.currency ?? ""),
+        notificationStatus: String(
+          finalizedRecord.notificationStatus ?? "queued",
+        ),
+        tickets: freeTickets,
         buyerPhoneE164,
         buyerStatusToken,
       });
