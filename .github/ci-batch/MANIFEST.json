@@ -42,10 +42,14 @@
     "",
     "SHARDING: MEASURED locally, the 14 business suites take ~730s end to end. As ONE",
     "job that would become the new critical path \u2014 a regression, since today they run",
-    "in parallel. They are split 4 ways. The split is currently round-robin by count,",
-    "which is a FIRST CUT, not a balanced one: the runner reports per-suite seconds in",
     "suite-results.json precisely so the shards can be rebalanced from evidence after",
-    "the first CI run rather than guessed at again."
+    "the first CI run rather than guessed at again.",
+    "",
+    "SHARDING IS BIN-PACKED FROM MEASURED COST, not by counting suites. The 14 business",
+    "suites are far from equal (113s and 98s at the top, 35s at the bottom, 673s total),",
+    "so an even split by count would leave one shard setting the critical path alone.",
+    "Longest-first into the lightest shard balances them to ~176s. suite-results.json",
+    "carries per-suite seconds, so re-run this packing whenever suites are added."
   ],
   "expectedSuites": 21,
   "classes": [
@@ -188,7 +192,7 @@
     },
     {
       "id": "971-paystack-onboard-scroll-tests",
-      "class": "business-node20-1",
+      "class": "business-node20-4",
       "origin": ".github/workflows/971-paystack-onboard-scroll-tests.yml",
       "originPaths": [
         "mingla-business/src/components/brand/**",
@@ -209,7 +213,7 @@
     },
     {
       "id": "issue-1027-keyboard-and-datetime-tests",
-      "class": "business-node20-2",
+      "class": "business-node20-1",
       "origin": ".github/workflows/issue-1027-keyboard-and-datetime-tests.yml",
       "originPaths": [
         "packages/location-input/src/MapboxAddressInput.tsx",
@@ -305,7 +309,7 @@
     },
     {
       "id": "issue-1035-theme-sheet-hoist-tests",
-      "class": "business-node20-3",
+      "class": "business-node20-2",
       "origin": ".github/workflows/issue-1035-theme-sheet-hoist-tests.yml",
       "originPaths": [
         "mingla-business/src/components/event/EditPublishedScreen.tsx",
@@ -329,7 +333,7 @@
     },
     {
       "id": "issue-1036-contrast-chip-removal-tests",
-      "class": "business-node20-4",
+      "class": "business-node20-1",
       "origin": ".github/workflows/issue-1036-contrast-chip-removal-tests.yml",
       "originPaths": [
         "mingla-business/src/components/theme/ThemeSheet.tsx",
@@ -358,7 +362,7 @@
     },
     {
       "id": "issue-1348-icloud-video-patch-tests",
-      "class": "business-node20-1",
+      "class": "business-node20-3",
       "origin": ".github/workflows/issue-1348-icloud-video-patch-tests.yml",
       "originPaths": [
         "mingla-business/patches/expo-image-picker+17.0.11.patch",
@@ -396,7 +400,7 @@
     },
     {
       "id": "issue-1532-tester-adversarial",
-      "class": "business-node20-2",
+      "class": "business-node20-1",
       "origin": ".github/workflows/issue-1532-tester-adversarial.yml",
       "originPaths": [],
       "steps": [
@@ -414,7 +418,7 @@
     },
     {
       "id": "issue-1881-business-signin-transient-failure-tests",
-      "class": "business-node20-3",
+      "class": "business-node20-4",
       "origin": ".github/workflows/issue-1881-business-signin-transient-failure-tests.yml",
       "originPaths": [
         "mingla-business/src/context/AuthContext.tsx",
@@ -450,7 +454,7 @@
     },
     {
       "id": "issue-1996-business-desktop-sharing-tests",
-      "class": "business-node20-4",
+      "class": "business-node20-3",
       "origin": ".github/workflows/issue-1996-business-desktop-sharing-tests.yml",
       "originPaths": [
         "mingla-business/src/components/ui/ShareModal.tsx",
@@ -493,7 +497,7 @@
     },
     {
       "id": "issue-948-w2-bank-route-web-tests",
-      "class": "business-node20-1",
+      "class": "business-node20-4",
       "origin": ".github/workflows/issue-948-w2-bank-route-web-tests.yml",
       "originPaths": [
         "mingla-business/app/brand/**/connect.tsx",
@@ -612,7 +616,7 @@
     },
     {
       "id": "orch-1404-invite-error-recovery-tests",
-      "class": "business-node20-1",
+      "class": "business-node20-2",
       "origin": ".github/workflows/orch-1404-invite-error-recovery-tests.yml",
       "originPaths": [
         "mingla-business/app/**",
@@ -634,7 +638,7 @@
     },
     {
       "id": "production-readiness-audit",
-      "class": "business-node20-2",
+      "class": "business-node20-3",
       "origin": ".github/workflows/production-readiness-audit.yml",
       "originPaths": [
         "scripts/audit/**",
