@@ -26,6 +26,11 @@ import {
   createTicketCheckoutCreateHandler,
   type TicketCheckoutCreateDeps,
 } from "../index.ts";
+import {
+  ticketCheckoutAccessDecision,
+  ticketCheckoutAccessDenial,
+  ticketCheckoutAccessDenialFromDbMessage,
+} from "../../_shared/ticketCheckoutAccess.ts";
 
 const EVENT_ID = "10000000-0000-4000-8000-00000000e101";
 const TIER_ID = "20000000-0000-4000-8000-00000000e102";
@@ -193,6 +198,125 @@ Deno.test("#2101 the decision input is the TOKEN-derived user — a forged body 
   // Continuation snapshots are never supplied by the Edge — a fresh decision.
   assertEquals(client.decisionArgs[0].p_snapshot_mode, null);
   assertEquals(client.decisionArgs[0].p_snapshot_membership_id, null);
+});
+
+Deno.test("#2101 an ANONYMOUS caller cannot name themselves through the body", async () => {
+  // The narrow window the independent tester found: the forged-body case above
+  // always supplies a non-null token user, so an authority FALLBACK that only
+  // fires when the token yields null — `userId ?? body.buyerUserId` — is
+  // invisible to it. This case closes that window.
+  const client = new FakeServiceClient();
+  client.decision = "sign_in_required";
+  const res = await createTicketCheckoutCreateHandler(makeDeps(client, null))(
+    request({
+      surface: "web",
+      userId: FORGED_USER,
+      buyerUserId: FORGED_USER,
+      p_buyer_user_id: FORGED_USER,
+      buyer: {
+        name: "Buyer Person",
+        email: "buyer@issue2101.test",
+        phone: "+15551234567",
+        userId: FORGED_USER,
+      },
+    }),
+  );
+  // The decision must have been asked about NOBODY, not about the forged UUID.
+  assertEquals(client.decisionArgs.length, 1);
+  assertEquals(client.decisionArgs[0].p_buyer_user_id, null);
+  assertEquals(res.status, 401);
+  assertEquals((await res.json()).error, "sign_in_required");
+  for (const effect of SIDE_EFFECTS) {
+    assert(!client.operations.includes(effect), `${effect} ran for an anonymous forged-body caller`);
+  }
+});
+
+Deno.test("#2101 an anonymous caller on an UNRESTRICTED event still passes null, not a body UUID", async () => {
+  // The same fallback would also be invisible on an unrestricted event, where
+  // the request proceeds — so assert the decision INPUT, not just the status.
+  const client = new FakeServiceClient();
+  client.decision = "allowed_unrestricted";
+  await createTicketCheckoutCreateHandler(makeDeps(client, null))(
+    request({ surface: "web", buyerUserId: FORGED_USER }),
+  );
+  assertEquals(client.decisionArgs.length, 1);
+  assertEquals(client.decisionArgs[0].p_buyer_user_id, null);
+});
+
+Deno.test("#2101 shared adapter: a NON-STRING decision payload throws (fail-closed)", async () => {
+  // ticketCheckoutAccess.ts fail-closed branch. A stub or a drifted RPC that
+  // answers with null/undefined/an object must NOT be read as an answer.
+  for (const payload of [null, undefined, 42, { state: "allowed_named" }, []]) {
+    const client = {
+      // deno-lint-ignore require-await
+      rpc: async () => ({ data: payload, error: null }),
+    };
+    let threw = false;
+    try {
+      await ticketCheckoutAccessDecision(client, {
+        eventId: EVENT_ID,
+        buyerUserId: ALLOWED_USER,
+      });
+    } catch (error) {
+      threw = true;
+      assertEquals(
+        (error as Error).message,
+        "checkout_access_decision_unavailable",
+      );
+    }
+    assert(threw, `a ${typeof payload} decision payload was accepted as an answer`);
+  }
+});
+
+Deno.test("#2101 shared adapter: every non-allow decision maps to a denial, and only two allow", async () => {
+  // Pins the mapping table itself, so widening the allow set is caught here and
+  // not only through a handler round trip.
+  assertEquals(ticketCheckoutAccessDenial("allowed_unrestricted"), null);
+  assertEquals(ticketCheckoutAccessDenial("allowed_named"), null);
+  assertEquals(ticketCheckoutAccessDenial("sign_in_required"), {
+    error: "sign_in_required",
+    status: 401,
+  });
+  for (
+    const decision of [
+      "checkout_restricted",
+      "snapshot_stale",
+      "event_unavailable",
+    ] as const
+  ) {
+    assertEquals(ticketCheckoutAccessDenial(decision), {
+      error: "checkout_restricted",
+      status: 403,
+    });
+  }
+});
+
+Deno.test("#2101 shared adapter: the DB-message mapping covers both codes and nothing else", async () => {
+  // The database re-decides under the event -> brand lock and RAISEs. If that
+  // mapping is removed or widened, a restricted buyer sees a generic 409 (or an
+  // unrelated failure is mislabelled as a denial).
+  assertEquals(
+    ticketCheckoutAccessDenialFromDbMessage(
+      'unexpected error: checkout_sign_in_required',
+    ),
+    { error: "sign_in_required", status: 401 },
+  );
+  assertEquals(
+    ticketCheckoutAccessDenialFromDbMessage("P0001: checkout_restricted"),
+    { error: "checkout_restricted", status: 403 },
+  );
+  // Everything else must pass through untouched.
+  for (
+    const message of [
+      "event_not_selling",
+      "payment_plan_choice_invalid",
+      "",
+      null,
+      undefined,
+    ]
+  ) {
+    assertEquals(ticketCheckoutAccessDenialFromDbMessage(message), null);
+  }
 });
 
 Deno.test("#2101 an unavailable decision FAILS CLOSED with 403, never open", async () => {

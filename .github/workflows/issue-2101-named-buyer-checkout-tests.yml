@@ -18,6 +18,8 @@ on:
       - "mingla-business/src/hooks/usePublicTicketCheckoutRouteAccess.ts"
       - "mingla-business/src/hooks/usePublicTicketCheckoutRouteAccess.native.ts"
       - "mingla-business/src/hooks/__tests__/usePublicTicketCheckoutRouteAccess.issue2101.native.test.tsx"
+      - "mingla-business/src/hooks/__tests__/usePublicTicketCheckoutRouteAccess.issue2101.web.test.tsx"
+      - "mingla-business/src/hooks/__tests__/usePublicTicketCheckoutRouteAccess.issue2101.tester_adversarial.test.tsx"
       - "mingla-business/src/components/event/EventTicketCheckoutAccessCard.tsx"
       - "mingla-business/src/components/event/EventTicketCheckoutAccessCard.native.tsx"
       - "mingla-business/src/components/event/TicketCheckoutAccessNotice.tsx"
@@ -93,6 +95,13 @@ jobs:
       # The mandated Event render-proof: both layouts, all three checkout
       # entries, per-control and per-handler revert isolation.
       - run: npx jest src/components/event/__tests__/PublicEventPage.issue2101.test.tsx --runInBand
+      # The REAL web adapter, executed. Without this, deleting one line from the
+      # `blocked` disjunction re-enables every purchase control on all three
+      # surfaces with the whole lane still green.
+      - run: >-
+          npx jest --runInBand
+          src/hooks/__tests__/usePublicTicketCheckoutRouteAccess.issue2101.web.test.tsx
+          src/hooks/__tests__/usePublicTicketCheckoutRouteAccess.issue2101.tester_adversarial.test.tsx
       # F-3 — the ONLY thing that detects an EMPTIED .native half.
       - run: >-
           npx jest --runInBand

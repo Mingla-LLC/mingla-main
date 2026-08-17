@@ -48,6 +48,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const ROOT = process.cwd().endsWith("mingla-business")
   ? path.resolve(process.cwd(), "..")
@@ -492,6 +493,144 @@ const checkAdapters = () => {
   }
 };
 
+/**
+ * The balanced `{…}` block that follows `marker`. Used instead of a character
+ * window: a window wide enough to contain a construct is also wide enough to
+ * reach the NEXT one, so a deleted guard can be "found" in its neighbour and
+ * the clause passes for the wrong reason.
+ */
+const blockAfter = (source, marker) => {
+  const at = source.indexOf(marker);
+  if (at < 0) return null;
+  const open = source.indexOf("{", at);
+  if (open < 0) return null;
+  let depth = 0;
+  for (let i = open; i < source.length; i += 1) {
+    if (source[i] === "{") depth += 1;
+    else if (source[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(open, i + 1);
+    }
+  }
+  return null;
+};
+
+/** The condition text of `if (<cond>) {` starting at `marker`. */
+const conditionAt = (source, marker) => {
+  const at = source.indexOf(marker);
+  if (at < 0) return null;
+  const open = source.indexOf("(", at);
+  if (open < 0) return null;
+  let depth = 0;
+  for (let i = open; i < source.length; i += 1) {
+    if (source[i] === "(") depth += 1;
+    else if (source[i] === ")") {
+      depth -= 1;
+      if (depth === 0) return source.slice(open + 1, i);
+    }
+  }
+  return null;
+};
+
+// ── SPEC §9 — the Edge fence. The guard previously carried ZERO Edge
+//    assertions, so a body-UUID authority fallback (`userId ?? body.…`) passed
+//    it untouched. The identity input, the ordering, the bounded denial
+//    contract and the fail-closed branches are all pinned here.
+export const checkEdgeFenceOn = (edge, shared) => {
+  const found = [];
+  const fail = (_clause, detail) => found.push(detail);
+  if (edge === null || shared === null) {
+    fail("SPEC-9", "the Edge fence sources are missing");
+    return found;
+  }
+
+  // 1. The decision's identity input is the TOKEN-derived user, with no
+  //    fallback of any kind. This is the body-UUID gate SPEC §9 requires.
+  if (!/buyerUserId:\s*userId\s*,/.test(edge)) {
+    fail("SPEC-9", "the decision is not called with the bare token-derived `userId`");
+  }
+  if (/buyerUserId:\s*userId\s*(\?\?|\|\|)/.test(edge)) {
+    fail(
+      "SPEC-9",
+      "the decision's identity input has a FALLBACK — a client body field can name the buyer",
+    );
+  }
+  // No client-supplied buyer identity may be read anywhere in the handler.
+  for (const forged of ["body.buyerUserId", "body.userId", "buyer.userId"]) {
+    if (edge.includes(forged)) {
+      fail("SPEC-9", `the handler reads a client-supplied buyer identity: ${forged}`);
+    }
+  }
+
+  // 2. Ordering — the decision runs BEFORE the event-date read, the pricing
+  //    resolve, the session RPC and any provider call.
+  const decisionAt = edge.indexOf("ticketCheckoutAccessDecision(");
+  if (decisionAt < 0) {
+    fail("SPEC-9", "ticket-checkout-create does not call the access decision");
+  } else {
+    for (
+      const [label, needle] of [
+        ["the event-date read", 'from("event_dates")'],
+        ["the create-session RPC", '"biz_ticket_checkout_create_session"'],
+        ["the pricing resolve", '"resolve_event_pricing_inputs"'],
+      ]
+    ) {
+      const at = edge.indexOf(needle);
+      if (at >= 0 && at < decisionAt) {
+        fail("SPEC-9", `${label} runs BEFORE the access decision`);
+      }
+    }
+  }
+
+  // 3. The bounded denial contract, and the fail-closed catch.
+  if (!/ticketCheckoutAccessDenial\(/.test(edge)) {
+    fail("SPEC-9", "the denial mapping is not applied in the handler");
+  }
+  const catchBlock = blockAfter(edge, "} catch (accessError) {".slice(2));
+  if (
+    catchBlock === null || !catchBlock.includes('"checkout_restricted"') ||
+    !catchBlock.includes("403")
+  ) {
+    fail("SPEC-9", "a decision failure does not FAIL CLOSED with a 403 checkout_restricted");
+  }
+
+  // 4. The shared adapter's fail-closed branches.
+  const nonStringBlock = blockAfter(shared, 'if (typeof data !== "string")');
+  if (nonStringBlock === null || !nonStringBlock.includes("throw new Error")) {
+    fail("SPEC-9", "a non-string decision payload is not rejected — a stub/drifted RPC would read as an answer");
+  }
+  const rpcErrorBlock = blockAfter(shared, "if (error !== null");
+  if (rpcErrorBlock === null || !rpcErrorBlock.includes("throw new Error")) {
+    fail("SPEC-9", "an RPC error is not rejected — a transport failure would read as an answer");
+  }
+  const allowCondition = conditionAt(shared, 'if (decision === "allowed_unrestricted"');
+  if (allowCondition === null) {
+    fail("SPEC-9", "the allow set is not recognisable");
+  } else if (/snapshot_stale|checkout_restricted|event_unavailable/.test(allowCondition)) {
+    fail("SPEC-9", "the allow set has been WIDENED beyond the two allowed decisions");
+  }
+  const signInBlock = blockAfter(shared, 'if (decision === "sign_in_required")');
+  if (
+    signInBlock === null || !signInBlock.includes("401") ||
+    !signInBlock.includes('"sign_in_required"')
+  ) {
+    fail("SPEC-9", "sign_in_required does not map to a 401 sign_in_required denial");
+  }
+  if (!/error:\s*"checkout_restricted",\s*status:\s*403/.test(shared)) {
+    fail("SPEC-9", "the single indistinguishable 403 denial is missing");
+  }
+  return found;
+};
+
+const checkEdgeFence = () => {
+  for (
+    const detail of checkEdgeFenceOn(
+      read("supabase/functions/ticket-checkout-create/index.ts"),
+      read("supabase/functions/_shared/ticketCheckoutAccess.ts"),
+    )
+  ) fail("SPEC-9", detail);
+};
+
 // A7.2 — forbidden levers and the handler-level fail-closed returns.
 const checkEventLevers = () => {
   const src = read("mingla-business/src/components/event/PublicEventPage.tsx");
@@ -603,6 +742,104 @@ const selfTest = () => {
   );
   write("mingla-business/src/components/event/TicketCheckoutAccessNotice.native.tsx", "export const N = 1;\n");
 
+  // ── SPEC-9 Edge-fence mutations, applied to real source copies. Each must
+  //    be REPORTED by checkEdgeFenceOn(); a clause that cannot name its own
+  //    mutation is the class this guard exists to stop.
+  const edgeReal = fs.readFileSync(
+    path.join(ROOT, "supabase/functions/ticket-checkout-create/index.ts"),
+    "utf8",
+  );
+  const sharedReal = fs.readFileSync(
+    path.join(ROOT, "supabase/functions/_shared/ticketCheckoutAccess.ts"),
+    "utf8",
+  );
+  // NEIGHBOUR-REACH battery. Each of these deletes exactly ONE construct. An
+  // earlier draft of this guard used character windows and two of them stayed
+  // undetected: the window from `error !== null` reached the NEXT `throw`, and
+  // the window from `sign_in_required` reached the `401` in the interface type.
+  // Both now assert inside the balanced block of their own construct.
+  const edgeMutations = [
+    [
+      "M-CATCH: the decision-failure catch stops failing closed",
+      edgeReal.replace(
+        'return jsonResponse({ error: "checkout_restricted" }, 403);\n    }\n    const accessDenial',
+        'return jsonResponse({ error: "decision_unavailable" }, 500);\n    }\n    const accessDenial',
+      ),
+      sharedReal,
+    ],
+    [
+      "M-DENIAL: the denial mapping is not applied in the handler",
+      edgeReal.replace(
+        "const accessDenial = ticketCheckoutAccessDenial(accessDecision);",
+        "const accessDenial = null;",
+      ),
+      sharedReal,
+    ],
+    [
+      "M-RPCERR: the RPC-error throw removed (window would reach the next throw)",
+      edgeReal,
+      sharedReal.replace(
+        '  if (error !== null && error !== undefined) {\n    throw new Error("checkout_access_decision_unavailable");\n  }',
+        '  if (error !== null && error !== undefined) {\n    return "allowed_unrestricted" as TicketCheckoutAccessDecision;\n  }',
+      ),
+    ],
+    [
+      "M-401: sign_in_required no longer maps to 401 (window would reach the type)",
+      edgeReal,
+      sharedReal.replace(
+        '    return { error: "sign_in_required", status: 401 };',
+        '    return { error: "checkout_restricted", status: 403 };',
+      ),
+    ],
+    [
+      "M-BODY-UUID: an authority fallback on the decision input",
+      edgeReal.replace(
+        "buyerUserId: userId,",
+        'buyerUserId: userId ?? (typeof body.buyerUserId === "string" ? body.buyerUserId : null),',
+      ),
+      sharedReal,
+    ],
+    [
+      "M-ORDER: the event-date read hoisted above the decision",
+      "REORDER",
+      sharedReal,
+    ],
+    [
+      "M-NONSTRING: a non-string decision payload accepted",
+      edgeReal,
+      sharedReal.replace(
+        'if (typeof data !== "string") {\n    throw new Error("checkout_access_decision_unavailable");\n  }',
+        'if (typeof data !== "string") {\n    return "allowed_unrestricted" as TicketCheckoutAccessDecision;\n  }',
+      ),
+    ],
+    [
+      "M-ALLOWSET: snapshot_stale widened into the allow set",
+      edgeReal,
+      sharedReal.replace(
+        'decision === "allowed_unrestricted" || decision === "allowed_named"',
+        'decision === "allowed_unrestricted" || decision === "allowed_named" || decision === "snapshot_stale"',
+      ),
+    ],
+  ];
+  for (const [name, mutatedEdge, mutatedShared] of edgeMutations) {
+    let edgeSource = mutatedEdge;
+    if (mutatedEdge === "REORDER") {
+      // Move the event-date read ahead of the decision by deleting the decision
+      // block's leading marker, which is how a reorder would present.
+      edgeSource = edgeReal.replace(
+        "    let accessDecision: Awaited<ReturnType<typeof ticketCheckoutAccessDecision>>;",
+        '    const _hoisted = supabase.from("event_dates");\n    let accessDecision: Awaited<ReturnType<typeof ticketCheckoutAccessDecision>>;',
+      );
+    }
+    const found = checkEdgeFenceOn(edgeSource, mutatedShared);
+    check(`${name} is DETECTED`, found.length > 0, found.join(" | ") || "no violation reported");
+  }
+  check(
+    "SPEC-9 control: the real sources report NO Edge violation",
+    checkEdgeFenceOn(edgeReal, sharedReal).length === 0,
+    checkEdgeFenceOn(edgeReal, sharedReal).join(" | "),
+  );
+
   // M-DROP-ENTRY (F-2) — the entry set is pinned, not just the total.
   const dropped = walkGraph(
     ["mingla-business/src/components/event/PublicEventPage.tsx"],
@@ -651,7 +888,16 @@ const selfTest = () => {
   );
 };
 
-if (process.argv.includes("--self-test")) {
+// Only run the CLI when this file is EXECUTED, not when it is imported. The
+// exported checkers are importable so their windows can be attacked directly —
+// a clause whose window can reach a neighbouring construct proves nothing about
+// either, and that is only testable from outside the CLI.
+const isDirectRun = process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (!isDirectRun) {
+  // imported for audit — export surface only
+} else if (process.argv.includes("--self-test")) {
   selfTest();
 } else {
   checkPairing();
@@ -663,6 +909,7 @@ if (process.argv.includes("--self-test")) {
   checkConsumerSet();
   checkAdapters();
   checkEventLevers();
+  checkEdgeFence();
 
   if (failures.length > 0) {
     console.error("issue #2101 named-buyer checkout guard FAILED:");

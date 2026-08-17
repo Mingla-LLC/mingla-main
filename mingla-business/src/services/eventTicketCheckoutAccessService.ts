@@ -122,6 +122,13 @@ export const fetchPublicTicketCheckoutAccess = async (
   );
   throwRpc(error);
   if (data === null || data === undefined) {
+    // WHY THIS IS NOT A FAIL-OPEN. `pg_public_ticket_checkout_access_state`
+    // returns NULL for exactly one reason: the event is deleted, or its
+    // visibility is neither 'public' nor 'hidden'. No purchasable page can
+    // reach that state — an unreachable event has no checkout entry to enable.
+    // An RPC that FAILS throws above and the adapter reports `error`, which is
+    // fail-closed. This branch only stops an unreachable event from rendering a
+    // phantom restriction, and the server decides regardless.
     return { schemaVersion: 1, mode: "unrestricted", state: "unrestricted" };
   }
   return data as PublicTicketCheckoutAccess;

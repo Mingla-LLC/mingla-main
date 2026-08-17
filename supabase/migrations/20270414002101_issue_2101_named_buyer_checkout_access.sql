@@ -715,7 +715,13 @@ BEGIN
 
   v_before := public.issue_2101_materialize_policy(
     p_event_id,v_event.brand_id,v_actor);
-  IF v_before.config_revision <> p_expected_config_revision THEN
+  -- NULL-SAFE ON PURPOSE. `p_expected_config_revision` is client-supplied, so a
+  -- caller can pass NULL. With plain `<>` that comparison yields NULL, the IF is
+  -- not taken, and the CAS the contract requires ("exact expected_revision") is
+  -- SKIPPED — the mutation proceeds on a stale view. IS DISTINCT FROM treats a
+  -- NULL expectation as "not the current revision", which is the fail-closed
+  -- reading: it raises STALE_ACCESS_POLICY and the caller refetches.
+  IF v_before.config_revision IS DISTINCT FROM p_expected_config_revision THEN
     RAISE EXCEPTION 'STALE_ACCESS_POLICY';
   END IF;
 
@@ -846,7 +852,13 @@ BEGIN
 
   v_before := public.issue_2101_materialize_policy(
     p_event_id,v_event.brand_id,v_actor);
-  IF v_before.config_revision <> p_expected_config_revision THEN
+  -- NULL-SAFE ON PURPOSE. `p_expected_config_revision` is client-supplied, so a
+  -- caller can pass NULL. With plain `<>` that comparison yields NULL, the IF is
+  -- not taken, and the CAS the contract requires ("exact expected_revision") is
+  -- SKIPPED — the mutation proceeds on a stale view. IS DISTINCT FROM treats a
+  -- NULL expectation as "not the current revision", which is the fail-closed
+  -- reading: it raises STALE_ACCESS_POLICY and the caller refetches.
+  IF v_before.config_revision IS DISTINCT FROM p_expected_config_revision THEN
     RAISE EXCEPTION 'STALE_ACCESS_POLICY';
   END IF;
 
@@ -908,7 +920,13 @@ BEGIN
 
   v_before := public.issue_2101_materialize_policy(
     p_event_id,v_event.brand_id,v_actor);
-  IF v_before.config_revision <> p_expected_config_revision THEN
+  -- NULL-SAFE ON PURPOSE. `p_expected_config_revision` is client-supplied, so a
+  -- caller can pass NULL. With plain `<>` that comparison yields NULL, the IF is
+  -- not taken, and the CAS the contract requires ("exact expected_revision") is
+  -- SKIPPED — the mutation proceeds on a stale view. IS DISTINCT FROM treats a
+  -- NULL expectation as "not the current revision", which is the fail-closed
+  -- reading: it raises STALE_ACCESS_POLICY and the caller refetches.
+  IF v_before.config_revision IS DISTINCT FROM p_expected_config_revision THEN
     RAISE EXCEPTION 'STALE_ACCESS_POLICY';
   END IF;
 
