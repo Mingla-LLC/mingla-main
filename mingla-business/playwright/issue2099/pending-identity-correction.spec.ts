@@ -100,9 +100,13 @@ interface HostMeasurement {
   hostFound: boolean;
   ancestorsWalked: number;
   overflowY: string;
+  overflowX: string;
   clientHeight: number;
   scrollHeight: number;
   scrollTop: number;
+  scrollLeft: number;
+  clientWidth: number;
+  scrollWidth: number;
   innerHeight: number;
   innerWidth: number;
   targetFound: boolean;
@@ -111,6 +115,17 @@ interface HostMeasurement {
   insideHostVisibleBox: boolean;
   targetTop: number;
   targetBottom: number;
+  targetLeft: number;
+  targetRight: number;
+  targetWidth: number;
+  targetHeight: number;
+  /** Product of every `opacity` from the target up to `<body>`. */
+  effectiveOpacity: number;
+  visibility: string;
+  display: string;
+  /** The target clips its OWN content — this is what renders "Review correctio". */
+  selfClipped: boolean;
+  text: string;
 }
 
 /**
@@ -132,9 +147,13 @@ async function measure(page: Page, selector: string): Promise<HostMeasurement> {
       hostFound: false,
       ancestorsWalked: 0,
       overflowY: "none",
+      overflowX: "none",
       clientHeight: 0,
       scrollHeight: 0,
       scrollTop: 0,
+      scrollLeft: 0,
+      clientWidth: 0,
+      scrollWidth: 0,
       innerHeight,
       innerWidth,
       targetFound: target !== null,
@@ -143,8 +162,40 @@ async function measure(page: Page, selector: string): Promise<HostMeasurement> {
       insideHostVisibleBox: false,
       targetTop: 0,
       targetBottom: 0,
+      targetLeft: 0,
+      targetRight: 0,
+      targetWidth: 0,
+      targetHeight: 0,
+      effectiveOpacity: 0,
+      visibility: "hidden",
+      display: "none",
+      selfClipped: false,
+      text: "",
     };
     if (target === null) return empty;
+
+    // VISUAL presence, not layout presence. `opacity: 0` leaves a perfectly
+    // sized, perfectly positioned, perfectly "visible"-to-Playwright box that
+    // no operator can see — it greened all ten cases of this gate before this
+    // was measured. Opacity is multiplicative up the tree, so it must be
+    // accumulated rather than read off the target.
+    let opacityNode: HTMLElement | null = target;
+    let effectiveOpacity = 1;
+    while (opacityNode !== null && opacityNode !== document.documentElement) {
+      const os = globalThis.getComputedStyle(opacityNode);
+      const parsed = Number.parseFloat(os.opacity);
+      effectiveOpacity *= Number.isFinite(parsed) ? parsed : 1;
+      if (os.visibility === "hidden" || os.visibility === "collapse") effectiveOpacity = 0;
+      if (os.display === "none") effectiveOpacity = 0;
+      opacityNode = opacityNode.parentElement;
+    }
+    const targetStyle = globalThis.getComputedStyle(target);
+    // Self-clipping: the node's own content is wider than the box it renders in
+    // on an axis it does not let the user scroll. This is the "Review correctio"
+    // signature, and it is invisible to any containment check.
+    const clipsOwnContent =
+      target.scrollWidth > target.clientWidth + 1 &&
+      (targetStyle.overflowX === "hidden" || targetStyle.overflowX === "clip");
 
     let node: HTMLElement | null = target;
     let walked = 0;
@@ -166,14 +217,27 @@ async function measure(page: Page, selector: string): Promise<HostMeasurement> {
       rect.bottom <= innerHeight &&
       rect.right <= innerWidth;
 
+    const presence = {
+      targetFound: true,
+      targetTop: rect.top,
+      targetBottom: rect.bottom,
+      targetLeft: rect.left,
+      targetRight: rect.right,
+      targetWidth: rect.width,
+      targetHeight: rect.height,
+      effectiveOpacity,
+      visibility: targetStyle.visibility,
+      display: targetStyle.display,
+      selfClipped: clipsOwnContent,
+      text: (target.textContent ?? "").trim(),
+    };
+
     if (host === null) {
       return {
         ...empty,
-        targetFound: true,
+        ...presence,
         ancestorsWalked: walked,
         insideViewport,
-        targetTop: rect.top,
-        targetBottom: rect.bottom,
       };
     }
 
@@ -191,21 +255,24 @@ async function measure(page: Page, selector: string): Promise<HostMeasurement> {
       rect.left >= visLeft - 1 &&
       rect.right <= visRight + 1;
 
+    const hostStyle = globalThis.getComputedStyle(host);
     return {
+      ...presence,
       hostFound: true,
       ancestorsWalked: walked,
-      overflowY: globalThis.getComputedStyle(host).overflowY,
+      overflowY: hostStyle.overflowY,
+      overflowX: hostStyle.overflowX,
       clientHeight: host.clientHeight,
       scrollHeight: host.scrollHeight,
       scrollTop: host.scrollTop,
+      scrollLeft: host.scrollLeft,
+      clientWidth: host.clientWidth,
+      scrollWidth: host.scrollWidth,
       innerHeight,
       innerWidth,
-      targetFound: true,
       hostContainsTarget: host.contains(target),
       insideViewport,
       insideHostVisibleBox,
-      targetTop: rect.top,
-      targetBottom: rect.bottom,
     };
   }, selector);
 }
@@ -232,6 +299,61 @@ async function setHostScrollTop(
     },
     { sel: selector, pos: position },
   );
+}
+
+/**
+ * Undo any scroll on an axis the user cannot scroll.
+ *
+ * `scrollIntoViewIfNeeded()` will happily set `scrollLeft` on a box whose
+ * computed `overflow-x` is `hidden` — the browser permits it programmatically,
+ * a wheel or a swipe does not. Measuring after that scroll is measuring a state
+ * the operator can never be in: the retest found `scrollLeft` moving 3 -> 18 and
+ * turning a clipped button into a passing one, with a real gesture snapping it
+ * straight back. So: scroll into view the way the gate always did, then RESET
+ * every denied axis before anything is measured. The check must never satisfy a
+ * reachability clause with a movement the user is not allowed to make.
+ */
+async function resetDeniedAxes(page: Page, selector: string): Promise<void> {
+  await page.evaluate((sel) => {
+    const target = document.querySelector<HTMLElement>(sel);
+    if (target === null) return;
+    let node: HTMLElement | null = target;
+    while (node !== null && node !== document.documentElement) {
+      const style = globalThis.getComputedStyle(node);
+      const scrollableX = style.overflowX === "auto" || style.overflowX === "scroll";
+      const scrollableY = style.overflowY === "auto" || style.overflowY === "scroll";
+      if (!scrollableX && node.scrollLeft !== 0) node.scrollLeft = 0;
+      if (!scrollableY && node.scrollTop !== 0) node.scrollTop = 0;
+      node = node.parentElement;
+    }
+    if (!globalThis.getComputedStyle(document.body).overflowX.match(/auto|scroll/)) {
+      globalThis.scrollTo(0, globalThis.scrollY);
+    }
+  }, selector);
+}
+
+/**
+ * VISUAL presence — asserted for every target, in both branches of clause 2.
+ * A target that is laid out, sized, positioned and inside every box, but
+ * invisible or clipped, is not reachable in any sense an operator recognises.
+ */
+function assertVisiblyPresent(m: HostMeasurement, where: string): void {
+  expect.soft(
+    m.effectiveOpacity > 0,
+    `${where}: the target is laid out but NOT VISIBLE ` +
+      `(effective opacity ${m.effectiveOpacity}, visibility ${m.visibility}, ` +
+      `display ${m.display}) — presence in the layout is not reachability`,
+  ).toBe(true);
+  expect.soft(
+    m.targetWidth > 0 && m.targetHeight > 0,
+    `${where}: the target has a zero-area box (${m.targetWidth}x${m.targetHeight})`,
+  ).toBe(true);
+  expect.soft(
+    !m.selfClipped,
+    `${where}: the target CLIPS ITS OWN CONTENT on an axis the user cannot ` +
+      "scroll — this is the shape that renders a truncated label, and no " +
+      `containment check can see it. Rendered text: "${m.text}"`,
+  ).toBe(true);
 }
 
 test.beforeAll(() => {
@@ -350,7 +472,9 @@ async function assertClause2(
         .toBe(true);
       return false;
     }
+    await resetDeniedAxes(page, selector);
     const after = await measure(page, selector);
+    assertVisiblyPresent(after, where);
     expect.soft(
       after.insideViewport,
       `${where}: clause 2(a) — after scrollIntoViewIfNeeded the target is not ` +
@@ -359,9 +483,21 @@ async function assertClause2(
     ).toBe(true);
     expect.soft(
       after.insideHostVisibleBox,
-      `${where}: clause 2(a) — the target is not inside the host's VISIBLE box; ` +
-        "a bounded scroller that is itself off screen hides its contents just as " +
-        "completely as no scroller at all",
+      `${where}: clause 2(a) — the target is not inside the host's VISIBLE box ` +
+        `(target ${after.targetLeft}..${after.targetRight} x ` +
+        `${after.targetTop}..${after.targetBottom}; host content box ` +
+        `${after.clientWidth}x${after.clientHeight}, scroll extent ` +
+        `${after.scrollWidth}x${after.scrollHeight}, overflow-x ${after.overflowX}); ` +
+        "a bounded scroller that is itself off screen — or one that clips an axis " +
+        "the user cannot scroll — hides its contents as completely as no scroller",
+    ).toBe(true);
+    expect.soft(
+      after.scrollWidth <= after.clientWidth + 1 ||
+        after.overflowX === "auto" ||
+        after.overflowX === "scroll",
+      `${where}: the scroll host overflows HORIZONTALLY on an axis it renders ` +
+        `\`overflow-x: ${after.overflowX}\` (clientWidth ${after.clientWidth}, ` +
+        `scrollWidth ${after.scrollWidth}) — the excess is not scrollable, it is CLIPPED`,
     ).toBe(true);
     return !atTop.insideHostVisibleBox && after.scrollTop > 0;
   }
@@ -373,6 +509,7 @@ async function assertClause2(
   const pinnedTop = await measure(page, selector);
   await setHostScrollTop(page, TARGET.stay, "end");
   const pinnedEnd = await measure(page, selector);
+  assertVisiblyPresent(pinnedEnd, where);
   expect.soft(
     pinnedTop.insideViewport && pinnedEnd.insideViewport,
     `${where}: satisfies NEITHER clause 2(a) (not a descendant of the host) ` +

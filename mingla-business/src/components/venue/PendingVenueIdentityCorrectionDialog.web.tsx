@@ -583,7 +583,16 @@ const styles = StyleSheet.create({
     backgroundColor: canvas.depth,
     borderRadius: 12,
   },
-  form: { gap: spacing.sm, minWidth: 320, padding: spacing.sm },
+  // P2-3 — NO `minWidth` here, and that is the fix rather than a tidy-up.
+  //
+  // At 390x844 the host's content box is 294 px (390 viewport - the Modal's own
+  // `spacing.lg` padding on each side - the GlassCard's `spacing.lg` on each
+  // side). A `minWidth: 320` on the CONTENT therefore overflowed it by 26 px on
+  // an axis a vertical `ScrollView` renders `overflow-x: hidden`, so the excess
+  // was not scrollable — it was CLIPPED, and the primary action rendered as
+  // "Review correctio". The card is already bounded by the Modal's `maxWidth`;
+  // the content must simply fit the box it is given.
+  form: { gap: spacing.sm, padding: spacing.sm },
   title: {
     fontSize: typography.h3.fontSize,
     fontWeight: "700",
@@ -624,6 +633,9 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: "row",
+    // P2-3 — wrap rather than overflow. Two buttons on a 294 px content box can
+    // exceed it on their own, and the overflowing axis is the clipped one.
+    flexWrap: "wrap",
     justifyContent: "flex-end",
     gap: spacing.sm,
     marginTop: spacing.sm,
