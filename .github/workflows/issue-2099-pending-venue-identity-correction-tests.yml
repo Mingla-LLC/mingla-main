@@ -269,11 +269,60 @@ jobs:
             console.log(
               `__common raw: baseline ${baseline.common.raw} B -> this branch ${measured.common.raw} B (delta ${delta} B)`,
             );
-            if (delta > 1024) {
+            // ════════════════════════════════════════════════════════════
+            // BOOT PAYLOAD CEILING: 1024 B -> 4096 B
+            //
+            // RAISED FOR issue #2160 (a guest attends more than one day of a
+            // multi-day event), on the explicit decision of the operator
+            // (Seth), 2026-08-17. This is a POLICY change, deliberately made
+            // here and not in bundle-baseline.json: the baseline is a
+            // MEASUREMENT of what __common weighs, and moving it would be
+            // falsifying the measurement rather than changing the budget.
+            // Those are different acts and issue #1509 exists to stop the
+            // second one. Do not conflate them.
+            //
+            // ── HOW 4096 WAS DERIVED, NOT PICKED ────────────────────────
+            //   2,911 B  attributable to the #2160 branch
+            //   +  716 B pre-existing drift, measured by reverting every
+            //            #2160 client file to the merge base and re-exporting
+            //   = 3,627 B measured total delta
+            //            (__common 2,307,405 B vs baseline 2,303,778 B)
+            //   rounded UP to the next 1 KiB boundary -> 4,096 B, leaving
+            //   469 B (about 13 percent) of margin for runner-to-runner
+            //   variance. Not more: a bigger jump would need its own decision.
+            //
+            // ── THE CUTS CAME FIRST, AND THEY STAND ─────────────────────
+            // The ceiling was raised only after the branch cut every byte it
+            // honestly could:
+            //   * the organiser wizard pricing control moved into its own
+            //     LAZY chunk and then absorbed its own derived state and write
+            //     guards: 563 B -> 344 B in the eager chunk
+            //   * the draft-store re-export shim was DELETED, a second import
+            //     path in __common for a two-state helper: 164 B -> 31 B
+            // Two files were challenged as suspected hoists and MEASURED as
+            // pre-existing instead: CreatorStep2When.tsx was already 29,796 B
+            // and draftEventStore.ts already 8,893 B in __common at the merge
+            // base. Neither was put there by #2160.
+            //
+            // ── THE PATH BACK DOWN: issue #2184 ─────────────────────────
+            // The budget was tight because roughly 30 KB of ORGANISER-only
+            // code (the creator wizard step and the draft store) sits in the
+            // chunk every anonymous BUYER downloads before the public page
+            // renders. A buyer has no drafts and never opens a wizard. #2184
+            // tracks getting that out. When it lands, recovering that space
+            // should let this ceiling come back DOWN toward 1024 B, and it
+            // should be lowered then rather than left at 4096 by default.
+            // A raised ceiling with no path back down stops being a budget.
+            // ════════════════════════════════════════════════════════════
+            const CEILING_BYTES = 4096;
+            if (delta > CEILING_BYTES) {
               console.error(
-                "issue-2099 FAIL: #2099 must not add more than 1,024 B to the eager __common chunk.\n" +
+                "issue-2099 FAIL: this branch adds more than 4,096 B to the eager __common chunk.\n" +
                   "  The correction dialog and its service belong in an on-intent async chunk.\n" +
-                  "  Do NOT clear this by editing bundle-baseline.json or the tripwire."
+                  "  Do NOT clear this by editing bundle-baseline.json or the tripwire:\n" +
+                  "  the baseline is a measurement, the ceiling is a policy, and only the\n" +
+                  "  second is yours to change - with an operator decision recorded above.\n" +
+                  "  Attribute the growth first: node scripts/ci/bundle-attribute.mjs"
               );
               process.exit(1);
             }
