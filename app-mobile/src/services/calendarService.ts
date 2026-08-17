@@ -421,7 +421,10 @@ export class CalendarService {
             brand:brands!inner ( id, slug, name ),
             event_dates!left ( id, start_at, end_at, is_master )
           ),
-          tickets:tickets ( id, ticket_type_id, qr_code, status, attendee_name, attendee_email )
+          tickets:tickets (
+            id, ticket_type_id, qr_code, status, attendee_name, attendee_email,
+            ticket_event_dates ( event_date_id )
+          )
         `,
       )
       .eq("buyer_user_id", userId)
@@ -473,11 +476,29 @@ export class CalendarService {
         status: ConsumerTicketRow["status"];
         attendee_name: string | null;
         attendee_email: string | null;
+        // issue #2160 — the days THIS pass admits. Empty for every pre-#2160
+        // pass and every single-date event ("not day-scoped").
+        ticket_event_dates?: Array<{ event_date_id: string }> | null;
       }> | null;
     };
 
-    return ((orders ?? []) as unknown as OrderRow[]).map(
-      (order): BusinessEventCalendarRow => {
+    // ══ issue #2160 — ONE CALENDAR ENTRY PER DAY THE GUEST IS ATTENDING ════
+    // `flatMap`, not `map`: a two-day guest gets TWO entries. This is the same
+    // bug class as #2162 — a surface rendering ONE date for an order that
+    // covers several — and it bites HARDER here than a wrong email would,
+    // because `orders.event_date_id` is now the LATEST-ENDING day (the payout
+    // anchor, D-2). Left alone, a both-days guest would have seen ONLY day 2
+    // in their calendar and could have missed day 1 entirely.
+    //
+    // I checked the rest of this service for the same assumption, as asked:
+    // `masterDateUtc` / `masterDateEndUtc` are the only per-order date fields,
+    // and the upcoming/archive partition and `computeEntryEffectiveEnd` both
+    // read them per ROW — so emitting one row per day partitions each day
+    // independently and correctly, with no change to either. The RSVP and trip
+    // fetchers below carry no day set at all (RSVPs are single-date by product
+    // decision, #2131), so they are genuinely unaffected rather than skipped.
+    return ((orders ?? []) as unknown as OrderRow[]).flatMap(
+      (order): BusinessEventCalendarRow[] => {
         const event = order.events;
         const brand = event?.brand ?? null;
         // ORCH-1188 FIX 3c: prefer the buyer's BOOKED occurrence (orders.event_date_id)
@@ -502,6 +523,21 @@ export class CalendarService {
             attendeeEmail: t.attendee_email ?? null,
           }),
         );
+        // The distinct occurrences this order's passes admit, chronological.
+        // EMPTY on every pre-#2160 order and every single-date event, which is
+        // exactly when the verbatim single-entry path below runs.
+        const bookedDayIds = Array.from(
+          new Set(
+            (order.tickets ?? []).flatMap((t) =>
+              (t.ticket_event_dates ?? []).map((link) => link.event_date_id),
+            ),
+          ),
+        );
+        const bookedDays = (event?.event_dates ?? [])
+          .filter((ed) => ed !== null && bookedDayIds.includes(ed.id))
+          .sort((a, b) =>
+            String(a?.start_at ?? "").localeCompare(String(b?.start_at ?? "")),
+          );
         const geo = parseLocationGeo(event?.location_geo);
         const venue: BusinessEventVenue = {
           locationText: event?.location_text ?? null,
@@ -510,16 +546,33 @@ export class CalendarService {
           isOnline: Boolean(event?.is_online),
           onlineUrl: event?.online_url ?? null,
         };
-        return {
+        // One entry per DAY when the passes carry days; otherwise exactly one
+        // entry built from the existing booked-occurrence -> master fallback,
+        // byte-identical to pre-#2160.
+        const daysToEmit: Array<{ start_at: string | null; end_at: string | null }> =
+          bookedDays.length > 0
+            ? bookedDays.map((ed) => ({
+              start_at: ed?.start_at ?? null,
+              end_at: ed?.end_at ?? null,
+            }))
+            : [{
+              start_at: masterDate?.start_at ?? null,
+              end_at: masterDate?.end_at ?? null,
+            }];
+
+        return daysToEmit.map((day) => ({
           orderId: order.id,
           eventId: event?.id ?? order.event_id,
           eventTitle: event?.title ?? "Event",
           brandName: brand?.name ?? "",
           brandSlug: brand?.slug ?? "",
           coverMediaUrl: event?.cover_media_url ?? null,
-          masterDateUtc: masterDate?.start_at ?? null,
-          // ORCH-0853: end-of-event timestamp used by consumer Calendar partition.
-          masterDateEndUtc: masterDate?.end_at ?? null,
+          masterDateUtc: day.start_at,
+          // ORCH-0853: end-of-event timestamp used by consumer Calendar
+          // partition. Still the END, never the start — the
+          // i-consumer-calendar-uses-end-not-start gate is unaffected: #2160
+          // only changes WHICH occurrence's end this is, never that it is one.
+          masterDateEndUtc: day.end_at,
           timezone: event?.timezone ?? "UTC",
           paymentStatus: order.payment_status,
           ticketCount: tickets.length,
@@ -533,7 +586,7 @@ export class CalendarService {
               : null,
           ticketPdfPath: order.ticket_pdf_path ?? null,
           venue,
-        };
+        }));
       },
     );
   }

@@ -44,6 +44,11 @@ import {
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
 import { useGuestRosterAccess } from "../../../../src/hooks/useGuestRoster";
 import { useEventGuestList } from "../../../../src/hooks/useEventOrders";
+// issue #2160 — the occurrences ride the event payload (same reader that served
+// the event, #2161), so the per-day roster needs no extra query.
+import { usePublicEventById } from "../../../../src/hooks/usePublicEvents";
+import type { PublicEventOccurrence } from "../../../../src/services/publicEventOccurrencesService";
+import { formatOccurrenceDayLabel } from "../../../../src/utils/eventDateDisplay";
 import {
   capitalizeNoun,
   offeringKindConfig,
@@ -214,6 +219,10 @@ const summarizeDoorTickets = (lines: DoorSaleRecord["lines"]): string => {
   return `${total} tickets`;
 };
 
+// issue #2160 — stable empty reference so a single-date roster never produces
+// a new array identity per render.
+const EMPTY_OCCURRENCES: readonly PublicEventOccurrence[] = [];
+
 export default function EventGuestsListRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -254,6 +263,12 @@ export default function EventGuestsListRoute(): React.ReactElement {
   const allCompEntries = useGuestStore((s) => s.entries);
   // Cycle 12 — door sale entries merged into the J-G1 list.
   const allDoorEntries = useDoorSalesStore((s) => s.entries);
+
+  // issue #2160 — the event payload, for its occurrences. Same query key the
+  // rest of the app already uses, so this is a cache hit in practice.
+  const publicEventQuery = usePublicEventById(
+    typeof eventId === "string" ? eventId : null,
+  );
 
   const merged = useMemo<GuestRow[]>(() => {
     if (typeof eventId !== "string") return [];
@@ -299,9 +314,79 @@ export default function EventGuestsListRoute(): React.ReactElement {
     setToast({ visible: true, message });
   }, []);
 
+  // ══ issue #2160 — THE PER-DAY ROSTER ═════════════════════════════════════
+  // An organiser running a two-day exhibition needs to know who is coming on
+  // EACH day; a combined list is the thing they already had.
+  //
+  // The occurrences ride the event payload from the same SECURITY DEFINER
+  // reader that served the event (#2161), so an UNLISTED event's roster gets
+  // its days exactly like a public one's and this screen issues no extra query.
+  const [dayFilter, setDayFilter] = useState<string | null>(null);
+  const occurrences = publicEventQuery.data?.occurrences ?? EMPTY_OCCURRENCES;
+  // Only a REAL multi-day event gets a chip row. A single-date event renders
+  // exactly today's screen — no chips, no new column header, nothing.
+  const hasDayChips = occurrences.length > 1;
+  const dayLabels = useMemo<Map<string, string>>(() => {
+    const map = new Map<string, string>();
+    for (const occ of occurrences) {
+      const label = formatOccurrenceDayLabel(occ.startAt, occ.timezone);
+      // Never fabricate a day: an unparseable occurrence simply has no chip.
+      if (label !== null) map.set(occ.id, label);
+    }
+    return map;
+  }, [occurrences]);
+
+  /**
+   * Does this row belong under `dayId`?
+   *
+   * A guest holding passes for BOTH days appears under BOTH chips — that is the
+   * whole point of the issue, not a double-count, and they still appear ONCE
+   * under "All". A pass with NO days is not day-scoped: it admits on any
+   * occurrence, so it appears under every chip rather than disappearing from
+   * all of them. Comps and door sales carry no chosen day and are treated the
+   * same way, because they are equally admissible on any day.
+   */
+  const rowMatchesDay = useCallback(
+    (row: GuestRow, dayId: string): boolean => {
+      if (row.kind !== "order") return true;
+      const days = row.order.ticketDays ?? [];
+      if (days.length === 0) return true;
+      const bound = days.filter((t) => t.eventDateIds.length > 0);
+      if (bound.length === 0) return true;
+      return bound.some((t) => t.eventDateIds.includes(dayId));
+    },
+    [],
+  );
+
+  // Per-chip head count = passes bound to that day, plus every not-day-scoped
+  // pass (which is genuinely admissible on it). Counted from real ticket rows,
+  // never fabricated.
+  const dayHeadCounts = useMemo<Map<string, number>>(() => {
+    const counts = new Map<string, number>();
+    for (const occ of occurrences) {
+      let n = 0;
+      for (const row of merged) {
+        if (row.kind !== "order") continue;
+        const days = row.order.ticketDays ?? [];
+        for (const t of days) {
+          if (t.eventDateIds.length === 0 || t.eventDateIds.includes(occ.id)) {
+            n += 1;
+          }
+        }
+      }
+      counts.set(occ.id, n);
+    }
+    return counts;
+  }, [occurrences, merged]);
+
   const filtered = useMemo<GuestRow[]>(
-    () => merged.filter((r) => matchesSearch(r, search)),
-    [merged, search],
+    () =>
+      merged.filter(
+        (r) =>
+          matchesSearch(r, search) &&
+          (dayFilter === null || rowMatchesDay(r, dayFilter)),
+      ),
+    [merged, search, dayFilter, rowMatchesDay],
   );
 
   // Cycle 11 J-S6 — derived check-in counts per order + comp.
@@ -359,6 +444,10 @@ export default function EventGuestsListRoute(): React.ReactElement {
       const result = await exportGuestsCsv({
         event,
         rows: merged,
+        // issue #2160 — a roster you cannot export is half a roster. The SAME
+        // label map the chips render from, so the file can never disagree with
+        // the screen.
+        dayLabels,
       });
       if (result.method === "downloaded") {
         showToast(
@@ -598,6 +687,65 @@ export default function EventGuestsListRoute(): React.ReactElement {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* issue #2160 — the day chip row. Rendered ONLY when the event has
+            more than one occurrence, so a single-date roster is untouched. */}
+        {hasDayChips ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.dayChipScroll}
+            contentContainerStyle={styles.dayChipRow}
+            testID="issue-2160-day-chips"
+          >
+            <Pressable
+              onPress={() => setDayFilter(null)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: dayFilter === null }}
+              accessibilityLabel={`All ${headcountPlural}`}
+              testID="issue-2160-day-chip-all"
+              style={[
+                styles.dayChip,
+                dayFilter === null ? styles.dayChipActive : null,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.dayChipLabel,
+                  dayFilter === null ? styles.dayChipLabelActive : null,
+                ]}
+              >
+                All
+              </Text>
+            </Pressable>
+            {occurrences.map((occ) => {
+              const label = dayLabels.get(occ.id);
+              if (label === undefined) return null;
+              const active = dayFilter === occ.id;
+              const count = dayHeadCounts.get(occ.id) ?? 0;
+              return (
+                <Pressable
+                  key={occ.id}
+                  onPress={() => setDayFilter(active ? null : occ.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`${label} — ${count} ${headcountLabelForCount(count)}`}
+                  testID={`issue-2160-day-chip-${occ.id}`}
+                  style={[styles.dayChip, active ? styles.dayChipActive : null]}
+                >
+                  <Text
+                    style={[
+                      styles.dayChipLabel,
+                      active ? styles.dayChipLabelActive : null,
+                    ]}
+                  >
+                    {label} · {count}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        ) : null}
+
         {totalCount === 0 ? (
           <View style={styles.emptyHost}>
             <EmptyState
@@ -837,6 +985,28 @@ const styles = StyleSheet.create({
   list: {
     gap: spacing.sm,
   },
+  // issue #2160 — the per-day chip row. Only mounted on a multi-day event, so
+  // a single-date roster renders exactly today's screen.
+  dayChipScroll: { flexGrow: 0, marginBottom: spacing.sm },
+  dayChipRow: { flexDirection: "row", gap: spacing.xs, paddingHorizontal: 16 },
+  dayChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.16)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+  },
+  dayChipActive: {
+    borderColor: accent.warm,
+    backgroundColor: "rgba(235, 120, 37, 0.16)",
+  },
+  dayChipLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "rgba(255, 255, 255, 0.72)",
+  },
+  dayChipLabelActive: { color: "rgba(255, 255, 255, 0.98)" },
   emptyHost: {
     paddingTop: spacing.xl,
   },

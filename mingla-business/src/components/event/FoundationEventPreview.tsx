@@ -80,6 +80,19 @@ export interface FoundationEventPreviewProps {
    * (it's rendered in the sticky right panel instead). Phones/native pass false.
    */
   hideTicketBox?: boolean;
+  /**
+   * issue #2160 — PURE PASSTHROUGH to EventOfferingBody -> EventTicketBox, in
+   * exactly the shape `hideTicketBox` above already uses.
+   *
+   * This file is NOT on the SPEC amendment's allowlist. It is touched because
+   * it is the ONLY thing between PublicEventPage and the PHONE inline ticket
+   * box, and the phone is the primary buyer surface: without these three lines
+   * amendment §7(a) — "someone seeing ₦10,000 who picks both days pays ₦20,000,
+   * and the page must make that unmistakable BEFORE checkout" — would be
+   * desktop-only. No behaviour of this component changes; default null means an
+   * omitted prop renders the identical tree.
+   */
+  pricingNote?: string | null;
   // ORCH-1167 — the inline ticket box state (LIFTED to the adapter for the cart).
   ticketQuantities: Record<string, number>;
   onChangeTicketQuantity: (ticketTypeId: string, qty: number) => void;
@@ -122,6 +135,7 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   safeAreaTop = 0,
   contentBottomInset = 0,
   hideTicketBox = false,
+  pricingNote = null,
   ticketQuantities,
   onChangeTicketQuantity,
   onProceedToCart,
@@ -172,6 +186,7 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
       submitting={submitting}
       onTicketBoxLayout={onDockLayout}
       hideTicketBox={hideTicketBox}
+      pricingNote={pricingNote}
       // ORCH-1339 — cross-entity social proof (adapter-fetched, props-only).
       socialProof={socialProof}
       // ORCH-1342 — web-only "See who's going" → install gate (adapter-wired).

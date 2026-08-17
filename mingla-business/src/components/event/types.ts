@@ -50,6 +50,25 @@ export interface StepBodyProps {
    */
   canEditTicketPrice?: boolean;
   /**
+   * issue #2160 — render the multi-day PRICING MODE control on the When step.
+   *
+   * Opt-IN rather than opt-out, and gated by a prop rather than by inspecting
+   * the draft, because `CreatorStep2When` is ALSO the experience wizard's when
+   * step (ExperienceCreatorWizard lifts it). Experiences have their own
+   * checkout that never sends a day set, so `events.multi_date_pricing_mode`
+   * governs nothing there and showing the control would be a lie. Only
+   * EventCreatorWizard passes this.
+   */
+  showMultiDatePricingMode?: boolean;
+  /**
+   * issue #2160 — TRUE when this event already holds a live ticket, so the
+   * pricing mode can no longer change. The database trigger
+   * `events_multi_date_pricing_mode_locked` is the authority and is
+   * fail-closed; this prop exists so the organiser SEES the locked state
+   * rather than tapping a control and eating a database error.
+   */
+  multiDatePricingModeLocked?: boolean;
+  /**
    * Supabase events.id used for cover uploads. Create/edit draft flows use
    * draft.id; edit-after-publish passes LiveEvent.serverEventId because the
    * local live id is le_* and is not the storage/database event id.

@@ -286,6 +286,12 @@ export interface EventOfferingBodyProps {
    */
   hideTicketBox?: boolean;
   /**
+   * issue #2160 — forwarded VERBATIM to <EventTicketBox>. See its own
+   * `pricingNote` doc. Default null keeps the rendered tree byte-identical for
+   * every caller that does not pass it, which is all of them today.
+   */
+  pricingNote?: string | null;
+  /**
    * ORCH-1339 — the pg_public_social_proof payload (surface-fetched, props-only
    * per I-MOR-0827). null (default) → no momentum unit, zero layout shift.
    */
@@ -315,6 +321,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   submitting = false,
   onTicketBoxLayout,
   hideTicketBox = false,
+  pricingNote = null,
   socialProof = null,
   onSeeWhosGoing,
   testID,
@@ -557,6 +564,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
                 variant={variant}
                 submitting={submitting}
                 showHeading
+                pricingNote={pricingNote}
               />
             </View>
           )}
@@ -789,6 +797,21 @@ export interface EventTicketBoxProps {
   /** Render the "Tickets" section heading above the box (true inline; the sticky
    *  desktop panel passes false — the panel has its own framing). */
   showHeading?: boolean;
+  /**
+   * issue #2160 — a short qualifier rendered directly UNDER the price on every
+   * ticket row: "per day" or "for all days" on a paid multi-day event.
+   *
+   * WHY IT EXISTS. Someone who sees "₦10,000" on a two-day event and picks both
+   * days pays ₦20,000, and the floating bar must never be the first place they
+   * learn that. This is the copy that stops a support ticket.
+   *
+   * DEFAULTS TO null, AND THAT DEFAULT IS THE CONTRACT. This is the ONLY change
+   * this issue makes to a shared package, and it must stay purely additive:
+   * with the prop omitted the rendered tree is byte-identical, so consumer
+   * native, the desktop sticky panel and every other caller are untouched.
+   * A FREE event passes null in both modes — there is no price to qualify.
+   */
+  pricingNote?: string | null;
   testID?: string;
 }
 
@@ -802,6 +825,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
   onChangeTicketQuantity,
   onProceedToCart,
   submitting = false,
+  pricingNote = null,
   showHeading = true,
   testID,
 }) => {
@@ -890,6 +914,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
               quantity={ticketQuantities[t.id] ?? 0}
               disabled={!bookable}
               onChange={(qty) => onChangeTicketQuantity(t.id, qty)}
+              pricingNote={pricingNote}
             />
           ))}
 
@@ -1110,6 +1135,8 @@ const TicketStepperRow: React.FC<{
   quantity: number;
   disabled: boolean;
   onChange: (qty: number) => void;
+  /** issue #2160 — see EventTicketBoxProps.pricingNote. null => nothing renders. */
+  pricingNote?: string | null;
 }> = ({
   ticket,
   fallbackCurrency,
@@ -1119,6 +1146,7 @@ const TicketStepperRow: React.FC<{
   quantity,
   disabled,
   onChange,
+  pricingNote = null,
 }) => {
   const sellable = ticketIsSellable(ticket);
   const isSoldOut = ticketIsSoldOut(ticket);
@@ -1188,6 +1216,17 @@ const TicketStepperRow: React.FC<{
         >
           {ticket.isFree ? "Free" : priceLabel}
         </Text>
+        {/* issue #2160 — the multiplier, said in words, next to the number it
+            multiplies. Omitted entirely when null, which is every pre-#2160
+            caller and every free ticket, so the tree is byte-identical there. */}
+        {pricingNote !== null && pricingNote.length > 0 && !ticket.isFree ? (
+          <Text
+            style={[styles.tierPricingNote, surface.tertiaryText]}
+            testID={`issue-2160-pricing-note-${ticket.id}`}
+          >
+            {pricingNote}
+          </Text>
+        ) : null}
         {sellable ? (
           <View style={styles.stepper}>
             <Pressable
@@ -1336,6 +1375,8 @@ const styles = StyleSheet.create({
   tierDesc: { fontSize: 13, marginTop: 3, lineHeight: 18 },
   tierCap: { fontSize: 12, fontWeight: "700", marginTop: 4 },
   tierPrice: { fontSize: 15, fontWeight: "900" },
+  // issue #2160 — the price qualifier line, directly under the price.
+  tierPricingNote: { fontSize: 11, fontWeight: "700", marginTop: 1 },
   stepper: { flexDirection: "row", alignItems: "center", gap: 12 },
   stepBtn: {
     width: 34,

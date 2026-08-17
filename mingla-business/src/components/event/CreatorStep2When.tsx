@@ -45,14 +45,17 @@ import {
 } from "../../constants/designSystem";
 import {
   type DraftEvent,
+  draftMultiDatePricingMode,
   type MultiDateEntry,
   type MultiDateOverrides,
+  type MultiDatePricingMode,
   type RecurrencePreset,
   type RecurrenceRule,
   type SetPos,
   type Weekday,
   type WhenMode,
-} from "../../store/draftEventStore";
+} from "../../store/draftEventStore"
+
 import { generateDraftId } from "../../utils/draftEventId";
 import {
   formatRecurrenceLabel,
@@ -170,7 +173,35 @@ const blankOverrides: MultiDateOverrides = {
 
 // ---- Main component -------------------------------------------------
 
+/**
+ * issue #2160 — SPEC amendment §6, verbatim. The implementor invents nothing
+ * here: these are the operator-approved strings.
+ */
+const PRICING_MODE_OPTIONS: ReadonlyArray<{
+  value: MultiDatePricingMode;
+  label: string;
+  helperPaid: string;
+  helperFree: string;
+}> = [
+  {
+    value: "per_day",
+    label: "Per day",
+    helperPaid:
+      "A guest pays for each day they choose. Two days costs twice as much, and they get a pass for each day.",
+    helperFree: "A guest gets a separate pass for each day they choose.",
+  },
+  {
+    value: "all_days",
+    label: "One price for all days",
+    helperPaid:
+      "A guest pays once no matter how many days they choose, and gets a single pass that works on every day they picked.",
+    helperFree: "A guest gets a single pass that works on every day they picked.",
+  },
+];
+
 export const CreatorStep2When: React.FC<StepBodyProps> = ({
+  showMultiDatePricingMode = false,
+  multiDatePricingModeLocked = false,
   draft,
   updateDraft,
   errors,
@@ -211,6 +242,27 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
     "date" | "start" | "end" | null
   >(null);
   const [addDateTempValue, setAddDateTempValue] = useState<Date | null>(null);
+
+  // ---- issue #2160: multi-day pricing mode ----
+  // Read through the total coercion so a draft persisted before #2160
+  // (`undefined`) resolves to "per_day" — byte-identical to the database
+  // column's DEFAULT, which is why no persist migrator was needed.
+  const pricingMode = draftMultiDatePricingMode(draft.multiDatePricingMode);
+  // Drives which helper line each option shows. A free event has no price to
+  // qualify, so it gets the pass-count wording instead of the money wording.
+  const eventHasPaidTicket = (draft.tickets ?? []).some(
+    (t) => (t.priceGbp ?? 0) > 0,
+  );
+  const handlePricingModeChange = useCallback(
+    (next: MultiDatePricingMode): void => {
+      // The database trigger is the authority and is fail-closed; this guard
+      // exists so the organiser is never shown a control that then errors.
+      if (multiDatePricingModeLocked) return;
+      if (next === draftMultiDatePricingMode(draft.multiDatePricingMode)) return;
+      updateDraft({ multiDatePricingMode: next });
+    },
+    [draft.multiDatePricingMode, multiDatePricingModeLocked, updateDraft],
+  );
 
   // ---- Mode-switch confirm ----
   const [pendingMode, setPendingMode] = useState<WhenMode | null>(null);
@@ -1175,6 +1227,77 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
           {multiMaxError !== undefined ? (
             <Text style={styles.helperError}>{multiMaxError}</Text>
           ) : null}
+
+          {/* ══ issue #2160 — HOW GUESTS PAY FOR MULTIPLE DAYS ══════════════
+              The operator's decision was "the organiser chooses per event".
+              Without this control `events.multi_date_pricing_mode` is inert and
+              the choice does not exist from the only side that matters.
+
+              Rendered ONLY on a real multi-day event (>1 date), and only for the
+              EVENT wizard — `showMultiDatePricingMode` is opt-in because this
+              component is also the experience wizard's when step, and the column
+              governs nothing there. Single, recurring and RSVP keep today's
+              screen byte-identical.
+
+              Copy is verbatim from SPEC amendment §6. Nothing here is invented. */}
+          {showMultiDatePricingMode && (draft.multiDates?.length ?? 0) > 1 ? (
+            <View style={styles.pricingModeBlock} testID="issue-2160-pricing-mode">
+              <Text style={styles.fieldLabel}>How guests pay for multiple days</Text>
+              {/* Sibling radio rows inside one radiogroup — never nested
+                  Pressables, which would flatten the accessibility subtree. The
+                  helper text is a SEPARATE node, not concatenated into the
+                  accessible name. */}
+              <View accessibilityRole="radiogroup" style={styles.pricingModeRows}>
+                {PRICING_MODE_OPTIONS.map((option) => {
+                  const checked = pricingMode === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      onPress={() => handlePricingModeChange(option.value)}
+                      disabled={multiDatePricingModeLocked}
+                      accessibilityRole="radio"
+                      accessibilityState={{
+                        checked,
+                        disabled: multiDatePricingModeLocked,
+                      }}
+                      accessibilityLabel={option.label}
+                      testID={`issue-2160-pricing-mode-${option.value}`}
+                      style={[
+                        styles.pricingModeRow,
+                        checked ? styles.pricingModeRowActive : null,
+                        multiDatePricingModeLocked
+                          ? styles.pricingModeRowLocked
+                          : null,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.pricingModeRadio,
+                          checked ? styles.pricingModeRadioActive : null,
+                        ]}
+                      >
+                        {checked ? <View style={styles.pricingModeDot} /> : null}
+                      </View>
+                      <View style={styles.pricingModeCopy}>
+                        <Text style={styles.pricingModeLabel}>{option.label}</Text>
+                        <Text style={styles.pricingModeHelper}>
+                          {eventHasPaidTicket ? option.helperPaid : option.helperFree}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text
+                style={styles.helperHint}
+                testID="issue-2160-pricing-mode-footnote"
+              >
+                {multiDatePricingModeLocked
+                  ? "A guest already has a ticket, so this can't be changed."
+                  : "You can't change this once a guest has a ticket."}
+              </Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -1983,6 +2106,46 @@ const styles = StyleSheet.create({
     borderColor: accent.border,
     backgroundColor: accent.tint,
     marginBottom: spacing.xs,
+  },
+  // issue #2160 — the multi-day pricing-mode block. Uses the step's existing
+  // field/label tokens so it reads as part of the When step, not bolted on.
+  pricingModeBlock: { marginTop: 18, gap: 8 },
+  pricingModeRows: { gap: 8 },
+  pricingModeRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+  },
+  pricingModeRowActive: { borderColor: accent.warm },
+  pricingModeRowLocked: { opacity: 0.6 },
+  pricingModeRadio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    marginTop: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderColor: glass.border.profileBase,
+  },
+  pricingModeRadioActive: { borderColor: accent.warm },
+  pricingModeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: accent.warm,
+  },
+  pricingModeCopy: { flex: 1, gap: 3 },
+  pricingModeLabel: { fontSize: 14, fontWeight: "700", color: textTokens.primary },
+  pricingModeHelper: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: textTokens.tertiary,
   },
   addDateLabel: {
     fontSize: typography.bodySm.fontSize,

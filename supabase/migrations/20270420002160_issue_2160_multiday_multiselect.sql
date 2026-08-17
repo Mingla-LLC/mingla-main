@@ -2501,3 +2501,100 @@ BEGIN
 
   RAISE NOTICE 'issue #2160: all post-migration probes passed.';
 END $$;
+
+-- ===========================================================================
+-- §H — biz_set_event_multi_date_pricing_mode: THE ORGANISER'S CONTROL.
+--
+-- WHY A NEW, SMALL RPC RATHER THAN A CHANGE TO THE PUBLISH PATH.
+-- The mode has to be settable from the wizard, and the obvious route —
+-- threading a key through `issue_1719_publish_event_with_poster`'s draft
+-- payload — would mean re-emitting a live publish RPC for one column. That is
+-- clobber risk on the path every organiser uses, in exchange for nothing: this
+-- column is independent of everything publish writes, and its own trigger
+-- already enforces the only rule it has. A dedicated additive function is
+-- strictly smaller and cannot break publishing.
+--
+-- THE LOCK IS NOT RE-IMPLEMENTED HERE. `events_multi_date_pricing_mode_locked`
+-- (§A.6) fires on the UPDATE below exactly as it fires on any other write path,
+-- and raises `multi_date_pricing_mode_locked`. Re-checking it in this function
+-- would be a SECOND enforcement site that can drift from the first.
+--
+-- Permission mirrors the wizard's own authority: the caller must be an accepted,
+-- non-removed brand team member for the event's brand, or the brand's owning
+-- account. Inline EXISTS predicates per feedback_rls_returning_owner_gap.
+-- ===========================================================================
+CREATE OR REPLACE FUNCTION public.biz_set_event_multi_date_pricing_mode(
+  p_event_id uuid,
+  p_mode text
+) RETURNS text
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $function$
+DECLARE
+  v_brand uuid;
+  v_mode text;
+BEGIN
+  IF p_mode IS NULL OR p_mode NOT IN ('per_day', 'all_days') THEN
+    RAISE EXCEPTION 'multi_date_pricing_mode_invalid';
+  END IF;
+
+  SELECT e.brand_id INTO v_brand
+    FROM public.events e
+   WHERE e.id = p_event_id AND e.deleted_at IS NULL
+   FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'event_not_found';
+  END IF;
+
+  IF NOT (
+    EXISTS (
+      SELECT 1 FROM public.brands b
+       WHERE b.id = v_brand AND b.deleted_at IS NULL AND b.account_id = auth.uid()
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.brand_team_members m
+       WHERE m.brand_id = v_brand
+         AND m.user_id = auth.uid()
+         AND m.removed_at IS NULL
+         AND m.accepted_at IS NOT NULL
+         AND m.role <> 'scanner'
+    )
+  ) THEN
+    RAISE EXCEPTION 'insufficient_event_permission';
+  END IF;
+
+  -- The trigger is the ONLY lock. A no-op write is allowed through because the
+  -- trigger's WHEN clause excludes it, so re-saving an unchanged mode on a
+  -- sold-out event does not error at the organiser.
+  UPDATE public.events
+     SET multi_date_pricing_mode = p_mode,
+         updated_at = now()
+   WHERE id = p_event_id;
+
+  SELECT multi_date_pricing_mode INTO v_mode
+    FROM public.events WHERE id = p_event_id;
+  RETURN v_mode;
+END $function$;
+
+REVOKE ALL ON FUNCTION public.biz_set_event_multi_date_pricing_mode(uuid, text)
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.biz_set_event_multi_date_pricing_mode(uuid, text)
+  TO authenticated, service_role;
+
+COMMENT ON FUNCTION public.biz_set_event_multi_date_pricing_mode(uuid, text) IS
+  'issue #2160 — the organiser''s per-event multi-day pricing choice. Additive: '
+  'deliberately NOT threaded through the publish RPC, so publishing carries no '
+  'clobber risk for one column. The lock lives ONLY in the '
+  'events_multi_date_pricing_mode_locked trigger, which fires on this UPDATE '
+  'like any other and raises multi_date_pricing_mode_locked once the event holds '
+  'a live ticket.';
+
+DO $$
+BEGIN
+  IF to_regprocedure('public.biz_set_event_multi_date_pricing_mode(uuid,text)') IS NULL THEN
+    RAISE EXCEPTION 'issue #2160 probe: the organiser pricing-mode setter is missing — the column would be inert';
+  END IF;
+  RAISE NOTICE 'issue #2160 §H: organiser pricing-mode setter installed.';
+END $$;

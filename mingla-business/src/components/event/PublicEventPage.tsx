@@ -526,6 +526,16 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     () => event.tickets.some((t) => (t.priceGbp ?? 0) > 0),
     [event.tickets],
   );
+  // issue #2160 §7(a) — the price qualifier that rides the ticket row itself,
+  // so the multiplier is visible on the same line as the number it multiplies.
+  // NULL on every single-date event and every free event (nothing to qualify),
+  // which keeps the shared package's rendered tree byte-identical there.
+  const ticketPricingNote =
+    hasOccurrenceChoice && eventHasPaidTicket
+      ? multiDatePricingMode === "all_days"
+        ? "for all days"
+        : "per day"
+      : null;
   const onSeeWhosGoingProp = Platform.OS === "web" ? handleSeeWhosGoingWeb : undefined;
   useEffect(() => {
     const refresh = (): void => setNowMs(Date.now());
@@ -1000,6 +1010,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           // is set from here with no edit to the shared package.
           submitting={purchaseBlockedByAccess}
           showHeading
+          pricingNote={ticketPricingNote}
           testID="orch-1167-event-desktop-ticket-box"
         />
       </View>
@@ -1531,6 +1542,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           }
           // ORCH-1167-R2 (change 5) — desktop relocates the box to the sticky panel.
           hideTicketBox={isDesktop || acquisitionState.kind !== "current"}
+          // issue #2160 §7(a) — the phone inline ticket box. Null on every
+          // single-date and free event, so the rendered tree is unchanged there.
+          pricingNote={ticketPricingNote}
           ticketQuantities={ticketQuantities}
           onChangeTicketQuantity={handleChangeTicketQuantity}
           onProceedToCart={handleProceedToCart}

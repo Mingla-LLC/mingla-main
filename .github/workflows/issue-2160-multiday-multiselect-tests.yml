@@ -44,6 +44,20 @@ on:
       - "mingla-business/src/components/event/PublicEventPage.tsx"
       - "mingla-business/src/components/checkout/CartContext.tsx"
       - "mingla-business/app/checkout/**"
+      # The organiser-facing half: the wizard control, the per-day roster and
+      # its export. Without the control the pricing column is inert, so these
+      # are as load-bearing as the model.
+      - "mingla-business/src/components/event/CreatorStep2When.tsx"
+      - "mingla-business/src/components/event/EventCreatorWizard.tsx"
+      - "mingla-business/src/components/event/FoundationEventPreview.tsx"
+      - "mingla-business/src/store/draftEventStore.ts"
+      - "mingla-business/src/store/orderStore.ts"
+      - "mingla-business/src/services/businessEvents.ts"
+      - "mingla-business/src/services/eventOrdersService.ts"
+      - "mingla-business/src/utils/guestCsvExport.ts"
+      - "mingla-business/app/event/[id]/guests/**"
+      - "packages/offering-rendering/EventOfferingBody.tsx"
+      - "app-mobile/src/services/calendarService.ts"
       - ".github/scripts/strict-grep/issue-2160-*.mjs"
       - ".github/scripts/strict-grep/orch-0791-checkout-session-never-reused-post-terminal.mjs"
       - ".github/scripts/strict-grep/issue-2150-free-completed-session-returned-not-tombstoned.mjs"
@@ -130,6 +144,16 @@ jobs:
         run: >-
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
           -f supabase/migrations/__tests__/issue_2160_unlisted_occurrences.test.sql
+      # S-1..S-7. The organiser's control, executed. S-2b is the one that
+      # matters: the SAME refusal through the RPC and through a direct UPDATE,
+      # proving the lock has ONE enforcement site (the trigger) and the setter
+      # did not re-implement it.
+      - name: "#2160 — the organiser can set the mode, and cannot once a pass exists"
+        env:
+          PGPASSWORD: ${{ format('issue-2160-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_2160_pricing_mode_setter.test.sql
       # The neighbours this issue re-emits into must stay green under the change.
       - name: "#2150 suite stays green under the wrapper re-emit"
         env:
@@ -176,6 +200,14 @@ jobs:
           supabase/functions/ticket-checkout-create/__tests__/orch1072_experience_occurrence_checkout.test.ts
       - run: deno check supabase/functions/ticket-checkout-create/index.ts
       - run: deno check supabase/functions/ticket-confirmation-dispatch/index.ts
+      # C-1..C-5. A two-day guest gets TWO calendar entries. Same bug class as
+      # #2162, and worse here: orders.event_date_id is the LATEST-ending day, so
+      # the un-fixed code showed a both-days guest only day 2.
+      - name: "#2160 consumer calendar — one entry per day attended"
+        run: >-
+          deno test --allow-read --no-check
+          app-mobile/src/services/__tests__/issue_2160_calendar_per_day_entries.test.ts
+          app-mobile/src/services/__tests__/orch_1188_calendar_url_and_date.test.ts
 
   issue-2160-client:
     name: "#2160 Client — multi-select, and single-date stays byte-identical"
@@ -199,6 +231,12 @@ jobs:
         run: npx jest issue_2135 --runInBand
       - name: "#2150 + #2136 client guards stay green"
         run: npx jest issue_2150 issue_2136 --runInBand
+      # 28 tests. The wizard control + its verbatim SPEC copy + the lock, the
+      # per-day roster filter, the CSV Day column (appended LAST so nothing that
+      # parses by position moves), and the guest-facing price qualifier on BOTH
+      # phone and desktop.
+      - name: "#2160 organiser surfaces — wizard, roster, CSV, price qualifier"
+        run: npx jest issue_2160 --runInBand
 
   issue-2160-strict-grep:
     name: "#2160 Gates — day ladder, capacity aggregation, no direct occurrence read"
@@ -225,3 +263,6 @@ jobs:
       # The experience checkout is frozen: CartContext.eventDateId and the
       # top-level eventDateId body field were ADDED ALONGSIDE, never renamed.
       - run: node .github/scripts/strict-grep/orch-1138-experience-checkout-byte-identical.mjs
+      # #2160 changes WHICH occurrence's end the consumer calendar reads, never
+      # that it reads an end.
+      - run: node .github/scripts/strict-grep/i-consumer-calendar-uses-end-not-start.mjs
