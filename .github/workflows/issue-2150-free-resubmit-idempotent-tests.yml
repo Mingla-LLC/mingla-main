@@ -1,0 +1,166 @@
+name: issue-2150-free-resubmit-idempotent
+# issue #2150 [duplicate free tickets on resubmit] — the dedicated PR + push lane.
+#
+# WHY THIS FILE EXISTS. The #2136 lane guards the finalize contract; nothing
+# guards the CREATE-session side, which is where #2150 lives. The repository-wide
+# `supabase-migrations-and-stripe-deno.yml` names its Deno test files explicitly
+# (it never globs a directory), and no workflow applies the migration chain to a
+# PostgreSQL service for this function — so without this lane the executable
+# duplicate-order repro would exist in the tree and gate nothing.
+#
+# Path filters err BROAD over the guarded SOURCE trees, not just the tests, so a
+# revert of the product re-triggers the lane (the docs-only-CLOSE hazard). They
+# deliberately include EVERY migration that has ever re-emitted
+# `biz_ticket_checkout_create_session`: a re-emit silently replaces the function
+# and can drop the #2150 exemption while every other check stays green. #2160
+# will re-emit its neighbours, which is exactly the case this list exists for.
+
+on:
+  pull_request:
+    paths: &issue_2150_paths
+      - "supabase/migrations/20270419002150_issue_2150_free_resubmit_idempotent.sql"
+      - "supabase/migrations/__tests__/issue_2150_free_resubmit_idempotent.test.sql"
+      # TA-13 in the #2136 adversarial suite is the cross-guard: it asserts the
+      # corrected mechanism from the other side of the change.
+      - "supabase/migrations/__tests__/issue_2136_free_checkout_no_value_arm.tester.adversarial.test.sql"
+      # Every prior definer of the create-session wrapper and its base.
+      - "supabase/migrations/20270324001929_issue_1929_hidden_direct_checkout.sql"
+      - "supabase/migrations/20270403001930_issue_1930_checkout_current_truth.sql"
+      - "supabase/migrations/20270413001931_issue_1931_private_event_access.sql"
+      - "supabase/migrations/20270414002101_issue_2101_named_buyer_checkout_access.sql"
+      # The finalize wrapper: the exemption hands back an order it minted.
+      - "supabase/migrations/20270417002136_issue_2136_free_checkout_finalize_contract.sql"
+      - "supabase/functions/ticket-checkout-create/**"
+      - "supabase/functions/_shared/ticketCheckout.ts"
+      - ".github/scripts/strict-grep/issue-2150-free-completed-session-returned-not-tombstoned.mjs"
+      - ".github/scripts/strict-grep/orch-0791-checkout-session-never-reused-post-terminal.mjs"
+      - ".github/workflows/issue-2150-free-resubmit-idempotent-tests.yml"
+      - "docs/INVARIANT_REGISTRY.md"
+  push:
+    branches: [main]
+    paths: *issue_2150_paths
+  workflow_dispatch:
+
+jobs:
+  issue-2150-edge-contract:
+    name: "#2150 Edge — a resubmit returns the existing order, never re-finalizes"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # 3 tests. REPLAY-01 fails on a true line deletion of the #2150 branch in
+      # ticket-checkout-create: the reverted code falls through to the in-flight
+      # authorize gate, which refuses a completed session, and the 200 becomes a
+      # 409.
+      - name: "#2150 Edge replay suite"
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/ticket-checkout-create/__tests__/issue_2150_free_resubmit_idempotent.test.ts
+      - name: "#2150 sibling ticket-checkout-create suites stay green"
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/ticket-checkout-create/__tests__/issue_2136_free_checkout_contract.test.ts
+          supabase/functions/ticket-checkout-create/__tests__/issue_2101_named_buyer_access.test.ts
+      - run: deno check supabase/functions/ticket-checkout-create/index.ts
+
+  issue-2150-strict-grep:
+    name: "#2150 Gates — the exemption AND the ORCH-0791 tombstone both survive"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # Both gates read the LATEST migration defining the wrapper, so a re-emit
+      # that drops either shape fails here. Batch class A runs them too; this
+      # lane re-runs them on the source paths that can break them so the failure
+      # is attributable.
+      - run: node .github/scripts/strict-grep/issue-2150-free-completed-session-returned-not-tombstoned.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-2150-free-completed-session-returned-not-tombstoned.mjs
+      - run: node .github/scripts/strict-grep/orch-0791-checkout-session-never-reused-post-terminal.mjs --self-test
+      - run: node .github/scripts/strict-grep/orch-0791-checkout-session-never-reused-post-terminal.mjs
+
+  issue-2150-postgres-contract:
+    name: "#2150 PostgreSQL 17 — 4 submits, 1 order, 1 ticket, 1 email, 1 SMS"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        # The same Supabase-flavored image the #2101, #2136 and repository-wide
+        # migration lanes pin.
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-2150-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      # Wait for the image's OWN bootstrap, not merely for the socket: accepting
+      # connections before `vault` / `supabase_admin` exist lets the baseline
+      # squash abort on a graphql schema-version race. Same probe #2101 and
+      # #2136 use.
+      - name: Wait for PostgreSQL 17 bootstrap to complete
+        env:
+          PGPASSWORD: ${{ format('issue-2150-ci-{0}', github.run_id) }}
+        run: |
+          for attempt in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres did not finish bootstrapping in 90s"; exit 1
+      - name: Apply migrations in timestamp order
+        env:
+          PGPASSWORD: ${{ format('issue-2150-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$f" >/dev/null
+          done
+      # `auth.users` in this image is the pre-GoTrue stub; the fixtures insert
+      # brand-owner rows through it. Provisioned as the owning role exactly as
+      # #2136, #2101, #873 and #1529 do.
+      - name: Match hosted Supabase Auth user shape
+        env:
+          PGPASSWORD: ${{ format('issue-2150-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS deleted_at timestamptz" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS is_anonymous boolean DEFAULT false" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS banned_until timestamptz" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS confirmed_at timestamptz"
+      # H-01..H-07. Executes the real create-session and finalize RPCs and counts
+      # real orders, tickets, ticket_order_notifications and sessions. H-01 fails
+      # on a true line deletion of the migration's exemption block (measured: the
+      # revert returns a SECOND order on submit 2). H-03/H-04/H-05 are the
+      # scope proof — failed, completed-paid and past-expiry sessions must still
+      # tombstone and re-create.
+      - name: Prove one guest, one cart, N submits -> exactly one of everything
+        env:
+          PGPASSWORD: ${{ format('issue-2150-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_2150_free_resubmit_idempotent.test.sql
+      # The cross-guard from the other side of the change: TA-13 in the #2136
+      # tester-adversarial suite now asserts the corrected mechanism, and TA-01..
+      # TA-14 must all stay green under the #2150 migration.
+      - name: "#2136 tester-adversarial suite stays green under the #2150 change"
+        env:
+          PGPASSWORD: ${{ format('issue-2150-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_2136_free_checkout_no_value_arm.tester.adversarial.test.sql

@@ -771,6 +771,70 @@ export const createTicketCheckoutCreateHandler = (
     const isInstallmentPlan = session.installmentSchedule !== null &&
       session.installmentSchedule !== undefined;
 
+    // ===================================================================
+    // issue #2150 [duplicate free tickets on resubmit] — IDEMPOTENT REPLAY
+    // OF AN ALREADY-COMPLETED FREE RESERVATION.
+    // ===================================================================
+    // Post-#2150 the session RPC no longer tombstones a completed ZERO-TOTAL
+    // session; it returns that session verbatim, carrying `status:
+    // 'free_completed'` and the `orderId` it already minted. That status is
+    // unreachable from a fresh mint (the base RPC only ever answers
+    // `pending_free` / `requires_payment` / `awaiting_web_redirect`), so this
+    // branch is entered by exactly one thing: a guest submitting the same free
+    // reservation again — a double tap, a refresh, a back-navigation, a second
+    // tab.
+    //
+    // It must NOT fall through into the free arm below. `issue_1930_ticket_
+    // session_authorized` requires the session to still be IN FLIGHT
+    // (`status IN ('pending_free','requires_payment','processing_payment',
+    // 'awaiting_web_redirect')`), so a completed session answers `false` and
+    // the guest would be told `checkout_unavailable` about a reservation they
+    // actually hold.
+    //
+    // Nothing is re-run here: no `biz_ticket_checkout_finalize`, no
+    // `dispatchTicketConfirmation`, no `fireAdConversion`. The order, its
+    // tickets, its two `ticket_order_notifications` rows and its ad conversion
+    // were all created by the FIRST submit. `notification-retry-sweeper` owns
+    // redelivery of anything that failed to send, so skipping the dispatch
+    // cannot strand a confirmation. The guest is answered with the same
+    // `free_completed` body the first submit produced — same order, same
+    // passes — so the confirm screen renders identically on every resubmit.
+    if (
+      String(session.status ?? "") === "free_completed" &&
+      String(session.orderId ?? "").length > 0
+    ) {
+      const replayedOrderId = String(session.orderId);
+      const replayedTickets = await readIssuedTicketsForOrder(
+        supabase,
+        replayedOrderId,
+        null,
+      );
+      if (replayedTickets.length === 0) {
+        // The RPC only returns a completed free session when a live ticket
+        // exists for its order, so an empty read-back is a real inconsistency
+        // and must never be reported as a completed checkout (the #2136 rule).
+        console.error(
+          "[ticket-checkout-create] free replay order has no tickets",
+          checkoutSessionId,
+          replayedOrderId,
+        );
+        return jsonResponse(checkoutUnavailableResponse(), 409);
+      }
+      return jsonResponse({
+        kind: "free_completed",
+        orderId: replayedOrderId,
+        checkoutSessionId,
+        eventId: String(session.eventId ?? eventId),
+        paymentStatus: "paid",
+        totalCents,
+        currency: String(session.currency ?? ""),
+        notificationStatus: "queued",
+        tickets: replayedTickets,
+        buyerPhoneE164,
+        buyerStatusToken,
+      });
+    }
+
     if (totalCents === 0) {
       const { data: freeAuthorized, error: freeAuthError } = await supabase.rpc(
         "issue_1930_ticket_session_authorized",

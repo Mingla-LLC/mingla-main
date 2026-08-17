@@ -3239,6 +3239,20 @@
       ]
     },
     {
+      "script": ".github/scripts/strict-grep/issue-2150-free-completed-session-returned-not-tombstoned.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2150-free-completed-session-returned-not-tombstoned"
+      ]
+    },
+    {
       "script": ".github/scripts/strict-grep/orch-0792-no-published-event-theme-reads.mjs",
       "kind": "file",
       "enforcement": "batch:A",
