@@ -1682,13 +1682,19 @@ const detailFromDirectBundle = async (payload: JsonRecord): Promise<PublicEventD
     // issue #2160 — THE MULTI-DATE SIGNAL, READ FROM THE BUNDLE.
     //
     // These were hard-coded `false`. Because this bundle is the FIRST reader
-    // consulted by BOTH getPublicEventBySlug and getPublicEventById, and it
+    // consulted by BOTH public-event readers (by-slug and by-id), and it
     // carried no multi-date key, `asWhenMode` resolved EVERY bundle-served
     // ticketed event to "single" — so #2135's day chooser never mounted at all,
     // on PUBLIC events as well as unlisted ones. #2161 described this as
     // "works for public, silently empty for unlisted"; measured against the
     // real reader on the full migration chain, it worked for neither. See the
     // #2160 implementation report.
+    //
+    // The reader names are spelled out in prose above rather than as bare
+    // identifiers ON PURPOSE: eventType.filter.audit.test.ts anchors on the
+    // FIRST literal occurrence of each reader's name and lazily matches to the
+    // next top-level `};`, so naming one in a comment ABOVE its definition
+    // silently re-anchors that audit onto the wrong function body.
     is_recurring: payload.isRecurring === true,
     is_multi_date: payload.isMultiDate === true,
     recurrence_rules: null,

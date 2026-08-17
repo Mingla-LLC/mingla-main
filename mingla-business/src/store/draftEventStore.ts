@@ -26,6 +26,14 @@
 import { useMemo } from "react";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+// issue #2160 — re-exported from a LEAF module (zero imports) so a consumer can
+// take the coercion WITHOUT taking this store, and the AsyncStorage-backed
+// persist behind it, at runtime. See the header of that file.
+export {
+  draftMultiDatePricingMode,
+  type MultiDatePricingMode,
+} from "../utils/multiDatePricingMode";
+import type { MultiDatePricingMode } from "../utils/multiDatePricingMode";
 import { create } from "zustand";
 import {
   createJSONStorage,
@@ -226,18 +234,6 @@ export interface MultiDateEntry {
 }
 
 // ---- DraftEvent (v3) ------------------------------------------------
-
-/** issue #2160 — the organiser's per-event multi-day pricing choice. */
-export type MultiDatePricingMode = "per_day" | "all_days";
-
-/**
- * issue #2160 — total function over an untyped draft field. A draft persisted
- * before #2160 carries `undefined`; anything unrecognised is also "per_day".
- * Never returns a third state, exactly like the NOT NULL database column.
- */
-export const draftMultiDatePricingMode = (
-  value: unknown,
-): MultiDatePricingMode => (value === "all_days" ? "all_days" : "per_day");
 
 export interface DraftEvent {
   id: string;

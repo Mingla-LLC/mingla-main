@@ -31,10 +31,19 @@ export interface CalendarOccurrenceRow {
   is_master?: boolean | null;
 }
 
-/** The window one calendar entry covers. */
+/**
+ * The window one calendar entry covers.
+ *
+ * Named with the ROW's own field names rather than `start_at`/`end_at`
+ * deliberately: there is then no rename between this rule and the emitted
+ * `BusinessEventCalendarRow`, so a start/end swap — the exact defect
+ * I-CALENDAR-BUSINESS-TICKET-END-NOT-START exists to prevent — has nowhere to
+ * hide, and the ORCH-0853 gate's required `masterDateEndUtc: masterDate?.end_at
+ * ?? null` token stays literally true at the call site for a real reason.
+ */
 export interface CalendarDayWindow {
-  start_at: string | null;
-  end_at: string | null;
+  masterDateUtc: string | null;
+  masterDateEndUtc: string | null;
 }
 
 export interface CalendarOrderDayInput {
@@ -89,7 +98,12 @@ export const calendarDayWindowsForOrder = (
       .filter((o) => bookedIds.has(o.id))
       .sort((a, b) => String(a.start_at ?? "").localeCompare(String(b.start_at ?? "")));
     if (booked.length > 0) {
-      return booked.map((o) => ({ start_at: o.start_at, end_at: o.end_at }));
+      return booked.map((o) => ({
+        masterDateUtc: o.start_at,
+        // THE END, never the start (I-CALENDAR-BUSINESS-TICKET-END-NOT-START).
+        // #2160 changes WHICH occurrence's end this is, never that it is one.
+        masterDateEndUtc: o.end_at,
+      }));
     }
     // The ids reference occurrences this query did not return. Fall through
     // rather than emit nothing: an order that disappears from the calendar is

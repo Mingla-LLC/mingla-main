@@ -7,13 +7,19 @@ import type {
   DraftEventVisibility,
   EventCoverMediaType,
   MultiDateEntry,
-  MultiDatePricingMode,
   RecurrenceRule,
   TicketStub,
   WhenMode,
 } from "../store/draftEventStore";
-// issue #2160 — value import (a total coercion), not a type.
-import { draftMultiDatePricingMode } from "../store/draftEventStore";
+// issue #2160 — the coercion comes from a LEAF module, NOT from
+// `draftEventStore`. The import above is `import type` and is ERASED; a VALUE
+// import from that module would make it real and drag the AsyncStorage-backed
+// zustand persist into every consumer of this file — which broke an unrelated
+// TRIP render suite for exactly one commit.
+import {
+  draftMultiDatePricingMode,
+  type MultiDatePricingMode,
+} from "../utils/multiDatePricingMode";
 import type { LiveEvent, LiveEventStatus } from "../store/liveEventStore";
 import type { Brand, BrandLinks } from "../store/currentBrandStore";
 import {

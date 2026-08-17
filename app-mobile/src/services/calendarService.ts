@@ -545,8 +545,8 @@ export class CalendarService {
           // booked occurrence, else the master. #2160 only decides whether one
           // window is enough.
           fallback: {
-            start_at: masterDate?.start_at ?? null,
-            end_at: masterDate?.end_at ?? null,
+            masterDateUtc: masterDate?.start_at ?? null,
+            masterDateEndUtc: masterDate?.end_at ?? null,
           },
         });
 
@@ -557,12 +557,12 @@ export class CalendarService {
           brandName: brand?.name ?? "",
           brandSlug: brand?.slug ?? "",
           coverMediaUrl: event?.cover_media_url ?? null,
-          masterDateUtc: day.start_at,
+          masterDateUtc: day.masterDateUtc,
           // ORCH-0853: end-of-event timestamp used by consumer Calendar
           // partition. Still the END, never the start — the
           // i-consumer-calendar-uses-end-not-start gate is unaffected: #2160
           // only changes WHICH occurrence's end this is, never that it is one.
-          masterDateEndUtc: day.end_at,
+          masterDateEndUtc: day.masterDateEndUtc,
           timezone: event?.timezone ?? "UTC",
           paymentStatus: order.payment_status,
           ticketCount: tickets.length,

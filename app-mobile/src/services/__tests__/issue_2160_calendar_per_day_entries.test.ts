@@ -56,7 +56,10 @@ const ALL = [DAY_1, DAY_2, DAY_3];
 // What the pre-#2160 code would have emitted: ONE window, from the anchor —
 // which under #2160 is the LATEST-ending day. Every multi-day check below
 // asserts the result is not this.
-const ANCHOR_ONLY = { start_at: DAY_2.start_at, end_at: DAY_2.end_at };
+const ANCHOR_ONLY = {
+  masterDateUtc: DAY_2.start_at,
+  masterDateEndUtc: DAY_2.end_at,
+};
 
 Deno.test("E-1 per_day, two days -> TWO entries, one per day, chronological", () => {
   const windows = calendarDayWindowsForOrder({
@@ -71,16 +74,16 @@ Deno.test("E-1 per_day, two days -> TWO entries, one per day, chronological", ()
 
   assertEquals(windows.length, 2, "a two-day guest must get TWO calendar entries");
   // Chronological, regardless of the order the passes came back in.
-  assertEquals(windows[0].start_at, DAY_1.start_at);
-  assertEquals(windows[0].end_at, DAY_1.end_at);
-  assertEquals(windows[1].start_at, DAY_2.start_at);
-  assertEquals(windows[1].end_at, DAY_2.end_at);
+  assertEquals(windows[0].masterDateUtc, DAY_1.start_at);
+  assertEquals(windows[0].masterDateEndUtc, DAY_1.end_at);
+  assertEquals(windows[1].masterDateUtc, DAY_2.start_at);
+  assertEquals(windows[1].masterDateEndUtc, DAY_2.end_at);
   // THE NEGATIVE THAT CATCHES THE REGRESSION: the pre-#2160 result was exactly
   // the anchor alone, and day 1 — the one the guest could have missed — was
   // absent. A test asserting only "an entry has a date" passes on that.
   assertNotEquals(windows.length, 1);
   assert(
-    windows.some((w) => w.start_at === DAY_1.start_at),
+    windows.some((w) => w.masterDateUtc === DAY_1.start_at),
     "day 1 must be present — its absence is the whole defect",
   );
 });
@@ -96,7 +99,7 @@ Deno.test("E-2 all_days, ONE pass admitting two days -> still TWO entries", () =
     fallback: ANCHOR_ONLY,
   });
   assertEquals(windows.length, 2);
-  assertEquals(windows.map((w) => w.start_at), [DAY_1.start_at, DAY_2.start_at]);
+  assertEquals(windows.map((w) => w.masterDateUtc), [DAY_1.start_at, DAY_2.start_at]);
 });
 
 Deno.test("E-3 a day the guest did NOT pick never produces an entry", () => {
@@ -106,9 +109,9 @@ Deno.test("E-3 a day the guest did NOT pick never produces an entry", () => {
     fallback: ANCHOR_ONLY,
   });
   assertEquals(windows.length, 1);
-  assertEquals(windows[0].start_at, DAY_1.start_at);
+  assertEquals(windows[0].masterDateUtc, DAY_1.start_at);
   assert(
-    !windows.some((w) => w.start_at === DAY_3.start_at),
+    !windows.some((w) => w.masterDateUtc === DAY_3.start_at),
     "day 3 was never booked and must not appear in the calendar",
   );
 });
@@ -174,9 +177,9 @@ Deno.test("E-8 each entry carries its OWN end, never another day's", () => {
     }],
     fallback: ANCHOR_ONLY,
   });
-  assertEquals(windows[0].end_at, DAY_1.end_at);
-  assertEquals(windows[1].end_at, DAY_3.end_at);
-  assertNotEquals(windows[0].end_at, windows[1].end_at);
+  assertEquals(windows[0].masterDateEndUtc, DAY_1.end_at);
+  assertEquals(windows[1].masterDateEndUtc, DAY_3.end_at);
+  assertNotEquals(windows[0].masterDateEndUtc, windows[1].masterDateEndUtc);
 });
 
 // ── the only two source pins, and they pin WIRING, not behaviour ───────────
@@ -191,7 +194,8 @@ Deno.test("E-9 calendarService is really wired to this rule", () => {
     "and flatMap it, because `map` cannot turn one order into two entries",
   );
   assert(
-    /masterDateUtc: day\.start_at,/.test(src) && /masterDateEndUtc: day\.end_at,/.test(src),
+    /masterDateUtc: day\.masterDateUtc,/.test(src) &&
+      /masterDateEndUtc: day\.masterDateEndUtc,/.test(src),
     "each emitted row must be dated from ITS OWN window",
   );
   assert(

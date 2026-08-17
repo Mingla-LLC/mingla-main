@@ -45,16 +45,19 @@ import {
 } from "../../constants/designSystem";
 import {
   type DraftEvent,
-  draftMultiDatePricingMode,
   type MultiDateEntry,
   type MultiDateOverrides,
-  type MultiDatePricingMode,
   type RecurrencePreset,
   type RecurrenceRule,
   type SetPos,
   type Weekday,
   type WhenMode,
 } from "../../store/draftEventStore"
+// issue #2160 — leaf module; see its header for why this is not the store.
+import {
+  draftMultiDatePricingMode,
+  type MultiDatePricingMode,
+} from "../../utils/multiDatePricingMode"
 
 import { generateDraftId } from "../../utils/draftEventId";
 import {
