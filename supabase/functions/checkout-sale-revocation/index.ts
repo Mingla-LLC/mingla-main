@@ -100,10 +100,21 @@ serve(async (req) => {
           )
           .eq("id", row.provider_attempt_id).maybeSingle();
         if (row.reason.startsWith("paid_provider_")) {
-          // Paid provider evidence is a refund obligation, never ordinary
-          // continuation suppression. The retryable outbox remains visible
-          // until the durable attention/source-refund row is reconciled.
-          throw new Error("paid_provider_identity_pending");
+          // #2168 — paid provider evidence is a refund obligation, never
+          // ordinary continuation suppression. This USED to throw, which made
+          // the row `failed_retryable` and re-armed it forever: the durable
+          // attention row it said it was waiting for was never created by
+          // anything. The handoff now creates it, so the row can leave the
+          // retry pool with the money question owned by a person.
+          const { data: outcome, error: handoffError } = await client.rpc(
+            "issue_2168_handoff_revocation_attention",
+            { p_outbox_id: row.id },
+          );
+          if (handoffError) throw new Error("attention_handoff_failed");
+          // `no_money` means the buyer is owed nothing (a free ticket, or a
+          // charge that is entirely platform fee), so there is no reversal to
+          // perform and nothing for an operator to decide.
+          state = outcome === "no_money" ? "paid_reversed" : "paid_reversal_pending";
         } else if (!attempt) {
           state = "neutralized";
         } else if (attempt.provider === "paystack") {
