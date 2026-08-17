@@ -72,19 +72,20 @@ export async function previewPendingVenueIdentityCorrection(
  * FORWARD ONLY, and deliberately so.
  *
  * [TRANSITIONAL] the RPC implements `p_mode='rollback'` (Amendment 1 §A5) and
- * the independent tester traversed it end to end, but no SURFACE invokes it and
- * this client does not pretend otherwise. Two things stood in the way and
- * neither was an implementation detail: no amendment specified a rollback UI,
- * and an owner cannot obtain `p_source_audit_id` — reading
+ * the independent tester traversed it end to end, but no SURFACE invokes it.
+ *
+ * EXIT CONDITION: this signature gains a mode parameter, and the preview gains
+ * the audit handle, when the follow-up issue for a user-facing rollback lands.
+ * Delete this marker then. It is not a reopening of #2099.
+ *
+ * Why it is not #2099's to close: two things stood in the way and neither was
+ * an implementation detail — no amendment specified a rollback UI, and an owner
+ * cannot obtain `p_source_audit_id`, because reading
  * `venue_identity_correction_audit` correctly returns `42501` to an
  * authenticated session (Amendment 13 §N1, and a strength, not a gap).
- *
- * EXIT CONDITION: Amendments 13–14 ruled the rollback leg out of §D6's surface
- * requirement and recorded it as an RPC-level operator capability with a
- * performable procedure; a user-facing rollback is a new issue, not a reopening
- * of #2099. So this signature stays unable to express a rollback until that new
- * issue lands, at which point it gains a mode parameter and the preview gains
- * the handle. Until then the honest shape is the one below.
+ * Amendments 13–14 ruled the rollback leg out of §D6's surface requirement and
+ * recorded it as an RPC-level operator capability with a performable procedure.
+ * Until the follow-up lands, the honest shape is the one below.
  */
 export async function correctPendingVenueIdentity(
   input: CorrectPendingVenueIdentityInput,
