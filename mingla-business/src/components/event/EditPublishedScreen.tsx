@@ -138,6 +138,11 @@ import {
   patchPublishedEventTaxonomy,
   patchPublishedEventTheme,
   patchPublishedEventWhen,
+  // issue #2009 [published-event visibility] — the ONLY authoritative write.
+  setPublishedEventVisibility,
+  issue2009VisibilityErrorCopy,
+  issue2009VisibilitySuccessCopy,
+  ISSUE_2009_PRIVATE_UNAVAILABLE_COPY,
 } from "../../services/businessEvents";
 import { updateLiveRsvp } from "../../services/rsvpEvents";
 import { buildRsvpUpdatePayloadDiff } from "../../utils/serverDraftEventMapper";
@@ -232,12 +237,22 @@ const ORCH_1006_PRICING_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "pricingSwitches",
 ]);
 
+// issue #2009 [published-event visibility] — visibility finally HAS an
+// authoritative server mutation (`business_set_event_visibility`), so it joins
+// the server-routable set. Before this, a server-loaded ticketed event emitted
+// a correct `patch.visibility` that nothing could write, and the safety gate
+// disabled Save with no explanation the organiser could act on.
+const ISSUE_2009_VISIBILITY_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
+  "visibility",
+]);
+
 const SERVER_EDITABLE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   ...COVER_MEDIA_PATCH_KEYS,
   ...ORCH_0824_PATCH_KEYS,
   ...ORCH_0877_WHEN_PATCH_KEYS,
   ...ORCH_0964_THEME_PATCH_KEYS,
   ...ORCH_1006_PRICING_PATCH_KEYS,
+  ...ISSUE_2009_VISIBILITY_PATCH_KEYS,
 ]);
 
 const sleep = (ms: number): Promise<void> =>
@@ -576,6 +591,15 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     const patch = currentPatch;
     if (Object.keys(patch).length === 0) {
       showToast("No changes to save.");
+      return;
+    }
+    // issue #2009 SC-11/SC-12 — Private fails closed at BOTH layers. #1931
+    // shipped containment only (every transition primitive raises
+    // `private_access_release_frozen`), so there is no invited-guest path to
+    // hand a Private event to. Refuse here with the approved copy, and refuse
+    // again on the server if this client's capability state is stale.
+    if (!rsvpMode && patch.visibility === "private") {
+      showToast(ISSUE_2009_PRIVATE_UNAVAILABLE_COPY);
       return;
     }
     if (
@@ -1313,6 +1337,49 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         }
       }
 
+      // issue #2009 [published-event visibility] — the visibility diff routes
+      // through the narrow RPC BEFORE the unified server-editable early-return,
+      // exactly like the cover / taxonomy / When / theme / pricing blocks above.
+      // Server-success-then-local: an RPC failure aborts and NEVER claims a
+      // partial success. There is deliberately no `.from("events").update(...)`
+      // fallback — the database refuses one.
+      if (!rsvpMode && patch.visibility !== undefined) {
+        if (liveEvent.serverEventId === null) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast("Save failed because this event is missing its server id.");
+          return;
+        }
+        try {
+          await setPublishedEventVisibility({
+            eventId: liveEvent.serverEventId,
+            requestedVisibility: patch.visibility,
+            reason: validation.trimmedReason,
+            // The optimistic-concurrency boundary is the value this editor
+            // LOADED, so a concurrent edit elsewhere is rejected rather than
+            // silently overwritten.
+            expectedUpdatedAt: liveEvent.updatedAt,
+          });
+          invalidateServerEventCaches();
+        } catch (error) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          const code =
+            error instanceof Error ? error.message : "set_event_visibility_failed";
+          showToast(issue2009VisibilityErrorCopy(code));
+          return;
+        }
+      }
+
+      // issue #2009 — SPEC §6 requires EXACTLY ONE success signal, and for a
+      // visibility-only save it names the persisted label. Any wider patch
+      // keeps the existing generic confirmation, spelled out inline in both
+      // success paths so ORCH-0980's no-silent-success proof still reads it.
+      const visibilityOnlySave =
+        !rsvpMode &&
+        patch.visibility !== undefined &&
+        Object.keys(patch).length === 1;
+
       // ORCH-0824 hotfix: unified early-return for server-editable-only
       // patches when the local Zustand event isn't available
       // (disableLocalSaveReason is set when liveEvent === null at the
@@ -1329,7 +1396,11 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         invalidateServerEventCaches();
         setSubmitting(false);
         setModal((prev) => ({ ...prev, visible: false }));
-        showToast("Saved. Live now.");
+        if (visibilityOnlySave && patch.visibility !== undefined) {
+          showToast(issue2009VisibilitySuccessCopy(patch.visibility));
+        } else {
+          showToast("Saved. Live now.");
+        }
         setTimeout(() => {
           if (router.canGoBack()) {
             router.back();
@@ -1350,7 +1421,11 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       setSubmitting(false);
       setModal((prev) => ({ ...prev, visible: false }));
       if (result.ok) {
-        showToast("Saved. Live now.");
+        if (visibilityOnlySave && patch.visibility !== undefined) {
+          showToast(issue2009VisibilitySuccessCopy(patch.visibility));
+        } else {
+          showToast("Saved. Live now.");
+        }
         setTimeout(() => {
           if (router.canGoBack()) {
             router.back();
@@ -1673,6 +1748,11 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             disabled={
               submitting ||
               coverVideoProcessing ||
+              // issue #2009 SC-2 — a clean editor disables Save. Before this,
+              // "no diff" was absent from the disabled predicate, so some loads
+              // showed an ACTIVE button whose only outcome was the misleading
+              // "No changes to save." toast.
+              Object.keys(currentPatch).length === 0 ||
               (disableLocalSaveReason !== undefined &&
                 !canSaveServerCoverMediaOnly)
             }

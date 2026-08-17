@@ -1,0 +1,112 @@
+name: "Issue #2009 published event visibility"
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20270418002009_issue_2009_business_event_visibility.sql"
+      - "supabase/migrations/__tests__/issue_2009_*"
+      - "mingla-business/src/services/businessEvents.ts"
+      - "mingla-business/src/services/__tests__/businessEventVisibility.issue2009*"
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
+      - "mingla-admin/src/services/offeringsService.js"
+      - ".github/scripts/strict-grep/issue-2009-published-event-visibility.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2009-published-event-visibility.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270418002009_issue_2009_business_event_visibility.sql"
+      - "supabase/migrations/__tests__/issue_2009_*"
+      - "mingla-business/src/services/businessEvents.ts"
+      - "mingla-business/src/services/__tests__/businessEventVisibility.issue2009*"
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
+      - ".github/scripts/strict-grep/issue-2009-published-event-visibility.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2009-published-event-visibility.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.sha }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Canonical migration replay (whole chain, timestamp order)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for f in $(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
+      # Every assertion in this suite EXECUTES an object against real rows.
+      # Per #2113 nothing here is satisfiable by source text — in particular the
+      # Private fail-closed path is proven by CALLING the RPC with a Private
+      # target and observing the refusal plus zero audit/effect/generation
+      # residue. The suite self-fails if fewer than 60 assertions run or if not
+      # one real transition was committed.
+      - name: "#2009 executable suite (implementor happy path)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2009_business_event_visibility.pg17.test.sql
+
+      # The suite pre-cleans and tears down its own fixtures. Running it twice
+      # proves it, and proves it left no residue for a later suite to trip over.
+      - name: "#2009 suite is idempotent (second consecutive run)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2009_business_event_visibility.pg17.test.sql
+
+      # SC-9 / the shipped anon-definer gate must stay green with the allowlist
+      # UNMODIFIED: no object #2009 creates is anon-executable.
+      - name: Anonymous SECURITY DEFINER allowlist gate
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: bash scripts/ci/security_definer_anon_gate.sh
+
+  business-jest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # npm ci ONLY. A bare `npm install` fails ERESOLVE here on a floating
+      # lottie-react-native caret (COMMS-0134).
+      - run: npm ci
+        working-directory: mingla-business
+      - name: "#2009 focused Business suite"
+        working-directory: mingla-business
+        run: npx jest --ci src/services/__tests__/businessEventVisibility.issue2009.test.ts
+
+  strict-grep-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # The gate proves itself first: it must REJECT every one of its BAD
+      # fixtures — including the two comment-forgery fixtures that defeated
+      # earlier gates in this area — before its verdict on the real tree counts.
+      - run: node .github/scripts/strict-grep/issue-2009-published-event-visibility.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-2009-published-event-visibility.mjs
