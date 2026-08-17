@@ -138,16 +138,14 @@ let occurrenceData: Array<{
   isMaster: boolean;
   ticketsRemaining: number | null;
 }> = [];
-jest.mock("../../../hooks/usePublicEvents", () => ({
-  usePublicEventOccurrences: (
-    eventId: string | null,
-    enabled: boolean,
-    timezone: string | null,
-  ) => {
-    occurrenceHookCalls.push({ eventId, enabled, timezone });
-    return { data: enabled ? occurrenceData : undefined };
-  },
-}));
+// [TEST-MOD-APPROVED #2160] MECHANICAL ADAPTATION ONLY.
+// #2160/#2161 DELETED `usePublicEventOccurrences` and the direct `event_dates`
+// read behind it: the occurrences now arrive ON the event payload from the same
+// SECURITY DEFINER reader that served the event, so there is no hook left to
+// stub. The occurrences are handed to PublicEventPage as a prop instead, by
+// `mount()` below. NO ASSERTION IN THIS FILE WAS WEAKENED — every single-date
+// assertion is untouched and still green.
+jest.mock("../../../hooks/usePublicEvents", () => ({}));
 
 jest.mock("../../../hooks/usePublicTicketCheckoutRouteAccess", () => ({
   usePublicTicketCheckoutRouteAccess: () => ({
@@ -344,6 +342,8 @@ const mount = async (
       <PublicEventPage
         event={liveEvent(whenMode) as never}
         brand={brand as never}
+        // [TEST-MOD-APPROVED #2160] the occurrences are a PROP now, not a hook.
+        occurrences={occurrenceData as never}
       />,
     );
   });
@@ -407,8 +407,12 @@ describe("issue #2135 — a multi-date event exposes every occurrence", () => {
     for (const id of [OCC_DAY_ONE, OCC_DAY_TWO]) {
       const rows = tree.root.findAllByProps({ testID: `issue-2135-day-row-${id}` });
       expect(rows.length).toBeGreaterThan(0);
-      // I-39 + the a11y contract: named, radio-roled, and unchecked to start.
-      expect(rows[0].props.accessibilityRole).toBe("radio");
+      // [TEST-MOD-APPROVED #2160] the a11y ROLE changed, and the change is the
+      // point of the issue: a guest may attend MORE THAN ONE day, so each row is
+      // a checkbox. Leaving "radio" here would assert "pick exactly one", which
+      // is the behaviour #2160 exists to remove. Named + unchecked-to-start are
+      // unchanged.
+      expect(rows[0].props.accessibilityRole).toBe("checkbox");
       expect(String(rows[0].props.accessibilityLabel ?? "").length).toBeGreaterThan(0);
     }
     expect(rowChecked(tree, OCC_DAY_ONE)).toBe(false);
@@ -444,7 +448,7 @@ describe("issue #2135 — a multi-date event exposes every occurrence", () => {
     expect(router.push).toHaveBeenCalledTimes(1);
     const pushed = String(router.push.mock.calls[0][0]);
     expect(pushed).toContain("/checkout/evt-2135");
-    expect(pushed).toContain(`eventDateId=${OCC_DAY_TWO}`);
+    expect(pushed).toContain(`eventDateIds=${OCC_DAY_TWO}`);
     // Never day one — the master row must not win once a day is picked.
     expect(pushed).not.toContain(OCC_DAY_ONE);
   });
@@ -465,7 +469,7 @@ describe("issue #2135 — a multi-date event exposes every occurrence", () => {
 
     await act(async () => press(tree, "issue-2135-proceed"));
     expect(String(router.push.mock.calls[0][0])).toContain(
-      `eventDateId=${OCC_DAY_TWO}`,
+      `eventDateIds=${OCC_DAY_TWO}`,
     );
   });
 
@@ -510,16 +514,28 @@ describe("issue #2135 — a single-date event is unchanged", () => {
     expect(occurrenceHookCalls).toHaveLength(0);
   });
 
-  test("the multi-date page DOES issue the read (the gate is real, not dead)", async () => {
+  // [TEST-MOD-APPROVED #2160] This asserted that a multi-date page ISSUES the
+  // separate occurrence read. #2161 is precisely that that read was the defect:
+  // it was RLS-gated and returned nothing for an unlisted event. #2160 deletes
+  // it and carries the occurrences on the event payload instead, so "the page
+  // issues the read" is no longer a property to preserve — it is the property
+  // that was removed. The gate it was proving is real is now proved from the
+  // other side, and against the REAL reader rather than a stub, in
+  // supabase/migrations/__tests__/issue_2160_unlisted_occurrences.test.sql
+  // (U-1c: an UNLISTED 2-date event returns BOTH occurrences).
+  test("the multi-date page mounts the chooser from the event payload", async () => {
     occurrenceData = TWO_DAY_OCCURRENCES;
-    await mount("multi_date");
+    const tree = await mount("multi_date");
 
-    expect(occurrenceHookCalls.length).toBeGreaterThan(0);
-    expect(occurrenceHookCalls[0]).toEqual({
-      eventId: "evt-2135",
-      enabled: true,
-      timezone: "Africa/Lagos",
-    });
+    // No second query is issued at all — the hook module is now empty.
+    expect(occurrenceHookCalls.length).toBe(0);
+    // ...and the rows are on the page anyway, which is the whole fix.
+    expect(
+      tree.root.findAllByProps({ testID: `issue-2135-day-row-${OCC_DAY_ONE}` }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      tree.root.findAllByProps({ testID: `issue-2135-day-row-${OCC_DAY_TWO}` }).length,
+    ).toBeGreaterThan(0);
   });
 
   test("pushes the byte-identical checkout path — no eventDateId, no seed", async () => {
@@ -550,10 +566,10 @@ describe("issue #2135 — the occurrence reaches the checkout session", () => {
 
   test("checkoutPublicPathWithSeed appends the chosen occurrence alongside the seed", () => {
     expect(checkoutPublicPathWithSeed("evt_1", {}, "occ_9")).toBe(
-      "/checkout/evt_1?eventDateId=occ_9",
+      "/checkout/evt_1?eventDateIds=occ_9",
     );
     expect(checkoutPublicPathWithSeed("evt_1", { vip: 2 }, "occ_9")).toBe(
-      "/checkout/evt_1?seed=vip%3A2&eventDateId=occ_9",
+      "/checkout/evt_1?seed=vip%3A2&eventDateIds=occ_9",
     );
   });
 
@@ -565,7 +581,11 @@ describe("issue #2135 — the occurrence reaches the checkout session", () => {
 
   test("the paid checkout forwards the occurrence on BOTH web and native", () => {
     const src = repoRead("app/checkout/[eventId]/payment.tsx");
-    expect(src).toMatch(/eventDateId\s*}\s*=\s*useCart\(\)|,\s*eventDateId\s*}/);
+    // [TEST-MOD-APPROVED #2160] the destructure gained `eventDateIds` and wrapped
+    // onto a second line, so the original one-line-shape regex no longer matches
+    // the same true fact. Assert the fact, not the line break.
+    expect(src).toMatch(/eventDateId\s*,/);
+    expect(src).toMatch(/useCart\(\)/);
     // One spread per surface (hosted-Stripe web redirect + native PaymentSheet).
     const forwards = src.match(
       /\.\.\.\(eventDateId !== null \? \{ eventDateId \} : \{\}\)/g,
@@ -575,10 +595,19 @@ describe("issue #2135 — the occurrence reaches the checkout session", () => {
   });
 
   test("the occurrence reader never fabricates a per-day remaining count", () => {
-    const src = repoRead("src/services/publicEventOccurrencesService.ts");
+    // [TEST-MOD-APPROVED #2160] REPOINTED, NOT WEAKENED. The mapper moved:
+    // publicEventOccurrencesService no longer reads anything (#2161 — a guest
+    // surface must not read event_dates directly), and the occurrences are now
+    // mapped off the bundle in publicEventsService. The assertion is unchanged
+    // and now points at the LIVE mapper instead of a module that no longer maps.
+    const src = repoRead("src/services/publicEventsService.ts");
     // event_dates carries NO per-occurrence capacity; publishing the event-level
     // number per day would claim availability that does not exist.
     expect(src).toMatch(/ticketsRemaining:\s*null/);
     expect(src).not.toMatch(/ticketsRemaining:\s*eventRemaining/);
+    // ...and the deleted reader stays deleted.
+    expect(
+      repoRead("src/services/publicEventOccurrencesService.ts"),
+    ).not.toMatch(/\.from\(\s*["\']event_dates["\']\s*\)/);
   });
 });

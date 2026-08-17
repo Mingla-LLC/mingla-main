@@ -374,6 +374,21 @@ export const createTicketCheckoutCreateHandler = (
         body.eventDateId.length > 0
       ? body.eventDateId
       : null;
+    // issue #2160 [multi-day multi-select] — the SET of days the guest chose,
+    // as a sibling of `lines` rather than a per-line field (SPEC amendment §1).
+    // De-duplicated here; ORDERED and validated server-side below. Absent or
+    // empty => every downstream branch is byte-identical to today, which is
+    // what every single-date event, experience, trip and RSVP sends.
+    const eventDateIds: string[] = Array.isArray(body.eventDateIds)
+      ? Array.from(
+        new Set(
+          body.eventDateIds.filter(
+            (value): value is string =>
+              typeof value === "string" && value.length > 0,
+          ),
+        ),
+      )
+      : [];
     const clientTaxCalculationId = typeof body.taxCalculationId === "string" &&
         body.taxCalculationId.length > 0
       ? body.taxCalculationId
@@ -498,6 +513,75 @@ export const createTicketCheckoutCreateHandler = (
       ) {
         // The chosen occurrence already ended → unbookable.
         return jsonResponse({ error: "occurrence_not_available" }, 422);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // issue #2160 — VALIDATE THE CHOSEN DAY SET AND DERIVE THE ANCHOR.
+    // ═══════════════════════════════════════════════════════════════════════
+    // ONE batched read, never N round trips. Every id must belong to THIS event
+    // and must not have ended, else 422 — the same contract the single
+    // `eventDateId` above already uses, so the client handles it already.
+    //
+    // The database re-validates all of this under the event lock (create-session
+    // §B DELTA 3) and again at finalize (issue_1930_ticket_session_authorized).
+    // This layer exists to give the guest a specific 422 instead of a generic
+    // checkout failure, not to be the authority.
+    // The SERVER-DERIVED anchor. Stays null on every path that sends no day
+    // set, which is what keeps every ORCH-1072 write site below byte-identical.
+    let anchorEventDateId: string | null = null;
+    const orderedEventDateIds: string[] = [];
+    if (eventDateIds.length > 0) {
+      const { data: occRows, error: occSetErr } = await supabase
+        .from("event_dates")
+        .select("id, end_at")
+        .eq("event_id", eventId)
+        .in("id", eventDateIds)
+        .order("start_at", { ascending: true });
+      if (occSetErr !== null) {
+        console.error(
+          "[ticket-checkout-create] occurrence set lookup failed",
+          occSetErr,
+        );
+        return jsonResponse(
+          { error: "occurrence_lookup_failed", detail: occSetErr.message },
+          500,
+        );
+      }
+      const rows = (occRows ?? []) as Array<{ id: string; end_at: string | null }>;
+      if (rows.length !== eventDateIds.length) {
+        // At least one id is not an occurrence of THIS event (or was deleted).
+        return jsonResponse({ error: "occurrence_not_found" }, 422);
+      }
+      if (
+        rows.some((row) =>
+          typeof row.end_at === "string" &&
+          new Date(row.end_at).getTime() <= Date.now()
+        )
+      ) {
+        return jsonResponse({ error: "occurrence_not_available" }, 422);
+      }
+      orderedEventDateIds.push(...rows.map((row) => row.id));
+
+      // THE ANCHOR IS SERVER-AUTHORITATIVE — the client cannot nominate it.
+      // It is the LATEST-**ENDING** chosen occurrence (D-2 /
+      // I-PROPOSED-2160-B), and the top-level `eventDateId` body field is
+      // IGNORED whenever a day set is present.
+      //
+      // WHY LATEST-ENDING AND NOT FIRST. `orders.event_date_id` is the payout
+      // and refund anchor: `resolve_payout_live_occurrence` keys off it and the
+      // NG release will not mature until `ed.end_at + interval '3 days' <=
+      // now()`. Anchoring on the first day would release the organiser's money
+      // while day 2 was still unattended and still refundable.
+      let latestEnd = Number.NEGATIVE_INFINITY;
+      for (const row of rows) {
+        const end = typeof row.end_at === "string"
+          ? new Date(row.end_at).getTime()
+          : Number.NEGATIVE_INFINITY;
+        if (end >= latestEnd) {
+          latestEnd = end;
+          anchorEventDateId = row.id;
+        }
       }
     }
 
@@ -652,6 +736,8 @@ export const createTicketCheckoutCreateHandler = (
           buyerPhoneE164,
           lines,
           paymentPlanChoice,
+          // issue #2160 — day-aware. Empty => string-identical to today's key.
+          eventDateIds: orderedEventDateIds,
         });
     const buyerStatusToken = randomBuyerStatusToken();
 
@@ -669,6 +755,13 @@ export const createTicketCheckoutCreateHandler = (
         p_expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
         p_application_fee_amount_cents: 0,
         p_payment_plan_choice: paymentPlanChoice,
+        // issue #2160 — the chosen day set. The RPC owns validation, the
+        // event's pricing mode and the per-mode multiplier; this is a
+        // passthrough. `null` when empty so the call is byte-identical to
+        // today for every non-multi-day checkout.
+        p_event_date_ids: orderedEventDateIds.length > 0
+          ? orderedEventDateIds
+          : null,
       },
     );
 
@@ -825,12 +918,50 @@ export const createTicketCheckoutCreateHandler = (
       buyer_status_token_hash: await sha256Hex(buyerStatusToken),
       updated_at: new Date().toISOString(),
     };
+    // issue #2160 — `event_date_id` now carries the ANCHOR (the latest-ENDING
+    // chosen day) whenever a day set was sent, and the client's top-level
+    // `eventDateId` otherwise. `orders.event_date_id` therefore lands with NO
+    // finalize change and the payout/refund control planes are untouched.
+    //
+    // `event_date_ids` is written for OBSERVABILITY ONLY. NOTHING may read it
+    // as authority — `ticket_checkout_session_event_dates` (written by the RPC
+    // under the event lock) is the authority, and `ticket_event_dates` is the
+    // authority for what a pass admits.
     if (eventDateId !== null) {
       const existingMeta =
         typeof session.metadata === "object" && session.metadata !== null
           ? (session.metadata as Record<string, unknown>)
           : {};
       sessionUpdate.metadata = { ...existingMeta, event_date_id: eventDateId };
+    }
+    // ══ issue #2160 — THE ANCHOR OVERRIDES; IT DOES NOT REPLACE ════════════
+    // The ORCH-1072 block above is left BYTE-IDENTICAL: its exact shape is
+    // frozen by source pins T-A1/T-A4/T-A5 in
+    // orch1072_experience_occurrence_checkout.test.ts and the experience
+    // surface depends on it. #2160 writes AFTER it and therefore wins, which is
+    // precisely the spec's rule — when a day set is present the client's
+    // top-level `eventDateId` is IGNORED and the anchor is server-authoritative.
+    //
+    // The anchor is the LATEST-ENDING chosen day, so `orders.event_date_id`
+    // lands with NO finalize change and the payout/refund control planes stay
+    // untouched: a two-day order's money matures after the SECOND day ends,
+    // never while day 2 is still unattended and still refundable.
+    //
+    // `event_date_ids` is OBSERVABILITY ONLY. Nothing may read it as authority —
+    // `ticket_checkout_session_event_dates` (written by the RPC under the event
+    // lock) is the authority for what was chosen, and `ticket_event_dates` is
+    // the authority for what a pass admits.
+    if (orderedEventDateIds.length > 0 && anchorEventDateId !== null) {
+      const existingMeta =
+        typeof session.metadata === "object" && session.metadata !== null
+          ? (session.metadata as Record<string, unknown>)
+          : {};
+      sessionUpdate.metadata = {
+        ...existingMeta,
+        ...((sessionUpdate.metadata as Record<string, unknown> | undefined) ?? {}),
+        event_date_id: anchorEventDateId,
+        event_date_ids: orderedEventDateIds,
+      };
     }
     const { error: statusTokenError } = await supabase
       .from("ticket_checkout_sessions")
@@ -1282,6 +1413,11 @@ export const createTicketCheckoutCreateHandler = (
             mingla_checkout_session_id: checkoutSessionId,
             mingla_event_id: eventId,
             mingla_buyer_email: buyerEmail,
+            // issue #2160 — how many days this reservation covers. Omitted for
+            // every one-day reservation → byte-identical Paystack metadata.
+            ...(orderedEventDateIds.length > 1
+              ? { mingla_event_date_count: String(orderedEventDateIds.length) }
+              : {}),
           },
           // #1178 [ng-split-removal] — split to the organiser subaccount ONLY for
           // an UNSTAMPED brand that has a subaccount (pass it + the flat Mingla
@@ -2299,6 +2435,20 @@ export const createTicketCheckoutCreateHandler = (
           // PI metadata byte-identical for events/trips/one-off experiences.
           ...(eventDateId !== null
             ? { mingla_event_date_id: eventDateId }
+            : {}),
+          // issue #2160 — spread AFTER the ORCH-1072 key above, so the ANCHOR
+          // wins on a multi-day cart while that frozen shape stays literally
+          // intact. `mingla_event_date_count` lets a reconciliation tell a
+          // two-day order from a one-day one without a join. Both omitted when
+          // no day set was sent → PI metadata byte-identical for events, trips
+          // and one-off experiences.
+          ...(orderedEventDateIds.length > 0 && anchorEventDateId !== null
+            ? {
+              mingla_event_date_id: anchorEventDateId,
+              ...(orderedEventDateIds.length > 1
+                ? { mingla_event_date_count: String(orderedEventDateIds.length) }
+                : {}),
+            }
             : {}),
         },
       };

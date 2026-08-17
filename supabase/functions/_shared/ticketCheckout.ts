@@ -93,17 +93,42 @@ export function checkoutIdempotencyKey(input: {
   buyerPhoneE164: string;
   lines: Array<{ ticketTypeId: string; quantity: number }>;
   paymentPlanChoice?: "auto" | "full" | "installments";
+  /**
+   * issue #2160 [multi-day multi-select] — the days the guest chose.
+   *
+   * The day set is a SEGMENT of its own, appended only when non-empty, exactly
+   * as `paymentPlanChoice: "auto"` is omitted below. Two consequences, both
+   * load-bearing:
+   *
+   *   1. A cart with NO days produces a key STRING-IDENTICAL to today's, so
+   *      every single-date event, experience, trip and RSVP keeps the key it
+   *      already has — including every session already in flight at deploy.
+   *   2. A guest reserving day 1 and later day 2 derives two DIFFERENT keys, so
+   *      those are two legitimately distinct reservations rather than two
+   *      collisions. That is the whole of the #2150 interaction (SPEC §5): it
+   *      removes the ambiguity WITHOUT relying on #2150's tombstone path, and
+   *      an IDENTICAL resubmit still lands on the same key and is still handed
+   *      the existing order back.
+   *
+   * Sorted so the set — not the order the client happened to send it in — is
+   * what identifies the reservation.
+   */
+  eventDateIds?: readonly string[];
 }): string {
   const lineKey = input.lines
     .map((line) => `${line.ticketTypeId}:${line.quantity}`)
     .sort()
     .join("|");
+  const dayKeys = (input.eventDateIds ?? []).filter((id) => id.length > 0);
   return [
     "ticket_checkout",
     input.eventId,
     input.buyerEmail.trim().toLowerCase(),
     input.buyerPhoneE164,
     lineKey,
+    ...(dayKeys.length > 0
+      ? [`days:${[...dayKeys].sort().join(",")}`]
+      : []),
     ...(input.paymentPlanChoice !== undefined && input.paymentPlanChoice !== "auto"
       ? [`choice:${input.paymentPlanChoice}`]
       : []),

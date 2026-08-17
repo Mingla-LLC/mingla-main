@@ -250,7 +250,8 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   // issue #2135 [multi-date public day picker] — `eventDateId` is the occurrence
   // the guest chose on the public page, seeded into the cart by the cart step.
   // null on every single-date checkout, which keeps the request byte-identical.
-  const { lines, buyer, setBuyer, recordResult, eventDateId } = useCart();
+  const { lines, buyer, setBuyer, recordResult, eventDateId, eventDateIds } =
+    useCart();
   const totals = useCartTotals();
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -463,6 +464,14 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           lines,
           ...(heldToken.length > 0 ? { buyerStatusToken: heldToken } : {}),
           ...(eventDateId !== null ? { eventDateId } : {}),
+        // issue #2160 — forward the chosen day SET. Empty => byte-identical
+        // request. The server derives the payout anchor and applies the
+        // event's pricing mode; the client never nominates either.
+        ...(eventDateIds.length > 0 ? { eventDateIds } : {}),
+          // issue #2160 — forward the chosen day SET. Empty => byte-identical
+          // request. The server derives the payout anchor and applies the
+          // event's pricing mode; the client never nominates either.
+          ...(eventDateIds.length > 0 ? { eventDateIds } : {}),
         });
         // issue #2150 — the guest already holds this reservation and this
         // request could not prove it is theirs. NOT an error: nothing failed
@@ -545,6 +554,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     buyer,
     // issue #2135 — the chosen occurrence is read inside this handler.
     eventDateId,
+    eventDateIds,
     recordResult,
     router,
   ]);

@@ -64,6 +64,17 @@ export interface TicketCheckoutCreateInput {
    * single/no-date path so the request stays byte-identical to today.
    */
   eventDateId?: string;
+  /**
+   * issue #2160 [multi-day multi-select] — the days the guest chose on a
+   * multi-date EVENT, as a SIBLING of `lines` rather than a per-line field.
+   *
+   * `lines` keeps its exact wire shape, which is what keeps
+   * `order_line_items.total_cents = quantity x unit_price_cents` true in BOTH
+   * pricing modes; the server applies the one per-mode multiplier. OMITTED when
+   * empty so the request is byte-identical to today for every single-date
+   * event, trip, RSVP and experience.
+   */
+  eventDateIds?: readonly string[];
 }
 
 export interface TicketCheckoutRequiresPayment {
@@ -545,6 +556,13 @@ export const createTicketCheckout = async (
     // already accepts `eventDateId` (investigation Q5); never sent on the null path.
     ...(input.eventDateId !== undefined && input.eventDateId.length > 0
       ? { eventDateId: input.eventDateId }
+      : {}),
+    // issue #2160 — forward the chosen day SET only when non-empty, so an empty
+    // set produces a request body byte-identical to today. The edge fn
+    // validates the set, derives the payout anchor server-side and passes it to
+    // the RPC, which owns the pricing mode and the multiplier.
+    ...(input.eventDateIds !== undefined && input.eventDateIds.length > 0
+      ? { eventDateIds: [...input.eventDateIds] }
       : {}),
     // ISSUE-865 WP-C — forward the captured ad click_id ONLY when present, so
     // the request stays byte-identical for non-ad traffic. The edge fn persists

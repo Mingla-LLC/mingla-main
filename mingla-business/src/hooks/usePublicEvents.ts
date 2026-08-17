@@ -19,11 +19,6 @@ import {
   type PublicVenueReservable,
   type PublicVenueSummary,
 } from "../services/publicEventsService";
-// issue #2135 — the anon materialised-occurrence reader (event_dates).
-import {
-  fetchPublicEventOccurrences,
-  type PublicEventOccurrence,
-} from "../services/publicEventOccurrencesService";
 
 const PUBLIC_STALE_TIME_MS = 45 * 1000;
 
@@ -38,13 +33,11 @@ export const publicEventKeys = {
     eventId: string,
   ): readonly ["public-events", "detail-by-id", string] =>
     [...publicEventKeys.all, "detail-by-id", eventId] as const,
-  // issue #2135 — the materialised event_dates occurrences of ONE event, read
-  // only for multi-date events (the hook is disabled otherwise, so a single-date
-  // page issues ZERO extra network).
-  occurrences: (
-    eventId: string,
-  ): readonly ["public-events", "occurrences", string] =>
-    [...publicEventKeys.all, "occurrences", eventId] as const,
+  // issue #2160 / #2161 — the `occurrences` key is REMOVED. Occurrences now
+  // ride the existing detail query (they arrive on the bundle that already
+  // served the event), so there is ONE cache key for the page instead of two
+  // that can be stale independently of each other, and one fewer round trip.
+  // Do not re-add it (I-PROPOSED-2160-D).
   brandBySlug: (
     brandSlug: string,
   ): readonly ["public-events", "brand-by-slug", string] =>
@@ -107,33 +100,14 @@ export const usePublicEventById = (
 };
 
 /**
- * issue #2135 [multi-date public day picker] — the materialised `event_dates`
- * occurrences of one published event.
+ * issue #2160 / #2161 — `usePublicEventOccurrences` is DELETED.
  *
- * `enabled` is the CALLER'S multi-date gate, not a convenience: a single-date
- * event passes `false`, so the query never runs, the key is the shared disabled
- * key, and the single-date public page is byte-identical to before this hook
- * existed (no extra fetch, no extra state, no extra render).
- *
- * `fallbackTimezone` is the event's own IANA zone, used only when an
- * `event_dates` row carries none. Anon-tolerant (no auth anywhere in the chain).
+ * It stood on `fetchPublicEventOccurrences`, a direct RLS-gated `event_dates`
+ * read, which returned nothing for an UNLISTED event even though the event
+ * itself rendered fine through its SECURITY DEFINER reader. Occurrences now
+ * arrive on `PublicEventDetail.occurrences` from `usePublicEventBySlug` /
+ * `usePublicEventById`. Read them from the event, not from a second query.
  */
-export const usePublicEventOccurrences = (
-  eventId: string | null,
-  enabled: boolean,
-  fallbackTimezone: string | null = null,
-): UseQueryResult<PublicEventOccurrence[]> => {
-  const active = enabled && eventId !== null && eventId.length > 0;
-  return useQuery<PublicEventOccurrence[]>({
-    queryKey: active ? publicEventKeys.occurrences(eventId) : DISABLED_KEY,
-    enabled: active,
-    staleTime: PUBLIC_STALE_TIME_MS,
-    queryFn: async (): Promise<PublicEventOccurrence[]> => {
-      if (!active || eventId === null) return [];
-      return fetchPublicEventOccurrences(eventId, fallbackTimezone);
-    },
-  });
-};
 
 export const usePublicBrandBySlug = (
   brandSlug: string | null,
