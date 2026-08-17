@@ -280,34 +280,34 @@ jobs:
           db_password="$(cat /tmp/issue2099-db-password)"
           snapshot() {
             docker exec -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -At -v ON_ERROR_STOP=1 -f - <<'SQL'
-SELECT string_agg(x, E'\n' ORDER BY x) FROM (
-  SELECT 'fn|' || p.oid::regprocedure::text || '|' || md5(p.prosrc) || '|' || pg_get_userbyid(p.proowner)
-         || '|' || p.prosecdef::text || '|' || COALESCE(array_to_string(p.proconfig, ','), '') AS x
-  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-  WHERE n.nspname = 'public'
-    AND (p.proname LIKE '%issue_2099%'
-         OR p.proname IN ('preview_pending_venue_identity_correction','correct_pending_venue_identity'))
-  UNION ALL
-  SELECT 'grant|' || grantee || '|' || routine_name
-  FROM information_schema.routine_privileges
-  WHERE routine_schema = 'public'
-    AND routine_name IN ('preview_pending_venue_identity_correction','correct_pending_venue_identity')
-  UNION ALL
-  SELECT 'evt|' || evtname || '|' || evtevent || '|' || evtenabled || '|' || pg_get_userbyid(evtowner)
-  FROM pg_event_trigger WHERE evtname = 'issue_2099_dependency_ddl_guard'
-  UNION ALL
-  SELECT 'tbl|' || c.relname || '|' || c.relrowsecurity::text || '|' || pg_get_userbyid(c.relowner)
-  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-  WHERE n.nspname = 'public'
-    AND c.relname IN ('issue_2099_dependency_schema_guard','venue_identity_correction_audit')
-  UNION ALL
-  SELECT 'trg|' || tgname FROM pg_trigger
-  WHERE tgrelid = 'public.venue_identity_correction_audit'::regclass AND NOT tgisinternal
-  UNION ALL
-  SELECT 'rows|' || (SELECT count(*)::text FROM public.venue_identity_correction_audit)
-       || '|' || (SELECT count(*)::text FROM public.issue_2099_dependency_schema_guard)
-) s;
-SQL
+          SELECT string_agg(x, E'\n' ORDER BY x) FROM (
+            SELECT 'fn|' || p.oid::regprocedure::text || '|' || md5(p.prosrc) || '|' || pg_get_userbyid(p.proowner)
+                   || '|' || p.prosecdef::text || '|' || COALESCE(array_to_string(p.proconfig, ','), '') AS x
+            FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'public'
+              AND (p.proname LIKE '%issue_2099%'
+                   OR p.proname IN ('preview_pending_venue_identity_correction','correct_pending_venue_identity'))
+            UNION ALL
+            SELECT 'grant|' || grantee || '|' || routine_name
+            FROM information_schema.routine_privileges
+            WHERE routine_schema = 'public'
+              AND routine_name IN ('preview_pending_venue_identity_correction','correct_pending_venue_identity')
+            UNION ALL
+            SELECT 'evt|' || evtname || '|' || evtevent || '|' || evtenabled || '|' || pg_get_userbyid(evtowner)
+            FROM pg_event_trigger WHERE evtname = 'issue_2099_dependency_ddl_guard'
+            UNION ALL
+            SELECT 'tbl|' || c.relname || '|' || c.relrowsecurity::text || '|' || pg_get_userbyid(c.relowner)
+            FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public'
+              AND c.relname IN ('issue_2099_dependency_schema_guard','venue_identity_correction_audit')
+            UNION ALL
+            SELECT 'trg|' || tgname FROM pg_trigger
+            WHERE tgrelid = 'public.venue_identity_correction_audit'::regclass AND NOT tgisinternal
+            UNION ALL
+            SELECT 'rows|' || (SELECT count(*)::text FROM public.venue_identity_correction_audit)
+                 || '|' || (SELECT count(*)::text FROM public.issue_2099_dependency_schema_guard)
+          ) s;
+          SQL
           }
           before="$(snapshot)"
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
