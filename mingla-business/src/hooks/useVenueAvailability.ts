@@ -79,32 +79,12 @@ const mapConfigRow = (
   ianaTimezoneSource: readVenueTimezoneSource(row.iana_timezone_source),
 });
 
-// META-ORCH-1255 — keys are venue-scoped, brandId-FIRST so existing
-// brand-prefix invalidations (e.g. useBrandHours' pinned
-// `venueAvailabilityKeys.config(brandId)`) keep matching every venue of the
-// brand via react-query prefix matching.
-export const venueAvailabilityKeys = {
-  config: (
-    brandId: string,
-    venueId?: string,
-  ): readonly ("venueAvailabilityConfig" | string)[] =>
-    venueId === undefined
-      ? (["venueAvailabilityConfig", brandId] as const)
-      : (["venueAvailabilityConfig", brandId, venueId] as const),
-  blackouts: (
-    brandId: string,
-    venueId?: string,
-  ): readonly ("venueBlackouts" | string)[] =>
-    venueId === undefined
-      ? (["venueBlackouts", brandId] as const)
-      : (["venueBlackouts", brandId, venueId] as const),
-  slots: (
-    venueScopeId: string,
-    date: string,
-    partySize: number,
-  ): readonly ["venueAvailableSlots", string, string, number] =>
-    ["venueAvailableSlots", venueScopeId, date, partySize] as const,
-};
+// #2099 — the canonical home for these keys is `venueAvailabilityKeys.ts`, a
+// keyless module, so an on-intent lazy chunk can invalidate these caches
+// without pulling this module (and its fetchers) into eager `__common`.
+// Re-exported here so every existing call site keeps working unchanged.
+export { venueAvailabilityKeys } from "./venueAvailabilityKeys";
+import { venueAvailabilityKeys } from "./venueAvailabilityKeys";
 
 export const fetchVenueAvailabilityConfig = async (
   brandId: string,

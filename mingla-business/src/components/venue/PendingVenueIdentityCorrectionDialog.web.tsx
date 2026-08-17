@@ -37,9 +37,9 @@ import { useQueryClient } from "@tanstack/react-query";
 // modules' hooks is called from this file.
 import { brandKeys } from "../../hooks/brandKeys";
 import { brandPlacePipelineKeys } from "../../hooks/useBrandPlacePipelineState";
-import { venueAvailabilityKeys } from "../../hooks/useVenueAvailability";
+import { venueAvailabilityKeys } from "../../hooks/venueAvailabilityKeys";
 import { venueListingKeys } from "../../hooks/useVenueListings";
-import { venueReservationSettingsKeys } from "../../hooks/useVenueReservationSettings";
+import { venueReservationSettingsKeys } from "../../hooks/venueReservationSettingsKeys";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { Modal } from "../ui/Modal";
