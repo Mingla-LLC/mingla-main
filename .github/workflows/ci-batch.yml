@@ -1,0 +1,100 @@
+name: CI batch (per-issue suites)
+
+# #2148 Stage 3 [ci-runtime]. Replaces one CI job per issue-suite with one job for
+# the whole class.
+#
+# MEASURED on a real PR: the non-database CI set spent 60 job-minutes running tests
+# and 65 job-minutes setting up to run them. A typical per-issue job spent ~40s on
+# checkout and runner boot to execute ~14s of `node --test`. With the org capped at
+# 20 concurrent jobs, that PR queued 335 job-minutes against 141 spent executing —
+# the median job waited 182s to do 46s of work.
+#
+# This deletes the setup, not the tests. Every suite that ran before still runs;
+# `.github/ci-batch/MANIFEST.json` is the registry and run-suite-batch.mjs asserts
+# executed === expected, so a suite that goes missing fails the run instead of
+# quietly disappearing (the ORCH-1383 contract, which replaced 340 one-gate jobs on
+# the same guarantee).
+#
+# NO paths: filter, deliberately. The workflows folded in here were each paths-gated;
+# the batch is not. That is MORE coverage than before — a paths-gated suite silently
+# skips on a PR that misses its globs, which is how a latent main-red landed in
+# PR #743 and surfaced on someone else's unrelated PR. Each suite's former globs are
+# retained in the manifest as `originPaths`, for provenance only.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  batch:
+    name: "CI batch: ${{ matrix.class }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      # fail-fast MUST stay false: one class going red must not cancel the others,
+      # or a single failure hides the state of every suite in every other class —
+      # the same reason the runner never breaks early (R2).
+      fail-fast: false
+      matrix:
+        include:
+          # Classes are dependency profiles, not arbitrary shards: suites are grouped
+          # by what they need installed, so a class pays ONE setup for all of them.
+          # That is the entire saving — 14 suites sharing one `npm ci` instead of
+          # running 14 of them.
+          - class: node20-noinstall
+            node: "20"
+            install: ""
+          # The business suites are split 4 ways: MEASURED locally they take ~730s
+          # end to end, so as ONE job they would become the new critical path — a
+          # regression, since today they run in parallel. The split is round-robin
+          # by count for now; suite-results.json carries per-suite seconds so these
+          # can be rebalanced from evidence after the first run.
+          - class: business-node20-1
+            node: "20"
+            install: mingla-business
+          - class: business-node20-2
+            node: "20"
+            install: mingla-business
+          - class: business-node20-3
+            node: "20"
+            install: mingla-business
+          - class: business-node20-4
+            node: "20"
+            install: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: ${{ matrix.install && 'npm' || '' }}
+          cache-dependency-path: ${{ matrix.install && format('{0}/package-lock.json', matrix.install) || '' }}
+
+      - name: Install ${{ matrix.install }} dependencies
+        if: matrix.install != ''
+        working-directory: ${{ matrix.install }}
+        run: npm ci
+
+      # The runner's own guarantees are load-bearing: it is the only thing standing
+      # between "one job for many suites" and "one green lie". Prove it still bites
+      # BEFORE trusting it to report on anything.
+      - name: Batch runner self-test (proves a vanished suite fails the run)
+        run: node --test .github/scripts/ci-batch/__tests__/run-suite-batch.test.mjs
+
+      - name: Run the ${{ matrix.class }} suites
+        run: node .github/scripts/ci-batch/run-suite-batch.mjs ${{ matrix.class }}
+
+      - name: Upload suite results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-results-${{ matrix.class }}
+          path: suite-results.json
+          if-no-files-found: warn
