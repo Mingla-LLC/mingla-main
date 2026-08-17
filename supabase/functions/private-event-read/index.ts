@@ -40,12 +40,16 @@ export const createPrivateEventReadHandler = (deps: PrivateAccessDeps = defaultD
     if (req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: privateNoStoreHeaders(variant) });
     }
+    // RELEASED-SET GUARD — evaluated BEFORE method rejection, so a denial is always
+    // attributable to readiness and never to a second precondition (SC-46 vacuity
+    // guard). Only the CORS preflight precedes it, because that is a transport-level
+    // handshake rather than a request for this resource.
+    const denied = await denyWhenNotReady(deps, variant);
+    if (denied !== null) return denied;
+
     if (req.method !== "POST" && req.method !== "GET") {
       return unavailableResponse(variant, 405);
     }
-
-    const denied = await denyWhenNotReady(deps, variant);
-    if (denied !== null) return denied;
 
     return unavailableResponse(variant);
   };

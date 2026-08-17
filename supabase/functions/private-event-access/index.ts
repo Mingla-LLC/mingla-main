@@ -55,13 +55,16 @@ export const createPrivateEventAccessHandler = (deps: PrivateAccessDeps = defaul
     if (req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: privateNoStoreHeaders(variant) });
     }
+    // RELEASED-SET GUARD — evaluated BEFORE method rejection, so a denial is always
+    // attributable to readiness and never to a second precondition (SC-46 vacuity
+    // guard). Only the CORS preflight precedes it, because that is a transport-level
+    // handshake rather than a request for this resource.
+    const denied = await denyWhenNotReady(deps, variant);
+    if (denied !== null) return denied;
+
     if (req.method !== "POST") {
       return unavailableResponse(variant, 405);
     }
-
-    // RELEASED-SET GUARD — first, before any other precondition.
-    const denied = await denyWhenNotReady(deps, variant);
-    if (denied !== null) return denied;
 
     // Unreachable this release: readiness cannot become true. The operator RPC raises
     // `private_access_release_frozen` unconditionally (SC-45), so there is no path that

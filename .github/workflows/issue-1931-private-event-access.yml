@@ -5,6 +5,7 @@ on:
     paths:
       - "supabase/migrations/20270413001931_issue_1931_private_event_access.sql"
       - "supabase/migrations/__tests__/issue_1931_*"
+      - "mingla-business/src/hooks/useBusinessEvents.ts"
       - "supabase/functions/private-event-access/**"
       - "supabase/functions/private-event-read/**"
       - "supabase/functions/private-event-media/**"
@@ -22,6 +23,7 @@ on:
     paths:
       - "supabase/migrations/20270413001931_issue_1931_private_event_access.sql"
       - "supabase/migrations/__tests__/issue_1931_*"
+      - "mingla-business/src/hooks/useBusinessEvents.ts"
       - "supabase/functions/private-event-access/**"
       - "supabase/functions/private-event-read/**"
       - "supabase/functions/private-event-media/**"
@@ -65,6 +67,16 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1931_reader_equality.test.sql > /tmp/eq_baseline.txt 2>&1
 
+      # P2-1 / P2-2 — seed DURABLE rows BEFORE the migration applies, so the
+      # "columns stay NULL" and "#1770 rows unchanged" assertions have a real subject.
+      # On a clean CI replay both target tables are empty, which made them vacuous.
+      - name: "Seed the migration-time write probe (pre-#1931)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1931_migration_time_probe.seed.sql
+
       - name: "Apply #1931 and re-capture"
         env:
           PGPASSWORD: ${{ github.sha }}
@@ -77,6 +89,20 @@ jobs:
 
       - name: "SC-47 — re-emitted objects are behaviorally identical"
         run: diff /tmp/eq_baseline.txt /tmp/eq_post.txt
+
+      - name: "Migration-time write probe (P2-1 / P2-2) — #1931 wrote nothing it must not"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1931_migration_time_probe.verify.sql
+
+      - name: "Read-cost probe (P2-3) — measured and recorded, catastrophe ceiling only"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1931_read_cost_probe.sql
 
       - name: "#1931 behavioral suite (SC-45/46/48/53/54/55c)"
         env:

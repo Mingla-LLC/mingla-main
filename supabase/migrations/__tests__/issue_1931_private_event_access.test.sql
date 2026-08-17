@@ -48,7 +48,7 @@ BEGIN
     RAISE EXCEPTION 'SC-45: operator RPC returned instead of refusing under maximal evidence';
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_raised = MESSAGE_TEXT;
-    IF v_raised <> 'private_access_release_frozen' THEN
+    IF v_raised IS DISTINCT FROM 'private_access_release_frozen' THEN
       RAISE EXCEPTION 'SC-45: expected private_access_release_frozen, got %', v_raised;
     END IF;
   END;
@@ -93,14 +93,14 @@ BEGIN
       RAISE EXCEPTION 'SC-46: released path did NOT deny at readiness false: %', v_call;
     EXCEPTION WHEN OTHERS THEN
       GET STACKED DIAGNOSTICS v_raised = MESSAGE_TEXT;
-      IF v_raised <> 'private_access_not_ready' THEN
+      IF v_raised IS DISTINCT FROM 'private_access_not_ready' THEN
         RAISE EXCEPTION 'SC-46: expected private_access_not_ready from %, got %', v_call, v_raised;
       END IF;
       v_denied := v_denied + 1;
     END;
   END LOOP;
 
-  IF v_denied <> 7 THEN
+  IF v_denied IS DISTINCT FROM 7 THEN
     RAISE EXCEPTION 'SC-46: expected 7 denying transition RPCs, observed %', v_denied;
   END IF;
   RAISE NOTICE 'SC-46 PASS — % released SQL paths deny at readiness false', v_denied;
@@ -131,7 +131,7 @@ BEGIN
 
   SELECT * INTO v_row FROM public.events WHERE id = v_event;
   SELECT public.issue_1930_event_sale_reason(v_row) INTO v_reason;
-  IF v_reason <> 'event_visibility' THEN
+  IF v_reason IS DISTINCT FROM 'event_visibility' THEN
     RAISE EXCEPTION 'SC-48: expected event_visibility for a private event, got %', v_reason;
   END IF;
   RAISE NOTICE 'SC-48 PASS — event-scope Private hard-deny intact';
@@ -238,7 +238,7 @@ BEGIN
       EXECUTE format('SET LOCAL ROLE %I', v_role);
       SELECT count(*) INTO v_n FROM public.events WHERE id = v_event;
       RESET ROLE;
-      IF (v_n > 0) <> v_expect_visible THEN
+      IF (v_n > 0) IS DISTINCT FROM v_expect_visible THEN
         RAISE EXCEPTION 'SC-53 %/% : events SELECT policy returned % row(s)', v_phase, v_role, v_n;
       END IF;
 
@@ -246,7 +246,7 @@ BEGIN
       EXECUTE format('SET LOCAL ROLE %I', v_role);
       SELECT count(*) INTO v_n FROM public.events_public_view WHERE id = v_event;
       RESET ROLE;
-      IF (v_n > 0) <> v_expect_visible THEN
+      IF (v_n > 0) IS DISTINCT FROM v_expect_visible THEN
         RAISE EXCEPTION 'SC-53 %/% : events_public_view returned % row(s)', v_phase, v_role, v_n;
       END IF;
 
@@ -254,7 +254,7 @@ BEGIN
       EXECUTE format('SET LOCAL ROLE %I', v_role);
       SELECT count(*) INTO v_n FROM public.business_public_events_view WHERE id = v_event;
       RESET ROLE;
-      IF (v_n > 0) <> v_expect_visible THEN
+      IF (v_n > 0) IS DISTINCT FROM v_expect_visible THEN
         RAISE EXCEPTION 'SC-53 %/% : business_public_events_view returned % row(s)', v_phase, v_role, v_n;
       END IF;
 
@@ -262,7 +262,7 @@ BEGIN
       EXECUTE format('SET LOCAL ROLE %I', v_role);
       SELECT public.pg_public_event_by_slug('i1931-rd-brand', 'i1931-rd-event') INTO v_json;
       RESET ROLE;
-      IF (v_json IS NOT NULL) <> v_expect_visible THEN
+      IF (v_json IS NOT NULL) IS DISTINCT FROM v_expect_visible THEN
         RAISE EXCEPTION 'SC-53 %/% : pg_public_event_by_slug visibility mismatch', v_phase, v_role;
       END IF;
 
@@ -270,7 +270,7 @@ BEGIN
       EXECUTE format('SET LOCAL ROLE %I', v_role);
       SELECT public.pg_direct_event_checkout_bundle(v_event, NULL, NULL) INTO v_json;
       RESET ROLE;
-      IF (v_json IS NOT NULL) <> v_expect_visible THEN
+      IF (v_json IS NOT NULL) IS DISTINCT FROM v_expect_visible THEN
         RAISE EXCEPTION 'SC-53 %/% : pg_direct_event_checkout_bundle visibility mismatch', v_phase, v_role;
       END IF;
 
@@ -283,7 +283,7 @@ BEGIN
                  NULL, NULL, NULL, 0, 50, NULL, NULL, NULL)->'rows', '[]'::jsonb)) x
        WHERE x->>'id' = v_event::text;
       RESET ROLE;
-      IF (v_n > 0) <> v_expect_visible THEN
+      IF (v_n > 0) IS DISTINCT FROM v_expect_visible THEN
         RAISE EXCEPTION 'SC-53 %/% : pg_discover_business_events returned % row(s)', v_phase, v_role, v_n;
       END IF;
 
@@ -291,7 +291,7 @@ BEGIN
       EXECUTE format('SET LOCAL ROLE %I', v_role);
       SELECT count(*) INTO v_n FROM public.pg_public_ticket_types_remaining(v_event);
       RESET ROLE;
-      IF (v_n > 0) <> v_expect_visible THEN
+      IF (v_n > 0) IS DISTINCT FROM v_expect_visible THEN
         RAISE EXCEPTION 'SC-53 %/% : pg_public_ticket_types_remaining returned % row(s)', v_phase, v_role, v_n;
       END IF;
 
@@ -299,7 +299,7 @@ BEGIN
       EXECUTE format('SET LOCAL ROLE %I', v_role);
       SELECT public.pg_public_social_proof(v_event) INTO v_json;
       RESET ROLE;
-      IF (v_json IS NOT NULL) <> v_expect_visible THEN
+      IF (v_json IS NOT NULL) IS DISTINCT FROM v_expect_visible THEN
         RAISE EXCEPTION 'SC-53 %/% : pg_public_social_proof visibility mismatch', v_phase, v_role;
       END IF;
 
@@ -309,7 +309,7 @@ BEGIN
         FROM public.pg_public_brand_upcoming('i1931-rd-brand', NULL, 50) u
        WHERE u.offering_id = v_event;
       RESET ROLE;
-      IF (v_n > 0) <> v_expect_visible THEN
+      IF (v_n > 0) IS DISTINCT FROM v_expect_visible THEN
         RAISE EXCEPTION 'SC-53 %/% : pg_public_brand_upcoming returned % row(s)', v_phase, v_role, v_n;
       END IF;
     END LOOP;
@@ -326,16 +326,97 @@ BEGIN
       GET STACKED DIAGNOSTICS v_raised = MESSAGE_TEXT;
       v_ok := false;
     END;
-    IF v_ok <> v_expect_visible THEN
+    IF v_ok IS DISTINCT FROM v_expect_visible THEN
       RAISE EXCEPTION 'SC-53 % : biz_ticket_checkout_create_session admitted=% (expected %), raised=%',
         v_phase, v_ok, v_expect_visible, v_raised;
     END IF;
-    IF NOT v_ok AND v_raised <> 'event_not_selling' THEN
+    IF NOT v_ok AND v_raised IS DISTINCT FROM 'event_not_selling' THEN
       RAISE EXCEPTION 'SC-53 % : checkout denial must reuse event_not_selling, got %', v_phase, v_raised;
     END IF;
   END LOOP;
 
   RAISE NOTICE 'SC-53(b)/(c) PASS — 10 set-(A) members: readable with zero jobs, denying with one, as anon AND authenticated';
+END $test$;
+
+-- =====================================================================================
+-- SC-34 / Amendment 1 §3 — the legacy-Private-draft PUBLISH BLOCK, on the REAL path.
+--
+-- The client hook blocks too, but this is the AUTHORITATIVE half: the assertions below
+-- run against `business_publish_event_draft`, which is what
+-- `issue_1719_publish_event_with_poster` (the RPC the Business app actually calls)
+-- delegates to. A pure client-side helper that nothing invokes would not satisfy this.
+--
+-- NON-VACUITY, measured: on a database WITHOUT this migration the private fixture below
+-- publishes successfully to status='scheduled', visibility='private'. So the private leg
+-- genuinely flips, and the public leg genuinely still succeeds — both directions are
+-- observable rather than asserted.
+--
+-- This is the ONE deliberate behaviour change #1931 makes at readiness false, and it is
+-- required by name by Amendment 1 §3.
+-- =====================================================================================
+DO $test$
+DECLARE
+  v_user uuid := gen_random_uuid();
+  v_brand uuid := gen_random_uuid();
+  v_pub uuid := gen_random_uuid();
+  v_priv uuid := gen_random_uuid();
+  v_res jsonb;
+  v_raised text;
+  v_status text;
+  v_vis text;
+
+
+BEGIN
+  INSERT INTO auth.users (id) VALUES (v_user);
+  INSERT INTO public.creator_accounts (id) VALUES (v_user);
+  INSERT INTO public.brands (id, account_id, name, slug)
+  VALUES (v_brand, v_user, 'i1931 pub brand', 'i1931-pub-brand-' || v_brand);
+  INSERT INTO public.events (id, brand_id, title, slug, event_type, status, visibility, timezone)
+  VALUES (v_pub,  v_brand, 'i1931 pub draft',  'i1931-pub-'  || v_pub,  'event', 'draft', 'draft', 'UTC'),
+         (v_priv, v_brand, 'i1931 priv draft', 'i1931-priv-' || v_priv, 'event', 'draft', 'draft', 'UTC');
+  PERFORM set_config('request.jwt.claim.sub', v_user::text, true);
+
+  -- (1) POSITIVE CONTROL — a NON-private publish is unaffected. Without this half the
+  --     criterion could be satisfied by breaking publish entirely.
+  v_res := public.business_publish_event_draft(v_pub, jsonb_build_object(
+    'title', 'I1931 Public Party', 'timezone', 'UTC',
+    'theme', jsonb_build_object('business_draft', jsonb_build_object(
+      'requestedVisibility', 'public',
+      'tickets', jsonb_build_array(jsonb_build_object('name','Free entry','isFree',true,'price',0,'capacity',10)),
+      'city', 'Lagos', 'partyTypes', jsonb_build_array('club-night'), 'whenMode', 'single',
+      'when', jsonb_build_object('date', to_char(now() + interval '10 days','YYYY-MM-DD'),
+                                 'doorsOpen','20:00','endsAt','23:00')))));
+  SELECT status, visibility INTO v_status, v_vis FROM public.events WHERE id = v_pub;
+  IF v_status IS DISTINCT FROM 'scheduled' OR v_vis IS DISTINCT FROM 'public' THEN
+    RAISE EXCEPTION 'SC-34: a NON-private publish regressed (status=%, visibility=%)', v_status, v_vis;
+  END IF;
+
+  -- (2) THE BLOCK — the identical payload with requestedVisibility='private' must be
+  --     refused with the typed, non-disclosing reason class, and must write NOTHING.
+  BEGIN
+    v_res := public.business_publish_event_draft(v_priv, jsonb_build_object(
+      'title', 'I1931 Private Party', 'timezone', 'UTC',
+      'theme', jsonb_build_object('business_draft', jsonb_build_object(
+        'requestedVisibility', 'private',
+        'tickets', jsonb_build_array(jsonb_build_object('name','Free entry','isFree',true,'price',0,'capacity',10)),
+        'city', 'Lagos', 'partyTypes', jsonb_build_array('club-night'), 'whenMode', 'single',
+        'when', jsonb_build_object('date', to_char(now() + interval '10 days','YYYY-MM-DD'),
+                                   'doorsOpen','20:00','endsAt','23:00')))));
+    RAISE EXCEPTION 'SC-34: a Private draft PUBLISHED while Private ticket sales are not ready';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_raised = MESSAGE_TEXT;
+    IF v_raised IS DISTINCT FROM 'private_access_not_ready' THEN
+      RAISE EXCEPTION 'SC-34: expected private_access_not_ready, got %', v_raised;
+    END IF;
+  END;
+
+  -- (3) The refusal wrote nothing: the draft is still a draft.
+  SELECT status, visibility INTO v_status, v_vis FROM public.events WHERE id = v_priv;
+  IF v_status IS DISTINCT FROM 'draft' THEN
+    RAISE EXCEPTION 'SC-34: the blocked Private publish mutated the row (status=%)', v_status;
+  END IF;
+
+  RAISE NOTICE 'SC-34 PASS — Private publish blocked on the REAL path with private_access_not_ready; non-private publish unaffected; no write on refusal';
 END $test$;
 
 -- =====================================================================================
@@ -436,6 +517,8 @@ DECLARE
   v_inv_before record;
   v_inv_after record;
   v_call text;
+  v_probe_before bigint;
+  v_probe_after bigint;
 BEGIN
   INSERT INTO auth.users (id) VALUES (v_user);
   INSERT INTO public.creator_accounts (id) VALUES (v_user);
@@ -462,6 +545,30 @@ BEGIN
   INSERT INTO public.brand_offering_invite_tokens
     (id, invite_id, token_hash, contact_method_id, expires_at, delivery_attempt_id)
   VALUES (v_token, v_invite, repeat('b', 64), v_contact, now() + interval '7 days', v_attempt);
+
+  -- ---------------------------------------------------------------------------------
+  -- BEHAVIOURAL WRITE PROBE (closes tester P2-2).
+  --
+  -- Row equality alone is defeated three ways: a write-then-RAISE discards its own rows,
+  -- dynamic SQL hides the verb from any source scan, and a migration-time write happens
+  -- before the fixture exists. A SEQUENCE is the right instrument because `nextval` is
+  -- NON-TRANSACTIONAL: it advances even when the writing subtransaction rolls back. So a
+  -- released path that writes and then raises is still caught here.
+  --
+  -- The trigger is a TEST INSTRUMENT created inside this transaction and discarded by the
+  -- final ROLLBACK. It does not modify the DO-NOT-TOUCH #1770 tables in any durable way.
+  -- ---------------------------------------------------------------------------------
+  CREATE SEQUENCE public.rw1931_write_probe_seq;
+  CREATE OR REPLACE FUNCTION public.rw1931_write_probe() RETURNS trigger
+    LANGUAGE plpgsql AS $probe$
+    BEGIN PERFORM nextval('public.rw1931_write_probe_seq'); RETURN NULL; END $probe$;
+  CREATE TRIGGER rw1931_probe_tokens
+    AFTER INSERT OR UPDATE OR DELETE ON public.brand_offering_invite_tokens
+    FOR EACH ROW EXECUTE FUNCTION public.rw1931_write_probe();
+  CREATE TRIGGER rw1931_probe_invites
+    AFTER INSERT OR UPDATE OR DELETE ON public.brand_offering_invites
+    FOR EACH ROW EXECUTE FUNCTION public.rw1931_write_probe();
+  v_probe_before := nextval('public.rw1931_write_probe_seq');
 
   SELECT token_hash, expires_at, revoked_at, consumed_at INTO v_before
     FROM public.brand_offering_invite_tokens WHERE id = v_token;
@@ -498,7 +605,15 @@ BEGIN
     RAISE EXCEPTION 'SC-55(c): the seeded #1770 token was consumed by a released #1931 path';
   END IF;
 
-  RAISE NOTICE 'SC-55(c) PASS — seeded live #1770 token and invite are byte-identical after the released matrix';
+  -- The non-transactional half: ANY write attempt, even one discarded by a RAISE or
+  -- issued through dynamic SQL, advances the sequence.
+  v_probe_after := currval('public.rw1931_write_probe_seq');
+  IF v_probe_after IS DISTINCT FROM v_probe_before THEN
+    RAISE EXCEPTION 'SC-55(c): a released #1931 path ATTEMPTED % write(s) against a #1770 invitation table (write-then-raise or dynamic SQL)',
+      v_probe_after - v_probe_before;
+  END IF;
+
+  RAISE NOTICE 'SC-55(c) PASS — seeded #1770 token/invite byte-identical AND zero write ATTEMPTS observed by the non-transactional probe';
 END $test$;
 
 ROLLBACK;

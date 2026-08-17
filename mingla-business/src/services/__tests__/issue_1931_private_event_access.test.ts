@@ -29,7 +29,15 @@ describe("#1931 released-set client state", () => {
     );
   });
 
-  it("SC-34 — a legacy Private draft cannot publish, and is NOT silently rewritten", () => {
+  // NOTE ON SCOPE, after the independent tester correctly flagged the previous title:
+  // this case tests the PREDICATE only. The predicate is now genuinely wired into
+  // `usePublishBusinessEventDraft`'s mutationFn, but the AUTHORITATIVE proof that a
+  // Private draft cannot publish is the SQL fixture `SC-34` in
+  // supabase/migrations/__tests__/issue_1931_private_event_access.test.sql, which drives
+  // `business_publish_event_draft` — the function the real client path reaches through
+  // `issue_1719_publish_event_with_poster`. A client-side predicate can never be the
+  // authority, and this test does not claim to be.
+  it("SC-34 — the publish-block predicate returns the block reason for a Private draft", () => {
     // The draft keeps its stored visibility; only publish is blocked.
     expect(privatePublishBlockReason("private")).toBe(PRIVATE_NOT_READY_HELPER);
     // Public and Unlisted authoring are entirely unchanged.
