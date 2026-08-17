@@ -194,6 +194,18 @@ test('the render hot path has a stable two-poster bound and no explicit speculat
   assert.match(swipeable, /recyclingKey=\{src\}/);
   assert.match(swipeable, /allowDownscaling/);
   const behind = swipeable.slice(swipeable.indexOf('Next card is a poster-only'), swipeable.indexOf('{\/\* Current Card \*\/}'));
+  // Issue #2113 EMPTY-WINDOW GUARD. BOTH boundaries of this window are JSX
+  // COMMENTS. Deleting the start comment makes indexOf() return -1, so
+  // slice(-1, end) yields "" — and every doesNotMatch below then passes
+  // unconditionally. Proven: with the start comment deleted and a real
+  // `<CardHeroImage ...>` duplicate poster mounted in the behind layer, this
+  // suite reported 6 passed, 0 failed. The band also catches the opposite
+  // collapse (a missing END marker runs the window to the end of the file).
+  assert.ok(
+    behind.length > 1000 && behind.length < 20000,
+    `behind-layer window collapsed or ran away (${behind.length} chars) — a boundary JSX comment in SwipeableCards.tsx moved or was deleted`,
+  );
+  assert.match(behind, /pointerEvents="none"/, 'the window must contain the real non-interactive behind layer');
   assert.doesNotMatch(behind, /<CardHeroImage/);
   assert.match(swipeable, /posterCards=\{\[[\s\S]*id: nextRec\.id[\s\S]*id: currentRec\.id/);
   assert.match(files.stage, /props\.posterCards\.map\(\(card\)[\s\S]*key=\{card\.id\}[\s\S]*\{card\.poster\}/);

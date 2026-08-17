@@ -8709,3 +8709,9 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
   (criteria that cannot pass, mutually-propping checks, circular evidence,
   layout-gated blindness) are out of static reach; the control for those is the
   review-step amendment that requires the mutation to be executed.
+## DRAFT — issue #2113 (green CI must be able to go red)
+
+### I-PROPOSED-2113-NEGATIVE-ASSERTION-OVER-GUARDED-WINDOW (DRAFT)
+
+- **Rule:** A negative assertion (`doesNotMatch`, `not.toContain`, `not.toMatch`, `x.includes(..) === false`, `!x`) over a source window whose capture expression carries a COMMENT-token boundary literal must be preceded, in the same scope, by a non-empty guard on that window — ideally length-banded. An empty string satisfies every negative assertion in JavaScript, so a window that collapses when one comment is added or deleted converts its guard into an unconditional pass while still reading as coverage.
+- **Enforcement:** `.github/scripts/strict-grep/issue-2113-empty-window-negative-assertion.mjs` (batch:A, blocking, self-test wired, 21 fixtures in both directions) plus `.github/scripts/strict-grep/__tests__/issue-2113-empty-window-negative-assertion.test.mjs`, which pins the ten in-scope windows and fails if a guard is removed. Established at zero repo violations after the nine unguarded windows were fixed and each fix was proven to red on the mutation the sweep used to prove it green.

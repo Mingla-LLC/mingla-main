@@ -208,6 +208,15 @@ test('behind layer is the sole bounded lookahead with zero explicit prefetch', (
     swipeableSource.indexOf('Next card is a poster-only'),
     swipeableSource.indexOf('{/* Current Card */}'),
   );
+  // Issue #2113 EMPTY-WINDOW GUARD. BOTH boundaries are JSX COMMENTS, and the
+  // existing `assert.match(preview, /pointerEvents="none"/)` guard sits FOUR
+  // assertions LATER — so the vacuous pass on the line below is reported as a
+  // pass before anything notices the window collapsed. Guards must precede the
+  // negative assertion they protect; this one now does.
+  assert.ok(
+    preview.length > 1000 && preview.length < 20000,
+    `behind-preview window collapsed or ran away (${preview.length} chars) — a boundary JSX comment in SwipeableCards.tsx moved or was deleted`,
+  );
   assert.doesNotMatch(preview, /<CardHeroImage/);
   assert.match(swipeableSource, /posterCards=\{\[[\s\S]*id: nextRec\.id[\s\S]*id: currentRec\.id/);
   assert.match(stageSource, /props\.posterCards\.map\(\(card\)[\s\S]*key=\{card\.id\}[\s\S]*\{card\.poster\}/);
