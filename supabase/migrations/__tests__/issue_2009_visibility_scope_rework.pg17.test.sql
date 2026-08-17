@@ -508,7 +508,13 @@ BEGIN
   IF n_total < 24 THEN
     RAISE EXCEPTION 'issue #2009 rework: only % assertions ran; the fixture regressed', n_total;
   END IF;
-  IF n_real < 3 THEN
+  -- A floor of 2, not 3. It has to be low enough that a REGRESSION reports its
+  -- own assertion failures instead of tripping this guard first: reverting the
+  -- Admin exit route (P2-3) removes one real transition, and a vacuity guard
+  -- that fires before the failures print makes the suite harder to diagnose
+  -- than it needs to be. Two is still a genuine floor — a collapsed fixture
+  -- commits none.
+  IF n_real < 2 THEN
     RAISE EXCEPTION 'issue #2009 rework: only % real transitions committed; the suite is vacuous', n_real;
   END IF;
 
