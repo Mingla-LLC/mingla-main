@@ -40,6 +40,18 @@
  * server payloads against the real projection, and then pins the wiring the
  * projection feeds.
  *
+ * RUNNER. This file uses ONLY `react-test-renderer`, which is a declared
+ * devDependency and IS in `package-lock.json`, so `npm ci` installs it and this
+ * suite runs under the DEFAULT node/ts-jest config with no dedicated render
+ * config, no `jest.config.cjs` entry and no workflow install step. It
+ * deliberately does NOT import `@testing-library/react-native`: that package is
+ * imported by ~20 suites in this repo and declared by none, so a suite that
+ * needs it is green for whoever last ran a render lane and red under `npm ci`.
+ * Registering it as an RTL suite would also require editing
+ * `mingla-business/jest.config.cjs`, which Amendment 8 §A8.5 names explicitly as
+ * NOT allowlisted for this issue. Nothing here renders a host component — the
+ * probe returns `null` — so no renderer beyond `react-test-renderer` is needed.
+ *
  * TESTER-OWNED. The implementor must not edit or duplicate this file; its own
  * happy-path coverage of the same module is separate by design.
  */
@@ -48,11 +60,19 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 import React from "react";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { Text } from "react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, waitFor } from "@testing-library/react-native";
 
 import type { PublicTicketCheckoutAccess } from "../../services/eventTicketCheckoutAccessService";
+
+interface RendererInstance {
+  unmount(): void;
+}
+interface TestRendererApi {
+  create(element: React.ReactElement): RendererInstance;
+  act(callback: () => void | Promise<void>): Promise<void> | void;
+}
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const TestRenderer = require("react-test-renderer") as TestRendererApi;
 
 const fetchPublic = jest.fn<() => Promise<PublicTicketCheckoutAccess>>();
 let authReady = true;
@@ -87,7 +107,7 @@ let seen: ReturnType<typeof usePublicTicketCheckoutRouteAccess> | null = null;
 
 const Probe: React.FC<{ eventId: string }> = ({ eventId }) => {
   seen = usePublicTicketCheckoutRouteAccess(eventId);
-  return <Text testID="probe">{seen.state}</Text>;
+  return null;
 };
 
 const makeClient = (): QueryClient =>
@@ -95,12 +115,46 @@ const makeClient = (): QueryClient =>
     defaultOptions: { queries: { retry: false, gcTime: Infinity } },
   });
 
-const mount = (client: QueryClient) =>
-  render(
+/** Synchronous mount under `act`, so the first render is flushed. */
+const mountElement = (element: React.ReactElement): RendererInstance => {
+  let instance: RendererInstance | null = null;
+  const result = TestRenderer.act(() => {
+    instance = TestRenderer.create(element);
+  });
+  // `act` returns a thenable only for the async form; this one is sync.
+  void result;
+  if (instance === null) throw new Error("mount produced no renderer");
+  return instance;
+};
+
+const mount = (client: QueryClient): RendererInstance =>
+  mountElement(
     <QueryClientProvider client={client}>
       <Probe eventId="evt-2101" />
     </QueryClientProvider>,
   );
+
+/**
+ * Flush pending microtasks/state inside `act` until `predicate` holds. Replaces
+ * RTL's `waitFor` with no new dependency. It THROWS on timeout rather than
+ * returning, so a never-settling query is a red, never a silent pass.
+ */
+const settleUntil = async (
+  predicate: () => boolean,
+  label: string,
+  ticks = 50,
+): Promise<void> => {
+  for (let i = 0; i < ticks; i += 1) {
+    if (predicate()) return;
+    await TestRenderer.act(async () => {
+      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+  if (!predicate()) {
+    throw new Error(`settleUntil timed out waiting for: ${label}`);
+  }
+};
 
 beforeEach(() => {
   fetchPublic.mockReset();
@@ -125,7 +179,8 @@ describe("issue #2101 — the REAL web route-access adapter projection", () => {
       fetchPublic.mockResolvedValue(named(serverState));
       const client = makeClient();
       const view = mount(client);
-      await waitFor(() => expect(seen?.state).toBe(serverState));
+      await settleUntil(() => seen?.state === serverState, serverState);
+      expect(seen?.state).toBe(serverState);
       expect(seen?.blocked).toBe(blocked);
       expect(seen?.requiresSignIn).toBe(requiresSignIn);
       expect(seen?.canPurchase).toBe(canPurchase);
@@ -142,7 +197,8 @@ describe("issue #2101 — the REAL web route-access adapter projection", () => {
     });
     const client = makeClient();
     const view = mount(client);
-    await waitFor(() => expect(seen?.state).toBe("unrestricted"));
+    await settleUntil(() => seen?.state === "unrestricted", "unrestricted");
+    expect(seen?.state).toBe("unrestricted");
     expect(seen?.blocked).toBe(false);
     expect(seen?.canPurchase).toBe(true);
     view.unmount();
@@ -153,7 +209,8 @@ describe("issue #2101 — the REAL web route-access adapter projection", () => {
     fetchPublic.mockRejectedValue(new Error("network"));
     const client = makeClient();
     const view = mount(client);
-    await waitFor(() => expect(seen?.state).toBe("error"));
+    await settleUntil(() => seen?.state === "error", "error");
+    expect(seen?.state).toBe("error");
     expect(seen?.blocked).toBe(true);
     expect(seen?.canPurchase).toBe(false);
     view.unmount();
@@ -182,7 +239,8 @@ describe("issue #2101 — the REAL web route-access adapter projection", () => {
     fetchPublic.mockResolvedValue(named("allowed"));
     const client = makeClient();
     const warm = mount(client);
-    await waitFor(() => expect(seen?.state).toBe("allowed"));
+    await settleUntil(() => seen?.state === "allowed", "allowed");
+    expect(seen?.state).toBe("allowed");
     warm.unmount();
 
     // Same cache, auth now unsettled: the resolved decision must NOT leak.
@@ -208,7 +266,8 @@ describe("issue #2101 — the REAL web route-access adapter projection", () => {
     const client = makeClient();
 
     const first = mount(client);
-    await waitFor(() => expect(seen?.state).toBe("allowed"));
+    await settleUntil(() => seen?.state === "allowed", "allowed");
+    expect(seen?.state).toBe("allowed");
     first.unmount();
 
     let release: (v: PublicTicketCheckoutAccess) => void = () => {};
@@ -224,9 +283,9 @@ describe("issue #2101 — the REAL web route-access adapter projection", () => {
       const a = usePublicTicketCheckoutRouteAccess("evt-2101");
       states.push(a.state);
       seen = a;
-      return <Text>{a.state}</Text>;
+      return null;
     };
-    const second = render(
+    const second = mountElement(
       <QueryClientProvider client={client}>
         <Recorder />
       </QueryClientProvider>,
@@ -236,8 +295,9 @@ describe("issue #2101 — the REAL web route-access adapter projection", () => {
     expect(seen?.blocked).toBe(false);
     expect(seen?.canPurchase).toBe(true);
 
-    await act(async () => {
+    await TestRenderer.act(async () => {
       release(named("allowed"));
+      await Promise.resolve();
     });
     expect(states).not.toContain("loading");
     second.unmount();
@@ -248,13 +308,15 @@ describe("issue #2101 — the REAL web route-access adapter projection", () => {
     fetchPublic.mockResolvedValue(named("allowed"));
     const client = makeClient();
     const first = mount(client);
-    await waitFor(() => expect(seen?.state).toBe("allowed"));
+    await settleUntil(() => seen?.state === "allowed", "allowed");
+    expect(seen?.state).toBe("allowed");
     first.unmount();
 
     authUserId = "user-b";
     fetchPublic.mockResolvedValue(named("restricted"));
     const second = mount(client);
-    await waitFor(() => expect(seen?.state).toBe("restricted"));
+    await settleUntil(() => seen?.state === "restricted", "restricted");
+    expect(seen?.state).toBe("restricted");
     expect(seen?.blocked).toBe(true);
     second.unmount();
     client.clear();
