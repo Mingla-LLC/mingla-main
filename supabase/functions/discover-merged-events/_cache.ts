@@ -11,6 +11,36 @@ export const DISCOVER_STALE_TTL_MS = Number(
   Deno.env.get("DISCOVER_MERGED_STALE_MS") ?? "600000",
 );
 
+/**
+ * issue #2009 (BINDING SPEC AMENDMENT 3B, Defect 3) — the hard ceiling on how
+ * long a successfully-read discovery generation may be reused from this
+ * isolate's memory before it must be read from the database again.
+ *
+ * WORST-CASE STALENESS, IN PLAIN WORDS: after an organiser changes a standard
+ * ticketed event's visibility, a discover deck built before that change can
+ * still be served for AT MOST FIVE SECONDS. After five seconds this isolate
+ * re-reads the generation, the cache key changes, and the pre-change deck is
+ * unreachable in L1, in the L2 DB cache and behind the cross-isolate build
+ * lock. (Amendment 3A closed a 2-minute-fresh / 10-minute-stale hole by reading
+ * the generation on EVERY request; this bound gives ~5s of that back in
+ * exchange for keeping discovery — ORCH-426's hot path — off the database on an
+ * L1 hit.)
+ *
+ * A LITERAL CONSTANT, NOT AN ENVIRONMENT VARIABLE, DELIBERATELY. Amendment 3B
+ * is explicit that the ceiling must not be tunable into a large staleness
+ * window. The two TTLs above ARE env-tunable, and that is precisely how the
+ * ten-minute hole came to exist. The #2009 strict-grep gate fails if this
+ * constant is turned into a `Deno.env.get` read or raised above 5000.
+ */
+export const DISCOVER_GENERATION_TTL_MS = 5000;
+
+/**
+ * issue #2009 — the prefix of the fail-closed, per-call-unique generation slot.
+ * Shared by the slot builder and the memo policy below so "is this slot
+ * cacheable?" has exactly one definition.
+ */
+const UNAVAILABLE_GENERATION_PREFIX = "unavailable:";
+
 export interface DiscoverCacheParams {
   /**
    * #1637 — null for a coords-anchored request (a cold consumer launch, before
@@ -73,7 +103,83 @@ export function discoveryGenerationSlot(raw: unknown): string {
   if (typeof value === "number" && Number.isInteger(value) && value > 0) {
     return `g${value}`;
   }
-  return `unavailable:${crypto.randomUUID()}`;
+  return `${UNAVAILABLE_GENERATION_PREFIX}${crypto.randomUUID()}`;
+}
+
+/** The shape of an awaited `supabase.rpc(...)` result, structurally. */
+export interface DiscoveryGenerationRead {
+  data: unknown;
+  error: { message?: string } | null;
+}
+
+/**
+ * issue #2009 — the isolate-local memo of the last successfully-read
+ * generation. Same lifetime and same blast radius as the L1 map in
+ * `_memory-cache.ts`: per isolate, dropped when the isolate is recycled.
+ */
+let generationMemo: { slot: string; readAt: number } | null = null;
+
+/**
+ * issue #2009 (BINDING SPEC AMENDMENT 3B, Defect 3) — resolve the cache-key
+ * generation slot, reading the database AT MOST ONCE PER
+ * `DISCOVER_GENERATION_TTL_MS` per isolate.
+ *
+ * Amendment 3A threaded the generation into the key but read it on EVERY
+ * request, above the L1 lookup — so discovery, the consumer app's hottest path
+ * and the exact path ORCH-426 exists to keep off the database, made a round
+ * trip even on requests L1 would have served with zero database contact. This
+ * bounds the read rather than removing it: inside the ceiling window the answer
+ * comes from memory and L1 serves untouched; outside it, one primary-key read
+ * on a service-only singleton refreshes it.
+ *
+ * FAIL CLOSED, unchanged from Amendment 3A. Only a slot built from a valid
+ * positive integer is ever remembered. An unreadable generation — RPC error, a
+ * throw, null, NaN, a non-integer, a non-positive value — returns the per-call
+ * unique `unavailable:<uuid>` slot AND clears the memo, so no request is ever
+ * served an entry keyed on a generation this isolate cannot currently confirm,
+ * and the next request re-reads rather than coasting on an unconfirmed value.
+ */
+export async function resolveDiscoveryGenerationSlot(
+  readGeneration: () => Promise<DiscoveryGenerationRead>,
+  now: number = Date.now(),
+): Promise<string> {
+  const memo = generationMemo;
+  if (
+    memo !== null && now >= memo.readAt &&
+    now - memo.readAt < DISCOVER_GENERATION_TTL_MS
+  ) {
+    return memo.slot;
+  }
+
+  let read: DiscoveryGenerationRead;
+  try {
+    read = await readGeneration();
+  } catch (err) {
+    console.warn(
+      "[discover-merged-events] issue #2009 discovery generation read threw; failing closed to an uncacheable key:",
+      err instanceof Error ? err.message : String(err),
+    );
+    generationMemo = null;
+    return discoveryGenerationSlot(null);
+  }
+
+  if (read.error) {
+    console.warn(
+      "[discover-merged-events] issue #2009 discovery generation unreadable; failing closed to an uncacheable key:",
+      read.error.message,
+    );
+    generationMemo = null;
+    return discoveryGenerationSlot(null);
+  }
+
+  const slot = discoveryGenerationSlot(read.data);
+  if (slot.startsWith(UNAVAILABLE_GENERATION_PREFIX)) {
+    generationMemo = null;
+    return slot;
+  }
+
+  generationMemo = { slot, readAt: now };
+  return slot;
 }
 
 export function buildDiscoverCacheKey(p: DiscoverCacheParams): string {

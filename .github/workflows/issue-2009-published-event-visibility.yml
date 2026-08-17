@@ -8,8 +8,12 @@ on:
       - "supabase/functions/_shared/agentTools.ts"
       - "supabase/functions/_shared/__tests__/issue_2009_ari_visibility_via_rpc.test.ts"
       - "supabase/functions/discover-merged-events/_cache.ts"
+      - "supabase/functions/discover-merged-events/_memory-cache.ts"
       - "supabase/functions/discover-merged-events/index.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_discovery_generation_cache_key.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_generation_read_ceiling.test.ts"
+      - "supabase/functions/agent-confirm-action/index.ts"
+      - "supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts"
       - "mingla-business/src/services/businessEvents.ts"
       - "mingla-business/src/services/__tests__/businessEventVisibility.issue2009*"
       - "mingla-business/src/components/event/EditPublishedScreen.tsx"
@@ -25,8 +29,12 @@ on:
       - "supabase/functions/_shared/agentTools.ts"
       - "supabase/functions/_shared/__tests__/issue_2009_ari_visibility_via_rpc.test.ts"
       - "supabase/functions/discover-merged-events/_cache.ts"
+      - "supabase/functions/discover-merged-events/_memory-cache.ts"
       - "supabase/functions/discover-merged-events/index.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_discovery_generation_cache_key.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_generation_read_ceiling.test.ts"
+      - "supabase/functions/agent-confirm-action/index.ts"
+      - "supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts"
       - "mingla-business/src/services/businessEvents.ts"
       - "mingla-business/src/services/__tests__/businessEventVisibility.issue2009*"
       - "mingla-business/src/components/event/EditPublishedScreen.tsx"
@@ -147,6 +155,23 @@ jobs:
         run: |
           deno test --no-check --allow-env \
             supabase/functions/discover-merged-events/__tests__/issue_2009_discovery_generation_cache_key.test.ts
+      # AMENDMENT 3B Defect 3 — the generation read is bounded to one database
+      # round-trip per 5s per isolate, so an L1 hit is back to zero database
+      # contact (ORCH-426's hot path) while worst-case staleness after a
+      # visibility change stays ~5s. Counting round-trips is the whole point, so
+      # the reader is a counting double driving the SHIPPED resolver.
+      - name: "#2009 Defect 3 — the generation read is bounded and still fails closed"
+        run: |
+          deno test --no-check --allow-env \
+            supabase/functions/discover-merged-events/__tests__/issue_2009_generation_read_ceiling.test.ts
+      # AMENDMENT 3B Defect 4 — a known, expected, correctly-refused Private
+      # transition must not be reported to the client as a server fault. The
+      # code is taken off the REAL ToolError the shipped executor raises, never
+      # typed by hand, because the code that arrives is the UPPERCASED one.
+      - name: "#2009 Defect 4 — private_visibility_unavailable maps to 4xx, not 500"
+        run: |
+          deno test --no-check --allow-env --allow-net --allow-read \
+            supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts
       - name: "#2009 no regression to the pre-existing discover cache-key contracts"
         run: |
           deno test --no-check --allow-env \

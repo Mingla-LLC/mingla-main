@@ -17,7 +17,7 @@ import { parseLocalStartEndDateTime } from "../_shared/timezone.ts";
 import {
   buildDiscoverCacheKey,
   type DiscoverCacheParams,
-  discoveryGenerationSlot,
+  resolveDiscoveryGenerationSlot,
 } from "./_cache.ts";
 import {
   coalesceDiscoverBuild,
@@ -184,26 +184,25 @@ serve(async (req: Request): Promise<Response> => {
     auth: { persistSession: false },
   });
 
-  // ── issue #2009 (Amendment 3A, Defect 2): the visibility epoch ────────────
-  // Read the current discovery generation BEFORE the key is built. Every real
-  // standard-event visibility transition increments it in the same transaction
-  // as the row write, so a Public -> Unlisted flip mints a new key and the
-  // pre-change deck can never be served from L1, L2 or behind the build lock.
+  // ── issue #2009 (Amendment 3A Defect 2 + Amendment 3B Defect 3) ───────────
+  // The visibility epoch. Resolve the current discovery generation BEFORE the
+  // key is built. Every real standard-event visibility transition increments it
+  // in the same transaction as the row write, so a Public -> Unlisted flip
+  // mints a new key and the pre-change deck can never be served from L1, from
+  // the L2 DB cache, or from behind the cross-isolate build lock.
   //
-  // The read is a single primary-key row on a service-only singleton. It runs
-  // on every request INCLUDING the L1-hit path — deliberately: caching the
-  // generation itself would reintroduce exactly the staleness window this
-  // closes. `discoveryGenerationSlot` fails closed on any error, so a failed
-  // read costs a cache miss, never a stale-privacy hit.
-  const generationRead = await supabase.rpc("issue_2009_event_discovery_generation");
-  if (generationRead.error) {
-    console.warn(
-      "[discover-merged-events] issue #2009 discovery generation unreadable; failing closed to an uncacheable key:",
-      generationRead.error.message,
-    );
-  }
-  const discoveryGeneration = discoveryGenerationSlot(
-    generationRead.error ? null : generationRead.data,
+  // The read is BOUNDED (Amendment 3B): at most ONE database round-trip per
+  // DISCOVER_GENERATION_TTL_MS (5s) per isolate. Amendment 3A read it on every
+  // request, which put a round-trip in front of L1 on discovery — the consumer
+  // app's hottest path, which ORCH-426 exists to keep off the database. Inside
+  // the ceiling window this returns from memory and the L1 path below touches
+  // the database zero times. Worst-case staleness after a visibility change is
+  // therefore ~5s, spelled out at the constant in `_cache.ts`.
+  //
+  // It still fails closed: an unreadable generation yields a per-call unique
+  // slot, so that request costs a cache miss, never a stale-privacy hit.
+  const discoveryGeneration = await resolveDiscoveryGenerationSlot(
+    async () => await supabase.rpc("issue_2009_event_discovery_generation"),
   );
 
   const cacheParams: DiscoverCacheParams = {

@@ -237,8 +237,42 @@ const check = (s) => {
       !/DISCOVER_MERGED_STALE_MS["'`]\s*\)\s*\?\?\s*["'`]600000/.test(cache)) {
     fail("_cache.ts: a discover cache TTL default changed — TTLs are out of scope for this pass (Amendment 3A)");
   }
-  if (!/discoveryGenerationSlot/.test(index)) {
-    fail("discover-merged-events/index.ts no longer builds the generation slot (Defect 2)");
+  // ---- 9b. AMENDMENT 3B Defect 3 — the generation read is BOUNDED -----------
+  // Behavioural proof:
+  //   supabase/functions/discover-merged-events/__tests__/issue_2009_generation_read_ceiling.test.ts
+  //
+  // Amendment 3A read the generation on EVERY request, above the L1 lookup, so
+  // discovery — ORCH-426's hot path — took a database round-trip even on an L1
+  // hit. 3B bounds the read to at most once per 5s per isolate. The ceiling is
+  // a LITERAL CONSTANT on purpose: it must not be tunable into a large
+  // staleness window, which is exactly how the 2-minute/10-minute hole existed.
+  if (!/export const DISCOVER_GENERATION_TTL_MS\s*=\s*5000\s*;/.test(cache)) {
+    fail(
+      "_cache.ts: DISCOVER_GENERATION_TTL_MS is no longer the literal 5000 — the worst-case staleness after a visibility change changed with it (Amendment 3B Defect 3)",
+    );
+  }
+  if (/DISCOVER_GENERATION_TTL_MS[^\n]*Deno\.env\.get/.test(cache)) {
+    fail(
+      "_cache.ts: the generation ceiling became environment-tunable — Amendment 3B forbids tuning it into a large staleness window",
+    );
+  }
+  if (!/export async function resolveDiscoveryGenerationSlot/.test(cache)) {
+    fail(
+      "_cache.ts lost resolveDiscoveryGenerationSlot — the bounded read has no single home (Amendment 3B Defect 3)",
+    );
+  }
+  // Fail closed: an unreadable generation must CLEAR the memo, never be
+  // remembered. Remembering it would serve later requests an entry keyed on a
+  // generation the isolate cannot confirm.
+  if ((cache.match(/generationMemo\s*=\s*null\s*;/g) ?? []).length < 3) {
+    fail(
+      "_cache.ts: the generation memo is no longer cleared on every unreadable read — a failed read could be remembered and served (fail-closed, Amendment 3A/3B)",
+    );
+  }
+  if (!/resolveDiscoveryGenerationSlot\(/.test(index)) {
+    fail(
+      "discover-merged-events/index.ts no longer resolves the generation through the bounded resolver — either the epoch is gone (Defect 2) or the read is unbounded again (Defect 3)",
+    );
   }
   if (!/issue_2009_event_discovery_generation/.test(index)) {
     fail("discover-merged-events/index.ts no longer reads the discovery generation (Defect 2)");
@@ -485,13 +519,19 @@ if (process.argv.includes("--self-test")) {
     },
     {
       label: "M26 — the fail-closed fallback stops being per-call unique",
-      apply: (s) => ({
-        ...s,
-        discoverCache: s.discoverCache.replace(
-          "`unavailable:${crypto.randomUUID()}`",
-          '"unavailable:fixed"',
-        ),
-      }),
+      apply: (s) => {
+        const marker = "`${UNAVAILABLE_GENERATION_PREFIX}${crypto.randomUUID()}`";
+        if (!s.discoverCache.includes(marker)) {
+          throw new Error("M26 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          discoverCache: s.discoverCache.replace(
+            marker,
+            '`${UNAVAILABLE_GENERATION_PREFIX}fixed`',
+          ),
+        };
+      },
     },
     {
       label: "M27 — the exposure is 'fixed' by shortening a TTL instead of keying on the generation",
@@ -513,10 +553,14 @@ if (process.argv.includes("--self-test")) {
     {
       label: "M29 — the generation is read AFTER the L1 serve, so the stale deck goes out first",
       apply: (s) => {
-        const marker = "  const generationRead = await supabase.rpc(\"issue_2009_event_discovery_generation\");";
+        const marker =
+          '    async () => await supabase.rpc("issue_2009_event_discovery_generation"),';
+        if (!s.discoverIndex.includes(marker)) {
+          throw new Error("M29 fixture marker drifted — update it, do not let it no-op");
+        }
         return {
           ...s,
-          discoverIndex: s.discoverIndex.replace(marker, "") +
+          discoverIndex: s.discoverIndex.replace(marker, "    async () => await supabase.rpc(\"noop\"),") +
             "\n" + marker + "\n",
         };
       },
@@ -526,6 +570,48 @@ if (process.argv.includes("--self-test")) {
       apply: (s) => ({
         ...s,
         discoverIndex: s.discoverIndex.replace("    discoveryGeneration,\n", ""),
+      }),
+    },
+    // ---- AMENDMENT 3B Defect 3 — the bounded generation read ---------------
+    {
+      label: "M31 — the ceiling becomes environment-tunable (a large staleness window is reachable again)",
+      apply: (s) => ({
+        ...s,
+        discoverCache: s.discoverCache.replace(
+          "export const DISCOVER_GENERATION_TTL_MS = 5000;",
+          'export const DISCOVER_GENERATION_TTL_MS = Number(Deno.env.get("DISCOVER_GENERATION_TTL_MS") ?? "5000");',
+        ),
+      }),
+    },
+    {
+      label: "M32 — the ceiling is quietly raised past 5s",
+      apply: (s) => ({
+        ...s,
+        discoverCache: s.discoverCache.replace(
+          "export const DISCOVER_GENERATION_TTL_MS = 5000;",
+          "export const DISCOVER_GENERATION_TTL_MS = 600000;",
+        ),
+      }),
+    },
+    {
+      label: "M33 — a failed generation read is REMEMBERED instead of failing closed",
+      apply: (s) => ({
+        ...s,
+        discoverCache: s.discoverCache.replaceAll("    generationMemo = null;\n", ""),
+      }),
+    },
+    {
+      label: "M34 — the bounded resolver is removed and the edge handler reads unbounded again (the exact Defect 3 regression)",
+      apply: (s) => ({
+        ...s,
+        discoverCache: s.discoverCache.replace(
+          "export async function resolveDiscoveryGenerationSlot",
+          "async function unboundedGenerationRead",
+        ),
+        discoverIndex: s.discoverIndex.replace(
+          "await resolveDiscoveryGenerationSlot(",
+          "await unboundedGenerationRead(",
+        ),
       }),
     },
     {
