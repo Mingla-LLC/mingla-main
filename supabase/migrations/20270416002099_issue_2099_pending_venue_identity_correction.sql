@@ -1,14 +1,25 @@
 -- #2099: one audited, race-sealed correction for an unused pending venue identity.
+--
+-- REPLAY-SAFE (Amendment 4 §D4). A second exact `psql -f` of this file after a
+-- clean full-chain apply must exit 0 WITHOUT dropping or truncating either
+-- #2099 table, without losing an audit or guard row, and finishing with
+-- byte-equivalent function definitions, owners, security-definer/search-path
+-- attributes, RLS/grant state, constraints, immutable row/truncate triggers,
+-- event-trigger owner/function/enabled state, and public RPC signatures/grants.
+-- Every object below is therefore IF NOT EXISTS, CREATE OR REPLACE, or an
+-- explicit drop-and-recreate of a stateless trigger. Migration replay is NOT a
+-- substitute for request replay: request idempotency lives in the audit table's
+-- UNIQUE(request_id) and the writer's fingerprint comparison.
 
-CREATE TABLE public.issue_2099_dependency_schema_guard (
+CREATE TABLE IF NOT EXISTS public.issue_2099_dependency_schema_guard (
   singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton)
 );
-INSERT INTO public.issue_2099_dependency_schema_guard(singleton) VALUES (true);
+INSERT INTO public.issue_2099_dependency_schema_guard(singleton) VALUES (true) ON CONFLICT DO NOTHING;
 ALTER TABLE public.issue_2099_dependency_schema_guard OWNER TO postgres;
 ALTER TABLE public.issue_2099_dependency_schema_guard ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.issue_2099_dependency_schema_guard FROM PUBLIC, anon, authenticated, service_role;
 
-CREATE TABLE public.venue_identity_correction_audit (
+CREATE TABLE IF NOT EXISTS public.venue_identity_correction_audit (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   request_id uuid NOT NULL UNIQUE,
   corrected_venue_id uuid NOT NULL,
@@ -40,9 +51,11 @@ BEGIN
 END $$;
 ALTER FUNCTION public.issue_2099_reject_audit_mutation() OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.issue_2099_reject_audit_mutation() FROM PUBLIC, anon, authenticated, service_role;
+DROP TRIGGER IF EXISTS venue_identity_correction_audit_immutable_rows ON public.venue_identity_correction_audit;
 CREATE TRIGGER venue_identity_correction_audit_immutable_rows
   BEFORE UPDATE OR DELETE ON public.venue_identity_correction_audit
   FOR EACH ROW EXECUTE FUNCTION public.issue_2099_reject_audit_mutation();
+DROP TRIGGER IF EXISTS venue_identity_correction_audit_immutable_truncate ON public.venue_identity_correction_audit;
 CREATE TRIGGER venue_identity_correction_audit_immutable_truncate
   BEFORE TRUNCATE ON public.venue_identity_correction_audit
   FOR EACH STATEMENT EXECUTE FUNCTION public.issue_2099_reject_audit_mutation();
@@ -59,10 +72,54 @@ END $$;
 ALTER FUNCTION public.issue_2099_dependency_ddl_guard() OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.issue_2099_dependency_ddl_guard() FROM PUBLIC, anon, authenticated, service_role;
 
+-- Dropping an event trigger is one of PostgreSQL's documented exceptions: it
+-- does not fire the trigger being dropped, so replay cannot deadlock on its own
+-- guard.
+DROP EVENT TRIGGER IF EXISTS issue_2099_dependency_ddl_guard;
 CREATE EVENT TRIGGER issue_2099_dependency_ddl_guard
   ON ddl_command_start
   EXECUTE FUNCTION public.issue_2099_dependency_ddl_guard();
 ALTER EVENT TRIGGER issue_2099_dependency_ddl_guard OWNER TO postgres;
+
+-- FAIL-CLOSED ORDERING (Amendment 3 §C3, Amendment 4 §D4). The seal is verified
+-- HERE — before either public RPC is created or granted — so a database that
+-- cannot host the guard aborts the whole transaction instead of shipping a
+-- correction RPC with no DDL seal behind it. It also rejects an incompatible
+-- pre-existing #2099 object rather than silently accepting a weaker shape.
+DO $seal$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_event_trigger et
+    JOIN pg_catalog.pg_proc p ON p.oid = et.evtfoid
+    JOIN pg_catalog.pg_roles er ON er.oid = et.evtowner
+    JOIN pg_catalog.pg_roles pr ON pr.oid = p.proowner
+    WHERE et.evtname = 'issue_2099_dependency_ddl_guard'
+      AND et.evtevent = 'ddl_command_start'
+      AND et.evtenabled IN ('O','A')
+      AND et.evttags IS NULL
+      AND p.oid = 'public.issue_2099_dependency_ddl_guard()'::regprocedure
+      AND p.prosecdef
+      AND p.proconfig @> ARRAY['search_path=public, pg_temp']
+      AND er.rolname = 'postgres' AND pr.rolname = 'postgres'
+  ) THEN
+    RAISE EXCEPTION 'issue_2099: DDL seal absent, disabled or mis-owned; refusing to create the correction RPCs';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = 'venue_identity_correction_audit' AND c.relrowsecurity
+  ) THEN
+    RAISE EXCEPTION 'issue_2099: audit table missing or RLS disabled';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.role_table_grants
+    WHERE table_schema = 'public' AND table_name = 'venue_identity_correction_audit'
+      AND grantee IN ('PUBLIC','anon','authenticated','service_role')
+  ) THEN
+    RAISE EXCEPTION 'issue_2099: audit table carries an application grant';
+  END IF;
+END
+$seal$;
 
 CREATE OR REPLACE FUNCTION public.issue_2099_pending_venue_dependency_inventory(
   p_venue_id uuid,

@@ -42,7 +42,6 @@ export interface VenueListing {
   claimFollowUpAt: string | null;
   rejectionReason: string | null;
   createdAt: string;
-  updatedAt: string;
 }
 
 interface VenueListingRow {
@@ -62,7 +61,6 @@ interface VenueListingRow {
   claim_follow_up_at: string | null;
   rejection_reason: string | null;
   created_at: string;
-  updated_at: string;
 }
 
 /**
@@ -80,7 +78,7 @@ export class PlaceClaimConflictError extends Error {
 }
 
 const VENUE_LISTING_COLUMNS =
-  "id, brand_id, place_pool_id, slug, name, address, city, country_code, venue_category, cover_media_url, cover_media_poster_url, cover_media_type, claim_status, claim_follow_up_at, rejection_reason, created_at, updated_at";
+  "id, brand_id, place_pool_id, slug, name, address, city, country_code, venue_category, cover_media_url, cover_media_poster_url, cover_media_type, claim_status, claim_follow_up_at, rejection_reason, created_at";
 
 const mapRow = (row: VenueListingRow): VenueListing => ({
   id: row.id,
@@ -101,7 +99,6 @@ const mapRow = (row: VenueListingRow): VenueListing => ({
   claimFollowUpAt: row.claim_follow_up_at,
   rejectionReason: row.rejection_reason,
   createdAt: row.created_at,
-  updatedAt: row.updated_at,
 });
 
 /** All venue listings of a brand (any claim state), oldest first. */

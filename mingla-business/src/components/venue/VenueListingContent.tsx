@@ -86,7 +86,6 @@ import {
   updateVenuePitch,
 } from "../../services/businessPlaceAuthoringService";
 import { listingStatusView, type ListingTone } from "../../utils/listingStatus";
-import { PendingVenueIdentityCorrectionLauncher } from "./PendingVenueIdentityCorrectionLauncher";
 
 // META-ORCH-1290 Leg B (D-5, DESIGN §4.2) — the populated scores fill ramps by
 // strength for glanceability (one hue, the number is always shown so color is
@@ -597,14 +596,6 @@ export function VenueListingContent({
                 leadingIcon="edit"
                 onPress={handleEdit}
                 accessibilityLabel="Edit your venue listing"
-              />
-              <PendingVenueIdentityCorrectionLauncher
-                venueId={venue?.id ?? null}
-                claimStatus={venue?.claimStatus ?? null}
-                onSuccess={() => {
-                  setToast({ kind: "success", message: "Pending venue identity corrected." });
-                  void Promise.all([venueQuery.refetch(), pipeline.refetch(), ctx.refetch()]);
-                }}
               />
               {isLive ? (
                 <Button

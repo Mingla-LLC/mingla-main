@@ -20,7 +20,18 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 
+// Amendment 7 §G5 / Amendment 8 §H7 — KEY FACTORIES ONLY, read-only. React
+// Query dispatches on the key, so invalidating here reaches every mounted
+// observer wherever it lives — including the availability and reservation
+// modules inside `VenueSuiteShell`, which #2099 may not edit. None of these
+// modules' hooks is called from this file.
+import { brandKeys } from "../../hooks/brandKeys";
+import { brandPlacePipelineKeys } from "../../hooks/useBrandPlacePipelineState";
+import { venueAvailabilityKeys } from "../../hooks/useVenueAvailability";
+import { venueListingKeys } from "../../hooks/useVenueListings";
+import { venueReservationSettingsKeys } from "../../hooks/useVenueReservationSettings";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { Modal } from "../ui/Modal";
@@ -116,6 +127,7 @@ export function PendingVenueIdentityCorrectionDialog({
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  const queryClient = useQueryClient();
 
   // Guards a second submit from an in-flight one even before React commits
   // `submitting` — Constitution #1/#3: the action can never double-fire.
@@ -290,6 +302,31 @@ export function PendingVenueIdentityCorrectionDialog({
         setStatus(safeCodeCopy(result.code));
         return;
       }
+      // Amendment 7 §G5 / Amendment 8 §H7 — invalidate BEFORE closing and
+      // BEFORE the success announcement, by key, so the corrected pending
+      // identity is what the venue page's `VenueIdentityBand` re-reads.
+      // `place_pool_id` is in the preservation set and the correction never
+      // writes `place_discovery_price_ranges`, so the venue row and the
+      // pipeline row (keyed venue + brand + pool) discharge SPEC §7's "pool"
+      // and "config" clauses in full.
+      const { venue_id: vId, brand_id: bId } = preview;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: venueListingKeys.detail(vId) }),
+        queryClient.invalidateQueries({ queryKey: venueListingKeys.byBrand(bId) }),
+        queryClient.invalidateQueries({
+          queryKey: brandPlacePipelineKeys.byVenue(vId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: brandPlacePipelineKeys.byBrand(bId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: venueReservationSettingsKeys.detail(bId, vId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: venueAvailabilityKeys.config(bId, vId),
+        }),
+        queryClient.invalidateQueries({ queryKey: brandKeys.detail(bId) }),
+      ]);
       onSuccess();
     } catch {
       setStep("edit");
@@ -300,7 +337,7 @@ export function PendingVenueIdentityCorrectionDialog({
       submitInFlight.current = false;
       setSubmitting(false);
     }
-  }, [loadPreview, onSuccess, preview, proposal]);
+  }, [loadPreview, onSuccess, preview, proposal, queryClient]);
 
   const dependencyCounts = useMemo(
     () => preview?.dependency_counts ?? [],

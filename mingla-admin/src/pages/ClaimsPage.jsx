@@ -179,9 +179,6 @@ export function ClaimsPage() {
     setTweakAddress(row.address ?? "");
     setTweakCategory(row.venue_category ?? "");
     setTweakPriceLevel("");
-    setIdentityPreview(null);
-    setIdentityStatus("");
-    setIdentityReason("");
     setHoursLoading(true);
     // META-ORCH-1062 — fetch photos + scores + missing fields in parallel.
     void loadBundle(row.id);
@@ -214,6 +211,7 @@ export function ClaimsPage() {
     const refreshed = (await listPendingClaims()).find((row) => row.id === venueId);
     if (refreshed) await openDetail(refreshed);
     else closeDetail();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail, load]);
 
   const closeDetail = () => {
@@ -226,8 +224,6 @@ export function ClaimsPage() {
     setFeedbackCat("photos");
     setFeedbackNote("");
     setFeedbackMessage("");
-    setIdentityPreview(null);
-    setIdentityStatus("");
   };
 
   // ORCH-1064 — stage one feedback item into the local draft array.
@@ -799,6 +795,7 @@ export function ClaimsPage() {
                       supplies the selected venue and the reload callbacks; the panel
                       owns preview/proposal state and the HighRiskActionModal review. */}
                   <PendingVenueIdentityCorrectionPanel
+                    key={detail.id}
                     venue={detail}
                     onCorrected={reloadAfterIdentityCorrection}
                   />

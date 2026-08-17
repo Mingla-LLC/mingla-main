@@ -42,7 +42,7 @@ import {
 
 const SLUG_PATTERN = /^[a-z0-9]{1,32}$/;
 
-export const CORRECTION_CATEGORY_LABELS = {
+const CORRECTION_CATEGORY_LABELS = {
   restaurant: "Restaurant",
   play: "Play",
   creative_and_arts: "Creative & arts",
@@ -200,7 +200,7 @@ export function PendingVenueIdentityCorrectionPanel({ venue, onCorrected }) {
         submitInFlight.current = false;
       }
     },
-    [onCorrected, preview, proposal],
+    [onCorrected, preview, proposal, recoverFromStale],
   );
 
   const dependencyCounts = useMemo(
