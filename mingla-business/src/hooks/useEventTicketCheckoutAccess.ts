@@ -91,11 +91,11 @@ export const usePublicTicketCheckoutEligibility = (
     authStatus,
     isAuthReady,
   );
-  // Unchanged. The scope still names the identity the SERVER decides for,
-  // because the query only ever runs in a resolved state: `isAuthReady` means a
-  // token is attached and `user.id` is the scope, while `signed_out` always
-  // carries a null `user` and so scopes to 'anon'. A key/identity mismatch is
-  // therefore not reachable through the gate above.
+  // Unchanged by #2181, and still correct: the scope names the identity the
+  // SERVER decides for, because the query now only runs in a resolved state.
+  // `isAuthReady` means a token is attached and `user.id` is the scope, while
+  // `signed_out` always carries a null `user` and so scopes to 'anon'. A
+  // key/identity mismatch is therefore not reachable through the gate above.
   const authScope = user?.id ?? "anon";
   const previousScopeRef = useRef<string | null>(null);
 
