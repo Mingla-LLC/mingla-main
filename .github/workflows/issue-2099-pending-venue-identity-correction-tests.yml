@@ -296,6 +296,16 @@ SQL
         shell: bash
         run: bash supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.concurrent.test.sh
 
+      # §D7 / Amendment 12 §M3 — TESTER-OWNED. The web-contracts job invokes the
+      # same guard fail-closed, but that runner has no database, so the guard's
+      # adversarial RPC lanes could never execute there. This is the invocation
+      # that actually runs them, and the guard's own W-4 lane asserts this step
+      # exists, sits after the fixture, and carries no bypass token — so the
+      # guard cannot be reduced to a registered-but-unrun job.
+      - name: "D7 — tester adversarial guard against the real RPC (db mode)"
+        shell: bash
+        run: bash supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.tester_adversarial.test.sh
+
       - name: "Tear down the disposable PostgreSQL 17 fixture"
         if: always()
         shell: bash
