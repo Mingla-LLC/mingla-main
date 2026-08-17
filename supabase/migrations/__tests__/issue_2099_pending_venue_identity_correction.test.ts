@@ -19,7 +19,7 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 const migration = await Deno.readTextFile(
-  "supabase/migrations/20270416002099_issue_2099_pending_venue_identity_correction.sql",
+  "supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql",
 );
 const workflow = await Deno.readTextFile(
   ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml",
@@ -125,7 +125,7 @@ Deno.test("#2099 workflow actually executes every gate this issue rests on", () 
   // §D4's replay proof runs the EXACT migration file a second and third time.
   assertStringIncludes(
     workflow,
-    "20270416002099_issue_2099_pending_venue_identity_correction.sql",
+    "20270418002099_issue_2099_pending_venue_identity_correction.sql",
   );
   // The byte ceiling reads the baseline at RUN TIME; a pinned literal would red
   // on main forever the moment an unrelated PR grows __common.

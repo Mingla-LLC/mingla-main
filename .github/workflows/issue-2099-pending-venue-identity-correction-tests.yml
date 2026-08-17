@@ -6,7 +6,7 @@ name: issue-2099-pending-venue-identity-correction
 on:
   pull_request:
     paths: &issue2099Paths
-      - "supabase/migrations/20270416002099_issue_2099_pending_venue_identity_correction.sql"
+      - "supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql"
       - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql"
       - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.ts"
       - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.concurrent.test.sh"
@@ -311,10 +311,10 @@ jobs:
           }
           before="$(snapshot)"
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
-            -f - < supabase/migrations/20270416002099_issue_2099_pending_venue_identity_correction.sql
+            -f - < supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql
           after_second="$(snapshot)"
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
-            -f - < supabase/migrations/20270416002099_issue_2099_pending_venue_identity_correction.sql
+            -f - < supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql
           after_third="$(snapshot)"
           test "$before" = "$after_second"
           test "$after_second" = "$after_third"
